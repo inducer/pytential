@@ -1,7 +1,7 @@
 pytential
 =========
 
-:mod:`pytential` helps you accurately evaluate layer
+pytential helps you accurately evaluate layer
 potentials (and, sooner or later, volume potentials).
 It also knows how to set up meshes and solve integral
 equations.
@@ -15,12 +15,12 @@ It relies on
 * `loopy <http://pypi.python.org/pypi/loopy>`_ for fast array operations
 * `pytest <http://pypi.python.org/pypi/pytest>`_ for automated testing
 
-and, indirectly, 
+and, indirectly,
 
 * `PyOpenCL <http://pypi.python.org/pypi/pyopencl>`_ as computational infrastructure
 
-PyOpenCL is likely the only one you'll have to install
-by hand, all the other ones will automatically be installed.
+PyOpenCL is likely the only package you'll have to install
+by hand, all the others will be installed automatically.
 
 Resources:
 

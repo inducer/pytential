@@ -13,6 +13,7 @@ Contents
     :maxdepth: 2
 
     mesh
+    misc
 
 * :ref:`genindex`
 * :ref:`modindex`

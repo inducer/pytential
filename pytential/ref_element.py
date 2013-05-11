@@ -1,6 +1,6 @@
 from __future__ import division
 
-__copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
+__copyright__ = "Copyright (C) 2013 Andreas Kloeckner, Michael Tom"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -22,3 +22,41 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+
+
+
+#import numpy as np
+from pytools import memoize_method
+
+import modepy as mp
+
+
+
+
+class RefElementBase(object):
+    def __init__(self, order):
+        self.order = order
+
+class SimplexRefElementBase(RefElementBase):
+    @memoize_method
+    def node_tuples(self):
+        from pytools import generate_nonnegative_integer_tuples_summing_to_at_most as gnitstam
+        return list(gnitstam(self.order, self.dimensions))
+
+    @property
+    def nvertices(self):
+        return self.dimensions + 1
+
+    @memoize_method
+    def unit_nodes(self):
+        return mp.get_warp_and_blend_nodes(
+                self.dimensions, self.order, self.node_tuples())
+
+
+
+
+class RefInterval(SimplexRefElementBase):
+    dimensions = 1
+
+class RefTriangle(SimplexRefElementBase):
+    dimensions = 2

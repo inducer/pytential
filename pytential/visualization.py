@@ -22,3 +22,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+
+
+
+def _show_curve(mesh):
+    import matplotlib.pyplot as pt
+    pt.plot(mesh.vertices[0], mesh.vertices[1], "o")
+
+    for i, group in enumerate(mesh.groups):
+        pt.plot(
+                group.nodes[0].ravel(),
+                group.nodes[1].ravel(), "-x", label="Group %d" % i)
+
+
+def show_mesh(mesh, **kwargs):
+    if mesh.ambient_dims == 2:
+        _show_curve(mesh, **kwargs)

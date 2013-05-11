@@ -51,7 +51,7 @@ def main():
           install_requires=[
               "boxtree>=2013.1",
               "modepy>=2013.1",
-              "loopy>=2013.1",
+              "loo.py>=2013.1",
               "pytest>=2.3",
               ],
 

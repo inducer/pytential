@@ -1,4 +1,5 @@
 _build
+.sw[po]
 .*.sw[po]
 *~
 *.pyc
