@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 import numpy as np
 import numpy.linalg as la
+import modepy as mp
 
 
 
@@ -136,14 +137,11 @@ def make_curve_mesh(curve_f, element_boundaries, order):
     :returns: a :class:`pytential.mesh.Mesh`
     """
 
-    from pytential.ref_element import RefInterval
-    ref_el = RefInterval(order)
-
     assert element_boundaries[0] == 0
     assert element_boundaries[-1] == 1
     nelements = len(element_boundaries) - 1
 
-    unodes = 0.5*(ref_el.unit_nodes()+1)
+    unodes = 0.5*(mp.warp_and_blend_nodes(1, order)+1)
 
     vertices = curve_f(element_boundaries)
 
@@ -156,12 +154,13 @@ def make_curve_mesh(curve_f, element_boundaries, order):
 
     from pytential.mesh import Mesh, ElementGroup
     egroup = ElementGroup(
-            ref_el,
-            vertex_indices=np.hstack([
+            order,
+            vertex_indices=np.vstack([
                 np.arange(nelements),
                 np.arange(1, nelements+1) % nelements,
-                ]),
-            nodes=nodes)
+                ]).T,
+            nodes=nodes,
+            unit_nodes=unodes)
 
     return Mesh(vertices=vertices, groups=[egroup])
 

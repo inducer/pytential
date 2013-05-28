@@ -110,8 +110,9 @@ else:
     # further.  For a list of options available for each theme, see the
     # documentation.
     html_theme_options = {
-            'navbar_fixed_top': "true",
-            'navbar_class': "navbar navbar-inverse",
+            "navbar_fixed_top": "true",
+            "navbar_class": "navbar navbar-inverse",
+            "navbar_site_name": "Contents",
             }
 
 # Theme options are theme-specific and customize the look and feel of a theme

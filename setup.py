@@ -19,7 +19,7 @@ def main():
 
     setup(name="pytential",
           version=version_dict["VERSION_TEXT"],
-          description="Evaluate layer and volume potentials, accurately. Solve integral equations.",
+          description="Evaluate layer and volume potentials accurately. Solve integral equations.",
           long_description=open("README.rst", "rt").read(),
           author="Andreas Kloeckner",
           author_email="inform@tiker.net",
@@ -46,12 +46,20 @@ def main():
             'Topic :: Utilities',
             ],
 
-          packages=["pytential"],
+          packages=[
+              "pytential",
+              "pytential.mesh",
+              "pytential.discretization",
+              "pytential.discretization.qbx",
+              "pytential.symbolic",
+              "pytential.symbolic.pde",
+              ],
 
           install_requires=[
               "boxtree>=2013.1",
-              "modepy>=2013.1",
-              "loo.py>=2013.1",
+              "modepy>=2013.3",
+              "pymbolic>=2013.2",
+              "loo.py>=2013.1beta",
               "pytest>=2.3",
               ],
 

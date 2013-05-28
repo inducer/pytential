@@ -23,28 +23,3 @@ THE SOFTWARE.
 """
 
 
-
-
-import numpy as np
-import numpy.linalg as la
-from pytools import memoize_method
-
-
-
-
-class Discretization(object):
-    """Abstract interface for discretizations.
-
-    .. attribute:: nnodes
-
-    .. attribute:: dim
-
-    .. attribute:: ambient_dim
-
-    .. attribute:: nodes
-
-        shape: ``(ambient_dim, nnodes)``
-
-    """
-
-# vim: fdm=marker

@@ -1,6 +1,6 @@
 from __future__ import division
 
-__copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
+__copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -25,26 +25,31 @@ THE SOFTWARE.
 
 
 
-import numpy as np
-import numpy.linalg as la
-from pytools import memoize_method
+
+# {{{ target classes
+
+class TargetBase(object):
+    pass
 
 
 
 
-class Discretization(object):
-    """Abstract interface for discretizations.
+class PointsTarget(TargetBase):
+    def __init__(self, points, normals=None):
+        self.points = points
+        self.normals = normals
 
-    .. attribute:: nnodes
+    def __len__(self):
+        return len(self.points)
 
-    .. attribute:: dim
 
-    .. attribute:: ambient_dim
 
-    .. attribute:: nodes
 
-        shape: ``(ambient_dim, nnodes)``
+class VertexGeometryTarget(TargetBase):
+    def __init__(self, geo):
+        self.points = geo.vertex_coordinates
+        self.normals = geo.vertex_normals
 
-    """
+# }}}
 
-# vim: fdm=marker
+# vim: foldmethod=marker
