@@ -30,10 +30,11 @@ import numpy as np
 import modepy as mp
 from pytools import memoize_method
 from pytential.symbolic.compiler import Instruction
-from pytential.discretization import Discretization
+from pytential.discretization.poly_element import (
+        PolynomialElementGroupBase,
+        PolynomialElementDiscretizationBase)
 
-import pyopencl as cl
-import pyopencl.array
+#import pyopencl as cl
 
 
 
@@ -123,15 +124,32 @@ class _JumpTermArgumentProvider(object):
 
 # }}}
 
+# {{{ element group
+
+class QBXElementGroup(PolynomialElementGroupBase):
+    @memoize_method
+    def _quadrature_rule(self):
+        dims = self.mesh_el_group.dim
+        if dims == 1:
+            return mp.LegendreGaussQuadrature(self.order)
+        else:
+            return mp.XiaoGimbutasSimplexQuadrature(self.order, dims)
+
+    @property
+    @memoize_method
+    def unit_nodes(self):
+        return self._quadrature_rule().nodes
+
+    @memoize_method
+    def weights(self):
+        return self._quadrature_rule().weights
+
+# }}}
+
 # {{{ QBX discretization base
 
-class QBXDiscretizationBase(Discretization):
+class QBXDiscretization(PolynomialElementDiscretizationBase):
     """An (unstructured) grid for discretizing a QBX operator.
-
-    This is separate from :class:`QBXDiscretization` because each discretization
-    has two of these, the 'source' and the 'target' grid. (following the QBX paper)
-    In addition, each of these is allowed to be different from the grid used by
-    the :class:`pytential.mesh.Mesh`.
 
     .. attribute :: mesh
     .. attribute :: groups
@@ -139,88 +157,15 @@ class QBXDiscretizationBase(Discretization):
 
     .. autoattribute :: nodes
     """
-    def __init__(self, cl_ctx, mesh, qbx_order, target_order, source_order,
-            expansion_getter=None, real_dtype=np.float64):
-
-        self.cl_context = cl_ctx
-
-        self.mesh = mesh
-        self.nnodes = 0
-        self.groups = []
-        for mg in mesh.groups:
-            ng = group_class(self, mg, order, self.nnodes)
-            self.groups.append(ng)
-            self.nnodes += ng.nnodes
-
-        self.real_dtype = np.dtype(real_dtype)
-        self.complex_dtype = (self.real_dtype.type(0) + 1j).dtype
-
-    @property
-    def dim(self):
-        return self.mesh.dim
-
-    @property
-    def ambient_dim(self):
-        return self.mesh.ambient_dim
-
-    def _empty(self):
-        return cl.array.empty(self.cl_context, self.nnodes, dtype=self.real_dtype)
-
-    @memoize_method
-    def get_parametrization_derivative_component(self, ambient_axis, ref_axis):
-        result = self._empty()
-
-    # ^^ OK
-
-    @memoize_method
-    def get_weights(self):
-        w = self.ovsmp_curve.expansion.weights
-        nelements, nlege_nodes = self.ovsmp_curve.points.shape[1:]
-        return (w*np.ones(nelements)[:, np.newaxis]).reshape(-1)
-
-
-    @memoize_method
-    def quadrature_weights(self):
-        """Return the bare quadrature weights, not yet multiplied
-        by the transform Jacobian.
-
-        .. warning ::
-
-            There used to be a method named ``get_quad_weights()``,
-            which included the Jacobian. This is not the same
-            thing.
-        """
-
-        1/0
-        return self.target_grid.quadrature_weights()
-
-# }}}
-
-# {{{ QBX target discretization
-
-class QBXTargetDiscretization(QBXDiscretizationBase):
-    def __init__(self, cl_ctx, mesh, order, real_dtype=np.float64):
-        """
-        :arg order: The maximum total degree that can be exactly represented on
-            this grid.
-        """
-        QBXDiscretizationBase.__init__(
-                self, mesh, order, QBXGridInterpolationElementGroup)
-
-# }}}
-
-# {{{ QBX target discretization
-
-class QBXSourceDiscretization(QBXGridBase):
-    def __init__(self, cl_ctx, mesh, order, qbx_order,
+    def __init__(self, cl_ctx, mesh, exact_order, qbx_order,
             expansion_getter=None, real_dtype=np.float64):
         """
-        :arg order: An order parameter for the quadrature rule, somewhat poorly
-            defined. Required to have positive correlation with the total degree
-            of polynomials being exactly integrated.
+        :arg exact_order: The total degree to which the underlying quadrature
+            is exact.
         """
-        QBXDiscretizationBase.__init__(
-                self, mesh, order, QBXGridQuadratureElementGroup)
+
+        PolynomialElementDiscretizationBase.__init__(self, cl_ctx, exact_order,
+                real_dtype)
 
         self.qbx_order = qbx_order
 
@@ -229,13 +174,13 @@ class QBXSourceDiscretization(QBXGridBase):
             expansion_getter = LineTaylorLocalExpansion
         self.expansion_getter = expansion_getter
 
+    group_class = QBXElementGroup
 
     # {{{ interface with execution
 
     def extra_op_group_features(self, expr):
         target, what, index = expr.what()
         return (what,)
-
 
     def gen_instruction_for_layer_pot_from_src(self, compiler, tgt_discr, expr, field_var):
         from pytential.symbolic.operators import (

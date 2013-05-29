@@ -34,8 +34,10 @@ from pytools import Record
 
 # {{{ element group
 
-class ElementGroup(Record):
+class MeshElementGroup(Record):
     """A group of elements sharing a common reference element.
+
+    .. attribute:: order
 
     .. attribute:: vertex_indices
 
@@ -119,6 +121,10 @@ class ElementGroup(Record):
     def nnodes(self):
         return self.nelements * self.unit_nodes.shape[-1]
 
+    @property
+    def nunit_nodes(self):
+        return self.unit_nodes.shape[-1]
+
 # }}}
 
 # {{{ mesh
@@ -132,7 +138,7 @@ class Mesh(Record):
 
     .. attribute:: groups
 
-        A list of :class:`ElementGroup` instances.
+        A list of :class:`MeshElementGroup` instances.
     """
 
     def __init__(self, vertices, groups):

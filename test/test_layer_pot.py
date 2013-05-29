@@ -68,25 +68,25 @@ def make_circular_point_group(npoints, radius, center=np.array([0.,0.]),
 
 def test_geometry(ctx_getter):
     ctx = ctx_getter()
+    queue = cl.CommandQueue(ctx)
 
     nelements = 30
-    target_order = 5
-    qbx_order = 5
-    source_order = 10
+    order = 5
 
     mesh = make_curve_mesh(partial(ellipse, 1),
             np.linspace(0, 1, nelements+1),
-            target_order)
+            order)
 
-    from pytential.discretization.qbx import QBXDiscretization
+    from pytential.discretization.poly_element import \
+            PolynomialElementDiscretization
 
-    discr = QBXDiscretization(ctx, mesh, qbx_order, target_order, source_order)
+    discr = PolynomialElementDiscretization(ctx, mesh, order)
 
     from pytential.symbolic.execution import bind
     import pytential.symbolic.primitives as prim
     area_sym = prim.integral(prim.Ones())
 
-    area = bind(discr, area_sym)()
+    area = bind(discr, area_sym)(queue)
 
     err = abs(area-2*np.pi)
     print err

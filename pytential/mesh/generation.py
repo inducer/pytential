@@ -152,8 +152,8 @@ def make_curve_mesh(curve_f, element_boundaries, order):
     t = el_starts[:, np.newaxis] + el_lengths[:, np.newaxis]*unodes
     nodes = curve_f(t.ravel()).reshape(vertices.shape[0], nelements, -1)
 
-    from pytential.mesh import Mesh, ElementGroup
-    egroup = ElementGroup(
+    from pytential.mesh import Mesh, MeshElementGroup
+    egroup = MeshElementGroup(
             order,
             vertex_indices=np.vstack([
                 np.arange(nelements),

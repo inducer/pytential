@@ -273,3 +273,4 @@ intersphinx_mapping = {
     'http://documen.tician.de/pyopencl/': None,
     #'http://documen.tician.de/loopy/': None,
     }
+autoclass_content = "both"

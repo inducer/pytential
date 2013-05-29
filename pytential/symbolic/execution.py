@@ -38,17 +38,17 @@ import pyopencl.clmath
 # {{{ evaluator
 
 class ExecutionMapper(EvaluationMapper):
-    def __init__(self, executor, context={},
+    def __init__(self, executor, queue, context={},
             target_geometry=None,
             target_points=None, target_normals=None, target_tangents=None):
         EvaluationMapper.__init__(self, context)
 
         self.executor = executor
+        self.queue = queue
 
     # {{{ map_XXX
 
     def map_node_sum(self, expr):
-        discr = self.executor.discretizations[expr.where]
         return cl.sum(self.rec(expr.operand))
 
     def map_ones(self, expr):
@@ -65,7 +65,7 @@ class ExecutionMapper(EvaluationMapper):
     def map_parametrization_derivative_component(self, expr):
         discr = self.executor.discretizations[expr.where]
         return discr.get_parametrization_derivative_component(
-                self.executor.queue,
+                self.queue,
                 expr.ambient_axis, expr.ref_axis)
 
     def map_q_weights(self, expr):
@@ -224,8 +224,8 @@ class Executor:
         return sla.LinearOperator((total_dofs, total_dofs),
                 matvec=matvec.matvec, dtype=np.complex128)
 
-    def __call__(self, **args):
-        exec_mapper = ExecutionMapper(self, args)
+    def __call__(self, queue, **args):
+        exec_mapper = ExecutionMapper(self, queue, args)
         return self.code.execute_dynamic(exec_mapper)
 
 
