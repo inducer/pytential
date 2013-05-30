@@ -207,9 +207,11 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         else:
             return expr
 
+    map_q_weights = map_ones
+
     def map_parametrization_derivative_component(self, expr):
         if expr.where is None:
-            return ParametrizationDerivativeComponent(
+            return type(self)(
                     expr.ambient_axis, expr.ref_axis, self.default_where)
         else:
             return expr

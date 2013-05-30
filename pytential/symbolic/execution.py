@@ -23,17 +23,16 @@ THE SOFTWARE.
 """
 
 
-
-
 from pymbolic.mapper.evaluator import EvaluationMapper
 import scipy.sparse.linalg as sla
 import numpy as np
 
 import pyopencl as cl
-import pyopencl.array
-import pyopencl.clmath
+import pyopencl.array  # noqa
+import pyopencl.clmath  # noqa
 
 
+# FIXME caches: fix up queues
 
 # {{{ evaluator
 
@@ -49,12 +48,14 @@ class ExecutionMapper(EvaluationMapper):
     # {{{ map_XXX
 
     def map_node_sum(self, expr):
-        return cl.sum(self.rec(expr.operand))
+        return cl.array.sum(self.rec(expr.operand)).get()
 
     def map_ones(self, expr):
-        result = cl.array.empty(
-                len(self.executor.discretizations[expr.where]), 
-                dtype=np.complex128)
+        discr = self.executor.discretizations[expr.where]
+        result = (discr
+                .empty(discr.real_dtype, queue=self.queue)
+                .with_queue(self.queue))
+
         result.fill(1)
         return result
 
@@ -64,13 +65,15 @@ class ExecutionMapper(EvaluationMapper):
 
     def map_parametrization_derivative_component(self, expr):
         discr = self.executor.discretizations[expr.where]
-        return discr.get_parametrization_derivative_component(
+        return discr.parametrization_derivative_component(
                 self.queue,
-                expr.ambient_axis, expr.ref_axis)
+                expr.ambient_axis, expr.ref_axis) \
+                        .with_queue(self.queue)
 
     def map_q_weights(self, expr):
         discr = self.executor.discretizations[expr.where]
-        return discr.get_quad_weights()
+        return discr.quad_weights(self.queue) \
+                .with_queue(self.queue)
 
     def map_inverse(self, expr):
         bound_op_cache = self.executor.get_cache("bound_op")
@@ -78,7 +81,9 @@ class ExecutionMapper(EvaluationMapper):
         try:
             bound_op = bound_op_cache[expr]
         except KeyError:
-            bound_op = bind(expr.expression, self.executor.discretizations[expr.where],
+            bound_op = bind(
+                    expr.expression,
+                    self.executor.discretizations[expr.where],
                     self.executor.iprec)
             bound_op_cache[expr] = bound_op
 
@@ -107,14 +112,14 @@ class ExecutionMapper(EvaluationMapper):
         from pytools.obj_array import is_obj_array
         arg, = args
         result = self.rec(arg)
-        assert not is_obj_array(result) # numpy bug with obj_array.imag
+        assert not is_obj_array(result)  # numpy bug with obj_array.imag
         return result.real
 
     def apply_imag(self, args):
         from pytools.obj_array import is_obj_array
         arg, = args
         result = self.rec(arg)
-        assert not is_obj_array(result) # numpy bug with obj_array.imag
+        assert not is_obj_array(result)  # numpy bug with obj_array.imag
         return result.imag
 
     def apply_sqrt(self, args):
@@ -133,10 +138,9 @@ class ExecutionMapper(EvaluationMapper):
 # }}}
 
 
-
-
 class MatVecOp:
-    def __init__(self, executor, arg_name, total_dofs, starts_and_ends, extra_args):
+    def __init__(self,
+            executor, arg_name, total_dofs, starts_and_ends, extra_args):
         self.executor = executor
         self.arg_name = arg_name
         self.total_dofs = total_dofs
@@ -165,8 +169,6 @@ class MatVecOp:
             return result
 
 
-
-
 class Executor:
     def __init__(self, optemplate, discretizations):
         self.optemplate = optemplate
@@ -182,9 +184,9 @@ class Executor:
 
     def scipy_op(self, arg_name, domains=None, **extra_args):
         """
-        :arg domains: a list of geometry names or None values indicating the domains
-          on which each component of the solution vector lives. *None* values indicate
-          that the component is a scalar.
+        :arg domains: a list of geometry names or None values indicating the
+            domains on which each component of the solution vector lives.
+            *None* values indicate that the component is a scalar.
         """
 
         from pytools.obj_array import is_obj_array
@@ -219,7 +221,8 @@ class Executor:
         # fair, since these operators are usually only used
         # for linear system solving, in which case the assumption
         # has to be true.
-        matvec = MatVecOp(self, arg_name, total_dofs, starts_and_ends, extra_args)
+        matvec = MatVecOp(self,
+                arg_name, total_dofs, starts_and_ends, extra_args)
 
         return sla.LinearOperator((total_dofs, total_dofs),
                 matvec=matvec.matvec, dtype=np.complex128)
@@ -229,26 +232,19 @@ class Executor:
         return self.code.execute_dynamic(exec_mapper)
 
 
-
-
-
-
-
-
-
 def bind(discretizations, op, auto_where=None):
     """
-    :arg discretizations: a mapping of symbolic names to 
-      :class:`pytential.discretization.Discretization` objects
-      or a subclass of :class:`pytential.discretization.target.TargetBase`.
+    :arg discretizations: a mapping of symbolic names to
+        :class:`pytential.discretization.Discretization` objects or a subclass
+        of :class:`pytential.discretization.target.TargetBase`.
     :arg auto_where: For simple source-to-self or source-to-target
-      evaluations, find 'where' attributes automatically.
+        evaluations, find 'where' attributes automatically.
     """
 
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
     from pytential.discretization import Discretization
     if not isinstance(discretizations, (dict, tuple)):
-        discretizations = { DEFAULT_SOURCE: discretizations }
+        discretizations = {DEFAULT_SOURCE: discretizations}
 
     if isinstance(discretizations, tuple):
         discretizations = {
@@ -263,7 +259,7 @@ def bind(discretizations, op, auto_where=None):
         return discr
 
     discretizations = dict(
-            (key, cast_to_discretization(value)) 
+            (key, cast_to_discretization(value))
             for key, value in discretizations.iteritems())
 
     from pytential.symbolic.mappers import (

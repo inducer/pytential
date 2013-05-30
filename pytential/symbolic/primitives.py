@@ -23,14 +23,11 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
-from pymbolic.primitives import (Expression as ExpressionBase, Variable,
-        Expression,
+from pymbolic.primitives import (  # noqa
+        Expression as ExpressionBase, Variable,
         make_sym_vector, cse_scope,
-        make_common_subexpression as cse,
-        is_zero)
+        make_common_subexpression as cse)
 
 __doc__ = """
 .. |where-blurb| replace:: A symbolic name for a
@@ -38,12 +35,13 @@ __doc__ = """
 """
 
 
-
-
 class DEFAULT_SOURCE:
     pass
+
+
 class DEFAULT_TARGET:
     pass
+
 
 # {{{ helper functions
 
@@ -60,12 +58,11 @@ def array_to_tuple(ary):
 # }}}
 
 
-
-
 class Expression(ExpressionBase):
     def stringifier(self):
         from pytential.symbolic.mappers import StringifyMapper
         return StringifyMapper
+
 
 class Function(Variable):
     def __call__(self, operand, *args, **kwargs):
@@ -87,8 +84,6 @@ imag = Function("imag")
 sqrt = Function("sqrt")
 
 
-
-
 class DiscretizationProperty(Expression):
     """A quantity that depends exclusively on the discretization (and has no
     further arguments.
@@ -104,12 +99,14 @@ class DiscretizationProperty(Expression):
     def __getinitargs__(self):
         return (self.where,)
 
+
 # {{{ discretization properties
 
-class QWeights(DiscretizationProperty):
+class QWeight(DiscretizationProperty):
     """Bare quadrature weights (without Jacobians)."""
 
     mapper_method = intern("map_q_weights")
+
 
 class ParametrizationDerivativeComponent(DiscretizationProperty):
     def __init__(self, ambient_axis, ref_axis, where):
@@ -126,16 +123,12 @@ class ParametrizationDerivativeComponent(DiscretizationProperty):
     mapper_method = intern("map_parametrization_derivative_component")
 
 
-
-
 class ParametrizationGradient(DiscretizationProperty):
     """Return a *(ambient_dimension, dimension)*-shaped object array
     containing the gradient of the parametrization.
     """
 
     mapper_method = "map_parametrization_gradient"
-
-
 
 
 class ParametrizationDerivative(DiscretizationProperty):
@@ -145,24 +138,29 @@ class ParametrizationDerivative(DiscretizationProperty):
 
     mapper_method = "map_parametrization_derivative"
 
+
 def jacobian(where):
     return cse(
             sqrt(ParametrizationDerivative(where).attr("norm_squared")()),
             "jacobian", cse_scope.GLOBAL)
 
-def sqrt_jac_q_weight(ambient_dim, dim, where=None):
-    return cse(sqrt(jac_q_weight(ambient_dim, dim, where)),
+
+def sqrt_jac_q_weight(where=None):
+    return cse(sqrt(jacobian(where) * QWeight(where)),
             "sqrt_jac_q_weight", cse_scope.GLOBAL)
 
+
 def normal(where=None):
-    pder = parametrization_derivative_mv(ambient_dim, ambient_dim-1, where)
+    pder = ParametrizationDerivative(where)
     return cse(-pder.attr("I") | pder, "normal", cse_scope.GLOBAL)
+
 
 def mean_curvature(dph):
     """
     :arg dph: a :class:`DiscretizationPlaceholder`
     """
     raise NotImplementedError()
+
 
 def gaussian_curvature(dph):
     """
@@ -183,6 +181,7 @@ def gaussian_curvature(dph):
 
 # }}}
 
+
 class Upsample(Expression):
     def __init__(self, to_where, from_where, operand):
         """
@@ -195,6 +194,7 @@ class Upsample(Expression):
 
     mapper_method = "map_upsample"
 
+
 # {{{ operators
 
 # {{{ operator base classes
@@ -205,6 +205,7 @@ class OperatorBase(Expression):
 
     def __getinitargs__(self):
         return (self.operand,)
+
 
 class LayerPotentialOperatorBase(OperatorBase):
     def __new__(cls, kernel, operand, *args, **kwargs):
@@ -222,7 +223,8 @@ class LayerPotentialOperatorBase(OperatorBase):
         else:
             return OperatorBase.__new__(cls)
 
-    def __init__(self, kernel, operand, qbx_forced_limit=None, source=None, target=None):
+    def __init__(self, kernel, operand, qbx_forced_limit=None,
+            source=None, target=None):
         OperatorBase.__init__(self, operand)
 
         from sumpy.kernel import normalize_kernel
@@ -239,10 +241,12 @@ class LayerPotentialOperatorBase(OperatorBase):
         return (self.kernel, self.operand, self.qbx_forced_limit,
                 self.source, self.target)
 
+
 class SourceDiffLayerPotentialOperatorBase(LayerPotentialOperatorBase):
     pass
 
 # }}}
+
 
 class NodeSum(Expression):
     def __init__(self, operand):
@@ -256,13 +260,13 @@ class NodeSum(Expression):
 
     mapper_method = "map_node_sum"
 
+
 def integral(operand, where=None):
-    return NodeSum(jacobian(where) * QWeights(where) * operand)
+    return NodeSum(jacobian(where) * QWeight(where) * operand)
+
 
 def mean(operand, where=None):
     return integral(operand, where) / integral(Ones(where), where)
-
-
 
 
 #class LineIntegral(IntegralBase):
@@ -277,8 +281,10 @@ class Ones(Expression):
 
     mapper_method = intern("map_ones")
 
+
 class IterativeInverse(Expression):
-    def __init__(self, expression, rhs, variable_name, extra_vars={}, where=None):
+    def __init__(self, expression, rhs, variable_name, extra_vars={},
+            where=None):
         self.expression = expression
         self.rhs = rhs
         self.variable_name = variable_name
@@ -286,15 +292,15 @@ class IterativeInverse(Expression):
         self.where = where
 
     def __getinitargs__(self):
-        return (self.expression, self.rhs, self.variable_name, self.extra_vars, self.where)
+        return (self.expression, self.rhs, self.variable_name,
+                self.extra_vars, self.where)
 
     def get_hash(self):
-        return hash((self.__class__,) + (self.expression, self.rhs, self.variable_name,
+        return hash((self.__class__,) + (self.expression,
+            self.rhs, self.variable_name,
             frozenset(self.extra_vars.iteritems()), self.where))
 
     mapper_method = intern("map_inverse")
-
-
 
 
 # {{{ building blocks
@@ -313,6 +319,7 @@ class IntG(LayerPotentialOperatorBase):
 
     mapper_method = intern("map_int_g")
 
+
 class IntGdSource(SourceDiffLayerPotentialOperatorBase):
     r"""
     .. math::
@@ -324,18 +331,18 @@ class IntGdSource(SourceDiffLayerPotentialOperatorBase):
     surface normal of :math:`\Gamma`.
     """
 
-    def __init__(self, kernel, operand, ds_direction=None, qbx_forced_limit=None,
-            source=None, target=None):
-        LayerPotentialOperatorBase.__init__(self, kernel, operand, qbx_forced_limit,
-                source, target)
+    def __init__(self, kernel, operand, ds_direction=None,
+            qbx_forced_limit=None, source=None, target=None):
+        LayerPotentialOperatorBase.__init__(self, kernel, operand,
+                qbx_forced_limit, source, target)
         self.ds_direction = ds_direction
 
     def what(self):
         return self.target, "p", ()
 
     def __getinitargs__(self):
-        return (self.kernel, self.operand, self.ds_direction, self.qbx_forced_limit,
-                self.source, self.target, )
+        return (self.kernel, self.operand, self.ds_direction,
+                self.qbx_forced_limit, self.source, self.target, )
 
     def get_hash(self):
         return hash((self.__class__,) + (
@@ -344,16 +351,19 @@ class IntGdSource(SourceDiffLayerPotentialOperatorBase):
 
     mapper_method = intern("map_int_g_ds")
 
+
 class IntGdTarget(LayerPotentialOperatorBase):
     r"""
     .. math::
 
-        \frac \partial {\partial x_i} \int_\Gamma d \cdot \nabla_y g_k(x-y) \sigma(y) dS_y
+        \frac \partial {\partial x_i} \int_\Gamma d \cdot \nabla_y g_k(x-y)
+        \sigma(y) dS_y
 
     where :math:`\sigma` is *operand*, and
     :math:`i` is *dt_axis*.
     """
-    def __init__(self, kernel, operand, dt_axis, qbx_forced_limit=None, source=None, target=None):
+    def __init__(self, kernel, operand, dt_axis, qbx_forced_limit=None,
+            source=None, target=None):
         LayerPotentialOperatorBase.__init__(self, kernel, operand,
                 qbx_forced_limit, source, target)
         self.dt_axis = dt_axis
@@ -367,11 +377,13 @@ class IntGdTarget(LayerPotentialOperatorBase):
 
     mapper_method = intern("map_int_g_dt")
 
+
 class IntGdMixed(SourceDiffLayerPotentialOperatorBase):
     r"""
     .. math::
 
-        \frac \partial {\partial x_i} \int_\Gamma d \cdot \nabla_y g_k(x-y) \sigma(y) dS_y
+        \frac \partial {\partial x_i} \int_\Gamma d \cdot \nabla_y g_k(x-y)
+        \sigma(y) dS_y
 
     where :math:`\sigma` is *operand*,
     :math:`d` is *ds_direction*, a vector defaulting to the unit
@@ -393,16 +405,19 @@ class IntGdMixed(SourceDiffLayerPotentialOperatorBase):
 
     def get_hash(self):
         return hash((self.__class__,) + (
-            self.kernel, self.operand, self.dt_axis, array_to_tuple(self.ds_direction),
+            self.kernel, self.operand, self.dt_axis,
+            array_to_tuple(self.ds_direction),
             self.qbx_forced_limit, self.source, self.target))
 
     mapper_method = intern("map_int_g_dmix")
+
 
 class IntGd2Target(LayerPotentialOperatorBase):
     r"""
     .. math::
 
-        \frac \partial {\partial x_i}\frac \partial {\partial x_j} \int_\Gamma g_k(x-y) \sigma(y) dS_y
+        \frac \partial {\partial x_i}\frac \partial {\partial x_j}
+        \int_\Gamma g_k(x-y) \sigma(y) dS_y
 
     where :math:`\sigma` is *operand*,
     :math:`i` is *dt_axis_a*, and :math:`j` is *dt_axis_b*.
@@ -429,15 +444,19 @@ class IntGd2Target(LayerPotentialOperatorBase):
 
 S = IntG
 
+
 def D(kernel, arg, qbx_forced_limit=None, source=None, target=None):
     return IntGdSource(kernel, arg,
             qbx_forced_limit=qbx_forced_limit, source=source, target=target)
 
+
 class Sp(LayerPotentialOperatorBase):
     mapper_method = "map_single_layer_prime"
 
+
 class Spp(LayerPotentialOperatorBase):
     mapper_method = "map_single_layer_2prime"
+
 
 class Dp(LayerPotentialOperatorBase):
     mapper_method = "map_double_layer_prime"
@@ -445,6 +464,7 @@ class Dp(LayerPotentialOperatorBase):
 # }}}
 
 # }}}
+
 
 # {{{ differential operators on layer potentials
 
@@ -458,6 +478,7 @@ def grad_S(kernel, arg, dim):
             result[i+(j,)] = IntGdTarget(kernel, arg[i], j)
     return result
 
+
 def grad_D(kernel, arg, dim):
     from pytools.obj_array import log_shape
     arg_shape = log_shape(arg)
@@ -468,12 +489,14 @@ def grad_D(kernel, arg, dim):
             result[i+(j,)] = IntGdMixed(kernel, arg[i], j)
     return result
 
+
 def tangential_surf_grad_source_S(kernel, arg, dim=3):
     from pytools.obj_array import make_obj_array
     return make_obj_array([
         IntGdSource(kernel, arg,
             ds_direction=make_tangent(i, dim, "src"))
         for i in range(dim-1)])
+
 
 def surf_grad_S(kernel, arg, dim):
     """
@@ -482,8 +505,10 @@ def surf_grad_S(kernel, arg, dim):
 
     return project_to_tangential(cse(grad_S(kernel, arg, dim)))
 
+
 def div_S_volume(kernel, arg):
     return sum(IntGdTarget(kernel, arg_n, n) for n, arg_n in enumerate(arg))
+
 
 def curl_S_volume(kernel, arg):
     from pytools import levi_civita
@@ -494,6 +519,7 @@ def curl_S_volume(kernel, arg):
             levi_civita((l, m, n)) * IntGdTarget(kernel, arg[n], m)
             for m in range(3) for n in range(3))
         for l in range(3)])
+
 
 def curl_curl_S_volume(k, arg):
     # By vector identity, this is grad div S volume + k^2 S_k(arg),
@@ -511,6 +537,7 @@ def curl_curl_S_volume(k, arg):
         sum(IntGd2Target(k, arg[m], *swap_min_first(m, n)) for m in range(3))
         for n in range(3)]) + k**2*S(k, arg)
 
+
 def nxcurl_S(kernel, loc, arg):
     """
     :arg loc: one of three values:
@@ -519,9 +546,10 @@ def nxcurl_S(kernel, loc, arg):
       * 0 on the surface, or evaluated at a volume target
       * -1 on the interior of the surface.
     """
-    nxcurl_S = np.cross(make_normal(3), curl_S_volume(kernel, arg))
+    nxcurl_S = np.cross(normal(3), curl_S_volume(kernel, arg))
     assert loc in [-1, 0, 1], "invalid value for 'loc' (%s)" % loc
     return nxcurl_S + loc*(1/2)*arg
+
 
 def surface_laplacian_S_squared(u, invertibility_scale=0):
     """
@@ -529,11 +557,13 @@ def surface_laplacian_S_squared(u, invertibility_scale=0):
     """
     # http://wiki.tiker.net/HellsKitchen/SurfaceLaplacian
 
-    Su = cse(S(0,u), "su_from_surflap")
+    Su = cse(S(0, u), "su_from_surflap")
 
     return (
-            -2*MeanCurvature()*Sp(0,Su)-((Spp(0, Su)+Dp(0, Su))-(-1/4*u+Sp(0,Sp(0,u))))
-            - invertibility_scale * Mean(S(0, Su))*Ones())
+            - 2*mean_curvature()*Sp(0, Su)
+            - ((Spp(0, Su)+Dp(0, Su))-(-1/4*u+Sp(0, Sp(0, u))))
+            - invertibility_scale * mean(S(0, Su))*Ones())
+
 
 def S_surface_laplacian_S(u, dim, invertibility_scale=0, qbx_fix_scale=0):
     """
@@ -549,7 +579,7 @@ def S_surface_laplacian_S(u, dim, invertibility_scale=0, qbx_fix_scale=0):
     return (
             - IntGdSource(0, Ones(), ds_direction=real(tgrad_Su))
             - 1j*IntGdSource(0, Ones(), ds_direction=imag(tgrad_Su))
-            - invertibility_scale * S(0, Ones()*Mean(S(0, u)))
+            - invertibility_scale * S(0, Ones()*mean(S(0, u)))
             - qbx_fix_scale * (
                 u
                 # D+ - D- = identity (but QBX will compute the
@@ -564,6 +594,7 @@ def S_surface_laplacian_S(u, dim, invertibility_scale=0, qbx_fix_scale=0):
 
 # }}}
 
+
 # {{{ geometric operations
 
 def xyz_to_tangential(xyz_vec, which=None):
@@ -571,28 +602,33 @@ def xyz_to_tangential(xyz_vec, which=None):
     x2l = xyz_to_local_matrix(d)
     return np.dot(x2l[:-1], xyz_vec)
 
+
 def tangential_to_xyz(tangential_vec, which=None):
     d = len(tangential_vec) + 1
     x2l = xyz_to_local_matrix(d)
     return np.dot(x2l[:-1].T, tangential_vec)
 
+
 def project_to_tangential(xyz_vec, which=None):
     return tangential_to_xyz(
             cse(xyz_to_tangential(xyz_vec, which), which))
 
+
 def n_dot(vec, which=None):
-    return np.dot(make_normal(len(vec), which), vec)
+    return np.dot(normal(len(vec), which), vec)
+
 
 def n_cross(vec, which=None):
-    normal = make_normal(3, which)
+    nrm = normal(3, which)
 
     from pytools import levi_civita
     from pytools.obj_array import make_obj_array
     return make_obj_array([
         sum(
-            levi_civita((i, j ,k)) * normal[j] * vec[k]
+            levi_civita((i, j, k)) * nrm[j] * vec[k]
             for j in range(3) for k in range(3))
         for i in range(3)])
+
 
 def surf_n_cross(tangential_vec):
     assert len(tangential_vec) == 2

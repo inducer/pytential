@@ -23,10 +23,8 @@ THE SOFTWARE.
 """
 
 
-
 import numpy as np
 #import numpy.linalg as la
-import modepy as mp
 from pytools import memoize_method, memoize_method_nested
 from pytential.discretization import Discretization
 
@@ -36,12 +34,9 @@ import loopy as lp
 import modepy as mp
 
 
-
 __doc__ = """A composite polynomial discretization without
 any specific opinion on how to evaluate layer potentials.
 """
-
-
 
 
 # {{{ element group base
@@ -58,7 +53,8 @@ class PolynomialElementGroupBase(object):
     def __init__(self, grid, mesh_el_group, order, node_nr_base):
         """
         :arg grid: an instance of :class:`QBXGridBase`
-        :arg mesh_el_group: an instance of :class:`pytential.mesh.MeshElementGroup`
+        :arg mesh_el_group: an instance of
+            :class:`pytential.mesh.MeshElementGroup`
         """
         self.grid = grid
         self.mesh_el_group = mesh_el_group
@@ -95,12 +91,14 @@ class PolynomialElementGroupBase(object):
                 (-1, -1))
 
     def view(self, global_array):
-        return global_array[..., self.node_nr_base:self.node_nr_base+self.nnodes] \
+        return global_array[
+                ..., self.node_nr_base:self.node_nr_base + self.nnodes] \
                 .reshape(
                         global_array.shape[:-1]
                         + (self.nelements, self.nunit_nodes))
 
 # }}}
+
 
 # {{{ element group
 
@@ -124,6 +122,7 @@ class PolynomialElementGroup(PolynomialElementGroupBase):
         return self._quadrature_rule().weights
 
 # }}}
+
 
 # {{{ discretization
 
@@ -164,8 +163,17 @@ class PolynomialElementDiscretizationBase(Discretization):
     def ambient_dim(self):
         return self.mesh.ambient_dim
 
-    def _empty(self, dtype):
-        return cl.array.empty(self.cl_context, self.nnodes, dtype=dtype)
+    def empty(self, dtype, queue=None, extra_dims=None):
+        if queue is None:
+            first_arg = self.cl_context
+        else:
+            first_arg = queue
+
+        shape = (self.nnodes,)
+        if extra_dims is not None:
+            shape = extra_dims + shape
+
+        return cl.array.empty(first_arg, shape, dtype=dtype)
 
     @memoize_method
     def _diff_matrices(self, grp):
@@ -179,30 +187,78 @@ class PolynomialElementDiscretizationBase(Discretization):
         else:
             return result
 
-    def get_parametrization_derivative_component(self, queue, ambient_axis, ref_axis):
+    def parametrization_derivative_component(
+            self, queue, ambient_axis, ref_axis):
         @memoize_method_nested
         def knl():
             knl = lp.make_kernel(self.cl_context.devices[0],
-                "{[k,i,j]: 0<=k<nelements and 0<=i<ndiscr_nodes and 0<=j<nmesh_nodes}",
-                "result[k,i] = sum(j, diff_mat[i, j] * coord[k, j])")
+                """{[k,i,j]:
+                    0<=k<nelements and
+                    0<=i<ndiscr_nodes and
+                    0<=j<nmesh_nodes}""",
+                "result[k,i] = sum(j, 0.5 * diff_mat[i, j] * nodes_i[k, j])")
 
             knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
             return lp.tag_inames(knl, dict(k="g.0"))
 
-        result = self._empty(self.real_dtype)
+        result = self.empty(self.real_dtype)
 
         for grp in self.groups:
             meg = grp.mesh_el_group
             knl()(queue,
                     diff_mat=self._diff_matrices(grp)[ref_axis],
-                    result=grp.view(result), coord=meg.nodes[ambient_axis],
-                    nelements=meg.nelements, ndiscr_nodes=grp.nunit_nodes,
-                    nmesh_nodes=meg.nunit_nodes)
+                    result=grp.view(result), nodes_i=meg.nodes[ambient_axis])
 
-        1/0
         return result
 
+    def quad_weights(self, queue):
+        @memoize_method_nested
+        def knl():
+            knl = lp.make_kernel(self.cl_context.devices[0],
+                "{[k,i]: 0<=k<nelements and 0<=i<ndiscr_nodes}",
+                "result[k,i] = weights[i]")
 
+            knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
+            return lp.tag_inames(knl, dict(k="g.0"))
+
+        result = self.empty(self.real_dtype)
+        for grp in self.groups:
+            knl()(queue, result=grp.view(result), weights=grp.weights)
+        return result
+
+    @memoize_method
+    def _resampling_matrix(self, grp):
+        meg = grp.mesh_el_group
+        return mp.resampling_matrix(
+                mp.simplex_onb(self.dim, meg.order),
+                meg.unit_nodes, grp.unit_nodes)
+
+    def nodes(self, queue):
+        @memoize_method_nested
+        def knl():
+            knl = lp.make_kernel(self.cl_context.devices[0],
+                """{[d,k,i,j]:
+                    0<=d<dims and
+                    0<=k<nelements and
+                    0<=i<ndiscr_nodes and
+                    0<=j<nmesh_nodes}""",
+                """
+                    result[d, k, i] = \
+                        sum(j, resampling_mat[i, j] * nodes[d, k, j])
+                    """)
+
+            knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
+            return lp.tag_inames(knl, dict(k="g.0"))
+
+        result = self.empty(self.real_dtype, extra_dims=(self.ambient_dim,))
+
+        for grp in self.groups:
+            meg = grp.mesh_el_group
+            knl()(queue,
+                    resampling_mat=self._resampling_matrix(grp),
+                    result=grp.view(result), nodes=meg.nodes)
+
+        return result
 
 
 class PolynomialElementDiscretization(PolynomialElementDiscretizationBase):
@@ -212,8 +268,8 @@ class PolynomialElementDiscretization(PolynomialElementDiscretizationBase):
             on each element in each element group.
             (this is intended to later vary across element groups)
         """
-        PolynomialElementDiscretizationBase.__init__(self, cl_ctx, mesh, poly_order,
-                real_dtype)
+        PolynomialElementDiscretizationBase.__init__(
+                self, cl_ctx, mesh, poly_order, real_dtype)
 
     group_class = PolynomialElementGroup
 

@@ -22,14 +22,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-
 from pytential.symbolic.primitives import (
         cse,
         S, D, Sp, Dp,
-        Ones, Mean,
-        SqrtQuadratureWeights, QuadratureWeights)
-
+        Ones, mean,
+        sqrt_jac_q_weight, QWeight, jacobian)
 
 
 class ScalarPDEOperator(object):
@@ -43,20 +40,18 @@ class ScalarPDEOperator(object):
 
     def get_weight(self):
         if self.use_l2_weighting:
-            return QuadratureWeights()
+            return cse(jacobian()*QWeight())
         else:
             return 1
 
     def get_sqrt_weight(self):
         if self.use_l2_weighting:
-            return SqrtQuadratureWeights()
+            return sqrt_jac_q_weight()
         else:
             return 1
 
     def prepare_rhs(self, b):
         return self.get_sqrt_weight()*b
-
-
 
 
 class DirichletOperator(ScalarPDEOperator):
@@ -110,7 +105,7 @@ class DirichletOperator(ScalarPDEOperator):
             # See Hackbusch, http://books.google.com/books?id=Ssnf7SZB0ZMC
             # Theorem 8.2.18b
 
-            ones_contribution = Ones() * Mean(inv_sqrt_w_u)
+            ones_contribution = Ones() * mean(inv_sqrt_w_u)
         else:
             ones_contribution = 0
 
@@ -120,14 +115,17 @@ class DirichletOperator(ScalarPDEOperator):
                     - D(self.kernel, inv_sqrt_w_u)
                     + ones_contribution))
 
+
 class NeumannOperator(ScalarPDEOperator):
-    def __init__(self, kernel, loc_sign, alpha=None, use_improved_operator=True,
+    def __init__(self, kernel, loc_sign, alpha=None,
+            use_improved_operator=True,
             laplace_kernel=0, use_l2_weighting=False):
         """
         :arg loc_sign: +1 for exterior, -1 for interior
         :arg alpha: the coefficient for the combined-field representation
             Set to 0 for Laplace.
-        :arg use_improved_operator: Whether to use the least singular operator available
+        :arg use_improved_operator: Whether to use the least singular
+            operator available
         """
         ScalarPDEOperator.__init__(self, use_l2_weighting)
 
@@ -155,12 +153,12 @@ class NeumannOperator(ScalarPDEOperator):
         inv_sqrt_w_u = cse(u/sqrt_w)
 
         return (S(self.kernel, inv_sqrt_w_u)
-                - self.alpha*D(self.kernel, S(self.laplace_kernel, inv_sqrt_w_u)))
+                - self.alpha
+                * D(self.kernel, S(self.laplace_kernel, inv_sqrt_w_u)))
 
     def operator(self, u):
         """
         :arg alpha: the coefficient for the combined-field representation
-        :arg use_improved_operator: Whether to use the least singular operator available
         """
         from sumpy.kernel import HelmholtzKernel, LaplaceKernel
 
@@ -170,7 +168,8 @@ class NeumannOperator(ScalarPDEOperator):
         DpS0u = Dp(self.kernel, cse(S(self.laplace_kernel, inv_sqrt_w_u)))
 
         if self.use_improved_operator:
-            Dp0S0u = -0.25*u + Sp(self.laplace_kernel, Sp(self.laplace_kernel, inv_sqrt_w_u))
+            Dp0S0u = -0.25*u + Sp(self.laplace_kernel,
+                    Sp(self.laplace_kernel, inv_sqrt_w_u))
 
             if isinstance(self.kernel, HelmholtzKernel):
 
@@ -188,7 +187,7 @@ class NeumannOperator(ScalarPDEOperator):
             # to the desired solution separately. As is, this operator
             # returns a mean that is not well-specified.
 
-            ones_contribution = Ones() * Mean(inv_sqrt_w_u)
+            ones_contribution = Ones() * mean(inv_sqrt_w_u)
         else:
             ones_contribution = 0
 

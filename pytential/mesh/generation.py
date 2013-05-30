@@ -23,13 +23,9 @@ THE SOFTWARE.
 """
 
 
-
 import numpy as np
 import numpy.linalg as la
 import modepy as mp
-
-
-
 
 
 # {{{ test curve parametrizations
@@ -46,6 +42,7 @@ def ellipse(aspect_ratio, t):
         np.cos(t),
         np.sin(t)/aspect_ratio,
         ])
+
 
 def cloverleaf(t):
     """
@@ -64,6 +61,7 @@ def cloverleaf(t):
         np.sin(t)-a*np.cos(b*t)
         ])
 
+
 def starfish(t):
     """
     :arg t: the parametrization, runs from [0,1)
@@ -80,6 +78,7 @@ def starfish(t):
         np.sin(t)*wave,
         ])
 
+
 def drop(t):
     """
     :arg t: the parametrization, runs from [0,1)
@@ -93,6 +92,7 @@ def drop(t):
         np.sin(t)-0.5,
         0.5*(np.cos(t)*(t-np.pi)*t),
         ])
+
 
 def n_gon(n_corners, t):
     """
@@ -124,8 +124,6 @@ def n_gon(n_corners, t):
 # }}}
 
 
-
-
 def make_curve_mesh(curve_f, element_boundaries, order):
     """
     :arg curve_f: A callable representing a parametrization for a curve,
@@ -141,7 +139,8 @@ def make_curve_mesh(curve_f, element_boundaries, order):
     assert element_boundaries[-1] == 1
     nelements = len(element_boundaries) - 1
 
-    unodes = 0.5*(mp.warp_and_blend_nodes(1, order)+1)
+    unodes = mp.warp_and_blend_nodes(1, order)
+    nodes_01 = 0.5*(unodes+1)
 
     vertices = curve_f(element_boundaries)
 
@@ -149,7 +148,7 @@ def make_curve_mesh(curve_f, element_boundaries, order):
     el_starts = element_boundaries[:-1]
 
     # (el_nr, node_nr)
-    t = el_starts[:, np.newaxis] + el_lengths[:, np.newaxis]*unodes
+    t = el_starts[:, np.newaxis] + el_lengths[:, np.newaxis]*nodes_01
     nodes = curve_f(t.ravel()).reshape(vertices.shape[0], nelements, -1)
 
     from pytential.mesh import Mesh, MeshElementGroup
@@ -163,8 +162,6 @@ def make_curve_mesh(curve_f, element_boundaries, order):
             unit_nodes=unodes)
 
     return Mesh(vertices=vertices, groups=[egroup])
-
-
 
 
 def generate_icosahedron(r):
@@ -181,8 +178,8 @@ def generate_icosahedron(r):
             for pm2 in [-1, 1])))
 
     from pytential.mesh import Mesh
-    top_ring = [11,7,1,2,8]
-    bottom_ring = [10,9,3,0,4]
+    top_ring = [11, 7, 1, 2, 8]
+    bottom_ring = [10, 9, 3, 0, 4]
     bottom_point = 6
     top_point = 5
 
@@ -192,13 +189,11 @@ def generate_icosahedron(r):
         tris.append([top_ring[i], top_ring[(i+1) % l], top_point])
         tris.append([bottom_ring[i], bottom_point, bottom_ring[(i+1) % l], ])
         tris.append([bottom_ring[i], bottom_ring[(i+1) % l], top_ring[i]])
-        tris.append([top_ring[i], bottom_ring[(i+1)%l], top_ring[(i+1) % l]])
+        tris.append([top_ring[i], bottom_ring[(i+1) % l], top_ring[(i+1) % l]])
 
     pts *= r/la.norm(pts[0])
 
     return Mesh(pts, tris)
-
-
 
 
 def generate_icosphere(r, refinements, order=1):
@@ -211,13 +206,13 @@ def generate_icosphere(r, refinements, order=1):
 
         pts = mesh.vertex_coordinates
         pt_norms = np.sum(pts**2, axis=-1)**0.5
-        pts = pts * r / pt_norms[:,np.newaxis]
+        pts = pts * r / pt_norms[:, np.newaxis]
 
         mesh = Mesh(pts, mesh.elements)
 
     if order > 1:
         from pytential.mesh.trianglemaps import interv_pts_on_unit
-        eq_nodes=interv_pts_on_unit(order,0,1)
+        eq_nodes = interv_pts_on_unit(order, 0, 1)
 
         # indices: triangle #, node #, xyz axis
         mapped_eq_nodes = np.empty((len(mesh), len(eq_nodes), 3))
@@ -230,7 +225,8 @@ def generate_icosphere(r, refinements, order=1):
             mapped_eq_nodes[iel] = np.dot(a, eq_nodes.T).T + b
 
         mn = mapped_eq_nodes
-        mapped_eq_nodes = r * mn / np.sqrt(np.sum(mn**2, axis=-1))[:,:,np.newaxis]
+        mapped_eq_nodes = \
+                r * mn / np.sqrt(np.sum(mn**2, axis=-1))[:, :, np.newaxis]
 
         reshaped_nodes = mapped_eq_nodes.reshape(-1, 3)
 
@@ -242,13 +238,8 @@ def generate_icosphere(r, refinements, order=1):
     return mesh
 
 
-
-
-
-
-
-
-def generate_torus_and_cycle_vertices(r_outer, r_inner, n_outer=20, n_inner=10, order=1):
+def generate_torus_and_cycle_vertices(r_outer, r_inner,
+        n_outer=20, n_inner=10, order=1):
     a = r_outer
     b = r_inner
     u, v = np.mgrid[0:2*np.pi:2*np.pi/n_outer, 0:2*np.pi:2*np.pi/n_inner]
@@ -260,18 +251,19 @@ def generate_torus_and_cycle_vertices(r_outer, r_inner, n_outer=20, n_inner=10, 
     pts = (np.vstack((x[np.newaxis], y[np.newaxis], z[np.newaxis]))
             .T.copy().reshape(-1, 3))
 
-    def idx(i,j): return (i%n_outer) + (j%n_inner) * n_outer
-    tris = ([(idx(i,j), idx(i+1,j), idx(i, j+1))
-            for i in xrange(n_outer) for j in xrange(n_inner) ]
-            + [ (idx(i+1,j), idx(i+1,j+1), idx(i, j+1))
-            for i in xrange(n_outer) for j in xrange(n_inner) ])
+    def idx(i, j):
+        return (i % n_outer) + (j % n_inner) * n_outer
+    tris = ([(idx(i, j), idx(i+1, j), idx(i, j+1))
+            for i in xrange(n_outer) for j in xrange(n_inner)]
+            + [(idx(i+1, j), idx(i+1, j+1), idx(i, j+1))
+            for i in xrange(n_outer) for j in xrange(n_inner)])
 
     from pytential.mesh import Mesh
-    mesh = Mesh(pts,tris)
+    mesh = Mesh(pts, tris)
 
     if order > 1:
         from pytential.mesh.trianglemaps import interv_pts_on_unit
-        eq_nodes=interv_pts_on_unit(order,0,1)
+        eq_nodes = interv_pts_on_unit(order, 0, 1)
 
         # indices: triangle #, node #, xyz axis
         mapped_eq_nodes = np.empty((len(mesh), len(eq_nodes), 3))
@@ -284,12 +276,12 @@ def generate_torus_and_cycle_vertices(r_outer, r_inner, n_outer=20, n_inner=10, 
             mapped_eq_nodes[iel] = np.dot(a1, eq_nodes.T).T + b1
 
         mn = mapped_eq_nodes
-        major_theta = np.arctan2(mapped_eq_nodes[:,:,1],
-            mapped_eq_nodes[:,:,0])
+        major_theta = np.arctan2(mapped_eq_nodes[:, :, 1],
+            mapped_eq_nodes[:, :, 0])
         rvec = np.array([
             np.cos(major_theta),
             np.sin(major_theta),
-            np.zeros_like(major_theta)]).transpose((1,2,0))
+            np.zeros_like(major_theta)]).transpose((1, 2, 0))
 
         #               ^
         #               |
@@ -305,13 +297,13 @@ def generate_torus_and_cycle_vertices(r_outer, r_inner, n_outer=20, n_inner=10, 
 
         x = np.sum(mapped_eq_nodes*rvec, axis=-1) - a
 
-        minor_theta = np.arctan2(mapped_eq_nodes[:,:,2], x)
+        minor_theta = np.arctan2(mapped_eq_nodes[:, :, 2], x)
 
-        mapped_eq_nodes[:,:,0] = np.cos(major_theta)*(a+b*np.cos(
+        mapped_eq_nodes[:, :, 0] = np.cos(major_theta)*(a+b*np.cos(
             minor_theta))
-        mapped_eq_nodes[:,:,1] = np.sin(major_theta)*(a+b*np.cos(
+        mapped_eq_nodes[:, :, 1] = np.sin(major_theta)*(a+b*np.cos(
             minor_theta))
-        mapped_eq_nodes[:,:,2] = b*np.sin(minor_theta)
+        mapped_eq_nodes[:, :, 2] = b*np.sin(minor_theta)
 
         #reshaped_nodes = mapped_eq_nodes.reshape(-1, 3)
         reshaped_nodes = mn.reshape(-1, 3)
@@ -326,9 +318,9 @@ def generate_torus_and_cycle_vertices(r_outer, r_inner, n_outer=20, n_inner=10, 
             [idx(0, j) for j in xrange(n_inner)]
 
 
-
-
 def generate_torus(r_outer, r_inner, n_outer=20, n_inner=10, order=1):
     geo, a_cycle, b_cycle = generate_torus_and_cycle_vertices(
             r_outer, r_inner, n_outer, n_inner, order)
     return geo
+
+# vim: fdm=marker

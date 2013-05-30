@@ -23,8 +23,6 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
 #import numpy.linalg as la
 import modepy as mp
@@ -35,8 +33,6 @@ from pytential.discretization.poly_element import (
         PolynomialElementDiscretizationBase)
 
 #import pyopencl as cl
-
-
 
 
 # {{{ QBX layer pot instruction
@@ -78,13 +74,15 @@ class QBXLayerPotentialInstruction(Instruction):
                 line += " @ %s" % tgt
             lines.append(line)
 
-        return "{ /* Quad(%s) */\n  %s\n}" % (", ".join(args), "\n  ".join(lines))
+        return "{ /* Quad(%s) */\n  %s\n}" % (
+                ", ".join(args), "\n  ".join(lines))
 
     def get_exec_function(self, exec_mapper):
         source = exec_mapper.executor.discretizations[self.source]
         return source.exec_quad_op
 
 # }}}
+
 
 # {{{ jump term interface helper
 
@@ -124,6 +122,7 @@ class _JumpTermArgumentProvider(object):
 
 # }}}
 
+
 # {{{ element group
 
 class QBXElementGroup(PolynomialElementGroupBase):
@@ -146,6 +145,7 @@ class QBXElementGroup(PolynomialElementGroupBase):
 
 # }}}
 
+
 # {{{ QBX discretization base
 
 class QBXDiscretization(PolynomialElementDiscretizationBase):
@@ -164,7 +164,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             is exact.
         """
 
-        PolynomialElementDiscretizationBase.__init__(self, cl_ctx, exact_order,
+        PolynomialElementDiscretizationBase.__init__(self, cl_ctx, mesh, exact_order,
                 real_dtype)
 
         self.qbx_order = qbx_order
@@ -182,11 +182,13 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         target, what, index = expr.what()
         return (what,)
 
-    def gen_instruction_for_layer_pot_from_src(self, compiler, tgt_discr, expr, field_var):
+    def gen_instruction_for_layer_pot_from_src(
+            self, compiler, tgt_discr, expr, field_var):
         from pytential.symbolic.operators import (
                 SourceDiffLayerPotentialOperatorBase,
                 Variable)
-        is_source_derivative = isinstance(expr, SourceDiffLayerPotentialOperatorBase)
+        is_source_derivative = isinstance(
+                expr, SourceDiffLayerPotentialOperatorBase)
         if is_source_derivative:
             if expr.ds_direction is None:
                 ds_direction = "n"
@@ -234,22 +236,24 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             nderivatives += 1
 
         if what_letter == "p":
-            return  [kernel], nderivatives
+            return [kernel], nderivatives
         elif what_letter == "g":
             from sumpy.kernel import TargetDerivative
-            return  [TargetDerivative(i, kernel)
+            return [TargetDerivative(i, kernel)
                     for i in range(self.mesh.ambient_dim)], nderivatives+1
         elif what_letter == "h":
             from sumpy.kernel import TargetDerivative
-            return  [
+            return [
                     TargetDerivative(j, TargetDerivative(i, kernel))
-                    for i, j in [(0,0), (1,0), (1,1)]], nderivatives+2
+                    for i, j in [(0, 0), (1, 0), (1, 1)]], nderivatives+2
         else:
             raise RuntimeError("unsupported what_letter")
 
     @memoize_method
-    def get_lpot_and_jump_term_applier(self, kernel, what_letter, ds_direction):
-        kernels, nderivatives = self.get_sumpy_kernels(kernel, what_letter, ds_direction)
+    def get_lpot_and_jump_term_applier(
+            self, kernel, what_letter, ds_direction):
+        kernels, nderivatives = self.get_sumpy_kernels(
+                kernel, what_letter, ds_direction)
         from sumpy.layerpot import LayerPotential, JumpTermApplier
         return (
                 LayerPotential(self.cl_context,
@@ -260,7 +264,6 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                     value_dtypes=np.complex128),
                 nderivatives)
 
-
     def exec_quad_op(self, insn, executor, evaluate):
         from pytools import single_valued
         target = executor.discretizations[
@@ -269,15 +272,17 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         if not target is self:
             return self.exec_quad_op_not_self(insn, executor, evaluate)
 
-        what_letter = single_valued(what for tgt, what, index in insn.return_values)
+        what_letter = single_valued(
+                what for tgt, what, index in insn.return_values)
         kernel = insn.kernel.evaluate(evaluate)
 
         hashable_ds_direction = insn.ds_direction
         if isinstance(hashable_ds_direction, np.ndarray):
             hashable_ds_direction = tuple(hashable_ds_direction)
 
-        lp_applier, jt_applier, nderivatives = self.get_lpot_and_jump_term_applier(
-                kernel, what_letter, hashable_ds_direction)
+        lp_applier, jt_applier, nderivatives = \
+                self.get_lpot_and_jump_term_applier(
+                        kernel, what_letter, hashable_ds_direction)
 
         kwargs = {}
         kwargs.update(kernel.k_kwargs())
@@ -303,7 +308,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             ds_direction = self.curve.normals.reshape(2, -1).T
             ovsmp_ds_direction = self.ovsmp_curve.normals.reshape(2, -1).T
         else:
-            # conversion is necessary because ds_direction comes in as an object array
+            # conversion is necessary because ds_direction comes in as an
+            # object array
             ev_ds_dir = np.array(list(evaluate(insn.ds_direction)))
 
             ds_direction = ev_ds_dir.reshape(2, nelements, -1)
@@ -340,7 +346,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
             both_outputs = []
             for center_side in [-1, 1]:
-                centers = self.curve.centers(force_side=center_side).reshape(2, -1).T
+                centers = self.curve.centers(force_side=center_side) \
+                        .reshape(2, -1).T
                 evt, outputs = lp_applier(queue, self.nodes,
                         ovsmp_nodes, centers, [ovsmp_density],
                         self.get_speed(),
@@ -360,7 +367,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             # apply jumps
             evt, outputs = jt_applier(queue, outputs,
                     _JumpTermArgumentProvider(self, density, ds_direction,
-                        side=self.curve.high_accuracy_center_sides.reshape(-1)))
+                        side=self.curve.high_accuracy_center_sides
+                        .reshape(-1)))
 
         # }}}
 
@@ -372,7 +380,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         from pytools import single_valued
         target = executor.discretizations[
                 single_valued(tgt for tgt, what, index in insn.return_values)]
-        what_letter = single_valued(what for tgt, what, index in insn.return_values)
+        what_letter = single_valued(
+                what for tgt, what, index in insn.return_values)
 
         nelements, nlege_nodes = self.curve.points.shape[1:]
 
@@ -414,8 +423,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         import pyopencl as cl
         queue = cl.CommandQueue(self.cl_context)
-        evt, result = p2p(queue, target.points, self.nodes, [density_with_weights],
-                **p2p_kwargs)
+        evt, result = p2p(queue, target.points, self.nodes,
+                [density_with_weights], **p2p_kwargs)
 
         return [
                 (name, subresult.T[hellskitchen_map_idx(

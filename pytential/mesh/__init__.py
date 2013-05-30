@@ -23,13 +23,10 @@ THE SOFTWARE.
 """
 
 
-
 #import numpy as np
 import modepy as mp
 #import numpy.linalg as la
 from pytools import Record
-
-
 
 
 # {{{ element group
@@ -41,7 +38,8 @@ class MeshElementGroup(Record):
 
     .. attribute:: vertex_indices
 
-        An array *(nelements, ref_element.nvertices)* of (mesh-wide) vertex indices.
+        An array *(nelements, ref_element.nvertices)* of (mesh-wide)
+        vertex indices.
 
     .. attribute:: nodes
 
@@ -110,8 +108,8 @@ class MeshElementGroup(Record):
                     "cannot join another")
 
         return self.copy(
-                element_nr_base = element_nr_base,
-                node_nr_base = node_nr_base)
+                element_nr_base=element_nr_base,
+                node_nr_base=node_nr_base)
 
     @property
     def nelements(self):
@@ -126,6 +124,7 @@ class MeshElementGroup(Record):
         return self.unit_nodes.shape[-1]
 
 # }}}
+
 
 # {{{ mesh
 

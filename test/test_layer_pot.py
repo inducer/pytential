@@ -23,8 +23,6 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
@@ -53,22 +51,19 @@ except ImportError:
     pass
 
 
-
-
-def make_circular_point_group(npoints, radius, center=np.array([0.,0.]),
-        func=lambda x: x):
-    t = func(np.linspace(0, 1, npoints, endpoint=False))*(2*np.pi)
-    center  = np.asarray(center)
+def make_circular_point_group(npoints, radius,
+        center=np.array([0., 0.]), func=lambda x: x):
+    t = func(np.linspace(0, 1, npoints, endpoint=False)) * (2 * np.pi)
+    center = np.asarray(center)
     result = center[:, np.newaxis] + radius*np.vstack((np.cos(t), np.sin(t)))
     return result
-
 
 
 # {{{ geometry test
 
 def test_geometry(ctx_getter):
-    ctx = ctx_getter()
-    queue = cl.CommandQueue(ctx)
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
 
     nelements = 30
     order = 5
@@ -80,7 +75,7 @@ def test_geometry(ctx_getter):
     from pytential.discretization.poly_element import \
             PolynomialElementDiscretization
 
-    discr = PolynomialElementDiscretization(ctx, mesh, order)
+    discr = PolynomialElementDiscretization(cl_ctx, mesh, order)
 
     from pytential.symbolic.execution import bind
     import pytential.symbolic.primitives as prim
@@ -92,8 +87,8 @@ def test_geometry(ctx_getter):
     print err
     assert err < 1e-3
 
-
 # }}}
+
 
 # {{{ integral equation test
 
@@ -110,8 +105,8 @@ def test_geometry(ctx_getter):
 # 'test_integral_equation(cl._csc, circle, 30, 5, "dirichlet", 1, 5)'
 def test_integral_equation(
         ctx_getter, curve_f, nelements, qbx_order, bc_type, loc_sign, k):
-    ctx = ctx_getter()
-    queue = cl.CommandQueue(ctx)
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
@@ -131,9 +126,14 @@ def test_integral_equation(
         pt.gca().set_aspect("equal")
         pt.show()
 
+    from pytential.discretization.poly_element import \
+            PolynomialElementDiscretization
     from pytential.discretization.qbx import QBXDiscretization
 
-    discr = QBXDiscretization(ctx, mesh, qbx_order, target_order, source_order)
+    src_discr = QBXDiscretization(
+            cl_ctx, mesh, qbx_order, target_order, source_order)
+    tgt_discr = PolynomialElementDiscretization(
+            cl_ctx, mesh, target_order)
 
     # {{{ set up operator
 
@@ -191,30 +191,39 @@ def test_integral_equation(
         knl_kwargs = {}
 
     from sumpy.p2p import P2P
-    pot_p2p = P2P(discr.cl_context,
+    pot_p2p = P2P(cl_ctx,
             [knl], exclude_self=False, value_dtypes=np.complex128)
 
     evt, (test_direct,) = pot_p2p(
             queue, test_targets, point_sources, [source_charges], **knl_kwargs)
 
+    nodes = tgt_discr.nodes(queue).get(queue=queue)
+    #nodes = mesh.groups[0].nodes.reshape(2, -1)
+    pt.plot(nodes[0], nodes[1], "x-")
+    pt.show()
+
     if bc_type == "dirichlet":
         evt, (bc,) = pot_p2p(
-                queue, discr.nodes, point_sources, [source_charges], **knl_kwargs)
+                queue, nodes, point_sources, [source_charges],
+                **knl_kwargs)
 
     elif bc_type == "neumann":
-        grad_p2p = P2P(discr.cl_context,
+        grad_p2p = P2P(cl_ctx,
                 [TargetDerivative(0, knl), TargetDerivative(1, knl)],
                 exclude_self=False, value_dtypes=np.complex128)
         evt, (grad0, grad1) = grad_p2p(
-                queue, discr.nodes, point_sources, [source_charges], **knl_kwargs)
+                queue, tgt_discr.nodes, point_sources, [source_charges],
+                **knl_kwargs)
 
+        1/0  # FIXME use of normals
         bc = (
-                grad0*discr.target_grid.normals[0].reshape(-1) +
-                grad1*discr.target_grid.normals[1].reshape(-1))
+                grad0*tgt_discr.normals[0].reshape(-1) +
+                grad1*tgt_discr.normals[1].reshape(-1))
 
     # }}}
 
     # {{{ solve
+
     rhs = bind(op.prepare_rhs(Variable("bc")), discr)(bc=bc)
 
     bound_op = bind(op_u, discr)
@@ -241,7 +250,7 @@ def test_integral_equation(
 
         #assert abs(s[-1]) < 1e-13, "h
         #assert abs(s[-2]) > 1e-7
-        from pudb import set_trace;set_trace()
+        #from pudb import set_trace; set_trace()
 
         # }}}
 
@@ -267,7 +276,7 @@ def test_integral_equation(
     rel_err_2 = la.norm(err)/la.norm(test_direct)
     rel_err_inf = (
             la.norm(test_direct-test_via_bdry, np.inf)
-            /la.norm(test_direct, np.inf))
+            / la.norm(test_direct, np.inf))
 
     # }}}
     print "rel_err_2: %g rel_err_inf: %g" % (rel_err_2, rel_err_inf)
@@ -283,19 +292,23 @@ def test_integral_equation(
         #pt.show()
 
         evt, (fld_from_src,) = pot_p2p(
-                queue, fplot.points, point_sources, [source_charges], **knl_kwargs)
+                queue, fplot.points, point_sources, [source_charges],
+                **knl_kwargs)
         fld_from_bdry = bind(op.representation(Variable("u")),
             (discr, PointsTarget(fplot.points)), iprec=3)(u=u)
 
         def prep():
-            pt.plot(point_sources[:,0], point_sources[:,1], "o", label="Monopole 'Point Charges'")
-            pt.plot(test_targets[:,0], test_targets[:,1], "v", label="Observation Points")
-            pt.plot(discr.nodes[:, 0], discr.nodes[:, 1], "k-", label=r"$\Gamma$")
+            pt.plot(point_sources[:, 0], point_sources[:, 1], "o",
+                    label="Monopole 'Point Charges'")
+            pt.plot(test_targets[:, 0], test_targets[:, 1], "v",
+                    label="Observation Points")
+            pt.plot(discr.nodes[:, 0], discr.nodes[:, 1], "k-",
+                    label=r"$\Gamma$")
 
         from matplotlib.cm import get_cmap
         cmap = get_cmap()
         cmap._init()
-        cmap._lut[(cmap.N*99)//100:, -1] = 0 # make last percent
+        cmap._lut[(cmap.N*99)//100:, -1] = 0  # make last percent
 
         prep()
         if 1:
@@ -331,7 +344,6 @@ def test_integral_equation(
 
         #pt.colorbar()
 
-
         pt.legend(loc="best", prop=dict(size=15))
         from matplotlib.ticker import NullFormatter
         pt.gca().xaxis.set_major_formatter(NullFormatter())
@@ -357,10 +369,6 @@ def test_integral_equation(
 
 
 # }}}
-
-
-
-
 
 
 # You can test individual routines by typing
