@@ -13,6 +13,7 @@ Contents
     :maxdepth: 2
 
     mesh
+    tools
     misc
 
 * :ref:`genindex`
