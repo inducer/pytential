@@ -23,29 +23,24 @@ THE SOFTWARE.
 """
 
 
-
-
 # Modified Python port of ./Apps/Acoustics/root/matlab/gmres_restart.m
 # from hellskitchen.
 # Necessary because SciPy gmres is not reentrant and thus does
 # not allow recursive solves.
 
 import numpy as np
-
-
+from pytools import Record
 
 
 class GMRESError(RuntimeError):
     pass
 
 
-
-
 # {{{ main routine
 
-from pytools import Record
 class GMRESResult(Record):
     pass
+
 
 def _gmres(A, b, restart=None, tol=None, x0=None, inner_product=None,
         maxiter=None, hard_failure=None, require_monotonicity=True,
@@ -145,7 +140,8 @@ def _gmres(A, b, restart=None, tol=None, x0=None, inner_product=None,
                 else:
                     print "*** WARNING: non-monotonic residuals in GMRES"
 
-            if stall_iterations and norm_r > last_resid_norm/no_progress_factor:
+            if stall_iterations and \
+                    norm_r > last_resid_norm/no_progress_factor:
                 stall_count += 1
 
                 if stall_count >= stall_iterations:
@@ -160,8 +156,6 @@ def _gmres(A, b, restart=None, tol=None, x0=None, inner_product=None,
             else:
                 stall_count = 0
 
-
-
         last_resid_norm = norm_r
 
         # initial new direction guess
@@ -173,9 +167,9 @@ def _gmres(A, b, restart=None, tol=None, x0=None, inner_product=None,
 
         for orth_trips in range(2):
             for j in range(0, orth_count):
-                d = dot(Ae[:,j], w)
-                w = w - d * Ae[:,j]
-                rp = rp - d * e[:,j]
+                d = dot(Ae[:, j], w)
+                w = w - d * Ae[:, j]
+                rp = rp - d * e[:, j]
 
             # normalize
             d = 1/norm(w)
@@ -184,17 +178,17 @@ def _gmres(A, b, restart=None, tol=None, x0=None, inner_product=None,
 
         # }}}
 
-        Ae[:,k] = w
-        e[:,k] = rp
+        Ae[:, k] = w
+        e[:, k] = rp
 
         # update the residual and solution
-        d = dot(Ae[:,k], r)
+        d = dot(Ae[:, k], r)
 
         recalc_r = (iteration+1) % 10 == 0
         if not recalc_r:
-            r = r - d*Ae[:,k]
+            r = r - d*Ae[:, k]
 
-        x = x + d*e[:,k]
+        x = x + d*e[:, k]
 
         k += 1
 
@@ -208,6 +202,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, inner_product=None,
                 state=state)
 
 # }}}
+
 
 # {{{ progress reporting
 
@@ -231,6 +226,7 @@ class ResidualPrinter:
         sys.stdout.flush()
 
 # }}}
+
 
 # {{{ entrypoint
 
@@ -284,16 +280,16 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     result = _gmres(op, stacked_rhs, restart=restart, tol=tol, x0=x0,
             inner_product=inner_product,
             maxiter=maxiter, hard_failure=hard_failure,
-            no_progress_factor=no_progress_factor, stall_iterations=stall_iterations,
-            callback=callback)
+            no_progress_factor=no_progress_factor,
+            stall_iterations=stall_iterations, callback=callback)
 
     if is_obj_array(rhs):
         return result.copy(
-                solution=make_obj_array([result.solution[slc] for slc in slices]))
+                solution=make_obj_array([result.solution[slc]
+                    for slc in slices]))
     else:
         return result
 
 # }}}
 
 # vim: fdm=marker
-
