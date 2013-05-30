@@ -39,13 +39,29 @@ class GMRESError(RuntimeError):
 # {{{ main routine
 
 class GMRESResult(Record):
-    pass
+    """
+    .. attribute:: solution
+    .. attribute:: residual_norms
+    .. attribute:: iteration_count
+    .. attribute:: success
+
+        a :class:`bool` indicating whether the iteration succeeded
+
+    .. attribute:: state
+
+        a verbal description of the outcome of the iteration
+    """
 
 
-def _gmres(A, b, restart=None, tol=None, x0=None, inner_product=None,
+def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
         maxiter=None, hard_failure=None, require_monotonicity=True,
         no_progress_factor=None, stall_iterations=None,
         callback=None):
+    try:
+        from pyopencl.tools import array_module
+        amod = array_module(b)
+    except ImportError:
+        amod = np
 
     # {{{ input processing
 
@@ -75,17 +91,11 @@ def _gmres(A, b, restart=None, tol=None, x0=None, inner_product=None,
 
     # }}}
 
-    if inner_product is None:
-        dot = np.vdot
-    else:
-        dot = inner_product
-    del inner_product
-
     def norm(x):
         return np.sqrt(abs(dot(x, x)))
 
     if x0 is None:
-        x = np.zeros(n, A.dtype)
+        x = 0*b
         r = b
         recalc_r = False
     else:
@@ -93,8 +103,8 @@ def _gmres(A, b, restart=None, tol=None, x0=None, inner_product=None,
         del x0
         recalc_r = True
 
-    Ae = np.empty((n, restart), A.dtype, order="f")
-    e = np.empty((n, restart), A.dtype, order="f")
+    Ae = amod.empty((n, restart), A.dtype, order="f")
+    e = amod.empty((n, restart), A.dtype, order="f")
 
     k = 0
 
@@ -238,29 +248,35 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     """Solve a linear system Ax=b by means of GMRES
     with restarts.
 
-    :arg A: a callable to evaluate A(x)
+    :arg op: a callable to evaluate A(x)
     :arg b: the right hand side
     :arg restart: the maximum number of iteration after
        which GMRES algorithm needs to be restarted
     :arg tol: the required decrease in residual norm
+    :arg inner_product: Must have an interface compatible with
+        :func:`numpy.vdot`. Must return a host scalar.
     :arg maxiter: the maximum number of iteration permitted
-    :arg hard_failure: If True, raise exceptions in case of failure.
+    :arg hard_failure: If True, raise :exc:`GMRESError` in case of failure.
     :arg stall_iterations: Number of iterations with residual decrease
         below *no_progress_factor* indicates stall. Set to 0 to disable
         stall detection.
 
-    :return: An object containing attribute *solution*, *residual_norms*,
-        *iteration_count*, *success*, *state*, where *state* is a string
-        explaining the result.
+    :return: a :class:`GMRESResult`
     """
+    try:
+        from pyopencl.tools import array_module
+        amod = array_module(rhs)
+    except ImportError:
+        amod = np
+
     from pytools.obj_array import is_obj_array, make_obj_array
     if is_obj_array(rhs):
-        stacked_rhs = np.hstack(rhs)
+        stacked_rhs = amod.hstack(rhs)
 
         slices = []
         num_dofs = 0
         for entry in rhs:
-            if isinstance(entry, np.ndarray):
+            if isinstance(entry, amod.ndarray):
                 length = len(entry)
             else:
                 length = 1
@@ -271,6 +287,9 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     else:
         stacked_rhs = rhs
 
+    if inner_product is None:
+        inner_product = amod.vdot
+
     if callback is None:
         if progress:
             callback = ResidualPrinter(inner_product)
@@ -278,7 +297,7 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
             callback = None
 
     result = _gmres(op, stacked_rhs, restart=restart, tol=tol, x0=x0,
-            inner_product=inner_product,
+            dot=inner_product,
             maxiter=maxiter, hard_failure=hard_failure,
             no_progress_factor=no_progress_factor,
             stall_iterations=stall_iterations, callback=callback)
