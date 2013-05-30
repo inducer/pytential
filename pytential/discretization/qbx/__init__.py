@@ -139,6 +139,7 @@ class QBXElementGroup(PolynomialElementGroupBase):
     def unit_nodes(self):
         return self._quadrature_rule().nodes
 
+    @property
     @memoize_method
     def weights(self):
         return self._quadrature_rule().weights
@@ -184,7 +185,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
     def gen_instruction_for_layer_pot_from_src(
             self, compiler, tgt_discr, expr, field_var):
-        from pytential.symbolic.operators import (
+        from pytential.symbolic.primitives import (
                 SourceDiffLayerPotentialOperatorBase,
                 Variable)
         is_source_derivative = isinstance(
