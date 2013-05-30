@@ -181,7 +181,7 @@ class PolynomialElementDiscretizationBase(Discretization):
         result = mp.differentiation_matrices(
                 mp.simplex_onb(self.dim, meg.order),
                 mp.grad_simplex_onb(self.dim, meg.order),
-                meg.unit_nodes, grp.unit_nodes)
+                grp.unit_nodes, from_nodes=meg.unit_nodes)
         if not isinstance(result, tuple):
             return (result,)
         else:
