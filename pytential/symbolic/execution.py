@@ -24,7 +24,6 @@ THE SOFTWARE.
 
 
 from pymbolic.mapper.evaluator import EvaluationMapper
-import scipy.sparse.linalg as sla
 import numpy as np
 
 import pyopencl as cl
@@ -140,12 +139,20 @@ class ExecutionMapper(EvaluationMapper):
 
 class MatVecOp:
     def __init__(self,
-            executor, arg_name, total_dofs, starts_and_ends, extra_args):
+            executor, queue, arg_name, total_dofs,
+            starts_and_ends, extra_args):
         self.executor = executor
+        self.queue = queue
         self.arg_name = arg_name
         self.total_dofs = total_dofs
         self.starts_and_ends = starts_and_ends
         self.extra_args = extra_args
+
+    @property
+    def shape(self):
+        return (self.total_dofs, self.total_dofs)
+
+    dtype = np.dtype(np.complex128)  # FIXME
 
     def matvec(self, x):
         do_split = len(self.starts_and_ends) > 1
@@ -157,7 +164,7 @@ class MatVecOp:
 
         args = self.extra_args.copy()
         args[self.arg_name] = x
-        result = self.executor(**args)
+        result = self.executor(self.queue, **args)
 
         if do_split:
             # re-join what was split
@@ -168,6 +175,8 @@ class MatVecOp:
         else:
             return result
 
+
+# {{{ executor
 
 class Executor:
     def __init__(self, optemplate, discretizations):
@@ -182,18 +191,24 @@ class Executor:
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
 
-    def scipy_op(self, arg_name, domains=None, **extra_args):
+    def scipy_op(self, queue, arg_name, domains=None, **extra_args):
         """
-        :arg domains: a list of geometry names or None values indicating the
-            domains on which each component of the solution vector lives.
-            *None* values indicate that the component is a scalar.
+        :arg domains: a list of discretization identifiers or
+            *None* values indicating the domains on which each component of the
+            solution vector lives.  *None* values indicate that the component
+            is a scalar.  If *None*,
+            :class:`pytential.symbolic.primitives.DEFAULT_TARGET`, is required
+            to be a key in :attr:`discretizations`.
         """
 
         from pytools.obj_array import is_obj_array
 
         if domains is None:
-            from pytools import single_valued
-            dom_name = single_valued(self.discretizations.iterkeys())
+            from pytential.symbolic.primitives import DEFAULT_TARGET
+            if DEFAULT_TARGET not in self.discretizations:
+                raise RuntimeError("'domains is None' requires "
+                        "DEFAULT_TARGET to be defined")
+            dom_name = DEFAULT_TARGET
             if is_obj_array(self.code.result):
                 domains = len(self.code.result)*[dom_name]
             else:
@@ -211,7 +226,7 @@ class Executor:
             if dom_name is None:
                 size = 1
             else:
-                size = len(self.discretizations[dom_name])
+                size = self.discretizations[dom_name].nnodes
 
             starts_and_ends.append((total_dofs, total_dofs+size))
             total_dofs += size
@@ -221,16 +236,17 @@ class Executor:
         # fair, since these operators are usually only used
         # for linear system solving, in which case the assumption
         # has to be true.
-        matvec = MatVecOp(self,
+        return MatVecOp(self, queue,
                 arg_name, total_dofs, starts_and_ends, extra_args)
-
-        return sla.LinearOperator((total_dofs, total_dofs),
-                matvec=matvec.matvec, dtype=np.complex128)
 
     def __call__(self, queue, **args):
         exec_mapper = ExecutionMapper(self, queue, args)
         return self.code.execute_dynamic(exec_mapper)
 
+# }}}
+
+
+# {{{ bind
 
 def bind(discretizations, op, auto_where=None):
     """
@@ -247,10 +263,13 @@ def bind(discretizations, op, auto_where=None):
         discretizations = {DEFAULT_SOURCE: discretizations}
 
     if isinstance(discretizations, tuple):
+        source_discr, target_discr = discretizations
         discretizations = {
-                DEFAULT_SOURCE: discretizations[0],
-                DEFAULT_TARGET: discretizations[1],
+                DEFAULT_SOURCE: source_discr,
+                DEFAULT_TARGET: target_discr,
                 }
+        del source_discr
+        del target_discr
 
     def cast_to_discretization(discr):
         from pytential.discretization.target import TargetBase
@@ -281,5 +300,7 @@ def bind(discretizations, op, auto_where=None):
     op = AutoUpsampler()(op)
 
     return Executor(op, discretizations)
+
+# }}}
 
 # vim: foldmethod=marker

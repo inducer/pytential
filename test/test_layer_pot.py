@@ -197,10 +197,11 @@ def test_integral_equation(
     evt, (test_direct,) = pot_p2p(
             queue, test_targets, point_sources, [source_charges], **knl_kwargs)
 
-    nodes = tgt_discr.nodes(queue).get(queue=queue)
-    #nodes = mesh.groups[0].nodes.reshape(2, -1)
-    pt.plot(nodes[0], nodes[1], "x-")
-    pt.show()
+    nodes = tgt_discr.nodes(queue)
+    if 0:
+        n = nodes.get(queue=queue)
+        pt.plot(n[0], n[1], "x-")
+        pt.show()
 
     if bc_type == "dirichlet":
         evt, (bc,) = pot_p2p(
@@ -212,7 +213,7 @@ def test_integral_equation(
                 [TargetDerivative(0, knl), TargetDerivative(1, knl)],
                 exclude_self=False, value_dtypes=np.complex128)
         evt, (grad0, grad1) = grad_p2p(
-                queue, tgt_discr.nodes, point_sources, [source_charges],
+                queue, point_sources, [source_charges],
                 **knl_kwargs)
 
         1/0  # FIXME use of normals
@@ -224,13 +225,13 @@ def test_integral_equation(
 
     # {{{ solve
 
-    rhs = bind(op.prepare_rhs(Variable("bc")), discr)(bc=bc)
+    rhs = bind(tgt_discr, op.prepare_rhs(Variable("bc")))(queue, bc=bc)
 
-    bound_op = bind(op_u, discr)
+    bound_op = bind((src_discr, tgt_discr), op_u)
 
     from pytential.gmres import gmres
     gmres_result = gmres(
-            bound_op.scipy_op("u"),
+            bound_op.scipy_op(queue, "u"),
             rhs, tol=1e-14, progress=True,
             hard_failure=False)
 

@@ -23,8 +23,6 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
 from pymbolic.mapper.stringifier import (
         StringifyMapper as BaseStringifyMapper,
@@ -41,8 +39,6 @@ from pymbolic.mapper.dependency import (
 import pytential.symbolic.primitives as prim
 
 
-
-
 class OperatorReducerMixin:
     def map_int_g(self, *args, **kwargs):
         return self.map_operator(*args, **kwargs)
@@ -57,6 +53,7 @@ class OperatorReducerMixin:
     map_double_layer_prime = map_int_g
 
     map_quad_kernel_op = map_int_g
+
 
 class IdentityMapper(BaseIdentityMapper, OperatorReducerMixin):
     def map_node_sum(self, expr):
@@ -87,11 +84,11 @@ class IdentityMapper(BaseIdentityMapper, OperatorReducerMixin):
 
     def map_operator(self, expr, *args, **kwargs):
         def map_arg(arg):
-            from hellskitchen.fmm import KernelBase
+            from sumpy.kernel import Kernel
 
             if arg is None:
                 return None
-            elif isinstance(arg, KernelBase):
+            elif isinstance(arg, Kernel):
                 return arg
             elif isinstance(arg, str):
                 return arg
@@ -103,6 +100,7 @@ class IdentityMapper(BaseIdentityMapper, OperatorReducerMixin):
 
         return type(expr)(
                 *[map_arg(arg) for arg in expr.__getinitargs__()])
+
 
 class Collector(OperatorReducerMixin, BaseCombineMapper):
     def combine(self, values):
@@ -136,14 +134,12 @@ class Collector(OperatorReducerMixin, BaseCombineMapper):
         return set()
 
 
-
-
-
 class OperatorCollector(Collector):
     def map_operator(self, expr):
         result = set([expr]) | self.rec(expr.operand)
 
-        from pytential.symbolic.primitives import SourceDiffLayerPotentialOperatorBase
+        from pytential.symbolic.primitives import \
+                SourceDiffLayerPotentialOperatorBase
         if (isinstance(expr, SourceDiffLayerPotentialOperatorBase)
                 and expr.ds_direction is not None):
             result |= self.rec(expr.ds_direction)
@@ -153,11 +149,6 @@ class OperatorCollector(Collector):
     map_integral = map_operator
     map_mean = map_operator
     map_line_integral = map_operator
-
-
-
-
-
 
 
 class DependencyMapper(BaseDependencyMapper, OperatorReducerMixin):
@@ -184,8 +175,6 @@ class DependencyMapper(BaseDependencyMapper, OperatorReducerMixin):
                 set())
 
     map_operator = map_node_sum
-
-
 
 
 # {{{ target/source tagging
@@ -223,7 +212,8 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         if isinstance(op, prim.LayerPotentialOperatorBase):
             def operand_rec_if_possible(subexpr):
                 from pymbolic.primitives import Expression
-                if isinstance(subexpr, np.ndarray) or isinstance(subexpr, Expression):
+                if isinstance(subexpr, np.ndarray) \
+                        or isinstance(subexpr, Expression):
                     return self.operand_rec(subexpr)
                 else:
                     return subexpr
@@ -231,7 +221,8 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
             args = op.__getinitargs__()
             k = args[0]
             operand = self.operand_rec(args[1])
-            rest = tuple(operand_rec_if_possible(rest_i) for rest_i in args[2:-2])
+            rest = tuple(operand_rec_if_possible(rest_i)
+                    for rest_i in args[2:-2])
             source, target = args[-2:]
 
             if source is None:
@@ -244,7 +235,6 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
             return type(op)(*new_args)
         else:
             return IdentityMapper.map_operator(self, op)
-
 
     def map_inverse(self, expr):
         where = expr.where
@@ -266,13 +256,11 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         return self.rec(expr)
 
 
-
-
 class ToTargetTagger(LocationTagger):
-    """Descends into the expression tree, marking everything up to the first layer
-    potential operator as operating on the targets, and everything below there
-    as operating on the source. Also performs a consistency check such that only
-    'target' and 'source' items are combined arithmetically.
+    """Descends into the expression tree, marking everything up to the first
+    layer potential operator as operating on the targets, and everything below
+    there as operating on the source. Also performs a consistency check such
+    that only 'target' and 'source' items are combined arithmetically.
     """
 
     def __init__(self, default_source, default_target):
@@ -281,9 +269,16 @@ class ToTargetTagger(LocationTagger):
 
 # }}}
 
+
 # {{{ discretization plugger-inner
 
-class DiscretizationPluggerInner(EvaluationMapper):
+class DiscretizationPluggerInner(EvaluationMapper, OperatorReducerMixin):
+    """Once the discretization is known, the dimension count is, too.
+    This mapper does that, and by being based on evaluation, enables
+    lots of places in the operator expression to 'gel' into their
+    dimension-specific versions.
+    """
+
     def __init__(self, discr_dict):
         self.discr_dict = discr_dict
         EvaluationMapper.__init__(self)
@@ -300,7 +295,9 @@ class DiscretizationPluggerInner(EvaluationMapper):
         result = np.zeros((discr.ambient_dim, discr.dim), np.object)
         for i in xrange(discr.ambient_dim):
             for j in xrange(discr.dim):
-                result[i,j] = prim.ParametrizationDerivativeComponent(i, j, expr.where)
+                result[i, j] = \
+                        prim.ParametrizationDerivativeComponent(
+                                i, j, expr.where)
 
         return result
 
@@ -313,7 +310,39 @@ class DiscretizationPluggerInner(EvaluationMapper):
     def map_node_sum(self, expr):
         return type(expr)(self.rec(expr.operand))
 
+    def map_operator(self, expr, *args, **kwargs):
+        def map_arg(arg):
+            from sumpy.kernel import Kernel
+
+            if arg is None:
+                return None
+            elif isinstance(arg, Kernel):
+                return arg
+            elif isinstance(arg, str):
+                return arg
+            elif not isinstance(arg, np.ndarray) and \
+                    arg in (prim.DEFAULT_SOURCE, prim.DEFAULT_TARGET):
+                return arg
+            else:
+                return self.rec(arg, *args, **kwargs)
+
+        return type(expr)(
+                *[map_arg(arg) for arg in expr.__getinitargs__()])
+
+    def map_common_subexpression(self, expr):
+        from pymbolic.primitives import is_zero
+        result = self.rec(expr.child)
+        if is_zero(result):
+            return 0
+
+        return type(expr)(
+                result,
+                expr.prefix,
+                expr.scope,
+                **expr.get_extra_properties())
+
 # }}}
+
 
 # {{{ auto-upsampler
 
@@ -322,21 +351,24 @@ class AutoUpsampler(IdentityMapper):
 
 # }}}
 
+
 # {{{ stringifier
 
+def stringify_where(where):
+    if where is None:
+        return "?"
+    elif where is prim.DEFAULT_SOURCE:
+        return "s"
+    elif where is prim.DEFAULT_TARGET:
+        return "t"
+    else:
+        return str(where)
+
+
 class StringifyMapper(BaseStringifyMapper):
-    def _stringify_where(self, where):
-        if where is None:
-            return "?"
-        elif where is prim.DEFAULT_SOURCE:
-            return "s"
-        elif where is prim.DEFAULT_TARGET:
-            return "t"
-        else:
-            return str(where)
 
     def map_ones(self, expr, enclosing_prec):
-        return "Ones.%s" % self._stringify_where(expr.where)
+        return "Ones.%s" % stringify_where(expr.where)
 
     def map_inverse(self, expr, enclosing_prec):
         return "Solve(%s = %s {%s})" % (
@@ -356,35 +388,36 @@ class StringifyMapper(BaseStringifyMapper):
         return "NodeSum(%s)" % self.rec(expr.operand, PREC_NONE)
 
     def map_parametrization_derivative_component(self, expr, enclosing_prec):
-        return "dx%d/dr%d" % (expr.ambient_axis, expr.ref_axis)
+        return "dx%d/dr%d.%s" % (expr.ambient_axis, expr.ref_axis,
+                stringify_where(expr.where))
 
     def map_parametrization_gradient(self, expr, enclosing_prec):
-        return "[[dx/dr]]"
+        return "[[dx/dr]].%s" % (stringify_where(expr.where))
 
     def map_parametrization_derivative(self, expr, enclosing_prec):
-        return "dx/dr"
+        return "dx/dr.%s" % (stringify_where(expr.where))
 
     def map_q_weights(self, expr, enclosing_prec):
-        return "w_quad"
+        return "w_quad.%s" % stringify_where(expr.where)
 
     def map_int_g(self, op, enclosing_prec):
         return u"S_%s[%s->%s](%s)" % (
                 op.kernel,
-                self._stringify_where(op.source),
-                self._stringify_where(op.target),
+                stringify_where(op.source),
+                stringify_where(op.target),
                 self.rec(op.operand, PREC_NONE))
 
     def map_int_g_ds(self, op, enclosing_prec):
         if op.ds_direction is None:
             return "D_%s[%s->%s](%s)" % (
                     op.kernel,
-                    self._stringify_where(op.source),
-                    self._stringify_where(op.target),
+                    stringify_where(op.source),
+                    stringify_where(op.target),
                     self.rec(op.operand, PREC_NONE))
         else:
             result = u"Int[%s->%s] (%s,d_s) G_%s %s" % (
-                    self._stringify_where(op.source),
-                    self._stringify_where(op.target),
+                    stringify_where(op.source),
+                    stringify_where(op.target),
                     self.rec(op.ds_direction, PREC_PRODUCT),
                     op.kernel,
                     self.rec(op.operand, PREC_NONE))
@@ -397,8 +430,8 @@ class StringifyMapper(BaseStringifyMapper):
     def map_int_g_dt(self, op, enclosing_prec):
         result = u"d_t%d (Int[%s->%s] G_%s %s)" % (
                 op.dt_axis,
-                self._stringify_where(op.source),
-                self._stringify_where(op.target),
+                stringify_where(op.source),
+                stringify_where(op.target),
                 op.kernel,
                 self.rec(op.operand, PREC_NONE))
 
@@ -415,8 +448,8 @@ class StringifyMapper(BaseStringifyMapper):
 
         result = u"d_t%d (Int[%s->%s] (%s,d_s) G_%s %s)" % (
                 op.dt_axis,
-                self._stringify_where(op.source),
-                self._stringify_where(op.target),
+                stringify_where(op.source),
+                stringify_where(op.target),
                 ds_direction,
                 op.kernel,
                 self.rec(op.operand, PREC_PRODUCT))
@@ -430,8 +463,8 @@ class StringifyMapper(BaseStringifyMapper):
         result = u"d_t%d d_t%d (Int[%s->%s] G_%s %s)" % (
                 op.dt_axis_a,
                 op.dt_axis_b,
-                self._stringify_where(op.source),
-                self._stringify_where(op.target),
+                stringify_where(op.source),
+                stringify_where(op.target),
                 op.kernel,
                 self.rec(op.operand, PREC_PRODUCT))
 
@@ -445,45 +478,47 @@ class StringifyMapper(BaseStringifyMapper):
         func_name = doc[:doc.index(" ")]
         if op.parameter_gen is not None:
             return "QInt[%s->%s](%s(%s), %s)" % (
-                    self._stringify_where(op.source),
-                    self._stringify_where(op.target),
+                    stringify_where(op.source),
+                    stringify_where(op.target),
                     func_name,
                     str(op.parameter_gen),
                     self.rec(op.operand, PREC_NONE))
         else:
             return "QInt%s(%s, %s)" % (
-                    self._stringify_where(op.source),
-                    self._stringify_where(op.target),
+                    stringify_where(op.source),
+                    stringify_where(op.target),
                     func_name, self.rec(op.operand, PREC_NONE))
 
     def map_single_layer_prime(self, op, enclosing_prec):
         return "S'_%s[%s->%s](%s)" % (
                 op.kernel,
-                self._stringify_where(op.source),
-                self._stringify_where(op.target),
+                stringify_where(op.source),
+                stringify_where(op.target),
                 self.rec(op.operand, PREC_NONE))
 
     def map_double_layer_prime(self, op, enclosing_prec):
         return "D'_%s[%s->%s](%s)" % (
                 op.kernel,
-                self._stringify_where(op.source),
-                self._stringify_where(op.target),
+                stringify_where(op.source),
+                stringify_where(op.target),
                 self.rec(op.operand, PREC_NONE))
 
     def map_single_layer_2prime(self, op, enclosing_prec):
         return "S''_%s[%s->%s](%s)" % (
                 op.kernel,
-                self._stringify_where(op.source),
-                self._stringify_where(op.target),
+                stringify_where(op.source),
+                stringify_where(op.target),
                 self.rec(op.operand, PREC_NONE))
 
 # }}}
 
-# {{{ pretty printing ---------------------------------------------------------
+
+# {{{ pretty-printing ---------------------------------------------------------
 
 class PrettyStringifyMapper(
         CSESplittingStringifyMapperMixin, StringifyMapper):
     pass
+
 
 def pretty_print_optemplate(optemplate):
     stringify_mapper = PrettyStringifyMapper()

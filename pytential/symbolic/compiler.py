@@ -421,9 +421,9 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
 
         return self.dep_mapper
 
-    # {{{ top-level driver ----------------------------------------------------
-    def __call__(self, expr):
+    # {{{ top-level driver
 
+    def __call__(self, expr):
         # {{{ collect operators by operand
 
         from pytential.symbolic.mappers import OperatorCollector
@@ -454,7 +454,8 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
 
     # }}}
 
-    # {{{ variables and names -------------------------------------------------
+    # {{{ variables and names
+
     def get_var_name(self, prefix=None):
         def generate_suffixes():
             yield ""
@@ -498,7 +499,7 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
 
     # }}}
 
-    # {{{ map_xxx routines ----------------------------------------------------
+    # {{{ map_xxx routines
 
     def map_common_subexpression(self, expr):
         if expr.scope != cse_scope.EXPRESSION:
@@ -525,13 +526,6 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
 
             self.expr_to_var[expr.child] = cse_var
             return cse_var
-
-    def map_call(self, expr):
-        return self.assign_to_new_var(
-                type(expr)(
-                    expr.function,
-                    [self.assign_to_new_var(self.rec(par))
-                        for par in expr.parameters]))
 
     def make_assign(self, name, expr, priority):
         return Assign(names=[name], exprs=[expr],
@@ -593,8 +587,5 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
     # }}}
 
 # }}}
-
-
-
 
 # vim: foldmethod=marker
