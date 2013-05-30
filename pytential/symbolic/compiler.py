@@ -23,16 +23,13 @@ THE SOFTWARE.
 """
 
 
-
-
 from pytools import Record, memoize_method
 from pymbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper, OperatorReducerMixin
 
 
-
-
 # {{{ instructions ------------------------------------------------------------
+
 class Instruction(Record):
     __slots__ = ["dep_mapper_factory"]
     priority = 0
@@ -48,6 +45,7 @@ class Instruction(Record):
 
     def get_exec_function(self, exec_mapper):
         raise NotImplementedError
+
 
 class Assign(Instruction):
     # attributes: names, exprs, do_not_return, priority
@@ -103,7 +101,7 @@ class Assign(Instruction):
 
             lines = []
             lines.append("{" + comment)
-            for n, e, dnr  in zip(self.names, self.exprs, self.do_not_return):
+            for n, e, dnr in zip(self.names, self.exprs, self.do_not_return):
                 if dnr:
                     dnr_indicator = "-#"
                 else:
@@ -118,8 +116,10 @@ class Assign(Instruction):
 
 # }}}
 
-# {{{ graphviz/dot dataflow graph drawing -------------------------------------
-def dot_dataflow_graph(code, max_node_label_length=30, 
+
+# {{{ graphviz/dot dataflow graph drawing
+
+def dot_dataflow_graph(code, max_node_label_length=30,
         label_wrap_width=50):
     origins = {}
     node_names = {}
@@ -174,11 +174,11 @@ def dot_dataflow_graph(code, max_node_label_length=30,
 
     return "digraph dataflow {\n%s\n}\n" % "\n".join(result)
 
-
-
 # }}}
 
-# {{{ code representation -----------------------------------------------------
+
+# {{{ code representation
+
 class Code(object):
     def __init__(self, instructions, result):
         self.instructions = instructions
@@ -289,7 +289,8 @@ class Code(object):
 
                 except self.NoInstructionAvailable:
                     if futures:
-                        # no insn ready: we need a future to complete to continue
+                        # no insn ready: we need a future to complete to
+                        # continue
                         force_future = True
                     else:
                         # no futures, no available instructions: we're done
@@ -393,9 +394,12 @@ class Code(object):
 
 # }}}
 
-# {{{ compiler ----------------------------------------------------------------
+
+# {{{ compiler
+
 class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
-    def __init__(self, discretizations, prefix="_expr", max_vectors_in_batch_expr=None):
+    def __init__(self, discretizations, prefix="_expr",
+            max_vectors_in_batch_expr=None):
         IdentityMapper.__init__(self)
         self.discretizations = discretizations
         self.prefix = prefix
@@ -432,7 +436,8 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
 
         self.group_to_operators = {}
         for op in operators:
-            self.group_to_operators.setdefault(self.op_group_tuple(op), set()).add(op)
+            self.group_to_operators.setdefault(
+                    self.op_group_tuple(op), set()).add(op)
 
         # }}}
 
@@ -506,7 +511,7 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
 
             from pytential.symbolic.primitives import OperatorBase
             if isinstance(expr.child, OperatorBase):
-                # We need to catch operators here and 
+                # We need to catch operators here and
                 # treat them specially. They get assigned to their
                 # own variable by default, which would mean the
                 # CSE prefix would be omitted.
@@ -544,21 +549,24 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
             field_var = self.assign_to_new_var(
                     self.rec(expr.operand))
 
-            from pytential.symbolic.primitives import LayerPotentialOperatorBase
+            from pytential.symbolic.primitives import \
+                    LayerPotentialOperatorBase
             if isinstance(expr, LayerPotentialOperatorBase):
                 return self.map_layer_pot_operator(expr, field_var)
             else:
                 result = self.assign_to_new_var(
-                        type(expr)(field_var), priority=priority, prefix=name_hint)
+                        type(expr)(field_var),
+                        priority=priority, prefix=name_hint)
 
                 self.expr_to_var[expr] = result
                 return result
 
     def op_group_tuple(self, op):
-        """Return a characteristic tuple by which operators that can be executed
-        together can be grouped.
+        """Return a characteristic tuple by which operators that can be
+        executed together can be grouped.
         """
-        from pytential.symbolic.primitives import SourceDiffLayerPotentialOperatorBase
+        from pytential.symbolic.primitives import \
+                SourceDiffLayerPotentialOperatorBase
 
         if isinstance(op, SourceDiffLayerPotentialOperatorBase):
             if op.ds_direction is None:
