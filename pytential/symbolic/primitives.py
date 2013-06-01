@@ -26,8 +26,9 @@ THE SOFTWARE.
 import numpy as np
 from pymbolic.primitives import (  # noqa
         Expression as ExpressionBase, Variable,
-        make_sym_vector, cse_scope,
+        make_sym_vector, cse_scope as cse_scope_base,
         make_common_subexpression as cse)
+from pymbolic.geometric_algebra import MultiVector, componentwise
 
 __doc__ = """
 .. |where-blurb| replace:: A symbolic name for a
@@ -41,6 +42,10 @@ class DEFAULT_SOURCE:
 
 class DEFAULT_TARGET:
     pass
+
+
+class cse_scope(cse_scope_base):
+    DISCRETIZATION = "pytential_discretization"
 
 
 # {{{ helper functions
@@ -89,7 +94,7 @@ class DiscretizationProperty(Expression):
     further arguments.
     """
 
-    def __init__(self, where):
+    def __init__(self, where=None):
         """
         :arg where: |where-blurb|
         """
@@ -105,30 +110,50 @@ class DiscretizationProperty(Expression):
 class QWeight(DiscretizationProperty):
     """Bare quadrature weights (without Jacobians)."""
 
-    mapper_method = intern("map_q_weights")
+    mapper_method = intern("map_q_weight")
 
 
-class ParametrizationDerivativeComponent(DiscretizationProperty):
-    def __init__(self, ambient_axis, ref_axis, where):
+class NodeCoordinateComponent(DiscretizationProperty):
+    def __init__(self, ambient_axis, where=None):
         """
         :arg where: |where-blurb|
         """
         self.ambient_axis = ambient_axis
-        self.ref_axis = ref_axis
+        DiscretizationProperty.__init__(self, where)
+
+    mapper_method = intern("map_node_coordinate_component")
+
+
+class Points(DiscretizationProperty):
+    """Node location of the discretization.
+    """
+
+    def __init__(self, where=None):
+        DiscretizationProperty.__init__(self, where)
+
+    mapper_method = intern("map_points")
+
+
+class NumReferenceDerivative(DiscretizationProperty):
+    def __init__(self, ref_axes, operand, where=None):
+        """
+        :arg ref_axes: a :class:`frozenset` of indices of
+            reference coordinates along which derivatives
+            will be taken.
+        :arg where: |where-blurb|
+        """
+
+        if not isinstance(ref_axes, frozenset):
+            raise ValueError("ref_axes must be a frozenset")
+
+        self.ref_axes = ref_axes
+        self.operand = operand
         DiscretizationProperty.__init__(self, where)
 
     def __getinitargs__(self):
-        return (self.ambient_axis, self.ref_axis, self.where)
+        return (self.ref_axes, self.operand, self.where)
 
-    mapper_method = intern("map_parametrization_derivative_component")
-
-
-class ParametrizationGradient(DiscretizationProperty):
-    """Return a *(ambient_dimension, dimension)*-shaped object array
-    containing the gradient of the parametrization.
-    """
-
-    mapper_method = "map_parametrization_gradient"
+    mapper_method = intern("map_num_reference_derivative")
 
 
 class ParametrizationDerivative(DiscretizationProperty):
@@ -139,34 +164,26 @@ class ParametrizationDerivative(DiscretizationProperty):
     mapper_method = "map_parametrization_derivative"
 
 
-def jacobian(where):
+def jacobian(where=None):
     return cse(
             sqrt(ParametrizationDerivative(where).attr("norm_squared")()),
-            "jacobian", cse_scope.GLOBAL)
+            "jacobian", cse_scope.DISCRETIZATION)
 
 
 def sqrt_jac_q_weight(where=None):
     return cse(sqrt(jacobian(where) * QWeight(where)),
-            "sqrt_jac_q_weight", cse_scope.GLOBAL)
+            "sqrt_jac_q_weight", cse_scope.DISCRETIZATION)
 
 
 def normal(where=None):
     pder = ParametrizationDerivative(where)
-    return cse(-pder.attr("I") | pder, "normal", cse_scope.GLOBAL)
+    return cse(-pder.attr("I") | pder, "normal",
+            cse_scope.DISCRETIZATION)
 
 
-def mean_curvature(dph):
-    """
-    :arg dph: a :class:`DiscretizationPlaceholder`
-    """
+def mean_curvature(where):
     raise NotImplementedError()
 
-
-def gaussian_curvature(dph):
-    """
-    :arg dph: a :class:`DiscretizationPlaceholder`
-    """
-    raise NotImplementedError()
 
 # FIXME: make sense of this in the context of MultiVectors
 # def xyz_to_local_matrix(dim, where=None):
@@ -182,71 +199,7 @@ def gaussian_curvature(dph):
 # }}}
 
 
-class Upsample(Expression):
-    def __init__(self, to_where, from_where, operand):
-        """
-        :arg to_where: |where-blurb|
-        :arg from_where: |where-blurb|
-        """
-        self.to_where = to_where
-        self.from_where = from_where
-        self.operand = operand
-
-    mapper_method = "map_upsample"
-
-
 # {{{ operators
-
-# {{{ operator base classes
-
-class OperatorBase(Expression):
-    def __init__(self, operand):
-        self.operand = operand
-
-    def __getinitargs__(self):
-        return (self.operand,)
-
-
-class LayerPotentialOperatorBase(OperatorBase):
-    def __new__(cls, kernel, operand, *args, **kwargs):
-        # If the constructor is handed an object array full of operands,
-        # return an object array of the operator applied to each of the
-        # operands.
-
-        from pytools.obj_array import is_obj_array, with_object_array_or_scalar
-        if is_obj_array(operand):
-
-            def make_op(operand_i):
-                return cls(kernel, operand_i, *args, **kwargs)
-
-            return with_object_array_or_scalar(make_op, operand)
-        else:
-            return OperatorBase.__new__(cls)
-
-    def __init__(self, kernel, operand, qbx_forced_limit=None,
-            source=None, target=None):
-        OperatorBase.__init__(self, operand)
-
-        from sumpy.kernel import normalize_kernel
-        self.kernel = normalize_kernel(kernel)
-
-        assert qbx_forced_limit is not DEFAULT_SOURCE
-        assert qbx_forced_limit is not DEFAULT_TARGET
-
-        self.qbx_forced_limit = qbx_forced_limit
-        self.source = source
-        self.target = target
-
-    def __getinitargs__(self):
-        return (self.kernel, self.operand, self.qbx_forced_limit,
-                self.source, self.target)
-
-
-class SourceDiffLayerPotentialOperatorBase(LayerPotentialOperatorBase):
-    pass
-
-# }}}
-
 
 class NodeSum(Expression):
     def __init__(self, operand):
@@ -265,13 +218,6 @@ def integral(operand, where=None):
     return NodeSum(jacobian(where) * QWeight(where) * operand)
 
 
-def mean(operand, where=None):
-    return integral(operand, where) / integral(Ones(where), where)
-
-
-#class LineIntegral(IntegralBase):
-    #mapper_method = intern("map_line_integral")
-
 class Ones(Expression):
     def __init__(self, where=None):
         self.where = where
@@ -280,6 +226,15 @@ class Ones(Expression):
         return (self.where,)
 
     mapper_method = intern("map_ones")
+
+
+def area(where=None):
+    return cse(integral(Ones(where), where), "area",
+            cse_scope.DISCRETIZATION)
+
+
+def mean(operand, where=None):
+    return integral(operand, where) / area(where)
 
 
 class IterativeInverse(Expression):
@@ -303,9 +258,17 @@ class IterativeInverse(Expression):
     mapper_method = intern("map_inverse")
 
 
-# {{{ building blocks
+# {{{ operator base classes
 
-class IntG(LayerPotentialOperatorBase):
+class OperatorBase(Expression):
+    def __init__(self, operand):
+        self.operand = operand
+
+    def __getinitargs__(self):
+        return (self.operand,)
+
+
+class IntG(OperatorBase):
     r"""
     .. math::
 
@@ -314,152 +277,137 @@ class IntG(LayerPotentialOperatorBase):
     where :math:`\sigma` is *operand*.
     """
 
-    def what(self):
-        return self.target, "p", ()
+    def __new__(cls, kernel, operand, *args, **kwargs):
+        # If the constructor is handed a multivector object, return an
+        # object array of the operator applied to each of the
+        # coefficients in the multivector.
+
+        if isinstance(operand, MultiVector):
+            def make_op(operand_i):
+                return cls(kernel, operand_i, *args, **kwargs)
+
+            return componentwise(make_op, operand)
+        else:
+            return OperatorBase.__new__(cls)
+
+    def __init__(self, kernel, operand,
+            qbx_forced_limit=None, source=None, target=None):
+        """*target_derivatives* and later arguments should be considered
+        keyword-only.
+
+        :arg kernel: a kernel as accepted by
+            :func:`sumpy.kernel.normalize_kernel`
+        """
+        OperatorBase.__init__(self, operand)
+
+        from sumpy.kernel import normalize_kernel
+        self.kernel = normalize_kernel(kernel)
+        self.qbx_forced_limit = qbx_forced_limit
+        self.source = source
+        self.target = target
+
+    def __getinitargs__(self):
+        return (self.kernel, self.operand, self.qbx_forced_limit,
+                self.source, self.target, self.target_derivatives)
 
     mapper_method = intern("map_int_g")
 
 
-class IntGdSource(SourceDiffLayerPotentialOperatorBase):
+class IntGdSource(IntG):
     r"""
     .. math::
 
-        \int_\Gamma d \cdot \nabla_y g_k(x-y) \sigma(y) dS_y
+        \int_\Gamma d \overdot \nabla_y
+            \overdot g(x-y) \sigma(y) dS_y
 
-    where :math:`\sigma` is *operand*,
-    :math:`d` is *ds_direction*, a vector defaulting to the unit
-    surface normal of :math:`\Gamma`.
+    where :math:`\sigma` is *operand*, and
+    :math:`d` is *ds_direction*, a multivector.
+    Note that the first product in the integrand
+    is a geometric product.
     """
 
-    def __init__(self, kernel, operand, ds_direction=None,
+    def __init__(self, ds_direction, kernel, operand,
             qbx_forced_limit=None, source=None, target=None):
-        LayerPotentialOperatorBase.__init__(self, kernel, operand,
+        IntG.__init__(self, kernel, operand,
                 qbx_forced_limit, source, target)
         self.ds_direction = ds_direction
 
-    def what(self):
-        return self.target, "p", ()
-
     def __getinitargs__(self):
-        return (self.kernel, self.operand, self.ds_direction,
-                self.qbx_forced_limit, self.source, self.target, )
+        return IntG.__getinitargs__() + (self.ds_direction,)
 
     def get_hash(self):
-        return hash((self.__class__,) + (
-            self.kernel, self.operand, array_to_tuple(self.ds_direction),
-            self.qbx_forced_limit, self.source, self.target))
+        return IntG.get_hash() ^ hash(self.ds_direction)
 
     mapper_method = intern("map_int_g_ds")
 
-
-class IntGdTarget(LayerPotentialOperatorBase):
-    r"""
-    .. math::
-
-        \frac \partial {\partial x_i} \int_\Gamma d \cdot \nabla_y g_k(x-y)
-        \sigma(y) dS_y
-
-    where :math:`\sigma` is *operand*, and
-    :math:`i` is *dt_axis*.
-    """
-    def __init__(self, kernel, operand, dt_axis, qbx_forced_limit=None,
-            source=None, target=None):
-        LayerPotentialOperatorBase.__init__(self, kernel, operand,
-                qbx_forced_limit, source, target)
-        self.dt_axis = dt_axis
-
-    def what(self):
-        return self.target, "g", self.dt_axis
-
-    def __getinitargs__(self):
-        return (self.kernel, self.operand, self.dt_axis,
-                self.qbx_forced_limit, self.source, self.target)
-
-    mapper_method = intern("map_int_g_dt")
-
-
-class IntGdMixed(SourceDiffLayerPotentialOperatorBase):
-    r"""
-    .. math::
-
-        \frac \partial {\partial x_i} \int_\Gamma d \cdot \nabla_y g_k(x-y)
-        \sigma(y) dS_y
-
-    where :math:`\sigma` is *operand*,
-    :math:`d` is *ds_direction*, a vector defaulting to the unit
-    surface normal of :math:`\Gamma`, and :math:`i` is *dt_axis*.
-    """
-    def __init__(self, kernel, operand, dt_axis, ds_direction=None,
-            qbx_forced_limit=None, source=None, target=None):
-        LayerPotentialOperatorBase.__init__(self, kernel, operand,
-                qbx_forced_limit, source, target)
-        self.dt_axis = dt_axis
-        self.ds_direction = ds_direction
-
-    def what(self):
-        return self.target, "g", self.dt_axis
-
-    def __getinitargs__(self):
-        return (self.kernel, self.operand, self.dt_axis, self.ds_direction,
-                self.qbx_forced_limit, self.source, self.target)
-
-    def get_hash(self):
-        return hash((self.__class__,) + (
-            self.kernel, self.operand, self.dt_axis,
-            array_to_tuple(self.ds_direction),
-            self.qbx_forced_limit, self.source, self.target))
-
-    mapper_method = intern("map_int_g_dmix")
-
-
-class IntGd2Target(LayerPotentialOperatorBase):
-    r"""
-    .. math::
-
-        \frac \partial {\partial x_i}\frac \partial {\partial x_j}
-        \int_\Gamma g_k(x-y) \sigma(y) dS_y
-
-    where :math:`\sigma` is *operand*,
-    :math:`i` is *dt_axis_a*, and :math:`j` is *dt_axis_b*.
-    """
-    def __init__(self, kernel, operand, dt_axis_a, dt_axis_b,
-            qbx_forced_limit=None, source=None, target=None):
-        LayerPotentialOperatorBase.__init__(self, kernel, operand,
-                qbx_forced_limit, source, target)
-        self.dt_axis_a = dt_axis_a
-        self.dt_axis_b = dt_axis_b
-
-    def what(self):
-        return self.target, "h", (self.dt_axis_a, self.dt_axis_b)
-
-    def __getinitargs__(self):
-        return (self.kernel, self.operand, self.dt_axis_a, self.dt_axis_b,
-                self.qbx_forced_limit, self.source, self.target)
-
-    mapper_method = intern("map_int_g_d2t")
-
 # }}}
 
-# {{{ non-dimension-specific operators, get eliminated upon entry into bind()
+
+# {{{ non-dimension-specific operators
+# (these get made specific to dimensionality by Dimensionalizer)
+
+# {{{ geometric calculus
+
+class Nabla(Expression):
+    def __init__(self, nabla_id=None):
+        pass
+
+    mapper_method = "map_nabla"
+
+
+class DerivativeSource(Expression):
+    def __init__(self, operand, nabla_id=None):
+        self.operand = operand
+        self.nabla_id = nabla_id
+
+    def __getinitargs__(self):
+        return (self.operand, self.nabla_id)
+
+    mapper_method = "map_derivative_source"
+
+
+class Derivative(object):
+    _next_id = [0]
+
+    def __init__(self):
+        self.my_id = self._next_id
+        self._next_id[0] += 1
+
+    @property
+    def nabla(self):
+        return Nabla(self.my_id_)
+
+    @property
+    def __call__(self, operand):
+        return DerivativeSource(operand, self.my_id_)
+
+# }}}
 
 S = IntG
 
 
-def D(kernel, arg, qbx_forced_limit=None, source=None, target=None):
-    return IntGdSource(kernel, arg,
-            qbx_forced_limit=qbx_forced_limit, source=source, target=target)
+def normal_derivative(operand, where=None):
+    d = Derivative()
+    return (normal(where) * d.nabla) * d(operand)
 
 
-class Sp(LayerPotentialOperatorBase):
-    mapper_method = "map_single_layer_prime"
+def Sp(*args, **kwargs):
+    where = kwargs.get("where")
+    return normal_derivative(S(*args, **kwargs), where).project(0)
 
 
-class Spp(LayerPotentialOperatorBase):
-    mapper_method = "map_single_layer_2prime"
+def Spp(*args, **kwargs):
+    where = kwargs.get("where")
+    return normal_derivative(Sp(*args, **kwargs), where).project(0)
 
 
-class Dp(LayerPotentialOperatorBase):
-    mapper_method = "map_double_layer_prime"
+def D(*args, **kwargs):
+    return IntGdSource(normal(), *args, **kwargs).project(0)
+
+
+def Dp(*args, **kwargs):
+    where = kwargs.get("where")
+    return normal_derivative(D(*args, **kwargs), where)
 
 # }}}
 

@@ -302,7 +302,8 @@ class Code(object):
                     done_insns.add(insn)
                     assignments, new_futures = (
                             insn.get_exec_function(exec_mapper)
-                            (insn, exec_mapper.executor, exec_mapper))
+                            (exec_mapper.queue, insn, exec_mapper.executor,
+                                exec_mapper))
 
             if insn is not None:
                 for target, value in assignments:
@@ -427,17 +428,17 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
         # {{{ collect operators by operand
 
         from pytential.symbolic.mappers import OperatorCollector
-        from pytential.symbolic.primitives import LayerPotentialOperatorBase
+        from pytential.symbolic.primitives import IntG
 
         operators = [
                 op
                 for op in OperatorCollector()(expr)
-                if isinstance(op, LayerPotentialOperatorBase)]
+                if isinstance(op, IntG)]
 
         self.group_to_operators = {}
         for op in operators:
             self.group_to_operators.setdefault(
-                    self.op_group_tuple(op), set()).add(op)
+                    self.op_group_features(op), set()).add(op)
 
         # }}}
 
@@ -504,7 +505,7 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
     def map_common_subexpression(self, expr):
         if expr.scope != cse_scope.EXPRESSION:
             from warnings import warn
-            warn("mishandling expression scope")
+            warn("mishandling CSE scope")
         try:
             return self.expr_to_var[expr.child]
         except KeyError:
@@ -555,27 +556,9 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
                 self.expr_to_var[expr] = result
                 return result
 
-    def op_group_tuple(self, op):
-        """Return a characteristic tuple by which operators that can be
-        executed together can be grouped.
-        """
-        from pytential.symbolic.primitives import \
-                SourceDiffLayerPotentialOperatorBase
-
-        if isinstance(op, SourceDiffLayerPotentialOperatorBase):
-            if op.ds_direction is None:
-                hash_ds_dir = op.ds_direction
-            else:
-                hash_ds_dir = tuple(op.ds_direction)
-
-            result = (op.source, op.target, op.operand, op.kernel, hash_ds_dir,
-                    op.qbx_forced_limit)
-        else:
-            result = (op.source, op.target, op.operand, op.kernel,
-                    op.qbx_forced_limit)
-
+    def op_group_features(self, op):
         src_discr = self.discretizations[op.source]
-        return result + src_discr.extra_op_group_features(op)
+        return src_discr.op_group_features(op)
 
     def map_layer_pot_operator(self, expr, field_var):
         src_discr = self.discretizations[expr.source]

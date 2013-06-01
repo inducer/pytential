@@ -13,6 +13,8 @@ Contents
     :maxdepth: 2
 
     mesh
+    discretization
+    symbolic
     tools
     misc
 

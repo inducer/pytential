@@ -34,11 +34,6 @@ import loopy as lp
 import modepy as mp
 
 
-__doc__ = """A composite polynomial discretization without
-any specific opinion on how to evaluate layer potentials.
-"""
-
-
 # {{{ element group base
 
 class PolynomialElementGroupBase(object):
@@ -127,7 +122,8 @@ class PolynomialElementGroup(PolynomialElementGroupBase):
 # {{{ discretization
 
 class PolynomialElementDiscretizationBase(Discretization):
-    """An (unstructured) composite polynomial discretization.
+    """An (unstructured) composite polynomial discretization without
+    any specific opinion on how to evaluate layer potentials.
 
     .. attribute :: mesh
     .. attribute :: groups
@@ -177,37 +173,42 @@ class PolynomialElementDiscretizationBase(Discretization):
 
     @memoize_method
     def _diff_matrices(self, grp):
-        meg = grp.mesh_el_group
         result = mp.differentiation_matrices(
-                mp.simplex_onb(self.dim, meg.order),
-                mp.grad_simplex_onb(self.dim, meg.order),
-                grp.unit_nodes, from_nodes=meg.unit_nodes)
+                mp.simplex_onb(self.dim, grp.order),
+                mp.grad_simplex_onb(self.dim, grp.order),
+                grp.unit_nodes)
+
         if not isinstance(result, tuple):
             return (result,)
         else:
             return result
 
-    def parametrization_derivative_component(
-            self, queue, ambient_axis, ref_axis):
+    def num_reference_derivative(
+            self, queue, ref_axes, vec):
         @memoize_method_nested
         def knl():
             knl = lp.make_kernel(self.cl_context.devices[0],
                 """{[k,i,j]:
                     0<=k<nelements and
-                    0<=i<ndiscr_nodes and
-                    0<=j<nmesh_nodes}""",
-                "result[k,i] = sum(j, 0.5 * diff_mat[i, j] * nodes_i[k, j])")
+                    0<=i,j<ndiscr_nodes}""",
+                "result[k,i] = sum(j, diff_mat[i, j] * vec[k, j])",
+                default_offset=lp.auto)
 
             knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
             return lp.tag_inames(knl, dict(k="g.0"))
 
-        result = self.empty(self.real_dtype)
+        result = self.empty(vec.dtype)
 
         for grp in self.groups:
-            meg = grp.mesh_el_group
-            knl()(queue,
-                    diff_mat=self._diff_matrices(grp)[ref_axis],
-                    result=grp.view(result), nodes_i=meg.nodes[ambient_axis])
+            mat = None
+            for ref_axis in ref_axes:
+                next_mat = self._diff_matrices(grp)[ref_axis]
+                if mat is None:
+                    mat = next_mat
+                else:
+                    mat = np.dot(next_mat, mat)
+
+            knl()(queue, diff_mat=mat, result=grp.view(result), vec=grp.view(vec))
 
         return result
 
@@ -231,7 +232,7 @@ class PolynomialElementDiscretizationBase(Discretization):
         meg = grp.mesh_el_group
         return mp.resampling_matrix(
                 mp.simplex_onb(self.dim, meg.order),
-                meg.unit_nodes, grp.unit_nodes)
+                grp.unit_nodes, meg.unit_nodes)
 
     def nodes(self, queue):
         @memoize_method_nested

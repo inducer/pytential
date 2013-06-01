@@ -79,7 +79,7 @@ def test_geometry(ctx_getter):
 
     from pytential.symbolic.execution import bind
     import pytential.symbolic.primitives as prim
-    area_sym = prim.integral(prim.Ones())
+    area_sym = prim.integral(1)
 
     area = bind(discr, area_sym)(queue)
 
@@ -113,7 +113,6 @@ def test_integral_equation(
     clear_cache()
 
     target_order = 7
-    source_order = 63
 
     mesh = make_curve_mesh(curve_f,
             np.linspace(0, 1, nelements+1),
@@ -126,14 +125,10 @@ def test_integral_equation(
         pt.gca().set_aspect("equal")
         pt.show()
 
-    from pytential.discretization.poly_element import \
-            PolynomialElementDiscretization
-    from pytential.discretization.qbx import QBXDiscretization
+    from pytential.discretization.qbx import make_upsampling_qbx_discr
 
-    src_discr = QBXDiscretization(
-            cl_ctx, mesh, qbx_order, target_order, source_order)
-    tgt_discr = PolynomialElementDiscretization(
-            cl_ctx, mesh, target_order)
+    discr = make_upsampling_qbx_discr(
+            cl_ctx, mesh, target_order, qbx_order)
 
     # {{{ set up operator
 
@@ -143,9 +138,9 @@ def test_integral_equation(
             NeumannOperator)
 
     if bc_type == "dirichlet":
-        op = DirichletOperator(k, loc_sign, use_l2_weighting=True)
+        op = DirichletOperator("k", loc_sign, use_l2_weighting=True)
     elif bc_type == "neumann":
-        op = NeumannOperator(k, loc_sign, use_l2_weighting=True,
+        op = NeumannOperator("k", loc_sign, use_l2_weighting=True,
                  use_improved_operator=False)
     else:
         assert False
@@ -197,7 +192,7 @@ def test_integral_equation(
     evt, (test_direct,) = pot_p2p(
             queue, test_targets, point_sources, [source_charges], **knl_kwargs)
 
-    nodes = tgt_discr.nodes(queue)
+    nodes = discr.nodes(queue)
     if 0:
         n = nodes.get(queue=queue)
         pt.plot(n[0], n[1], "x-")
@@ -218,16 +213,16 @@ def test_integral_equation(
 
         1/0  # FIXME use of normals
         bc = (
-                grad0*tgt_discr.normals[0].reshape(-1) +
-                grad1*tgt_discr.normals[1].reshape(-1))
+                grad0*discr.normals[0].reshape(-1) +
+                grad1*discr.normals[1].reshape(-1))
 
     # }}}
 
     # {{{ solve
 
-    rhs = bind(tgt_discr, op.prepare_rhs(Variable("bc")))(queue, bc=bc)
+    rhs = bind(discr, op.prepare_rhs(Variable("bc")))(queue, bc=bc)
 
-    bound_op = bind((src_discr, tgt_discr), op_u)
+    bound_op = bind(discr, op_u)
 
     from pytential.gmres import gmres
     gmres_result = gmres(

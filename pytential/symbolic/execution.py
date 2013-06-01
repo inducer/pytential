@@ -23,7 +23,8 @@ THE SOFTWARE.
 """
 
 
-from pymbolic.mapper.evaluator import EvaluationMapper
+from pymbolic.mapper.evaluator import (
+        EvaluationMapper as EvaluationMapperBase)
 import numpy as np
 
 import pyopencl as cl
@@ -33,13 +34,13 @@ import pyopencl.clmath  # noqa
 
 # FIXME caches: fix up queues
 
-# {{{ evaluator
+# {{{ evaluation mapper
 
-class ExecutionMapper(EvaluationMapper):
+class EvaluationMapper(EvaluationMapperBase):
     def __init__(self, executor, queue, context={},
             target_geometry=None,
             target_points=None, target_normals=None, target_tangents=None):
-        EvaluationMapper.__init__(self, context)
+        EvaluationMapperBase.__init__(self, context)
 
         self.executor = executor
         self.queue = queue
@@ -58,18 +59,19 @@ class ExecutionMapper(EvaluationMapper):
         result.fill(1)
         return result
 
-    # def map_line_integral(self, expr):
-    #     line_quad_rule = self.executor.lines[expr.where]
-    #     return line_quad_rule(self.rec(expr.operand))
-
-    def map_parametrization_derivative_component(self, expr):
+    def map_node_coordinate_component(self, expr):
         discr = self.executor.discretizations[expr.where]
-        return discr.parametrization_derivative_component(
+        return discr.nodes(self.queue)[expr.ambient_axis] \
+                .with_queue(self.queue)
+
+    def map_num_reference_derivative(self, expr):
+        discr = self.executor.discretizations[expr.where]
+        return discr.num_reference_derivative(
                 self.queue,
-                expr.ambient_axis, expr.ref_axis) \
+                expr.ref_axes, self.rec(expr.operand)) \
                         .with_queue(self.queue)
 
-    def map_q_weights(self, expr):
+    def map_q_weight(self, expr):
         discr = self.executor.discretizations[expr.where]
         return discr.quad_weights(self.queue) \
                 .with_queue(self.queue)
@@ -101,7 +103,7 @@ class ExecutionMapper(EvaluationMapper):
 
     # }}}
 
-    def exec_assign(self, insn, executor, evaluate):
+    def exec_assign(self, queue, insn, executor, evaluate):
         return [(name, evaluate(expr))
                 for name, expr in zip(insn.names, insn.exprs)], []
 
@@ -176,9 +178,9 @@ class MatVecOp:
             return result
 
 
-# {{{ executor
+# {{{ bound expression
 
-class Executor:
+class BoundExpression:
     def __init__(self, optemplate, discretizations):
         self.optemplate = optemplate
         self.discretizations = discretizations
@@ -240,7 +242,7 @@ class Executor:
                 arg_name, total_dofs, starts_and_ends, extra_args)
 
     def __call__(self, queue, **args):
-        exec_mapper = ExecutionMapper(self, queue, args)
+        exec_mapper = EvaluationMapper(self, queue, args)
         return self.code.execute_dynamic(exec_mapper)
 
 # }}}
@@ -259,10 +261,13 @@ def bind(discretizations, op, auto_where=None):
 
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
     from pytential.discretization import Discretization
-    if not isinstance(discretizations, (dict, tuple)):
-        discretizations = {DEFAULT_SOURCE: discretizations}
+    if isinstance(discretizations, Discretization):
+        discretizations = {
+                DEFAULT_SOURCE: discretizations,
+                DEFAULT_TARGET: discretizations,
+                }
 
-    if isinstance(discretizations, tuple):
+    elif isinstance(discretizations, tuple):
         source_discr, target_discr = discretizations
         discretizations = {
                 DEFAULT_SOURCE: source_discr,
@@ -283,8 +288,7 @@ def bind(discretizations, op, auto_where=None):
 
     from pytential.symbolic.mappers import (
             ToTargetTagger,
-            DiscretizationPluggerInner,
-            AutoUpsampler
+            Dimensionalizer,
             )
 
     if auto_where is None:
@@ -296,10 +300,9 @@ def bind(discretizations, op, auto_where=None):
     if auto_where:
         op = ToTargetTagger(*auto_where)(op)
 
-    op = DiscretizationPluggerInner(discretizations)(op)
-    op = AutoUpsampler()(op)
+    op = Dimensionalizer(discretizations)(op)
 
-    return Executor(op, discretizations)
+    return BoundExpression(op, discretizations)
 
 # }}}
 

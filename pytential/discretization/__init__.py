@@ -23,28 +23,105 @@ THE SOFTWARE.
 """
 
 
+from pytential.symbolic.compiler import Instruction
 
 
-import numpy as np
-import numpy.linalg as la
-from pytools import memoize_method
+# {{{ layer pot instruction
 
+class LayerPotentialInstruction(Instruction):
+    """
+    .. attribute:: names
 
+        the names of variables to assign to
+
+    .. attribute:: return_values
+
+        list of tuples *(what, subscript)*
+        For the meaning of *what* see :mod:`hellskitchen.fmm`.
+
+    .. attribute:: density
+    .. attribute:: source
+    .. attribute:: ds_direction
+
+        *None*, "n" for normal, otherwise expression.
+
+    .. attribute:: kernel
+    .. attriubte:: priority
+    """
+
+    def get_assignees(self):
+        return set(self.names)
+
+    def get_dependencies(self, each_vector=False):
+        return self.dep_mapper_factory(each_vector)(self.density)
+
+    def __str__(self):
+        args = ["kernel=%s" % self.kernel, "density=%s" % self.density,
+                "source=%s" % self.source]
+        if self.ds_direction is not None:
+            if self.ds_direction == "n":
+                args.append("ds=normal")
+            else:
+                args.append("ds=%s" % self.ds_direction)
+
+        lines = []
+        for name, (tgt, what, idx) in zip(self.names, self.return_values):
+            if idx != ():
+                line = "%s <- %s[%s]" % (name, what, idx)
+            else:
+                line = "%s <- %s" % (name, what)
+            if tgt != self.source:
+                line += " @ %s" % tgt
+            lines.append(line)
+
+        return "{ /* Quad(%s) */\n  %s\n}" % (
+                ", ".join(args), "\n  ".join(lines))
+
+    def get_exec_function(self, exec_mapper):
+        source = exec_mapper.executor.discretizations[self.source]
+        return source.exec_layer_potential_insn
+
+# }}}
 
 
 class Discretization(object):
     """Abstract interface for discretizations.
 
-    .. attribute:: nnodes
+    .. attribute:: mesh
 
     .. attribute:: dim
 
     .. attribute:: ambient_dim
 
-    .. attribute:: nodes
+    .. attribute:: nnodes
+
+    .. method:: nodes(queue)
 
         shape: ``(ambient_dim, nnodes)``
 
+    .. method:: parametrization_derivative_component( \
+        queue, ambient_axis, ref_axis)
+
+        shape: ``(nnodes)``
+
+    .. method:: quad_weights(queue)
+
+        shape: ``(nnodes)``
+
+    .. rubric:: Layer potential source discretizations only
+
+    .. method:: op_group_features(expr)
+
+        Return a characteristic tuple by which operators that can be
+        executed together can be grouped.
+
+        *expr* is a subclass of
+        :class:`pymbolic.primitives.LayerPotentialOperatorBase`.
+
+    .. method:: gen_instruction_for_layer_pot_from_src( \
+            compiler, tgt_discr, expr, field_var)
+
+    .. method:: exec_layer_pot_insn(insn, executor, evaluate)
     """
 
 # vim: fdm=marker

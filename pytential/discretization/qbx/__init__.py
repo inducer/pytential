@@ -27,61 +27,12 @@ import numpy as np
 #import numpy.linalg as la
 import modepy as mp
 from pytools import memoize_method
-from pytential.symbolic.compiler import Instruction
 from pytential.discretization.poly_element import (
         PolynomialElementGroupBase,
-        PolynomialElementDiscretizationBase)
+        PolynomialElementDiscretizationBase,
+        PolynomialElementDiscretization)
 
 #import pyopencl as cl
-
-
-# {{{ QBX layer pot instruction
-
-class QBXLayerPotentialInstruction(Instruction):
-    """
-    :ivar names: the names of variables to assign to
-    :ivar return_values: list of tuples *(what, subscript)*
-      For the meaning of *what* see :mod:`hellskitchen.fmm`.
-    :ivar density:
-    :ivar source:
-    :ivar ds_direction: None, "n" for normal, otherwise expression.
-    :ivar kernel:
-    :ivar priority:
-    """
-
-    def get_assignees(self):
-        return set(self.names)
-
-    def get_dependencies(self, each_vector=False):
-        return self.dep_mapper_factory(each_vector)(self.density)
-
-    def __str__(self):
-        args = ["kernel=%s" % self.kernel, "density=%s" % self.density,
-                "source=%s" % self.source]
-        if self.ds_direction is not None:
-            if self.ds_direction == "n":
-                args.append("ds=normal")
-            else:
-                args.append("ds=%s" % self.ds_direction)
-
-        lines = []
-        for name, (tgt, what, idx) in zip(self.names, self.return_values):
-            if idx != ():
-                line = "%s <- %s[%s]" % (name, what, idx)
-            else:
-                line = "%s <- %s" % (name, what)
-            if tgt != self.source:
-                line += " @ %s" % tgt
-            lines.append(line)
-
-        return "{ /* Quad(%s) */\n  %s\n}" % (
-                ", ".join(args), "\n  ".join(lines))
-
-    def get_exec_function(self, exec_mapper):
-        source = exec_mapper.executor.discretizations[self.source]
-        return source.exec_quad_op
-
-# }}}
 
 
 # {{{ jump term interface helper
@@ -147,7 +98,7 @@ class QBXElementGroup(PolynomialElementGroupBase):
 # }}}
 
 
-# {{{ QBX discretization base
+# {{{ QBX discretization
 
 class QBXDiscretization(PolynomialElementDiscretizationBase):
     """An (unstructured) grid for discretizing a QBX operator.
@@ -165,8 +116,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             is exact.
         """
 
-        PolynomialElementDiscretizationBase.__init__(self, cl_ctx, mesh, exact_order,
-                real_dtype)
+        PolynomialElementDiscretizationBase.__init__(
+                self, cl_ctx, mesh, exact_order, real_dtype)
 
         self.qbx_order = qbx_order
 
@@ -179,9 +130,23 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
     # {{{ interface with execution
 
-    def extra_op_group_features(self, expr):
-        target, what, index = expr.what()
-        return (what,)
+    def op_group_features(self, expr):
+        from pytential.symbolic.primitives import \
+                IntGdSource
+
+        if isinstance(expr, IntGdSource):
+            if expr.ds_direction is None:
+                hash_ds_dir = expr.ds_direction
+            else:
+                hash_ds_dir = tuple(expr.ds_direction)
+
+            result = (expr.source, expr.target, expr.operand, expr.kernel,
+                    hash_ds_dir, expr.qbx_forced_limit, expr.what())
+        else:
+            result = (expr.source, expr.target, expr.operand, expr.kernel,
+                    expr.qbx_forced_limit, expr.what())
+
+        return result
 
     def gen_instruction_for_layer_pot_from_src(
             self, compiler, tgt_discr, expr, field_var):
@@ -201,8 +166,9 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         group = compiler.group_to_operators[compiler.op_group_tuple(expr)]
         names = [compiler.get_var_name() for op in group]
 
+        from pytential.discretization import LayerPotentialInstruction
         compiler.code.append(
-                QBXLayerPotentialInstruction(names=names,
+                LayerPotentialInstruction(names=names,
                     return_values=[op.what() for op in group],
                     density=field_var,
                     source=expr.source,
@@ -265,7 +231,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                     value_dtypes=np.complex128),
                 nderivatives)
 
-    def exec_quad_op(self, insn, executor, evaluate):
+    def exec_layer_potential_insn(self, queue, insn, executor, evaluate):
         from pytools import single_valued
         target = executor.discretizations[
                 single_valued(tgt for tgt, what, index in insn.return_values)]
@@ -436,5 +402,22 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
     # }}}
 
 # }}}
+
+
+def make_upsampling_qbx_discr(cl_ctx, mesh, target_order, qbx_order,
+        source_order=None, expansion_getter=None, real_dtype=np.float64):
+    if source_order is None:
+        # twice as many points in 1D?
+        source_order = target_order * 4
+
+    tgt_discr = PolynomialElementDiscretization(
+            cl_ctx, mesh, target_order, real_dtype=real_dtype)
+    src_discr = QBXDiscretization(
+            cl_ctx, mesh, qbx_order, target_order, source_order)
+
+    from pytential.discretization.upsampling import \
+            UpsampleToSourceDiscretization
+    return UpsampleToSourceDiscretization(tgt_discr, src_discr)
+
 
 # vim: fdm=marker
