@@ -68,6 +68,10 @@ class UpsampleToSourceDiscretization(Discretization):
     def nodes(self, queue):
         return self.target_discr.nodes(queue)
 
+    def num_reference_derivative(self, queue, ref_axes, vec):
+        return self.target_discr.num_reference_derivative(
+                queue, ref_axes, vec)
+
     def parametrization_derivative_component(self,
             queue, ambient_axis, ref_axis):
         return self.target_discr.parametrization_derivative_component(

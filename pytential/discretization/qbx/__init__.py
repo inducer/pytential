@@ -131,48 +131,41 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
     # {{{ interface with execution
 
     def op_group_features(self, expr):
-        from pytential.symbolic.primitives import \
-                IntGdSource
+        from pytential.symbolic.primitives import IntGdSource
+
+        result = (expr.source, expr.target, expr.operand,
+                expr.kernel.get_base_kernel(), expr.qbx_forced_limit)
 
         if isinstance(expr, IntGdSource):
-            if expr.ds_direction is None:
-                hash_ds_dir = expr.ds_direction
-            else:
-                hash_ds_dir = tuple(expr.ds_direction)
+            from pymbolic.geometric_algebra import MultiVector
+            # assert that Dimensionalizer has done its job
+            assert not isinstance(expr.dsource, MultiVector)
 
-            result = (expr.source, expr.target, expr.operand, expr.kernel,
-                    hash_ds_dir, expr.qbx_forced_limit, expr.what())
-        else:
-            result = (expr.source, expr.target, expr.operand, expr.kernel,
-                    expr.qbx_forced_limit, expr.what())
+            result = result + (expr.dsource,)
 
         return result
 
     def gen_instruction_for_layer_pot_from_src(
             self, compiler, tgt_discr, expr, field_var):
         from pytential.symbolic.primitives import (
-                SourceDiffLayerPotentialOperatorBase,
+                IntGdSource,
                 Variable)
-        is_source_derivative = isinstance(
-                expr, SourceDiffLayerPotentialOperatorBase)
+        is_source_derivative = isinstance(expr, IntGdSource)
         if is_source_derivative:
-            if expr.ds_direction is None:
-                ds_direction = "n"
-            else:
-                ds_direction = expr.ds_direction
+            dsource = expr.dsource
         else:
-            ds_direction = None
+            dsource = None
 
-        group = compiler.group_to_operators[compiler.op_group_tuple(expr)]
+        group = compiler.group_to_operators[compiler.op_group_features(expr)]
         names = [compiler.get_var_name() for op in group]
 
         from pytential.discretization import LayerPotentialInstruction
         compiler.code.append(
                 LayerPotentialInstruction(names=names,
-                    return_values=[op.what() for op in group],
+                    kernels=[op.kernel for op in group],
                     density=field_var,
                     source=expr.source,
-                    ds_direction=ds_direction,
+                    dsource=dsource,
                     kernel=expr.kernel,
                     priority=max(getattr(op, "priority", 0) for op in group),
                     dep_mapper_factory=compiler.dep_mapper_factory))

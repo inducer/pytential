@@ -115,13 +115,15 @@ class Collector(OperatorReducerMixin, CombineMapperBase):
     def map_constant(self, expr):
         return set()
 
+    map_nabla = map_constant
+    map_nabla_component = map_constant
+
     def map_node_sum(self, expr):
         return self.rec(expr.operand)
 
     map_num_reference_derivative = map_node_sum
 
-    def map_ones(self, expr):
-        return set()
+    map_ones = map_constant
 
     map_node_coordinate_component = map_ones
     map_parametrization_derivative = map_ones
@@ -147,7 +149,7 @@ class OperatorCollector(Collector):
         from pytential.symbolic.primitives import \
                 IntGdSource
         if isinstance(expr, IntGdSource):
-            result |= self.rec(expr.ds_direction)
+            result |= self.rec(expr.dsource)
 
         return result
 
@@ -210,33 +212,31 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     map_parametrization_derivative = map_ones
     map_points = map_ones
 
-    def map_operator(self, op):
-        if isinstance(op, prim.LayerPotentialOperatorBase):
-            def operand_rec_if_possible(subexpr):
-                from pymbolic.primitives import Expression
-                if isinstance(subexpr, np.ndarray) \
-                        or isinstance(subexpr, Expression):
-                    return self.operand_rec(subexpr)
-                else:
-                    return subexpr
+    def map_int_g(self, expr):
+        source = expr.source
+        target = expr.target
 
-            args = op.__getinitargs__()
-            k = args[0]
-            operand = self.operand_rec(args[1])
-            rest = tuple(operand_rec_if_possible(rest_i)
-                    for rest_i in args[2:-2])
-            source, target = args[-2:]
+        if source is None:
+            source = self.default_source
+        if target is None:
+            target = self.default_where
 
-            if source is None:
-                source = self.default_source
-            if target is None:
-                target = self.default_where
+        return type(expr)(expr.kernel, self.operand_rec(expr.operand),
+                expr.qbx_forced_limit, source, target)
 
-            new_args = (k, operand,) + rest + (source, target)
+    def map_int_g_ds(self, expr):
+        source = expr.source
+        target = expr.target
 
-            return type(op)(*new_args)
-        else:
-            return IdentityMapper.map_operator(self, op)
+        if source is None:
+            source = self.default_source
+        if target is None:
+            target = self.default_where
+
+        return type(expr)(
+                self.operand_rec(expr.dsource),
+                expr.kernel, self.operand_rec(expr.operand),
+                expr.qbx_forced_limit, source, target)
 
     def map_inverse(self, expr):
         where = expr.where
@@ -287,6 +287,17 @@ class Dimensionalizer(EvaluationMapper, OperatorReducerMixin):
     def map_variable(self, expr):
         return expr
 
+    def map_nabla(self, expr):
+        from pytools import single_valued
+        ambient_dim = single_valued(
+                discr.ambient_dim
+                for discr in self.discr_dict.itervalues())
+
+        from pytools.obj_array import make_obj_array
+        return MultiVector(make_obj_array(
+            [prim.NablaComponent(axis, expr.nabla_id)
+                for axis in xrange(ambient_dim)]))
+
     map_q_weight = map_variable
     map_ones = map_variable
 
@@ -315,36 +326,25 @@ class Dimensionalizer(EvaluationMapper, OperatorReducerMixin):
                     prim.NodeCoordinateComponent(i, expr.where)
                     for i in xrange(discr.ambient_dim)]))
 
-    def map_operator(self, expr, *args, **kwargs):
-        def map_arg(arg):
-            from sumpy.kernel import Kernel
+    def map_int_g(self, expr):
+        return type(expr)(expr.kernel, self.rec(expr.operand),
+                expr.qbx_forced_limit, expr.source, expr.target)
 
-            if arg is None:
-                return None
-            elif isinstance(arg, Kernel):
-                return arg
-            elif isinstance(arg, str):
-                return arg
-            elif not isinstance(arg, np.ndarray) and \
-                    arg in (prim.DEFAULT_SOURCE, prim.DEFAULT_TARGET):
-                return arg
-            else:
-                return self.rec(arg, *args, **kwargs)
+    def map_int_g_ds(self, expr):
+        dsource = self.rec(expr.dsource)
 
-        return type(expr)(
-                *[map_arg(arg) for arg in expr.__getinitargs__()])
+        nabla = self.rec(prim.Nabla(None))
+        rec_operand = prim.cse(self.rec(expr.operand))
+        return (dsource*nabla).map(
+                lambda coeff: type(expr)(
+                    coeff, expr.kernel, rec_operand,
+                    expr.qbx_forced_limit, expr.source, expr.target))
 
     def map_common_subexpression(self, expr):
-        from pymbolic.primitives import is_zero
-        result = self.rec(expr.child)
-        if is_zero(result):
-            return 0
-
-        return type(expr)(
-                result,
+        return prim.cse(
+                self.rec(expr.child),
                 expr.prefix,
-                expr.scope,
-                **expr.get_extra_properties())
+                expr.scope)
 
 # }}}
 
@@ -363,6 +363,12 @@ def stringify_where(where):
 
 
 class StringifyMapper(BaseStringifyMapper):
+
+    def map_nabla(self, expr, enclosing_prec):
+        return r"\/"
+
+    def map_nabla_component(self, expr, enclosing_prec):
+        return r"d/dx%d" % expr.ambient_axis
 
     def map_ones(self, expr, enclosing_prec):
         return "Ones.%s" % stringify_where(expr.where)
@@ -409,24 +415,22 @@ class StringifyMapper(BaseStringifyMapper):
                 self.rec(op.operand, PREC_NONE))
 
     def map_int_g_ds(self, op, enclosing_prec):
-        if op.ds_direction is None:
-            return "D_%s[%s->%s](%s)" % (
-                    op.kernel,
-                    stringify_where(op.source),
-                    stringify_where(op.target),
-                    self.rec(op.operand, PREC_NONE))
+        if isinstance(op.dsource, MultiVector):
+            deriv_term = r"(%s*\/)" % self.rec(op.dsource, PREC_PRODUCT)
         else:
-            result = u"Int[%s->%s] (%s,d_s) G_%s %s" % (
-                    stringify_where(op.source),
-                    stringify_where(op.target),
-                    self.rec(op.ds_direction, PREC_PRODUCT),
-                    op.kernel,
-                    self.rec(op.operand, PREC_NONE))
+            deriv_term = self.rec(op.dsource, PREC_PRODUCT)
 
-            if enclosing_prec >= PREC_PRODUCT:
-                return "(%s)" % result
-            else:
-                return result
+        result = u"Int[%s->%s] %s G_%s %s" % (
+                stringify_where(op.source),
+                stringify_where(op.target),
+                deriv_term,
+                op.kernel,
+                self.rec(op.operand, PREC_NONE))
+
+        if enclosing_prec >= PREC_PRODUCT:
+            return "(%s)" % result
+        else:
+            return result
 
 # }}}
 
@@ -438,7 +442,7 @@ class PrettyStringifyMapper(
     pass
 
 
-def pretty_print_optemplate(optemplate):
+def pretty(optemplate):
     stringify_mapper = PrettyStringifyMapper()
     from pymbolic.mapper.stringifier import PREC_NONE
     result = stringify_mapper(optemplate, PREC_NONE)

@@ -308,7 +308,7 @@ class IntG(OperatorBase):
 
     def __getinitargs__(self):
         return (self.kernel, self.operand, self.qbx_forced_limit,
-                self.source, self.target, self.target_derivatives)
+                self.source, self.target)
 
     mapper_method = intern("map_int_g")
 
@@ -317,26 +317,33 @@ class IntGdSource(IntG):
     r"""
     .. math::
 
-        \int_\Gamma d \overdot \nabla_y
+        \int_\Gamma \operatorname{dsource} \overdot \nabla_y
             \overdot g(x-y) \sigma(y) dS_y
 
     where :math:`\sigma` is *operand*, and
-    :math:`d` is *ds_direction*, a multivector.
+    *dsource*, a multivector.
     Note that the first product in the integrand
     is a geometric product.
+
+    .. attribute:: dsource
+
+        A :class:`pymbolic.geometric_algebra.MultiVector`.
+
+    .. note::
+
+        Internally, :class:`pytential.symbolic.mappers.Dimensionalizer` turns
+        *dsource* into scalars. These will contain :class:`NablaComponent`
+        instances to capture the result of the geometric product above.
     """
 
-    def __init__(self, ds_direction, kernel, operand,
+    def __init__(self, dsource, kernel, operand,
             qbx_forced_limit=None, source=None, target=None):
         IntG.__init__(self, kernel, operand,
                 qbx_forced_limit, source, target)
-        self.ds_direction = ds_direction
+        self.dsource = dsource
 
     def __getinitargs__(self):
-        return IntG.__getinitargs__() + (self.ds_direction,)
-
-    def get_hash(self):
-        return IntG.get_hash() ^ hash(self.ds_direction)
+        return (self.dsource,) + IntG.__getinitargs__(self)
 
     mapper_method = intern("map_int_g_ds")
 
@@ -348,9 +355,20 @@ class IntGdSource(IntG):
 
 # {{{ geometric calculus
 
+class NablaComponent(Expression):
+    def __init__(self, ambient_axis, nabla_id):
+        self.ambient_axis = ambient_axis
+        self.nabla_id = nabla_id
+
+    def __getinitargs__(self):
+        return (self.ambient_axis, self.nabla_id)
+
+    mapper_method = "map_nabla_component"
+
+
 class Nabla(Expression):
-    def __init__(self, nabla_id=None):
-        pass
+    def __init__(self, nabla_id):
+        self.nabla_id = nabla_id
 
     mapper_method = "map_nabla"
 
@@ -393,16 +411,16 @@ def normal_derivative(operand, where=None):
 
 def Sp(*args, **kwargs):
     where = kwargs.get("where")
-    return normal_derivative(S(*args, **kwargs), where).project(0)
+    return normal_derivative(S(*args, **kwargs), where).attr("project")(0)
 
 
 def Spp(*args, **kwargs):
     where = kwargs.get("where")
-    return normal_derivative(Sp(*args, **kwargs), where).project(0)
+    return normal_derivative(Sp(*args, **kwargs), where).attr("project")(0)
 
 
 def D(*args, **kwargs):
-    return IntGdSource(normal(), *args, **kwargs).project(0)
+    return IntGdSource(normal(), *args, **kwargs).attr("project")(0)
 
 
 def Dp(*args, **kwargs):

@@ -545,8 +545,8 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
                     self.rec(expr.operand))
 
             from pytential.symbolic.primitives import \
-                    LayerPotentialOperatorBase
-            if isinstance(expr, LayerPotentialOperatorBase):
+                    IntG
+            if isinstance(expr, IntG):
                 return self.map_layer_pot_operator(expr, field_var)
             else:
                 result = self.assign_to_new_var(

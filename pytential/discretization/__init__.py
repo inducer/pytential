@@ -34,16 +34,18 @@ class LayerPotentialInstruction(Instruction):
 
         the names of variables to assign to
 
-    .. attribute:: return_values
+    .. attribute:: kernels
 
-        list of tuples *(what, subscript)*
-        For the meaning of *what* see :mod:`hellskitchen.fmm`.
+        list of :class:`sumpy.kernel.Kernel` instances, corresponding
+        to :attr:`names`.
 
     .. attribute:: density
     .. attribute:: source
-    .. attribute:: ds_direction
+    .. attribute:: dsource
 
-        *None*, "n" for normal, otherwise expression.
+        *None*, or an expression containing
+        :class:`pytential.symbolic.primitives.NablaComponent`
+        as placeholders for the source derivative components.
 
     .. attribute:: kernel
     .. attriubte:: priority
@@ -99,10 +101,7 @@ class Discretization(object):
 
         shape: ``(ambient_dim, nnodes)``
 
-    .. method:: parametrization_derivative_component( \
-        queue, ambient_axis, ref_axis)
-
-        shape: ``(nnodes)``
+    .. method:: num_reference_derivative(queue, ref_axes, vec)
 
     .. method:: quad_weights(queue)
 
