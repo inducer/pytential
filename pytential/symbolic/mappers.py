@@ -118,6 +118,9 @@ class Collector(OperatorReducerMixin, CombineMapperBase):
     map_nabla = map_constant
     map_nabla_component = map_constant
 
+    # from sumpy.kernel
+    map_kernel_partial_derivative = map_constant
+
     def map_node_sum(self, expr):
         return self.rec(expr.operand)
 
@@ -143,14 +146,12 @@ class Collector(OperatorReducerMixin, CombineMapperBase):
 
 
 class OperatorCollector(Collector):
-    def map_operator(self, expr):
-        result = set([expr]) | self.rec(expr.operand)
+    def map_int_g(self, expr):
+        return set([expr]) | self.rec(expr.density)
 
-        from pytential.symbolic.primitives import \
-                IntGdSource
-        if isinstance(expr, IntGdSource):
-            result |= self.rec(expr.dsource)
-
+    def map_int_g_ds(self, expr):
+        result = set([expr]) | self.rec(expr.density)
+        result |= self.rec(expr.dsource)
         return result
 
 
@@ -221,7 +222,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         if target is None:
             target = self.default_where
 
-        return type(expr)(expr.kernel, self.operand_rec(expr.operand),
+        return type(expr)(expr.kernel, self.operand_rec(expr.density),
                 expr.qbx_forced_limit, source, target)
 
     def map_int_g_ds(self, expr):
@@ -235,7 +236,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
 
         return type(expr)(
                 self.operand_rec(expr.dsource),
-                expr.kernel, self.operand_rec(expr.operand),
+                expr.kernel, self.operand_rec(expr.density),
                 expr.qbx_forced_limit, source, target)
 
     def map_inverse(self, expr):
@@ -273,6 +274,16 @@ class ToTargetTagger(LocationTagger):
 
 
 # {{{ dimensionalizer
+
+def _insert_dsource_into_kernel(kernel, dsource):
+    from sumpy.kernel import DirectionalSourceDerivative
+
+    if kernel.get_base_kernel() is kernel:
+        return DirectionalSourceDerivative(kernel, dsource)
+    else:
+        return kernel.replace_inner_kernel(
+                _insert_dsource_into_kernel(kernel.kernel, dsource))
+
 
 class Dimensionalizer(EvaluationMapper, OperatorReducerMixin):
     """Once the discretization is known, the dimension count is, too.
@@ -327,24 +338,75 @@ class Dimensionalizer(EvaluationMapper, OperatorReducerMixin):
                     for i in xrange(discr.ambient_dim)]))
 
     def map_int_g(self, expr):
-        return type(expr)(expr.kernel, self.rec(expr.operand),
+        return type(expr)(expr.kernel, self.rec(expr.density),
                 expr.qbx_forced_limit, expr.source, expr.target)
 
     def map_int_g_ds(self, expr):
         dsource = self.rec(expr.dsource)
 
-        nabla = self.rec(prim.Nabla(None))
-        rec_operand = prim.cse(self.rec(expr.operand))
+        from pytools import single_valued
+        ambient_dim = single_valued(
+                discr.ambient_dim
+                for discr in self.discr_dict.itervalues())
+
+        from pytools.obj_array import make_obj_array
+        from sumpy.kernel import KernelPartialDerivative
+        nabla = MultiVector(make_obj_array(
+            [KernelPartialDerivative(axis)
+                for axis in xrange(ambient_dim)]))
+
+        rec_operand = prim.cse(self.rec(expr.density))
         return (dsource*nabla).map(
-                lambda coeff: type(expr)(
-                    coeff, expr.kernel, rec_operand,
-                    expr.qbx_forced_limit, expr.source, expr.target))
+                lambda coeff: prim.IntG(
+                    _insert_dsource_into_kernel(expr.kernel, coeff),
+                    rec_operand, expr.qbx_forced_limit, expr.source, expr.target))
 
     def map_common_subexpression(self, expr):
         return prim.cse(
                 self.rec(expr.child),
                 expr.prefix,
                 expr.scope)
+
+# }}}
+
+
+# {{{ QBX on-surface mapper
+
+class QBXOnSurfaceMapper(IdentityMapper):
+    def __init__(self, source_name):
+        self.source_name = source_name
+
+    def map_int_g(self, expr):
+        if expr.source != self.source_name:
+            # not ours
+            return IdentityMapper.map_int_g(self, expr)
+
+        if expr.qbx_forced_limit is not None:
+            # Not computing the on-surface value, nothing to do.
+            return IdentityMapper.map_int_g(self, expr)
+
+        from sumpy.kernel import count_derivatives
+        num_derivatives = count_derivatives(expr.kernel)
+
+        if num_derivatives == 0:
+            # nothing to do
+            return IdentityMapper.map_int_g(self, expr)
+        elif num_derivatives == 1:
+            # Assume it's a PV integral, preserve numerical compactness by using
+            # two-sided average.
+            return 0.5*(
+                    expr.copy(qbx_forced_limit=+1)
+                    + expr.copy(qbx_forced_limit=-1))
+        else:
+            # FIXME
+            # from sumpy.layerpot import find_jump_term
+            # jump_term = find_jump_term(expr.kernel,
+            #         _QBXJumpTermSymbolicArgumentProvider(expr.source))
+            raise NotImplementedError()
+
+    def map_int_g_ds(self, expr):
+        raise RuntimeError("user-facing source derivative operators are expected "
+                "to have been eliminated by the time QBXLimitFinder is called.")
 
 # }}}
 
@@ -412,7 +474,7 @@ class StringifyMapper(BaseStringifyMapper):
                 op.kernel,
                 stringify_where(op.source),
                 stringify_where(op.target),
-                self.rec(op.operand, PREC_NONE))
+                self.rec(op.density, PREC_NONE))
 
     def map_int_g_ds(self, op, enclosing_prec):
         if isinstance(op.dsource, MultiVector):
@@ -425,7 +487,7 @@ class StringifyMapper(BaseStringifyMapper):
                 stringify_where(op.target),
                 deriv_term,
                 op.kernel,
-                self.rec(op.operand, PREC_NONE))
+                self.rec(op.density, PREC_NONE))
 
         if enclosing_prec >= PREC_PRODUCT:
             return "(%s)" % result

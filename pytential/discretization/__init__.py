@@ -34,10 +34,13 @@ class LayerPotentialInstruction(Instruction):
 
         the names of variables to assign to
 
-    .. attribute:: kernels
+    .. attribute:: kernels_and_targets
 
-        list of :class:`sumpy.kernel.Kernel` instances, corresponding
-        to :attr:`names`.
+        list of tuples ``(kernel, target)``, where
+        kernel is a :class:`sumpy.kernel.Kernel` instance
+        and target is a symbolic name.
+
+        The entries in the list correspond to :attr:`names`.
 
     .. attribute:: density
     .. attribute:: source
@@ -47,7 +50,6 @@ class LayerPotentialInstruction(Instruction):
         :class:`pytential.symbolic.primitives.NablaComponent`
         as placeholders for the source derivative components.
 
-    .. attribute:: kernel
     .. attriubte:: priority
     """
 
@@ -80,7 +82,7 @@ class LayerPotentialInstruction(Instruction):
                 ", ".join(args), "\n  ".join(lines))
 
     def get_exec_function(self, exec_mapper):
-        source = exec_mapper.executor.discretizations[self.source]
+        source = exec_mapper.bound_expr.discretizations[self.source]
         return source.exec_layer_potential_insn
 
 # }}}
@@ -109,6 +111,8 @@ class Discretization(object):
 
     .. rubric:: Layer potential source discretizations only
 
+    .. method:: preprocess_optemplate(name, expr)
+
     .. method:: op_group_features(expr)
 
         Return a characteristic tuple by which operators that can be
@@ -120,7 +124,7 @@ class Discretization(object):
     .. method:: gen_instruction_for_layer_pot_from_src( \
             compiler, tgt_discr, expr, field_var)
 
-    .. method:: exec_layer_pot_insn(insn, executor, evaluate)
+    .. method:: exec_layer_pot_insn(insn, bound_expr, evaluate)
     """
 
 # vim: fdm=marker

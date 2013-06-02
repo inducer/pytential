@@ -177,7 +177,7 @@ def test_integral_equation(
 
     # {{{ establish BCs
 
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, TargetDerivative
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, AxisTargetDerivative
     if k:
         knl = HelmholtzKernel(2)
         knl_kwargs = {"k": k}
@@ -205,7 +205,7 @@ def test_integral_equation(
 
     elif bc_type == "neumann":
         grad_p2p = P2P(cl_ctx,
-                [TargetDerivative(0, knl), TargetDerivative(1, knl)],
+                [AxisTargetDerivative(0, knl), AxisTargetDerivative(1, knl)],
                 exclude_self=False, value_dtypes=np.complex128)
         evt, (grad0, grad1) = grad_p2p(
                 queue, point_sources, [source_charges],

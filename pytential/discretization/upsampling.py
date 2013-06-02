@@ -42,12 +42,14 @@ class UpsampleToSourceDiscretization(Discretization):
             raise ValueError("source_discr and target_discr "
                     "must be based on the same mesh.")
 
-        self.target_discr = target_discr
-        self.source_discr = source_discr
-
         if target_discr.cl_context != source_discr.cl_context:
             raise ValueError("source_discr and target_discr "
                     "must be based on the same OpenCL context.")
+
+        self.cl_context = target_discr.cl_context
+
+        self.target_discr = target_discr
+        self.source_discr = source_discr
 
     @property
     def mesh(self):
@@ -81,6 +83,9 @@ class UpsampleToSourceDiscretization(Discretization):
         return self.target_discr.quad_weights(queue)
 
     # {{{ related to layer potential evaluation
+
+    def preprocess_optemplate(self, name, expr):
+        return self.source_discr.preprocess_optemplate(name, expr)
 
     def op_group_features(self, expr):
         return self.source_discr.op_group_features(expr)
@@ -124,7 +129,7 @@ class UpsampleToSourceDiscretization(Discretization):
 
         return result
 
-    def exec_layer_potential_insn(self, queue, insn, executor, evaluate):
+    def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
         from pytools.obj_array import with_object_array_or_scalar
         from functools import partial
         upsample = partial(self._upsample, queue)
@@ -133,7 +138,7 @@ class UpsampleToSourceDiscretization(Discretization):
             return with_object_array_or_scalar(upsample, evaluate(expr))
 
         self.source_discr.exec_layer_potential_insn(
-                queue, insn, executor, evaluate_wrapper)
+                queue, insn, bound_expr, evaluate_wrapper)
 
     # }}}
 

@@ -258,39 +258,31 @@ class IterativeInverse(Expression):
     mapper_method = intern("map_inverse")
 
 
-# {{{ operator base classes
+# {{{ potentials
 
-class OperatorBase(Expression):
-    def __init__(self, operand):
-        self.operand = operand
-
-    def __getinitargs__(self):
-        return (self.operand,)
-
-
-class IntG(OperatorBase):
+class IntG(Expression):
     r"""
     .. math::
 
         \int_\Gamma g_k(x-y) \sigma(y) dS_y
 
-    where :math:`\sigma` is *operand*.
+    where :math:`\sigma` is *density*.
     """
 
-    def __new__(cls, kernel, operand, *args, **kwargs):
+    def __new__(cls, kernel, density, *args, **kwargs):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
         # coefficients in the multivector.
 
-        if isinstance(operand, MultiVector):
+        if isinstance(density, MultiVector):
             def make_op(operand_i):
                 return cls(kernel, operand_i, *args, **kwargs)
 
-            return componentwise(make_op, operand)
+            return componentwise(make_op, density)
         else:
-            return OperatorBase.__new__(cls)
+            return Expression.__new__(cls)
 
-    def __init__(self, kernel, operand,
+    def __init__(self, kernel, density,
             qbx_forced_limit=None, source=None, target=None):
         """*target_derivatives* and later arguments should be considered
         keyword-only.
@@ -298,16 +290,25 @@ class IntG(OperatorBase):
         :arg kernel: a kernel as accepted by
             :func:`sumpy.kernel.normalize_kernel`
         """
-        OperatorBase.__init__(self, operand)
 
         from sumpy.kernel import normalize_kernel
         self.kernel = normalize_kernel(kernel)
+        self.density = density
         self.qbx_forced_limit = qbx_forced_limit
         self.source = source
         self.target = target
 
+    def copy(self, kernel=None, density=None, qbx_forced_limit=None,
+            source=None, target=None):
+        kernel = kernel or self.kernel
+        density = density or self.density
+        qbx_forced_limit = qbx_forced_limit or self.qbx_forced_limit
+        source = source or self.source
+        target = target or self.target
+        return type(self)(kernel, density, qbx_forced_limit, source, target)
+
     def __getinitargs__(self):
-        return (self.kernel, self.operand, self.qbx_forced_limit,
+        return (self.kernel, self.density, self.qbx_forced_limit,
                 self.source, self.target)
 
     mapper_method = intern("map_int_g")
@@ -320,7 +321,7 @@ class IntGdSource(IntG):
         \int_\Gamma \operatorname{dsource} \overdot \nabla_y
             \overdot g(x-y) \sigma(y) dS_y
 
-    where :math:`\sigma` is *operand*, and
+    where :math:`\sigma` is *density*, and
     *dsource*, a multivector.
     Note that the first product in the integrand
     is a geometric product.
@@ -328,17 +329,11 @@ class IntGdSource(IntG):
     .. attribute:: dsource
 
         A :class:`pymbolic.geometric_algebra.MultiVector`.
-
-    .. note::
-
-        Internally, :class:`pytential.symbolic.mappers.Dimensionalizer` turns
-        *dsource* into scalars. These will contain :class:`NablaComponent`
-        instances to capture the result of the geometric product above.
     """
 
-    def __init__(self, dsource, kernel, operand,
+    def __init__(self, dsource, kernel, density,
             qbx_forced_limit=None, source=None, target=None):
-        IntG.__init__(self, kernel, operand,
+        IntG.__init__(self, kernel, density,
                 qbx_forced_limit, source, target)
         self.dsource = dsource
 

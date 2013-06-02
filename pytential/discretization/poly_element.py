@@ -149,7 +149,10 @@ class PolynomialElementDiscretizationBase(Discretization):
             self.nnodes += ng.nnodes
 
         self.real_dtype = np.dtype(real_dtype)
-        self.complex_dtype = (self.real_dtype.type(0) + 1j).dtype
+        self.complex_dtype = {
+                np.float32: np.complex64,
+                np.float64: np.complex128
+                }[self.real_dtype.type]
 
     @property
     def dim(self):

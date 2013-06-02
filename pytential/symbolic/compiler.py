@@ -302,7 +302,7 @@ class Code(object):
                     done_insns.add(insn)
                     assignments, new_futures = (
                             insn.get_exec_function(exec_mapper)
-                            (exec_mapper.queue, insn, exec_mapper.executor,
+                            (exec_mapper.queue, insn, exec_mapper.bound_expr,
                                 exec_mapper))
 
             if insn is not None:
@@ -511,8 +511,8 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
         except KeyError:
             priority = getattr(expr, "priority", 0)
 
-            from pytential.symbolic.primitives import OperatorBase
-            if isinstance(expr.child, OperatorBase):
+            from pytential.symbolic.primitives import IntG
+            if isinstance(expr.child, IntG):
                 # We need to catch operators here and
                 # treat them specially. They get assigned to their
                 # own variable by default, which would mean the
@@ -533,28 +533,17 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
                 dep_mapper_factory=self.dep_mapper_factory,
                 priority=priority)
 
-    def map_operator(self, expr, name_hint=None):
+    def map_int_g(self, expr, name_hint=None):
         try:
             return self.expr_to_var[expr]
         except KeyError:
-            priority = getattr(expr, "priority", 0)
-
             # make sure operator assignments stand alone and don't get muddled
             # up in vector arithmetic
-            field_var = self.assign_to_new_var(
-                    self.rec(expr.operand))
+            density_var = self.assign_to_new_var(self.rec(expr.density))
 
-            from pytential.symbolic.primitives import \
-                    IntG
-            if isinstance(expr, IntG):
-                return self.map_layer_pot_operator(expr, field_var)
-            else:
-                result = self.assign_to_new_var(
-                        type(expr)(field_var),
-                        priority=priority, prefix=name_hint)
+            return self.map_layer_pot_operator(expr, density_var)
 
-                self.expr_to_var[expr] = result
-                return result
+    map_int_g_ds = map_int_g
 
     def op_group_features(self, op):
         src_discr = self.discretizations[op.source]

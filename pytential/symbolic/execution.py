@@ -37,12 +37,12 @@ import pyopencl.clmath  # noqa
 # {{{ evaluation mapper
 
 class EvaluationMapper(EvaluationMapperBase):
-    def __init__(self, executor, queue, context={},
+    def __init__(self, bound_expr, queue, context={},
             target_geometry=None,
             target_points=None, target_normals=None, target_tangents=None):
         EvaluationMapperBase.__init__(self, context)
 
-        self.executor = executor
+        self.bound_expr = bound_expr
         self.queue = queue
 
     # {{{ map_XXX
@@ -51,7 +51,7 @@ class EvaluationMapper(EvaluationMapperBase):
         return cl.array.sum(self.rec(expr.operand)).get()
 
     def map_ones(self, expr):
-        discr = self.executor.discretizations[expr.where]
+        discr = self.bound_expr.discretizations[expr.where]
         result = (discr
                 .empty(discr.real_dtype, queue=self.queue)
                 .with_queue(self.queue))
@@ -60,32 +60,32 @@ class EvaluationMapper(EvaluationMapperBase):
         return result
 
     def map_node_coordinate_component(self, expr):
-        discr = self.executor.discretizations[expr.where]
+        discr = self.bound_expr.discretizations[expr.where]
         return discr.nodes(self.queue)[expr.ambient_axis] \
                 .with_queue(self.queue)
 
     def map_num_reference_derivative(self, expr):
-        discr = self.executor.discretizations[expr.where]
+        discr = self.bound_expr.discretizations[expr.where]
         return discr.num_reference_derivative(
                 self.queue,
                 expr.ref_axes, self.rec(expr.operand)) \
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):
-        discr = self.executor.discretizations[expr.where]
+        discr = self.bound_expr.discretizations[expr.where]
         return discr.quad_weights(self.queue) \
                 .with_queue(self.queue)
 
     def map_inverse(self, expr):
-        bound_op_cache = self.executor.get_cache("bound_op")
+        bound_op_cache = self.bound_expr.get_cache("bound_op")
 
         try:
             bound_op = bound_op_cache[expr]
         except KeyError:
             bound_op = bind(
                     expr.expression,
-                    self.executor.discretizations[expr.where],
-                    self.executor.iprec)
+                    self.bound_expr.discretizations[expr.where],
+                    self.bound_expr.iprec)
             bound_op_cache[expr] = bound_op
 
         scipy_op = bound_op.scipy_op(expr.variable_name, expr.where,
@@ -98,12 +98,12 @@ class EvaluationMapper(EvaluationMapperBase):
         return result
 
     def map_quad_kernel_op(self, expr):
-        source = self.executor.discretizations[expr.source]
-        return source.map_quad_kernel_op(expr, self.executor, self.rec)
+        source = self.bound_expr.discretizations[expr.source]
+        return source.map_quad_kernel_op(expr, self.bound_expr, self.rec)
 
     # }}}
 
-    def exec_assign(self, queue, insn, executor, evaluate):
+    def exec_assign(self, queue, insn, bound_expr, evaluate):
         return [(name, evaluate(expr))
                 for name, expr in zip(insn.names, insn.exprs)], []
 
@@ -141,9 +141,9 @@ class EvaluationMapper(EvaluationMapperBase):
 
 class MatVecOp:
     def __init__(self,
-            executor, queue, arg_name, total_dofs,
+            bound_expr, queue, arg_name, total_dofs,
             starts_and_ends, extra_args):
-        self.executor = executor
+        self.bound_expr = bound_expr
         self.queue = queue
         self.arg_name = arg_name
         self.total_dofs = total_dofs
@@ -166,7 +166,7 @@ class MatVecOp:
 
         args = self.extra_args.copy()
         args[self.arg_name] = x
-        result = self.executor(self.queue, **args)
+        result = self.bound_expr(self.queue, **args)
 
         if do_split:
             # re-join what was split
@@ -250,7 +250,7 @@ class BoundExpression:
 
 # {{{ bind
 
-def bind(discretizations, op, auto_where=None):
+def bind(discretizations, expr, auto_where=None):
     """
     :arg discretizations: a mapping of symbolic names to
         :class:`pytential.discretization.Discretization` objects or a subclass
@@ -298,11 +298,14 @@ def bind(discretizations, op, auto_where=None):
             auto_where = DEFAULT_SOURCE, DEFAULT_SOURCE
 
     if auto_where:
-        op = ToTargetTagger(*auto_where)(op)
+        expr = ToTargetTagger(*auto_where)(expr)
 
-    op = Dimensionalizer(discretizations)(op)
+    expr = Dimensionalizer(discretizations)(expr)
 
-    return BoundExpression(op, discretizations)
+    for name, discr in discretizations.iteritems():
+        expr = discr.preprocess_optemplate(name, expr)
+
+    return BoundExpression(expr, discretizations)
 
 # }}}
 
