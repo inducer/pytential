@@ -57,11 +57,6 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
         maxiter=None, hard_failure=None, require_monotonicity=True,
         no_progress_factor=None, stall_iterations=None,
         callback=None):
-    try:
-        from pyopencl.tools import array_module
-        amod = array_module(b)
-    except ImportError:
-        amod = np
 
     # {{{ input processing
 
@@ -103,8 +98,8 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
         del x0
         recalc_r = True
 
-    Ae = amod.empty((n, restart), A.dtype, order="f")
-    e = amod.empty((n, restart), A.dtype, order="f")
+    Ae = [None]*restart
+    e = [None]*restart
 
     k = 0
 
@@ -177,9 +172,9 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
 
         for orth_trips in range(2):
             for j in range(0, orth_count):
-                d = dot(Ae[:, j], w)
-                w = w - d * Ae[:, j]
-                rp = rp - d * e[:, j]
+                d = dot(Ae[j], w)
+                w = w - d * Ae[j]
+                rp = rp - d * e[j]
 
             # normalize
             d = 1/norm(w)
@@ -188,17 +183,17 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
 
         # }}}
 
-        Ae[:, k] = w
-        e[:, k] = rp
+        Ae[k] = w
+        e[k] = rp
 
         # update the residual and solution
-        d = dot(Ae[:, k], r)
+        d = dot(Ae[k], r)
 
         recalc_r = (iteration+1) % 10 == 0
         if not recalc_r:
-            r = r - d*Ae[:, k]
+            r = r - d*Ae[k]
 
-        x = x + d*e[:, k]
+        x = x + d*e[k]
 
         k += 1
 

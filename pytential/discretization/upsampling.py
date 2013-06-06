@@ -25,6 +25,8 @@ THE SOFTWARE.
 
 from pytential.discretization import Discretization
 from pytools import memoize_method, memoize_method_nested
+import pyopencl as cl
+import pyopencl.array  # noqa
 
 
 class UpsampleToSourceDiscretization(Discretization):
@@ -67,8 +69,8 @@ class UpsampleToSourceDiscretization(Discretization):
     def nnodes(self):
         return self.target_discr.nnodes
 
-    def nodes(self, queue):
-        return self.target_discr.nodes(queue)
+    def nodes(self):
+        return self.target_discr.nodes()
 
     def num_reference_derivative(self, queue, ref_axes, vec):
         return self.target_discr.num_reference_derivative(
@@ -90,11 +92,6 @@ class UpsampleToSourceDiscretization(Discretization):
     def op_group_features(self, expr):
         return self.source_discr.op_group_features(expr)
 
-    def gen_instruction_for_layer_pot_from_src(
-            self, compiler, tgt_discr, expr, field_var):
-        return self.source_discr.gen_instruction_for_layer_pot_from_src(
-                compiler, tgt_discr, expr, field_var)
-
     @memoize_method
     def _upsample_matrix(self, elgroup_index):
         import modepy as mp
@@ -112,14 +109,14 @@ class UpsampleToSourceDiscretization(Discretization):
             knl = lp.make_kernel(self.cl_context.devices[0],
                 """{[k,i,j]:
                     0<=k<nelements and
-                    0<=i<ndiscr_nodes and
-                    0<=j<nmesh_nodes}""",
+                    0<=i<n_to_nodes and
+                    0<=j<n_from_nodes}""",
                 "result[k,i] = sum(j, upsample_mat[i, j] * vec[k, j])")
 
             knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
             return lp.tag_inames(knl, dict(k="g.0"))
 
-        result = self.target_discr.empty(vec.dtype)
+        result = self.source_discr.empty(vec.dtype)
 
         for i_grp, (sgrp, tgrp) in enumerate(
                 zip(self.source_discr.groups, self.target_discr.groups)):
@@ -135,9 +132,13 @@ class UpsampleToSourceDiscretization(Discretization):
         upsample = partial(self._upsample, queue)
 
         def evaluate_wrapper(expr):
-            return with_object_array_or_scalar(upsample, evaluate(expr))
+            value = evaluate(expr)
+            if isinstance(expr, cl.array.Array):
+                return with_object_array_or_scalar(upsample, )
+            else:
+                return value
 
-        self.source_discr.exec_layer_potential_insn(
+        return self.source_discr.exec_layer_potential_insn(
                 queue, insn, bound_expr, evaluate_wrapper)
 
     # }}}

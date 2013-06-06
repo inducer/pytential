@@ -26,7 +26,7 @@ from pytential.symbolic.primitives import (
         cse,
         S, D, Sp, Dp,
         Ones, mean,
-        sqrt_jac_q_weight, QWeight, jacobian)
+        sqrt_jac_q_weight, QWeight, area_element)
 
 
 class ScalarPDEOperator(object):
@@ -40,7 +40,7 @@ class ScalarPDEOperator(object):
 
     def get_weight(self):
         if self.use_l2_weighting:
-            return cse(jacobian()*QWeight())
+            return cse(area_element()*QWeight())
         else:
             return 1
 
@@ -157,9 +157,6 @@ class NeumannOperator(ScalarPDEOperator):
                 * D(self.kernel, S(self.laplace_kernel, inv_sqrt_w_u)))
 
     def operator(self, u):
-        """
-        :arg alpha: the coefficient for the combined-field representation
-        """
         from sumpy.kernel import HelmholtzKernel, LaplaceKernel
 
         sqrt_w = self.get_sqrt_weight()

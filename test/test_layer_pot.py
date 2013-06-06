@@ -36,6 +36,8 @@ from pytential.mesh.generation import (
         make_curve_mesh)
 from sumpy.visualization import FieldPlotter
 
+import logging
+
 circle = partial(ellipse, 1)
 
 __all__ = [
@@ -105,6 +107,8 @@ def test_geometry(ctx_getter):
 # 'test_integral_equation(cl._csc, circle, 30, 5, "dirichlet", 1, 5)'
 def test_integral_equation(
         ctx_getter, curve_f, nelements, qbx_order, bc_type, loc_sign, k):
+    logging.basicConfig(level=logging.INFO)
+
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -137,10 +141,18 @@ def test_integral_equation(
             DirichletOperator,
             NeumannOperator)
 
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, AxisTargetDerivative
+    if k:
+        knl = HelmholtzKernel(2)
+        knl_kwargs = {"k": k}
+    else:
+        knl = LaplaceKernel(2)
+        knl_kwargs = {}
+
     if bc_type == "dirichlet":
-        op = DirichletOperator("k", loc_sign, use_l2_weighting=True)
+        op = DirichletOperator(knl, loc_sign, use_l2_weighting=True)
     elif bc_type == "neumann":
-        op = NeumannOperator("k", loc_sign, use_l2_weighting=True,
+        op = NeumannOperator(knl, loc_sign, use_l2_weighting=True,
                  use_improved_operator=False)
     else:
         assert False
@@ -177,14 +189,6 @@ def test_integral_equation(
 
     # {{{ establish BCs
 
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, AxisTargetDerivative
-    if k:
-        knl = HelmholtzKernel(2)
-        knl_kwargs = {"k": k}
-    else:
-        knl = LaplaceKernel(2)
-        knl_kwargs = {}
-
     from sumpy.p2p import P2P
     pot_p2p = P2P(cl_ctx,
             [knl], exclude_self=False, value_dtypes=np.complex128)
@@ -192,7 +196,7 @@ def test_integral_equation(
     evt, (test_direct,) = pot_p2p(
             queue, test_targets, point_sources, [source_charges], **knl_kwargs)
 
-    nodes = discr.nodes(queue)
+    nodes = discr.nodes()
     if 0:
         n = nodes.get(queue=queue)
         pt.plot(n[0], n[1], "x-")
@@ -220,13 +224,13 @@ def test_integral_equation(
 
     # {{{ solve
 
-    rhs = bind(discr, op.prepare_rhs(Variable("bc")))(queue, bc=bc)
-
     bound_op = bind(discr, op_u)
+
+    rhs = bind(discr, op.prepare_rhs(Variable("bc")))(queue, bc=bc)
 
     from pytential.gmres import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "u"),
+            bound_op.scipy_op(queue, "u", k=k),
             rhs, tol=1e-14, progress=True,
             hard_failure=False)
 

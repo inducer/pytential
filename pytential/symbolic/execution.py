@@ -61,7 +61,7 @@ class EvaluationMapper(EvaluationMapperBase):
 
     def map_node_coordinate_component(self, expr):
         discr = self.bound_expr.discretizations[expr.where]
-        return discr.nodes(self.queue)[expr.ambient_axis] \
+        return discr.nodes()[expr.ambient_axis] \
                 .with_queue(self.queue)
 
     def map_num_reference_derivative(self, expr):
@@ -134,7 +134,7 @@ class EvaluationMapper(EvaluationMapperBase):
         if isinstance(expr.function, Function):
             return getattr(self, "apply_"+expr.function.name)(expr.parameters)
         else:
-            return EvaluationMapper.map_call(self, expr)
+            return EvaluationMapperBase.map_call(self, expr)
 
 # }}}
 
@@ -243,7 +243,7 @@ class BoundExpression:
 
     def __call__(self, queue, **args):
         exec_mapper = EvaluationMapper(self, queue, args)
-        return self.code.execute_dynamic(exec_mapper)
+        return self.code.execute(exec_mapper)
 
 # }}}
 
@@ -300,10 +300,16 @@ def bind(discretizations, expr, auto_where=None):
     if auto_where:
         expr = ToTargetTagger(*auto_where)(expr)
 
+    # Dimensionalize so that preprocessing only has to deal with
+    # dimension-specific layer potentials.
     expr = Dimensionalizer(discretizations)(expr)
 
     for name, discr in discretizations.iteritems():
         expr = discr.preprocess_optemplate(name, expr)
+
+    # Dimensionalize again, in case the preprocessor spit out
+    # dimension-independent stuff.
+    expr = Dimensionalizer(discretizations)(expr)
 
     return BoundExpression(expr, discretizations)
 

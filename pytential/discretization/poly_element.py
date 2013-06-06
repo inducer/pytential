@@ -237,7 +237,8 @@ class PolynomialElementDiscretizationBase(Discretization):
                 mp.simplex_onb(self.dim, meg.order),
                 grp.unit_nodes, meg.unit_nodes)
 
-    def nodes(self, queue):
+    @memoize_method
+    def nodes(self):
         @memoize_method_nested
         def knl():
             knl = lp.make_kernel(self.cl_context.devices[0],
@@ -256,11 +257,12 @@ class PolynomialElementDiscretizationBase(Discretization):
 
         result = self.empty(self.real_dtype, extra_dims=(self.ambient_dim,))
 
-        for grp in self.groups:
-            meg = grp.mesh_el_group
-            knl()(queue,
-                    resampling_mat=self._resampling_matrix(grp),
-                    result=grp.view(result), nodes=meg.nodes)
+        with cl.CommandQueue(self.cl_context) as queue:
+            for grp in self.groups:
+                meg = grp.mesh_el_group
+                knl()(queue,
+                        resampling_mat=self._resampling_matrix(grp),
+                        result=grp.view(result), nodes=meg.nodes)
 
         return result
 
@@ -276,6 +278,9 @@ class PolynomialElementDiscretization(PolynomialElementDiscretizationBase):
                 self, cl_ctx, mesh, poly_order, real_dtype)
 
     group_class = PolynomialElementGroup
+
+    def preprocess_optemplate(self, name, expr):
+        return expr
 
 # }}}
 

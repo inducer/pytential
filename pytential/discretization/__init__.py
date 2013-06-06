@@ -23,62 +23,108 @@ THE SOFTWARE.
 """
 
 
+from pytools import Record
 from pytential.symbolic.compiler import Instruction
 
 
 # {{{ layer pot instruction
 
+class LayerPotentialOutput(Record):
+    """
+    .. attribute:: name
+
+        the name of the variable to which the result is assigned
+
+    .. attribute:: kernel
+
+        a :class:`sumpy.kernel.Kernel` instance
+
+    .. attribute:: target_name
+
+    .. attribute:: qbx_forced_limit
+    """
+
+
 class LayerPotentialInstruction(Instruction):
     """
-    .. attribute:: names
+    .. attribute:: outputs
 
-        the names of variables to assign to
-
-    .. attribute:: kernels_and_targets
-
-        list of tuples ``(kernel, target)``, where
-        kernel is a :class:`sumpy.kernel.Kernel` instance
-        and target is a symbolic name.
-
+        A list of :class:`LayerPotentialOutput` instances
         The entries in the list correspond to :attr:`names`.
 
     .. attribute:: density
     .. attribute:: source
-    .. attribute:: dsource
 
-        *None*, or an expression containing
-        :class:`pytential.symbolic.primitives.NablaComponent`
-        as placeholders for the source derivative components.
-
-    .. attriubte:: priority
+    .. attribute:: priority
     """
 
     def get_assignees(self):
-        return set(self.names)
+        return set(o.name for o in self.outputs)
 
-    def get_dependencies(self, each_vector=False):
-        return self.dep_mapper_factory(each_vector)(self.density)
+    def get_dependencies(self):
+        dep_mapper = self.dep_mapper_factory()
+
+        result = dep_mapper(self.density)
+
+        from pytential.symbolic.mappers import (
+                ExpressionKernelCombineMapper, KernelEvalArgumentCollector)
+        ekdm = ExpressionKernelCombineMapper(dep_mapper)
+        keac = KernelEvalArgumentCollector()
+
+        from pymbolic import var
+        for o in self.outputs:
+            result.update(var(arg.name) for arg in o.kernel.get_args())
+            result.update(ekdm(o.kernel))
+
+            for karg in keac(o.kernel):
+                if var(karg) in result:
+                    result.remove(var(karg))
+
+        return result
 
     def __str__(self):
-        args = ["kernel=%s" % self.kernel, "density=%s" % self.density,
+        args = ["density=%s" % self.density,
                 "source=%s" % self.source]
-        if self.ds_direction is not None:
-            if self.ds_direction == "n":
-                args.append("ds=normal")
-            else:
-                args.append("ds=%s" % self.ds_direction)
+
+        from pytential.symbolic.mappers import StringifyMapper, stringify_where
+        strify = StringifyMapper()
 
         lines = []
-        for name, (tgt, what, idx) in zip(self.names, self.return_values):
-            if idx != ():
-                line = "%s <- %s[%s]" % (name, what, idx)
+        for o in self.outputs:
+            if o.target_name != self.source:
+                tgt_str = " @ %s" % stringify_where(o.target_name)
             else:
-                line = "%s <- %s" % (name, what)
-            if tgt != self.source:
-                line += " @ %s" % tgt
+                tgt_str = ""
+
+            if o.qbx_forced_limit == 1:
+                limit_str = "[+] "
+            elif o.qbx_forced_limit == -1:
+                limit_str = "[-] "
+            elif o.qbx_forced_limit == 0:
+                limit_str = "[0] "
+            elif o.qbx_forced_limit is None:
+                limit_str = ""
+            else:
+                raise ValueError("unrecognized limit value: %s" % o.qbx_forced_limit)
+
+            line = "%s%s <- %s%s" % (o.name, tgt_str, limit_str, o.kernel)
+
             lines.append(line)
 
-        return "{ /* Quad(%s) */\n  %s\n}" % (
+        from pytential.symbolic.mappers import KernelEvalArgumentCollector
+        keac = KernelEvalArgumentCollector()
+
+        arg_names_to_exprs = {}
+        for o in self.outputs:
+            arg_names_to_exprs.update(keac(o.kernel))
+
+        for arg_name, arg_expr in arg_names_to_exprs.iteritems():
+            arg_expr_lines = strify(arg_expr).split("\n")
+            lines.append("  %s = %s" % (
+                arg_name, arg_expr_lines[0]))
+            lines.extend("  " + s for s in arg_expr_lines[1:])
+
+        return "{ /* Pot(%s) */\n  %s\n}" % (
                 ", ".join(args), "\n  ".join(lines))
 
     def get_exec_function(self, exec_mapper):
@@ -97,9 +143,7 @@ class Discretization(object):
 
     .. attribute:: ambient_dim
 
-    .. attribute:: nnodes
-
-    .. method:: nodes(queue)
+    .. method:: nodes()
 
         shape: ``(ambient_dim, nnodes)``
 
@@ -120,9 +164,6 @@ class Discretization(object):
 
         *expr* is a subclass of
         :class:`pymbolic.primitives.LayerPotentialOperatorBase`.
-
-    .. method:: gen_instruction_for_layer_pot_from_src( \
-            compiler, tgt_discr, expr, field_var)
 
     .. method:: exec_layer_pot_insn(insn, bound_expr, evaluate)
     """

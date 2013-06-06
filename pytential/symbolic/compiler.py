@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 from pytools import Record, memoize_method
 from pymbolic.primitives import cse_scope
-from pytential.symbolic.mappers import IdentityMapper, OperatorReducerMixin
+from pytential.symbolic.mappers import IdentityMapper
 
 
 # {{{ instructions ------------------------------------------------------------
@@ -65,15 +65,12 @@ class Assign(Instruction):
     def get_assignees(self):
         return set(self.names)
 
-    def get_dependencies(self, each_vector=False):
+    def get_dependencies(self):
         try:
-            if each_vector:
-                raise AttributeError
-            else:
-                return self._dependencies
+            return self._dependencies
         except:
             # arg is include_subscripts
-            dep_mapper = self.dep_mapper_factory(each_vector)
+            dep_mapper = self.dep_mapper_factory()
 
             from operator import or_
             deps = reduce(
@@ -83,8 +80,7 @@ class Assign(Instruction):
             from pymbolic.primitives import Variable
             deps -= set(Variable(name) for name in self.names)
 
-            if not each_vector:
-                self._dependencies = deps
+            self._dependencies = deps
 
             return deps
 
@@ -184,7 +180,6 @@ class Code(object):
         self.instructions = instructions
         self.result = result
         self.last_schedule = None
-        self.static_schedule_attempts = 5
 
     def dump_dataflow_graph(self):
         from pytools.debug import open_unique_debug_file
@@ -244,43 +239,20 @@ class Code(object):
 
         return argmax2(available_insns), discardable_vars
 
-    def execute_dynamic(self, exec_mapper, pre_assign_check=None):
+    def execute(self, exec_mapper, pre_assign_check=None):
         """Execute the instruction stream, make all scheduling decisions
-        dynamically. Record the schedule in *self.last_schedule*.
+        dynamically.
         """
-        schedule = []
 
         context = exec_mapper.context
 
-        next_future_id = 0
-        futures = []
         done_insns = set()
-
-        force_future = False
 
         while True:
             insn = None
             discardable_vars = []
 
-            # check futures for completion
-
-            i = 0
-            while i < len(futures):
-                future = futures[i]
-                if force_future or future.is_ready():
-                    futures.pop(i)
-
-                    insn = self.EvaluateFuture(future.id)
-
-                    assignments, new_futures = future()
-                    force_future = False
-                    break
-                else:
-                    i += 1
-
-                del future
-
-            # if no future got processed, pick the next insn
+            # pick the next insn
             if insn is None:
                 try:
                     insn, discardable_vars = self.get_next_step(
@@ -288,13 +260,8 @@ class Code(object):
                             frozenset(done_insns))
 
                 except self.NoInstructionAvailable:
-                    if futures:
-                        # no insn ready: we need a future to complete to
-                        # continue
-                        force_future = True
-                    else:
-                        # no futures, no available instructions: we're done
-                        break
+                    # no available instructions: we're done
+                    break
                 else:
                     for name in discardable_vars:
                         del context[name]
@@ -312,81 +279,20 @@ class Code(object):
 
                     context[target] = value
 
-                futures.extend(new_futures)
-
-                schedule.append((discardable_vars, insn, len(new_futures)))
-
-                for future in new_futures:
-                    future.id = next_future_id
-                    next_future_id += 1
+                assert not new_futures
 
         if len(done_insns) < len(self.instructions):
             print "Unreachable instructions:"
             for insn in set(self.instructions) - done_insns:
                 print "    ", str(insn).replace("\n", "\n     ")
+                from pymbolic import var
+                print "     missing: ", ", ".join(
+                        str(s) for s in
+                        set(insn.get_dependencies())
+                        - set(var(v) for v in context.iterkeys()))
 
             raise RuntimeError("not all instructions are reachable"
                     "--did you forget to pass a value for a placeholder?")
-
-        if self.static_schedule_attempts:
-            self.last_schedule = schedule
-
-        from pytools.obj_array import with_object_array_or_scalar
-        return with_object_array_or_scalar(exec_mapper, self.result)
-
-    # }}}
-
-    # {{{ static schedule execution
-    class EvaluateFuture(object):
-        """A fake 'instruction' that represents evaluation of a future."""
-        def __init__(self, future_id):
-            self.future_id = future_id
-
-    def execute(self, exec_mapper, pre_assign_check=None):
-        """If we have a saved, static schedule for this instruction stream,
-        execute it. Otherwise, punt to the dynamic scheduler below.
-        """
-
-        if self.last_schedule is None:
-            return self.execute_dynamic(exec_mapper, pre_assign_check)
-
-        context = exec_mapper.context
-        id_to_future = {}
-        next_future_id = 0
-
-        schedule_is_delay_free = True
-
-        for discardable_vars, insn, new_future_count in self.last_schedule:
-            for name in discardable_vars:
-                del context[name]
-
-            if isinstance(insn, self.EvaluateFuture):
-                future = id_to_future.pop(insn.future_id)
-                if not future.is_ready():
-                    schedule_is_delay_free = False
-                assignments, new_futures = future()
-                del future
-            else:
-                assignments, new_futures = \
-                        insn.get_exec_function(exec_mapper)(insn)
-
-            for target, value in assignments:
-                if pre_assign_check is not None:
-                    pre_assign_check(target, value)
-
-                context[target] = value
-
-            if len(new_futures) != new_future_count:
-                raise RuntimeError("static schedule got an unexpected number "
-                        "of futures")
-
-            for future in new_futures:
-                id_to_future[next_future_id] = future
-                next_future_id += 1
-
-        if not schedule_is_delay_free:
-            self.last_schedule = None
-            self.static_schedule_attempts -= 1
 
         from pytools.obj_array import with_object_array_or_scalar
         return with_object_array_or_scalar(exec_mapper, self.result)
@@ -398,7 +304,7 @@ class Code(object):
 
 # {{{ compiler
 
-class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
+class OperatorCompiler(IdentityMapper):
     def __init__(self, discretizations, prefix="_expr",
             max_vectors_in_batch_expr=None):
         IdentityMapper.__init__(self)
@@ -437,8 +343,8 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
 
         self.group_to_operators = {}
         for op in operators:
-            self.group_to_operators.setdefault(
-                    self.op_group_features(op), set()).add(op)
+            features = self.discretizations[op.source].op_group_features(op)
+            self.group_to_operators.setdefault(features, set()).add(op)
 
         # }}}
 
@@ -541,20 +447,42 @@ class OperatorCompiler(IdentityMapper, OperatorReducerMixin):
             # up in vector arithmetic
             density_var = self.assign_to_new_var(self.rec(expr.density))
 
-            return self.map_layer_pot_operator(expr, density_var)
+            src_discr = self.discretizations[expr.source]
 
-    map_int_g_ds = map_int_g
+            group = self.group_to_operators[src_discr.op_group_features(expr)]
+            names = [self.get_var_name() for op in group]
 
-    def op_group_features(self, op):
-        src_discr = self.discretizations[op.source]
-        return src_discr.op_group_features(op)
+            from pytential.symbolic.mappers import ExpressionKernelIdentityMapper
+            ekim = ExpressionKernelIdentityMapper(self.rec)
 
-    def map_layer_pot_operator(self, expr, field_var):
-        src_discr = self.discretizations[expr.source]
-        tgt_discr = self.discretizations[expr.target]
+            from pytential.discretization import (
+                    LayerPotentialInstruction, LayerPotentialOutput)
+            outputs = [
+                    LayerPotentialOutput(
+                        name=name,
+                        kernel=ekim(op.kernel),
+                        target_name=op.target,
+                        qbx_forced_limit=op.qbx_forced_limit,
+                        )
+                    for name, op in zip(names, group)
+                    ]
 
-        return src_discr.gen_instruction_for_layer_pot_from_src(
-                self, tgt_discr, expr, field_var)
+            self.code.append(
+                    LayerPotentialInstruction(
+                        outputs=outputs,
+                        density=density_var,
+                        source=expr.source,
+                        priority=max(getattr(op, "priority", 0) for op in group),
+                        dep_mapper_factory=self.dep_mapper_factory))
+
+            from pytential.symbolic.primitives import Variable
+            for name, group_expr in zip(names, group):
+                self.expr_to_var[group_expr] = Variable(name)
+
+            return self.expr_to_var[expr]
+
+    def map_int_g_ds(self, op):
+        assert False
 
     # }}}
 

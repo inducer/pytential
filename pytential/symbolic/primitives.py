@@ -124,14 +124,14 @@ class NodeCoordinateComponent(DiscretizationProperty):
     mapper_method = intern("map_node_coordinate_component")
 
 
-class Points(DiscretizationProperty):
+class Nodes(DiscretizationProperty):
     """Node location of the discretization.
     """
 
     def __init__(self, where=None):
         DiscretizationProperty.__init__(self, where)
 
-    mapper_method = intern("map_points")
+    mapper_method = intern("map_nodes")
 
 
 class NumReferenceDerivative(DiscretizationProperty):
@@ -164,19 +164,19 @@ class ParametrizationDerivative(DiscretizationProperty):
     mapper_method = "map_parametrization_derivative"
 
 
-def jacobian(where=None):
+def area_element(where=None):
     return cse(
             sqrt(ParametrizationDerivative(where).attr("norm_squared")()),
-            "jacobian", cse_scope.DISCRETIZATION)
+            "area_element", cse_scope.DISCRETIZATION)
 
 
 def sqrt_jac_q_weight(where=None):
-    return cse(sqrt(jacobian(where) * QWeight(where)),
+    return cse(sqrt(area_element(where) * QWeight(where)),
             "sqrt_jac_q_weight", cse_scope.DISCRETIZATION)
 
 
 def normal(where=None):
-    pder = ParametrizationDerivative(where)
+    pder = ParametrizationDerivative(where) / area_element()
     return cse(-pder.attr("I") | pder, "normal",
             cse_scope.DISCRETIZATION)
 
@@ -185,7 +185,7 @@ def mean_curvature(where):
     raise NotImplementedError()
 
 
-# FIXME: make sense of this in the context of MultiVectors
+# FIXME: make sense of this in the context of GA
 # def xyz_to_local_matrix(dim, where=None):
 #     """First two rows are tangents."""
 #     result = np.zeros((dim, dim), dtype=np.object)
@@ -215,7 +215,7 @@ class NodeSum(Expression):
 
 
 def integral(operand, where=None):
-    return NodeSum(jacobian(where) * QWeight(where) * operand)
+    return NodeSum(area_element(where) * QWeight(where) * operand)
 
 
 class Ones(Expression):
@@ -346,7 +346,9 @@ class IntGdSource(IntG):
 
 
 # {{{ non-dimension-specific operators
-# (these get made specific to dimensionality by Dimensionalizer)
+#
+# (these get made specific to dimensionality by
+# pytential.symbolic.mappers.Dimensionalizer)
 
 # {{{ geometric calculus
 

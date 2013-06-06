@@ -32,7 +32,7 @@ from pytential.discretization.poly_element import (
         PolynomialElementDiscretizationBase,
         PolynomialElementDiscretization)
 
-#import pyopencl as cl
+import pyopencl as cl
 
 
 # {{{ jump term interface helper
@@ -126,7 +126,18 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             expansion_getter = LineTaylorLocalExpansion
         self.expansion_getter = expansion_getter
 
+        self._centers_cache = {}
+
     group_class = QBXElementGroup
+
+    @memoize_method
+    def centers(self, target_discr, sign):
+        import pytential.symbolic.primitives as p
+        from pytential.symbolic.execution import bind
+        with cl.CommandQueue(self.cl_context) as queue:
+            return bind(target_discr,
+                    p.Nodes() + 0.5*p.area_element()*p.normal())(queue) \
+                            .as_vector(np.object)
 
     # {{{ interface with execution
 
@@ -135,53 +146,21 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         :arg name: The symbolic name for *self*, which the preprocessor
             should use to find which expressions it is allowed to modify.
         """
-        from pytential.symbolic.mappers import QBXOnSurfaceMapper
-        return QBXOnSurfaceMapper(name)(expr)
+        from pytential.symbolic.mappers import QBXPreprocessor
+        return QBXPreprocessor(name)(expr)
 
     def op_group_features(self, expr):
         from pytential.symbolic.primitives import IntGdSource
         assert not isinstance(expr, IntGdSource)
 
-        from sumpy.kernel import remove_axis_target_derivatives
+        from sumpy.kernel import AxisTargetDerivativeRemover
         result = (expr.source, expr.target, expr.density,
-                remove_axis_target_derivatives(expr.kernel), expr.qbx_forced_limit)
+                AxisTargetDerivativeRemover()(expr.kernel))
 
         return result
 
-    def gen_instruction_for_layer_pot_from_src(
-            self, compiler, tgt_discr, expr, field_var):
-        group = compiler.group_to_operators[compiler.op_group_features(expr)]
-        names = [compiler.get_var_name() for op in group]
-
-        from pytential.symbolic.primitives import (
-                IntGdSource,
-                Variable)
-
-        is_source_derivative = isinstance(expr, IntGdSource)
-        if is_source_derivative:
-            dsource = expr.dsource
-            from pytools import is_single_valued
-            assert is_single_valued(op.dsource for op in group)
-        else:
-            dsource = None
-
-        from pytential.discretization import LayerPotentialInstruction
-        compiler.code.append(
-                LayerPotentialInstruction(names=names,
-                    kernels_and_targets=[(op.kernel, op.target) for op in group],
-                    density=field_var,
-                    source=expr.source,
-                    dsource=dsource,
-                    priority=max(getattr(op, "priority", 0) for op in group),
-                    dep_mapper_factory=compiler.dep_mapper_factory))
-
-        for name, group_expr in zip(names, group):
-            compiler.expr_to_var[group_expr] = Variable(name)
-
-        return compiler.expr_to_var[expr]
-
     @memoize_method
-    def get_lpot_applier(self, kernels):
+    def get_lpot_applier_and_arg_names_to_exprs(self, kernels):
         # needs to be separate method for caching
 
         from pytools import any
@@ -191,65 +170,48 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             value_dtype = self.real_dtype
 
         from sumpy.layerpot import LayerPotential
-        return LayerPotential(self.cl_context,
+        lpot_applier = LayerPotential(self.cl_context,
                     [self.expansion_getter(knl, self.qbx_order)
                         for knl in kernels],
                     value_dtypes=value_dtype)
 
+        from pytential.symbolic.mappers import KernelEvalArgumentCollector
+        keac = KernelEvalArgumentCollector()
+        arg_names_to_exprs = {}
+        for k in kernels:
+            arg_names_to_exprs.update(keac(k))
+
+        return lpot_applier, arg_names_to_exprs
+
     def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
-        kernels = tuple(knl for knl, target in insn.kernels_and_targets)
-        lp_applier = self.get_lpot_applier(kernels)
+        kernels = tuple(o.kernel for o in insn.outputs)
+        lp_applier, arg_names_to_exprs = \
+                self.get_lpot_applier_and_arg_names_to_exprs(kernels)
 
-        density = evaluate(insn.density)
+        kernel_args = {}
+        for arg_name, arg_expr in arg_names_to_exprs.iteritems():
+            kernel_args[arg_name] = evaluate(arg_expr)
 
-        if insn.dsource is None:
-            dsource = None
-        else:
-            dsource = evaluate(insn.dsource)
+        from pymbolic import var
+        kernel_args.update(
+                (arg.name, evaluate(var(arg.name)))
+                for arg in lp_applier.gather_kernel_arguments()
+                if arg.name not in kernel_args)
 
-        for kernel, target in insn.kernels_and_targets:
-            centers = self.centers(target)
+        # FIXME: Do this all at once
+        result = []
+        for o in insn.outputs:
+            target_discr = bound_expr.discretizations[o.target_name]
 
-        ovsmp_nodes = self.ovsmp_curve.points.reshape(2, -1).T
+            assert abs(o.qbx_forced_limit) > 0
 
-        # {{{ compute layer potential
+            evt, (output,) = lp_applier(queue, target_discr.nodes(),
+                    self.nodes(),
+                    self.centers(target_discr, o.qbx_forced_limit),
+                    [evaluate(insn.density)], **kernel_args)
+            result.append((o.name, output))
 
-        # FIXME: Don't ignore qbx_forced_limit
-
-        if nderivatives == 1:
-            # compute principal-value integrals by two-sided QBX
-
-            both_outputs = []
-            for center_side in [-1, 1]:
-                centers = self.curve.centers(force_side=center_side) \
-                        .reshape(2, -1).T
-                evt, outputs = lp_applier(queue, self.nodes,
-                        ovsmp_nodes, centers, [ovsmp_density],
-                        self.get_speed(),
-                        self.get_weights(), **kwargs)
-                both_outputs.append(outputs)
-
-            outputs = [0.5*(out1+outm1) for out1, outm1 in zip(*both_outputs)]
-        else:
-            # compute all other integrals using one-sided QBX
-
-            centers = self.curve.centers().reshape(2, -1).T
-            evt, outputs = lp_applier(queue, self.nodes,
-                    ovsmp_nodes, centers, [ovsmp_density],
-                    self.get_speed(),
-                    self.get_weights(), **kwargs)
-
-            # apply jumps
-            evt, outputs = jt_applier(queue, outputs,
-                    _JumpTermArgumentProvider(self, density, ds_direction,
-                        side=self.curve.high_accuracy_center_sides
-                        .reshape(-1)))
-
-        # }}}
-
-        return [(name, get_idx(outputs, self.curve.dimensions, what, idx))
-                for name, (target, what, idx) in
-                zip(insn.names, insn.return_values)], []
+        return result, []
 
     # }}}
 
@@ -265,7 +227,7 @@ def make_upsampling_qbx_discr(cl_ctx, mesh, target_order, qbx_order,
     tgt_discr = PolynomialElementDiscretization(
             cl_ctx, mesh, target_order, real_dtype=real_dtype)
     src_discr = QBXDiscretization(
-            cl_ctx, mesh, qbx_order, source_order,
+            cl_ctx, mesh, source_order, qbx_order,
             expansion_getter=expansion_getter, real_dtype=real_dtype)
 
     from pytential.discretization.upsampling import \
