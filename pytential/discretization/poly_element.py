@@ -195,7 +195,7 @@ class PolynomialElementDiscretizationBase(Discretization):
                     0<=k<nelements and
                     0<=i,j<ndiscr_nodes}""",
                 "result[k,i] = sum(j, diff_mat[i, j] * vec[k, j])",
-                default_offset=lp.auto)
+                default_offset=lp.auto, name="diff")
 
             knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
             return lp.tag_inames(knl, dict(k="g.0"))
@@ -220,7 +220,8 @@ class PolynomialElementDiscretizationBase(Discretization):
         def knl():
             knl = lp.make_kernel(self.cl_context.devices[0],
                 "{[k,i]: 0<=k<nelements and 0<=i<ndiscr_nodes}",
-                "result[k,i] = weights[i]")
+                "result[k,i] = weights[i]",
+                name="quad_weights")
 
             knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
             return lp.tag_inames(knl, dict(k="g.0"))
@@ -250,7 +251,8 @@ class PolynomialElementDiscretizationBase(Discretization):
                 """
                     result[d, k, i] = \
                         sum(j, resampling_mat[i, j] * nodes[d, k, j])
-                    """)
+                    """,
+                name="nodes")
 
             knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
             return lp.tag_inames(knl, dict(k="g.0"))

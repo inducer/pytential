@@ -408,16 +408,16 @@ def normal_derivative(operand, where=None):
 
 def Sp(*args, **kwargs):
     where = kwargs.get("where")
-    return normal_derivative(S(*args, **kwargs), where).attr("project")(0)
+    return normal_derivative(S(*args, **kwargs), where).attr("xproject")(0)
 
 
 def Spp(*args, **kwargs):
     where = kwargs.get("where")
-    return normal_derivative(Sp(*args, **kwargs), where).attr("project")(0)
+    return normal_derivative(Sp(*args, **kwargs), where).attr("xproject")(0)
 
 
 def D(*args, **kwargs):
-    return IntGdSource(normal(), *args, **kwargs).attr("project")(0)
+    return IntGdSource(normal(), *args, **kwargs).attr("xproject")(0)
 
 
 def Dp(*args, **kwargs):

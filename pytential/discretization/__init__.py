@@ -35,9 +35,7 @@ class LayerPotentialOutput(Record):
 
         the name of the variable to which the result is assigned
 
-    .. attribute:: kernel
-
-        a :class:`sumpy.kernel.Kernel` instance
+    .. attribute:: kernel_index
 
     .. attribute:: target_name
 
@@ -51,6 +49,16 @@ class LayerPotentialInstruction(Instruction):
 
         A list of :class:`LayerPotentialOutput` instances
         The entries in the list correspond to :attr:`names`.
+
+    .. attribute:: kernels
+
+        a list of :class:`sumpy.kernel.Kernel` instances, indexed by
+        :attr:`LayerPotentialOutput.kernel_index`.
+
+    .. attribute:: base_kernel
+
+        The common base kernel among :attr:`kernels`, with all the
+        layer potentials removed.
 
     .. attribute:: density
     .. attribute:: source
@@ -72,11 +80,11 @@ class LayerPotentialInstruction(Instruction):
         keac = KernelEvalArgumentCollector()
 
         from pymbolic import var
-        for o in self.outputs:
-            result.update(var(arg.name) for arg in o.kernel.get_args())
-            result.update(ekdm(o.kernel))
+        for kernel in self.kernels:
+            result.update(var(arg.name) for arg in kernel.get_args())
+            result.update(ekdm(kernel))
 
-            for karg in keac(o.kernel):
+            for karg in keac(kernel):
                 if var(karg) in result:
                     result.remove(var(karg))
 
@@ -107,7 +115,8 @@ class LayerPotentialInstruction(Instruction):
             else:
                 raise ValueError("unrecognized limit value: %s" % o.qbx_forced_limit)
 
-            line = "%s%s <- %s%s" % (o.name, tgt_str, limit_str, o.kernel)
+            line = "%s%s <- %s%s" % (o.name, tgt_str, limit_str,
+                    self.kernels[o.kernel_index])
 
             lines.append(line)
 
@@ -115,8 +124,8 @@ class LayerPotentialInstruction(Instruction):
         keac = KernelEvalArgumentCollector()
 
         arg_names_to_exprs = {}
-        for o in self.outputs:
-            arg_names_to_exprs.update(keac(o.kernel))
+        for kernel in self.kernels:
+            arg_names_to_exprs.update(keac(kernel))
 
         for arg_name, arg_expr in arg_names_to_exprs.iteritems():
             arg_expr_lines = strify(arg_expr).split("\n")

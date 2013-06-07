@@ -184,9 +184,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         return lpot_applier, arg_names_to_exprs
 
     def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
-        kernels = tuple(o.kernel for o in insn.outputs)
         lp_applier, arg_names_to_exprs = \
-                self.get_lpot_applier_and_arg_names_to_exprs(kernels)
+                self.get_lpot_applier_and_arg_names_to_exprs(insn.kernels)
 
         kernel_args = {}
         for arg_name, arg_expr in arg_names_to_exprs.iteritems():
@@ -205,11 +204,11 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
             assert abs(o.qbx_forced_limit) > 0
 
-            evt, (output,) = lp_applier(queue, target_discr.nodes(),
+            evt, output_for_each_kernel = lp_applier(queue, target_discr.nodes(),
                     self.nodes(),
                     self.centers(target_discr, o.qbx_forced_limit),
                     [evaluate(insn.density)], **kernel_args)
-            result.append((o.name, output))
+            result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
         return result, []
 

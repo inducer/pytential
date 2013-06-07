@@ -455,12 +455,25 @@ class OperatorCompiler(IdentityMapper):
             from pytential.symbolic.mappers import ExpressionKernelIdentityMapper
             ekim = ExpressionKernelIdentityMapper(self.rec)
 
+            kernel_to_index = {}
+            kernels = []
+            for op in group:
+                if op.kernel not in kernel_to_index:
+                    kernel_to_index[op.kernel] = len(kernels)
+                    kernels.append(ekim(op.kernel))
+
+            from pytools import single_valued
+            from sumpy.kernel import AxisTargetDerivativeRemover
+            atdr = AxisTargetDerivativeRemover()
+            base_kernel = single_valued(
+                    atdr(kernel) for kernel in kernels)
+
             from pytential.discretization import (
                     LayerPotentialInstruction, LayerPotentialOutput)
             outputs = [
                     LayerPotentialOutput(
                         name=name,
-                        kernel=ekim(op.kernel),
+                        kernel_index=kernel_to_index[op.kernel],
                         target_name=op.target,
                         qbx_forced_limit=op.qbx_forced_limit,
                         )
@@ -470,6 +483,8 @@ class OperatorCompiler(IdentityMapper):
             self.code.append(
                     LayerPotentialInstruction(
                         outputs=outputs,
+                        kernels=tuple(kernels),
+                        base_kernel=base_kernel,
                         density=density_var,
                         source=expr.source,
                         priority=max(getattr(op, "priority", 0) for op in group),

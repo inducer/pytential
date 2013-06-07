@@ -111,7 +111,8 @@ class UpsampleToSourceDiscretization(Discretization):
                     0<=k<nelements and
                     0<=i<n_to_nodes and
                     0<=j<n_from_nodes}""",
-                "result[k,i] = sum(j, upsample_mat[i, j] * vec[k, j])")
+                "result[k,i] = sum(j, upsample_mat[i, j] * vec[k, j])",
+                name="upsample")
 
             knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
             return lp.tag_inames(knl, dict(k="g.0"))
