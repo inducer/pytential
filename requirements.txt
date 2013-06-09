@@ -5,5 +5,5 @@ git+git://github.com/inducer/modepy
 git+git://github.com/inducer/pyopencl
 git+git://github.com/inducer/boxtree
 git+git://github.com/inducer/pymbolic
-git+git://github.com/inducer/sumpy
 git+http://git.tiker.net/trees/loopy.git
+git+git://github.com/inducer/sumpy

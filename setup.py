@@ -66,8 +66,8 @@ def main():
               "pyopencl>=2013.1",
               "boxtree>=2013.1",
               "pymbolic>=2013.2",
-              "sumpy>=2013.1",
               "loo.py>=2013.1beta",
+              "sumpy>=2013.1",
               ],
 
           # 2to3 invocation
