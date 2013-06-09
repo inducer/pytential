@@ -97,18 +97,19 @@ def test_geometry(ctx_getter):
 
 # {{{ ellipse eigenvalues
 
-# FIXME: Fix ellipse_aspect != 1
-# BROKEN example:  'test_ellipse_eigenvalues(cl._csc, 7, 4, 2)'
 @pytest.mark.parametrize(["ellipse_aspect", "mode_nr", "qbx_order"], [
     (1, 5, 4),
     (1, 6, 4),
     (1, 7, 5),
+    (2, 5, 4),
+    (2, 6, 4),
+    (2, 7, 5),
     ])
-def test_ellipse_eigenvalues(ctx_getter, qbx_order, mode_nr, ellipse_aspect):
+def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
     #logging.basicConfig(level=logging.INFO)
 
-    print "qbx_order: %d mode_nr: %d, ellipse_aspect: %s" % (
-            qbx_order, mode_nr, ellipse_aspect)
+    print "ellipse_aspect: %s, mode_nr: %d, qbx_order: %d" % (
+            ellipse_aspect, mode_nr, qbx_order)
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
@@ -122,7 +123,12 @@ def test_ellipse_eigenvalues(ctx_getter, qbx_order, mode_nr, ellipse_aspect):
     s_eoc_rec = EOCRecorder()
     d_eoc_rec = EOCRecorder()
 
-    for nelements in [30, 40, 50, 70]:
+    if ellipse_aspect != 1:
+        nelements_values = [60, 100, 150, 200]
+    else:
+        nelements_values = [30, 70]
+
+    for nelements in nelements_values:
         mesh = make_curve_mesh(partial(ellipse, ellipse_aspect),
                 np.linspace(0, 1, nelements+1),
                 target_order)
@@ -145,12 +151,16 @@ def test_ellipse_eigenvalues(ctx_getter, qbx_order, mode_nr, ellipse_aspect):
         s_sigma_op = bind(discr, sym.S(0, sym.var("sigma")))
         d_sigma_op = bind(discr, sym.D(0, sym.var("sigma")))
 
-        sigma = cl.clmath.sin(mode_nr*angle)
+        sigma = cl.clmath.cos(mode_nr*angle)
 
         if ellipse_aspect == 1:
             s_sigma = s_sigma_op(queue=queue, sigma=sigma)
             s_eigval = 1/(2*mode_nr)
-            s_err = discr.norm(queue, s_sigma - s_eigval*sigma)
+            s_sigma_ref = s_eigval*sigma
+            s_err = (
+                    discr.norm(queue, s_sigma - s_sigma_ref)
+                    /
+                    discr.norm(queue, s_sigma_ref))
             s_eoc_rec.add_data_point(1/nelements, s_err)
 
         d_sigma = d_sigma_op(queue=queue, sigma=sigma)
@@ -160,9 +170,28 @@ def test_ellipse_eigenvalues(ctx_getter, qbx_order, mode_nr, ellipse_aspect):
         # Computing, Vol. 24, No. 4, pg. 1450, 2003.
         # http://dx.doi.org/10.1137/S1064827500372067
 
-        d_eigval = -1/2*((1-ellipse_aspect)/(1+ellipse_aspect))**mode_nr
+        d_eigval = 1/2*((1-ellipse_aspect)/(1+ellipse_aspect))**mode_nr
+        if mode_nr % 2 == 0:
+            # It's SIGN BINGO time! :)
+            d_eigval = -d_eigval
 
-        d_err = discr.norm(queue, d_sigma - d_eigval*sigma)
+        d_sigma_ref = d_eigval*sigma
+
+        if 0:
+            pt.plot(d_sigma.get(), label="result")
+            pt.plot(d_sigma_ref.get(), label="ref")
+            pt.legend()
+            pt.show()
+
+        if ellipse_aspect == 1:
+            d_ref_norm = discr.norm(queue, sigma)
+        else:
+            d_ref_norm = discr.norm(queue, d_sigma_ref)
+
+        d_err = (
+                discr.norm(queue, d_sigma - d_sigma_ref)
+                /
+                d_ref_norm)
         d_eoc_rec.add_data_point(1/nelements, d_err)
 
     if ellipse_aspect == 1:
