@@ -60,6 +60,7 @@ def main():
 
           install_requires=[
               "pytest>=2.3",
+              "sympy>=0.7.2",
 
               "modepy>=2013.3",
               "boxtree>=2013.1",
