@@ -128,6 +128,13 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
     else:
         nelements_values = [30, 70]
 
+    # See
+    #
+    # [1] G. J. Rodin and O. Steinbach, "Boundary Element Preconditioners
+    # for Problems Defined on Slender Domains", SIAM Journal on Scientific
+    # Computing, Vol. 24, No. 4, pg. 1450, 2003.
+    # http://dx.doi.org/10.1137/S1064827500372067
+
     for nelements in nelements_values:
         mesh = make_curve_mesh(partial(ellipse, ellipse_aspect),
                 np.linspace(0, 1, nelements+1),
@@ -148,32 +155,49 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
         angle = cl.clmath.atan2(nodes[1]*ellipse_aspect, nodes[0])
 
+        ellipse_fraction = ((1-ellipse_aspect)/(1+ellipse_aspect))**mode_nr
+
+        # (2.6) in [1]
+        J = cl.clmath.sqrt(
+                cl.clmath.sin(angle)**2
+                + (1/ellipse_aspect)**2 * cl.clmath.cos(angle)**2)
+
+        # {{{ single layer
+
+        sigma = cl.clmath.cos(mode_nr*angle)/J
+
         s_sigma_op = bind(discr, sym.S(0, sym.var("sigma")))
-        d_sigma_op = bind(discr, sym.D(0, sym.var("sigma")))
+        s_sigma = s_sigma_op(queue=queue, sigma=sigma)
+
+        # SIGN BINGO! :)
+        s_eigval = 1/(2*mode_nr) * (1 + (-1)**mode_nr * ellipse_fraction)
+
+        # (2.12) in [1]
+        s_sigma_ref = s_eigval*J*sigma
+
+        if 0:
+            pt.plot(s_sigma.get(), label="result")
+            pt.plot(s_sigma_ref.get(), label="ref")
+            pt.legend()
+            pt.show()
+
+        s_err = (
+                discr.norm(queue, s_sigma - s_sigma_ref)
+                /
+                discr.norm(queue, s_sigma_ref))
+        s_eoc_rec.add_data_point(1/nelements, s_err)
+
+        # }}}
+
+        # {{{ double layer
 
         sigma = cl.clmath.cos(mode_nr*angle)
 
-        if ellipse_aspect == 1:
-            s_sigma = s_sigma_op(queue=queue, sigma=sigma)
-            s_eigval = 1/(2*mode_nr)
-            s_sigma_ref = s_eigval*sigma
-            s_err = (
-                    discr.norm(queue, s_sigma - s_sigma_ref)
-                    /
-                    discr.norm(queue, s_sigma_ref))
-            s_eoc_rec.add_data_point(1/nelements, s_err)
-
+        d_sigma_op = bind(discr, sym.D(0, sym.var("sigma")))
         d_sigma = d_sigma_op(queue=queue, sigma=sigma)
 
-        # See G. J. Rodin and O. Steinbach, "Boundary Element Preconditioners
-        # for Problems Defined on Slender Domains", SIAM Journal on Scientific
-        # Computing, Vol. 24, No. 4, pg. 1450, 2003.
-        # http://dx.doi.org/10.1137/S1064827500372067
-
-        d_eigval = 1/2*((1-ellipse_aspect)/(1+ellipse_aspect))**mode_nr
-        if mode_nr % 2 == 0:
-            # It's SIGN BINGO time! :)
-            d_eigval = -d_eigval
+        # SIGN BINGO! :)
+        d_eigval = -1 * (-1)**mode_nr * 1/2*ellipse_fraction
 
         d_sigma_ref = d_eigval*sigma
 
@@ -194,14 +218,17 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 d_ref_norm)
         d_eoc_rec.add_data_point(1/nelements, d_err)
 
-    if ellipse_aspect == 1:
-        print "Errors for S:"
-        print s_eoc_rec
-        assert s_eoc_rec.order_estimate() > qbx_order - 0.5
+        # }}}
+
+    print "Errors for S:"
+    print s_eoc_rec
+    target_order = qbx_order + 1
+    #assert s_eoc_rec.order_estimate() > target_order - 1.5
 
     print "Errors for D:"
     print d_eoc_rec
-    assert d_eoc_rec.order_estimate() > qbx_order - 2
+    target_order = qbx_order
+    assert d_eoc_rec.order_estimate() > target_order - 1.5
 
 # }}}
 
