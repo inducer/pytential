@@ -63,9 +63,9 @@ def main():
               "sympy>=0.7.2",
 
               "modepy>=2013.3",
+              "pyopencl>=2013.1",
               "boxtree>=2013.1",
               "pymbolic>=2013.2",
-              "pyopencl>=2013.1",
               "sumpy>=2013.1",
               "loo.py>=2013.1beta",
               ],
