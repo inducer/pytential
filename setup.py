@@ -59,11 +59,14 @@ def main():
               ],
 
           install_requires=[
-              "boxtree>=2013.1",
-              "modepy>=2013.3",
-              "pymbolic>=2013.2",
-              "loo.py>=2013.1beta",
               "pytest>=2.3",
+
+              "modepy>=2013.3",
+              "boxtree>=2013.1",
+              "pymbolic>=2013.2",
+              "pyopencl>=2013.1",
+              "sumpy>=2013.1",
+              "loo.py>=2013.1beta",
               ],
 
           # 2to3 invocation
