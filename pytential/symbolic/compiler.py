@@ -490,7 +490,7 @@ class OperatorCompiler(IdentityMapper):
                         priority=max(getattr(op, "priority", 0) for op in group),
                         dep_mapper_factory=self.dep_mapper_factory))
 
-            from pytential.symbolic.primitives import Variable
+            from pymbolic.primitives import Variable
             for name, group_expr in zip(names, group):
                 self.expr_to_var[group_expr] = Variable(name)
 

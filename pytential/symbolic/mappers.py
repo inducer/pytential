@@ -450,12 +450,6 @@ class QBXPreprocessor(IdentityMapper):
             # not ours
             return IdentityMapper.map_int_g(self, expr)
 
-        expr = expr.copy(
-                density=self.rec(
-                    prim.area_element(expr.source)
-                    * prim.QWeight(expr.source)
-                    * expr.density))
-
         if expr.qbx_forced_limit is not None:
             # Not computing the on-surface value, nothing to do.
             return IdentityMapper.map_int_g(self, expr)

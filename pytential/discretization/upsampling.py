@@ -54,6 +54,14 @@ class UpsampleToSourceDiscretization(Discretization):
         self.source_discr = source_discr
 
     @property
+    def real_dtype(self):
+        return self.target_discr.real_dtype
+
+    @property
+    def complex_dtype(self):
+        return self.target_discr.complex_dtype
+
+    @property
     def mesh(self):
         return self.target_discr.mesh
 
@@ -64,6 +72,9 @@ class UpsampleToSourceDiscretization(Discretization):
     @property
     def ambient_dim(self):
         return self.target_discr.ambient_dim
+
+    def empty(self, dtype, queue=None, extra_dims=None):
+        return self.target_discr.empty(dtype, queue, extra_dims)
 
     @property
     def nnodes(self):
@@ -93,7 +104,7 @@ class UpsampleToSourceDiscretization(Discretization):
         return self.source_discr.op_group_features(expr)
 
     @memoize_method
-    def _upsample_matrix(self, elgroup_index):
+    def _oversample_matrix(self, elgroup_index):
         import modepy as mp
         tgrp = self.target_discr.groups[elgroup_index]
         sgrp = self.source_discr.groups[elgroup_index]
@@ -102,7 +113,7 @@ class UpsampleToSourceDiscretization(Discretization):
                 mp.simplex_onb(self.dim, tgrp.order),
                 sgrp.unit_nodes, tgrp.unit_nodes)
 
-    def _upsample(self, queue, vec):
+    def _oversample(self, queue, vec):
         @memoize_method_nested
         def knl():
             import loopy as lp
@@ -111,18 +122,21 @@ class UpsampleToSourceDiscretization(Discretization):
                     0<=k<nelements and
                     0<=i<n_to_nodes and
                     0<=j<n_from_nodes}""",
-                "result[k,i] = sum(j, upsample_mat[i, j] * vec[k, j])",
-                name="upsample")
+                "result[k,i] = sum(j, oversample_mat[i, j] * vec[k, j])",
+                name="oversample")
 
             knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
             return lp.tag_inames(knl, dict(k="g.0"))
+
+        if not isinstance(vec, cl.array.Array):
+            return vec
 
         result = self.source_discr.empty(vec.dtype)
 
         for i_grp, (sgrp, tgrp) in enumerate(
                 zip(self.source_discr.groups, self.target_discr.groups)):
             knl()(queue,
-                    upsample_mat=self._upsample_matrix(i_grp),
+                    oversample_mat=self._oversample_matrix(i_grp),
                     result=sgrp.view(result), vec=tgrp.view(vec))
 
         return result
@@ -130,14 +144,11 @@ class UpsampleToSourceDiscretization(Discretization):
     def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
         from pytools.obj_array import with_object_array_or_scalar
         from functools import partial
-        upsample = partial(self._upsample, queue)
+        oversample = partial(self._oversample, queue)
 
         def evaluate_wrapper(expr):
             value = evaluate(expr)
-            if isinstance(expr, cl.array.Array):
-                return with_object_array_or_scalar(upsample, )
-            else:
-                return value
+            return with_object_array_or_scalar(oversample, value)
 
         return self.source_discr.exec_layer_potential_insn(
                 queue, insn, bound_expr, evaluate_wrapper)

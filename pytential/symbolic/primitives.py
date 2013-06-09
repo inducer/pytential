@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 import numpy as np
 from pymbolic.primitives import (  # noqa
-        Expression as ExpressionBase, Variable,
+        Expression as ExpressionBase, Variable as var,
         make_sym_vector, cse_scope as cse_scope_base,
         make_common_subexpression as cse)
 from pymbolic.geometric_algebra import MultiVector, componentwise
@@ -69,7 +69,7 @@ class Expression(ExpressionBase):
         return StringifyMapper
 
 
-class Function(Variable):
+class Function(var):
     def __call__(self, operand, *args, **kwargs):
         # If the call is handed an object array full of operands,
         # return an object array of the operator applied to each of the
@@ -82,7 +82,7 @@ class Function(Variable):
 
             return with_object_array_or_scalar(make_op, operand)
         else:
-            return Variable.__call__(self, operand)
+            return var.__call__(self, operand)
 
 real = Function("real")
 imag = Function("imag")
@@ -206,10 +206,7 @@ class NodeSum(Expression):
         self.operand = operand
 
     def __getinitargs__(self):
-        return (self.operand)
-
-    def get_hash(self):
-        return hash((type(self),) + (array_to_tuple(self.operand), self.where))
+        return (self.operand,)
 
     mapper_method = "map_node_sum"
 

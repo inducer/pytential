@@ -23,7 +23,7 @@ THE SOFTWARE.
 """
 
 
-from pytools import Record
+from pytools import Record, memoize_method
 from pytential.symbolic.compiler import Instruction
 
 
@@ -146,11 +146,17 @@ class LayerPotentialInstruction(Instruction):
 class Discretization(object):
     """Abstract interface for discretizations.
 
+    .. attribute:: real_dtype
+
+    .. attribute:: complex_dtype
+
     .. attribute:: mesh
 
     .. attribute:: dim
 
     .. attribute:: ambient_dim
+
+    .. method::  empty(dtype, queue=None, extra_dims=None)
 
     .. method:: nodes()
 
@@ -176,5 +182,22 @@ class Discretization(object):
 
     .. method:: exec_layer_pot_insn(insn, bound_expr, evaluate)
     """
+
+    @memoize_method
+    def _integral_op(self):
+        from pytential import sym, bind
+        return bind(self, sym.integral(sym.var("integrand")))
+
+    def integral(self, queue, x):
+        return self._integral_op()(queue, integrand=x)
+
+    @memoize_method
+    def _norm_op(self, p):
+        from pytential import sym, bind
+        return bind(self, sym.integral(sym.var("integrand")**p))
+
+    def norm(self, queue, x, p=2):
+        return self._norm_op(p=p)(queue, integrand=x)**(1/p)
+
 
 # vim: fdm=marker

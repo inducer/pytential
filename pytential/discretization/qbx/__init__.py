@@ -126,8 +126,6 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             expansion_getter = LineTaylorLocalExpansion
         self.expansion_getter = expansion_getter
 
-        self._centers_cache = {}
-
     group_class = QBXElementGroup
 
     @memoize_method
@@ -136,8 +134,16 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         from pytential.symbolic.execution import bind
         with cl.CommandQueue(self.cl_context) as queue:
             return bind(target_discr,
-                    p.Nodes() + 0.5*p.area_element()*p.normal())(queue) \
+                    p.Nodes() + 2*sign*p.area_element()*p.normal())(queue) \
                             .as_vector(np.object)
+
+    @memoize_method
+    def weights_and_area_elements(self):
+        import pytential.symbolic.primitives as p
+        from pytential.symbolic.execution import bind
+        with cl.CommandQueue(self.cl_context) as queue:
+            return bind(self,
+                    p.area_element() * p.QWeight())(queue)
 
     # {{{ interface with execution
 
@@ -183,9 +189,26 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         return lpot_applier, arg_names_to_exprs
 
+    @memoize_method
+    def get_p2p(self, kernels):
+        # needs to be separate method for caching
+
+        from pytools import any
+        if any(knl.is_complex_valued for knl in kernels):
+            value_dtype = self.complex_dtype
+        else:
+            value_dtype = self.real_dtype
+
+        from sumpy.p2p import P2P
+        p2p = P2P(self.cl_context,
+                    kernels, exclude_self=False, value_dtypes=value_dtype)
+
+        return p2p
+
     def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
         lp_applier, arg_names_to_exprs = \
                 self.get_lpot_applier_and_arg_names_to_exprs(insn.kernels)
+        p2p = None
 
         kernel_args = {}
         for arg_name, arg_expr in arg_names_to_exprs.iteritems():
@@ -197,18 +220,38 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                 for arg in lp_applier.gather_kernel_arguments()
                 if arg.name not in kernel_args)
 
+        strengths = (evaluate(insn.density).with_queue(queue)
+                * self.weights_and_area_elements())
+
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
             target_discr = bound_expr.discretizations[o.target_name]
 
-            assert abs(o.qbx_forced_limit) > 0
+            is_self = self is target_discr
+            if not is_self:
+                try:
+                    is_self = target_discr.source_discr is self
+                except AttributeError:
+                    # apparently not.
+                    pass
 
-            evt, output_for_each_kernel = lp_applier(queue, target_discr.nodes(),
-                    self.nodes(),
-                    self.centers(target_discr, o.qbx_forced_limit),
-                    [evaluate(insn.density)], **kernel_args)
-            result.append((o.name, output_for_each_kernel[o.kernel_index]))
+            if is_self:
+                assert abs(o.qbx_forced_limit) > 0
+
+                evt, output_for_each_kernel = lp_applier(queue, target_discr.nodes(),
+                        self.nodes(),
+                        self.centers(target_discr, o.qbx_forced_limit),
+                        [strengths], **kernel_args)
+                result.append((o.name, output_for_each_kernel[o.kernel_index]))
+            else:
+                # yuck, no caching
+                if p2p is None:
+                    p2p = self.get_p2p(insn.kernels)
+                evt, output_for_each_kernel = p2p(queue,
+                        target_discr.nodes(), self.nodes(),
+                        [strengths], **kernel_args)
+                result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
         return result, []
 

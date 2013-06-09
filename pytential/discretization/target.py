@@ -23,32 +23,32 @@ THE SOFTWARE.
 """
 
 
-
-
-
 # {{{ target classes
 
 class TargetBase(object):
     pass
 
 
-
-
 class PointsTarget(TargetBase):
-    def __init__(self, points, normals=None):
-        self.points = points
-        self.normals = normals
+    """
+    .. attribute:: points
 
-    def __len__(self):
-        return len(self.points)
+        Shape *(ambient_dim, npoints)*
 
+    """
 
+    def __init__(self, nodes, normals=None):
+        self._nodes = nodes
 
+    @property
+    def ambient_dim(self):
+        return self._nodes.shape[0]
 
-class VertexGeometryTarget(TargetBase):
-    def __init__(self, geo):
-        self.points = geo.vertex_coordinates
-        self.normals = geo.vertex_normals
+    def preprocess_optemplate(self, name, expr):
+        return expr
+
+    def nodes(self):
+        return self._nodes
 
 # }}}
 

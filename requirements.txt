@@ -1,0 +1,8 @@
+git+git://github.com/inducer/pytools
+git+git://github.com/inducer/modepy
+numpy
+islpy>=2013.1
+cgen
+git+git://github.com/inducer/pyopencl
+git+git://github.com/inducer/pymbolic
+git+http://git.tiker.net/trees/loopy.git
