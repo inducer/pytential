@@ -60,7 +60,9 @@ def main():
 
           install_requires=[
               "pytest>=2.3",
-              "sympy>=0.7.2",
+              # FIXME leave out for now
+              # https://code.google.com/p/sympy/issues/detail?id=3874
+              #"sympy>=0.7.2",
 
               "modepy>=2013.3",
               "pyopencl>=2013.1",
