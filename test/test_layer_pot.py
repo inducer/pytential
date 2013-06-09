@@ -98,9 +98,12 @@ def test_geometry(ctx_getter):
 # {{{ ellipse eigenvalues
 
 # FIXME: Fix ellipse_aspect != 1
-@pytest.mark.parametrize("ellipse_aspect", [1])
-@pytest.mark.parametrize("mode_nr", [5, 7])
-@pytest.mark.parametrize("qbx_order", [4, 5])
+# BROKEN example:  'test_ellipse_eigenvalues(cl._csc, 7, 4, 2)'
+@pytest.mark.parametrize(["ellipse_aspect", "mode_nr", "qbx_order"], [
+    (1, 5, 4),
+    (1, 6, 4),
+    (1, 7, 5),
+    ])
 def test_ellipse_eigenvalues(ctx_getter, qbx_order, mode_nr, ellipse_aspect):
     #logging.basicConfig(level=logging.INFO)
 
@@ -119,7 +122,7 @@ def test_ellipse_eigenvalues(ctx_getter, qbx_order, mode_nr, ellipse_aspect):
     s_eoc_rec = EOCRecorder()
     d_eoc_rec = EOCRecorder()
 
-    for nelements in [30, 40, 50]:
+    for nelements in [30, 40, 50, 70]:
         mesh = make_curve_mesh(partial(ellipse, ellipse_aspect),
                 np.linspace(0, 1, nelements+1),
                 target_order)
@@ -137,12 +140,12 @@ def test_ellipse_eigenvalues(ctx_getter, qbx_order, mode_nr, ellipse_aspect):
             pt.plot(centers_h[0], centers_h[1], "o")
             pt.show()
 
-        angle = cl.clmath.atan2(nodes[1], nodes[0]/ellipse_aspect)
+        angle = cl.clmath.atan2(nodes[1]*ellipse_aspect, nodes[0])
 
         s_sigma_op = bind(discr, sym.S(0, sym.var("sigma")))
         d_sigma_op = bind(discr, sym.D(0, sym.var("sigma")))
 
-        sigma = cl.clmath.cos(mode_nr*angle)
+        sigma = cl.clmath.sin(mode_nr*angle)
 
         if ellipse_aspect == 1:
             s_sigma = s_sigma_op(queue=queue, sigma=sigma)
@@ -454,7 +457,7 @@ def run_int_eq_test(
 # }}}
 
 
-# {{{ test frontend
+# {{{ integral equation test frontend
 
 @pytest.mark.parametrize(("curve_name", "curve_f"), [
     ("circle", partial(ellipse, 1)),
@@ -493,7 +496,6 @@ def test_integral_equation(
 
     print eoc_rec
     assert eoc_rec.order_estimate() > qbx_order - 1.3
-
 
 # }}}
 
