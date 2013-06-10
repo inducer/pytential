@@ -28,14 +28,15 @@ from pymbolic.mapper.stringifier import (
         StringifyMapper as BaseStringifyMapper,
         CSESplittingStringifyMapperMixin,
         PREC_NONE, PREC_PRODUCT)
-from pymbolic.mapper.evaluator import EvaluationMapper
+from pymbolic.mapper.evaluator import EvaluationMapper as EvaluationMapperBase
 from pymbolic.mapper import (
+        Mapper,
         IdentityMapper as IdentityMapperBase,
         CombineMapper as CombineMapperBase,
         CSECachingMapperMixin
         )
 from pymbolic.mapper.dependency import (
-        DependencyMapper as BaseDependencyMapper)
+        DependencyMapper as DependencyMapperBase)
 from pymbolic.mapper.coefficient import (
         CoefficientCollector as CoefficientCollectorBase)
 from pymbolic.geometric_algebra import MultiVector
@@ -124,8 +125,13 @@ class IdentityMapper(IdentityMapperBase):
     map_node_coordinate_component = map_ones
     map_parametrization_gradient = map_ones
     map_parametrization_derivative = map_ones
+    map_nabla = map_ones
+    map_nabla_component = map_ones
 
     # }}}
+
+    def map_derivative_source(self, expr):
+        return type(expr)(self.rec(expr.operand), expr.nabla_id)
 
     def map_inverse(self, expr):
         return type(expr)(
@@ -150,30 +156,11 @@ class IdentityMapper(IdentityMapperBase):
                 kernel=ExpressionKernelIdentityMapper(self.rec)(expr.kernel))
 
 
-class Collector(CombineMapperBase):
-    def combine(self, values):
-        from pytools import flatten
-        return set(flatten(values))
-
-    def map_constant(self, expr):
-        return set()
-
-    map_nabla = map_constant
-    map_nabla_component = map_constant
-
-    # from sumpy.kernel
-    map_kernel_partial_derivative = map_constant
-
+class CombineMapper(CombineMapperBase):
     def map_node_sum(self, expr):
         return self.rec(expr.operand)
 
     map_num_reference_derivative = map_node_sum
-
-    map_ones = map_constant
-
-    map_node_coordinate_component = map_ones
-    map_parametrization_derivative = map_ones
-    map_q_weight = map_ones
 
     def map_int_g(self, expr):
         return (
@@ -193,8 +180,22 @@ class Collector(CombineMapperBase):
                 for name_expr in expr.extra_vars.itervalues()),
                 set())
 
-    def map_variable(self, expr):
+
+class Collector(CombineMapper):
+    def combine(self, values):
+        from pytools import flatten
+        return set(flatten(values))
+
+    def map_constant(self, expr):
         return set()
+
+    map_nabla = map_constant
+    map_nabla_component = map_constant
+    map_ones = map_constant
+    map_node_coordinate_component = map_constant
+    map_parametrization_derivative = map_constant
+    map_q_weight = map_constant
+    map_variable = map_constant
 
 
 class OperatorCollector(Collector):
@@ -205,8 +206,42 @@ class OperatorCollector(Collector):
         return set([expr]) | Collector.map_int_g(self, expr)
 
 
-class DependencyMapper(BaseDependencyMapper, Collector):
+class DependencyMapper(DependencyMapperBase, Collector):
     pass
+
+
+class EvaluationMapper(EvaluationMapperBase):
+    # Unlike EvaluationMapperBase, this class preserves CSEs by default.
+
+    def map_variable(self, expr):
+        return expr
+
+    map_q_weight = map_variable
+    map_ones = map_variable
+
+    def map_derivative_source(self, expr):
+        return type(expr)(self.rec(expr.operand), expr.nabla_id)
+
+    def map_node_sum(self, expr):
+        return type(expr)(self.rec(expr.operand))
+
+    def map_node_coordinate_component(self, expr):
+        return expr
+
+    def map_num_reference_derivative(self, expr):
+        return type(expr)(expr.ref_axes, self.rec(expr.operand), expr.where)
+
+    def map_int_g(self, expr):
+        return type(expr)(
+                ExpressionKernelIdentityMapper(self.rec)(expr.kernel),
+                self.rec(expr.density),
+                expr.qbx_forced_limit, expr.source, expr.target)
+
+    def map_common_subexpression(self, expr):
+        return prim.cse(
+                self.rec(expr.child),
+                expr.prefix,
+                expr.scope)
 
 
 # {{{ target/source tagging
@@ -356,9 +391,6 @@ class Dimensionalizer(EvaluationMapper):
                 discr.ambient_dim
                 for discr in self.discr_dict.itervalues())
 
-    def map_variable(self, expr):
-        return expr
-
     def map_nabla(self, expr):
         from pytools import single_valued
         ambient_dim = single_valued(
@@ -369,9 +401,6 @@ class Dimensionalizer(EvaluationMapper):
         return MultiVector(make_obj_array(
             [prim.NablaComponent(axis, expr.nabla_id)
                 for axis in xrange(ambient_dim)]))
-
-    map_q_weight = map_variable
-    map_ones = map_variable
 
     def map_parametrization_derivative(self, expr):
         discr = self.discr_dict[expr.where]
@@ -387,9 +416,6 @@ class Dimensionalizer(EvaluationMapper):
         from pytools import product
         return product(MultiVector(vec) for vec in par_grad.T)
 
-    def map_node_sum(self, expr):
-        return type(expr)(self.rec(expr.operand))
-
     def map_nodes(self, expr):
         discr = self.discr_dict[expr.where]
         from pytools.obj_array import make_obj_array
@@ -398,16 +424,11 @@ class Dimensionalizer(EvaluationMapper):
                     prim.NodeCoordinateComponent(i, expr.where)
                     for i in xrange(discr.ambient_dim)]))
 
-    def map_node_coordinate_component(self, expr):
-        return expr
-
-    def map_num_reference_derivative(self, expr):
-        return type(expr)(expr.ref_axes, self.rec(expr.operand), expr.where)
-
     def map_int_g(self, expr):
         from sumpy.kernel import KernelDimensionSetter
         return type(expr)(
-                KernelDimensionSetter(self.ambient_dim)(expr.kernel),
+                KernelDimensionSetter(self.ambient_dim)(
+                    ExpressionKernelIdentityMapper(self.rec)(expr.kernel)),
                 self.rec(expr.density),
                 expr.qbx_forced_limit, expr.source, expr.target)
 
@@ -417,7 +438,8 @@ class Dimensionalizer(EvaluationMapper):
         ambient_dim = self.ambient_dim
 
         from sumpy.kernel import KernelDimensionSetter
-        kernel = KernelDimensionSetter(ambient_dim)(expr.kernel)
+        kernel = KernelDimensionSetter(ambient_dim)(
+                ExpressionKernelIdentityMapper(self.rec)(expr.kernel))
 
         from pytools.obj_array import make_obj_array
         nabla = MultiVector(make_obj_array(
@@ -430,11 +452,140 @@ class Dimensionalizer(EvaluationMapper):
                     _insert_dsource_into_kernel(kernel, coeff, ambient_dim),
                     rec_operand, expr.qbx_forced_limit, expr.source, expr.target))
 
-    def map_common_subexpression(self, expr):
-        return prim.cse(
-                self.rec(expr.child),
-                expr.prefix,
-                expr.scope)
+# }}}
+
+
+# {{{ derivative binder
+
+class DerivativeSourceAndNablaComponentCollector(Collector):
+    def map_nabla(self, expr):
+        raise RuntimeError("DerivativeOccurrenceMapper must be invoked after "
+                "Dimensionalizer--Nabla found, not allowed")
+
+    def map_nabla_component(self, expr):
+        return set([expr])
+
+    def map_derivative_source(self, expr):
+        return set([expr])
+
+
+class NablaComponentToUnitVector(EvaluationMapper):
+    def __init__(self, nabla_id, ambient_axis):
+        self.nabla_id = nabla_id
+        self.ambient_axis = ambient_axis
+
+    def map_nabla_component(self, expr):
+        if expr.nabla_id == self.nabla_id:
+            if expr.ambient_axis == self.ambient_axis:
+                return 1
+            else:
+                return 0
+        else:
+            return EvaluationMapper.map_nabla_component(self, expr)
+
+
+class DerivativeTaker(Mapper):
+    def __init__(self, ambient_axis):
+        self.ambient_axis = ambient_axis
+
+    def map_int_g(self, expr):
+        from sumpy.kernel import AxisTargetDerivative
+        return expr.copy(kernel=AxisTargetDerivative(self.ambient_axis, expr.kernel))
+
+
+class DerivativeSourceFinder(EvaluationMapper):
+    """Recurses down until it finds the :class:`pytential.sym.DerivativeSource`
+    with the right *nabla_id*, then calls *taker* on the
+    source's argument.
+    """
+
+    def __init__(self, nabla_id, taker):
+        self.nabla_id = nabla_id
+        self.taker = taker
+
+    def map_derivative_source(self, expr):
+        if expr.nabla_id == self.nabla_id:
+            return self.taker(expr.operand)
+        else:
+            return EvaluationMapper.map_derivative_source(self, expr)
+
+
+class DerivativeBinder(IdentityMapper):
+    def __init__(self):
+        self.derivative_collector = DerivativeSourceAndNablaComponentCollector()
+
+    def map_product(self, expr):
+        # {{{ gather NablaComponents and DerivativeSources
+
+        rec_children = []
+        d_source_nabla_ids_per_child = []
+
+        # id to set((child index, axis), ...)
+        nabla_finder = {}
+
+        for child_idx, child in enumerate(expr.children):
+            rec_expr = self.rec(child)
+            rec_children.append(rec_expr)
+
+            nabla_component_ids = set()
+            derivative_source_ids = set()
+
+            nablas = []
+            for d_or_n in self.derivative_collector(rec_expr):
+                if isinstance(d_or_n, prim.NablaComponent):
+                    nabla_component_ids.add(d_or_n.nabla_id)
+                    nablas.append(d_or_n)
+                elif isinstance(d_or_n, prim.DerivativeSource):
+                    derivative_source_ids.add(d_or_n.nabla_id)
+                else:
+                    raise RuntimeError("unexpected result from "
+                            "DerivativeSourceAndNablaComponentCollector")
+
+            d_source_nabla_ids_per_child.append(
+                    derivative_source_ids - nabla_component_ids)
+
+            for ncomp in nablas:
+                nabla_finder.setdefault(
+                        ncomp.nabla_id, set()).add((child_idx, ncomp.ambient_axis))
+
+        # }}}
+
+        # a list of lists, the outer level presenting a sum, the inner a product
+        result = [rec_children]
+
+        for child_idx, (d_source_nabla_ids, child) in enumerate(
+                zip(d_source_nabla_ids_per_child, rec_children)):
+            if not d_source_nabla_ids:
+                continue
+
+            if len(d_source_nabla_ids) > 1:
+                raise NotImplementedError("more than one DerivativeSource per "
+                        "child in a product")
+
+            nabla_id, = d_source_nabla_ids
+            nablas = nabla_finder[nabla_id]
+            n_axes = max(axis for _, axis in nablas) + 1
+
+            new_result = []
+            for prod_term_list in result:
+                for axis in xrange(n_axes):
+                    new_ptl = prod_term_list[:]
+                    dsfinder = DerivativeSourceFinder(nabla_id,
+                            DerivativeTaker(axis))
+
+                    new_ptl[child_idx] = dsfinder(new_ptl[child_idx])
+                    for nabla_child_index, _ in nablas:
+                        new_ptl[nabla_child_index] = \
+                                NablaComponentToUnitVector(nabla_id, axis)(
+                                        new_ptl[nabla_child_index])
+
+                    new_result.append(new_ptl)
+
+            result = new_result
+
+        from pymbolic.primitives import flattened_sum
+        return flattened_sum(
+                type(expr)(tuple(prod_term_list)) for prod_term_list in result)
 
 # }}}
 
@@ -496,10 +647,13 @@ def stringify_where(where):
 class StringifyMapper(BaseStringifyMapper):
 
     def map_nabla(self, expr, enclosing_prec):
-        return r"\/"
+        return r"\/[%s]" % expr.nabla_id
 
     def map_nabla_component(self, expr, enclosing_prec):
-        return r"d/dx%d" % expr.ambient_axis
+        return r"d/dx%d[%s]" % (expr.ambient_axis, expr.nabla_id)
+
+    def map_derivative_source(self, expr, enclosing_prec):
+        return r"D[%s](%s)" % (expr.nabla_id, self.rec(expr.operand, PREC_NONE))
 
     def map_ones(self, expr, enclosing_prec):
         return "Ones.%s" % stringify_where(expr.where)
@@ -566,26 +720,8 @@ class StringifyMapper(BaseStringifyMapper):
 # }}}
 
 
-# {{{ pretty-printing ---------------------------------------------------------
-
 class PrettyStringifyMapper(
         CSESplittingStringifyMapperMixin, StringifyMapper):
     pass
-
-
-def pretty(optemplate):
-    stringify_mapper = PrettyStringifyMapper()
-    from pymbolic.mapper.stringifier import PREC_NONE
-    result = stringify_mapper(optemplate, PREC_NONE)
-
-    splitter = "="*75 + "\n"
-
-    cse_strs = stringify_mapper.get_cse_strings()
-    if cse_strs:
-        result = "\n".join(cse_strs)+"\n"+splitter+result
-
-    return result
-
-# }}}
 
 # vim: foldmethod=marker

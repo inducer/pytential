@@ -382,16 +382,15 @@ class Derivative(object):
     _next_id = [0]
 
     def __init__(self):
-        self.my_id = self._next_id
+        self.my_id = "id%s" % self._next_id[0]
         self._next_id[0] += 1
 
     @property
     def nabla(self):
-        return Nabla(self.my_id_)
+        return Nabla(self.my_id)
 
-    @property
     def __call__(self, operand):
-        return DerivativeSource(operand, self.my_id_)
+        return DerivativeSource(operand, self.my_id)
 
 # }}}
 
@@ -596,5 +595,23 @@ def surf_n_cross(tangential_vec):
     return make_obj_array([-tangential_vec[1], tangential_vec[0]])
 
 # }}}
+
+
+def pretty(expr):
+    # Doesn't quite belong here, but this is exposed to the user as
+    # "pytential.sym", so in here it goes.
+
+    from pytential.symbolic.mappers import PrettyStringifyMapper
+    stringify_mapper = PrettyStringifyMapper()
+    from pymbolic.mapper.stringifier import PREC_NONE
+    result = stringify_mapper(expr, PREC_NONE)
+
+    splitter = "="*75 + "\n"
+
+    cse_strs = stringify_mapper.get_cse_strings()
+    if cse_strs:
+        result = "\n".join(cse_strs)+"\n"+splitter+result
+
+    return result
 
 # vim: foldmethod=marker

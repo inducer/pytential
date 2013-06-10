@@ -139,7 +139,14 @@ class EvaluationMapper(EvaluationMapperBase):
 # }}}
 
 
+# {{{ scipy-like mat-vec op
+
 class MatVecOp:
+    """A :class:`scipy.sparse.linalg.LinearOperator` work-alike.
+    Exposes a :mod:`pytential` operator as a generic matrix operation,
+    i.e. given :math:`x`, compute :math:`Ax`.
+    """
+
     def __init__(self,
             bound_expr, queue, arg_name, total_dofs,
             starts_and_ends, extra_args):
@@ -176,6 +183,8 @@ class MatVecOp:
             return joined_result
         else:
             return result
+
+# }}}
 
 
 # {{{ bound expression
@@ -289,6 +298,7 @@ def bind(discretizations, expr, auto_where=None):
     from pytential.symbolic.mappers import (
             ToTargetTagger,
             Dimensionalizer,
+            DerivativeBinder,
             )
 
     if auto_where is None:
@@ -303,6 +313,8 @@ def bind(discretizations, expr, auto_where=None):
     # Dimensionalize so that preprocessing only has to deal with
     # dimension-specific layer potentials.
     expr = Dimensionalizer(discretizations)(expr)
+
+    expr = DerivativeBinder()(expr)
 
     for name, discr in discretizations.iteritems():
         expr = discr.preprocess_optemplate(name, expr)

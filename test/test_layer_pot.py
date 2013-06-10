@@ -37,6 +37,7 @@ from pytential.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon,
         make_curve_mesh)
 from sumpy.visualization import FieldPlotter
+from pytential import bind, sym
 
 import logging
 logger = logging.getLogger(__name__)
@@ -82,7 +83,6 @@ def test_geometry(ctx_getter):
 
     discr = PolynomialElementDiscretization(cl_ctx, mesh, order)
 
-    from pytential.symbolic.execution import bind
     import pytential.symbolic.primitives as prim
     area_sym = prim.integral(1)
 
@@ -117,11 +117,11 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
     target_order = 7
 
     from pytential.discretization.qbx import make_upsampling_qbx_discr
-    from pytential import bind, sym
     from pytools.convergence import EOCRecorder
 
     s_eoc_rec = EOCRecorder()
     d_eoc_rec = EOCRecorder()
+    sp_eoc_rec = EOCRecorder()
 
     if ellipse_aspect != 1:
         nelements_values = [60, 100, 150, 200]
@@ -220,6 +220,25 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
         # }}}
 
+        if ellipse_aspect == 1:
+            # {{{ S'
+
+            sigma = cl.clmath.cos(mode_nr*angle)
+
+            sp_sigma_op = bind(discr, sym.Sp(0, sym.var("sigma")))
+            sp_sigma = sp_sigma_op(queue=queue, sigma=sigma)
+            sp_eigval = 0
+
+            sp_sigma_ref = sp_eigval*sigma
+
+            sp_err = (
+                    discr.norm(queue, sp_sigma - sp_sigma_ref)
+                    /
+                    discr.norm(queue, sigma))
+            sp_eoc_rec.add_data_point(1/nelements, sp_err)
+
+            # }}}
+
     print "Errors for S:"
     print s_eoc_rec
     target_order = qbx_order + 1
@@ -229,6 +248,12 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
     print d_eoc_rec
     target_order = qbx_order
     assert d_eoc_rec.order_estimate() > target_order - 1.5
+
+    if ellipse_aspect == 1:
+        print "Errors for S':"
+        print sp_eoc_rec
+        target_order = qbx_order
+        assert sp_eoc_rec.order_estimate() > target_order - 1.5
 
 # }}}
 
@@ -257,7 +282,6 @@ def run_int_eq_test(
 
     # {{{ set up operator
 
-    from pytential import sym, bind
     from pytential.symbolic.pde.scalar import (
             DirichletOperator,
             NeumannOperator)
@@ -554,6 +578,26 @@ def test_integral_equation(
     assert eoc_rec.order_estimate() > qbx_order - 1.3
 
 # }}}
+
+
+def test_s_prime(ctx_getter):
+    cl_ctx = ctx_getter()
+
+    target_order = 7
+    nelements = 50
+    ellipse_aspect = 1
+    qbx_order = 5
+
+    from pytential.discretization.qbx import make_upsampling_qbx_discr
+
+    mesh = make_curve_mesh(partial(ellipse, ellipse_aspect),
+            np.linspace(0, 1, nelements+1),
+            target_order)
+
+    discr = make_upsampling_qbx_discr(
+            cl_ctx, mesh, target_order, qbx_order)
+
+    bind(discr, sym.Sp(0, sym.var("sigma")))
 
 
 # You can test individual routines by typing
