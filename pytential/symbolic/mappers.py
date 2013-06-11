@@ -687,11 +687,16 @@ class StringifyMapper(BaseStringifyMapper):
                 stringify_where(expr.where))
 
     def map_num_reference_derivative(self, expr, enclosing_prec):
-        return "d/dr%s.%s %s" % (
+        result = "d/dr%s.%s %s" % (
                 ",".join(str(ax) for ax in expr.ref_axes),
                 stringify_where(expr.where),
                 self.rec(expr.operand, PREC_PRODUCT),
                 )
+
+        if enclosing_prec >= PREC_PRODUCT:
+            return "(%s)" % result
+        else:
+            return result
 
     def map_parametrization_derivative(self, expr, enclosing_prec):
         return "dx/dr.%s" % (stringify_where(expr.where))
