@@ -364,6 +364,15 @@ class Nabla(Expression):
     def __init__(self, nabla_id):
         self.nabla_id = nabla_id
 
+    def __getinitargs__(self):
+        return (self.nabla_id,)
+
+    def __getitem__(self, index):
+        if not isinstance(index, int):
+            raise TypeError("Nabla subscript must be an integer")
+
+        return NablaComponent(index, self.nabla_id)
+
     mapper_method = "map_nabla"
 
 
