@@ -405,6 +405,13 @@ class Dimensionalizer(EvaluationMapper):
     def map_parametrization_derivative(self, expr):
         discr = self.discr_dict[expr.where]
 
+        from pytential.discretization import Discretization
+        if not isinstance(discr, Discretization):
+            raise RuntimeError("Cannot compute the parametrization derivative "
+                    "of something that is not a discretization (a target perhaps?). "
+                    "For example, you will receive this error if you try to "
+                    "evaluate S' in the volume.")
+
         par_grad = np.zeros((discr.ambient_dim, discr.dim), np.object)
         for i in xrange(discr.ambient_dim):
             for j in xrange(discr.dim):
