@@ -26,7 +26,7 @@ THE SOFTWARE.
 import numpy as np
 from pymbolic.primitives import (  # noqa
         Expression as ExpressionBase, Variable as var,
-        make_sym_vector, cse_scope as cse_scope_base,
+        cse_scope as cse_scope_base,
         make_common_subexpression as cse)
 from pymbolic.geometric_algebra import MultiVector, componentwise
 
@@ -67,6 +67,23 @@ class Expression(ExpressionBase):
     def stringifier(self):
         from pytential.symbolic.mappers import StringifyMapper
         return StringifyMapper
+
+
+class VectorVariable(ExpressionBase):
+    """:class:`pytential.symbolic.mappers.Dimensionalizer`
+    turns this into a :class:`pymbolic.geometric_algebra.MultiVector`
+    of scalar variables.
+    """
+
+    def __init__(self, name, num_components=None):
+        """
+        :arg num_components: if None, defaults to the dimension of the
+            ambient space
+        """
+        self.name = name
+        self.num_components = num_components
+
+    mapper_method = "map_vector_variable"
 
 
 class Function(var):

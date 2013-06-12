@@ -118,15 +118,16 @@ class IdentityMapper(IdentityMapperBase):
 
     # {{{ childless -- no need to rebuild
 
-    def map_ones(self, expr):
+    def map_vector_variable(self, expr):
         return expr
 
-    map_q_weight = map_ones
-    map_node_coordinate_component = map_ones
-    map_parametrization_gradient = map_ones
-    map_parametrization_derivative = map_ones
-    map_nabla = map_ones
-    map_nabla_component = map_ones
+    map_ones = map_vector_variable
+    map_q_weight = map_vector_variable
+    map_node_coordinate_component = map_vector_variable
+    map_parametrization_gradient = map_vector_variable
+    map_parametrization_derivative = map_vector_variable
+    map_nabla = map_vector_variable
+    map_nabla_component = map_vector_variable
 
     # }}}
 
@@ -189,6 +190,7 @@ class Collector(CombineMapper):
     def map_constant(self, expr):
         return set()
 
+    map_vector_variable = map_constant
     map_nabla = map_constant
     map_nabla_component = map_constant
     map_ones = map_constant
@@ -211,13 +213,24 @@ class DependencyMapper(DependencyMapperBase, Collector):
 
 
 class EvaluationMapper(EvaluationMapperBase):
-    # Unlike EvaluationMapperBase, this class preserves CSEs by default.
+    """Unlike :mod:`pymbolic.mapper.evaluation.EvaluationMapper`, this class
+    does evaluation mostly to get :class:`pymbolic.geometric_algebra.MultiVector`
+    instances to to do their thing, and perhaps to automatically kill terms
+    that are multiplied by zero. Otherwise it intends to largely preserve
+    the structure of the input expression.
+    """
 
     def map_variable(self, expr):
         return expr
 
+    def map_vector_variable(self, expr):
+        return expr
+
     map_q_weight = map_variable
     map_ones = map_variable
+
+    map_nabla_component = map_variable
+    map_nabla = map_variable
 
     def map_derivative_source(self, expr):
         return type(expr)(self.rec(expr.operand), expr.nabla_id)
@@ -390,6 +403,15 @@ class Dimensionalizer(EvaluationMapper):
         return single_valued(
                 discr.ambient_dim
                 for discr in self.discr_dict.itervalues())
+
+    def map_vector_variable(self, expr):
+        from pymbolic import make_sym_vector
+        num_components = expr.num_components
+
+        if num_components is None:
+            num_components = self.ambient_dim
+
+        return MultiVector(make_sym_vector(expr.name, num_components))
 
     def map_nabla(self, expr):
         from pytools import single_valued
@@ -652,6 +674,9 @@ def stringify_where(where):
 
 
 class StringifyMapper(BaseStringifyMapper):
+
+    def map_vector_variable(self, expr, enclosing_prec):
+        return " %s> " % expr.name
 
     def map_nabla(self, expr, enclosing_prec):
         return r"\/[%s]" % expr.nabla_id
