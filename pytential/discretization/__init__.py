@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 
+import numpy as np
 from pytools import Record, memoize_method
 from pytential.symbolic.compiler import Instruction
 
@@ -192,12 +193,29 @@ class Discretization(object):
         return self._integral_op()(queue, integrand=x)
 
     @memoize_method
-    def _norm_op(self, p):
+    def _norm_op(self, num_components):
         from pytential import sym, bind
-        return bind(self, sym.integral(sym.var("integrand")**p))
+        if num_components is not None:
+            from pymbolic.primitives import make_sym_vector
+            v = make_sym_vector("integrand", num_components)
+            integrand = sym.real(np.dot(sym.conj(v), v))
+        else:
+            integrand = sym.abs(sym.var("integrand"))**2
 
-    def norm(self, queue, x, p=2):
-        return self._norm_op(p=p)(queue, integrand=x)**(1/p)
+        return bind(self, sym.integral(integrand))
+
+    def norm(self, queue, x):
+        from pymbolic.geometric_algebra import MultiVector
+        if isinstance(x, MultiVector):
+            x = x.as_vector(np.object)
+
+        num_components = None
+        if isinstance(x, np.ndarray):
+            num_components, = x.shape
+
+        norm_op = self._norm_op(num_components)
+        from math import sqrt
+        return sqrt(norm_op(queue, integrand=x))
 
 
 # vim: fdm=marker
