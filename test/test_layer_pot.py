@@ -146,11 +146,16 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
         nodes = discr.nodes().with_queue(queue)
 
         if 0:
+            # plot geometry, centers, normals
             centers = discr.source_discr.centers(discr, 1)
             nodes_h = nodes.get()
             centers_h = [centers[0].get(), centers[1].get()]
             pt.plot(nodes_h[0], nodes_h[1], "x-")
             pt.plot(centers_h[0], centers_h[1], "o")
+            normal = bind(discr, sym.normal())(queue).as_vector(np.object)
+            pt.quiver(nodes_h[0], nodes_h[1],
+                    normal[0].get(), normal[1].get())
+            pt.gca().set_aspect("equal")
             pt.show()
 
         angle = cl.clmath.atan2(nodes[1]*ellipse_aspect, nodes[0])
