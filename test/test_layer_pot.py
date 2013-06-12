@@ -585,24 +585,109 @@ def test_integral_equation(
 # }}}
 
 
-def test_s_prime(ctx_getter):
+# {{{ integral identity tester
+
+@pytest.mark.parametrize(("curve_name", "curve_f"), [
+    ("circle", partial(ellipse, 1)),
+    ("3-to-1 ellipse", partial(ellipse, 3)),
+    #("starfish", starfish),
+    ])
+@pytest.mark.parametrize("qbx_order", [3, 5, 7])
+@pytest.mark.parametrize("k", [0])
+# sample invocation to copy and paste:
+# 'test_identities(cl._csc, "circ", partial(ellipse, 1), 4, 0)'
+def test_identities(ctx_getter, curve_name, curve_f, qbx_order, k):
     cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    # prevent cache 'splosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
 
     target_order = 7
-    nelements = 50
-    ellipse_aspect = 1
-    qbx_order = 5
 
-    from pytential.discretization.qbx import make_upsampling_qbx_discr
+    u_sym = sym.var("u")
+    grad_u_sym = sym.VectorVariable("grad_u")
+    dn_u_sym = sym.var("dn_u")
 
-    mesh = make_curve_mesh(partial(ellipse, ellipse_aspect),
-            np.linspace(0, 1, nelements+1),
-            target_order)
+    if k == 0:
+        k_sym = 0
+    else:
+        k_sym = "k"
 
-    discr = make_upsampling_qbx_discr(
-            cl_ctx, mesh, target_order, qbx_order)
+    d1 = sym.Derivative()
+    d2 = sym.Derivative()
+    zero_ops = [
+            ("green",
+                 sym.S(k_sym, dn_u_sym) - sym.D(k_sym, u_sym) - 0.5*u_sym),
+            ("green_grad",
+                d1.nabla * d1(sym.S(k_sym, dn_u_sym))
+                - d2.nabla * d2(sym.D(k_sym, u_sym))
+                - 0.5*grad_u_sym),
+            # ("zero_calderon",
+            #     -Dp(0, S(0, u_sym))
+            #     - 0.25*u_sym + Sp(0, Sp(0, u_sym))),
+            ]
 
-    bind(discr, sym.Sp(0, sym.var("sigma")))
+    from pytools.convergence import EOCRecorder
+    eoc_recs = [EOCRecorder() for zop in zero_ops]
+
+    for nelements in [30, 50, 70]:
+        mesh = make_curve_mesh(curve_f,
+                np.linspace(0, 1, nelements+1),
+                target_order)
+
+        from pytential.discretization.qbx import make_upsampling_qbx_discr
+        discr = make_upsampling_qbx_discr(
+                cl_ctx, mesh, target_order, qbx_order)
+
+        # {{{ compute values of a solution to the PDE
+
+        nodes_host = discr.nodes().get(queue)
+        normal = bind(discr, sym.normal())(queue).as_vector(np.object)
+        normal_host = [normal[0].get(), normal[1].get()]
+
+        if k != 0:
+            angle = 0.3
+            wave_vec = np.array([np.cos(angle), np.sin(angle)])
+            u = np.exp(1j*k*np.tensordot(wave_vec, nodes_host, axes=1))
+            grad_u = 1j*k*wave_vec[:, np.newaxis]*u
+        else:
+            center = np.array([3, 1])
+            diff = nodes_host - center[:, np.newaxis]
+            dist_squared = np.sum(diff**2, axis=0)
+            dist = np.sqrt(dist_squared)
+            u = np.log(dist)
+            grad_u = diff/dist_squared
+
+        dn_u = normal_host[0]*grad_u[0] + normal_host[1]*grad_u[1]
+
+        # }}}
+
+        u_dev = cl.array.to_device(queue, u)
+        dn_u_dev = cl.array.to_device(queue, dn_u)
+        grad_u_dev = cl.array.to_device(queue, grad_u)
+
+        for (op_name, zero_op), eoc_rec in zip(zero_ops, eoc_recs):
+            key = (qbx_order, curve_name, nelements, op_name)
+
+            error = bind(discr, zero_op)(
+                    queue, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=k)
+            if 0:
+                pt.plot(error)
+                pt.show()
+
+            l2_error_norm = discr.norm(queue, error)
+            #assert discr.norm(error) < thresh
+            print key, l2_error_norm
+
+            eoc_rec.add_data_point(1/nelements, l2_error_norm)
+
+    for (op_name, _), eoc_rec in zip(zero_ops, eoc_recs):
+        print op_name
+        print eoc_rec
+        print
+# }}}
 
 
 # You can test individual routines by typing
