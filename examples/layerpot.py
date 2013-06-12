@@ -9,9 +9,9 @@ queue = cl.CommandQueue(cl_ctx)
 
 target_order = 7
 qbx_order = 5
-nelements = 40
+nelements = 90
 mode_nr = 2
-k = 5
+k = 0
 
 mesh = make_curve_mesh(starfish,
         np.linspace(0, 1, nelements+1),
@@ -27,23 +27,27 @@ nodes = discr.nodes().with_queue(queue)
 angle = cl.clmath.atan2(nodes[1], nodes[0])
 
 from pytential import bind, sym
-op = sym.D(0, sym.var("sigma"))
-bound_op = bind(discr, op)
+d = sym.Derivative()
+#op = d.nabla[0] * d(sym.S("k" if k else 0, sym.var("sigma")))
+op = sym.D("k" if k else 0, sym.var("sigma"))
 
 sigma = cl.clmath.cos(mode_nr*angle)
-op_sigma = bound_op(queue=queue, sigma=sigma)
+sigma[:] = 1
+if k:
+    sigma = sigma.astype(np.complex128)
 
 fplot = FieldPlotter(np.zeros(2), extent=5, npoints=200)
 from pytential.discretization.target import PointsTarget
 fld_in_vol = bind(
         (discr, PointsTarget(fplot.points)),
-        op)(queue, sigma=sigma).get()
+        op)(queue, sigma=sigma, k=k).get()
 
-fld_on_bdry = bind(discr, op)(queue, sigma=sigma).get()
+fld_on_bdry = bind(discr, op)(queue, sigma=sigma, k=k).get()
 
 nodes = discr.nodes().get(queue=queue)
 
 from mayavi import mlab
-mlab.points3d(nodes[0], nodes[1], fld_on_bdry, scale_factor=0.03)
-fplot.show_scalar_in_mayavi(fld_in_vol, max_val=5)
+mlab.points3d(nodes[0], nodes[1], fld_on_bdry.real, scale_factor=0.03)
+fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+mlab.colorbar()
 mlab.show()
