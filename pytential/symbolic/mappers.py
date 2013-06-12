@@ -618,18 +618,18 @@ class QBXPreprocessor(IdentityMapper):
         if num_derivatives == 0:
             # either side will do
             return expr.copy(qbx_forced_limit=+1)
-        elif num_derivatives == 1:
+        else:  # if num_derivatives == 1:
             # Assume it's a PV integral, preserve numerical compactness by using
             # two-sided average.
             return 0.5*(
                     expr.copy(qbx_forced_limit=+1)
                     + expr.copy(qbx_forced_limit=-1))
-        else:
-            # FIXME
-            # from sumpy.layerpot import find_jump_term
-            # jump_term = find_jump_term(expr.kernel,
-            #         _QBXJumpTermSymbolicArgumentProvider(expr.source))
-            raise NotImplementedError()
+        # else:
+        #     # FIXME
+        #     # from sumpy.layerpot import find_jump_term
+        #     # jump_term = find_jump_term(expr.kernel,
+        #     #         _QBXJumpTermSymbolicArgumentProvider(expr.source))
+        #     raise NotImplementedError()
 
     def map_int_g_ds(self, expr):
         raise RuntimeError("user-facing source derivative operators are expected "
