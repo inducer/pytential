@@ -127,6 +127,14 @@ class EvaluationMapper(EvaluationMapperBase):
         arg, = args
         return cl.clmath.sqrt(self.rec(arg))
 
+    def apply_abs(self, args):
+        arg, = args
+        return abs(self.rec(arg))
+
+    def apply_conj(self, args):
+        arg, = args
+        return self.rec(arg).conj()
+
     # }}}
 
     def map_call(self, expr):

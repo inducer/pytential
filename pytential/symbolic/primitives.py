@@ -86,7 +86,9 @@ class Function(var):
 
 real = Function("real")
 imag = Function("imag")
+conj = Function("conj")
 sqrt = Function("sqrt")
+abs = Function("abs")
 
 
 class DiscretizationProperty(Expression):
