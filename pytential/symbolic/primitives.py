@@ -178,8 +178,13 @@ def sqrt_jac_q_weight(where=None):
 
 
 def normal(where=None):
+    """Exterior unit normals."""
+
+    # Don't be tempted to add a sign here. As it is, it produces
+    # exterior normals for positively oriented curves.
+
     pder = ParametrizationDerivative(where) / area_element()
-    return cse(-pder.attr("I") | pder, "normal",
+    return cse(pder.attr("I") | pder, "normal",
             cse_scope.DISCRETIZATION)
 
 
