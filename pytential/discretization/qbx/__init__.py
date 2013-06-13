@@ -237,6 +237,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                     pass
 
             if is_self:
+                # QBXPreprocessor is supposed to have taken care of this
+                assert o.qbx_forced_limit is not None
                 assert abs(o.qbx_forced_limit) > 0
 
                 evt, output_for_each_kernel = lp_applier(queue, target_discr.nodes(),
