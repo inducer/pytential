@@ -679,6 +679,9 @@ def stringify_where(where):
 
 class StringifyMapper(BaseStringifyMapper):
 
+    def map_nodes(self, expr, enclosing_prec):
+        return "x"
+
     def map_vector_variable(self, expr, enclosing_prec):
         return " %s> " % expr.name
 
