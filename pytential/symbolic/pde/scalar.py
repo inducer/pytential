@@ -68,6 +68,8 @@ class DirichletOperator(ScalarPDEOperator):
         """
         ScalarPDEOperator.__init__(self, use_l2_weighting)
 
+        assert loc_sign in [-1, 1]
+
         from sumpy.kernel import normalize_kernel, LaplaceKernel
         self.kernel = normalize_kernel(kernel)
         self.loc_sign = loc_sign
@@ -128,6 +130,8 @@ class NeumannOperator(ScalarPDEOperator):
             operator available
         """
         ScalarPDEOperator.__init__(self, use_l2_weighting)
+
+        assert loc_sign in [-1, 1]
 
         from sumpy.kernel import normalize_kernel, LaplaceKernel
 
