@@ -634,6 +634,10 @@ class QBXPreprocessor(IdentityMapper):
             # Not computing the on-surface value, nothing to do.
             return IdentityMapper.map_int_g(self, expr)
 
+        expr = expr.copy(
+                kernel=ExpressionKernelIdentityMapper(self.rec)(expr.kernel),
+                density=self.rec(expr.density))
+
         from sumpy.kernel import DerivativeCounter
         num_derivatives = DerivativeCounter()(expr.kernel)
 
