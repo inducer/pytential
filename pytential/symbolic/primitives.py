@@ -451,7 +451,7 @@ def D(*args, **kwargs):
 
 def Dp(*args, **kwargs):
     where = kwargs.get("where")
-    return normal_derivative(D(*args, **kwargs), where)
+    return normal_derivative(D(*args, **kwargs), where).attr("xproject")(0)
 
 # }}}
 
