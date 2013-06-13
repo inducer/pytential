@@ -320,6 +320,7 @@ def bind(discretizations, expr, auto_where=None):
 
     # Dimensionalize so that preprocessing only has to deal with
     # dimension-specific layer potentials.
+
     expr = Dimensionalizer(discretizations)(expr)
 
     expr = DerivativeBinder()(expr)

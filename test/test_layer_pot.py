@@ -202,7 +202,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
         d_sigma = d_sigma_op(queue=queue, sigma=sigma)
 
         # SIGN BINGO! :)
-        d_eigval = -1 * (-1)**mode_nr * 1/2*ellipse_fraction
+        d_eigval = -(-1)**mode_nr * 1/2*ellipse_fraction
 
         d_sigma_ref = d_eigval*sigma
 
@@ -281,7 +281,6 @@ def run_int_eq_test(
         pt.show()
 
     from pytential.discretization.qbx import make_upsampling_qbx_discr
-
     discr = make_upsampling_qbx_discr(
             cl_ctx, mesh, target_order, qbx_order)
 
@@ -350,9 +349,14 @@ def run_int_eq_test(
             queue, test_targets, point_sources, [source_charges], **knl_kwargs)
 
     nodes = discr.nodes()
+
     if 0:
-        n = nodes.get(queue=queue)
-        pt.plot(n[0], n[1], "x-")
+        # show geometry, centers, normals
+        nodes_h = nodes.get(queue=queue)
+        pt.plot(nodes_h[0], nodes_h[1], "x-")
+        normal = bind(discr, sym.normal())(queue).as_vector(np.object)
+        pt.quiver(nodes_h[0], nodes_h[1], normal[0].get(queue), normal[1].get(queue))
+        pt.gca().set_aspect("equal")
         pt.show()
 
     if bc_type == "dirichlet":
@@ -365,13 +369,11 @@ def run_int_eq_test(
                 [AxisTargetDerivative(0, knl), AxisTargetDerivative(1, knl)],
                 exclude_self=False, value_dtypes=dtype)
         evt, (grad0, grad1) = grad_p2p(
-                queue, point_sources, [source_charges],
+                queue, nodes, point_sources, [source_charges],
                 **knl_kwargs)
 
-        1/0  # FIXME use of normals
-        bc = (
-                grad0*discr.normals[0].reshape(-1) +
-                grad1*discr.normals[1].reshape(-1))
+        normal = bind(discr, sym.normal())(queue).as_vector(np.object)
+        bc = (grad0*normal[0] + grad1*normal[1])
 
     # }}}
 
@@ -420,16 +422,19 @@ def run_int_eq_test(
 
     err = test_direct-test_via_bdry
 
-    if k == 0 and bc_type == "neumann" and loc_sign == -1:
-        op_ones = bound_tgt_op(u=np.ones(len(discr), dtype=dtype))
-        assert la.norm(op_ones) > 1e-4
-        op_ones = op_ones/la.norm(op_ones)
-
-        err = err - np.vdot(op_ones, err)*op_ones
-
     err = err.get()
     test_direct = test_direct.get()
     test_via_bdry = test_via_bdry.get()
+
+    # {{{ remove effect of net source charge
+
+    if k == 0 and bc_type == "neumann" and loc_sign == -1:
+        # remove constant offset in interior Laplace Neumann error
+        tgt_ones = np.ones_like(test_direct)
+        tgt_ones = tgt_ones/la.norm(tgt_ones)
+        err = err - np.vdot(tgt_ones, err)*tgt_ones
+
+    # }}}
 
     rel_err_2 = la.norm(err)/la.norm(test_direct)
     rel_err_inf = la.norm(err, np.inf)/la.norm(test_direct, np.inf)
@@ -471,12 +476,13 @@ def run_int_eq_test(
         from matplotlib.cm import get_cmap
         cmap = get_cmap()
         cmap._init()
-        cmap._lut[(cmap.N*99)//100:, -1] = 0  # make last percent
+        if 0:
+            cmap._lut[(cmap.N*99)//100:, -1] = 0  # make last percent transparent?
 
         prep()
         if 1:
             pt.subplot(131)
-            #pt.title("Field error (loc_sign=%s)" % loc_sign)
+            pt.title("Field error (loc_sign=%s)" % loc_sign)
             log_err = np.log10(1e-20+np.abs(fld_from_src-fld_from_bdry))
             log_err = np.minimum(-3, log_err)
             fplot.show_scalar_in_matplotlib(log_err, cmap=cmap)
@@ -484,8 +490,8 @@ def run_int_eq_test(
             #from matplotlib.colors import Normalize
             #im.set_norm(Normalize(vmin=-6, vmax=1))
 
-            #cb = pt.colorbar(shrink=0.9)
-            #cb.set_label(r"$\log_{10}(\mathdefault{Error})$")
+            cb = pt.colorbar(shrink=0.9)
+            cb.set_label(r"$\log_{10}(\mathdefault{Error})$")
 
         if 1:
             pt.subplot(132)
@@ -494,12 +500,15 @@ def run_int_eq_test(
             fplot.show_scalar_in_matplotlib(
                     fld_from_src.real, max_val=3)
 
+            pt.colorbar(shrink=0.9)
         if 1:
             pt.subplot(133)
             prep()
             pt.title("Solved Field")
             fplot.show_scalar_in_matplotlib(
                     fld_from_bdry.real, max_val=3)
+
+            pt.colorbar(shrink=0.9)
 
         # total field
         #fplot.show_scalar_in_matplotlib(
@@ -545,14 +554,18 @@ def run_int_eq_test(
 # {{{ integral equation test frontend
 
 @pytest.mark.parametrize(("curve_name", "curve_f"), [
-    ("circle", partial(ellipse, 1)),
+    # booo-ring.
+    #("circle", partial(ellipse, 1)),
+
     ("3-to-1 ellipse", partial(ellipse, 3)),
+
+    # underresolved at resolutions that take tolerable time
     #("starfish", starfish),
     ])
-@pytest.mark.parametrize("k", [0])
-@pytest.mark.parametrize("bc_type", ["dirichlet"])
+@pytest.mark.parametrize("k", [0, 1.2])
+@pytest.mark.parametrize("bc_type", ["dirichlet", "neumann"])
 @pytest.mark.parametrize("loc_sign", [+1, -1])
-@pytest.mark.parametrize("qbx_order", [3, 5, 7])
+@pytest.mark.parametrize("qbx_order", [5])
 # Sample test run:
 # 'test_integral_equation(cl._csc, circle, 30, 5, "dirichlet", 1, 5)'
 def test_integral_equation(
@@ -579,24 +592,41 @@ def test_integral_equation(
 
         eoc_rec.add_data_point(1/nelements, result.rel_err_2)
 
+    if bc_type == "dirichlet":
+        tgt_order = qbx_order
+    elif bc_type == "neumann":
+        tgt_order = qbx_order-1
+    else:
+        assert False
+
     print eoc_rec
-    assert eoc_rec.order_estimate() > qbx_order - 1.3
+    assert eoc_rec.order_estimate() > tgt_order - 1.3
 
 # }}}
 
 
 # {{{ integral identity tester
 
+d1 = sym.Derivative()
+d2 = sym.Derivative()
+
+
 @pytest.mark.parametrize(("curve_name", "curve_f"), [
-    ("circle", partial(ellipse, 1)),
+    #("circle", partial(ellipse, 1)),
     ("3-to-1 ellipse", partial(ellipse, 3)),
     #("starfish", starfish),
     ])
-@pytest.mark.parametrize("qbx_order", [3, 5, 7])
-@pytest.mark.parametrize("k", [0])
+@pytest.mark.parametrize("qbx_order", [5])
+@pytest.mark.parametrize(("zero_op_name", "k"), [
+    ("green", 0),
+    ("green", 1.2),
+    ("green_grad", 0),
+    ("green_grad", 1.2),
+    ("zero_calderon", 0),
+    ])
 # sample invocation to copy and paste:
-# 'test_identities(cl._csc, "circ", partial(ellipse, 1), 4, 0)'
-def test_identities(ctx_getter, curve_name, curve_f, qbx_order, k):
+# 'test_identities(cl._csc, "green", "circ", partial(ellipse, 1), 4, 0)'
+def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -615,22 +645,30 @@ def test_identities(ctx_getter, curve_name, curve_f, qbx_order, k):
     else:
         k_sym = "k"
 
-    d1 = sym.Derivative()
-    d2 = sym.Derivative()
-    zero_ops = [
-            ("green",
-                 sym.S(k_sym, dn_u_sym) - sym.D(k_sym, u_sym) - 0.5*u_sym),
-            ("green_grad",
-                d1.nabla * d1(sym.S(k_sym, dn_u_sym))
-                - d2.nabla * d2(sym.D(k_sym, u_sym))
-                - 0.5*grad_u_sym),
-            # ("zero_calderon",
-            #     -Dp(0, S(0, u_sym))
-            #     - 0.25*u_sym + Sp(0, Sp(0, u_sym))),
-            ]
+    zero_op_table = {
+            "green":
+            sym.S(k_sym, dn_u_sym) - sym.D(k_sym, u_sym) - 0.5*u_sym,
+
+            "green_grad":
+            d1.nabla * d1(sym.S(k_sym, dn_u_sym))
+            - d2.nabla * d2(sym.D(k_sym, u_sym))
+            - 0.5*grad_u_sym,
+
+            # only for k==0:
+            "zero_calderon":
+            -sym.Dp(0, sym.S(0, u_sym))
+            - 0.25*u_sym + sym.Sp(0, sym.Sp(0, u_sym))
+            }
+    order_table = {
+            "green": qbx_order,
+            "green_grad": qbx_order-1,
+            "zero_calderon": qbx_order-1,
+            }
+
+    zero_op = zero_op_table[zero_op_name]
 
     from pytools.convergence import EOCRecorder
-    eoc_recs = [EOCRecorder() for zop in zero_ops]
+    eoc_rec = EOCRecorder()
 
     for nelements in [30, 50, 70]:
         mesh = make_curve_mesh(curve_f,
@@ -668,25 +706,24 @@ def test_identities(ctx_getter, curve_name, curve_f, qbx_order, k):
         dn_u_dev = cl.array.to_device(queue, dn_u)
         grad_u_dev = cl.array.to_device(queue, grad_u)
 
-        for (op_name, zero_op), eoc_rec in zip(zero_ops, eoc_recs):
-            key = (qbx_order, curve_name, nelements, op_name)
+        key = (qbx_order, curve_name, nelements, zero_op_name)
 
-            error = bind(discr, zero_op)(
-                    queue, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=k)
-            if 0:
-                pt.plot(error)
-                pt.show()
+        bound_op = bind(discr, zero_op)
+        error = bound_op(
+                queue, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=k)
+        if 0:
+            pt.plot(error)
+            pt.show()
 
-            l2_error_norm = discr.norm(queue, error)
-            #assert discr.norm(error) < thresh
-            print key, l2_error_norm
+        l2_error_norm = discr.norm(queue, error)
+        print key, l2_error_norm
 
-            eoc_rec.add_data_point(1/nelements, l2_error_norm)
+        eoc_rec.add_data_point(1/nelements, l2_error_norm)
 
-    for (op_name, _), eoc_rec in zip(zero_ops, eoc_recs):
-        print op_name
-        print eoc_rec
-        print
+    print eoc_rec
+    tgt_order = order_table[zero_op_name]
+    assert eoc_rec.order_estimate() > tgt_order - 1.3
+
 # }}}
 
 

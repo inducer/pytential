@@ -10,7 +10,7 @@ queue = cl.CommandQueue(cl_ctx)
 target_order = 7
 qbx_order = 5
 nelements = 90
-mode_nr = 2
+mode_nr = 0
 k = 0
 
 mesh = make_curve_mesh(starfish,
@@ -32,7 +32,6 @@ d = sym.Derivative()
 op = sym.D("k" if k else 0, sym.var("sigma"))
 
 sigma = cl.clmath.cos(mode_nr*angle)
-sigma[:] = 1
 if k:
     sigma = sigma.astype(np.complex128)
 
@@ -47,7 +46,14 @@ fld_on_bdry = bind(discr, op)(queue, sigma=sigma, k=k).get()
 nodes = discr.nodes().get(queue=queue)
 
 from mayavi import mlab
-mlab.points3d(nodes[0], nodes[1], fld_on_bdry.real, scale_factor=0.03)
 fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+
+if 1:
+    # {{{ plot boundary field
+
+    mlab.points3d(nodes[0], nodes[1], fld_on_bdry.real, scale_factor=0.03)
+
+    # }}}
+
 mlab.colorbar()
 mlab.show()
