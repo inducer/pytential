@@ -130,11 +130,10 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
     @memoize_method
     def centers(self, target_discr, sign):
-        import pytential.symbolic.primitives as p
-        from pytential.symbolic.execution import bind
+        from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
             return bind(target_discr,
-                    p.Nodes() + 2*sign*p.area_element()*p.normal())(queue) \
+                    sym.Nodes() + 2*sign*sym.area_element()*sym.normal())(queue) \
                             .as_vector(np.object)
 
     @memoize_method
@@ -165,6 +164,49 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         return result
 
+    def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
+        return self.exec_layer_potential_insn_direct(queue, insn, bound_expr, evaluate)
+
+    # {{{ fmm-based execution
+
+    @property
+    @memoize_method
+    def qbx_fmm_code_getter(self):
+        from pytential.discretization.qbx.fmm import QBXFMMCodeGetter
+        return QBXFMMCodeGetter(self.cl_context, self.ambient_dim)
+
+    @memoize_method
+    def qbx_fmm_geometry_data(self, target_discrs):
+        """
+        :arg target_discrs: a tuple of
+            :class:`pytential.discretization.Discretization`
+            or
+            :class:`pytential.discretization.target.TargetBase`
+            instances
+        """
+        from pytential.discretization.qbx.fmm import QBXFMMGeometryData
+        return QBXFMMGeometryData(self.qbx_fmm_code_getter,
+                self, target_discrs)
+
+    def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
+        code_getter = self.qbx_fmm_code_getter
+        target_discrs = tuple(
+                bound_expr.discretizations[o.target_name]
+                for o in insn.outputs)
+        geo_data = self.qbx_fmm_geometry_data(target_discrs)
+        center_info = geo_data.center_info()
+        centers = [center_info.centers[0].get(queue),
+                center_info.centers[1].get(queue)]
+        import matplotlib.pyplot as pt
+        pt.plot(centers[0], centers[1], "x")
+        pt.show()
+
+        1/0
+
+    # }}}
+
+    # {{{ direct execution
+
     @memoize_method
     def get_lpot_applier_and_arg_names_to_exprs(self, kernels):
         # needs to be separate method for caching
@@ -175,7 +217,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         else:
             value_dtype = self.real_dtype
 
-        from sumpy.layerpot import LayerPotential
+        from sumpy.qbx import LayerPotential
         lpot_applier = LayerPotential(self.cl_context,
                     [self.expansion_getter(knl, self.qbx_order)
                         for knl in kernels],
@@ -205,7 +247,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         return p2p
 
-    def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def exec_layer_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
         lp_applier, arg_names_to_exprs = \
                 self.get_lpot_applier_and_arg_names_to_exprs(insn.kernels)
         p2p = None
@@ -256,6 +298,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
         return result, []
+
+    # }}}
 
     # }}}
 

@@ -652,7 +652,7 @@ class QBXPreprocessor(IdentityMapper):
                     + expr.copy(qbx_forced_limit=-1))
         # else:
         #     # FIXME
-        #     # from sumpy.layerpot import find_jump_term
+        #     # from sumpy.qbx import find_jump_term
         #     # jump_term = find_jump_term(expr.kernel,
         #     #         _QBXJumpTermSymbolicArgumentProvider(expr.source))
         #     raise NotImplementedError()
