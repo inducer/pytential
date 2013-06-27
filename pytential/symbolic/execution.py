@@ -325,8 +325,13 @@ def bind(discretizations, expr, auto_where=None):
 
     expr = DerivativeBinder()(expr)
 
+    from pytential import sym
+    print sym.pretty(expr)
     for name, discr in discretizations.iteritems():
-        expr = discr.preprocess_optemplate(name, expr)
+        expr = discr.preprocess_optemplate(name, discretizations, expr)
+
+    from pytential import sym
+    print sym.pretty(expr)
 
     # Dimensionalize again, in case the preprocessor spit out
     # dimension-independent stuff.

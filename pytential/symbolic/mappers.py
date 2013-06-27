@@ -622,16 +622,21 @@ class DerivativeBinder(IdentityMapper):
 # {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
-    def __init__(self, source_name):
+    def __init__(self, source_name, discretizations):
         self.source_name = source_name
+        self.discretizations = discretizations
 
     def map_int_g(self, expr):
         if expr.source != self.source_name:
             # not ours
             return IdentityMapper.map_int_g(self, expr)
 
-        if expr.qbx_forced_limit is not None:
-            # Not computing the on-surface value, nothing to do.
+        self_discr = self.discretizations[self.source_name]
+
+        assert expr.qbx_forced_limit is not None
+        if expr.qbx_forced_limit != 0 \
+                or self.discretizations[expr.target] is not self_discr:
+            # Not computing the self-on-surface value, nothing to do.
             return IdentityMapper.map_int_g(self, expr)
 
         expr = expr.copy(
@@ -736,25 +741,27 @@ class StringifyMapper(BaseStringifyMapper):
     def map_q_weight(self, expr, enclosing_prec):
         return "w_quad.%s" % stringify_where(expr.where)
 
-    def map_int_g(self, op, enclosing_prec):
-        return u"Int[%s->%s] (%s * %s)" % (
-                stringify_where(op.source),
-                stringify_where(op.target),
-                op.kernel,
-                self.rec(op.density, PREC_PRODUCT))
+    def map_int_g(self, expr, enclosing_prec):
+        return u"Int[%s->%s]@(%d) (%s * %s)" % (
+                stringify_where(expr.source),
+                stringify_where(expr.target),
+                expr.qbx_forced_limit,
+                expr.kernel,
+                self.rec(expr.density, PREC_PRODUCT))
 
-    def map_int_g_ds(self, op, enclosing_prec):
-        if isinstance(op.dsource, MultiVector):
-            deriv_term = r"(%s*\/)" % self.rec(op.dsource, PREC_PRODUCT)
+    def map_int_g_ds(self, expr, enclosing_prec):
+        if isinstance(expr.dsource, MultiVector):
+            deriv_term = r"(%s*\/)" % self.rec(expr.dsource, PREC_PRODUCT)
         else:
-            deriv_term = self.rec(op.dsource, PREC_PRODUCT)
+            deriv_term = self.rec(expr.dsource, PREC_PRODUCT)
 
-        result = u"Int[%s->%s] %s G_%s %s" % (
-                stringify_where(op.source),
-                stringify_where(op.target),
+        result = u"Int[%s->%s]@(%d) %s G_%s %s" % (
+                stringify_where(expr.source),
+                stringify_where(expr.target),
+                expr.qbx_forced_limit,
                 deriv_term,
-                op.kernel,
-                self.rec(op.density, PREC_NONE))
+                expr.kernel,
+                self.rec(expr.density, PREC_NONE))
 
         if enclosing_prec >= PREC_PRODUCT:
             return "(%s)" % result

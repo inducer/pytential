@@ -468,6 +468,9 @@ class OperatorCompiler(IdentityMapper):
             base_kernel = single_valued(
                     atdr(kernel) for kernel in kernels)
 
+            for op in group:
+                assert op.qbx_forced_limit in [-1, 0, 1]
+
             from pytential.discretization import (
                     LayerPotentialInstruction, LayerPotentialOutput)
             outputs = [

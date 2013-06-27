@@ -23,18 +23,14 @@ THE SOFTWARE.
 """
 
 
-# {{{ target classes
-
 class TargetBase(object):
     pass
 
 
 class PointsTarget(TargetBase):
-    """
-    .. attribute:: points
-
-        Shape *(ambient_dim, npoints)*
-
+    """The point of this class is to act as a container for some target points
+    while presenting enough of the :class:`pytential.discretization.Discretization`
+    interface to not necessitate a lot of special cases in that code path.
     """
 
     def __init__(self, nodes, normals=None):
@@ -44,12 +40,17 @@ class PointsTarget(TargetBase):
     def ambient_dim(self):
         return self._nodes.shape[0]
 
-    def preprocess_optemplate(self, name, expr):
+    def preprocess_optemplate(self, name, discretizations, expr):
         return expr
 
     def nodes(self):
+        """Shape: ``[ambient_dim, nnodes]``
+        """
+
         return self._nodes
 
-# }}}
+    @property
+    def nnodes(self):
+        return self._nodes.shape[1]
 
 # vim: foldmethod=marker

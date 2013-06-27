@@ -146,13 +146,13 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
     # {{{ interface with execution
 
-    def preprocess_optemplate(self, name, expr):
+    def preprocess_optemplate(self, name, discretizations, expr):
         """
         :arg name: The symbolic name for *self*, which the preprocessor
             should use to find which expressions it is allowed to modify.
         """
         from pytential.symbolic.mappers import QBXPreprocessor
-        return QBXPreprocessor(name)(expr)
+        return QBXPreprocessor(name, discretizations)(expr)
 
     def op_group_features(self, expr):
         from pytential.symbolic.primitives import IntGdSource
@@ -165,7 +165,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         return result
 
     def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
-        return self.exec_layer_potential_insn_direct(queue, insn, bound_expr, evaluate)
+        return self.exec_layer_potential_insn_direct(
+                queue, insn, bound_expr, evaluate)
 
     # {{{ fmm-based execution
 
@@ -176,31 +177,43 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         return QBXFMMCodeGetter(self.cl_context, self.ambient_dim)
 
     @memoize_method
-    def qbx_fmm_geometry_data(self, target_discrs):
+    def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
         """
-        :arg target_discrs: a tuple of
+        :arg target_discrs: a tuple of *(discr, qbx_forced_limit)*
+            tuples, where *discr* is a
             :class:`pytential.discretization.Discretization`
             or
             :class:`pytential.discretization.target.TargetBase`
-            instances
+            instance
         """
         from pytential.discretization.qbx.fmm import QBXFMMGeometryData
         return QBXFMMGeometryData(self.qbx_fmm_code_getter,
-                self, target_discrs)
+                self, target_discrs_and_qbx_sides)
 
     def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
-        code_getter = self.qbx_fmm_code_getter
-        target_discrs = tuple(
-                bound_expr.discretizations[o.target_name]
-                for o in insn.outputs)
-        geo_data = self.qbx_fmm_geometry_data(target_discrs)
-        center_info = geo_data.center_info()
-        centers = [center_info.centers[0].get(queue),
-                center_info.centers[1].get(queue)]
-        import matplotlib.pyplot as pt
-        pt.plot(centers[0], centers[1], "x")
-        pt.show()
+        # {{{ build list of unique target discretizations used
 
+        # map (name, qbx_side) to number in list
+        tgt_name_and_side_to_number = {}
+        # list of tuples (discr, qbx_side)
+        target_discrs_and_qbx_sides = []
+
+        for o in insn.outputs:
+            key = (o.target_name, o.qbx_forced_limit)
+            if key not in tgt_name_and_side_to_number:
+                tgt_name_and_side_to_number[key] = \
+                        len(target_discrs_and_qbx_sides)
+                target_discrs_and_qbx_sides.append(
+                        (bound_expr.discretizations[o.target_name],
+                            o.qbx_forced_limit))
+
+        target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
+
+        # }}}
+
+        geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
+
+        geo_data.plot()
         1/0
 
     # }}}

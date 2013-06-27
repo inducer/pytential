@@ -1,8 +1,11 @@
 import numpy as np
 import pyopencl as cl
-from pytential.mesh.generation import (
-        make_curve_mesh, starfish)
+from pytential.mesh.generation import (  # noqa
+        make_curve_mesh, starfish, drop)
 from sumpy.visualization import FieldPlotter
+
+import logging
+logging.basicConfig(level=logging.INFO)
 
 cl_ctx = cl.create_some_context()
 queue = cl.CommandQueue(cl_ctx)

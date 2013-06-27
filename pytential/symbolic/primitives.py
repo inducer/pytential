@@ -304,13 +304,20 @@ class IntG(Expression):
             return Expression.__new__(cls)
 
     def __init__(self, kernel, density,
-            qbx_forced_limit=None, source=None, target=None):
+            qbx_forced_limit=0, source=None, target=None):
         """*target_derivatives* and later arguments should be considered
         keyword-only.
 
         :arg kernel: a kernel as accepted by
             :func:`sumpy.kernel.normalize_kernel`
+        :arg qbx_forced_limit: +1 if the output is required to originate from a
+            QBX center on the "+" side of the boundary. -1 for the other side. 0 if
+            either side of center (or no center at all) is acceptable.
         """
+
+        if qbx_forced_limit not in [-1, 0, 1]:
+                raise ValueError("invalid value (%s) of qbx_forced_limit"
+                        % qbx_forced_limit)
 
         from sumpy.kernel import normalize_kernel
         self.kernel = normalize_kernel(kernel)
@@ -353,7 +360,7 @@ class IntGdSource(IntG):
     """
 
     def __init__(self, dsource, kernel, density,
-            qbx_forced_limit=None, source=None, target=None):
+            qbx_forced_limit=0, source=None, target=None):
         IntG.__init__(self, kernel, density,
                 qbx_forced_limit, source, target)
         self.dsource = dsource

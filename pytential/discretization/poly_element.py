@@ -34,6 +34,14 @@ import loopy as lp
 import modepy as mp
 
 
+# FIXME Most of the loopy kernels will break as soon as we start using multiple
+# element groups. That's because then the dimension-to-dimension stride will no
+# longer just be the long axis of the array, but something entirely
+# independent.  The machinery for this on the loopy end is there, in the form
+# of the "stride:auto" dim tag, it just needs to be pushed through all the
+# kernels.  Fortunately, this will fail in an obvious and noisy way, because
+# loopy sees strides that it doesn't expect and complains.
+
 # {{{ element group base
 
 class PolynomialElementGroupBase(object):
@@ -281,7 +289,7 @@ class PolynomialElementDiscretization(PolynomialElementDiscretizationBase):
 
     group_class = PolynomialElementGroup
 
-    def preprocess_optemplate(self, name, expr):
+    def preprocess_optemplate(self, name, discretizations, expr):
         return expr
 
 # }}}

@@ -41,6 +41,10 @@ class LayerPotentialOutput(Record):
     .. attribute:: target_name
 
     .. attribute:: qbx_forced_limit
+
+        +1 if the output is required to originate from a QBX center on the "+" side
+        of the boundary. -1 for the other side. 0 if either side of center (or no
+        center at all) is acceptable.
     """
 
 

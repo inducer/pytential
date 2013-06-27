@@ -97,8 +97,8 @@ class UpsampleToSourceDiscretization(Discretization):
 
     # {{{ related to layer potential evaluation
 
-    def preprocess_optemplate(self, name, expr):
-        return self.source_discr.preprocess_optemplate(name, expr)
+    def preprocess_optemplate(self, name, discretizations, expr):
+        return self.source_discr.preprocess_optemplate(name, discretizations, expr)
 
     def op_group_features(self, expr):
         return self.source_discr.op_group_features(expr)
