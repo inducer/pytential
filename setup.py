@@ -67,6 +67,7 @@ def main():
               "pymbolic>=2013.2",
               "loo.py>=2013.1beta",
               "sumpy>=2013.1",
+              "cgen>=2013.1.2",
               ],
 
           # 2to3 invocation

@@ -28,6 +28,7 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 from pytools import memoize_method, Record
 import loopy as lp
+from cgen import Enum
 
 
 import logging
@@ -35,6 +36,17 @@ logger = logging.getLogger(__name__)
 
 
 # {{{ code getter
+
+class target_state(Enum):
+    # c_name = "particle_id_t" (tree-dependent, intentionally unspecified)
+    # dtype intentionally unspecified
+    c_value_prefix = "TGT_"
+
+    NO_QBX_NEEDED = -1
+
+    # QBX needed, but no usable center found
+    FAILED = -2
+
 
 class QBXFMMCodeGetter(object):
     def __init__(self, cl_context, ambient_dim):
@@ -136,18 +148,153 @@ class QBXFMMCodeGetter(object):
         from boxtree.traversal import FMMTraversalBuilder
         return FMMTraversalBuilder(self.cl_context)
 
+    @memoize_method
+    def qbx_center_to_target_box_lookup(self, particle_id_dtype, box_id_dtype):
+        knl = lp.make_kernel(self.cl_context.devices[0],
+            [
+                "{[ibox]: 0<=ibox<nboxes}",
+                "{[itarget]: b_t_start <= itarget < b_t_start + ntargets}",
+                ],
+            [
+                """
+                <> b_t_start = box_target_starts[ibox]
+                <> ntargets = box_target_counts_nonchild[ibox]
+                """,
+                lp.CInstruction(
+                    ["itarget", "ibox"],
+                    """//CL//
+                    if (itarget < ncenters)
+                        qbx_center_to_target_box[itarget] = box_to_target_box[ibox];
+                    """, assignees="qbx_center_to_target_box[itarget]",
+                    id="tgt_write")
+                ],
+            [
+                lp.GlobalArg("qbx_center_to_target_box", box_id_dtype,
+                    shape="ncenters"),
+                lp.GlobalArg("box_to_target_box", box_id_dtype),
+                lp.ValueArg("ncenters", particle_id_dtype),
+                "..."
+                ],
+            name="qbx_center_to_target_box_lookup",
+            silenced_warnings="write_race(tgt_write)")
+
+        knl = lp.split_iname(knl, "ibox", 128,
+                inner_tag="l.0", outer_tag="g.0")
+
+        return knl
+
     @property
     @memoize_method
     def build_leaf_to_ball_lookup(self):
         from boxtree.geo_lookup import LeavesToBallsLookupBuilder
         return LeavesToBallsLookupBuilder(self.cl_context)
 
+    # {{{ check if a center may be used with global QBX
+
+    @memoize_method
+    def qbx_center_for_global_tester(self,
+            coord_dtype, box_id_dtype, particle_id_dtype):
+        from pyopencl.elementwise import ElementwiseTemplate
+        return ElementwiseTemplate(
+            arguments="""//CL:mako//
+                /* input */
+                %for iaxis in range(ambient_dim):
+                    coord_t *center_${iaxis},  /* [ncenters] */
+                %endfor
+                coord_t *radii,  /* [ncenters] */
+                box_id_t *qbx_center_to_target_box, /* [ncenters] */
+
+                box_id_t *neighbor_source_boxes_starts,
+                box_id_t *neighbor_source_boxes_lists,
+                particle_id_t *box_point_source_starts,
+                particle_id_t *box_point_source_counts_cumul,
+                %for iaxis in range(ambient_dim):
+                    coord_t *point_sources_${iaxis},
+                %endfor
+
+                /* output */
+                char *center_may_use_global_qbx,
+                """,
+            operation=r"""//CL:mako//
+                particle_id_t icenter = i;
+
+                %for iaxis in range(ambient_dim):
+                    coord_t my_center_${iaxis} = center_${iaxis}[icenter];
+                %endfor
+                coord_t radius = radii[icenter];
+
+                // {{{ see if there are sources close enough to require local QBX
+
+                bool found_too_close = false;
+
+                coord_t radius_squared = radius * radius;
+
+                box_id_t itgt_box = qbx_center_to_target_box[icenter];
+
+                box_id_t nb_src_start = neighbor_source_boxes_starts[itgt_box];
+                box_id_t nb_src_stop = neighbor_source_boxes_starts[itgt_box+1];
+
+                for (
+                        box_id_t ibox_list = nb_src_start;
+                        ibox_list < nb_src_stop && !found_too_close;
+                        ++ibox_list)
+                {
+                    box_id_t neighbor_box_id =
+                        neighbor_source_boxes_lists[ibox_list];
+
+                    box_id_t bps_start = box_point_source_starts[neighbor_box_id];
+                    box_id_t bps_stop =
+                        bps_start + box_point_source_counts_cumul[neighbor_box_id];
+                    for (
+                            box_id_t ipsrc = bps_start;
+                            ipsrc < bps_stop;
+                            ++ipsrc)
+                    {
+                        %for iaxis in range(ambient_dim):
+                            coord_t psource_${iaxis} = point_sources_${iaxis}[ipsrc];
+                        %endfor
+
+                        coord_t dist_squared = 0
+                        %for iaxis in range(ambient_dim):
+                            + (my_center_${iaxis} - psource_${iaxis})
+                              * (my_center_${iaxis} - psource_${iaxis})
+                        %endfor
+                            ;
+
+                        const coord_t too_close_slack = (1+1e-2)*(1+1e-2);
+                        found_too_close = found_too_close
+                            || (dist_squared*too_close_slack  < radius_squared);
+
+                        if (found_too_close)
+                            break;
+                    }
+                }
+
+                // }}}
+
+                center_may_use_global_qbx[icenter] = !found_too_close;
+                """,
+            name="qbx_test_center_for_global").build(
+                    self.cl_context,
+                    type_aliases=(
+                        ("box_id_t", box_id_dtype),
+                        ("particle_id_t", particle_id_dtype),
+                        ("coord_t", coord_dtype),
+                        ),
+                    var_values=(
+                        ("ambient_dim", self.ambient_dim),
+                        ))
+
+    # }}}
+
     # {{{ find a QBX center for each target
 
     @memoize_method
     def centers_for_target_finder(self,
-            coord_dtype, box_id_dtype, particle_id_dtype,
-            ball_id_dtype):
+            coord_dtype, box_id_dtype, particle_id_dtype):
+        # must be able to represent target_state
+        assert int(np.iinfo(particle_id_dtype).min) < 0
+
         from pyopencl.elementwise import ElementwiseTemplate
         return ElementwiseTemplate(
             arguments="""//CL:mako//
@@ -161,13 +308,14 @@ class QBXFMMCodeGetter(object):
                 %for iaxis in range(ambient_dim):
                     coord_t lower_left_${iaxis},
                 %endfor
-                ball_id_t *balls_near_box_starts,
-                ball_id_t *balls_near_box_lists,
+                particle_id_t *balls_near_box_starts,
+                particle_id_t *balls_near_box_lists,
                 %for iaxis in range(ambient_dim):
                     coord_t *center_${iaxis},  /* [ncenters] */
                 %endfor
                 coord_t *radii,  /* [ncenters] */
                 signed char *center_sides,  /* [ncenters] */
+                char *center_may_use_global_qbx,
 
                 /* output */
                 particle_id_t *center_ids,
@@ -202,7 +350,7 @@ class QBXFMMCodeGetter(object):
                     %for iaxis in range(ambient_dim):
                         which_child +=
                             ((int) (norm_my_target_${iaxis} * (1 << level)) & 1)
-                            * ${2**(ambient_dim-1-iaxis)}; // FIXME!!!
+                            * ${2**(ambient_dim-1-iaxis)};
                     %endfor
 
                     next_box =
@@ -214,16 +362,16 @@ class QBXFMMCodeGetter(object):
 
                 // {{{ walk list of centers near box
 
-                ball_id_t start = balls_near_box_starts[ibox];
-                ball_id_t stop = balls_near_box_starts[ibox+1];
+                particle_id_t start = balls_near_box_starts[ibox];
+                particle_id_t stop = balls_near_box_starts[ibox+1];
 
                 coord_t min_dist_squared = INFINITY;
-                ball_id_t best_center_id = -1;
+                particle_id_t best_center_id = TGT_NO_QBX_NEEDED;
                 signed char my_forced_limit = qbx_forced_limits[itgt];
 
-                for (ball_id_t ilist = start; ilist < stop; ++ilist)
+                for (particle_id_t ilist = start; ilist < stop; ++ilist)
                 {
-                    ball_id_t icenter = balls_near_box_lists[ilist];
+                    particle_id_t icenter = balls_near_box_lists[ilist];
 
                     coord_t dist_squared = 0;
                     %for iaxis in range(ambient_dim):
@@ -238,6 +386,17 @@ class QBXFMMCodeGetter(object):
                     coord_t ball_radius = radii[icenter];
                     bool center_usable = (
                         dist_squared <= ball_radius * ball_radius * (1+1e-5));
+
+                    if (center_usable && best_center_id == TGT_NO_QBX_NEEDED)
+                    {
+                        // The target is in a region touched by a QBX disk.
+                        // Unless we find a usable QBX disk, we'll have to fail
+                        // this target.
+                        best_center_id = TGT_FAILED;
+                    }
+
+                    center_usable = center_usable
+                        && (bool) center_may_use_global_qbx[icenter];
 
                     // check if we're on the desired side
                     center_usable = center_usable && (
@@ -255,179 +414,9 @@ class QBXFMMCodeGetter(object):
 
                 center_ids[itgt] = best_center_id;
                 """,
-            name="centers_for_target_finder").build(
-                    self.cl_context,
-                    type_aliases=(
-                        ("box_id_t", box_id_dtype),
-                        ("particle_id_t", particle_id_dtype),
-                        ("coord_t", coord_dtype),
-                        ("ball_id_t", ball_id_dtype),
-                        ),
-                    var_values=(
-                        ("ambient_dim", self.ambient_dim),
-                        ))
-
-    # }}}
-
-    # {{{ check if a center may be used with global QBX
-
-    @memoize_method
-    def qbx_center_for_global_tester(self,
-            coord_dtype, box_id_dtype, particle_id_dtype):
-        from pyopencl.elementwise import ElementwiseTemplate
-        return ElementwiseTemplate(
-            arguments="""//CL:mako//
-                /* input */
-                %for iaxis in range(ambient_dim):
-                    coord_t *center_${iaxis},  /* [ncenters] */
-                %endfor
-                coord_t *radii,  /* [ncenters] */
-                coord_t root_extent,
-                %for iaxis in range(ambient_dim):
-                    coord_t lower_left_${iaxis},
-                %endfor
-                box_id_t aligned_nboxes,
-                box_id_t *box_child_ids, /* [2**dimensions, aligned_nboxes] */
-                coord_t *box_centers, /* [dimensions, aligned_boxes] */
-                coord_t stick_out_factor,
-                box_id_t *box_to_target_box, /* [nboxes] */
-
-                box_id_t *neighbor_source_boxes_starts,
-                box_id_t *neighbor_source_boxes_lists,
-                particle_id_t *box_point_source_starts,
-                particle_id_t *box_point_source_counts_cumul,
-                %for iaxis in range(ambient_dim):
-                    coord_t *point_sources_${iaxis},
-                %endfor
-
-                /* output */
-                char *center_may_use_global_qbx,
-                """,
-            operation=r"""//CL:mako//
-                particle_id_t icenter = i;
-
-                // {{{ compute normalized coordinates of center
-
-                %for iaxis in range(ambient_dim):
-                    coord_t my_center_${iaxis} = center_${iaxis}[icenter];
-                %endfor
-                %for iaxis in range(ambient_dim):
-                    coord_t norm_my_center_${iaxis} =
-                        (my_center_${iaxis} - lower_left_${iaxis}) / root_extent;
-                %endfor
-
-                // }}}
-
-                coord_t radius = radii[icenter];
-
-                // {{{ find leaf box containing target
-
-                box_id_t ibox;
-                int level = 0;
-                box_id_t next_box = 0;
-                bool sticks_out;
-
-                while (true)
-                {
-                    ibox = next_box;
-                    ++level;
-
-                    int which_child = 0;
-                    %for iaxis in range(ambient_dim):
-                        which_child +=
-                            ((int) (norm_my_center_${iaxis} * (1 << level)) & 1)
-                            * ${2**(ambient_dim-1-iaxis)};
-                    %endfor
-
-                    next_box = box_child_ids[ibox + aligned_nboxes * which_child];
-                    if (next_box == 0)
-                        break;
-
-                    %for iaxis in range(ambient_dim):
-                        coord_t box_center_${iaxis} =
-                            box_centers[next_box + aligned_nboxes*${iaxis}];
-                    %endfor
-                    coord_t box_radius = root_extent / (1<<level);
-                    coord_t ext_box_radius = (1+stick_out_factor) * box_radius;
-
-                    sticks_out = false
-                    %for iaxis in range(ambient_dim):
-                        || (my_center_${iaxis} + radius >
-                                box_center_${iaxis} + ext_box_radius)
-                        || (my_center_${iaxis} - radius <
-                                box_center_${iaxis} - ext_box_radius)
-                    %endfor
-                        ;
-
-                    if (sticks_out)
-                        break;
-                }
-
-                // }}}
-
-                // {{{ see if there are sources close enough to require local QBX
-
-                bool found_too_close = false;
-
-                coord_t radius_squared = radius * radius;
-
-                box_id_t itgt_box = box_to_target_box[ibox];
-
-                /* QBX centers *are* target boxes, so the boxes containing them
-                 * are target boxes. As a result, this lookup shouldn't fail.
-                 * Let's be paranoid anyhow.
-                 */
-                if (itgt_box < 0)
-                {
-                    center_may_use_global_qbx[icenter] = false;
-                    // dbg_assert(false);
-                    PYOPENCL_ELWISE_CONTINUE;
-                }
-
-                box_id_t nb_src_start = neighbor_source_boxes_starts[itgt_box];
-                box_id_t nb_src_stop = neighbor_source_boxes_starts[itgt_box+1];
-
-                for (
-                        box_id_t ibox_list = nb_src_start;
-                        ibox_list < nb_src_stop && !found_too_close;
-                        ++ibox_list)
-                {
-                    box_id_t neighbor_box_id =
-                        neighbor_source_boxes_lists[ibox_list];
-
-                    box_id_t bps_start = box_point_source_starts[neighbor_box_id];
-                    box_id_t bps_stop =
-                        bps_start + box_point_source_counts_cumul[neighbor_box_id];
-                    for (
-                            box_id_t ipsrc = bps_start;
-                            ipsrc < bps_stop;
-                            ++ipsrc)
-                    {
-                        %for iaxis in range(ambient_dim):
-                            coord_t psource_${iaxis} = point_sources_${iaxis}[ipsrc];
-                        %endfor
-
-                        coord_t dist_squared = 0
-                        %for iaxis in range(ambient_dim):
-                            + (my_center_${iaxis} - psource_${iaxis})
-                              * (my_center_${iaxis} - psource_${iaxis})
-                        %endfor
-                            ;
-
-                        const coord_t too_close_slack = (1+1e-3)*(1+1e-3);
-                        found_too_close = found_too_close
-                            || (dist_squared*too_close_slack  < radius_squared);
-
-                        if (found_too_close)
-                            break;
-                    }
-                }
-
-                // }}}
-
-                center_may_use_global_qbx[icenter] = !found_too_close;
-                """,
-            name="qbx_test_center_for_global").build(
+            name="centers_for_target_finder",
+            preamble=target_state.get_c_defines()
+            ).build(
                     self.cl_context,
                     type_aliases=(
                         ("box_id_t", box_id_dtype),
@@ -439,6 +428,7 @@ class QBXFMMCodeGetter(object):
                         ))
 
     # }}}
+
 
 # }}}
 
@@ -746,14 +736,70 @@ class QBXFMMGeometryData(object):
             return lbl
 
     @memoize_method
+    def global_qbx_flags(self):
+        tree = self.tree()
+        trav = self.traversal()
+        center_info = self.center_info()
+
+        qbx_center_to_target_box_lookup = \
+                self.code_getter.qbx_center_to_target_box_lookup(
+                        box_id_dtype=tree.box_id_dtype,
+                        particle_id_dtype=tree.particle_id_dtype)
+
+        qbx_center_for_global_tester = \
+                self.code_getter.qbx_center_for_global_tester(
+                        coord_dtype=tree.coord_dtype,
+                        box_id_dtype=tree.box_id_dtype,
+                        particle_id_dtype=tree.particle_id_dtype)
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            result = cl.array.empty(queue, center_info.ncenters, np.int8)
+
+            logging.info("find global qbx flags: start")
+
+            box_to_target_box = cl.array.empty(
+                    queue, tree.nboxes, tree.box_id_dtype)
+            box_to_target_box.fill(-1)
+            box_to_target_box[trav.target_boxes] = cl.array.arange(
+                    queue, len(trav.target_boxes), dtype=tree.box_id_dtype)
+
+            evt, (qbx_center_to_target_box,) = qbx_center_to_target_box_lookup(
+                    queue,
+                    box_to_target_box=box_to_target_box,
+                    box_target_starts=tree.box_target_starts,
+                    box_target_counts_nonchild=tree.box_target_counts_nonchild,
+                    ncenters=center_info.ncenters)
+
+            qbx_center_for_global_tester(*(
+                        tuple(center_info.centers)
+                    + (
+                        center_info.radii,
+                        qbx_center_to_target_box,
+
+                        trav.neighbor_source_boxes_starts,
+                        trav.neighbor_source_boxes_lists,
+                        tree.box_point_source_starts,
+                        tree.box_point_source_counts_cumul,
+                    ) + tuple(tree.point_sources) + (
+                        result,
+                    )),
+                    **dict(
+                        queue=queue,
+                        range=slice(center_info.ncenters)
+                    ))
+
+            logging.info("find global qbx flags: done")
+
+            return result
+
+    @memoize_method
     def target_to_center(self):
         """Find which QBX center, if any, is to be used for each target.
-        -1 if none.
+        -1 if none. -2 if a center needs to be used, but none was found.
 
         Shape: ``[ntargets]`` of :attr:`boxtree.Tree.particle_id_dtype`.
         """
         ltc = self.leaf_to_center_lookup()
-        # - Targets need to find their centers
 
         tree = self.tree()
         tgt_info = self.target_info()
@@ -765,8 +811,7 @@ class QBXFMMGeometryData(object):
         centers_for_target_finder = self.code_getter.centers_for_target_finder(
                 coord_dtype=tree.coord_dtype,
                 box_id_dtype=tree.box_id_dtype,
-                particle_id_dtype=tree.particle_id_dtype,
-                ball_id_dtype=tree.particle_id_dtype)
+                particle_id_dtype=tree.particle_id_dtype)
 
         logging.info("find center for each target: start")
         with cl.CommandQueue(self.cl_context) as queue:
@@ -786,6 +831,7 @@ class QBXFMMGeometryData(object):
                     ) + tuple(center_info.centers) + (
                         center_info.radii,
                         center_info.sides,
+                        self.global_qbx_flags(),
 
                         result
                     )),
@@ -797,56 +843,7 @@ class QBXFMMGeometryData(object):
 
             return result
 
-    @memoize_method
-    def global_qbx_flags(self):
-        tree = self.tree()
-        trav = self.traversal()
-        center_info = self.center_info()
-
-        qbx_center_for_global_tester = \
-                self.code_getter.qbx_center_for_global_tester(
-                        coord_dtype=tree.coord_dtype,
-                        box_id_dtype=tree.box_id_dtype,
-                        particle_id_dtype=tree.particle_id_dtype)
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            result = cl.array.empty(queue, center_info.ncenters, np.int8)
-
-            logging.info("find global qbx flags: start")
-
-            box_to_target_box = cl.array.empty(
-                    queue, tree.nboxes, tree.box_id_dtype)
-            box_to_target_box.fill(-1)
-            box_to_target_box[trav.target_boxes] = cl.array.arange(
-                    queue, len(trav.target_boxes), dtype=tree.box_id_dtype)
-
-            qbx_center_for_global_tester(*(
-                        tuple(center_info.centers)
-                    + (
-                        center_info.radii,
-                        tree.root_extent,
-                    ) + tuple(tree.bounding_box[0]) + (
-                        tree.aligned_nboxes,
-                        tree.box_child_ids,
-                        tree.box_centers,
-                        tree.stick_out_factor,
-                        box_to_target_box,
-
-                        trav.neighbor_source_boxes_starts,
-                        trav.neighbor_source_boxes_lists,
-                        tree.box_point_source_starts,
-                        tree.box_point_source_counts_cumul,
-                    ) + tuple(tree.point_sources) + (
-                        result,
-                    )),
-                    **dict(
-                        queue=queue,
-                        range=slice(center_info.ncenters)
-                    ))
-
-            logging.info("find global qbx flags: done")
-
-            return result
+    # {{{ plotting (for debugging)
 
     def plot(self):
         with cl.CommandQueue(self.cl_context) as queue:
@@ -855,6 +852,11 @@ class QBXFMMGeometryData(object):
             pt.plot(nodes_host[0], nodes_host[1], "x-")
 
             global_flags = self.global_qbx_flags().get()
+
+            tree = self.tree().get()
+            from boxtree.visualization import TreePlotter
+            tp = TreePlotter(tree)
+            tp.draw_tree()
 
             # {{{ draw centers and circles
 
@@ -894,12 +896,14 @@ class QBXFMMGeometryData(object):
                                 (ty, centers[1][tcenter]),
                                 ))
 
-            print "found a target for %d/%d targets" % (tccount, checked)
+            print "found a center for %d/%d targets" % (tccount, checked)
 
             # }}}
 
             pt.gca().set_aspect("equal")
             pt.show()
+
+    # }}}
 
 # }}}
 
