@@ -16,7 +16,7 @@ nelements = 90
 mode_nr = 0
 k = 0
 
-mesh = make_curve_mesh(drop,
+mesh = make_curve_mesh(starfish,
         np.linspace(0, 1, nelements+1),
         target_order)
 
@@ -38,7 +38,7 @@ sigma = cl.clmath.cos(mode_nr*angle)
 if k:
     sigma = sigma.astype(np.complex128)
 
-fplot = FieldPlotter(np.zeros(2), extent=5, npoints=100)
+fplot = FieldPlotter(np.zeros(2), extent=5, npoints=200)
 from pytential.discretization.target import PointsTarget
 fld_in_vol = bind(
         (discr, PointsTarget(fplot.points)),

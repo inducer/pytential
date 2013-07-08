@@ -213,7 +213,23 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
 
-        geo_data.plot()
+        # FIXME Exert more positive control over geo_data attribute lifetimes using
+        # geo_data.<method>.clear_cache(geo_data).
+
+        # FIXME Synthesize "bad centers" around corners and edges that have
+        # inadequate QBX coverage.
+
+        # {{{ execute global QBX
+        # }}}
+
+        if (geo_data.global_qbx_flags() == 0).any():
+            raise NotImplementedError("geometry has centers requiring local QBX")
+
+        geo_data.global_qbx_centers_box_target_lists()
+        geo_data.non_qbx_box_target_lists()
+        geo_data.global_qbx_centers_to_targets()
+
+        #geo_data.plot()
         1/0
 
     # }}}

@@ -26,7 +26,8 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 import pyopencl.array  # noqa
-from pytools import memoize_method, Record
+from pytools import memoize_method
+from boxtree.tools import DeviceDataRecord
 import loopy as lp
 from cgen import Enum
 
@@ -429,13 +430,41 @@ class QBXFMMCodeGetter(object):
 
     # }}}
 
+    @property
+    @memoize_method
+    def key_value_sort(self):
+        from pyopencl.algorithm import KeyValueSorter
+        return KeyValueSorter(self.cl_context)
+
+    @memoize_method
+    def filter_center_and_target_ids(self, particle_id_dtype):
+        from pyopencl.scan import GenericScanKernel
+        from pyopencl.tools import VectorArg
+        return GenericScanKernel(
+                self.cl_context, particle_id_dtype,
+                arguments=[
+                    VectorArg(particle_id_dtype, "target_to_center"),
+                    VectorArg(particle_id_dtype, "filtered_target_to_center"),
+                    VectorArg(particle_id_dtype, "filtered_target_id"),
+                    VectorArg(particle_id_dtype, "count"),
+                    ],
+                input_expr="(target_to_center[i] >= 0) ? 1 : 0",
+                scan_expr="a+b", neutral="0",
+                output_statement="""
+                    if (prev_item != item)
+                    {
+                        filtered_target_to_center[item-1] = target_to_center[i];
+                        filtered_target_id[item-1] = i;
+                    }
+                    if (i+1 == N) *count = item;
+                    """)
 
 # }}}
 
 
 # {{{ geometry data
 
-class TargetInfo(Record):
+class TargetInfo(DeviceDataRecord):
     """ Targets consist of QBX centers, then target points for each target
     discretization. The starts of the target points for each target
     discretization are given by target_discr_starts.
@@ -450,7 +479,7 @@ class TargetInfo(Record):
     """
 
 
-class CenterInfo(Record):
+class CenterInfo(DeviceDataRecord):
     """
     .. attribute:: centers
         Shape: ``[dim][ncenters]``
@@ -467,6 +496,18 @@ class CenterInfo(Record):
     @property
     def ncenters(self):
         return len(self.radii)
+
+
+class GlobalQBXCenterToTargetList(DeviceDataRecord):
+    """
+    .. attribute:: starts
+
+        Shape: ``[ncenters+1]``
+
+    .. attribute:: lists
+
+        Use with :attr:`starts`
+    """
 
 
 class QBXFMMGeometryData(object):
@@ -570,7 +611,7 @@ class QBXFMMGeometryData(object):
         return CenterInfo(
                 sides=sides,
                 radii=radii,
-                centers=centers)
+                centers=centers).with_queue(None)
 
     # }}}
 
@@ -597,21 +638,25 @@ class QBXFMMGeometryData(object):
             targets = cl.array.empty(
                     self.cl_context, (src_discr.ambient_dim, ntargets),
                     self.coord_dtype)
-            code_getter.copy_targets_kernel(sep_points_axes=True)(queue,
+            code_getter.copy_targets_kernel(
+                    # sep_points_axes:
+                    True)(queue,
                     targets=targets[:, :center_info.ncenters],
                     points=center_info.centers)
 
             for start, (target_discr, _) in zip(
                     target_discr_starts, self.target_discrs_and_qbx_sides):
-                code_getter.copy_targets_kernel(sep_points_axes=False)(
-                        queue,
-                        targets=targets[:, start:start+target_discr.nnodes],
-                        points=target_discr.nodes())
+                code_getter.copy_targets_kernel(
+                        # sep_points_axes:
+                        False)(
+                                queue,
+                                targets=targets[:, start:start+target_discr.nnodes],
+                                points=target_discr.nodes())
 
             return TargetInfo(
                     targets=targets,
                     target_discr_starts=target_discr_starts,
-                    ntargets=ntargets)
+                    ntargets=ntargets).with_queue(None)
 
     def target_radii(self):
         """Shape: ``[ntargets]``"""
@@ -709,7 +754,8 @@ class QBXFMMGeometryData(object):
 
             point_source_starts.setitem(-1, self.source_discr.nnodes, queue=queue)
 
-            tree = tree.link_point_sources(queue,
+            from boxtree.tree import link_point_sources
+            tree = link_point_sources(queue, tree,
                     point_source_starts,
                     self.source_discr.nodes())
 
@@ -727,6 +773,7 @@ class QBXFMMGeometryData(object):
             trav = trav.merge_close_lists(queue)
             return trav
 
+    @memoize_method
     def leaf_to_center_lookup(self):
         center_info = self.center_info()
 
@@ -743,19 +790,25 @@ class QBXFMMGeometryData(object):
 
         qbx_center_to_target_box_lookup = \
                 self.code_getter.qbx_center_to_target_box_lookup(
-                        box_id_dtype=tree.box_id_dtype,
-                        particle_id_dtype=tree.particle_id_dtype)
+                        # particle_id_dtype:
+                        tree.particle_id_dtype,
+                        # box_id_dtype:
+                        tree.box_id_dtype,
+                        )
 
         qbx_center_for_global_tester = \
                 self.code_getter.qbx_center_for_global_tester(
-                        coord_dtype=tree.coord_dtype,
-                        box_id_dtype=tree.box_id_dtype,
-                        particle_id_dtype=tree.particle_id_dtype)
+                        # coord_dtype:
+                        tree.coord_dtype,
+                        # box_id_dtype:
+                        tree.box_id_dtype,
+                        # particle_id_dtype:
+                        tree.particle_id_dtype)
 
         with cl.CommandQueue(self.cl_context) as queue:
             result = cl.array.empty(queue, center_info.ncenters, np.int8)
 
-            logging.info("find global qbx flags: start")
+            logger.info("find global qbx flags: start")
 
             box_to_target_box = cl.array.empty(
                     queue, tree.nboxes, tree.box_id_dtype)
@@ -788,16 +841,17 @@ class QBXFMMGeometryData(object):
                         range=slice(center_info.ncenters)
                     ))
 
-            logging.info("find global qbx flags: done")
+            logger.info("find global qbx flags: done")
 
-            return result
+            return result.with_queue(None)
 
-    @memoize_method
     def target_to_center(self):
         """Find which QBX center, if any, is to be used for each target.
-        -1 if none. -2 if a center needs to be used, but none was found.
+        :attr:`target_state.NO_QBX_NEEDED` if none. :attr:`target_state.FAILED`
+        if a center needs to be used, but none was found.
 
-        Shape: ``[ntargets]`` of :attr:`boxtree.Tree.particle_id_dtype`.
+        Shape: ``[ntargets]`` of :attr:`boxtree.Tree.particle_id_dtype, with extra
+            values from :class:`tree_state` allowed. Targets occur in user order.
         """
         ltc = self.leaf_to_center_lookup()
 
@@ -809,13 +863,14 @@ class QBXFMMGeometryData(object):
         assert ltc.balls_near_box_starts.dtype == tree.particle_id_dtype
 
         centers_for_target_finder = self.code_getter.centers_for_target_finder(
-                coord_dtype=tree.coord_dtype,
-                box_id_dtype=tree.box_id_dtype,
-                particle_id_dtype=tree.particle_id_dtype)
+                tree.coord_dtype,
+                tree.box_id_dtype,
+                tree.particle_id_dtype)
 
-        logging.info("find center for each target: start")
+        logger.info("find center for each target: start")
         with cl.CommandQueue(self.cl_context) as queue:
-            result = cl.array.zeros(queue, tgt_info.ntargets, tree.particle_id_dtype)
+            result = cl.array.empty(queue, tgt_info.ntargets, tree.particle_id_dtype)
+            result[:center_info.ncenters].fill(target_state.NO_QBX_NEEDED)
 
             centers_for_target_finder(
                     *((
@@ -839,9 +894,78 @@ class QBXFMMGeometryData(object):
                         queue=queue,
                         range=slice(center_info.ncenters, tgt_info.ntargets)))
 
-            logging.info("find center for each target: done")
+            logger.info("find center for each target: done")
 
-            return result
+            if (result == target_state.FAILED).any():
+                raise RuntimeError("geometry has failed targets")
+
+            return result.with_queue(None)
+
+    @memoize_method
+    def global_qbx_centers_box_target_lists(self):
+        """Build a list of targets per box consisting only of global QBX centers."""
+
+        center_info = self.center_info()
+        with cl.CommandQueue(self.cl_context) as queue:
+            logger.info("find global qbx centers box target list: start")
+
+            flags = cl.array.zeros(queue, self.tree().ntargets, np.int8)
+
+            flags[:center_info.ncenters] = self.global_qbx_flags()
+
+            from boxtree.tree import filter_target_lists_in_user_order
+            result = filter_target_lists_in_user_order(queue, self.tree(), flags)
+
+            logger.info("find global qbx centers box target list: done")
+
+            return result.with_queue(None)
+
+    @memoize_method
+    def non_qbx_box_target_lists(self):
+        """Build a list of targets per box that don't need to bother with QBX."""
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            logger.info("find non-qbx box target lists: start")
+
+            flags = self.target_to_center() == target_state.NO_QBX_NEEDED
+
+            from boxtree.tree import filter_target_lists_in_tree_order
+            result = filter_target_lists_in_tree_order(queue, self.tree(), flags)
+
+            logger.info("find non-qbx box target lists: done")
+
+            return result.with_queue(None)
+
+    def global_qbx_centers_to_targets(self):
+        center_info = self.center_info()
+        ttc = self.target_to_center()
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            logger.info("build global center -> targets lookup table: start")
+
+            filtered_ttc = cl.array.empty(queue, ttc.shape, ttc.dtype)
+            filtered_target_ids = cl.array.empty(queue, ttc.shape, ttc.dtype)
+            count = cl.array.empty(queue, 1, ttc.dtype)
+
+            self.code_getter.filter_center_and_target_ids(ttc.dtype)(
+                    ttc, filtered_ttc, filtered_target_ids, count,
+                    queue=queue, size=len(ttc))
+
+            count = count.get()
+
+            filtered_ttc = filtered_ttc[:count]
+            filtered_target_ids = filtered_target_ids[:count].copy()
+
+            center_target_starts, targets_sorted_by_center, _ = \
+                    self.code_getter.key_value_sort(queue,
+                            filtered_ttc, filtered_target_ids,
+                            center_info.ncenters, ttc.dtype)
+
+            logger.info("build global center -> targets lookup table: done")
+
+            return GlobalQBXCenterToTargetList(
+                    starts=center_target_starts,
+                    lists=targets_sorted_by_center).with_queue(None)
 
     # {{{ plotting (for debugging)
 
