@@ -220,6 +220,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         # inadequate QBX coverage.
 
         # {{{ execute global QBX
+
         # }}}
 
         if (geo_data.global_qbx_flags() == 0).any():
@@ -286,9 +287,10 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             kernel_args[arg_name] = evaluate(arg_expr)
 
         from pymbolic import var
+        from sumpy.tools import gather_arguments
         kernel_args.update(
                 (arg.name, evaluate(var(arg.name)))
-                for arg in lp_applier.gather_kernel_arguments()
+                for arg in gather_arguments(lp_applier.kernels)
                 if arg.name not in kernel_args)
 
         strengths = (evaluate(insn.density).with_queue(queue)
