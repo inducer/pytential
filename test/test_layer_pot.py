@@ -247,7 +247,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
     print "Errors for S:"
     print s_eoc_rec
     target_order = qbx_order + 1
-    #assert s_eoc_rec.order_estimate() > target_order - 1.5
+    assert s_eoc_rec.order_estimate() > target_order - 1.5
 
     print "Errors for D:"
     print d_eoc_rec
