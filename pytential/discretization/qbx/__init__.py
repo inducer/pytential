@@ -173,7 +173,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
     @property
     @memoize_method
     def qbx_fmm_code_getter(self):
-        from pytential.discretization.qbx.fmm import QBXFMMCodeGetter
+        from pytential.discretization.qbx.geometry import QBXFMMCodeGetter
         return QBXFMMCodeGetter(self.cl_context, self.ambient_dim)
 
     @memoize_method
@@ -186,9 +186,26 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             :class:`pytential.discretization.target.TargetBase`
             instance
         """
-        from pytential.discretization.qbx.fmm import QBXFMMGeometryData
+        from pytential.discretization.qbx.geometry import QBXFMMGeometryData
         return QBXFMMGeometryData(self.qbx_fmm_code_getter,
                 self, target_discrs_and_qbx_sides)
+
+    @memoize_method
+    def expansion_wrangler_code_container(self, base_kernel, out_kernels):
+        from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
+        from sumpy.expansion.local import VolumeTaylorLocalExpansion
+
+        fmm_order = self.qbx_order
+        fmm_mpole_expn = VolumeTaylorMultipoleExpansion(base_kernel, fmm_order)
+        fmm_local_expn = VolumeTaylorLocalExpansion(base_kernel, fmm_order)
+        qbx_local_expn = VolumeTaylorLocalExpansion(
+                base_kernel, self.qbx_order)
+
+        from pytential.discretization.qbx.fmm import \
+                QBXExpansionWranglerCodeContainer
+        return QBXExpansionWranglerCodeContainer(
+                self.cl_context, fmm_mpole_expn, fmm_local_expn, qbx_local_expn,
+                out_kernels)
 
     def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
         # {{{ build list of unique target discretizations used
@@ -219,7 +236,45 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         # FIXME Synthesize "bad centers" around corners and edges that have
         # inadequate QBX coverage.
 
+        # FIXME don't compute *all* output kernels on all targets--respect that
+        # some target discretizations may only be asking for derivatives (e.g.)
+
+        strengths = (evaluate(insn.density).with_queue(queue)
+                * self.weights_and_area_elements())
+
+        # {{{ get expansion wrangler
+
+        base_kernel = None
+        out_kernels = []
+
+        from sumpy.kernel import AxisTargetDerivativeRemover
+        for knl in insn.kernels:
+            candidate_base_kernel = AxisTargetDerivativeRemover()(knl)
+
+            if base_kernel is None:
+                base_kernel = candidate_base_kernel
+            else:
+                assert base_kernel == candidate_base_kernel
+
+        out_kernels = tuple(knl for knl in insn.kernels)
+
+        if base_kernel.is_complex_valued:
+            value_dtype = self.complex_dtype
+        else:
+            value_dtype = self.real_dtype
+
+        # FIXME: extra_kwargs
+        wrangler = self.expansion_wrangler_code_container(
+                base_kernel, out_kernels).get_wrangler(
+                        queue, geo_data, value_dtype)
+
+        # }}}
+
         # {{{ execute global QBX
+
+        from pytential.discretization.qbx.fmm import drive_fmm
+
+        res = drive_fmm(geo_data, wrangler, strengths)
 
         # }}}
 
