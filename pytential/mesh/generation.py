@@ -121,6 +121,20 @@ def n_gon(n_corners, t):
 
     return result
 
+
+def qbx_peanut(t):
+    ilength = 2*np.pi
+    t = t*ilength
+
+    sin = np.sin
+    cos = np.cos
+    pi = np.pi
+
+    return np.vstack([
+        0.75*cos(t-0.25*pi)*(1+0.3*sin(2*t)),
+        sin(t-0.25*pi)*(1+0.3*sin(2*t))
+        ])
+
 # }}}
 
 
