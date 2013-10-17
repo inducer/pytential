@@ -34,7 +34,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 from functools import partial
 from pytential.mesh.generation import (  # noqa
-        ellipse, cloverleaf, starfish, drop, n_gon,
+        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
         make_curve_mesh)
 from sumpy.visualization import FieldPlotter
 from pytential import bind, sym
@@ -266,8 +266,8 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 # {{{ integral equation test backend
 
 def run_int_eq_test(
-        cl_ctx, queue, curve_f, nelements, qbx_order, bc_type, loc_sign, k):
-    target_order = 7
+        cl_ctx, queue, curve_f, nelements, qbx_order, bc_type, loc_sign, k,
+        target_order, source_order):
 
     mesh = make_curve_mesh(curve_f,
             np.linspace(0, 1, nelements+1),
@@ -282,7 +282,7 @@ def run_int_eq_test(
 
     from pytential.discretization.qbx import make_upsampling_qbx_discr
     discr = make_upsampling_qbx_discr(
-            cl_ctx, mesh, target_order, qbx_order)
+            cl_ctx, mesh, target_order, qbx_order, source_order=source_order)
 
     # {{{ set up operator
 
@@ -567,9 +567,10 @@ def run_int_eq_test(
 @pytest.mark.parametrize("loc_sign", [+1, -1])
 @pytest.mark.parametrize("qbx_order", [5])
 # Sample test run:
-# 'test_integral_equation(cl._csc, circle, 30, 5, "dirichlet", 1, 5)'
+# 'test_integral_equation(cl._csc, "cirlce", circle, 30, 5, "dirichlet", 1, 5)'
 def test_integral_equation(
-        ctx_getter, curve_name, curve_f, qbx_order, bc_type, loc_sign, k):
+        ctx_getter, curve_name, curve_f, qbx_order, bc_type, loc_sign, k,
+        target_order=7, source_order=None):
     # logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
@@ -588,7 +589,8 @@ def test_integral_equation(
     for nelements in [30, 40, 50]:
         result = run_int_eq_test(
                 cl_ctx, queue, curve_f, nelements, qbx_order,
-                bc_type, loc_sign, k)
+                bc_type, loc_sign, k, target_order=target_order,
+                source_order=source_order)
 
         eoc_rec.add_data_point(1/nelements, result.rel_err_2)
 
