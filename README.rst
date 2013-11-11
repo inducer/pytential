@@ -22,6 +22,9 @@ and, indirectly,
 PyOpenCL is likely the only package you'll have to install
 by hand, all the others will be installed automatically.
 
+.. image:: https://badge.fury.io/py/pytential.png
+    :target: http://pypi.python.org/pypi/pytential
+
 Resources:
 
 * `documentation <http://documen.tician.de/pytential>`_
