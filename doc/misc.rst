@@ -38,7 +38,7 @@ License
 
 :mod:`pytential` is licensed to you under the MIT/X Consortium license:
 
-Copyright (c) 2012-13 Andreas Klöckner, Tim Warburton, Jan Hesthaven, Xueyu Zhu
+Copyright (c) 2012-13 Andreas Klöckner
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
