@@ -60,6 +60,34 @@ class QBXExpansionWrangler(SumpyExpansionWrangler):
                 dtype, extra_kwargs)
         self.geo_data = geo_data
 
+    # {{{ data vector utilities
+
+    def potential_zeros(self):
+        nqbtl = self.geo_data.non_qbx_box_target_lists()
+
+        from pytools.obj_array import make_obj_array
+        return make_obj_array([
+                cl.array.zeros(
+                    self.queue,
+                    nqbtl.nfiltered_targets,
+                    dtype=self.dtype)
+                for k in self.code.out_kernels])
+
+    def reorder_src_weights(self, src_weights):
+        return src_weights.with_queue(self.queue)[self.tree.user_point_source_ids]
+
+    def reorder_potentials(self, potentials):
+        raise NotImplementedError("reorder_potentials should not "
+            "be called on a QBXExpansionWrangler")
+
+        # Because this is a multi-stage, more complicated process that combines
+        # potentials from non-QBX targets and QBX targets, reordering takes
+        # place in multiple stages below.
+
+    # }}}
+
+    # {{{ source/target dispatch
+
     def box_source_list_kwargs(self):
         return dict(
                 box_source_starts=self.tree.box_point_source_starts,
@@ -70,25 +98,21 @@ class QBXExpansionWrangler(SumpyExpansionWrangler):
     def box_target_list_kwargs(self):
         # This only covers the non-QBX targets.
 
-        nqftl = self.geo_data.non_qbx_box_target_lists()
+        nqbtl = self.geo_data.non_qbx_box_target_lists()
         return dict(
-                box_target_starts=nqftl.box_target_starts,
+                box_target_starts=nqbtl.box_target_starts,
                 box_target_counts_nonchild=
-                nqftl.box_targets_counts_nonchild,
-                targets=nqftl.targets)
+                nqbtl.box_target_counts_nonchild,
+                targets=nqbtl.targets)
 
-    def reorder_src_weights(self, src_weights):
-        return src_weights.with_queue(self.queue)[self.tree.user_point_source_ids]
-
-    def reorder_potentials(self, potentials):
-        raise NotImplementedError
+    # }}}
 
 # }}}
 
 
 # {{{ FMM top-level
 
-def drive_fmm(geo_data, expansion_wrangler, src_weights):
+def drive_fmm(expansion_wrangler, src_weights):
     """Top-level driver routine for a fast multipole calculation.
 
     In part, this is intended as a template for custom FMMs, in the sense that
@@ -99,7 +123,7 @@ def drive_fmm(geo_data, expansion_wrangler, src_weights):
     Nonetheless, many common applications (such as point-to-point FMMs) can be
     covered by supplying the right *expansion_wrangler* to this routine.
 
-    :arg traversal: A :class:`QBXFMMGeometryData` instance.
+    :arg geo_data: A :class:`QBXFMMGeometryData` instance.
     :arg expansion_wrangler: An object exhibiting the
         :class:`ExpansionWranglerInterface`.
     :arg src_weights: Source 'density/weights/charges'.
@@ -109,10 +133,11 @@ def drive_fmm(geo_data, expansion_wrangler, src_weights):
 
     See also :func:`boxtree.fmm.drive_fmm`.
     """
+    wrangler = expansion_wrangler
+
+    geo_data = wrangler.geo_data
     traversal = geo_data.traversal()
     tree = traversal.tree
-
-    wrangler = expansion_wrangler
 
     # FIXME: last stage:
     # - translate to QBX
@@ -157,7 +182,7 @@ def drive_fmm(geo_data, expansion_wrangler, src_weights):
 
     logger.debug("direct evaluation from neighbor source boxes ('list 1')")
 
-    potentials = wrangler.eval_direct(
+    non_qbx_potentials = wrangler.eval_direct(
             traversal.target_boxes,
             traversal.neighbor_source_boxes_starts,
             traversal.neighbor_source_boxes_lists,
@@ -188,19 +213,17 @@ def drive_fmm(geo_data, expansion_wrangler, src_weights):
     # (the point of aiming this stage at particles is specifically to keep its
     # contribution *out* of the downward-propagating local expansions)
 
-    potentials = potentials + wrangler.eval_multipoles(
+    non_qbx_potentials = non_qbx_potentials + wrangler.eval_multipoles(
             traversal.target_boxes,
             traversal.sep_smaller_starts,
             traversal.sep_smaller_lists,
             mpole_exps)
 
-    # these potentials are called beta in [1]
-
     if traversal.sep_close_smaller_starts is not None:
         logger.debug("evaluate separated close smaller interactions directly "
                 "('list 3 close')")
 
-        potentials = potentials + wrangler.eval_direct(
+        non_qbx_potentials = non_qbx_potentials + wrangler.eval_direct(
                 traversal.target_boxes,
                 traversal.sep_close_smaller_starts,
                 traversal.sep_close_smaller_lists,
@@ -222,7 +245,7 @@ def drive_fmm(geo_data, expansion_wrangler, src_weights):
         logger.debug("evaluate separated close bigger interactions directly "
                 "('list 4 close')")
 
-        potentials = potentials + wrangler.eval_direct(
+        non_qbx_potentials = non_qbx_potentials + wrangler.eval_direct(
                 traversal.target_or_target_parent_boxes,
                 traversal.sep_close_bigger_starts,
                 traversal.sep_close_bigger_lists,
@@ -247,15 +270,37 @@ def drive_fmm(geo_data, expansion_wrangler, src_weights):
 
     logger.debug("evaluate locals")
 
-    potentials = potentials + wrangler.eval_locals(
+    non_qbx_potentials = non_qbx_potentials + wrangler.eval_locals(
             traversal.target_boxes,
             local_exps)
 
     # }}}
 
-    1/0
+    # {{{ reorder potentials
+
     logger.debug("reorder potentials")
-    result = wrangler.reorder_potentials(potentials)
+
+    nqbtl = geo_data.non_qbx_box_target_lists()
+
+    from pytools.obj_array import make_obj_array
+    all_potentials_in_tree_order = make_obj_array([
+            cl.array.zeros(
+                wrangler.queue,
+                tree.ntargets,
+                dtype=wrangler.dtype)
+            for k in wrangler.code.out_kernels])
+
+    for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
+        ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
+
+    def reorder_non_qbx_centers(x):
+        return x[tree.sorted_target_ids]
+
+    from pytools.obj_array import with_object_array_or_scalar
+    result = with_object_array_or_scalar(
+            reorder_non_qbx_centers, all_potentials_in_tree_order)
+
+    # }}}
 
     logger.info("qbx fmm complete")
 

@@ -512,7 +512,7 @@ class GlobalQBXCenterToTargetList(DeviceDataRecord):
 
 class QBXFMMGeometryData(object):
     def __init__(self, code_getter, source_discr,
-            target_discrs_and_qbx_sides):
+            target_discrs_and_qbx_sides, debug):
         """
         :arg targets: a tuple of
             :class:`pytential.discretization.Discretization`
@@ -525,6 +525,7 @@ class QBXFMMGeometryData(object):
         self.source_discr = source_discr
         self.target_discrs_and_qbx_sides = \
                 target_discrs_and_qbx_sides
+        self.debug = debug
 
     @property
     def cl_context(self):
@@ -733,7 +734,8 @@ class QBXFMMGeometryData(object):
                     particles=el_centers, source_radii=el_radii,
                     max_particles_in_box=30,
                     targets=target_info.targets,
-                    target_radii=self.target_radii())
+                    target_radii=self.target_radii(),
+                    debug=self.debug)
 
             # {{{ link point sources
 
@@ -929,6 +931,11 @@ class QBXFMMGeometryData(object):
 
             flags = (self.target_to_center().with_queue(queue)
                     == target_state.NO_QBX_NEEDED)
+
+            # The QBX centers come up with NO_QBX_NEEDED, but they don't
+            # belong in this target list.
+            nqbx_centers = self.center_info().ncenters
+            flags[:nqbx_centers] = 0
 
             from boxtree.tree import filter_target_lists_in_tree_order
             result = filter_target_lists_in_tree_order(queue, self.tree(), flags)

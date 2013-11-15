@@ -172,6 +172,12 @@ class MatVecOp:
     dtype = np.dtype(np.complex128)  # FIXME
 
     def matvec(self, x):
+        if isinstance(x, np.ndarray):
+            x = cl.array.to_device(self.queue, x)
+            out_host = True
+        else:
+            out_host = False
+
         do_split = len(self.starts_and_ends) > 1
         from pytools.obj_array import make_obj_array
 
@@ -185,12 +191,16 @@ class MatVecOp:
 
         if do_split:
             # re-join what was split
-            joined_result = np.empty(self.total_dofs, np.complex128)
+            joined_result = cl.array.empty(self.queue, self.total_dofs,
+                    np.complex128)  # FIXME
             for res_i, (start, end) in zip(result, self.starts_and_ends):
                 joined_result[start:end] = res_i
-            return joined_result
-        else:
-            return result
+            result = joined_result
+
+        if out_host:
+            result = result.get()
+
+        return result
 
 # }}}
 

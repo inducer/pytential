@@ -187,15 +187,20 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             instance
         """
         from pytential.discretization.qbx.geometry import QBXFMMGeometryData
+
+        # FIXME set debug=False once everything works
         return QBXFMMGeometryData(self.qbx_fmm_code_getter,
-                self, target_discrs_and_qbx_sides)
+                self, target_discrs_and_qbx_sides, debug=True)
 
     @memoize_method
     def expansion_wrangler_code_container(self, base_kernel, out_kernels):
         from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
         from sumpy.expansion.local import VolumeTaylorLocalExpansion
 
+        # FIXME: Unclear that these two should be the same
         fmm_order = self.qbx_order
+        fmm_order = 3
+
         fmm_mpole_expn = VolumeTaylorMultipoleExpansion(base_kernel, fmm_order)
         fmm_local_expn = VolumeTaylorLocalExpansion(base_kernel, fmm_order)
         qbx_local_expn = VolumeTaylorLocalExpansion(
@@ -273,20 +278,32 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         # {{{ execute global QBX
 
         from pytential.discretization.qbx.fmm import drive_fmm
-
-        res = drive_fmm(geo_data, wrangler, strengths)
+        all_potentials_on_every_tgt = drive_fmm(wrangler, strengths)
 
         # }}}
 
-        if (geo_data.global_qbx_flags() == 0).any():
+        if (geo_data.global_qbx_flags().with_queue(queue) == 0).any():
             raise NotImplementedError("geometry has centers requiring local QBX")
 
-        geo_data.global_qbx_centers_box_target_lists()
-        geo_data.non_qbx_box_target_lists()
-        geo_data.global_qbx_centers_to_targets()
+        #geo_data.global_qbx_centers_box_target_lists()
+        #geo_data.non_qbx_box_target_lists()
+        #geo_data.global_qbx_centers_to_targets()
 
         #geo_data.plot()
-        1/0
+
+        result = []
+
+        for o in insn.outputs:
+            tgt_side_number = tgt_name_and_side_to_number[
+                    o.target_name, o.qbx_forced_limit]
+            tgt_slice = slice(*geo_data.target_info().target_discr_starts[
+                    tgt_side_number:tgt_side_number+2])
+
+            result.append(
+                    (o. name,
+                        all_potentials_on_every_tgt[o.kernel_index][tgt_slice]))
+
+        return result, []
 
     # }}}
 
