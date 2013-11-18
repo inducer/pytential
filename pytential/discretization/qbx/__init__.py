@@ -200,7 +200,6 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         # FIXME: Unclear that these two should be the same
         fmm_order = self.qbx_order
-        fmm_order = 3
 
         fmm_mpole_expn = VolumeTaylorMultipoleExpansion(base_kernel, fmm_order)
         fmm_local_expn = VolumeTaylorLocalExpansion(base_kernel, fmm_order)
