@@ -179,7 +179,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
         """
-        :arg target_discrs: a tuple of *(discr, qbx_forced_limit)*
+        :arg target_discrs_and_qbx_sides:
+            a tuple of *(discr, qbx_forced_limit)*
             tuples, where *discr* is a
             :class:`pytential.discretization.Discretization`
             or
