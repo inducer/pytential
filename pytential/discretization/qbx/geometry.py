@@ -39,13 +39,24 @@ logger = logging.getLogger(__name__)
 # {{{ code getter
 
 class target_state(Enum):
+    """This enumeration contains special values that are used in
+    the array returned by :meth:`QBXFMMGeometryData.target_to_center`.
+
+    .. attribute:: NO_QBX_NEEDED
+
+    .. attribute:: FAILED
+
+        The code is unable to compute an accurate potential for this target.
+        This happens if it is determined that QBX is required to compute
+        an accurate potential, but no suitable center is found.
+    """
+
     # c_name = "particle_id_t" (tree-dependent, intentionally unspecified)
     # dtype intentionally unspecified
     c_value_prefix = "TGT_"
 
     NO_QBX_NEEDED = -1
 
-    # QBX needed, but no usable center found
     FAILED = -2
 
 
