@@ -909,9 +909,6 @@ class QBXFMMGeometryData(object):
 
             logger.info("find center for each target: done")
 
-            if (result == target_state.FAILED).any():
-                raise RuntimeError("geometry has failed targets")
-
             return result.with_queue(None)
 
     @memoize_method

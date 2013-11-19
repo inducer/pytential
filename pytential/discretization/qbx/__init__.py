@@ -275,21 +275,26 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         # }}}
 
+        #geo_data.global_qbx_centers_box_target_lists()
+        #geo_data.non_qbx_box_target_lists()
+        #geo_data.global_qbx_centers_to_targets()
+
+        #geo_data.plot()
+
+        if (geo_data.global_qbx_flags().with_queue(queue) == 0).any():
+            raise NotImplementedError("geometry has centers requiring local QBX")
+
+        from pytential.discretization.qbx.geometry import target_state
+        if (geo_data.target_to_center().with_queue(queue)
+                == target_state.FAILED).get().any():
+            raise RuntimeError("geometry has failed targets")
+
         # {{{ execute global QBX
 
         from pytential.discretization.qbx.fmm import drive_fmm
         all_potentials_on_every_tgt = drive_fmm(wrangler, strengths)
 
         # }}}
-
-        if (geo_data.global_qbx_flags().with_queue(queue) == 0).any():
-            raise NotImplementedError("geometry has centers requiring local QBX")
-
-        #geo_data.global_qbx_centers_box_target_lists()
-        #geo_data.non_qbx_box_target_lists()
-        #geo_data.global_qbx_centers_to_targets()
-
-        #geo_data.plot()
 
         result = []
 
