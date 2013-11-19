@@ -560,12 +560,14 @@ class QBXFMMGeometryData(object):
     @memoize_method
     def kept_center_indices(self, el_group):
         # FIXME: Be more careful about which nodes to keep
-        return np.arange(0, el_group.nunit_nodes, 8)
+        return np.arange(0, el_group.nunit_nodes)
 
     @memoize_method
     def center_info(self):
+        target_discr = self.source_discr.target_discr
+
         ncenters = 0
-        for el_group in self.source_discr.groups:
+        for el_group in target_discr.groups:
             kept_indices = self.kept_center_indices(el_group)
             # two: one for positive side, one for negative side
             ncenters += 2 * len(kept_indices) * el_group.nelements
@@ -574,7 +576,7 @@ class QBXFMMGeometryData(object):
         from pytools.obj_array import make_obj_array
         with cl.CommandQueue(self.cl_context) as queue:
             radii_sym = sym.cse(2*sym.area_element(), "radii")
-            all_radii, all_pos_centers, all_neg_centers = bind(self.source_discr,
+            all_radii, all_pos_centers, all_neg_centers = bind(target_discr,
                     make_obj_array([
                         radii_sym,
                         sym.Nodes() + radii_sym*sym.normal(),
@@ -593,10 +595,10 @@ class QBXFMMGeometryData(object):
             centers = make_obj_array([
                 cl.array.empty(self.cl_context, ncenters,
                     self.coord_dtype)
-                for i in xrange(self.source_discr.ambient_dim)])
+                for i in xrange(target_discr.ambient_dim)])
 
             ibase = 0
-            for el_group in self.source_discr.groups:
+            for el_group in target_discr.groups:
                 kept_center_indices = self.kept_center_indices(el_group)
                 group_len = len(kept_indices) * el_group.nelements
 

@@ -110,6 +110,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
     .. autoattribute :: nodes
     """
     def __init__(self, cl_ctx, mesh, exact_order, qbx_order,
+            target_discr,
             expansion_getter=None, real_dtype=np.float64):
         """
         :arg exact_order: The total degree to which the underlying quadrature
@@ -120,6 +121,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                 self, cl_ctx, mesh, exact_order, real_dtype)
 
         self.qbx_order = qbx_order
+        self.target_discr = target_discr
 
         if expansion_getter is None:
             from sumpy.expansion.local import LineTaylorLocalExpansion
@@ -424,6 +426,7 @@ def make_upsampling_qbx_discr(cl_ctx, mesh, target_order, qbx_order,
             cl_ctx, mesh, target_order, real_dtype=real_dtype)
     src_discr = QBXDiscretization(
             cl_ctx, mesh, source_order, qbx_order,
+            tgt_discr,
             expansion_getter=expansion_getter, real_dtype=real_dtype)
 
     from pytential.discretization.upsampling import \
