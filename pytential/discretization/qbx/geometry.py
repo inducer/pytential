@@ -35,6 +35,10 @@ from cgen import Enum
 import logging
 logger = logging.getLogger(__name__)
 
+# Targets match centers if they are within the center's circle, which, for matching
+# purposes, is enlarged by this fraction.
+QBX_CENTER_MATCH_THRESHOLD = 0.05
+
 
 # {{{ code getter
 
@@ -304,7 +308,7 @@ class QBXFMMCodeGetter(object):
     @memoize_method
     def centers_for_target_finder(self,
             coord_dtype, box_id_dtype, particle_id_dtype):
-        # must be able to represent target_state
+        # must be able to represent target_state values, which are negative
         assert int(np.iinfo(particle_id_dtype).min) < 0
 
         from pyopencl.elementwise import ElementwiseTemplate
@@ -396,8 +400,12 @@ class QBXFMMCodeGetter(object):
 
                     // check if we're within the (l^2) radius
                     coord_t ball_radius = radii[icenter];
+                    coord_t match_threshold_squared =
+                        (1 + ${qbx_center_match_threshold})
+                        * (1 + ${qbx_center_match_threshold});
                     bool center_usable = (
-                        dist_squared <= ball_radius * ball_radius * (1+1e-5));
+                        dist_squared
+                        <= ball_radius * ball_radius * match_threshold_squared);
 
                     if (center_usable && best_center_id == TGT_NO_QBX_NEEDED)
                     {
@@ -437,6 +445,7 @@ class QBXFMMCodeGetter(object):
                         ),
                     var_values=(
                         ("ambient_dim", self.ambient_dim),
+                        ("qbx_center_match_threshold", QBX_CENTER_MATCH_THRESHOLD),
                         ))
 
     # }}}
