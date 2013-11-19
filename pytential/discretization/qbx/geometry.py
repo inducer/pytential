@@ -989,14 +989,18 @@ class QBXFMMGeometryData(object):
     # {{{ plotting (for debugging)
 
     def plot(self):
+        dims = self.tree().targets.shape[0]
+        if dims != 2:
+            raise ValueError("only 2-dimensional geometry info can be plotted")
+
         with cl.CommandQueue(self.cl_context) as queue:
             import matplotlib.pyplot as pt
             nodes_host = self.source_discr.nodes().get(queue)
             pt.plot(nodes_host[0], nodes_host[1], "x-")
 
-            global_flags = self.global_qbx_flags().get()
+            global_flags = self.global_qbx_flags().get(queue=queue)
 
-            tree = self.tree().get()
+            tree = self.tree().get(queue=queue)
             from boxtree.visualization import TreePlotter
             tp = TreePlotter(tree)
             tp.draw_tree()
@@ -1008,21 +1012,39 @@ class QBXFMMGeometryData(object):
                     center_info.centers[0].get(queue),
                     center_info.centers[1].get(queue)]
             pt.plot(centers[0][global_flags == 0],
-                    centers[1][global_flags == 0], "or")
+                    centers[1][global_flags == 0], "oc",
+                    label="centers needing local qbx")
             ax = pt.gca()
-            for cx, cy, r in zip(
-                    centers[0], centers[1], center_info.radii.get(queue)):
+            for icenter, (cx, cy, r) in enumerate(zip(
+                    centers[0], centers[1], center_info.radii.get(queue))):
                 ax.add_artist(
                         pt.Circle((cx, cy), r, fill=False, ls="dotted", lw=1))
+                pt.text(cx, cy,
+                        str(icenter), fontsize=8,
+                        ha="left", va="center",
+                        bbox=dict(facecolor='white', alpha=0.5, lw=0))
 
             # }}}
 
             # {{{ draw target-to-center arrows
 
-            ttc = self.target_to_center().get()
-            targets = self.target_info().targets.get(queue)
+            ttc = self.target_to_center().get(queue)
+            tinfo = self.target_info()
+            targets = tinfo.targets.get(queue)
 
-            pt.plot(targets[0], targets[1], "x")
+            pt.plot(targets[0], targets[1], "+")
+            pt.plot(
+                    targets[0][ttc == target_state.FAILED],
+                    targets[1][ttc == target_state.FAILED],
+                    "dr", label="failed targets")
+
+            for itarget in np.where(ttc == target_state.FAILED)[0]:
+                pt.text(
+                        targets[0][itarget],
+                        targets[1][itarget],
+                        str(itarget), fontsize=8,
+                        ha="left", va="center",
+                        bbox=dict(facecolor='white', alpha=0.5, lw=0))
 
             tccount = 0
             checked = 0
@@ -1044,6 +1066,7 @@ class QBXFMMGeometryData(object):
             # }}}
 
             pt.gca().set_aspect("equal")
+            pt.legend()
             pt.show()
 
     # }}}
