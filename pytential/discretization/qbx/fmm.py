@@ -32,6 +32,14 @@ from sumpy.fmm import SumpyExpansionWranglerCodeContainer, SumpyExpansionWrangle
 import logging
 logger = logging.getLogger(__name__)
 
+__doc__ = """
+.. autoclass:: QBXExpansionWranglerCodeContainer
+
+.. autoclass:: QBXExpansionWrangler
+
+.. autofunction:: drive_fmm
+"""
+
 
 # {{{ expansion wrangler
 
@@ -43,9 +51,13 @@ class QBXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
 
         self.qbx_local_expansion = qbx_local_expansion
 
-        # TODO:
-        #self.l2qbxl = E2EFromParent(cl_context,
-                #local_expansion, qbx_local_expansion)
+        from pytential.discretization.qbx.interactions import (
+                P2QBXLFromCSR, L2QBXL, QBXL2P)
+
+        self.p2qbxl = P2QBXLFromCSR(cl_context, qbx_local_expansion)
+        self.l2qbxl = L2QBXL(cl_context,
+                local_expansion, qbx_local_expansion)
+        self.qbxl2p = QBXL2P(cl_context, qbx_local_expansion, out_kernels)
 
     def get_wrangler(self, queue, geo_data, dtype, extra_kwargs={}):
         return QBXExpansionWrangler(self, queue, geo_data,
@@ -53,6 +65,24 @@ class QBXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
 
 
 class QBXExpansionWrangler(SumpyExpansionWrangler):
+    """A specialized implementation of the
+    :class:`boxtree.fmm.ExpansionWranglerInterface` for the QBX FMM.
+    The conventional ('point') FMM is carried out on a filtered
+    set of targets
+    (see :meth:`pytential.discretization.qbx.geometry.\
+QBXFMMGeometryData.non_qbx_box_target_lists`),
+    and thus all *non-QBX* potential arrays handled by this wrangler don't
+    include all targets in the tree, just the non-QBX ones.
+
+    .. rubric:: QBX-specific methods
+
+    .. automethod:: form_global_qbx_locals
+
+    .. automethod:: translate_box_local_to_qbx_local
+
+    .. automethod:: eval_qbx_expansions
+    """
+
     def __init__(self, code_container, queue, geo_data,
             dtype, extra_kwargs):
         SumpyExpansionWrangler.__init__(self,
@@ -63,6 +93,11 @@ class QBXExpansionWrangler(SumpyExpansionWrangler):
     # {{{ data vector utilities
 
     def potential_zeros(self):
+        """This ought to be called ``non_qbx_potential_zeros``, but since
+        it has to override the superclass's behavior to integrate seamlessly,
+        it needs to be called just :meth:`potential_zeros`.
+        """
+
         nqbtl = self.geo_data.non_qbx_box_target_lists()
 
         from pytools.obj_array import make_obj_array
@@ -72,6 +107,18 @@ class QBXExpansionWrangler(SumpyExpansionWrangler):
                     nqbtl.nfiltered_targets,
                     dtype=self.dtype)
                 for k in self.code.out_kernels])
+
+    def full_potential_zeros(self):
+        # The superclass generates a full field of zeros, for all
+        # (not just non-QBX) targets.
+        return SumpyExpansionWrangler.potential_zeros(self)
+
+    def qbx_local_expansion_zeros(self):
+        return cl.array.zeros(
+                    self.queue,
+                    (self.geo_data.center_info().ncenters,
+                        len(self.code.qbx_local_expansion)),
+                    dtype=self.dtype)
 
     def reorder_src_weights(self, src_weights):
         return src_weights.with_queue(self.queue)[self.tree.user_point_source_ids]
@@ -106,6 +153,85 @@ class QBXExpansionWrangler(SumpyExpansionWrangler):
                 targets=nqbtl.targets)
 
     # }}}
+
+    def form_global_qbx_locals(self, starts, lists, src_weights):
+        local_exps = self.qbx_local_expansion_zeros()
+
+        geo_data = self.geo_data
+        if len(geo_data.global_qbx_centers()) == 0:
+            return local_exps
+
+        kwargs = self.extra_kwargs.copy()
+        kwargs.update(self.box_source_list_kwargs())
+
+        evt, (result,) = self.code.p2qbxl(self.queue,
+                global_qbx_centers=geo_data.global_qbx_centers(),
+                qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+                qbx_centers=geo_data.center_info().centers,
+
+                source_box_starts=starts,
+                source_box_lists=lists,
+                strengths=src_weights,
+                qbx_expansions=local_exps,
+
+                **kwargs)
+
+        assert local_exps is result
+
+        return result
+
+    def translate_box_local_to_qbx_local(self, local_exps):
+        qbx_expansions = self.qbx_local_expansion_zeros()
+
+        geo_data = self.geo_data
+        if geo_data.center_info().ncenters == 0:
+            return qbx_expansions
+
+        evt, (qbx_expansions_res,) = self.code.l2qbxl(self.queue,
+                qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+                target_boxes=geo_data.traversal().target_boxes,
+
+                centers=self.tree.box_centers,
+                qbx_centers=geo_data.center_info().centers,
+
+                expansions=local_exps,
+                qbx_expansions=qbx_expansions,
+
+                **self.extra_kwargs)
+
+        assert qbx_expansions_res is qbx_expansions
+        return qbx_expansions
+
+    def eval_qbx_expansions(self, qbx_expansions):
+        pot = self.full_potential_zeros()
+
+        geo_data = self.geo_data
+        if len(geo_data.global_qbx_centers()) == 0:
+            return pot
+
+        ctt = geo_data.center_to_targets()
+
+        kwargs = self.extra_kwargs.copy()
+
+        evt, pot_res = self.code.qbxl2p(self.queue,
+                qbx_centers=geo_data.center_info().centers,
+                global_qbx_centers=geo_data.global_qbx_centers(),
+
+                center_to_targets_starts=ctt.starts,
+                center_to_targets_lists=ctt.lists,
+
+                targets=self.tree.targets,
+
+                qbx_expansions=qbx_expansions,
+                result=pot,
+
+                **kwargs)
+
+        for pot_i, pot_res_i in zip(pot, pot_res):
+            assert pot_i is pot_res_i
+
+        return pot
+
 
 # }}}
 
@@ -142,7 +268,6 @@ def drive_fmm(expansion_wrangler, src_weights):
     # FIXME: last stage:
     # - translate to QBX
     # - do to-QBX list1
-    # - do conventional to-target eval
 
     # Interface guidelines: Attributes of the tree are assumed to be known
     # to the expansion wrangler and should not be passed.
@@ -153,7 +278,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     src_weights = wrangler.reorder_src_weights(src_weights)
 
-    # {{{ "Step 2.1:" Construct local multipoles
+    # {{{ construct local multipoles
 
     logger.debug("construct local multipoles")
 
@@ -163,7 +288,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # }}}
 
-    # {{{ "Step 2.2:" Propagate multipoles upward
+    # {{{ propagate multipoles upward
 
     logger.debug("propagate multipoles upward")
 
@@ -174,11 +299,9 @@ def drive_fmm(expansion_wrangler, src_weights):
                 traversal.source_parent_boxes[start_parent_box:end_parent_box],
                 mpole_exps)
 
-    # mpole_exps is called Phi in [1]
-
     # }}}
 
-    # {{{ "Stage 3:" Direct evaluation from neighbor source boxes ("list 1")
+    # {{{ direct evaluation from neighbor source boxes ("list 1")
 
     logger.debug("direct evaluation from neighbor source boxes ('list 1')")
 
@@ -188,11 +311,9 @@ def drive_fmm(expansion_wrangler, src_weights):
             traversal.neighbor_source_boxes_lists,
             src_weights)
 
-    # these potentials are called alpha in [1]
-
     # }}}
 
-    # {{{ "Stage 4:" translate separated siblings' ("list 2") mpoles to local
+    # {{{ translate separated siblings' ("list 2") mpoles to local
 
     logger.debug("translate separated siblings' ('list 2') mpoles to local")
 
@@ -202,11 +323,9 @@ def drive_fmm(expansion_wrangler, src_weights):
             traversal.sep_siblings_lists,
             mpole_exps)
 
-    # local_exps represents both Gamma and Delta in [1]
-
     # }}}
 
-    # {{{ "Stage 5:" evaluate sep. smaller mpoles ("list 3") at particles
+    # {{{ evaluate sep. smaller mpoles ("list 3") at particles
 
     logger.debug("evaluate sep. smaller mpoles at particles ('list 3 far')")
 
@@ -219,19 +338,12 @@ def drive_fmm(expansion_wrangler, src_weights):
             traversal.sep_smaller_lists,
             mpole_exps)
 
-    if traversal.sep_close_smaller_starts is not None:
-        logger.debug("evaluate separated close smaller interactions directly "
-                "('list 3 close')")
-
-        non_qbx_potentials = non_qbx_potentials + wrangler.eval_direct(
-                traversal.target_boxes,
-                traversal.sep_close_smaller_starts,
-                traversal.sep_close_smaller_lists,
-                src_weights)
+    # assert that list 3 close has been merged into list 1
+    assert traversal.sep_close_smaller_starts is None
 
     # }}}
 
-    # {{{ "Stage 6:" form locals for separated bigger mpoles ("list 4")
+    # {{{ form locals for separated bigger mpoles ("list 4")
 
     logger.debug("form locals for separated bigger mpoles ('list 4 far')")
 
@@ -241,19 +353,12 @@ def drive_fmm(expansion_wrangler, src_weights):
             traversal.sep_bigger_lists,
             src_weights)
 
-    if traversal.sep_close_bigger_starts is not None:
-        logger.debug("evaluate separated close bigger interactions directly "
-                "('list 4 close')")
-
-        non_qbx_potentials = non_qbx_potentials + wrangler.eval_direct(
-                traversal.target_or_target_parent_boxes,
-                traversal.sep_close_bigger_starts,
-                traversal.sep_close_bigger_lists,
-                src_weights)
+    # assert that list 4 close has been merged into list 1
+    assert traversal.sep_close_bigger_starts is None
 
     # }}}
 
-    # {{{ "Stage 7:" propagate local_exps downward
+    # {{{ propagate local_exps downward
 
     logger.debug("propagate local_exps downward")
 
@@ -266,13 +371,31 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # }}}
 
-    # {{{ "Stage 8:" evaluate locals
+    # {{{ evaluate locals
 
     logger.debug("evaluate locals")
 
     non_qbx_potentials = non_qbx_potentials + wrangler.eval_locals(
             traversal.target_boxes,
             local_exps)
+
+    # }}}
+
+    # {{{ wrangle qbx expansions
+
+    # form qbx expansions from list 1
+    qbx_expansions = wrangler.form_global_qbx_locals(
+            traversal.sep_bigger_starts,
+            traversal.sep_bigger_lists,
+            src_weights)
+
+    # translate from boxes to contained local expansions
+    qbx_expansions = qbx_expansions + \
+            wrangler.translate_box_local_to_qbx_local(local_exps)
+
+    # evaluate QBX potentials
+    qbx_potentials = wrangler.eval_qbx_expansions(
+            qbx_expansions)
 
     # }}}
 
@@ -292,6 +415,8 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
         ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
+
+    all_potentials_in_tree_order += qbx_potentials
 
     def reorder_non_qbx_centers(x):
         return x[tree.sorted_target_ids]

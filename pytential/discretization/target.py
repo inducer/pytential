@@ -22,9 +22,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+__doc__ = """
+Target discretizations are a simpler version of the full
+:class:`pytential.discretization.Discretization` interface.
+They do not provide any evaluation of integrals, norms, or
+layer potentials, but are instead only geared towards being
+used as evaluation targets.
+
+.. autoclass:: TargetBase
+
+.. autoclass:: PointsTarget
+
+"""
+
 
 class TargetBase(object):
-    pass
+    """
+    .. attribute:: ambient_dim
+    .. method:: nodes
+
+        Shape: ``[ambient_dim, nnodes]``
+    .. attribute:: nnodes
+    """
 
 
 class PointsTarget(TargetBase):

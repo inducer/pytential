@@ -28,6 +28,12 @@ from pytools import Record, memoize_method
 from pytential.symbolic.compiler import Instruction
 
 
+__doc__ = """
+
+.. autoclass:: Discretization
+"""
+
+
 # {{{ layer pot instruction
 
 class LayerPotentialOutput(Record):

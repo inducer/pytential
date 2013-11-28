@@ -18,6 +18,8 @@ Contents
     tools
     misc
 
+    qbx
+
 * :ref:`genindex`
 * :ref:`modindex`
 

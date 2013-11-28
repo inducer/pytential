@@ -28,6 +28,10 @@ from pytools import memoize_method, memoize_method_nested
 import pyopencl as cl
 import pyopencl.array  # noqa
 
+__doc__ = """
+.. autoclass:: UpsampleToSourceDiscretization
+"""
+
 
 class UpsampleToSourceDiscretization(Discretization):
     """A wrapper around a (coarse) *target_discr* and a (fine) *source_discr*

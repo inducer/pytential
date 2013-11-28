@@ -34,6 +34,10 @@ from pytential.discretization.poly_element import (
 
 import pyopencl as cl
 
+__doc__ = """
+.. autoclass:: QBXDiscretization
+"""
+
 
 # {{{ jump term interface helper
 
@@ -108,6 +112,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
     .. attribute :: nnodes
 
     .. autoattribute :: nodes
+
+    See :ref:`qbxguts` for some information on the inner workings of this.
     """
     def __init__(self, cl_ctx, mesh, exact_order, qbx_order,
             target_discr,
@@ -175,8 +181,8 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
     @property
     @memoize_method
     def qbx_fmm_code_getter(self):
-        from pytential.discretization.qbx.geometry import QBXFMMCodeGetter
-        return QBXFMMCodeGetter(self.cl_context, self.ambient_dim)
+        from pytential.discretization.qbx.geometry import QBXFMMGeometryCodeGetter
+        return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim)
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
@@ -200,9 +206,10 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
         from sumpy.expansion.local import VolumeTaylorLocalExpansion
 
-        # FIXME: Unclear that these two should be the same
+        # FIXME: Don't hard-code FMM order
         fmm_order = self.qbx_order
 
+        # FIXME: Don't hard-code expansion types
         fmm_mpole_expn = VolumeTaylorMultipoleExpansion(base_kernel, fmm_order)
         fmm_local_expn = VolumeTaylorLocalExpansion(base_kernel, fmm_order)
         qbx_local_expn = VolumeTaylorLocalExpansion(
@@ -283,7 +290,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         #geo_data.plot()
 
-        if (geo_data.global_qbx_flags().with_queue(queue) == 0).any():
+        if len(geo_data.global_qbx_centers()) != geo_data.center_info().ncenters:
             raise NotImplementedError("geometry has centers requiring local QBX")
 
         from pytential.discretization.qbx.geometry import target_state
@@ -307,7 +314,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                     tgt_side_number:tgt_side_number+2])
 
             result.append(
-                    (o. name,
+                    (o.name,
                         all_potentials_on_every_tgt[o.kernel_index][tgt_slice]))
 
         return result, []
