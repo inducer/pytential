@@ -386,8 +386,8 @@ def drive_fmm(expansion_wrangler, src_weights):
     logger.debug("form global qbx expansions")
     # form qbx expansions from list 1
     qbx_expansions = wrangler.form_global_qbx_locals(
-            traversal.sep_bigger_starts,
-            traversal.sep_bigger_lists,
+            traversal.neighbor_source_boxes_starts,
+            traversal.neighbor_source_boxes_lists,
             src_weights)
 
     # translate from boxes to contained local expansions

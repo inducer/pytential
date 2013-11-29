@@ -34,7 +34,7 @@ from sumpy.e2p import E2PBase
 # {{{ P2QBXLFromCSR
 
 class P2QBXLFromCSR(P2EBase):
-    default_name = "p2e_from_csr"
+    default_name = "p2qbxl_from_csr"
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
