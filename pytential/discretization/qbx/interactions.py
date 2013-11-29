@@ -31,7 +31,7 @@ from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
 
 
-# {{{ P2QBXLFromCSR
+# {{{ form qbx expansions from points
 
 class P2QBXLFromCSR(P2EBase):
     default_name = "p2qbxl_from_csr"
@@ -107,6 +107,92 @@ class P2QBXLFromCSR(P2EBase):
         # FIXME
         knl = self.get_kernel()
         knl = lp.split_iname(knl, "itgt_center", 16, outer_tag="g.0")
+        return knl
+
+    def __call__(self, queue, **kwargs):
+        return self.get_optimized_kernel()(queue, **kwargs)
+
+# }}}
+
+
+# {{{ translation from (likely, list 3) multipoles to qbx expansions
+
+class M2QBXL(E2EBase):
+    """Implements translation from a "compressed sparse row"-like source box
+    list.
+    """
+
+    default_name = "m2qbxl_from_csr"
+
+    def get_kernel(self):
+        ncoeff_src = len(self.src_expansion)
+        ncoeff_tgt = len(self.tgt_expansion)
+
+        from sumpy.tools import gather_arguments
+        loopy_knl = lp.make_kernel(self.device,
+                [
+                    "{[icenter]: 0<=icenter<ncenters}",
+                    "{[isrc_box]: isrc_start<=isrc_box<isrc_stop}",
+                    "{[idim]: 0<=idim<dim}",
+                    ],
+                self.get_translation_loopy_insns()
+                + ["""
+                    <> icontaining_tgt_box = qbx_center_to_target_box[icenter]
+
+                    <> tgt_center[idim] = qbx_centers[idim, icenter] \
+                            {id=fetch_tgt_center}
+
+                    <> isrc_start = src_box_starts[icontaining_tgt_box]
+                    <> isrc_stop = src_box_starts[icontaining_tgt_box+1]
+
+                    <> src_ibox = src_box_lists[isrc_box] \
+                            {id=read_src_ibox}
+                    <> src_center[idim] = centers[idim, src_ibox] \
+                            {id=fetch_src_center}
+                    <> d[idim] = tgt_center[idim] - src_center[idim]
+                    <> src_coeff${SRC_COEFFIDX} = \
+                        src_expansions[src_ibox, ${SRC_COEFFIDX}] \
+                        {dep=read_src_ibox}
+
+                    qbx_expansions[icenter, ${TGT_COEFFIDX}] = \
+                            sum(isrc_box, coeff${TGT_COEFFIDX}) \
+                            {id_prefix=write_expn}
+                    """],
+                [
+                    lp.GlobalArg("centers", None, shape="dim, aligned_nboxes"),
+                    lp.GlobalArg("src_box_starts, src_box_lists",
+                        None, shape=None, strides=(1,)),
+                    lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
+                        dim_tags="sep,c"),
+                    lp.ValueArg("aligned_nboxes,nboxes", np.int32),
+                    lp.GlobalArg("src_expansions", None,
+                        shape=("nboxes", ncoeff_src)),
+                    lp.GlobalArg("qbx_expansions", None,
+                        shape=("ncenters", ncoeff_tgt)),
+                    "..."
+                ] + gather_arguments([self.src_expansion, self.tgt_expansion]),
+                name=self.name, assumptions="ncenters>=1",
+                defines=dict(
+                    dim=self.dim,
+                    SRC_COEFFIDX=[str(i) for i in xrange(ncoeff_src)],
+                    TGT_COEFFIDX=[str(i) for i in xrange(ncoeff_tgt)],
+                    ),
+                silenced_warnings="write_race(write_expn*)")
+
+        for expn in [self.src_expansion, self.tgt_expansion]:
+            loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
+
+        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "fetch_tgt_center",
+                tags={"idim": "unr"})
+        loopy_knl = lp.tag_inames(loopy_knl, dict(idim="unr"))
+
+        return loopy_knl
+
+    @memoize_method
+    def get_optimized_kernel(self):
+        # FIXME
+        knl = self.get_kernel()
+        knl = lp.split_iname(knl, "icenter", 16, outer_tag="g.0")
         return knl
 
     def __call__(self, queue, **kwargs):
@@ -197,7 +283,7 @@ class L2QBXL(E2EBase):
 # }}}
 
 
-# {{{
+# {{{ evaluation of qbx expansions
 
 class QBXL2P(E2PBase):
     default_name = "qbx_potential_from_local"

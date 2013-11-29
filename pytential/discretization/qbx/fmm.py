@@ -52,9 +52,11 @@ class QBXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
         self.qbx_local_expansion = qbx_local_expansion
 
         from pytential.discretization.qbx.interactions import (
-                P2QBXLFromCSR, L2QBXL, QBXL2P)
+                P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P)
 
         self.p2qbxl = P2QBXLFromCSR(cl_context, qbx_local_expansion)
+        self.m2qbxl = M2QBXL(cl_context,
+                multipole_expansion, qbx_local_expansion)
         self.l2qbxl = L2QBXL(cl_context,
                 local_expansion, qbx_local_expansion)
         self.qbxl2p = QBXL2P(cl_context, qbx_local_expansion, out_kernels)
@@ -180,6 +182,32 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         return result
 
+    def translate_box_multipoles_to_qbx_local(self, multipole_exps):
+        qbx_expansions = self.qbx_local_expansion_zeros()
+
+        geo_data = self.geo_data
+        if geo_data.center_info().ncenters == 0:
+            return qbx_expansions
+
+        traversal = geo_data.traversal()
+
+        evt, (qbx_expansions_res,) = self.code.m2qbxl(self.queue,
+                qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+
+                centers=self.tree.box_centers,
+                qbx_centers=geo_data.center_info().centers,
+
+                src_expansions=multipole_exps,
+                qbx_expansions=qbx_expansions,
+
+                src_box_starts=traversal.sep_smaller_starts,
+                src_box_lists=traversal.sep_smaller_lists,
+
+                **self.extra_kwargs)
+
+        assert qbx_expansions_res is qbx_expansions
+        return qbx_expansions
+
     def translate_box_local_to_qbx_local(self, local_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
@@ -211,8 +239,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         ctt = geo_data.center_to_tree_targets()
 
-        kwargs = self.extra_kwargs.copy()
-
         evt, pot_res = self.code.qbxl2p(self.queue,
                 qbx_centers=geo_data.center_info().centers,
                 global_qbx_centers=geo_data.global_qbx_centers(),
@@ -225,7 +251,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 qbx_expansions=qbx_expansions,
                 result=pot,
 
-                **kwargs)
+                **self.extra_kwargs.copy())
 
         for pot_i, pot_res_i in zip(pot, pot_res):
             assert pot_i is pot_res_i
@@ -383,20 +409,22 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ wrangle qbx expansions
 
-    logger.debug("form global qbx expansions")
-    # form qbx expansions from list 1
+    logger.debug("form global qbx expansions from list 1")
     qbx_expansions = wrangler.form_global_qbx_locals(
             traversal.neighbor_source_boxes_starts,
             traversal.neighbor_source_boxes_lists,
             src_weights)
 
-    # translate from boxes to contained local expansions
-    logger.debug("translate box locals to qbx locals")
+    logger.debug("translate from list 3 multipoles to qbx local expansions")
+    qbx_expansions = qbx_expansions + \
+            wrangler.translate_box_multipoles_to_qbx_local(mpole_exps)
+
+    logger.debug("translate from box local expansions to contained "
+            "qbx local expansions")
     qbx_expansions = qbx_expansions + \
             wrangler.translate_box_local_to_qbx_local(local_exps)
 
-    # evaluate QBX potentials
-    logger.debug("evaluate qbx locals")
+    logger.debug("evaluate qbx local expansions")
     qbx_potentials = wrangler.eval_qbx_expansions(
             qbx_expansions)
 
