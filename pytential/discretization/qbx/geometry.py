@@ -223,20 +223,25 @@ class QBXFMMGeometryCodeGetter(object):
         knl = lp.make_kernel(self.cl_context.devices[0],
             [
                 "{[ibox]: 0<=ibox<nboxes}",
-                "{[itarget]: b_t_start <= itarget < b_t_start + ntargets}",
+                "{[itarget_tree]: b_t_start <= itarget_tree < b_t_start + ntargets}",
                 ],
             """
                 <> b_t_start = box_target_starts[ibox]
                 <> ntargets = box_target_counts_nonchild[ibox]
 
-                <> in_bounds = itarget < ncenters
-                qbx_center_to_target_box[itarget] = box_to_target_box[ibox] \
+                <> itarget_user = user_target_from_tree_target[itarget_tree]
+                <> in_bounds = itarget_user < ncenters
+
+                # This write is race-free because each center only belongs
+                # to one box.
+                qbx_center_to_target_box[itarget_user] = box_to_target_box[ibox] \
                         {id=tgt_write,if=in_bounds}
                 """,
             [
                 lp.GlobalArg("qbx_center_to_target_box", box_id_dtype,
                     shape="ncenters"),
                 lp.GlobalArg("box_to_target_box", box_id_dtype),
+                lp.GlobalArg("user_target_from_tree_target", None, shape=None),
                 lp.ValueArg("ncenters", particle_id_dtype),
                 "..."
                 ],
@@ -1021,11 +1026,21 @@ class QBXFMMGeometryData(object):
             box_to_target_box[trav.target_boxes] = cl.array.arange(
                     queue, len(trav.target_boxes), dtype=tree.box_id_dtype)
 
+            sorted_target_ids = self.tree().sorted_target_ids
+            user_target_from_tree_target = \
+                    cl.array.empty_like(sorted_target_ids).with_queue(queue)
+
+            user_target_from_tree_target[sorted_target_ids] = \
+                    cl.array.arange(
+                            queue, len(sorted_target_ids),
+                            user_target_from_tree_target.dtype)
+
             evt, (qbx_center_to_target_box,) = qbx_center_to_target_box_lookup(
                     queue,
                     box_to_target_box=box_to_target_box,
                     box_target_starts=tree.box_target_starts,
                     box_target_counts_nonchild=tree.box_target_counts_nonchild,
+                    user_target_from_tree_target=user_target_from_tree_target,
                     ncenters=center_info.ncenters)
 
             return qbx_center_to_target_box.with_queue(None)
@@ -1205,6 +1220,12 @@ class QBXFMMGeometryData(object):
             result = CenterToTargetList(
                     starts=center_target_starts,
                     lists=targets_sorted_by_center).with_queue(None)
+
+            if self.debug:
+                result_host = result.with_queue(queue).get()
+                for icenter in xrange(center_info.ncenters):
+                    start, stop = result_host.starts[icenter:icenter+2]
+                    print icenter, result_host.lists[start:stop]
 
             return result
 
