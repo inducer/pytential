@@ -596,7 +596,11 @@ class CenterInfo(DeviceDataRecord):
 
 
 class CenterToTargetList(DeviceDataRecord):
-    """A lookup table of targets covered by each target
+    """A lookup table of targets covered by each QBX disk. Indexed by global
+    number of QBX center, ``lists[start[i]:start[i+1]]`` indicates numbers
+    of the overlapped targets in tree target order.
+
+    See :meth:`QBXFMMGeometryData.center_to_tree_targets`.
 
     .. attribute:: starts
 
@@ -604,7 +608,7 @@ class CenterToTargetList(DeviceDataRecord):
 
     .. attribute:: lists
 
-        Use with :attr:`starts`
+        Lists of targets in tree order. Use with :attr:`starts`.
     """
 
 
@@ -672,8 +676,8 @@ class QBXFMMGeometryData(object):
     .. automethod:: qbx_center_to_target_box()
     .. automethod:: global_qbx_flags()
     .. automethod:: global_qbx_centers()
-    .. automethod:: target_to_center()
-    .. automethod:: center_to_targets()
+    .. automethod:: user_target_to_center()
+    .. automethod:: center_to_tree_targets()
     .. automethod:: global_qbx_centers_box_target_lists()
     .. automethod:: non_qbx_box_target_lists()
     .. automethod:: plot()
@@ -1105,11 +1109,11 @@ class QBXFMMGeometryData(object):
 
             return result
 
-    def target_to_center(self):
+    def user_target_to_center(self):
         """Find which QBX center, if any, is to be used for each target.
         :attr:`target_state.NO_QBX_NEEDED` if none. :attr:`target_state.FAILED`
         if a center needs to be used, but none was found.
-        See :meth:`center_to_targets` for the reverse look-up table.
+        See :meth:`center_to_tree_targets` for the reverse look-up table.
 
         Shape: ``[ntargets]`` of :attr:`boxtree.Tree.particle_id_dtype`, with extra
         values from :class:`target_state` allowed. Targets occur in user order.
@@ -1161,41 +1165,48 @@ class QBXFMMGeometryData(object):
             return result.with_queue(None)
 
     @memoize_method
-    def center_to_targets(self):
+    def center_to_tree_targets(self):
         """Return a :class:`CenterToTargetList`. See :meth:`target_to_center`
-        for the reverse look-up table.
+        for the reverse look-up table with targets in user order.
 
-        |cached|"""
+        |cached|
+        """
 
         center_info = self.center_info()
-        ttc = self.target_to_center()
+        user_ttc = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
             logger.info("build center -> targets lookup table: start")
 
-            filtered_ttc = cl.array.empty(queue, ttc.shape, ttc.dtype)
-            filtered_target_ids = cl.array.empty(queue, ttc.shape, ttc.dtype)
-            count = cl.array.empty(queue, 1, ttc.dtype)
+            tree_ttc = cl.array.empty_like(user_ttc).with_queue(queue)
+            tree_ttc[self.tree().sorted_target_ids] = user_ttc
 
-            self.code_getter.filter_center_and_target_ids(ttc.dtype)(
-                    ttc, filtered_ttc, filtered_target_ids, count,
-                    queue=queue, size=len(ttc))
+            filtered_tree_ttc = cl.array.empty(queue, tree_ttc.shape, tree_ttc.dtype)
+            filtered_target_ids = cl.array.empty(
+                    queue, tree_ttc.shape, tree_ttc.dtype)
+            count = cl.array.empty(queue, 1, tree_ttc.dtype)
+
+            self.code_getter.filter_center_and_target_ids(tree_ttc.dtype)(
+                    tree_ttc, filtered_tree_ttc, filtered_target_ids, count,
+                    queue=queue, size=len(tree_ttc))
 
             count = count.get()
 
-            filtered_ttc = filtered_ttc[:count]
+            filtered_tree_ttc = filtered_tree_ttc[:count]
             filtered_target_ids = filtered_target_ids[:count].copy()
 
             center_target_starts, targets_sorted_by_center, _ = \
                     self.code_getter.key_value_sort(queue,
-                            filtered_ttc, filtered_target_ids,
-                            center_info.ncenters, ttc.dtype)
+                            filtered_tree_ttc, filtered_target_ids,
+                            center_info.ncenters, tree_ttc.dtype)
 
             logger.info("build center -> targets lookup table: done")
 
-            return CenterToTargetList(
+            result = CenterToTargetList(
                     starts=center_target_starts,
                     lists=targets_sorted_by_center).with_queue(None)
+
+            return result
 
     @memoize_method
     def global_qbx_centers_box_target_lists(self):
@@ -1235,11 +1246,14 @@ class QBXFMMGeometryData(object):
         with cl.CommandQueue(self.cl_context) as queue:
             logger.info("find non-qbx box target lists: start")
 
-            flags = (self.target_to_center().with_queue(queue)
+            flags = (self.user_target_to_center().with_queue(queue)
                     == target_state.NO_QBX_NEEDED)
 
             # The QBX centers come up with NO_QBX_NEEDED, but they don't
             # belong in this target list.
+
+            # 'flags' is in user order, and should be.
+
             nqbx_centers = self.center_info().ncenters
             flags[:nqbx_centers] = 0
 

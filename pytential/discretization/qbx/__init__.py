@@ -294,7 +294,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             raise NotImplementedError("geometry has centers requiring local QBX")
 
         from pytential.discretization.qbx.geometry import target_state
-        if (geo_data.target_to_center().with_queue(queue)
+        if (geo_data.user_target_to_center().with_queue(queue)
                 == target_state.FAILED).get().any():
             raise RuntimeError("geometry has failed targets")
 

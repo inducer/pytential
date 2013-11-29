@@ -209,7 +209,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         if len(geo_data.global_qbx_centers()) == 0:
             return pot
 
-        ctt = geo_data.center_to_targets()
+        ctt = geo_data.center_to_tree_targets()
 
         kwargs = self.extra_kwargs.copy()
 
@@ -383,6 +383,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ wrangle qbx expansions
 
+    logger.debug("form global qbx expansions")
     # form qbx expansions from list 1
     qbx_expansions = wrangler.form_global_qbx_locals(
             traversal.sep_bigger_starts,
@@ -390,10 +391,12 @@ def drive_fmm(expansion_wrangler, src_weights):
             src_weights)
 
     # translate from boxes to contained local expansions
+    logger.debug("translate box locals to qbx locals")
     qbx_expansions = qbx_expansions + \
             wrangler.translate_box_local_to_qbx_local(local_exps)
 
     # evaluate QBX potentials
+    logger.debug("evaluate qbx locals")
     qbx_potentials = wrangler.eval_qbx_expansions(
             qbx_expansions)
 
@@ -418,12 +421,12 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     all_potentials_in_tree_order += qbx_potentials
 
-    def reorder_non_qbx_centers(x):
+    def reorder_potentials(x):
         return x[tree.sorted_target_ids]
 
     from pytools.obj_array import with_object_array_or_scalar
     result = with_object_array_or_scalar(
-            reorder_non_qbx_centers, all_potentials_in_tree_order)
+            reorder_potentials, all_potentials_in_tree_order)
 
     # }}}
 
