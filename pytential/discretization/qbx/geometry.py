@@ -1221,12 +1221,6 @@ class QBXFMMGeometryData(object):
                     starts=center_target_starts,
                     lists=targets_sorted_by_center).with_queue(None)
 
-            if self.debug:
-                result_host = result.with_queue(queue).get()
-                for icenter in xrange(center_info.ncenters):
-                    start, stop = result_host.starts[icenter:icenter+2]
-                    print icenter, result_host.lists[start:stop]
-
             return result
 
     @memoize_method
