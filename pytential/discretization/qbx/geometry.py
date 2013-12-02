@@ -116,9 +116,10 @@ class target_state(Enum):
 
 
 class QBXFMMGeometryCodeGetter(object):
-    def __init__(self, cl_context, ambient_dim):
+    def __init__(self, cl_context, ambient_dim, debug):
         self.cl_context = cl_context
         self.ambient_dim = ambient_dim
+        self.debug = debug
 
     @property
     @memoize_method
@@ -981,7 +982,8 @@ class QBXFMMGeometryData(object):
         """
 
         with cl.CommandQueue(self.cl_context) as queue:
-            trav, _ = self.code_getter.build_traversal(queue, self.tree())
+            trav, _ = self.code_getter.build_traversal(queue, self.tree(),
+                    debug=self.debug)
 
             trav = trav.merge_close_lists(queue)
             return trav

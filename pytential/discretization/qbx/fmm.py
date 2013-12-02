@@ -156,6 +156,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     # }}}
 
+    # {{{ qbx-related
+
     def form_global_qbx_locals(self, starts, lists, src_weights):
         local_exps = self.qbx_local_expansion_zeros()
 
@@ -258,6 +260,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         return pot
 
+    # }}}
 
 # }}}
 
@@ -291,14 +294,10 @@ def drive_fmm(expansion_wrangler, src_weights):
     traversal = geo_data.traversal()
     tree = traversal.tree
 
-    # FIXME: last stage:
-    # - translate to QBX
-    # - do to-QBX list1
-
     # Interface guidelines: Attributes of the tree are assumed to be known
     # to the expansion wrangler and should not be passed.
 
-    logger.info("start qbx fmm")
+    logger.debug("start qbx fmm")
 
     logger.debug("reorder source weights")
 
@@ -458,7 +457,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # }}}
 
-    logger.info("qbx fmm complete")
+    logger.debug("qbx fmm complete")
 
     return result
 
