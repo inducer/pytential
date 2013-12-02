@@ -74,6 +74,9 @@ class ExpressionKernelCombineMapper(KernelCombineMapperBase):
     def map_helmholtz_kernel(self, kernel):
         return set()
 
+    def map_one_kernel(self, kernel):
+        return set()
+
     def map_directional_target_derivative(self, kernel):
         return self.expr_map(kernel.dir_vec_data) | self.rec(kernel.inner_kernel)
 
@@ -96,6 +99,9 @@ class KernelEvalArgumentCollector(KernelCombineMapperBase):
         return {}
 
     def map_helmholtz_kernel(self, kernel):
+        return {}
+
+    def map_one_kernel(self, kernel):
         return {}
 
     def map_directional_target_derivative(self, kernel):
