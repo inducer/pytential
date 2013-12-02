@@ -1122,10 +1122,9 @@ class QBXFMMGeometryData(object):
                         ],
                     queue=queue)
 
-            assert len(result) == count
+            return result[:count.get()].with_queue(None)
 
-            return result
-
+    @memoize_method
     def user_target_to_center(self):
         """Find which QBX center, if any, is to be used for each target.
         :attr:`target_state.NO_QBX_NEEDED` if none. :attr:`target_state.FAILED`
@@ -1331,7 +1330,7 @@ class QBXFMMGeometryData(object):
 
             # {{{ draw target-to-center arrows
 
-            ttc = self.target_to_center().get(queue)
+            ttc = self.user_target_to_center().get(queue)
             tinfo = self.target_info()
             targets = tinfo.targets.get(queue)
 
