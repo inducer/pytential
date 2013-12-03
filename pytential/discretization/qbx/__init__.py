@@ -286,10 +286,31 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         else:
             value_dtype = self.real_dtype
 
-        # FIXME: extra_kwargs
+        # {{{ build extra_kwargs dictionary
+
+        # This contains things like the Helmholtz parameter k or
+        # the normal directions for double layers.
+
+        from sumpy.tools import gather_arguments
+        from pymbolic import var
+        kernel_extra_kwargs = dict(
+                (arg.name, evaluate(var(arg.name)))
+                for arg in gather_arguments([base_kernel]))
+
+        from pytential.symbolic.mappers import KernelEvalArgumentCollector
+        keac = KernelEvalArgumentCollector()
+        source_extra_kwargs = {}
+        for outk in out_kernels:
+            for arg_name, arg_expr in keac(outk).iteritems():
+                source_extra_kwargs[arg_name] = evaluate(arg_expr)
+
+        # }}}
+
         wrangler = self.expansion_wrangler_code_container(
                 base_kernel, out_kernels).get_wrangler(
-                        queue, geo_data, value_dtype)
+                        queue, geo_data, value_dtype,
+                        source_extra_kwargs=source_extra_kwargs,
+                        kernel_extra_kwargs=kernel_extra_kwargs)
 
         # }}}
 

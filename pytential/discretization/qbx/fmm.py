@@ -61,9 +61,11 @@ class QBXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
                 local_expansion, qbx_local_expansion)
         self.qbxl2p = QBXL2P(cl_context, qbx_local_expansion, out_kernels)
 
-    def get_wrangler(self, queue, geo_data, dtype, extra_kwargs={}):
+    def get_wrangler(self, queue, geo_data, dtype,
+            source_extra_kwargs={},
+            kernel_extra_kwargs=None):
         return QBXExpansionWrangler(self, queue, geo_data,
-                dtype, extra_kwargs)
+                dtype, source_extra_kwargs, kernel_extra_kwargs)
 
 
 class QBXExpansionWrangler(SumpyExpansionWrangler):
@@ -86,10 +88,10 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     """
 
     def __init__(self, code_container, queue, geo_data,
-            dtype, extra_kwargs):
+            dtype, source_extra_kwargs, kernel_extra_kwargs):
         SumpyExpansionWrangler.__init__(self,
                 code_container, queue, geo_data.tree(),
-                dtype, extra_kwargs)
+                dtype, source_extra_kwargs, kernel_extra_kwargs)
         self.geo_data = geo_data
 
     # {{{ data vector utilities
@@ -165,7 +167,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         if len(geo_data.global_qbx_centers()) == 0:
             return local_exps
 
-        kwargs = self.extra_kwargs.copy()
+        kwargs = self.source_extra_kwargs.copy()
         kwargs.update(self.box_source_list_kwargs())
 
         evt, (result,) = self.code.p2qbxl(self.queue,
@@ -205,7 +207,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 src_box_starts=traversal.sep_smaller_starts,
                 src_box_lists=traversal.sep_smaller_lists,
 
-                **self.extra_kwargs)
+                **self.kernel_extra_kwargs)
 
         assert qbx_expansions_res is qbx_expansions
         return qbx_expansions
@@ -227,7 +229,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 expansions=local_exps,
                 qbx_expansions=qbx_expansions,
 
-                **self.extra_kwargs)
+                **self.kernel_extra_kwargs)
 
         assert qbx_expansions_res is qbx_expansions
         return qbx_expansions
@@ -253,7 +255,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 qbx_expansions=qbx_expansions,
                 result=pot,
 
-                **self.extra_kwargs.copy())
+                **self.kernel_extra_kwargs.copy())
 
         for pot_i, pot_res_i in zip(pot, pot_res):
             assert pot_i is pot_res_i
