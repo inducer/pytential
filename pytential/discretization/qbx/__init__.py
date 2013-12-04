@@ -122,13 +122,15 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         """
         :arg exact_order: The total degree to which the underlying quadrature
             is exact.
-        :arg fmm_order: `None` for direct calculation. (This usage is deprecated.
-            Eventually, ``None`` will try to use a reasonable default.
+        :arg fmm_order: `False` for direct calculation. ``None`` will set
+            a reasonable(-ish?) default.
         """
 
         PolynomialElementDiscretizationBase.__init__(
                 self, cl_ctx, mesh, exact_order, real_dtype)
 
+        if fmm_order is None:
+            fmm_order = qbx_order + 1
         self.qbx_order = qbx_order
         self.target_discr = target_discr
         self.fmm_order = fmm_order

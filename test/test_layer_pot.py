@@ -141,7 +141,8 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 target_order)
 
         discr = make_upsampling_qbx_discr(
-                cl_ctx, mesh, target_order, qbx_order)
+                cl_ctx, mesh, target_order, qbx_order,
+                fmm_order=False)
 
         nodes = discr.nodes().with_queue(queue)
 
@@ -282,7 +283,9 @@ def run_int_eq_test(
 
     from pytential.discretization.qbx import make_upsampling_qbx_discr
     discr = make_upsampling_qbx_discr(
-            cl_ctx, mesh, target_order, qbx_order, source_order=source_order)
+            cl_ctx, mesh, target_order, qbx_order, source_order=source_order,
+            # Don't use FMM for now
+            fmm_order=False)
 
     # {{{ set up operator
 
@@ -679,7 +682,9 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
         from pytential.discretization.qbx import make_upsampling_qbx_discr
         discr = make_upsampling_qbx_discr(
-                cl_ctx, mesh, target_order, qbx_order)
+                cl_ctx, mesh, target_order, qbx_order,
+                # Don't use FMM for now
+                fmm_order=False)
 
         # {{{ compute values of a solution to the PDE
 
