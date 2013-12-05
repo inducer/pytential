@@ -299,12 +299,26 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                 (arg.name, evaluate(var(arg.name)))
                 for arg in gather_arguments([base_kernel]))
 
+        def reorder_sources(source_array):
+            if isinstance(source_array, cl.array.Array):
+                return (source_array
+                        .with_queue(queue)
+                        [geo_data.tree().user_point_source_ids]
+                        .with_queue(None))
+            else:
+                return source_array
+
         from pytential.symbolic.mappers import KernelEvalArgumentCollector
         keac = KernelEvalArgumentCollector()
         source_extra_kwargs = {}
+
+        from pytools.obj_array import with_object_array_or_scalar
         for outk in out_kernels:
             for arg_name, arg_expr in keac(outk).iteritems():
-                source_extra_kwargs[arg_name] = evaluate(arg_expr)
+                source_extra_kwargs[arg_name] = \
+                        with_object_array_or_scalar(
+                                reorder_sources,
+                                evaluate(arg_expr))
 
         # }}}
 
