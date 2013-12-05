@@ -124,8 +124,11 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                         len(self.code.qbx_local_expansion)),
                     dtype=self.dtype)
 
-    def reorder_src_weights(self, src_weights):
-        return src_weights.with_queue(self.queue)[self.tree.user_point_source_ids]
+    def reorder_sources(self, source_array):
+        return (source_array
+                .with_queue(self.queue)
+                [self.tree.user_point_source_ids]
+                .with_queue(None))
 
     def reorder_potentials(self, potentials):
         raise NotImplementedError("reorder_potentials should not "
@@ -303,7 +306,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     logger.debug("reorder source weights")
 
-    src_weights = wrangler.reorder_src_weights(src_weights)
+    src_weights = wrangler.reorder_sources(src_weights)
 
     # {{{ construct local multipoles
 
