@@ -181,7 +181,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         return result
 
     def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
-        if self.fmm_order is None:
+        if self.fmm_order is False:
             func = self.exec_layer_potential_insn_direct
         else:
             func = self.exec_layer_potential_insn_fmm
