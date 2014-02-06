@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # Targets match centers if they are within the center's circle, which, for matching
 # purposes, is enlarged by this fraction.
-QBX_CENTER_MATCH_THRESHOLD = 0.05
+QBX_CENTER_MATCH_THRESHOLD = 1 + 0.05
 
 
 # {{{
@@ -387,11 +387,21 @@ class QBXFMMGeometryCodeGetter(object):
                 coord_t *radii,  /* [ncenters] */
                 signed char *center_sides,  /* [ncenters] */
                 char *center_may_use_global_qbx,
+                /* passing this as a parameter (instead of baking it */
+                /* into the source) works around an AMD bug */
+                const coord_t match_threshold_squared,
 
                 /* output */
                 particle_id_t *center_ids,
                 """,
             operation=r"""//CL:mako//
+                #if 0
+                    #define dbg_printf(ARGS) printf ARGS
+                #else
+                    #define dbg_printf(ARGS) /* */
+                #endif
+
+
                 particle_id_t itgt = i;
 
                 // {{{ compute normalized coordinates of target
@@ -429,6 +439,8 @@ class QBXFMMGeometryCodeGetter(object):
                 }
                 while (next_box);
 
+                dbg_printf(("[itgt=%d] leaf box=%d\n", itgt, ibox));
+
                 // }}}
 
                 // {{{ walk list of centers near box
@@ -455,12 +467,17 @@ class QBXFMMGeometryCodeGetter(object):
 
                     // check if we're within the (l^2) radius
                     coord_t ball_radius = radii[icenter];
-                    coord_t match_threshold_squared =
-                        (1 + ${qbx_center_match_threshold})
-                        * (1 + ${qbx_center_match_threshold});
+
                     bool center_usable = (
                         dist_squared
                         <= ball_radius * ball_radius * match_threshold_squared);
+
+                    dbg_printf(("[itgt=%d] icenter=%d "
+                        "dist_squared=%g ball_rad_sq=%g match_threshold_squared=%g "
+                        "usable=%d\n",
+                        itgt, icenter, dist_squared, ball_radius*ball_radius,
+                        match_threshold_squared,
+                        center_usable));
 
                     if (center_usable && best_center_id == TGT_NO_QBX_NEEDED)
                     {
@@ -512,7 +529,6 @@ class QBXFMMGeometryCodeGetter(object):
                         ),
                     var_values=(
                         ("ambient_dim", self.ambient_dim),
-                        ("qbx_center_match_threshold", QBX_CENTER_MATCH_THRESHOLD),
                         ))
 
     # }}}
@@ -1169,6 +1185,7 @@ class QBXFMMGeometryData(object):
                         center_info.radii,
                         center_info.sides,
                         self.global_qbx_flags(),
+                        QBX_CENTER_MATCH_THRESHOLD**2,
 
                         result
                     )),
@@ -1338,7 +1355,7 @@ class QBXFMMGeometryData(object):
             pt.plot(
                     targets[0][ttc == target_state.FAILED],
                     targets[1][ttc == target_state.FAILED],
-                    "dr", label="failed targets")
+                    "dr", markersize=15, label="failed targets")
 
             for itarget in np.where(ttc == target_state.FAILED)[0]:
                 pt.text(
