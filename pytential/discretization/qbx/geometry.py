@@ -124,7 +124,7 @@ class QBXFMMGeometryCodeGetter(object):
     @property
     @memoize_method
     def pick_expansion_centers(self):
-        knl = lp.make_kernel(self.cl_context.devices[0],
+        knl = lp.make_kernel(
             """{[dim,k,i]:
                 0<=dim<ndims and
                 0<=k<nelements and
@@ -151,7 +151,7 @@ class QBXFMMGeometryCodeGetter(object):
     @property
     @memoize_method
     def find_element_centers(self):
-        knl = lp.make_kernel(self.cl_context.devices[0],
+        knl = lp.make_kernel(
             """{[dim,k,i]:
                 0<=dim<ndims and
                 0<=k<nelements and
@@ -168,7 +168,7 @@ class QBXFMMGeometryCodeGetter(object):
     @property
     @memoize_method
     def find_element_radii(self):
-        knl = lp.make_kernel(self.cl_context.devices[0],
+        knl = lp.make_kernel(
             """{[dim,k,i]:
                 0<=dim<ndims and
                 0<=k<nelements and
@@ -185,7 +185,7 @@ class QBXFMMGeometryCodeGetter(object):
 
     @memoize_method
     def copy_targets_kernel(self, sep_points_axes):
-        knl = lp.make_kernel(self.cl_context.devices[0],
+        knl = lp.make_kernel(
             """{[dim,i]:
                 0<=dim<ndims and
                 0<=i<npoints}""",
@@ -221,7 +221,7 @@ class QBXFMMGeometryCodeGetter(object):
         # FIXME Iterating over all boxes to find which ones have QBX centers
         # is inefficient.
 
-        knl = lp.make_kernel(self.cl_context.devices[0],
+        knl = lp.make_kernel(
             [
                 "{[ibox]: 0<=ibox<nboxes}",
                 "{[itarget_tree]: b_t_start <= itarget_tree < b_t_start + ntargets}",

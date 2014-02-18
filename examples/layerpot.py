@@ -19,7 +19,7 @@ queue = cl.CommandQueue(cl_ctx)
 target_order = 16
 qbx_order = 3
 nelements = 60
-mode_nr = 0
+mode_nr = 1
 
 k = 0
 if k:
@@ -47,8 +47,8 @@ angle = cl.clmath.atan2(nodes[1], nodes[0])
 from pytential import bind, sym
 d = sym.Derivative()
 #op = d.nabla[0] * d(sym.S(kernel, sym.var("sigma")))
-op = sym.D(kernel, sym.var("sigma"))
-#op = sym.S(kernel, sym.var("sigma"))
+#op = sym.D(kernel, sym.var("sigma"))
+op = sym.S(kernel, sym.var("sigma"))
 
 sigma = cl.clmath.cos(mode_nr*angle)
 if 0:
@@ -70,7 +70,6 @@ if 1:
             op)(queue, sigma=sigma, k=k).get()
 
     fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-
 
 if 0:
     def apply_op(density):

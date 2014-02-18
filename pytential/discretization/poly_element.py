@@ -202,7 +202,7 @@ class PolynomialElementDiscretizationBase(Discretization):
             self, queue, ref_axes, vec):
         @memoize_method_nested
         def knl():
-            knl = lp.make_kernel(self.cl_context.devices[0],
+            knl = lp.make_kernel(
                 """{[k,i,j]:
                     0<=k<nelements and
                     0<=i,j<ndiscr_nodes}""",
@@ -230,7 +230,7 @@ class PolynomialElementDiscretizationBase(Discretization):
     def quad_weights(self, queue):
         @memoize_method_nested
         def knl():
-            knl = lp.make_kernel(self.cl_context.devices[0],
+            knl = lp.make_kernel(
                 "{[k,i]: 0<=k<nelements and 0<=i<ndiscr_nodes}",
                 "result[k,i] = weights[i]",
                 name="quad_weights")
@@ -254,7 +254,7 @@ class PolynomialElementDiscretizationBase(Discretization):
     def nodes(self):
         @memoize_method_nested
         def knl():
-            knl = lp.make_kernel(self.cl_context.devices[0],
+            knl = lp.make_kernel(
                 """{[d,k,i,j]:
                     0<=d<dims and
                     0<=k<nelements and

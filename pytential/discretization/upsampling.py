@@ -121,7 +121,7 @@ class UpsampleToSourceDiscretization(Discretization):
         @memoize_method_nested
         def knl():
             import loopy as lp
-            knl = lp.make_kernel(self.cl_context.devices[0],
+            knl = lp.make_kernel(
                 """{[k,i,j]:
                     0<=k<nelements and
                     0<=i<n_to_nodes and

@@ -330,7 +330,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         # }}}
 
-        #geo_data.plot()
+        # geo_data.plot()
 
         if len(geo_data.global_qbx_centers()) != geo_data.center_info().ncenters:
             raise NotImplementedError("geometry has centers requiring local QBX")

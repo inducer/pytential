@@ -60,7 +60,7 @@ class P2QBXLFromCSR(P2EBase):
                     "..."
                 ] + gather_source_arguments([self.expansion]))
 
-        loopy_knl = lp.make_kernel(self.device,
+        loopy_knl = lp.make_kernel(
                 [
                     "{[itgt_center]: 0<=itgt_center<ntgt_centers}",
                     "{[isrc_box]: isrc_box_start<=isrc_box<isrc_box_stop}",
@@ -129,7 +129,7 @@ class M2QBXL(E2EBase):
         ncoeff_tgt = len(self.tgt_expansion)
 
         from sumpy.tools import gather_arguments
-        loopy_knl = lp.make_kernel(self.device,
+        loopy_knl = lp.make_kernel(
                 [
                     "{[icenter]: 0<=icenter<ncenters}",
                     "{[isrc_box]: isrc_start<=isrc_box<isrc_stop}",
@@ -211,7 +211,7 @@ class L2QBXL(E2EBase):
         ncoeff_tgt = len(self.tgt_expansion)
 
         from sumpy.tools import gather_arguments
-        loopy_knl = lp.make_kernel(self.device,
+        loopy_knl = lp.make_kernel(
                 [
                     "{[icenter]: 0<=icenter<ncenters}",
                     "{[idim]: 0<=idim<dim}",
@@ -293,7 +293,7 @@ class QBXL2P(E2PBase):
 
         loopy_insns, result_names = self.get_loopy_insns_and_result_names()
 
-        loopy_knl = lp.make_kernel(self.device,
+        loopy_knl = lp.make_kernel(
                 [
                     "{[iglobal_center]: 0<=iglobal_center<nglobal_qbx_centers}",
                     "{[icenter_tgt]: \
