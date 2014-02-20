@@ -15,3 +15,6 @@ a.out
 hk
 test/*.pdf
 examples/*.pdf
+
+*.vtu
+*.vts
