@@ -29,6 +29,7 @@ from pytools import memoize_method
 from sumpy.p2e import P2EBase
 from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
+from sumpy.tools import KernelCacheWrapper
 
 
 # {{{ form qbx expansions from points
@@ -110,7 +111,7 @@ class P2QBXLFromCSR(P2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_optimized_kernel()(queue, **kwargs)
+        return self.get_cached_optimized_kernel()(queue, **kwargs)
 
 # }}}
 
@@ -196,7 +197,7 @@ class M2QBXL(E2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_optimized_kernel()(queue, **kwargs)
+        return self.get_cached_optimized_kernel()(queue, **kwargs)
 
 # }}}
 
@@ -278,7 +279,7 @@ class L2QBXL(E2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_optimized_kernel()(queue, **kwargs)
+        return self.get_cached_optimized_kernel()(queue, **kwargs)
 
 # }}}
 
@@ -357,7 +358,7 @@ class QBXL2P(E2PBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_optimized_kernel()(queue, **kwargs)
+        return self.get_cached_optimized_kernel()(queue, **kwargs)
 
 # }}}
 
