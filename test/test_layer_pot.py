@@ -349,7 +349,8 @@ def run_int_eq_test(
             [knl], exclude_self=False, value_dtypes=dtype)
 
     evt, (test_direct,) = pot_p2p(
-            queue, test_targets, point_sources, [source_charges], **knl_kwargs)
+            queue, test_targets, point_sources, [source_charges],
+            out_host=False, **knl_kwargs)
 
     nodes = discr.nodes()
 
