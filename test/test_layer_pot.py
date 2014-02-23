@@ -570,7 +570,7 @@ def run_int_eq_test(
 @pytest.mark.parametrize("loc_sign", [+1, -1])
 @pytest.mark.parametrize("qbx_order", [5])
 # Sample test run:
-# 'test_integral_equation(cl._csc, "cirlce", circle, 30, 5, "dirichlet", 1, 5)'
+# 'test_integral_equation(cl._csc, "circle", circle, 5, "dirichlet", +1, 5)'
 def test_integral_equation(
         ctx_getter, curve_name, curve_f, qbx_order, bc_type, loc_sign, k,
         target_order=7, source_order=None):
