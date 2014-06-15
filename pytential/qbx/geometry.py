@@ -643,7 +643,7 @@ class QBXFMMGeometryData(object):
 
         The :class:`QBXFMMGeometryCodeGetter` for this object.
 
-    .. attribute:: source_discr
+    .. attribute:: lpot_source
 
         The :class:`pytential.discretization.qbx.QBXDiscretization`
         acting as the source geometry.
@@ -705,7 +705,7 @@ class QBXFMMGeometryData(object):
     .. automethod:: plot()
     """
 
-    def __init__(self, code_getter, source_discr,
+    def __init__(self, code_getter, lpot_source,
             target_discrs_and_qbx_sides, debug):
         """
         .. rubric:: Constructor arguments
@@ -718,18 +718,18 @@ class QBXFMMGeometryData(object):
         """
 
         self.code_getter = code_getter
-        self.source_discr = source_discr
+        self.lpot_source = lpot_source
         self.target_discrs_and_qbx_sides = \
                 target_discrs_and_qbx_sides
         self.debug = debug
 
     @property
     def cl_context(self):
-        return self.source_discr.cl_context
+        return self.lpot_source.cl_context
 
     @property
     def coord_dtype(self):
-        return self.source_discr.nodes().dtype
+        return self.lpot_source.fine_density_discr.nodes().dtype
 
     # {{{ center info
 
@@ -747,10 +747,10 @@ class QBXFMMGeometryData(object):
         """Return a :class:`CenterInfo`. |cached|
 
         """
-        target_discr = self.source_discr.target_discr
+        self_discr = self.lpot_source.density_discr
 
         ncenters = 0
-        for el_group in target_discr.groups:
+        for el_group in self_discr.groups:
             kept_indices = self.kept_center_indices(el_group)
             # two: one for positive side, one for negative side
             ncenters += 2 * len(kept_indices) * el_group.nelements
@@ -759,7 +759,7 @@ class QBXFMMGeometryData(object):
         from pytools.obj_array import make_obj_array
         with cl.CommandQueue(self.cl_context) as queue:
             radii_sym = sym.cse(2*sym.area_element(), "radii")
-            all_radii, all_pos_centers, all_neg_centers = bind(target_discr,
+            all_radii, all_pos_centers, all_neg_centers = bind(self_discr,
                     make_obj_array([
                         radii_sym,
                         sym.Nodes() + radii_sym*sym.normal(),
@@ -778,10 +778,10 @@ class QBXFMMGeometryData(object):
             centers = make_obj_array([
                 cl.array.empty(self.cl_context, ncenters,
                     self.coord_dtype)
-                for i in xrange(target_discr.ambient_dim)])
+                for i in xrange(self_discr.ambient_dim)])
 
             ibase = 0
-            for el_group in target_discr.groups:
+            for el_group in self_discr.groups:
                 kept_center_indices = self.kept_center_indices(el_group)
                 group_len = len(kept_indices) * el_group.nelements
 
@@ -829,7 +829,7 @@ class QBXFMMGeometryData(object):
 
         code_getter = self.code_getter
 
-        src_discr = self.source_discr
+        lpot_src = self.lpot_source
 
         with cl.CommandQueue(self.cl_context) as queue:
             center_info = self.center_info()
@@ -844,7 +844,7 @@ class QBXFMMGeometryData(object):
             target_discr_starts.append(ntargets)
 
             targets = cl.array.empty(
-                    self.cl_context, (src_discr.ambient_dim, ntargets),
+                    self.cl_context, (lpot_src.ambient_dim, ntargets),
                     self.coord_dtype)
             code_getter.copy_targets_kernel(
                     # sep_points_axes:
@@ -919,13 +919,14 @@ class QBXFMMGeometryData(object):
 
         code_getter = self.code_getter
 
-        src_discr = self.source_discr
+        lpot_src = self.lpot_source
 
         with cl.CommandQueue(self.cl_context) as queue:
-            nelements = sum(grp.nelements for grp in src_discr.groups)
+            nelements = sum(grp.nelements
+                    for grp in lpot_src.fine_density_discr.groups)
 
             el_centers = cl.array.empty(
-                    self.cl_context, (src_discr.ambient_dim, nelements),
+                    self.cl_context, (lpot_src.ambient_dim, nelements),
                     self.coord_dtype)
             el_radii = cl.array.empty(self.cl_context, nelements, self.coord_dtype)
 
@@ -935,10 +936,10 @@ class QBXFMMGeometryData(object):
             # with non-symmetric elements.
 
             i_el_base = 0
-            for grp in src_discr.groups:
+            for grp in lpot_src.fine_density_discr.groups:
                 el_centers_view = el_centers[:, i_el_base:i_el_base+grp.nelements]
                 el_radii_view = el_radii[i_el_base:i_el_base+grp.nelements]
-                nodes_view = grp.view(src_discr.nodes())
+                nodes_view = grp.view(lpot_src.fine_density_discr.nodes())
 
                 code_getter.find_element_centers(
                         queue, el_centers=el_centers_view, nodes=nodes_view)
@@ -965,7 +966,7 @@ class QBXFMMGeometryData(object):
                     nelements+1, tree.particle_id_dtype)
 
             i_el_base = 0
-            for grp in src_discr.groups:
+            for grp in lpot_src.fine_density_discr.groups:
                 point_source_starts.setitem(
                         slice(i_el_base, i_el_base+grp.nelements),
                         cl.array.arange(queue,
@@ -976,12 +977,13 @@ class QBXFMMGeometryData(object):
 
                 i_el_base += grp.nelements
 
-            point_source_starts.setitem(-1, self.source_discr.nnodes, queue=queue)
+            point_source_starts.setitem(
+                    -1, self.lpot_source.fine_density_discr.nnodes, queue=queue)
 
             from boxtree.tree import link_point_sources
             tree = link_point_sources(queue, tree,
                     point_source_starts,
-                    self.source_discr.nodes())
+                    self.lpot_source.fine_density_discr.nodes())
 
             # }}}
 
@@ -1314,7 +1316,7 @@ class QBXFMMGeometryData(object):
 
         with cl.CommandQueue(self.cl_context) as queue:
             import matplotlib.pyplot as pt
-            nodes_host = self.source_discr.nodes().get(queue)
+            nodes_host = self.lpot_source.fine_density_discr.nodes().get(queue)
             pt.plot(nodes_host[0], nodes_host[1], "x-")
 
             global_flags = self.global_qbx_flags().get(queue=queue)

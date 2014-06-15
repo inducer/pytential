@@ -12,15 +12,8 @@ need:
 The rest of this chapter documents the interface exposed by each discretization
 component.
 
-Abstract interface
-------------------
-
-.. automodule:: pytential.discretization
-
-Composite polynomial discretization
------------------------------------
-
-.. automodule:: pytential.discretization.poly_element
+See :mod:`meshmode.discretization` and :mod:`meshmode.discretization.poly_element`
+for base classes used by these discretizations.
 
 QBX discretization
 ------------------

@@ -51,7 +51,7 @@ class EvaluationMapper(EvaluationMapperBase):
         return cl.array.sum(self.rec(expr.operand)).get()
 
     def map_ones(self, expr):
-        discr = self.bound_expr.discretizations[expr.where]
+        discr = self.bound_expr.places[expr.where]
         result = (discr
                 .empty(discr.real_dtype, queue=self.queue)
                 .with_queue(self.queue))
@@ -60,19 +60,19 @@ class EvaluationMapper(EvaluationMapperBase):
         return result
 
     def map_node_coordinate_component(self, expr):
-        discr = self.bound_expr.discretizations[expr.where]
+        discr = self.bound_expr.places[expr.where]
         return discr.nodes()[expr.ambient_axis] \
                 .with_queue(self.queue)
 
     def map_num_reference_derivative(self, expr):
-        discr = self.bound_expr.discretizations[expr.where]
+        discr = self.bound_expr.places[expr.where]
         return discr.num_reference_derivative(
                 self.queue,
                 expr.ref_axes, self.rec(expr.operand)) \
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):
-        discr = self.bound_expr.discretizations[expr.where]
+        discr = self.bound_expr.places[expr.where]
         return discr.quad_weights(self.queue) \
                 .with_queue(self.queue)
 
@@ -84,7 +84,7 @@ class EvaluationMapper(EvaluationMapperBase):
         except KeyError:
             bound_op = bind(
                     expr.expression,
-                    self.bound_expr.discretizations[expr.where],
+                    self.bound_expr.places[expr.where],
                     self.bound_expr.iprec)
             bound_op_cache[expr] = bound_op
 
@@ -98,7 +98,7 @@ class EvaluationMapper(EvaluationMapperBase):
         return result
 
     def map_quad_kernel_op(self, expr):
-        source = self.bound_expr.discretizations[expr.source]
+        source = self.bound_expr.places[expr.source]
         return source.map_quad_kernel_op(expr, self.bound_expr, self.rec)
 
     # }}}
@@ -208,14 +208,14 @@ class MatVecOp:
 # {{{ bound expression
 
 class BoundExpression:
-    def __init__(self, optemplate, discretizations):
+    def __init__(self, optemplate, places):
         self.optemplate = optemplate
-        self.discretizations = discretizations
+        self.places = places
 
         self.caches = {}
 
         from pytential.symbolic.compiler import OperatorCompiler
-        self.code = OperatorCompiler(self.discretizations)(optemplate)
+        self.code = OperatorCompiler(self.places)(optemplate)
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
@@ -227,14 +227,14 @@ class BoundExpression:
             solution vector lives.  *None* values indicate that the component
             is a scalar.  If *None*,
             :class:`pytential.symbolic.primitives.DEFAULT_TARGET`, is required
-            to be a key in :attr:`discretizations`.
+            to be a key in :attr:`places`.
         """
 
         from pytools.obj_array import is_obj_array
 
         if domains is None:
             from pytential.symbolic.primitives import DEFAULT_TARGET
-            if DEFAULT_TARGET not in self.discretizations:
+            if DEFAULT_TARGET not in self.places:
                 raise RuntimeError("'domains is None' requires "
                         "DEFAULT_TARGET to be defined")
             dom_name = DEFAULT_TARGET
@@ -255,7 +255,7 @@ class BoundExpression:
             if dom_name is None:
                 size = 1
             else:
-                size = self.discretizations[dom_name].nnodes
+                size = self.places[dom_name].nnodes
 
             starts_and_ends.append((total_dofs, total_dofs+size))
             total_dofs += size
@@ -277,9 +277,9 @@ class BoundExpression:
 
 # {{{ bind
 
-def bind(discretizations, expr, auto_where=None):
+def bind(places, expr, auto_where=None):
     """
-    :arg discretizations: a mapping of symbolic names to
+    :arg places: a mapping of symbolic names to
         :class:`pytential.discretization.Discretization` objects or a subclass
         of :class:`pytential.discretization.target.TargetBase`.
     :arg auto_where: For simple source-to-self or source-to-target
@@ -287,31 +287,39 @@ def bind(discretizations, expr, auto_where=None):
     """
 
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-    from pytential.discretization import Discretization
-    if isinstance(discretizations, Discretization):
-        discretizations = {
-                DEFAULT_SOURCE: discretizations,
-                DEFAULT_TARGET: discretizations,
+    from pytential.qbx import LayerPotentialSource
+    from meshmode.discretization import Discretization
+
+    if isinstance(places, LayerPotentialSource):
+        places = {
+                DEFAULT_SOURCE: places,
+                DEFAULT_TARGET: places.density_discr,
+                }
+    elif isinstance(places, Discretization):
+        places = {
+                DEFAULT_TARGET: places,
                 }
 
-    elif isinstance(discretizations, tuple):
-        source_discr, target_discr = discretizations
-        discretizations = {
+    elif isinstance(places, tuple):
+        source_discr, target_discr = places
+        places = {
                 DEFAULT_SOURCE: source_discr,
                 DEFAULT_TARGET: target_discr,
                 }
         del source_discr
         del target_discr
 
-    def cast_to_discretization(discr):
-        from pytential.discretization.target import TargetBase
-        if not isinstance(discr, (Discretization, TargetBase)):
-            raise TypeError("must pass discretization or target to bind()")
+    def cast_to_place(discr):
+        from pytential.target import TargetBase
+        if not isinstance(discr, (Discretization, TargetBase,
+                LayerPotentialSource)):
+            raise TypeError("must pass discretizations, "
+                    "layer potential sources or targets as 'places'")
         return discr
 
-    discretizations = dict(
-            (key, cast_to_discretization(value))
-            for key, value in discretizations.iteritems())
+    places = dict(
+            (key, cast_to_place(value))
+            for key, value in places.iteritems())
 
     from pytential.symbolic.mappers import (
             ToTargetTagger,
@@ -320,7 +328,7 @@ def bind(discretizations, expr, auto_where=None):
             )
 
     if auto_where is None:
-        if DEFAULT_TARGET in discretizations:
+        if DEFAULT_TARGET in places:
             auto_where = DEFAULT_SOURCE, DEFAULT_TARGET
         else:
             auto_where = DEFAULT_SOURCE, DEFAULT_SOURCE
@@ -331,18 +339,19 @@ def bind(discretizations, expr, auto_where=None):
     # Dimensionalize so that preprocessing only has to deal with
     # dimension-specific layer potentials.
 
-    expr = Dimensionalizer(discretizations)(expr)
+    expr = Dimensionalizer(places)(expr)
 
     expr = DerivativeBinder()(expr)
 
-    for name, discr in discretizations.iteritems():
-        expr = discr.preprocess_optemplate(name, discretizations, expr)
+    for name, place in places.iteritems():
+        if isinstance(place, LayerPotentialSource):
+            expr = place.preprocess_optemplate(name, places, expr)
 
     # Dimensionalize again, in case the preprocessor spit out
     # dimension-independent stuff.
-    expr = Dimensionalizer(discretizations)(expr)
+    expr = Dimensionalizer(places)(expr)
 
-    return BoundExpression(expr, discretizations)
+    return BoundExpression(expr, places)
 
 # }}}
 

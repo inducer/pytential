@@ -113,6 +113,126 @@ class Assign(Instruction):
 # }}}
 
 
+# {{{ layer pot instruction
+
+class LayerPotentialOutput(Record):
+    """
+    .. attribute:: name
+
+        the name of the variable to which the result is assigned
+
+    .. attribute:: kernel_index
+
+    .. attribute:: target_name
+
+    .. attribute:: qbx_forced_limit
+
+        +1 if the output is required to originate from a QBX center on the "+" side
+        of the boundary. -1 for the other side. 0 if either side of center (or no
+        center at all) is acceptable.
+    """
+
+
+class LayerPotentialInstruction(Instruction):
+    """
+    .. attribute:: outputs
+
+        A list of :class:`LayerPotentialOutput` instances
+        The entries in the list correspond to :attr:`names`.
+
+    .. attribute:: kernels
+
+        a list of :class:`sumpy.kernel.Kernel` instances, indexed by
+        :attr:`LayerPotentialOutput.kernel_index`.
+
+    .. attribute:: base_kernel
+
+        The common base kernel among :attr:`kernels`, with all the
+        layer potentials removed.
+
+    .. attribute:: density
+    .. attribute:: source
+
+    .. attribute:: priority
+    """
+
+    def get_assignees(self):
+        return set(o.name for o in self.outputs)
+
+    def get_dependencies(self):
+        dep_mapper = self.dep_mapper_factory()
+
+        result = dep_mapper(self.density)
+
+        from pytential.symbolic.mappers import (
+                ExpressionKernelCombineMapper, KernelEvalArgumentCollector)
+        ekdm = ExpressionKernelCombineMapper(dep_mapper)
+        keac = KernelEvalArgumentCollector()
+
+        from pymbolic import var
+        for kernel in self.kernels:
+            result.update(var(arg.name) for arg in kernel.get_args())
+            result.update(ekdm(kernel))
+
+            for karg in keac(kernel):
+                if var(karg) in result:
+                    result.remove(var(karg))
+
+        return result
+
+    def __str__(self):
+        args = ["density=%s" % self.density,
+                "source=%s" % self.source]
+
+        from pytential.symbolic.mappers import StringifyMapper, stringify_where
+        strify = StringifyMapper()
+
+        lines = []
+        for o in self.outputs:
+            if o.target_name != self.source:
+                tgt_str = " @ %s" % stringify_where(o.target_name)
+            else:
+                tgt_str = ""
+
+            if o.qbx_forced_limit == 1:
+                limit_str = "[+] "
+            elif o.qbx_forced_limit == -1:
+                limit_str = "[-] "
+            elif o.qbx_forced_limit == 0:
+                limit_str = "[0] "
+            elif o.qbx_forced_limit is None:
+                limit_str = ""
+            else:
+                raise ValueError("unrecognized limit value: %s" % o.qbx_forced_limit)
+
+            line = "%s%s <- %s%s" % (o.name, tgt_str, limit_str,
+                    self.kernels[o.kernel_index])
+
+            lines.append(line)
+
+        from pytential.symbolic.mappers import KernelEvalArgumentCollector
+        keac = KernelEvalArgumentCollector()
+
+        arg_names_to_exprs = {}
+        for kernel in self.kernels:
+            arg_names_to_exprs.update(keac(kernel))
+
+        for arg_name, arg_expr in arg_names_to_exprs.iteritems():
+            arg_expr_lines = strify(arg_expr).split("\n")
+            lines.append("  %s = %s" % (
+                arg_name, arg_expr_lines[0]))
+            lines.extend("  " + s for s in arg_expr_lines[1:])
+
+        return "{ /* Pot(%s) */\n  %s\n}" % (
+                ", ".join(args), "\n  ".join(lines))
+
+    def get_exec_function(self, exec_mapper):
+        source = exec_mapper.bound_expr.places[self.source]
+        return source.exec_layer_potential_insn
+
+# }}}
+
+
 # {{{ graphviz/dot dataflow graph drawing
 
 def dot_dataflow_graph(code, max_node_label_length=30,
@@ -305,10 +425,10 @@ class Code(object):
 # {{{ compiler
 
 class OperatorCompiler(IdentityMapper):
-    def __init__(self, discretizations, prefix="_expr",
+    def __init__(self, places, prefix="_expr",
             max_vectors_in_batch_expr=None):
         IdentityMapper.__init__(self)
-        self.discretizations = discretizations
+        self.places = places
         self.prefix = prefix
 
         self.max_vectors_in_batch_expr = max_vectors_in_batch_expr
@@ -343,7 +463,7 @@ class OperatorCompiler(IdentityMapper):
 
         self.group_to_operators = {}
         for op in operators:
-            features = self.discretizations[op.source].op_group_features(op)
+            features = self.places[op.source].op_group_features(op)
             self.group_to_operators.setdefault(features, set()).add(op)
 
         # }}}
@@ -447,7 +567,7 @@ class OperatorCompiler(IdentityMapper):
             # up in vector arithmetic
             density_var = self.assign_to_new_var(self.rec(expr.density))
 
-            src_discr = self.discretizations[expr.source]
+            src_discr = self.places[expr.source]
 
             group = self.group_to_operators[src_discr.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
@@ -471,8 +591,6 @@ class OperatorCompiler(IdentityMapper):
             for op in group:
                 assert op.qbx_forced_limit in [-1, 0, 1]
 
-            from pytential.discretization import (
-                    LayerPotentialInstruction, LayerPotentialOutput)
             outputs = [
                     LayerPotentialOutput(
                         name=name,

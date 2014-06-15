@@ -433,7 +433,7 @@ class Dimensionalizer(EvaluationMapper):
     def map_parametrization_derivative(self, expr):
         discr = self.discr_dict[expr.where]
 
-        from pytential.discretization import Discretization
+        from meshmode.discretization import Discretization
         if not isinstance(discr, Discretization):
             raise RuntimeError("Cannot compute the parametrization derivative "
                     "of something that is not a discretization (a target perhaps?). "

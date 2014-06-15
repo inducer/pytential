@@ -1,11 +1,11 @@
 from __future__ import division
 import numpy as np
 import pyopencl as cl
-from pytential.mesh.generation import (  # noqa
+from meshmode.mesh.generation import (  # noqa
         make_curve_mesh, starfish, ellipse, drop)
 from sumpy.visualization import FieldPlotter
-from mayavi import mlab
-from sumpy.kernel import OneKernel, LaplaceKernel, HelmholtzKernel  # noqa
+#from mayavi import mlab
+from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 
 import faulthandler
 faulthandler.enable()
@@ -34,13 +34,15 @@ mesh = make_curve_mesh(
         np.linspace(0, 1, nelements+1),
         target_order)
 
-from pytential.discretization.qbx import make_upsampling_qbx_discr
+from pytential.qbx import QBXLayerPotentialSource
+from meshmode.discretization.poly_element import PolynomialElementDiscretization
 
-discr = make_upsampling_qbx_discr(
-        cl_ctx, mesh, target_order, qbx_order, fmm_order=3)
-        #source_order=target_order)
+density_discr = PolynomialElementDiscretization(cl_ctx, mesh, target_order)
 
-nodes = discr.nodes().with_queue(queue)
+qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
+        fmm_order=qbx_order)
+
+nodes = density_discr.nodes().with_queue(queue)
 
 angle = cl.clmath.atan2(nodes[1], nodes[0])
 
@@ -60,16 +62,22 @@ if 0:
 if isinstance(kernel, HelmholtzKernel):
     sigma = sigma.astype(np.complex128)
 
-bound_bdry_op = bind(discr, op)
-mlab.figure(bgcolor=(1, 1, 1))
+bound_bdry_op = bind(qbx, op)
+#mlab.figure(bgcolor=(1, 1, 1))
 if 1:
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
-    from pytential.discretization.target import PointsTarget
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=50)
+    from pytential.target import PointsTarget
     fld_in_vol = bind(
-            (discr, PointsTarget(fplot.points)),
+            (qbx, PointsTarget(fplot.points)),
             op)(queue, sigma=sigma, k=k).get()
 
-    fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+    #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+    fplot.write_vtk_file(
+            "potential.vts",
+            [
+                ("potential", fld_in_vol)
+                ]
+            )
 
 if 0:
     def apply_op(density):
@@ -85,15 +93,15 @@ if 0:
     pt.colorbar()
     pt.show()
 
-if 1:
+if 0:
     # {{{ plot boundary field
 
     fld_on_bdry = bound_bdry_op(queue, sigma=sigma, k=k).get()
 
     nodes_host = discr.nodes().get(queue=queue)
-    mlab.points3d(nodes_host[0], nodes_host[1], fld_on_bdry.real, scale_factor=0.03)
+    #mlab.points3d(nodes_host[0], nodes_host[1], fld_on_bdry.real, scale_factor=0.03)
 
     # }}}
 
 #mlab.colorbar()
-mlab.show()
+#mlab.show()

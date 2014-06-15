@@ -27,15 +27,14 @@ import numpy as np
 #import numpy.linalg as la
 import modepy as mp
 from pytools import memoize_method
-from pytential.discretization.poly_element import (
+from meshmode.discretization.poly_element import (
         PolynomialElementGroupBase,
-        PolynomialElementDiscretizationBase,
         PolynomialElementDiscretization)
 
 import pyopencl as cl
 
 __doc__ = """
-.. autoclass:: QBXDiscretization
+.. autoclass:: QBXLayerPotentialSource
 """
 
 
@@ -102,9 +101,21 @@ class QBXElementGroup(PolynomialElementGroupBase):
 # }}}
 
 
-# {{{ QBX discretization
+# {{{ QBX refined density discretization
 
-class QBXDiscretization(PolynomialElementDiscretizationBase):
+class QBXFineSourceDiscretization(PolynomialElementDiscretization):
+    group_class = QBXElementGroup
+
+# }}}
+
+
+class LayerPotentialSource(object):
+    pass
+
+
+# {{{ QBX layer potential source
+
+class QBXLayerPotentialSource(LayerPotentialSource):
     """An (unstructured) grid for discretizing a QBX operator.
 
     .. attribute :: mesh
@@ -115,24 +126,27 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
-    def __init__(self, cl_ctx, mesh, exact_order, qbx_order, fmm_order,
-            target_discr,
+    def __init__(self, density_discr, fine_order, qbx_order, fmm_order,
             # FIXME set debug=False once everything works
             expansion_getter=None, real_dtype=np.float64, debug=True):
         """
-        :arg exact_order: The total degree to which the underlying quadrature
-            is exact.
+        :arg fine_order: The total degree to which the (upsampled)
+            underlying quadrature is exact.
         :arg fmm_order: `False` for direct calculation. ``None`` will set
             a reasonable(-ish?) default.
         """
 
-        PolynomialElementDiscretizationBase.__init__(
-                self, cl_ctx, mesh, exact_order, real_dtype)
+        self.fine_density_discr = QBXFineSourceDiscretization(
+                density_discr.cl_context, density_discr.mesh,
+                fine_order, real_dtype)
+
+        from meshmode.discretization.resampling import Resampler
+        self.resampler = Resampler(self.fine_density_discr, density_discr)
 
         if fmm_order is None:
             fmm_order = qbx_order + 1
         self.qbx_order = qbx_order
-        self.target_discr = target_discr
+        self.density_discr = density_discr
         self.fmm_order = fmm_order
         self.debug = debug
 
@@ -143,6 +157,18 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         self.expansion_getter = expansion_getter
 
     group_class = QBXElementGroup
+
+    @property
+    def ambient_dim(self):
+        return self.density_discr.ambient_dim
+
+    @property
+    def cl_context(self):
+        return self.density_discr.cl_context
+
+    @property
+    def real_dtype(self):
+        return self.density_discr.real_dtype
 
     @memoize_method
     def centers(self, target_discr, sign):
@@ -157,7 +183,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         import pytential.symbolic.primitives as p
         from pytential.symbolic.execution import bind
         with cl.CommandQueue(self.cl_context) as queue:
-            return bind(self,
+            return bind(self.fine_density_discr,
                     p.area_element() * p.QWeight())(queue)
 
     # {{{ interface with execution
@@ -181,19 +207,27 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         return result
 
     def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
+        from pytools.obj_array import with_object_array_or_scalar
+        from functools import partial
+        oversample = partial(self.resampler, queue)
+
+        def evaluate_wrapper(expr):
+            value = evaluate(expr)
+            return with_object_array_or_scalar(oversample, value)
+
         if self.fmm_order is False:
             func = self.exec_layer_potential_insn_direct
         else:
             func = self.exec_layer_potential_insn_fmm
 
-        return func(queue, insn, bound_expr, evaluate)
+        return func(queue, insn, bound_expr, evaluate_wrapper)
 
     # {{{ fmm-based execution
 
     @property
     @memoize_method
     def qbx_fmm_code_getter(self):
-        from pytential.discretization.qbx.geometry import QBXFMMGeometryCodeGetter
+        from pytential.qbx.geometry import QBXFMMGeometryCodeGetter
         return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim,
                 debug=self.debug)
 
@@ -208,7 +242,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
             :class:`pytential.discretization.target.TargetBase`
             instance
         """
-        from pytential.discretization.qbx.geometry import QBXFMMGeometryData
+        from pytential.qbx.geometry import QBXFMMGeometryData
 
         return QBXFMMGeometryData(self.qbx_fmm_code_getter,
                 self, target_discrs_and_qbx_sides, debug=self.debug)
@@ -226,7 +260,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         qbx_local_expn = VolumeTaylorLocalExpansion(
                 base_kernel, self.qbx_order)
 
-        from pytential.discretization.qbx.fmm import \
+        from pytential.qbx.fmm import \
                 QBXExpansionWranglerCodeContainer
         return QBXExpansionWranglerCodeContainer(
                 self.cl_context, fmm_mpole_expn, fmm_local_expn, qbx_local_expn,
@@ -246,7 +280,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                 tgt_name_and_side_to_number[key] = \
                         len(target_discrs_and_qbx_sides)
                 target_discrs_and_qbx_sides.append(
-                        (bound_expr.discretizations[o.target_name],
+                        (bound_expr.places[o.target_name],
                             o.qbx_forced_limit))
 
         target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
@@ -330,19 +364,19 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
 
         # }}}
 
-        # geo_data.plot()
+        #geo_data.plot()
 
         if len(geo_data.global_qbx_centers()) != geo_data.center_info().ncenters:
             raise NotImplementedError("geometry has centers requiring local QBX")
 
-        from pytential.discretization.qbx.geometry import target_state
+        from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)
                 == target_state.FAILED).get().any():
             raise RuntimeError("geometry has failed targets")
 
         # {{{ execute global QBX
 
-        from pytential.discretization.qbx.fmm import drive_fmm
+        from pytential.qbx.fmm import drive_fmm
         all_potentials_on_every_tgt = drive_fmm(wrangler, strengths)
 
         # }}}
@@ -427,7 +461,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
-            target_discr = bound_expr.discretizations[o.target_name]
+            target_discr = bound_expr.places[o.target_name]
 
             is_self = self is target_discr
             if not is_self:
@@ -452,7 +486,7 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
                 if p2p is None:
                     p2p = self.get_p2p(insn.kernels)
                 evt, output_for_each_kernel = p2p(queue,
-                        target_discr.nodes(), self.nodes(),
+                        target_discr.nodes(), self.fine_density_discr.nodes(),
                         [strengths], **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
@@ -463,25 +497,6 @@ class QBXDiscretization(PolynomialElementDiscretizationBase):
     # }}}
 
 # }}}
-
-
-def make_upsampling_qbx_discr(cl_ctx, mesh, target_order, qbx_order, fmm_order,
-        source_order=None,
-        expansion_getter=None, real_dtype=np.float64):
-    if source_order is None:
-        # twice as many points in 1D?
-        source_order = target_order * 4
-
-    tgt_discr = PolynomialElementDiscretization(
-            cl_ctx, mesh, target_order, real_dtype=real_dtype)
-    src_discr = QBXDiscretization(
-            cl_ctx, mesh, source_order, qbx_order, fmm_order,
-            tgt_discr,
-            expansion_getter=expansion_getter, real_dtype=real_dtype)
-
-    from pytential.discretization.upsampling import \
-            UpsampleToSourceDiscretization
-    return UpsampleToSourceDiscretization(tgt_discr, src_discr)
 
 
 # vim: fdm=marker

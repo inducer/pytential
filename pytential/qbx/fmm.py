@@ -51,7 +51,7 @@ class QBXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
 
         self.qbx_local_expansion = qbx_local_expansion
 
-        from pytential.discretization.qbx.interactions import (
+        from pytential.qbx.interactions import (
                 P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P)
 
         self.p2qbxl = P2QBXLFromCSR(cl_context, qbx_local_expansion)
