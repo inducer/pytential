@@ -48,9 +48,7 @@ def main():
 
           packages=[
               "pytential",
-              "pytential.mesh",
-              "pytential.discretization",
-              "pytential.discretization.qbx",
+              "pytential.qbx",
               "pytential.symbolic",
               "pytential.symbolic.pde",
               ],
