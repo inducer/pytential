@@ -100,7 +100,7 @@ if 0:
 
     fld_on_bdry = bound_bdry_op(queue, sigma=sigma, k=k).get()
 
-    nodes_host = discr.nodes().get(queue=queue)
+    nodes_host = density_discr.nodes().get(queue=queue)
     #mlab.points3d(nodes_host[0], nodes_host[1], fld_on_bdry.real, scale_factor=0.03)
 
     # }}}
