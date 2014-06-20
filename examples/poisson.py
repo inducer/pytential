@@ -23,12 +23,11 @@ vol_discr = PolynomialQuadratureElementDiscretization(
 with cl.CommandQueue(vol_discr.cl_context) as queue:
     nodes = vol_discr.nodes().with_queue(queue).get()
 
-vis = make_visualizer(queue, vol_discr, 10)
+vis = make_visualizer(queue, vol_discr, 20)
 
-# FIXME
-x = vis.vis_discr.nodes()[0].with_queue(queue)
+x = vol_discr.nodes()[0].with_queue(queue)
 
-f = cl.clmath.sin(x)
+f = cl.clmath.sin(30*x)
 
-vis.write_vtk_file("x.vtu", [("f", f.get())])
+vis.write_vtk_file("x.vtu", [("f", f)])
 #vis.show_scalar_in_mayavi(f.get())
