@@ -35,9 +35,11 @@ mesh = make_curve_mesh(
         target_order)
 
 from pytential.qbx import QBXLayerPotentialSource
-from meshmode.discretization.poly_element import PolynomialElementDiscretization
+from meshmode.discretization.poly_element import \
+        PolynomialQuadratureElementDiscretization
 
-density_discr = PolynomialElementDiscretization(cl_ctx, mesh, target_order)
+density_discr = PolynomialQuadratureElementDiscretization(
+        cl_ctx, mesh, target_order)
 
 qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
         fmm_order=qbx_order)

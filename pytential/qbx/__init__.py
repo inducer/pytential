@@ -29,7 +29,7 @@ import modepy as mp
 from pytools import memoize_method
 from meshmode.discretization.poly_element import (
         PolynomialElementGroupBase,
-        PolynomialElementDiscretization)
+        PolynomialQuadratureElementDiscretization)
 
 import pyopencl as cl
 
@@ -103,7 +103,8 @@ class QBXElementGroup(PolynomialElementGroupBase):
 
 # {{{ QBX refined density discretization
 
-class QBXFineSourceDiscretization(PolynomialElementDiscretization):
+class QBXFineSourceDiscretization(
+        PolynomialQuadratureElementDiscretization):
     group_class = QBXElementGroup
 
 # }}}
