@@ -67,7 +67,7 @@ if isinstance(kernel, HelmholtzKernel):
 bound_bdry_op = bind(qbx, op)
 #mlab.figure(bgcolor=(1, 1, 1))
 if 1:
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=50)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
     from pytential.target import PointsTarget
     fld_in_vol = bind(
             (qbx, PointsTarget(fplot.points)),

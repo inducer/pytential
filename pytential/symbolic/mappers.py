@@ -433,6 +433,10 @@ class Dimensionalizer(EvaluationMapper):
     def map_parametrization_derivative(self, expr):
         discr = self.discr_dict[expr.where]
 
+        from pytential.qbx import LayerPotentialSource
+        if isinstance(discr, LayerPotentialSource):
+            discr = discr.fine_density_discr
+
         from meshmode.discretization import Discretization
         if not isinstance(discr, Discretization):
             raise RuntimeError("Cannot compute the parametrization derivative "
@@ -628,20 +632,20 @@ class DerivativeBinder(IdentityMapper):
 # {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
-    def __init__(self, source_name, discretizations):
+    def __init__(self, source_name, places):
         self.source_name = source_name
-        self.discretizations = discretizations
+        self.places = places
 
     def map_int_g(self, expr):
         if expr.source != self.source_name:
             # not ours
             return IdentityMapper.map_int_g(self, expr)
 
-        self_discr = self.discretizations[self.source_name]
+        source = self.places[self.source_name]
 
         assert expr.qbx_forced_limit is not None
         if expr.qbx_forced_limit != 0 \
-                or self.discretizations[expr.target] is not self_discr:
+                or source.density_discr is not self.places[expr.target]:
             # Not computing the self-on-surface value, nothing to do.
             return IdentityMapper.map_int_g(self, expr)
 
@@ -656,7 +660,7 @@ class QBXPreprocessor(IdentityMapper):
             # either side will do
             return expr.copy(qbx_forced_limit=+1)
         else:  # if num_derivatives == 1:
-            # Assume it's a PV integral, preserve numerical compactness by using
+            # Assume it's a PV integral, preserve 'numerical compactness' by using
             # two-sided average.
             return 0.5*(
                     expr.copy(qbx_forced_limit=+1)
@@ -670,7 +674,7 @@ class QBXPreprocessor(IdentityMapper):
 
     def map_int_g_ds(self, expr):
         raise RuntimeError("user-facing source derivative operators are expected "
-                "to have been eliminated by the time QBXLimitFinder is called.")
+                "to have been eliminated by the time QBXPreprocessor is called.")
 
 # }}}
 

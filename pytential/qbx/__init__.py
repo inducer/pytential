@@ -406,9 +406,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         from pytools import any
         if any(knl.is_complex_valued for knl in kernels):
-            value_dtype = self.complex_dtype
+            value_dtype = self.density_discr.complex_dtype
         else:
-            value_dtype = self.real_dtype
+            value_dtype = self.density_discr.real_dtype
 
         from sumpy.qbx import LayerPotential
         lpot_applier = LayerPotential(self.cl_context,
@@ -430,9 +430,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         from pytools import any
         if any(knl.is_complex_valued for knl in kernels):
-            value_dtype = self.complex_dtype
+            value_dtype = self.density_discr.complex_dtype
         else:
-            value_dtype = self.real_dtype
+            value_dtype = self.density_discr.real_dtype
 
         from sumpy.p2p import P2P
         p2p = P2P(self.cl_context,
@@ -464,8 +464,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         for o in insn.outputs:
             target_discr = bound_expr.places[o.target_name]
 
-            is_self = self is target_discr
+            is_self = self.density_discr is target_discr
             if not is_self:
+                # FIXME: Not sure I understand what case this used to cover...
                 try:
                     is_self = target_discr.source_discr is self
                 except AttributeError:
@@ -478,7 +479,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 assert abs(o.qbx_forced_limit) > 0
 
                 evt, output_for_each_kernel = lp_applier(queue, target_discr.nodes(),
-                        self.nodes(),
+                        self.fine_density_discr.nodes(),
                         self.centers(target_discr, o.qbx_forced_limit),
                         [strengths], **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))

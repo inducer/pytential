@@ -59,20 +59,30 @@ class EvaluationMapper(EvaluationMapperBase):
         result.fill(1)
         return result
 
+    def get_discretization(self, where):
+        discr = self.bound_expr.places[where]
+
+        from pytential.qbx import LayerPotentialSource
+        if isinstance(discr, LayerPotentialSource):
+            discr = discr.density_discr
+
+        return discr
+
     def map_node_coordinate_component(self, expr):
-        discr = self.bound_expr.places[expr.where]
+        discr = self.get_discretization(expr.where)
         return discr.nodes()[expr.ambient_axis] \
                 .with_queue(self.queue)
 
     def map_num_reference_derivative(self, expr):
-        discr = self.bound_expr.places[expr.where]
+        discr = self.get_discretization(expr.where)
+
         return discr.num_reference_derivative(
                 self.queue,
                 expr.ref_axes, self.rec(expr.operand)) \
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):
-        discr = self.bound_expr.places[expr.where]
+        discr = self.get_discretization(expr.where)
         return discr.quad_weights(self.queue) \
                 .with_queue(self.queue)
 

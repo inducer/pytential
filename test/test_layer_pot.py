@@ -33,7 +33,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
 
 from functools import partial
-from pytential.mesh.generation import (  # noqa
+from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
         make_curve_mesh)
 from sumpy.visualization import FieldPlotter
@@ -78,10 +78,10 @@ def test_geometry(ctx_getter):
             np.linspace(0, 1, nelements+1),
             order)
 
-    from pytential.discretization.poly_element import \
-            PolynomialElementDiscretization
+    from meshmode.discretization.poly_element import \
+            PolynomialQuadratureElementDiscretization
 
-    discr = PolynomialElementDiscretization(cl_ctx, mesh, order)
+    discr = PolynomialQuadratureElementDiscretization(cl_ctx, mesh, order)
 
     import pytential.symbolic.primitives as prim
     area_sym = prim.integral(1)
@@ -116,7 +116,9 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
     target_order = 7
 
-    from pytential.discretization.qbx import make_upsampling_qbx_discr
+    from meshmode.discretization.poly_element import \
+            PolynomialQuadratureElementDiscretization
+    from pytential.qbx import QBXLayerPotentialSource
     from pytools.convergence import EOCRecorder
 
     s_eoc_rec = EOCRecorder()
@@ -140,20 +142,21 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-        discr = make_upsampling_qbx_discr(
-                cl_ctx, mesh, target_order, qbx_order,
-                fmm_order=False)
+        density_discr = PolynomialQuadratureElementDiscretization(
+                cl_ctx, mesh, target_order)
+        qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
+                qbx_order, fmm_order=False)
 
-        nodes = discr.nodes().with_queue(queue)
+        nodes = density_discr.nodes().with_queue(queue)
 
         if 0:
             # plot geometry, centers, normals
-            centers = discr.source_discr.centers(discr, 1)
+            centers = qbx.centers(density_discr, 1)
             nodes_h = nodes.get()
             centers_h = [centers[0].get(), centers[1].get()]
             pt.plot(nodes_h[0], nodes_h[1], "x-")
             pt.plot(centers_h[0], centers_h[1], "o")
-            normal = bind(discr, sym.normal())(queue).as_vector(np.object)
+            normal = bind(qbx, sym.normal())(queue).as_vector(np.object)
             pt.quiver(nodes_h[0], nodes_h[1],
                     normal[0].get(), normal[1].get())
             pt.gca().set_aspect("equal")
@@ -172,7 +175,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
         sigma = cl.clmath.cos(mode_nr*angle)/J
 
-        s_sigma_op = bind(discr, sym.S(0, sym.var("sigma")))
+        s_sigma_op = bind(qbx, sym.S(0, sym.var("sigma")))
         s_sigma = s_sigma_op(queue=queue, sigma=sigma)
 
         # SIGN BINGO! :)
@@ -182,15 +185,16 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
         s_sigma_ref = s_eigval*J*sigma
 
         if 0:
-            pt.plot(s_sigma.get(), label="result")
-            pt.plot(s_sigma_ref.get(), label="ref")
+            #pt.plot(s_sigma.get(), label="result")
+            #pt.plot(s_sigma_ref.get(), label="ref")
+            pt.plot((s_sigma_ref-s_sigma).get(), label="err")
             pt.legend()
             pt.show()
 
         s_err = (
-                discr.norm(queue, s_sigma - s_sigma_ref)
+                density_discr.norm(queue, s_sigma - s_sigma_ref)
                 /
-                discr.norm(queue, s_sigma_ref))
+                density_discr.norm(queue, s_sigma_ref))
         s_eoc_rec.add_data_point(1/nelements, s_err)
 
         # }}}
@@ -199,7 +203,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
         sigma = cl.clmath.cos(mode_nr*angle)
 
-        d_sigma_op = bind(discr, sym.D(0, sym.var("sigma")))
+        d_sigma_op = bind(qbx, sym.D(0, sym.var("sigma")))
         d_sigma = d_sigma_op(queue=queue, sigma=sigma)
 
         # SIGN BINGO! :)
@@ -214,12 +218,12 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
             pt.show()
 
         if ellipse_aspect == 1:
-            d_ref_norm = discr.norm(queue, sigma)
+            d_ref_norm = density_discr.norm(queue, sigma)
         else:
-            d_ref_norm = discr.norm(queue, d_sigma_ref)
+            d_ref_norm = density_discr.norm(queue, d_sigma_ref)
 
         d_err = (
-                discr.norm(queue, d_sigma - d_sigma_ref)
+                density_discr.norm(queue, d_sigma - d_sigma_ref)
                 /
                 d_ref_norm)
         d_eoc_rec.add_data_point(1/nelements, d_err)
@@ -231,35 +235,35 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
             sigma = cl.clmath.cos(mode_nr*angle)
 
-            sp_sigma_op = bind(discr, sym.Sp(0, sym.var("sigma")))
+            sp_sigma_op = bind(qbx, sym.Sp(0, sym.var("sigma")))
             sp_sigma = sp_sigma_op(queue=queue, sigma=sigma)
             sp_eigval = 0
 
             sp_sigma_ref = sp_eigval*sigma
 
             sp_err = (
-                    discr.norm(queue, sp_sigma - sp_sigma_ref)
+                    density_discr.norm(queue, sp_sigma - sp_sigma_ref)
                     /
-                    discr.norm(queue, sigma))
+                    density_discr.norm(queue, sigma))
             sp_eoc_rec.add_data_point(1/nelements, sp_err)
 
             # }}}
 
     print "Errors for S:"
     print s_eoc_rec
-    target_order = qbx_order + 1
-    assert s_eoc_rec.order_estimate() > target_order - 1.5
+    required_order = qbx_order + 1
+    assert s_eoc_rec.order_estimate() > required_order - 1.5
 
     print "Errors for D:"
     print d_eoc_rec
-    target_order = qbx_order
-    assert d_eoc_rec.order_estimate() > target_order - 1.5
+    required_order = qbx_order
+    assert d_eoc_rec.order_estimate() > required_order - 1.5
 
     if ellipse_aspect == 1:
         print "Errors for S':"
         print sp_eoc_rec
-        target_order = qbx_order
-        assert sp_eoc_rec.order_estimate() > target_order - 1.5
+        required_order = qbx_order
+        assert sp_eoc_rec.order_estimate() > required_order - 1.5
 
 # }}}
 
@@ -281,9 +285,17 @@ def run_int_eq_test(
         pt.gca().set_aspect("equal")
         pt.show()
 
-    from pytential.discretization.qbx import make_upsampling_qbx_discr
-    discr = make_upsampling_qbx_discr(
-            cl_ctx, mesh, target_order, qbx_order, source_order=source_order,
+    from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization.poly_element import \
+            PolynomialQuadratureElementDiscretization
+    density_discr = PolynomialQuadratureElementDiscretization(
+            cl_ctx, mesh, target_order)
+
+    if source_order is None:
+        source_order = 4*target_order
+
+    qbx = QBXLayerPotentialSource(
+            density_discr, fine_order=source_order, qbx_order=qbx_order,
             # Don't use FMM for now
             fmm_order=False)
 
@@ -352,13 +364,13 @@ def run_int_eq_test(
             queue, test_targets, point_sources, [source_charges],
             out_host=False, **knl_kwargs)
 
-    nodes = discr.nodes()
+    nodes = density_discr.nodes()
 
     if 0:
         # show geometry, centers, normals
         nodes_h = nodes.get(queue=queue)
         pt.plot(nodes_h[0], nodes_h[1], "x-")
-        normal = bind(discr, sym.normal())(queue).as_vector(np.object)
+        normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
         pt.quiver(nodes_h[0], nodes_h[1], normal[0].get(queue), normal[1].get(queue))
         pt.gca().set_aspect("equal")
         pt.show()
@@ -376,16 +388,16 @@ def run_int_eq_test(
                 queue, nodes, point_sources, [source_charges],
                 **knl_kwargs)
 
-        normal = bind(discr, sym.normal())(queue).as_vector(np.object)
+        normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
         bc = (grad0*normal[0] + grad1*normal[1])
 
     # }}}
 
     # {{{ solve
 
-    bound_op = bind(discr, op_u)
+    bound_op = bind(qbx, op_u)
 
-    rhs = bind(discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
+    rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
 
     from pytential.gmres import gmres
     gmres_result = gmres(
@@ -417,9 +429,9 @@ def run_int_eq_test(
 
     # {{{ error check
 
-    from pytential.discretization.target import PointsTarget
+    from pytential.target import PointsTarget
 
-    bound_tgt_op = bind((discr, PointsTarget(test_targets)),
+    bound_tgt_op = bind((qbx, PointsTarget(test_targets)),
             op.representation(sym.var("u")))
 
     test_via_bdry = bound_tgt_op(queue, u=u, k=k)
@@ -461,13 +473,13 @@ def run_int_eq_test(
                 queue, fplot.points, point_sources, [source_charges],
                 **knl_kwargs)
         fld_from_bdry = bind(
-                (discr, PointsTarget(fplot.points)),
+                (qbx, PointsTarget(fplot.points)),
                 op.representation(sym.var("u"))
                 )(queue, u=u, k=k)
         fld_from_src = fld_from_src.get()
         fld_from_bdry = fld_from_bdry.get()
 
-        nodes = discr.nodes().get(queue=queue)
+        nodes = density_discr.nodes().get(queue=queue)
 
         def prep():
             pt.plot(point_sources[0], point_sources[1], "o",
@@ -681,16 +693,21 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-        from pytential.discretization.qbx import make_upsampling_qbx_discr
-        discr = make_upsampling_qbx_discr(
-                cl_ctx, mesh, target_order, qbx_order,
+        from meshmode.discretization.poly_element import \
+                PolynomialQuadratureElementDiscretization
+        from pytential.qbx import QBXLayerPotentialSource
+        density_discr = PolynomialQuadratureElementDiscretization(
+                cl_ctx, mesh, target_order)
+
+        qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
+                qbx_order,
                 # Don't use FMM for now
                 fmm_order=False)
 
         # {{{ compute values of a solution to the PDE
 
-        nodes_host = discr.nodes().get(queue)
-        normal = bind(discr, sym.normal())(queue).as_vector(np.object)
+        nodes_host = density_discr.nodes().get(queue)
+        normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
         normal_host = [normal[0].get(), normal[1].get()]
 
         if k != 0:
@@ -716,14 +733,14 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
         key = (qbx_order, curve_name, nelements, zero_op_name)
 
-        bound_op = bind(discr, zero_op)
+        bound_op = bind(qbx, zero_op)
         error = bound_op(
                 queue, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=k)
         if 0:
             pt.plot(error)
             pt.show()
 
-        l2_error_norm = discr.norm(queue, error)
+        l2_error_norm = density_discr.norm(queue, error)
         print key, l2_error_norm
 
         eoc_rec.add_data_point(1/nelements, l2_error_norm)
