@@ -462,7 +462,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
-            target_discr = bound_expr.places[o.target_name]
+            target_discr = bound_expr.get_discretization(o.target_name)
 
             is_self = self.density_discr is target_discr
             if not is_self:

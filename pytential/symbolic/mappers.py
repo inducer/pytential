@@ -642,10 +642,15 @@ class QBXPreprocessor(IdentityMapper):
             return IdentityMapper.map_int_g(self, expr)
 
         source = self.places[self.source_name]
+        target_discr = self.places[expr.target]
+
+        from pytential.qbx import LayerPotentialSource
+        if isinstance(target_discr, LayerPotentialSource):
+            target_discr = target_discr.density_discr
 
         assert expr.qbx_forced_limit is not None
         if expr.qbx_forced_limit != 0 \
-                or source.density_discr is not self.places[expr.target]:
+                or source.density_discr is not target_discr:
             # Not computing the self-on-surface value, nothing to do.
             return IdentityMapper.map_int_g(self, expr)
 
