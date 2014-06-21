@@ -22,8 +22,49 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import numpy as np
 
 import pytential.symbolic.primitives as sym
 from pytential.symbolic.execution import bind
+
+from pytools import memoize_on_first_arg
+
+
+@memoize_on_first_arg
+def _integral_op(discr):
+    from pytential import sym, bind
+    return bind(discr, sym.integral(sym.var("integrand")))
+
+
+def integral(discr, queue, x):
+    return _integral_op(discr)(queue, integrand=x)
+
+
+@memoize_on_first_arg
+def _norm_op(discr, num_components):
+    from pytential import sym, bind
+    if num_components is not None:
+        from pymbolic.primitives import make_sym_vector
+        v = make_sym_vector("integrand", num_components)
+        integrand = sym.real(np.dot(sym.conj(v), v))
+    else:
+        integrand = sym.abs(sym.var("integrand"))**2
+
+    return bind(discr, sym.integral(integrand))
+
+
+def norm(discr, queue, x):
+    from pymbolic.geometric_algebra import MultiVector
+    if isinstance(x, MultiVector):
+        x = x.as_vector(np.object)
+
+    num_components = None
+    if isinstance(x, np.ndarray):
+        num_components, = x.shape
+
+    norm_op = _norm_op(discr, num_components)
+    from math import sqrt
+    return sqrt(norm_op(queue, integrand=x))
+
 
 __all__ = ["sym", "bind"]

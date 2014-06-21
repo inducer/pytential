@@ -27,9 +27,10 @@ import numpy as np
 #import numpy.linalg as la
 import modepy as mp
 from pytools import memoize_method
+from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import (
-        PolynomialElementGroupBase,
-        PolynomialQuadratureElementDiscretization)
+        QuadratureSimplexElementGroup,
+        QuadratureSimplexGroupFactory)
 
 import pyopencl as cl
 
@@ -79,7 +80,7 @@ class _JumpTermArgumentProvider(object):
 
 # {{{ element group
 
-class QBXElementGroup(PolynomialElementGroupBase):
+class QBXQuadratureSimplexElementGroup(QuadratureSimplexElementGroup):
     @memoize_method
     def _quadrature_rule(self):
         dims = self.mesh_el_group.dim
@@ -101,17 +102,22 @@ class QBXElementGroup(PolynomialElementGroupBase):
 # }}}
 
 
-# {{{ QBX refined density discretization
-
-class QBXFineSourceDiscretization(
-        PolynomialQuadratureElementDiscretization):
-    group_class = QBXElementGroup
-
-# }}}
+class QBXQuadratureSimplexGroupFactory(QuadratureSimplexGroupFactory):
+    group_class = QBXQuadratureSimplexElementGroup
 
 
 class LayerPotentialSource(object):
-    pass
+    """
+    .. method:: preprocess_optemplate(name, expr)
+
+    .. method:: op_group_features(expr)
+
+        Return a characteristic tuple by which operators that can be
+        executed together can be grouped.
+
+        *expr* is a subclass of
+        :class:`pytential.symbolic.primitives.IntG`.
+    """
 
 
 # {{{ QBX layer potential source
@@ -137,9 +143,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             a reasonable(-ish?) default.
         """
 
-        self.fine_density_discr = QBXFineSourceDiscretization(
+        self.fine_density_discr = Discretization(
                 density_discr.cl_context, density_discr.mesh,
-                fine_order, real_dtype)
+                QBXQuadratureSimplexGroupFactory(fine_order), real_dtype)
 
         from meshmode.discretization.connection import make_same_mesh_connection
         with cl.CommandQueue(density_discr.cl_context) as queue:
@@ -159,8 +165,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             from sumpy.expansion.local import LineTaylorLocalExpansion
             expansion_getter = LineTaylorLocalExpansion
         self.expansion_getter = expansion_getter
-
-    group_class = QBXElementGroup
 
     @property
     def ambient_dim(self):

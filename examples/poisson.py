@@ -3,8 +3,9 @@ import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
 from meshmode.mesh.io import generate_gmsh, FileSource
+from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
-        PolynomialQuadratureElementDiscretization
+        QuadratureSimplexGroupFactory
 
 from meshmode.discretization.visualization import make_visualizer
 
@@ -17,8 +18,7 @@ mesh = generate_gmsh(
         #other_options=["-string", "Mesh.CharacteristicLength = 0.02;"]
         )
 
-vol_discr = PolynomialQuadratureElementDiscretization(
-        ctx, mesh, 10)
+vol_discr = Discretization(ctx, mesh, QuadratureSimplexGroupFactory(10))
 
 with cl.CommandQueue(vol_discr.cl_context) as queue:
     nodes = vol_discr.nodes().with_queue(queue).get()
@@ -27,7 +27,7 @@ vis = make_visualizer(queue, vol_discr, 20)
 
 x = vol_discr.nodes()[0].with_queue(queue)
 
-f = cl.clmath.sin(30*x)
+f = 0.1*cl.clmath.sin(30*x)
 
-vis.write_vtk_file("x.vtu", [("f", f)])
-#vis.show_scalar_in_mayavi(f.get())
+#vis.write_vtk_file("x.vtu", [("f", f)])
+vis.show_scalar_in_mayavi(f)

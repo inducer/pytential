@@ -37,7 +37,7 @@ from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
         make_curve_mesh)
 from sumpy.visualization import FieldPlotter
-from pytential import bind, sym
+from pytential import bind, sym, norm
 
 import logging
 logger = logging.getLogger(__name__)
@@ -78,10 +78,11 @@ def test_geometry(ctx_getter):
             np.linspace(0, 1, nelements+1),
             order)
 
+    from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
-            PolynomialQuadratureElementDiscretization
+            QuadratureSimplexGroupFactory
 
-    discr = PolynomialQuadratureElementDiscretization(cl_ctx, mesh, order)
+    discr = Discretization(cl_ctx, mesh, QuadratureSimplexGroupFactory(order))
 
     import pytential.symbolic.primitives as prim
     area_sym = prim.integral(1)
@@ -116,8 +117,9 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
     target_order = 7
 
+    from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
-            PolynomialQuadratureElementDiscretization
+            QuadratureSimplexGroupFactory
     from pytential.qbx import QBXLayerPotentialSource
     from pytools.convergence import EOCRecorder
 
@@ -142,8 +144,8 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-        density_discr = PolynomialQuadratureElementDiscretization(
-                cl_ctx, mesh, target_order)
+        density_discr = Discretization(
+                cl_ctx, mesh, QuadratureSimplexGroupFactory(target_order))
         qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
                 qbx_order, fmm_order=False)
 
@@ -192,9 +194,9 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
             pt.show()
 
         s_err = (
-                density_discr.norm(queue, s_sigma - s_sigma_ref)
+                norm(density_discr, queue, s_sigma - s_sigma_ref)
                 /
-                density_discr.norm(queue, s_sigma_ref))
+                norm(density_discr, queue, s_sigma_ref))
         s_eoc_rec.add_data_point(1/nelements, s_err)
 
         # }}}
@@ -218,12 +220,12 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
             pt.show()
 
         if ellipse_aspect == 1:
-            d_ref_norm = density_discr.norm(queue, sigma)
+            d_ref_norm = norm(density_discr, queue, sigma)
         else:
-            d_ref_norm = density_discr.norm(queue, d_sigma_ref)
+            d_ref_norm = norm(density_discr, queue, d_sigma_ref)
 
         d_err = (
-                density_discr.norm(queue, d_sigma - d_sigma_ref)
+                norm(density_discr, queue, d_sigma - d_sigma_ref)
                 /
                 d_ref_norm)
         d_eoc_rec.add_data_point(1/nelements, d_err)
@@ -242,9 +244,9 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
             sp_sigma_ref = sp_eigval*sigma
 
             sp_err = (
-                    density_discr.norm(queue, sp_sigma - sp_sigma_ref)
+                    norm(density_discr, queue, sp_sigma - sp_sigma_ref)
                     /
-                    density_discr.norm(queue, sigma))
+                    norm(density_discr, queue, sigma))
             sp_eoc_rec.add_data_point(1/nelements, sp_err)
 
             # }}}
@@ -286,10 +288,11 @@ def run_int_eq_test(
         pt.show()
 
     from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
-            PolynomialQuadratureElementDiscretization
-    density_discr = PolynomialQuadratureElementDiscretization(
-            cl_ctx, mesh, target_order)
+            QuadratureSimplexGroupFactory
+    density_discr = Discretization(
+            cl_ctx, mesh, QuadratureSimplexGroupFactory(target_order))
 
     if source_order is None:
         source_order = 4*target_order
@@ -693,11 +696,12 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
+        from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \
-                PolynomialQuadratureElementDiscretization
+                QuadratureSimplexGroupFactory
         from pytential.qbx import QBXLayerPotentialSource
-        density_discr = PolynomialQuadratureElementDiscretization(
-                cl_ctx, mesh, target_order)
+        density_discr = Discretization(
+                cl_ctx, mesh, QuadratureSimplexGroupFactory(target_order))
 
         qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
                 qbx_order,
@@ -740,7 +744,7 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
             pt.plot(error)
             pt.show()
 
-        l2_error_norm = density_discr.norm(queue, error)
+        l2_error_norm = norm(density_discr, queue, error)
         print key, l2_error_norm
 
         eoc_rec.add_data_point(1/nelements, l2_error_norm)
