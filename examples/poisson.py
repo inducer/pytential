@@ -11,6 +11,12 @@ from meshmode.discretization.poly_element import \
 from meshmode.discretization.visualization import make_visualizer
 
 from pytential import bind, sym, norm  # noqa
+from pytools.obj_array import make_obj_array
+
+import pytential.symbolic.primitives as p
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 def sol_func(x, y):
@@ -28,6 +34,9 @@ qbx_order = 3
 
 
 def main():
+    import logging
+    logging.basicConfig(level=logging.INFO)
+
     ctx = cl.create_some_context()
     queue = cl.CommandQueue(ctx)
 
@@ -37,25 +46,40 @@ def main():
             other_options=["-string", "Mesh.CharacteristicLengthMax = 0.02;"]
             )
 
+    logger.info("%d elements" % mesh.nelements)
+
+    # {{{ discretizations and connections
+
     vol_discr = Discretization(ctx, mesh, QuadratureSimplexGroupFactory(mesh_order))
-
-    vol_vis = make_visualizer(queue, vol_discr, 20)
-
-    vol_x = vol_discr.nodes().with_queue(queue)
-    rhs = rhs_func(vol_x[0], vol_x[1])
-    poisson_true_sol = sol_func(vol_x[0], vol_x[1])
-
-    #vol_vis.write_vtk_file("x.vtu", [("f", f)])
 
     from meshmode.discretization.connection import make_boundary_restriction
     bdry_mesh, bdry_discr, bdry_connection = make_boundary_restriction(
             queue, vol_discr, QuadratureSimplexGroupFactory(mesh_order))
 
+    # }}}
+
+    # {{{ visualizers
+
+    vol_vis = make_visualizer(queue, vol_discr, 20)
+    bdry_vis = make_visualizer(queue, bdry_discr, 20)
+
+    # }}}
+
+    vol_x = vol_discr.nodes().with_queue(queue)
+    rhs = rhs_func(vol_x[0], vol_x[1])
+    poisson_true_sol = sol_func(vol_x[0], vol_x[1])
+
+    vol_vis.write_vtk_file("volume.vtu", [("f", rhs)])
+
+    bdry_normals = bind(bdry_discr, p.normal())(queue).as_vector(dtype=object)
+    bdry_vis.write_vtk_file("boundary.vtu", [
+        ("normals", bdry_normals)
+        ])
+
     bdry_nodes = bdry_discr.nodes().with_queue(queue)
     bdry_f = rhs_func(bdry_nodes[0], bdry_nodes[1])
     bdry_f_2 = bdry_connection(queue, rhs)
 
-    bdry_vis = make_visualizer(queue, bdry_discr, 20)
     bdry_vis.write_vtk_file("y.vtu", [("f", bdry_f_2)])
 
     if 0:
@@ -97,17 +121,16 @@ def main():
     targets[:2] = vol_x
 
     sources = targets
-    centers = targets.copy()
-    centers[2] = 0.1
+    centers = make_obj_array([ci.copy().reshape(vol_discr.nnodes) for ci in targets])
+    centers[2].fill(0.1)
 
-    import pytential.symbolic.primitives as p
     vol_weights = bind(vol_discr, p.area_element() * p.QWeight())(queue)
 
     evt, (vol_pot,) = layer_pot(
             queue,
             targets=targets.reshape(3, vol_discr.nnodes),
             sources=sources.reshape(3, vol_discr.nnodes),
-            centers=centers.reshape(3, vol_discr.nnodes),
+            centers=centers,
             strengths=((vol_weights*rhs).reshape(vol_discr.nnodes),)
             )
 
@@ -130,8 +153,8 @@ def main():
     from pytential.qbx import QBXLayerPotentialSource
     qbx = QBXLayerPotentialSource(
             bdry_discr, fine_order=4*mesh_order, qbx_order=qbx_order,
-            # Don't use FMM for now
-            fmm_order=3)
+            fmm_order=3
+            )
 
     bound_op = bind(qbx, op_sigma)
 
@@ -171,6 +194,11 @@ def main():
         ("poisson_err", poisson_err),
         ("vol_pot", vol_pot),
         ])
+
+    print "rel error: %g" % (
+            norm(vol_discr, queue, poisson_err)
+            /
+            norm(vol_discr, queue, poisson_true_sol))
 
 
 if __name__ == "__main__":
