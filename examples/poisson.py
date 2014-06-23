@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 if 0:
-    x_sin_factor = 3
-    y_sin_factor = 3
+    x_sin_factor = 30
+    y_sin_factor = 10
 
     def sol_func(x, y):
         return 0.1*cl.clmath.sin(x_sin_factor*x)*cl.clmath.sin(y_sin_factor*y)
@@ -39,8 +39,9 @@ elif 0:
 
     def rhs_func(x, y):
         return 0*x
+
 elif 1:
-    a = 1000
+    a = 300
     xc = -0.2
     yc = 0.1
     exp = cl.clmath.exp
@@ -56,13 +57,14 @@ elif 1:
                 + 4*a**2*(x-xc)**2*base
                 - 4*a*base)
 
-h = 0.02
+h = 0.04
 mesh_order = 3
 vol_quad_order = 4
 vol_ovsmp_quad_order = 2*vol_quad_order
 bdry_quad_order = vol_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
 qbx_order = 3
+vol_qbx_order = 1
 fmm_order = 3
 
 
@@ -74,7 +76,7 @@ def main():
     queue = cl.CommandQueue(ctx)
 
     mesh = generate_gmsh(
-            FileSource("blob-2d.step"), 2, order=mesh_order,
+            FileSource("circles.step"), 2, order=mesh_order,
             force_ambient_dimension=2,
             other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h]
             )
@@ -144,7 +146,7 @@ def main():
 
         r = pymbolic_real_norm_2(make_sym_vector("d", 3))
         expr = var("log")(r)
-        scaling = 1/(-2*var("pi"))
+        scaling = 1/(2*var("pi"))
 
         from sumpy.kernel import ExpressionKernel
         return ExpressionKernel(
@@ -157,14 +159,17 @@ def main():
 
     layer_pot = LayerPotential(ctx, [
         LineTaylorLocalExpansion(laplace_2d_in_3d_kernel,
-            order=qbx_order)])
+            order=vol_qbx_order)])
 
     targets = cl.array.zeros(queue, (3,) + vol_x.shape[1:], vol_x.dtype)
     targets[:2] = vol_x
 
-    sources = targets
+    center_dist = np.min(
+            cl.clmath.sqrt(
+                bind(vol_discr, p.area_element())(queue)).get())
+
     centers = make_obj_array([ci.copy().reshape(vol_discr.nnodes) for ci in targets])
-    centers[2].fill(0.1)
+    centers[2][:] = center_dist
 
     sources = cl.array.zeros(queue, (3,) + ovsmp_vol_x.shape[1:], ovsmp_vol_x.dtype)
     sources[:2] = ovsmp_vol_x
@@ -180,9 +185,6 @@ def main():
             strengths=(
                 (ovsmp_vol_weights*ovsmp_rhs).reshape(ovsmp_vol_discr.nnodes),)
             )
-
-    # ??? FIXME
-    vol_pot = 2*vol_pot
 
     vol_pot_bdry = bdry_connection(queue, vol_pot)
 
@@ -244,6 +246,7 @@ def main():
         ("poisson_true_sol", poisson_true_sol),
         ("poisson_err", poisson_err),
         ("vol_pot", vol_pot),
+        ("rhs", rhs),
         ])
 
     print "h = %s" % h
@@ -253,6 +256,7 @@ def main():
     print "bdry_quad_order = %s" % bdry_quad_order
     print "bdry_ovsmp_quad_order = %s" % bdry_ovsmp_quad_order
     print "qbx_order = %s" % qbx_order
+    print "vol_qbx_order = %s" % vol_qbx_order
     print "fmm_order = %s" % fmm_order
     print
     print "rel err: %g" % rel_err
