@@ -19,18 +19,51 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def sol_func(x, y):
-    return 0.1*cl.clmath.sin(30*x)*cl.clmath.sin(20*y)
+if 0:
+    x_sin_factor = 3
+    y_sin_factor = 3
 
+    def sol_func(x, y):
+        return 0.1*cl.clmath.sin(x_sin_factor*x)*cl.clmath.sin(y_sin_factor*y)
 
-poisson_bc_func = sol_func
+    poisson_bc_func = sol_func
 
+    def rhs_func(x, y):
+        return -x_sin_factor*-y_sin_factor*sol_func(x, y)
 
-def rhs_func(x, y):
-    return 0.1*-30*-20*cl.clmath.sin(30*x)*cl.clmath.sin(20*y)
+elif 0:
+    def sol_func(x, y):
+        return x+y
 
-mesh_order = 4
+    poisson_bc_func = sol_func
+
+    def rhs_func(x, y):
+        return 0*x
+elif 1:
+    a = 1000
+    xc = -0.2
+    yc = 0.1
+    exp = cl.clmath.exp
+
+    def sol_func(x, y):
+        return exp(-a*(y-yc)**2-a*(x-xc)**2)
+
+    poisson_bc_func = sol_func
+
+    def rhs_func(x, y):
+        base = sol_func(x, y)
+        return (4*a**2*(y-yc)**2*base
+                + 4*a**2*(x-xc)**2*base
+                - 4*a*base)
+
+h = 0.02
+mesh_order = 3
+vol_quad_order = 4
+vol_ovsmp_quad_order = 2*vol_quad_order
+bdry_quad_order = vol_quad_order
+bdry_ovsmp_quad_order = 4*bdry_quad_order
 qbx_order = 3
+fmm_order = 3
 
 
 def main():
@@ -43,18 +76,25 @@ def main():
     mesh = generate_gmsh(
             FileSource("blob-2d.step"), 2, order=mesh_order,
             force_ambient_dimension=2,
-            other_options=["-string", "Mesh.CharacteristicLengthMax = 0.02;"]
+            other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h]
             )
 
     logger.info("%d elements" % mesh.nelements)
 
     # {{{ discretizations and connections
 
-    vol_discr = Discretization(ctx, mesh, QuadratureSimplexGroupFactory(mesh_order))
+    vol_discr = Discretization(ctx, mesh,
+            QuadratureSimplexGroupFactory(vol_quad_order))
+    ovsmp_vol_discr = Discretization(ctx, mesh,
+            QuadratureSimplexGroupFactory(vol_ovsmp_quad_order))
 
-    from meshmode.discretization.connection import make_boundary_restriction
+    from meshmode.discretization.connection import (
+            make_boundary_restriction, make_same_mesh_connection)
     bdry_mesh, bdry_discr, bdry_connection = make_boundary_restriction(
-            queue, vol_discr, QuadratureSimplexGroupFactory(mesh_order))
+            queue, vol_discr, QuadratureSimplexGroupFactory(bdry_quad_order))
+
+    vol_to_ovsmp_vol = make_same_mesh_connection(
+            queue, ovsmp_vol_discr, vol_discr)
 
     # }}}
 
@@ -66,6 +106,8 @@ def main():
     # }}}
 
     vol_x = vol_discr.nodes().with_queue(queue)
+    ovsmp_vol_x = ovsmp_vol_discr.nodes().with_queue(queue)
+
     rhs = rhs_func(vol_x[0], vol_x[1])
     poisson_true_sol = sol_func(vol_x[0], vol_x[1])
 
@@ -124,14 +166,19 @@ def main():
     centers = make_obj_array([ci.copy().reshape(vol_discr.nnodes) for ci in targets])
     centers[2].fill(0.1)
 
-    vol_weights = bind(vol_discr, p.area_element() * p.QWeight())(queue)
+    sources = cl.array.zeros(queue, (3,) + ovsmp_vol_x.shape[1:], ovsmp_vol_x.dtype)
+    sources[:2] = ovsmp_vol_x
+
+    ovsmp_rhs = vol_to_ovsmp_vol(queue, rhs)
+    ovsmp_vol_weights = bind(ovsmp_vol_discr, p.area_element() * p.QWeight())(queue)
 
     evt, (vol_pot,) = layer_pot(
             queue,
             targets=targets.reshape(3, vol_discr.nnodes),
-            sources=sources.reshape(3, vol_discr.nnodes),
             centers=centers,
-            strengths=((vol_weights*rhs).reshape(vol_discr.nnodes),)
+            sources=sources.reshape(3, ovsmp_vol_discr.nnodes),
+            strengths=(
+                (ovsmp_vol_weights*ovsmp_rhs).reshape(ovsmp_vol_discr.nnodes),)
             )
 
     # ??? FIXME
@@ -152,8 +199,8 @@ def main():
 
     from pytential.qbx import QBXLayerPotentialSource
     qbx = QBXLayerPotentialSource(
-            bdry_discr, fine_order=4*mesh_order, qbx_order=qbx_order,
-            fmm_order=3
+            bdry_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
+            fmm_order=fmm_order
             )
 
     bound_op = bind(qbx, op_sigma)
@@ -180,8 +227,12 @@ def main():
             op.representation(sym_sigma))(queue, sigma=sigma)
 
     poisson_sol = bvp_sol + vol_pot
-    poisson_err = poisson_true_sol-poisson_sol
+    poisson_err = poisson_sol-poisson_true_sol
 
+    rel_err = (
+            norm(vol_discr, queue, poisson_err)
+            /
+            norm(vol_discr, queue, poisson_true_sol))
     bdry_vis.write_vtk_file("poisson-boundary.vtu", [
         ("vol_pot_bdry", vol_pot_bdry),
         ("sigma", sigma),
@@ -195,10 +246,16 @@ def main():
         ("vol_pot", vol_pot),
         ])
 
-    print "rel error: %g" % (
-            norm(vol_discr, queue, poisson_err)
-            /
-            norm(vol_discr, queue, poisson_true_sol))
+    print "h = %s" % h
+    print "mesh_order = %s" % mesh_order
+    print "vol_quad_order = %s" % vol_quad_order
+    print "vol_ovsmp_quad_order = %s" % vol_ovsmp_quad_order
+    print "bdry_quad_order = %s" % bdry_quad_order
+    print "bdry_ovsmp_quad_order = %s" % bdry_ovsmp_quad_order
+    print "qbx_order = %s" % qbx_order
+    print "fmm_order = %s" % fmm_order
+    print
+    print "rel err: %g" % rel_err
 
 
 if __name__ == "__main__":
