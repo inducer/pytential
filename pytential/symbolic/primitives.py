@@ -201,9 +201,15 @@ class ParametrizationDerivative(DiscretizationProperty):
     mapper_method = "map_parametrization_derivative"
 
 
+def pseudoscalar(where=None):
+    return cse(
+            ParametrizationDerivative(where).attr("project_max_grade")(),
+            "pseudoscalar", cse_scope.DISCRETIZATION)
+
+
 def area_element(where=None):
     return cse(
-            sqrt(ParametrizationDerivative(where).attr("norm_squared")()),
+            sqrt(pseudoscalar(where).attr("norm_squared")()),
             "area_element", cse_scope.DISCRETIZATION)
 
 
@@ -218,7 +224,7 @@ def normal(where=None):
     # Don't be tempted to add a sign here. As it is, it produces
     # exterior normals for positively oriented curves.
 
-    pder = ParametrizationDerivative(where) / area_element()
+    pder = pseudoscalar(where) / area_element()
     return cse(pder.attr("I") | pder, "normal",
             cse_scope.DISCRETIZATION)
 
@@ -265,6 +271,13 @@ class Ones(Expression):
         return (self.where,)
 
     mapper_method = intern("map_ones")
+
+
+def ones_vec(dim, where=None):
+    from pytools.obj_array import make_obj_array
+    return DimensionalizedExpression(
+            MultiVector(
+                make_obj_array(dim*[Ones(where)])))
 
 
 def area(where=None):
