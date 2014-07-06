@@ -160,8 +160,17 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         import pytential.symbolic.primitives as p
         from pytential.symbolic.execution import bind
         with cl.CommandQueue(self.cl_context) as queue:
-            return bind(self.fine_density_discr,
-                    p.area_element() * p.QWeight())(queue)
+            # fine_density_discr is not guaranteed to be usable for
+            # interpolation/differentiation. Use density_discr to find
+            # area element instead, then upsample that.
+
+            area_element = self.resampler(queue,
+                    bind(self.density_discr,
+                        p.area_element())(queue))
+
+            qweight = bind(self.fine_density_discr, p.QWeight())(queue)
+
+            return (area_element.with_queue(queue)*qweight).with_queue(None)
 
     # {{{ interface with execution
 
