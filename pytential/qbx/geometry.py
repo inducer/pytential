@@ -1131,6 +1131,8 @@ class QBXFMMGeometryData(object):
 
         with cl.CommandQueue(self.cl_context) as queue:
             from pyopencl.algorithm import copy_if
+
+            logger.info("find global qbx centers: start")
             result, count, _ = copy_if(
                     cl.array.arange(queue, self.center_info().ncenters,
                         tree.particle_id_dtype),
@@ -1139,6 +1141,8 @@ class QBXFMMGeometryData(object):
                         ("global_qbx_flags", self.global_qbx_flags())
                         ],
                     queue=queue)
+
+            logger.info("find global qbx centers: done")
 
             return result[:count.get()].with_queue(None)
 
