@@ -86,6 +86,18 @@ class VectorVariable(ExpressionBase):
     mapper_method = "map_vector_variable"
 
 
+class DimensionalizedExpression(Expression):
+    """Preserves an already-dimensionalized expression until it hits
+    the :class:`pytential.symbolic.mappers.Dimensionalizer`, which
+    will unpack it and discard this wrapper.
+    """
+
+    def __init__(self, child):
+        self.child = child
+
+    mapper_method = "map_dimensionalized_expression"
+
+
 class Function(var):
     def __call__(self, operand, *args, **kwargs):
         # If the call is handed an object array full of operands,

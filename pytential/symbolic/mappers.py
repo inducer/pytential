@@ -115,6 +115,9 @@ class KernelEvalArgumentCollector(KernelCombineMapperBase):
 
 
 class IdentityMapper(IdentityMapperBase):
+    def map_dimensionalized_expression(self, expr):
+        return type(expr)(self.rec(expr.child))
+
     def map_node_sum(self, expr):
         return type(expr)(self.rec(expr.operand))
 
@@ -419,6 +422,9 @@ class Dimensionalizer(EvaluationMapper):
 
         return MultiVector(make_sym_vector(expr.name, num_components))
 
+    def map_dimensionalized_expression(self, expr):
+        return expr.child
+
     def map_nabla(self, expr):
         from pytools import single_valued
         ambient_dim = single_valued(
@@ -704,6 +710,9 @@ class StringifyMapper(BaseStringifyMapper):
 
     def map_vector_variable(self, expr, enclosing_prec):
         return " %s> " % expr.name
+
+    def map_dimensionalized_expression(self, expr, enclosing_prec):
+        return self.rec(expr.child, enclosing_prec)
 
     def map_nabla(self, expr, enclosing_prec):
         return r"\/[%s]" % expr.nabla_id
