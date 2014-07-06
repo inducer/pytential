@@ -152,6 +152,9 @@ class NodeCoordinateComponent(DiscretizationProperty):
         self.ambient_axis = ambient_axis
         DiscretizationProperty.__init__(self, where)
 
+    def __getinitargs__(self):
+        return (self.ambient_axis, self.where)
+
     mapper_method = intern("map_node_coordinate_component")
 
 
@@ -161,6 +164,9 @@ class Nodes(DiscretizationProperty):
 
     def __init__(self, where=None):
         DiscretizationProperty.__init__(self, where)
+
+    def __getinitargs__(self):
+        return (self.where,)
 
     mapper_method = intern("map_nodes")
 
