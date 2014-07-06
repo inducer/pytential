@@ -1,8 +1,6 @@
 from __future__ import division
 import numpy as np
 import pyopencl as cl
-from meshmode.mesh.generation import (  # noqa
-        make_curve_mesh, starfish, ellipse, drop)
 from sumpy.visualization import FieldPlotter
 #from mayavi import mlab
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
@@ -12,6 +10,7 @@ faulthandler.enable()
 
 import logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 cl_ctx = cl.create_some_context()
 queue = cl.CommandQueue(cl_ctx)
@@ -28,6 +27,8 @@ else:
     kernel = LaplaceKernel()
 #kernel = OneKernel()
 
+from meshmode.mesh.generation import (  # noqa
+        make_curve_mesh, starfish, ellipse, drop)
 mesh = make_curve_mesh(
         #lambda t: ellipse(1, t),
         starfish,
@@ -37,10 +38,10 @@ mesh = make_curve_mesh(
 from pytential.qbx import QBXLayerPotentialSource
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
-        QuadratureSimplexGroupFactory
+        InterpolatoryQuadratureSimplexGroupFactory
 
 density_discr = Discretization(
-        cl_ctx, mesh, QuadratureSimplexGroupFactory(target_order))
+        cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
 qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
         fmm_order=qbx_order)

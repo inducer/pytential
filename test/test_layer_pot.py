@@ -80,9 +80,10 @@ def test_geometry(ctx_getter):
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
-            QuadratureSimplexGroupFactory
+            InterpolatoryQuadratureSimplexGroupFactory
 
-    discr = Discretization(cl_ctx, mesh, QuadratureSimplexGroupFactory(order))
+    discr = Discretization(cl_ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(order))
 
     import pytential.symbolic.primitives as prim
     area_sym = prim.integral(1)
@@ -119,7 +120,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
-            QuadratureSimplexGroupFactory
+            InterpolatoryQuadratureSimplexGroupFactory
     from pytential.qbx import QBXLayerPotentialSource
     from pytools.convergence import EOCRecorder
 
@@ -145,7 +146,8 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 target_order)
 
         density_discr = Discretization(
-                cl_ctx, mesh, QuadratureSimplexGroupFactory(target_order))
+                cl_ctx, mesh,
+                InterpolatoryQuadratureSimplexGroupFactory(target_order))
         qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
                 qbx_order, fmm_order=False)
 
@@ -290,9 +292,9 @@ def run_int_eq_test(
     from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
-            QuadratureSimplexGroupFactory
+            InterpolatoryQuadratureSimplexGroupFactory
     density_discr = Discretization(
-            cl_ctx, mesh, QuadratureSimplexGroupFactory(target_order))
+            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     if source_order is None:
         source_order = 4*target_order
@@ -698,10 +700,11 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
         from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \
-                QuadratureSimplexGroupFactory
+                InterpolatoryQuadratureSimplexGroupFactory
         from pytential.qbx import QBXLayerPotentialSource
         density_discr = Discretization(
-                cl_ctx, mesh, QuadratureSimplexGroupFactory(target_order))
+                cl_ctx, mesh,
+                InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
         qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
                 qbx_order,

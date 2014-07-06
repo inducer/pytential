@@ -6,7 +6,7 @@ import pyopencl.clmath  # noqa
 from meshmode.mesh.io import generate_gmsh, FileSource
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
-        QuadratureSimplexGroupFactory
+        InterpolatoryQuadratureSimplexGroupFactory
 
 from meshmode.discretization.visualization import make_visualizer
 
@@ -76,8 +76,8 @@ def main():
     queue = cl.CommandQueue(ctx)
 
     mesh = generate_gmsh(
-            FileSource("circles.step"), 2, order=mesh_order,
-            force_ambient_dimension=2,
+            FileSource("circle.step"), 2, order=mesh_order,
+            force_ambient_dim=2,
             other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h]
             )
 
@@ -86,14 +86,15 @@ def main():
     # {{{ discretizations and connections
 
     vol_discr = Discretization(ctx, mesh,
-            QuadratureSimplexGroupFactory(vol_quad_order))
+            InterpolatoryQuadratureSimplexGroupFactory(vol_quad_order))
     ovsmp_vol_discr = Discretization(ctx, mesh,
-            QuadratureSimplexGroupFactory(vol_ovsmp_quad_order))
+            InterpolatoryQuadratureSimplexGroupFactory(vol_ovsmp_quad_order))
 
     from meshmode.discretization.connection import (
             make_boundary_restriction, make_same_mesh_connection)
     bdry_mesh, bdry_discr, bdry_connection = make_boundary_restriction(
-            queue, vol_discr, QuadratureSimplexGroupFactory(bdry_quad_order))
+            queue, vol_discr,
+            InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     vol_to_ovsmp_vol = make_same_mesh_connection(
             queue, ovsmp_vol_discr, vol_discr)

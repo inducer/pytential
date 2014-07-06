@@ -25,12 +25,9 @@ THE SOFTWARE.
 
 import numpy as np
 #import numpy.linalg as la
-import modepy as mp
 from pytools import memoize_method
 from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import (
-        QuadratureSimplexElementGroup,
-        QuadratureSimplexGroupFactory)
+from meshmode.discretization.poly_element import QuadratureSimplexGroupFactory
 
 import pyopencl as cl
 
@@ -78,34 +75,6 @@ class _JumpTermArgumentProvider(object):
 # }}}
 
 
-# {{{ element group
-
-class QBXQuadratureSimplexElementGroup(QuadratureSimplexElementGroup):
-    @memoize_method
-    def _quadrature_rule(self):
-        dims = self.mesh_el_group.dim
-        if dims == 1:
-            return mp.LegendreGaussQuadrature(self.order)
-        else:
-            return mp.XiaoGimbutasSimplexQuadrature(self.order, dims)
-
-    @property
-    @memoize_method
-    def unit_nodes(self):
-        return self._quadrature_rule().nodes
-
-    @property
-    @memoize_method
-    def weights(self):
-        return self._quadrature_rule().weights
-
-# }}}
-
-
-class QBXQuadratureSimplexGroupFactory(QuadratureSimplexGroupFactory):
-    group_class = QBXQuadratureSimplexElementGroup
-
-
 class LayerPotentialSource(object):
     """
     .. method:: preprocess_optemplate(name, expr)
@@ -145,7 +114,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         self.fine_density_discr = Discretization(
                 density_discr.cl_context, density_discr.mesh,
-                QBXQuadratureSimplexGroupFactory(fine_order), real_dtype)
+                QuadratureSimplexGroupFactory(fine_order), real_dtype)
 
         from meshmode.discretization.connection import make_same_mesh_connection
         with cl.CommandQueue(density_discr.cl_context) as queue:
