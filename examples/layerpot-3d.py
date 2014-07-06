@@ -15,10 +15,12 @@ logger = logging.getLogger(__name__)
 cl_ctx = cl.create_some_context()
 queue = cl.CommandQueue(cl_ctx)
 
-target_order = 16
-qbx_order = 3
+target_order = 5
+qbx_order = 2
 nelements = 60
 mode_nr = 3
+
+h = 0.4
 
 k = 0
 if k:
@@ -27,13 +29,17 @@ else:
     kernel = LaplaceKernel()
 #kernel = OneKernel()
 
-from meshmode.mesh.generation import (  # noqa
-        make_curve_mesh, starfish, ellipse, drop)
-mesh = make_curve_mesh(
-        #lambda t: ellipse(1, t),
-        starfish,
-        np.linspace(0, 1, nelements+1),
-        target_order)
+from meshmode.mesh.io import generate_gmsh, FileSource
+mesh = generate_gmsh(
+        FileSource("molecule.step"), 2, order=2,
+        other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h])
+
+from meshmode.mesh.processing import find_bounding_box
+bbox_min, bbox_max = find_bounding_box(mesh)
+bbox_center = 0.5*(bbox_min+bbox_max)
+bbox_size = max(bbox_max-bbox_min) / 2
+
+logger.info("%d elements" % mesh.nelements)
 
 from pytential.qbx import QBXLayerPotentialSource
 from meshmode.discretization import Discretization
@@ -53,7 +59,7 @@ angle = cl.clmath.atan2(nodes[1], nodes[0])
 from pytential import bind, sym
 d = sym.Derivative()
 #op = d.nabla[0] * d(sym.S(kernel, sym.var("sigma")))
-op = sym.D(kernel, sym.var("sigma"))
+op = sym.S(kernel, sym.var("sigma"))
 #op = sym.S(kernel, sym.var("sigma"))
 
 sigma = cl.clmath.cos(mode_nr*angle)
@@ -69,7 +75,8 @@ if isinstance(kernel, HelmholtzKernel):
 bound_bdry_op = bind(qbx, op)
 #mlab.figure(bgcolor=(1, 1, 1))
 if 1:
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
+    fplot = FieldPlotter(bbox_center, extent=1.5*bbox_size, npoints=150)
+
     from pytential.target import PointsTarget
     fld_in_vol = bind(
             (qbx, PointsTarget(fplot.points)),
@@ -83,29 +90,12 @@ if 1:
                 ]
             )
 
-if 0:
-    def apply_op(density):
-        return bound_bdry_op(
-                queue, sigma=cl.array.to_device(queue, density), k=k).get()
+    bdry_normals = bind(density_discr, sym.normal())(queue).as_vector(dtype=object)
 
-    from sumpy.tools import build_matrix
-    n = len(sigma)
-    mat = build_matrix(apply_op, dtype=np.float64, shape=(n, n))
+    from meshmode.discretization.visualization import make_visualizer
+    bdry_vis = make_visualizer(queue, density_discr, target_order)
 
-    import matplotlib.pyplot as pt
-    pt.imshow(mat)
-    pt.colorbar()
-    pt.show()
-
-if 0:
-    # {{{ plot boundary field
-
-    fld_on_bdry = bound_bdry_op(queue, sigma=sigma, k=k).get()
-
-    nodes_host = density_discr.nodes().get(queue=queue)
-    #mlab.points3d(nodes_host[0], nodes_host[1], fld_on_bdry.real, scale_factor=0.03)
-
-    # }}}
-
-#mlab.colorbar()
-#mlab.show()
+    bdry_vis.write_vtk_file("source.vtu", [
+        ("sigma", sigma),
+        ("bdry_normals", bdry_normals),
+        ])

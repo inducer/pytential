@@ -42,8 +42,10 @@ elif 0:
 
 elif 1:
     a = 300
-    xc = -0.2
-    yc = 0.1
+    #xc = 0.2
+    #yc = 0.1
+    xc = 0
+    yc = 0
     exp = cl.clmath.exp
 
     def sol_func(x, y):
@@ -57,14 +59,14 @@ elif 1:
                 + 4*a**2*(x-xc)**2*base
                 - 4*a*base)
 
-h = 0.04
+h = 0.03
 mesh_order = 3
-vol_quad_order = 4
+vol_quad_order = 5
 vol_ovsmp_quad_order = 2*vol_quad_order
 bdry_quad_order = vol_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
 qbx_order = 3
-vol_qbx_order = 1
+vol_qbx_order = 2
 fmm_order = 3
 
 
