@@ -100,6 +100,12 @@ def test_geometry(ctx_getter):
 # {{{ ellipse eigenvalues
 
 @pytest.mark.parametrize(["ellipse_aspect", "mode_nr", "qbx_order"], [
+    # Run with FMM
+    (1, 5, 3),
+    (1, 6, 3),
+    # (2, 5, 3), /!\ FIXME: Does not achieve sufficient FMM precision
+
+    # Run without FMM
     (1, 5, 4),
     (1, 6, 4),
     (1, 7, 5),
@@ -108,7 +114,7 @@ def test_geometry(ctx_getter):
     (2, 7, 5),
     ])
 def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
-    #logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO)
 
     print "ellipse_aspect: %s, mode_nr: %d, qbx_order: %d" % (
             ellipse_aspect, mode_nr, qbx_order)
@@ -145,11 +151,16 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
+        fmm_order = qbx_order
+        if fmm_order > 3:
+            # FIXME: for now
+            fmm_order = False
+
         density_discr = Discretization(
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
         qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
-                qbx_order, fmm_order=False)
+                qbx_order, fmm_order=fmm_order)
 
         nodes = density_discr.nodes().with_queue(queue)
 
