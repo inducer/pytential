@@ -388,7 +388,7 @@ def _insert_dsource_into_kernel(kernel, dsource, ambient_dim):
 
     dir_vec = np.zeros(ambient_dim, np.object)
     for i in xrange(ambient_dim):
-        dir_vec[i] = coeffs.pop(prim.NablaComponent(i, None))
+        dir_vec[i] = coeffs.pop(prim.NablaComponent(i, None), 0)
 
     if coeffs:
         raise RuntimeError("source derivative expression contained constant term")
