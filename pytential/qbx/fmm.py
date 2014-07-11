@@ -273,15 +273,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 # {{{ FMM top-level
 
 def drive_fmm(expansion_wrangler, src_weights):
-    """Top-level driver routine for a fast multipole calculation.
-
-    In part, this is intended as a template for custom FMMs, in the sense that
-    you may copy and paste its
-    `source code <https://github.com/inducer/boxtree/blob/master/boxtree/fmm.py>`_
-    as a starting point.
-
-    Nonetheless, many common applications (such as point-to-point FMMs) can be
-    covered by supplying the right *expansion_wrangler* to this routine.
+    """Top-level driver routine for the QBX fast multipole calculation.
 
     :arg geo_data: A :class:`QBXFMMGeometryData` instance.
     :arg expansion_wrangler: An object exhibiting the
