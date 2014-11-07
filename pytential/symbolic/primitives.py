@@ -29,6 +29,8 @@ from pymbolic.primitives import (  # noqa
         cse_scope as cse_scope_base,
         make_common_subexpression as cse)
 from pymbolic.geometric_algebra import MultiVector, componentwise
+from pymbolic.primitives import make_sym_vector
+
 
 __doc__ = """
 .. |where-blurb| replace:: A symbolic name for a
