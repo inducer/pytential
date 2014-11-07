@@ -331,11 +331,13 @@ class Code(object):
         if not available_insns:
             raise self.NoInstructionAvailable
 
-        from pytools import flatten
-        discardable_vars = set(available_names) - set(flatten(
-            [dep.name for dep in insn.get_dependencies()]
+        needed_vars = set([
+            dep.name
             for insn in self.instructions
-            if insn not in done_insns))
+            if insn not in done_insns
+            for dep in insn.get_dependencies()
+            ])
+        discardable_vars = set(available_names) - needed_vars
 
         # {{{ make sure results do not get discarded
         from pytools.obj_array import with_object_array_or_scalar
