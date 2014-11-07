@@ -67,7 +67,7 @@ class P2QBXLFromCSR(P2EBase):
                     "{[isrc_box]: isrc_box_start<=isrc_box<isrc_box_stop}",
                     "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
                     ],
-                self.get_looy_instructions()
+                self.get_loopy_instructions()
                 + ["""
                     <> tgt_icenter = global_qbx_centers[itgt_center]
 
