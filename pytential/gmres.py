@@ -260,7 +260,11 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     """
     try:
         from pyopencl.tools import array_module
-        amod = array_module(rhs)
+        from pytools.obj_array import is_obj_array, make_obj_array
+        if is_obj_array(rhs):
+            amod = array_module(rhs[0])
+        else:
+            amod = array_module(rhs)
     except ImportError:
         amod = np
 
