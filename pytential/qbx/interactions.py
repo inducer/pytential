@@ -29,7 +29,6 @@ from pytools import memoize_method
 from sumpy.p2e import P2EBase
 from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
-from sumpy.tools import KernelCacheWrapper
 
 
 # {{{ form qbx expansions from points

@@ -147,6 +147,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     def real_dtype(self):
         return self.density_discr.real_dtype
 
+    @property
+    def complex_dtype(self):
+        return self.density_discr.complex_dtype
+
     @memoize_method
     def centers(self, target_discr, sign):
         from pytential import sym, bind

@@ -145,8 +145,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     def box_source_list_kwargs(self):
         return dict(
                 box_source_starts=self.tree.box_point_source_starts,
-                box_source_counts_nonchild=
-                self.tree.box_point_source_counts_nonchild,
+                box_source_counts_nonchild=(
+                    self.tree.box_point_source_counts_nonchild),
                 sources=self.tree.point_sources)
 
     def box_target_list_kwargs(self):
@@ -155,8 +155,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         nqbtl = self.geo_data.non_qbx_box_target_lists()
         return dict(
                 box_target_starts=nqbtl.box_target_starts,
-                box_target_counts_nonchild=
-                nqbtl.box_target_counts_nonchild,
+                box_target_counts_nonchild=(
+                    nqbtl.box_target_counts_nonchild),
                 targets=nqbtl.targets)
 
     # }}}
@@ -170,7 +170,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         if len(geo_data.global_qbx_centers()) == 0:
             return local_exps
 
-        kwargs = self.source_extra_kwargs.copy()
+        kwargs = self.extra_kwargs.copy()
         kwargs.update(self.box_source_list_kwargs())
 
         evt, (result,) = self.code.p2qbxl(self.queue,

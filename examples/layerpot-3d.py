@@ -18,7 +18,7 @@ queue = cl.CommandQueue(cl_ctx)
 target_order = 5
 qbx_order = 2
 nelements = 60
-mode_nr = 3
+mode_nr = 0
 
 h = 0.4
 
@@ -59,7 +59,7 @@ angle = cl.clmath.atan2(nodes[1], nodes[0])
 from pytential import bind, sym
 d = sym.Derivative()
 #op = d.nabla[0] * d(sym.S(kernel, sym.var("sigma")))
-op = sym.S(kernel, sym.var("sigma"))
+op = sym.D(kernel, sym.var("sigma"))
 #op = sym.S(kernel, sym.var("sigma"))
 
 sigma = cl.clmath.cos(mode_nr*angle)

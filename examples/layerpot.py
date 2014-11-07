@@ -20,9 +20,9 @@ qbx_order = 3
 nelements = 60
 mode_nr = 3
 
-k = 0
+k = 2
 if k:
-    kernel = HelmholtzKernel("k")
+    kernel = HelmholtzKernel(helmholtz_k_name="k")
 else:
     kernel = LaplaceKernel()
 #kernel = OneKernel()
