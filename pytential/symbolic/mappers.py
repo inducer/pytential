@@ -25,7 +25,6 @@ THE SOFTWARE.
 
 import numpy as np
 from pymbolic.mapper.stringifier import (
-        StringifyMapper as BaseStringifyMapper,
         CSESplittingStringifyMapperMixin,
         PREC_NONE, PREC_PRODUCT)
 from pymbolic.mapper import (
@@ -43,6 +42,8 @@ from pymbolic.geometric_algebra.mapper import (
         Collector as CollectorBase,
         DerivativeBinder as DerivativeBinderBase,
         EvaluationMapper as EvaluationMapperBase,
+
+        StringifyMapper as BaseStringifyMapper,
 
         DerivativeSourceAndNablaComponentCollector
         as DerivativeSourceAndNablaComponentCollectorBase,
