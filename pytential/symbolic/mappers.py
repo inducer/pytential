@@ -43,6 +43,8 @@ from pymbolic.geometric_algebra.mapper import (
         DerivativeBinder as DerivativeBinderBase,
         EvaluationMapper as EvaluationMapperBase,
 
+        Dimensionalizer as DimensionalizerBase,
+
         StringifyMapper as BaseStringifyMapper,
 
         DerivativeSourceAndNablaComponentCollector
@@ -389,7 +391,7 @@ def _insert_dsource_into_kernel(kernel, dsource, ambient_dim):
     return _insert_dir_vec_into_kernel(kernel, dir_vec)
 
 
-class Dimensionalizer(EvaluationMapper):
+class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
     """Once the discretization is known, the dimension count is, too.
     This mapper plugs in dimension-specific quantities for their
     non-dimensional symbolic counterparts.
@@ -397,7 +399,7 @@ class Dimensionalizer(EvaluationMapper):
 
     def __init__(self, discr_dict):
         self.discr_dict = discr_dict
-        EvaluationMapper.__init__(self)
+        super(Dimensionalizer, self).__init__()
 
     @property
     def ambient_dim(self):
@@ -516,7 +518,7 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
     nabla_component_to_unit_vector = NablaComponentToUnitVector
     derivative_source_finder = DerivativeSourceFinder
 
-    def take_dervative(self, ambient_axis, expr):
+    def take_derivative(self, ambient_axis, expr):
         return DerivativeTaker(ambient_axis)(expr)
 
 # }}}

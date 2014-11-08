@@ -29,7 +29,9 @@ from pymbolic.primitives import (  # noqa
         cse_scope as cse_scope_base,
         make_common_subexpression as cse)
 from pymbolic.geometric_algebra import MultiVector, componentwise
-from pymbolic.primitives import make_sym_vector
+from pymbolic.geometric_algebra.primitives import (  # noqa
+        Nabla, NablaComponent, DerivativeSource, Derivative)
+from pymbolic.primitives import make_sym_vector  # noqa
 
 
 __doc__ = """
@@ -412,60 +414,6 @@ class IntGdSource(IntG):
 # pytential.symbolic.mappers.Dimensionalizer)
 
 # {{{ geometric calculus
-
-class NablaComponent(Expression):
-    def __init__(self, ambient_axis, nabla_id):
-        self.ambient_axis = ambient_axis
-        self.nabla_id = nabla_id
-
-    def __getinitargs__(self):
-        return (self.ambient_axis, self.nabla_id)
-
-    mapper_method = "map_nabla_component"
-
-
-class Nabla(Expression):
-    def __init__(self, nabla_id):
-        self.nabla_id = nabla_id
-
-    def __getinitargs__(self):
-        return (self.nabla_id,)
-
-    def __getitem__(self, index):
-        if not isinstance(index, int):
-            raise TypeError("Nabla subscript must be an integer")
-
-        return NablaComponent(index, self.nabla_id)
-
-    mapper_method = "map_nabla"
-
-
-class DerivativeSource(Expression):
-    def __init__(self, operand, nabla_id=None):
-        self.operand = operand
-        self.nabla_id = nabla_id
-
-    def __getinitargs__(self):
-        return (self.operand, self.nabla_id)
-
-    mapper_method = "map_derivative_source"
-
-
-class Derivative(object):
-    _next_id = [0]
-
-    def __init__(self):
-        self.my_id = "id%s" % self._next_id[0]
-        self._next_id[0] += 1
-
-    @property
-    def nabla(self):
-        return Nabla(self.my_id)
-
-    def __call__(self, operand):
-        return DerivativeSource(operand, self.my_id)
-
-# }}}
 
 S = IntG
 
