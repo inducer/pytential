@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 nelements = 50
-mesh_order = 3
+mesh_order = 10
 bdry_quad_order = 10
 bdry_ovsmp_quad_order = 4*bdry_quad_order
 qbx_order = 6
@@ -58,13 +58,13 @@ def main():
 
     cse = sym.cse
 
-    sqrt_w = sym.sqrt_jac_q_weight()
+    sqrt_w_sym = sym.sqrt_jac_q_weight()
 
     unkwown = sym.make_sym_vector("unknown", 2)
     sigma_sym = unkwown[0]
-    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
     mu_sym = unkwown[1]
-    inv_sqrt_w_mu = cse(mu_sym/sqrt_w)
+    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w_sym)
+    inv_sqrt_w_mu = cse(mu_sym/sqrt_w_sym)
 
     beta = 2.5
     K0 = np.sqrt(k0**2-beta**2)
@@ -85,14 +85,14 @@ def main():
     
     bdry_op_sym = make_obj_array([
         (-0.5*(alpha0*coeff_0_S+alpha1*coeff_1_S)*sigma_sym
-            + sqrt_w*(
+            + sqrt_w_sym*(
                 alpha0*coeff_0_S*sym.Sp(kernel_K0, inv_sqrt_w_sigma)
                 -alpha1*coeff_1_S*sym.Sp(kernel_K1, inv_sqrt_w_sigma)
                 +alpha0*coeff_0_D*sym.Dp(kernel_K0, inv_sqrt_w_mu)
                 -alpha1*coeff_1_D*sym.Dp(kernel_K1, inv_sqrt_w_mu)
                 )),
         (0.5*(coeff_0_D+coeff_1_D)*mu_sym
-            + sqrt_w*(
+            + sqrt_w_sym*(
                 coeff_0_S*sym.S(kernel_K0, inv_sqrt_w_sigma)
                 -coeff_1_S*sym.S(kernel_K1, inv_sqrt_w_sigma)
                 +coeff_0_D*sym.D(kernel_K0, inv_sqrt_w_mu)
@@ -146,9 +146,11 @@ def main():
     E0_dntarget = (grad0_E0*normal[0] + grad1_E0*normal[1])
     E1_dntarget = (grad0_E1*normal[0] + grad1_E1*normal[1])
 
+    sqrt_w = bind(density_discr, sqrt_w_sym)(queue)
+
     bvp_rhs = make_obj_array([
-        alpha0 * E0_dntarget - alpha1 * E1_dntarget,
-        E0 - E1
+        sqrt_w*(alpha0 * E0_dntarget - alpha1 * E1_dntarget),
+        sqrt_w*(E0 - E1)
         ])
     
     from pytential.gmres import gmres
@@ -199,10 +201,10 @@ def main():
     from pytential.target import PointsTarget
     fld0 = bind(
             (qbx, PointsTarget(fplot.points)),
-            representation0_sym)(queue, unknown=unknown, K0=K0, K1=K1).get()
+            representation0_sym)(queue, unknown=unknown, K0=K0).get()
     fld1 = bind(
             (qbx, PointsTarget(fplot.points)),
-            representation1_sym)(queue, unknown=unknown, K0=K0, K1=K1).get()
+            representation1_sym)(queue, unknown=unknown, K1=K1).get()
     _, (fld0_true,) = pot_p2p_K0(queue, fplot.points, sources_0, [strengths_0],
                     out_host=True, K0=K0)
     _, (fld1_true,) = pot_p2p_K1(queue, fplot.points, sources_1, [strengths_1],
