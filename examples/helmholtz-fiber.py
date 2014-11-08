@@ -21,7 +21,7 @@ nelements = 50
 mesh_order = 10
 bdry_quad_order = 10
 bdry_ovsmp_quad_order = 4*bdry_quad_order
-qbx_order = 6
+qbx_order = 4
 fmm_order = False
 k0 = 3
 k1 = 2.9
@@ -69,7 +69,7 @@ def main():
     beta = 2.5
     K0 = np.sqrt(k0**2-beta**2)
     K1 = np.sqrt(k1**2-beta**2)
-    
+
     print "K0", K0
     print "K1", K1
 
@@ -82,21 +82,20 @@ def main():
     coeff_0_D = alpha1
     coeff_1_D = alpha0
 
-    
     bdry_op_sym = make_obj_array([
         (-0.5*(alpha0*coeff_0_S+alpha1*coeff_1_S)*sigma_sym
             + sqrt_w_sym*(
                 alpha0*coeff_0_S*sym.Sp(kernel_K0, inv_sqrt_w_sigma)
-                -alpha1*coeff_1_S*sym.Sp(kernel_K1, inv_sqrt_w_sigma)
-                +alpha0*coeff_0_D*sym.Dp(kernel_K0, inv_sqrt_w_mu)
-                -alpha1*coeff_1_D*sym.Dp(kernel_K1, inv_sqrt_w_mu)
+                - alpha1*coeff_1_S*sym.Sp(kernel_K1, inv_sqrt_w_sigma)
+                + alpha0*coeff_0_D*sym.Dp(kernel_K0, inv_sqrt_w_mu)
+                - alpha1*coeff_1_D*sym.Dp(kernel_K1, inv_sqrt_w_mu)
                 )),
         (0.5*(coeff_0_D+coeff_1_D)*mu_sym
             + sqrt_w_sym*(
                 coeff_0_S*sym.S(kernel_K0, inv_sqrt_w_sigma)
-                -coeff_1_S*sym.S(kernel_K1, inv_sqrt_w_sigma)
-                +coeff_0_D*sym.D(kernel_K0, inv_sqrt_w_mu)
-                -coeff_1_D*sym.D(kernel_K1, inv_sqrt_w_mu)
+                - coeff_1_S*sym.S(kernel_K1, inv_sqrt_w_sigma)
+                + coeff_0_D*sym.D(kernel_K0, inv_sqrt_w_mu)
+                - coeff_1_D*sym.D(kernel_K1, inv_sqrt_w_mu)
                 ))
         ])
     #print sym.pretty(bdry_op_sym)
@@ -118,7 +117,7 @@ def main():
         [4, 4]
         ]).T.copy()))
     strengths_1 = np.array([1])
-    
+
     kernel_K0_grad = [
         AxisTargetDerivative(i, kernel_K0) for i in range(density_discr.ambient_dim)]
     kernel_K1_grad = [
@@ -129,7 +128,7 @@ def main():
     pot_p2p_K1 = P2P(cl_ctx, [kernel_K1], exclude_self=False)
     pot_p2p_grad_K0 = P2P(cl_ctx, kernel_K0_grad, exclude_self=False)
     pot_p2p_grad_K1 = P2P(cl_ctx, kernel_K1_grad, exclude_self=False)
-    
+
     normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
 
     _, (E0,) = pot_p2p_K0(queue, density_discr.nodes(), sources_0, [strengths_0],
@@ -152,10 +151,11 @@ def main():
         sqrt_w*(alpha0 * E0_dntarget - alpha1 * E1_dntarget),
         sqrt_w*(E0 - E1)
         ])
-    
+
     from pytential.gmres import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "unknown", domains=[sym.DEFAULT_TARGET]*2, K0=K0, K1=K1),
+            bound_op.scipy_op(queue, "unknown",
+                domains=[sym.DEFAULT_TARGET]*2, K0=K0, K1=K1),
             bvp_rhs, tol=1e-14, progress=True,
             hard_failure=True)
 
@@ -163,13 +163,13 @@ def main():
 
     unknown = gmres_result.solution
 
-    representation0_sym = ( 
-            coeff_0_S*sym.S(kernel_K0, inv_sqrt_w_sigma) 
-            +coeff_0_D*sym.D(kernel_K0, inv_sqrt_w_mu)) 
+    representation0_sym = (
+            coeff_0_S*sym.S(kernel_K0, inv_sqrt_w_sigma)
+            + coeff_0_D*sym.D(kernel_K0, inv_sqrt_w_mu))
 
-    representation1_sym = ( 
-            coeff_1_S*sym.S(kernel_K1, inv_sqrt_w_sigma) 
-            +coeff_1_D*sym.D(kernel_K1, inv_sqrt_w_mu)) 
+    representation1_sym = (
+            coeff_1_S*sym.S(kernel_K1, inv_sqrt_w_sigma)
+            + coeff_1_D*sym.D(kernel_K1, inv_sqrt_w_mu))
 
     targets_0 = make_obj_array(list(np.array([
         [3.2 + t, -4]
