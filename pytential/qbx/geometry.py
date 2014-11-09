@@ -795,9 +795,9 @@ class QBXFMMGeometryData(object):
                     radii_view = radii[ibase:ibase + group_len] \
                             .reshape(el_group.nelements, len(kept_indices))
                     centers_view = make_obj_array([
-                            centers_i[ibase:ibase + group_len]
-                            .reshape((el_group.nelements, len(kept_indices)))
-                            for centers_i in centers
+                        centers_i[ibase:ibase + group_len]
+                        .reshape((el_group.nelements, len(kept_indices)))
+                        for centers_i in centers
                         ])
                     all_centers_view = make_obj_array([
                         el_group.view(pos_centers_i)
@@ -1099,7 +1099,7 @@ class QBXFMMGeometryData(object):
             logger.info("find global qbx flags: start")
 
             qbx_center_for_global_tester(*(
-                        tuple(center_info.centers)
+                    tuple(center_info.centers)
                     + (
                         center_info.radii,
                         self.qbx_center_to_target_box(),
