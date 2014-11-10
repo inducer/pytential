@@ -445,6 +445,8 @@ def Dp(*args, **kwargs):
 
 # }}}
 
+# }}}
+
 
 # {{{ differential operators on layer potentials
 
