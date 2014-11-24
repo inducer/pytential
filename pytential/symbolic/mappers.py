@@ -236,6 +236,9 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_vector_variable(self, expr):
         return expr
 
+    def map_subscript(self, expr):
+        return self.rec(expr.aggregate).index(self.rec(expr.index))
+
     map_q_weight = map_variable
     map_ones = map_variable
 
