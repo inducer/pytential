@@ -31,7 +31,7 @@ __doc__ = """
 """
 
 
-import pytential.sym as sym
+from pytential import sym
 from pytential.symbolic.primitives import (
         cse,
         S, D, Sp, Dp,
