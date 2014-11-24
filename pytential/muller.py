@@ -22,86 +22,95 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import numpy as np
 
-def muller_deflate(f, n, maxiter=100, eps=1e-10):
+
+def muller_deflate(f, n, maxiter=100, eps=1e-14):
     """
     :arg n: number of zeros sought
-    :return: (roots, niter, err)
+    :return: (roots, niter, err) - roots of the given function; number of 
+    :iterations used for each root; and the relative error of each root.
     """
     # initialize variables
     roots = []
     niter = []
     err = []
-    nmax=100;           % max iterations
-    eps=1e-10;          % tolerance
+
+    def f_deflated(z):
+        y = f(z)
+        for r in roots:
+            y = y/(z-r)
+
+        return y
+
 
     # finds n roots
     # checks for NaN which signifies the end of the root finding process.
     # Truncates the zero arrays created above if neccessary.
-    for i = 1:n
-        miter=0;
-        [r(i),niter(i),err(i)]=muller0(f,r,i,nmax,eps);
+    for i in range(n):
+        miter = 0
+        roots0, niter0, err0 = muller0(f_deflated,maxiter,eps)
+        roots.append(roots0)
+        niter.append(niter0)
+        err.append(err0)
 
-        while (isnan(r(i)) || (niter(i)==nmax))  && miter<50,
-            [r(i),niter(i),err(i)]=muller0(f,r,i,nmax,eps);
-            miter=miter+1;
-        end
+        while (np.isnan(roots[i]) or  niter[i] == maxiter) and miter < 50:
+            roots0, niter0, err0 = muller0(f_deflated,maxiter,eps)
+            roots[i] = roots0
+            niter[i] = niter0
+            err[i] = err0
+            miter = miter+1
 
-    end
+    return roots, niter, err
 
-    end
+# Muller's method
+def muller0(f,maxiter=100,eps=1e-13):
 
-% Muller's method
-function [z,niter,err] = muller0(ft,r,ind,nmax,eps)
+    # initialize variables
+    niter = 0                      # counts iteration steps
+    err=100*eps                    
 
-% initialize variables
-niter = 0;                      % counts iteration steps
-err=100*eps;                    % percent error
-x = rand(1,3) + 1i*rand(1,3);   % 3 initial guesses
-x = rand(1,3)*10;   % 3 initial guesses
-z1 = x(1); z2 = x(2); z3 = x(3);
-w1 = fi(z1,ft,r,ind);
-w2 = fi(z2,ft,r,ind);
-w3 = fi(z3,ft,r,ind);
+    z1, z2, z3 = np.random.rand(3) + 1j*np.random.rand(3)   # 3 initial guesses
+    #x = rand(1,3)*10   % 3 initial guesses
+    
+    w1 = f(z1)
+    w2 = f(z2)
+    w3 = f(z3)
 
-% iterate until max iterations or tolerance is met
-%while niter < nmax && (err>eps || abs(w3)>1e-30),
-while niter < nmax && err>eps,
-    niter = niter + 1  ;        % update iteration step
+    # iterate until max iterations or tolerance is met
+    #while niter < maxiter and (err>eps or abs(w3)>1e-30):
+    while niter < maxiter and err > eps:
+        niter = niter + 1          
 
-    h1=z2-z1;
-    h2=z3-z2;
-    lambda=h2/h1;
-    g=w1*lambda*lambda-w2*(1+lambda)*(1+lambda)+w3*(1+2*lambda);
-    det=g*g-4*w3*(1+lambda)*lambda*(w1*lambda-w2*(1+lambda)+w3);
+        h1 = z2 - z1
+        h2 = z3 - z2
+        lambda_ = h2/h1
+        g = w1*lambda_*lambda_- w2*(1+lambda_)*(1+lambda_)+w3*(1+2*lambda_)
+        det = g*g - 4*w3*(1+lambda_)*lambda_*(w1*lambda_-w2*(1+lambda_)+w3)
 
-    h1=g+sqrt(det);
-    h2=g-sqrt(det);
-    %
-    if (abs(h1)>abs(h2))
-        lambda=-2*w3*(1+lambda)/h1;
-    else
-        lambda=-2*w3*(1+lambda)/h2;
-    end
-
-    z1=z2;
-    w1 = w2;
-    z2=z3;
-    w2 = w3;
-    z3=z2+lambda*(z2-z1)
-    w3 = fi(z3,ft,r,ind);
-
-    err=abs((z3-z2)/z3);
-end
-z=z3;
-
-end
+        h1 = g + np.sqrt(det)
+        h2 = g - np.sqrt(det)
+    
+        if np.abs(h1) > np.abs(h2):
+            lambda_ = -2*w3*(1.0+lambda_)/h1
+        else:
+            lambda_ = -2*w3*(1.0+lambda_)/h2
 
 
-function y=fi(z,f,r,ind)
-y=feval(f,z);
-for i=1:(ind-1)
-    y=y/(z-r(i));
-end
-end
+        z1 = z2
+        w1 = w2
+        z2 = z3
+        w2 = w3
+        z3 = z2+lambda_*(z2-z1)
+        w3 = f(z3)
+
+        if np.abs(z3) < 1e-14:
+            err = np.abs(z3-z2)
+        else:
+            err = np.abs((z3-z2)/z3)
+
+        z = z3
+
+    return z, niter, err
+
 
