@@ -5,12 +5,6 @@
 def main():
     from setuptools import setup
 
-    try:
-        from distutils.command.build_py import build_py_2to3 as build_py
-    except ImportError:
-        # 2.x
-        from distutils.command.build_py import build_py
-
     version_dict = {}
     init_filename = "pytential/version.py"
     exec(compile(open(init_filename, "r").read(), init_filename, "exec"),
@@ -33,8 +27,7 @@ def main():
               'License :: OSI Approved :: MIT License',
               'Natural Language :: English',
               'Programming Language :: Python',
-              # We use conditional expressions, so 2.5 is the bare minimum.
-              'Programming Language :: Python :: 2.5',
+
               'Programming Language :: Python :: 2.6',
               'Programming Language :: Python :: 2.7',
               # 3.x has not yet been tested.
@@ -68,10 +61,7 @@ def main():
               "cgen>=2013.1.2",
 
               "six",
-              ],
-
-          # 2to3 invocation
-          cmdclass={'build_py': build_py})
+              ])
 
 
 if __name__ == '__main__':
