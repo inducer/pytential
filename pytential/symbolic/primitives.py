@@ -1,4 +1,7 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import range
 
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
@@ -309,7 +312,7 @@ class IterativeInverse(Expression):
     def get_hash(self):
         return hash((self.__class__,) + (self.expression,
             self.rhs, self.variable_name,
-            frozenset(self.extra_vars.iteritems()), self.where))
+            frozenset(six.iteritems(self.extra_vars)), self.where))
 
     mapper_method = intern("map_inverse")
 

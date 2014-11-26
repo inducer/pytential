@@ -66,6 +66,8 @@ def main():
               "loo.py>=2013.1beta",
               "sumpy>=2013.1",
               "cgen>=2013.1.2",
+
+              "six",
               ],
 
           # 2to3 invocation

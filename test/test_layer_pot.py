@@ -1,4 +1,6 @@
 from __future__ import division
+from __future__ import absolute_import
+from __future__ import print_function
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -91,7 +93,7 @@ def test_geometry(ctx_getter):
     area = bind(discr, area_sym)(queue)
 
     err = abs(area-2*np.pi)
-    print err
+    print(err)
     assert err < 1e-3
 
 # }}}
@@ -116,8 +118,8 @@ def test_geometry(ctx_getter):
 def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
     logging.basicConfig(level=logging.INFO)
 
-    print "ellipse_aspect: %s, mode_nr: %d, qbx_order: %d" % (
-            ellipse_aspect, mode_nr, qbx_order)
+    print("ellipse_aspect: %s, mode_nr: %d, qbx_order: %d" % (
+            ellipse_aspect, mode_nr, qbx_order))
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
@@ -264,19 +266,19 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
             # }}}
 
-    print "Errors for S:"
-    print s_eoc_rec
+    print("Errors for S:")
+    print(s_eoc_rec)
     required_order = qbx_order + 1
     assert s_eoc_rec.order_estimate() > required_order - 1.5
 
-    print "Errors for D:"
-    print d_eoc_rec
+    print("Errors for D:")
+    print(d_eoc_rec)
     required_order = qbx_order
     assert d_eoc_rec.order_estimate() > required_order - 1.5
 
     if ellipse_aspect == 1:
-        print "Errors for S':"
-        print sp_eoc_rec
+        print("Errors for S':")
+        print(sp_eoc_rec)
         required_order = qbx_order
         assert sp_eoc_rec.order_estimate() > required_order - 1.5
 
@@ -422,7 +424,7 @@ def run_int_eq_test(
             hard_failure=False)
 
     u = gmres_result.solution
-    print "gmres state:", gmres_result.state
+    print("gmres state:", gmres_result.state)
 
     if 0:
         # {{{ build matrix for spectrum check
@@ -473,7 +475,7 @@ def run_int_eq_test(
 
     # }}}
 
-    print "rel_err_2: %g rel_err_inf: %g" % (rel_err_2, rel_err_inf)
+    print("rel_err_2: %g rel_err_inf: %g" % (rel_err_2, rel_err_inf))
 
     # {{{ plotting
 
@@ -613,9 +615,9 @@ def test_integral_equation(
     clear_cache()
 
     from pytools.convergence import EOCRecorder
-    print("curve_name: %s, qbx_order: %d, bc_type: %s, loc_sign: %s, "
+    print(("curve_name: %s, qbx_order: %d, bc_type: %s, loc_sign: %s, "
             "helmholtz_k: %s"
-            % (curve_name, qbx_order, bc_type, loc_sign, k))
+            % (curve_name, qbx_order, bc_type, loc_sign, k)))
 
     eoc_rec = EOCRecorder()
     for nelements in [30, 40, 50]:
@@ -633,7 +635,7 @@ def test_integral_equation(
     else:
         assert False
 
-    print eoc_rec
+    print(eoc_rec)
     assert eoc_rec.order_estimate() > tgt_order - 1.3
 
 # }}}
@@ -759,11 +761,11 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
             pt.show()
 
         l2_error_norm = norm(density_discr, queue, error)
-        print key, l2_error_norm
+        print(key, l2_error_norm)
 
         eoc_rec.add_data_point(1/nelements, l2_error_norm)
 
-    print eoc_rec
+    print(eoc_rec)
     tgt_order = order_table[zero_op_name]
     assert eoc_rec.order_estimate() > tgt_order - 1.3
 

@@ -1,4 +1,7 @@
 from __future__ import division
+from __future__ import absolute_import
+from __future__ import print_function
+from six.moves import range
 
 __copyright__ = "Copyright (C) 2012-2013 Andreas Kloeckner"
 
@@ -108,7 +111,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
     stall_count = 0
     residual_norms = []
 
-    for iteration in xrange(maxiter):
+    for iteration in range(maxiter):
         # restart if required
         if k == restart:
             k = 0
@@ -143,7 +146,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
                                 iteration_count=iteration, success=False,
                                 state=state)
                 else:
-                    print "*** WARNING: non-monotonic residuals in GMRES"
+                    print("*** WARNING: non-monotonic residuals in GMRES")
 
             if stall_iterations and \
                     norm_r > last_resid_norm/no_progress_factor:

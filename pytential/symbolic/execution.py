@@ -1,4 +1,7 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -92,7 +95,7 @@ class EvaluationMapper(EvaluationMapperBase):
 
         scipy_op = bound_op.scipy_op(expr.variable_name, expr.where,
                 **dict((var_name, self.rec(var_expr))
-                    for var_name, var_expr in expr.extra_vars.iteritems()))
+                    for var_name, var_expr in six.iteritems(expr.extra_vars)))
 
         from pytential.gmres import solve_lin_op
         rhs = self.rec(expr.rhs)
@@ -330,7 +333,7 @@ def bind(places, expr, auto_where=None):
 
     places = dict(
             (key, cast_to_place(value))
-            for key, value in places.iteritems())
+            for key, value in six.iteritems(places))
 
     from pytential.symbolic.mappers import (
             ToTargetTagger,
@@ -354,7 +357,7 @@ def bind(places, expr, auto_where=None):
 
     expr = DerivativeBinder()(expr)
 
-    for name, place in places.iteritems():
+    for name, place in six.iteritems(places):
         if isinstance(place, LayerPotentialSource):
             expr = place.preprocess_optemplate(name, places, expr)
 

@@ -1,4 +1,7 @@
 from __future__ import division
+from __future__ import absolute_import
+from __future__ import print_function
+from six.moves import range
 
 __copyright__ = "Copyright (C) 2014 Shidong Jiang, Andreas Kloeckner"
 
@@ -45,7 +48,7 @@ def test_muller(true_roots):
     for r_i in roots:
         min_dist, true_root = min(
             (abs(r_i - root), root) for root in true_roots)
-        print min_dist, true_root
+        print(min_dist, true_root)
         assert min_dist < eps * abs(true_root)
 
 

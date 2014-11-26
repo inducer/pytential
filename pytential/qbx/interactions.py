@@ -1,4 +1,6 @@
 from __future__ import division
+from __future__ import absolute_import
+from six.moves import range
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -91,7 +93,7 @@ class P2QBXLFromCSR(P2EBase):
                 name=self.name, assumptions="ntgt_centers>=1",
                 defines=dict(
                     dim=self.dim,
-                    COEFFIDX=[str(i) for i in xrange(ncoeffs)]
+                    COEFFIDX=[str(i) for i in range(ncoeffs)]
                     ),
                 silenced_warnings="write_race(write_expn*)")
 
@@ -174,8 +176,8 @@ class M2QBXL(E2EBase):
                 name=self.name, assumptions="ncenters>=1",
                 defines=dict(
                     dim=self.dim,
-                    SRC_COEFFIDX=[str(i) for i in xrange(ncoeff_src)],
-                    TGT_COEFFIDX=[str(i) for i in xrange(ncoeff_tgt)],
+                    SRC_COEFFIDX=[str(i) for i in range(ncoeff_src)],
+                    TGT_COEFFIDX=[str(i) for i in range(ncoeff_tgt)],
                     ),
                 silenced_warnings="write_race(write_expn*)")
 
@@ -256,8 +258,8 @@ class L2QBXL(E2EBase):
                 defines=dict(
                     dim=self.dim,
                     nchildren=2**self.dim,
-                    SRC_COEFFIDX=[str(i) for i in xrange(ncoeff_src)],
-                    TGT_COEFFIDX=[str(i) for i in xrange(ncoeff_tgt)],
+                    SRC_COEFFIDX=[str(i) for i in range(ncoeff_src)],
+                    TGT_COEFFIDX=[str(i) for i in range(ncoeff_tgt)],
                     ),
                 silenced_warnings="write_race(write_expn*)")
 
@@ -335,8 +337,8 @@ class QBXL2P(E2PBase):
                 name=self.name, assumptions="nglobal_qbx_centers>=1",
                 defines=dict(
                     dim=self.dim,
-                    COEFFIDX=[str(i) for i in xrange(ncoeffs)],
-                    RESULTIDX=[str(i) for i in xrange(len(result_names))],
+                    COEFFIDX=[str(i) for i in range(ncoeffs)],
+                    RESULTIDX=[str(i) for i in range(len(result_names))],
                     nresults=len(result_names),
                     ),
                 silenced_warnings="write_race(write_result*)")

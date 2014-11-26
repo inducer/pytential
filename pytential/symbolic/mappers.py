@@ -1,4 +1,8 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import range
+from functools import reduce
 
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
@@ -160,7 +164,7 @@ class IdentityMapper(IdentityMapperBase):
                 expr.expression, self.rec(expr.rhs), expr.variable_name,
                 dict([
                     (name, self.rec(name_expr))
-                    for name, name_expr in expr.extra_vars.iteritems()]),
+                    for name, name_expr in six.iteritems(expr.extra_vars)]),
                 expr.where)
 
     def map_int_g(self, expr):
@@ -196,7 +200,7 @@ class CombineMapper(CombineMapperBase):
         from operator import or_
         return self.rec(expr.rhs) | reduce(or_,
                 (self.rec(name_expr)
-                for name_expr in expr.extra_vars.itervalues()),
+                for name_expr in six.itervalues(expr.extra_vars)),
                 set())
 
 
@@ -337,7 +341,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 expr.expression, self.rec(expr.rhs), expr.variable_name,
                 dict([
                     (name, self.rec(name_expr))
-                    for name, name_expr in expr.extra_vars.iteritems()]),
+                    for name, name_expr in six.iteritems(expr.extra_vars)]),
                 where)
 
     def operand_rec(self, expr):
@@ -385,7 +389,7 @@ def _insert_dsource_into_kernel(kernel, dsource, ambient_dim):
     coeffs = _DSourceCoefficientFinder()(dsource)
 
     dir_vec = np.zeros(ambient_dim, np.object)
-    for i in xrange(ambient_dim):
+    for i in range(ambient_dim):
         dir_vec[i] = coeffs.pop(prim.NablaComponent(i, None), 0)
 
     if coeffs:
@@ -409,7 +413,7 @@ class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
         from pytools import single_valued
         return single_valued(
                 discr.ambient_dim
-                for discr in self.discr_dict.itervalues())
+                for discr in six.itervalues(self.discr_dict))
 
     def map_vector_variable(self, expr):
         from pymbolic import make_sym_vector
@@ -438,8 +442,8 @@ class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
                     "evaluate S' in the volume.")
 
         par_grad = np.zeros((discr.ambient_dim, discr.dim), np.object)
-        for i in xrange(discr.ambient_dim):
-            for j in xrange(discr.dim):
+        for i in range(discr.ambient_dim):
+            for j in range(discr.dim):
                 par_grad[i, j] = prim.NumReferenceDerivative(
                         frozenset([j]),
                         prim.NodeCoordinateComponent(i, expr.where),
@@ -454,7 +458,7 @@ class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
         return MultiVector(
                 make_obj_array([
                     prim.NodeCoordinateComponent(i, expr.where)
-                    for i in xrange(discr.ambient_dim)]))
+                    for i in range(discr.ambient_dim)]))
 
     def map_int_g(self, expr):
         from sumpy.kernel import KernelDimensionSetter
@@ -476,7 +480,7 @@ class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
         from pytools.obj_array import make_obj_array
         nabla = MultiVector(make_obj_array(
             [prim.NablaComponent(axis, None)
-                for axis in xrange(ambient_dim)]))
+                for axis in range(ambient_dim)]))
 
         rec_operand = prim.cse(self.rec(expr.density))
         return (dsource*nabla).map(
@@ -614,13 +618,13 @@ class StringifyMapper(BaseStringifyMapper):
                 self.rec(expr.expression, PREC_NONE),
                 self.rec(expr.rhs, PREC_NONE),
                 ", ".join("%s=%s" % (var_name, self.rec(var_expr, PREC_NONE))
-                    for var_name, var_expr in expr.extra_vars.iteritems()))
+                    for var_name, var_expr in six.iteritems(expr.extra_vars)))
 
         from operator import or_
 
         return self.rec(expr.rhs) | reduce(or_,
                 (self.rec(name_expr)
-                for name_expr in expr.extra_vars.itervalues()),
+                for name_expr in six.itervalues(expr.extra_vars)),
                 set())
 
     def map_node_sum(self, expr, enclosing_prec):

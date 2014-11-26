@@ -1,4 +1,8 @@
 from __future__ import division
+from __future__ import absolute_import
+from __future__ import print_function
+from six.moves import range
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -778,7 +782,7 @@ class QBXFMMGeometryData(object):
             centers = make_obj_array([
                 cl.array.empty(self.cl_context, ncenters,
                     self.coord_dtype)
-                for i in xrange(self_discr.ambient_dim)])
+                for i in range(self_discr.ambient_dim)])
 
             ibase = 0
             for el_group in self_discr.groups:
@@ -1386,7 +1390,7 @@ class QBXFMMGeometryData(object):
                                 (ty, centers[1][tcenter]),
                                 ))
 
-            print "found a center for %d/%d targets" % (tccount, checked)
+            print("found a center for %d/%d targets" % (tccount, checked))
 
             # }}}
 

@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import print_function
 import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
@@ -14,6 +16,7 @@ from meshmode.discretization.poly_element import \
 from pytential import bind, sym, norm  # noqa
 
 import logging
+from six.moves import range
 logger = logging.getLogger(__name__)
 
 
@@ -70,8 +73,8 @@ def main():
     K0 = np.sqrt(k0**2-beta**2)
     K1 = np.sqrt(k1**2-beta**2)
 
-    print "K0", K0
-    print "K1", K1
+    print("K0", K0)
+    print("K1", K1)
 
     alpha0 = k0**2/(k0**2-beta**2)
     alpha1 = k1**2/(k1**2-beta**2)
@@ -193,8 +196,8 @@ def main():
     _, (E1_tgt_true,) = pot_p2p_K1(queue, targets_1, sources_1, [strengths_1],
                     out_host=True, K1=K1)
 
-    print "Err E0", la.norm(E0_tgt - E0_tgt_true)/la.norm(E0_tgt_true)
-    print "Err E1", la.norm(E1_tgt - E1_tgt_true)/la.norm(E1_tgt_true)
+    print("Err E0", la.norm(E0_tgt - E0_tgt_true)/la.norm(E0_tgt_true))
+    print("Err E1", la.norm(E1_tgt - E1_tgt_true)/la.norm(E1_tgt_true))
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=300)

@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import print_function
 import numpy as np  # noqa
 import pyopencl as cl
 import pyopencl.array  # noqa
@@ -223,7 +225,7 @@ def main():
             hard_failure=False)
 
     sigma = gmres_result.solution
-    print "gmres state:", gmres_result.state
+    print("gmres state:", gmres_result.state)
 
     # }}}
 
@@ -252,17 +254,17 @@ def main():
         ("rhs", rhs),
         ])
 
-    print "h = %s" % h
-    print "mesh_order = %s" % mesh_order
-    print "vol_quad_order = %s" % vol_quad_order
-    print "vol_ovsmp_quad_order = %s" % vol_ovsmp_quad_order
-    print "bdry_quad_order = %s" % bdry_quad_order
-    print "bdry_ovsmp_quad_order = %s" % bdry_ovsmp_quad_order
-    print "qbx_order = %s" % qbx_order
-    print "vol_qbx_order = %s" % vol_qbx_order
-    print "fmm_order = %s" % fmm_order
-    print
-    print "rel err: %g" % rel_err
+    print("h = %s" % h)
+    print("mesh_order = %s" % mesh_order)
+    print("vol_quad_order = %s" % vol_quad_order)
+    print("vol_ovsmp_quad_order = %s" % vol_ovsmp_quad_order)
+    print("bdry_quad_order = %s" % bdry_quad_order)
+    print("bdry_ovsmp_quad_order = %s" % bdry_ovsmp_quad_order)
+    print("qbx_order = %s" % qbx_order)
+    print("vol_qbx_order = %s" % vol_qbx_order)
+    print("fmm_order = %s" % fmm_order)
+    print()
+    print("rel err: %g" % rel_err)
 
 
 if __name__ == "__main__":

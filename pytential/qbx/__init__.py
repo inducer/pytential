@@ -1,4 +1,6 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -338,7 +340,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         from pytools.obj_array import with_object_array_or_scalar
         for outk in out_kernels:
-            for arg_name, arg_expr in keac(outk).iteritems():
+            for arg_name, arg_expr in six.iteritems(keac(outk)):
                 source_extra_kwargs[arg_name] = \
                         with_object_array_or_scalar(
                                 reorder_sources,
@@ -435,7 +437,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         p2p = None
 
         kernel_args = {}
-        for arg_name, arg_expr in arg_names_to_exprs.iteritems():
+        for arg_name, arg_expr in six.iteritems(arg_names_to_exprs):
             kernel_args[arg_name] = evaluate(arg_expr)
 
         from pymbolic import var

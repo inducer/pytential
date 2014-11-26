@@ -1,4 +1,9 @@
 from __future__ import division
+from __future__ import absolute_import
+from __future__ import print_function
+import six
+from six.moves import zip
+from functools import reduce
 
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
@@ -217,7 +222,7 @@ class LayerPotentialInstruction(Instruction):
         for kernel in self.kernels:
             arg_names_to_exprs.update(keac(kernel))
 
-        for arg_name, arg_expr in arg_names_to_exprs.iteritems():
+        for arg_name, arg_expr in six.iteritems(arg_names_to_exprs):
             arg_expr_lines = strify(arg_expr).split("\n")
             lines.append("  %s = %s" % (
                 arg_name, arg_expr_lines[0]))
@@ -378,7 +383,7 @@ class Code(object):
             if insn is None:
                 try:
                     insn, discardable_vars = self.get_next_step(
-                            frozenset(context.keys()),
+                            frozenset(list(context.keys())),
                             frozenset(done_insns))
 
                 except self.NoInstructionAvailable:
@@ -404,14 +409,14 @@ class Code(object):
                 assert not new_futures
 
         if len(done_insns) < len(self.instructions):
-            print "Unreachable instructions:"
+            print("Unreachable instructions:")
             for insn in set(self.instructions) - done_insns:
-                print "    ", str(insn).replace("\n", "\n     ")
+                print("    ", str(insn).replace("\n", "\n     "))
                 from pymbolic import var
-                print "     missing: ", ", ".join(
+                print("     missing: ", ", ".join(
                         str(s) for s in
                         set(insn.get_dependencies())
-                        - set(var(v) for v in context.iterkeys()))
+                        - set(var(v) for v in six.iterkeys(context))))
 
             raise RuntimeError("not all instructions are reachable"
                     "--did you forget to pass a value for a placeholder?")
