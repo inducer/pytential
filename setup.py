@@ -3,7 +3,7 @@
 
 
 def main():
-    from setuptools import setup
+    from setuptools import setup, find_packages
 
     version_dict = {}
     init_filename = "pytential/version.py"
@@ -39,12 +39,7 @@ def main():
               'Topic :: Utilities',
               ],
 
-          packages=[
-              "pytential",
-              "pytential.qbx",
-              "pytential.symbolic",
-              "pytential.symbolic.pde",
-              ],
+          packages=find_packages(),
 
           install_requires=[
               "pytest>=2.3",
