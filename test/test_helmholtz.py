@@ -41,6 +41,9 @@ from six.moves import range
 
 from pytential import bind, sym, norm  # noqa
 
+from pyopencl.tools import (  # noqa
+        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+
 import logging
 logger = logging.getLogger(__name__)
 
