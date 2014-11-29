@@ -1,10 +1,35 @@
-from __future__ import absolute_import
-from __future__ import print_function
+from __future__ import division, absolute_import, print_function
+
+__copyright__ = "Copyright (C) 2014 Shidong Jiang, Andreas Kloeckner"
+
+__license__ = """
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
+
+
 import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
+
+import pytest
 
 from pytools.obj_array import make_obj_array
 
@@ -12,30 +37,23 @@ from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
 
+from six.moves import range
 
 from pytential import bind, sym, norm  # noqa
 
 import logging
-from six.moves import range
 logger = logging.getLogger(__name__)
 
 
-nelements = 50
-mesh_order = 10
-bdry_quad_order = 10
-bdry_ovsmp_quad_order = 4*bdry_quad_order
-qbx_order = 4
-fmm_order = False
-k0 = 3
-k1 = 2.9
+def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
+        k0=3, k1=2.9, mesh_order=10,
+        bdry_quad_order=None, bdry_ovsmp_quad_order=None,
+        fmm_order=False, visualize=False):
 
-
-def main():
-    import logging
-    logging.basicConfig(level=logging.INFO)
-
-    cl_ctx = cl.create_some_context()
-    queue = cl.CommandQueue(cl_ctx)
+    if bdry_quad_order is None:
+        bdry_quad_order = mesh_order
+    if bdry_ovsmp_quad_order is None:
+        bdry_ovsmp_quad_order = 4*bdry_quad_order
 
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
@@ -196,34 +214,76 @@ def main():
     _, (E1_tgt_true,) = pot_p2p_K1(queue, targets_1, sources_1, [strengths_1],
                     out_host=True, K1=K1)
 
-    print("Err E0", la.norm(E0_tgt - E0_tgt_true)/la.norm(E0_tgt_true))
-    print("Err E1", la.norm(E1_tgt - E1_tgt_true)/la.norm(E1_tgt_true))
+    err_E0 = la.norm(E0_tgt - E0_tgt_true)/la.norm(E0_tgt_true)
+    err_E1 = la.norm(E1_tgt - E1_tgt_true)/la.norm(E1_tgt_true)
 
-    from sumpy.visualization import FieldPlotter
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=300)
-    from pytential.target import PointsTarget
-    fld0 = bind(
-            (qbx, PointsTarget(fplot.points)),
-            representation0_sym)(queue, unknown=unknown, K0=K0).get()
-    fld1 = bind(
-            (qbx, PointsTarget(fplot.points)),
-            representation1_sym)(queue, unknown=unknown, K1=K1).get()
-    _, (fld0_true,) = pot_p2p_K0(queue, fplot.points, sources_0, [strengths_0],
-                    out_host=True, K0=K0)
-    _, (fld1_true,) = pot_p2p_K1(queue, fplot.points, sources_1, [strengths_1],
-                    out_host=True, K1=K1)
+    print("Err E0", err_E0)
+    print("Err E1", err_E1)
 
-    #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-    fplot.write_vtk_file(
-            "potential.vts",
-            [
-                ("fld0", fld0),
-                ("fld1", fld1),
-                ("fld0_true", fld0_true),
-                ("fld1_true", fld1_true),
-                ]
-            )
+    if visualize:
+        from sumpy.visualization import FieldPlotter
+        fplot = FieldPlotter(np.zeros(2), extent=5, npoints=300)
+        from pytential.target import PointsTarget
+        fld0 = bind(
+                (qbx, PointsTarget(fplot.points)),
+                representation0_sym)(queue, unknown=unknown, K0=K0).get()
+        fld1 = bind(
+                (qbx, PointsTarget(fplot.points)),
+                representation1_sym)(queue, unknown=unknown, K1=K1).get()
+        _, (fld0_true,) = pot_p2p_K0(queue, fplot.points, sources_0, [strengths_0],
+                        out_host=True, K0=K0)
+        _, (fld1_true,) = pot_p2p_K1(queue, fplot.points, sources_1, [strengths_1],
+                        out_host=True, K1=K1)
 
+        #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+        fplot.write_vtk_file(
+                "potential.vts",
+                [
+                    ("fld0", fld0),
+                    ("fld1", fld1),
+                    ("fld0_true", fld0_true),
+                    ("fld1_true", fld1_true),
+                    ]
+                )
+
+    return err_E0, err_E1
+
+
+@pytest.mark.parametrize("qbx_order", [4])
+def test_dielectric(ctx_getter, qbx_order, visualize=False):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    import logging
+    logging.basicConfig(level=logging.INFO)
+
+    from pytools.convergence import EOCRecorder
+    eoc_rec = EOCRecorder()
+
+    for nelements in [30, 50, 70]:
+        # prevent cache 'splosion
+        from sympy.core.cache import clear_cache
+        clear_cache()
+
+        errs = run_dielectric_test(
+                cl_ctx, queue,
+                nelements=nelements, qbx_order=qbx_order)
+
+        eoc_rec.add_data_point(1/nelements, la.norm(list(errs)))
+
+    print(eoc_rec)
+    assert eoc_rec.order_estimate() > qbx_order - 0.5
+
+
+# You can test individual routines by typing
+# $ python test_layer_pot.py 'test_routine()'
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1:
+        exec(sys.argv[1])
+    else:
+        from py.test.cmdline import main
+        main([__file__])
+
+# vim: fdm=marker
