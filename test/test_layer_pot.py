@@ -1,6 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from __future__ import print_function
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -546,7 +544,7 @@ def run_int_eq_test(
 
         # total field
         #fplot.show_scalar_in_matplotlib(
-                #fld_from_src.real+fld_from_bdry.real, max_val=0.1)
+        #fld_from_src.real+fld_from_bdry.real, max_val=0.1)
 
         #pt.colorbar()
 
