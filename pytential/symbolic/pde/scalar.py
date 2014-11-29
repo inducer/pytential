@@ -509,8 +509,6 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
     def representation_inner(self, unknown):
         """
         :return: an object array of two axes ``[field_kind, i_domain]``
-            axes corresponding to :attr:`field_kinds`
-            in domain *i_domain*.
         """
 
         unk = self._structured_unknown(unknown)
@@ -561,7 +559,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                             potential_op = sym.normal_derivative(
                                     potential_op,
                                     self.domains[term.i_domain])
-                        elif term.direction == self.dir_normal:
+                        elif term.direction == self.dir_tangential:
                             # FIXME TANGENT
                             raise NotImplementedError("tangential derivative")
                         else:
