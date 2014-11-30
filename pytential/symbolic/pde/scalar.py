@@ -1,6 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from six.moves import range
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
@@ -29,7 +27,14 @@ __doc__ = """
 .. autoclass:: L2WeightedPDEOperator
 .. autoclass:: DirichletOperator
 .. autoclass:: NeumannOperator
+
+2D Dielectric
+^^^^^^^^^^^^^
+
 .. autoclass:: Dielectric2DBoundaryOperatorBase
+.. autoclass:: TEDielectric2DBoundaryOperator
+.. autoclass:: TMDielectric2DBoundaryOperator
+.. autoclass:: TEMDielectric2DBoundaryOperator
 """
 
 
@@ -41,6 +46,7 @@ from pytential.symbolic.primitives import (
         sqrt_jac_q_weight, QWeight, area_element)
 import numpy as np
 from collections import namedtuple
+from six.moves import range
 
 
 # {{{ L^2 weighting
@@ -244,13 +250,22 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
         \left[ \frac{k_0}{k^2-\beta^2} \partial_{\hat n}E\right] = 0
         \quad\text{on $\partial \Omega_i$}
 
+    :math:`E` and :math:`H` are assumed to be of the form
+
+    .. math::
+
+        E(x,y,z,t)=E(x,y)e^{i(\beta z-\omega t)
+        H(x,y,z,t)=H(x,y)e^{i(\beta z-\omega t)
+
     where :math:`[\cdot]` denotes the jump across an interface, and :math:`k`
     (without an index) denotes the value of :math:`k` on either side of the
     interface, for the purpose of computing the jump. :math:`\hat n` denotes
     the unit normal of the interface.
 
+    .. automethod:: make_unknown
     .. automethod:: representation_outer
     .. automethod:: representation_inner
+    .. automethod:: operator
     """
 
     pot_kind_S = 0
@@ -269,6 +284,10 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
     side_in = 0
     side_out = 1
     sides = [side_in, side_out]
+    side_to_sign = {
+            side_in: -1,
+            side_out: 1,
+            }
 
     dir_none = 0
     dir_normal = 1
@@ -287,7 +306,11 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
         :attr k_inner_names: a tuple of variable names of the Helmholtz
             parameter *k*, to be used inside each part of the source geometry.
             ``len(k_values)`` must equal ``len(domains)``.
+        :attr beta: The wave number in the :math:`z` direction.
         """
+
+        super(Dielectric2DBoundaryOperatorBase, self).__init__(
+                use_l2_weighting=use_l2_weighting)
 
         self.domains = domains
 
@@ -306,13 +329,19 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
         k_outer = sym.var(k_outer_name)
         k_inner = [sym.var(k_inner_name) for k_inner_name in k_inner_names]
 
+        from sumpy.kernel import HelmholtzKernel
+        self.kernel_outer = HelmholtzKernel(2, helmholtz_k_name="K0")
+        self.kernel_inner = [
+                ]
+        kernel_K1 = HelmholtzKernel(2, helmholtz_k_name="K1")
+
         # {{{ build bc list
 
         # list of tuples, where each tuple consists of BCTermDescriptor instances
 
-        bcs = []
+        all_bcs = []
         for i_domain in range(len(self.domains)):
-            bcs += [
+            all_bcs += [
                     (  # [E] = 0
                         self.BCTermDescriptor(
                             i_domain=i_domain,
@@ -362,7 +391,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                     ]
 
         self.bcs = []
-        for bc in self.bcs:
+        for bc in all_bcs:
             any_significant_e = any(
                     term.field_kind == fk_e
                     and term.direction in [dir_normal, dir_none]
@@ -379,9 +408,9 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
             if is_necessary:
                 self.bcs.append(bc)
 
-        assert (len(self.bcs)
-                * (int(self.e_enabled) + int(self.h_enabled))
-                == len(bcs))
+        assert (len(all_bcs)
+                * (int(self.e_enabled) + int(self.h_enabled)) // 2
+                == len(self.bcs))
 
         # }}}
 
@@ -407,8 +436,8 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
 
         self.density_coeffs = np.zeros(
                 (len(self.pot_kinds), len(self.field_kinds),
-                    len(domains), len(self.sides))
-                )
+                    len(domains), len(self.sides)),
+                dtype=np.object)
         for field_kind in self.field_kinds:
             for i_domain in range(len(self.domains)):
                 self.density_coeffs[
@@ -440,7 +469,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
     def make_unknown(self, name):
         num_densities = (
                 2
-                * (int(self.te_enabled) + int(self.tm_enabled))
+                * (int(self.e_enabled) + int(self.h_enabled))
                 * len(self.domains))
 
         assert num_densities == len(self.bcs)
@@ -541,6 +570,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
 
                     for side in self.sides:
                         density = unk[pot_kind, term.field_kind, term.i_domain]
+                        side_sign = self.side_to_sign[side]
 
                         if side == self.side_in:
                             kernel = self.kernels[term.i_domain]
@@ -554,18 +584,31 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         potential_op = potential_op(kernel, density)
 
                         if term.direction == self.dir_none:
-                            pass
+                            if potential_op is sym.S:
+                                pass
+                            elif potential_op is sym.D:
+                                potential_op += (side_sign*0.5) * density
+                            else:
+                                assert False
                         elif term.direction == self.dir_normal:
+                            orig_potential_op = potential_op
+
                             potential_op = sym.normal_derivative(
                                     potential_op,
                                     self.domains[term.i_domain])
+
+                            if orig_potential_op is sym.S:
+                                # S'
+                                potential_op += (-side_sign*0.5) * density
+                            elif orig_potential_op is sym.D:
+                                pass
+                            else:
+                                assert False
                         elif term.direction == self.dir_tangential:
-                            # FIXME TANGENT
+                            # FIXME
                             raise NotImplementedError("tangential derivative")
                         else:
                             raise ValueError("invalid direction")
-
-                        # FIXME: ADD JUMP TERMS
 
                         contrib = (
                                 bc_coeff
@@ -580,6 +623,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         else:
                             op += contrib
 
+            print(hypersingular_op)
             # FIXME: Check that hypersingular_op disappears
             result.append(op)
 
