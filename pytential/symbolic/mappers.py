@@ -73,7 +73,7 @@ class ExpressionKernelIdentityMapper(KernelIdentityMapperBase):
     def map_directional_target_derivative(self, kernel):
         return type(kernel)(
                 self.rec(kernel.inner_kernel), kernel.dir_vec_name,
-                self.expr_map(kernel.dir_vec_data))
+                self.expr_map(kernel.dir_vec_expression))
 
     map_directional_source_derivative = map_directional_target_derivative
 
@@ -96,36 +96,8 @@ class ExpressionKernelCombineMapper(KernelCombineMapperBase):
         return set()
 
     def map_directional_target_derivative(self, kernel):
-        return self.expr_map(kernel.dir_vec_data) | self.rec(kernel.inner_kernel)
-
-    map_directional_source_derivative = map_directional_target_derivative
-
-
-class KernelEvalArgumentCollector(KernelCombineMapperBase):
-    """Collect a mapping (:class:`dict`) from expression names
-    to expressions for their value. These arguments are mostly used
-    for direction vectors in kernels.
-    """
-
-    def combine(self, dicts):
-        result = {}
-        for d in dicts:
-            result.update(d)
-        return result
-
-    def map_laplace_kernel(self, kernel):
-        return {}
-
-    def map_helmholtz_kernel(self, kernel):
-        return {}
-
-    def map_one_kernel(self, kernel):
-        return {}
-
-    def map_directional_target_derivative(self, kernel):
-        result = {kernel.dir_vec_name: kernel.dir_vec_data}
-        result.update(self.rec(kernel.inner_kernel))
-        return result
+        return (self.expr_map(kernel.dir_vec_expression)
+                | self.rec(kernel.inner_kernel))
 
     map_directional_source_derivative = map_directional_target_derivative
 
@@ -379,7 +351,7 @@ def _insert_dir_vec_into_kernel(kernel, dir_vec):
     from sumpy.kernel import DirectionalSourceDerivative
 
     if kernel.get_base_kernel() is kernel:
-        return DirectionalSourceDerivative(kernel, dir_vec_data=dir_vec)
+        return DirectionalSourceDerivative(kernel, dir_vec_expression=dir_vec)
     else:
         return kernel.replace_inner_kernel(
                 _insert_dsource_into_kernel(kernel.kernel, dir_vec))

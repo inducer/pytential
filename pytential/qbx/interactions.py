@@ -41,7 +41,7 @@ class P2QBXLFromCSR(P2EBase):
     def get_kernel(self):
         ncoeffs = len(self.expansion)
 
-        from sumpy.tools import gather_source_arguments
+        from sumpy.tools import gather_loopy_source_arguments
         arguments = (
                 [
                     lp.GlobalArg("sources", None, shape=(self.dim, "nsources"),
@@ -60,7 +60,7 @@ class P2QBXLFromCSR(P2EBase):
                     lp.ValueArg("ncenters", np.int32),
                     lp.ValueArg("nsources", np.int32),
                     "..."
-                ] + gather_source_arguments([self.expansion]))
+                ] + gather_loopy_source_arguments([self.expansion]))
 
         loopy_knl = lp.make_kernel(
                 [
@@ -130,7 +130,7 @@ class M2QBXL(E2EBase):
         ncoeff_src = len(self.src_expansion)
         ncoeff_tgt = len(self.tgt_expansion)
 
-        from sumpy.tools import gather_arguments
+        from sumpy.tools import gather_loopy_arguments
         loopy_knl = lp.make_kernel(
                 [
                     "{[icenter]: 0<=icenter<ncenters}",
@@ -172,7 +172,7 @@ class M2QBXL(E2EBase):
                     lp.GlobalArg("qbx_expansions", None,
                         shape=("ncenters", ncoeff_tgt)),
                     "..."
-                ] + gather_arguments([self.src_expansion, self.tgt_expansion]),
+                ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name, assumptions="ncenters>=1",
                 defines=dict(
                     dim=self.dim,
@@ -212,7 +212,7 @@ class L2QBXL(E2EBase):
         ncoeff_src = len(self.src_expansion)
         ncoeff_tgt = len(self.tgt_expansion)
 
-        from sumpy.tools import gather_arguments
+        from sumpy.tools import gather_loopy_arguments
         loopy_knl = lp.make_kernel(
                 [
                     "{[icenter]: 0<=icenter<ncenters}",
@@ -253,7 +253,7 @@ class L2QBXL(E2EBase):
                     lp.GlobalArg("expansions", None,
                         shape=("nboxes", ncoeff_src)),
                     "..."
-                ] + gather_arguments([self.src_expansion, self.tgt_expansion]),
+                ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name, assumptions="ncenters>=1",
                 defines=dict(
                     dim=self.dim,
@@ -333,7 +333,7 @@ class QBXL2P(E2PBase):
                         dim_tags="sep,C"),
                     lp.ValueArg("ncenters,ntargets", np.int32),
                     "..."
-                ] + self.expansion.get_args(),
+                ] + [arg.loopy_arg for arg in self.expansion.get_args()],
                 name=self.name, assumptions="nglobal_qbx_centers>=1",
                 defines=dict(
                     dim=self.dim,

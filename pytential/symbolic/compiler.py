@@ -1,9 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from __future__ import print_function
-import six
-from six.moves import zip
-from functools import reduce
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
@@ -31,6 +26,9 @@ THE SOFTWARE.
 from pytools import Record, memoize_method
 from pymbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper
+import six
+from six.moves import zip
+from functools import reduce
 
 
 # {{{ instructions ------------------------------------------------------------
@@ -169,19 +167,18 @@ class LayerPotentialInstruction(Instruction):
 
         result = dep_mapper(self.density)
 
-        from pytential.symbolic.mappers import (
-                ExpressionKernelCombineMapper, KernelEvalArgumentCollector)
+        from sumpy.tools import gather_arguments, gather_source_arguments
+        for arg in (
+                gather_arguments(self.kernels)
+                +
+                gather_source_arguments(self.kernels)):
+            result.update(dep_mapper(arg.expression))
+
+        from pytential.symbolic.mappers import ExpressionKernelCombineMapper
         ekdm = ExpressionKernelCombineMapper(dep_mapper)
-        keac = KernelEvalArgumentCollector()
-
-        from pymbolic import var
         for kernel in self.kernels:
-            result.update(var(arg.name) for arg in kernel.get_args())
+            print("KERNEL DEP MAPPER SAID:", ekdm(kernel))
             result.update(ekdm(kernel))
-
-            for karg in keac(kernel):
-                if var(karg) in result:
-                    result.remove(var(karg))
 
         return result
 

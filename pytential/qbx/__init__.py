@@ -314,16 +314,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         else:
             value_dtype = self.real_dtype
 
-        # {{{ build extra_kwargs dictionary
+        # {{{ build extra_kwargs dictionaries
 
         # This contains things like the Helmholtz parameter k or
         # the normal directions for double layers.
-
-        from sumpy.tools import gather_arguments
-        from pymbolic import var
-        kernel_extra_kwargs = dict(
-                (arg.name, evaluate(var(arg.name)))
-                for arg in gather_arguments([base_kernel]))
 
         def reorder_sources(source_array):
             if isinstance(source_array, cl.array.Array):
@@ -334,17 +328,19 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             else:
                 return source_array
 
-        from pytential.symbolic.mappers import KernelEvalArgumentCollector
-        keac = KernelEvalArgumentCollector()
+        kernel_extra_kwargs = {}
         source_extra_kwargs = {}
 
+        from sumpy.tools import gather_arguments, gather_source_arguments
         from pytools.obj_array import with_object_array_or_scalar
-        for outk in out_kernels:
-            for arg_name, arg_expr in six.iteritems(keac(outk)):
-                source_extra_kwargs[arg_name] = \
-                        with_object_array_or_scalar(
-                                reorder_sources,
-                                evaluate(arg_expr))
+        for func, var_dict in [
+                (gather_arguments, kernel_extra_kwargs),
+                (gather_source_arguments, source_extra_kwargs),
+                ]:
+            for arg in func(out_kernels):
+                var_dict[arg.name] = with_object_array_or_scalar(
+                        reorder_sources,
+                        evaluate(arg.expression))
 
         # }}}
 
@@ -407,11 +403,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                         for knl in kernels],
                     value_dtypes=value_dtype)
 
-        from pytential.symbolic.mappers import KernelEvalArgumentCollector
-        keac = KernelEvalArgumentCollector()
         arg_names_to_exprs = {}
         for k in kernels:
-            arg_names_to_exprs.update(keac(k))
+            for arg in k.get_args():
+                arg_names_to_exprs[arg.name] = arg.expression
+            for arg in k.get_source_args():
+                arg_names_to_exprs[arg.name] = arg.expression
 
         return lpot_applier, arg_names_to_exprs
 
