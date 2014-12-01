@@ -87,8 +87,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     unkwown = sym.make_sym_vector("unknown", 2)
     sigma_sym = unkwown[0]
     mu_sym = unkwown[1]
-    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w_sym)
-    inv_sqrt_w_mu = cse(mu_sym/sqrt_w_sym)
+    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w_sym, "dens_S_E_0")
+    inv_sqrt_w_mu = cse(mu_sym/sqrt_w_sym, "dens_D_E_0")
 
     beta = 2.5
     K0 = np.sqrt(k0**2-beta**2)
@@ -106,6 +106,18 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     coeff_0_D = alpha1
     coeff_1_D = alpha0
 
+    from pytential.symbolic.pde.scalar import TMDielectric2DBoundaryOperator
+    pde_op = TMDielectric2DBoundaryOperator(
+            k_vacuum=1,
+            interfaces=((0, 1, sym.DEFAULT_SOURCE),),
+            domain_k_exprs=(k0, k1),
+            beta=beta)
+
+    op_unknown_sym = pde_op.make_unknown("unknown")
+    bop2 = pde_op.operator(op_unknown_sym)
+
+    print(sym.pretty(bop2))
+
     bdry_op_sym = make_obj_array([
         (-0.5*(alpha0*coeff_0_S+alpha1*coeff_1_S)*sigma_sym
             + sqrt_w_sym*(
@@ -122,8 +134,28 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
                 - coeff_1_D*sym.D(kernel_K1, inv_sqrt_w_mu)
                 ))
         ])
-    #print sym.pretty(bdry_op_sym)
-    #1/0
+    print(sym.pretty(bdry_op_sym))
+    print("--------------")
+    print("--------------")
+    print("--------------")
+    representation0_sym_old = (
+            coeff_0_S*sym.S(kernel_K0, inv_sqrt_w_sigma)
+            + coeff_0_D*sym.D(kernel_K0, inv_sqrt_w_mu))
+    representation0_sym = pde_op.representation(op_unknown_sym, 0)
+    print(sym.pretty(representation0_sym_old))
+    print("--------------")
+    print(sym.pretty(representation0_sym))
+    print("--------------")
+    print("--------------")
+    print("--------------")
+
+    representation1_sym_old = (
+            coeff_1_S*sym.S(kernel_K1, inv_sqrt_w_sigma)
+            + coeff_1_D*sym.D(kernel_K1, inv_sqrt_w_mu))
+    representation1_sym = pde_op.representation(op_unknown_sym, 1)
+    print(sym.pretty(representation1_sym_old))
+    print("--------------")
+    print(sym.pretty(representation1_sym))
 
     from pytential.qbx import QBXLayerPotentialSource
     qbx = QBXLayerPotentialSource(
@@ -131,7 +163,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             fmm_order=fmm_order
             )
 
-    bound_op = bind(qbx, bdry_op_sym)
+    #bound_op = bind(qbx, bdry_op_sym)
+    bound_pde_op = bind(qbx, pde_op.operator(op_unknown_sym))
 
     sources_0 = make_obj_array(list(np.array([
         [0.1, 0.2]
@@ -171,14 +204,28 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
     sqrt_w = bind(density_discr, sqrt_w_sym)(queue)
 
-    bvp_rhs = make_obj_array([
-        sqrt_w*(alpha0 * E0_dntarget - alpha1 * E1_dntarget),
-        sqrt_w*(E0 - E1)
-        ])
+    bvp_rhs = np.zeros(len(pde_op.bcs), dtype=np.object)
+    for i_bc, terms in enumerate(pde_op.bcs):
+        for term in terms:
+            assert term.i_interface == 0
+            assert term.field_kind == pde_op.field_kind_e
+
+            if term.direction == pde_op.dir_none:
+                bvp_rhs[i_bc] += (
+                        term.coeff_outer * E0
+                        + term.coeff_inner * E1)
+            elif term.direction == pde_op.dir_normal:
+                bvp_rhs[i_bc] += (
+                        term.coeff_outer * E0_dntarget
+                        + term.coeff_inner * E1_dntarget)
+            else:
+                raise NotImplementedError("direction spec in RHS")
+
+        bvp_rhs[i_bc] *= sqrt_w
 
     from pytential.gmres import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "unknown",
+            bound_pde_op.scipy_op(queue, "unknown",
                 domains=[sym.DEFAULT_TARGET]*2, K0=K0, K1=K1),
             bvp_rhs, tol=1e-14, progress=True,
             hard_failure=True)
@@ -186,14 +233,6 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     # }}}
 
     unknown = gmres_result.solution
-
-    representation0_sym = (
-            coeff_0_S*sym.S(kernel_K0, inv_sqrt_w_sigma)
-            + coeff_0_D*sym.D(kernel_K0, inv_sqrt_w_mu))
-
-    representation1_sym = (
-            coeff_1_S*sym.S(kernel_K1, inv_sqrt_w_sigma)
-            + coeff_1_D*sym.D(kernel_K1, inv_sqrt_w_mu))
 
     targets_0 = make_obj_array(list(np.array([
         [3.2 + t, -4]

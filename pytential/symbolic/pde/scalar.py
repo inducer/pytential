@@ -277,7 +277,6 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
             }
 
     field_kind_e = 0
-    field_kind_e = 0
     field_kind_h = 1
     field_kinds = [field_kind_e, field_kind_h]
 
@@ -294,25 +293,33 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
     dir_tangential = 2
 
     BCTermDescriptor = namedtuple("BCDescriptor",
-            "i_domain direction field_kind coeff_inner coeff_outer".split())
+            "i_interface direction field_kind coeff_inner coeff_outer".split())
 
-    def __init__(self, domains,
-            k_vacuum_name, k_outer_name, k_inner_names, beta_name,
-            use_l2_weighting=True):
+    def __init__(self, k_vacuum, domain_k_exprs, beta,
+            interfaces, use_l2_weighting=True):
         """
-        :attr domains: a tuple of source geometry identifiers
-        :attr k_outer_name: a variable name for the Helmholtz parameter *k*
-            to be used on the exterior domain.
-        :attr k_inner_names: a tuple of variable names of the Helmholtz
+        :attr k_vacuum: A symbolic expression for the wave number in vacuum.
+            May be a string, which will be interpreted as a variable name.
+        :attr interfaces: a tuple of tuples
+            ``(outer_domain, inner_domain, interface_id)``,
+            where *outer_domain* and *inner_domain* are indices into
+            *domain_k_names*,
+            and *interface_id* is a symbolic name for the discretization of the
+            interface. 'outer' designates the side of the interface to which
+            the normal points.
+        :attr domain_k_exprs: a tuple of variable names of the Helmholtz
             parameter *k*, to be used inside each part of the source geometry.
-            ``len(k_values)`` must equal ``len(domains)``.
-        :attr beta: The wave number in the :math:`z` direction.
+            May also be a tuple of strings, which will be transformed into
+            variable references of the corresponding names.
+        :attr beta: A symbolic expression for the wave number in the :math:`z`
+            direction. May be a string, which will be interpreted as a variable
+            name.
         """
 
         super(Dielectric2DBoundaryOperatorBase, self).__init__(
                 use_l2_weighting=use_l2_weighting)
 
-        self.domains = domains
+        self.interfaces = interfaces
 
         fk_e = self.field_kind_e
         fk_h = self.field_kind_h
@@ -324,27 +331,49 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
         dir_normal = self.dir_normal
         dir_tangential = self.dir_tangential
 
-        beta = sym.var(beta_name)
-        k_vacuum = sym.var(k_vacuum_name)
-        k_outer = sym.var(k_outer_name)
-        k_inner = [sym.var(k_inner_name) for k_inner_name in k_inner_names]
+        if isinstance(beta, str):
+            beta = sym.var(beta)
+
+        if isinstance(k_vacuum, str):
+            k_vacuum = sym.var(k_vacuum)
+
+        self.domain_k_exprs = [
+                sym.var(k_expr)
+                if isinstance(k_expr, str)
+                else k_expr
+                for k_expr in domain_k_exprs]
+        del domain_k_exprs
+
+        # Note the case of k/K!
+        # "K" is the 2D Helmholtz parameter.
+        # "k" is the 3D Helmholtz parameter.
+
+        self.domain_K_exprs = [
+                sym.cse((k_expr**2-beta**2)**0.5, "K%d" % i)
+                for i, k_expr in enumerate(self.domain_k_exprs)]
 
         from sumpy.kernel import HelmholtzKernel
-        self.kernel_outer = HelmholtzKernel(2, helmholtz_k_name="K0")
-        self.kernel_inner = [
-                ]
-        kernel_K1 = HelmholtzKernel(2, helmholtz_k_name="K1")
+        self.domain_kernels = [
+                HelmholtzKernel(
+                    2,
+                    helmholtz_k_name="K%d" % i,
+                    helmholtz_k_expression=K_expr)
+                for i, K_expr in enumerate(self.domain_K_exprs)]
 
         # {{{ build bc list
 
         # list of tuples, where each tuple consists of BCTermDescriptor instances
 
         all_bcs = []
-        for i_domain in range(len(self.domains)):
+        for i_interface, (outer_domain, inner_domain, _) in (
+                enumerate(self.interfaces)):
+            k_outer = self.domain_k_exprs[outer_domain]
+            k_inner = self.domain_k_exprs[inner_domain]
+
             all_bcs += [
                     (  # [E] = 0
                         self.BCTermDescriptor(
-                            i_domain=i_domain,
+                            i_interface=i_interface,
                             direction=dir_none,
                             field_kind=fk_e,
                             coeff_outer=1,
@@ -352,7 +381,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         ),
                     (  # [H] = 0
                         self.BCTermDescriptor(
-                            i_domain=i_domain,
+                            i_interface=i_interface,
                             direction=dir_none,
                             field_kind=fk_h,
                             coeff_outer=1,
@@ -360,35 +389,39 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         ),
                     (
                         self.BCTermDescriptor(
-                            i_domain=i_domain,
+                            i_interface=i_interface,
                             direction=dir_tangential,
                             field_kind=fk_e,
                             coeff_outer=beta/(k_outer**2-beta**2),
-                            coeff_inner=-beta/(k_inner[i_domain]**2-beta**2)),
+                            coeff_inner=-beta/(k_inner**2-beta**2)),
                         self.BCTermDescriptor(
-                            i_domain=i_domain,
+                            i_interface=i_interface,
                             direction=dir_normal,
                             field_kind=fk_h,
-                            coeff_outer=-k_vacuum/(k_outer**2-beta**2),
-                            coeff_inner=k_vacuum/(k_inner[i_domain]**2-beta**2)),
+                            coeff_outer=sym.cse(-k_vacuum/(k_outer**2-beta**2)),
+                            coeff_inner=sym.cse(k_vacuum/(k_inner**2-beta**2))),
                         ),
                     (
                         self.BCTermDescriptor(
-                            i_domain=i_domain,
+                            i_interface=i_interface,
                             direction=dir_tangential,
                             field_kind=fk_h,
                             coeff_outer=beta/(k_outer**2-beta**2),
-                            coeff_inner=-beta/(k_inner[i_domain]**2-beta**2)),
+                            coeff_inner=-beta/(k_inner**2-beta**2)),
                         self.BCTermDescriptor(
-                            i_domain=i_domain,
+                            i_interface=i_interface,
                             direction=dir_normal,
                             field_kind=fk_e,
-                            coeff_outer=(k_outer**2/k_vacuum)/(k_outer**2-beta**2),
-                            coeff_inner=(
-                                -(k_inner[i_domain]**2/k_vacuum)
-                                / (k_inner[i_domain]**2-beta**2)))
+                            coeff_outer=sym.cse(
+                                (k_outer**2/k_vacuum)/(k_outer**2-beta**2)),
+                            coeff_inner=sym.cse(
+                                -(k_inner**2/k_vacuum)
+                                / (k_inner**2-beta**2)))
                         ),
                     ]
+
+            del k_outer
+            del k_inner
 
         self.bcs = []
         for bc in all_bcs:
@@ -401,26 +434,35 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                     and term.direction in [dir_normal, dir_none]
                     for term in bc)
             is_necessary = (
-                    (self.e_enabled and any_significant_e)
+                    (self.ez_enabled and any_significant_e)
                     or
-                    (self.h_enabled and any_significant_h))
+                    (self.hz_enabled and any_significant_h))
+
+            # Only keep tangential modes for TEM. Otherwise,
+            # no jump in H already implies jump condition on
+            # tangential derivative.
+            terms = tuple(
+                    term
+                    for term in bc
+                    if term.direction != dir_tangential
+                    or (self.ez_enabled and self.hz_enabled))
 
             if is_necessary:
-                self.bcs.append(bc)
+                self.bcs.append(terms)
 
         assert (len(all_bcs)
-                * (int(self.e_enabled) + int(self.h_enabled)) // 2
+                * (int(self.ez_enabled) + int(self.hz_enabled)) // 2
                 == len(self.bcs))
 
         # }}}
 
-        def find_normal_derivative_bc_coeff(field_kind, i_domain, side):
+        def find_normal_derivative_bc_coeff(field_kind, i_interface, side):
             result = 0
             for bc in self.bcs:
                 for term in bc:
                     if term.field_kind != field_kind:
                         continue
-                    if term.i_domain != i_domain:
+                    if term.i_interface != i_interface:
                         continue
                     if term.direction != dir_normal:
                         continue
@@ -436,14 +478,14 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
 
         self.density_coeffs = np.zeros(
                 (len(self.pot_kinds), len(self.field_kinds),
-                    len(domains), len(self.sides)),
+                    len(self.interfaces), len(self.sides)),
                 dtype=np.object)
         for field_kind in self.field_kinds:
-            for i_domain in range(len(self.domains)):
+            for i_interface in range(len(self.interfaces)):
                 self.density_coeffs[
-                        self.pot_kind_S, field_kind, i_domain, side_in] = 1
+                        self.pot_kind_S, field_kind, i_interface, side_in] = 1
                 self.density_coeffs[
-                        self.pot_kind_S, field_kind, i_domain, side_out] = 1
+                        self.pot_kind_S, field_kind, i_interface, side_out] = 1
 
                 # These need to satisfy
                 #
@@ -455,49 +497,47 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                 # (because dn D is hypersingular, which we'd like to cancel out)
 
                 dens_coeff_D_in = find_normal_derivative_bc_coeff(
-                        field_kind, i_domain, side_out)
+                        field_kind, i_interface, side_out)
                 dens_coeff_D_out = - find_normal_derivative_bc_coeff(
-                        field_kind, i_domain, side_in)
+                        field_kind, i_interface, side_in)
 
                 self.density_coeffs[
-                        self.pot_kind_D, field_kind, i_domain, side_in] \
+                        self.pot_kind_D, field_kind, i_interface, side_in] \
                                 = dens_coeff_D_in
                 self.density_coeffs[
-                        self.pot_kind_D, field_kind, i_domain, side_in] \
+                        self.pot_kind_D, field_kind, i_interface, side_out] \
                                 = dens_coeff_D_out
 
     def make_unknown(self, name):
         num_densities = (
                 2
-                * (int(self.e_enabled) + int(self.h_enabled))
-                * len(self.domains))
+                * (int(self.ez_enabled) + int(self.hz_enabled))
+                * len(self.interfaces))
 
         assert num_densities == len(self.bcs)
 
         return sym.make_sym_vector(name, num_densities)
 
-    def _structured_unknown(self, unknown):
+    def _structured_unknown(self, unknown, weighted):
         """
         :returns: an array of unknowns, with the following index axes:
-            ``[pot_kind, field_kind, i_domain]``, where
+            ``[pot_kind, field_kind, i_interface]``, where
             ``pot_kind`` is 0 for the single-layer part and 1 for the double-layer
             part,
             ``field_kind`` is 0 for the E-field and 1 for the H-field part,
-            ``i_domain`` is the number of the enclosed domain, starting from 0.
+            ``i_interface`` is the number of the enclosed domain, starting from 0.
         """
-        result = np.zeros((2, 2, len(self.domains)), dtype=np.object)
-
-        sqrt_w = self.get_sqrt_weight()
+        result = np.zeros((2, 2, len(self.interfaces)), dtype=np.object)
 
         i_unknown = 0
         for pot_kind in self.pot_kinds:
             for field_kind in self.field_kinds:
-                for i_domain in range(len(self.domains)):
+                for i_interface in range(len(self.interfaces)):
 
                     is_present = (
-                            (field_kind == 0 and self.e_enabled)
+                            (field_kind == self.field_kind_e and self.ez_enabled)
                             or
-                            (field_kind == 1 and self.h_enabled))
+                            (field_kind == self.field_kind_h and self.hz_enabled))
 
                     if is_present:
                         dens = unknown[i_unknown]
@@ -505,144 +545,155 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                     else:
                         dens = 0
 
-                    result[pot_kind, field_kind, i_domain] = \
-                            sym.cse(dens/sqrt_w,
-                            "dens_{pot}_{field}_{dom}".format(
-                                pot={0: "S", 1: "D"}[pot_kind],
-                                field={
-                                    self.field_kind_e: "E", self.field_kind_h: "H"}
-                                [field_kind],
-                                dom=i_domain))
+                    _, _, interface_id = self.interfaces[i_interface]
+
+                    if weighted:
+                        dens = sym.cse(
+                                dens/self.get_sqrt_weight(interface_id),
+                                "dens_{pot}_{field}_{dom}".format(
+                                    pot={0: "S", 1: "D"}[pot_kind],
+                                    field={
+                                        self.field_kind_e: "E",
+                                        self.field_kind_h: "H"
+                                        }
+                                    [field_kind],
+                                    dom=i_interface))
+
+                    result[pot_kind, field_kind, i_interface] = dens
 
         assert i_unknown == len(unknown)
         return result
 
-    def representation_outer(self, unknown):
+    def representation(self, unknown, i_domain):
         """
-        :return: an object array of one axis, with
-            axes corresponding to :attr:`field_kinds`
-            in the exterior domain.
+        :return: a symbolic expression for the representation of the PDE solution
+            in domain number *i_domain*.
         """
-        unk = self._structured_unknown(unknown)
+        unk = self._structured_unknown(unknown, weighted=True)
 
-        return np.array([
-            sum(
-                self.density_coeffs[pot_kind, field_kind, i_domain, self.side_out]
-                * self.potential_ops[pot_kind](self.kernel_outer,
-                    unk[pot_kind, field_kind, i_domain])
-                for pot_kind in self.pot_kinds
-                for i_domain in range(len(self.domains)))
-            for field_kind in self.field_kinds
-            ], dtype=np.object)
+        result = 0
 
-    def representation_inner(self, unknown):
-        """
-        :return: an object array of two axes ``[field_kind, i_domain]``
-        """
+        for field_kind in self.field_kinds:
+            for pot_kind in self.pot_kinds:
+                for i_interface, (i_domain_outer, i_domain_inner, interface_id) in (
+                        enumerate(self.interfaces)):
+                    if i_domain_outer == i_domain:
+                        side = self.side_out
+                    elif i_domain_inner == i_domain:
+                        side = self.side_in
+                    else:
+                        continue
 
-        unk = self._structured_unknown(unknown)
-        return np.array(
-            [
-                [
-                    sum(
-                        self.density_coeffs[
-                            pot_kind, field_kind, i_domain, self.side_in]
-                        * self.potential_ops[pot_kind](self.kernels[i_domain],
-                            unk[pot_kind, field_kind, i_domain])
-                        for pot_kind in self.pot_kinds
-                        )
-                    for i_domain in range(len(self.domains))
-                ]
-                for field_kind in self.field_kinds
-            ], dtype=np.object)
+                    my_unk = unk[pot_kind, field_kind, i_interface]
+                    if my_unk:
+                        result += (
+                                self.density_coeffs[
+                                    pot_kind, field_kind, i_interface, side]
+                                * self.potential_ops[pot_kind](
+                                    self.domain_kernels[i_domain],
+                                    my_unk,
+                                    source=interface_id))
+
+        return result
 
     def operator(self, unknown):
-        unk = self._structured_unknown(unknown)
+        weighted_unk = self._structured_unknown(unknown, weighted=True)
+        unweighted_unk = self._structured_unknown(unknown, weighted=False)
 
         result = []
         for bc in self.bcs:
             op = 0
-            hypersingular_op = 0
 
-            for term in bc:
-                for pot_kind in self.pot_kinds:
-                    potential_op = self.potential_ops[pot_kind]
+            for pot_kind in self.pot_kinds:
+                for term in bc:
 
                     for side in self.sides:
-                        density = unk[pot_kind, term.field_kind, term.i_domain]
+                        raw_potential_op = potential_op = \
+                                self.potential_ops[pot_kind]
+
+                        unk_index = (pot_kind, term.field_kind, term.i_interface)
+                        w_density = weighted_unk[unk_index]
+                        unw_density = unweighted_unk[unk_index]
+
                         side_sign = self.side_to_sign[side]
 
+                        domain_outer, domain_inner, interface_id = \
+                                self.interfaces[term.i_interface]
                         if side == self.side_in:
-                            kernel = self.kernels[term.i_domain]
+                            kernel = self.domain_kernels[domain_inner]
                             bc_coeff = term.coeff_inner
-                        elif side == self.side_in:
-                            kernel = self.kernel_outer
+                        elif side == self.side_out:
+                            kernel = self.domain_kernels[domain_outer]
                             bc_coeff = term.coeff_outer
                         else:
                             raise ValueError("invalid value of 'side'")
 
-                        potential_op = potential_op(kernel, density)
+                        potential_op = potential_op(
+                                kernel, w_density, source=interface_id)
+
+                        jump_term = 0
 
                         if term.direction == self.dir_none:
-                            if potential_op is sym.S:
+                            if raw_potential_op is sym.S:
                                 pass
-                            elif potential_op is sym.D:
-                                potential_op += (side_sign*0.5) * density
+                            elif raw_potential_op is sym.D:
+                                jump_term = (side_sign*0.5) * unw_density
                             else:
-                                assert False
+                                assert False, raw_potential_op
                         elif term.direction == self.dir_normal:
-                            orig_potential_op = potential_op
-
                             potential_op = sym.normal_derivative(
-                                    potential_op,
-                                    self.domains[term.i_domain])
+                                    potential_op, interface_id).attr("xproject")(0)
 
-                            if orig_potential_op is sym.S:
+                            if raw_potential_op is sym.S:
                                 # S'
-                                potential_op += (-side_sign*0.5) * density
-                            elif orig_potential_op is sym.D:
+                                jump_term = (-side_sign*0.5) * unw_density
+                            elif raw_potential_op is sym.D:
                                 pass
                             else:
-                                assert False
+                                assert False, raw_potential_op
                         elif term.direction == self.dir_tangential:
                             # FIXME
                             raise NotImplementedError("tangential derivative")
                         else:
                             raise ValueError("invalid direction")
 
+                        potential_op = (
+                                jump_term
+                                + sqrt_jac_q_weight(interface_id)*potential_op)
+
                         contrib = (
                                 bc_coeff
                                 * self.density_coeffs[
-                                    pot_kind, term.field_kind, term.i_domain,
+                                    pot_kind, term.field_kind, term.i_interface,
                                     side]
                                 * potential_op)
 
                         if (pot_kind == self.pot_kind_D
-                                and self.direction == self.dir_normal):
-                            hypersingular_op += contrib
-                        else:
-                            op += contrib
+                                and term.direction == self.dir_normal):
+                            # FIXME The hypersingular part should perhaps be
+                            # treaded specially to avoid cancellation.
+                            pass
 
-            print(hypersingular_op)
-            # FIXME: Check that hypersingular_op disappears
+                        op += contrib
+
             result.append(op)
 
         return np.array(result, dtype=np.object)
 
 
 class TEDielectric2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
-    e_enabled = False
-    h_enabled = True
+    ez_enabled = False
+    hz_enabled = True
 
 
 class TMDielectric2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
-    e_enabled = True
-    h_enabled = False
+    ez_enabled = True
+    hz_enabled = False
 
 
 class TEMDielectric2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
-    e_enabled = True
-    h_enabled = True
+    ez_enabled = True
+    hz_enabled = True
 
 # }}}
 
