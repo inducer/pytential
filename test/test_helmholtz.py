@@ -80,31 +80,9 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     kernel_K0 = HelmholtzKernel(2, helmholtz_k_name="K0")
     kernel_K1 = HelmholtzKernel(2, helmholtz_k_name="K1")
 
-    cse = sym.cse
-
-    sqrt_w_sym = sym.sqrt_jac_q_weight()
-
-    unkwown = sym.make_sym_vector("unknown", 2)
-    sigma_sym = unkwown[0]
-    mu_sym = unkwown[1]
-    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w_sym, "dens_S_E_0")
-    inv_sqrt_w_mu = cse(mu_sym/sqrt_w_sym, "dens_D_E_0")
-
     beta = 2.5
     K0 = np.sqrt(k0**2-beta**2)
     K1 = np.sqrt(k1**2-beta**2)
-
-    print("K0", K0)
-    print("K1", K1)
-
-    alpha0 = k0**2/(k0**2-beta**2)
-    alpha1 = k1**2/(k1**2-beta**2)
-
-    coeff_0_S = 1
-    coeff_1_S = 1
-
-    coeff_0_D = alpha1
-    coeff_1_D = alpha0
 
     from pytential.symbolic.pde.scalar import TMDielectric2DBoundaryOperator
     pde_op = TMDielectric2DBoundaryOperator(
@@ -114,48 +92,9 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             beta=beta)
 
     op_unknown_sym = pde_op.make_unknown("unknown")
-    bop2 = pde_op.operator(op_unknown_sym)
 
-    print(sym.pretty(bop2))
-
-    bdry_op_sym = make_obj_array([
-        (-0.5*(alpha0*coeff_0_S+alpha1*coeff_1_S)*sigma_sym
-            + sqrt_w_sym*(
-                alpha0*coeff_0_S*sym.Sp(kernel_K0, inv_sqrt_w_sigma)
-                - alpha1*coeff_1_S*sym.Sp(kernel_K1, inv_sqrt_w_sigma)
-                + alpha0*coeff_0_D*sym.Dp(kernel_K0, inv_sqrt_w_mu)
-                - alpha1*coeff_1_D*sym.Dp(kernel_K1, inv_sqrt_w_mu)
-                )),
-        (0.5*(coeff_0_D+coeff_1_D)*mu_sym
-            + sqrt_w_sym*(
-                coeff_0_S*sym.S(kernel_K0, inv_sqrt_w_sigma)
-                - coeff_1_S*sym.S(kernel_K1, inv_sqrt_w_sigma)
-                + coeff_0_D*sym.D(kernel_K0, inv_sqrt_w_mu)
-                - coeff_1_D*sym.D(kernel_K1, inv_sqrt_w_mu)
-                ))
-        ])
-    print(sym.pretty(bdry_op_sym))
-    print("--------------")
-    print("--------------")
-    print("--------------")
-    representation0_sym_old = (
-            coeff_0_S*sym.S(kernel_K0, inv_sqrt_w_sigma)
-            + coeff_0_D*sym.D(kernel_K0, inv_sqrt_w_mu))
     representation0_sym = pde_op.representation(op_unknown_sym, 0)
-    print(sym.pretty(representation0_sym_old))
-    print("--------------")
-    print(sym.pretty(representation0_sym))
-    print("--------------")
-    print("--------------")
-    print("--------------")
-
-    representation1_sym_old = (
-            coeff_1_S*sym.S(kernel_K1, inv_sqrt_w_sigma)
-            + coeff_1_D*sym.D(kernel_K1, inv_sqrt_w_mu))
     representation1_sym = pde_op.representation(op_unknown_sym, 1)
-    print(sym.pretty(representation1_sym_old))
-    print("--------------")
-    print(sym.pretty(representation1_sym))
 
     from pytential.qbx import QBXLayerPotentialSource
     qbx = QBXLayerPotentialSource(
@@ -163,7 +102,6 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             fmm_order=fmm_order
             )
 
-    #bound_op = bind(qbx, bdry_op_sym)
     bound_pde_op = bind(qbx, pde_op.operator(op_unknown_sym))
 
     sources_0 = make_obj_array(list(np.array([
@@ -202,7 +140,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     E0_dntarget = (grad0_E0*normal[0] + grad1_E0*normal[1])
     E1_dntarget = (grad0_E1*normal[0] + grad1_E1*normal[1])
 
-    sqrt_w = bind(density_discr, sqrt_w_sym)(queue)
+    sqrt_w = bind(density_discr, sym.sqrt_jac_q_weight())(queue)
 
     bvp_rhs = np.zeros(len(pde_op.bcs), dtype=np.object)
     for i_bc, terms in enumerate(pde_op.bcs):
