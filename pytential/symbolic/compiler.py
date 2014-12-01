@@ -174,12 +174,6 @@ class LayerPotentialInstruction(Instruction):
                 gather_source_arguments(self.kernels)):
             result.update(dep_mapper(arg.expression))
 
-        from pytential.symbolic.mappers import ExpressionKernelCombineMapper
-        ekdm = ExpressionKernelCombineMapper(dep_mapper)
-        for kernel in self.kernels:
-            print("KERNEL DEP MAPPER SAID:", ekdm(kernel))
-            result.update(ekdm(kernel))
-
         return result
 
     def __str__(self):
