@@ -60,15 +60,15 @@ class L2WeightedPDEOperator(object):
             warn("should use L2 weighting in %s" % type(self).__name__,
                     stacklevel=3)
 
-    def get_weight(self):
+    def get_weight(self, where=None):
         if self.use_l2_weighting:
-            return cse(area_element()*QWeight())
+            return cse(area_element(where)*QWeight(where))
         else:
             return 1
 
-    def get_sqrt_weight(self):
+    def get_sqrt_weight(self, where=None):
         if self.use_l2_weighting:
-            return sqrt_jac_q_weight()
+            return sqrt_jac_q_weight(where)
         else:
             return 1
 
