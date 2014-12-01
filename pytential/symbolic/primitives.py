@@ -231,7 +231,7 @@ def normal(where=None):
     # Don't be tempted to add a sign here. As it is, it produces
     # exterior normals for positively oriented curves.
 
-    pder = pseudoscalar(where) / area_element()
+    pder = pseudoscalar(where) / area_element(where)
     return cse(pder.attr("I") | pder, "normal",
             cse_scope.DISCRETIZATION)
 
@@ -427,22 +427,23 @@ def normal_derivative(operand, where=None):
 
 
 def Sp(*args, **kwargs):
-    where = kwargs.get("where")
+    where = kwargs.get("target")
     return normal_derivative(S(*args, **kwargs), where).attr("xproject")(0)
 
 
 def Spp(*args, **kwargs):
-    where = kwargs.get("where")
+    where = kwargs.get("target")
     return normal_derivative(Sp(*args, **kwargs), where).attr("xproject")(0)
 
 
 def D(*args, **kwargs):
-    return IntGdSource(normal(), *args, **kwargs).attr("xproject")(0)
+    where = kwargs.get("source")
+    return IntGdSource(normal(where), *args, **kwargs).attr("xproject")(0)
 
 
 def Dp(*args, **kwargs):
-    where = kwargs.get("where")
-    return normal_derivative(D(*args, **kwargs), where).attr("xproject")(0)
+    target = kwargs.get("target")
+    return normal_derivative(D(*args, **kwargs), target).attr("xproject")(0)
 
 # }}}
 
