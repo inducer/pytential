@@ -247,9 +247,21 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         fmm_order = self.fmm_order
 
         # FIXME: Don't hard-code expansion types
-        fmm_mpole_expn = VolumeTaylorMultipoleExpansion(base_kernel, fmm_order)
-        fmm_local_expn = VolumeTaylorLocalExpansion(base_kernel, fmm_order)
-        qbx_local_expn = VolumeTaylorLocalExpansion(
+        from sumpy.kernel import HelmholtzKernel
+        if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
+                and base_kernel.dim == 2):
+            from sumpy.expansion.multipole import H2DMultipoleExpansion
+            from sumpy.expansion.local import H2DLocalExpansion
+
+            mpole_expn_class = H2DMultipoleExpansion
+            local_expn_class = H2DLocalExpansion
+        else:
+            mpole_expn_class = VolumeTaylorMultipoleExpansion
+            local_expn_class = VolumeTaylorLocalExpansion
+
+        fmm_mpole_expn = mpole_expn_class(base_kernel, fmm_order)
+        fmm_local_expn = local_expn_class(base_kernel, fmm_order)
+        qbx_local_expn = local_expn_class(
                 base_kernel, self.qbx_order)
 
         from pytential.qbx.fmm import \
