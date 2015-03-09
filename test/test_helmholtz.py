@@ -51,8 +51,10 @@ logger = logging.getLogger(__name__)
 def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         k0=3, k1=2.9, mesh_order=10,
         bdry_quad_order=None, bdry_ovsmp_quad_order=None,
-        fmm_order=False, visualize=False):
+        fmm_order=None, visualize=False):
 
+    if fmm_order is None:
+        fmm_order = qbx_order * 2
     if bdry_quad_order is None:
         bdry_quad_order = mesh_order
     if bdry_ovsmp_quad_order is None:
