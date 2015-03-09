@@ -188,7 +188,7 @@ class QBXFMMGeometryCodeGetter(object):
         return lp.tag_inames(knl, dict(dim="unr"))
 
     @memoize_method
-    def copy_targets_kernel(self, sep_points_axes):
+    def copy_targets_kernel(self):
         knl = lp.make_kernel(
             """{[dim,i]:
                 0<=dim<ndims and
@@ -200,10 +200,7 @@ class QBXFMMGeometryCodeGetter(object):
             defines=dict(ndims=self.ambient_dim))
 
         knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
-        if sep_points_axes:
-            knl = lp.tag_data_axes(knl, "points", "sep, C")
-        else:
-            knl = lp.tag_data_axes(knl, "points", "stride:auto, stride:1")
+        knl = lp.tag_data_axes(knl, "points", "sep, C")
 
         knl = lp.tag_data_axes(knl, "targets", "stride:auto, stride:1")
         return lp.tag_inames(knl, dict(dim="ilp"))
@@ -850,20 +847,17 @@ class QBXFMMGeometryData(object):
             targets = cl.array.empty(
                     self.cl_context, (lpot_src.ambient_dim, ntargets),
                     self.coord_dtype)
-            code_getter.copy_targets_kernel(
-                    # sep_points_axes:
-                    True)(queue,
+            code_getter.copy_targets_kernel()(
+                    queue,
                     targets=targets[:, :center_info.ncenters],
                     points=center_info.centers)
 
             for start, (target_discr, _) in zip(
                     target_discr_starts, self.target_discrs_and_qbx_sides):
-                code_getter.copy_targets_kernel(
-                        # sep_points_axes:
-                        False)(
-                                queue,
-                                targets=targets[:, start:start+target_discr.nnodes],
-                                points=target_discr.nodes())
+                code_getter.copy_targets_kernel()(
+                        queue,
+                        targets=targets[:, start:start+target_discr.nnodes],
+                        points=target_discr.nodes())
 
             return TargetInfo(
                     targets=targets,
