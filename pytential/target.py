@@ -70,6 +70,7 @@ class PointsTarget(TargetBase):
 
     @property
     def nnodes(self):
-        return self._nodes.shape[1]
+        for coord_ary in self._nodes:
+            return coord_ary.shape[0]
 
 # vim: foldmethod=marker
