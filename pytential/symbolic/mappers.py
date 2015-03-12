@@ -56,8 +56,10 @@ from pymbolic.geometric_algebra.mapper import (
         NablaComponentToUnitVector
         as NablaComponentToUnitVectorBase,
         DerivativeSourceFinder
-        as DerivativeSourceFinderBase
-        )
+        as DerivativeSourceFinderBase,
+
+
+        GraphvizMapper as GraphvizMapperBase)
 import pytential.symbolic.primitives as prim
 from sumpy.kernel import (
         KernelIdentityMapper as KernelIdentityMapperBase,
@@ -607,10 +609,9 @@ class StringifyMapper(BaseStringifyMapper):
                 stringify_where(expr.where))
 
     def map_num_reference_derivative(self, expr, enclosing_prec):
-        result = "d/dr%s.%s %s" % (
+        result = "d/dr%s.%s" % (
                 ",".join(str(ax) for ax in expr.ref_axes),
                 stringify_where(expr.where),
-                self.rec(expr.operand, PREC_PRODUCT),
                 )
 
         if enclosing_prec >= PREC_PRODUCT:
@@ -657,5 +658,88 @@ class StringifyMapper(BaseStringifyMapper):
 class PrettyStringifyMapper(
         CSESplittingStringifyMapperMixin, StringifyMapper):
     pass
+
+
+# {{{ graphviz
+
+class GraphvizMapper(GraphvizMapperBase):
+    def __init__(self):
+        super(GraphvizMapper, self).__init__()
+
+    def map_pytential_leaf(self, expr):
+        self.lines.append(
+                "%s [label=\"%s\", shape=box];" % (
+                    self.get_id(expr),
+                    str(expr).replace("\\", "\\\\")))
+
+        if self.visit(expr, node_printed=True):
+            self.post_visit(expr)
+
+    map_nodes = map_pytential_leaf
+    map_vector_variable = map_pytential_leaf
+
+    def map_dimensionalized_expression(self, expr):
+        self.lines.append(
+                "%s [label=\"%s\",shape=circle];" % (
+                    self.get_id(expr), type(expr).__name__))
+        if not self.visit(expr, node_printed=True):
+            return
+
+        self.rec(expr.child)
+        self.post_visit(expr)
+
+    map_ones = map_pytential_leaf
+
+    def map_map_node_sum(self, expr):
+        self.lines.append(
+                "%s [label=\"%s\",shape=circle];" % (
+                    self.get_id(expr), type(expr).__name__))
+        if not self.visit(expr, node_printed=True):
+            return
+
+        self.rec(expr.operand)
+        self.post_visit(expr)
+
+    map_node_coordinate_component = map_pytential_leaf
+    map_num_reference_derivative = map_pytential_leaf
+    map_parametrization_derivative = map_pytential_leaf
+
+    map_q_weight = map_pytential_leaf
+
+    def map_int_g(self, expr):
+        descr = u"Int[%s->%s]@(%d) (%s)" % (
+                stringify_where(expr.source),
+                stringify_where(expr.target),
+                expr.qbx_forced_limit,
+                expr.kernel,
+                )
+        self.lines.append(
+                "%s [label=\"%s\",shape=box];" % (
+                    self.get_id(expr), descr))
+        if not self.visit(expr, node_printed=True):
+            return
+
+        self.rec(expr.density)
+        self.post_visit(expr)
+
+    def map_int_g_ds(self, expr):
+        descr = u"Int[%s->%s]@(%d) (%s)" % (
+                stringify_where(expr.source),
+                stringify_where(expr.target),
+                expr.qbx_forced_limit,
+                expr.kernel,
+                )
+        self.lines.append(
+                "%s [label=\"%s\",shape=box];" % (
+                    self.get_id(expr), descr))
+        if not self.visit(expr, node_printed=True):
+            return
+
+        self.rec(expr.density)
+        self.rec(expr.dsource)
+        self.post_visit(expr)
+
+# }}}
+
 
 # vim: foldmethod=marker
