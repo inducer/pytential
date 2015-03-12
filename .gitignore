@@ -16,5 +16,7 @@ hk
 test/*.pdf
 examples/*.pdf
 
+*.dot
+
 *.vtu
 *.vts
