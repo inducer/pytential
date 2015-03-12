@@ -110,7 +110,6 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         gvm(pde_op.operator(op_unknown_sym))
         with open("helmholtz-op.dot", "wt") as outf:
             outf.write(gvm.get_dot_code())
-        1/0
 
     bound_pde_op = bind(qbx, pde_op.operator(op_unknown_sym))
 
