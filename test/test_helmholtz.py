@@ -219,7 +219,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
         #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         fplot.write_vtk_file(
-                "potential.vts",
+                "potential-n%d.vts" % nelements,
                 [
                     ("fld0", fld0),
                     ("fld1", fld1),
@@ -242,8 +242,8 @@ def test_dielectric(ctx_getter, qbx_order, visualize=False):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
 
-    for nelements in [30, 50, 70]:
-        # prevent cache 'splosion
+    for nelements in [30]:
+        # prevent sympy cache 'splosion
         from sympy.core.cache import clear_cache
         clear_cache()
 

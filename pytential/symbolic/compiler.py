@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 
+import numpy as np
 from pytools import Record, memoize_method
 from pymbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper
@@ -437,9 +438,16 @@ class OperatorCompiler(IdentityMapper):
         self.assigned_names = set()
 
     def op_group_features(self, expr):
+        hashable_args = []
+        for key, val in sorted(expr.kernel_arguments.items()):
+            if isinstance(val, np.ndarray):
+                val = tuple(val)
+            hashable_args.append((key, val))
+
+        print(hashable_args)
         return (
                 self.places[expr.source].op_group_features(expr)
-                + tuple(sorted(expr.kernel_arguments)))
+                + tuple(hashable_args))
 
     @memoize_method
     def dep_mapper_factory(self, include_subscripts=False):
@@ -569,8 +577,6 @@ class OperatorCompiler(IdentityMapper):
             # make sure operator assignments stand alone and don't get muddled
             # up in vector arithmetic
             density_var = self.assign_to_new_var(self.rec(expr.density))
-
-            src_discr = self.places[expr.source]
 
             group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
