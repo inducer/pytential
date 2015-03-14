@@ -594,7 +594,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                                     self.kernel,
                                     my_unk,
                                     source=interface_id,
-                                    k=self.domain_k_exprs[i_domain]
+                                    k=self.domain_K_exprs[i_domain]
                                     ))
 
         return result
@@ -623,17 +623,17 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         domain_outer, domain_inner, interface_id = \
                                 self.interfaces[term.i_interface]
                         if side == self.side_in:
-                            k_expr = self.domain_k_exprs[domain_inner]
+                            K_expr = self.domain_K_exprs[domain_inner]
                             bc_coeff = term.coeff_inner
                         elif side == self.side_out:
-                            k_expr = self.domain_k_exprs[domain_outer]
+                            K_expr = self.domain_K_exprs[domain_outer]
                             bc_coeff = term.coeff_outer
                         else:
                             raise ValueError("invalid value of 'side'")
 
                         potential_op = potential_op(
                                 self.kernel, w_density, source=interface_id,
-                                k=k_expr)
+                                k=K_expr)
 
                         jump_term = 0
 
