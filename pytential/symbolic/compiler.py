@@ -444,7 +444,6 @@ class OperatorCompiler(IdentityMapper):
                 val = tuple(val)
             hashable_args.append((key, val))
 
-        print(hashable_args)
         return (
                 self.places[expr.source].op_group_features(expr)
                 + tuple(hashable_args))
