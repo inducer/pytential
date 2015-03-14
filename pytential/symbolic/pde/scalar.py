@@ -675,7 +675,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         if (pot_kind == self.pot_kind_D
                                 and term.direction == self.dir_normal):
                             # FIXME The hypersingular part should perhaps be
-                            # treaded specially to avoid cancellation.
+                            # treated specially to avoid cancellation.
                             pass
 
                         op += contrib

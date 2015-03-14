@@ -271,7 +271,7 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     except ImportError:
         amod = np
 
-    from pytools.obj_array import is_obj_array, make_obj_array
+    from pytools.obj_array import is_obj_array
     if is_obj_array(rhs):
         stacked_rhs = amod.hstack(rhs)
 
