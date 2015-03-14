@@ -96,9 +96,11 @@ class DirichletOperator(L2WeightedPDEOperator):
 
         assert loc_sign in [-1, 1]
 
-        from sumpy.kernel import normalize_kernel, LaplaceKernel
-        self.kernel = normalize_kernel(kernel)
+        from sumpy.kernel import to_kernel_and_args, LaplaceKernel
+        self.kernel_and_args = to_kernel_and_args(kernel)
         self.loc_sign = loc_sign
+
+        self.kernel, _ = self.kernel_and_args
 
         if alpha is None:
             if isinstance(self.kernel, LaplaceKernel):
@@ -117,8 +119,9 @@ class DirichletOperator(L2WeightedPDEOperator):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
-        return (self.alpha*S(self.kernel, inv_sqrt_w_u)
-                - D(self.kernel, inv_sqrt_w_u))
+        return (
+                self.alpha*S(self.kernel_and_args, inv_sqrt_w_u)
+                - D(self.kernel_and_args, inv_sqrt_w_u))
 
     def operator(self, u):
         sqrt_w = self.get_sqrt_weight()
@@ -139,8 +142,8 @@ class DirichletOperator(L2WeightedPDEOperator):
 
         return (-self.loc_sign*0.5*u
                 + sqrt_w*(
-                    self.alpha*S(self.kernel, inv_sqrt_w_u)
-                    - D(self.kernel, inv_sqrt_w_u)
+                    self.alpha*S(self.kernel_and_args, inv_sqrt_w_u)
+                    - D(self.kernel_and_args, inv_sqrt_w_u)
                     + ones_contribution))
 
 # }}}
@@ -163,11 +166,13 @@ class NeumannOperator(L2WeightedPDEOperator):
 
         assert loc_sign in [-1, 1]
 
-        from sumpy.kernel import normalize_kernel, LaplaceKernel
+        from sumpy.kernel import to_kernel_and_args, LaplaceKernel
 
-        self.kernel = normalize_kernel(kernel)
+        self.kernel_and_args = to_kernel_and_args(kernel)
         self.loc_sign = loc_sign
-        self.laplace_kernel = normalize_kernel(laplace_kernel)
+        self.laplace_kernel_and_args = to_kernel_and_args(laplace_kernel)
+
+        self.kernel, _ = self.kernel_and_args
 
         if alpha is None:
             if isinstance(self.kernel, LaplaceKernel):
@@ -186,9 +191,10 @@ class NeumannOperator(L2WeightedPDEOperator):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
-        return (S(self.kernel, inv_sqrt_w_u)
+        return (S(self.kernel_and_args, inv_sqrt_w_u)
                 - self.alpha
-                * D(self.kernel, S(self.laplace_kernel, inv_sqrt_w_u)))
+                * D(self.kernel_and_args,
+                    S(self.laplace_kernel_and_args, inv_sqrt_w_u)))
 
     def operator(self, u):
         from sumpy.kernel import HelmholtzKernel, LaplaceKernel
@@ -196,17 +202,17 @@ class NeumannOperator(L2WeightedPDEOperator):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
-        DpS0u = Dp(self.kernel, cse(S(self.laplace_kernel, inv_sqrt_w_u)))
+        DpS0u = Dp(self.kernel_and_args,
+                cse(S(self.laplace_kernel_and_args, inv_sqrt_w_u)))
 
         if self.use_improved_operator:
-            Dp0S0u = -0.25*u + Sp(self.laplace_kernel,
-                    Sp(self.laplace_kernel, inv_sqrt_w_u))
+            Dp0S0u = -0.25*u + Sp(self.laplace_kernel_and_args,
+                    Sp(self.laplace_kernel_and_args, inv_sqrt_w_u))
 
             if isinstance(self.kernel, HelmholtzKernel):
-
-                DpS0u = (Dp(self.kernel - self.laplace_kernel,
-                    cse(S(self.laplace_kernel, inv_sqrt_w_u))) + Dp0S0u)
-            elif isinstance(self.kernel, LaplaceKernel):
+                DpS0u = (Dp(self.kernel_and_args - self.laplace_kernel_and_args,
+                    cse(S(self.laplace_kernel_and_args, inv_sqrt_w_u))) + Dp0S0u)
+            elif isinstance(self.kernel_and_args, LaplaceKernel):
                 DpS0u = Dp0S0u
             else:
                 raise ValueError("no improved operator for %s known"
@@ -224,7 +230,7 @@ class NeumannOperator(L2WeightedPDEOperator):
 
         return (-self.loc_sign*0.5*u
                 + sqrt_w*(
-                    Sp(self.kernel, inv_sqrt_w_u)
+                    Sp(self.kernel_and_args, inv_sqrt_w_u)
                     - self.alpha*DpS0u
                     + ones_contribution
                     ))
@@ -353,12 +359,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                 for i, k_expr in enumerate(self.domain_k_exprs)]
 
         from sumpy.kernel import HelmholtzKernel
-        self.domain_kernels = [
-                HelmholtzKernel(
-                    2,
-                    helmholtz_k_name="K%d" % i,
-                    helmholtz_k_expression=K_expr)
-                for i, K_expr in enumerate(self.domain_K_exprs)]
+        self.kernel = HelmholtzKernel(2)
 
         # {{{ build bc list
 
@@ -590,9 +591,11 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                                 self.density_coeffs[
                                     pot_kind, field_kind, i_interface, side]
                                 * self.potential_ops[pot_kind](
-                                    self.domain_kernels[i_domain],
+                                    self.kernel,
                                     my_unk,
-                                    source=interface_id))
+                                    source=interface_id,
+                                    k=self.domain_k_exprs[i_domain]
+                                    ))
 
         return result
 
@@ -620,16 +623,17 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         domain_outer, domain_inner, interface_id = \
                                 self.interfaces[term.i_interface]
                         if side == self.side_in:
-                            kernel = self.domain_kernels[domain_inner]
+                            k_expr = self.domain_k_exprs[domain_inner]
                             bc_coeff = term.coeff_inner
                         elif side == self.side_out:
-                            kernel = self.domain_kernels[domain_outer]
+                            k_expr = self.domain_k_exprs[domain_outer]
                             bc_coeff = term.coeff_outer
                         else:
                             raise ValueError("invalid value of 'side'")
 
                         potential_op = potential_op(
-                                kernel, w_density, source=interface_id)
+                                self.kernel, w_density, source=interface_id,
+                                k=k_expr)
 
                         jump_term = 0
 

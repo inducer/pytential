@@ -61,49 +61,6 @@ from pymbolic.geometric_algebra.mapper import (
 
         GraphvizMapper as GraphvizMapperBase)
 import pytential.symbolic.primitives as prim
-from sumpy.kernel import (
-        KernelIdentityMapper as KernelIdentityMapperBase,
-        KernelCombineMapper as KernelCombineMapperBase)
-
-
-# {{{ mappers for sumpy.kernel kernels
-
-class ExpressionKernelIdentityMapper(KernelIdentityMapperBase):
-    def __init__(self, expr_map):
-        self.expr_map = expr_map
-
-    def map_directional_target_derivative(self, kernel):
-        return type(kernel)(
-                self.rec(kernel.inner_kernel), kernel.dir_vec_name,
-                self.expr_map(kernel.dir_vec_expression))
-
-    map_directional_source_derivative = map_directional_target_derivative
-
-
-class ExpressionKernelCombineMapper(KernelCombineMapperBase):
-    def __init__(self, expr_map):
-        self.expr_map = expr_map
-
-    def combine(self, sets):
-        from pytools import set_sum
-        return set_sum(sets)
-
-    def map_laplace_kernel(self, kernel):
-        return set()
-
-    def map_helmholtz_kernel(self, kernel):
-        return set()
-
-    def map_one_kernel(self, kernel):
-        return set()
-
-    def map_directional_target_derivative(self, kernel):
-        return (self.expr_map(kernel.dir_vec_expression)
-                | self.rec(kernel.inner_kernel))
-
-    map_directional_source_derivative = map_directional_target_derivative
-
-# }}}
 
 
 class IdentityMapper(IdentityMapperBase):
@@ -144,13 +101,19 @@ class IdentityMapper(IdentityMapperBase):
     def map_int_g(self, expr):
         return expr.copy(
                 density=self.rec(expr.density),
-                kernel=ExpressionKernelIdentityMapper(self.rec)(expr.kernel))
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
 
     def map_int_g_ds(self, expr):
         return expr.copy(
                 density=self.rec(expr.density),
                 dsource=self.rec(expr.dsource),
-                kernel=ExpressionKernelIdentityMapper(self.rec)(expr.kernel))
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
 
 
 class CombineMapper(CombineMapperBase):
@@ -160,15 +123,13 @@ class CombineMapper(CombineMapperBase):
     map_num_reference_derivative = map_node_sum
 
     def map_int_g(self, expr):
-        return (
-                self.rec(expr.density)
-                | ExpressionKernelCombineMapper(self.rec)(expr.kernel))
+        result = self.rec(expr.density)
+        for arg_expr in expr.kernel_arguments.values():
+            result.update(self.rec(arg_expr))
+        return result
 
     def map_int_g_ds(self, expr):
-        return (
-                self.rec(expr.density)
-                | self.rec(expr.dsource)
-                | ExpressionKernelCombineMapper(self.rec)(expr.kernel))
+        return self.rec(expr.dsource) | self.map_int_g(expr)
 
     def map_inverse(self, expr):
         from operator import or_
@@ -231,9 +192,24 @@ class EvaluationMapper(EvaluationMapperBase):
 
     def map_int_g(self, expr):
         return type(expr)(
-                ExpressionKernelIdentityMapper(self.rec)(expr.kernel),
+                expr.kernel,
                 self.rec(expr.density),
-                expr.qbx_forced_limit, expr.source, expr.target)
+                expr.qbx_forced_limit, expr.source, expr.target,
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
+
+    def map_int_g_ds(self, expr):
+        return type(expr)(
+                self.rec(expr.dsource),
+                expr.kernel,
+                self.rec(expr.density),
+                expr.qbx_forced_limit, expr.source, expr.target,
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
 
     def map_common_subexpression(self, expr):
         return prim.cse(
@@ -283,9 +259,13 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
             target = self.default_where
 
         return type(expr)(
-                ExpressionKernelIdentityMapper(self.rec)(expr.kernel),
+                expr.kernel,
                 self.operand_rec(expr.density),
-                expr.qbx_forced_limit, source, target)
+                expr.qbx_forced_limit, source, target,
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
 
     def map_int_g_ds(self, expr):
         source = expr.source
@@ -298,9 +278,13 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
 
         return type(expr)(
                 self.operand_rec(expr.dsource),
-                ExpressionKernelIdentityMapper(self.rec)(expr.kernel),
+                expr.kernel,
                 self.operand_rec(expr.density),
-                expr.qbx_forced_limit, source, target)
+                expr.qbx_forced_limit, source, target,
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
 
     def map_inverse(self, expr):
         where = expr.where
@@ -349,17 +333,23 @@ class _DSourceCoefficientFinder(CoefficientCollectorBase):
         return {1: expr}
 
 
-def _insert_dir_vec_into_kernel(kernel, dir_vec):
+_DIR_VEC_NAME = "dsource_vec"
+
+
+def _insert_source_derivative_into_kernel(kernel):
+    # Inserts the source derivative at the innermost
+    # kernel wrapping level.
     from sumpy.kernel import DirectionalSourceDerivative
 
     if kernel.get_base_kernel() is kernel:
-        return DirectionalSourceDerivative(kernel, dir_vec_expression=dir_vec)
+        return DirectionalSourceDerivative(
+                kernel, dir_vec_name=_DIR_VEC_NAME)
     else:
         return kernel.replace_inner_kernel(
-                _insert_dsource_into_kernel(kernel.kernel, dir_vec))
+                _insert_source_derivative_into_kernel(kernel.kernel))
 
 
-def _insert_dsource_into_kernel(kernel, dsource, ambient_dim):
+def _get_dir_vec(dsource, ambient_dim):
     coeffs = _DSourceCoefficientFinder()(dsource)
 
     dir_vec = np.zeros(ambient_dim, np.object)
@@ -369,7 +359,7 @@ def _insert_dsource_into_kernel(kernel, dsource, ambient_dim):
     if coeffs:
         raise RuntimeError("source derivative expression contained constant term")
 
-    return _insert_dir_vec_into_kernel(kernel, dir_vec)
+    return dir_vec
 
 
 class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
@@ -437,10 +427,13 @@ class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
     def map_int_g(self, expr):
         from sumpy.kernel import KernelDimensionSetter
         return type(expr)(
-                KernelDimensionSetter(self.ambient_dim)(
-                    ExpressionKernelIdentityMapper(self.rec)(expr.kernel)),
+                KernelDimensionSetter(self.ambient_dim)(expr.kernel),
                 self.rec(expr.density),
-                expr.qbx_forced_limit, expr.source, expr.target)
+                expr.qbx_forced_limit, expr.source, expr.target,
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
 
     def map_int_g_ds(self, expr):
         dsource = self.rec(expr.dsource)
@@ -448,19 +441,30 @@ class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
         ambient_dim = self.ambient_dim
 
         from sumpy.kernel import KernelDimensionSetter
-        kernel = KernelDimensionSetter(ambient_dim)(
-                ExpressionKernelIdentityMapper(self.rec)(expr.kernel))
+        kernel = _insert_source_derivative_into_kernel(
+                KernelDimensionSetter(ambient_dim)(expr.kernel))
 
         from pytools.obj_array import make_obj_array
         nabla = MultiVector(make_obj_array(
             [prim.NablaComponent(axis, None)
                 for axis in range(ambient_dim)]))
 
+        kernel_arguments = dict(
+                (name, self.rec(arg_expr))
+                for name, arg_expr in expr.kernel_arguments.items()
+                )
+
+        def add_dir_vec_to_kernel_args(coeff):
+            result = kernel_arguments.copy()
+            result[_DIR_VEC_NAME] = _get_dir_vec(coeff, ambient_dim)
+            return result
+
         rec_operand = prim.cse(self.rec(expr.density))
         return (dsource*nabla).map(
                 lambda coeff: prim.IntG(
-                    _insert_dsource_into_kernel(kernel, coeff, ambient_dim),
-                    rec_operand, expr.qbx_forced_limit, expr.source, expr.target))
+                    kernel,
+                    rec_operand, expr.qbx_forced_limit, expr.source, expr.target,
+                    kernel_arguments=add_dir_vec_to_kernel_args(coeff)))
 
 # }}}
 
@@ -531,8 +535,12 @@ class QBXPreprocessor(IdentityMapper):
             return IdentityMapper.map_int_g(self, expr)
 
         expr = expr.copy(
-                kernel=ExpressionKernelIdentityMapper(self.rec)(expr.kernel),
-                density=self.rec(expr.density))
+                kernel=expr.kernel,
+                density=self.rec(expr.density),
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
 
         from sumpy.kernel import DerivativeCounter
         num_derivatives = DerivativeCounter()(expr.kernel)
@@ -625,11 +633,21 @@ class StringifyMapper(BaseStringifyMapper):
     def map_q_weight(self, expr, enclosing_prec):
         return "w_quad.%s" % stringify_where(expr.where)
 
+    def _stringify_kernel_args(self, kernel_arguments):
+        if not kernel_arguments:
+            return ""
+        else:
+            return "{%s}" % ", ".join(
+                    "%s: %s" % (name, self.rec(arg_expr, PREC_NONE))
+                    for name, arg_expr in kernel_arguments.items())
+
     def map_int_g(self, expr, enclosing_prec):
-        return u"Int[%s->%s]@(%d) (%s * %s)" % (
+        return u"Int[%s->%s]@(%d)%s (%s * %s)" % (
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
+                self._stringify_kernel_args(
+                    expr.kernel_arguments),
                 expr.kernel,
                 self.rec(expr.density, PREC_PRODUCT))
 
@@ -639,10 +657,12 @@ class StringifyMapper(BaseStringifyMapper):
         else:
             deriv_term = self.rec(expr.dsource, PREC_PRODUCT)
 
-        result = u"Int[%s->%s]@(%d) %s G_%s %s" % (
+        result = u"Int[%s->%s]@(%d)%s %s G_%s %s" % (
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
+                self._stringify_kernel_args(
+                    expr.kernel_arguments),
                 deriv_term,
                 expr.kernel,
                 self.rec(expr.density, PREC_NONE))
@@ -720,6 +740,9 @@ class GraphvizMapper(GraphvizMapperBase):
             return
 
         self.rec(expr.density)
+        for arg_expr in expr.kernel_arguments.values():
+            self.rec(arg_expr)
+
         self.post_visit(expr)
 
     def map_int_g_ds(self, expr):
@@ -736,6 +759,8 @@ class GraphvizMapper(GraphvizMapperBase):
             return
 
         self.rec(expr.density)
+        for arg_expr in expr.kernel_arguments.values():
+            self.rec(arg_expr)
         self.rec(expr.dsource)
         self.post_visit(expr)
 

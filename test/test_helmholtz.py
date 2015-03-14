@@ -104,13 +104,6 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             fmm_order=fmm_order
             )
 
-    if visualize:
-        from pytential.symbolic.mappers import GraphvizMapper
-        gvm = GraphvizMapper()
-        gvm(pde_op.operator(op_unknown_sym))
-        with open("helmholtz-op.dot", "wt") as outf:
-            outf.write(gvm.get_dot_code())
-
     bound_pde_op = bind(qbx, pde_op.operator(op_unknown_sym))
 
     sources_0 = make_obj_array(list(np.array([

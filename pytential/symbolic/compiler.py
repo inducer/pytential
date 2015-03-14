@@ -148,6 +148,10 @@ class LayerPotentialInstruction(Instruction):
         a list of :class:`sumpy.kernel.Kernel` instances, indexed by
         :attr:`LayerPotentialOutput.kernel_index`.
 
+    .. attribute:: kernel_arguments
+
+        a dictionary mapping arg names to kernel arguments
+
     .. attribute:: base_kernel
 
         The common base kernel among :attr:`kernels`, with all the
@@ -167,12 +171,8 @@ class LayerPotentialInstruction(Instruction):
 
         result = dep_mapper(self.density)
 
-        from sumpy.tools import gather_arguments, gather_source_arguments
-        for arg in (
-                gather_arguments(self.kernels)
-                +
-                gather_source_arguments(self.kernels)):
-            result.update(dep_mapper(arg.expression))
+        for arg_expr in self.kernel_arguments.values():
+            result.update(dep_mapper(arg_expr))
 
         return result
 
@@ -436,6 +436,11 @@ class OperatorCompiler(IdentityMapper):
 
         self.assigned_names = set()
 
+    def op_group_features(self, expr):
+        return (
+                self.places[expr.source].op_group_features(expr)
+                + tuple(sorted(expr.kernel_arguments)))
+
     @memoize_method
     def dep_mapper_factory(self, include_subscripts=False):
         from pytential.symbolic.mappers import DependencyMapper
@@ -461,7 +466,7 @@ class OperatorCompiler(IdentityMapper):
 
         self.group_to_operators = {}
         for op in operators:
-            features = self.places[op.source].op_group_features(op)
+            features = self.op_group_features(op)
             self.group_to_operators.setdefault(features, set()).add(op)
 
         # }}}
@@ -567,18 +572,15 @@ class OperatorCompiler(IdentityMapper):
 
             src_discr = self.places[expr.source]
 
-            group = self.group_to_operators[src_discr.op_group_features(expr)]
+            group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
-
-            from pytential.symbolic.mappers import ExpressionKernelIdentityMapper
-            ekim = ExpressionKernelIdentityMapper(self.rec)
 
             kernel_to_index = {}
             kernels = []
             for op in group:
                 if op.kernel not in kernel_to_index:
                     kernel_to_index[op.kernel] = len(kernels)
-                    kernels.append(ekim(op.kernel))
+                    kernels.append(op.kernel)
 
             from pytools import single_valued
             from sumpy.kernel import AxisTargetDerivativeRemover
@@ -603,6 +605,7 @@ class OperatorCompiler(IdentityMapper):
                     LayerPotentialInstruction(
                         outputs=outputs,
                         kernels=tuple(kernels),
+                        kernel_arguments=expr.kernel_arguments,
                         base_kernel=base_kernel,
                         density=density_var,
                         source=expr.source,

@@ -1,10 +1,10 @@
 from __future__ import division
 import numpy as np
 import pyopencl as cl
-from pytential.mesh.generation import (  # noqa
+from meshmode.mesh.generation import (  # noqa
         make_curve_mesh, starfish, ellipse, drop)
 from sumpy.visualization import FieldPlotter
-from sumpy.kernel import OneKernel, LaplaceKernel, HelmholtzKernel
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 import faulthandler
 faulthandler.enable()
@@ -33,15 +33,23 @@ mesh = make_curve_mesh(
         np.linspace(0, 1, nelements+1),
         target_order)
 
-from pytential.discretization.qbx import make_upsampling_qbx_discr
+from pytential.qbx import QBXLayerPotentialSource
+from meshmode.discretization import Discretization
+from meshmode.discretization.poly_element import \
+        InterpolatoryQuadratureSimplexGroupFactory
 
-discr = make_upsampling_qbx_discr(
-        cl_ctx, mesh, target_order, qbx_order, fmm_order=qbx_order)
-slow_discr = make_upsampling_qbx_discr(
-        cl_ctx, mesh, target_order, qbx_order=5, fmm_order=False)
-        #source_order=target_order)
+density_discr = Discretization(
+        cl_ctx, mesh,
+        InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-nodes = discr.nodes().with_queue(queue)
+qbx = QBXLayerPotentialSource(
+        density_discr, fine_order=2*target_order,
+        qbx_order=qbx_order, fmm_order=qbx_order)
+slow_qbx = QBXLayerPotentialSource(
+        density_discr, fine_order=2*target_order,
+        qbx_order=qbx_order, fmm_order=False)
+
+nodes = density_discr.nodes().with_queue(queue)
 
 angle = cl.clmath.atan2(nodes[1], nodes[0])
 
@@ -56,17 +64,17 @@ sigma = cl.clmath.cos(mode_nr*angle)
 if isinstance(kernel, HelmholtzKernel):
     sigma = sigma.astype(np.complex128)
 
-bound_bdry_op = bind(discr, op)
+bound_bdry_op = bind(qbx, op)
 
 fplot = FieldPlotter(np.zeros(2), extent=5, npoints=600)
-from pytential.discretization.target import PointsTarget
+from pytential.target import PointsTarget
 
 fld_in_vol = bind(
-        (slow_discr, PointsTarget(fplot.points)),
+        (slow_qbx, PointsTarget(fplot.points)),
         op)(queue, sigma=sigma, k=k).get()
 
 fmm_fld_in_vol = bind(
-        (discr, PointsTarget(fplot.points)),
+        (qbx, PointsTarget(fplot.points)),
         op)(queue, sigma=sigma, k=k).get()
 
 err = fmm_fld_in_vol-fld_in_vol

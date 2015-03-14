@@ -342,36 +342,93 @@ class IntG(Expression):
             return Expression.__new__(cls)
 
     def __init__(self, kernel, density,
-            qbx_forced_limit=0, source=None, target=None):
+            qbx_forced_limit=0, source=None, target=None,
+            kernel_arguments=None,
+            **kwargs):
         """*target_derivatives* and later arguments should be considered
         keyword-only.
 
         :arg kernel: a kernel as accepted by
-            :func:`sumpy.kernel.normalize_kernel`
+            :func:`sumpy.kernel.to_kernel_and_args`
         :arg qbx_forced_limit: +1 if the output is required to originate from a
             QBX center on the "+" side of the boundary. -1 for the other side. 0 if
             either side of center (or no center at all) is acceptable.
+        :arg kernel_arguments: A dictionary mapping named
+            :class:`sumpy.kernel.Kernel` arguments
+            (see :meth:`sumpy.kernel.Kernel.get_args`
+            and :meth:`sumpy.kernel.Kernel.get_source_args`
+            to expressions that determine them)
+
+        *kwargs* can be used as a more user-friendly
+        interface to *kernel_arguments*.
         """
+
+        if kernel_arguments is None:
+            kernel_arguments = {}
+
+        from sumpy.kernel import to_kernel_and_args
+        kernel, kernel_arguments_2 = to_kernel_and_args(kernel)
+
+        for name, val in kernel_arguments_2.items():
+            if name in kernel_arguments:
+                raise ValueError("'%s' already set in kernel_arguments"
+                        % name)
+            kernel_arguments[name] = val
+
+        del kernel_arguments_2
 
         if qbx_forced_limit not in [-1, 0, 1]:
                 raise ValueError("invalid value (%s) of qbx_forced_limit"
                         % qbx_forced_limit)
 
-        from sumpy.kernel import normalize_kernel
-        self.kernel = normalize_kernel(kernel)
+        kernel_arg_names = set(
+                karg.loopy_arg.name
+                for karg in (
+                    kernel.get_args()
+                    +
+                    kernel.get_source_args()))
+
+        kernel_arguments = kernel_arguments.copy()
+        if kwargs:
+            for name, val in kwargs.items():
+                if name in kernel_arguments:
+                    raise ValueError("'%s' already set in kernel_arguments"
+                            % name)
+
+                if name not in kernel_arg_names:
+                    raise TypeError("'%s' not recognized as kernel argument"
+                            % name)
+
+                kernel_arguments[name] = val
+
+        provided_arg_names = set(kernel_arguments.keys())
+        missing_args = kernel_arg_names - provided_arg_names
+        if missing_args:
+            raise TypeError("kernel argument(s) '%s' not supplied"
+                    % ", ".join(missing_args))
+
+        extraneous_args = provided_arg_names - kernel_arg_names
+        if missing_args:
+            raise TypeError("kernel arguments '%s' not recognized"
+                    % ", ".join(extraneous_args))
+
+        self.kernel = kernel
         self.density = density
         self.qbx_forced_limit = qbx_forced_limit
         self.source = source
         self.target = target
+        self.kernel_arguments = kernel_arguments
 
     def copy(self, kernel=None, density=None, qbx_forced_limit=None,
-            source=None, target=None):
+            source=None, target=None, kernel_arguments=None):
         kernel = kernel or self.kernel
         density = density or self.density
         qbx_forced_limit = qbx_forced_limit or self.qbx_forced_limit
         source = source or self.source
         target = target or self.target
-        return type(self)(kernel, density, qbx_forced_limit, source, target)
+        kernel_arguments = kernel_arguments or self.kernel_arguments
+        return type(self)(kernel, density, qbx_forced_limit, source, target,
+                kernel_arguments)
 
     def __getinitargs__(self):
         return (self.kernel, self.density, self.qbx_forced_limit,
@@ -381,6 +438,9 @@ class IntG(Expression):
 
 
 class IntGdSource(IntG):
+    # FIXME: Unclear if this class is still fully needed
+    # now that the kernel_arguments mechanism exists.
+
     r"""
     .. math::
 
@@ -398,9 +458,13 @@ class IntGdSource(IntG):
     """
 
     def __init__(self, dsource, kernel, density,
-            qbx_forced_limit=0, source=None, target=None):
+            qbx_forced_limit=0, source=None, target=None,
+            kernel_arguments=None,
+            **kwargs):
         IntG.__init__(self, kernel, density,
-                qbx_forced_limit, source, target)
+                qbx_forced_limit, source, target,
+                kernel_arguments=kernel_arguments,
+                **kwargs)
         self.dsource = dsource
 
     def __getinitargs__(self):

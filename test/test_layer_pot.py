@@ -335,9 +335,9 @@ def run_int_eq_test(
         dtype = np.float64
 
     if bc_type == "dirichlet":
-        op = DirichletOperator(knl, loc_sign, use_l2_weighting=True)
+        op = DirichletOperator((knl, knl_kwargs), loc_sign, use_l2_weighting=True)
     elif bc_type == "neumann":
-        op = NeumannOperator(knl, loc_sign, use_l2_weighting=True,
+        op = NeumannOperator((knl, knl_kwargs), loc_sign, use_l2_weighting=True,
                  use_improved_operator=False)
     else:
         assert False

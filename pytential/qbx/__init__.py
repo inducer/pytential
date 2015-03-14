@@ -193,8 +193,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         assert not isinstance(expr, IntGdSource)
 
         from sumpy.kernel import AxisTargetDerivativeRemover
-        result = (expr.source, expr.target, expr.density,
-                AxisTargetDerivativeRemover()(expr.kernel))
+        result = (
+                expr.source, expr.density,
+                AxisTargetDerivativeRemover()(expr.kernel),
+                )
 
         return result
 
@@ -352,7 +354,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             for arg in func(out_kernels):
                 var_dict[arg.name] = with_object_array_or_scalar(
                         reorder_sources,
-                        evaluate(arg.expression))
+                        evaluate(insn.kernel_arguments[arg.name]))
 
         # }}}
 
@@ -400,7 +402,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     # {{{ direct execution
 
     @memoize_method
-    def get_lpot_applier_and_arg_names_to_exprs(self, kernels):
+    def get_lpot_applier(self, kernels):
         # needs to be separate method for caching
 
         from pytools import any
@@ -410,19 +412,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             value_dtype = self.density_discr.real_dtype
 
         from sumpy.qbx import LayerPotential
-        lpot_applier = LayerPotential(self.cl_context,
+        return LayerPotential(self.cl_context,
                     [self.expansion_getter(knl, self.qbx_order)
                         for knl in kernels],
                     value_dtypes=value_dtype)
-
-        arg_names_to_exprs = {}
-        for k in kernels:
-            for arg in k.get_args():
-                arg_names_to_exprs[arg.name] = arg.expression
-            for arg in k.get_source_args():
-                arg_names_to_exprs[arg.name] = arg.expression
-
-        return lpot_applier, arg_names_to_exprs
 
     @memoize_method
     def get_p2p(self, kernels):
@@ -441,20 +434,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         return p2p
 
     def exec_layer_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
-        lp_applier, arg_names_to_exprs = \
-                self.get_lpot_applier_and_arg_names_to_exprs(insn.kernels)
+        lp_applier = self.get_lpot_applier(insn.kernels)
         p2p = None
 
         kernel_args = {}
-        for arg_name, arg_expr in six.iteritems(arg_names_to_exprs):
+        for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
-
-        from pymbolic import var
-        from sumpy.tools import gather_arguments
-        kernel_args.update(
-                (arg.name, evaluate(var(arg.name)))
-                for arg in gather_arguments(lp_applier.kernels)
-                if arg.name not in kernel_args)
 
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
