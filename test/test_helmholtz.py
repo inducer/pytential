@@ -242,7 +242,7 @@ def test_dielectric(ctx_getter, qbx_order, visualize=False):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
 
-    for nelements in [30]:
+    for nelements in [30, 50, 70]:
         # prevent sympy cache 'splosion
         from sympy.core.cache import clear_cache
         clear_cache()
