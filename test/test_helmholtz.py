@@ -79,8 +79,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     # {{{ solve bvp
 
     from sumpy.kernel import HelmholtzKernel, AxisTargetDerivative
-    kernel_K0 = HelmholtzKernel(2, helmholtz_k_name="K0")
-    kernel_K1 = HelmholtzKernel(2, helmholtz_k_name="K1")
+    kernel = HelmholtzKernel(2)
 
     beta = 2.5
     K0 = np.sqrt(k0**2-beta**2)
@@ -115,29 +114,25 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         ]).T.copy()))
     strengths_1 = np.array([1])
 
-    kernel_K0_grad = [
-        AxisTargetDerivative(i, kernel_K0) for i in range(density_discr.ambient_dim)]
-    kernel_K1_grad = [
-        AxisTargetDerivative(i, kernel_K1) for i in range(density_discr.ambient_dim)]
+    kernel_grad = [
+        AxisTargetDerivative(i, kernel) for i in range(density_discr.ambient_dim)]
 
     from sumpy.p2p import P2P
-    pot_p2p_K0 = P2P(cl_ctx, [kernel_K0], exclude_self=False)
-    pot_p2p_K1 = P2P(cl_ctx, [kernel_K1], exclude_self=False)
-    pot_p2p_grad_K0 = P2P(cl_ctx, kernel_K0_grad, exclude_self=False)
-    pot_p2p_grad_K1 = P2P(cl_ctx, kernel_K1_grad, exclude_self=False)
+    pot_p2p = P2P(cl_ctx, [kernel], exclude_self=False)
+    pot_p2p_grad = P2P(cl_ctx, kernel_grad, exclude_self=False)
 
     normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
 
-    _, (E0,) = pot_p2p_K0(queue, density_discr.nodes(), sources_0, [strengths_0],
-                    out_host=False, K0=K0)
-    _, (E1,) = pot_p2p_K1(queue, density_discr.nodes(), sources_1, [strengths_1],
-                    out_host=False, K1=K1)
-    _, (grad0_E0, grad1_E0) = pot_p2p_grad_K0(
+    _, (E0,) = pot_p2p(queue, density_discr.nodes(), sources_0, [strengths_0],
+                    out_host=False, k=K0)
+    _, (E1,) = pot_p2p(queue, density_discr.nodes(), sources_1, [strengths_1],
+                    out_host=False, k=K1)
+    _, (grad0_E0, grad1_E0) = pot_p2p_grad(
         queue, density_discr.nodes(), sources_0, [strengths_0],
-        out_host=False, K0=K0)
-    _, (grad0_E1, grad1_E1) = pot_p2p_grad_K1(
+        out_host=False, k=K0)
+    _, (grad0_E1, grad1_E1) = pot_p2p_grad(
         queue, density_discr.nodes(), sources_1, [strengths_1],
-        out_host=False, K1=K1)
+        out_host=False, k=K1)
 
     E0_dntarget = (grad0_E0*normal[0] + grad1_E0*normal[1])
     E1_dntarget = (grad0_E1*normal[0] + grad1_E1*normal[1])
@@ -191,10 +186,10 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             (qbx, PointsTarget(targets_1)),
             representation1_sym)(queue, unknown=unknown, K0=K0, K1=K1).get()
 
-    _, (E0_tgt_true,) = pot_p2p_K0(queue, targets_0, sources_0, [strengths_0],
-                    out_host=True, K0=K0)
-    _, (E1_tgt_true,) = pot_p2p_K1(queue, targets_1, sources_1, [strengths_1],
-                    out_host=True, K1=K1)
+    _, (E0_tgt_true,) = pot_p2p(queue, targets_0, sources_0, [strengths_0],
+                    out_host=True, k=K0)
+    _, (E1_tgt_true,) = pot_p2p(queue, targets_1, sources_1, [strengths_1],
+                    out_host=True, k=K1)
 
     err_E0 = la.norm(E0_tgt - E0_tgt_true)/la.norm(E0_tgt_true)
     err_E1 = la.norm(E1_tgt - E1_tgt_true)/la.norm(E1_tgt_true)
@@ -212,10 +207,10 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         fld1 = bind(
                 (qbx, PointsTarget(fplot.points)),
                 representation1_sym)(queue, unknown=unknown, K1=K1).get()
-        _, (fld0_true,) = pot_p2p_K0(queue, fplot.points, sources_0, [strengths_0],
-                        out_host=True, K0=K0)
-        _, (fld1_true,) = pot_p2p_K1(queue, fplot.points, sources_1, [strengths_1],
-                        out_host=True, K1=K1)
+        _, (fld0_true,) = pot_p2p(queue, fplot.points, sources_0, [strengths_0],
+                        out_host=True, k=K0)
+        _, (fld1_true,) = pot_p2p(queue, fplot.points, sources_1, [strengths_1],
+                        out_host=True, k=K1)
 
         #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         fplot.write_vtk_file(
