@@ -423,16 +423,6 @@ class Code(object):
 
 # {{{ compiler
 
-def _hashable_kernel_args(kernel_arguments):
-    hashable_args = []
-    for key, val in sorted(kernel_arguments.items()):
-        if isinstance(val, np.ndarray):
-            val = tuple(val)
-        hashable_args.append((key, val))
-
-    return tuple(hashable_args)
-
-
 class OperatorCompiler(IdentityMapper):
     def __init__(self, places, prefix="_expr",
             max_vectors_in_batch_expr=None):
@@ -448,9 +438,10 @@ class OperatorCompiler(IdentityMapper):
         self.assigned_names = set()
 
     def op_group_features(self, expr):
+        from pytential.symbolic.primitives import hashable_kernel_args
         return (
                 self.places[expr.source].op_group_features(expr)
-                + tuple(_hashable_kernel_args(expr.kernel_arguments)))
+                + hashable_kernel_args(expr.kernel_arguments))
 
     @memoize_method
     def dep_mapper_factory(self, include_subscripts=False):

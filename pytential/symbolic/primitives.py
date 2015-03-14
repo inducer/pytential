@@ -319,6 +319,16 @@ class IterativeInverse(Expression):
 
 # {{{ potentials
 
+def hashable_kernel_args(kernel_arguments):
+    hashable_args = []
+    for key, val in sorted(kernel_arguments.items()):
+        if isinstance(val, np.ndarray):
+            val = tuple(val)
+        hashable_args.append((key, val))
+
+    return tuple(hashable_args)
+
+
 class IntG(Expression):
     r"""
     .. math::
@@ -365,6 +375,9 @@ class IntG(Expression):
 
         if kernel_arguments is None:
             kernel_arguments = {}
+
+        if isinstance(kernel_arguments, tuple):
+            kernel_arguments = dict(kernel_arguments)
 
         from sumpy.kernel import to_kernel_and_args
         kernel, kernel_arguments_2 = to_kernel_and_args(kernel)
@@ -432,7 +445,8 @@ class IntG(Expression):
 
     def __getinitargs__(self):
         return (self.kernel, self.density, self.qbx_forced_limit,
-                self.source, self.target)
+                self.source, self.target,
+                hashable_kernel_args(self.kernel_arguments))
 
     mapper_method = intern("map_int_g")
 
