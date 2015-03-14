@@ -423,6 +423,16 @@ class Code(object):
 
 # {{{ compiler
 
+def _hashable_kernel_args(kernel_arguments):
+    hashable_args = []
+    for key, val in sorted(kernel_arguments.items()):
+        if isinstance(val, np.ndarray):
+            val = tuple(val)
+        hashable_args.append((key, val))
+
+    return tuple(hashable_args)
+
+
 class OperatorCompiler(IdentityMapper):
     def __init__(self, places, prefix="_expr",
             max_vectors_in_batch_expr=None):
@@ -438,15 +448,9 @@ class OperatorCompiler(IdentityMapper):
         self.assigned_names = set()
 
     def op_group_features(self, expr):
-        hashable_args = []
-        for key, val in sorted(expr.kernel_arguments.items()):
-            if isinstance(val, np.ndarray):
-                val = tuple(val)
-            hashable_args.append((key, val))
-
         return (
                 self.places[expr.source].op_group_features(expr)
-                + tuple(hashable_args))
+                + tuple(_hashable_kernel_args(expr.kernel_arguments)))
 
     @memoize_method
     def dep_mapper_factory(self, include_subscripts=False):
@@ -596,6 +600,8 @@ class OperatorCompiler(IdentityMapper):
             for op in group:
                 assert op.qbx_forced_limit in [-1, 0, 1]
 
+            kernel_arguments = expr.kernel_arguments
+
             outputs = [
                     LayerPotentialOutput(
                         name=name,
@@ -610,7 +616,7 @@ class OperatorCompiler(IdentityMapper):
                     LayerPotentialInstruction(
                         outputs=outputs,
                         kernels=tuple(kernels),
-                        kernel_arguments=expr.kernel_arguments,
+                        kernel_arguments=kernel_arguments,
                         base_kernel=base_kernel,
                         density=density_var,
                         source=expr.source,
