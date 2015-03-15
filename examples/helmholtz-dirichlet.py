@@ -1,31 +1,24 @@
-import numpy as np  # noqa
+import numpy as np
 import pyopencl as cl
-import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
-from meshmode.mesh.io import generate_gmsh, FileSource
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
 
-from meshmode.discretization.visualization import make_visualizer
-
 from pytential import bind, sym, norm  # noqa
-from pytools.obj_array import make_obj_array
 
-import pytential.symbolic.primitives as p
-
-import logging
-logger = logging.getLogger(__name__)
-
+# {{{ set some constants for use below
 
 nelements = 50
 mesh_order = 3
 bdry_quad_order = 10
 bdry_ovsmp_quad_order = 4*bdry_quad_order
-qbx_order = 3
-fmm_order = 3
-k = 3
+qbx_order = 4
+fmm_order = 8
+k = 15
+
+# }}}
 
 
 def main():
@@ -37,6 +30,7 @@ def main():
 
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
+
     mesh = make_curve_mesh(
             partial(ellipse, 3),
             np.linspace(0, 1, nelements+1),
@@ -46,11 +40,13 @@ def main():
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
-    logger.info("%d elements" % mesh.nelements)
+    from pytential.qbx import QBXLayerPotentialSource
+    qbx = QBXLayerPotentialSource(
+            density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
+            fmm_order=fmm_order
+            )
 
-    #bdry_vis = make_visualizer(queue, density_discr, 20)
-
-    # {{{ solve bvp
+    # {{{ describe bvp
 
     from sumpy.kernel import HelmholtzKernel
     kernel = HelmholtzKernel(2)
@@ -61,22 +57,24 @@ def main():
     sqrt_w = sym.sqrt_jac_q_weight()
     inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
 
+    # Brakhage-Werner parameter
     alpha = 1j
+
+    # -1 for interior Dirichlet
+    # +1 for exterior Dirichlet
     loc_sign = -1
 
     bdry_op_sym = (-loc_sign*0.5*sigma_sym
             + sqrt_w*(
-                alpha*sym.S(kernel, inv_sqrt_w_sigma)
-                - sym.D(kernel, inv_sqrt_w_sigma)
+                alpha*sym.S(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
+                - sym.D(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
                 ))
 
-    from pytential.qbx import QBXLayerPotentialSource
-    qbx = QBXLayerPotentialSource(
-            density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
-            fmm_order=fmm_order
-            )
+    # }}}
 
     bound_op = bind(qbx, bdry_op_sym)
+
+    # {{{ fix rhs and solve
 
     mode_nr = 3
     nodes = density_discr.nodes().with_queue(queue)
@@ -90,15 +88,18 @@ def main():
     gmres_result = gmres(
             bound_op.scipy_op(queue, "sigma", k=k),
             bvp_rhs, tol=1e-14, progress=True,
+            stall_iterations=0,
             hard_failure=True)
 
     # }}}
 
+    # {{{ postprocess/visualize
+
     sigma = gmres_result.solution
 
     representation_sym = (
-            alpha*sym.S(kernel, inv_sqrt_w_sigma)
-            - sym.D(kernel, inv_sqrt_w_sigma))
+            alpha*sym.S(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
+            - sym.D(kernel, inv_sqrt_w_sigma, k=sym.var("k")))
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
@@ -114,6 +115,8 @@ def main():
                 ("potential", fld_in_vol)
                 ]
             )
+
+    # }}}
 
 
 if __name__ == "__main__":
