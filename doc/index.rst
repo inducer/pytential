@@ -6,6 +6,9 @@ potentials (and, sooner or later, volume potentials).
 It also knows how to set up meshes and solve integral
 equations.
 
+See :download:`example/helmholtz-dirichlet.py <../examples/helmholtz-dirichlet.py>`
+for a complete usage example.
+
 Contents
 ========
 

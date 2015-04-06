@@ -6,12 +6,12 @@ QBX internals
 Data structures describing geometry
 -----------------------------------
 
-.. automodule:: pytential.discretization.qbx.geometry
+.. automodule:: pytential.qbx.geometry
 
 Fast multipole driver
 ---------------------
 
-.. automodule:: pytential.discretization.qbx.fmm
+.. automodule:: pytential.qbx.fmm
 
 
 .. vim: sw=4:tw=75

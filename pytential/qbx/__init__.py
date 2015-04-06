@@ -94,7 +94,7 @@ class LayerPotentialSource(object):
 # {{{ QBX layer potential source
 
 class QBXLayerPotentialSource(LayerPotentialSource):
-    """An (unstructured) grid for discretizing a QBX operator.
+    """A source discretization for a QBX layer potential.
 
     .. attribute :: mesh
     .. attribute :: groups

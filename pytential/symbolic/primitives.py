@@ -40,6 +40,51 @@ from pymbolic.primitives import make_sym_vector  # noqa
 __doc__ = """
 .. |where-blurb| replace:: A symbolic name for a
     :class:`pytential.discretization.Discretization`
+
+.. autoclass:: Variable
+.. autoclass:: VectorVariable
+
+Functions
+^^^^^^^^^
+
+.. data:: real
+.. data:: imag
+.. data:: conj
+.. data:: sqrt
+.. data:: abs
+
+Discretization properties
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: QWeight
+.. autoclass:: Nodes
+.. autoclass:: ParametrizationDerivative
+.. autoclass:: pseudoscalar
+.. autoclass:: area_element
+.. autoclass:: sqrt_jac_q_weight
+.. autoclass:: normal
+
+Elementary numerics
+^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: NumReferenceDerivative
+.. autoclass:: NodeSum
+.. autofunction:: integral
+.. autoclass:: Ones
+.. autofunction:: ones_vec
+.. autofunction:: area
+.. autoclass:: IterativeInverse
+
+Layer potentials
+^^^^^^^^^^^^^^^^
+
+.. autoclass:: IntG
+.. autoclass:: IntGdSource
+
+Internal helpers
+^^^^^^^^^^^^^^^^
+
+.. autoclass:: DimensionalizedExpression
 """
 
 
@@ -179,6 +224,11 @@ class Nodes(DiscretizationProperty):
 
 
 class NumReferenceDerivative(DiscretizationProperty):
+    """An operator that takes a derivative
+    of *operand* with respect to the the element
+    reference coordinates.
+    """
+
     def __init__(self, ref_axes, operand, where=None):
         """
         :arg ref_axes: a :class:`frozenset` of indices of
@@ -201,8 +251,8 @@ class NumReferenceDerivative(DiscretizationProperty):
 
 
 class ParametrizationDerivative(DiscretizationProperty):
-    """A :class:`pymbolic.geometric_algebra.MultiVector` for the
-    parametrization derivative.
+    """A :class:`pymbolic.geometric_algebra.MultiVector` representing
+    the derivative of the reference-to-global parametrization.
     """
 
     mapper_method = "map_parametrization_derivative"
@@ -257,6 +307,8 @@ def mean_curvature(where):
 # {{{ operators
 
 class NodeSum(Expression):
+    """Implements a global sum over all discretization nodes."""
+
     def __init__(self, operand):
         self.operand = operand
 
@@ -267,10 +319,16 @@ class NodeSum(Expression):
 
 
 def integral(operand, where=None):
+    """A volume integral of *operand*."""
+
     return NodeSum(area_element(where) * QWeight(where) * operand)
 
 
 class Ones(Expression):
+    """A vector that is constant *one* on the whole
+    discretization.
+    """
+
     def __init__(self, where=None):
         self.where = where
 
@@ -359,7 +417,8 @@ class IntG(Expression):
         keyword-only.
 
         :arg kernel: a kernel as accepted by
-            :func:`sumpy.kernel.to_kernel_and_args`
+            :func:`sumpy.kernel.to_kernel_and_args`,
+            likely a :class:`sumpy.kernel.Kernel`.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
             QBX center on the "+" side of the boundary. -1 for the other side. 0 if
             either side of center (or no center at all) is acceptable.
@@ -458,8 +517,8 @@ class IntGdSource(IntG):
     r"""
     .. math::
 
-        \int_\Gamma \operatorname{dsource} \overdot \nabla_y
-            \overdot g(x-y) \sigma(y) dS_y
+        \int_\Gamma \operatorname{dsource} \dot \nabla_y
+            \dot g(x-y) \sigma(y) dS_y
 
     where :math:`\sigma` is *density*, and
     *dsource*, a multivector.

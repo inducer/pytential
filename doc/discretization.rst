@@ -1,31 +1,21 @@
 Discretizations
 ===============
 
-To create a discretization as an end user, this function, along with perhaps
-:class:`pytential.discretization.PointsTarget`, is likely all an end user will
-need:
+To compute a layer potential as an  an end user, create a
+:class:`meshmode.discretization.Discretization`
+with a :class:`InterpolatoryQuadratureSimplexGroupFactory`
+as a discretization for the density.
 
-.. currentmodule:: pytential.discretization.qbx
-
-.. autofunction:: make_upsampling_qbx_discr
-
-The rest of this chapter documents the interface exposed by each discretization
-component.
-
-See :mod:`meshmode.discretization` and :mod:`meshmode.discretization.poly_element`
-for base classes used by these discretizations.
+Then create :class:`pytential.qbx.QBXLayerPotentialSource`,
+:func:`pytential.bind` a layer potential operator to it,
+and you can start computing.
 
 QBX discretization
 ------------------
 
-.. automodule:: pytential.discretization.qbx
+.. automodule:: pytential.qbx
 
-Upsampling discretization wrapper
----------------------------------
+Targets
+-------
 
-.. automodule:: pytential.discretization.upsampling
-
-Target discretizations
-----------------------
-
-.. automodule:: pytential.discretization.target
+.. automodule:: pytential.target
