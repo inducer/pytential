@@ -202,18 +202,18 @@ class NeumannOperator(L2WeightedPDEOperator):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
-        DpS0u = Dp(self.kernel_and_args,
+        DpS0u = Dp(self.kernel_and_args,  # noqa
                 cse(S(self.laplace_kernel_and_args, inv_sqrt_w_u)))
 
         if self.use_improved_operator:
-            Dp0S0u = -0.25*u + Sp(self.laplace_kernel_and_args,
+            Dp0S0u = -0.25*u + Sp(self.laplace_kernel_and_args,  # noqa
                     Sp(self.laplace_kernel_and_args, inv_sqrt_w_u))
 
             if isinstance(self.kernel, HelmholtzKernel):
-                DpS0u = (Dp(self.kernel_and_args - self.laplace_kernel_and_args,
+                DpS0u = (Dp(self.kernel_and_args - self.laplace_kernel_and_args,  # noqa
                     cse(S(self.laplace_kernel_and_args, inv_sqrt_w_u))) + Dp0S0u)
             elif isinstance(self.kernel_and_args, LaplaceKernel):
-                DpS0u = Dp0S0u
+                DpS0u = Dp0S0u  # noqa
             else:
                 raise ValueError("no improved operator for %s known"
                         % self.kernel)
@@ -497,9 +497,9 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                 #
                 # (because dn D is hypersingular, which we'd like to cancel out)
 
-                dens_coeff_D_in = find_normal_derivative_bc_coeff(
+                dens_coeff_D_in = find_normal_derivative_bc_coeff(  # noqa
                         field_kind, i_interface, side_out)
-                dens_coeff_D_out = - find_normal_derivative_bc_coeff(
+                dens_coeff_D_out = - find_normal_derivative_bc_coeff(  # noqa
                         field_kind, i_interface, side_in)
 
                 self.density_coeffs[
@@ -623,10 +623,10 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         domain_outer, domain_inner, interface_id = \
                                 self.interfaces[term.i_interface]
                         if side == self.side_in:
-                            K_expr = self.domain_K_exprs[domain_inner]
+                            K_expr = self.domain_K_exprs[domain_inner]  # noqa
                             bc_coeff = term.coeff_inner
                         elif side == self.side_out:
-                            K_expr = self.domain_K_exprs[domain_outer]
+                            K_expr = self.domain_K_exprs[domain_outer]  # noqa
                             bc_coeff = term.coeff_outer
                         else:
                             raise ValueError("invalid value of 'side'")
