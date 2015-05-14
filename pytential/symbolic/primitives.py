@@ -260,13 +260,13 @@ class ParametrizationDerivative(DiscretizationProperty):
 
 def pseudoscalar(where=None):
     return cse(
-            ParametrizationDerivative(where).attr("project_max_grade")(),
+            ParametrizationDerivative(where).a.project_max_grade(),
             "pseudoscalar", cse_scope.DISCRETIZATION)
 
 
 def area_element(where=None):
     return cse(
-            sqrt(pseudoscalar(where).attr("norm_squared")()),
+            sqrt(pseudoscalar(where).a.norm_squared()),
             "area_element", cse_scope.DISCRETIZATION)
 
 
@@ -282,7 +282,7 @@ def normal(where=None):
     # exterior normals for positively oriented curves.
 
     pder = pseudoscalar(where) / area_element(where)
-    return cse(pder.attr("I") | pder, "normal",
+    return cse(pder.a.I | pder, "normal",
             cse_scope.DISCRETIZATION)
 
 
@@ -560,27 +560,27 @@ S = IntG
 
 def normal_derivative(operand, where=None):
     d = Derivative()
-    return (normal(where) * d.nabla) * d(operand)
+    return (normal(where).a.scalar_product(d.nabla)) * d(operand)
 
 
 def Sp(*args, **kwargs):
     where = kwargs.get("target")
-    return normal_derivative(S(*args, **kwargs), where).attr("xproject")(0)
+    return normal_derivative(S(*args, **kwargs), where).a.xproject(0)
 
 
 def Spp(*args, **kwargs):
     where = kwargs.get("target")
-    return normal_derivative(Sp(*args, **kwargs), where).attr("xproject")(0)
+    return normal_derivative(Sp(*args, **kwargs), where).a.xproject(0)
 
 
 def D(*args, **kwargs):
     where = kwargs.get("source")
-    return IntGdSource(normal(where), *args, **kwargs).attr("xproject")(0)
+    return IntGdSource(normal(where), *args, **kwargs).a.xproject(0)
 
 
 def Dp(*args, **kwargs):
     target = kwargs.get("target")
-    return normal_derivative(D(*args, **kwargs), target).attr("xproject")(0)
+    return normal_derivative(D(*args, **kwargs), target).a.xproject(0)
 
 # }}}
 
