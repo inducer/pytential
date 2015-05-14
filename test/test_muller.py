@@ -31,7 +31,7 @@ import pytest
 
 @pytest.mark.parametrize("true_roots", [
     np.linspace(1, 20, 19),
-    np.exp(1j*np.linspace(0, 2*np.pi, 5)), # double root at 1
+    np.exp(1j*np.linspace(0, 2*np.pi, 5)),  # double root at 1
     np.exp(1j*np.linspace(0, 2*np.pi, 15, endpoint=False)),
     ])
 def test_muller(true_roots):
@@ -39,7 +39,6 @@ def test_muller(true_roots):
     :arg n: number of zeros sought
     :return: (roots, niter, err)
     """
-    maxiter = 100
     eps = 1e-12
     from pytential.muller import muller_deflate
     roots, niter, err = muller_deflate(
@@ -62,12 +61,13 @@ def poly_with_roots(z, roots):
 
     return y
 
-def fun1(z,n):
+
+def fun1(z, n):
     """
     :a polynomial with exp(1j i 2 pi/n), i=0,...,n-1 as its roots
     """
-    theta = np.linspace(0,2*np.pi,n,endpoint=False)
-    
+    theta = np.linspace(0, 2*np.pi, n, endpoint=False)
+
     y = 1.0
     for i in range(n):
         y = y*(z-np.exp(1j*theta[i]))
@@ -75,4 +75,9 @@ def fun1(z,n):
     return y
 
 if __name__ == "__main__":
-    test_muller()
+    import sys
+    if len(sys.argv) > 1:
+        exec(sys.argv[1])
+    else:
+        from py.test.cmdline import main
+        main([__file__])
