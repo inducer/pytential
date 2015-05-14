@@ -182,7 +182,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
         ellipse_fraction = ((1-ellipse_aspect)/(1+ellipse_aspect))**mode_nr
 
         # (2.6) in [1]
-        J = cl.clmath.sqrt(
+        J = cl.clmath.sqrt(  # noqa
                 cl.clmath.sin(angle)**2
                 + (1/ellipse_aspect)**2 * cl.clmath.cos(angle)**2)
 
@@ -769,6 +769,181 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
 # }}}
 
+
+# {{{ test derivatives
+
+def test_tangential_derivatives(ctx_getter):
+    logging.basicConfig(level=logging.INFO)
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    curve_f = partial(ellipse, 3)
+    nelements = 50
+    target_order = 8
+    source_order = None
+    qbx_order = 4
+    k = 2
+    loc_sign = -1
+
+    mesh = make_curve_mesh(curve_f,
+            np.linspace(0, 1, nelements+1),
+            target_order)
+
+    from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+    density_discr = Discretization(
+            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+
+    if source_order is None:
+        source_order = 4*target_order
+
+    qbx = QBXLayerPotentialSource(
+            density_discr, fine_order=source_order, qbx_order=qbx_order,
+            # Don't use FMM for now
+            fmm_order=False)
+
+    # {{{ set up operator
+
+    from pytential.symbolic.pde.scalar import DirichletOperator
+
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, AxisTargetDerivative
+    if k:
+        knl = HelmholtzKernel(2)
+        knl_kwargs = {"k": k}
+    else:
+        knl = LaplaceKernel(2)
+        knl_kwargs = {}
+
+    if knl.is_complex_valued:
+        dtype = np.complex128
+    else:
+        dtype = np.float64
+
+    op = DirichletOperator((knl, knl_kwargs), loc_sign, use_l2_weighting=True)
+
+    op_u = op.operator(sym.var("u"))
+
+    # }}}
+
+    # {{{ set up test data
+
+    test_src_geo_radius = 2
+    test_tgt_geo_radius = 0.1
+
+    point_sources = make_circular_point_group(10, test_src_geo_radius,
+            func=lambda x: x**1.5)
+    test_targets = make_circular_point_group(20, test_tgt_geo_radius)
+
+    np.random.seed(22)
+    source_charges = np.random.randn(point_sources.shape[1])
+    source_charges[-1] = -np.sum(source_charges[:-1])
+    source_charges = source_charges.astype(dtype)
+    assert np.sum(source_charges) < 1e-15
+
+    # }}}
+
+    # {{{ establish BCs
+
+    from sumpy.p2p import P2P
+    pot_p2p = P2P(cl_ctx,
+            [knl], exclude_self=False, value_dtypes=dtype)
+
+    evt, (test_direct,) = pot_p2p(
+            queue, test_targets, point_sources, [source_charges],
+            out_host=False, **knl_kwargs)
+
+    nodes = density_discr.nodes()
+
+    evt, (bc,) = pot_p2p(
+            queue, nodes, point_sources, [source_charges],
+            **knl_kwargs)
+
+    grad_p2p = P2P(cl_ctx,
+            [AxisTargetDerivative(0, knl), AxisTargetDerivative(1, knl)],
+            exclude_self=False, value_dtypes=dtype)
+    evt, (grad0, grad1) = grad_p2p(
+            queue, nodes, point_sources, [source_charges],
+            **knl_kwargs)
+
+    #normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
+    #bc = (grad0*normal[0] + grad1*normal[1])
+
+    # }}}
+
+    # {{{ solve
+
+    bound_op = bind(qbx, op_u)
+
+    rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
+
+    from pytential.gmres import gmres
+    gmres_result = gmres(
+            bound_op.scipy_op(queue, "u"),
+            rhs, tol=1e-14, progress=True,
+            hard_failure=False)
+
+    u = gmres_result.solution
+    print("gmres state:", gmres_result.state)
+
+    # }}}
+
+    # {{{ error check
+
+    from pytential.target import PointsTarget
+
+    bound_tgt_op = bind((qbx, PointsTarget(test_targets)),
+            op.representation(sym.var("u")))
+
+    test_via_bdry = bound_tgt_op(queue, u=u)
+
+    err = test_direct-test_via_bdry
+
+    err = err.get()
+    test_direct = test_direct.get()
+    test_via_bdry = test_via_bdry.get()
+
+    rel_err_2 = la.norm(err)/la.norm(test_direct)
+    rel_err_inf = la.norm(err, np.inf)/la.norm(test_direct, np.inf)
+
+    # }}}
+
+    print("rel_err_2: %g rel_err_inf: %g" % (rel_err_2, rel_err_inf))
+
+    # {{{ test tangential derivative
+
+    bound_t_deriv_op = bind(qbx,
+            op.representation(
+                sym.var("u"), map_potentials=sym.tangential_derivative,
+                qbx_forced_limit=loc_sign))
+
+    #print(bound_t_deriv_op.code)
+
+    tang_deriv_from_src = bound_t_deriv_op(queue, u=u).as_scalar().get()
+
+    tangent = bind(
+            density_discr,
+            sym.pseudoscalar()/sym.area_element())(queue).as_vector(np.object)
+
+    tang_deriv_ref = (grad0 * tangent[0] + grad1 * tangent[1]).get()
+
+    if 0:
+        pt.plot(tang_deriv_ref.real)
+        pt.plot(tang_deriv_from_src.real)
+        pt.show()
+
+    td_err = tang_deriv_from_src - tang_deriv_ref
+
+    rel_td_err_inf = la.norm(td_err, np.inf)/la.norm(tang_deriv_ref, np.inf)
+
+    print("rel_td_err_inf: %g" % rel_td_err_inf)
+
+    # }}}
+
+    # FIXME: Turn into proper test
+
+# }}}
 
 # You can test individual routines by typing
 # $ python test_layer_pot.py 'test_routine()'
