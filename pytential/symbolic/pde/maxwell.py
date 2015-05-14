@@ -25,10 +25,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-
-
-import numpy as np
+import numpy as np  # noqa
 from pymbolic.primitives import Variable
 from pytential.primitives import (
         cse,
@@ -43,8 +40,6 @@ from pytential.primitives import (
 
         Integral, LineIntegral, Mean, Ones,
         )
-
-
 
 
 # {{{ MFIE
@@ -106,6 +101,7 @@ class PECAugmentedMFIEOperator:
 
 # }}}
 
+
 # {{{ generalized Debye
 
 def _debye_S0_surf_div(nxnxE):
@@ -117,9 +113,6 @@ def _debye_S0_surf_div(nxnxE):
             IntGdSource(0, nxnxE_t[i],
                 ds_direction=make_tangent(i, 3))
             for i in range(3-1)])
-
-
-
 
 
 class DebyeOperatorBase(object):
@@ -392,9 +385,6 @@ class InvertingDebyeOperator(InvertingDebyeOperatorBase):
                 + self.harmonic_vector_field_current(hvf_coefficients))
 
 
-
-
-
 class InvertingSLapSDebyeOperator(InvertingDebyeOperatorBase):
     "Debye operator based on r and q."
 
@@ -422,8 +412,6 @@ class InvertingSLapSDebyeOperator(InvertingDebyeOperatorBase):
                 1j * self.k * (
                     surf_grad_alpha_r - n_cross(surf_grad_alpha_q))
                 + self.harmonic_vector_field_current(hvf_coefficients))
-
-
 
 
 class NonInvertingDebyeOperator(DebyeOperatorBase):
@@ -459,7 +447,7 @@ class NonInvertingDebyeOperator(DebyeOperatorBase):
         fix = 0
 
         if self.invertible:
-            s_ones = cse(S(0,Ones()), "s_ones")
+            s_ones = cse(S(0, Ones()), "s_ones")
 
             def inv_rank_one_coeff(u):
                 return cse(Mean(cse(S(0, cse(S(0, u))))))
