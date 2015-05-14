@@ -23,7 +23,7 @@ THE SOFTWARE.
 """
 
 
-import numpy as np
+import numpy as np  # noqa
 from pytools import Record, memoize_method
 from pymbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper
