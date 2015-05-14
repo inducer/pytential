@@ -115,13 +115,17 @@ class DirichletOperator(L2WeightedPDEOperator):
         from sumpy.kernel import LaplaceKernel
         return isinstance(self.kernel, LaplaceKernel) and self.loc_sign > 0
 
-    def representation(self, u):
+    def representation(self, u, map_potentials=None, **kwargs):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
+        if map_potentials is None:
+            map_potentials = lambda x: x
+
         return (
-                self.alpha*S(self.kernel_and_args, inv_sqrt_w_u)
-                - D(self.kernel_and_args, inv_sqrt_w_u))
+                self.alpha*map_potentials(
+                    S(self.kernel_and_args, inv_sqrt_w_u, **kwargs))
+                - map_potentials(D(self.kernel_and_args, inv_sqrt_w_u, **kwargs)))
 
     def operator(self, u):
         sqrt_w = self.get_sqrt_weight()
