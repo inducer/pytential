@@ -558,12 +558,12 @@ class IntGdSource(IntG):
 S = IntG
 
 
-def tangential_derivative(expr):
-    pder = sym.pseudoscalar() / sym.area_element()
+def tangential_derivative(operand, where=None):
+    pder = pseudoscalar(where) / area_element(where)
 
     # FIXME: Should be formula (3.25) in Dorst et al.
-    d = sym.Derivative()
-    return (d.nabla * d(expr)) >> pder
+    d = Derivative()
+    return (d.nabla * d(operand)) >> pder
 
 
 def normal_derivative(operand, where=None):
@@ -573,12 +573,12 @@ def normal_derivative(operand, where=None):
 
 def Sp(*args, **kwargs):  # noqa
     where = kwargs.get("target")
-    return normal_derivative(S(*args, **kwargs), where).a.xproject(0)
+    return normal_derivative(S(*args, **kwargs), where)
 
 
 def Spp(*args, **kwargs):  # noqa
     where = kwargs.get("target")
-    return normal_derivative(Sp(*args, **kwargs), where).a.xproject(0)
+    return normal_derivative(Sp(*args, **kwargs), where)
 
 
 def D(*args, **kwargs):  # noqa
@@ -588,7 +588,7 @@ def D(*args, **kwargs):  # noqa
 
 def Dp(*args, **kwargs):  # noqa
     target = kwargs.get("target")
-    return normal_derivative(D(*args, **kwargs), target).a.xproject(0)
+    return normal_derivative(D(*args, **kwargs), target)
 
 # }}}
 

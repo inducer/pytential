@@ -650,7 +650,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                                 assert False, raw_potential_op
                         elif term.direction == self.dir_normal:
                             potential_op = sym.normal_derivative(
-                                    potential_op, interface_id).attr("xproject")(0)
+                                    potential_op, interface_id)
 
                             if raw_potential_op is sym.S:
                                 # S'
