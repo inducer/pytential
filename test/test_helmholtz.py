@@ -82,8 +82,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     kernel = HelmholtzKernel(2)
 
     beta = 2.5
-    K0 = np.sqrt(k0**2-beta**2)
-    K1 = np.sqrt(k1**2-beta**2)
+    K0 = np.sqrt(k0**2-beta**2)  # noqa
+    K1 = np.sqrt(k1**2-beta**2)  # noqa
 
     from pytential.symbolic.pde.scalar import TMDielectric2DBoundaryOperator
     pde_op = TMDielectric2DBoundaryOperator(
@@ -134,8 +134,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         queue, density_discr.nodes(), sources_1, [strengths_1],
         out_host=False, k=K1)
 
-    E0_dntarget = (grad0_E0*normal[0] + grad1_E0*normal[1])
-    E1_dntarget = (grad0_E1*normal[0] + grad1_E1*normal[1])
+    E0_dntarget = (grad0_E0*normal[0] + grad1_E0*normal[1])  # noqa
+    E1_dntarget = (grad0_E1*normal[0] + grad1_E1*normal[1])  # noqa
 
     sqrt_w = bind(density_discr, sym.sqrt_jac_q_weight())(queue)
 
@@ -179,10 +179,10 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         ]).T.copy()))
 
     from pytential.target import PointsTarget
-    E0_tgt = bind(
+    E0_tgt = bind(  # noqa
             (qbx, PointsTarget(targets_0)),
             representation0_sym)(queue, unknown=unknown, K0=K0, K1=K1).get()
-    E1_tgt = bind(
+    E1_tgt = bind(  # noqa
             (qbx, PointsTarget(targets_1)),
             representation1_sym)(queue, unknown=unknown, K0=K0, K1=K1).get()
 
@@ -191,8 +191,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     _, (E1_tgt_true,) = pot_p2p(queue, targets_1, sources_1, [strengths_1],
                     out_host=True, k=K1)
 
-    err_E0 = la.norm(E0_tgt - E0_tgt_true)/la.norm(E0_tgt_true)
-    err_E1 = la.norm(E1_tgt - E1_tgt_true)/la.norm(E1_tgt_true)
+    err_E0 = la.norm(E0_tgt - E0_tgt_true)/la.norm(E0_tgt_true)  # noqa
+    err_E1 = la.norm(E1_tgt - E1_tgt_true)/la.norm(E1_tgt_true)  # noqa
 
     print("Err E0", err_E0)
     print("Err E1", err_E1)
