@@ -563,22 +563,22 @@ def normal_derivative(operand, where=None):
     return (normal(where).a.scalar_product(d.nabla)) * d(operand)
 
 
-def Sp(*args, **kwargs):
+def Sp(*args, **kwargs):  # noqa
     where = kwargs.get("target")
     return normal_derivative(S(*args, **kwargs), where).a.xproject(0)
 
 
-def Spp(*args, **kwargs):
+def Spp(*args, **kwargs):  # noqa
     where = kwargs.get("target")
     return normal_derivative(Sp(*args, **kwargs), where).a.xproject(0)
 
 
-def D(*args, **kwargs):
+def D(*args, **kwargs):  # noqa
     where = kwargs.get("source")
     return IntGdSource(normal(where), *args, **kwargs).a.xproject(0)
 
 
-def Dp(*args, **kwargs):
+def Dp(*args, **kwargs):  # noqa
     target = kwargs.get("target")
     return normal_derivative(D(*args, **kwargs), target).a.xproject(0)
 
