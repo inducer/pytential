@@ -30,9 +30,6 @@ from pytential.symbolic.execution import bind
 
 from pytools import memoize_on_first_arg
 
-import pymbolic
-pymbolic.disable_subscript_by_getitem()
-
 
 @memoize_on_first_arg
 def _integral_op(discr):
