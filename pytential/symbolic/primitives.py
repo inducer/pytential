@@ -88,15 +88,15 @@ Internal helpers
 """
 
 
-class DEFAULT_SOURCE:
+class DEFAULT_SOURCE:  # noqa
     pass
 
 
-class DEFAULT_TARGET:
+class DEFAULT_TARGET:  # noqa
     pass
 
 
-class cse_scope(cse_scope_base):
+class cse_scope(cse_scope_base):  # noqa
     DISCRETIZATION = "pytential_discretization"
 
 
