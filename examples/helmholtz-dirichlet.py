@@ -84,7 +84,7 @@ def main():
 
     bvp_rhs = bind(qbx, sqrt_w*sym.var("bc"))(queue, bc=bc)
 
-    from pytential.gmres import gmres
+    from pytential.solve import gmres
     gmres_result = gmres(
             bound_op.scipy_op(queue, "sigma", k=k),
             bvp_rhs, tol=1e-14, progress=True,

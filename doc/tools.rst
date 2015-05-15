@@ -1,14 +1,6 @@
 Utilities
 =========
 
-.. automodule:: pytential.gmres
-
-.. autofunction:: gmres
-
-.. autoclass:: GMRESResult()
-
-.. autoexception:: GMRESError
-
-.. autoclass:: ResidualPrinter
+.. automodule:: pytential.solve
 
 .. vim: sw=4:fdm=marker

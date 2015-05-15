@@ -415,7 +415,7 @@ def run_int_eq_test(
 
     rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
 
-    from pytential.gmres import gmres
+    from pytential.solve import gmres
     gmres_result = gmres(
             bound_op.scipy_op(queue, "u", k=k),
             rhs, tol=1e-14, progress=True,
@@ -871,7 +871,7 @@ def run_tangential_derivative_test(cl_ctx, queue, nelements, qbx_order, k,
 
     rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
 
-    from pytential.gmres import gmres
+    from pytential.solve import gmres
     gmres_result = gmres(
             bound_op.scipy_op(queue, "u"),
             rhs, tol=1e-14, progress=True,

@@ -97,9 +97,9 @@ class EvaluationMapper(EvaluationMapperBase):
                 **dict((var_name, self.rec(var_expr))
                     for var_name, var_expr in six.iteritems(expr.extra_vars)))
 
-        from pytential.gmres import solve_lin_op
+        from pytential.solve import gmres
         rhs = self.rec(expr.rhs)
-        result = solve_lin_op(scipy_op, rhs, debug=False)
+        result = gmres(scipy_op, rhs, debug=False)
         return result
 
     def map_quad_kernel_op(self, expr):

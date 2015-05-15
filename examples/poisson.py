@@ -218,7 +218,7 @@ def main():
 
     bvp_rhs = bind(bdry_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bvp_bc)
 
-    from pytential.gmres import gmres
+    from pytential.solve import gmres
     gmres_result = gmres(
             bound_op.scipy_op(queue, "sigma"),
             bvp_rhs, tol=1e-14, progress=True,

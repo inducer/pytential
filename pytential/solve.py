@@ -26,6 +26,67 @@ THE SOFTWARE.
 """
 
 
+__doc__ = """
+
+.. autofunction:: gmres
+
+.. autoclass:: GMRESResult()
+
+.. autoexception:: GMRESError
+
+.. autoclass:: ResidualPrinter
+"""
+
+
+def get_array_module(vec):
+    try:
+        from pyopencl.tools import array_module
+        from pytools.obj_array import is_obj_array
+        if is_obj_array(vec):
+            return array_module(vec[0])
+        else:
+            return array_module(vec)
+    except ImportError:
+        return np
+
+
+# {{{ block system support
+
+class VectorChopper(object):
+    def __init__(self, structured_vec):
+        from pytools.obj_array import is_obj_array
+        self.is_structured = is_obj_array(structured_vec)
+        self.array_module = get_array_module(structured_vec)
+
+        self.slices = []
+        num_dofs = 0
+        for entry in structured_vec:
+            if isinstance(entry, self.array_module.ndarray):
+                length = len(entry)
+            else:
+                length = 1
+
+            self.slices.append(slice(num_dofs, num_dofs+length))
+            num_dofs += length
+
+    def stack(self, vec):
+        if not self.is_structured:
+            return vec
+
+        return self.array_module.hstack(vec)
+
+    def chop(self, vec):
+        if not self.is_structured:
+            return vec
+
+        from pytools.obj_array import make_obj_array
+        return make_obj_array([vec[slc] for slc in self.slices])
+
+# }}}
+
+
+# {{{ gmres
+
 # Modified Python port of ./Apps/Acoustics/root/matlab/gmres_restart.m
 # from hellskitchen.
 # Necessary because SciPy gmres is not reentrant and thus does
@@ -261,33 +322,10 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
 
     :return: a :class:`GMRESResult`
     """
-    try:
-        from pyopencl.tools import array_module
-        from pytools.obj_array import is_obj_array, make_obj_array
-        if is_obj_array(rhs):
-            amod = array_module(rhs[0])
-        else:
-            amod = array_module(rhs)
-    except ImportError:
-        amod = np
+    amod = get_array_module(rhs)
 
-    from pytools.obj_array import is_obj_array
-    if is_obj_array(rhs):
-        stacked_rhs = amod.hstack(rhs)
-
-        slices = []
-        num_dofs = 0
-        for entry in rhs:
-            if isinstance(entry, amod.ndarray):
-                length = len(entry)
-            else:
-                length = 1
-
-            slices.append(slice(num_dofs, num_dofs+length))
-            num_dofs += length
-
-    else:
-        stacked_rhs = rhs
+    chopper = VectorChopper(rhs)
+    stacked_rhs = chopper.stack(rhs)
 
     if inner_product is None:
         inner_product = amod.vdot
@@ -304,12 +342,32 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
             no_progress_factor=no_progress_factor,
             stall_iterations=stall_iterations, callback=callback)
 
-    if is_obj_array(rhs):
-        return result.copy(
-                solution=make_obj_array([result.solution[slc]
-                    for slc in slices]))
-    else:
-        return result
+    return result.copy(solution=chopper.chop(result.solution))
+
+# }}}
+
+# }}}
+
+
+# {{{ direct solve
+
+def lu(op, rhs, show_spectrum=False):
+    import numpy.linalg as la
+
+    from sumpy.tools import build_matrix
+    mat = build_matrix(op)
+
+    print("condition number: %g" % la.cond(mat))
+    if show_spectrum:
+        ev = la.eigvals(mat)
+        import matplotlib.pyplot as pt
+        pt.plot(ev.real, ev.imag, "o")
+        pt.show()
+
+    chopper = VectorChopper(rhs)
+    return chopper.chop(
+            la.solve(mat,
+                chopper.stack(rhs)))
 
 # }}}
 
