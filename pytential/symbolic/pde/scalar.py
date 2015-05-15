@@ -500,6 +500,10 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                 # = 0
                 #
                 # (because dn D is hypersingular, which we'd like to cancel out)
+                #
+                # NB: bc_coeff_{in,out} already contain the signs to realize
+                # the subtraction for the jump. (So the "+" above is as it
+                # should be.)
 
                 dens_coeff_D_in = find_normal_derivative_bc_coeff(  # noqa
                         field_kind, i_interface, side_out)
@@ -639,11 +643,10 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                                 self.kernel, w_density, source=interface_id,
                                 k=K_expr)
 
-                        jump_term = 0
 
                         if term.direction == self.dir_none:
                             if raw_potential_op is sym.S:
-                                pass
+                                jump_term = 0
                             elif raw_potential_op is sym.D:
                                 jump_term = (side_sign*0.5) * unw_density
                             else:
@@ -656,18 +659,29 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                                 # S'
                                 jump_term = (-side_sign*0.5) * unw_density
                             elif raw_potential_op is sym.D:
-                                pass
+                                jump_term = 0
                             else:
                                 assert False, raw_potential_op
+
                         elif term.direction == self.dir_tangential:
-                            # FIXME
-                            raise NotImplementedError("tangential derivative")
+                            potential_op = sym.tangential_derivative(
+                                    raw_potential_op(
+                                        self.kernel, w_density, source=interface_id,
+                                        k=K_expr, qbx_forced_limit=side_sign),
+                                    interface_id)
+
+                            # Some of these may have jumps, but QBX does the dirty
+                            # work here by directly computing the limit.
+                            jump_term = 0
+
                         else:
                             raise ValueError("invalid direction")
 
                         potential_op = (
                                 jump_term
                                 + sqrt_jac_q_weight(interface_id)*potential_op)
+
+                        del jump_term
 
                         contrib = (
                                 bc_coeff
