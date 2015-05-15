@@ -668,7 +668,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                                     raw_potential_op(
                                         self.kernel, w_density, source=interface_id,
                                         k=K_expr, qbx_forced_limit=side_sign),
-                                    interface_id)
+                                    interface_id).a.as_scalar()
 
                             # Some of these may have jumps, but QBX does the dirty
                             # work here by directly computing the limit.
