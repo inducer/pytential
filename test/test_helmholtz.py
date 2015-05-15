@@ -40,6 +40,11 @@ from meshmode.discretization.poly_element import \
 from six.moves import range
 
 from pytential import bind, sym, norm  # noqa
+from pytential.symbolic.pde.scalar import (
+        TEMDielectric2DBoundaryOperator as TEMOp,
+        TMDielectric2DBoundaryOperator as TMOp,
+        TEDielectric2DBoundaryOperator as TEOp)
+
 
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
@@ -49,6 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
+        op_class,
         k0=3, k1=2.9, mesh_order=10,
         bdry_quad_order=None, bdry_ovsmp_quad_order=None,
         fmm_order=None, visualize=False):
@@ -85,8 +91,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     K0 = np.sqrt(k0**2-beta**2)  # noqa
     K1 = np.sqrt(k1**2-beta**2)  # noqa
 
-    from pytential.symbolic.pde.scalar import TEMDielectric2DBoundaryOperator
-    pde_op = TEMDielectric2DBoundaryOperator(
+    pde_op = op_class(
             k_vacuum=1,
             interfaces=((0, 1, sym.DEFAULT_SOURCE),),
             domain_k_exprs=(k0, k1),
@@ -105,23 +110,26 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
     bound_pde_op = bind(qbx, pde_op.operator(op_unknown_sym))
 
+    e_factor = float(pde_op.ez_enabled)
+    h_factor = float(pde_op.hz_enabled)
+
     e_sources_0 = make_obj_array(list(np.array([
         [0.1, 0.2]
         ]).T.copy()))
-    e_strengths_0 = np.array([1])
+    e_strengths_0 = np.array([1*e_factor])
     e_sources_1 = make_obj_array(list(np.array([
         [4, 4]
         ]).T.copy()))
-    e_strengths_1 = np.array([1])
+    e_strengths_1 = np.array([1*e_factor])
 
     h_sources_0 = make_obj_array(list(np.array([
         [0.2, 0.1]
         ]).T.copy()))
-    h_strengths_0 = np.array([1])
+    h_strengths_0 = np.array([1*h_factor])
     h_sources_1 = make_obj_array(list(np.array([
         [4, 5]
         ]).T.copy()))
-    h_strengths_1 = np.array([1])
+    h_strengths_1 = np.array([1*h_factor])
 
     kernel_grad = [
         AxisTargetDerivative(i, kernel) for i in range(density_discr.ambient_dim)]
@@ -163,11 +171,11 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     H0_dntarget = (grad0_H0*normal[0] + grad1_H0*normal[1])  # noqa
     H1_dntarget = (grad0_H1*normal[0] + grad1_H1*normal[1])  # noqa
 
-    E0_dttarget = (-grad0_E0*normal[1] + grad1_E0*normal[0])  # noqa
-    E1_dttarget = (-grad0_E1*normal[1] + grad1_E1*normal[0])  # noqa
+    E0_dttarget = (grad0_E0*tangent[0] + grad1_E0*tangent[1])  # noqa
+    E1_dttarget = (grad0_E1*tangent[0] + grad1_E1*tangent[1])  # noqa
 
-    H0_dttarget = (-grad0_H0*normal[1] + grad1_H0*normal[0])  # noqa
-    H1_dttarget = (-grad0_H1*normal[1] + grad1_H1*normal[0])  # noqa
+    H0_dttarget = (grad0_H0*tangent[0] + grad1_H0*tangent[1])  # noqa
+    H1_dttarget = (grad0_H1*tangent[0] + grad1_H1*tangent[1])  # noqa
 
     sqrt_w = bind(density_discr, sym.sqrt_jac_q_weight())(queue)
 
@@ -192,9 +200,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
                 else:
                     raise NotImplementedError("direction spec in RHS")
 
-                bvp_rhs[i_bc] *= sqrt_w
             elif term.field_kind == pde_op.field_kind_h:
-
                 if term.direction == pde_op.dir_none:
                     bvp_rhs[i_bc] += (
                         term.coeff_outer * H0
@@ -210,33 +216,24 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
                 else:
                     raise NotImplementedError("direction spec in RHS")
 
-                bvp_rhs[i_bc] *= sqrt_w
+            bvp_rhs[i_bc] *= sqrt_w
 
     scipy_op = bound_pde_op.scipy_op(queue, "unknown",
-            domains=[sym.DEFAULT_TARGET]*4, K0=K0, K1=K1)
+            domains=[sym.DEFAULT_TARGET]*len(pde_op.bcs), K0=K0, K1=K1)
 
-    if 0:
-        from pytential.gmres import gmres
+    if 1:
+        from pytential.solve import gmres
         gmres_result = gmres(scipy_op,
                 bvp_rhs, tol=1e-14, progress=True,
                 hard_failure=True, stall_iterations=0)
 
         unknown = gmres_result.solution
+
     else:
-        from sumpy.tools import build_matrix
-        mat = build_matrix(scipy_op)
-
-        print("condition number: %g" % la.cond(mat))
-        if 0:
-            ev = la.eigvals(mat)
-            import matplotlib.pyplot as pt
-            pt.plot(ev.real, ev.imag, "o")
-            pt.show()
-
-        bvp_rhs_flat = np.array([
-            rhs_i.get()
-            for rhs_i in bvp_rhs]).reshape(-1)
-        unknown = la.solve(mat, bvp_rhs_flat)
+        from sumpy.tools import vector_from_device, vector_to_device
+        from pytential.solve import lu
+        unknown = lu(scipy_op, vector_from_device(queue, bvp_rhs))
+        unknown = vector_to_device(queue, unknown)
 
     # }}}
 
@@ -250,13 +247,13 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         ]).T.copy()))
 
     from pytential.target import PointsTarget
-    F0_tgt = bind(  # noqa
+    from sumpy.tools import vector_from_device
+    F0_tgt = vector_from_device(queue, bind(  # noqa
             (qbx, PointsTarget(targets_0)),
-            representation0_sym)(queue, unknown=unknown, K0=K0, K1=K1).get()
-
-    F1_tgt = bind(  # noqa
+            representation0_sym)(queue, unknown=unknown, K0=K0, K1=K1))
+    F1_tgt = vector_from_device(queue, bind(  # noqa
             (qbx, PointsTarget(targets_1)),
-            representation1_sym)(queue, unknown=unknown, K0=K0, K1=K1).get()
+            representation1_sym)(queue, unknown=unknown, K0=K0, K1=K1))
 
     _, (E0_tgt_true,) = pot_p2p(queue, targets_0, e_sources_0, [e_strengths_0],
                     out_host=True, k=K0)
@@ -268,14 +265,40 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     _, (H1_tgt_true,) = pot_p2p(queue, targets_1, h_sources_1, [h_strengths_1],
                     out_host=True, k=K1)
 
-    F0_tgt_true = np.array([E0_tgt_true, H0_tgt_true])
-    F1_tgt_true = np.array([E1_tgt_true, H1_tgt_true])
+    err_F0_total = 0
+    err_F1_total = 0
 
-    err_F0 = la.norm((F0_tgt - F0_tgt_true).reshape(-1))/la.norm(F0_tgt_true.reshape(-1))  # noqa
-    err_F1 = la.norm((F1_tgt - F1_tgt_true).reshape(-1))/la.norm(F1_tgt_true.reshape(-1))  # noqa
+    i_field = 0
 
-    print("Err F0", err_F0)
-    print("Err F1", err_F1)
+    def vec_norm(ary):
+        return la.norm(ary.reshape(-1))
+
+    def field_kind_to_string(field_kind):
+        return {pde_op.field_kind_e: "E", pde_op.field_kind_h: "H"}[field_kind]
+
+    for field_kind in pde_op.field_kinds:
+        if not pde_op.is_field_present(field_kind):
+            continue
+
+        if field_kind == pde_op.field_kind_e:
+            F0_tgt_true = E0_tgt_true
+            F1_tgt_true = E1_tgt_true
+        elif field_kind == pde_op.field_kind_h:
+            F0_tgt_true = H0_tgt_true
+            F1_tgt_true = H1_tgt_true
+        else:
+            assert False
+
+        err_F0 = vec_norm(F0_tgt[i_field] - F0_tgt_true)/vec_norm(F0_tgt_true)  # noqa
+        err_F1 = vec_norm(F1_tgt[i_field] - F1_tgt_true)/vec_norm(F1_tgt_true)  # noqa
+
+        err_F0_total += err_F0
+        err_F1_total += err_F1
+
+        print("Err %s0" % field_kind_to_string(field_kind), err_F0)
+        print("Err %s1" % field_kind_to_string(field_kind), err_F1)
+
+        i_field += 1
 
     if visualize:
         from sumpy.visualization import FieldPlotter
@@ -283,44 +306,59 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         from pytential.target import PointsTarget
         fld0 = bind(
                 (qbx, PointsTarget(fplot.points)),
-                representation0_sym)(queue, unknown=unknown, K0=K0).get()
+                representation0_sym)(queue, unknown=unknown, K0=K0)
         fld1 = bind(
                 (qbx, PointsTarget(fplot.points)),
-                representation1_sym)(queue, unknown=unknown, K1=K1).get()
+                representation1_sym)(queue, unknown=unknown, K1=K1)
 
-        e_fld0, h_fld0 = fld0
-        e_fld1, h_fld1 = fld1
+        comp_fields = []
+        i_field = 0
+        for field_kind in pde_op.field_kinds:
+            if not pde_op.is_field_present(field_kind):
+                continue
 
-        _, (e_fld0_true,) = pot_p2p(queue, fplot.points, e_sources_0, [e_strengths_0],
-                        out_host=True, k=K0)
-        _, (e_fld1_true,) = pot_p2p(queue, fplot.points, e_sources_1, [e_strengths_1],
-                        out_host=True, k=K1)
-        _, (h_fld0_true,) = pot_p2p(queue, fplot.points, h_sources_0, [h_strengths_0],
-                        out_host=True, k=K0)
-        _, (h_fld1_true,) = pot_p2p(queue, fplot.points, h_sources_1, [h_strengths_1],
-                        out_host=True, k=K1)
+            fld_str = field_kind_to_string(field_kind)
+            comp_fields.extend([
+                ("%s_fld0" % fld_str, fld0[i_field].get()),
+                ("%s_fld1" % fld_str, fld1[i_field].get()),
+                ])
+
+            i_field += 0
+
+        _, (e_fld0_true,) = pot_p2p(
+                queue, fplot.points, e_sources_0, [e_strengths_0],
+                out_host=True, k=K0)
+        _, (e_fld1_true,) = pot_p2p(
+                queue, fplot.points, e_sources_1, [e_strengths_1],
+                out_host=True, k=K1)
+        _, (h_fld0_true,) = pot_p2p(
+                queue, fplot.points, h_sources_0, [h_strengths_0],
+                out_host=True, k=K0)
+        _, (h_fld1_true,) = pot_p2p(
+                queue, fplot.points, h_sources_1, [h_strengths_1],
+                out_host=True, k=K1)
 
         #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         fplot.write_vtk_file(
                 "potential-n%d.vts" % nelements,
                 [
-                    ("e_fld0", e_fld0),
-                    ("e_fld1", e_fld1),
                     ("e_fld0_true", e_fld0_true),
                     ("e_fld1_true", e_fld1_true),
-
-                    ("h_fld0", h_fld0),
-                    ("h_fld1", h_fld1),
                     ("h_fld0_true", h_fld0_true),
                     ("h_fld1_true", h_fld1_true),
-                    ]
+                    ] + comp_fields
                 )
 
-    return err_F0, err_F1
+    return err_F0_total, err_F1_total
 
 
 @pytest.mark.parametrize("qbx_order", [4])
-def test_dielectric(ctx_getter, qbx_order, visualize=False):
+@pytest.mark.parametrize("op_class", [
+    TMOp,
+    TEOp,
+    #TEMOp,
+    ])
+def test_dielectric(ctx_getter, qbx_order, op_class, visualize=False):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -338,6 +376,7 @@ def test_dielectric(ctx_getter, qbx_order, visualize=False):
         errs = run_dielectric_test(
                 cl_ctx, queue,
                 nelements=nelements, qbx_order=qbx_order,
+                op_class=op_class,
                 visualize=visualize)
 
         eoc_rec.add_data_point(1/nelements, la.norm(list(errs)))

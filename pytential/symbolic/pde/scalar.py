@@ -527,6 +527,12 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
 
         return sym.make_sym_vector(name, num_densities)
 
+    def is_field_present(self, field_kind):
+        return (
+                (field_kind == self.field_kind_e and self.ez_enabled)
+                or
+                (field_kind == self.field_kind_h and self.hz_enabled))
+
     def _structured_unknown(self, unknown, weighted):
         """
         :returns: an array of unknowns, with the following index axes:
@@ -543,12 +549,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
             for field_kind in self.field_kinds:
                 for i_interface in range(len(self.interfaces)):
 
-                    is_present = (
-                            (field_kind == self.field_kind_e and self.ez_enabled)
-                            or
-                            (field_kind == self.field_kind_h and self.hz_enabled))
-
-                    if is_present:
+                    if self.is_field_present(field_kind):
                         dens = unknown[i_unknown]
                         i_unknown += 1
                     else:
@@ -580,9 +581,13 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
         """
         unk = self._structured_unknown(unknown, weighted=True)
 
-        result = 0
+        result = []
 
         for field_kind in self.field_kinds:
+            if not self.is_field_present(field_kind):
+                continue
+
+            field_result = 0
             for pot_kind in self.pot_kinds:
                 for i_interface, (i_domain_outer, i_domain_inner, interface_id) in (
                         enumerate(self.interfaces)):
@@ -595,7 +600,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
 
                     my_unk = unk[pot_kind, field_kind, i_interface]
                     if my_unk:
-                        result += (
+                        field_result += (
                                 self.density_coeffs[
                                     pot_kind, field_kind, i_interface, side]
                                 * self.potential_ops[pot_kind](
@@ -605,7 +610,10 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                                     k=self.domain_K_exprs[i_domain]
                                     ))
 
-        return result
+            result.append(field_result)
+
+        from pytools.obj_array import make_obj_array
+        return make_obj_array(result)
 
     def operator(self, unknown):
         weighted_unk = self._structured_unknown(unknown, weighted=True)
