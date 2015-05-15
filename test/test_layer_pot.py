@@ -772,17 +772,10 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
 # {{{ test derivatives
 
-def test_tangential_derivatives(ctx_getter):
-    logging.basicConfig(level=logging.INFO)
-    cl_ctx = ctx_getter()
-    queue = cl.CommandQueue(cl_ctx)
-
-    curve_f = partial(ellipse, 3)
-    nelements = 50
+def run_tangential_derivative_test(cl_ctx, queue, nelements, qbx_order, k,
+        curve_f=partial(ellipse, 3)):
     target_order = 8
     source_order = None
-    qbx_order = 4
-    k = 2
     loc_sign = -1
 
     mesh = make_curve_mesh(curve_f,
@@ -889,27 +882,7 @@ def test_tangential_derivatives(ctx_getter):
 
     # }}}
 
-    # {{{ error check
-
-    from pytential.target import PointsTarget
-
-    bound_tgt_op = bind((qbx, PointsTarget(test_targets)),
-            op.representation(sym.var("u")))
-
-    test_via_bdry = bound_tgt_op(queue, u=u)
-
-    err = test_direct-test_via_bdry
-
-    err = err.get()
-    test_direct = test_direct.get()
-    test_via_bdry = test_via_bdry.get()
-
-    rel_err_2 = la.norm(err)/la.norm(test_direct)
-    rel_err_inf = la.norm(err, np.inf)/la.norm(test_direct, np.inf)
-
-    # }}}
-
-    print("rel_err_2: %g rel_err_inf: %g" % (rel_err_2, rel_err_inf))
+    # if needed, copy 'error check' part of run_int_eq_test to here to verify
 
     # {{{ test tangential derivative
 
@@ -941,7 +914,35 @@ def test_tangential_derivatives(ctx_getter):
 
     # }}}
 
-    # FIXME: Turn into proper test
+    class Result(Record):
+        pass
+
+    return Result(
+            rel_td_err_inf=rel_td_err_inf,
+            gmres_result=gmres_result)
+
+
+@pytest.mark.parametrize("k", [0, 2])
+def test_tangential_derivatives(ctx_getter, k):
+    logging.basicConfig(level=logging.INFO)
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    qbx_order = 5
+
+    from pytools.convergence import EOCRecorder
+
+    eoc_rec = EOCRecorder()
+    for nelements in [30, 40, 50]:
+        result = run_tangential_derivative_test(
+                cl_ctx, queue, nelements, qbx_order, k)
+
+        eoc_rec.add_data_point(1/nelements, result.rel_td_err_inf)
+
+    tgt_order = qbx_order-1
+
+    print(eoc_rec)
+    assert eoc_rec.order_estimate() > tgt_order - 1.3
 
 # }}}
 
