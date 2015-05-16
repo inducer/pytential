@@ -58,16 +58,17 @@ class VectorChopper(object):
         self.is_structured = is_obj_array(structured_vec)
         self.array_module = get_array_module(structured_vec)
 
-        self.slices = []
-        num_dofs = 0
-        for entry in structured_vec:
-            if isinstance(entry, self.array_module.ndarray):
-                length = len(entry)
-            else:
-                length = 1
+        if self.is_structured:
+            self.slices = []
+            num_dofs = 0
+            for entry in structured_vec:
+                if isinstance(entry, self.array_module.ndarray):
+                    length = len(entry)
+                else:
+                    length = 1
 
-            self.slices.append(slice(num_dofs, num_dofs+length))
-            num_dofs += length
+                self.slices.append(slice(num_dofs, num_dofs+length))
+                num_dofs += length
 
     def stack(self, vec):
         if not self.is_structured:
