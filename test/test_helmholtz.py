@@ -289,14 +289,20 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         else:
             assert False
 
-        err_F0 = vec_norm(F0_tgt[i_field] - F0_tgt_true)/vec_norm(F0_tgt_true)  # noqa
-        err_F1 = vec_norm(F1_tgt[i_field] - F1_tgt_true)/vec_norm(F1_tgt_true)  # noqa
+        abs_err_F0 = vec_norm(F0_tgt[i_field] - F0_tgt_true)  # noqa
+        abs_err_F1 = vec_norm(F1_tgt[i_field] - F1_tgt_true)  # noqa
 
-        err_F0_total += err_F0
-        err_F1_total += err_F1
+        rel_err_F0 = abs_err_F0/vec_norm(F0_tgt_true)  # noqa
+        rel_err_F1 = abs_err_F1/vec_norm(F1_tgt_true)  # noqa
 
-        print("Err %s0" % field_kind_to_string(field_kind), err_F0)
-        print("Err %s1" % field_kind_to_string(field_kind), err_F1)
+        err_F0_total += abs_err_F0
+        err_F1_total += abs_err_F1
+
+        print("Abs Err %s0" % field_kind_to_string(field_kind), abs_err_F0)
+        print("Abs Err %s1" % field_kind_to_string(field_kind), abs_err_F1)
+
+        print("Rel Err %s0" % field_kind_to_string(field_kind), rel_err_F0)
+        print("Rel Err %s1" % field_kind_to_string(field_kind), rel_err_F1)
 
         i_field += 1
 
