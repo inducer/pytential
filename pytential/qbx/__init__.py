@@ -327,7 +327,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         out_kernels = tuple(knl for knl in insn.kernels)
 
-        if base_kernel.is_complex_valued:
+        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
             value_dtype = self.complex_dtype
         else:
             value_dtype = self.real_dtype
