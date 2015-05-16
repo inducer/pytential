@@ -694,7 +694,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
 
                         potential_op = (
                                 jump_term
-                                + sqrt_jac_q_weight(interface_id)*potential_op)
+                                + self.get_sqrt_weight(interface_id)*potential_op)
 
                         del jump_term
 
