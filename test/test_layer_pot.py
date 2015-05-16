@@ -370,6 +370,15 @@ def run_int_eq_test(
 
     # }}}
 
+    if 0:
+        # show geometry, centers, normals
+        nodes_h = density_discr.nodes().get(queue=queue)
+        pt.plot(nodes_h[0], nodes_h[1], "x-")
+        normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
+        pt.quiver(nodes_h[0], nodes_h[1], normal[0].get(queue), normal[1].get(queue))
+        pt.gca().set_aspect("equal")
+        pt.show()
+
     # {{{ establish BCs
 
     from sumpy.p2p import P2P
@@ -382,30 +391,22 @@ def run_int_eq_test(
 
     nodes = density_discr.nodes()
 
-    if 0:
-        # show geometry, centers, normals
-        nodes_h = nodes.get(queue=queue)
-        pt.plot(nodes_h[0], nodes_h[1], "x-")
-        normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
-        pt.quiver(nodes_h[0], nodes_h[1], normal[0].get(queue), normal[1].get(queue))
-        pt.gca().set_aspect("equal")
-        pt.show()
+    evt, (src_pot,) = pot_p2p(
+            queue, nodes, point_sources, [source_charges],
+            **knl_kwargs)
+
+    grad_p2p = P2P(cl_ctx,
+            [AxisTargetDerivative(0, knl), AxisTargetDerivative(1, knl)],
+            exclude_self=False, value_dtypes=dtype)
+    evt, (src_grad0, src_grad1) = grad_p2p(
+            queue, nodes, point_sources, [source_charges],
+            **knl_kwargs)
 
     if bc_type == "dirichlet":
-        evt, (bc,) = pot_p2p(
-                queue, nodes, point_sources, [source_charges],
-                **knl_kwargs)
-
+        bc = src_pot
     elif bc_type == "neumann":
-        grad_p2p = P2P(cl_ctx,
-                [AxisTargetDerivative(0, knl), AxisTargetDerivative(1, knl)],
-                exclude_self=False, value_dtypes=dtype)
-        evt, (grad0, grad1) = grad_p2p(
-                queue, nodes, point_sources, [source_charges],
-                **knl_kwargs)
-
         normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
-        bc = (grad0*normal[0] + grad1*normal[1])
+        bc = (src_grad0*normal[0] + src_grad1*normal[1])
 
     # }}}
 
@@ -474,6 +475,36 @@ def run_int_eq_test(
     # }}}
 
     print("rel_err_2: %g rel_err_inf: %g" % (rel_err_2, rel_err_inf))
+
+    # {{{ test tangential derivative
+
+    bound_t_deriv_op = bind(qbx,
+            op.representation(
+                sym.var("u"), map_potentials=sym.tangential_derivative,
+                qbx_forced_limit=loc_sign))
+
+    #print(bound_t_deriv_op.code)
+
+    tang_deriv_from_src = bound_t_deriv_op(queue, u=u).as_scalar().get()
+
+    tangent = bind(
+            density_discr,
+            sym.pseudoscalar()/sym.area_element())(queue).as_vector(np.object)
+
+    tang_deriv_ref = (src_grad0 * tangent[0] + src_grad1 * tangent[1]).get()
+
+    if 0:
+        pt.plot(tang_deriv_ref.real)
+        pt.plot(tang_deriv_from_src.real)
+        pt.show()
+
+    td_err = tang_deriv_from_src - tang_deriv_ref
+
+    rel_td_err_inf = la.norm(td_err, np.inf)/la.norm(tang_deriv_ref, np.inf)
+
+    print("rel_td_err_inf: %g" % rel_td_err_inf)
+
+    # }}}
 
     # {{{ plotting
 
@@ -578,6 +609,7 @@ def run_int_eq_test(
     return Result(
             rel_err_2=rel_err_2,
             rel_err_inf=rel_err_inf,
+            rel_td_err_inf=rel_td_err_inf,
             gmres_result=gmres_result)
 
 # }}}
@@ -603,7 +635,7 @@ def run_int_eq_test(
 def test_integral_equation(
         ctx_getter, curve_name, curve_f, qbx_order, bc_type, loc_sign, k,
         target_order=7, source_order=None):
-    # logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
@@ -617,14 +649,17 @@ def test_integral_equation(
             "helmholtz_k: %s"
             % (curve_name, qbx_order, bc_type, loc_sign, k)))
 
-    eoc_rec = EOCRecorder()
+    eoc_rec_target = EOCRecorder()
+    eoc_rec_td = EOCRecorder()
+
     for nelements in [30, 40, 50]:
         result = run_int_eq_test(
                 cl_ctx, queue, curve_f, nelements, qbx_order,
                 bc_type, loc_sign, k, target_order=target_order,
                 source_order=source_order)
 
-        eoc_rec.add_data_point(1/nelements, result.rel_err_2)
+        eoc_rec_target.add_data_point(1/nelements, result.rel_err_2)
+        eoc_rec_td.add_data_point(1/nelements, result.rel_td_err_inf)
 
     if bc_type == "dirichlet":
         tgt_order = qbx_order
@@ -633,8 +668,13 @@ def test_integral_equation(
     else:
         assert False
 
-    print(eoc_rec)
-    assert eoc_rec.order_estimate() > tgt_order - 1.3
+    print("TARGET ERROR:")
+    print(eoc_rec_target)
+    assert eoc_rec_target.order_estimate() > tgt_order - 1.3
+
+    print("TANGENTIAL DERIVATIVE ERROR:")
+    print(eoc_rec_td)
+    assert eoc_rec_td.order_estimate() > tgt_order - 2.3
 
 # }}}
 
@@ -769,182 +809,6 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
 # }}}
 
-
-# {{{ test derivatives
-
-def run_tangential_derivative_test(cl_ctx, queue, nelements, qbx_order, k,
-        curve_f=partial(ellipse, 3)):
-    target_order = 8
-    source_order = None
-    loc_sign = -1
-
-    mesh = make_curve_mesh(curve_f,
-            np.linspace(0, 1, nelements+1),
-            target_order)
-
-    from pytential.qbx import QBXLayerPotentialSource
-    from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
-    density_discr = Discretization(
-            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
-
-    if source_order is None:
-        source_order = 4*target_order
-
-    qbx = QBXLayerPotentialSource(
-            density_discr, fine_order=source_order, qbx_order=qbx_order,
-            # Don't use FMM for now
-            fmm_order=False)
-
-    # {{{ set up operator
-
-    from pytential.symbolic.pde.scalar import DirichletOperator
-
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, AxisTargetDerivative
-    if k:
-        knl = HelmholtzKernel(2)
-        knl_kwargs = {"k": k}
-    else:
-        knl = LaplaceKernel(2)
-        knl_kwargs = {}
-
-    if knl.is_complex_valued:
-        dtype = np.complex128
-    else:
-        dtype = np.float64
-
-    op = DirichletOperator((knl, knl_kwargs), loc_sign, use_l2_weighting=True)
-
-    op_u = op.operator(sym.var("u"))
-
-    # }}}
-
-    # {{{ set up test data
-
-    test_src_geo_radius = 2
-    test_tgt_geo_radius = 0.1
-
-    point_sources = make_circular_point_group(10, test_src_geo_radius,
-            func=lambda x: x**1.5)
-    test_targets = make_circular_point_group(20, test_tgt_geo_radius)
-
-    np.random.seed(22)
-    source_charges = np.random.randn(point_sources.shape[1])
-    source_charges[-1] = -np.sum(source_charges[:-1])
-    source_charges = source_charges.astype(dtype)
-    assert np.sum(source_charges) < 1e-15
-
-    # }}}
-
-    # {{{ establish BCs
-
-    from sumpy.p2p import P2P
-    pot_p2p = P2P(cl_ctx,
-            [knl], exclude_self=False, value_dtypes=dtype)
-
-    evt, (test_direct,) = pot_p2p(
-            queue, test_targets, point_sources, [source_charges],
-            out_host=False, **knl_kwargs)
-
-    nodes = density_discr.nodes()
-
-    evt, (bc,) = pot_p2p(
-            queue, nodes, point_sources, [source_charges],
-            **knl_kwargs)
-
-    grad_p2p = P2P(cl_ctx,
-            [AxisTargetDerivative(0, knl), AxisTargetDerivative(1, knl)],
-            exclude_self=False, value_dtypes=dtype)
-    evt, (grad0, grad1) = grad_p2p(
-            queue, nodes, point_sources, [source_charges],
-            **knl_kwargs)
-
-    #normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
-    #bc = (grad0*normal[0] + grad1*normal[1])
-
-    # }}}
-
-    # {{{ solve
-
-    bound_op = bind(qbx, op_u)
-
-    rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
-
-    from pytential.solve import gmres
-    gmres_result = gmres(
-            bound_op.scipy_op(queue, "u"),
-            rhs, tol=1e-14, progress=True,
-            hard_failure=False)
-
-    u = gmres_result.solution
-    print("gmres state:", gmres_result.state)
-
-    # }}}
-
-    # if needed, copy 'error check' part of run_int_eq_test to here to verify
-
-    # {{{ test tangential derivative
-
-    bound_t_deriv_op = bind(qbx,
-            op.representation(
-                sym.var("u"), map_potentials=sym.tangential_derivative,
-                qbx_forced_limit=loc_sign))
-
-    #print(bound_t_deriv_op.code)
-
-    tang_deriv_from_src = bound_t_deriv_op(queue, u=u).as_scalar().get()
-
-    tangent = bind(
-            density_discr,
-            sym.pseudoscalar()/sym.area_element())(queue).as_vector(np.object)
-
-    tang_deriv_ref = (grad0 * tangent[0] + grad1 * tangent[1]).get()
-
-    if 0:
-        pt.plot(tang_deriv_ref.real)
-        pt.plot(tang_deriv_from_src.real)
-        pt.show()
-
-    td_err = tang_deriv_from_src - tang_deriv_ref
-
-    rel_td_err_inf = la.norm(td_err, np.inf)/la.norm(tang_deriv_ref, np.inf)
-
-    print("rel_td_err_inf: %g" % rel_td_err_inf)
-
-    # }}}
-
-    class Result(Record):
-        pass
-
-    return Result(
-            rel_td_err_inf=rel_td_err_inf,
-            gmres_result=gmres_result)
-
-
-@pytest.mark.parametrize("k", [0, 2])
-def test_tangential_derivatives(ctx_getter, k):
-    logging.basicConfig(level=logging.INFO)
-    cl_ctx = ctx_getter()
-    queue = cl.CommandQueue(cl_ctx)
-
-    qbx_order = 5
-
-    from pytools.convergence import EOCRecorder
-
-    eoc_rec = EOCRecorder()
-    for nelements in [30, 40, 50]:
-        result = run_tangential_derivative_test(
-                cl_ctx, queue, nelements, qbx_order, k)
-
-        eoc_rec.add_data_point(1/nelements, result.rel_td_err_inf)
-
-    tgt_order = qbx_order-1
-
-    print(eoc_rec)
-    assert eoc_rec.order_estimate() > tgt_order - 1.3
-
-# }}}
 
 # You can test individual routines by typing
 # $ python test_layer_pot.py 'test_routine()'
