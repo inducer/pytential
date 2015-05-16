@@ -543,8 +543,12 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                 or
                 (field_kind == self.field_kind_h and self.hz_enabled))
 
-    def _structured_unknown(self, unknown, weighted):
+    def _structured_unknown(self, unknown, with_l2_weights):
         """
+        :arg with_l2_weights: If True, return the 'bare' unknowns
+            that do not have the :math:`L^2` weights divided out.
+            Note: Those unknowns should *not* be interpreted as
+            point values of a density.
         :returns: an array of unknowns, with the following index axes:
             ``[pot_kind, field_kind, i_interface]``, where
             ``pot_kind`` is 0 for the single-layer part and 1 for the double-layer
@@ -567,7 +571,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
 
                     _, _, interface_id = self.interfaces[i_interface]
 
-                    if weighted:
+                    if not with_l2_weights:
                         dens = sym.cse(
                                 dens/self.get_sqrt_weight(interface_id),
                                 "dens_{pot}_{field}_{intf}".format(
@@ -589,7 +593,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
         :return: a symbolic expression for the representation of the PDE solution
             in domain number *i_domain*.
         """
-        unk = self._structured_unknown(unknown, weighted=True)
+        unk = self._structured_unknown(unknown, with_l2_weights=False)
 
         result = []
 
@@ -626,8 +630,8 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
         return make_obj_array(result)
 
     def operator(self, unknown):
-        weighted_unk = self._structured_unknown(unknown, weighted=True)
-        unweighted_unk = self._structured_unknown(unknown, weighted=False)
+        density_unk = self._structured_unknown(unknown, with_l2_weights=False)
+        discrete_unk = self._structured_unknown(unknown, with_l2_weights=True)
 
         result = []
         for bc in self.bcs:
@@ -641,8 +645,8 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                                 self.potential_ops[pot_kind]
 
                         unk_index = (pot_kind, term.field_kind, term.i_interface)
-                        w_density = weighted_unk[unk_index]
-                        unw_density = unweighted_unk[unk_index]
+                        density = density_unk[unk_index]
+                        discrete = discrete_unk[unk_index]
 
                         side_sign = self.side_to_sign[side]
 
@@ -658,14 +662,14 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                             raise ValueError("invalid value of 'side'")
 
                         potential_op = potential_op(
-                                self.kernel, w_density, source=interface_id,
+                                self.kernel, density, source=interface_id,
                                 k=K_expr)
 
                         if term.direction == self.dir_none:
                             if raw_potential_op is sym.S:
                                 jump_term = 0
                             elif raw_potential_op is sym.D:
-                                jump_term = (side_sign*0.5) * unw_density
+                                jump_term = (side_sign*0.5) * discrete
                             else:
                                 assert False, raw_potential_op
                         elif term.direction == self.dir_normal:
@@ -674,7 +678,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
 
                             if raw_potential_op is sym.S:
                                 # S'
-                                jump_term = (-side_sign*0.5) * unw_density
+                                jump_term = (-side_sign*0.5) * discrete
                             elif raw_potential_op is sym.D:
                                 jump_term = 0
                             else:
@@ -683,7 +687,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         elif term.direction == self.dir_tangential:
                             potential_op = sym.tangential_derivative(
                                     raw_potential_op(
-                                        self.kernel, w_density, source=interface_id,
+                                        self.kernel, density, source=interface_id,
                                         k=K_expr, qbx_forced_limit=side_sign),
                                     interface_id).a.as_scalar()
 
