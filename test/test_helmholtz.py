@@ -40,7 +40,7 @@ from meshmode.discretization.poly_element import \
 from six.moves import range
 
 from pytential import bind, sym, norm  # noqa
-from pytential.symbolic.pde.scalar import (
+from pytential.symbolic.pde.scalar import (  # noqa
         TEMDielectric2DBoundaryOperator as TEMOp,
         TMDielectric2DBoundaryOperator as TMOp,
         TEDielectric2DBoundaryOperator as TEOp)
@@ -57,6 +57,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         op_class,
         k0=3, k1=2.9, mesh_order=10,
         bdry_quad_order=None, bdry_ovsmp_quad_order=None,
+        use_l2_weighting=False,
         fmm_order=None, visualize=False):
 
     if fmm_order is None:
@@ -95,7 +96,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             k_vacuum=1,
             interfaces=((0, 1, sym.DEFAULT_SOURCE),),
             domain_k_exprs=(k0, k1),
-            beta=beta)
+            beta=beta,
+            use_l2_weighting=use_l2_weighting)
 
     op_unknown_sym = pde_op.make_unknown("unknown")
 
@@ -216,7 +218,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
                 else:
                     raise NotImplementedError("direction spec in RHS")
 
-            bvp_rhs[i_bc] *= sqrt_w
+            if use_l2_weighting:
+                bvp_rhs[i_bc] *= sqrt_w
 
     scipy_op = bound_pde_op.scipy_op(queue, "unknown",
             domains=[sym.DEFAULT_TARGET]*len(pde_op.bcs), K0=K0, K1=K1)
