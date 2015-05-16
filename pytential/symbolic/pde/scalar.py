@@ -446,11 +446,12 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
             # Only keep tangential modes for TEM. Otherwise,
             # no jump in H already implies jump condition on
             # tangential derivative.
+            is_tem = self.ez_enabled and self.hz_enabled
             terms = tuple(
                     term
                     for term in bc
                     if term.direction != dir_tangential
-                    or (self.ez_enabled and self.hz_enabled))
+                    or is_tem)
 
             if is_necessary:
                 self.bcs.append(terms)
@@ -560,14 +561,14 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                     if weighted:
                         dens = sym.cse(
                                 dens/self.get_sqrt_weight(interface_id),
-                                "dens_{pot}_{field}_{dom}".format(
+                                "dens_{pot}_{field}_{intf}".format(
                                     pot={0: "S", 1: "D"}[pot_kind],
                                     field={
                                         self.field_kind_e: "E",
                                         self.field_kind_h: "H"
                                         }
                                     [field_kind],
-                                    dom=i_interface))
+                                    intf=i_interface))
 
                     result[pot_kind, field_kind, i_interface] = dens
 
@@ -650,7 +651,6 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                         potential_op = potential_op(
                                 self.kernel, w_density, source=interface_id,
                                 k=K_expr)
-
 
                         if term.direction == self.dir_none:
                             if raw_potential_op is sym.S:
