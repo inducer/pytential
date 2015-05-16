@@ -285,9 +285,13 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             if key not in tgt_name_and_side_to_number:
                 tgt_name_and_side_to_number[key] = \
                         len(target_discrs_and_qbx_sides)
+
+                target_discr = bound_expr.places[o.target_name]
+                if isinstance(target_discr, LayerPotentialSource):
+                    target_discr = target_discr.density_discr
+
                 target_discrs_and_qbx_sides.append(
-                        (bound_expr.places[o.target_name],
-                            o.qbx_forced_limit))
+                        (target_discr, o.qbx_forced_limit))
 
         target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
 
