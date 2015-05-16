@@ -350,15 +350,17 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
 
         if isinstance(beta, str):
             beta = sym.var(beta)
+        beta = sym.cse(beta, "beta")
 
         if isinstance(k_vacuum, str):
             k_vacuum = sym.var(k_vacuum)
+        k_vacuum = sym.cse(k_vacuum, "k_vac")
 
         self.domain_k_exprs = [
                 sym.var(k_expr)
                 if isinstance(k_expr, str)
-                else k_expr
-                for k_expr in domain_k_exprs]
+                else sym.cse(k_expr, "k%d" % idom)
+                for idom, k_expr in enumerate(domain_k_exprs)]
         del domain_k_exprs
 
         # Note the case of k/K!
