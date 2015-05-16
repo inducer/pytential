@@ -584,7 +584,9 @@ class OperatorCompiler(IdentityMapper):
             for op in group:
                 assert op.qbx_forced_limit in [-1, 0, 1]
 
-            kernel_arguments = expr.kernel_arguments
+            kernel_arguments = dict(
+                    (arg_name, self.rec(arg_val))
+                    for arg_name, arg_val in six.iteritems(expr.kernel_arguments))
 
             outputs = [
                     LayerPotentialOutput(
