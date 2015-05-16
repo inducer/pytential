@@ -207,14 +207,7 @@ class LayerPotentialInstruction(Instruction):
 
             lines.append(line)
 
-        from pytential.symbolic.mappers import KernelEvalArgumentCollector
-        keac = KernelEvalArgumentCollector()
-
-        arg_names_to_exprs = {}
-        for kernel in self.kernels:
-            arg_names_to_exprs.update(keac(kernel))
-
-        for arg_name, arg_expr in six.iteritems(arg_names_to_exprs):
+        for arg_name, arg_expr in six.iteritems(self.kernel_arguments):
             arg_expr_lines = strify(arg_expr).split("\n")
             lines.append("  %s = %s" % (
                 arg_name, arg_expr_lines[0]))
