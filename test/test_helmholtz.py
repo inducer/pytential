@@ -331,6 +331,17 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
             i_field += 0
 
+        low_order_qbx = QBXLayerPotentialSource(
+                density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=2,
+                fmm_order=3)
+        from sumpy.kernel import LaplaceKernel
+        from pytential.target import PointsTarget
+        ones = (cl.array.empty(queue, (density_discr.nnodes,), dtype=np.float64)
+                .fill(1))
+        ind_func = - bind((low_order_qbx, PointsTarget(fplot.points)),
+                sym.D(LaplaceKernel(2), sym.var("u")))(
+                        queue, u=ones).get()
+
         _, (e_fld0_true,) = pot_p2p(
                 queue, fplot.points, e_sources_0, [e_strengths_0],
                 out_host=True, k=K0)
@@ -352,6 +363,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
                     ("e_fld1_true", e_fld1_true),
                     ("h_fld0_true", h_fld0_true),
                     ("h_fld1_true", h_fld1_true),
+                    ("ind", ind_func),
                     ] + comp_fields
                 )
 
