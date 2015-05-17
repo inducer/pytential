@@ -693,7 +693,7 @@ class DielectricSDRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
 
         super(DielectricSDRep2DBoundaryOperator, self).__init__(
                 mode, k_vacuum, domain_k_exprs, beta,
-                interfaces, use_l2_weighting=None)
+                interfaces, use_l2_weighting=use_l2_weighting)
 
         side_in = self.side_in
         side_out = self.side_out
