@@ -41,9 +41,8 @@ from six.moves import range
 
 from pytential import bind, sym, norm  # noqa
 from pytential.symbolic.pde.scalar import (  # noqa
-        TEMDielectric2DBoundaryOperator as TEMOp,
-        TMDielectric2DBoundaryOperator as TMOp,
-        TEDielectric2DBoundaryOperator as TEOp)
+        DielectricSRep2DBoundaryOperator as SRep,
+        DielectricSDRep2DBoundaryOperator as SDRep)
 
 
 from pyopencl.tools import (  # noqa
@@ -54,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
-        op_class,
+        op_class, mode,
         k0=3, k1=2.9, mesh_order=10,
         bdry_quad_order=None, bdry_ovsmp_quad_order=None,
         use_l2_weighting=False,
@@ -93,6 +92,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     K1 = np.sqrt(k1**2-beta**2)  # noqa
 
     pde_op = op_class(
+            mode,
             k_vacuum=1,
             interfaces=((0, 1, sym.DEFAULT_SOURCE),),
             domain_k_exprs=(k0, k1),
@@ -110,6 +110,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             fmm_order=fmm_order
             )
 
+    #print(sym.pretty(pde_op.operator(op_unknown_sym)))
+    #1/0
     bound_pde_op = bind(qbx, pde_op.operator(op_unknown_sym))
 
     e_factor = float(pde_op.ez_enabled)
@@ -224,19 +226,19 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     scipy_op = bound_pde_op.scipy_op(queue, "unknown",
             domains=[sym.DEFAULT_TARGET]*len(pde_op.bcs), K0=K0, K1=K1)
 
-    if 1:
+    if mode == "tem" or op_class is SRep:
+        from sumpy.tools import vector_from_device, vector_to_device
+        from pytential.solve import lu
+        unknown = lu(scipy_op, vector_from_device(queue, bvp_rhs))
+        unknown = vector_to_device(queue, unknown)
+
+    else:
         from pytential.solve import gmres
         gmres_result = gmres(scipy_op,
                 bvp_rhs, tol=1e-14, progress=True,
                 hard_failure=True, stall_iterations=0)
 
         unknown = gmres_result.solution
-
-    else:
-        from sumpy.tools import vector_from_device, vector_to_device
-        from pytential.solve import lu
-        unknown = lu(scipy_op, vector_from_device(queue, bvp_rhs))
-        unknown = vector_to_device(queue, unknown)
 
     # }}}
 
@@ -375,11 +377,15 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
 @pytest.mark.parametrize("qbx_order", [4])
 @pytest.mark.parametrize("op_class", [
-    TMOp,
-    TEOp,
-    #TEMOp,
+    SRep,
+    SDRep,
     ])
-def test_dielectric(ctx_getter, qbx_order, op_class, visualize=False):
+@pytest.mark.parametrize("mode", [
+    "te",
+    "tm",
+    "tem",
+    ])
+def test_dielectric(ctx_getter, qbx_order, op_class, mode, visualize=False):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -397,7 +403,7 @@ def test_dielectric(ctx_getter, qbx_order, op_class, visualize=False):
         errs = run_dielectric_test(
                 cl_ctx, queue,
                 nelements=nelements, qbx_order=qbx_order,
-                op_class=op_class,
+                op_class=op_class, mode=mode,
                 visualize=visualize)
 
         eoc_rec.add_data_point(1/nelements, la.norm(list(errs)))
