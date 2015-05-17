@@ -406,7 +406,7 @@ def test_dielectric(ctx_getter, qbx_order, op_class, mode, visualize=False):
                 op_class=op_class, mode=mode,
                 visualize=visualize)
 
-        eoc_rec.add_data_point(1/nelements, la.norm(list(errs)))
+        eoc_rec.add_data_point(1/nelements, la.norm(list(errs), np.inf))
 
     print(eoc_rec)
     assert eoc_rec.order_estimate() > qbx_order - 0.5
