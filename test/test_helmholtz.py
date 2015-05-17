@@ -300,8 +300,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         rel_err_F0 = abs_err_F0/vec_norm(F0_tgt_true)  # noqa
         rel_err_F1 = abs_err_F1/vec_norm(F1_tgt_true)  # noqa
 
-        err_F0_total += abs_err_F0
-        err_F1_total += abs_err_F1
+        err_F0_total = max(rel_err_F0, err_F0_total)
+        err_F1_total = max(rel_err_F1, err_F1_total)
 
         print("Abs Err %s0" % field_kind_to_string(field_kind), abs_err_F0)
         print("Abs Err %s1" % field_kind_to_string(field_kind), abs_err_F1)
