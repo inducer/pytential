@@ -428,8 +428,10 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
         expr = make_obj_array([expr])
 
     from pytential.symbolic.primitives import DEFAULT_SOURCE
-    domains = _domains_default(len(expr), places, domains,
+    domains = _domains_default(len(input_exprs), places, domains,
             DEFAULT_SOURCE)
+
+    input_exprs = list(input_exprs)
 
     nblock_rows = len(expr)
     nblock_columns = len(input_exprs)
@@ -442,8 +444,16 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
 
     for ibcol in range(nblock_columns):
         mbuilder = MatrixBuilder(
-                queue, input_exprs[ibcol],
-                places[domains[ibcol]], places, context)
+                queue,
+                dep_expr=input_exprs[ibcol],
+                other_dep_exprs=(
+                    input_exprs[:ibcol]
+                    +
+                    input_exprs[ibcol+1:]),
+                dep_source=places[domains[ibcol]],
+                places=places,
+                context=context)
+
         for ibrow in range(nblock_rows):
             block = mbuilder(expr[ibrow])
 

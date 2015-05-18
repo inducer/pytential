@@ -47,11 +47,9 @@ def test_matrix_build(ctx_getter):
     target_order = 7
     qbx_order = 4
     nelements = 30
-    curve_f = partial(ellipse, 1)
+    curve_f = partial(ellipse, 3)
 
-    k = 0
-
-    u_sym = sym.var("u")
+    k = 1
 
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
     if k:
@@ -61,7 +59,17 @@ def test_matrix_build(ctx_getter):
         knl = LaplaceKernel(2)
         knl_kwargs = {}
 
-    op = sym.S(knl, u_sym, **knl_kwargs)
+    from pytools.obj_array import make_obj_array, is_obj_array
+
+    u_sym = sym.make_sym_vector("u", 2)
+    u0_sym, u1_sym = u_sym
+
+    op = make_obj_array([
+        sym.Sp(knl, u0_sym, **knl_kwargs) + sym.D(knl, u1_sym, **knl_kwargs),
+        sym.S(knl, 0.4*u0_sym, **knl_kwargs) + 0.3*sym.D(knl, u0_sym, **knl_kwargs)
+        ])
+    #u_sym = sym.var("u")
+    #op = sym.Sp(knl, u_sym, **knl_kwargs)
 
     mesh = make_curve_mesh(curve_f,
             np.linspace(0, 1, nelements+1),
@@ -83,7 +91,7 @@ def test_matrix_build(ctx_getter):
     bound_op = bind(qbx, op)
 
     from pytential.symbolic.execution import build_matrix
-    mat = build_matrix(queue, qbx, op, (u_sym,)).get()
+    mat = build_matrix(queue, qbx, op, u_sym).get()
 
     if 0:
         from sumpy.tools import build_matrix as build_matrix_via_matvec
@@ -101,13 +109,33 @@ def test_matrix_build(ctx_getter):
         pt.colorbar()
         pt.show()
 
+    if 1:
+        import matplotlib.pyplot as pt
+        pt.subplot(121)
+        pt.imshow(mat.real)
+        pt.colorbar()
+        pt.subplot(122)
+        pt.imshow(mat.imag)
+        pt.colorbar()
+        pt.show()
+
+    from sumpy.tools import vector_to_device, vector_from_device
     np.random.seed(12)
     for i in range(5):
-        u = np.random.randn(density_discr.nnodes)
-        res_mat = mat.dot(u)
+        if is_obj_array(u_sym):
+            u = make_obj_array([
+                np.random.randn(density_discr.nnodes),
+                np.random.randn(density_discr.nnodes),
+                ])
+        else:
+            u = np.random.randn(density_discr.nnodes)
 
-        u_dev = cl.array.to_device(queue, u)
-        res_matvec = bound_op(queue, u=u_dev).get()
+        res_mat = mat.dot(np.hstack(list(u)))
+
+        u_dev = vector_to_device(queue, u)
+        res_matvec = np.hstack(
+                list(vector_from_device(
+                    queue, bound_op(queue, u=u_dev))))
 
         abs_err = la.norm(res_mat - res_matvec, np.inf)
         rel_err = abs_err / la.norm(res_matvec, np.inf)

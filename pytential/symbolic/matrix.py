@@ -23,23 +23,29 @@ THE SOFTWARE.
 """
 
 import numpy as np
+import pyopencl as cl  # noqa
+import pyopencl.array  # noqa
 
 import six
 
 from pytential.symbolic.mappers import EvaluationMapperBase
+import pytential.symbolic.primitives as sym
+from pytential.symbolic.execution import bind
 
 
 def is_zero(x):
-    return isinstance(x, int) and x == 0
+    return isinstance(x, (int, float, complex, np.number)) and x == 0
 
 
 # FIXME: PyOpenCL doesn't do all the required matrix math yet.
 # We'll cheat and build the matrix on the host.
 
 class MatrixBuilder(EvaluationMapperBase):
-    def __init__(self, queue, dep_expr, dep_source, places, context):
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, places,
+            context):
         self.queue = queue
         self.dep_expr = dep_expr
+        self.other_dep_exprs = other_dep_exprs
         self.dep_source = dep_source
         self.dep_discr = dep_source.density_discr
         self.places = places
@@ -47,19 +53,24 @@ class MatrixBuilder(EvaluationMapperBase):
 
     def map_variable(self, expr):
         if expr == self.dep_expr:
-            return np.eye(self.dep_discr.nnodes, np.float64)
-        elif expr.name in self.context:
-            return self.context[expr.name]
-        else:
+            return np.eye(self.dep_discr.nnodes, dtype=np.float64)
+        elif expr in self.other_dep_exprs:
             return 0
+        else:
+            return super(MatrixBuilder, self).map_variable(expr)
 
     def map_subscript(self, expr):
         if expr == self.dep_expr:
-            return np.eye(self.dep_discr.nnodes, np.float64)
+            return np.eye(self.dep_discr.nnodes, dtype=np.float64)
+        elif expr in self.other_dep_exprs:
+            return 0
         else:
             return super(MatrixBuilder, self).map_subscript(expr)
 
     def map_sum(self, expr):
+        saw_matrix = False
+        saw_vector = False
+
         result = 0
         for child in expr.children:
             rec_child = self.rec(child)
@@ -67,11 +78,20 @@ class MatrixBuilder(EvaluationMapperBase):
             if is_zero(rec_child):
                 continue
 
-            if (
-                    not isinstance(rec_child, np.ndarray)
-                    or len(rec_child.shape) != 2):
-                raise RuntimeError("non-matrix encountered in sum, "
+            assert isinstance(rec_child, np.ndarray)
+
+            is_matrix = len(rec_child.shape) != 2
+
+            if is_matrix and saw_vector:
+                raise RuntimeError("matrix encountered in non-matrix sum")
+            if not is_matrix and saw_matrix:
+                raise RuntimeError("non-matrix encountered in matrix sum, "
                         "expression may be affine")
+
+            if is_matrix:
+                saw_matrix = True
+            else:
+                saw_vector = True
 
             result = result + rec_child
 
@@ -83,6 +103,9 @@ class MatrixBuilder(EvaluationMapperBase):
 
         for term in expr.children:
             rec_term = self.rec(term)
+
+            if is_zero(rec_term):
+                return 0
 
             if isinstance(rec_term, (np.number, int, float, complex)):
                 vecs_and_scalars = vecs_and_scalars * rec_term
@@ -96,7 +119,15 @@ class MatrixBuilder(EvaluationMapperBase):
                 else:
                     vecs_and_scalars = vecs_and_scalars * rec_term
 
-        return mat_result * vecs_and_scalars
+        if mat_result is not None:
+            if (
+                    isinstance(vecs_and_scalars, np.ndarray)
+                    and len(vecs_and_scalars.shape) == 1):
+                vecs_and_scalars = vecs_and_scalars[:, np.newaxis]
+
+            return mat_result * vecs_and_scalars
+        else:
+            return vecs_and_scalars
 
     def map_int_g(self, expr):
         source = self.places[expr.source]
@@ -105,11 +136,36 @@ class MatrixBuilder(EvaluationMapperBase):
         if source.density_discr is not target_discr:
             raise NotImplementedError()
 
+        rec_density = self.rec(expr.density)
+        if is_zero(rec_density):
+            return 0
+
+        assert isinstance(rec_density, np.ndarray)
+        if len(rec_density.shape) != 2:
+            raise NotImplementedError("layer potentials on non-variables")
+
         kernel = expr.kernel
 
         kernel_args = {}
         for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
-            kernel_args[arg_name] = self.rec(arg_expr)
+            rec_arg = self.rec(arg_expr)
+
+            if isinstance(rec_arg, np.ndarray):
+                if len(rec_arg.shape) == 2:
+                    raise RuntimeError("matrix variables in kernel arguments")
+                if len(rec_arg.shape) == 1:
+                    from pytools.obj_array import with_object_array_or_scalar
+
+                    def resample(x):
+                        return (
+                                source.resampler(
+                                    self.queue,
+                                    cl.array.to_device(self.queue, x))
+                                .get(queue=self.queue))
+
+                    rec_arg = with_object_array_or_scalar(resample, rec_arg)
+
+            kernel_args[arg_name] = rec_arg
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
@@ -117,6 +173,8 @@ class MatrixBuilder(EvaluationMapperBase):
         from sumpy.qbx import LayerPotentialMatrixGenerator
         mat_gen = LayerPotentialMatrixGenerator(
                 self.queue.context, (local_expn,))
+
+        assert target_discr is source.density_discr
 
         assert abs(expr.qbx_forced_limit) > 0
         _, (mat,) = mat_gen(self.queue,
@@ -133,14 +191,45 @@ class MatrixBuilder(EvaluationMapperBase):
         resample_mat = (
                 source.resampler.full_resample_matrix(self.queue).get(self.queue))
         mat = mat.dot(resample_mat)
+        mat = mat.dot(rec_density)
 
         return mat
 
-    def map_int_g_ds(self, expr):
-        return expr.copy(
-                density=self.rec(expr.density),
-                dsource=self.rec(expr.dsource),
-                kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
-                    for name, arg_expr in expr.kernel_arguments.items()
-                    ))
+    # IntGdSource should have been removed by a preprocessor
+
+    def map_num_reference_derivative(self, expr):
+        rec_operand = self.rec(expr.operand)
+
+        assert isinstance(rec_operand, np.ndarray)
+        if len(rec_operand.shape) == 2:
+            raise NotImplementedError("derivatives")
+
+        where_discr = self.places[expr.where]
+        op = sym.NumReferenceDerivative(expr.ref_axes, sym.var("u"))
+        return bind(where_discr, op)(
+                self.queue, u=cl.array.to_device(self.queue, rec_operand)).get()
+
+    def map_node_coordinate_component(self, expr):
+        where_discr = self.places[expr.where]
+        op = sym.NodeCoordinateComponent(expr.ambient_axis)
+        return bind(where_discr, op)(self.queue).get()
+
+    def map_call(self, expr):
+        arg, = expr.parameters
+        rec_arg = self.rec(arg)
+
+        if (
+                isinstance(rec_arg, np.ndarray)
+                and len(rec_arg.shape) == 2):
+            raise RuntimeError("expression is nonlinear in variable")
+
+        if isinstance(rec_arg, np.ndarray):
+            rec_arg = cl.array.to_device(self.queue, rec_arg)
+
+        op = expr.function(sym.var("u"))
+        result = bind(self.dep_source, op)(self.queue, u=rec_arg)
+
+        if isinstance(result, cl.array.Array):
+            result = result.get()
+
+        return result
