@@ -47,11 +47,21 @@ def test_matrix_build(ctx_getter):
     target_order = 7
     qbx_order = 4
     nelements = 30
-    curve_f = partial(ellipse, 3)
+    curve_f = partial(ellipse, 1)
+
+    k = 0
 
     u_sym = sym.var("u")
 
-    op = sym.S(0, u_sym)
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+    if k:
+        knl = HelmholtzKernel(2)
+        knl_kwargs = {"k": k}
+    else:
+        knl = LaplaceKernel(2)
+        knl_kwargs = {}
+
+    op = sym.S(knl, u_sym, **knl_kwargs)
 
     mesh = make_curve_mesh(curve_f,
             np.linspace(0, 1, nelements+1),
@@ -75,6 +85,22 @@ def test_matrix_build(ctx_getter):
     from pytential.symbolic.execution import build_matrix
     mat = build_matrix(queue, qbx, op, (u_sym,)).get()
 
+    if 0:
+        from sumpy.tools import build_matrix as build_matrix_via_matvec
+        mat2 = build_matrix_via_matvec(bound_op.scipy_op(queue, "u"))
+
+        print(
+                la.norm((mat-mat2).real, "fro")/la.norm(mat2.real, "fro"),
+                la.norm((mat-mat2).imag, "fro")/la.norm(mat2.imag, "fro"))
+        import matplotlib.pyplot as pt
+        pt.subplot(121)
+        pt.imshow(np.log10(np.abs(1e-20+(mat-mat2).real)))
+        pt.colorbar()
+        pt.subplot(122)
+        pt.imshow(np.log10(np.abs(1e-20+(mat-mat2).imag)))
+        pt.colorbar()
+        pt.show()
+
     np.random.seed(12)
     for i in range(5):
         u = np.random.randn(density_discr.nnodes)
@@ -83,12 +109,10 @@ def test_matrix_build(ctx_getter):
         u_dev = cl.array.to_device(queue, u)
         res_matvec = bound_op(queue, u=u_dev).get()
 
-        rel_err = (
-                la.norm(res_mat - res_matvec, np.inf)
-                /
-                la.norm(res_matvec, np.inf))
+        abs_err = la.norm(res_mat - res_matvec, np.inf)
+        rel_err = abs_err / la.norm(res_matvec, np.inf)
 
-        print(rel_err)
+        print(abs_err, rel_err)
         assert rel_err < 1e-13
 
 
