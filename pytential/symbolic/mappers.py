@@ -249,6 +249,20 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     map_parametrization_derivative = map_ones
     map_nodes = map_ones
 
+    def map_node_coordinate_component(self, expr):
+        if expr.where is None:
+            return type(expr)(
+                    expr.ambient_axis, self.default_where)
+        else:
+            return expr
+
+    def map_num_reference_derivative(self, expr):
+        if expr.where is None:
+            return type(expr)(
+                    expr.ref_axes, self.rec(expr.operand), self.default_where)
+        else:
+            return expr
+
     def map_int_g(self, expr):
         source = expr.source
         target = expr.target
