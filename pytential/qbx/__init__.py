@@ -130,7 +130,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     """
     def __init__(self, density_discr, fine_order, qbx_order, fmm_order,
             # FIXME set debug=False once everything works
-            expansion_getter=None, real_dtype=np.float64, debug=True):
+            real_dtype=np.float64, debug=True):
         """
         :arg fine_order: The total degree to which the (upsampled)
             underlying quadrature is exact.
@@ -154,12 +154,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         self.density_discr = density_discr
         self.fmm_order = fmm_order
         self.debug = debug
-
-        # only used in non-FMM case
-        if expansion_getter is None:
-            from sumpy.expansion.local import LineTaylorLocalExpansion
-            expansion_getter = LineTaylorLocalExpansion
-        self.expansion_getter = expansion_getter
 
     @property
     def ambient_dim(self):
@@ -427,8 +421,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             value_dtype = self.density_discr.real_dtype
 
         from sumpy.qbx import LayerPotential
+        from sumpy.expansion.local import LineTaylorLocalExpansion
         return LayerPotential(self.cl_context,
-                    [self.expansion_getter(knl, self.qbx_order)
+                    [LineTaylorLocalExpansion(knl, self.qbx_order)
                         for knl in kernels],
                     value_dtypes=value_dtype)
 

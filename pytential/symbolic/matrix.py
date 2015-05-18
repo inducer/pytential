@@ -111,9 +111,8 @@ class MatrixBuilder(EvaluationMapperBase):
         for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
             kernel_args[arg_name] = self.rec(arg_expr)
 
-        from pytential.qbx import get_local_expansion_class
-        local_expn_class = get_local_expansion_class(kernel)
-        local_expn = local_expn_class(kernel, source.qbx_order)
+        from sumpy.expansion.local import LineTaylorLocalExpansion
+        local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
 
         from sumpy.qbx import LayerPotentialMatrixGenerator
         mat_gen = LayerPotentialMatrixGenerator(
