@@ -122,7 +122,8 @@ class MatrixBuilder(EvaluationMapperBase):
         _, (mat,) = mat_gen(self.queue,
                 target_discr.nodes(),
                 source.fine_density_discr.nodes(),
-                source.centers(target_discr, expr.qbx_forced_limit))
+                source.centers(target_discr, expr.qbx_forced_limit),
+                **kernel_args)
 
         mat = mat.get()
 
