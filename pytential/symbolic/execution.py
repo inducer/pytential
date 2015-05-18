@@ -450,6 +450,9 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
             assert (
                     is_zero(block)
                     or isinstance(block, np.ndarray))
+            if isinstance(block, np.ndarray):
+                dtypes.append(block.dtype)
+
             blocks[ibrow, ibcol] = block
 
             if isinstance(block, cl.array.Array):
