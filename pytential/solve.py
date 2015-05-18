@@ -118,7 +118,7 @@ class GMRESResult(Record):
     """
 
 
-def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
+def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
         maxiter=None, hard_failure=None, require_monotonicity=True,
         no_progress_factor=None, stall_iterations=None,
         callback=None):
@@ -163,7 +163,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
         del x0
         recalc_r = True
 
-    Ae = [None]*restart
+    Ae = [None]*restart  # noqa
     e = [None]*restart
 
     k = 0
