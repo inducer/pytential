@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -25,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+from six.moves import zip
 
 from pymbolic.mapper.evaluator import (
         EvaluationMapper as EvaluationMapperBase)
@@ -210,6 +209,26 @@ class MatVecOp:
 # }}}
 
 
+# {{{ default for 'domains' parameter
+
+def _domains_default(nresults, places, domains, default_val):
+    if domains is None:
+        if default_val not in places:
+            raise RuntimeError("'domains is None' requires "
+                    "default domain to be defined")
+        dom_name = default_val
+        return nresults*[dom_name]
+
+    elif not isinstance(domains, (list, tuple)):
+        dom_name = domains
+        return nresults*[dom_name]
+
+    else:
+        return domains
+
+# }}}
+
+
 # {{{ bound expression
 
 class BoundExpression:
@@ -245,23 +264,14 @@ class BoundExpression:
         """
 
         from pytools.obj_array import is_obj_array
+        if is_obj_array(self.code.result):
+            nresults = len(self.code.result)
+        else:
+            nresults = 1
 
-        if domains is None:
-            from pytential.symbolic.primitives import DEFAULT_TARGET
-            if DEFAULT_TARGET not in self.places:
-                raise RuntimeError("'domains is None' requires "
-                        "DEFAULT_TARGET to be defined")
-            dom_name = DEFAULT_TARGET
-            if is_obj_array(self.code.result):
-                domains = len(self.code.result)*[dom_name]
-            else:
-                domains = [dom_name]
-        elif not isinstance(domains, list):
-            dom_name = domains
-            if is_obj_array(self.code.result):
-                domains = len(self.code.result)*[dom_name]
-            else:
-                domains = [dom_name]
+        from pytential.symbolic.primitives import DEFAULT_TARGET
+        domains = _domains_default(nresults, self.places, domains,
+                DEFAULT_TARGET)
 
         total_dofs = 0
         starts_and_ends = []
@@ -289,20 +299,12 @@ class BoundExpression:
 # }}}
 
 
-# {{{ bind
+# {{{ expression prep
 
-def bind(places, expr, auto_where=None):
-    """
-    :arg places: a mapping of symbolic names to
-        :class:`pytential.discretization.Discretization` objects or a subclass
-        of :class:`pytential.discretization.target.TargetBase`.
-    :arg auto_where: For simple source-to-self or source-to-target
-        evaluations, find 'where' attributes automatically.
-    """
-
+def prepare_places(places):
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-    from pytential.qbx import LayerPotentialSource
     from meshmode.discretization import Discretization
+    from pytential.qbx import LayerPotentialSource
 
     if isinstance(places, LayerPotentialSource):
         places = {
@@ -331,9 +333,20 @@ def bind(places, expr, auto_where=None):
                     "layer potential sources or targets as 'places'")
         return discr
 
-    places = dict(
+    return dict(
             (key, cast_to_place(value))
             for key, value in six.iteritems(places))
+
+
+def prepare_expr(places, expr, auto_where=None):
+    """
+    :arg places: result of :func:`prepare_places`
+    :arg auto_where: For simple source-to-self or source-to-target
+        evaluations, find 'where' attributes automatically.
+    """
+
+    from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
+    from pytential.qbx import LayerPotentialSource
 
     from pytential.symbolic.mappers import (
             ToTargetTagger,
@@ -363,9 +376,112 @@ def bind(places, expr, auto_where=None):
 
     # Dimensionalize again, in case the preprocessor spit out
     # dimension-independent stuff.
-    expr = Dimensionalizer(places)(expr)
+    return Dimensionalizer(places)(expr)
 
+# }}}
+
+
+def bind(places, expr, auto_where=None):
+    """
+    :arg places: a mapping of symbolic names to
+        :class:`pytential.discretization.Discretization` objects or a subclass
+        of :class:`pytential.discretization.target.TargetBase`.
+    :arg auto_where: For simple source-to-self or source-to-target
+        evaluations, find 'where' attributes automatically.
+    """
+
+    places = prepare_places(places)
+    expr = prepare_expr(places, expr, auto_where=auto_where)
     return BoundExpression(expr, places)
+
+
+# {{{ matrix building
+
+def build_matrix(queue, places, expr, input_exprs, domains=None,
+        auto_where=None, context=None):
+    """
+    :arg queue: a :class:`pyopencl.CommandQueue` used to synchronize
+        the calculation.
+    :arg places: a mapping of symbolic names to
+        :class:`pytential.discretization.Discretization` objects or a subclass
+        of :class:`pytential.discretization.target.TargetBase`.
+    :arg input_exprs: A sequence of expressions corresponding to the
+        input block columns of the matrix.
+    :arg domains: a list of discretization identifiers (see 'places') or
+        *None* values indicating the domains on which each component of the
+        solution vector lives.  *None* values indicate that the component
+        is a scalar.  If *None*,
+        :class:`pytential.symbolic.primitives.DEFAULT_TARGET`, is required
+        to be a key in :attr:`places`.
+    :arg auto_where: For simple source-to-self or source-to-target
+        evaluations, find 'where' attributes automatically.
+    """
+
+    if context is None:
+        context = {}
+
+    places = prepare_places(places)
+    expr = prepare_expr(places, expr, auto_where=auto_where)
+
+    from pytools.obj_array import is_obj_array, make_obj_array
+    if not is_obj_array(expr):
+        expr = make_obj_array([expr])
+
+    from pytential.symbolic.primitives import DEFAULT_SOURCE
+    domains = _domains_default(len(expr), places, domains,
+            DEFAULT_SOURCE)
+
+    nblock_rows = len(expr)
+    nblock_columns = len(input_exprs)
+
+    blocks = np.zeros((nblock_rows, nblock_columns), dtype=np.object)
+
+    from pytential.symbolic.matrix import MatrixBuilder, is_zero
+
+    dtypes = []
+
+    for ibcol in range(nblock_columns):
+        mbuilder = MatrixBuilder(
+                queue, input_exprs[ibcol],
+                places[domains[ibcol]], places, context)
+        for ibrow in range(nblock_rows):
+            block = mbuilder(expr[ibrow])
+
+            assert (
+                    is_zero(block)
+                    or isinstance(block, np.ndarray))
+            blocks[ibrow, ibcol] = block
+
+            if isinstance(block, cl.array.Array):
+                dtypes.append(block.dtype)
+
+    from pytools import single_valued
+
+    block_row_counts = [
+            single_valued(
+                blocks[ibrow, ibcol].shape[0]
+                for ibcol in range(nblock_columns)
+                if not is_zero(blocks[ibrow, ibcol]))
+            for ibrow in range(nblock_rows)]
+
+    block_col_counts = [
+            places[domains[ibcol]].density_discr.nnodes
+            for ibcol in range(nblock_columns)]
+
+    # "block row starts"/"block column starts"
+    brs = np.cumsum([0] + block_row_counts)
+    bcs = np.cumsum([0] + block_col_counts)
+
+    result = np.zeros(
+            (sum(block_row_counts), sum(block_col_counts)),
+            dtype=np.find_common_type(dtypes, []))
+
+    for ibcol in range(nblock_columns):
+        for ibrow in range(nblock_rows):
+            result[brs[ibrow]:brs[ibrow+1], bcs[ibcol]:bcs[ibcol+1]] = \
+                    blocks[ibrow, ibcol]
+
+    return cl.array.to_device(queue, result)
 
 # }}}
 

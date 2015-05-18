@@ -91,6 +91,30 @@ class LayerPotentialSource(object):
     """
 
 
+def get_local_expansion_class(base_kernel):
+    # FIXME: Don't hard-code expansion types
+    from sumpy.kernel import HelmholtzKernel
+    if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
+            and base_kernel.dim == 2):
+        from sumpy.expansion.local import H2DLocalExpansion
+        return H2DLocalExpansion
+    else:
+        from sumpy.expansion.local import VolumeTaylorLocalExpansion
+        return VolumeTaylorLocalExpansion
+
+
+def get_multipole_expansion_class(base_kernel):
+    # FIXME: Don't hard-code expansion types
+    from sumpy.kernel import HelmholtzKernel
+    if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
+            and base_kernel.dim == 2):
+        from sumpy.expansion.multipole import H2DMultipoleExpansion
+        return H2DMultipoleExpansion
+    else:
+        from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
+        return VolumeTaylorMultipoleExpansion
+
+
 # {{{ QBX layer potential source
 
 class QBXLayerPotentialSource(LayerPotentialSource):
@@ -243,23 +267,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def expansion_wrangler_code_container(self, base_kernel, out_kernels):
-        from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
-        from sumpy.expansion.local import VolumeTaylorLocalExpansion
-
         fmm_order = self.fmm_order
 
-        # FIXME: Don't hard-code expansion types
-        from sumpy.kernel import HelmholtzKernel
-        if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
-                and base_kernel.dim == 2):
-            from sumpy.expansion.multipole import H2DMultipoleExpansion
-            from sumpy.expansion.local import H2DLocalExpansion
-
-            mpole_expn_class = H2DMultipoleExpansion
-            local_expn_class = H2DLocalExpansion
-        else:
-            mpole_expn_class = VolumeTaylorMultipoleExpansion
-            local_expn_class = VolumeTaylorLocalExpansion
+        mpole_expn_class = get_multipole_expansion_class(base_kernel)
+        local_expn_class = get_local_expansion_class(base_kernel)
 
         fmm_mpole_expn = mpole_expn_class(base_kernel, fmm_order)
         fmm_local_expn = local_expn_class(base_kernel, fmm_order)
