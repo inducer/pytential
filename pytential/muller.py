@@ -28,13 +28,12 @@ import numpy as np
 def muller_deflate(f, n, maxiter=100, eps=1e-14):
     """
     :arg n: number of zeros sought
-    :return: (roots, niter, err) - roots of the given function; number of
-    :iterations used for each root; and the relative error of each root.
+    :returns: (roots, niter) - roots of the given function; number of
+        iterations used for each root.
     """
     # initialize variables
     roots = []
     niter = []
-    err = []
 
     def f_deflated(z):
         y = f(z)
@@ -48,39 +47,49 @@ def muller_deflate(f, n, maxiter=100, eps=1e-14):
     # Truncates the zero arrays created above if neccessary.
     for i in range(n):
         miter = 0
-        roots0, niter0, err0 = muller0(f_deflated, maxiter, eps)
+        roots0, niter0 = muller(f_deflated, maxiter, eps)
         roots.append(roots0)
         niter.append(niter0)
-        err.append(err0)
 
         while (np.isnan(roots[i]) or niter[i] == maxiter) and miter < 50:
-            roots0, niter0, err0 = muller0(f_deflated, maxiter, eps)
+            roots0, niter0 = muller(f_deflated, maxiter, eps)
             roots[i] = roots0
             niter[i] = niter0
-            err[i] = err0
             miter = miter+1
 
-    return roots, niter, err
+    return roots, niter
 
 
-# Muller's method
-def muller0(f, maxiter=100, eps=1e-13):
+def muller(f, maxiter=100, tol=1e-11, z_start=None):
+    """Find a root of the complex-valued function *f* defined in the complex
+    plane using Muller's method.
+
+    :arg z_start: *None* or a 3-vector of complex numbers used as a
+        starting guess.
+    :returns: ``(roots, niter)`` root of the given function; number of
+        iterations used.
+
+    [1] https://en.wikipedia.org/wiki/Muller%27s_method
+    """
 
     # initialize variables
-    niter = 0                      # counts iteration steps
-    err = 100*eps
+    niter = 0
 
-    z1, z2, z3 = np.random.rand(3) + 1j*np.random.rand(3)   # 3 initial guesses
-    #x = rand(1,3)*10   % 3 initial guesses
+    if z_start is None:
+        z_start = np.random.rand(3) + 1j*np.random.rand(3)
+
+    z1, z2, z3 = z_start
 
     w1 = f(z1)
     w2 = f(z2)
     w3 = f(z3)
 
-    # iterate until max iterations or tolerance is met
-    #while niter < maxiter and (err>eps or abs(w3)>1e-30):
-    while niter < maxiter and err > eps:
+    while True:
+        print "MULLER"
         niter = niter + 1
+        if niter >= maxiter:
+            raise RuntimeError("convergence not achieved in %d iterations"
+                    % maxiter)
 
         h1 = z2 - z1
         h2 = z3 - z2
@@ -104,10 +113,9 @@ def muller0(f, maxiter=100, eps=1e-13):
         w3 = f(z3)
 
         if np.abs(z3) < 1e-14:
-            err = np.abs(z3-z2)
+            move_mag = np.abs(z3-z2)
         else:
-            err = np.abs((z3-z2)/z3)
+            move_mag = np.abs((z3-z2)/z3)
 
-        z = z3
-
-    return z, niter, err
+        if move_mag < tol:
+            return z3, niter
