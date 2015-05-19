@@ -61,15 +61,38 @@ def test_matrix_build(ctx_getter):
 
     from pytools.obj_array import make_obj_array, is_obj_array
 
-    u_sym = sym.make_sym_vector("u", 2)
-    u0_sym, u1_sym = u_sym
+    if 1:
+        u_sym = sym.make_sym_vector("u", 2)
+        u0_sym, u1_sym = u_sym
 
-    op = make_obj_array([
-        sym.Sp(knl, u0_sym, **knl_kwargs) + sym.D(knl, u1_sym, **knl_kwargs),
-        sym.S(knl, 0.4*u0_sym, **knl_kwargs) + 0.3*sym.D(knl, u0_sym, **knl_kwargs)
-        ])
-    #u_sym = sym.var("u")
-    #op = sym.Sp(knl, u_sym, **knl_kwargs)
+        op = make_obj_array([
+            sym.Sp(knl, u0_sym, **knl_kwargs)
+            + sym.D(knl, u1_sym, **knl_kwargs),
+
+            sym.S(knl, 0.4*u0_sym, **knl_kwargs)
+            + 0.3*sym.D(knl, u0_sym, **knl_kwargs)
+            ])
+    elif 0:
+        u_sym = sym.var("u")
+        op = sym.Sp(knl, u_sym, **knl_kwargs)
+    else:
+        k0 = 3
+        k1 = 2.9
+        beta = 2.5
+
+        from pytential.symbolic.pde.scalar import (  # noqa
+                DielectricSRep2DBoundaryOperator as SRep,
+                DielectricSDRep2DBoundaryOperator as SDRep)
+        pde_op = SDRep(
+                mode="tem",
+                k_vacuum=1,
+                interfaces=((0, 1, sym.DEFAULT_SOURCE),),
+                domain_k_exprs=(k0, k1),
+                beta=beta,
+                use_l2_weighting=False)
+
+        u_sym = pde_op.make_unknown("u")
+        op = pde_op.operator(u_sym)
 
     mesh = make_curve_mesh(curve_f,
             np.linspace(0, 1, nelements+1),
@@ -109,7 +132,7 @@ def test_matrix_build(ctx_getter):
         pt.colorbar()
         pt.show()
 
-    if 1:
+    if 0:
         import matplotlib.pyplot as pt
         pt.subplot(121)
         pt.imshow(mat.real)
@@ -124,18 +147,18 @@ def test_matrix_build(ctx_getter):
     for i in range(5):
         if is_obj_array(u_sym):
             u = make_obj_array([
-                np.random.randn(density_discr.nnodes),
-                np.random.randn(density_discr.nnodes),
+                np.random.randn(density_discr.nnodes)
+                for i in range(len(u_sym))
                 ])
         else:
             u = np.random.randn(density_discr.nnodes)
-
-        res_mat = mat.dot(np.hstack(list(u)))
 
         u_dev = vector_to_device(queue, u)
         res_matvec = np.hstack(
                 list(vector_from_device(
                     queue, bound_op(queue, u=u_dev))))
+
+        res_mat = mat.dot(np.hstack(list(u)))
 
         abs_err = la.norm(res_mat - res_matvec, np.inf)
         rel_err = abs_err / la.norm(res_matvec, np.inf)
