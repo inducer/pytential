@@ -379,7 +379,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                 for i, k_expr in enumerate(self.domain_k_exprs)]
 
         from sumpy.kernel import HelmholtzKernel
-        self.kernel = HelmholtzKernel(2)
+        self.kernel = HelmholtzKernel(2, allow_evanescent=True)
 
         # {{{ build bc list
 
