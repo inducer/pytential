@@ -27,6 +27,7 @@ import pyopencl as cl  # noqa
 import pyopencl.array  # noqa
 
 import six
+from six.moves import intern
 
 from pytential.symbolic.mappers import EvaluationMapperBase
 import pytential.symbolic.primitives as sym
@@ -68,8 +69,11 @@ class MatrixBuilder(EvaluationMapperBase):
             return super(MatrixBuilder, self).map_subscript(expr)
 
     def map_sum(self, expr):
-        saw_matrix = False
-        saw_vector = False
+        sum_kind = None
+
+        term_kind_matrix = intern("matrix")
+        term_kind_vector = intern("vector")
+        term_kind_scalar = intern("scalar")
 
         result = 0
         for child in expr.children:
@@ -78,20 +82,23 @@ class MatrixBuilder(EvaluationMapperBase):
             if is_zero(rec_child):
                 continue
 
-            assert isinstance(rec_child, np.ndarray)
+            if isinstance(rec_child, np.ndarray):
+                if len(rec_child.shape) == 2:
+                    term_kind = term_kind_matrix
+                elif len(rec_child.shape) == 1:
+                    term_kind = term_kind_vector
+                else:
+                    raise RuntimeError("unexpected array rank")
 
-            is_matrix = len(rec_child.shape) != 2
-
-            if is_matrix and saw_vector:
-                raise RuntimeError("matrix encountered in non-matrix sum")
-            if not is_matrix and saw_matrix:
-                raise RuntimeError("non-matrix encountered in matrix sum, "
-                        "expression may be affine")
-
-            if is_matrix:
-                saw_matrix = True
             else:
-                saw_vector = True
+                term_kind = term_kind_scalar
+
+            if sum_kind is None:
+                sum_kind = term_kind
+
+            if term_kind != sum_kind:
+                raise RuntimeError("encountered %s in sum of kind %s"
+                        % (term_kind, sum_kind))
 
             result = result + rec_child
 
