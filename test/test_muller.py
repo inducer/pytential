@@ -37,11 +37,11 @@ import pytest
 def test_muller(true_roots):
     """
     :arg n: number of zeros sought
-    :return: (roots, niter, err)
+    :return: (roots, niter)
     """
     eps = 1e-12
     from pytential.muller import muller_deflate
-    roots, niter, err = muller_deflate(
+    roots, niter = muller_deflate(
         lambda z: poly_with_roots(z, true_roots), len(true_roots))
 
     for r_i in roots:
