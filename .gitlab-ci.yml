@@ -7,6 +7,6 @@ Python 2.7 AMD CPU:
   - ". ./build-and-test-py-project.sh"
   tags:
   - python2.7
-  - amd-cl-a10
+  - amd-cl-cpu
   except:
   - tags
