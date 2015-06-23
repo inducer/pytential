@@ -98,7 +98,7 @@ class P2QBXLFromCSR(P2EBase):
                 silenced_warnings="write_race(write_expn*)")
 
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "fetch_center",
+        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:fetch_center",
                 tags={"idim": "unr"})
         loopy_knl = lp.tag_inames(loopy_knl, dict(idim="unr"))
 
@@ -184,7 +184,7 @@ class M2QBXL(E2EBase):
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
 
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "fetch_tgt_center",
+        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:fetch_tgt_center",
                 tags={"idim": "unr"})
         loopy_knl = lp.tag_inames(loopy_knl, dict(idim="unr"))
 
@@ -266,7 +266,7 @@ class L2QBXL(E2EBase):
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
 
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "fetch_tgt_center",
+        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:fetch_tgt_center",
                 tags={"idim": "unr"})
         loopy_knl = lp.tag_inames(loopy_knl, dict(idim="unr"))
 
@@ -343,9 +343,9 @@ class QBXL2P(E2PBase):
                     ),
                 silenced_warnings="write_race(write_result*)")
 
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "compute_b",
+        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:compute_b",
                 tags={"idim": "unr"})
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "fetch_center",
+        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:fetch_center",
                 tags={"idim": "unr"})
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
 
