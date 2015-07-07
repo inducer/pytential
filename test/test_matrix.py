@@ -36,8 +36,8 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 
 
-def test_matrix_build(ctx_getter):
-    cl_ctx = ctx_getter()
+def test_matrix_build(ctx_factory):
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # prevent cache 'splosion
