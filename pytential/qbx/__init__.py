@@ -130,7 +130,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     """
     def __init__(self, density_discr, fine_order, qbx_order, fmm_order,
             # FIXME set debug=False once everything works
-            real_dtype=np.float64, debug=True):
+            real_dtype=np.float64, debug=True,
+            performance_data_file=None):
         """
         :arg fine_order: The total degree to which the (upsampled)
             underlying quadrature is exact.
@@ -154,6 +155,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         self.density_discr = density_discr
         self.fmm_order = fmm_order
         self.debug = debug
+        self.performance_data_file = performance_data_file
 
     @property
     def ambient_dim(self):
@@ -384,6 +386,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         if (geo_data.user_target_to_center().with_queue(queue)
                 == target_state.FAILED).get().any():
             raise RuntimeError("geometry has failed targets")
+
+        if self.performance_data_file is not None:
+            from pytential.qbx.fmm import write_performance_model
+            with open(self.performance_data_file, "w") as outf:
+                write_performance_model(outf, geo_data)
 
         # {{{ execute global QBX
 
