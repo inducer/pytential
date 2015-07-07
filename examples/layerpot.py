@@ -24,7 +24,7 @@ mode_nr = 3
 
 k = 2
 if k:
-    kernel = HelmholtzKernel(helmholtz_k_name="k")
+    kernel = HelmholtzKernel(2)
 else:
     kernel = LaplaceKernel()
 #kernel = OneKernel()
@@ -55,8 +55,8 @@ angle = cl.clmath.atan2(nodes[1], nodes[0])
 from pytential import bind, sym
 d = sym.Derivative()
 #op = d.nabla[0] * d(sym.S(kernel, sym.var("sigma")))
-op = sym.D(kernel, sym.var("sigma"))
-#op = sym.S(kernel, sym.var("sigma"))
+op = sym.D(kernel, sym.var("sigma"), k=k)
+#op = sym.S(kernel, sym.var("sigma"), k=k)
 
 sigma = cl.clmath.cos(mode_nr*angle)
 if 0:
