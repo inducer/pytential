@@ -607,19 +607,6 @@ def write_performance_model(outf, geo_data):
 
             nqbxl_direct += nsources
 
-            print(
-                    "icenter={icenter} src_ibox={src_ibox} tgt_ibox={tgt_ibox} nsources={nsources} "
-                    "src_level={src_level} center_level={center_level}"
-                    .format(
-                        icenter=itgt_center,
-                        src_ibox=src_ibox,
-                        tgt_ibox=tgt_ibox,
-                        nsources=nsources,
-                        src_level=tree.box_levels[src_ibox],
-                        center_level=tree.box_levels[tgt_ibox]))
-
-        print
-
     outf.write("qbxl_direct = {cost}\n"
             .format(cost=nqbxl_direct * p_qbx))
 
