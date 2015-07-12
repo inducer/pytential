@@ -1,8 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import range
-from functools import reduce
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
@@ -26,6 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+from six.moves import range
+from functools import reduce
 
 import numpy as np
 from pymbolic.mapper.stringifier import (

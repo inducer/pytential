@@ -97,7 +97,7 @@ Geometry description code container
 
 # {{{ code getter
 
-class target_state(Enum):
+class target_state(Enum):  # noqa
     """This enumeration contains special values that are used in
     the array returned by :meth:`QBXFMMGeometryData.target_to_center`.
 
