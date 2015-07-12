@@ -114,6 +114,9 @@ class Assign(Instruction):
     def get_exec_function(self, exec_mapper):
         return exec_mapper.exec_assign
 
+    def __hash__(self):
+        return id(self)
+
 # }}}
 
 
@@ -219,6 +222,9 @@ class LayerPotentialInstruction(Instruction):
     def get_exec_function(self, exec_mapper):
         source = exec_mapper.bound_expr.places[self.source]
         return source.exec_layer_potential_insn
+
+    def __hash__(self):
+        return id(self)
 
 # }}}
 
