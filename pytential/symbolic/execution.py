@@ -56,7 +56,7 @@ class EvaluationMapper(EvaluationMapperBase):
         discr = self.bound_expr.get_discretization(expr.where)
 
         result = (discr
-                .empty(discr.real_dtype, queue=self.queue)
+                .empty(queue=self.queue, dtype=discr.real_dtype)
                 .with_queue(self.queue))
 
         result.fill(1)
