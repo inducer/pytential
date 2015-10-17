@@ -1,10 +1,11 @@
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import division, absolute_import
+from mayavi import mlab  # noqa
 import numpy as np
 import pyopencl as cl
 from sumpy.visualization import FieldPlotter
-#from mayavi import mlab
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
+
+from pytential import bind, sym
 
 import faulthandler
 from six.moves import range
@@ -25,8 +26,10 @@ mode_nr = 3
 k = 2
 if k:
     kernel = HelmholtzKernel(2)
+    kernel_kwargs = {"k": sym.var("k")}
 else:
     kernel = LaplaceKernel()
+    kernel_kwargs = {}
 #kernel = OneKernel()
 
 from meshmode.mesh.generation import (  # noqa
@@ -52,11 +55,10 @@ nodes = density_discr.nodes().with_queue(queue)
 
 angle = cl.clmath.atan2(nodes[1], nodes[0])
 
-from pytential import bind, sym
 d = sym.Derivative()
 #op = d.nabla[0] * d(sym.S(kernel, sym.var("sigma")))
-op = sym.D(kernel, sym.var("sigma"), k=k)
-#op = sym.S(kernel, sym.var("sigma"), k=k)
+op = sym.D(kernel, sym.var("sigma"), **kernel_kwargs)
+#op = sym.S(kernel, sym.var("sigma"), **kernel_kwargs)
 
 sigma = cl.clmath.cos(mode_nr*angle)
 if 0:
@@ -71,19 +73,20 @@ if isinstance(kernel, HelmholtzKernel):
 bound_bdry_op = bind(qbx, op)
 #mlab.figure(bgcolor=(1, 1, 1))
 if 1:
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=400)
     from pytential.target import PointsTarget
     fld_in_vol = bind(
             (qbx, PointsTarget(fplot.points)),
             op)(queue, sigma=sigma, k=k).get()
 
-    #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-    fplot.write_vtk_file(
-            "potential.vts",
-            [
-                ("potential", fld_in_vol)
-                ]
-            )
+    fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+    if 0:
+        fplot.write_vtk_file(
+                "potential.vts",
+                [
+                    ("potential", fld_in_vol)
+                    ]
+                )
 
 if 0:
     def apply_op(density):
@@ -105,9 +108,9 @@ if 0:
     fld_on_bdry = bound_bdry_op(queue, sigma=sigma, k=k).get()
 
     nodes_host = density_discr.nodes().get(queue=queue)
-    #mlab.points3d(nodes_host[0], nodes_host[1], fld_on_bdry.real, scale_factor=0.03)
+    mlab.points3d(nodes_host[0], nodes_host[1], fld_on_bdry.real, scale_factor=0.03)
 
     # }}}
 
-#mlab.colorbar()
-#mlab.show()
+mlab.colorbar()
+mlab.show()
