@@ -1,5 +1,9 @@
 from __future__ import division, absolute_import
-from mayavi import mlab  # noqa
+
+enable_mayavi = 0
+if enable_mayavi:
+    from mayavi import mlab  # noqa
+
 import numpy as np
 import pyopencl as cl
 from sumpy.visualization import FieldPlotter
@@ -23,7 +27,7 @@ qbx_order = 3
 nelements = 60
 mode_nr = 3
 
-k = 2
+k = 0
 if k:
     kernel = HelmholtzKernel(2)
     kernel_kwargs = {"k": sym.var("k")}
@@ -49,7 +53,7 @@ density_discr = Discretization(
         cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
 qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
-        fmm_order=qbx_order)
+        fmm_order=False)
 
 nodes = density_discr.nodes().with_queue(queue)
 
@@ -79,8 +83,9 @@ if 1:
             (qbx, PointsTarget(fplot.points)),
             op)(queue, sigma=sigma, k=k).get()
 
-    fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-    if 0:
+    if enable_mayavi:
+        fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+    else:
         fplot.write_vtk_file(
                 "potential.vts",
                 [
@@ -102,7 +107,7 @@ if 0:
     pt.colorbar()
     pt.show()
 
-if 0:
+if enable_mayavi:
     # {{{ plot boundary field
 
     fld_on_bdry = bound_bdry_op(queue, sigma=sigma, k=k).get()
@@ -112,5 +117,6 @@ if 0:
 
     # }}}
 
-mlab.colorbar()
-mlab.show()
+if enable_mayavi:
+    mlab.colorbar()
+    mlab.show()
