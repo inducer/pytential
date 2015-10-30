@@ -97,8 +97,7 @@ def main():
     from meshmode.discretization.connection import (
             make_boundary_restriction, make_same_mesh_connection)
     bdry_mesh, bdry_discr, bdry_connection = make_boundary_restriction(
-            queue, vol_discr,
-            InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
+            vol_discr, InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     vol_to_ovsmp_vol = make_same_mesh_connection(
             queue, ovsmp_vol_discr, vol_discr)

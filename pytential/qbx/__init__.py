@@ -144,10 +144,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 QuadratureSimplexGroupFactory(fine_order), real_dtype)
 
         from meshmode.discretization.connection import make_same_mesh_connection
-        with cl.CommandQueue(density_discr.cl_context) as queue:
-            self.resampler = make_same_mesh_connection(
-                    queue,
-                    self.fine_density_discr, density_discr)
+        self.resampler = make_same_mesh_connection(
+                self.fine_density_discr, density_discr)
 
         if fmm_order is None:
             fmm_order = qbx_order + 1
