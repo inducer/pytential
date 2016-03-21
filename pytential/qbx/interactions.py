@@ -86,7 +86,8 @@ class P2QBXLFromCSR(P2EBase):
                     <> a[idim] = center[idim] - sources[idim, isrc] {id=compute_a}
                     <> strength = strengths[isrc]
                     qbx_expansions[tgt_icenter, ${COEFFIDX}] = \
-                            sum((isrc_box, isrc), strength*coeff${COEFFIDX}) \
+                            simul_reduce(sum, (isrc_box, isrc), \
+                            strength*coeff${COEFFIDX}) \
                             {id_prefix=write_expn}
                     """],
                 arguments,
@@ -157,7 +158,8 @@ class M2QBXL(E2EBase):
                         {dep=read_src_ibox}
 
                     qbx_expansions[icenter, ${TGT_COEFFIDX}] = \
-                            sum(isrc_box, coeff${TGT_COEFFIDX}) \
+                            simul_reduce(sum, isrc_box, \
+                            coeff${TGT_COEFFIDX}) \
                             {id_prefix=write_expn}
                     """],
                 [
