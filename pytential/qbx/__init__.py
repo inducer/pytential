@@ -120,11 +120,12 @@ def get_multipole_expansion_class(base_kernel):
 class QBXLayerPotentialSource(LayerPotentialSource):
     """A source discretization for a QBX layer potential.
 
-    .. attribute :: mesh
-    .. attribute :: groups
-    .. attribute :: nnodes
-
-    .. autoattribute :: nodes
+    .. attribute :: density_discr
+    .. attribute :: qbx_order
+    .. attribute :: fmm_order
+    .. attribute :: cl_context
+    .. automethod :: centers
+    .. automethod :: weights_and_area_elements
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """

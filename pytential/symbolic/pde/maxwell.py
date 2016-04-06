@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
@@ -25,9 +22,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from six.moves import range, zip
 import numpy as np  # noqa
 from pymbolic.primitives import Variable
-from pytential.primitives import (
+from pytential.symbolic.primitives import (
         cse,
         xyz_to_tangential, tangential_to_xyz, n_cross, n_dot,
         make_normal, make_tangent, make_vector_field, project_to_tangential,

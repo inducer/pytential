@@ -31,10 +31,8 @@ __doc__ = """
 2D Dielectric
 ^^^^^^^^^^^^^
 
-.. autoclass:: Dielectric2DBoundaryOperatorBase
-.. autoclass:: TEDielectric2DBoundaryOperator
-.. autoclass:: TMDielectric2DBoundaryOperator
-.. autoclass:: TEMDielectric2DBoundaryOperator
+.. autoclass:: DielectricSRep2DBoundaryOperator
+.. autoclass:: DielectricSDRep2DBoundaryOperator
 """
 
 
