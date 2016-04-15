@@ -15,7 +15,6 @@ Contents
 .. toctree::
     :maxdepth: 2
 
-    mesh
     discretization
     symbolic
     tools
