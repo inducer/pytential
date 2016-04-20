@@ -25,10 +25,11 @@
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
     'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
-    'sphinx.ext.viewcode'
+    'sphinx.ext.viewcode',
     ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -269,7 +270,6 @@ texinfo_documents = [
 #texinfo_show_urls = 'footnote'
 
 
-# Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
     'http://docs.python.org/': None,
     'http://documen.tician.de/boxtree/': None,
@@ -277,6 +277,7 @@ intersphinx_mapping = {
     'http://documen.tician.de/modepy/': None,
     'http://documen.tician.de/pyopencl/': None,
     'http://documen.tician.de/pymbolic/': None,
-    #'http://documen.tician.de/loopy/': None,
+    'http://documen.tician.de/loopy/': None,
+    'http://documen.tician.de/sumpy/': None,
     }
 autoclass_content = "both"
