@@ -541,11 +541,13 @@ class QBXPreprocessor(IdentityMapper):
         if isinstance(target_discr, LayerPotentialSource):
             target_discr = target_discr.density_discr
 
+        if expr.qbx_forced_limit == 0:
+            raise ValueError("qbx_forced_limit == 0 was a bad idea and "
+                    "is no longer supported. Use qbx_forced_limit == 'avg' "
+                    "to request two-sided averaging explicitly if needed.")
+
         assert expr.qbx_forced_limit is not None
-        if expr.qbx_forced_limit != 0 \
-                or source.density_discr is not target_discr:
-            # Not computing the self-on-surface value, nothing to do.
-            return IdentityMapper.map_int_g(self, expr)
+        is_self = source.density_discr is target_discr
 
         expr = expr.copy(
                 kernel=expr.kernel,
@@ -555,24 +557,15 @@ class QBXPreprocessor(IdentityMapper):
                     for name, arg_expr in expr.kernel_arguments.items()
                     ))
 
-        from sumpy.kernel import DerivativeCounter
-        num_derivatives = DerivativeCounter()(expr.kernel)
-
-        if num_derivatives == 0:
-            # either side will do
-            return expr.copy(qbx_forced_limit=+1)
-        else:  # if num_derivatives == 1:
-            # Assume it's a PV integral, preserve 'numerical compactness' by using
-            # two-sided average.
+        if is_self and expr.qbx_forced_limit == "avg":
             return 0.5*(
                     expr.copy(qbx_forced_limit=+1)
                     + expr.copy(qbx_forced_limit=-1))
-        # else:
-        #     # FIXME
-        #     # from sumpy.qbx import find_jump_term
-        #     # jump_term = find_jump_term(expr.kernel,
-        #     #         _QBXJumpTermSymbolicArgumentProvider(expr.source))
-        #     raise NotImplementedError()
+        elif is_self and expr.qbx_forced_limit != "avg":
+            assert expr.qbx_forced_limit in [-1, 1]
+            return expr
+        else:
+            return expr.copy(qbx_forced_limit=None)
 
     def map_int_g_ds(self, expr):
         raise RuntimeError("user-facing source derivative operators are expected "

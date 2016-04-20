@@ -409,7 +409,7 @@ class IntG(Expression):
             return Expression.__new__(cls)
 
     def __init__(self, kernel, density,
-            qbx_forced_limit=0, source=None, target=None,
+            qbx_forced_limit, source=None, target=None,
             kernel_arguments=None,
             **kwargs):
         """*target_derivatives* and later arguments should be considered
@@ -448,7 +448,7 @@ class IntG(Expression):
 
         del kernel_arguments_2
 
-        if qbx_forced_limit not in [-1, 0, 1]:
+        if qbx_forced_limit not in [-1, "avg", 1]:
                 raise ValueError("invalid value (%s) of qbx_forced_limit"
                         % qbx_forced_limit)
 
@@ -554,7 +554,14 @@ class IntGdSource(IntG):
 
 # {{{ geometric calculus
 
-S = IntG
+def S(kernel, density,
+        qbx_forced_limit=None, source=None, target=None,
+        kernel_arguments=None, **kwargs):
+    if qbx_forced_limit is None:
+        qbx_forced_limit = +1
+
+    return IntG(kernel, density, qbx_forced_limit, source, target,
+            kernel_arguments, **kwargs)
 
 
 def tangential_derivative(operand, where=None):
@@ -572,6 +579,9 @@ def normal_derivative(operand, where=None):
 
 def Sp(*args, **kwargs):  # noqa
     where = kwargs.get("target")
+    if "qbx_forced_limit" not in kwargs:
+        kwargs["qbx_forced_limit"] = "avg"
+
     return normal_derivative(S(*args, **kwargs), where)
 
 
@@ -582,11 +592,16 @@ def Spp(*args, **kwargs):  # noqa
 
 def D(*args, **kwargs):  # noqa
     where = kwargs.get("source")
+    if "qbx_forced_limit" not in kwargs:
+        kwargs["qbx_forced_limit"] = "avg"
     return IntGdSource(normal(where), *args, **kwargs).a.xproject(0)
 
 
 def Dp(*args, **kwargs):  # noqa
     target = kwargs.get("target")
+    if "qbx_forced_limit" not in kwargs:
+        # continuous
+        kwargs["qbx_forced_limit"] = +1
     return normal_derivative(D(*args, **kwargs), target)
 
 # }}}

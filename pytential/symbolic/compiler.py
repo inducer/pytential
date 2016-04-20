@@ -588,7 +588,7 @@ class OperatorCompiler(IdentityMapper):
                     atdr(kernel) for kernel in kernels)
 
             for op in group:
-                assert op.qbx_forced_limit in [-1, 0, 1]
+                assert op.qbx_forced_limit in [-1, None, 1]
 
             kernel_arguments = dict(
                     (arg_name, self.rec(arg_val))
