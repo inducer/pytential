@@ -557,13 +557,14 @@ class QBXPreprocessor(IdentityMapper):
                     for name, arg_expr in expr.kernel_arguments.items()
                     ))
 
-        if is_self and expr.qbx_forced_limit == "avg":
-            return 0.5*(
-                    expr.copy(qbx_forced_limit=+1)
-                    + expr.copy(qbx_forced_limit=-1))
-        elif is_self and expr.qbx_forced_limit != "avg":
-            assert expr.qbx_forced_limit in [-1, 1]
-            return expr
+        if is_self:
+            if expr.qbx_forced_limit == "avg":
+                return 0.5*(
+                        expr.copy(qbx_forced_limit=+1)
+                        + expr.copy(qbx_forced_limit=-1))
+            else:
+                assert expr.qbx_forced_limit in [-1, 1]
+                return expr
         else:
             return expr.copy(qbx_forced_limit=None)
 
