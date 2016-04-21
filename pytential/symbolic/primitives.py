@@ -386,6 +386,10 @@ def hashable_kernel_args(kernel_arguments):
     return tuple(hashable_args)
 
 
+class _NoArgSentinel(object):
+    pass
+
+
 class IntG(Expression):
     r"""
     .. math::
@@ -490,11 +494,12 @@ class IntG(Expression):
         self.target = target
         self.kernel_arguments = kernel_arguments
 
-    def copy(self, kernel=None, density=None, qbx_forced_limit=None,
+    def copy(self, kernel=None, density=None, qbx_forced_limit=_NoArgSentinel,
             source=None, target=None, kernel_arguments=None):
         kernel = kernel or self.kernel
         density = density or self.density
-        qbx_forced_limit = qbx_forced_limit or self.qbx_forced_limit
+        if qbx_forced_limit is _NoArgSentinel:
+            qbx_forced_limit = self.qbx_forced_limit
         source = source or self.source
         target = target or self.target
         kernel_arguments = kernel_arguments or self.kernel_arguments
