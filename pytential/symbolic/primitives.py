@@ -423,8 +423,9 @@ class IntG(Expression):
             :func:`sumpy.kernel.to_kernel_and_args`,
             likely a :class:`sumpy.kernel.Kernel`.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
-            QBX center on the "+" side of the boundary. -1 for the other side. 0 if
-            either side of center (or no center at all) is acceptable.
+            QBX center on the "+" side of the boundary. -1 for the other side.
+            "avg" if two-sided averaging is to be performed
+            or *None* for non-self interactions.
         :arg kernel_arguments: A dictionary mapping named
             :class:`sumpy.kernel.Kernel` arguments
             (see :meth:`sumpy.kernel.Kernel.get_args`
@@ -452,7 +453,7 @@ class IntG(Expression):
 
         del kernel_arguments_2
 
-        if qbx_forced_limit not in [-1, "avg", 1]:
+        if qbx_forced_limit not in [-1, "avg", 1, None]:
                 raise ValueError("invalid value (%s) of qbx_forced_limit"
                         % qbx_forced_limit)
 
