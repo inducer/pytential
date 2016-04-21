@@ -649,7 +649,7 @@ class StringifyMapper(BaseStringifyMapper):
                     for name, arg_expr in kernel_arguments.items())
 
     def map_int_g(self, expr, enclosing_prec):
-        return u"Int[%s->%s]@(%d)%s (%s * %s)" % (
+        return u"Int[%s->%s]@(%s)%s (%s * %s)" % (
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
@@ -664,7 +664,7 @@ class StringifyMapper(BaseStringifyMapper):
         else:
             deriv_term = self.rec(expr.dsource, PREC_PRODUCT)
 
-        result = u"Int[%s->%s]@(%d)%s %s G_%s %s" % (
+        result = u"Int[%s->%s]@(%s)%s %s G_%s %s" % (
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
