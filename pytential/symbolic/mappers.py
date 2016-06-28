@@ -1,4 +1,4 @@
-from __future__ import division, absolute_import
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
@@ -38,7 +38,7 @@ from pymbolic.mapper.dependency import (
         DependencyMapper as DependencyMapperBase)
 from pymbolic.mapper.coefficient import (
         CoefficientCollector as CoefficientCollectorBase)
-from pymbolic.geometric_algebra import MultiVector
+from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.mapper import (
         CombineMapper as CombineMapperBase,
         IdentityMapper as IdentityMapperBase,
@@ -181,34 +181,41 @@ class EvaluationMapper(EvaluationMapperBase):
     map_ones = map_variable
 
     def map_node_sum(self, expr):
-        return type(expr)(self.rec(expr.operand))
+        return componentwise(type(expr), self.rec(expr.operand))
 
     def map_node_coordinate_component(self, expr):
         return expr
 
     def map_num_reference_derivative(self, expr):
-        return type(expr)(expr.ref_axes, self.rec(expr.operand), expr.where)
+        return componentwise(
+		lambda subexpr: type(expr)(
+			expr.ref_axes, self.rec(subexpr), expr.where),
+		expr.operand)
 
     def map_int_g(self, expr):
-        return type(expr)(
-                expr.kernel,
-                self.rec(expr.density),
-                expr.qbx_forced_limit, expr.source, expr.target,
-                kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
-                    for name, arg_expr in expr.kernel_arguments.items()
-                    ))
+        return componentwise(
+		lambda subexpr: type(expr)(
+			expr.kernel,
+			self.rec(subexpr),
+			expr.qbx_forced_limit, expr.source, expr.target,
+			kernel_arguments=dict(
+				(name, self.rec(arg_expr))
+				for name, arg_expr in expr.kernel_arguments.items()
+				)),
+		expr.density)
 
     def map_int_g_ds(self, expr):
-        return type(expr)(
-                self.rec(expr.dsource),
-                expr.kernel,
-                self.rec(expr.density),
-                expr.qbx_forced_limit, expr.source, expr.target,
-                kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
-                    for name, arg_expr in expr.kernel_arguments.items()
-                    ))
+        return componentwise(
+		lambda subexpr: type(expr)(
+			self.rec(expr.dsource),
+			expr.kernel,
+			self.rec(subexpr),
+			expr.qbx_forced_limit, expr.source, expr.target,
+			kernel_arguments=dict(
+				(name, self.rec(arg_expr))
+				for name, arg_expr in expr.kernel_arguments.items()
+				)),
+		expr.density)
 
     def map_common_subexpression(self, expr):
         return prim.cse(
@@ -439,14 +446,16 @@ class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
 
     def map_int_g(self, expr):
         from sumpy.kernel import KernelDimensionSetter
-        return type(expr)(
-                KernelDimensionSetter(self.ambient_dim)(expr.kernel),
-                self.rec(expr.density),
-                expr.qbx_forced_limit, expr.source, expr.target,
-                kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
-                    for name, arg_expr in expr.kernel_arguments.items()
-                    ))
+        return componentwise(
+		lambda subexpr: type(expr)(
+			KernelDimensionSetter(self.ambient_dim)(expr.kernel),
+			self.rec(subexpr),
+			expr.qbx_forced_limit, expr.source, expr.target,
+			kernel_arguments=dict(
+			    (name, self.rec(arg_expr))
+			    for name, arg_expr in expr.kernel_arguments.items()
+			    )),
+		expr.density)
 
     def map_int_g_ds(self, expr):
         dsource = self.rec(expr.dsource)
