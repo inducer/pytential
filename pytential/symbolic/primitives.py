@@ -386,6 +386,10 @@ def hashable_kernel_args(kernel_arguments):
     return tuple(hashable_args)
 
 
+class _NoArgSentinel(object):
+    pass
+
+
 class IntG(Expression):
     r"""
     .. math::
@@ -409,7 +413,7 @@ class IntG(Expression):
             return Expression.__new__(cls)
 
     def __init__(self, kernel, density,
-            qbx_forced_limit=0, source=None, target=None,
+            qbx_forced_limit, source=None, target=None,
             kernel_arguments=None,
             **kwargs):
         """*target_derivatives* and later arguments should be considered
@@ -419,8 +423,9 @@ class IntG(Expression):
             :func:`sumpy.kernel.to_kernel_and_args`,
             likely a :class:`sumpy.kernel.Kernel`.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
-            QBX center on the "+" side of the boundary. -1 for the other side. 0 if
-            either side of center (or no center at all) is acceptable.
+            QBX center on the "+" side of the boundary. -1 for the other side.
+            "avg" if two-sided averaging is to be performed
+            or *None* for non-self interactions.
         :arg kernel_arguments: A dictionary mapping named
             :class:`sumpy.kernel.Kernel` arguments
             (see :meth:`sumpy.kernel.Kernel.get_args`
@@ -448,7 +453,7 @@ class IntG(Expression):
 
         del kernel_arguments_2
 
-        if qbx_forced_limit not in [-1, 0, 1]:
+        if qbx_forced_limit not in [-1, "avg", 1, None]:
                 raise ValueError("invalid value (%s) of qbx_forced_limit"
                         % qbx_forced_limit)
 
@@ -490,11 +495,12 @@ class IntG(Expression):
         self.target = target
         self.kernel_arguments = kernel_arguments
 
-    def copy(self, kernel=None, density=None, qbx_forced_limit=None,
+    def copy(self, kernel=None, density=None, qbx_forced_limit=_NoArgSentinel,
             source=None, target=None, kernel_arguments=None):
         kernel = kernel or self.kernel
         density = density or self.density
-        qbx_forced_limit = qbx_forced_limit or self.qbx_forced_limit
+        if qbx_forced_limit is _NoArgSentinel:
+            qbx_forced_limit = self.qbx_forced_limit
         source = source or self.source
         target = target or self.target
         kernel_arguments = kernel_arguments or self.kernel_arguments
@@ -554,7 +560,14 @@ class IntGdSource(IntG):
 
 # {{{ geometric calculus
 
-S = IntG
+def S(kernel, density,
+        qbx_forced_limit=None, source=None, target=None,
+        kernel_arguments=None, **kwargs):
+    if qbx_forced_limit is None:
+        qbx_forced_limit = +1
+
+    return IntG(kernel, density, qbx_forced_limit, source, target,
+            kernel_arguments, **kwargs)
 
 
 def tangential_derivative(operand, where=None):
@@ -572,6 +585,9 @@ def normal_derivative(operand, where=None):
 
 def Sp(*args, **kwargs):  # noqa
     where = kwargs.get("target")
+    if "qbx_forced_limit" not in kwargs:
+        kwargs["qbx_forced_limit"] = "avg"
+
     return normal_derivative(S(*args, **kwargs), where)
 
 
@@ -582,11 +598,16 @@ def Spp(*args, **kwargs):  # noqa
 
 def D(*args, **kwargs):  # noqa
     where = kwargs.get("source")
+    if "qbx_forced_limit" not in kwargs:
+        kwargs["qbx_forced_limit"] = "avg"
     return IntGdSource(normal(where), *args, **kwargs).a.xproject(0)
 
 
 def Dp(*args, **kwargs):  # noqa
     target = kwargs.get("target")
+    if "qbx_forced_limit" not in kwargs:
+        # continuous
+        kwargs["qbx_forced_limit"] = +1
     return normal_derivative(D(*args, **kwargs), target)
 
 # }}}

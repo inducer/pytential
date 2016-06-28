@@ -724,8 +724,8 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
             sym.S(k_sym, dn_u_sym) - sym.D(k_sym, u_sym) - 0.5*u_sym,
 
             "green_grad":
-            d1.nabla * d1(sym.S(k_sym, dn_u_sym))
-            - d2.nabla * d2(sym.D(k_sym, u_sym))
+            d1.nabla * d1(sym.S(k_sym, dn_u_sym, qbx_forced_limit="avg"))
+            - d2.nabla * d2(sym.D(k_sym, u_sym, qbx_forced_limit="avg"))
             - 0.5*grad_u_sym,
 
             # only for k==0:

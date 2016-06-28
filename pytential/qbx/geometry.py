@@ -144,10 +144,12 @@ class QBXFMMGeometryCodeGetter(object):
                 lp.ValueArg("nunit_nodes", np.int32),
                 "..."
                 ],
-            default_offset=lp.auto, name="center_pick",
-            defines=dict(ndims=self.ambient_dim))
+            default_offset=lp.auto,
+            name="center_pick")
 
-        knl = lp.tag_data_axes(knl, "centers,all_centers", "sep, C, C")
+        knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
+
+        knl = lp.tag_array_axes(knl, "centers,all_centers", "sep, C, C")
 
         knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
         return lp.tag_inames(knl, dict(k="g.0", dim="ilp"))
