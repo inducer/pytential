@@ -539,10 +539,6 @@ class QBXPreprocessor(IdentityMapper):
         self.places = places
 
     def map_int_g(self, expr):
-        if expr.source != self.source_name:
-            # not ours
-            return IdentityMapper.map_int_g(self, expr)
-
         source = self.places[self.source_name]
         target_discr = self.places[expr.target]
 
@@ -555,7 +551,6 @@ class QBXPreprocessor(IdentityMapper):
                     "is no longer supported. Use qbx_forced_limit == 'avg' "
                     "to request two-sided averaging explicitly if needed.")
 
-        assert expr.qbx_forced_limit is not None
         is_self = source.density_discr is target_discr
 
         expr = expr.copy(
@@ -566,16 +561,33 @@ class QBXPreprocessor(IdentityMapper):
                     for name, arg_expr in expr.kernel_arguments.items()
                     ))
 
-        if is_self:
-            if expr.qbx_forced_limit == "avg":
-                return 0.5*(
-                        expr.copy(qbx_forced_limit=+1)
-                        + expr.copy(qbx_forced_limit=-1))
-            else:
-                assert expr.qbx_forced_limit in [-1, 1]
-                return expr
+        if not is_self:
+            # non-self evaluation
+            if expr.qbx_forced_limit == 'avg':
+                from warnings import warn
+                warn("qbx_forced_limit == 'avg' is deprecated "
+                        "for non-self evaluation, defaulting to 'None'",
+                        DeprecationWarning)
+                expr = expr.copy(qbx_forced_limit=None)
+
+            return expr
+
+        if expr.qbx_forced_limit is None:
+            raise ValueError("qbx_forced_limit == None is not supported "
+                    "for self evaluation--must pick evaluation side")
+
+        if (isinstance(expr.qbx_forced_limit, int)
+                and abs(expr.qbx_forced_limit) == 2):
+            warn("qbx_forced_limit == +/-2 is deprecated "
+                    "for self evaluation--must require evaluation side",
+                    DeprecationWarning)
+
+        if expr.qbx_forced_limit == "avg":
+            return 0.5*(
+                    expr.copy(qbx_forced_limit=+1)
+                    + expr.copy(qbx_forced_limit=-1))
         else:
-            return expr.copy(qbx_forced_limit=None)
+            return expr
 
     def map_int_g_ds(self, expr):
         raise RuntimeError("user-facing source derivative operators are expected "

@@ -165,8 +165,9 @@ class QBXFMMGeometryCodeGetter(object):
             """
                 el_centers[dim, k] = sum(i, nodes[dim, k, i])/nunit_nodes
                 """,
-            default_offset=lp.auto, name="find_element_centers",
-            defines=dict(ndims=self.ambient_dim))
+            default_offset=lp.auto, name="find_element_centers")
+
+        knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
 
         knl = lp.split_iname(knl, "k", 128, inner_tag="l.0", outer_tag="g.0")
         return lp.tag_inames(knl, dict(dim="ilp"))
@@ -183,8 +184,9 @@ class QBXFMMGeometryCodeGetter(object):
                 el_radii[k] = max(dim, max(i, \
                     fabs(nodes[dim, k, i] - el_centers[dim, k])))
                 """,
-            default_offset=lp.auto, name="find_element_radii",
-            defines=dict(ndims=self.ambient_dim))
+            default_offset=lp.auto, name="find_element_radii")
+
+        knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
 
         knl = lp.split_iname(knl, "k", 128, inner_tag="l.0", outer_tag="g.0")
         return lp.tag_inames(knl, dict(dim="unr"))
@@ -198,13 +200,14 @@ class QBXFMMGeometryCodeGetter(object):
             """
                 targets[dim, i] = points[dim, i]
                 """,
-            default_offset=lp.auto, name="copy_targets",
-            defines=dict(ndims=self.ambient_dim))
+            default_offset=lp.auto, name="copy_targets")
+
+        knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
 
         knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
-        knl = lp.tag_data_axes(knl, "points", "sep, C")
+        knl = lp.tag_array_axes(knl, "points", "sep, C")
 
-        knl = lp.tag_data_axes(knl, "targets", "stride:auto, stride:1")
+        knl = lp.tag_array_axes(knl, "targets", "stride:auto, stride:1")
         return lp.tag_inames(knl, dict(dim="ilp"))
 
     @property
@@ -230,17 +233,21 @@ class QBXFMMGeometryCodeGetter(object):
                 "{[itarget_tree]: b_t_start <= itarget_tree < b_t_start + ntargets}",
                 ],
             """
+            for ibox
                 <> b_t_start = box_target_starts[ibox]
                 <> ntargets = box_target_counts_nonchild[ibox]
 
-                <> itarget_user = user_target_from_tree_target[itarget_tree]
-                <> in_bounds = itarget_user < ncenters
+                for itarget_tree
+                    <> itarget_user = user_target_from_tree_target[itarget_tree]
+                    <> in_bounds = itarget_user < ncenters
 
-                # This write is race-free because each center only belongs
-                # to one box.
-                qbx_center_to_target_box[itarget_user] = box_to_target_box[ibox] \
-                        {id=tgt_write,if=in_bounds}
-                """,
+                    # This write is race-free because each center only belongs
+                    # to one box.
+                    qbx_center_to_target_box[itarget_user] = \
+                            box_to_target_box[ibox] {id=tgt_write,if=in_bounds}
+                end
+            end
+            """,
             [
                 lp.GlobalArg("qbx_center_to_target_box", box_id_dtype,
                     shape="ncenters"),

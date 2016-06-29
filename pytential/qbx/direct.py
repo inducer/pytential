@@ -44,16 +44,29 @@ class CenterFinder:
                 """
                 for itgt
                     for ictr
-                        <> dist_sq = sum(idim, \
+                        <> dist_sq = sum(idim,
                                 (tgt[idim,itgt] - center[idim,ictr])**2)
                         <> in_disk = dist_sq < (radius[ictr]*1.05)**2
-                        <> post_dist_sq = if(in_disk, dist_sq, HUGE)
+                        <> matches = (
+                                (in_disk
+                                    and qbx_forced_limit == 0)
+                                or (in_disk
+                                        and qbx_forced_limit != 0
+                                        and qbx_forced_limit * center_side[ictr] > 0)
+                                )
+
+                        <> post_dist_sq = if(matches, dist_sq, HUGE)
                     end
                     <> min_dist_sq, <> min_ictr = argmin(ictr, post_dist_sq)
 
                     tgt_to_qbx_center[itgt] = if(min_dist_sq < HUGE, min_ictr, -1)
                 end
-                """)
+                """,
+                [
+                    lp.ValueArg("qbx_forced_limit", np.int32),
+                    "..."
+                    ],
+                name="find_centers_direct")
 
         knl = lp.fix_parameters(knl,
                 ambient_dim=self.ambient_dim,
@@ -69,9 +82,10 @@ class CenterFinder:
         knl = lp.split_iname(knl, "itgt", 128, outer_tag="g.0")
         return knl
 
-    def __call__(self, queue, tgt, center, radius):
+    def __call__(self, queue, tgt, center, center_side, qbx_forced_limit, radius):
         return self.get_optimized_kernel()(
-                queue, tgt=tgt, center=center,
+                queue, tgt=tgt, center=center, center_side=center_side,
+                qbx_forced_limit=qbx_forced_limit,
                 radius=radius)
 
 # }}}

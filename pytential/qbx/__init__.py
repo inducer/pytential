@@ -295,8 +295,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 if isinstance(target_discr, LayerPotentialSource):
                     target_discr = target_discr.density_discr
 
+                qbx_forced_limit = o.qbx_forced_limit
+                if qbx_forced_limit is None:
+                    qbx_forced_limit = 0
+
                 target_discrs_and_qbx_sides.append(
-                        (target_discr, o.qbx_forced_limit))
+                        (target_discr, qbx_forced_limit))
 
         target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
 
@@ -535,11 +539,18 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                         target_discrs_and_qbx_sides=()
                         ).center_info()
 
+                qbx_forced_limit = o.qbx_forced_limit
+                if qbx_forced_limit is None:
+                    qbx_forced_limit = 0
+
                 cf = self.get_center_finder(
                         ambient_dim=self.density_discr.ambient_dim)
                 _, (tgt_to_qbx_center,) = cf(queue,
-                        tgt=target_discr.nodes(), center=center_info.centers,
-                        radius=center_info.radii)
+                        tgt=target_discr.nodes(),
+                        center=center_info.centers,
+                        center_side=center_info.sides,
+                        radius=center_info.radii,
+                        qbx_forced_limit=qbx_forced_limit)
 
                 qbx_tgt_numberer = self.get_qbx_target_numberer(
                         tgt_to_qbx_center.dtype)
@@ -552,6 +563,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
                 qbx_tgt_count = int(qbx_tgt_count.get())
 
+                if (o.qbx_forced_limit is not None
+                        and abs(o.qbx_forced_limit) == 1
+                        and qbx_tgt_count < target_discr.nnodes):
+                    raise RuntimeError("Did not find a matching QBX center "
+                            "for some targets")
+
                 qbx_tgt_numbers = qbx_tgt_numbers[:qbx_tgt_count]
                 qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
 
@@ -559,15 +576,16 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 for i, res_i in enumerate(output_for_each_kernel):
                     tgt_subset_kwargs["result_%d" % i] = res_i
 
-                lpot_applier_on_tgt_subset(
-                        queue,
-                        targets=target_discr.nodes(),
-                        sources=self.fine_density_discr.nodes(),
-                        centers=center_info.centers,
-                        strengths=[strengths],
-                        qbx_tgt_numbers=qbx_tgt_numbers,
-                        qbx_center_numbers=qbx_center_numbers,
-                        **tgt_subset_kwargs)
+                if qbx_tgt_count:
+                    lpot_applier_on_tgt_subset(
+                            queue,
+                            targets=target_discr.nodes(),
+                            sources=self.fine_density_discr.nodes(),
+                            centers=center_info.centers,
+                            strengths=[strengths],
+                            qbx_tgt_numbers=qbx_tgt_numbers,
+                            qbx_center_numbers=qbx_center_numbers,
+                            **tgt_subset_kwargs)
 
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
