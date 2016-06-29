@@ -113,12 +113,16 @@ class DirichletOperator(L2WeightedPDEOperator):
         from sumpy.kernel import LaplaceKernel
         return isinstance(self.kernel, LaplaceKernel) and self.loc_sign > 0
 
-    def representation(self, u, map_potentials=None, **kwargs):
+    def representation(self,
+            u, map_potentials=None, qbx_forced_limit=None, **kwargs):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
         if map_potentials is None:
-            map_potentials = lambda x: x
+            def map_potentials(x):
+                return x
+
+        kwargs["qbx_forced_limit"] = qbx_forced_limit
 
         return (
                 self.alpha*map_potentials(
@@ -144,8 +148,10 @@ class DirichletOperator(L2WeightedPDEOperator):
 
         return (-self.loc_sign*0.5*u
                 + sqrt_w*(
-                    self.alpha*S(self.kernel_and_args, inv_sqrt_w_u)
-                    - D(self.kernel_and_args, inv_sqrt_w_u)
+                    self.alpha*S(self.kernel_and_args, inv_sqrt_w_u,
+                        qbx_forced_limit=+1)
+                    - D(self.kernel_and_args, inv_sqrt_w_u,
+                        qbx_forced_limit="avg")
                     + ones_contribution))
 
 # }}}
@@ -194,7 +200,8 @@ class NeumannOperator(L2WeightedPDEOperator):
         inv_sqrt_w_u = cse(u/sqrt_w)
 
         if map_potentials is None:
-            map_potentials = lambda x: x
+            def map_potentials(x):
+                return x
 
         return (
                 map_potentials(
@@ -211,16 +218,23 @@ class NeumannOperator(L2WeightedPDEOperator):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
+        lknl = self.laplace_kernel_and_args
+
         DpS0u = Dp(self.kernel_and_args,  # noqa
-                cse(S(self.laplace_kernel_and_args, inv_sqrt_w_u)))
+                cse(S(lknl, inv_sqrt_w_u)))
 
         if self.use_improved_operator:
-            Dp0S0u = -0.25*u + Sp(self.laplace_kernel_and_args,  # noqa
-                    Sp(self.laplace_kernel_and_args, inv_sqrt_w_u))
+            Dp0S0u = -0.25*u + Sp(
+                    lknl,  # noqa
+                    Sp(lknl, inv_sqrt_w_u, qbx_forced_limit="avg"),
+                    qbx_forced_limit="avg")
 
             if isinstance(self.kernel, HelmholtzKernel):
-                DpS0u = (Dp(self.kernel_and_args - self.laplace_kernel_and_args,  # noqa
-                    cse(S(self.laplace_kernel_and_args, inv_sqrt_w_u))) + Dp0S0u)
+                DpS0u = (
+                        Dp(self.kernel_and_args - lknl,  # noqa
+                            cse(S(lknl, inv_sqrt_w_u, qbx_forced_limit=+1)),
+                            qbx_forced_limit=+1)
+                        + Dp0S0u)
             elif isinstance(self.kernel_and_args, LaplaceKernel):
                 DpS0u = Dp0S0u  # noqa
             else:
@@ -239,7 +253,7 @@ class NeumannOperator(L2WeightedPDEOperator):
 
         return (-self.loc_sign*0.5*u
                 + sqrt_w*(
-                    Sp(self.kernel_and_args, inv_sqrt_w_u)
+                    Sp(self.kernel_and_args, inv_sqrt_w_u, qbx_forced_limit="avg")
                     - self.alpha*DpS0u
                     + ones_contribution
                     ))

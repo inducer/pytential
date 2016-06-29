@@ -198,8 +198,12 @@ class LayerPotentialInstruction(Instruction):
                 limit_str = "[+] "
             elif o.qbx_forced_limit == -1:
                 limit_str = "[-] "
-            elif o.qbx_forced_limit == 0:
-                limit_str = "[0] "
+            if o.qbx_forced_limit == 2:
+                limit_str = "[(+)] "
+            elif o.qbx_forced_limit == -2:
+                limit_str = "[(-)] "
+            elif o.qbx_forced_limit == 'avg':
+                limit_str = "[avg] "
             elif o.qbx_forced_limit is None:
                 limit_str = ""
             else:
@@ -588,7 +592,7 @@ class OperatorCompiler(IdentityMapper):
                     atdr(kernel) for kernel in kernels)
 
             for op in group:
-                assert op.qbx_forced_limit in [-1, None, 1]
+                assert op.qbx_forced_limit in [-2, -1, None, 1, 2]
 
             kernel_arguments = dict(
                     (arg_name, self.rec(arg_val))

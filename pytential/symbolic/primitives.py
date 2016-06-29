@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 import six
 from six.moves import range, intern
+from warnings import warn
 
 import numpy as np
 from pymbolic.primitives import (  # noqa
@@ -424,16 +425,28 @@ class IntG(Expression):
             likely a :class:`sumpy.kernel.Kernel`.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
             QBX center on the "+" side of the boundary. -1 for the other side.
-            "avg" if two-sided averaging is to be performed
-            or *None* for non-self interactions.
+            Evaluation at a target with a value of +/- 1 in *qbx_forced_limit*
+            will fail if no QBX center is found.
+
+            +2 may be used to *allow* evaluation QBX center on the "+" side of the
+            (but disallow evaluation using a center on the "-" side). Potential
+            evaluation at the target still succeeds if no applicable QBX center
+            is found. (-2 for the analogous behavior on the "-" side.)
+
+            *None* may be used to avoid expressing a side preference for close
+            evaluation.
+
+            ``'avg'`` may be used as a shorthand to evaluate this potential
+            as an average of the ``+1`` and the ``-1`` value.
+
         :arg kernel_arguments: A dictionary mapping named
             :class:`sumpy.kernel.Kernel` arguments
             (see :meth:`sumpy.kernel.Kernel.get_args`
             and :meth:`sumpy.kernel.Kernel.get_source_args`
             to expressions that determine them)
 
-        *kwargs* can be used as a more user-friendly
-        interface to *kernel_arguments*.
+        *kwargs* has the same meaning as *kernel_arguments* can be used as a
+        more user-friendly interface.
         """
 
         if kernel_arguments is None:
@@ -453,9 +466,9 @@ class IntG(Expression):
 
         del kernel_arguments_2
 
-        if qbx_forced_limit not in [-1, "avg", 1, None]:
-                raise ValueError("invalid value (%s) of qbx_forced_limit"
-                        % qbx_forced_limit)
+        if qbx_forced_limit not in [-1, +1, -2, +2, "avg", None]:
+            raise ValueError("invalid value (%s) of qbx_forced_limit"
+                    % qbx_forced_limit)
 
         kernel_arg_names = set(
                 karg.loopy_arg.name
@@ -560,10 +573,16 @@ class IntGdSource(IntG):
 
 # {{{ geometric calculus
 
+class _unspecified:
+    pass
+
 def S(kernel, density,
-        qbx_forced_limit=None, source=None, target=None,
+        qbx_forced_limit=_unspecified, source=None, target=None,
         kernel_arguments=None, **kwargs):
-    if qbx_forced_limit is None:
+
+    if qbx_forced_limit is _unspecified:
+        warn("not specifying qbx_forced_limit on call to 'S' is deprecated, "
+                "defaulting to +1", DeprecationWarning, stacklevel=2)
         qbx_forced_limit = +1
 
     return IntG(kernel, density, qbx_forced_limit, source, target,
@@ -586,6 +605,8 @@ def normal_derivative(operand, where=None):
 def Sp(*args, **kwargs):  # noqa
     where = kwargs.get("target")
     if "qbx_forced_limit" not in kwargs:
+        warn("not specifying qbx_forced_limit on call to 'Sp' is deprecated, "
+                "defaulting to 'avg'", DeprecationWarning, stacklevel=2)
         kwargs["qbx_forced_limit"] = "avg"
 
     return normal_derivative(S(*args, **kwargs), where)
@@ -599,6 +620,8 @@ def Spp(*args, **kwargs):  # noqa
 def D(*args, **kwargs):  # noqa
     where = kwargs.get("source")
     if "qbx_forced_limit" not in kwargs:
+        warn("not specifying qbx_forced_limit on call to 'D' is deprecated, "
+                "defaulting to 'avg'", DeprecationWarning, stacklevel=2)
         kwargs["qbx_forced_limit"] = "avg"
     return IntGdSource(normal(where), *args, **kwargs).a.xproject(0)
 
@@ -606,7 +629,8 @@ def D(*args, **kwargs):  # noqa
 def Dp(*args, **kwargs):  # noqa
     target = kwargs.get("target")
     if "qbx_forced_limit" not in kwargs:
-        # continuous
+        warn("not specifying qbx_forced_limit on call to 'Dp' is deprecated, "
+                "defaulting to +1", DeprecationWarning, stacklevel=2)
         kwargs["qbx_forced_limit"] = +1
     return normal_derivative(D(*args, **kwargs), target)
 

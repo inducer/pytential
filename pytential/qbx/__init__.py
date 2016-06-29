@@ -295,8 +295,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 if isinstance(target_discr, LayerPotentialSource):
                     target_discr = target_discr.density_discr
 
+                qbx_forced_limit = o.qbx_forced_limit
+                if qbx_forced_limit is None:
+                    qbx_forced_limit = 0
+
                 target_discrs_and_qbx_sides.append(
-                        (target_discr, o.qbx_forced_limit))
+                        (target_discr, qbx_forced_limit))
 
         target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
 
