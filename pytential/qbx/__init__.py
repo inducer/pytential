@@ -559,15 +559,16 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 for i, res_i in enumerate(output_for_each_kernel):
                     tgt_subset_kwargs["result_%d" % i] = res_i
 
-                lpot_applier_on_tgt_subset(
-                        queue,
-                        targets=target_discr.nodes(),
-                        sources=self.fine_density_discr.nodes(),
-                        centers=center_info.centers,
-                        strengths=[strengths],
-                        qbx_tgt_numbers=qbx_tgt_numbers,
-                        qbx_center_numbers=qbx_center_numbers,
-                        **tgt_subset_kwargs)
+                if qbx_tgt_count:
+                    lpot_applier_on_tgt_subset(
+                            queue,
+                            targets=target_discr.nodes(),
+                            sources=self.fine_density_discr.nodes(),
+                            centers=center_info.centers,
+                            strengths=[strengths],
+                            qbx_tgt_numbers=qbx_tgt_numbers,
+                            qbx_center_numbers=qbx_center_numbers,
+                            **tgt_subset_kwargs)
 
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
