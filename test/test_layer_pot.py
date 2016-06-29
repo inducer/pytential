@@ -810,6 +810,60 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 # }}}
 
 
+# {{{ test off-surface eval
+
+@pytest.mark.parametrize("use_fmm", [True, False])
+def test_off_surface_eval(ctx_getter, use_fmm):
+    logging.basicConfig(level=logging.INFO)
+
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    # prevent cache 'splosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
+
+    nelements = 30
+    target_order = 8
+    qbx_order = 3
+    if use_fmm is True:
+        fmm_order = qbx_order
+    else:
+        fmm_order = False
+
+    mesh = make_curve_mesh(partial(ellipse, 3),
+            np.linspace(0, 1, nelements+1),
+            target_order)
+
+    from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+
+    density_discr = Discretization(
+            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+    qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
+            fmm_order=fmm_order)
+
+    from sumpy.kernel import LaplaceKernel
+    op = sym.D(LaplaceKernel(), sym.var("sigma"), qbx_forced_limit=-2)
+
+    sigma = density_discr.zeros(queue) + 1
+
+    fplot = FieldPlotter(np.zeros(2), extent=0.5, npoints=20)
+    from pytential.target import PointsTarget
+    fld_in_vol = bind(
+            (qbx, PointsTarget(fplot.points)),
+            op)(queue, sigma=sigma)
+
+    print(fld_in_vol)
+
+    # FIXME: Why does the FMM only meet this sloppy tolerance?
+    assert (cl.clmath.fabs(fld_in_vol - (-1)) < 1e-2).get().all()
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_layer_pot.py 'test_routine()'
 
