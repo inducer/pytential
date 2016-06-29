@@ -539,6 +539,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                         target_discrs_and_qbx_sides=()
                         ).center_info()
 
+                qbx_forced_limit = o.qbx_forced_limit
+                if qbx_forced_limit is None:
+                    qbx_forced_limit = 0
+
                 cf = self.get_center_finder(
                         ambient_dim=self.density_discr.ambient_dim)
                 _, (tgt_to_qbx_center,) = cf(queue,
@@ -546,7 +550,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                         center=center_info.centers,
                         center_side=center_info.sides,
                         radius=center_info.radii,
-                        qbx_forced_limit=o.qbx_forced_limit)
+                        qbx_forced_limit=qbx_forced_limit)
 
                 qbx_tgt_numberer = self.get_qbx_target_numberer(
                         tgt_to_qbx_center.dtype)
@@ -559,7 +563,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
                 qbx_tgt_count = int(qbx_tgt_count.get())
 
-                if (abs(o.qbx_forced_limit) == 1
+                if (o.qbx_forced_limit is not None
+                        and abs(o.qbx_forced_limit) == 1
                         and qbx_tgt_count < target_discr.nnodes):
                     raise RuntimeError("Did not find a matching QBX center "
                             "for some targets")
