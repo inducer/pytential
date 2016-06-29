@@ -195,13 +195,16 @@ class NeumannOperator(L2WeightedPDEOperator):
         from sumpy.kernel import LaplaceKernel
         return isinstance(self.kernel, LaplaceKernel) and self.loc_sign < 0
 
-    def representation(self, u, map_potentials=None, **kwargs):
+    def representation(self, u, map_potentials=None, qbx_forced_limit=None,
+            **kwargs):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
         if map_potentials is None:
             def map_potentials(x):
                 return x
+
+        kwargs["qbx_forced_limit"] = qbx_forced_limit
 
         return (
                 map_potentials(
