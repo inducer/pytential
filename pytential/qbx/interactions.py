@@ -68,8 +68,8 @@ class P2QBXLFromCSR(P2EBase):
                     "{[isrc_box]: isrc_box_start<=isrc_box<isrc_box_stop}",
                     "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
                     ],
-                self.get_loopy_instructions()
-                + ["""
+                ["""
+                for itgt_center
                     <> tgt_icenter = global_qbx_centers[itgt_center]
 
                     <> itgt_box = qbx_center_to_target_box[tgt_icenter]
@@ -77,31 +77,37 @@ class P2QBXLFromCSR(P2EBase):
                     <> isrc_box_start = source_box_starts[itgt_box]
                     <> isrc_box_stop = source_box_starts[itgt_box+1]
 
-                    <> src_ibox = source_box_lists[isrc_box]
-                    <> isrc_start = box_source_starts[src_ibox]
-                    <> isrc_end = isrc_start+box_source_counts_nonchild[src_ibox]
+                    for isrc_box
+                        <> src_ibox = source_box_lists[isrc_box]
+                        <> isrc_start = box_source_starts[src_ibox]
+                        <> isrc_end = isrc_start+box_source_counts_nonchild[src_ibox]
 
-                    <> center[idim] = qbx_centers[idim, tgt_icenter] \
-                            {id=fetch_center}
-                    <> a[idim] = center[idim] - sources[idim, isrc] {id=compute_a}
-                    <> strength = strengths[isrc]
-                    qbx_expansions[tgt_icenter, ${COEFFIDX}] = \
-                            simul_reduce(sum, (isrc_box, isrc), \
-                            strength*coeff${COEFFIDX}) \
-                            {id_prefix=write_expn}
-                    """],
+                        <> center[idim] = qbx_centers[idim, tgt_icenter]
+
+                        for isrc
+                            <> a[idim] = center[idim] - sources[idim, isrc] \
+                                    {dup=idim}
+                            <> strength = strengths[isrc]
+
+                            """] + self.get_loopy_instructions() + ["""
+                        end
+                    end
+
+                    """] + ["""
+                    qbx_expansions[tgt_icenter, {i}] = \
+                            simul_reduce(sum, (isrc_box, isrc), strength*coeff{i}) \
+                            {{id_prefix=write_expn}}
+                    """.format(i=i) for i in range(ncoeffs)] + ["""
+
+                end
+                """],
                 arguments,
                 name=self.name, assumptions="ntgt_centers>=1",
-                defines=dict(
-                    dim=self.dim,
-                    COEFFIDX=[str(i) for i in range(ncoeffs)]
-                    ),
                 silenced_warnings="write_race(write_expn*)")
 
+        loopy_knl = lp.fix_parameters(loopy_knl, dim=self.dim)
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:fetch_center",
-                tags={"idim": "unr"})
-        loopy_knl = lp.tag_inames(loopy_knl, dict(idim="unr"))
+        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
         return loopy_knl
 
@@ -138,8 +144,8 @@ class M2QBXL(E2EBase):
                     "{[isrc_box]: isrc_start<=isrc_box<isrc_stop}",
                     "{[idim]: 0<=idim<dim}",
                     ],
-                self.get_translation_loopy_insns()
-                + ["""
+                ["""
+                for icenter
                     <> icontaining_tgt_box = qbx_center_to_target_box[icenter]
 
                     <> tgt_center[idim] = qbx_centers[idim, icenter] \
@@ -148,20 +154,29 @@ class M2QBXL(E2EBase):
                     <> isrc_start = src_box_starts[icontaining_tgt_box]
                     <> isrc_stop = src_box_starts[icontaining_tgt_box+1]
 
-                    <> src_ibox = src_box_lists[isrc_box] \
-                            {id=read_src_ibox}
-                    <> src_center[idim] = centers[idim, src_ibox] \
-                            {id=fetch_src_center}
-                    <> d[idim] = tgt_center[idim] - src_center[idim]
-                    <> src_coeff${SRC_COEFFIDX} = \
-                        src_expansions[src_ibox, ${SRC_COEFFIDX}] \
-                        {dep=read_src_ibox}
+                    for isrc_box
+                        <> src_ibox = src_box_lists[isrc_box] \
+                                {id=read_src_ibox}
+                        <> src_center[idim] = centers[idim, src_ibox] {dup=idim}
+                        <> d[idim] = tgt_center[idim] - src_center[idim] {dup=idim}
+                        """] + ["""
 
-                    qbx_expansions[icenter, ${TGT_COEFFIDX}] = \
-                            simul_reduce(sum, isrc_box, \
-                            coeff${TGT_COEFFIDX}) \
-                            {id_prefix=write_expn}
-                    """],
+                        <> src_coeff{i} = src_expansions[src_ibox, {i}] \
+                            {{dep=read_src_ibox}}
+
+                        """.format(i=i) for i in range(ncoeff_src)] + [
+
+                        ] + self.get_translation_loopy_insns() + ["""
+
+                    end
+                    """] + ["""
+                    qbx_expansions[icenter, {i}] = \
+                            simul_reduce(sum, isrc_box, coeff{i}) \
+                            {{id_prefix=write_expn}}
+                    """.format(i=i) for i in range(ncoeff_tgt)] + ["""
+
+                end
+                """],
                 [
                     lp.GlobalArg("centers", None, shape="dim, aligned_nboxes"),
                     lp.GlobalArg("src_box_starts, src_box_lists",
@@ -176,19 +191,14 @@ class M2QBXL(E2EBase):
                     "..."
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name, assumptions="ncenters>=1",
-                defines=dict(
-                    dim=self.dim,
-                    SRC_COEFFIDX=[str(i) for i in range(ncoeff_src)],
-                    TGT_COEFFIDX=[str(i) for i in range(ncoeff_tgt)],
-                    ),
                 silenced_warnings="write_race(write_expn*)")
+
+        loopy_knl = lp.fix_parameters(loopy_knl, dim=self.dim)
 
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
 
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:fetch_tgt_center",
-                tags={"idim": "unr"})
-        loopy_knl = lp.tag_inames(loopy_knl, dict(idim="unr"))
+        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
         return loopy_knl
 
@@ -205,7 +215,7 @@ class M2QBXL(E2EBase):
 # }}}
 
 
-# {{{ translation from a box's parent
+# {{{ translation from a center's box
 
 class L2QBXL(E2EBase):
     default_name = "l2qbxl"
@@ -220,8 +230,8 @@ class L2QBXL(E2EBase):
                     "{[icenter]: 0<=icenter<ncenters}",
                     "{[idim]: 0<=idim<dim}",
                     ],
-                self.get_translation_loopy_insns()
-                + ["""
+                ["""
+                for icenter
                     <> isrc_box = qbx_center_to_target_box[icenter]
 
                     # The box's expansions which we're translating here
@@ -230,21 +240,20 @@ class L2QBXL(E2EBase):
                     <> src_ibox = target_boxes[isrc_box] \
                         {id=read_src_ibox}
 
-                    <> tgt_center[idim] = qbx_centers[idim, icenter] \
-                        {id=fetch_tgt_center}
+                    <> tgt_center[idim] = qbx_centers[idim, icenter]
+                    <> src_center[idim] = centers[idim, src_ibox] {dup=idim}
+                    <> d[idim] = tgt_center[idim] - src_center[idim] {dup=idim}
 
-                    <> src_center[idim] = centers[idim, src_ibox] \
-                        {id=fetch_src_center}
-                    <> d[idim] = tgt_center[idim] - src_center[idim]
-
-                    <> src_coeff${SRC_COEFFIDX} = \
-                        expansions[src_ibox, ${SRC_COEFFIDX}] \
-                        {dep=read_src_ibox}
-                    qbx_expansions[icenter, ${TGT_COEFFIDX}] = \
-                        qbx_expansions[icenter, ${TGT_COEFFIDX}] \
-                        + coeff${TGT_COEFFIDX} \
-                        {id_prefix=write_expn}
-                    """],
+                    """] + ["""
+                    <> src_coeff{i} = expansions[src_ibox, {i}] {{dep=read_src_ibox}}
+                    """.format(i=i) for i in range(ncoeff_src)] + [
+                    ] + self.get_translation_loopy_insns() + ["""
+                    qbx_expansions[icenter, {i}] = \
+                        qbx_expansions[icenter, {i}] + coeff{i} \
+                        {{id_prefix=write_expn}}
+                    """.format(i=i) for i in range(ncoeff_tgt)] + ["""
+                end
+                """],
                 [
                     lp.GlobalArg("target_boxes", None, shape=None,
                         offset=lp.auto),
@@ -256,21 +265,18 @@ class L2QBXL(E2EBase):
                         shape=("nboxes", ncoeff_src)),
                     "..."
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
-                name=self.name, assumptions="ncenters>=1",
-                defines=dict(
-                    dim=self.dim,
-                    nchildren=2**self.dim,
-                    SRC_COEFFIDX=[str(i) for i in range(ncoeff_src)],
-                    TGT_COEFFIDX=[str(i) for i in range(ncoeff_tgt)],
-                    ),
+                name=self.name,
+                assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)")
+
+        loopy_knl = lp.fix_parameters(loopy_knl,
+                dim=self.dim,
+                nchildren=2**self.dim)
 
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
 
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:fetch_tgt_center",
-                tags={"idim": "unr"})
-        loopy_knl = lp.tag_inames(loopy_knl, dict(idim="unr"))
+        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
         return loopy_knl
 
@@ -304,23 +310,31 @@ class QBXL2P(E2PBase):
                             icenter_tgt_start<=icenter_tgt<icenter_tgt_end}",
                     "{[idim]: 0<=idim<dim}",
                     ],
-                loopy_insns
-                + ["""
+                ["""
+                for iglobal_center
                     <> src_icenter = global_qbx_centers[iglobal_center]
 
                     <> icenter_tgt_start = center_to_targets_starts[src_icenter]
                     <> icenter_tgt_end = center_to_targets_starts[src_icenter+1]
 
-                    <> center_itgt = center_to_targets_lists[icenter_tgt]
+                    for icenter_tgt
 
-                    <> center[idim] = qbx_centers[idim, src_icenter] \
-                            {id=fetch_center}
-                    <> b[idim] = targets[idim, center_itgt] - center[idim] \
-                            {id=compute_b}
-                    <> coeff${COEFFIDX} = qbx_expansions[src_icenter, ${COEFFIDX}]
-                    result[${RESULTIDX},center_itgt] = \
-                            kernel_scaling * result_${RESULTIDX}_p \
-                            {id_prefix=write_result}
+                        <> center_itgt = center_to_targets_lists[icenter_tgt]
+
+                        <> center[idim] = qbx_centers[idim, src_icenter] {dup=idim}
+                        <> b[idim] = targets[idim, center_itgt] - center[idim]
+
+                        """] + ["""
+                        <> coeff{i} = qbx_expansions[src_icenter, {i}]
+                        """.format(i=i) for i in range(ncoeffs)] + [
+
+                        ] + loopy_insns + ["""
+
+                        result[{i},center_itgt] = kernel_scaling * result_{i}_p \
+                                {{id_prefix=write_result}}
+                        """.format(i=i) for i in range(len(result_names))] + ["""
+                    end
+                end
                 """],
                 [
                     lp.GlobalArg("result", None, shape="nresults, ntargets",
@@ -336,19 +350,15 @@ class QBXL2P(E2PBase):
                     lp.ValueArg("ncenters,ntargets", np.int32),
                     "..."
                 ] + [arg.loopy_arg for arg in self.expansion.get_args()],
-                name=self.name, assumptions="nglobal_qbx_centers>=1",
-                defines=dict(
-                    dim=self.dim,
-                    COEFFIDX=[str(i) for i in range(ncoeffs)],
-                    RESULTIDX=[str(i) for i in range(len(result_names))],
-                    nresults=len(result_names),
-                    ),
+                name=self.name,
+                assumptions="nglobal_qbx_centers>=1",
                 silenced_warnings="write_race(write_result*)")
 
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:compute_b",
-                tags={"idim": "unr"})
-        loopy_knl = lp.duplicate_inames(loopy_knl, "idim", "id:fetch_center",
-                tags={"idim": "unr"})
+        loopy_knl = lp.fix_parameters(loopy_knl,
+                dim=self.dim,
+                nresults=len(result_names))
+
+        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
 
         return loopy_knl
