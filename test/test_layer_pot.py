@@ -418,7 +418,7 @@ def run_int_eq_test(
 
     from pytential.solve import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "u", k=k),
+            bound_op.scipy_op(queue, "u", dtype, k=k),
             rhs, tol=1e-14, progress=True,
             hard_failure=False)
 
@@ -429,7 +429,7 @@ def run_int_eq_test(
         # {{{ build matrix for spectrum check
 
         from sumpy.tools import build_matrix
-        mat = build_matrix(bound_op.scipy_op("u"))
+        mat = build_matrix(bound_op.scipy_op("u", dtype=dtype, k=k))
         w, v = la.eig(mat)
         if 0:
             pt.imshow(np.log10(1e-20+np.abs(mat)))
