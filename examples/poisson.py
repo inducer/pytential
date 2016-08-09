@@ -61,15 +61,15 @@ elif 1:
                 + 4*a**2*(x-xc)**2*base
                 - 4*a*base)
 
-h = 0.03
-mesh_order = 3
+h = 0.02
+mesh_order = 2
 vol_quad_order = 5
-vol_ovsmp_quad_order = 2*vol_quad_order
+vol_ovsmp_quad_order = 4*vol_quad_order
 bdry_quad_order = vol_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
-qbx_order = 3
+qbx_order = 4
 vol_qbx_order = 2
-fmm_order = 3
+fmm_order = False
 
 
 def main():
@@ -94,13 +94,16 @@ def main():
     ovsmp_vol_discr = Discretization(ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(vol_ovsmp_quad_order))
 
+    from meshmode.mesh import BTAG_ALL
     from meshmode.discretization.connection import (
-            make_boundary_restriction, make_same_mesh_connection)
-    bdry_mesh, bdry_discr, bdry_connection = make_boundary_restriction(
-            vol_discr, InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
+            make_face_restriction, make_same_mesh_connection)
+    bdry_connection = make_face_restriction(
+            vol_discr, InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order),
+            BTAG_ALL)
 
-    vol_to_ovsmp_vol = make_same_mesh_connection(
-            queue, ovsmp_vol_discr, vol_discr)
+    bdry_discr = bdry_connection.to_discr
+
+    vol_to_ovsmp_vol = make_same_mesh_connection(ovsmp_vol_discr, vol_discr)
 
     # }}}
 
@@ -168,12 +171,14 @@ def main():
     targets = cl.array.zeros(queue, (3,) + vol_x.shape[1:], vol_x.dtype)
     targets[:2] = vol_x
 
-    center_dist = np.min(
+    center_dist = 0.125*np.min(
             cl.clmath.sqrt(
                 bind(vol_discr, p.area_element())(queue)).get())
 
     centers = make_obj_array([ci.copy().reshape(vol_discr.nnodes) for ci in targets])
     centers[2][:] = center_dist
+
+    print(center_dist)
 
     sources = cl.array.zeros(queue, (3,) + ovsmp_vol_x.shape[1:], ovsmp_vol_x.dtype)
     sources[:2] = ovsmp_vol_x
