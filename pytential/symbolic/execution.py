@@ -160,11 +160,12 @@ class MatVecOp:
     """
 
     def __init__(self,
-            bound_expr, queue, arg_name, total_dofs,
+            bound_expr, queue, arg_name, dtype, total_dofs,
             starts_and_ends, extra_args):
         self.bound_expr = bound_expr
         self.queue = queue
         self.arg_name = arg_name
+        self.dtype = dtype
         self.total_dofs = total_dofs
         self.starts_and_ends = starts_and_ends
         self.extra_args = extra_args
@@ -172,8 +173,6 @@ class MatVecOp:
     @property
     def shape(self):
         return (self.total_dofs, self.total_dofs)
-
-    dtype = np.dtype(np.complex128)  # FIXME
 
     def matvec(self, x):
         if isinstance(x, np.ndarray):
@@ -196,7 +195,7 @@ class MatVecOp:
         if do_split:
             # re-join what was split
             joined_result = cl.array.empty(self.queue, self.total_dofs,
-                    np.complex128)  # FIXME
+                    self.dtype)
             for res_i, (start, end) in zip(result, self.starts_and_ends):
                 joined_result[start:end] = res_i
             result = joined_result
@@ -253,7 +252,7 @@ class BoundExpression:
 
         return discr
 
-    def scipy_op(self, queue, arg_name, domains=None, **extra_args):
+    def scipy_op(self, queue, arg_name, dtype, domains=None, **extra_args):
         """
         :arg domains: a list of discretization identifiers or
             *None* values indicating the domains on which each component of the
@@ -290,7 +289,7 @@ class BoundExpression:
         # for linear system solving, in which case the assumption
         # has to be true.
         return MatVecOp(self, queue,
-                arg_name, total_dofs, starts_and_ends, extra_args)
+                arg_name, dtype, total_dofs, starts_and_ends, extra_args)
 
     def __call__(self, queue, **args):
         exec_mapper = EvaluationMapper(self, queue, args)
