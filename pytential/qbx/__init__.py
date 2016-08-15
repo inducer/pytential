@@ -128,7 +128,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
-    def __init__(self, density_discr, fine_order, qbx_order, fmm_order,
+    def __init__(self, density_discr, fine_order,
+            qbx_order=None, fmm_order=None,
+            qbx_level_to_order=None, fmm_level_to_order=None,
             # FIXME set debug=False once everything works
             real_dtype=np.float64, debug=True,
             performance_data_file=None):
@@ -147,11 +149,29 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         self.resampler = make_same_mesh_connection(
                 self.fine_density_discr, density_discr)
 
-        if fmm_order is None:
-            fmm_order = qbx_order + 1
-        self.qbx_order = qbx_order
+        if fmm_level_to_order is None:
+            if fmm_order is None and qbx_order is not None:
+                fmm_order = qbx_order + 1
+
+        if qbx_order is not None and qbx_level_to_order is not None:
+            raise TypeError("may not specify both qbx_order an qbx_level_to_order")
+        if fmm_order is not None and fmm_level_to_order is not None:
+            raise TypeError("may not specify both fmm_order an fmm_level_to_order")
+
+        if fmm_level_to_order is None:
+            if fmm_order is False:
+                fmm_level_to_order = False
+            else:
+                def fmm_level_to_order(level):
+                    return fmm_order
+
+        if qbx_level_to_order is None:
+            def qbx_level_to_order(level):
+                return qbx_order
+
+        self.qbx_level_to_order = qbx_level_to_order
         self.density_discr = density_discr
-        self.fmm_order = fmm_order
+        self.fmm_level_to_order = fmm_level_to_order
         self.debug = debug
         self.performance_data_file = performance_data_file
 
@@ -227,7 +247,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             value = evaluate(expr)
             return with_object_array_or_scalar(oversample, value)
 
-        if self.fmm_order is False:
+        if self.fmm_level_to_order is False:
             func = self.exec_layer_potential_insn_direct
         else:
             func = self.exec_layer_potential_insn_fmm
@@ -261,20 +281,19 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def expansion_wrangler_code_container(self, base_kernel, out_kernels):
-        fmm_order = self.fmm_order
-
         mpole_expn_class = get_multipole_expansion_class(base_kernel)
         local_expn_class = get_local_expansion_class(base_kernel)
 
-        fmm_mpole_expn = mpole_expn_class(base_kernel, fmm_order)
-        fmm_local_expn = local_expn_class(base_kernel, fmm_order)
-        qbx_local_expn = local_expn_class(
-                base_kernel, self.qbx_order)
+        from functools import partial
+        fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
+        fmm_local_factory = partial(local_expn_class, base_kernel)
+        qbx_local_factory = partial(local_expn_class, base_kernel)
 
         from pytential.qbx.fmm import \
                 QBXExpansionWranglerCodeContainer
         return QBXExpansionWranglerCodeContainer(
-                self.cl_context, fmm_mpole_expn, fmm_local_expn, qbx_local_expn,
+                self.cl_context,
+                fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
                 out_kernels)
 
     def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
@@ -374,6 +393,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         wrangler = self.expansion_wrangler_code_container(
                 base_kernel, out_kernels).get_wrangler(
                         queue, geo_data, value_dtype,
+                        self.qbx_level_to_order,
+                        self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
                         kernel_extra_kwargs=kernel_extra_kwargs)
 
