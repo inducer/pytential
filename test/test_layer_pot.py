@@ -813,7 +813,7 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 # {{{ test off-surface eval
 
 @pytest.mark.parametrize("use_fmm", [True, False])
-def test_off_surface_eval(ctx_getter, use_fmm):
+def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
@@ -850,7 +850,7 @@ def test_off_surface_eval(ctx_getter, use_fmm):
 
     sigma = density_discr.zeros(queue) + 1
 
-    fplot = FieldPlotter(np.zeros(2), extent=0.5, npoints=20)
+    fplot = FieldPlotter(np.zeros(2), extent=0.54, npoints=30)
     from pytential.target import PointsTarget
     fld_in_vol = bind(
             (qbx, PointsTarget(fplot.points)),
@@ -858,8 +858,16 @@ def test_off_surface_eval(ctx_getter, use_fmm):
 
     print(fld_in_vol)
 
+    err = cl.clmath.fabs(fld_in_vol - (-1))
+
+    if do_plot:
+        fplot.show_scalar_in_matplotlib(fld_in_vol.get())
+        import matplotlib.pyplot as pt
+        pt.colorbar()
+        pt.show()
+
     # FIXME: Why does the FMM only meet this sloppy tolerance?
-    assert (cl.clmath.fabs(fld_in_vol - (-1)) < 1e-2).get().all()
+    assert (err < 1e-2).get().all()
 
 # }}}
 
