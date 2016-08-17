@@ -453,7 +453,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from sumpy.qbx import LayerPotential
         from sumpy.expansion.local import LineTaylorLocalExpansion
         return LayerPotential(self.cl_context,
-                    [LineTaylorLocalExpansion(knl, self.qbx_order)
+                    [LineTaylorLocalExpansion(knl, self.qbx_level_to_order(0))
                         for knl in kernels],
                     value_dtypes=value_dtype)
 
@@ -471,7 +471,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from sumpy.expansion.local import VolumeTaylorLocalExpansion
         return LayerPotentialOnTargetAndCenterSubset(
                 self.cl_context,
-                [VolumeTaylorLocalExpansion(knl, self.qbx_order)
+                [VolumeTaylorLocalExpansion(knl, self.qbx_level_to_order(0))
                     for knl in kernels],
                 value_dtypes=value_dtype)
 
