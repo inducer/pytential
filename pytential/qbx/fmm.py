@@ -277,7 +277,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 self.qbx_level_to_order(0))
 
         evt, (qbx_expansions_res,) = l2qbxl(
-                self.level_queues[0],
+                self.queue,
                 qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
                 target_boxes=trav.target_boxes,
 
