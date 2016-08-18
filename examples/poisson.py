@@ -5,7 +5,8 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
-from meshmode.mesh.io import generate_gmsh, FileSource
+from meshmode.mesh.generation import generate_regular_rect_mesh
+from meshmode.mesh.io import generate_gmsh, FileSource  # noqa
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -61,7 +62,7 @@ elif 1:
                 + 4*a**2*(x-xc)**2*base
                 - 4*a*base)
 
-h = 0.02
+h = 0.05
 mesh_order = 2
 vol_quad_order = 5
 vol_ovsmp_quad_order = 4*vol_quad_order
@@ -79,11 +80,16 @@ def main():
     ctx = cl.create_some_context()
     queue = cl.CommandQueue(ctx)
 
-    mesh = generate_gmsh(
-            FileSource("circle.step"), 2, order=mesh_order,
-            force_ambient_dim=2,
-            other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h]
-            )
+    if 1:
+        ext = 0.5
+        mesh = generate_regular_rect_mesh(
+                a=(-ext/2, -ext/2), b=(ext/2, ext/2), n=(int(ext/h), int(ext/h)))
+    else:
+        mesh = generate_gmsh(
+                FileSource("circle.step"), 2, order=mesh_order,
+                force_ambient_dim=2,
+                other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h]
+                )
 
     logger.info("%d elements" % mesh.nelements)
 
@@ -186,6 +192,8 @@ def main():
     ovsmp_rhs = vol_to_ovsmp_vol(queue, rhs)
     ovsmp_vol_weights = bind(ovsmp_vol_discr, p.area_element() * p.QWeight())(queue)
 
+    print("volume: %d source nodes, %d target nodes" % (
+        ovsmp_vol_discr.nnodes, vol_discr.nnodes))
     evt, (vol_pot,) = layer_pot(
             queue,
             targets=targets.reshape(3, vol_discr.nnodes),
@@ -211,7 +219,8 @@ def main():
     from pytential.qbx import QBXLayerPotentialSource
     qbx = QBXLayerPotentialSource(
             bdry_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
-            fmm_order=fmm_order
+            fmm_order=fmm_order,
+            enable_direct_close_evaluation=False
             )
 
     bound_op = bind(qbx, op_sigma)
@@ -224,7 +233,7 @@ def main():
 
     from pytential.solve import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "sigma"),
+            bound_op.scipy_op(queue, "sigma", dtype=np.float64),
             bvp_rhs, tol=1e-14, progress=True,
             hard_failure=False)
 
