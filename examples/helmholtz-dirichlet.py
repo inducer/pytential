@@ -86,7 +86,7 @@ def main():
 
     from pytential.solve import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "sigma", k=k),
+            bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
             bvp_rhs, tol=1e-14, progress=True,
             stall_iterations=0,
             hard_failure=True)
