@@ -170,7 +170,7 @@ class M2QBXL(E2EBase):
 
                     end
                     """] + ["""
-                    qbx_expansions[icenter, {i}] = \
+                    qbx_expansions[icenter, {i}] = qbx_expansions[icenter, {i}] + \
                             simul_reduce(sum, isrc_box, coeff{i}) \
                             {{id_prefix=write_expn}}
                     """.format(i=i) for i in range(ncoeff_tgt)] + ["""

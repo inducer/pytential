@@ -237,27 +237,33 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         traversal = geo_data.traversal()
 
-        # AARGH FIXME order may vary by level
-        # TODO: This needs to be split up by source order
-        m2qbxl = self.code.m2qbxl(
-                self.fmm_level_to_order(0),
-                self.qbx_level_to_order(0))
+        wait_for = multipole_exps.events
 
-        evt, (qbx_expansions_res,) = m2qbxl(self.queue,
-                qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+        for isrc_level, ssn in enumerate(traversal.sep_smaller_by_level):
+            # AARGH FIXME target qbx order may vary by level
+            m2qbxl = self.code.m2qbxl(
+                    self.fmm_level_to_order(isrc_level),
+                    self.qbx_level_to_order(0))
 
-                centers=self.tree.box_centers,
-                qbx_centers=geo_data.center_info().centers,
+            evt, (qbx_expansions_res,) = m2qbxl(self.queue,
+                    qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
 
-                src_expansions=multipole_exps,
-                qbx_expansions=qbx_expansions,
+                    centers=self.tree.box_centers,
+                    qbx_centers=geo_data.center_info().centers,
 
-                src_box_starts=traversal.sep_smaller_starts,
-                src_box_lists=traversal.sep_smaller_lists,
+                    src_expansions=multipole_exps,
+                    qbx_expansions=qbx_expansions,
 
-                **self.kernel_extra_kwargs)
+                    src_box_starts=ssn.starts,
+                    src_box_lists=ssn.lists,
 
-        assert qbx_expansions_res is qbx_expansions
+                    wait_for=wait_for,
+
+                    **self.kernel_extra_kwargs)
+
+            wait_for = [evt]
+            assert qbx_expansions_res is qbx_expansions
+
         qbx_expansions.add_event(evt)
 
         return qbx_expansions
@@ -414,8 +420,7 @@ def drive_fmm(expansion_wrangler, src_weights):
     non_qbx_potentials = non_qbx_potentials + wrangler.eval_multipoles(
             traversal.level_start_target_box_nrs,
             traversal.target_boxes,
-            traversal.sep_smaller_starts,
-            traversal.sep_smaller_lists,
+            traversal.sep_smaller_by_level,
             mpole_exps)
 
     # assert that list 3 close has been merged into list 1
