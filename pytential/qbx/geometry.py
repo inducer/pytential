@@ -267,7 +267,7 @@ class QBXFMMGeometryCodeGetter(object):
     @property
     @memoize_method
     def build_leaf_to_ball_lookup(self):
-        from boxtree.geo_lookup import LeavesToBallsLookupBuilder
+        from boxtree.area_query import LeavesToBallsLookupBuilder
         return LeavesToBallsLookupBuilder(self.cl_context)
 
     # {{{ check if a center may be used with global QBX
@@ -1014,7 +1014,7 @@ class QBXFMMGeometryData(object):
             return trav
 
     def leaf_to_center_lookup(self):
-        """Return a :class:`boxtree.geo_lookup.LeavesToBallsLookup` to look up
+        """Return a :class:`boxtree.area_query.LeavesToBallsLookup` to look up
         which which QBX disks overlap each leaf box.
         """
 
