@@ -85,8 +85,9 @@ def main():
     K0 = np.sqrt(k0**2-beta**2)
     K1 = np.sqrt(k1**2-beta**2)
 
-    from pytential.symbolic.pde.scalar import TMDielectric2DBoundaryOperator
-    pde_op = TMDielectric2DBoundaryOperator(
+    from pytential.symbolic.pde.scalar import DielectricSDRep2DBoundaryOperator
+    pde_op = DielectricSDRep2DBoundaryOperator(
+            mode='tm',
             k_vacuum=1,
             interfaces=((0, 1, sym.DEFAULT_SOURCE),),
             domain_k_exprs=(k0, k1),
@@ -137,9 +138,9 @@ def main():
 
         bvp_rhs[i_bc] *= sqrt_w
 
-    from pytential.gmres import gmres
+    from pytential.solve import gmres
     gmres_result = gmres(
-            bound_pde_op.scipy_op(queue, "unknown",
+            bound_pde_op.scipy_op(queue, "unknown", dtype=np.complex128,
                 domains=[sym.DEFAULT_TARGET]*2, K0=K0, K1=K1),
             bvp_rhs, tol=1e-6, progress=True,
             hard_failure=True, stall_iterations=0)
