@@ -85,12 +85,12 @@ class QBXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
                 self.out_kernels)
 
     def get_wrangler(self, queue, geo_data, dtype,
-            qbx_level_to_order, fmm_level_to_order,
+            qbx_order, fmm_level_to_order,
             source_extra_kwargs={},
             kernel_extra_kwargs=None):
         return QBXExpansionWrangler(self, queue, geo_data,
                 dtype,
-                qbx_level_to_order, fmm_level_to_order,
+                qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
                 kernel_extra_kwargs)
 
@@ -115,13 +115,13 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     """
 
     def __init__(self, code_container, queue, geo_data, dtype,
-            qbx_level_to_order, fmm_level_to_order,
+            qbx_order, fmm_level_to_order,
             source_extra_kwargs, kernel_extra_kwargs):
         SumpyExpansionWrangler.__init__(self,
                 code_container, queue, geo_data.tree(),
                 dtype, fmm_level_to_order, source_extra_kwargs, kernel_extra_kwargs)
 
-        self.qbx_level_to_order = qbx_level_to_order
+        self.qbx_order = qbx_order
         self.geo_data = geo_data
 
     # {{{ data vector utilities
@@ -148,8 +148,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         return SumpyExpansionWrangler.potential_zeros(self)
 
     def qbx_local_expansion_zeros(self):
-        # AARGH FIXME order may vary by level
-        order = self.qbx_level_to_order(0)
+        order = self.qbx_order
         qbx_l_expn = self.code.qbx_local_expansion(order)
 
         return cl.array.zeros(
@@ -207,8 +206,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         kwargs = self.extra_kwargs.copy()
         kwargs.update(self.box_source_list_kwargs())
 
-        # AARGH FIXME order may vary by level
-        p2qbxl = self.code.p2qbxl(self.qbx_level_to_order(0))
+        p2qbxl = self.code.p2qbxl(self.qbx_order)
 
         evt, (result,) = p2qbxl(
                 self.queue,
@@ -240,10 +238,12 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         wait_for = multipole_exps.events
 
         for isrc_level, ssn in enumerate(traversal.sep_smaller_by_level):
-            # AARGH FIXME target qbx order may vary by level
             m2qbxl = self.code.m2qbxl(
-                    self.fmm_level_to_order(isrc_level),
-                    self.qbx_level_to_order(0))
+                    self.level_orders[isrc_level],
+                    self.qbx_order)
+
+            source_level_start_ibox, source_mpoles_view = \
+                    self.multipole_expansions_view(multipole_exps, isrc_level)
 
             evt, (qbx_expansions_res,) = m2qbxl(self.queue,
                     qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
@@ -251,7 +251,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     centers=self.tree.box_centers,
                     qbx_centers=geo_data.center_info().centers,
 
-                    src_expansions=multipole_exps,
+                    src_expansions=source_mpoles_view,
+                    src_base_ibox=source_level_start_ibox,
                     qbx_expansions=qbx_expansions,
 
                     src_box_starts=ssn.starts,
@@ -276,11 +277,18 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
             return qbx_expansions
         trav = geo_data.traversal()
 
+        from pytools import single_valued
+
         # AARGH FIXME order may vary by level
         # TODO: This needs to be split up by source order
+        src_order = single_valued(self.level_orders)
         l2qbxl = self.code.l2qbxl(
-                self.fmm_level_to_order(0),
-                self.qbx_level_to_order(0))
+                src_order,
+                self.qbx_order)
+
+        l_expn_length = len(self.code.local_expansion_factory(src_order))
+
+        local_exps_shaped = local_exps.reshape(-1, l_expn_length)
 
         evt, (qbx_expansions_res,) = l2qbxl(
                 self.queue,
@@ -290,7 +298,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 centers=self.tree.box_centers,
                 qbx_centers=geo_data.center_info().centers,
 
-                expansions=local_exps,
+                expansions=local_exps_shaped,
                 qbx_expansions=qbx_expansions,
 
                 wait_for=local_exps.events,
@@ -310,9 +318,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         ctt = geo_data.center_to_tree_targets()
 
-        # AARGH FIXME order may vary by level
-        # TODO: This needs to be split up by source order
-        qbxl2p = self.code.qbxl2p(self.qbx_level_to_order(0))
+        qbxl2p = self.code.qbxl2p(self.qbx_order)
 
         evt, pot_res = qbxl2p(self.queue,
                 qbx_centers=geo_data.center_info().centers,

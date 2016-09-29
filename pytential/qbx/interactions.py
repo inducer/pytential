@@ -161,7 +161,8 @@ class M2QBXL(E2EBase):
                         <> d[idim] = tgt_center[idim] - src_center[idim] {dup=idim}
                         """] + ["""
 
-                        <> src_coeff{i} = src_expansions[src_ibox, {i}] \
+                        <> src_coeff{i} = \
+                            src_expansions[src_ibox - src_base_ibox, {i}] \
                             {{dep=read_src_ibox}}
 
                         """.format(i=i) for i in range(ncoeff_src)] + [
@@ -183,9 +184,10 @@ class M2QBXL(E2EBase):
                         None, shape=None, strides=(1,)),
                     lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
                         dim_tags="sep,c"),
-                    lp.ValueArg("aligned_nboxes,nboxes", np.int32),
+                    lp.ValueArg("aligned_nboxes,nsrc_level_boxes", np.int32),
+                    lp.ValueArg("src_base_ibox", np.int32),
                     lp.GlobalArg("src_expansions", None,
-                        shape=("nboxes", ncoeff_src)),
+                        shape=("nsrc_level_boxes", ncoeff_src), offset=lp.auto),
                     lp.GlobalArg("qbx_expansions", None,
                         shape=("ncenters", ncoeff_tgt)),
                     "..."

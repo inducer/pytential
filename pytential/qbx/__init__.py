@@ -130,7 +130,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     """
     def __init__(self, density_discr, fine_order,
             qbx_order=None, fmm_order=None,
-            qbx_level_to_order=None, fmm_level_to_order=None,
+            fmm_level_to_order=None,
             # FIXME set debug=False once everything works
             real_dtype=np.float64, debug=True,
             performance_data_file=None):
@@ -153,8 +153,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             if fmm_order is None and qbx_order is not None:
                 fmm_order = qbx_order + 1
 
-        if qbx_order is not None and qbx_level_to_order is not None:
-            raise TypeError("may not specify both qbx_order an qbx_level_to_order")
         if fmm_order is not None and fmm_level_to_order is not None:
             raise TypeError("may not specify both fmm_order an fmm_level_to_order")
 
@@ -165,11 +163,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 def fmm_level_to_order(level):
                     return fmm_order
 
-        if qbx_level_to_order is None:
-            def qbx_level_to_order(level):
-                return qbx_order
-
-        self.qbx_level_to_order = qbx_level_to_order
+        self.qbx_order = qbx_order
         self.density_discr = density_discr
         self.fmm_level_to_order = fmm_level_to_order
         self.debug = debug
@@ -393,7 +387,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         wrangler = self.expansion_wrangler_code_container(
                 base_kernel, out_kernels).get_wrangler(
                         queue, geo_data, value_dtype,
-                        self.qbx_level_to_order,
+                        self.qbx_order,
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
                         kernel_extra_kwargs=kernel_extra_kwargs)
