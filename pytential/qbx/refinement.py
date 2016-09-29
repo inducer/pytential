@@ -757,7 +757,7 @@ class QBXLayerPotentialSourceRefiner(object):
                 refine_flags,
                 found_panel_to_refine,
                 *tree.sources),
-            range=range(tree.nqbxcenters),
+            range=slice(tree.nqbxcenters),
             queue=queue)
 
         cl.wait_for_events([evt])
@@ -805,7 +805,7 @@ class QBXLayerPotentialSourceRefiner(object):
                 refine_flags,
                 found_panel_to_refine,
                 *tree.sources),
-            range=range(tree.nqbxcenters),
+            range=slice(tree.nqbxcenters),
             queue=queue)
 
         cl.wait_for_events([evt])
