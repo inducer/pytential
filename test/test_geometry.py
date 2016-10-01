@@ -81,22 +81,22 @@ from extra_curve_data import horseshoe
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
     ("20-to-1 ellipse", partial(ellipse, 20), 100),
-    ("horseshoe", horseshoe, 50),
+    ("horseshoe", horseshoe, 80),
     ])
 def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelements):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    order = 5
+    order = 8
 
-    mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), 5)
+    mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
+    factory = InterpolatoryQuadratureSimplexGroupFactory(order)
 
-    discr = Discretization(cl_ctx, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(order))
+    discr = Discretization(cl_ctx, mesh, factory)
 
     from pytential.qbx.refinement import (
         NewQBXLayerPotentialSource, QBXLayerPotentialSourceRefiner)
@@ -105,7 +105,7 @@ def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelement
     del discr
     refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
 
-    lpot_source, conn = refiner(lpot_source, order)
+    lpot_source, conn = refiner(lpot_source, factory)
 
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
     int_centers = lpot_source.centers(-1)
