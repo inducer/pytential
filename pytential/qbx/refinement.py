@@ -545,7 +545,7 @@ class QBXLayerPotentialSourceRefiner(object):
         # only because of sources.
         refine_weights = cl.array.zeros(queue, nparticles, np.int32)
         refine_weights[:nsources].fill(1)
-        MAX_REFINE_WEIGHT = 30
+        MAX_REFINE_WEIGHT = 100
 
         refine_weights.finish()
 
@@ -721,7 +721,7 @@ class QBXLayerPotentialSourceRefiner(object):
     # {{{ refinement triggering
 
     def refinement_check_center_is_closest_to_orig_panel(self, queue, tree,
-                lpot_source, peer_lists, tq_dists, refine_flags, wait_for=None):
+            lpot_source, peer_lists, tq_dists, refine_flags, debug, wait_for=None):
         # Avoid generating too many kernels.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
@@ -732,6 +732,11 @@ class QBXLayerPotentialSourceRefiner(object):
                 peer_lists.peer_list_starts.dtype,
                 tree.particle_id_dtype,
                 max_levels)
+
+        logger.info("refiner: checking center is closest to orig panel")
+
+        if debug:
+            npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
         found_panel_to_refine = cl.array.zeros(queue, 1, np.int32)
         found_panel_to_refine.finish()
@@ -762,10 +767,18 @@ class QBXLayerPotentialSourceRefiner(object):
 
         cl.wait_for_events([evt])
 
+        if debug:
+            npanels_to_refine = cl.array.sum(refine_flags).get()
+            if npanels_to_refine > npanels_to_refine_prev:
+                logger.debug("refiner: found {} panel(s) to refine".format(
+                    npanels_to_refine - npanels_to_refine_prev))
+
+        logger.info("refiner: done checking center is closest to orig panel")
+
         return found_panel_to_refine.get()[0] == 1
 
     def refinement_check_center_is_far_from_nonneighbor_panels(self, queue,
-                tree, lpot_source, peer_lists, tq_dists, refine_flags,
+                tree, lpot_source, peer_lists, tq_dists, refine_flags, debug,
                 wait_for=None):
         # Avoid generating too many kernels.
         from pytools import div_ceil
@@ -777,6 +790,11 @@ class QBXLayerPotentialSourceRefiner(object):
                 peer_lists.peer_list_starts.dtype,
                 tree.particle_id_dtype,
                 max_levels)
+
+        logger.info("refiner: checking center is far from nonneighbor panels")
+
+        if debug:
+            npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
         found_panel_to_refine = cl.array.zeros(queue, 1, np.int32)
         found_panel_to_refine.finish()
@@ -810,11 +828,22 @@ class QBXLayerPotentialSourceRefiner(object):
 
         cl.wait_for_events([evt])
 
+        if debug:
+            npanels_to_refine = cl.array.sum(refine_flags).get()
+            if npanels_to_refine > npanels_to_refine_prev:
+                logger.debug("refiner: found {} panel(s) to refine".format(
+                    npanels_to_refine - npanels_to_refine_prev))
+
+        logger.info("refiner: done checking center is far from nonneighbor panels")
+
         return found_panel_to_refine.get()[0] == 1
 
     def refinement_check_helmholtz_k_panel_ratio(self, queue, lpot_source,
-                                                 helmholtz_k, refine_flags):
+                helmholtz_k, refine_flags, debug, wait_for=None):
         knl = self.get_helmholtz_k_to_panel_ratio_refiner()
+
+        if debug:
+            npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
         evt, out = knl(queue,
                        panel_sizes=lpot_source.panel_sizes("nelements"),
@@ -823,17 +852,27 @@ class QBXLayerPotentialSourceRefiner(object):
 
         cl.wait_for_events([evt])
 
+        if debug:
+            npanels_to_refine = cl.array.sum(refine_flags).get()
+            if npanels_to_refine > npanels_to_refine_prev:
+                logger.debug("refiner: found {} panel(s) to refine".format(
+                    npanels_to_refine - npanels_to_refine_prev))
+
         return (out["refine_flags_updated"].get() == 1).all()
 
     def refinement_check_2_to_1_panel_size_ratio(self, queue, lpot_source,
-                refine_flags, wait_for):
+                refine_flags, debug, wait_for=None):
         knl = self.get_2_to_1_panel_ratio_refiner()
         adjacency = self.get_adjacency_on_device(queue, lpot_source)
 
-        done_checking = False
         refine_flags_updated = False
 
-        while not done_checking:
+        logger.info("refiner: checking 2-to-1 panel size ratio")
+
+        if debug:
+            npanels_to_refine_prev = cl.array.sum(refine_flags).get()
+
+        while True:
             evt, out = knl(queue,
                            npanels=lpot_source.density_discr.mesh.nelements,
                            panel_sizes=lpot_source.panel_sizes("nelements"),
@@ -851,9 +890,16 @@ class QBXLayerPotentialSourceRefiner(object):
 
             if (out["refine_flags_updated"].get() == 1).all():
                 refine_flags_updated = True
-                done_checking = False
             else:
-                done_checking = True
+                break
+
+        if debug:
+            npanels_to_refine = cl.array.sum(refine_flags).get()
+            if npanels_to_refine > npanels_to_refine_prev:
+                logger.debug("refiner: found {} panel(s) to refine".format(
+                    npanels_to_refine - npanels_to_refine_prev))
+
+        logger.info("refiner: done checking 2-to-1 panel size ratio")
 
         return refine_flags_updated
 
@@ -931,7 +977,10 @@ class QBXLayerPotentialSourceRefiner(object):
 
     # }}}
 
-    def refine(self, queue, lpot_source, refine_flags, refiner, order):
+    def refine(self, queue, lpot_source, refine_flags, refiner, factory, debug):
+        """
+        Refine the underlying mesh and discretization.
+        """
         if isinstance(refine_flags, cl.array.Array):
             refine_flags = refine_flags.get(queue)
         refine_flags = refine_flags.astype(np.bool)
@@ -943,7 +992,7 @@ class QBXLayerPotentialSourceRefiner(object):
 
         conn = make_refinement_connection(
                 refiner, lpot_source.density_discr,
-                QuadratureSimplexGroupFactory(order))
+                factory)
 
         logger.info("refiner: done calling meshmode")
 
@@ -953,8 +1002,7 @@ class QBXLayerPotentialSourceRefiner(object):
             new_density_discr, lpot_source.fine_order,
             qbx_level_to_order=lpot_source.qbx_level_to_order,
             fmm_level_to_order=lpot_source.fmm_level_to_order,
-            # FIXME set debug=False once everything works
-            real_dtype=lpot_source.real_dtype, debug=True)
+            real_dtype=lpot_source.real_dtype, debug=debug)
 
         return new_lpot_source, conn
 
@@ -977,7 +1025,9 @@ class QBXLayerPotentialSourceRefiner(object):
             plt.legend()
             plt.show()
 
-    def __call__(self, lpot_source, order, helmholtz_k=None, maxiter=50):
+    def __call__(self, lpot_source, discr_factory, helmholtz_k=None,
+                 # FIXME: Set debug=False once everything works.
+                 debug=True, maxiter=50):
         from meshmode.mesh.refinement import Refiner
         refiner = Refiner(lpot_source.density_discr.mesh)
         connections = []
@@ -1014,26 +1064,27 @@ class QBXLayerPotentialSourceRefiner(object):
                 must_refine |= \
                         self.refinement_check_center_is_closest_to_orig_panel(
                             queue, tree, lpot_source, peer_lists, tq_dists,
-                            refine_flags, wait_for)
+                            refine_flags, debug, wait_for)
 
                 must_refine |= \
                         self.refinement_check_center_is_far_from_nonneighbor_panels(
                             queue, tree, lpot_source, peer_lists, tq_dists,
-                            refine_flags, wait_for)
+                            refine_flags, debug, wait_for)
 
                 must_refine |= \
                         self.refinement_check_2_to_1_panel_size_ratio(
-                            queue, lpot_source, refine_flags, wait_for)
+                            queue, lpot_source, refine_flags, debug, wait_for)
 
                 if helmholtz_k:
                     must_refine |= \
                             self.refinement_check_helmholtz_k_to_panel_size_ratio(
-                                queue, lpot_source, helmholtz_k, refine_flags,
+                                queue, lpot_source, helmholtz_k, refine_flags, debug,
                                 wait_for)
 
                 if must_refine:
                     lpot_source, conn = self.refine(
-                            queue, lpot_source, refine_flags, refiner, order)
+                            queue, lpot_source, refine_flags, refiner, discr_factory,
+                            debug)
                     connections.append(conn)
 
                 del tree
