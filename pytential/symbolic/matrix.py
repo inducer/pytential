@@ -175,7 +175,7 @@ class MatrixBuilder(EvaluationMapperBase):
             kernel_args[arg_name] = rec_arg
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
-        local_expn = LineTaylorLocalExpansion(kernel, source.qbx_level_to_order(0))
+        local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
 
         from sumpy.qbx import LayerPotentialMatrixGenerator
         mat_gen = LayerPotentialMatrixGenerator(
