@@ -85,7 +85,6 @@ class Arc(Curve):
 
         self.r = la.norm([start[0] - x0, start[1] - y0])
         self.center = x0 + 1j * y0
-        print("r, center", self.r, self.center, start, mid, end)
 
         theta_start = np.arctan2(start[1] - y0, start[0] - x0)
         theta_mid = np.arctan2(mid[1] - y0, mid[0] - x0)
