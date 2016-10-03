@@ -1,13 +1,13 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as la
 
 
 class Curve(object):
 
-    def plot(self, npoints=100):
+    def plot(self, npoints=50):
+        import matplotlib.pyplot as plt
         x, y = self(np.linspace(0, 1, npoints))
-        plt.plot(x, y)
+        plt.plot(x, y, marker=".", lw=0)
         plt.axis("equal")
         plt.show()
 
@@ -34,17 +34,18 @@ class CompositeCurve(Curve):
         ts_argsort = np.argsort(ts)
         ts_sorted = ts[ts_argsort]
         ts_split_points = np.searchsorted(ts_sorted, ranges)
-        # FIXME: This isn't exactly right.
+        # Make sure the last entry = len(ts), otherwise if ts finishes with a
+        # trail of 1s, then they won't be forwarded to the last curve.
         ts_split_points[-1] = len(ts)
         result = []
-        subranges = [slice(*ts_split_points[i:i+2])
-                     for i in range(len(ts_split_points))]
+        subranges = [
+            slice(*pair) for pair in zip(ts_split_points, ts_split_points[1:])]
         for curve, subrange, (start, end) in zip(
                 self.curves, subranges, zip(ranges, ranges[1:])):
             ts_mapped = (ts_sorted[subrange] - start) / (end - start)
-            c = curve(ts_mapped)
-            result.append(c)
+            result.append(curve(ts_mapped))
         final = np.concatenate(result, axis=-1)
+        assert len(final[0]) == len(ts)
         return final
 
 
@@ -84,6 +85,7 @@ class Arc(Curve):
 
         self.r = la.norm([start[0] - x0, start[1] - y0])
         self.center = x0 + 1j * y0
+        print("r, center", self.r, self.center, start, mid, end)
 
         theta_start = np.arctan2(start[1] - y0, start[0] - x0)
         theta_mid = np.arctan2(mid[1] - y0, mid[0] - x0)
@@ -120,21 +122,16 @@ class Arc(Curve):
 
 
 # horseshoe curve
-_horseshoe = (
+#
+# To avoid issues with crossing non-smooth regions, make sure the number of
+# panels given to this function (for make_curve_mesh) is a multiple of 8.
+horseshoe = (
     Segment((0, 0), (-5, 0)) +
     Arc((-5, 0), (-5.5, -0.5), (-5, -1)) +
     Segment((-5, -1), (0, -1)) +
-    Arc((0, -1), (1.5, 0), (0, 2)) +
+    Arc((0, -1), (1.5, 0.5), (0, 2)) +
     Segment((0, 2), (-5, 2)) +
     Arc((-5, 2), (-5.5, 1.5), (-5, 1)) +
     Segment((-5, 1), (0, 1)) +
     Arc((0, 1), (0.5, 0.5), (0, 0))
     )
-
-
-def horseshoe(ts):
-    # The horseshoe curve as defined above is not smooth enough for the refiner
-    # to work well, so we smooth it out with a spline.
-    from scipy.interpolate import splprep, splev
-    tck, u = splprep(_horseshoe(np.linspace(0, 1, 50)), s=0, per=True)
-    return np.array(splev(ts, tck))
