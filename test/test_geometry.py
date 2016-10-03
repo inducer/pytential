@@ -81,7 +81,7 @@ from extra_curve_data import horseshoe
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
     ("20-to-1 ellipse", partial(ellipse, 20), 100),
-    ("horseshoe", horseshoe, 50),
+    ("horseshoe", horseshoe, 64),
     ])
 def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelements):
     cl_ctx = ctx_getter()
