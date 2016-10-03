@@ -1,6 +1,6 @@
 numpy
 git+git://github.com/inducer/pymbolic
-git+git://github.com/sympy/sympy
+sympy==1.0
 git+git://github.com/inducer/modepy
 git+git://github.com/pyopencl/pyopencl
 git+git://github.com/inducer/islpy
