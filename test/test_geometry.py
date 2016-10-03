@@ -81,13 +81,14 @@ from extra_curve_data import horseshoe
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
     ("20-to-1 ellipse", partial(ellipse, 20), 100),
-    ("horseshoe", horseshoe, 80),
+    ("horseshoe", horseshoe, 50),
     ])
 def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelements):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    order = 8
+    order = 16
+    helmholtz_k = 10
 
     mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
 
@@ -105,7 +106,7 @@ def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelement
     del discr
     refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
 
-    lpot_source, conn = refiner(lpot_source, factory)
+    lpot_source, conn = refiner(lpot_source, factory, helmholtz_k)
 
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
     int_centers = lpot_source.centers(-1)
@@ -121,9 +122,7 @@ def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelement
                 (panel_sizes[panel.element_nr], panel_sizes[neighbor])
 
         # Check wavenumber to panel size ratio.
-        # XXX: Make this a parameter, pass to refiner.
-        omega = 1
-        assert panel_sizes[panel.element_nr] * omega <= 5
+        assert panel_sizes[panel.element_nr] * helmholtz_k <= 5
 
     def check_panel_pair(panel_1, panel_2):
         h_1 = panel_sizes[panel_1.element_nr]

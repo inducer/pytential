@@ -120,7 +120,7 @@ class Arc(Curve):
 
 
 # horseshoe curve
-horseshoe = (
+_horseshoe = (
     Segment((0, 0), (-5, 0)) +
     Arc((-5, 0), (-5.5, -0.5), (-5, -1)) +
     Segment((-5, -1), (0, -1)) +
@@ -130,3 +130,11 @@ horseshoe = (
     Segment((-5, 1), (0, 1)) +
     Arc((0, 1), (0.5, 0.5), (0, 0))
     )
+
+
+def horseshoe(ts):
+    # The horseshoe curve as defined above is not smooth enough for the refiner
+    # to work well, so we smooth it out with a spline.
+    from scipy.interpolate import splprep, splev
+    tck, u = splprep(_horseshoe(np.linspace(0, 1, 50)), s=0, per=True)
+    return np.array(splev(ts, tck))
