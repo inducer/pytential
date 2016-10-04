@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import division, absolute_import, print_function
-from six.moves import range, zip
+from six.moves import range
 
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
@@ -251,7 +251,6 @@ class NewQBXLayerPotentialSource(object):
 from pyopencl.elementwise import ElementwiseTemplate
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
-from boxtree.tree import Tree
 
 
 # {{{ kernels
@@ -519,123 +518,10 @@ class QBXLayerPotentialSourceRefiner(object):
 
     def __init__(self, context):
         self.context = context
-        from boxtree.tree_build import TreeBuilder
-        self.tree_builder = TreeBuilder(self.context)
+        from pytential.qbx.utils import TreeWithQBXMetadataBuilder
+        self.tree_builder = TreeWithQBXMetadataBuilder(self.context)
         from boxtree.area_query import PeerListFinder
         self.peer_list_finder = PeerListFinder(self.context)
-
-    # {{{ tree creation
-
-    class TreeWithQBXMetadata(Tree):
-        """
-        .. attribute:: nqbxpanels
-        .. attribuet:: nsources
-        .. attribute:: ncenters
-
-        .. attribute:: box_to_qbx_panel_starts
-        .. attribute:: box_to_qbx_panel_lists
-
-        .. attribute:: qbx_panel_to_source_starts
-        .. attribute:: qbx_panel_to_center_starts
-
-        .. attribute:: qbx_user_source_range
-        .. attribute:: qbx_user_center_range
-        .. attribute:: qbx_user_panel_range
-        """
-        pass
-
-    def create_tree(self, queue, lpot_source):
-        # The ordering of particles is as follows:
-        # - sources go first
-        # - then centers
-        # - then panels (=centers of mass)
-
-        sources = lpot_source.density_discr.nodes()
-        centers = self.get_interleaved_centers(queue, lpot_source)
-        centers_of_mass = lpot_source.panel_centers_of_mass()
-
-        particles = tuple(
-                cl.array.concatenate(dim_coords, queue=queue)
-                for dim_coords in zip(sources, centers, centers_of_mass))
-
-        nparticles = len(particles[0])
-        npanels = len(centers_of_mass[0])
-        nsources = len(sources[0])
-        ncenters = len(centers[0])
-        # Each source gets an interior / exterior center.
-        assert 2 * nsources == ncenters
-
-        qbx_user_source_range = range(0, nsources)
-        nsourcescenters = 3 * nsources
-        qbx_user_center_range = range(nsources, nsourcescenters)
-        qbx_user_panel_range = range(nsourcescenters, nsourcescenters + npanels)
-
-        # Build tree with sources, centers, and centers of mass. Split boxes
-        # only because of sources.
-        refine_weights = cl.array.zeros(queue, nparticles, np.int32)
-        refine_weights[:nsources].fill(1)
-        MAX_REFINE_WEIGHT = 128
-
-        refine_weights.finish()
-
-        tree, evt = self.tree_builder(queue, particles,
-                                      max_leaf_refine_weight=MAX_REFINE_WEIGHT,
-                                      refine_weights=refine_weights)
-
-        # Compute box => panel relation
-        qbx_panel_flags = refine_weights
-        qbx_panel_flags.fill(0)
-        qbx_panel_flags[3 * nsources:].fill(1)
-        qbx_panel_flags.finish()
-
-        from boxtree.tree import filter_target_lists_in_user_order
-        box_to_qbx_panel = (
-                filter_target_lists_in_user_order(queue, tree, qbx_panel_flags)
-                .with_queue(queue))
-        # Fix up offset.
-        box_to_qbx_panel.target_lists -= 3 * nsources
-
-        qbx_panel_to_source_starts = cl.array.empty(
-            queue, npanels + 1, dtype=tree.particle_id_dtype)
-
-        # Compute panel => source relation
-        el_offset = 0
-        for group in lpot_source.density_discr.groups:
-            qbx_panel_to_source_starts[el_offset:el_offset + group.nelements] = \
-                    cl.array.arange(queue, group.node_nr_base,
-                                    group.node_nr_base + group.nnodes,
-                                    group.nunit_nodes,
-                                    dtype=tree.particle_id_dtype)
-            el_offset += group.nelements
-        qbx_panel_to_source_starts[-1] = nsources
-
-        # Compute panel => center relation
-        qbx_panel_to_center_starts = 2 * qbx_panel_to_source_starts
-
-        # Transfer all tree attributes.
-        tree_attrs = {}
-        for attr_name in tree.__class__.fields:
-            try:
-                tree_attrs[attr_name] = getattr(tree, attr_name)
-            except AttributeError:
-                pass
-
-        logger.info("refiner: done building tree")
-
-        return self.TreeWithQBXMetadata(
-            box_to_qbx_panel_starts=box_to_qbx_panel.target_starts,
-            box_to_qbx_panel_lists=box_to_qbx_panel.target_lists,
-            qbx_panel_to_source_starts=qbx_panel_to_source_starts,
-            qbx_panel_to_center_starts=qbx_panel_to_center_starts,
-            qbx_user_source_range=qbx_user_source_range,
-            qbx_user_panel_range=qbx_user_panel_range,
-            qbx_user_center_range=qbx_user_center_range,
-            nqbxpanels=npanels,
-            nqbxsources=nsources,
-            nqbxcenters=ncenters,
-            **tree_attrs).with_queue(None)
-
-    # }}}
 
     # {{{ kernels
 
@@ -731,20 +617,6 @@ class QBXLayerPotentialSourceRefiner(object):
             options="return_dict",
             silenced_warnings="write_race(write_refine_flags_updated)")
         knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
-        return knl
-
-    @memoize_method
-    def get_interleaver_kernel(self):
-        knl = lp.make_kernel(
-            "{[i]: 0<=i<srclen}",
-            """
-            dst[2*i] = src1[i]
-            dst[2*i + 1] = src2[i]
-            """, [
-                lp.GlobalArg("dst", shape=None),
-                "..."
-            ])
-        knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
     # }}}
@@ -1002,28 +874,6 @@ class QBXLayerPotentialSourceRefiner(object):
             queue, lpot_source.density_discr.mesh.nelements, np.int32)
         return result, result.events[0]
 
-    def get_interleaved_centers(self, queue, lpot_source):
-        """
-        Return an array of shape (dim, ncenters) in which interior centers are placed
-        next to corresponding exterior centers.
-        """
-        knl = self.get_interleaver_kernel()
-        int_centers = lpot_source.centers(-1)
-        ext_centers = lpot_source.centers(+1)
-
-        result = []
-        wait_for = []
-
-        for int_axis, ext_axis in zip(int_centers, ext_centers):
-            axis = cl.array.empty(queue, len(int_axis) * 2, int_axis.dtype)
-            evt, _ = knl(queue, src1=int_axis, src2=ext_axis, dst=axis)
-            result.append(axis)
-            wait_for.append(evt)
-
-        cl.wait_for_events(wait_for)
-
-        return result
-
     # }}}
 
     def refine(self, queue, lpot_source, refine_flags, refiner, factory, debug):
@@ -1057,7 +907,7 @@ class QBXLayerPotentialSourceRefiner(object):
 
     def plot_discr(self, lpot_source):
         with cl.CommandQueue(self.context) as queue:
-            tree = self.create_tree(queue, lpot_source).get(queue=queue)
+            tree = self.tree_builder(queue, lpot_source).get(queue=queue)
             from boxtree.visualization import TreePlotter
             import matplotlib.pyplot as plt
             tp = TreePlotter(tree)
@@ -1123,7 +973,7 @@ class QBXLayerPotentialSourceRefiner(object):
 
                 # Build tree and auxiliary data.
                 # FIXME: The tree should not have to be rebuilt at each iteration.
-                tree = self.create_tree(queue, lpot_source)
+                tree = self.tree_builder(queue, lpot_source)
                 wait_for = []
 
                 peer_lists, evt = self.peer_list_finder(queue, tree, wait_for)
