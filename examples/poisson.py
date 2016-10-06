@@ -157,8 +157,11 @@ def main():
         from sumpy.symbolic import pymbolic_real_norm_2
         from pymbolic.primitives import (make_sym_vector, Variable as var)
 
-        r = pymbolic_real_norm_2(make_sym_vector("d", 3))
-        expr = var("log")(r)
+        d = make_sym_vector("d", 3)
+        r2 = pymbolic_real_norm_2(d[:-1])
+        r3 = pymbolic_real_norm_2(d)
+        expr = var("log")(r2 + d[-1]**2)
+        #expr = var("log")(r3)
         scaling = 1/(2*var("pi"))
 
         from sumpy.kernel import ExpressionKernel
