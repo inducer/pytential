@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import division, absolute_import, print_function
-from six.moves import range, zip
 
 __copyright__ = """
 Copyright (C) 2016 Matt Wala
@@ -45,18 +44,23 @@ class TreeWithQBXMetadataBuilder(object):
     class TreeWithQBXMetadata(Tree):
         """
         .. attribute:: nqbxpanels
-        .. attribuet:: nsources
-        .. attribute:: ncenters
+        .. attribuet:: nqbxsources
+        .. attribute:: nqbxcenters
+        .. attribute:: nqbxtargets
 
         .. attribute:: box_to_qbx_panel_starts
         .. attribute:: box_to_qbx_panel_lists
 
+        .. attribute:: box_to_qbx_target_starts
+        .. attribute:: box_to_qbx_target_lists
+
         .. attribute:: qbx_panel_to_source_starts
         .. attribute:: qbx_panel_to_center_starts
 
-        .. attribute:: qbx_user_source_range
-        .. attribute:: qbx_user_center_range
-        .. attribute:: qbx_user_panel_range
+        .. attribute:: qbx_user_source_slice
+        .. attribute:: qbx_user_center_slice
+        .. attribute:: qbx_user_panel_slice
+        .. attribute:: qbx_user_target_slice
         """
         pass
 
@@ -101,7 +105,7 @@ class TreeWithQBXMetadataBuilder(object):
 
         return result
 
-    def __call__(self, queue, lpot_source):
+    def __call__(self, queue, lpot_source, targets_list=()):
         """
         Return a :class:`TreeWithQBXMetadata` built from the given layer
         potential source.
@@ -110,31 +114,43 @@ class TreeWithQBXMetadataBuilder(object):
 
         :arg lpot_source: An instance of
             :class:`pytential.qbx.NewQBXLayerPotentialSource`.
+
+        :arg targets_list: A list of :class:`pytential.target.TargetBase`
         """
         # The ordering of particles is as follows:
         # - sources go first
         # - then centers
         # - then panels (=centers of mass)
+        # - then targets
+
+        logger.info("start building tree with qbx metadata")
 
         sources = lpot_source.density_discr.nodes()
         centers = self.get_interleaved_centers(queue, lpot_source)
         centers_of_mass = lpot_source.panel_centers_of_mass()
+        targets = (tgt.nodes for tgt in targets_list)
 
         particles = tuple(
                 cl.array.concatenate(dim_coords, queue=queue)
-                for dim_coords in zip(sources, centers, centers_of_mass))
+                for dim_coords in zip(sources, centers, centers_of_mass, *targets))
 
+        # Counts
         nparticles = len(particles[0])
         npanels = len(centers_of_mass[0])
         nsources = len(sources[0])
         ncenters = len(centers[0])
         # Each source gets an interior / exterior center.
         assert 2 * nsources == ncenters
+        ntargets = sum(tgt.nnodes for tgt in targets_list)
 
-        qbx_user_source_range = range(0, nsources)
-        nsourcescenters = 3 * nsources
-        qbx_user_center_range = range(nsources, nsourcescenters)
-        qbx_user_panel_range = range(nsourcescenters, nsourcescenters + npanels)
+        # Slices
+        qbx_user_source_slice = slice(0, nsources)
+        panel_slice_start = 3 * nsources
+        qbx_user_center_slice = slice(nsources, panel_slice_start)
+        target_slice_start = panel_slice_start + npanels
+        qbx_user_panel_slice = slice(panel_slice_start, panel_slice_start + npanels)
+        qbx_user_target_slice = slice(target_slice_start,
+                                      target_slice_start + ntargets)
 
         # Build tree with sources, centers, and centers of mass. Split boxes
         # only because of sources.
@@ -150,8 +166,9 @@ class TreeWithQBXMetadataBuilder(object):
 
         # Compute box => panel relation
         qbx_panel_flags = refine_weights
+        del refine_weights
         qbx_panel_flags.fill(0)
-        qbx_panel_flags[3 * nsources:].fill(1)
+        qbx_panel_flags[qbx_user_panel_slice].fill(1)
         qbx_panel_flags.finish()
 
         from boxtree.tree import filter_target_lists_in_user_order
@@ -159,7 +176,20 @@ class TreeWithQBXMetadataBuilder(object):
                 filter_target_lists_in_user_order(queue, tree, qbx_panel_flags)
                 .with_queue(queue))
         # Fix up offset.
-        box_to_qbx_panel.target_lists -= 3 * nsources
+        box_to_qbx_panel.target_lists -= panel_slice_start
+
+        # Compute box => target relation
+        qbx_target_flags = qbx_panel_flags
+        del qbx_panel_flags
+        qbx_target_flags.fill(0)
+        qbx_target_flags[qbx_user_target_slice].fill(1)
+        qbx_target_flags.finish()
+
+        box_to_qbx_target = (
+                filter_target_lists_in_user_order(queue, tree, qbx_target_flags)
+                .with_queue(queue))
+        # Fix up offset.
+        box_to_qbx_target.target_lists -= target_slice_start
 
         qbx_panel_to_source_starts = cl.array.empty(
             queue, npanels + 1, dtype=tree.particle_id_dtype)
@@ -186,19 +216,23 @@ class TreeWithQBXMetadataBuilder(object):
             except AttributeError:
                 pass
 
-        logger.info("refiner: done building tree")
+        logger.info("done building tree with qbx metadata")
 
         return self.TreeWithQBXMetadata(
             box_to_qbx_panel_starts=box_to_qbx_panel.target_starts,
             box_to_qbx_panel_lists=box_to_qbx_panel.target_lists,
+            box_to_qbx_target_starts=box_to_qbx_target.target_starts,
+            box_to_qbx_target_lists=box_to_qbx_target.target_lists,
             qbx_panel_to_source_starts=qbx_panel_to_source_starts,
             qbx_panel_to_center_starts=qbx_panel_to_center_starts,
-            qbx_user_source_range=qbx_user_source_range,
-            qbx_user_panel_range=qbx_user_panel_range,
-            qbx_user_center_range=qbx_user_center_range,
+            qbx_user_source_slice=qbx_user_source_slice,
+            qbx_user_panel_slice=qbx_user_panel_slice,
+            qbx_user_center_slice=qbx_user_center_slice,
+            qbx_user_target_slice=qbx_user_target_slice,
             nqbxpanels=npanels,
             nqbxsources=nsources,
             nqbxcenters=ncenters,
+            nqbxtargets=ntargets,
             **tree_attrs).with_queue(None)
 
 # }}}

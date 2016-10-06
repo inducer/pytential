@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import division, absolute_import, print_function
-from six.moves import range
 
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
@@ -656,8 +655,8 @@ class QBXLayerPotentialSourceRefiner(object):
                 tree.box_to_qbx_panel_lists,
                 tree.qbx_panel_to_source_starts,
                 tree.qbx_panel_to_center_starts,
-                tree.qbx_user_source_range.start,
-                tree.qbx_user_center_range.start,
+                tree.qbx_user_source_slice.start,
+                tree.qbx_user_center_slice.start,
                 tree.sorted_target_ids,
                 lpot_source.panel_sizes("nelements"),
                 tree.nqbxpanels,
@@ -714,9 +713,9 @@ class QBXLayerPotentialSourceRefiner(object):
                 tree.box_to_qbx_panel_lists,
                 tree.qbx_panel_to_source_starts,
                 tree.qbx_panel_to_center_starts,
-                tree.qbx_user_source_range.start,
-                tree.qbx_user_center_range.start,
-                tree.qbx_user_panel_range.start,
+                tree.qbx_user_source_slice.start,
+                tree.qbx_user_center_slice.start,
+                tree.qbx_user_panel_slice.start,
                 tree.sorted_target_ids,
                 lpot_source.panel_sizes("nelements"),
                 adjacency.adjacency_starts,
@@ -829,8 +828,8 @@ class QBXLayerPotentialSourceRefiner(object):
         knl = self.get_tunnel_query_distance_finder(tree.dimensions,
                 tree.coord_dtype, tree.particle_id_dtype)
 
-        evt = knl(tree.qbx_user_source_range.start,
-                  tree.qbx_user_panel_range.start,
+        evt = knl(tree.qbx_user_source_slice.start,
+                  tree.qbx_user_panel_slice.start,
                   nqbxpanels,
                   tree.qbx_panel_to_source_starts,
                   tree.sorted_target_ids,
@@ -914,11 +913,11 @@ class QBXLayerPotentialSourceRefiner(object):
             tp.draw_tree()
             sources = (tree.sources[0], tree.sources[1])
             sti = tree.sorted_target_ids
-            plt.plot(sources[0][sti[tree.qbx_user_source_range]],
-                     sources[1][sti[tree.qbx_user_source_range]],
+            plt.plot(sources[0][sti[tree.qbx_user_source_slice]],
+                     sources[1][sti[tree.qbx_user_source_slice]],
                      lw=0, marker=".", label="sources")
-            plt.plot(sources[0][sti[tree.qbx_user_center_range]],
-                     sources[1][sti[tree.qbx_user_center_range]],
+            plt.plot(sources[0][sti[tree.qbx_user_center_slice]],
+                     sources[1][sti[tree.qbx_user_center_slice]],
                      lw=0, marker=".", label="centers")
             plt.axis("equal")
             plt.legend()
