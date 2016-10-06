@@ -32,7 +32,7 @@ if 0:
     poisson_bc_func = sol_func
 
     def rhs_func(x, y):
-        return -x_sin_factor*-y_sin_factor*sol_func(x, y)
+        return -(x_sin_factor**2 + y_sin_factor**2)*sol_func(x, y)
 
 elif 0:
     def sol_func(x, y):
