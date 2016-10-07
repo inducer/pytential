@@ -247,39 +247,13 @@ class NewQBXLayerPotentialSource(object):
 
 # }}}
 
-from pyopencl.elementwise import ElementwiseTemplate
 from boxtree.area_query import AreaQueryElementwiseTemplate
+from pyopencl.elementwise import ElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
+from pytential.qbx.utils import QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS
 
 
 # {{{ kernels
-
-REFINER_C_MACROS = r"""//CL:mako//
-// A note on node numberings: sources, centers, and panels each
-// have their own numbering starting at 0. These macros convert
-// the per-class numbering into the internal tree particle number.
-#define INDEX_FOR_CENTER_PARTICLE(i) (sorted_target_ids[center_offset + i])
-#define INDEX_FOR_PANEL_PARTICLE(i) (sorted_target_ids[panel_offset + i])
-#define INDEX_FOR_SOURCE_PARTICLE(i) (sorted_target_ids[source_offset + i])
-
-## Convert to dict first, as this may be passed as a tuple-of-tuples.
-<% vec_types_dict = dict(vec_types) %>
-typedef ${dtype_to_ctype(vec_types_dict[coord_dtype, dimensions])} coord_vec_t;
-"""
-
-
-REFINER_MAKO_DEFS = r"""//CL:mako//
-<%def name="load_particle(particle, coords)">
-    <% zerovect = ["0"] * 2 ** (dimensions - 1).bit_length() %>
-    /* Zero initialize, to allow for use in distance computations. */
-    ${coords} = (coord_vec_t) (${", ".join(zerovect)});
-
-    %for ax in AXIS_NAMES[:dimensions]:
-        ${coords}.${ax} = sources_${ax}[${particle}];
-    %endfor
-</%def>
-"""
-
 
 TUNNEL_QUERY_DISTANCE_FINDER_TEMPLATE = ElementwiseTemplate(
     arguments=r"""//CL:mako//
@@ -296,10 +270,10 @@ TUNNEL_QUERY_DISTANCE_FINDER_TEMPLATE = ElementwiseTemplate(
 
         /* input, dim-dependent size */
         %for ax in AXIS_NAMES[:dimensions]:
-            coord_t *sources_${ax},
+            coord_t *particles_${ax},
         %endfor
         """,
-    operation=REFINER_MAKO_DEFS + REFINER_C_MACROS + r"""//CL:mako//
+    operation=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""//CL:mako//
         /* Find my panel. */
         particle_id_t panel = bsearch(panel_to_source_starts, npanels + 1, i);
 
@@ -364,16 +338,16 @@ CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER = AreaQueryElementwiseTemplate(
 
         /* input, dim-dependent length */
         %for ax in AXIS_NAMES[:dimensions]:
-            coord_t *sources_${ax},
+            coord_t *particles_${ax},
         %endfor
         """,
-    ball_center_and_radius_expr=REFINER_MAKO_DEFS + REFINER_C_MACROS + r"""
+    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
         particle_id_t my_panel = bsearch(panel_to_center_starts, npanels + 1, i);
 
         ${load_particle("INDEX_FOR_CENTER_PARTICLE(i)", ball_center)}
         ${ball_radius} = r_max + panel_sizes[my_panel] / 2;
         """,
-    leaf_found_op=REFINER_MAKO_DEFS + r"""
+    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
         for (particle_id_t panel_idx = box_to_panel_starts[${leaf_box_id}];
              panel_idx < box_to_panel_starts[${leaf_box_id} + 1];
              ++panel_idx)
@@ -438,10 +412,10 @@ CENTER_IS_FAR_FROM_NONNEIGHBOR_PANEL_REFINER = AreaQueryElementwiseTemplate(
 
         /* input, dim-dependent length */
         %for ax in AXIS_NAMES[:dimensions]:
-            coord_t *sources_${ax},
+            coord_t *particles_${ax},
         %endfor
         """,
-    ball_center_and_radius_expr=REFINER_MAKO_DEFS + REFINER_C_MACROS + r"""
+    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
         particle_id_t my_panel = bsearch(panel_to_center_starts, npanels + 1, i);
         coord_vec_t my_center_coords;
 
@@ -449,7 +423,7 @@ CENTER_IS_FAR_FROM_NONNEIGHBOR_PANEL_REFINER = AreaQueryElementwiseTemplate(
         ${load_particle("INDEX_FOR_PANEL_PARTICLE(my_panel)", ball_center)}
         ${ball_radius} = tunnel_query_dists[my_panel];
         """,
-    leaf_found_op=REFINER_MAKO_DEFS + r"""
+    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
         for (particle_id_t panel_idx = box_to_panel_starts[${leaf_box_id}];
              panel_idx < box_to_panel_starts[${leaf_box_id} + 1];
              ++panel_idx)

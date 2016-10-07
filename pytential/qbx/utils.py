@@ -37,6 +37,38 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# {{{ c and mako snippets
+
+QBX_TREE_C_PREAMBLE = r"""//CL:mako//
+// A note on node numberings: sources, centers, and panels each
+// have their own numbering starting at 0. These macros convert
+// the per-class numbering into the internal tree particle number.
+#define INDEX_FOR_CENTER_PARTICLE(i) (sorted_target_ids[center_offset + i])
+#define INDEX_FOR_PANEL_PARTICLE(i) (sorted_target_ids[panel_offset + i])
+#define INDEX_FOR_SOURCE_PARTICLE(i) (sorted_target_ids[source_offset + i])
+#define INDEX_FOR_TARGET_PARTICLE(i) (sorted_target_ids[target_offset + i])
+
+## Convert to dict first, as this may be passed as a tuple-of-tuples.
+<% vec_types_dict = dict(vec_types) %>
+typedef ${dtype_to_ctype(vec_types_dict[coord_dtype, dimensions])} coord_vec_t;
+"""
+
+
+QBX_TREE_MAKO_DEFS = r"""//CL:mako//
+<%def name="load_particle(particle, coords)">
+    <% zerovect = ["0"] * 2 ** (dimensions - 1).bit_length() %>
+    /* Zero initialize, to allow for use in distance computations. */
+    ${coords} = (coord_vec_t) (${", ".join(zerovect)});
+
+    %for ax in AXIS_NAMES[:dimensions]:
+        ${coords}.${ax} = particles_${ax}[${particle}];
+    %endfor
+</%def>
+"""
+
+# }}}
+
+
 # {{{ tree creation
 
 class TreeWithQBXMetadataBuilder(object):
@@ -128,7 +160,7 @@ class TreeWithQBXMetadataBuilder(object):
         sources = lpot_source.density_discr.nodes()
         centers = self.get_interleaved_centers(queue, lpot_source)
         centers_of_mass = lpot_source.panel_centers_of_mass()
-        targets = (tgt.nodes for tgt in targets_list)
+        targets = (tgt.nodes() for tgt in targets_list)
 
         particles = tuple(
                 cl.array.concatenate(dim_coords, queue=queue)
