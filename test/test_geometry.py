@@ -164,6 +164,70 @@ def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelement
             check_panel_pair(panel_1, panel_2)
 
 
+def test_ellipse_target_association(ctx_getter):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    order = 16
+
+    # Make the curve mesh.
+    nelements = 100
+    mesh = make_curve_mesh(partial(ellipse, 3), np.linspace(0, 1, nelements+1), order)
+
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+    factory = InterpolatoryQuadratureSimplexGroupFactory(order)
+
+    discr = Discretization(cl_ctx, mesh, factory)
+
+    from pytential.qbx.refinement import (
+        NewQBXLayerPotentialSource, QBXLayerPotentialSourceRefiner)
+
+    lpot_source = NewQBXLayerPotentialSource(discr, order)
+    del discr
+    refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
+
+    lpot_source, conn = refiner(lpot_source, factory)
+
+    print("lpot_source", lpot_source)
+
+    discr_nodes = lpot_source.density_discr.nodes().get(queue)
+    int_centers = lpot_source.centers(-1)
+    int_centers = np.array([axis.get(queue) for axis in int_centers])
+    ext_centers = lpot_source.centers(+1)
+    ext_centers = np.array([axis.get(queue) for axis in ext_centers])
+    panel_sizes = lpot_source.panel_sizes("nelements").get(queue)
+
+    # Create target discretizations.
+    target_discrs = [
+        # On-surface target, interior
+        (lpot_source.density_discr, -1),
+        # On-surface target, exterior
+        (lpot_source.density_discr, +1),
+        # Interior targets
+        #(),
+        # Exterior targets
+        #(),
+        # Far targets, should not need centers
+        #()
+    ]
+
+    from pytential.qbx.target_assoc import QBXTargetAssociator
+    target_assoc = QBXTargetAssociator(cl_ctx)
+
+    target_assoc_result = target_assoc(lpot_source, target_discrs)
+
+    def check_surface_targets():
+        pass
+
+    def check_close_targets():
+        pass
+
+    def check_far_targets():
+        pass
+
+
 # You can test individual routines by typing
 # $ python test_layer_pot.py 'test_routine()'
 
