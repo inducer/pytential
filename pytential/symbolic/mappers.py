@@ -188,34 +188,34 @@ class EvaluationMapper(EvaluationMapperBase):
 
     def map_num_reference_derivative(self, expr):
         return componentwise(
-		lambda subexpr: type(expr)(
-			expr.ref_axes, self.rec(subexpr), expr.where),
-		expr.operand)
+                lambda subexpr: type(expr)(
+                        expr.ref_axes, self.rec(subexpr), expr.where),
+                expr.operand)
 
     def map_int_g(self, expr):
         return componentwise(
-		lambda subexpr: type(expr)(
-			expr.kernel,
-			self.rec(subexpr),
-			expr.qbx_forced_limit, expr.source, expr.target,
-			kernel_arguments=dict(
-				(name, self.rec(arg_expr))
-				for name, arg_expr in expr.kernel_arguments.items()
-				)),
-		expr.density)
+                lambda subexpr: type(expr)(
+                        expr.kernel,
+                        self.rec(subexpr),
+                        expr.qbx_forced_limit, expr.source, expr.target,
+                        kernel_arguments=dict(
+                                (name, self.rec(arg_expr))
+                                for name, arg_expr in expr.kernel_arguments.items()
+                                )),
+                expr.density)
 
     def map_int_g_ds(self, expr):
         return componentwise(
-		lambda subexpr: type(expr)(
-			self.rec(expr.dsource),
-			expr.kernel,
-			self.rec(subexpr),
-			expr.qbx_forced_limit, expr.source, expr.target,
-			kernel_arguments=dict(
-				(name, self.rec(arg_expr))
-				for name, arg_expr in expr.kernel_arguments.items()
-				)),
-		expr.density)
+                lambda subexpr: type(expr)(
+                        self.rec(expr.dsource),
+                        expr.kernel,
+                        self.rec(subexpr),
+                        expr.qbx_forced_limit, expr.source, expr.target,
+                        kernel_arguments=dict(
+                                (name, self.rec(arg_expr))
+                                for name, arg_expr in expr.kernel_arguments.items()
+                                )),
+                expr.density)
 
     def map_common_subexpression(self, expr):
         return prim.cse(
@@ -447,15 +447,15 @@ class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
     def map_int_g(self, expr):
         from sumpy.kernel import KernelDimensionSetter
         return componentwise(
-		lambda subexpr: type(expr)(
-			KernelDimensionSetter(self.ambient_dim)(expr.kernel),
-			self.rec(subexpr),
-			expr.qbx_forced_limit, expr.source, expr.target,
-			kernel_arguments=dict(
-			    (name, self.rec(arg_expr))
-			    for name, arg_expr in expr.kernel_arguments.items()
-			    )),
-		expr.density)
+                lambda subexpr: type(expr)(
+                        KernelDimensionSetter(self.ambient_dim)(expr.kernel),
+                        self.rec(subexpr),
+                        expr.qbx_forced_limit, expr.source, expr.target,
+                        kernel_arguments=dict(
+                            (name, self.rec(arg_expr))
+                            for name, arg_expr in expr.kernel_arguments.items()
+                            )),
+                expr.density)
 
     def map_int_g_ds(self, expr):
         dsource = self.rec(expr.dsource)
