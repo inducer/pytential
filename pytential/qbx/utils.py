@@ -31,7 +31,7 @@ import numpy as np
 from boxtree.tree import Tree
 import pyopencl as cl
 import pyopencl.array # noqa
-from pytools import memoize_method
+from pytools import memoize
 
 import logging
 logger = logging.getLogger(__name__)
@@ -47,6 +47,9 @@ QBX_TREE_C_PREAMBLE = r"""//CL:mako//
 #define INDEX_FOR_PANEL_PARTICLE(i) (sorted_target_ids[panel_offset + i])
 #define INDEX_FOR_SOURCE_PARTICLE(i) (sorted_target_ids[source_offset + i])
 #define INDEX_FOR_TARGET_PARTICLE(i) (sorted_target_ids[target_offset + i])
+
+#define SOURCE_FOR_CENTER_PARTICLE(i) (i / 2)
+#define SIDE_FOR_CENTER_PARTICLE(i) (2 * (i % 2) - 1)
 
 ## Convert to dict first, as this may be passed as a tuple-of-tuples.
 <% vec_types_dict = dict(vec_types) %>
@@ -64,7 +67,35 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
         ${coords}.${ax} = particles_${ax}[${particle}];
     %endfor
 </%def>
+
+<%def name="find_leaf_for_particle(particle, box_to_particle)">
+    box_id_t box = bsearch_boxes(${box_to_particle}, nboxes + 1, ${particle});
+</%def>
 """
+
+# }}}
+
+
+# {{{ interleaver kernel
+
+@memoize
+def get_interleaver_kernel(dtype):
+    # NOTE: Returned kernel needs dstlen or dst parameter
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "[srclen,dstlen] -> {[i]: 0<=i<srclen}",
+        """
+        dst[2*i] = src1[i]
+        dst[2*i+1] = src2[i]
+        """, [
+            lp.GlobalArg("src1", shape=(var("srclen"),), dtype=dtype),
+            lp.GlobalArg("src2", shape=(var("srclen"),), dtype=dtype),
+            lp.GlobalArg("dst", shape=(var("dstlen"),), dtype=dtype),
+            "..."
+        ],
+        assumptions="2*srclen = dstlen")
+    knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
+    return knl
 
 # }}}
 
@@ -82,6 +113,12 @@ class TreeWithQBXMetadataBuilder(object):
 
         .. attribute:: box_to_qbx_panel_starts
         .. attribute:: box_to_qbx_panel_lists
+
+        .. attribute:: box_to_qbx_source_starts
+        .. attribute:: box_to_qbx_source_lists
+
+        .. attribute:: box_to_qbx_center_starts
+        .. attribute:: box_to_qbx_center_lists
 
         .. attribute:: box_to_qbx_target_starts
         .. attribute:: box_to_qbx_target_lists
@@ -101,26 +138,12 @@ class TreeWithQBXMetadataBuilder(object):
         from boxtree.tree_build import TreeBuilder
         self.tree_builder = TreeBuilder(self.context)
 
-    @memoize_method
-    def get_interleaver_kernel(self):
-        knl = lp.make_kernel(
-            "{[i]: 0<=i<srclen}",
-            """
-            dst[2*i] = src1[i]
-            dst[2*i + 1] = src2[i]
-            """, [
-                lp.GlobalArg("dst", shape=None),
-                "..."
-            ])
-        knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
-        return knl
-
     def get_interleaved_centers(self, queue, lpot_source):
         """
         Return an array of shape (dim, ncenters) in which interior centers are placed
         next to corresponding exterior centers.
         """
-        knl = self.get_interleaver_kernel()
+        knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
         int_centers = lpot_source.centers(-1)
         ext_centers = lpot_source.centers(+1)
 
@@ -188,7 +211,7 @@ class TreeWithQBXMetadataBuilder(object):
         # only because of sources.
         refine_weights = cl.array.zeros(queue, nparticles, np.int32)
         refine_weights[:nsources].fill(1)
-        MAX_REFINE_WEIGHT = 128
+        MAX_REFINE_WEIGHT = 64
 
         refine_weights.finish()
 
@@ -196,37 +219,36 @@ class TreeWithQBXMetadataBuilder(object):
                                       max_leaf_refine_weight=MAX_REFINE_WEIGHT,
                                       refine_weights=refine_weights)
 
-        # Compute box => panel relation
-        qbx_panel_flags = refine_weights
+        # Compute box => particle class relations
+        flags = refine_weights
         del refine_weights
-        qbx_panel_flags.fill(0)
-        qbx_panel_flags[qbx_user_panel_slice].fill(1)
-        qbx_panel_flags.finish()
+        particle_classes = {}
 
-        from boxtree.tree import filter_target_lists_in_user_order
-        box_to_qbx_panel = (
-                filter_target_lists_in_user_order(queue, tree, qbx_panel_flags)
+        for class_name, particle_slice, fixup in (
+                ("box_to_qbx_source", qbx_user_source_slice, 0),
+                ("box_to_qbx_target", qbx_user_target_slice, -target_slice_start),
+                ("box_to_qbx_center", qbx_user_center_slice, -nsources),
+                ("box_to_qbx_panel", qbx_user_panel_slice, -panel_slice_start)):
+            flags.fill(0)
+            flags[particle_slice].fill(1)
+            flags.finish()
+
+            from boxtree.tree import filter_target_lists_in_user_order
+            box_to_class = (
+                filter_target_lists_in_user_order(queue, tree, flags)
                 .with_queue(queue))
-        # Fix up offset.
-        box_to_qbx_panel.target_lists -= panel_slice_start
 
-        # Compute box => target relation
-        qbx_target_flags = qbx_panel_flags
-        del qbx_panel_flags
-        qbx_target_flags.fill(0)
-        qbx_target_flags[qbx_user_target_slice].fill(1)
-        qbx_target_flags.finish()
+            if fixup:
+                box_to_class.target_lists += fixup
+            particle_classes[class_name + "_starts"] = box_to_class.target_starts
+            particle_classes[class_name + "_lists"] = box_to_class.target_lists
 
-        box_to_qbx_target = (
-                filter_target_lists_in_user_order(queue, tree, qbx_target_flags)
-                .with_queue(queue))
-        # Fix up offset.
-        box_to_qbx_target.target_lists -= target_slice_start
-
-        qbx_panel_to_source_starts = cl.array.empty(
-            queue, npanels + 1, dtype=tree.particle_id_dtype)
+        del flags
+        del box_to_class
 
         # Compute panel => source relation
+        qbx_panel_to_source_starts = cl.array.empty(
+            queue, npanels + 1, dtype=tree.particle_id_dtype)
         el_offset = 0
         for group in lpot_source.density_discr.groups:
             qbx_panel_to_source_starts[el_offset:el_offset + group.nelements] = \
@@ -248,13 +270,11 @@ class TreeWithQBXMetadataBuilder(object):
             except AttributeError:
                 pass
 
+        tree_attrs.update(particle_classes)
+
         logger.info("done building tree with qbx metadata")
 
         return self.TreeWithQBXMetadata(
-            box_to_qbx_panel_starts=box_to_qbx_panel.target_starts,
-            box_to_qbx_panel_lists=box_to_qbx_panel.target_lists,
-            box_to_qbx_target_starts=box_to_qbx_target.target_starts,
-            box_to_qbx_target_lists=box_to_qbx_target.target_lists,
             qbx_panel_to_source_starts=qbx_panel_to_source_starts,
             qbx_panel_to_center_starts=qbx_panel_to_center_starts,
             qbx_user_source_slice=qbx_user_source_slice,

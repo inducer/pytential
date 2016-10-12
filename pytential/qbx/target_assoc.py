@@ -32,9 +32,21 @@ from pytools import memoize_method
 import pyopencl as cl
 import pyopencl.array # noqa
 
+from boxtree.tools import DeviceDataRecord
+from boxtree.area_query import AreaQueryElementwiseTemplate
+from boxtree.tools import InlineBinarySearch
+from pytential.qbx.utils import QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS
+
+
 import logging
 logger = logging.getLogger(__name__)
 
+#
+# TODO:
+# - Remove spurious arguments
+# - Remove max_levels garbage
+#
+#==================
 # HOW DOES TARGET ASSOCIATION WORK?
 #
 # The goal of the target association is to:
@@ -71,9 +83,6 @@ logger = logging.getLogger(__name__)
 # {{{ kernels
 
 TARGET_ASSOC_DEFINES = r"""
-// Stick out factor for target association
-#define EPSILON .05
-
 enum TargetStatus
 {
     UNMARKED,
@@ -96,25 +105,31 @@ class TargetStatus(object):
     # NOTE: Must match "enum TargetStatus" above
     UNMARKED = 0
     MARKED_QBX_CENTER_PENDING = 1
-    MARKED_QBX_CENTER_PENDING = 2
+    MARKED_QBX_CENTER_FOUND = 2
 
 
-from boxtree.area_query import AreaQueryElementwiseTemplate
-from boxtree.tools import InlineBinarySearch
-from pytential.qbx.utils import QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS
+class TargetFlag(object):
+    # NOTE: Must match "enum TargetFlag" above
+    INTERIOR_OR_EXTERIOR_VOLUME_TARGET = 0
+    INTERIOR_SURFACE_TARGET = -1
+    EXTERIOR_SURFACE_TARGET = +1
+    INTERIOR_VOLUME_TARGET  = -2
+    EXTERIOR_VOLUME_TARGET  = +2    
 
 
 QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
     extra_args=r"""
         /* input */
-        particle_id_t *box_to_target_starts,
-        particle_id_t *box_to_target_lists,
+        particle_id_t *box_to_source_starts,
+        particle_id_t *box_to_source_lists,
         particle_id_t *panel_to_source_starts,
         particle_id_t source_offset,
         particle_id_t target_offset,
         int npanels,
+        int nboxes,
         particle_id_t *sorted_target_ids,
         coord_t *panel_sizes,
+        coord_t *box_to_search_dist,
 
         /* output */
         int *target_status,
@@ -126,22 +141,26 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
         %endfor
     """,
     ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
-        ${load_particle("INDEX_FOR_SOURCE_PARTICLE(i)", ball_center)}
-        particle_id_t my_panel = bsearch(panel_to_source_starts, npanels + 1, i);
-        ${ball_radius} = panel_sizes[my_panel] / 2;
+        coord_vec_t tgt_coords;
+        ${load_particle("INDEX_FOR_TARGET_PARTICLE(i)", "tgt_coords")}
+        {
+            ${find_guiding_box("tgt_coords", 0, "my_box", particle="i")}
+            ${load_center("ball_center", "my_box", declare=False)}
+            ${ball_radius} = box_to_search_dist[my_box];
+        }
     """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
-        for (particle_id_t target_idx = box_to_target_starts[${leaf_box_id}];
-             target_idx < box_to_target_starts[${leaf_box_id} + 1];
-             ++target_idx)
+        for (particle_id_t source_idx = box_to_source_starts[${leaf_box_id}];
+             source_idx < box_to_source_starts[${leaf_box_id} + 1];
+             ++source_idx)
         {
-            particle_id_t target = box_to_target_lists[target_idx];
-            coord_vec_t target_coords;
-            ${load_particle("INDEX_FOR_TARGET_PARTICLE(target)", "target_coords")}
+            particle_id_t source = box_to_source_lists[source_idx];
+            coord_vec_t source_coords;
+            ${load_particle("INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
 
-            if (distance(target_coords, ${ball_center}) <= ${ball_radius})
+            if (distance(source_coords, tgt_coords) <= panel_sizes[source] / 2)
             {
-                target_status[target] = MARKED_QBX_CENTER_PENDING;
+                target_status[i] = MARKED_QBX_CENTER_PENDING;
                 *found_target_close_to_panel = 1;
             }
         }
@@ -153,22 +172,27 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
 QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
     extra_args=r"""
         /* input */
-        particle_id_t *box_to_target_starts,
-        particle_id_t *box_to_target_lists,
+        particle_id_t *box_to_center_starts,
+        particle_id_t *box_to_center_lists,
         particle_id_t *panel_to_source_starts,
         particle_id_t source_offset,
         particle_id_t center_offset,
         particle_id_t target_offset,
         int npanels,
+        int nboxes,
         particle_id_t *sorted_target_ids,
         coord_t *panel_sizes,
+        coord_t *box_to_search_dist,
+        coord_t stick_out_factor,
         int *target_flags,
 
         /* input/output */
         int *target_status,
 
         /* output */
-        int *target_to_center,
+        int *target_to_source,
+        int *target_to_center_side,
+        coord_t *min_dist_to_center,
 
         /* input, dim-dependent size */
         %for ax in AXIS_NAMES[:dimensions]:
@@ -176,61 +200,41 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
         %endfor
     """,
     ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
-        ${load_particle("INDEX_FOR_CENTER_PARTICLE(i)", ball_center)}
-        particle_id_t my_panel = bsearch(
-            panel_to_source_starts, npanels + 1, SOURCE_FOR_CENTER_PARTICLE(i));
-        ${ball_radius} = panel_sizes[my_panel] / 2;
+        coord_vec_t tgt_coords;
+        ${load_particle("INDEX_FOR_TARGET_PARTICLE(i)", "tgt_coords")}
+        {
+            ${find_guiding_box("tgt_coords", 0, "my_box")}
+            ${load_center("ball_center", "my_box", declare=False)}
+            ${ball_radius} = box_to_search_dist[my_box];
+        }
     """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
-        int my_side = SIDE_FOR_CENTER_PARTICLE(i);
-
-        for (particle_id_t target_idx = box_to_target_starts[${leaf_box_id}];
-             target_idx < box_to_target_starts[${leaf_box_id} + 1];
-             ++target_idx)
+        for (particle_id_t center_idx = box_to_center_starts[${leaf_box_id}];
+             center_idx < box_to_center_starts[${leaf_box_id} + 1];
+             ++center_idx)
         {
-            particle_id_t target = box_to_target_lists[target_idx];
-            coord_vec_t target_coords;
-            ${load_particle("INDEX_FOR_TARGET_PARTICLE(target)", "target_coords")}
+            particle_id_t center = box_to_center_lists[center_idx];
+            int center_side = SIDE_FOR_CENTER_PARTICLE(center);
 
-            coord_t my_dist_to_target = distance(target_coords, ${ball_center});
-
-            if (/* Sign of side should match requested target sign. */
-                my_side * target_flags[target] < 0
-                /* Target should be covered by center. */
-                || my_dist_to_target <= ${ball_radius} * (1 + EPSILON))
+            // Sign of side should match requested target sign.
+            if (center_side * target_flags[i] < 0)
             {
                 continue;
             }
 
-            target_status[target] = MARKED_QBX_CENTER_FOUND;
+            coord_vec_t center_coords;
+            ${load_particle("INDEX_FOR_CENTER_PARTICLE(center)", "center_coords")}
+            coord_t my_dist_to_center = distance(tgt_coords, center_coords);
 
-            int curr_center, curr_center_updated;
-            do
+            if (my_dist_to_center
+                    <= (panel_sizes[center] / 2) * (1 + stick_out_factor)
+                && my_dist_to_center < min_dist_to_center[i])
             {
-                /* Read closest center. */
-                curr_center = target_to_center[target];
-
-                /* Check if I am closer than recorded closest center. */
-                if (curr_center != -1)
-                {
-                    coord_vec_t curr_center_coords;
-                    ${load_particle(
-                         "INDEX_FOR_CENTER_PARTICLE(curr_center)",
-                         "curr_center_coords")}
-
-                    if (distance(target_coords, curr_center_coords)
-                            <= my_dist_to_target)
-                    {
-                        /* The current center is closer, don't update. */
-                        break;
-                    }
-                }
-
-                /* Try to update the memory location. */
-                curr_center_updated = atomic_cmpxchg(
-                    (volatile __global int *) &target_to_center[target],
-                    curr_center, i);
-            } while (curr_center != curr_center_updated);
+                target_status[i] = MARKED_QBX_CENTER_FOUND;
+                min_dist_to_center[i] = my_dist_to_center;
+                target_to_source[i] = SOURCE_FOR_CENTER_PARTICLE(center);
+                target_to_center_side[i] = center_side;
+            }
         }
     """,
     name="find_centers",
@@ -240,8 +244,8 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
 QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
     extra_args=r"""
         /* input */
-        particle_id_t *box_to_target_starts,
-        particle_id_t *box_to_target_lists,
+        particle_id_t *box_to_source_starts,
+        particle_id_t *box_to_source_lists,
         particle_id_t *panel_to_source_starts,
         particle_id_t source_offset,
         particle_id_t target_offset,
@@ -249,6 +253,7 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
         particle_id_t *sorted_target_ids,
         coord_t *panel_sizes,
         int *target_status,
+        coord_t *box_to_search_dist,
 
         /* output */
         int *refine_flags,
@@ -260,26 +265,33 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
         %endfor
     """,
     ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
-        ${load_particle("INDEX_FOR_SOURCE_PARTICLE(i)", ball_center)}
-        particle_id_t my_panel = bsearch(panel_to_source_starts, npanels + 1, i);
-        ${ball_radius} = panel_sizes[my_panel] / 2;
+        coord_vec_t target_coords;
+        ${load_particle("INDEX_FOR_TARGET_PARTICLE(i)", "target_coords")}
+        {
+            ${find_guiding_box("target_coords", 0, "my_box")}
+            ${load_center("ball_center", "my_box", declare=False)}
+            ${ball_radius} = box_to_search_dist[my_box];
+        }
     """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
-        for (particle_id_t target_idx = box_to_target_starts[${leaf_box_id}];
-             target_idx < box_to_target_starts[${leaf_box_id} + 1];
-             ++target_idx)
+        for (particle_id_t source_idx = box_to_source_starts[${leaf_box_id}];
+             source_idx < box_to_source_starts[${leaf_box_id} + 1];
+             ++source_idx)
         {
-            particle_id_t target = box_to_target_lists[target_idx];
-            coord_vec_t target_coords;
-            ${load_particle("INDEX_FOR_TARGET_PARTICLE(target)", "target_coords")}
+            particle_id_t source = box_to_source_lists[source_idx];
+
+            coord_vec_t source_coords;
+            ${load_particle("INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
 
             bool is_close =
-                distance(target_coords, ${ball_center})
-                <= ${ball_radius};
+                distance(target_coords, source_coords)
+                <= panel_sizes[source] / 2;
 
-            if (is_close && target_status[target] == MARKED_QBX_CENTER_PENDING)
+            if (is_close && target_status[i] == MARKED_QBX_CENTER_PENDING)
             {
-                refine_flags[my_panel] = 1;
+                particle_id_t panel = bsearch(
+                    panel_to_source_starts, npanels + 1, source);
+                refine_flags[panel] = 1;
                 *found_panel_to_refine = 1;
             }
         }
@@ -299,14 +311,48 @@ class TargetAssociationFailedException(Exception):
     pass
 
 
+class TargetAssociation(DeviceDataRecord):
+    """
+    .. attribute:: target_to_source
+    .. attribute:: target_to_side
+    """
+    pass
+
+
 class QBXTargetAssociator(object):
 
     def __init__(self, cl_context):
         from pytential.qbx.utils import TreeWithQBXMetadataBuilder
         self.tree_builder = TreeWithQBXMetadataBuilder(cl_context)
         self.cl_context = cl_context
-        from boxtree.area_query import PeerListFinder
+        from boxtree.area_query import PeerListFinder, SpaceInvaderQueryBuilder
         self.peer_list_finder = PeerListFinder(cl_context)
+        self.space_invader_query = SpaceInvaderQueryBuilder(cl_context)
+
+    def plot_tree(self, queue, tree):
+        # FIXME: Move to utils...
+        tree = tree.get(queue=queue)
+        from boxtree.visualization import TreePlotter
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        tp = TreePlotter(tree)
+        tp.draw_tree()
+        sources = (tree.sources[0], tree.sources[1])
+        sti = tree.sorted_target_ids
+        plt.plot(sources[0][sti[tree.qbx_user_source_slice]],
+                 sources[1][sti[tree.qbx_user_source_slice]],
+                 lw=0, marker=".", markersize=1, label="sources")
+        plt.plot(sources[0][sti[tree.qbx_user_center_slice]],
+                 sources[1][sti[tree.qbx_user_center_slice]],
+                 lw=0, marker=".", markersize=1, label="centers")
+        print(tree.qbx_user_target_slice)
+        plt.plot(sources[0][sti[tree.qbx_user_target_slice]],
+                 sources[1][sti[tree.qbx_user_target_slice]],
+                 lw=0, marker=".", markersize=1, label="targets")
+        plt.axis("equal")
+        plt.legend()
+        plt.savefig("discr.pdf")
 
     # {{{ kernel generation
 
@@ -378,23 +424,39 @@ class QBXTargetAssociator(object):
         found_target_close_to_panel = cl.array.zeros(queue, 1, np.int32)
         found_target_close_to_panel.finish()
 
+        # Perform a space invader query over the sources.
+        source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
+        sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
+        panel_sizes = lpot_source.panel_sizes("nsources").with_queue(queue)
+
+        box_to_search_dist, evt = self.space_invader_query(
+                queue,
+                tree,
+                sources,
+                panel_sizes / 2,
+                peer_lists,
+                wait_for=wait_for)
+        wait_for = [evt]
+
         logger.info("target association: marking targets close to panels")
 
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
-                tree.box_to_qbx_target_starts,
-                tree.box_to_qbx_target_lists,
+                tree.box_to_qbx_source_starts,
+                tree.box_to_qbx_source_lists,
                 tree.qbx_panel_to_source_starts,
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_target_slice.start,
                 tree.nqbxpanels,
+                tree.nboxes,
                 tree.sorted_target_ids,
-                lpot_source.panel_sizes("nelements"),
+                panel_sizes,
+                box_to_search_dist,
                 target_status,
                 found_target_close_to_panel,
                 *tree.sources),
-            range=slice(tree.nqbxsources),
+            range=slice(tree.nqbxtargets),
             queue=queue,
             wait_for=wait_for)
 
@@ -402,8 +464,8 @@ class QBXTargetAssociator(object):
             target_status.finish()
             # Marked target = 1, 0 otherwise
             marked_target_count = cl.array.sum(target_status).get()
-            logger.debug("target association: {} targets marked close to panels"
-                         .format(marked_target_count))
+            logger.debug("target association: {}/{} targets marked close to panels"
+                         .format(marked_target_count, tree.nqbxtargets))
 
         cl.wait_for_events([evt])
 
@@ -412,8 +474,8 @@ class QBXTargetAssociator(object):
         return (found_target_close_to_panel.get() == 1).all()
 
     def try_find_centers(self, queue, tree, peer_lists, lpot_source,
-                         target_status, target_flags, target_to_center, debug,
-                         wait_for=None):
+                         target_status, target_flags, target_assoc,
+                         stick_out_factor, debug, wait_for=None):
         # Avoid generating too many kernels.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
@@ -432,25 +494,50 @@ class QBXTargetAssociator(object):
             target_status.finish()
             marked_target_count = int(cl.array.sum(target_status).get())
 
+        # Perform a space invader query over the centers.
+        center_slice = tree.user_source_ids[tree.qbx_user_center_slice]
+        centers = [axis.with_queue(queue)[center_slice] for axis in tree.sources]
+        panel_sizes = lpot_source.panel_sizes("ncenters").with_queue(queue)
+
+        box_to_search_dist, evt = self.space_invader_query(
+                queue,
+                tree,
+                centers,
+                panel_sizes / 2,
+                peer_lists,
+                wait_for=wait_for)
+        wait_for = [evt]
+
+        min_dist_to_center = cl.array.empty(
+                queue, tree.nqbxtargets, tree.coord_dtype)
+        min_dist_to_center.fill(np.inf)
+
+        wait_for.extend(min_dist_to_center.events)
+
         logger.info("target association: finding centers for targets")
 
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
-                tree.box_to_qbx_target_starts,
-                tree.box_to_qbx_target_lists,
+                tree.box_to_qbx_center_starts,
+                tree.box_to_qbx_center_lists,
                 tree.qbx_panel_to_source_starts,
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_center_slice.start,
                 tree.qbx_user_target_slice.start,
                 tree.nqbxpanels,
+                tree.nboxes,
                 tree.sorted_target_ids,
-                lpot_source.panel_sizes("nelements"),
+                panel_sizes,
+                box_to_search_dist,
+                stick_out_factor,
                 target_flags,
                 target_status,
-                target_to_center,
+                target_assoc.target_to_source,
+                target_assoc.target_to_center_side,
+                min_dist_to_center,
                 *tree.sources),
-            range=slice(tree.nqbxcenters),
+            range=slice(tree.nqbxtargets),
             queue=queue,
             wait_for=wait_for)
 
@@ -486,24 +573,39 @@ class QBXTargetAssociator(object):
         found_panel_to_refine = cl.array.zeros(queue, 1, np.int32)
         found_panel_to_refine.finish()
 
+        # Perform a space invader query over the sources.
+        source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
+        sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
+        panel_sizes = lpot_source.panel_sizes("nsources").with_queue(queue)
+
+        box_to_search_dist, evt = self.space_invader_query(
+                queue,
+                tree,
+                sources,
+                panel_sizes / 2,
+                peer_lists,
+                wait_for=wait_for)
+        wait_for = [evt]
+
         logger.info("target association: marking panels for refinement")
 
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
-                tree.box_to_qbx_target_starts,
-                tree.box_to_qbx_target_lists,
+                tree.box_to_qbx_source_starts,
+                tree.box_to_qbx_source_lists,
                 tree.qbx_panel_to_source_starts,
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_target_slice.start,
                 tree.nqbxpanels,
                 tree.sorted_target_ids,
-                lpot_source.panel_sizes("nelements"),
+                lpot_source.panel_sizes("nsources"),
                 target_status,
+                box_to_search_dist,
                 refine_flags,
                 found_panel_to_refine,
                 *tree.sources),
-            range=slice(tree.nqbxsources),
+            range=slice(tree.nqbxtargets),
             queue=queue,
             wait_for=wait_for)
 
@@ -534,7 +636,31 @@ class QBXTargetAssociator(object):
         target_flags.finish()
         return target_flags
 
-    def __call__(self, lpot_source, target_discrs, debug=True, wait_for=None):
+    def make_target_association(self, queue, ntargets):
+        target_to_source = cl.array.empty(queue, ntargets, dtype=np.int32)
+        target_to_center_side = cl.array.empty_like(target_to_source)
+
+        target_to_source.fill(-1)
+        target_to_center_side.fill(0)
+
+        target_to_source.finish()
+        target_to_center_side.finish()
+
+        return TargetAssociation(
+            target_to_source=target_to_source,
+            target_to_center_side=target_to_center_side)
+
+    def __call__(self, lpot_source, target_discrs, stick_out_factor=1e-10,
+                 debug=True, wait_for=None):
+        """
+        Entry point for calling the target associator.
+
+        :arg lpot_source: An instance of :class:`NewQBXLayerPotentialSource`.
+
+        :arg target_discrs: 
+
+        :returns:
+        """
 
         with cl.CommandQueue(self.cl_context) as queue:
             tree = self.tree_builder(queue, lpot_source,
@@ -542,41 +668,47 @@ class QBXTargetAssociator(object):
             peer_lists, evt = self.peer_list_finder(queue, tree, wait_for)
             wait_for = [evt]
 
-            # Get target flags array.
             target_status = cl.array.zeros(queue, tree.nqbxtargets, dtype=np.int32)
             target_status.finish()
 
-            have_close_targets = self.mark_targets(queue, tree,
-                                                   peer_lists,
-                                                   lpot_source,
-                                                   target_status, debug)
+            have_close_targets = self.mark_targets(queue, tree, peer_lists,
+                                                   lpot_source, target_status,
+                                                   debug)
 
-            target_to_center = cl.array.empty(queue, tree.ntargets, dtype=np.int32)
-            target_to_center.fill(-1)
+            target_assoc = self.make_target_association(queue, tree.nqbxtargets)
 
             if not have_close_targets:
-                return target_to_center.with_queue(None)
+                return target_assoc.with_queue(None)
 
             target_flags = self.make_target_flags(queue, target_discrs)
 
             self.try_find_centers(queue, tree, peer_lists, lpot_source,
-                                  target_status, target_flags, target_to_center,
-                                  debug)
+                                  target_status, target_flags, target_assoc,
+                                  stick_out_factor, debug)
 
-            if debug or (
-                    target_status == TargetStatus.MARKED_QBX_CENTER_PENDING)\
-                    .any().get():
+            center_not_found = (target_status == TargetStatus.MARKED_QBX_CENTER_PENDING)
+
+            if center_not_found.any().get():
+                surface_target = (
+                    (target_flags == TargetFlag.INTERIOR_SURFACE_TARGET)
+                    or (target_flags == TargetFlag.EXTERIOR_SURFACE_TARGET))
+
+                if (center_not_found and surface_target).any().get():
+                    logger.warning("WARNING: An on-surface target was not "
+                            "assigned a center. As a remedy you can try increasing "
+                            "the \"stick_out_factor\" parameter, but this could "
+                            "also cause an invalid center assignment.")
+
                 refine_flags = cl.array.zeros(queue, tree.nqbxpanels, dtype=np.int32)
                 have_panel_to_refine = self.mark_panels_for_refinement(queue,
                                                 tree, peer_lists,
                                                 lpot_source, target_status,
                                                 refine_flags, debug)
-                assert debug or have_panel_to_refine
-                if have_panel_to_refine:
-                    raise TargetAssociationFailedException(
-                            refine_flags.with_queue(None))
+                assert have_panel_to_refine
+                raise TargetAssociationFailedException(
+                        refine_flags.with_queue(None))
 
-            return target_to_center.with_queue(None)
+            return target_assoc.with_queue(None)
 
 # }}}
 

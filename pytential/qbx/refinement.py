@@ -175,14 +175,14 @@ class NewQBXLayerPotentialSource(object):
             return tuple(panels[d, :] for d in range(mesh.ambient_dim))
 
     @memoize_method
-    def panel_sizes(self, last_dim_length="nnodes"):
-        assert last_dim_length in ["nnodes", "nelements"]
+    def panel_sizes(self, last_dim_length="nsources"):
+        assert last_dim_length in ["nsources", "ncenters", "npanels"]
         # To get the panel size this does the equivalent of ∫ 1 ds.
         # FIXME: Kernel optimizations
 
         discr = self.density_discr
 
-        if last_dim_length == "nnodes":
+        if last_dim_length == "nsources" or last_dim_length == "ncenters":
             knl = lp.make_kernel(
                 "{[i,j,k]: 0<=i<nelements and 0<=j,k<nunit_nodes}",
                 "panel_sizes[i,j] = sum(k, ds[i,k])",
@@ -192,7 +192,7 @@ class NewQBXLayerPotentialSource(object):
             def panel_size_view(discr, group_nr):
                 return discr.groups[group_nr].view
 
-        elif last_dim_length == "nelements":
+        elif last_dim_length == "npanels":
             knl = lp.make_kernel(
                 "{[i,j]: 0<=i<nelements and 0<=j<nunit_nodes}",
                 "panel_sizes[i] = sum(j, ds[i,j])",
@@ -202,12 +202,15 @@ class NewQBXLayerPotentialSource(object):
             def panel_size_view(discr, group_nr):
                 return partial(self.el_view, discr, group_nr)
 
+        else:
+            raise ValueError("unknown dim length specified")
+
         with cl.CommandQueue(self.cl_context) as queue:
             from pytential import bind, sym
             ds = bind(discr, sym.area_element() * sym.QWeight())(queue)
             panel_sizes = cl.array.empty(
                 queue, discr.nnodes
-                if last_dim_length == "nnodes"
+                if last_dim_length in ("nsources", "ncenters")
                 else discr.mesh.nelements, discr.real_dtype)
             for group_nr, group in enumerate(discr.groups):
                 _, (result,) = knl(queue,
@@ -217,6 +220,11 @@ class NewQBXLayerPotentialSource(object):
                     panel_sizes=panel_size_view(
                         discr, group_nr)(panel_sizes))
             panel_sizes.finish()
+            if last_dim_length == "ncenters":
+                from pytential.qbx.utils import get_interleaver_kernel
+                knl = get_interleaver_kernel(discr.real_dtype)
+                _, (panel_sizes,) = knl(queue, dstlen=2*discr.nnodes,
+                                        src1=panel_sizes, src2=panel_sizes)
             return panel_sizes.with_queue(None)
 
     @memoize_method
@@ -632,7 +640,7 @@ class QBXLayerPotentialSourceRefiner(object):
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_center_slice.start,
                 tree.sorted_target_ids,
-                lpot_source.panel_sizes("nelements"),
+                lpot_source.panel_sizes("npanels"),
                 tree.nqbxpanels,
                 r_max,
                 refine_flags,
@@ -691,7 +699,7 @@ class QBXLayerPotentialSourceRefiner(object):
                 tree.qbx_user_center_slice.start,
                 tree.qbx_user_panel_slice.start,
                 tree.sorted_target_ids,
-                lpot_source.panel_sizes("nelements"),
+                lpot_source.panel_sizes("npanels"),
                 adjacency.adjacency_starts,
                 adjacency.adjacency_lists,
                 tree.nqbxpanels,
@@ -724,7 +732,7 @@ class QBXLayerPotentialSourceRefiner(object):
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
         evt, out = knl(queue,
-                       panel_sizes=lpot_source.panel_sizes("nelements"),
+                       panel_sizes=lpot_source.panel_sizes("npanels"),
                        refine_flags=refine_flags,
                        refine_flags_updated=np.array(0),
                        helmholtz_k=np.array(helmholtz_k),
@@ -758,7 +766,7 @@ class QBXLayerPotentialSourceRefiner(object):
         while True:
             evt, out = knl(queue,
                            npanels=lpot_source.density_discr.mesh.nelements,
-                           panel_sizes=lpot_source.panel_sizes("nelements"),
+                           panel_sizes=lpot_source.panel_sizes("npanels"),
                            refine_flags=refine_flags,
                            # It's safe to pass this here, as the resulting data
                            # race won't affect the final result of the
@@ -807,7 +815,7 @@ class QBXLayerPotentialSourceRefiner(object):
                   nqbxpanels,
                   tree.qbx_panel_to_source_starts,
                   tree.sorted_target_ids,
-                  lpot_source.panel_sizes("nelements"),
+                  lpot_source.panel_sizes("npanels"),
                   tq_dists,
                   *tree.sources,
                   queue=queue,
@@ -882,6 +890,8 @@ class QBXLayerPotentialSourceRefiner(object):
         with cl.CommandQueue(self.context) as queue:
             tree = self.tree_builder(queue, lpot_source).get(queue=queue)
             from boxtree.visualization import TreePlotter
+            import matplotlib
+            matplotlib.use('Agg')
             import matplotlib.pyplot as plt
             tp = TreePlotter(tree)
             tp.draw_tree()
@@ -889,13 +899,16 @@ class QBXLayerPotentialSourceRefiner(object):
             sti = tree.sorted_target_ids
             plt.plot(sources[0][sti[tree.qbx_user_source_slice]],
                      sources[1][sti[tree.qbx_user_source_slice]],
-                     lw=0, marker=".", label="sources")
+                     lw=0, marker=".", markersize=1, label="sources")
             plt.plot(sources[0][sti[tree.qbx_user_center_slice]],
                      sources[1][sti[tree.qbx_user_center_slice]],
-                     lw=0, marker=".", label="centers")
+                     lw=0, marker=".", markersize=1, label="centers")
+            plt.plot(sources[0][sti[tree.qbx_user_target_slice]],
+                     sources[1][sti[tree.qbx_user_target_slice]],
+                     lw=0, marker=".", markersize=1, label="targets")
             plt.axis("equal")
             plt.legend()
-            plt.show()
+            plt.savefig("discr.pdf")
 
     def __call__(self, lpot_source, discr_factory, helmholtz_k=None,
                  # FIXME: Set debug=False once everything works.
@@ -918,7 +931,7 @@ class QBXLayerPotentialSourceRefiner(object):
 
         :returns: A tuple ``(lpot_source, conns)`` where ``lpot_source`` is the
             refined layer potential source, and ``conns`` is a list of
-`           :class:`meshmode.discretization.connection.DiscretizationConnection`
+            :class:`meshmode.discretization.connection.DiscretizationConnection`
             objects going from the original mesh to the refined mesh.
         """
         from meshmode.mesh.refinement import Refiner

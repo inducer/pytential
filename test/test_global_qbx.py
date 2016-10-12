@@ -36,12 +36,16 @@ from functools import partial
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
         make_curve_mesh)
+from extra_curve_data import horseshoe
+
 
 import logging
 logger = logging.getLogger(__name__)
 
 __all__ = ["pytest_generate_tests"]
 
+
+# {{{ utilities for iterating over panels
 
 class ElementInfo(RecordWithoutPickling):
     """
@@ -75,19 +79,20 @@ def iter_elements(discr):
 
             discr_nodes_idx += discr_group.nunit_nodes
 
-
-from extra_curve_data import horseshoe
+# }}}
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
     ("20-to-1 ellipse", partial(ellipse, 20), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelements):
+def test_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelements):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    order = 16
+    # {{{ generate lpot source, run refiner
+
+    order = 5
     helmholtz_k = 10
 
     mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
@@ -113,7 +118,11 @@ def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelement
     int_centers = np.array([axis.get(queue) for axis in int_centers])
     ext_centers = lpot_source.centers(+1)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
-    panel_sizes = lpot_source.panel_sizes("nelements").get(queue)
+    panel_sizes = lpot_source.panel_sizes("npanels").get(queue)
+
+    # }}}
+
+    # {{{ check if satisfying criteria
 
     def check_panel(panel):
         # Check 2-to-1 panel to neighbor size ratio.
@@ -163,6 +172,8 @@ def test_global_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelement
         for panel_2 in iter_elements(lpot_source.density_discr):
             check_panel_pair(panel_1, panel_2)
 
+    # }}}
+
 
 def test_ellipse_target_association(ctx_getter):
     cl_ctx = ctx_getter()
@@ -190,42 +201,103 @@ def test_ellipse_target_association(ctx_getter):
 
     lpot_source, conn = refiner(lpot_source, factory)
 
-    print("lpot_source", lpot_source)
-
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
     int_centers = lpot_source.centers(-1)
-    int_centers = np.array([axis.get(queue) for axis in int_centers])
     ext_centers = lpot_source.centers(+1)
-    ext_centers = np.array([axis.get(queue) for axis in ext_centers])
-    panel_sizes = lpot_source.panel_sizes("nelements").get(queue)
+
+    RNG_SEED = 10
+    from pyopencl.clrandom import PhiloxGenerator
+    rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
+    nsources = lpot_source.density_discr.nnodes
+    noise = rng.uniform(queue, nsources, dtype=np.float, a=0.01, b=1.0)
+
+    def close_targets(sign):
+        from pytential import sym, bind
+        nodes = bind(lpot_source.density_discr, sym.Nodes())(queue)
+        normals = bind(lpot_source.density_discr, sym.normal())(queue)
+        panel_sizes = lpot_source.panel_sizes().with_queue(queue)
+        return (nodes + normals * sign * noise * panel_sizes / 2).as_vector(np.object)
+
+    from pytential.target import PointsTarget
+
+    int_targets = PointsTarget(close_targets(-1))
+    ext_targets = PointsTarget(close_targets(+1))
+    NFARTARGETS = 10
+    far_targets = PointsTarget(
+        (rng.normal(queue, NFARTARGETS, np.float, sigma=5e-3),
+         rng.normal(queue, NFARTARGETS, np.float, sigma=5e-3)))
 
     # Create target discretizations.
     target_discrs = [
-        # On-surface target, interior
+        # On-surface targets, interior
         (lpot_source.density_discr, -1),
-        # On-surface target, exterior
+        # On-surface targets, exterior
         (lpot_source.density_discr, +1),
-        # Interior targets
-        #(),
-        # Exterior targets
-        #(),
-        # Far targets, should not need centers
-        #()
+        # Interior close targets
+        (int_targets, -2),
+        # Exterior close targets
+        (ext_targets, +2),
+        ## Far targets, should not need centers
+        (far_targets, 0),
     ]
 
+    sizes = np.cumsum([discr.nnodes for discr, _ in target_discrs])
+    from itertools import chain
+    slices = [slice(start, end) for start, end in zip(chain([0], sizes), sizes)]
+
     from pytential.qbx.target_assoc import QBXTargetAssociator
-    target_assoc = QBXTargetAssociator(cl_ctx)
+    target_assoc = QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs)
+    target_assoc = target_assoc.get(queue=queue)
 
-    target_assoc_result = target_assoc(lpot_source, target_discrs)
+    panel_sizes = lpot_source.panel_sizes("nsources").get(queue)
 
-    def check_surface_targets():
-        pass
+    int_centers = np.array([axis.get(queue) for axis in int_centers])
+    ext_centers = np.array([axis.get(queue) for axis in ext_centers])
+    int_targets = np.array([axis.get(queue) for axis in int_targets.nodes()])
+    ext_targets = np.array([axis.get(queue) for axis in ext_targets.nodes()])
 
-    def check_close_targets():
-        pass
+    # Checks that the sources match with their own centers.
+    def check_on_surface_targets(nsources, true_side, target_to_source_result,
+                                 target_to_side_result):
+        sources = np.arange(0, nsources)
+        assert (target_to_source_result == sources).all()
+        assert (target_to_side_result == true_side).all()
 
-    def check_far_targets():
-        pass
+    # Checks that the targets match with centers on the appropriate side and
+    # within the allowable distance.
+    def check_close_targets(centers, targets, true_side,
+                            target_to_source_result, target_to_side_result):
+        assert (target_to_side_result == true_side).all()
+        dists = la.norm((targets.T - centers.T[target_to_source_result]), axis=1)
+        assert (dists <= panel_sizes[target_to_source_result] / 2).all()
+
+    def check_far_targets(target_to_source_result, target_to_side_result):
+        assert (target_to_source_result == -1).all()
+        assert (target_to_side_result == 0).all()
+
+    check_on_surface_targets(
+        nsources, -1,
+        target_assoc.target_to_source[slices[0]],
+        target_assoc.target_to_center_side[slices[0]])
+
+    check_on_surface_targets(
+        nsources, +1,
+        target_assoc.target_to_source[slices[1]],
+        target_assoc.target_to_center_side[slices[1]])
+
+    check_close_targets(
+        int_centers, int_targets, -1,
+        target_assoc.target_to_source[slices[2]],
+        target_assoc.target_to_center_side[slices[2]])
+
+    check_close_targets(
+        ext_centers, ext_targets, +1,
+        target_assoc.target_to_source[slices[3]],
+        target_assoc.target_to_center_side[slices[3]])
+
+    check_far_targets(
+        target_assoc.target_to_source[slices[4]],
+        target_assoc.target_to_center_side[slices[4]])
 
 
 # You can test individual routines by typing
