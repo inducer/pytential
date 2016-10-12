@@ -71,6 +71,7 @@ logger = logging.getLogger(__name__)
 # {{{ kernels
 
 TARGET_ASSOC_DEFINES = r"""
+// Stick out factor for target association
 #define EPSILON .05
 
 enum TargetStatus
@@ -90,7 +91,12 @@ enum TargetFlag
 };
 """
 
-MARKED_QBX_CENTER_PENDING = 1
+
+class TargetStatus(object):
+    # NOTE: Must match "enum TargetStatus" above
+    UNMARKED = 0
+    MARKED_QBX_CENTER_PENDING = 1
+    MARKED_QBX_CENTER_PENDING = 2
 
 
 from boxtree.area_query import AreaQueryElementwiseTemplate
@@ -267,7 +273,9 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
             coord_vec_t target_coords;
             ${load_particle("INDEX_FOR_TARGET_PARTICLE(target)", "target_coords")}
 
-            bool is_close = distance(target_coords, ${ball_center}) <= ${ball_radius};
+            bool is_close =
+                distance(target_coords, ${ball_center})
+                <= ${ball_radius};
 
             if (is_close && target_status[target] == MARKED_QBX_CENTER_PENDING)
             {
@@ -351,8 +359,8 @@ class QBXTargetAssociator(object):
 
     # }}}
 
-    def mark_targets(self, queue, tree, peer_lists, lpot_source, target_status, debug,
-                     wait_for=None):
+    def mark_targets(self, queue, tree, peer_lists, lpot_source, target_status,
+                     debug, wait_for=None):
         # Avoid generating too many kernels.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
@@ -527,8 +535,10 @@ class QBXTargetAssociator(object):
         return target_flags
 
     def __call__(self, lpot_source, target_discrs, debug=True, wait_for=None):
+
         with cl.CommandQueue(self.cl_context) as queue:
-            tree = self.tree_builder(queue, lpot_source, [discr for discr, _ in target_discrs])
+            tree = self.tree_builder(queue, lpot_source,
+                                     [discr for discr, _ in target_discrs])
             peer_lists, evt = self.peer_list_finder(queue, tree, wait_for)
             wait_for = [evt]
 
@@ -553,14 +563,18 @@ class QBXTargetAssociator(object):
                                   target_status, target_flags, target_to_center,
                                   debug)
 
-            if True: #(target_status == MARKED_QBX_CENTER_PENDING).any().get():
+            if debug or (
+                    target_status == TargetStatus.MARKED_QBX_CENTER_PENDING)\
+                    .any().get():
                 refine_flags = cl.array.zeros(queue, tree.nqbxpanels, dtype=np.int32)
                 have_panel_to_refine = self.mark_panels_for_refinement(queue,
                                                 tree, peer_lists,
                                                 lpot_source, target_status,
                                                 refine_flags, debug)
-                assert have_panel_to_refine
-                raise TargetAssociationFailedException(refine_flags.with_queue(None))
+                assert debug or have_panel_to_refine
+                if have_panel_to_refine:
+                    raise TargetAssociationFailedException(
+                            refine_flags.with_queue(None))
 
             return target_to_center.with_queue(None)
 
