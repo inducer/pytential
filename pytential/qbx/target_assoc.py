@@ -35,7 +35,11 @@ import pyopencl.array # noqa
 from boxtree.tools import DeviceDataRecord
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
-from pytential.qbx.utils import QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS
+from pytential.qbx.utils import (
+    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, DiscrPlotterMixin)
+
+
+unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
 
 import logging
@@ -44,7 +48,7 @@ logger = logging.getLogger(__name__)
 #
 # TODO:
 # - Remove spurious arguments
-# - Remove max_levels garbage
+# - Documentation
 #
 #==================
 # HOW DOES TARGET ASSOCIATION WORK?
@@ -52,8 +56,8 @@ logger = logging.getLogger(__name__)
 # The goal of the target association is to:
 #   a) decide which targets require QBX, and
 #   b) decide which centers to use for targets that require QBX, and
-#   c) if no good centers are available for a target, decide which panels to
-#      refine.
+#   c) if no good centers are available for a target that requires QBX,
+#      flag the appropriate panels for refinement.
 #
 # The flow chart of what happens to target t is shown below. Pass names are in
 # parentheses:
@@ -113,8 +117,8 @@ class TargetFlag(object):
     INTERIOR_OR_EXTERIOR_VOLUME_TARGET = 0
     INTERIOR_SURFACE_TARGET = -1
     EXTERIOR_SURFACE_TARGET = +1
-    INTERIOR_VOLUME_TARGET  = -2
-    EXTERIOR_VOLUME_TARGET  = +2    
+    INTERIOR_VOLUME_TARGET = -2
+    EXTERIOR_VOLUME_TARGET = +2
 
 
 QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
@@ -122,11 +126,8 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
         /* input */
         particle_id_t *box_to_source_starts,
         particle_id_t *box_to_source_lists,
-        particle_id_t *panel_to_source_starts,
         particle_id_t source_offset,
         particle_id_t target_offset,
-        int npanels,
-        int nboxes,
         particle_id_t *sorted_target_ids,
         coord_t *panel_sizes,
         coord_t *box_to_search_dist,
@@ -144,7 +145,7 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
         coord_vec_t tgt_coords;
         ${load_particle("INDEX_FOR_TARGET_PARTICLE(i)", "tgt_coords")}
         {
-            ${find_guiding_box("tgt_coords", 0, "my_box", particle="i")}
+            ${find_guiding_box("tgt_coords", 0, "my_box")}
             ${load_center("ball_center", "my_box", declare=False)}
             ${ball_radius} = box_to_search_dist[my_box];
         }
@@ -304,14 +305,15 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
 
 # {{{ target associator
 
-class TargetAssociationFailedException(Exception):
+class QBXTargetAssociationFailedException(Exception):
     """
     .. attribute:: refine_flags
     """
-    pass
+    def __init__(self, refine_flags):
+        self.refine_flags = refine_flags
 
 
-class TargetAssociation(DeviceDataRecord):
+class QBXTargetAssociation(DeviceDataRecord):
     """
     .. attribute:: target_to_source
     .. attribute:: target_to_side
@@ -319,7 +321,7 @@ class TargetAssociation(DeviceDataRecord):
     pass
 
 
-class QBXTargetAssociator(object):
+class QBXTargetAssociator(DiscrPlotterMixin):
 
     def __init__(self, cl_context):
         from pytential.qbx.utils import TreeWithQBXMetadataBuilder
@@ -328,31 +330,6 @@ class QBXTargetAssociator(object):
         from boxtree.area_query import PeerListFinder, SpaceInvaderQueryBuilder
         self.peer_list_finder = PeerListFinder(cl_context)
         self.space_invader_query = SpaceInvaderQueryBuilder(cl_context)
-
-    def plot_tree(self, queue, tree):
-        # FIXME: Move to utils...
-        tree = tree.get(queue=queue)
-        from boxtree.visualization import TreePlotter
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        tp = TreePlotter(tree)
-        tp.draw_tree()
-        sources = (tree.sources[0], tree.sources[1])
-        sti = tree.sorted_target_ids
-        plt.plot(sources[0][sti[tree.qbx_user_source_slice]],
-                 sources[1][sti[tree.qbx_user_source_slice]],
-                 lw=0, marker=".", markersize=1, label="sources")
-        plt.plot(sources[0][sti[tree.qbx_user_center_slice]],
-                 sources[1][sti[tree.qbx_user_center_slice]],
-                 lw=0, marker=".", markersize=1, label="centers")
-        print(tree.qbx_user_target_slice)
-        plt.plot(sources[0][sti[tree.qbx_user_target_slice]],
-                 sources[1][sti[tree.qbx_user_target_slice]],
-                 lw=0, marker=".", markersize=1, label="targets")
-        plt.axis("equal")
-        plt.legend()
-        plt.savefig("discr.pdf")
 
     # {{{ kernel generation
 
@@ -418,9 +395,6 @@ class QBXTargetAssociator(object):
                 tree.particle_id_dtype,
                 max_levels)
 
-        from boxtree.area_query import AreaQueryElementwiseTemplate
-        unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
-
         found_target_close_to_panel = cl.array.zeros(queue, 1, np.int32)
         found_target_close_to_panel.finish()
 
@@ -445,11 +419,8 @@ class QBXTargetAssociator(object):
                 tree, peer_lists,
                 tree.box_to_qbx_source_starts,
                 tree.box_to_qbx_source_lists,
-                tree.qbx_panel_to_source_starts,
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_target_slice.start,
-                tree.nqbxpanels,
-                tree.nboxes,
                 tree.sorted_target_ids,
                 panel_sizes,
                 box_to_search_dist,
@@ -487,15 +458,13 @@ class QBXTargetAssociator(object):
                 tree.particle_id_dtype,
                 max_levels)
 
-        from boxtree.area_query import AreaQueryElementwiseTemplate
-        unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
-
         if debug:
             target_status.finish()
             marked_target_count = int(cl.array.sum(target_status).get())
 
         # Perform a space invader query over the centers.
-        center_slice = tree.user_source_ids[tree.qbx_user_center_slice]
+        center_slice = \
+                tree.sorted_target_ids[tree.qbx_user_center_slice].with_queue(queue)
         centers = [axis.with_queue(queue)[center_slice] for axis in tree.sources]
         panel_sizes = lpot_source.panel_sizes("ncenters").with_queue(queue)
 
@@ -503,7 +472,7 @@ class QBXTargetAssociator(object):
                 queue,
                 tree,
                 centers,
-                panel_sizes / 2,
+                panel_sizes * ((1 + stick_out_factor) / 2),
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
@@ -543,6 +512,7 @@ class QBXTargetAssociator(object):
 
         if debug:
             target_status.finish()
+            # Associated target = 2, marked target = 1
             ntargets_associated = (
                 int(cl.array.sum(target_status).get()) - marked_target_count)
             assert ntargets_associated >= 0
@@ -566,9 +536,6 @@ class QBXTargetAssociator(object):
                 peer_lists.peer_list_starts.dtype,
                 tree.particle_id_dtype,
                 max_levels)
-
-        from boxtree.area_query import AreaQueryElementwiseTemplate
-        unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         found_panel_to_refine = cl.array.zeros(queue, 1, np.int32)
         found_panel_to_refine.finish()
@@ -622,21 +589,23 @@ class QBXTargetAssociator(object):
 
         return (found_panel_to_refine.get() == 1).all()
 
-    def make_target_flags(self, queue, target_discrs):
-        ntargets = sum(discr.nnodes for discr, _ in target_discrs)
+    def make_target_flags(self, queue, target_discrs_and_qbx_sides):
+        ntargets = sum(discr.nnodes for discr, _ in target_discrs_and_qbx_sides)
         target_flags = cl.array.empty(queue, ntargets, dtype=np.int32)
         offset = 0
-        for discr, flags, in target_discrs:
+
+        for discr, flags in target_discrs_and_qbx_sides:
             if np.isscalar(flags):
                 target_flags[offset:offset + discr.nnodes].fill(flags)
             else:
                 assert len(flags) == discr.nnodes
                 target_flags[offset:offset + discr.nnodes] = flags
             offset += discr.nnodes
+
         target_flags.finish()
         return target_flags
 
-    def make_target_association(self, queue, ntargets):
+    def make_default_target_association(self, queue, ntargets):
         target_to_source = cl.array.empty(queue, ntargets, dtype=np.int32)
         target_to_center_side = cl.array.empty_like(target_to_source)
 
@@ -646,25 +615,62 @@ class QBXTargetAssociator(object):
         target_to_source.finish()
         target_to_center_side.finish()
 
-        return TargetAssociation(
+        return QBXTargetAssociation(
             target_to_source=target_to_source,
             target_to_center_side=target_to_center_side)
 
-    def __call__(self, lpot_source, target_discrs, stick_out_factor=1e-10,
-                 debug=True, wait_for=None):
+    def __call__(self, lpot_source, target_discrs_and_qbx_sides,
+                 stick_out_factor=1e-10, debug=True, wait_for=None):
         """
         Entry point for calling the target associator.
 
-        :arg lpot_source: An instance of :class:`NewQBXLayerPotentialSource`.
+        :arg lpot_source: An instance of :class:`NewQBXLayerPotentialSource`
 
-        :arg target_discrs: 
+        :arg target_discrs_and_qbx_sides:
+
+            a list of tuples ``(discr, sides)``, where
+            *discr* is a
+            :class:`pytential.discretization.Discretization`
+            or a
+            :class:`pytential.discretization.target.TargetBase` instance, and
+            *sides* is either a :class:`int` or
+            an array of (:class:`numpy.int8`) side requests for each
+            target.
+
+            The side request can take the following values for each target:
+
+            ===== ==============================================
+            Value Meaning
+            ===== ==============================================
+            0     Volume target. If near a QBX center,
+                  the value from the QBX expansion is returned,
+                  otherwise the volume potential is returned.
+
+            -1    Surface target. Return interior limit from
+                  interior-side QBX expansion.
+
+            +1    Surface target. Return exterior limit from
+                  exterior-side QBX expansion.
+
+            -2    Volume target. If within an *interior* QBX disk,
+                  the value from the QBX expansion is returned,
+                  otherwise the volume potential is returned.
+
+            +2    Volume target. If within an *exterior* QBX disk,
+                  the value from the QBX expansion is returned,
+                  otherwise the volume potential is returned.
+            ===== ==============================================
+
+        :raises QBXTargetAssociationFailedException:
+            when target association failed to find a center for a target.
+            The returned exception object contains suggested refine flags.
 
         :returns:
         """
 
         with cl.CommandQueue(self.cl_context) as queue:
             tree = self.tree_builder(queue, lpot_source,
-                                     [discr for discr, _ in target_discrs])
+                    [discr for discr, _ in target_discrs_and_qbx_sides])
             peer_lists, evt = self.peer_list_finder(queue, tree, wait_for)
             wait_for = [evt]
 
@@ -675,26 +681,28 @@ class QBXTargetAssociator(object):
                                                    lpot_source, target_status,
                                                    debug)
 
-            target_assoc = self.make_target_association(queue, tree.nqbxtargets)
+            target_assoc = self.make_default_target_association(
+                queue, tree.nqbxtargets)
 
             if not have_close_targets:
                 return target_assoc.with_queue(None)
 
-            target_flags = self.make_target_flags(queue, target_discrs)
+            target_flags = self.make_target_flags(queue, target_discrs_and_qbx_sides)
 
             self.try_find_centers(queue, tree, peer_lists, lpot_source,
                                   target_status, target_flags, target_assoc,
                                   stick_out_factor, debug)
 
-            center_not_found = (target_status == TargetStatus.MARKED_QBX_CENTER_PENDING)
+            center_not_found = (
+                target_status == TargetStatus.MARKED_QBX_CENTER_PENDING)
 
             if center_not_found.any().get():
                 surface_target = (
                     (target_flags == TargetFlag.INTERIOR_SURFACE_TARGET)
-                    or (target_flags == TargetFlag.EXTERIOR_SURFACE_TARGET))
+                    | (target_flags == TargetFlag.EXTERIOR_SURFACE_TARGET))
 
-                if (center_not_found and surface_target).any().get():
-                    logger.warning("WARNING: An on-surface target was not "
+                if (center_not_found & surface_target).any().get():
+                    logger.warning("An on-surface target was not "
                             "assigned a center. As a remedy you can try increasing "
                             "the \"stick_out_factor\" parameter, but this could "
                             "also cause an invalid center assignment.")
@@ -705,7 +713,7 @@ class QBXTargetAssociator(object):
                                                 lpot_source, target_status,
                                                 refine_flags, debug)
                 assert have_panel_to_refine
-                raise TargetAssociationFailedException(
+                raise QBXTargetAssociationFailedException(
                         refine_flags.with_queue(None))
 
             return target_assoc.with_queue(None)

@@ -56,20 +56,11 @@ QBX_TREE_C_PREAMBLE = r"""//CL:mako//
 typedef ${dtype_to_ctype(vec_types_dict[coord_dtype, dimensions])} coord_vec_t;
 """
 
-
 QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 <%def name="load_particle(particle, coords)">
-    <% zerovect = ["0"] * 2 ** (dimensions - 1).bit_length() %>
-    /* Zero initialize, to allow for use in distance computations. */
-    ${coords} = (coord_vec_t) (${", ".join(zerovect)});
-
     %for ax in AXIS_NAMES[:dimensions]:
         ${coords}.${ax} = particles_${ax}[${particle}];
     %endfor
-</%def>
-
-<%def name="find_leaf_for_particle(particle, box_to_particle)">
-    box_id_t box = bsearch_boxes(${box_to_particle}, nboxes + 1, ${particle});
 </%def>
 """
 
@@ -96,6 +87,38 @@ def get_interleaver_kernel(dtype):
         assumptions="2*srclen = dstlen")
     knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
     return knl
+
+# }}}
+
+
+# {{{ discr plotter mixin
+
+class DiscrPlotterMixin(object):
+
+    def plot_discr(self, lpot_source, outfilename="discr.pdf"):
+        with cl.CommandQueue(self.cl_context) as queue:
+            tree = self.tree_builder(queue, lpot_source).get(queue=queue)
+            from boxtree.visualization import TreePlotter
+
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            tp = TreePlotter(tree)
+            tp.draw_tree()
+            sources = (tree.sources[0], tree.sources[1])
+            sti = tree.sorted_target_ids
+            plt.plot(sources[0][sti[tree.qbx_user_source_slice]],
+                     sources[1][sti[tree.qbx_user_source_slice]],
+                     lw=0, marker=".", markersize=1, label="sources")
+            plt.plot(sources[0][sti[tree.qbx_user_center_slice]],
+                     sources[1][sti[tree.qbx_user_center_slice]],
+                     lw=0, marker=".", markersize=1, label="centers")
+            plt.plot(sources[0][sti[tree.qbx_user_target_slice]],
+                     sources[1][sti[tree.qbx_user_target_slice]],
+                     lw=0, marker=".", markersize=1, label="targets")
+            plt.axis("equal")
+            plt.legend()
+            plt.savefig(outfilename)
 
 # }}}
 

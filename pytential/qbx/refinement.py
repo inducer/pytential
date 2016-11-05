@@ -32,6 +32,7 @@ import numpy as np
 from pytools import memoize_method
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import QuadratureSimplexGroupFactory
+from pytential.qbx.utils import DiscrPlotterMixin
 
 import pyopencl as cl
 
@@ -261,6 +262,9 @@ from boxtree.tools import InlineBinarySearch
 from pytential.qbx.utils import QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS
 
 
+unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
+
+
 # {{{ kernels
 
 TUNNEL_QUERY_DISTANCE_FINDER_TEMPLATE = ElementwiseTemplate(
@@ -486,7 +490,7 @@ CENTER_IS_FAR_FROM_NONNEIGHBOR_PANEL_REFINER = AreaQueryElementwiseTemplate(
 
 # {{{ lpot source refiner
 
-class QBXLayerPotentialSourceRefiner(object):
+class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
     """
     Driver for refining the QBX source grid. Follows [1]_.
 
@@ -565,11 +569,13 @@ class QBXLayerPotentialSourceRefiner(object):
                 <> neighbor_stop = panel_adjacency_starts[panel + 1]
                 for ineighbor
                     <> neighbor = panel_adjacency_lists[ineighbor]
+
                     <> oversize = (refine_flags_prev[panel] == 0
                            and (
                                (panel_sizes[panel] > 2 * panel_sizes[neighbor]) or
                                (panel_sizes[panel] > panel_sizes[neighbor] and
                                    refine_flags_prev[neighbor] == 1)))
+
                     refine_flags[panel] = 1 {if=oversize}
                     refine_flags_updated = 1 {
                         id=write_refine_flags_updated,if=oversize}
@@ -580,7 +586,8 @@ class QBXLayerPotentialSourceRefiner(object):
             "..."
             ],
             options="return_dict",
-            silenced_warnings="write_race(write_refine_flags_updated)")
+            silenced_warnings="write_race(write_refine_flags_updated)",
+            name="refine_2_to_1_adj_panel_size_ratio")
         knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
@@ -596,7 +603,8 @@ class QBXLayerPotentialSourceRefiner(object):
             end
             """,
             options="return_dict",
-            silenced_warnings="write_race(write_refine_flags_updated)")
+            silenced_warnings="write_race(write_refine_flags_updated)",
+            name="refine_helmholtz_k_to_panel_size_ratio")
         knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
@@ -626,9 +634,6 @@ class QBXLayerPotentialSourceRefiner(object):
         found_panel_to_refine.finish()
 
         r_max = cl.array.max(tq_dists).get()
-
-        from boxtree.area_query import AreaQueryElementwiseTemplate
-        unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
             *unwrap_args(
@@ -682,9 +687,6 @@ class QBXLayerPotentialSourceRefiner(object):
 
         found_panel_to_refine = cl.array.zeros(queue, 1, np.int32)
         found_panel_to_refine.finish()
-
-        from boxtree.area_query import AreaQueryElementwiseTemplate
-        unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         adjacency = self.get_adjacency_on_device(queue, lpot_source)
 
@@ -885,30 +887,6 @@ class QBXLayerPotentialSourceRefiner(object):
             real_dtype=lpot_source.real_dtype, debug=debug)
 
         return new_lpot_source, conn
-
-    def plot_discr(self, lpot_source):
-        with cl.CommandQueue(self.context) as queue:
-            tree = self.tree_builder(queue, lpot_source).get(queue=queue)
-            from boxtree.visualization import TreePlotter
-            import matplotlib
-            matplotlib.use('Agg')
-            import matplotlib.pyplot as plt
-            tp = TreePlotter(tree)
-            tp.draw_tree()
-            sources = (tree.sources[0], tree.sources[1])
-            sti = tree.sorted_target_ids
-            plt.plot(sources[0][sti[tree.qbx_user_source_slice]],
-                     sources[1][sti[tree.qbx_user_source_slice]],
-                     lw=0, marker=".", markersize=1, label="sources")
-            plt.plot(sources[0][sti[tree.qbx_user_center_slice]],
-                     sources[1][sti[tree.qbx_user_center_slice]],
-                     lw=0, marker=".", markersize=1, label="centers")
-            plt.plot(sources[0][sti[tree.qbx_user_target_slice]],
-                     sources[1][sti[tree.qbx_user_target_slice]],
-                     lw=0, marker=".", markersize=1, label="targets")
-            plt.axis("equal")
-            plt.legend()
-            plt.savefig("discr.pdf")
 
     def __call__(self, lpot_source, discr_factory, helmholtz_k=None,
                  # FIXME: Set debug=False once everything works.

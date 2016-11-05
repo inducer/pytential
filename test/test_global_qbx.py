@@ -1,6 +1,9 @@
 from __future__ import division, absolute_import, print_function
 
-__copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
+__copyright__ = """
+Copyright (C) 2013 Andreas Kloeckner
+Copyright (C) 2016 Matt Wala
+"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -86,13 +89,13 @@ def iter_elements(discr):
     ("20-to-1 ellipse", partial(ellipse, 20), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelements):
+def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
     # {{{ generate lpot source, run refiner
 
-    order = 5
+    order = 16
     helmholtz_k = 10
 
     mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
@@ -175,15 +178,20 @@ def test_lpot_source_refinement(ctx_getter, curve_name, curve_f, nelements):
     # }}}
 
 
-def test_ellipse_target_association(ctx_getter):
+@pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
+    ("20-to-1 ellipse", partial(ellipse, 20), 100),
+    ("horseshoe", horseshoe, 64),
+    ])
+def test_target_association(ctx_getter, curve_name, curve_f, nelements):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
+
+    # {{{ generate lpot source
 
     order = 16
 
     # Make the curve mesh.
-    nelements = 100
-    mesh = make_curve_mesh(partial(ellipse, 3), np.linspace(0, 1, nelements+1), order)
+    mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
@@ -201,34 +209,36 @@ def test_ellipse_target_association(ctx_getter):
 
     lpot_source, conn = refiner(lpot_source, factory)
 
-    discr_nodes = lpot_source.density_discr.nodes().get(queue)
     int_centers = lpot_source.centers(-1)
     ext_centers = lpot_source.centers(+1)
 
+    # }}}
+
+    # {{{ generate targets
+
     RNG_SEED = 10
+
     from pyopencl.clrandom import PhiloxGenerator
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
     nsources = lpot_source.density_discr.nnodes
     noise = rng.uniform(queue, nsources, dtype=np.float, a=0.01, b=1.0)
+    panel_sizes = lpot_source.panel_sizes("nsources").with_queue(queue)
 
-    def close_targets(sign):
+    def targets_from_sources(sign, dist):
         from pytential import sym, bind
         nodes = bind(lpot_source.density_discr, sym.Nodes())(queue)
         normals = bind(lpot_source.density_discr, sym.normal())(queue)
-        panel_sizes = lpot_source.panel_sizes().with_queue(queue)
-        return (nodes + normals * sign * noise * panel_sizes / 2).as_vector(np.object)
+        return (nodes + normals * sign * dist).as_vector(np.object)
 
     from pytential.target import PointsTarget
 
-    int_targets = PointsTarget(close_targets(-1))
-    ext_targets = PointsTarget(close_targets(+1))
-    NFARTARGETS = 10
-    far_targets = PointsTarget(
-        (rng.normal(queue, NFARTARGETS, np.float, sigma=5e-3),
-         rng.normal(queue, NFARTARGETS, np.float, sigma=5e-3)))
+    int_targets = PointsTarget(targets_from_sources(-1, noise * panel_sizes / 2))
+    ext_targets = PointsTarget(targets_from_sources(+1, noise * panel_sizes / 2))
+    FAR_TARGET_DIST = 10
+    far_targets = PointsTarget(targets_from_sources(+1, FAR_TARGET_DIST))
 
     # Create target discretizations.
-    target_discrs = [
+    target_discrs = (
         # On-surface targets, interior
         (lpot_source.density_discr, -1),
         # On-surface targets, exterior
@@ -237,17 +247,27 @@ def test_ellipse_target_association(ctx_getter):
         (int_targets, -2),
         # Exterior close targets
         (ext_targets, +2),
-        ## Far targets, should not need centers
+        # Far targets, should not need centers
         (far_targets, 0),
-    ]
+    )
 
     sizes = np.cumsum([discr.nnodes for discr, _ in target_discrs])
-    from itertools import chain
-    slices = [slice(start, end) for start, end in zip(chain([0], sizes), sizes)]
+
+    (surf_int_slice,
+     surf_ext_slice,
+     vol_int_slice,
+     vol_ext_slice,
+     far_slice,
+     ) = [slice(start, end) for start, end in zip(np.r_[0, sizes], sizes)]
+
+    # }}}
+
+    # {{{ run target associator and check
 
     from pytential.qbx.target_assoc import QBXTargetAssociator
-    target_assoc = QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs)
-    target_assoc = target_assoc.get(queue=queue)
+    target_assoc = (
+        QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs)
+        .get(queue=queue))
 
     panel_sizes = lpot_source.panel_sizes("nsources").get(queue)
 
@@ -271,33 +291,85 @@ def test_ellipse_target_association(ctx_getter):
         dists = la.norm((targets.T - centers.T[target_to_source_result]), axis=1)
         assert (dists <= panel_sizes[target_to_source_result] / 2).all()
 
+    # Checks that far targets are not assigned a center.
     def check_far_targets(target_to_source_result, target_to_side_result):
         assert (target_to_source_result == -1).all()
         assert (target_to_side_result == 0).all()
 
     check_on_surface_targets(
         nsources, -1,
-        target_assoc.target_to_source[slices[0]],
-        target_assoc.target_to_center_side[slices[0]])
+        target_assoc.target_to_source[surf_int_slice],
+        target_assoc.target_to_center_side[surf_int_slice])
 
     check_on_surface_targets(
         nsources, +1,
-        target_assoc.target_to_source[slices[1]],
-        target_assoc.target_to_center_side[slices[1]])
+        target_assoc.target_to_source[surf_ext_slice],
+        target_assoc.target_to_center_side[surf_ext_slice])
 
     check_close_targets(
         int_centers, int_targets, -1,
-        target_assoc.target_to_source[slices[2]],
-        target_assoc.target_to_center_side[slices[2]])
+        target_assoc.target_to_source[vol_int_slice],
+        target_assoc.target_to_center_side[vol_int_slice])
 
     check_close_targets(
         ext_centers, ext_targets, +1,
-        target_assoc.target_to_source[slices[3]],
-        target_assoc.target_to_center_side[slices[3]])
+        target_assoc.target_to_source[vol_ext_slice],
+        target_assoc.target_to_center_side[vol_ext_slice])
 
     check_far_targets(
-        target_assoc.target_to_source[slices[4]],
-        target_assoc.target_to_center_side[slices[4]])
+        target_assoc.target_to_source[far_slice],
+        target_assoc.target_to_center_side[far_slice])
+
+    # }}}
+
+
+def test_target_association_failure(ctx_getter):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    # {{{ generate circle
+
+    order = 5
+    nelements = 40
+
+    # Make the curve mesh.
+    curve_f = partial(ellipse, 1)
+    mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
+
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+    factory = InterpolatoryQuadratureSimplexGroupFactory(order)
+
+    discr = Discretization(cl_ctx, mesh, factory)
+
+    from pytential.qbx.refinement import NewQBXLayerPotentialSource
+
+    lpot_source = NewQBXLayerPotentialSource(discr, order)
+    del discr
+
+    # }}}
+
+    # {{{ generate targets
+
+    close_circle = 0.999 * np.exp(
+        2j * np.pi * np.linspace(0, 1, 500, endpoint=False))
+    from pytential.target import PointsTarget
+    close_circle_target = (
+        PointsTarget(cl.array.to_device(
+            queue, np.array([close_circle.real, close_circle.imag]))))
+
+    targets = (
+        (close_circle_target, 0),
+        )
+
+    from pytential.qbx.target_assoc import (
+        QBXTargetAssociator, QBXTargetAssociationFailedException)
+
+    with pytest.raises(QBXTargetAssociationFailedException):
+        QBXTargetAssociator(cl_ctx)(lpot_source, targets)
+
+    # }}}
 
 
 # You can test individual routines by typing
