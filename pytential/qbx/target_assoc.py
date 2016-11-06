@@ -442,7 +442,7 @@ class QBXTargetAssociator(DiscrPlotterMixin):
 
         logger.info("target association: done marking targets close to panels")
 
-        return (found_target_close_to_panel.get() == 1).all()
+        return (found_target_close_to_panel == 1).all().get()
 
     def try_find_centers(self, queue, tree, peer_lists, lpot_source,
                          target_status, target_flags, target_assoc,
@@ -587,7 +587,7 @@ class QBXTargetAssociator(DiscrPlotterMixin):
 
         logger.info("target association: done marking panels for refinement")
 
-        return (found_panel_to_refine.get() == 1).all()
+        return (found_panel_to_refine == 1).all().get()
 
     def make_target_flags(self, queue, target_discrs_and_qbx_sides):
         ntargets = sum(discr.nnodes for discr, _ in target_discrs_and_qbx_sides)
