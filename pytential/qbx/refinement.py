@@ -576,9 +576,10 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
                                (panel_sizes[panel] > panel_sizes[neighbor] and
                                    refine_flags_prev[neighbor] == 1)))
 
-                    refine_flags[panel] = 1 {if=oversize}
-                    refine_flags_updated = 1 {
-                        id=write_refine_flags_updated,if=oversize}
+                    if oversize
+                        refine_flags[panel] = 1
+                        refine_flags_updated = 1 {id=write_refine_flags_updated}
+                    end
                 end
             end
             """, [
