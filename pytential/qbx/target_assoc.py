@@ -47,7 +47,6 @@ logger = logging.getLogger(__name__)
 
 #
 # TODO:
-# - Remove spurious arguments
 # - Documentation
 #
 #==================
@@ -167,7 +166,7 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
         }
     """,
     name="mark_targets",
-    preamble=TARGET_ASSOC_DEFINES + str(InlineBinarySearch("particle_id_t")))
+    preamble=TARGET_ASSOC_DEFINES)
 
 
 QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
@@ -175,12 +174,8 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
         /* input */
         particle_id_t *box_to_center_starts,
         particle_id_t *box_to_center_lists,
-        particle_id_t *panel_to_source_starts,
-        particle_id_t source_offset,
         particle_id_t center_offset,
         particle_id_t target_offset,
-        int npanels,
-        int nboxes,
         particle_id_t *sorted_target_ids,
         coord_t *panel_sizes,
         coord_t *box_to_search_dist,
@@ -239,7 +234,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
         }
     """,
     name="find_centers",
-    preamble=TARGET_ASSOC_DEFINES + str(InlineBinarySearch("particle_id_t")))
+    preamble=TARGET_ASSOC_DEFINES)
 
 
 QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
@@ -490,12 +485,8 @@ class QBXTargetAssociator(DiscrPlotterMixin):
                 tree, peer_lists,
                 tree.box_to_qbx_center_starts,
                 tree.box_to_qbx_center_lists,
-                tree.qbx_panel_to_source_starts,
-                tree.qbx_user_source_slice.start,
                 tree.qbx_user_center_slice.start,
                 tree.qbx_user_target_slice.start,
-                tree.nqbxpanels,
-                tree.nboxes,
                 tree.sorted_target_ids,
                 panel_sizes,
                 box_to_search_dist,
