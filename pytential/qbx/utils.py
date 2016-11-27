@@ -91,6 +91,33 @@ def get_interleaver_kernel(dtype):
 # }}}
 
 
+# {{{ make interleaved centers
+
+def get_interleaved_centers(queue, lpot_source):
+    """
+    Return an array of shape (dim, ncenters) in which interior centers are placed
+    next to corresponding exterior centers.
+    """
+    knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
+    int_centers = lpot_source.centers(-1)
+    ext_centers = lpot_source.centers(+1)
+
+    result = []
+    wait_for = []
+
+    for int_axis, ext_axis in zip(int_centers, ext_centers):
+        axis = cl.array.empty(queue, len(int_axis) * 2, int_axis.dtype)
+        evt, _ = knl(queue, src1=int_axis, src2=ext_axis, dst=axis)
+        result.append(axis)
+        wait_for.append(evt)
+
+    cl.wait_for_events(wait_for)
+
+    return result
+
+# }}}
+
+
 # {{{ discr plotter mixin
 
 class DiscrPlotterMixin(object):
@@ -161,28 +188,6 @@ class TreeWithQBXMetadataBuilder(object):
         from boxtree.tree_build import TreeBuilder
         self.tree_builder = TreeBuilder(self.context)
 
-    def get_interleaved_centers(self, queue, lpot_source):
-        """
-        Return an array of shape (dim, ncenters) in which interior centers are placed
-        next to corresponding exterior centers.
-        """
-        knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
-        int_centers = lpot_source.centers(-1)
-        ext_centers = lpot_source.centers(+1)
-
-        result = []
-        wait_for = []
-
-        for int_axis, ext_axis in zip(int_centers, ext_centers):
-            axis = cl.array.empty(queue, len(int_axis) * 2, int_axis.dtype)
-            evt, _ = knl(queue, src1=int_axis, src2=ext_axis, dst=axis)
-            result.append(axis)
-            wait_for.append(evt)
-
-        cl.wait_for_events(wait_for)
-
-        return result
-
     def __call__(self, queue, lpot_source, targets_list=()):
         """
         Return a :class:`TreeWithQBXMetadata` built from the given layer
@@ -204,7 +209,7 @@ class TreeWithQBXMetadataBuilder(object):
         logger.info("start building tree with qbx metadata")
 
         sources = lpot_source.density_discr.nodes()
-        centers = self.get_interleaved_centers(queue, lpot_source)
+        centers = get_interleaved_centers(queue, lpot_source)
         centers_of_mass = lpot_source.panel_centers_of_mass()
         targets = (tgt.nodes() for tgt in targets_list)
 

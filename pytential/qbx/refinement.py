@@ -47,11 +47,14 @@ Refinement
 """
 
 
+from pytential.qbx import LayerPotentialSource, get_multipole_expansion_class, get_local_expansion_class
+
+
 # {{{ layer potential source
 
 # FIXME: Move to own file, replace existing QBXLayerPotentialSource when
 # finished.
-class NewQBXLayerPotentialSource(object):
+class NewQBXLayerPotentialSource(LayerPotentialSource):
     """A source discretization for a QBX layer potential.
 
     .. attribute :: density_discr
@@ -66,7 +69,7 @@ class NewQBXLayerPotentialSource(object):
     """
     def __init__(self, density_discr, fine_order,
             qbx_order=None, fmm_order=None,
-            qbx_level_to_order=None, fmm_level_to_order=None,
+            fmm_level_to_order=None,
             # FIXME set debug=False once everything works
             real_dtype=np.float64, debug=True,
             performance_data_file=None):
@@ -89,8 +92,6 @@ class NewQBXLayerPotentialSource(object):
             if fmm_order is None and qbx_order is not None:
                 fmm_order = qbx_order + 1
 
-        if qbx_order is not None and qbx_level_to_order is not None:
-            raise TypeError("may not specify both qbx_order an qbx_level_to_order")
         if fmm_order is not None and fmm_level_to_order is not None:
             raise TypeError("may not specify both fmm_order an fmm_level_to_order")
 
@@ -101,12 +102,8 @@ class NewQBXLayerPotentialSource(object):
                 def fmm_level_to_order(level):
                     return fmm_order
 
-        if qbx_level_to_order is None:
-            def qbx_level_to_order(level):
-                return qbx_order
-
         self.fine_order = fine_order
-        self.qbx_level_to_order = qbx_level_to_order
+        self.qbx_order = qbx_order
         self.density_discr = density_discr
         self.fmm_level_to_order = fmm_level_to_order
         self.debug = debug
@@ -253,6 +250,222 @@ class NewQBXLayerPotentialSource(object):
             qweight = bind(self.fine_density_discr, p.QWeight())(queue)
 
             return (area_element.with_queue(queue)*qweight).with_queue(None)
+
+    def preprocess_optemplate(self, name, discretizations, expr):
+        """
+        :arg name: The symbolic name for *self*, which the preprocessor
+            should use to find which expressions it is allowed to modify.
+        """
+        from pytential.symbolic.mappers import QBXPreprocessor
+        return QBXPreprocessor(name, discretizations)(expr)
+
+    def op_group_features(self, expr):
+        from pytential.symbolic.primitives import IntGdSource
+        assert not isinstance(expr, IntGdSource)
+
+        from sumpy.kernel import AxisTargetDerivativeRemover
+        result = (
+                expr.source, expr.density,
+                AxisTargetDerivativeRemover()(expr.kernel),
+                )
+
+        return result
+
+    def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
+        from pytools.obj_array import with_object_array_or_scalar
+        from functools import partial
+        oversample = partial(self.resampler, queue)
+
+        def evaluate_wrapper(expr):
+            value = evaluate(expr)
+            return with_object_array_or_scalar(oversample, value)
+
+        if self.fmm_level_to_order is False:
+            func = self.exec_layer_potential_insn_direct
+        else:
+            func = self.exec_layer_potential_insn_fmm
+
+        return func(queue, insn, bound_expr, evaluate_wrapper)
+
+    @property
+    @memoize_method
+    def qbx_fmm_code_getter(self):
+        from pytential.qbx.geometry import QBXFMMGeometryCodeGetter
+        return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim,
+                debug=self.debug)
+
+    @memoize_method
+    def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
+        """
+        :arg target_discrs_and_qbx_sides:
+            a tuple of *(discr, qbx_forced_limit)*
+            tuples, where *discr* is a
+            :class:`meshmode.discretization.Discretization`
+            or
+            :class:`pytential.target.TargetBase`
+            instance
+        """
+        from pytential.qbx.geometry import QBXFMMGeometryData
+
+        return QBXFMMGeometryData(self.qbx_fmm_code_getter,
+                self, target_discrs_and_qbx_sides, debug=self.debug)
+
+    @memoize_method
+    def expansion_wrangler_code_container(self, base_kernel, out_kernels):
+        mpole_expn_class = get_multipole_expansion_class(base_kernel)
+        local_expn_class = get_local_expansion_class(base_kernel)
+
+        from functools import partial
+        fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
+        fmm_local_factory = partial(local_expn_class, base_kernel)
+        qbx_local_factory = partial(local_expn_class, base_kernel)
+
+        from pytential.qbx.fmm import \
+                QBXExpansionWranglerCodeContainer
+        return QBXExpansionWranglerCodeContainer(
+                self.cl_context,
+                fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
+                out_kernels)
+
+    def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
+        # {{{ build list of unique target discretizations used
+
+        # map (name, qbx_side) to number in list
+        tgt_name_and_side_to_number = {}
+        # list of tuples (discr, qbx_side)
+        target_discrs_and_qbx_sides = []
+
+        for o in insn.outputs:
+            key = (o.target_name, o.qbx_forced_limit)
+            if key not in tgt_name_and_side_to_number:
+                tgt_name_and_side_to_number[key] = \
+                        len(target_discrs_and_qbx_sides)
+
+                target_discr = bound_expr.places[o.target_name]
+                if isinstance(target_discr, LayerPotentialSource):
+                    target_discr = target_discr.density_discr
+
+                qbx_forced_limit = o.qbx_forced_limit
+                if qbx_forced_limit is None:
+                    qbx_forced_limit = 0
+
+                target_discrs_and_qbx_sides.append(
+                        (target_discr, qbx_forced_limit))
+
+        target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
+
+        # }}}
+
+        geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
+
+        # FIXME Exert more positive control over geo_data attribute lifetimes using
+        # geo_data.<method>.clear_cache(geo_data).
+
+        # FIXME Synthesize "bad centers" around corners and edges that have
+        # inadequate QBX coverage.
+
+        # FIXME don't compute *all* output kernels on all targets--respect that
+        # some target discretizations may only be asking for derivatives (e.g.)
+
+        strengths = (evaluate(insn.density).with_queue(queue)
+                * self.weights_and_area_elements())
+
+        # {{{ get expansion wrangler
+
+        base_kernel = None
+        out_kernels = []
+
+        from sumpy.kernel import AxisTargetDerivativeRemover
+        for knl in insn.kernels:
+            candidate_base_kernel = AxisTargetDerivativeRemover()(knl)
+
+            if base_kernel is None:
+                base_kernel = candidate_base_kernel
+            else:
+                assert base_kernel == candidate_base_kernel
+
+        out_kernels = tuple(knl for knl in insn.kernels)
+
+        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
+            value_dtype = self.complex_dtype
+        else:
+            value_dtype = self.real_dtype
+
+        # {{{ build extra_kwargs dictionaries
+
+        # This contains things like the Helmholtz parameter k or
+        # the normal directions for double layers.
+
+        def reorder_sources(source_array):
+            if isinstance(source_array, cl.array.Array):
+                return (source_array
+                        .with_queue(queue)
+                        [geo_data.tree().user_source_ids]
+                        .with_queue(None))
+            else:
+                return source_array
+
+        kernel_extra_kwargs = {}
+        source_extra_kwargs = {}
+
+        from sumpy.tools import gather_arguments, gather_source_arguments
+        from pytools.obj_array import with_object_array_or_scalar
+        for func, var_dict in [
+                (gather_arguments, kernel_extra_kwargs),
+                (gather_source_arguments, source_extra_kwargs),
+                ]:
+            for arg in func(out_kernels):
+                var_dict[arg.name] = with_object_array_or_scalar(
+                        reorder_sources,
+                        evaluate(insn.kernel_arguments[arg.name]))
+
+        # }}}
+
+        wrangler = self.expansion_wrangler_code_container(
+                base_kernel, out_kernels).get_wrangler(
+                        queue, geo_data, value_dtype,
+                        self.qbx_order,
+                        self.fmm_level_to_order,
+                        source_extra_kwargs=source_extra_kwargs,
+                        kernel_extra_kwargs=kernel_extra_kwargs)
+
+        # }}}
+
+        #geo_data.plot()
+
+        if len(geo_data.global_qbx_centers()) != geo_data.center_info().ncenters:
+            raise NotImplementedError("geometry has centers requiring local QBX")
+
+        from pytential.qbx.geometry import target_state
+        if (geo_data.user_target_to_center().with_queue(queue)
+                == target_state.FAILED).any().get():
+            raise RuntimeError("geometry has failed targets")
+
+        if self.performance_data_file is not None:
+            from pytential.qbx.fmm import write_performance_model
+            with open(self.performance_data_file, "w") as outf:
+                write_performance_model(outf, geo_data)
+
+        # {{{ execute global QBX
+
+        from pytential.qbx.fmm import drive_fmm
+        all_potentials_on_every_tgt = drive_fmm(wrangler, strengths)
+
+        # }}}
+
+        result = []
+
+        for o in insn.outputs:
+            tgt_side_number = tgt_name_and_side_to_number[
+                    o.target_name, o.qbx_forced_limit]
+            tgt_slice = slice(*geo_data.target_info().target_discr_starts[
+                    tgt_side_number:tgt_side_number+2])
+
+            result.append(
+                    (o.name,
+                        all_potentials_on_every_tgt[o.kernel_index][tgt_slice]))
+
+        return result, []
 
 # }}}
 
@@ -883,7 +1096,7 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
 
         new_lpot_source = NewQBXLayerPotentialSource(
             new_density_discr, lpot_source.fine_order,
-            qbx_level_to_order=lpot_source.qbx_level_to_order,
+            qbx_order=lpot_source.qbx_order,
             fmm_level_to_order=lpot_source.fmm_level_to_order,
             real_dtype=lpot_source.real_dtype, debug=debug)
 

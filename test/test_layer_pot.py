@@ -44,6 +44,10 @@ logger = logging.getLogger(__name__)
 
 circle = partial(ellipse, 1)
 
+import faulthandler
+
+faulthandler.enable()
+
 __all__ = [
         "pytest_generate_tests",
 
@@ -127,7 +131,8 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
-    from pytential.qbx import QBXLayerPotentialSource
+    from pytential.qbx.refinement import (
+        NewQBXLayerPotentialSource, QBXLayerPotentialSourceRefiner)
     from pytools.convergence import EOCRecorder
 
     s_eoc_rec = EOCRecorder()
@@ -151,16 +156,18 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-        fmm_order = qbx_order
-        if fmm_order > 3:
-            # FIXME: for now
+        fmm_order = qbx_order + 3
+        if fmm_order > 4:
             fmm_order = False
 
         density_discr = Discretization(
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
-        qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
+        qbx = NewQBXLayerPotentialSource(density_discr, 4*target_order,
                 qbx_order, fmm_order=fmm_order)
+        refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
+        qbx, conn = refiner(qbx, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+        density_discr = qbx.density_discr
 
         nodes = density_discr.nodes().with_queue(queue)
 
@@ -186,6 +193,8 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 cl.clmath.sin(angle)**2
                 + (1/ellipse_aspect)**2 * cl.clmath.cos(angle)**2)
 
+        h = cl.array.max(qbx.panel_sizes("npanels").with_queue(queue)).get()
+
         # {{{ single layer
 
         sigma = cl.clmath.cos(mode_nr*angle)/J
@@ -210,7 +219,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 norm(density_discr, queue, s_sigma - s_sigma_ref)
                 /
                 norm(density_discr, queue, s_sigma_ref))
-        s_eoc_rec.add_data_point(1/nelements, s_err)
+        s_eoc_rec.add_data_point(h, s_err)
 
         # }}}
 
@@ -241,7 +250,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 norm(density_discr, queue, d_sigma - d_sigma_ref)
                 /
                 d_ref_norm)
-        d_eoc_rec.add_data_point(1/nelements, d_err)
+        d_eoc_rec.add_data_point(h, d_err)
 
         # }}}
 

@@ -160,7 +160,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     def reorder_sources(self, source_array):
         return (source_array
                 .with_queue(self.queue)
-                [self.tree.user_point_source_ids]
+                [self.tree.user_source_ids]
                 .with_queue(None))
 
     def reorder_potentials(self, potentials):
@@ -177,10 +177,10 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     def box_source_list_kwargs(self):
         return dict(
-                box_source_starts=self.tree.box_point_source_starts,
+                box_source_starts=self.tree.box_source_starts,
                 box_source_counts_nonchild=(
-                    self.tree.box_point_source_counts_nonchild),
-                sources=self.tree.point_sources)
+                    self.tree.box_source_counts_nonchild),
+                sources=self.tree.sources)
 
     def box_target_list_kwargs(self):
         # This only covers the non-QBX targets.
@@ -574,7 +574,7 @@ def write_performance_model(outf, geo_data):
 
         start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
         for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
-            nsources = tree.box_point_source_counts_nonchild[src_ibox]
+            nsources = tree.box_source_counts_nonchild[src_ibox]
 
             npart_direct += ntargets * nsources
 
@@ -620,7 +620,7 @@ def write_performance_model(outf, geo_data):
         start, end = traversal.sep_bigger_starts[itgt_box:itgt_box+2]
 
         for src_ibox in traversal.sep_bigger_lists[start:end]:
-            nsources = tree.box_point_source_counts_nonchild[src_ibox]
+            nsources = tree.box_source_counts_nonchild[src_ibox]
 
             nform_local += nsources
 
@@ -667,7 +667,7 @@ def write_performance_model(outf, geo_data):
 
         start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
         for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
-            nsources = tree.box_point_source_counts_nonchild[src_ibox]
+            nsources = tree.box_source_counts_nonchild[src_ibox]
 
             nqbxl_direct += nsources
 

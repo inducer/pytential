@@ -186,8 +186,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
         int *target_status,
 
         /* output */
-        int *target_to_source,
-        int *target_to_center_side,
+        int *target_to_center,
         coord_t *min_dist_to_center,
 
         /* input, dim-dependent size */
@@ -228,8 +227,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
             {
                 target_status[i] = MARKED_QBX_CENTER_FOUND;
                 min_dist_to_center[i] = my_dist_to_center;
-                target_to_source[i] = SOURCE_FOR_CENTER_PARTICLE(center);
-                target_to_center_side[i] = center_side;
+                target_to_center[i] = center;
             }
         }
     """,
@@ -310,8 +308,7 @@ class QBXTargetAssociationFailedException(Exception):
 
 class QBXTargetAssociation(DeviceDataRecord):
     """
-    .. attribute:: target_to_source
-    .. attribute:: target_to_side
+    .. attribute:: target_to_center
     """
     pass
 
@@ -493,8 +490,7 @@ class QBXTargetAssociator(DiscrPlotterMixin):
                 stick_out_factor,
                 target_flags,
                 target_status,
-                target_assoc.target_to_source,
-                target_assoc.target_to_center_side,
+                target_assoc.target_to_center,
                 min_dist_to_center,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
@@ -597,18 +593,11 @@ class QBXTargetAssociator(DiscrPlotterMixin):
         return target_flags
 
     def make_default_target_association(self, queue, ntargets):
-        target_to_source = cl.array.empty(queue, ntargets, dtype=np.int32)
-        target_to_center_side = cl.array.empty_like(target_to_source)
+        target_to_center = cl.array.empty(queue, ntargets, dtype=np.int32)
+        target_to_center.fill(-1)
+        target_to_center.finish()
 
-        target_to_source.fill(-1)
-        target_to_center_side.fill(0)
-
-        target_to_source.finish()
-        target_to_center_side.finish()
-
-        return QBXTargetAssociation(
-            target_to_source=target_to_source,
-            target_to_center_side=target_to_center_side)
+        return QBXTargetAssociation(target_to_center=target_to_center)
 
     def __call__(self, lpot_source, target_discrs_and_qbx_sides,
                  stick_out_factor=1e-10, debug=True, wait_for=None):
