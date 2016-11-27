@@ -104,14 +104,14 @@ enum TargetFlag
 """
 
 
-class TargetStatus(object):
+class target_status_enum(object):
     # NOTE: Must match "enum TargetStatus" above
     UNMARKED = 0
     MARKED_QBX_CENTER_PENDING = 1
     MARKED_QBX_CENTER_FOUND = 2
 
 
-class TargetFlag(object):
+class target_flag_enum(object):
     # NOTE: Must match "enum TargetFlag" above
     INTERIOR_OR_EXTERIOR_VOLUME_TARGET = 0
     INTERIOR_SURFACE_TARGET = -1
@@ -685,12 +685,12 @@ class QBXTargetAssociator(DiscrPlotterMixin):
                                   stick_out_factor, debug)
 
             center_not_found = (
-                target_status == TargetStatus.MARKED_QBX_CENTER_PENDING)
+                target_status == target_status_enum.MARKED_QBX_CENTER_PENDING)
 
             if center_not_found.any().get():
                 surface_target = (
-                    (target_flags == TargetFlag.INTERIOR_SURFACE_TARGET)
-                    | (target_flags == TargetFlag.EXTERIOR_SURFACE_TARGET))
+                    (target_flags == target_flag_enum.INTERIOR_SURFACE_TARGET)
+                    | (target_flags == target_flag_enum.EXTERIOR_SURFACE_TARGET))
 
                 if (center_not_found & surface_target).any().get():
                     logger.warning("An on-surface target was not "
