@@ -242,18 +242,25 @@ class L2QBXL(E2EBase):
                     <> src_ibox = target_boxes[isrc_box] \
                         {id=read_src_ibox}
 
-                    <> tgt_center[idim] = qbx_centers[idim, icenter]
-                    <> src_center[idim] = centers[idim, src_ibox] {dup=idim}
-                    <> d[idim] = tgt_center[idim] - src_center[idim] {dup=idim}
+                    <> in_range = (target_base_ibox <= src_ibox
+                            and src_ibox < target_base_ibox + nboxes)
 
-                    """] + ["""
-                    <> src_coeff{i} = expansions[src_ibox, {i}] {{dep=read_src_ibox}}
-                    """.format(i=i) for i in range(ncoeff_src)] + [
-                    ] + self.get_translation_loopy_insns() + ["""
-                    qbx_expansions[icenter, {i}] = \
-                        qbx_expansions[icenter, {i}] + coeff{i} \
-                        {{id_prefix=write_expn}}
-                    """.format(i=i) for i in range(ncoeff_tgt)] + ["""
+                    if in_range
+                        <> tgt_center[idim] = qbx_centers[idim, icenter]
+                        <> src_center[idim] = centers[idim, src_ibox] {dup=idim}
+                        <> d[idim] = tgt_center[idim] - src_center[idim] {dup=idim}
+
+                        """] + ["""
+                        <> src_coeff{i} = \
+                                expansions[src_ibox - target_base_ibox, {i}] \
+                                {{dep=read_src_ibox}}
+                        """.format(i=i) for i in range(ncoeff_src)] + [
+                        ] + self.get_translation_loopy_insns() + ["""
+                        qbx_expansions[icenter, {i}] = \
+                            qbx_expansions[icenter, {i}] + coeff{i} \
+                            {{id_prefix=write_expn}}
+                        """.format(i=i) for i in range(ncoeff_tgt)] + ["""
+                    end
                 end
                 """],
                 [
@@ -262,9 +269,9 @@ class L2QBXL(E2EBase):
                     lp.GlobalArg("centers", None, shape="dim, naligned_boxes"),
                     lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
                         dim_tags="sep,c"),
-                    lp.ValueArg("naligned_boxes,nboxes", np.int32),
+                    lp.ValueArg("naligned_boxes,target_base_ibox,nboxes", np.int32),
                     lp.GlobalArg("expansions", None,
-                        shape=("nboxes", ncoeff_src)),
+                        shape=("nboxes", ncoeff_src), offset=lp.auto),
                     "..."
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name,

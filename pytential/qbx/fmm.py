@@ -277,33 +277,34 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
             return qbx_expansions
         trav = geo_data.traversal()
 
-        from pytools import single_valued
+        wait_for = local_exps.events
 
-        # AARGH FIXME order may vary by level
-        # TODO: This needs to be split up by source order
-        src_order = single_valued(self.level_orders)
-        l2qbxl = self.code.l2qbxl(
-                src_order,
-                self.qbx_order)
+        for isrc_level in range(geo_data.tree().nlevels):
+            l2qbxl = self.code.l2qbxl(
+                    self.level_orders[isrc_level],
+                    self.qbx_order)
 
-        l_expn_length = len(self.code.local_expansion_factory(src_order))
+            target_level_start_ibox, target_locals_view = \
+                    self.local_expansions_view(local_exps, isrc_level)
 
-        local_exps_shaped = local_exps.reshape(-1, l_expn_length)
+            evt, (qbx_expansions_res,) = l2qbxl(
+                    self.queue,
+                    qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+                    target_boxes=trav.target_boxes,
+                    target_base_ibox=target_level_start_ibox,
 
-        evt, (qbx_expansions_res,) = l2qbxl(
-                self.queue,
-                qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
-                target_boxes=trav.target_boxes,
+                    centers=self.tree.box_centers,
+                    qbx_centers=geo_data.center_info().centers,
 
-                centers=self.tree.box_centers,
-                qbx_centers=geo_data.center_info().centers,
+                    expansions=target_locals_view,
+                    qbx_expansions=qbx_expansions,
 
-                expansions=local_exps_shaped,
-                qbx_expansions=qbx_expansions,
+                    wait_for=wait_for,
 
-                wait_for=local_exps.events,
+                    **self.kernel_extra_kwargs)
 
-                **self.kernel_extra_kwargs)
+            wait_for = [evt]
+            assert qbx_expansions_res is qbx_expansions
 
         qbx_expansions.add_event(evt)
 
