@@ -578,12 +578,12 @@ class OperatorCompiler(IdentityMapper):
             group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
 
-            kernel_to_index = {}
-            kernels = []
-            for op in group:
-                if op.kernel not in kernel_to_index:
-                    kernel_to_index[op.kernel] = len(kernels)
-                    kernels.append(op.kernel)
+            kernels = sorted(
+                    set(op.kernel for op in group),
+                    key=lambda kernel: repr(kernel))
+
+            kernel_to_index = dict(
+                    (kernel, i) for i, kernel in enumerate(kernels))
 
             from pytools import single_valued
             from sumpy.kernel import AxisTargetDerivativeRemover
