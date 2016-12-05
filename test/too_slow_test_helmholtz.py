@@ -224,7 +224,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
                 bvp_rhs[i_bc] *= sqrt_w
 
     scipy_op = bound_pde_op.scipy_op(queue, "unknown",
-            domains=[sym.DEFAULT_TARGET]*len(pde_op.bcs), K0=K0, K1=K1)
+            domains=[sym.DEFAULT_TARGET]*len(pde_op.bcs), K0=K0, K1=K1,
+            dtype=np.complex128)
 
     if mode == "tem" or op_class is SRep:
         from sumpy.tools import vector_from_device, vector_to_device
