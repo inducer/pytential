@@ -467,6 +467,174 @@ class NewQBXLayerPotentialSource(LayerPotentialSource):
 
         return result, []
 
+    # {{{ direct execution
+
+    @memoize_method
+    def get_lpot_applier(self, kernels):
+        # needs to be separate method for caching
+
+        from pytools import any
+        if any(knl.is_complex_valued for knl in kernels):
+            value_dtype = self.density_discr.complex_dtype
+        else:
+            value_dtype = self.density_discr.real_dtype
+
+        from sumpy.qbx import LayerPotential
+        from sumpy.expansion.local import LineTaylorLocalExpansion
+        return LayerPotential(self.cl_context,
+                    [LineTaylorLocalExpansion(knl, self.qbx_order)
+                        for knl in kernels],
+                    value_dtypes=value_dtype)
+
+    @memoize_method
+    def get_lpot_applier_on_tgt_subset(self, kernels):
+        # needs to be separate method for caching
+
+        from pytools import any
+        if any(knl.is_complex_valued for knl in kernels):
+            value_dtype = self.density_discr.complex_dtype
+        else:
+            value_dtype = self.density_discr.real_dtype
+
+        from pytential.qbx.direct import LayerPotentialOnTargetAndCenterSubset
+        from sumpy.expansion.local import VolumeTaylorLocalExpansion
+        return LayerPotentialOnTargetAndCenterSubset(
+                self.cl_context,
+                [VolumeTaylorLocalExpansion(knl, self.qbx_order)
+                    for knl in kernels],
+                value_dtypes=value_dtype)
+
+    @memoize_method
+    def get_p2p(self, kernels):
+        # needs to be separate method for caching
+
+        from pytools import any
+        if any(knl.is_complex_valued for knl in kernels):
+            value_dtype = self.density_discr.complex_dtype
+        else:
+            value_dtype = self.density_discr.real_dtype
+
+        from sumpy.p2p import P2P
+        p2p = P2P(self.cl_context,
+                    kernels, exclude_self=False, value_dtypes=value_dtype)
+
+        return p2p
+
+    @memoize_method
+    def get_qbx_target_numberer(self, dtype):
+        assert dtype == np.int32
+        from pyopencl.scan import GenericScanKernel
+        return GenericScanKernel(
+                self.cl_context, np.int32,
+                arguments="int *tgt_to_qbx_center, int *qbx_tgt_number, int *count",
+                input_expr="tgt_to_qbx_center[i] >= 0 ? 1 : 0",
+                scan_expr="a+b", neutral="0",
+                output_statement="""
+                    if (item != prev_item)
+                        qbx_tgt_number[item-1] = i;
+
+                    if (i+1 == N)
+                        *count = item;
+                    """)
+
+    def exec_layer_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
+        lpot_applier = self.get_lpot_applier(insn.kernels)
+        p2p = None
+        lpot_applier_on_tgt_subset = None
+
+        kernel_args = {}
+        for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
+            kernel_args[arg_name] = evaluate(arg_expr)
+
+        strengths = (evaluate(insn.density).with_queue(queue)
+                * self.weights_and_area_elements())
+
+        # FIXME: Do this all at once
+        result = []
+        for o in insn.outputs:
+            target_discr = bound_expr.get_discretization(o.target_name)
+
+            is_self = self.density_discr is target_discr
+
+            if is_self:
+                # QBXPreprocessor is supposed to have taken care of this
+                assert o.qbx_forced_limit is not None
+                assert abs(o.qbx_forced_limit) > 0
+
+                evt, output_for_each_kernel = lpot_applier(
+                        queue, target_discr.nodes(),
+                        self.fine_density_discr.nodes(),
+                        self.centers(target_discr, o.qbx_forced_limit),
+                        [strengths], **kernel_args)
+                result.append((o.name, output_for_each_kernel[o.kernel_index]))
+            else:
+                # no on-disk kernel caching
+                if p2p is None:
+                    p2p = self.get_p2p(insn.kernels)
+                if lpot_applier_on_tgt_subset is None:
+                    lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
+                            insn.kernels)
+
+                evt, output_for_each_kernel = p2p(queue,
+                        target_discr.nodes(), self.fine_density_discr.nodes(),
+                        [strengths], **kernel_args)
+
+                geo_data = self.qbx_fmm_geometry_data(
+                        target_discrs_and_qbx_sides=[
+                            (target_discr, qbx_forced_limit)
+                        ])
+
+                # center_info is independent of targets
+                center_info = geo_data.center_info()
+
+                qbx_forced_limit = o.qbx_forced_limit
+                if qbx_forced_limit is None:
+                    qbx_forced_limit = 0
+
+                tgt_to_qbx_center = (
+                        geo_data.user_target_to_center()[center_info.ncenters:])
+
+                qbx_tgt_numberer = self.get_qbx_target_numberer(
+                        tgt_to_qbx_center.dtype)
+                qbx_tgt_count = cl.array.empty(queue, (), np.int32)
+                qbx_tgt_numbers = cl.array.empty_like(tgt_to_qbx_center)
+
+                qbx_tgt_numberer(
+                        tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,
+                        queue=queue)
+
+                qbx_tgt_count = int(qbx_tgt_count.get())
+
+                if (o.qbx_forced_limit is not None
+                        and abs(o.qbx_forced_limit) == 1
+                        and qbx_tgt_count < target_discr.nnodes):
+                    raise RuntimeError("Did not find a matching QBX center "
+                            "for some targets")
+
+                qbx_tgt_numbers = qbx_tgt_numbers[:qbx_tgt_count]
+                qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
+
+                tgt_subset_kwargs = kernel_args.copy()
+                for i, res_i in enumerate(output_for_each_kernel):
+                    tgt_subset_kwargs["result_%d" % i] = res_i
+
+                if qbx_tgt_count:
+                    lpot_applier_on_tgt_subset(
+                            queue,
+                            targets=target_discr.nodes(),
+                            sources=self.fine_density_discr.nodes(),
+                            centers=center_info.centers,
+                            strengths=[strengths],
+                            qbx_tgt_numbers=qbx_tgt_numbers,
+                            qbx_center_numbers=qbx_center_numbers,
+                            **tgt_subset_kwargs)
+
+                result.append((o.name, output_for_each_kernel[o.kernel_index]))
+
+        return result, []
+
+    # }}}
+
 # }}}
 
 from boxtree.area_query import AreaQueryElementwiseTemplate
