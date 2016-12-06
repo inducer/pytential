@@ -227,13 +227,13 @@ class NeumannOperator(L2WeightedPDEOperator):
                 cse(S(lknl, inv_sqrt_w_u)))
 
         if self.use_improved_operator:
-            Dp0S0u = -0.25*u + Sp(
+            Dp0S0u = -0.25*u + Sp(  # noqa
                     lknl,  # noqa
                     Sp(lknl, inv_sqrt_w_u, qbx_forced_limit="avg"),
                     qbx_forced_limit="avg")
 
             if isinstance(self.kernel, HelmholtzKernel):
-                DpS0u = (
+                DpS0u = (  # noqa
                         Dp(self.kernel_and_args - lknl,  # noqa
                             cse(S(lknl, inv_sqrt_w_u, qbx_forced_limit=+1)),
                             qbx_forced_limit=+1)
