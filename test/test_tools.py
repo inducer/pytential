@@ -29,14 +29,14 @@ import numpy.linalg as la
 
 def test_gmres():
     n = 200
-    A = (
+    A = (  # noqa
             n * (np.eye(n) + 2j * np.eye(n))
             + np.random.randn(n, n) + 1j * np.random.randn(n, n))
 
     true_sol = np.random.randn(n) + 1j * np.random.randn(n)
     b = np.dot(A, true_sol)
 
-    A_func = lambda x: np.dot(A, x)
+    A_func = lambda x: np.dot(A, x)  # noqa
     A_func.shape = A.shape
     A_func.dtype = A.dtype
 

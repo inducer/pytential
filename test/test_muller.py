@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from __future__ import print_function
-from six.moves import range
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2014 Shidong Jiang, Andreas Kloeckner"
 
@@ -25,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from six.moves import range
 import numpy as np
 import pytest
 
@@ -73,6 +71,7 @@ def fun1(z, n):
         y = y*(z-np.exp(1j*theta[i]))
 
     return y
+
 
 if __name__ == "__main__":
     import sys
