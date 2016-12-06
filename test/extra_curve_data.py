@@ -103,9 +103,9 @@ class Arc(Curve):
 
         # Get center and radius of circle containing the arc.
         # http://math.stackexchange.com/a/1460096
-        C = np.array([xs**2 + ys**2, xs, ys, [1, 1, 1]])
-        x0 = la.det(np.delete(C, 1, 0)) / (2 * la.det(np.delete(C, 0, 0)))
-        y0 = -la.det(np.delete(C, 2, 0)) / (2 * la.det(np.delete(C, 0, 0)))
+        c = np.array([xs**2 + ys**2, xs, ys, [1, 1, 1]])
+        x0 = la.det(np.delete(c, 1, 0)) / (2 * la.det(np.delete(c, 0, 0)))
+        y0 = -la.det(np.delete(c, 2, 0)) / (2 * la.det(np.delete(c, 0, 0)))
 
         self.r = la.norm([start[0] - x0, start[1] - y0])
         self.center = x0 + 1j * y0

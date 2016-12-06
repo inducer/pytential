@@ -34,6 +34,7 @@ import pytest
 from pytools import RecordWithoutPickling
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
+from pytential.qbx import QBXLayerPotentialSource
 
 from functools import partial
 from meshmode.mesh.generation import (  # noqa
@@ -46,6 +47,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 __all__ = ["pytest_generate_tests"]
+
+
+RNG_SEED = 10
+FAR_TARGET_DIST_FROM_SOURCE = 10
 
 
 # {{{ utilities for iterating over panels
@@ -107,10 +112,9 @@ def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
 
     discr = Discretization(cl_ctx, mesh, factory)
 
-    from pytential.qbx.refinement import (
-        NewQBXLayerPotentialSource, QBXLayerPotentialSourceRefiner)
+    from pytential.qbx.refinement import QBXLayerPotentialSourceRefiner
 
-    lpot_source = NewQBXLayerPotentialSource(discr, order)
+    lpot_source = QBXLayerPotentialSource(discr, order)
     del discr
     refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
 
@@ -200,10 +204,9 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     discr = Discretization(cl_ctx, mesh, factory)
 
-    from pytential.qbx.refinement import (
-        NewQBXLayerPotentialSource, QBXLayerPotentialSourceRefiner)
+    from pytential.qbx.refinement import QBXLayerPotentialSourceRefiner
 
-    lpot_source = NewQBXLayerPotentialSource(discr, order)
+    lpot_source = QBXLayerPotentialSource(discr, order)
     del discr
     refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
 
@@ -215,8 +218,6 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
     # }}}
 
     # {{{ generate targets
-
-    RNG_SEED = 10
 
     from pyopencl.clrandom import PhiloxGenerator
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
@@ -234,8 +235,7 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     int_targets = PointsTarget(targets_from_sources(-1, noise * panel_sizes / 2))
     ext_targets = PointsTarget(targets_from_sources(+1, noise * panel_sizes / 2))
-    FAR_TARGET_DIST = 10
-    far_targets = PointsTarget(targets_from_sources(+1, FAR_TARGET_DIST))
+    far_targets = PointsTarget(targets_from_sources(+1, FAR_TARGET_DIST_FROM_SOURCE))
 
     # Create target discretizations.
     target_discrs = (
@@ -292,33 +292,36 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
         assert (dists <= panel_sizes[target_to_source_result] / 2).all()
 
     # Checks that far targets are not assigned a center.
-    def check_far_targets(target_to_source_result, target_to_side_result):
+    def check_far_targets(target_to_source_result):
         assert (target_to_source_result == -1).all()
-        assert (target_to_side_result == 0).all()
+
+    # Centers for source i are located at indices 2 * i, 2 * i + 1
+    target_to_source = target_assoc.target_to_center // 2
+    # Center side order = -1, 1, -1, 1, ...
+    target_to_center_side = 2 * (target_assoc.target_to_center % 2) - 1
 
     check_on_surface_targets(
         nsources, -1,
-        target_assoc.target_to_source[surf_int_slice],
-        target_assoc.target_to_center_side[surf_int_slice])
+        target_to_source[surf_int_slice],
+        target_to_center_side[surf_int_slice])
 
     check_on_surface_targets(
         nsources, +1,
-        target_assoc.target_to_source[surf_ext_slice],
-        target_assoc.target_to_center_side[surf_ext_slice])
+        target_to_source[surf_ext_slice],
+        target_to_center_side[surf_ext_slice])
 
     check_close_targets(
         int_centers, int_targets, -1,
-        target_assoc.target_to_source[vol_int_slice],
-        target_assoc.target_to_center_side[vol_int_slice])
+        target_to_source[vol_int_slice],
+        target_to_center_side[vol_int_slice])
 
     check_close_targets(
         ext_centers, ext_targets, +1,
-        target_assoc.target_to_source[vol_ext_slice],
-        target_assoc.target_to_center_side[vol_ext_slice])
+        target_to_source[vol_ext_slice],
+        target_to_center_side[vol_ext_slice])
 
     check_far_targets(
-        target_assoc.target_to_source[far_slice],
-        target_assoc.target_to_center_side[far_slice])
+        target_to_source[far_slice])
 
     # }}}
 
@@ -340,17 +343,12 @@ def test_target_association_failure(ctx_getter):
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
-
     discr = Discretization(cl_ctx, mesh, factory)
-
-    from pytential.qbx.refinement import NewQBXLayerPotentialSource
-
-    lpot_source = NewQBXLayerPotentialSource(discr, order)
-    del discr
+    lpot_source = QBXLayerPotentialSource(discr, order)
 
     # }}}
 
-    # {{{ generate targets
+    # {{{ generate targets and check
 
     close_circle = 0.999 * np.exp(
         2j * np.pi * np.linspace(0, 1, 500, endpoint=False))

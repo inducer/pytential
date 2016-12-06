@@ -104,14 +104,14 @@ enum TargetFlag
 """
 
 
-class target_status_enum(object):
+class target_status_enum(object):  # noqa
     # NOTE: Must match "enum TargetStatus" above
     UNMARKED = 0
     MARKED_QBX_CENTER_PENDING = 1
     MARKED_QBX_CENTER_FOUND = 2
 
 
-class target_flag_enum(object):
+class target_flag_enum(object):  # noqa
     # NOTE: Must match "enum TargetFlag" above
     INTERIOR_OR_EXTERIOR_VOLUME_TARGET = 0
     INTERIOR_SURFACE_TARGET = -1

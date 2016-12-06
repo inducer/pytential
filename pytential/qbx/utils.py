@@ -154,6 +154,8 @@ class DiscrPlotterMixin(object):
 
 class TreeWithQBXMetadataBuilder(object):
 
+    MAX_REFINE_WEIGHT = 64
+
     class TreeWithQBXMetadata(Tree):
         """
         .. attribute:: nqbxpanels
@@ -239,12 +241,11 @@ class TreeWithQBXMetadataBuilder(object):
         # only because of sources.
         refine_weights = cl.array.zeros(queue, nparticles, np.int32)
         refine_weights[:nsources].fill(1)
-        MAX_REFINE_WEIGHT = 64
 
         refine_weights.finish()
 
         tree, evt = self.tree_builder(queue, particles,
-                                      max_leaf_refine_weight=MAX_REFINE_WEIGHT,
+                                      max_leaf_refine_weight=self.MAX_REFINE_WEIGHT,
                                       refine_weights=refine_weights)
 
         # Compute box => particle class relations

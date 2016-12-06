@@ -108,7 +108,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     qbx = QBXLayerPotentialSource(
             density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
-            )
+            ).with_refinement()
 
     #print(sym.pretty(pde_op.operator(op_unknown_sym)))
     #1/0
@@ -338,7 +338,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
         low_order_qbx = QBXLayerPotentialSource(
                 density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=2,
-                fmm_order=3)
+                fmm_order=3).with_refinement()
         from sumpy.kernel import LaplaceKernel
         from pytential.target import PointsTarget
         ones = (cl.array.empty(queue, (density_discr.nnodes,), dtype=np.float64)

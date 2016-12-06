@@ -761,15 +761,17 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
         from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \
                 InterpolatoryQuadratureSimplexGroupFactory
-        from pytential.qbx import QBXLayerPotentialSource
+        from pytential.qbx.refinement import (
+            NewQBXLayerPotentialSource, QBXLayerPotentialSourceRefiner)
+
         density_discr = Discretization(
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
-
-        qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
-                qbx_order,
-                # Don't use FMM for now
-                fmm_order=False)
+        qbx = NewQBXLayerPotentialSource(density_discr, 4*target_order,
+                                         qbx_order, fmm_order=qbx_order + 15)
+        refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
+        qbx, conn = refiner(qbx, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+        density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
 
@@ -810,7 +812,9 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
         l2_error_norm = norm(density_discr, queue, error)
         print(key, l2_error_norm)
 
-        eoc_rec.add_data_point(1/nelements, l2_error_norm)
+        h = cl.array.max(qbx.panel_sizes("npanels").with_queue(queue)).get()
+
+        eoc_rec.add_data_point(h, l2_error_norm)
 
     print(eoc_rec)
     tgt_order = order_table[zero_op_name]
@@ -850,9 +854,13 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
             InterpolatoryQuadratureSimplexGroupFactory
 
     density_discr = Discretization(
-            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
-    qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
-            fmm_order=fmm_order)
+            cl_ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+    qbx = NewQBXLayerPotentialSource(density_discr, 4*target_order,
+            qbx_order, fmm_order=fmm_order)
+    refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
+    qbx, conn = refiner(qbx, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+    density_discr = qbx.density_discr
 
     from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(), sym.var("sigma"), qbx_forced_limit=-2)
