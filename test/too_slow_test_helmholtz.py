@@ -224,7 +224,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
                 bvp_rhs[i_bc] *= sqrt_w
 
     scipy_op = bound_pde_op.scipy_op(queue, "unknown",
-            domains=[sym.DEFAULT_TARGET]*len(pde_op.bcs), K0=K0, K1=K1)
+            domains=[sym.DEFAULT_TARGET]*len(pde_op.bcs), K0=K0, K1=K1,
+            dtype=np.complex128)
 
     if mode == "tem" or op_class is SRep:
         from sumpy.tools import vector_from_device, vector_to_device
@@ -270,8 +271,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     _, (H1_tgt_true,) = pot_p2p(queue, targets_1, h_sources_1, [h_strengths_1],
                     out_host=True, k=K1)
 
-    err_F0_total = 0
-    err_F1_total = 0
+    err_F0_total = 0  # noqa
+    err_F1_total = 0  # noqa
 
     i_field = 0
 
@@ -286,11 +287,11 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             continue
 
         if field_kind == pde_op.field_kind_e:
-            F0_tgt_true = E0_tgt_true
-            F1_tgt_true = E1_tgt_true
+            F0_tgt_true = E0_tgt_true  # noqa
+            F1_tgt_true = E1_tgt_true  # noqa
         elif field_kind == pde_op.field_kind_h:
-            F0_tgt_true = H0_tgt_true
-            F1_tgt_true = H1_tgt_true
+            F0_tgt_true = H0_tgt_true  # noqa
+            F1_tgt_true = H1_tgt_true  # noqa
         else:
             assert False
 
@@ -300,8 +301,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         rel_err_F0 = abs_err_F0/vec_norm(F0_tgt_true)  # noqa
         rel_err_F1 = abs_err_F1/vec_norm(F1_tgt_true)  # noqa
 
-        err_F0_total = max(rel_err_F0, err_F0_total)
-        err_F1_total = max(rel_err_F1, err_F1_total)
+        err_F0_total = max(rel_err_F0, err_F0_total)  # noqa
+        err_F1_total = max(rel_err_F1, err_F1_total)  # noqa
 
         print("Abs Err %s0" % field_kind_to_string(field_kind), abs_err_F0)
         print("Abs Err %s1" % field_kind_to_string(field_kind), abs_err_F1)
