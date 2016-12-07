@@ -101,8 +101,8 @@ def get_local_expansion_class(base_kernel):
         from sumpy.expansion.local import H2DLocalExpansion
         return H2DLocalExpansion
     else:
-        from sumpy.expansion.local import VolumeTaylorLocalExpansion
-        return VolumeTaylorLocalExpansion
+        from sumpy.expansion.local import LaplaceConformingVolumeTaylorLocalExpansion
+        return LaplaceConformingVolumeTaylorLocalExpansion
 
 
 def get_multipole_expansion_class(base_kernel):
@@ -113,8 +113,9 @@ def get_multipole_expansion_class(base_kernel):
         from sumpy.expansion.multipole import H2DMultipoleExpansion
         return H2DMultipoleExpansion
     else:
-        from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
-        return VolumeTaylorMultipoleExpansion
+        from sumpy.expansion.multipole import (
+                LaplaceConformingVolumeTaylorMultipoleExpansion)
+        return LaplaceConformingVolumeTaylorMultipoleExpansion
 
 
 # {{{ QBX layer potential source
@@ -209,6 +210,13 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         lpot, _ = refiner(self,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
         return lpot
+
+    @property
+    @memoize_method
+    def h_max(self):
+        with cl.CommandQueue(self.cl_context) as queue:
+            panel_sizes = self.panel_sizes("npanels").with_queue(queue)
+            return np.asscalar(cl.array.max(panel_sizes).get())
 
     @property
     def ambient_dim(self):
@@ -655,7 +663,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
                         self.fine_density_discr.nodes(),
-                        self.centers(target_discr, o.qbx_forced_limit),
+                        self.centers(o.qbx_forced_limit),
                         [strengths], **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
             else:

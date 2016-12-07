@@ -32,6 +32,7 @@ import numpy as np
 import pyopencl as cl
 
 from pytools import memoize_method
+from pytential.qbx import QBXLayerPotentialSource
 from pytential.qbx.utils import DiscrPlotterMixin
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from pyopencl.elementwise import ElementwiseTemplate
@@ -668,7 +669,6 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
 
         new_density_discr = conn.to_discr
 
-        from pytential.qbx import QBXLayerPotentialSource
         new_lpot_source = QBXLayerPotentialSource(
             new_density_discr, lpot_source.fine_order,
             qbx_order=lpot_source.qbx_order,
@@ -705,6 +705,13 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
         from meshmode.mesh.refinement import Refiner
         refiner = Refiner(lpot_source.density_discr.mesh)
         connections = []
+
+        lpot_source = QBXLayerPotentialSource(
+            lpot_source.density_discr, lpot_source.fine_order,
+            qbx_order=lpot_source.qbx_order,
+            fmm_level_to_order=lpot_source.fmm_level_to_order,
+            real_dtype=lpot_source.real_dtype, debug=debug,
+            refined_for_global_qbx=True)
 
         with cl.CommandQueue(self.context) as queue:
             if refine_flags:
