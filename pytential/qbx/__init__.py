@@ -130,6 +130,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     .. automethod :: centers
     .. automethod :: panel_sizes
     .. automethod :: weights_and_area_elements
+    .. automethod :: with_refinement
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
@@ -201,15 +202,21 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def with_refinement(self, target_order=None):
+        """
+        :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
+            :class:`QBXLayerPotentialSource` and ``cnx`` is a
+            :class:`meshmode.discretization.connection.DiscretizationConnection`
+            from the originally given to the refined geometry.
+        """
         from pytential.qbx.refinement import QBXLayerPotentialSourceRefiner
         refiner = QBXLayerPotentialSourceRefiner(self.cl_context)
         from meshmode.discretization.poly_element import (
             InterpolatoryQuadratureSimplexGroupFactory)
         if target_order is None:
             target_order = self.density_discr.groups[0].order
-        lpot, _ = refiner(self,
+        lpot, connection = refiner(self,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
-        return lpot
+        return lpot, connection
 
     @property
     @memoize_method
@@ -369,7 +376,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         oversample = partial(self.resampler, queue)
 
         if not self.refined_for_global_qbx:
-            logger.warning(
+            from warnings import warn
+            warn(
                 "Executing global QBX without refinement. "
                 "This is unlikely to work.")
 
