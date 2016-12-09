@@ -701,6 +701,8 @@ d2 = sym.Derivative()
 # sample invocation to copy and paste:
 # 'test_identities(cl._csc, "green", "circ", partial(ellipse, 1), 4, 0)'
 def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k):
+    logging.basicConfig(level=logging.INFO)
+
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -753,14 +755,14 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
         from meshmode.discretization.poly_element import \
                 InterpolatoryQuadratureSimplexGroupFactory
         from pytential.qbx import QBXLayerPotentialSource
-        density_discr = Discretization(
+        pre_density_discr = Discretization(
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-        qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
+        qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
                 qbx_order,
-                # Don't use FMM for now
-                fmm_order=False)
+                fmm_order=qbx_order + 20).with_refinement()
+        density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
 
