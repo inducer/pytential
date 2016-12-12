@@ -741,9 +741,9 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
             - 0.5*u_sym,
 
             "green_grad":
-            d1.resolve(d1.nabla * d1(sym.S(k_sym, dn_u_sym,
+            d1.resolve(d1.dnabla(2) * d1(sym.S(k_sym, dn_u_sym,
                 qbx_forced_limit="avg", **knl_kwargs)))
-            - d2.resolve(d2.nabla * d2(sym.D(k_sym, u_sym,
+            - d2.resolve(d2.dnabla(2) * d2(sym.D(k_sym, u_sym,
                 qbx_forced_limit="avg", **knl_kwargs)))
             - 0.5*grad_u_sym,
 
