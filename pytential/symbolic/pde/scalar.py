@@ -153,7 +153,8 @@ class DirichletOperator(L2WeightedPDEOperator):
             # Theorem 8.2.18b
 
             amb_dim = self.kernel.dim
-            ones_contribution = sym.Ones() * sym.mean(amb_dim, amb_dim-1, inv_sqrt_w_u)
+            ones_contribution = (
+                    sym.Ones() * sym.mean(amb_dim, amb_dim-1, inv_sqrt_w_u))
         else:
             ones_contribution = 0
 
@@ -273,7 +274,8 @@ class NeumannOperator(L2WeightedPDEOperator):
             # returns a mean that is not well-specified.
 
             amb_dim = self.kernel.dim
-            ones_contribution = sym.Ones() * sym.mean(amb_dim, amb_dim-1, inv_sqrt_w_u)
+            ones_contribution = (
+                    sym.Ones() * sym.mean(amb_dim, amb_dim-1, inv_sqrt_w_u))
         else:
             ones_contribution = 0
 
