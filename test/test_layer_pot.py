@@ -151,8 +151,8 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-        fmm_order = qbx_order
-        if fmm_order > 3:
+        fmm_order = qbx_order + 3
+        if fmm_order > 6:
             # FIXME: for now
             fmm_order = False
 
@@ -160,7 +160,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
         qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
-                qbx_order, fmm_order=fmm_order)
+                qbx_order, fmm_order=fmm_order).with_refinement()
 
         nodes = density_discr.nodes().with_queue(queue)
 
@@ -213,7 +213,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 norm(density_discr, queue, s_sigma - s_sigma_ref)
                 /
                 norm(density_discr, queue, s_sigma_ref))
-        s_eoc_rec.add_data_point(1/nelements, s_err)
+        s_eoc_rec.add_data_point(qbx.h_max, s_err)
 
         # }}}
 
@@ -245,7 +245,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 norm(density_discr, queue, d_sigma - d_sigma_ref)
                 /
                 d_ref_norm)
-        d_eoc_rec.add_data_point(1/nelements, d_err)
+        d_eoc_rec.add_data_point(qbx.h_max, d_err)
 
         # }}}
 
@@ -318,7 +318,7 @@ def run_int_eq_test(
     qbx = QBXLayerPotentialSource(
             density_discr, fine_order=source_order, qbx_order=qbx_order,
             # Don't use FMM for now
-            fmm_order=False)
+            fmm_order=False).with_refinement()
 
     # {{{ set up operator
 
@@ -712,6 +712,8 @@ d2 = sym.Derivative()
 # sample invocation to copy and paste:
 # 'test_identities(cl._csc, "green", "circ", partial(ellipse, 1), 4, 0)'
 def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k):
+    logging.basicConfig(level=logging.INFO)
+
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -772,14 +774,14 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
         from meshmode.discretization.poly_element import \
                 InterpolatoryQuadratureSimplexGroupFactory
         from pytential.qbx import QBXLayerPotentialSource
-        density_discr = Discretization(
+        pre_density_discr = Discretization(
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-        qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
+        qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
                 qbx_order,
-                # Don't use FMM for now
-                fmm_order=False)
+                fmm_order=qbx_order + 20).with_refinement()
+        density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
 
@@ -820,7 +822,7 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
         l2_error_norm = norm(density_discr, queue, error)
         print(key, l2_error_norm)
 
-        eoc_rec.add_data_point(1/nelements, l2_error_norm)
+        eoc_rec.add_data_point(qbx.h_max, l2_error_norm)
 
     print(eoc_rec)
     tgt_order = order_table[zero_op_name]
@@ -862,7 +864,7 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
     density_discr = Discretization(
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
     qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
-            fmm_order=fmm_order)
+            fmm_order=fmm_order).with_refinement()
 
     from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2)
