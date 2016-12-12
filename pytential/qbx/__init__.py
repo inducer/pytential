@@ -130,6 +130,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     .. automethod :: centers
     .. automethod :: panel_sizes
     .. automethod :: weights_and_area_elements
+    .. automethod :: with_refinement
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
@@ -201,15 +202,21 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def with_refinement(self, target_order=None):
+        """
+        :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
+            :class:`QBXLayerPotentialSource` and ``cnx`` is a
+            :class:`meshmode.discretization.connection.DiscretizationConnection`
+            from the originally given to the refined geometry.
+        """
         from pytential.qbx.refinement import QBXLayerPotentialSourceRefiner
         refiner = QBXLayerPotentialSourceRefiner(self.cl_context)
         from meshmode.discretization.poly_element import (
             InterpolatoryQuadratureSimplexGroupFactory)
         if target_order is None:
             target_order = self.density_discr.groups[0].order
-        lpot, _ = refiner(self,
+        lpot, connection = refiner(self,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
-        return lpot
+        return lpot, connection
 
     @property
     @memoize_method
@@ -221,6 +228,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     @property
     def ambient_dim(self):
         return self.density_discr.ambient_dim
+
+    @property
+    def dim(self):
+        return self.density_discr.dim
 
     @property
     def cl_context(self):
@@ -319,10 +330,13 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def centers(self, sign):
+        adim = self.density_discr.ambient_dim
+        dim = self.density_discr.dim
+
         from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
-            nodes = bind(self.density_discr, sym.Nodes())(queue)
-            normals = bind(self.density_discr, sym.normal())(queue)
+            nodes = bind(self.density_discr, sym.nodes(adim, dim))(queue)
+            normals = bind(self.density_discr, sym.normal(adim, dim))(queue)
             panel_sizes = self.panel_sizes().with_queue(queue)
             return (nodes + normals * sign * panel_sizes / 2).as_vector(np.object)
 
@@ -336,8 +350,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             # area element instead, then upsample that.
 
             area_element = self.resampler(queue,
-                    bind(self.density_discr,
-                        p.area_element())(queue))
+                    bind(
+                        self.density_discr,
+                        p.area_element(self.ambient_dim, self.dim)
+                        )(queue))
 
             qweight = bind(self.fine_density_discr, p.QWeight())(queue)
 
@@ -352,9 +368,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         return QBXPreprocessor(name, discretizations)(expr)
 
     def op_group_features(self, expr):
-        from pytential.symbolic.primitives import IntGdSource
-        assert not isinstance(expr, IntGdSource)
-
         from sumpy.kernel import AxisTargetDerivativeRemover
         result = (
                 expr.source, expr.density,
@@ -369,7 +382,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         oversample = partial(self.resampler, queue)
 
         if not self.refined_for_global_qbx:
-            logger.warning(
+            from warnings import warn
+            warn(
                 "Executing global QBX without refinement. "
                 "This is unlikely to work.")
 

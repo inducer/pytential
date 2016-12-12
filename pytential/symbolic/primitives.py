@@ -33,7 +33,7 @@ from pymbolic.primitives import (  # noqa
         make_common_subexpression as cse)
 from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (  # noqa
-        Nabla, NablaComponent, DerivativeSource, Derivative)
+        NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa
 
 
@@ -42,7 +42,9 @@ __doc__ = """
     :class:`pytential.discretization.Discretization`
 
 .. autoclass:: Variable
-.. autoclass:: VectorVariable
+.. autoclass:: make_sym_vector
+.. autoclass:: make_sym_mv
+.. autoclass:: make_sym_surface_mv
 
 Functions
 ^^^^^^^^^
@@ -57,12 +59,13 @@ Discretization properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: QWeight
-.. autoclass:: Nodes
-.. autoclass:: ParametrizationDerivative
-.. autoclass:: pseudoscalar
-.. autoclass:: area_element
-.. autoclass:: sqrt_jac_q_weight
-.. autoclass:: normal
+.. autofunction:: nodes
+.. autofunction:: parametrization_derivative
+.. autofunction:: parametrization_derivative_matrix
+.. autofunction:: pseudoscalar
+.. autofunction:: area_element
+.. autofunction:: sqrt_jac_q_weight
+.. autofunction:: normal
 
 Elementary numerics
 ^^^^^^^^^^^^^^^^^^^
@@ -75,16 +78,15 @@ Elementary numerics
 .. autofunction:: area
 .. autoclass:: IterativeInverse
 
+Calculus
+^^^^^^^^
+.. autoclass:: Derivative
+
 Layer potentials
 ^^^^^^^^^^^^^^^^
 
 .. autoclass:: IntG
-.. autoclass:: IntGdSource
-
-Internal helpers
-^^^^^^^^^^^^^^^^
-
-.. autoclass:: DimensionalizedExpression
+.. autofunction:: int_g_dsource
 """
 
 
@@ -121,33 +123,18 @@ class Expression(ExpressionBase):
         return StringifyMapper
 
 
-class VectorVariable(ExpressionBase):
-    """:class:`pytential.symbolic.mappers.Dimensionalizer`
-    turns this into a :class:`pymbolic.geometric_algebra.MultiVector`
-    of scalar variables.
-    """
-
-    def __init__(self, name, num_components=None):
-        """
-        :arg num_components: if None, defaults to the dimension of the
-            ambient space
-        """
-        self.name = name
-        self.num_components = num_components
-
-    mapper_method = "map_vector_variable"
+def make_sym_mv(name, num_components):
+    return MultiVector(make_sym_vector(name, num_components))
 
 
-class DimensionalizedExpression(Expression):
-    """Preserves an already-dimensionalized expression until it hits
-    the :class:`pytential.symbolic.mappers.Dimensionalizer`, which
-    will unpack it and discard this wrapper.
-    """
+def make_sym_surface_mv(name, ambient_dim, dim, where=None):
+    par_grad = parametrization_derivative_matrix(ambient_dim, dim, where)
 
-    def __init__(self, child):
-        self.child = child
-
-    mapper_method = "map_dimensionalized_expression"
+    return sum(
+            var("%s%d" % (name, i))
+            *
+            cse(MultiVector(vec), "tangent%d" % i, cse_scope.DISCRETIZATION)
+            for i, vec in enumerate(par_grad.T))
 
 
 class Function(var):
@@ -211,17 +198,16 @@ class NodeCoordinateComponent(DiscretizationProperty):
     mapper_method = intern("map_node_coordinate_component")
 
 
-class Nodes(DiscretizationProperty):
-    """Node location of the discretization.
+def nodes(ambient_dim, where=None):
+    """Return a :class:`pymbolic.geometric_algebra.MultiVector` of node
+    locations.
     """
 
-    def __init__(self, where=None):
-        DiscretizationProperty.__init__(self, where)
-
-    def __getinitargs__(self):
-        return (self.where,)
-
-    mapper_method = intern("map_nodes")
+    from pytools.obj_array import make_obj_array
+    return MultiVector(
+            make_obj_array([
+                NodeCoordinateComponent(i, where)
+                for i in range(ambient_dim)]))
 
 
 class NumReferenceDerivative(DiscretizationProperty):
@@ -251,39 +237,67 @@ class NumReferenceDerivative(DiscretizationProperty):
     mapper_method = intern("map_num_reference_derivative")
 
 
-class ParametrizationDerivative(DiscretizationProperty):
-    """A :class:`pymbolic.geometric_algebra.MultiVector` representing
+def parametrization_derivative_matrix(ambient_dim, dim, where=None):
+    """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
     the derivative of the reference-to-global parametrization.
     """
 
-    mapper_method = "map_parametrization_derivative"
+    par_grad = np.zeros((ambient_dim, dim), np.object)
+    for i in range(ambient_dim):
+        for j in range(dim):
+            par_grad[i, j] = NumReferenceDerivative(
+                    frozenset([j]),
+                    NodeCoordinateComponent(i, where),
+                    where)
+
+    return par_grad
 
 
-def pseudoscalar(where=None):
+def parametrization_derivative(ambient_dim, dim, where=None):
+    """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
+    the derivative of the reference-to-global parametrization.
+    """
+
+    par_grad = parametrization_derivative_matrix(ambient_dim, dim, where)
+
+    from pytools import product
+    return product(MultiVector(vec) for vec in par_grad.T)
+
+
+def pseudoscalar(ambient_dim, dim=None, where=None):
+    if dim is None:
+        dim = ambient_dim - 1
+
     return cse(
-            ParametrizationDerivative(where).a.project_max_grade(),
+            parametrization_derivative(ambient_dim, dim, where)
+            .project_max_grade(),
             "pseudoscalar", cse_scope.DISCRETIZATION)
 
 
-def area_element(where=None):
+def area_element(ambient_dim, dim=None, where=None):
     return cse(
-            sqrt(pseudoscalar(where).a.norm_squared()),
+            sqrt(pseudoscalar(ambient_dim, dim, where).norm_squared()),
             "area_element", cse_scope.DISCRETIZATION)
 
 
-def sqrt_jac_q_weight(where=None):
-    return cse(sqrt(area_element(where) * QWeight(where)),
+def sqrt_jac_q_weight(ambient_dim, dim=None, where=None):
+    return cse(
+            sqrt(
+                area_element(ambient_dim, dim, where)
+                * QWeight(where)),
             "sqrt_jac_q_weight", cse_scope.DISCRETIZATION)
 
 
-def normal(where=None):
+def normal(ambient_dim, dim=None, where=None):
     """Exterior unit normals."""
 
     # Don't be tempted to add a sign here. As it is, it produces
     # exterior normals for positively oriented curves.
 
-    pder = pseudoscalar(where) / area_element(where)
-    return cse(pder.a.I | pder, "normal",
+    pder = (
+            pseudoscalar(ambient_dim, dim, where)
+            / area_element(ambient_dim, dim, where))
+    return cse(pder.I | pder, "normal",
             cse_scope.DISCRETIZATION)
 
 
@@ -319,14 +333,17 @@ class NodeSum(Expression):
     mapper_method = "map_node_sum"
 
 
-def integral(operand, where=None):
+def integral(ambient_dim, dim, operand, where=None):
     """A volume integral of *operand*."""
 
-    return NodeSum(area_element(where) * QWeight(where) * operand)
+    return NodeSum(
+            area_element(ambient_dim, dim, where)
+            * QWeight(where)
+            * operand)
 
 
 class Ones(Expression):
-    """A vector that is constant *one* on the whole
+    """A DOF-vector that is constant *one* on the whole
     discretization.
     """
 
@@ -341,18 +358,20 @@ class Ones(Expression):
 
 def ones_vec(dim, where=None):
     from pytools.obj_array import make_obj_array
-    return DimensionalizedExpression(
-            MultiVector(
-                make_obj_array(dim*[Ones(where)])))
+    return MultiVector(
+                make_obj_array(dim*[Ones(where)]))
 
 
-def area(where=None):
-    return cse(integral(Ones(where), where), "area",
+def area(ambient_dim, dim, where=None):
+    return cse(integral(ambient_dim, dim, Ones(where), where), "area",
             cse_scope.DISCRETIZATION)
 
 
-def mean(operand, where=None):
-    return integral(operand, where) / area(where)
+def mean(ambient_dim, dim, operand, where=None):
+    return (
+            integral(ambient_dim, dim, operand, where)
+            /
+            area(ambient_dim, dim, where))
 
 
 class IterativeInverse(Expression):
@@ -374,6 +393,13 @@ class IterativeInverse(Expression):
             frozenset(six.iteritems(self.extra_vars)), self.where))
 
     mapper_method = intern("map_inverse")
+
+
+class Derivative(DerivativeBase):
+    @staticmethod
+    def resolve(expr):
+        from pytential.symbolic.mappers import DerivativeBinder
+        return DerivativeBinder()(expr)
 
 
 # {{{ potentials
@@ -529,10 +555,51 @@ class IntG(Expression):
     mapper_method = intern("map_int_g")
 
 
-class IntGdSource(IntG):
-    # FIXME: Unclear if this class is still fully needed
-    # now that the kernel_arguments mechanism exists.
+_DIR_VEC_NAME = "dsource_vec"
 
+
+def _insert_source_derivative_into_kernel(kernel):
+    # Inserts the source derivative at the innermost
+    # kernel wrapping level.
+    from sumpy.kernel import DirectionalSourceDerivative
+
+    if kernel.get_base_kernel() is kernel:
+        return DirectionalSourceDerivative(
+                kernel, dir_vec_name=_DIR_VEC_NAME)
+    else:
+        return kernel.replace_inner_kernel(
+                _insert_source_derivative_into_kernel(kernel.kernel))
+
+
+def _get_dir_vec(dsource, ambient_dim):
+    from pymbolic.mapper.coefficient import (
+            CoefficientCollector as CoefficientCollectorBase)
+
+    class _DSourceCoefficientFinder(CoefficientCollectorBase):
+        def map_nabla_component(self, expr):
+            return {expr: 1}
+
+        def map_variable(self, expr):
+            return {1: expr}
+
+        def map_common_subexpression(self, expr):
+            return {1: expr}
+
+    coeffs = _DSourceCoefficientFinder()(dsource)
+
+    dir_vec = np.zeros(ambient_dim, np.object)
+    for i in range(ambient_dim):
+        dir_vec[i] = coeffs.pop(NablaComponent(i, None), 0)
+
+    if coeffs:
+        raise RuntimeError("source derivative expression contained constant term")
+
+    return dir_vec
+
+
+def int_g_dsource(ambient_dim, dsource, kernel, density,
+            qbx_forced_limit, source=None, target=None,
+            kernel_arguments=None, **kwargs):
     r"""
     .. math::
 
@@ -549,20 +616,31 @@ class IntGdSource(IntG):
         A :class:`pymbolic.geometric_algebra.MultiVector`.
     """
 
-    def __init__(self, dsource, kernel, density,
-            qbx_forced_limit=0, source=None, target=None,
-            kernel_arguments=None,
-            **kwargs):
-        IntG.__init__(self, kernel, density,
-                qbx_forced_limit, source, target,
-                kernel_arguments=kernel_arguments,
-                **kwargs)
-        self.dsource = dsource
+    if kernel_arguments is None:
+        kernel_arguments = {}
 
-    def __getinitargs__(self):
-        return (self.dsource,) + IntG.__getinitargs__(self)
+    if isinstance(kernel_arguments, tuple):
+        kernel_arguments = dict(kernel_arguments)
 
-    mapper_method = intern("map_int_g_ds")
+    kernel = _insert_source_derivative_into_kernel(kernel)
+
+    from pytools.obj_array import make_obj_array
+    nabla = MultiVector(make_obj_array(
+        [NablaComponent(axis, None)
+            for axis in range(ambient_dim)]))
+
+    def add_dir_vec_to_kernel_args(coeff):
+        result = kernel_arguments.copy()
+        result[_DIR_VEC_NAME] = _get_dir_vec(coeff, ambient_dim)
+        return result
+
+    density = cse(density)
+    return (dsource*nabla).map(
+            lambda coeff: IntG(
+                kernel,
+                density, qbx_forced_limit, source, target,
+                kernel_arguments=add_dir_vec_to_kernel_args(coeff),
+                **kwargs))
 
 # }}}
 
@@ -592,50 +670,104 @@ def S(kernel, density,  # noqa
             kernel_arguments, **kwargs)
 
 
-def tangential_derivative(operand, where=None):
-    pder = pseudoscalar(where) / area_element(where)
+def tangential_derivative(ambient_dim, operand, dim=None, where=None):
+    pder = (
+            pseudoscalar(ambient_dim, dim, where)
+            / area_element(ambient_dim, dim, where))
 
     # FIXME: Should be formula (3.25) in Dorst et al.
     d = Derivative()
-    return (d.nabla * d(operand)) >> pder
+    return d.resolve(
+            (d.dnabla(ambient_dim) * d(operand)) >> pder)
 
 
-def normal_derivative(operand, where=None):
+def normal_derivative(ambient_dim, operand, dim=None, where=None):
     d = Derivative()
-    return (normal(where).a.scalar_product(d.nabla)) * d(operand)
+    return d.resolve(
+            (normal(ambient_dim, dim, where).scalar_product(d.dnabla(ambient_dim)))
+            * d(operand))
 
 
-def Sp(*args, **kwargs):  # noqa
+def Sp(kernel, *args, **kwargs):  # noqa
     where = kwargs.get("target")
     if "qbx_forced_limit" not in kwargs:
         warn("not specifying qbx_forced_limit on call to 'Sp' is deprecated, "
                 "defaulting to 'avg'", DeprecationWarning, stacklevel=2)
         kwargs["qbx_forced_limit"] = "avg"
 
-    return normal_derivative(S(*args, **kwargs), where)
+    ambient_dim = kwargs.get("ambient_dim")
+    from sumpy.kernel import Kernel
+    if ambient_dim is None and isinstance(kernel, Kernel):
+        ambient_dim = kernel.dim
+    if ambient_dim is None:
+        raise ValueError("ambient_dim must be specified, either through "
+                "the kernel, or directly")
+    dim = kwargs.pop("dim", None)
+
+    return normal_derivative(
+            ambient_dim,
+            S(kernel, *args, **kwargs),
+            dim=dim, where=where)
 
 
-def Spp(*args, **kwargs):  # noqa
+def Spp(kernel, *args, **kwargs):  # noqa
+    ambient_dim = kwargs.get("ambient_dim")
+    from sumpy.kernel import Kernel
+    if ambient_dim is None and isinstance(kernel, Kernel):
+        ambient_dim = kernel.dim
+    if ambient_dim is None:
+        raise ValueError("ambient_dim must be specified, either through "
+                "the kernel, or directly")
+    dim = kwargs.pop("dim", None)
+
     where = kwargs.get("target")
-    return normal_derivative(Sp(*args, **kwargs), where)
+    return normal_derivative(
+            ambient_dim,
+            Sp(kernel, *args, **kwargs),
+            dim=dim, where=where)
 
 
-def D(*args, **kwargs):  # noqa
+def D(kernel, *args, **kwargs):  # noqa
+    ambient_dim = kwargs.get("ambient_dim")
+    from sumpy.kernel import Kernel
+    if ambient_dim is None and isinstance(kernel, Kernel):
+        ambient_dim = kernel.dim
+    if ambient_dim is None:
+        raise ValueError("ambient_dim must be specified, either through "
+                "the kernel, or directly")
+    dim = kwargs.pop("dim", None)
+
     where = kwargs.get("source")
+
     if "qbx_forced_limit" not in kwargs:
         warn("not specifying qbx_forced_limit on call to 'D' is deprecated, "
                 "defaulting to 'avg'", DeprecationWarning, stacklevel=2)
         kwargs["qbx_forced_limit"] = "avg"
-    return IntGdSource(normal(where), *args, **kwargs).a.xproject(0)
+
+    return int_g_dsource(
+            ambient_dim,
+            normal(ambient_dim, dim, where),
+            kernel, *args, **kwargs).xproject(0)
 
 
-def Dp(*args, **kwargs):  # noqa
+def Dp(kernel, *args, **kwargs):  # noqa
+    ambient_dim = kwargs.get("ambient_dim")
+    from sumpy.kernel import Kernel
+    if ambient_dim is None and isinstance(kernel, Kernel):
+        ambient_dim = kernel.dim
+    if ambient_dim is None:
+        raise ValueError("ambient_dim must be specified, either through "
+                "the kernel, or directly")
+    dim = kwargs.pop("dim", None)
     target = kwargs.get("target")
     if "qbx_forced_limit" not in kwargs:
         warn("not specifying qbx_forced_limit on call to 'Dp' is deprecated, "
                 "defaulting to +1", DeprecationWarning, stacklevel=2)
         kwargs["qbx_forced_limit"] = +1
-    return normal_derivative(D(*args, **kwargs), target)
+    return normal_derivative(
+            ambient_dim,
+            D(kernel, *args, **kwargs),
+            dim=dim, where=target)
 
 # }}}
 

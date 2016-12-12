@@ -23,10 +23,8 @@ THE SOFTWARE.
 """
 
 import six
-from six.moves import range
 from functools import reduce
 
-import numpy as np
 from pymbolic.mapper.stringifier import (
         CSESplittingStringifyMapperMixin,
         PREC_NONE, PREC_PRODUCT)
@@ -36,17 +34,13 @@ from pymbolic.mapper import (
         )
 from pymbolic.mapper.dependency import (
         DependencyMapper as DependencyMapperBase)
-from pymbolic.mapper.coefficient import (
-        CoefficientCollector as CoefficientCollectorBase)
-from pymbolic.geometric_algebra import MultiVector, componentwise
+from pymbolic.geometric_algebra import componentwise
 from pymbolic.geometric_algebra.mapper import (
         CombineMapper as CombineMapperBase,
         IdentityMapper as IdentityMapperBase,
         Collector as CollectorBase,
         DerivativeBinder as DerivativeBinderBase,
         EvaluationMapper as EvaluationMapperBase,
-
-        Dimensionalizer as DimensionalizerBase,
 
         StringifyMapper as BaseStringifyMapper,
 
@@ -63,9 +57,6 @@ import pytential.symbolic.primitives as prim
 
 
 class IdentityMapper(IdentityMapperBase):
-    def map_dimensionalized_expression(self, expr):
-        return type(expr)(self.rec(expr.child))
-
     def map_node_sum(self, expr):
         return type(expr)(self.rec(expr.operand))
 
@@ -75,14 +66,13 @@ class IdentityMapper(IdentityMapperBase):
 
     # {{{ childless -- no need to rebuild
 
-    def map_vector_variable(self, expr):
+    def map_ones(self, expr):
         return expr
 
-    map_ones = map_vector_variable
-    map_q_weight = map_vector_variable
-    map_node_coordinate_component = map_vector_variable
-    map_parametrization_gradient = map_vector_variable
-    map_parametrization_derivative = map_vector_variable
+    map_q_weight = map_ones
+    map_node_coordinate_component = map_ones
+    map_parametrization_gradient = map_ones
+    map_parametrization_derivative = map_ones
 
     # }}}
 
@@ -105,15 +95,6 @@ class IdentityMapper(IdentityMapperBase):
                     for name, arg_expr in expr.kernel_arguments.items()
                     ))
 
-    def map_int_g_ds(self, expr):
-        return expr.copy(
-                density=self.rec(expr.density),
-                dsource=self.rec(expr.dsource),
-                kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
-                    for name, arg_expr in expr.kernel_arguments.items()
-                    ))
-
 
 class CombineMapper(CombineMapperBase):
     def map_node_sum(self, expr):
@@ -122,37 +103,30 @@ class CombineMapper(CombineMapperBase):
     map_num_reference_derivative = map_node_sum
 
     def map_int_g(self, expr):
-        result = self.rec(expr.density)
-        for arg_expr in expr.kernel_arguments.values():
-            result.update(self.rec(arg_expr))
-        return result
-
-    def map_int_g_ds(self, expr):
-        return self.rec(expr.dsource) | self.map_int_g(expr)
+        return self.combine(
+                [self.rec(expr.density)]
+                + [self.rec(arg_expr)
+                    for arg_expr in expr.kernel_arguments.values()])
 
     def map_inverse(self, expr):
-        from operator import or_
-        return self.rec(expr.rhs) | reduce(or_,
+        return self.combine([
+            self.rec(expr.rhs)] + [
                 (self.rec(name_expr)
-                for name_expr in six.itervalues(expr.extra_vars)),
-                set())
+                for name_expr in six.itervalues(expr.extra_vars))
+                ])
 
 
 class Collector(CollectorBase, CombineMapper):
-    def map_vector_variable(self, expr):
+    def map_ones(self, expr):
         return set()
 
-    map_ones = map_vector_variable
-    map_node_coordinate_component = map_vector_variable
-    map_parametrization_derivative = map_vector_variable
-    map_q_weight = map_vector_variable
+    map_node_coordinate_component = map_ones
+    map_parametrization_derivative = map_ones
+    map_q_weight = map_ones
 
 
 class OperatorCollector(Collector):
     def map_int_g(self, expr):
-        return set([expr]) | Collector.map_int_g(self, expr)
-
-    def map_int_g_ds(self, expr):
         return set([expr]) | Collector.map_int_g(self, expr)
 
 
@@ -169,9 +143,6 @@ class EvaluationMapper(EvaluationMapperBase):
     """
 
     def map_variable(self, expr):
-        return expr
-
-    def map_vector_variable(self, expr):
         return expr
 
     def map_subscript(self, expr):
@@ -195,19 +166,6 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_int_g(self, expr):
         return componentwise(
                 lambda subexpr: type(expr)(
-                        expr.kernel,
-                        self.rec(subexpr),
-                        expr.qbx_forced_limit, expr.source, expr.target,
-                        kernel_arguments=dict(
-                                (name, self.rec(arg_expr))
-                                for name, arg_expr in expr.kernel_arguments.items()
-                                )),
-                expr.density)
-
-    def map_int_g_ds(self, expr):
-        return componentwise(
-                lambda subexpr: type(expr)(
-                        self.rec(expr.dsource),
                         expr.kernel,
                         self.rec(subexpr),
                         expr.qbx_forced_limit, expr.source, expr.target,
@@ -252,9 +210,6 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         else:
             return expr
 
-    map_parametrization_derivative = map_ones
-    map_nodes = map_ones
-
     def map_node_coordinate_component(self, expr):
         if expr.where is None:
             return type(expr)(
@@ -283,26 +238,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 self.operand_rec(expr.density),
                 expr.qbx_forced_limit, source, target,
                 kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
-                    for name, arg_expr in expr.kernel_arguments.items()
-                    ))
-
-    def map_int_g_ds(self, expr):
-        source = expr.source
-        target = expr.target
-
-        if source is None:
-            source = self.default_source
-        if target is None:
-            target = self.default_where
-
-        return type(expr)(
-                self.operand_rec(expr.dsource),
-                expr.kernel,
-                self.operand_rec(expr.density),
-                expr.qbx_forced_limit, source, target,
-                kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
+                    (name, self.operand_rec(arg_expr))
                     for name, arg_expr in expr.kernel_arguments.items()
                     ))
 
@@ -336,157 +272,6 @@ class ToTargetTagger(LocationTagger):
     def __init__(self, default_source, default_target):
         LocationTagger.__init__(self, default_target)
         self.operand_rec = LocationTagger(default_source)
-
-# }}}
-
-
-# {{{ dimensionalizer
-
-class _DSourceCoefficientFinder(CoefficientCollectorBase):
-    def map_nabla_component(self, expr):
-        return {expr: 1}
-
-    def map_variable(self, expr):
-        return {1: expr}
-
-    def map_common_subexpression(self, expr):
-        return {1: expr}
-
-
-_DIR_VEC_NAME = "dsource_vec"
-
-
-def _insert_source_derivative_into_kernel(kernel):
-    # Inserts the source derivative at the innermost
-    # kernel wrapping level.
-    from sumpy.kernel import DirectionalSourceDerivative
-
-    if kernel.get_base_kernel() is kernel:
-        return DirectionalSourceDerivative(
-                kernel, dir_vec_name=_DIR_VEC_NAME)
-    else:
-        return kernel.replace_inner_kernel(
-                _insert_source_derivative_into_kernel(kernel.kernel))
-
-
-def _get_dir_vec(dsource, ambient_dim):
-    coeffs = _DSourceCoefficientFinder()(dsource)
-
-    dir_vec = np.zeros(ambient_dim, np.object)
-    for i in range(ambient_dim):
-        dir_vec[i] = coeffs.pop(prim.NablaComponent(i, None), 0)
-
-    if coeffs:
-        raise RuntimeError("source derivative expression contained constant term")
-
-    return dir_vec
-
-
-class Dimensionalizer(DimensionalizerBase, EvaluationMapper):
-    """Once the discretization is known, the dimension count is, too.
-    This mapper plugs in dimension-specific quantities for their
-    non-dimensional symbolic counterparts.
-    """
-
-    def __init__(self, discr_dict):
-        self.discr_dict = discr_dict
-        super(Dimensionalizer, self).__init__()
-
-    @property
-    def ambient_dim(self):
-        from pytools import single_valued
-        return single_valued(
-                discr.ambient_dim
-                for discr in six.itervalues(self.discr_dict))
-
-    def map_vector_variable(self, expr):
-        from pymbolic import make_sym_vector
-        num_components = expr.num_components
-
-        if num_components is None:
-            num_components = self.ambient_dim
-
-        return MultiVector(make_sym_vector(expr.name, num_components))
-
-    def map_dimensionalized_expression(self, expr):
-        return expr.child
-
-    def map_parametrization_derivative(self, expr):
-        discr = self.discr_dict[expr.where]
-
-        from pytential.qbx import LayerPotentialSource
-        if isinstance(discr, LayerPotentialSource):
-            discr = discr.fine_density_discr
-
-        from meshmode.discretization import Discretization
-        if not isinstance(discr, Discretization):
-            raise RuntimeError("Cannot compute the parametrization derivative "
-                    "of something that is not a discretization (a target perhaps?). "
-                    "For example, you will receive this error if you try to "
-                    "evaluate S' in the volume.")
-
-        par_grad = np.zeros((discr.ambient_dim, discr.dim), np.object)
-        for i in range(discr.ambient_dim):
-            for j in range(discr.dim):
-                par_grad[i, j] = prim.NumReferenceDerivative(
-                        frozenset([j]),
-                        prim.NodeCoordinateComponent(i, expr.where),
-                        expr.where)
-
-        from pytools import product
-        return product(MultiVector(vec) for vec in par_grad.T)
-
-    def map_nodes(self, expr):
-        discr = self.discr_dict[expr.where]
-        from pytools.obj_array import make_obj_array
-        return MultiVector(
-                make_obj_array([
-                    prim.NodeCoordinateComponent(i, expr.where)
-                    for i in range(discr.ambient_dim)]))
-
-    def map_int_g(self, expr):
-        from sumpy.kernel import KernelDimensionSetter
-        return componentwise(
-                lambda subexpr: type(expr)(
-                        KernelDimensionSetter(self.ambient_dim)(expr.kernel),
-                        self.rec(subexpr),
-                        expr.qbx_forced_limit, expr.source, expr.target,
-                        kernel_arguments=dict(
-                            (name, self.rec(arg_expr))
-                            for name, arg_expr in expr.kernel_arguments.items()
-                            )),
-                expr.density)
-
-    def map_int_g_ds(self, expr):
-        dsource = self.rec(expr.dsource)
-
-        ambient_dim = self.ambient_dim
-
-        from sumpy.kernel import KernelDimensionSetter
-        kernel = _insert_source_derivative_into_kernel(
-                KernelDimensionSetter(ambient_dim)(expr.kernel))
-
-        from pytools.obj_array import make_obj_array
-        nabla = MultiVector(make_obj_array(
-            [prim.NablaComponent(axis, None)
-                for axis in range(ambient_dim)]))
-
-        kernel_arguments = dict(
-                (name, self.rec(arg_expr))
-                for name, arg_expr in expr.kernel_arguments.items()
-                )
-
-        def add_dir_vec_to_kernel_args(coeff):
-            result = kernel_arguments.copy()
-            result[_DIR_VEC_NAME] = _get_dir_vec(coeff, ambient_dim)
-            return result
-
-        rec_operand = prim.cse(self.rec(expr.density))
-        return (dsource*nabla).map(
-                lambda coeff: prim.IntG(
-                    kernel,
-                    rec_operand, expr.qbx_forced_limit, expr.source, expr.target,
-                    kernel_arguments=add_dir_vec_to_kernel_args(coeff)))
 
 # }}}
 
@@ -589,10 +374,6 @@ class QBXPreprocessor(IdentityMapper):
         else:
             return expr
 
-    def map_int_g_ds(self, expr):
-        raise RuntimeError("user-facing source derivative operators are expected "
-                "to have been eliminated by the time QBXPreprocessor is called.")
-
 # }}}
 
 
@@ -610,15 +391,6 @@ def stringify_where(where):
 
 
 class StringifyMapper(BaseStringifyMapper):
-
-    def map_nodes(self, expr, enclosing_prec):
-        return "x"
-
-    def map_vector_variable(self, expr, enclosing_prec):
-        return " %s> " % expr.name
-
-    def map_dimensionalized_expression(self, expr, enclosing_prec):
-        return self.rec(expr.child, enclosing_prec)
 
     def map_ones(self, expr, enclosing_prec):
         return "Ones.%s" % stringify_where(expr.where)
@@ -680,27 +452,6 @@ class StringifyMapper(BaseStringifyMapper):
                 expr.kernel,
                 self.rec(expr.density, PREC_PRODUCT))
 
-    def map_int_g_ds(self, expr, enclosing_prec):
-        if isinstance(expr.dsource, MultiVector):
-            deriv_term = r"(%s*\/)" % self.rec(expr.dsource, PREC_PRODUCT)
-        else:
-            deriv_term = self.rec(expr.dsource, PREC_PRODUCT)
-
-        result = u"Int[%s->%s]@(%s)%s %s G_%s %s" % (
-                stringify_where(expr.source),
-                stringify_where(expr.target),
-                expr.qbx_forced_limit,
-                self._stringify_kernel_args(
-                    expr.kernel_arguments),
-                deriv_term,
-                expr.kernel,
-                self.rec(expr.density, PREC_NONE))
-
-        if enclosing_prec >= PREC_PRODUCT:
-            return "(%s)" % result
-        else:
-            return result
-
 # }}}
 
 
@@ -723,19 +474,6 @@ class GraphvizMapper(GraphvizMapperBase):
 
         if self.visit(expr, node_printed=True):
             self.post_visit(expr)
-
-    map_nodes = map_pytential_leaf
-    map_vector_variable = map_pytential_leaf
-
-    def map_dimensionalized_expression(self, expr):
-        self.lines.append(
-                "%s [label=\"%s\",shape=circle];" % (
-                    self.get_id(expr), type(expr).__name__))
-        if not self.visit(expr, node_printed=True):
-            return
-
-        self.rec(expr.child)
-        self.post_visit(expr)
 
     map_ones = map_pytential_leaf
 
@@ -772,25 +510,6 @@ class GraphvizMapper(GraphvizMapperBase):
         for arg_expr in expr.kernel_arguments.values():
             self.rec(arg_expr)
 
-        self.post_visit(expr)
-
-    def map_int_g_ds(self, expr):
-        descr = u"Int[%s->%s]@(%d) (%s)" % (
-                stringify_where(expr.source),
-                stringify_where(expr.target),
-                expr.qbx_forced_limit,
-                expr.kernel,
-                )
-        self.lines.append(
-                "%s [label=\"%s\",shape=box];" % (
-                    self.get_id(expr), descr))
-        if not self.visit(expr, node_printed=True):
-            return
-
-        self.rec(expr.density)
-        for arg_expr in expr.kernel_arguments.values():
-            self.rec(arg_expr)
-        self.rec(expr.dsource)
         self.post_visit(expr)
 
 # }}}
