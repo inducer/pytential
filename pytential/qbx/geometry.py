@@ -765,15 +765,18 @@ class QBXFMMGeometryData(object):
             # two: one for positive side, one for negative side
             ncenters += 2 * len(kept_indices) * el_group.nelements
 
+        adim = self_discr.ambient_dim
+        dim = self_discr.dim
+
         from pytential import sym, bind
         from pytools.obj_array import make_obj_array
         with cl.CommandQueue(self.cl_context) as queue:
-            radii_sym = sym.cse(2*sym.area_element(), "radii")
+            radii_sym = sym.cse(2*sym.area_element(adim, dim), "radii")
             all_radii, all_pos_centers, all_neg_centers = bind(self_discr,
                     make_obj_array([
                         radii_sym,
-                        sym.Nodes() + radii_sym*sym.normal(),
-                        sym.Nodes() - radii_sym*sym.normal()
+                        sym.nodes(adim) + radii_sym*sym.normal(adim),
+                        sym.nodes(adim) - radii_sym*sym.normal(adim)
                         ]))(queue)
 
             # The centers are returned from the above as multivectors.

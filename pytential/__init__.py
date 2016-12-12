@@ -34,7 +34,9 @@ from pytools import memoize_on_first_arg
 @memoize_on_first_arg
 def _integral_op(discr):
     from pytential import sym, bind
-    return bind(discr, sym.integral(sym.var("integrand")))
+    return bind(discr,
+            sym.integral(
+                discr.ambient_dim, discr.dim, sym.var("integrand")))
 
 
 def integral(discr, queue, x):
@@ -51,7 +53,8 @@ def _norm_op(discr, num_components):
     else:
         integrand = sym.abs(sym.var("integrand"))**2
 
-    return bind(discr, sym.integral(integrand))
+    return bind(discr,
+            sym.integral(discr.ambient_dim, discr.dim, integrand))
 
 
 def norm(discr, queue, x):
