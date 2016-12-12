@@ -308,7 +308,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         with cl.CommandQueue(self.cl_context) as queue:
             from pytential import bind, sym
-            ds = bind(discr, sym.area_element() * sym.QWeight())(queue)
+            ds = bind(
+                    discr,
+                    sym.area_element(ambient_dim=discr.ambient_dim, dim=discr.dim)
+                    * sym.QWeight()
+                    )(queue)
             panel_sizes = cl.array.empty(
                 queue, discr.nnodes
                 if last_dim_length in ("nsources", "ncenters")
@@ -335,8 +339,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
-            nodes = bind(self.density_discr, sym.nodes(adim, dim))(queue)
-            normals = bind(self.density_discr, sym.normal(adim, dim))(queue)
+            nodes = bind(self.density_discr, sym.nodes(adim))(queue)
+            normals = bind(self.density_discr, sym.normal(adim, dim=dim))(queue)
             panel_sizes = self.panel_sizes().with_queue(queue)
             return (nodes + normals * sign * panel_sizes / 2).as_vector(np.object)
 
