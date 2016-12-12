@@ -362,13 +362,16 @@ def ones_vec(dim, where=None):
                 make_obj_array(dim*[Ones(where)]))
 
 
-def area(where=None):
-    return cse(integral(Ones(where), where), "area",
+def area(ambient_dim, dim, where=None):
+    return cse(integral(ambient_dim, dim, Ones(where), where), "area",
             cse_scope.DISCRETIZATION)
 
 
-def mean(operand, where=None):
-    return integral(operand, where) / area(where)
+def mean(ambient_dim, dim, operand, where=None):
+    return (
+            integral(ambient_dim, dim, operand, where)
+            /
+            area(ambient_dim, dim, where))
 
 
 class IterativeInverse(Expression):
