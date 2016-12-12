@@ -396,10 +396,9 @@ class IterativeInverse(Expression):
 
 
 class Derivative(DerivativeBase):
-    @staticmethod
-    def resolve(expr):
+    def resolve(self, expr):
         from pytential.symbolic.mappers import DerivativeBinder
-        return DerivativeBinder()(expr)
+        return DerivativeBinder(self.my_id)(expr)
 
 
 # {{{ potentials
