@@ -44,6 +44,7 @@ __doc__ = """
 .. autoclass:: Variable
 .. autoclass:: make_sym_vector
 .. autoclass:: make_sym_mv
+.. autoclass:: make_sym_surface_mv
 
 Functions
 ^^^^^^^^^
@@ -60,6 +61,7 @@ Discretization properties
 .. autoclass:: QWeight
 .. autofunction:: nodes
 .. autofunction:: parametrization_derivative
+.. autofunction:: parametrization_derivative_matrix
 .. autofunction:: pseudoscalar
 .. autofunction:: area_element
 .. autofunction:: sqrt_jac_q_weight
@@ -123,6 +125,16 @@ class Expression(ExpressionBase):
 
 def make_sym_mv(name, num_components):
     return MultiVector(make_sym_vector(name, num_components))
+
+
+def make_sym_surface_mv(name, ambient_dim, dim, where=None):
+    par_grad = parametrization_derivative_matrix(ambient_dim, dim, where)
+
+    return sum(
+            var("%s%d" % (name, i))
+            *
+            cse(MultiVector(vec), "tangent%d" % i, cse_scope.DISCRETIZATION)
+            for i, vec in enumerate(par_grad.T))
 
 
 class Function(var):
@@ -225,7 +237,7 @@ class NumReferenceDerivative(DiscretizationProperty):
     mapper_method = intern("map_num_reference_derivative")
 
 
-def parametrization_derivative(ambient_dim, dim, where=None):
+def parametrization_derivative_matrix(ambient_dim, dim, where=None):
     """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
     the derivative of the reference-to-global parametrization.
     """
@@ -237,6 +249,16 @@ def parametrization_derivative(ambient_dim, dim, where=None):
                     frozenset([j]),
                     NodeCoordinateComponent(i, where),
                     where)
+
+    return par_grad
+
+
+def parametrization_derivative(ambient_dim, dim, where=None):
+    """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
+    the derivative of the reference-to-global parametrization.
+    """
+
+    par_grad = parametrization_derivative_matrix(ambient_dim, dim, where)
 
     from pytools import product
     return product(MultiVector(vec) for vec in par_grad.T)
