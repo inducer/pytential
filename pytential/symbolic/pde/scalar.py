@@ -39,7 +39,6 @@ __doc__ = """
 from pytential import sym
 from pytential.symbolic.primitives import (
         cse,
-        Ones, mean,
         sqrt_jac_q_weight, QWeight, area_element)
 import numpy as np
 from collections import namedtuple
@@ -153,7 +152,8 @@ class DirichletOperator(L2WeightedPDEOperator):
             # See Hackbusch, http://books.google.com/books?id=Ssnf7SZB0ZMC
             # Theorem 8.2.18b
 
-            ones_contribution = Ones() * mean(inv_sqrt_w_u)
+            amb_dim = self.kernel.dim
+            ones_contribution = sym.Ones() * sym.mean(amb_dim, amb_dim-1, inv_sqrt_w_u)
         else:
             ones_contribution = 0
 
@@ -272,7 +272,8 @@ class NeumannOperator(L2WeightedPDEOperator):
             # to the desired solution separately. As is, this operator
             # returns a mean that is not well-specified.
 
-            ones_contribution = Ones() * mean(inv_sqrt_w_u)
+            amb_dim = self.kernel.dim
+            ones_contribution = sym.Ones() * sym.mean(amb_dim, amb_dim-1, inv_sqrt_w_u)
         else:
             ones_contribution = 0
 
