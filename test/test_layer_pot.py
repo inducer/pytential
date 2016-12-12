@@ -86,7 +86,7 @@ def test_geometry(ctx_getter):
             InterpolatoryQuadratureSimplexGroupFactory(order))
 
     import pytential.symbolic.primitives as prim
-    area_sym = prim.integral(1)
+    area_sym = prim.integral(2, 1, 1)
 
     area = bind(discr, area_sym)(queue)
 
