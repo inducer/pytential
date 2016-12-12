@@ -198,7 +198,7 @@ class LayerPotentialInstruction(Instruction):
                 limit_str = "[+] "
             elif o.qbx_forced_limit == -1:
                 limit_str = "[-] "
-            if o.qbx_forced_limit == 2:
+            elif o.qbx_forced_limit == 2:
                 limit_str = "[(+)] "
             elif o.qbx_forced_limit == -2:
                 limit_str = "[(-)] "

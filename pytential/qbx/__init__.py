@@ -174,6 +174,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         return self.density_discr.ambient_dim
 
     @property
+    def dim(self):
+        return self.density_discr.dim
+
+    @property
     def cl_context(self):
         return self.density_discr.cl_context
 
@@ -189,9 +193,13 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     def centers(self, target_discr, sign):
         from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
+            amb_dim = self.ambient_dim
+            dim = self.dim
+
             return bind(target_discr,
-                    sym.Nodes() + 2*sign*sym.area_element()*sym.normal())(queue) \
-                            .as_vector(np.object)
+                    sym.nodes(amb_dim)
+                    + 2*sign*sym.area_element(amb_dim, dim)
+                    * sym.normal(amb_dim, dim))(queue).as_vector(np.object)
 
     @memoize_method
     def weights_and_area_elements(self):
@@ -203,8 +211,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             # area element instead, then upsample that.
 
             area_element = self.resampler(queue,
-                    bind(self.density_discr,
-                        p.area_element())(queue))
+                    bind(
+                        self.density_discr,
+                        p.area_element(self.ambient_dim, self.dim)
+                        )(queue))
 
             qweight = bind(self.fine_density_discr, p.QWeight())(queue)
 
@@ -221,9 +231,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         return QBXPreprocessor(name, discretizations)(expr)
 
     def op_group_features(self, expr):
-        from pytential.symbolic.primitives import IntGdSource
-        assert not isinstance(expr, IntGdSource)
-
         from sumpy.kernel import AxisTargetDerivativeRemover
         result = (
                 expr.source, expr.density,

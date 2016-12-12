@@ -349,7 +349,6 @@ def prepare_expr(places, expr, auto_where=None):
 
     from pytential.symbolic.mappers import (
             ToTargetTagger,
-            Dimensionalizer,
             DerivativeBinder,
             )
 
@@ -362,20 +361,13 @@ def prepare_expr(places, expr, auto_where=None):
     if auto_where:
         expr = ToTargetTagger(*auto_where)(expr)
 
-    # Dimensionalize so that preprocessing only has to deal with
-    # dimension-specific layer potentials.
-
-    expr = Dimensionalizer(places)(expr)
-
     expr = DerivativeBinder()(expr)
 
     for name, place in six.iteritems(places):
         if isinstance(place, LayerPotentialSource):
             expr = place.preprocess_optemplate(name, places, expr)
 
-    # Dimensionalize again, in case the preprocessor spit out
-    # dimension-independent stuff.
-    return Dimensionalizer(places)(expr)
+    return expr
 
 # }}}
 

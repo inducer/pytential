@@ -39,7 +39,6 @@ __doc__ = """
 from pytential import sym
 from pytential.symbolic.primitives import (
         cse,
-        S, D, Sp, Dp,
         Ones, mean,
         sqrt_jac_q_weight, QWeight, area_element)
 import numpy as np
@@ -50,7 +49,8 @@ from six.moves import range
 # {{{ L^2 weighting
 
 class L2WeightedPDEOperator(object):
-    def __init__(self, use_l2_weighting):
+    def __init__(self, kernel, use_l2_weighting):
+        self.kernel = kernel
         self.use_l2_weighting = use_l2_weighting
 
         if not use_l2_weighting:
@@ -60,13 +60,13 @@ class L2WeightedPDEOperator(object):
 
     def get_weight(self, where=None):
         if self.use_l2_weighting:
-            return cse(area_element(where)*QWeight(where))
+            return cse(area_element(self.kernel.dim, where=where)*QWeight(where))
         else:
             return 1
 
     def get_sqrt_weight(self, where=None):
         if self.use_l2_weighting:
-            return sqrt_jac_q_weight(where)
+            return sqrt_jac_q_weight(self.kernel.dim, where=where)
         else:
             return 1
 
@@ -84,21 +84,25 @@ class DirichletOperator(L2WeightedPDEOperator):
     charge. (This is true at least in 2D.)
     """
 
-    def __init__(self, kernel, loc_sign, alpha=None, use_l2_weighting=False):
+    def __init__(self, kernel, loc_sign, alpha=None, use_l2_weighting=False,
+            kernel_arguments=None):
         """
         :arg loc_sign: +1 for exterior, -1 for interior
         :arg alpha: the coefficient for the combined-field representation
             Set to 0 for Laplace.
         """
-        L2WeightedPDEOperator.__init__(self, use_l2_weighting)
-
         assert loc_sign in [-1, 1]
 
-        from sumpy.kernel import to_kernel_and_args, LaplaceKernel
-        self.kernel_and_args = to_kernel_and_args(kernel)
+        from sumpy.kernel import Kernel, LaplaceKernel
+        assert isinstance(kernel, Kernel)
+
+        if kernel_arguments is None:
+            kernel_arguments = {}
+        self.kernel_arguments = kernel_arguments
+
         self.loc_sign = loc_sign
 
-        self.kernel, _ = self.kernel_and_args
+        L2WeightedPDEOperator.__init__(self, kernel, use_l2_weighting)
 
         if alpha is None:
             if isinstance(self.kernel, LaplaceKernel):
@@ -114,7 +118,7 @@ class DirichletOperator(L2WeightedPDEOperator):
         return isinstance(self.kernel, LaplaceKernel) and self.loc_sign > 0
 
     def representation(self,
-            u, map_potentials=None, qbx_forced_limit=None, **kwargs):
+            u, map_potentials=None, qbx_forced_limit=None):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
@@ -122,12 +126,19 @@ class DirichletOperator(L2WeightedPDEOperator):
             def map_potentials(x):
                 return x
 
-        kwargs["qbx_forced_limit"] = qbx_forced_limit
+        def S(density):  # noqa
+            return sym.S(self.kernel, density,
+                    kernel_arguments=self.kernel_arguments,
+                    qbx_forced_limit=qbx_forced_limit)
+
+        def D(density):  # noqa
+            return sym.D(self.kernel, density,
+                    kernel_arguments=self.kernel_arguments,
+                    qbx_forced_limit=qbx_forced_limit)
 
         return (
-                self.alpha*map_potentials(
-                    S(self.kernel_and_args, inv_sqrt_w_u, **kwargs))
-                - map_potentials(D(self.kernel_and_args, inv_sqrt_w_u, **kwargs)))
+                self.alpha*map_potentials(S(inv_sqrt_w_u))
+                - map_potentials(D(inv_sqrt_w_u)))
 
     def operator(self, u):
         sqrt_w = self.get_sqrt_weight()
@@ -148,10 +159,11 @@ class DirichletOperator(L2WeightedPDEOperator):
 
         return (-self.loc_sign*0.5*u
                 + sqrt_w*(
-                    self.alpha*S(self.kernel_and_args, inv_sqrt_w_u,
-                        qbx_forced_limit=+1)
-                    - D(self.kernel_and_args, inv_sqrt_w_u,
-                        qbx_forced_limit="avg")
+                    self.alpha*sym.S(self.kernel, inv_sqrt_w_u,
+                        qbx_forced_limit=+1, kernel_arguments=self.kernel_arguments)
+                    - sym.D(self.kernel, inv_sqrt_w_u,
+                        qbx_forced_limit="avg",
+                        kernel_arguments=self.kernel_arguments)
                     + ones_contribution))
 
 # }}}
@@ -162,7 +174,8 @@ class DirichletOperator(L2WeightedPDEOperator):
 class NeumannOperator(L2WeightedPDEOperator):
     def __init__(self, kernel, loc_sign, alpha=None,
             use_improved_operator=True,
-            laplace_kernel=0, use_l2_weighting=False):
+            laplace_kernel=0, use_l2_weighting=False,
+            kernel_arguments=None):
         """
         :arg loc_sign: +1 for exterior, -1 for interior
         :arg alpha: the coefficient for the combined-field representation
@@ -170,17 +183,20 @@ class NeumannOperator(L2WeightedPDEOperator):
         :arg use_improved_operator: Whether to use the least singular
             operator available
         """
-        L2WeightedPDEOperator.__init__(self, use_l2_weighting)
 
         assert loc_sign in [-1, 1]
 
-        from sumpy.kernel import to_kernel_and_args, LaplaceKernel
+        from sumpy.kernel import Kernel, LaplaceKernel
+        assert isinstance(kernel, Kernel)
 
-        self.kernel_and_args = to_kernel_and_args(kernel)
+        if kernel_arguments is None:
+            kernel_arguments = {}
+        self.kernel_arguments = kernel_arguments
+
         self.loc_sign = loc_sign
-        self.laplace_kernel_and_args = to_kernel_and_args(laplace_kernel)
+        self.laplace_kernel = LaplaceKernel(kernel.dim)
 
-        self.kernel, _ = self.kernel_and_args
+        L2WeightedPDEOperator.__init__(self, kernel, use_l2_weighting)
 
         if alpha is None:
             if isinstance(self.kernel, LaplaceKernel):
@@ -205,14 +221,15 @@ class NeumannOperator(L2WeightedPDEOperator):
                 return x
 
         kwargs["qbx_forced_limit"] = qbx_forced_limit
+        kwargs["kernel_arguments"] = self.kernel_arguments
 
         return (
                 map_potentials(
-                    S(self.kernel_and_args, inv_sqrt_w_u, **kwargs))
+                    sym.S(self.kernel, inv_sqrt_w_u, **kwargs))
                 - self.alpha
                 * map_potentials(
-                    D(self.kernel_and_args,
-                        S(self.laplace_kernel_and_args, inv_sqrt_w_u),
+                    sym.D(self.kernel,
+                        sym.S(self.laplace_kernel, inv_sqrt_w_u),
                         **kwargs)))
 
     def operator(self, u):
@@ -221,24 +238,29 @@ class NeumannOperator(L2WeightedPDEOperator):
         sqrt_w = self.get_sqrt_weight()
         inv_sqrt_w_u = cse(u/sqrt_w)
 
-        lknl = self.laplace_kernel_and_args
+        knl = self.kernel
+        lknl = self.laplace_kernel
 
-        DpS0u = Dp(self.kernel_and_args,  # noqa
-                cse(S(lknl, inv_sqrt_w_u)))
+        knl_kwargs = {}
+        knl_kwargs["kernel_arguments"] = self.kernel_arguments
+
+        DpS0u = sym.Dp(knl,  # noqa
+                cse(sym.S(lknl, inv_sqrt_w_u)),
+                **knl_kwargs)
 
         if self.use_improved_operator:
-            Dp0S0u = -0.25*u + Sp(  # noqa
+            Dp0S0u = -0.25*u + sym.Sp(  # noqa
                     lknl,  # noqa
-                    Sp(lknl, inv_sqrt_w_u, qbx_forced_limit="avg"),
+                    sym.Sp(lknl, inv_sqrt_w_u, qbx_forced_limit="avg"),
                     qbx_forced_limit="avg")
 
             if isinstance(self.kernel, HelmholtzKernel):
                 DpS0u = (  # noqa
-                        Dp(self.kernel_and_args - lknl,  # noqa
-                            cse(S(lknl, inv_sqrt_w_u, qbx_forced_limit=+1)),
-                            qbx_forced_limit=+1)
+                        sym.Dp(knl - lknl,  # noqa
+                            cse(sym.S(lknl, inv_sqrt_w_u, qbx_forced_limit=+1)),
+                            qbx_forced_limit=+1, **knl_kwargs)
                         + Dp0S0u)
-            elif isinstance(self.kernel_and_args, LaplaceKernel):
+            elif isinstance(knl, LaplaceKernel):
                 DpS0u = Dp0S0u  # noqa
             else:
                 raise ValueError("no improved operator for %s known"
@@ -256,7 +278,7 @@ class NeumannOperator(L2WeightedPDEOperator):
 
         return (-self.loc_sign*0.5*u
                 + sqrt_w*(
-                    Sp(self.kernel_and_args, inv_sqrt_w_u, qbx_forced_limit="avg")
+                    sym.Sp(knl, inv_sqrt_w_u, qbx_forced_limit="avg", **knl_kwargs)
                     - self.alpha*DpS0u
                     + ones_contribution
                     ))
