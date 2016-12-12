@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 QBX_CENTER_MATCH_THRESHOLD = 1 + 0.05
 
 
-# {{{
+# {{{ docs
 
 __doc__ = """
 

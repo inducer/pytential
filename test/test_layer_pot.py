@@ -780,7 +780,7 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
         qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
                 qbx_order,
-                fmm_order=qbx_order + 20).with_refinement()
+                fmm_order=qbx_order + 5).with_refinement()
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
