@@ -113,9 +113,7 @@ TUNNEL_QUERY_DISTANCE_FINDER_TEMPLATE = ElementwiseTemplate(
 
 # Implements "Algorithm for triggering refinement based on Condition 1"
 #
-# FIXME: There is probably a better way to do this. For instance, since
-# we are not using Newton to compute center-panel distances, we can just
-# do an area query of size h_k / 2 around each center.
+# Does not use r_max as we do not use Newton for checking center-panel closeness.
 CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER = AreaQueryElementwiseTemplate(
     extra_args=r"""
         /* input */
@@ -128,7 +126,6 @@ CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER = AreaQueryElementwiseTemplate(
         particle_id_t *sorted_target_ids,
         coord_t *panel_sizes,
         int npanels,
-        coord_t r_max,
 
         /* output */
         int *panel_refine_flags,
@@ -143,7 +140,7 @@ CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER = AreaQueryElementwiseTemplate(
         particle_id_t my_panel = bsearch(panel_to_center_starts, npanels + 1, i);
 
         ${load_particle("INDEX_FOR_CENTER_PARTICLE(i)", ball_center)}
-        ${ball_radius} = r_max + panel_sizes[my_panel] / 2;
+        ${ball_radius} = panel_sizes[my_panel] / 2;
         """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
         for (particle_id_t panel_idx = box_to_panel_starts[${leaf_box_id}];
@@ -402,7 +399,7 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
     # {{{ refinement triggering
 
     def refinement_check_center_is_closest_to_orig_panel(self, queue, tree,
-            lpot_source, peer_lists, tq_dists, refine_flags, debug, wait_for=None):
+            lpot_source, peer_lists, refine_flags, debug, wait_for=None):
         # Avoid generating too many kernels.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
@@ -422,8 +419,6 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
         found_panel_to_refine = cl.array.zeros(queue, 1, np.int32)
         found_panel_to_refine.finish()
 
-        r_max = cl.array.max(tq_dists).get()
-
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
@@ -436,7 +431,6 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
                 tree.sorted_target_ids,
                 lpot_source.panel_sizes("npanels"),
                 tree.nqbxpanels,
-                r_max,
                 refine_flags,
                 found_panel_to_refine,
                 *tree.sources),
@@ -751,8 +745,8 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
 
                 must_refine |= \
                         self.refinement_check_center_is_closest_to_orig_panel(
-                            queue, tree, lpot_source, peer_lists, tq_dists,
-                            refine_flags, debug, wait_for)
+                            queue, tree, lpot_source, peer_lists, refine_flags,
+                            debug, wait_for)
 
                 must_refine |= \
                         self.refinement_check_center_is_far_from_nonneighbor_panels(
