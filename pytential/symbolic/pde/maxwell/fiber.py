@@ -41,9 +41,6 @@ from collections import namedtuple
 from six.moves import range
 
 from pytential import sym
-from pytential.symbolic.primitives import (
-        cse,
-        sqrt_jac_q_weight, QWeight, area_element)
 from pytools import memoize_method
 from pytential.symbolic.pde.scalar import L2WeightedPDEOperator
 
@@ -79,18 +76,14 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
 
         self.interfaces = interfaces
 
-        if isinstance(beta, str):
-            beta = sym.var(beta)
+        beta = sym.var(beta)
         self.beta = sym.cse(beta, "beta")
 
-        if isinstance(k_vacuum, str):
-            k_vacuum = sym.var(k_vacuum)
+        k_vacuum = sym.var(k_vacuum)
         self.k_vacuum = sym.cse(k_vacuum, "k_vac")
 
         self.domain_k_exprs = [
                 sym.var(k_expr)
-                if isinstance(k_expr, str)
-                else sym.cse(k_expr, "k%d" % idom)
                 for idom, k_expr in enumerate(domain_k_exprs)]
         del domain_k_exprs
 
@@ -101,17 +94,8 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
         from sumpy.kernel import HelmholtzKernel
         self.kernel = HelmholtzKernel(2, allow_evanescent=True)
 
-    def make_unknown(self, prefix):
-        from pytools import reverse_dictionary
-        index_to_name_and_intf = reverse_dictionary(self.unknown_index)
-
-        from pytools.obj_array import make_obj_array
-        return make_obj_array([
-            sym.var(prefix
-                + index_to_name_and_intf[i][0]
-                + str(index_to_name_and_intf[i][1]))
-            for i in range(len(index_to_name_and_intf))
-            ])
+    def make_unknown(self, name):
+        return sym.make_sym_vector(name, len(self.unknown_index))
 
     @property
     @memoize_method
@@ -128,7 +112,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
         raise NotImplementedError()
 
     def operator(self, unknown):
-        result = np.zeros(4*len(self.interfaces))
+        result = np.zeros(4*len(self.interfaces), dtype=object)
 
         unk_idx = self.unknown_index
 
@@ -138,47 +122,56 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             idx_mt = unk_idx["mt", i]
             idx_mz = unk_idx["mz", i]
 
-            phi1 = jt = unknown[idx_jt]
-            phi2 = jz = unknown[idx_jz]
-            phi3 = mt = unknown[idx_mt]
-            phi4 = mz = unknown[idx_mz]
+            phi1 = unknown[idx_jt]
+            phi2 = unknown[idx_jz]
+            phi3 = unknown[idx_mt]
+            phi4 = unknown[idx_mz]
 
             ne = self.beta/self.k_vacuum
 
             dom0_idx, dom1_idx, where = self.interfaces[i]
             dom_indices = [dom0_idx, dom1_idx]
 
-            def S(dom, density):  # noqa
-                return sym.S(
-                        self.kernel, density,
-                        k=self.domain_K_exprs[dom_indices[dom]])
-
-            def D(dom, density):  # noqa
-                return sym.D(
-                        self.kernel, density,
-                        k=self.domain_K_exprs[dom_indices[dom]])
-
-            def T(dom, density):  # noqa
-                1/0
-
-            def Tt(dom, density):  # noqa
-                1/0
-
-            def Sn(dom, density):  # noqa
-                1/0
-
-            def St(dom, density):  # noqa
-                1/0
-
             tangent = (sym.pseudoscalar(2, 1, where)
                     / sym.area_element(2, 1, where))
             normal = sym.normal(2, 1, where)
-            print(sym.pretty(
-                ))
-            1/0
 
-            n0 = 1  # FIXME
-            n1 = 2  # FIXME
+            def S(dom, density, qbx_forced_limit=+1):  # noqa
+                return sym.S(
+                        self.kernel, density,
+                        k=self.domain_K_exprs[dom_indices[dom]],
+                        qbx_forced_limit=qbx_forced_limit)
+
+            def D(dom, density, qbx_forced_limit="avg"):  # noqa
+                return sym.D(
+                        self.kernel, density,
+                        k=self.domain_K_exprs[dom_indices[dom]],
+                        qbx_forced_limit=qbx_forced_limit)
+
+            def T(dom, density):  # noqa
+                return sym.int_g_dsource(
+                        2,
+                        tangent,
+                        self.kernel,
+                        density,
+                        k=self.domain_K_exprs[dom_indices[dom]],
+                        # ????
+                        qbx_forced_limit="avg").xproject(0)
+
+            def Tt(dom, density):  # noqa
+                return sym.tangential_derivative(2, T(dom, density)).xproject(0)
+
+            def Sn(dom, density):  # noqa
+                return sym.normal_derivative(
+                        2,
+                        S(dom, density,
+                            qbx_forced_limit="avg"))
+
+            def St(dom, density):  # noqa
+                return sym.tangential_derivative(2, S(dom, density)).xproject(0)
+
+            n0 = self.domain_k_exprs[dom0_idx]  # FIXME
+            n1 = self.domain_k_exprs[dom1_idx]  # FIXME
 
             a11 = n0**2 * D(0, phi1) - n1**2 * D(1, phi1)
             a22 = -n0**2 * Sn(0, phi2) + n1**2 * Sn(1, phi2)
@@ -225,6 +218,9 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             result[idx_mz] += d4 + a41 + a42 + a43 + a44
 
             # TODO: L2 weighting
+            # TODO: Add representation contributions to other boundaries
+            # abutting the domain
+            return result
 
 # }}}
 
@@ -855,3 +851,4 @@ class DielectricSDRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
 
 # }}}
 
+# vim: foldmethod=marker

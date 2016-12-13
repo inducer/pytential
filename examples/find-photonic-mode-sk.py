@@ -25,17 +25,20 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import numpy.linalg as la
 import pyopencl as cl
-from pytential import sym
+from pytential import sym, bind
 from functools import partial
 
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 
+import logging
+
 
 def find_mode():
+    logging.basicConfig(level=logging.INFO)
+
     import warnings
     warnings.simplefilter("error", np.ComplexWarning)
 
@@ -44,21 +47,25 @@ def find_mode():
 
     k0 = 1.4447
     k1 = k0*1.02
-    beta_sym = sym.var("beta")
 
     from pytential.symbolic.pde.maxwell.fiber import \
             SecondKindInfZMuellerOperator
 
     pde_op = SecondKindInfZMuellerOperator(
-            k_vacuum=1,
+            k_vacuum="k_v",
             interfaces=((0, 1, sym.DEFAULT_SOURCE),),
-            domain_k_exprs=(k0, k1),
-            beta=beta_sym,
+            domain_k_exprs=("k0", "k1"),
+            beta="beta",
             use_l2_weighting=True)
 
-    jm_sym = pde_op.make_unknown("")
-    op = pde_op.operator(jm_sym)
-    1/0
+    base_context = {
+            "k0": k0,
+            "k1": k1,
+            "k_v": 1,
+            }
+
+    u_sym = pde_op.make_unknown("u")
+    op = pde_op.operator(u_sym)
 
     # {{{ discretization setup
 
@@ -66,7 +73,7 @@ def find_mode():
     curve_f = partial(ellipse, 1)
 
     target_order = 7
-    qbx_order = 4
+    qbx_order = 3
     nelements = 30
 
     from meshmode.mesh.processing import affine_map
@@ -81,27 +88,37 @@ def find_mode():
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
     from pytential.qbx import QBXLayerPotentialSource
-    density_discr = Discretization(
+    pre_density_discr = Discretization(
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
+    qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
             qbx_order,
             # Don't use FMM for now
-            fmm_order=False)
+            fmm_order=qbx_order+5).with_refinement()
+    density_discr = qbx.density_discr
 
     # }}}
 
     x_vec = np.random.randn(len(u_sym)*density_discr.nnodes)
     y_vec = np.random.randn(len(u_sym)*density_discr.nnodes)
 
-    def muller_solve_func(beta):
-        from pytential.symbolic.execution import build_matrix
-        mat = build_matrix(
-                queue, qbx, op, u_sym,
-                context={"beta": beta}).get()
+    bound_op = bind(qbx, op)
 
-        return 1/x_vec.dot(la.solve(mat, y_vec))
+    def muller_solve_func(beta):
+        from pytential.solve import gmres
+        gmres_result = gmres(
+                bound_op.scipy_op(queue, "u",
+                    np.complex128, beta=beta, **base_context),
+                y_vec, tol=1e-12, progress=True,
+                stall_iterations=0,
+                hard_failure=False)
+        minv_y = gmres_result.solution
+        print("gmres state:", gmres_result.state)
+
+        z = 1/x_vec.dot(minv_y)
+        print("muller func value:", repr(z))
+        return z
 
     starting_guesses = (1+0j)*(
             k0
