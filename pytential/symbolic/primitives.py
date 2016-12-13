@@ -585,6 +585,9 @@ def _get_dir_vec(dsource, ambient_dim):
         def map_common_subexpression(self, expr):
             return {1: expr}
 
+        def map_quotient(self, expr):
+            return {1: expr}
+
     coeffs = _DSourceCoefficientFinder()(dsource)
 
     dir_vec = np.zeros(ambient_dim, np.object)
