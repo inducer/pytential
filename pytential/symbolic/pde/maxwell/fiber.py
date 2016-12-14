@@ -117,24 +117,28 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
         unk_idx = self.unknown_index
 
         for i in range(len(self.interfaces)):
-            idx_jt = unk_idx["jt", i]
-            idx_jz = unk_idx["jz", i]
-            idx_mt = unk_idx["mt", i]
-            idx_mz = unk_idx["mz", i]
+            idx_jt = unk_idx["jz", i]
+            idx_jz = unk_idx["jt", i]
+            idx_mt = unk_idx["mz", i]
+            idx_mz = unk_idx["mt", i]
 
             phi1 = unknown[idx_jt]
             phi2 = unknown[idx_jz]
             phi3 = unknown[idx_mt]
             phi4 = unknown[idx_mz]
 
-            ne = self.beta/self.k_vacuum
+            ne = sym.cse(self.beta/self.k_vacuum, "ne")
 
             dom0_idx, dom1_idx, where = self.interfaces[i]
             dom_indices = [dom0_idx, dom1_idx]
 
-            tangent = (sym.pseudoscalar(2, 1, where)
-                    / sym.area_element(2, 1, where))
-            normal = sym.normal(2, 1, where)
+            tangent = sym.cse(
+                    (sym.pseudoscalar(2, 1, where)
+                    / sym.area_element(2, 1, where)),
+                    "tangent")
+            normal = sym.cse(
+                    sym.normal(2, 1, where),
+                    "normal")
 
             def S(dom, density, qbx_forced_limit=+1):  # noqa
                 return sym.S(
@@ -156,7 +160,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                         density,
                         k=self.domain_K_exprs[dom_indices[dom]],
                         # ????
-                        qbx_forced_limit="avg").xproject(0)
+                        qbx_forced_limit=1).xproject(0)
 
             def Tt(dom, density):  # noqa
                 return sym.tangential_derivative(2, T(dom, density)).xproject(0)
@@ -170,13 +174,15 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             def St(dom, density):  # noqa
                 return sym.tangential_derivative(2, S(dom, density)).xproject(0)
 
-            n0 = self.domain_k_exprs[dom0_idx]  # FIXME
-            n1 = self.domain_k_exprs[dom1_idx]  # FIXME
+            n0 = sym.cse(self.domain_k_exprs[dom0_idx]/self.k_vacuum,
+                    "n%d" % dom0_idx)
+            n1 = sym.cse(self.domain_k_exprs[dom1_idx]/self.k_vacuum,
+                    "n%d" % dom1_idx)
 
-            a11 = n0**2 * D(0, phi1) - n1**2 * D(1, phi1)
-            a22 = -n0**2 * Sn(0, phi2) + n1**2 * Sn(1, phi2)
-            a33 = D(0, phi3)-D(1, phi3)
-            a44 = -Sn(0, phi4) + Sn(1, phi4)
+            a11 = sym.cse(n0**2 * D(0, phi1) - n1**2 * D(1, phi1), "a11")
+            a22 = sym.cse(-n0**2 * Sn(0, phi2) + n1**2 * Sn(1, phi2), "a22")
+            a33 = sym.cse(D(0, phi3)-D(1, phi3), "a33")
+            a44 = sym.cse(-Sn(0, phi4) + Sn(1, phi4), "a44")
 
             a21 = -1j * ne * (
                     n0**2 * tangent.scalar_product(
@@ -207,8 +213,8 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             a41 = -a23
             a42 = -a24
 
-            d1 = (n0**2 + n1**2)*phi1
-            d2 = (n0**2 + n1**2)*phi2
+            d1 = (n0**2 + n1**2)/2 * phi1
+            d2 = (n0**2 + n1**2)/2 * phi2
             d3 = phi3
             d4 = phi4
 
