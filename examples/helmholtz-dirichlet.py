@@ -32,19 +32,20 @@ def main():
     from functools import partial
 
     mesh = make_curve_mesh(
-            partial(ellipse, 3),
+            partial(ellipse, 1),
             np.linspace(0, 1, nelements+1),
             mesh_order)
 
-    density_discr = Discretization(
+    pre_density_discr = Discretization(
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     from pytential.qbx import QBXLayerPotentialSource
-    qbx = QBXLayerPotentialSource(
-            density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
+    qbx, _ = QBXLayerPotentialSource(
+            pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
-            )
+            ).with_refinement()
+    density_discr = qbx. density_discr
 
     # {{{ describe bvp
 
@@ -54,7 +55,7 @@ def main():
     cse = sym.cse
 
     sigma_sym = sym.var("sigma")
-    sqrt_w = sym.sqrt_jac_q_weight()
+    sqrt_w = sym.sqrt_jac_q_weight(2)
     inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
 
     # Brakhage-Werner parameter
@@ -102,10 +103,15 @@ def main():
             - sym.D(kernel, inv_sqrt_w_sigma, k=sym.var("k")))
 
     from sumpy.visualization import FieldPlotter
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=400)
+
+    targets = cl.array.to_device(queue, fplot.points)
+
+    qbx_stick_out = qbx.copy(target_stick_out_factor=0.05)
+
     from pytential.target import PointsTarget
     fld_in_vol = bind(
-            (qbx, PointsTarget(fplot.points)),
+            (qbx_stick_out, PointsTarget(targets)),
             representation_sym)(queue, sigma=sigma, k=k).get()
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
