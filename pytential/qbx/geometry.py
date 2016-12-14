@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from __future__ import print_function
-from six.moves import zip
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -25,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from six.moves import zip
 
 import numpy as np
 import pyopencl as cl
@@ -37,10 +35,6 @@ from cgen import Enum
 
 import logging
 logger = logging.getLogger(__name__)
-
-# Targets match centers if they are within the center's circle, which, for matching
-# purposes, is enlarged by this fraction.
-QBX_CENTER_MATCH_THRESHOLD = 1 + 0.05
 
 
 # {{{ docs
@@ -540,7 +534,8 @@ class QBXFMMGeometryData(object):
     """
 
     def __init__(self, code_getter, lpot_source,
-            target_discrs_and_qbx_sides, debug):
+            target_discrs_and_qbx_sides,
+            target_stick_out_factor, debug):
         """
         .. rubric:: Constructor arguments
 
@@ -555,6 +550,7 @@ class QBXFMMGeometryData(object):
         self.lpot_source = lpot_source
         self.target_discrs_and_qbx_sides = \
                 target_discrs_and_qbx_sides
+        self.target_stick_out_factor = target_stick_out_factor
         self.debug = debug
 
     @property
@@ -847,7 +843,8 @@ class QBXFMMGeometryData(object):
 
         # FIXME: try block...
         tgt_assoc_result = tgt_assoc(self.lpot_source,
-                                     self.target_discrs_and_qbx_sides)
+                                     self.target_discrs_and_qbx_sides,
+                                     stick_out_factor=self.target_stick_out_factor)
 
         tgt_info = self.target_info()
         center_info = self.center_info()

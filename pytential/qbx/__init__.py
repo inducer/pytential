@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
@@ -135,10 +136,14 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
     def __init__(self, density_discr, fine_order,
-            qbx_order=None, fmm_order=None,
+            qbx_order=None,
+            fmm_order=None,
             fmm_level_to_order=None,
-            # FIXME set debug=False once everything works
-            real_dtype=np.float64, debug=True,
+            target_stick_out_factor=1e-10,
+
+            # begin undocumented arguments
+            # FIXME default debug=False once everything works
+            debug=True,
             refined_for_global_qbx=False,
             performance_data_file=None):
         """
@@ -153,7 +158,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 fmm_order = qbx_order + 1
 
         if fmm_order is not None and fmm_level_to_order is not None:
-            raise TypeError("may not specify both fmm_order an fmm_level_to_order")
+            raise TypeError("may not specify both fmm_order and fmm_level_to_order")
 
         if fmm_level_to_order is None:
             if fmm_order is False:
@@ -162,13 +167,45 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 def fmm_level_to_order(level):
                     return fmm_order
 
-        self.refined_for_global_qbx = refined_for_global_qbx
         self.fine_order = fine_order
         self.qbx_order = qbx_order
         self.density_discr = density_discr
         self.fmm_level_to_order = fmm_level_to_order
+        self.target_stick_out_factor = target_stick_out_factor
+
         self.debug = debug
+        self.refined_for_global_qbx = refined_for_global_qbx
         self.performance_data_file = performance_data_file
+
+    def copy(
+            self,
+            density_discr=None,
+            fine_order=None,
+            qbx_order=None,
+            fmm_level_to_order=None,
+            target_stick_out_factor=None,
+
+            debug=None,
+            refined_for_global_qbx=None,
+            ):
+        # FIXME Could/should share wrangler and geometry kernels
+        # if no relevant changes have been made.
+        return QBXLayerPotentialSource(
+                density_discr=density_discr or self.density_discr,
+                fine_order=(
+                    fine_order if fine_order is not None else self.fine_order),
+                qbx_order=qbx_order if qbx_order is not None else self.qbx_order,
+                fmm_level_to_order=(
+                    fmm_level_to_order or self.fmm_level_to_order),
+                target_stick_out_factor=(
+                    target_stick_out_factor or self.target_stick_out_factor),
+
+                debug=(
+                    debug if debug is not None else self.debug),
+                refined_for_global_qbx=(
+                    refined_for_global_qbx if refined_for_global_qbx is not None
+                    else self.refined_for_global_qbx),
+                performance_data_file=self.performance_data_file)
 
     @property
     @memoize_method
@@ -423,7 +460,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from pytential.qbx.geometry import QBXFMMGeometryData
 
         return QBXFMMGeometryData(self.qbx_fmm_code_getter,
-                self, target_discrs_and_qbx_sides, debug=self.debug)
+                self, target_discrs_and_qbx_sides,
+                target_stick_out_factor=self.target_stick_out_factor,
+                debug=self.debug)
 
     # {{{ fmm-based execution
 
@@ -701,9 +740,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                     qbx_forced_limit = 0
 
                 geo_data = self.qbx_fmm_geometry_data(
-                        target_discrs_and_qbx_sides=[
-                            (target_discr, qbx_forced_limit)
-                        ])
+                        target_discrs_and_qbx_sides=(
+                            (target_discr, qbx_forced_limit),
+                        ))
 
                 # center_info is independent of targets
                 center_info = geo_data.center_info()

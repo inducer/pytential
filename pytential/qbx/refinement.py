@@ -663,12 +663,9 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
 
         new_density_discr = conn.to_discr
 
-        new_lpot_source = QBXLayerPotentialSource(
-            new_density_discr, lpot_source.fine_order,
-            qbx_order=lpot_source.qbx_order,
-            fmm_level_to_order=lpot_source.fmm_level_to_order,
-            real_dtype=lpot_source.real_dtype, debug=debug,
-            refined_for_global_qbx=True)
+        new_lpot_source = lpot_source.copy(
+                density_discr=new_density_discr,
+                refined_for_global_qbx=True)
 
         return new_lpot_source, conn
 
