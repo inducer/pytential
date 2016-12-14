@@ -48,7 +48,7 @@ def find_mode():
     k0 = 1.4447
     k1 = k0*1.02
 
-    from pytential.symbolic.pde.maxwell.fiber import \
+    from pytential.symbolic.pde.maxwell.waveguide import \
             SecondKindInfZMuellerOperator
 
     pde_op = SecondKindInfZMuellerOperator(
@@ -92,10 +92,13 @@ def find_mode():
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
+    qbx, _ = QBXLayerPotentialSource(
+            pre_density_discr,
+            4*target_order,
             qbx_order,
-            # Don't use FMM for now
-            fmm_order=qbx_order+5).with_refinement()
+            #fmm_order=qbx_order+5
+            fmm_order=False
+            ).with_refinement()
     density_discr = qbx.density_discr
 
     # }}}

@@ -24,8 +24,8 @@ THE SOFTWARE.
 
 
 __doc__ = """
-Second-Kind Fiberoptic
-^^^^^^^^^^^^^^^^^^^^^^
+Second-Kind Waveguide
+^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: SecondKindInfZMuellerOperator
 
@@ -184,30 +184,31 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             a33 = sym.cse(D(0, phi3)-D(1, phi3), "a33")
             a44 = sym.cse(-Sn(0, phi4) + Sn(1, phi4), "a44")
 
-            a21 = -1j * ne * (
+            a21 = sym.cse(-1j * ne * (
                     n0**2 * tangent.scalar_product(
                         S(0, normal * phi1))
                     - n1**2 * tangent.scalar_product(
-                        S(1, normal * phi1)))
-            a43 = -1j * ne * (
+                        S(1, normal * phi1))), "a21")
+
+            a43 = sym.cse(-1j * ne * (
                     tangent.scalar_product(
                         S(0, normal * phi3))
                     - tangent.scalar_product(
-                        S(1, normal * phi3)))
-            a13 = ne*(T(0, phi3) - T(1, phi3))
-            a24 = ne*(St(0, phi4) - St(1, phi4))
-            a14 = 1j*(
+                        S(1, normal * phi3))), "a43")
+            a13 = sym.cse(ne*(T(0, phi3) - T(1, phi3)), "a13")
+            a24 = sym.cse(ne*(St(0, phi4) - St(1, phi4)), "a24")
+            a14 = sym.cse(1j*(
                     (n0**2 - ne**2) * S(0, phi4)
                     - (n1**2 - ne**2) * S(1, phi4)
-                    )
+                    ), "a14")
 
-            a23 = (
+            a23 = sym.cse((
                     1j * (Tt(0, phi3) - Tt(1, phi3))
                     - 1j * ne * (
                         n0**2 * tangent.scalar_product(
                             S(0, normal * phi3))
                         - n1**2 * tangent.scalar_product(
-                            S(1, normal * phi3))))
+                            S(1, normal * phi3)))), "a23")
             a31 = -a13
             a32 = -a14
             a41 = -a23
@@ -231,7 +232,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
 # }}}
 
 
-# {{{ old-style fiber
+# {{{ old-style waveguide
 
 class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
     r"""
