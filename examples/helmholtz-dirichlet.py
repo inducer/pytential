@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
@@ -7,6 +8,7 @@ from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
 
 from pytential import bind, sym, norm  # noqa
+from pytential.target import PointsTarget
 
 # {{{ set some constants for use below
 
@@ -76,7 +78,7 @@ def main():
 
     # {{{ describe bvp
 
-    from sumpy.kernel import HelmholtzKernel
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
     kernel = HelmholtzKernel(2)
 
     cse = sym.cse
@@ -104,11 +106,15 @@ def main():
 
     # {{{ fix rhs and solve
 
-    mode_nr = 3
     nodes = density_discr.nodes().with_queue(queue)
-    angle = cl.clmath.atan2(nodes[1], nodes[0])
+    k_vec = np.array([2, 1])
+    k_vec = k * k_vec / la.norm(k_vec, 2)
 
-    bc = cl.clmath.cos(mode_nr*angle)
+    def u_incoming_func(x):
+        return cl.clmath.exp(
+                1j * (x[0] * k_vec[0] + x[1] * k_vec[1]))
+
+    bc = -u_incoming_func(nodes)
 
     bvp_rhs = bind(qbx, sqrt_w*sym.var("bc"))(queue, bc=bc)
 
@@ -131,13 +137,24 @@ def main():
             - sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
 
     from sumpy.visualization import FieldPlotter
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
 
     targets = cl.array.to_device(queue, fplot.points)
 
+    u_incoming = u_incoming_func(targets)
+
     qbx_stick_out = qbx.copy(target_stick_out_factor=0.05)
 
-    from pytential.target import PointsTarget
+    indicator_qbx = qbx_stick_out.copy(
+            fmm_level_to_order=lambda lev: 7, qbx_order=2)
+
+    ones_density = density_discr.zeros(queue)
+    ones_density.fill(1)
+    indicator = bind(
+            (indicator_qbx, PointsTarget(targets)),
+            sym.D(LaplaceKernel(2), sym.var("sigma")))(
+            queue, sigma=ones_density).get()
+
     try:
         fld_in_vol = bind(
                 (qbx_stick_out, PointsTarget(targets)),
@@ -155,7 +172,9 @@ def main():
     fplot.write_vtk_file(
             "potential.vts",
             [
-                ("potential", fld_in_vol)
+                ("potential", fld_in_vol),
+                ("indicator", indicator),
+                ("u_incoming", u_incoming.get()),
                 ]
             )
 
