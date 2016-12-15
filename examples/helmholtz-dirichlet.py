@@ -10,13 +10,13 @@ from pytential import bind, sym, norm  # noqa
 
 # {{{ set some constants for use below
 
-nelements = 50
-mesh_order = 3
-bdry_quad_order = 10
+nelements = 20
+bdry_quad_order = 4
+mesh_order = bdry_quad_order
+qbx_order = bdry_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
-qbx_order = 4
-fmm_order = 8
-k = 15
+fmm_order = 25
+k = 25
 
 # }}}
 
@@ -31,21 +31,48 @@ def main():
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
 
-    mesh = make_curve_mesh(
-            partial(ellipse, 1),
-            np.linspace(0, 1, nelements+1),
-            mesh_order)
+    if 0:
+        mesh = make_curve_mesh(
+                partial(ellipse, 1),
+                np.linspace(0, 1, nelements+1),
+                mesh_order)
+    else:
+        base_mesh = make_curve_mesh(
+                partial(ellipse, 1),
+                np.linspace(0, 1, nelements+1),
+                mesh_order)
+
+        from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
+        nx = 5
+        ny = 5
+        dx = 2 / nx
+        meshes = [
+                affine_map(
+                    base_mesh,
+                    A=np.diag([dx*0.25, dx*0.25]),
+                    b=np.array([dx*(ix-nx/2), dx*(iy-ny/2)]))
+                for ix in range(nx)
+                for iy in range(ny)]
+
+        mesh = merge_disjoint_meshes(meshes, single_group=True)
+
+        if 0:
+            from meshmode.mesh.visualization import draw_curve
+            draw_curve(mesh)
+            import matplotlib.pyplot as plt
+            plt.show()
 
     pre_density_discr = Discretization(
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
-    from pytential.qbx import QBXLayerPotentialSource
+    from pytential.qbx import (
+            QBXLayerPotentialSource, QBXTargetAssociationFailedException)
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
             ).with_refinement()
-    density_discr = qbx. density_discr
+    density_discr = qbx.density_discr
 
     # {{{ describe bvp
 
@@ -63,7 +90,7 @@ def main():
 
     # -1 for interior Dirichlet
     # +1 for exterior Dirichlet
-    loc_sign = -1
+    loc_sign = +1
 
     bdry_op_sym = (-loc_sign*0.5*sigma_sym
             + sqrt_w*(
@@ -86,33 +113,44 @@ def main():
     bvp_rhs = bind(qbx, sqrt_w*sym.var("bc"))(queue, bc=bc)
 
     from pytential.solve import gmres
-    gmres_result = gmres(
-            bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
-            bvp_rhs, tol=1e-14, progress=True,
-            stall_iterations=0,
-            hard_failure=True)
+    # gmres_result = gmres(
+    #         bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
+    #         bvp_rhs, tol=1e-8, progress=True,
+    #         stall_iterations=0,
+    #         hard_failure=True)
 
     # }}}
 
     # {{{ postprocess/visualize
 
-    sigma = gmres_result.solution
+    #sigma = gmres_result.solution
+    sigma = bc
 
+    repr_kwargs = dict(k=sym.var("k"), qbx_forced_limit=None)
     representation_sym = (
-            alpha*sym.S(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
-            - sym.D(kernel, inv_sqrt_w_sigma, k=sym.var("k")))
+            alpha*sym.S(kernel, inv_sqrt_w_sigma, **repr_kwargs)
+            - sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
 
     from sumpy.visualization import FieldPlotter
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=400)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
 
     targets = cl.array.to_device(queue, fplot.points)
 
     qbx_stick_out = qbx.copy(target_stick_out_factor=0.05)
 
     from pytential.target import PointsTarget
-    fld_in_vol = bind(
-            (qbx_stick_out, PointsTarget(targets)),
-            representation_sym)(queue, sigma=sigma, k=k).get()
+    try:
+        fld_in_vol = bind(
+                (qbx_stick_out, PointsTarget(targets)),
+                representation_sym)(queue, sigma=sigma, k=k).get()
+    except QBXTargetAssociationFailedException as e:
+        fplot.write_vtk_file(
+                "failed-targets.vts",
+                [
+                    ("failed", e.failed_target_flags.get(queue))
+                    ]
+                )
+        raise
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
     fplot.write_vtk_file(
