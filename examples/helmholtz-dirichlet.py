@@ -113,18 +113,17 @@ def main():
     bvp_rhs = bind(qbx, sqrt_w*sym.var("bc"))(queue, bc=bc)
 
     from pytential.solve import gmres
-    # gmres_result = gmres(
-    #         bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
-    #         bvp_rhs, tol=1e-8, progress=True,
-    #         stall_iterations=0,
-    #         hard_failure=True)
+    gmres_result = gmres(
+            bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
+            bvp_rhs, tol=1e-8, progress=True,
+            stall_iterations=0,
+            hard_failure=True)
 
     # }}}
 
     # {{{ postprocess/visualize
 
-    #sigma = gmres_result.solution
-    sigma = bc
+    sigma = gmres_result.solution
 
     repr_kwargs = dict(k=sym.var("k"), qbx_forced_limit=None)
     representation_sym = (
