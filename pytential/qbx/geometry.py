@@ -699,9 +699,10 @@ class QBXFMMGeometryData(object):
 
             # NOTE: max_leaf_refine_weight has an impact on accuracy.
             # For instance, if a panel contains 64*4 = 256 nodes, then
-            # a box will contain at most half a panel, meaning that
-            # its width will be on the order h/2, which means many
-            # QBX disks (diameter h) will be forced to cross boxes.
+            # a box with 128 sources will contain at most half a
+            # panel, meaning that its width will be on the order h/2,
+            # which means many QBX disks (diameter h) will be forced
+            # to cross boxes.
             # So we set max_leaf_refine weight comfortably large
             # to avoid having too many disks overlap more than one box.
             #
@@ -709,7 +710,7 @@ class QBXFMMGeometryData(object):
             tree, _ = code_getter.build_tree(queue,
                     particles=lpot_src.fine_density_discr.nodes(),
                     targets=target_info.targets,
-                    max_leaf_refine_weight=384,
+                    max_leaf_refine_weight=256,
                     refine_weights=refine_weights,
                     debug=self.debug,
                     kind="adaptive-level-restricted")
