@@ -775,6 +775,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
                 qbx_tgt_numbers = qbx_tgt_numbers[:qbx_tgt_count]
                 qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
+                qbx_center_numbers.finish()
 
                 tgt_subset_kwargs = kernel_args.copy()
                 for i, res_i in enumerate(output_for_each_kernel):
