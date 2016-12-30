@@ -866,7 +866,7 @@ class QBXFMMGeometryData(object):
                 .target_side_preferences()[center_info.ncenters:].get(queue=queue))
 
         target_discrs_and_qbx_sides = [(
-                PointsTarget(tgt_info.targets[:,center_info.ncenters:]),
+                PointsTarget(tgt_info.targets[:, center_info.ncenters:]),
                 target_side_prefs.astype(np.int32))]
 
         # FIXME: try block...
