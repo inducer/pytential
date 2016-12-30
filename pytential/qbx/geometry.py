@@ -898,7 +898,7 @@ class QBXFMMGeometryData(object):
                     tree_ttc, filtered_tree_ttc, filtered_target_ids, count,
                     queue=queue, size=len(tree_ttc))
 
-            count = count.get()
+            count = np.asscalar(count.get())
 
             filtered_tree_ttc = filtered_tree_ttc[:count]
             filtered_target_ids = filtered_target_ids[:count].copy()
