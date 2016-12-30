@@ -725,7 +725,7 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
     from sympy.core.cache import clear_cache
     clear_cache()
 
-    target_order = 7
+    target_order = 8
 
     u_sym = sym.var("u")
     grad_u_sym = sym.make_sym_mv("grad_u", 2)
@@ -784,7 +784,7 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
         qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
-            qbx_order, fmm_order=qbx_order + 15).with_refinement()
+            qbx_order, fmm_order=qbx_order + 20).with_refinement()
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
