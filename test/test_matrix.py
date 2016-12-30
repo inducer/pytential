@@ -102,14 +102,16 @@ def test_matrix_build(ctx_factory):
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
     from pytential.qbx import QBXLayerPotentialSource
-    density_discr = Discretization(
+    pre_density_discr = Discretization(
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
+    qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
             qbx_order,
             # Don't use FMM for now
-            fmm_order=False)
+            fmm_order=False).with_refinement()
+
+    density_discr = qbx.density_discr
 
     bound_op = bind(qbx, op)
 
