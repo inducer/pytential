@@ -856,13 +856,24 @@ class QBXFMMGeometryData(object):
         # FIXME: kernel ownership...
         tgt_assoc = QBXTargetAssociator(self.cl_context)
 
-        # FIXME: try block...
-        tgt_assoc_result = tgt_assoc(self.lpot_source,
-                                     self.target_discrs_and_qbx_sides,
-                                     stick_out_factor=self.target_stick_out_factor)
-
         tgt_info = self.target_info()
         center_info = self.center_info()
+
+        from pytential.target import PointsTarget
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            target_side_prefs = (self
+                .target_side_preferences()[center_info.ncenters:].get(queue=queue))
+
+        target_discrs_and_qbx_sides = [(
+                PointsTarget(tgt_info.targets[:,center_info.ncenters:]),
+                target_side_prefs.astype(np.int32))]
+
+        # FIXME: try block...
+        tgt_assoc_result = tgt_assoc(self.lpot_source,
+                                     target_discrs_and_qbx_sides,
+                                     stick_out_factor=self.target_stick_out_factor)
+
         tree = self.tree()
 
         with cl.CommandQueue(self.cl_context) as queue:

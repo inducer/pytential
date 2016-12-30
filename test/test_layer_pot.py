@@ -122,7 +122,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    target_order = 7
+    target_order = 8
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
@@ -266,7 +266,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                     norm(density_discr, queue, sp_sigma - sp_sigma_ref)
                     /
                     norm(density_discr, queue, sigma))
-            sp_eoc_rec.add_data_point(1/nelements, sp_err)
+            sp_eoc_rec.add_data_point(qbx.h_max, sp_err)
 
             # }}}
 
@@ -621,6 +621,7 @@ def run_int_eq_test(
         pass
 
     return Result(
+            h_max=qbx.h_max,
             rel_err_2=rel_err_2,
             rel_err_inf=rel_err_inf,
             rel_td_err_inf=rel_td_err_inf,
@@ -672,8 +673,8 @@ def test_integral_equation(
                 bc_type, loc_sign, k, target_order=target_order,
                 source_order=source_order)
 
-        eoc_rec_target.add_data_point(1/nelements, result.rel_err_2)
-        eoc_rec_td.add_data_point(1/nelements, result.rel_td_err_inf)
+        eoc_rec_target.add_data_point(result.h_max, result.rel_err_2)
+        eoc_rec_td.add_data_point(result.h_max, result.rel_td_err_inf)
 
     if bc_type == "dirichlet":
         tgt_order = qbx_order
@@ -783,7 +784,7 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
         qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
-            qbx_order, fmm_order=qbx_order + 5).with_refinement()
+            qbx_order, fmm_order=qbx_order + 15).with_refinement()
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
