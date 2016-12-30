@@ -156,12 +156,13 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
             # FIXME: for now
             fmm_order = False
 
-        density_discr = Discretization(
+        pre_density_discr = Discretization(
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
-        qbx = QBXLayerPotentialSource(density_discr, 4*target_order,
+        qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
                 qbx_order, fmm_order=fmm_order).with_refinement()
 
+        density_discr = qbx.density_discr
         nodes = density_discr.nodes().with_queue(queue)
 
         if 0:
@@ -309,16 +310,18 @@ def run_int_eq_test(
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
-    density_discr = Discretization(
+    pre_density_discr = Discretization(
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     if source_order is None:
         source_order = 4*target_order
 
-    qbx = QBXLayerPotentialSource(
-            density_discr, fine_order=source_order, qbx_order=qbx_order,
+    qbx, _ = QBXLayerPotentialSource(
+            pre_density_discr, fine_order=source_order, qbx_order=qbx_order,
             # Don't use FMM for now
             fmm_order=False).with_refinement()
+
+    density_discr = qbx.density_discr
 
     # {{{ set up operator
 
@@ -778,9 +781,9 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-        qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
-                qbx_order,
-                fmm_order=qbx_order + 5).with_refinement()
+        qbx, _ = QBXLayerPotentialSource(
+            pre_density_discr, 4*target_order,
+            qbx_order, fmm_order=qbx_order + 5).with_refinement()
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
@@ -861,10 +864,12 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
 
-    density_discr = Discretization(
+    pre_density_discr = Discretization(
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
-    qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
+    qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
             fmm_order=fmm_order).with_refinement()
+
+    density_discr = qbx.density_discr
 
     from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2)
