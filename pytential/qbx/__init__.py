@@ -100,27 +100,33 @@ class LayerPotentialSource(object):
 
 def get_local_expansion_class(base_kernel):
     # FIXME: Don't hard-code expansion types
-    from sumpy.kernel import HelmholtzKernel
+    from sumpy.kernel import HelmholtzKernel, LaplaceKernel
     if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
             and base_kernel.dim == 2):
         from sumpy.expansion.local import H2DLocalExpansion
         return H2DLocalExpansion
-    else:
+    elif isinstance(base_kernel.get_base_kernel(), LaplaceKernel):
         from sumpy.expansion.local import LaplaceConformingVolumeTaylorLocalExpansion
         return LaplaceConformingVolumeTaylorLocalExpansion
+    else:
+        from sumpy.expansion.local import VolumeTaylorLocalExpansion
+        return VolumeTaylorLocalExpansion
 
 
 def get_multipole_expansion_class(base_kernel):
     # FIXME: Don't hard-code expansion types
-    from sumpy.kernel import HelmholtzKernel
+    from sumpy.kernel import HelmholtzKernel, LaplaceKernel
     if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
             and base_kernel.dim == 2):
         from sumpy.expansion.multipole import H2DMultipoleExpansion
         return H2DMultipoleExpansion
-    else:
+    elif isinstance(base_kernel.get_base_kernel(), LaplaceKernel):
         from sumpy.expansion.multipole import (
                 LaplaceConformingVolumeTaylorMultipoleExpansion)
         return LaplaceConformingVolumeTaylorMultipoleExpansion
+    else:
+        from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
+        return VolumeTaylorMultipoleExpansion
 
 
 # {{{ QBX layer potential source
