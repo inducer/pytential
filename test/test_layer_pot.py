@@ -702,8 +702,8 @@ d2 = sym.Derivative()
 
 @pytest.mark.parametrize(("curve_name", "curve_f"), [
     #("circle", partial(ellipse, 1)),
-    ("3-to-1 ellipse", partial(ellipse, 3)),
-    #("starfish", starfish),
+    #("3-to-1 ellipse", partial(ellipse, 3)),
+    ("starfish", starfish),
     ])
 @pytest.mark.parametrize("qbx_order", [5])
 @pytest.mark.parametrize(("zero_op_name", "k"), [
@@ -784,7 +784,7 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
         qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
-            qbx_order, fmm_order=qbx_order + 20).with_refinement()
+            qbx_order, fmm_order=qbx_order + 15).with_refinement()
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
