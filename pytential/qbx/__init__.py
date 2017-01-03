@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
@@ -24,16 +25,23 @@ THE SOFTWARE.
 
 import six
 
+import loopy as lp
 import numpy as np
-#import numpy.linalg as la
 from pytools import memoize_method
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import QuadratureSimplexGroupFactory
+from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 
 import pyopencl as cl
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 __doc__ = """
 .. autoclass:: QBXLayerPotentialSource
+
+.. autoclass:: QBXTargetAssociationFailedException
 """
 
 
@@ -92,11 +100,14 @@ class LayerPotentialSource(object):
 
 def get_local_expansion_class(base_kernel):
     # FIXME: Don't hard-code expansion types
-    from sumpy.kernel import HelmholtzKernel
+    from sumpy.kernel import HelmholtzKernel, LaplaceKernel
     if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
             and base_kernel.dim == 2):
         from sumpy.expansion.local import H2DLocalExpansion
         return H2DLocalExpansion
+    elif isinstance(base_kernel.get_base_kernel(), LaplaceKernel):
+        from sumpy.expansion.local import LaplaceConformingVolumeTaylorLocalExpansion
+        return LaplaceConformingVolumeTaylorLocalExpansion
     else:
         from sumpy.expansion.local import VolumeTaylorLocalExpansion
         return VolumeTaylorLocalExpansion
@@ -104,11 +115,15 @@ def get_local_expansion_class(base_kernel):
 
 def get_multipole_expansion_class(base_kernel):
     # FIXME: Don't hard-code expansion types
-    from sumpy.kernel import HelmholtzKernel
+    from sumpy.kernel import HelmholtzKernel, LaplaceKernel
     if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
             and base_kernel.dim == 2):
         from sumpy.expansion.multipole import H2DMultipoleExpansion
         return H2DMultipoleExpansion
+    elif isinstance(base_kernel.get_base_kernel(), LaplaceKernel):
+        from sumpy.expansion.multipole import (
+                LaplaceConformingVolumeTaylorMultipoleExpansion)
+        return LaplaceConformingVolumeTaylorMultipoleExpansion
     else:
         from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
         return VolumeTaylorMultipoleExpansion
@@ -124,15 +139,22 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     .. attribute :: fmm_order
     .. attribute :: cl_context
     .. automethod :: centers
+    .. automethod :: panel_sizes
     .. automethod :: weights_and_area_elements
+    .. automethod :: with_refinement
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
     def __init__(self, density_discr, fine_order,
-            qbx_order=None, fmm_order=None,
+            qbx_order=None,
+            fmm_order=None,
             fmm_level_to_order=None,
-            # FIXME set debug=False once everything works
-            real_dtype=np.float64, debug=True,
+            target_stick_out_factor=1e-10,
+
+            # begin undocumented arguments
+            # FIXME default debug=False once everything works
+            debug=True,
+            refined_for_global_qbx=False,
             performance_data_file=None):
         """
         :arg fine_order: The total degree to which the (upsampled)
@@ -141,20 +163,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             a reasonable(-ish?) default.
         """
 
-        self.fine_density_discr = Discretization(
-                density_discr.cl_context, density_discr.mesh,
-                QuadratureSimplexGroupFactory(fine_order), real_dtype)
-
-        from meshmode.discretization.connection import make_same_mesh_connection
-        self.resampler = make_same_mesh_connection(
-                self.fine_density_discr, density_discr)
-
         if fmm_level_to_order is None:
             if fmm_order is None and qbx_order is not None:
                 fmm_order = qbx_order + 1
 
         if fmm_order is not None and fmm_level_to_order is not None:
-            raise TypeError("may not specify both fmm_order an fmm_level_to_order")
+            raise TypeError("may not specify both fmm_order and fmm_level_to_order")
 
         if fmm_level_to_order is None:
             if fmm_order is False:
@@ -163,11 +177,100 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 def fmm_level_to_order(level):
                     return fmm_order
 
+        self.fine_order = fine_order
         self.qbx_order = qbx_order
         self.density_discr = density_discr
         self.fmm_level_to_order = fmm_level_to_order
+        self.target_stick_out_factor = target_stick_out_factor
+
         self.debug = debug
+        self.refined_for_global_qbx = refined_for_global_qbx
         self.performance_data_file = performance_data_file
+
+    def copy(
+            self,
+            density_discr=None,
+            fine_order=None,
+            qbx_order=None,
+            fmm_level_to_order=None,
+            target_stick_out_factor=None,
+
+            debug=None,
+            refined_for_global_qbx=None,
+            ):
+        # FIXME Could/should share wrangler and geometry kernels
+        # if no relevant changes have been made.
+        return QBXLayerPotentialSource(
+                density_discr=density_discr or self.density_discr,
+                fine_order=(
+                    fine_order if fine_order is not None else self.fine_order),
+                qbx_order=qbx_order if qbx_order is not None else self.qbx_order,
+                fmm_level_to_order=(
+                    fmm_level_to_order or self.fmm_level_to_order),
+                target_stick_out_factor=(
+                    target_stick_out_factor or self.target_stick_out_factor),
+
+                debug=(
+                    debug if debug is not None else self.debug),
+                refined_for_global_qbx=(
+                    refined_for_global_qbx if refined_for_global_qbx is not None
+                    else self.refined_for_global_qbx),
+                performance_data_file=self.performance_data_file)
+
+    @property
+    @memoize_method
+    def fine_density_discr(self):
+        return Discretization(
+            self.density_discr.cl_context, self.density_discr.mesh,
+            QuadratureSimplexGroupFactory(self.fine_order), self.real_dtype)
+
+    @property
+    @memoize_method
+    def resampler(self):
+        from meshmode.discretization.connection import make_same_mesh_connection
+        return make_same_mesh_connection(
+                self.fine_density_discr, self.density_discr)
+
+    def el_view(self, discr, group_nr, global_array):
+        """Return a view of *global_array* of shape
+        ``(..., discr.groups[group_nr].nelements)``
+        where *global_array* is of shape ``(..., nelements)``,
+        where *nelements* is the global (per-discretization) node count.
+        """
+
+        group = discr.groups[group_nr]
+        el_nr_base = sum(group.nelements for group in discr.groups[:group_nr])
+
+        return global_array[
+            ..., el_nr_base:el_nr_base + group.nelements] \
+            .reshape(
+                global_array.shape[:-1]
+                + (group.nelements,))
+
+    @memoize_method
+    def with_refinement(self, target_order=None):
+        """
+        :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
+            :class:`QBXLayerPotentialSource` and ``cnx`` is a
+            :class:`meshmode.discretization.connection.DiscretizationConnection`
+            from the originally given to the refined geometry.
+        """
+        from pytential.qbx.refinement import QBXLayerPotentialSourceRefiner
+        refiner = QBXLayerPotentialSourceRefiner(self.cl_context)
+        from meshmode.discretization.poly_element import (
+            InterpolatoryQuadratureSimplexGroupFactory)
+        if target_order is None:
+            target_order = self.density_discr.groups[0].order
+        lpot, connection = refiner(self,
+                InterpolatoryQuadratureSimplexGroupFactory(target_order))
+        return lpot, connection
+
+    @property
+    @memoize_method
+    def h_max(self):
+        with cl.CommandQueue(self.cl_context) as queue:
+            panel_sizes = self.panel_sizes("npanels").with_queue(queue)
+            return np.asscalar(cl.array.max(panel_sizes).get())
 
     @property
     def ambient_dim(self):
@@ -190,16 +293,103 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         return self.density_discr.complex_dtype
 
     @memoize_method
-    def centers(self, target_discr, sign):
+    def panel_centers_of_mass(self):
+        knl = lp.make_kernel(
+            """{[dim,k,i]:
+                0<=dim<ndims and
+                0<=k<nelements and
+                0<=i<nunit_nodes}""",
+            """
+                panels[dim, k] = sum(i, nodes[dim, k, i])/nunit_nodes
+                """,
+            default_offset=lp.auto, name="find_panel_centers_of_mass")
+
+        knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
+
+        knl = lp.split_iname(knl, "k", 128, inner_tag="l.0", outer_tag="g.0")
+        knl = lp.tag_inames(knl, dict(dim="ilp"))
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            mesh = self.density_discr.mesh
+            panels = cl.array.empty(queue, (mesh.ambient_dim, mesh.nelements),
+                                    dtype=self.density_discr.real_dtype)
+            for group_nr, group in enumerate(self.density_discr.groups):
+                _, (result,) = knl(queue,
+                    nelements=group.nelements,
+                    nunit_nodes=group.nunit_nodes,
+                    nodes=group.view(self.density_discr.nodes()),
+                    panels=self.el_view(self.density_discr, group_nr, panels))
+            panels.finish()
+            panels = panels.with_queue(None)
+            return tuple(panels[d, :] for d in range(mesh.ambient_dim))
+
+    @memoize_method
+    def panel_sizes(self, last_dim_length="nsources"):
+        assert last_dim_length in ("nsources", "ncenters", "npanels")
+        # To get the panel size this does the equivalent of ∫ 1 ds.
+        # FIXME: Kernel optimizations
+
+        discr = self.density_discr
+
+        if last_dim_length == "nsources" or last_dim_length == "ncenters":
+            knl = lp.make_kernel(
+                "{[i,j,k]: 0<=i<nelements and 0<=j,k<nunit_nodes}",
+                "panel_sizes[i,j] = sum(k, ds[i,k])",
+                name="compute_size")
+
+            def panel_size_view(discr, group_nr):
+                return discr.groups[group_nr].view
+
+        elif last_dim_length == "npanels":
+            knl = lp.make_kernel(
+                "{[i,j]: 0<=i<nelements and 0<=j<nunit_nodes}",
+                "panel_sizes[i] = sum(j, ds[i,j])",
+                name="compute_size")
+            from functools import partial
+
+            def panel_size_view(discr, group_nr):
+                return partial(self.el_view, discr, group_nr)
+
+        else:
+            raise ValueError("unknown dim length specified")
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            from pytential import bind, sym
+            ds = bind(
+                    discr,
+                    sym.area_element(ambient_dim=discr.ambient_dim, dim=discr.dim)
+                    * sym.QWeight()
+                    )(queue)
+            panel_sizes = cl.array.empty(
+                queue, discr.nnodes
+                if last_dim_length in ("nsources", "ncenters")
+                else discr.mesh.nelements, discr.real_dtype)
+            for group_nr, group in enumerate(discr.groups):
+                _, (result,) = knl(queue,
+                    nelements=group.nelements,
+                    nunit_nodes=group.nunit_nodes,
+                    ds=group.view(ds),
+                    panel_sizes=panel_size_view(
+                        discr, group_nr)(panel_sizes))
+            panel_sizes.finish()
+            if last_dim_length == "ncenters":
+                from pytential.qbx.utils import get_interleaver_kernel
+                knl = get_interleaver_kernel(discr.real_dtype)
+                _, (panel_sizes,) = knl(queue, dstlen=2*discr.nnodes,
+                                        src1=panel_sizes, src2=panel_sizes)
+            return panel_sizes.with_queue(None)
+
+    @memoize_method
+    def centers(self, sign):
+        adim = self.density_discr.ambient_dim
+        dim = self.density_discr.dim
+
         from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
-            amb_dim = self.ambient_dim
-            dim = self.dim
-
-            return bind(target_discr,
-                    sym.nodes(amb_dim)
-                    + 2*sign*sym.area_element(amb_dim, dim)
-                    * sym.normal(amb_dim, dim))(queue).as_vector(np.object)
+            nodes = bind(self.density_discr, sym.nodes(adim))(queue)
+            normals = bind(self.density_discr, sym.normal(adim, dim=dim))(queue)
+            panel_sizes = self.panel_sizes().with_queue(queue)
+            return (nodes + normals * sign * panel_sizes / 2).as_vector(np.object)
 
     @memoize_method
     def weights_and_area_elements(self):
@@ -219,8 +409,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             qweight = bind(self.fine_density_discr, p.QWeight())(queue)
 
             return (area_element.with_queue(queue)*qweight).with_queue(None)
-
-    # {{{ interface with execution
 
     def preprocess_optemplate(self, name, discretizations, expr):
         """
@@ -244,6 +432,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from functools import partial
         oversample = partial(self.resampler, queue)
 
+        if not self.refined_for_global_qbx:
+            from warnings import warn
+            warn(
+                "Executing global QBX without refinement. "
+                "This is unlikely to work.")
+
         def evaluate_wrapper(expr):
             value = evaluate(expr)
             return with_object_array_or_scalar(oversample, value)
@@ -254,8 +448,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             func = self.exec_layer_potential_insn_fmm
 
         return func(queue, insn, bound_expr, evaluate_wrapper)
-
-    # {{{ fmm-based execution
 
     @property
     @memoize_method
@@ -278,7 +470,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from pytential.qbx.geometry import QBXFMMGeometryData
 
         return QBXFMMGeometryData(self.qbx_fmm_code_getter,
-                self, target_discrs_and_qbx_sides, debug=self.debug)
+                self, target_discrs_and_qbx_sides,
+                target_stick_out_factor=self.target_stick_out_factor,
+                debug=self.debug)
+
+    # {{{ fmm-based execution
 
     @memoize_method
     def expansion_wrangler_code_container(self, base_kernel, out_kernels):
@@ -370,7 +566,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             if isinstance(source_array, cl.array.Array):
                 return (source_array
                         .with_queue(queue)
-                        [geo_data.tree().user_point_source_ids]
+                        [geo_data.tree().user_source_ids]
                         .with_queue(None))
             else:
                 return source_array
@@ -401,14 +597,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         # }}}
 
-        #geo_data.plot()
-
         if len(geo_data.global_qbx_centers()) != geo_data.center_info().ncenters:
             raise NotImplementedError("geometry has centers requiring local QBX")
 
         from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)
-                == target_state.FAILED).get().any():
+                == target_state.FAILED).any().get():
             raise RuntimeError("geometry has failed targets")
 
         if self.performance_data_file is not None:
@@ -493,11 +687,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         return p2p
 
     @memoize_method
-    def get_center_finder(self, ambient_dim):
-        from pytential.qbx.direct import CenterFinder
-        return CenterFinder(ambient_dim)
-
-    @memoize_method
     def get_qbx_target_numberer(self, dtype):
         assert dtype == np.int32
         from pyopencl.scan import GenericScanKernel
@@ -541,7 +730,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
                         self.fine_density_discr.nodes(),
-                        self.centers(target_discr, o.qbx_forced_limit),
+                        self.centers(o.qbx_forced_limit),
                         [strengths], **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
             else:
@@ -556,23 +745,22 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                         target_discr.nodes(), self.fine_density_discr.nodes(),
                         [strengths], **kernel_args)
 
-                center_info = self.qbx_fmm_geometry_data(
-                        # center_info is independent of targets
-                        target_discrs_and_qbx_sides=()
-                        ).center_info()
-
                 qbx_forced_limit = o.qbx_forced_limit
                 if qbx_forced_limit is None:
                     qbx_forced_limit = 0
 
-                cf = self.get_center_finder(
-                        ambient_dim=self.density_discr.ambient_dim)
-                _, (tgt_to_qbx_center,) = cf(queue,
-                        tgt=target_discr.nodes(),
-                        center=center_info.centers,
-                        center_side=center_info.sides,
-                        radius=center_info.radii,
-                        qbx_forced_limit=qbx_forced_limit)
+                geo_data = self.qbx_fmm_geometry_data(
+                        target_discrs_and_qbx_sides=(
+                            (target_discr, qbx_forced_limit),
+                        ))
+
+                # center_info is independent of targets
+                center_info = geo_data.center_info()
+
+                # First ncenters targets are the centers
+                tgt_to_qbx_center = (
+                        geo_data.user_target_to_center()[center_info.ncenters:]
+                        .copy(queue=queue))
 
                 qbx_tgt_numberer = self.get_qbx_target_numberer(
                         tgt_to_qbx_center.dtype)
@@ -593,6 +781,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
                 qbx_tgt_numbers = qbx_tgt_numbers[:qbx_tgt_count]
                 qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
+                qbx_center_numbers.finish()
 
                 tgt_subset_kwargs = kernel_args.copy()
                 for i, res_i in enumerate(output_for_each_kernel):
@@ -615,9 +804,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     # }}}
 
-    # }}}
-
 # }}}
 
+
+__all__ = (
+        QBXLayerPotentialSource,
+        QBXTargetAssociationFailedException,
+        )
 
 # vim: fdm=marker

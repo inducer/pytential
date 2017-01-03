@@ -32,7 +32,7 @@ if k:
     kernel = HelmholtzKernel(2)
     kernel_kwargs = {"k": sym.var("k")}
 else:
-    kernel = LaplaceKernel()
+    kernel = LaplaceKernel(2)
     kernel_kwargs = {}
 #kernel = OneKernel()
 
@@ -49,11 +49,14 @@ from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
 
-density_discr = Discretization(
+pre_density_discr = Discretization(
         cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
-        fmm_order=False)
+qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
+        fmm_order=qbx_order+3,
+        target_stick_out_factor=0.005).with_refinement()
+
+density_discr = qbx.density_discr
 
 nodes = density_discr.nodes().with_queue(queue)
 
@@ -77,10 +80,12 @@ if isinstance(kernel, HelmholtzKernel):
 bound_bdry_op = bind(qbx, op)
 #mlab.figure(bgcolor=(1, 1, 1))
 if 1:
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=400)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
     from pytential.target import PointsTarget
+
+    targets_dev = cl.array.to_device(queue, fplot.points)
     fld_in_vol = bind(
-            (qbx, PointsTarget(fplot.points)),
+            (qbx, PointsTarget(targets_dev)),
             op)(queue, sigma=sigma, k=k).get()
 
     if enable_mayavi:
