@@ -284,11 +284,11 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
     """
 
     def __init__(self, context):
-        self.context = context
+        self.cl_context = context
         from pytential.qbx.utils import TreeWithQBXMetadataBuilder
-        self.tree_builder = TreeWithQBXMetadataBuilder(self.context)
+        self.tree_builder = TreeWithQBXMetadataBuilder(self.cl_context)
         from boxtree.area_query import PeerListFinder
-        self.peer_list_finder = PeerListFinder(self.context)
+        self.peer_list_finder = PeerListFinder(self.cl_context)
 
     # {{{ kernels
 
@@ -300,7 +300,7 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
         logger.info("refiner: building tunnel query distance finder kernel")
 
         knl = TUNNEL_QUERY_DISTANCE_FINDER_TEMPLATE.build(
-                self.context,
+                self.cl_context,
                 type_aliases=(
                     ("particle_id_t", particle_id_dtype),
                     ("coord_t", coord_dtype),
@@ -322,7 +322,7 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
                                                     peer_list_idx_dtype,
                                                     particle_id_dtype,
                                                     max_levels):
-        return CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER.generate(self.context,
+        return CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER.generate(self.cl_context,
                 dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
                 max_levels,
                 extra_type_aliases=(("particle_id_t", particle_id_dtype),))
@@ -334,7 +334,7 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
                                                          peer_list_idx_dtype,
                                                          particle_id_dtype,
                                                          max_levels):
-        return CENTER_IS_FAR_FROM_NONNEIGHBOR_PANEL_REFINER.generate(self.context,
+        return CENTER_IS_FAR_FROM_NONNEIGHBOR_PANEL_REFINER.generate(self.cl_context,
                 dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
                 max_levels,
                 extra_type_aliases=(("particle_id_t", particle_id_dtype),))
@@ -700,7 +700,7 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
             debug=debug,
             refined_for_global_qbx=True)
 
-        with cl.CommandQueue(self.context) as queue:
+        with cl.CommandQueue(self.cl_context) as queue:
             if refine_flags:
                 lpot_source, conn = self.refine(
                             queue, lpot_source, refine_flags, refiner, discr_factory,
