@@ -301,9 +301,14 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
 class QBXTargetAssociationFailedException(Exception):
     """
     .. attribute:: refine_flags
+    .. attribute:: failed_target_flags
     """
-    def __init__(self, refine_flags):
+    def __init__(self, refine_flags, failed_target_flags):
         self.refine_flags = refine_flags
+        self.failed_target_flags = failed_target_flags
+
+    def __repr__(self):
+        return "<%s>" % type(self).__name__
 
 
 class QBXTargetAssociation(DeviceDataRecord):
@@ -694,7 +699,8 @@ class QBXTargetAssociator(DiscrPlotterMixin):
                                                 refine_flags, debug)
                 assert have_panel_to_refine
                 raise QBXTargetAssociationFailedException(
-                        refine_flags.with_queue(None))
+                        refine_flags=refine_flags.with_queue(None),
+                        failed_target_flags=center_not_found.with_queue(None))
 
             return target_assoc.with_queue(None)
 

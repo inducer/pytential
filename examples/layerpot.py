@@ -49,12 +49,14 @@ from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
 
-density_discr = Discretization(
+pre_density_discr = Discretization(
         cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
+qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
         fmm_order=qbx_order+3,
-        target_stick_out_factor=0.005)
+        target_stick_out_factor=0.005).with_refinement()
+
+density_discr = qbx.density_discr
 
 nodes = density_discr.nodes().with_queue(queue)
 

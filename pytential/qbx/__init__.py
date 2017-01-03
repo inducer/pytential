@@ -30,14 +30,18 @@ import numpy as np
 from pytools import memoize_method
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import QuadratureSimplexGroupFactory
+from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 
 import pyopencl as cl
 
 import logging
 logger = logging.getLogger(__name__)
 
+
 __doc__ = """
 .. autoclass:: QBXLayerPotentialSource
+
+.. autoclass:: QBXTargetAssociationFailedException
 """
 
 
@@ -96,27 +100,33 @@ class LayerPotentialSource(object):
 
 def get_local_expansion_class(base_kernel):
     # FIXME: Don't hard-code expansion types
-    from sumpy.kernel import HelmholtzKernel
+    from sumpy.kernel import HelmholtzKernel, LaplaceKernel
     if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
             and base_kernel.dim == 2):
         from sumpy.expansion.local import H2DLocalExpansion
         return H2DLocalExpansion
-    else:
+    elif isinstance(base_kernel.get_base_kernel(), LaplaceKernel):
         from sumpy.expansion.local import LaplaceConformingVolumeTaylorLocalExpansion
         return LaplaceConformingVolumeTaylorLocalExpansion
+    else:
+        from sumpy.expansion.local import VolumeTaylorLocalExpansion
+        return VolumeTaylorLocalExpansion
 
 
 def get_multipole_expansion_class(base_kernel):
     # FIXME: Don't hard-code expansion types
-    from sumpy.kernel import HelmholtzKernel
+    from sumpy.kernel import HelmholtzKernel, LaplaceKernel
     if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
             and base_kernel.dim == 2):
         from sumpy.expansion.multipole import H2DMultipoleExpansion
         return H2DMultipoleExpansion
-    else:
+    elif isinstance(base_kernel.get_base_kernel(), LaplaceKernel):
         from sumpy.expansion.multipole import (
                 LaplaceConformingVolumeTaylorMultipoleExpansion)
         return LaplaceConformingVolumeTaylorMultipoleExpansion
+    else:
+        from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
+        return VolumeTaylorMultipoleExpansion
 
 
 # {{{ QBX layer potential source
@@ -749,7 +759,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
                 # First ncenters targets are the centers
                 tgt_to_qbx_center = (
-                        geo_data.user_target_to_center()[center_info.ncenters:])
+                        geo_data.user_target_to_center()[center_info.ncenters:]
+                        .copy(queue=queue))
 
                 qbx_tgt_numberer = self.get_qbx_target_numberer(
                         tgt_to_qbx_center.dtype)
@@ -770,6 +781,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
                 qbx_tgt_numbers = qbx_tgt_numbers[:qbx_tgt_count]
                 qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
+                qbx_center_numbers.finish()
 
                 tgt_subset_kwargs = kernel_args.copy()
                 for i, res_i in enumerate(output_for_each_kernel):
@@ -794,5 +806,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
 # }}}
 
+
+__all__ = (
+        QBXLayerPotentialSource,
+        QBXTargetAssociationFailedException,
+        )
 
 # vim: fdm=marker

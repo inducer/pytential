@@ -227,8 +227,9 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     def targets_from_sources(sign, dist):
         from pytential import sym, bind
-        nodes = bind(lpot_source.density_discr, sym.Nodes())(queue)
-        normals = bind(lpot_source.density_discr, sym.normal())(queue)
+        dim = 2
+        nodes = bind(lpot_source.density_discr, sym.nodes(dim))(queue)
+        normals = bind(lpot_source.density_discr, sym.normal(dim))(queue)
         return (nodes + normals * sign * dist).as_vector(np.object)
 
     from pytential.target import PointsTarget

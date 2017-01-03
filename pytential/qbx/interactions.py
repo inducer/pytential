@@ -319,7 +319,8 @@ class QBXL2P(E2PBase):
                             icenter_tgt_start<=icenter_tgt<icenter_tgt_end}",
                     "{[idim]: 0<=idim<dim}",
                     ],
-                ["""
+                self.get_kernel_scaling_assignment()
+                + ["""
                 for iglobal_center
                     <> src_icenter = global_qbx_centers[iglobal_center]
 

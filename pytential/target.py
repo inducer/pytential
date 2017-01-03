@@ -48,7 +48,7 @@ class TargetBase(object):
 
 class PointsTarget(TargetBase):
     """The point of this class is to act as a container for some target points
-    while presenting enough of the :class:`pytential.discretization.Discretization`
+    while presenting enough of the :class:`meshmode.discretization.Discretization`
     interface to not necessitate a lot of special cases in that code path.
     """
 

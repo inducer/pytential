@@ -690,13 +690,28 @@ class QBXFMMGeometryData(object):
         target_info = self.target_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
+            nsources = lpot_src.fine_density_discr.nnodes
+            nparticles = nsources + target_info.ntargets
 
-            # TODO: build refine weights.
+            refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
+            refine_weights[:nsources] = 1
+            refine_weights.finish()
 
+            # NOTE: max_leaf_refine_weight has an impact on accuracy.
+            # For instance, if a panel contains 64*4 = 256 nodes, then
+            # a box with 128 sources will contain at most half a
+            # panel, meaning that its width will be on the order h/2,
+            # which means many QBX disks (diameter h) will be forced
+            # to cross boxes.
+            # So we set max_leaf_refine weight comfortably large
+            # to avoid having too many disks overlap more than one box.
+            #
+            # FIXME: Should investigate this further.
             tree, _ = code_getter.build_tree(queue,
                     particles=lpot_src.fine_density_discr.nodes(),
                     targets=target_info.targets,
-                    max_particles_in_box=30,
+                    max_leaf_refine_weight=256,
+                    refine_weights=refine_weights,
                     debug=self.debug,
                     kind="adaptive-level-restricted")
 
@@ -841,13 +856,24 @@ class QBXFMMGeometryData(object):
         # FIXME: kernel ownership...
         tgt_assoc = QBXTargetAssociator(self.cl_context)
 
-        # FIXME: try block...
-        tgt_assoc_result = tgt_assoc(self.lpot_source,
-                                     self.target_discrs_and_qbx_sides,
-                                     stick_out_factor=self.target_stick_out_factor)
-
         tgt_info = self.target_info()
         center_info = self.center_info()
+
+        from pytential.target import PointsTarget
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            target_side_prefs = (self
+                .target_side_preferences()[center_info.ncenters:].get(queue=queue))
+
+        target_discrs_and_qbx_sides = [(
+                PointsTarget(tgt_info.targets[:, center_info.ncenters:]),
+                target_side_prefs.astype(np.int32))]
+
+        # FIXME: try block...
+        tgt_assoc_result = tgt_assoc(self.lpot_source,
+                                     target_discrs_and_qbx_sides,
+                                     stick_out_factor=self.target_stick_out_factor)
+
         tree = self.tree()
 
         with cl.CommandQueue(self.cl_context) as queue:
@@ -883,7 +909,7 @@ class QBXFMMGeometryData(object):
                     tree_ttc, filtered_tree_ttc, filtered_target_ids, count,
                     queue=queue, size=len(tree_ttc))
 
-            count = count.get()
+            count = np.asscalar(count.get())
 
             filtered_tree_ttc = filtered_tree_ttc[:count]
             filtered_target_ids = filtered_target_ids[:count].copy()
