@@ -40,9 +40,7 @@ from pytential import sym
 from pytential.symbolic.primitives import (
         cse,
         sqrt_jac_q_weight, QWeight, area_element)
-import numpy as np
-from collections import namedtuple
-from six.moves import range
+import numpy as np  # noqa
 
 
 # {{{ L^2 weighting
