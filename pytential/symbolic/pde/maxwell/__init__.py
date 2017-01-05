@@ -25,19 +25,7 @@ THE SOFTWARE.
 from six.moves import range, zip
 import numpy as np  # noqa
 from pymbolic.primitives import Variable
-from pytential.symbolic.primitives import (
-        cse,
-        xyz_to_tangential, tangential_to_xyz, n_cross, n_dot,
-        make_normal, make_tangent, make_vector_field, project_to_tangential,
-
-        IterativeInverse,
-
-        S, Sp, nxcurl_S, grad_S, curl_S_volume, surf_grad_S,
-        IntGdSource,
-        surface_laplacian_S_squared, S_surface_laplacian_S,
-
-        Integral, LineIntegral, Mean, Ones,
-        )
+from pytential import sym
 
 
 # {{{ MFIE
