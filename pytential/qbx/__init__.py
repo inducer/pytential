@@ -326,7 +326,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     @memoize_method
     def panel_sizes(self, last_dim_length="nsources"):
         assert last_dim_length in ("nsources", "ncenters", "npanels")
-        # To get the panel size this does the equivalent of ∫ 1 ds.
+        # To get the panel size this does the equivalent of (∫ 1 ds)**(1/dim).
         # FIXME: Kernel optimizations
 
         discr = self.density_discr
@@ -334,7 +334,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         if last_dim_length == "nsources" or last_dim_length == "ncenters":
             knl = lp.make_kernel(
                 "{[i,j,k]: 0<=i<nelements and 0<=j,k<nunit_nodes}",
-                "panel_sizes[i,j] = sum(k, ds[i,k])",
+                "panel_sizes[i,j] = sum(k, ds[i,k])**(1/dim)",
                 name="compute_size")
 
             def panel_size_view(discr, group_nr):
@@ -343,7 +343,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         elif last_dim_length == "npanels":
             knl = lp.make_kernel(
                 "{[i,j]: 0<=i<nelements and 0<=j<nunit_nodes}",
-                "panel_sizes[i] = sum(j, ds[i,j])",
+                "panel_sizes[i] = sum(j, ds[i,j])**(1/dim)",
                 name="compute_size")
             from functools import partial
 
@@ -352,6 +352,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         else:
             raise ValueError("unknown dim length specified")
+
+        knl = lp.fix_parameters(knl, dim=self.dim)
 
         with cl.CommandQueue(self.cl_context) as queue:
             from pytential import bind, sym
