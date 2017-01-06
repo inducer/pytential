@@ -472,6 +472,13 @@ class IntG(Expression):
             and :meth:`sumpy.kernel.Kernel.get_source_args`
             to expressions that determine them)
 
+        :arg source: The symbolic name of the source discretization. This name
+            is bound to a concrete :class:`pytential.qbx.QBXLayerPotentialSource`
+            by :func:`pytential.bind`.
+
+        :arg target: The symbolic name of the set of targets. This name gets
+            assigned to a concrete target set by :func:`pytential.bind`.
+
         *kwargs* has the same meaning as *kernel_arguments* can be used as a
         more user-friendly interface.
         """
