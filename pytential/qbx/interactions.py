@@ -1,6 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from six.moves import range
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -27,6 +25,7 @@ THE SOFTWARE.
 import numpy as np
 import loopy as lp
 from pytools import memoize_method
+from six.moves import range
 
 from sumpy.p2e import P2EBase
 from sumpy.e2e import E2EBase

@@ -45,8 +45,8 @@ def main():
                 mesh_order)
 
         from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
-        nx = 5
-        ny = 5
+        nx = 2
+        ny = 2
         dx = 2 / nx
         meshes = [
                 affine_map(
@@ -137,7 +137,7 @@ def main():
             - sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
 
     from sumpy.visualization import FieldPlotter
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
 
     targets = cl.array.to_device(queue, fplot.points)
 
