@@ -1,5 +1,4 @@
-from __future__ import absolute_import
-from __future__ import print_function
+from __future__ import absolute_import, print_function
 import numpy as np  # noqa
 import pyopencl as cl
 import pyopencl.array  # noqa
@@ -128,7 +127,8 @@ def main():
 
     vol_vis.write_vtk_file("volume.vtu", [("f", rhs)])
 
-    bdry_normals = bind(bdry_discr, p.normal())(queue).as_vector(dtype=object)
+    bdry_normals = bind(
+            bdry_discr, p.normal(mesh.ambient_dim))(queue).as_vector(dtype=object)
     bdry_vis.write_vtk_file("boundary.vtu", [
         ("normals", bdry_normals)
         ])
@@ -155,11 +155,12 @@ def main():
 
     def get_kernel():
         from sumpy.symbolic import pymbolic_real_norm_2
-        from pymbolic.primitives import (make_sym_vector, Variable as var)
+        from pymbolic.primitives import make_sym_vector
+        from pymbolic import var
 
         d = make_sym_vector("d", 3)
         r2 = pymbolic_real_norm_2(d[:-1])
-        r3 = pymbolic_real_norm_2(d)
+        # r3 = pymbolic_real_norm_2(d)
         expr = var("log")(r2 + d[-1]**2)
         #expr = var("log")(r3)
         scaling = 1/(2*var("pi"))
@@ -182,7 +183,9 @@ def main():
 
     center_dist = 0.125*np.min(
             cl.clmath.sqrt(
-                bind(vol_discr, p.area_element())(queue)).get())
+                bind(vol_discr,
+                    p.area_element(mesh.ambient_dim, mesh.dim))
+                (queue)).get())
 
     centers = make_obj_array([ci.copy().reshape(vol_discr.nnodes) for ci in targets])
     centers[2][:] = center_dist
@@ -193,7 +196,9 @@ def main():
     sources[:2] = ovsmp_vol_x
 
     ovsmp_rhs = vol_to_ovsmp_vol(queue, rhs)
-    ovsmp_vol_weights = bind(ovsmp_vol_discr, p.area_element() * p.QWeight())(queue)
+    ovsmp_vol_weights = bind(ovsmp_vol_discr,
+            p.area_element(mesh.ambient_dim, mesh.dim) * p.QWeight()
+            )(queue)
 
     print("volume: %d source nodes, %d target nodes" % (
         ovsmp_vol_discr.nnodes, vol_discr.nnodes))
@@ -223,7 +228,6 @@ def main():
     qbx = QBXLayerPotentialSource(
             bdry_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order,
-            enable_direct_close_evaluation=False
             )
 
     bound_op = bind(qbx, op_sigma)
