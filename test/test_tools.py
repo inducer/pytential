@@ -22,9 +22,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import pytest
 
 import numpy as np
 import numpy.linalg as la
+import pyopencl as cl
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 def test_gmres():
@@ -46,6 +51,43 @@ def test_gmres():
             maxiter=5*n, tol=tol).solution
 
     assert la.norm(true_sol - sol) / la.norm(sol) < tol
+
+
+def test_interpolatory_error_reporting(ctx_factory):
+    logging.basicConfig(level=logging.INFO)
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    h = 0.2
+    from meshmode.mesh.io import generate_gmsh, FileSource
+    mesh = generate_gmsh(
+            FileSource("circle.step"), 2, order=4,
+            other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h]
+            )
+
+    logger.info("%d elements" % mesh.nelements)
+
+    # {{{ discretizations and connections
+
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            QuadratureSimplexGroupFactory
+
+    vol_discr = Discretization(ctx, mesh,
+            QuadratureSimplexGroupFactory(5))
+
+    vol_x = vol_discr.nodes().with_queue(queue)
+
+    # }}}
+
+    from pytential import integral
+    rhs = 1 + 0*vol_x[0]
+
+    one = rhs.copy()
+    one.fill(1)
+    with pytest.raises(TypeError):
+        print("AREA", integral(vol_discr, queue, one), 0.25**2*np.pi)
 
 
 # You can test individual routines by typing
