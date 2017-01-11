@@ -31,6 +31,9 @@ import pyopencl as cl
 import logging
 logger = logging.getLogger(__name__)
 
+from pyopencl.tools import pytest_generate_tests_for_pyopencl ( # noqa
+        as pytest_generate_tests)
+
 
 def test_gmres():
     n = 200
