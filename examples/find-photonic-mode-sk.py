@@ -45,8 +45,10 @@ def find_mode():
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
 
-    n0 = 1.4447
-    n1 = n0*1.02
+    n0 = 1.444
+    n1 = 1.4475
+    lambda_ = 1.5
+    k_vacuum = 2*np.pi/lambda_
 
     from pytential.symbolic.pde.maxwell.waveguide import \
             SecondKindInfZMuellerOperator
@@ -61,7 +63,7 @@ def find_mode():
     base_context = {
             "n0": n0,
             "n1": n1,
-            "k_v": 2*np.pi/1.55,
+            "k_v": k_vacuum,
             }
 
     u_sym = pde_op.make_unknown("u")
@@ -80,8 +82,7 @@ def find_mode():
     mesh = make_curve_mesh(curve_f,
             np.linspace(0, 1, nelements+1),
             target_order)
-    lambda_ = 1.55
-    circle_radius = 3.4*2*np.pi/lambda_
+    circle_radius = 50*k_vacuum
     mesh = affine_map(mesh, A=circle_radius*np.eye(2))
 
     from meshmode.discretization import Discretization
