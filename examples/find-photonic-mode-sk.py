@@ -45,8 +45,8 @@ def find_mode():
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
 
-    k0 = 1.4447
-    k1 = k0*1.02
+    n0 = 1.4447
+    n1 = n0*1.02
 
     from pytential.symbolic.pde.maxwell.waveguide import \
             SecondKindInfZMuellerOperator
@@ -54,14 +54,14 @@ def find_mode():
     pde_op = SecondKindInfZMuellerOperator(
             k_vacuum="k_v",
             interfaces=((0, 1, sym.DEFAULT_SOURCE),),
-            domain_k_exprs=("k0", "k1"),
-            beta="beta",
+            domain_n_exprs=("n0", "n1"),
+            ne="ne",
             use_l2_weighting=True)
 
     base_context = {
-            "k0": k0,
-            "k1": k1,
-            "k_v": 1,
+            "n0": n0,
+            "n1": n1,
+            "k_v": 2*np.pi/1.55,
             }
 
     u_sym = pde_op.make_unknown("u")
@@ -108,11 +108,11 @@ def find_mode():
 
     bound_op = bind(qbx, op)
 
-    def muller_solve_func(beta):
+    def muller_solve_func(ne):
         from pytential.solve import gmres
         gmres_result = gmres(
                 bound_op.scipy_op(queue, "u",
-                    np.complex128, beta=beta, **base_context),
+                    np.complex128, ne=ne, **base_context),
                 y_vec, tol=1e-12, progress=True,
                 stall_iterations=0,
                 hard_failure=False)
@@ -124,12 +124,12 @@ def find_mode():
         return z
 
     starting_guesses = (1+0j)*(
-            k0
-            + (k1-k0) * np.random.rand(3))
+            n0
+            + (n1-n0) * np.random.rand(3))
 
     from pytential.muller import muller
-    beta, niter = muller(muller_solve_func, z_start=starting_guesses)
-    print("beta")
+    ne, niter = muller(muller_solve_func, z_start=starting_guesses)
+    print("ne", ne)
 
 
 if __name__ == "__main__":

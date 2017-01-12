@@ -53,7 +53,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
     `Lai and Jiang <https://arxiv.org/abs/1512.01117>`_.
     """
 
-    def __init__(self, k_vacuum, domain_k_exprs, beta,
+    def __init__(self, k_vacuum, domain_n_exprs, ne,
             interfaces, use_l2_weighting=None):
         """
         :attr k_vacuum: A symbolic expression for the wave number in vacuum.
@@ -65,7 +65,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             and *interface_id* is a symbolic name for the discretization of the
             interface. 'outer' designates the side of the interface to which
             the normal points.
-        :attr domain_k_exprs: a tuple of variable names of the Helmholtz
+        :attr domain_n_exprs: a tuple of variable names of the Helmholtz
             parameter *k*, to be used inside each part of the source geometry.
             May also be a tuple of strings, which will be transformed into
             variable references of the corresponding names.
@@ -76,20 +76,33 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
 
         self.interfaces = interfaces
 
-        beta = sym.var(beta)
-        self.beta = sym.cse(beta, "beta")
+        ne = sym.var(ne)
+        self.ne = sym.cse(ne, "ne")
 
         k_vacuum = sym.var(k_vacuum)
         self.k_vacuum = sym.cse(k_vacuum, "k_vac")
 
-        self.domain_k_exprs = [
-                sym.var(k_expr)
-                for idom, k_expr in enumerate(domain_k_exprs)]
-        del domain_k_exprs
+        self.domain_n_exprs = [
+                sym.var(n_expr)
+                for idom, n_expr in enumerate(domain_n_exprs)]
+        del domain_n_exprs
 
+        import pymbolic.primitives as p
+
+        def upper_half_square_root(x):
+            return p.If(
+                    p.Comparison(
+                        (x**0.5).a.imag,
+                        "<", 0),
+                    1j*(-x)**0.5,
+                    x**0.5)
+
+        # TODO: Assert, print
         self.domain_K_exprs = [
-                sym.cse((k_expr**2-beta**2)**0.5, "K%d" % i)
-                for i, k_expr in enumerate(self.domain_k_exprs)]
+                sym.cse(
+                    upper_half_square_root(n_expr**2-ne**2),
+                    "K%d" % i)
+                for i, n_expr in enumerate(self.domain_n_exprs)]
 
         from sumpy.kernel import HelmholtzKernel
         self.kernel = HelmholtzKernel(2, allow_evanescent=True)
@@ -127,7 +140,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             phi3 = unknown[idx_mt]
             phi4 = unknown[idx_mz]
 
-            ne = sym.cse(self.beta/self.k_vacuum, "ne")
+            ne = self.ne
 
             dom0_idx, dom1_idx, where = self.interfaces[i]
             dom_indices = [dom0_idx, dom1_idx]
@@ -174,10 +187,8 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             def St(dom, density):  # noqa
                 return sym.tangential_derivative(2, S(dom, density)).xproject(0)
 
-            n0 = sym.cse(self.domain_k_exprs[dom0_idx]/self.k_vacuum,
-                    "n%d" % dom0_idx)
-            n1 = sym.cse(self.domain_k_exprs[dom1_idx]/self.k_vacuum,
-                    "n%d" % dom1_idx)
+            n0 = self.domain_n_exprs[dom0_idx]
+            n1 = self.domain_n_exprs[dom1_idx]
 
             a11 = sym.cse(n0**2 * D(0, phi1) - n1**2 * D(1, phi1), "a11")
             a22 = sym.cse(-n0**2 * Sn(0, phi2) + n1**2 * Sn(1, phi2), "a22")
@@ -195,24 +206,33 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                         S(0, normal * phi3))
                     - tangent.scalar_product(
                         S(1, normal * phi3))), "a43")
-            a13 = sym.cse(ne*(T(0, phi3) - T(1, phi3)), "a13")
-            a24 = sym.cse(ne*(St(0, phi4) - St(1, phi4)), "a24")
+
+            a13 = +1*sym.cse(ne*(T(0, phi3) - T(1, phi3)), "a13")
+            a31 = -1*sym.cse(ne*(T(0, phi1) - T(1, phi1)), "a31")
+
+            a24 = +1*sym.cse(ne*(St(0, phi4) - St(1, phi4)), "a24")
+            a42 = -1*sym.cse(ne*(St(0, phi2) - St(1, phi2)), "a42")
+
             a14 = sym.cse(1j*(
                     (n0**2 - ne**2) * S(0, phi4)
                     - (n1**2 - ne**2) * S(1, phi4)
                     ), "a14")
+            a32 = -sym.cse(1j*(
+                    (n0**2 - ne**2) * S(0, phi2)
+                    - (n1**2 - ne**2) * S(1, phi2)
+                    ), "a32")
 
-            a23 = sym.cse((
-                    1j * (Tt(0, phi3) - Tt(1, phi3))
-                    - 1j * ne * (
-                        n0**2 * tangent.scalar_product(
-                            S(0, normal * phi3))
-                        - n1**2 * tangent.scalar_product(
-                            S(1, normal * phi3)))), "a23")
-            a31 = -a13
-            a32 = -a14
-            a41 = -a23
-            a42 = -a24
+            def a23_expr(phi):
+                return (
+                        1j * (Tt(0, phi) - Tt(1, phi))
+                        - 1j * (
+                            n0**2 * tangent.scalar_product(
+                                S(0, normal * phi))
+                            - n1**2 * tangent.scalar_product(
+                                S(1, normal * phi))))
+
+            a23 = +1*sym.cse(a23_expr(phi3), "a23")
+            a41 = -1*sym.cse(a23_expr(phi1), "a41")
 
             d1 = (n0**2 + n1**2)/2 * phi1
             d2 = (n0**2 + n1**2)/2 * phi2
