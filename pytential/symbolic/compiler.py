@@ -451,6 +451,7 @@ class OperatorCompiler(IdentityMapper):
         from pytential.symbolic.mappers import DependencyMapper
         self.dep_mapper = DependencyMapper(
                 #include_operator_bindings=False,
+                include_lookups=False,
                 include_subscripts=include_subscripts,
                 include_calls="descend_args")
 
