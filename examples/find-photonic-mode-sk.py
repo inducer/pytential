@@ -54,7 +54,6 @@ def find_mode():
             SecondKindInfZMuellerOperator
 
     pde_op = SecondKindInfZMuellerOperator(
-            k_vacuum="k_v",
             interfaces=((0, 1, sym.DEFAULT_SOURCE),),
             domain_n_exprs=("n0", "n1"),
             ne="ne",

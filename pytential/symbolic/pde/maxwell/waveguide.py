@@ -53,11 +53,9 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
     `Lai and Jiang <https://arxiv.org/abs/1512.01117>`_.
     """
 
-    def __init__(self, k_vacuum, domain_n_exprs, ne,
+    def __init__(self, domain_n_exprs, ne,
             interfaces, use_l2_weighting=None):
         """
-        :attr k_vacuum: A symbolic expression for the wave number in vacuum.
-            May be a string, which will be interpreted as a variable name.
         :attr interfaces: a tuple of tuples
             ``(outer_domain, inner_domain, interface_id)``,
             where *outer_domain* and *inner_domain* are indices into
@@ -79,9 +77,6 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
         ne = sym.var(ne)
         self.ne = sym.cse(ne, "ne")
 
-        k_vacuum = sym.var(k_vacuum)
-        self.k_vacuum = sym.cse(k_vacuum, "k_vac")
-
         self.domain_n_exprs = [
                 sym.var(n_expr)
                 for idom, n_expr in enumerate(domain_n_exprs)]
@@ -97,7 +92,6 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                     1j*(-x)**0.5,
                     x**0.5)
 
-        # TODO: Assert, print
         self.domain_K_exprs = [
                 sym.cse(
                     upper_half_square_root(n_expr**2-ne**2),
@@ -121,8 +115,135 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
 
         return result
 
-    def representation(self, unknown):
-        raise NotImplementedError()
+    def tangent(self, where):
+        return sym.cse(
+                (sym.pseudoscalar(2, 1, where)
+                / sym.area_element(2, 1, where)),
+                "tangent")
+
+    def S(self, dom_idx, density, qbx_forced_limit=+1):  # noqa
+        return sym.S(
+                self.kernel, density,
+                k=self.domain_K_exprs[dom_idx],
+                qbx_forced_limit=qbx_forced_limit)
+
+    def D(self, dom_idx, density, qbx_forced_limit="avg"):  # noqa
+        return sym.D(
+                self.kernel, density,
+                k=self.domain_K_exprs[dom_idx],
+                qbx_forced_limit=qbx_forced_limit)
+
+    def T(self, where, dom_idx, density):  # noqa
+        return sym.int_g_dsource(
+                2,
+                self.tangent(where),
+                self.kernel,
+                density,
+                k=self.domain_K_exprs[dom_idx],
+                # ????
+                qbx_forced_limit=1).xproject(0)
+
+    def representation(self, domain_idx, unknown):
+        """"Return a tuple of vectors [Ex, Ey, Ez] and [Hx, Hy, Hz]
+        representing the solution to Maxwell's equation on domain
+        *domain_idx*.
+        """
+        result = np.zeros(4, dtype=object)
+
+        unk_idx = self.unknown_index
+        k_v = self.k_vacuum
+
+        for i in range(len(self.interfaces)):
+            dom0i, dom1i, where = self.interfaces[i]
+
+            if domain_idx == dom0i:
+                domi = dom0i
+            elif domain_idx == dom1i:
+                domi = dom1i
+            else:
+                # Interface does not border the requested domain
+                continue
+
+            beta = self.ne*k_v
+            k = sym.cse(k_v * self.domain_n_exprs[domi],
+                    "k%d" % domi)
+
+            jt = unknown[unk_idx["jz", i]]
+            jz = unknown[unk_idx["jt", i]]
+            mt = unknown[unk_idx["mz", i]]
+            mz = unknown[unk_idx["mt", i]]
+
+            def diff_axis(iaxis, operand):
+                v = np.array(2, dtype=np.float64)
+                v[iaxis] = 1
+                d = sym.Derivative()
+                return d.resolve(
+                        (sym.MultiVector(v).scalar_product(d.dnabla(2)))
+                        * d(operand))
+
+            from functools import partial
+            dx = partial(diff_axis, 1)
+            dy = partial(diff_axis, 1)
+
+            tangent = self.tangent(where)
+            tau1 = tangent[0]
+            tau2 = tangent[1]
+
+            S = self.S  # noqa
+            D = self.D  # noqa
+            T = self.T  # noqa
+
+            # Ex
+            result[0] += (
+                    -1/(1j*k_v) * dx(T(where, domi, jt))
+                    + beta/k_v * dx(S(domi, jz))
+                    + k**2/(1j*k_v) * S(domi, jt * tau1)
+                    - dy(S(domi, mz))
+                    + 1j*beta * S(domi, mt*tau2)
+                    )
+
+            # Ey
+            result[1] += (
+                    - 1/(1j*k_v) * dy(T(where, domi, jt))
+                    + beta/k_v * dy(S(domi, jz))
+                    + k**2/(1j*k_v) * S(domi, jt * tau2)
+                    + dx(S(domi, mz))
+                    - 1j*beta*S(domi, mt * tau1)
+                    )
+
+            # Ez
+            result[2] += (
+                    - beta/k_v * T(where, domi, jt)
+                    + (k**2 - beta**2)/(1j*k_v) * S(domi, jz)
+                    + D(domi, mt)
+                    )
+
+            # Hx
+            result[3] += (
+                    1/(1j*k_v) * dx(T(where, domi, mt))
+                    - beta/k_v * dx(S(domi, mz))
+                    - k**2/(1j*k_v) * S(domi, mt*tau1)
+                    - k**2/k_v**2 * dy(S(domi, jz))
+                    + 1j * beta * k**2/k_v**2 * S(domi, jt*tau2)
+                    )
+
+            # Hy
+            result[4] += (
+                    1/(1j*k_v) * dy(T(where, domi, mt))
+                    - beta/k_v * dy(S(domi, mz))
+                    - k**2/(1j*k_v) * S(domi, mt * tau2)
+                    + k**2/k_v**2 * dx(S(domi, jz))
+                    - 1j*beta * k**2/k_v**2 * S(domi, jt*tau1)
+                    )
+
+            # Hz
+            result[5] += (
+                    beta/k_v * T(where, domi, mt)
+                    - (k**2 - beta**2)/(1j*k_v) * S(domi, mz)
+                    + k**2/k_v**2 * D(domi, jt)
+                    )
+
+        return result
 
     def operator(self, unknown):
         result = np.zeros(4*len(self.interfaces), dtype=object)
@@ -142,41 +263,20 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
 
             ne = self.ne
 
-            dom0_idx, dom1_idx, where = self.interfaces[i]
-            dom_indices = [dom0_idx, dom1_idx]
+            dom0i, dom1i, where = self.interfaces[i]
 
-            tangent = sym.cse(
-                    (sym.pseudoscalar(2, 1, where)
-                    / sym.area_element(2, 1, where)),
-                    "tangent")
+            tangent = self.tangent(where)
             normal = sym.cse(
                     sym.normal(2, 1, where),
                     "normal")
 
-            def S(dom, density, qbx_forced_limit=+1):  # noqa
-                return sym.S(
-                        self.kernel, density,
-                        k=self.domain_K_exprs[dom_indices[dom]],
-                        qbx_forced_limit=qbx_forced_limit)
+            S = self.S  # noqa
+            D = self.D  # noqa
+            T = self.T  # noqa
 
-            def D(dom, density, qbx_forced_limit="avg"):  # noqa
-                return sym.D(
-                        self.kernel, density,
-                        k=self.domain_K_exprs[dom_indices[dom]],
-                        qbx_forced_limit=qbx_forced_limit)
-
-            def T(dom, density):  # noqa
-                return sym.int_g_dsource(
-                        2,
-                        tangent,
-                        self.kernel,
-                        density,
-                        k=self.domain_K_exprs[dom_indices[dom]],
-                        # ????
-                        qbx_forced_limit=1).xproject(0)
-
-            def Tt(dom, density):  # noqa
-                return sym.tangential_derivative(2, T(dom, density)).xproject(0)
+            def Tt(where, dom, density):  # noqa
+                return sym.tangential_derivative(
+                        2, T(where, dom, density)).xproject(0)
 
             def Sn(dom, density):  # noqa
                 return sym.normal_derivative(
@@ -187,49 +287,51 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             def St(dom, density):  # noqa
                 return sym.tangential_derivative(2, S(dom, density)).xproject(0)
 
-            n0 = self.domain_n_exprs[dom0_idx]
-            n1 = self.domain_n_exprs[dom1_idx]
+            n0 = self.domain_n_exprs[dom0i]
+            n1 = self.domain_n_exprs[dom1i]
 
-            a11 = sym.cse(n0**2 * D(0, phi1) - n1**2 * D(1, phi1), "a11")
-            a22 = sym.cse(-n0**2 * Sn(0, phi2) + n1**2 * Sn(1, phi2), "a22")
-            a33 = sym.cse(D(0, phi3)-D(1, phi3), "a33")
-            a44 = sym.cse(-Sn(0, phi4) + Sn(1, phi4), "a44")
+            a11 = sym.cse(n0**2 * D(dom0i, phi1) - n1**2 * D(dom1i, phi1), "a11")
+            a22 = sym.cse(-n0**2 * Sn(dom0i, phi2) + n1**2 * Sn(dom1i, phi2), "a22")
+            a33 = sym.cse(D(dom0i, phi3)-D(dom1i, phi3), "a33")
+            a44 = sym.cse(-Sn(dom0i, phi4) + Sn(dom1i, phi4), "a44")
 
             a21 = sym.cse(-1j * ne * (
                     n0**2 * tangent.scalar_product(
-                        S(0, normal * phi1))
+                        S(dom0i, normal * phi1))
                     - n1**2 * tangent.scalar_product(
-                        S(1, normal * phi1))), "a21")
+                        S(dom1i, normal * phi1))), "a21")
 
             a43 = sym.cse(-1j * ne * (
                     tangent.scalar_product(
-                        S(0, normal * phi3))
+                        S(dom0i, normal * phi3))
                     - tangent.scalar_product(
-                        S(1, normal * phi3))), "a43")
+                        S(dom1i, normal * phi3))), "a43")
 
-            a13 = +1*sym.cse(ne*(T(0, phi3) - T(1, phi3)), "a13")
-            a31 = -1*sym.cse(ne*(T(0, phi1) - T(1, phi1)), "a31")
+            a13 = +1*sym.cse(
+                    ne*(T(where, dom0i, phi3) - T(where, dom1i, phi3)), "a13")
+            a31 = -1*sym.cse(
+                    ne*(T(where, dom0i, phi1) - T(where, dom1i, phi1)), "a31")
 
-            a24 = +1*sym.cse(ne*(St(0, phi4) - St(1, phi4)), "a24")
-            a42 = -1*sym.cse(ne*(St(0, phi2) - St(1, phi2)), "a42")
+            a24 = +1*sym.cse(ne*(St(dom0i, phi4) - St(dom1i, phi4)), "a24")
+            a42 = -1*sym.cse(ne*(St(dom0i, phi2) - St(dom1i, phi2)), "a42")
 
             a14 = sym.cse(1j*(
-                    (n0**2 - ne**2) * S(0, phi4)
-                    - (n1**2 - ne**2) * S(1, phi4)
+                    (n0**2 - ne**2) * S(dom0i, phi4)
+                    - (n1**2 - ne**2) * S(dom1i, phi4)
                     ), "a14")
             a32 = -sym.cse(1j*(
-                    (n0**2 - ne**2) * S(0, phi2)
-                    - (n1**2 - ne**2) * S(1, phi2)
+                    (n0**2 - ne**2) * S(dom0i, phi2)
+                    - (n1**2 - ne**2) * S(dom1i, phi2)
                     ), "a32")
 
             def a23_expr(phi):
                 return (
-                        1j * (Tt(0, phi) - Tt(1, phi))
+                        1j * (Tt(where, dom0i, phi) - Tt(where, dom1i, phi))
                         - 1j * (
                             n0**2 * tangent.scalar_product(
-                                S(0, normal * phi))
+                                S(dom0i, normal * phi))
                             - n1**2 * tangent.scalar_product(
-                                S(1, normal * phi))))
+                                S(dom1i, normal * phi))))
 
             a23 = +1*sym.cse(a23_expr(phi3), "a23")
             a41 = -1*sym.cse(a23_expr(phi1), "a41")
