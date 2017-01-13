@@ -329,9 +329,9 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                         1j * (Tt(where, dom0i, phi) - Tt(where, dom1i, phi))
                         - 1j * (
                             n0**2 * tangent.scalar_product(
-                                S(dom0i, normal * phi))
+                                S(dom0i, tangent * phi))
                             - n1**2 * tangent.scalar_product(
-                                S(dom1i, normal * phi))))
+                                S(dom1i, tangent * phi))))
 
             a23 = +1*sym.cse(a23_expr(phi3), "a23")
             a41 = -1*sym.cse(a23_expr(phi1), "a41")

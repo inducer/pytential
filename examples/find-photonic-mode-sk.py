@@ -81,7 +81,7 @@ def find_mode():
     mesh = make_curve_mesh(curve_f,
             np.linspace(0, 1, nelements+1),
             target_order)
-    circle_radius = 50*k_vacuum
+    circle_radius = 4*k_vacuum
     mesh = affine_map(mesh, A=circle_radius*np.eye(2))
 
     from meshmode.discretization import Discretization
