@@ -29,8 +29,8 @@ import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pytest
 from pytools import Record
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import (  # noqa
+        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 from functools import partial
 from meshmode.mesh.generation import (  # noqa
@@ -43,13 +43,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 circle = partial(ellipse, 1)
-
-__all__ = [
-        "pytest_generate_tests",
-
-        # difficult curves not currently used for testing
-        "drop", "n_gon", "cloverleaf"
-        ]
 
 try:
     import matplotlib.pyplot as pt
