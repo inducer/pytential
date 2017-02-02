@@ -8,6 +8,13 @@ Basic objects
 
 .. automodule:: pytential.symbolic.primitives
 
+Binding an operator to a discretization
+---------------------------------------
+
+.. currentmodule:: pytential
+
+.. autofunction:: bind
+
 PDE operators
 -------------
 
