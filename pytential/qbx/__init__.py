@@ -248,7 +248,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 + (group.nelements,))
 
     @memoize_method
-    def with_refinement(self, target_order=None):
+    def with_refinement(self, target_order=None, maxiter=3):
         """
         :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
             :class:`QBXLayerPotentialSource` and ``cnx`` is a
@@ -262,7 +262,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         if target_order is None:
             target_order = self.density_discr.groups[0].order
         lpot, connection = refiner(self,
-                InterpolatoryQuadratureSimplexGroupFactory(target_order))
+                InterpolatoryQuadratureSimplexGroupFactory(target_order), maxiter=maxiter)
         return lpot, connection
 
     @property
