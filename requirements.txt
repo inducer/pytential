@@ -7,4 +7,6 @@ git+git://github.com/inducer/islpy
 git+git://github.com/inducer/loopy
 git+git://github.com/inducer/boxtree
 git+git://github.com/inducer/meshmode
-git+git://github.com/inducer/sumpy
+
+# FIXME: Point back at sumpy master before merging
+git+git://github.com/inducer/sumpy@revert-41712001
