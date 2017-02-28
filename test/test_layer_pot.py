@@ -701,9 +701,16 @@ def get_starfish_mesh(refinement_increment, target_order):
 
 
 def get_sphere_mesh(refinement_increment, target_order):
-    # FIXME: Ignores refinement_increment
     from meshmode.mesh.generation import generate_icosphere
     mesh = generate_icosphere(1, target_order)
+    from meshmode.mesh.refinement import Refiner
+
+    refiner = Refiner(mesh)
+    for i in range(refinement_increment):
+        flags = np.ones(mesh.nelements, dtype=bool)
+        refiner.refine(flags)
+        mesh = refiner.get_current_mesh()
+
     return mesh
 
 
