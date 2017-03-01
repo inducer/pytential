@@ -813,7 +813,7 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
 
         nodes_host = density_discr.nodes().get(queue)
         normal = bind(density_discr, sym.normal(d))(queue).as_vector(np.object)
-        normal_host = [normal[0].get(), normal[1].get(), normal[2].get()][:d]
+        normal_host = [normal[j].get() for j in range(d)]
 
         if k != 0:
             angle = 0.3
