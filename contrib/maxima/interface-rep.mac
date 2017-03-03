@@ -1,0 +1,40 @@
+kill(all);
+uint: S(s)+k*D(t)-2*k*S(Dp(t));
+uext: S(s);
+
+densities:[xi, gamma, sigma];
+
+ielimit(rep,loc):=ev(
+    rep,
+    D(z):=loc/2*z + D_pv(z),
+    Sp(z):=-loc/2*z + Sp_pv(z));
+
+ienderiv(rep):=
+    if atom(rep) then
+      rep
+    else
+      if is(op(rep) = S) then
+        apply(Sp, args(rep))
+      elseif is(op(rep) = D) then
+        apply(Dp, args(rep))
+      elseif is(op(rep) = Sp) then
+        apply(Spp, args(rep))
+      elseif is(op(rep) = Dp) then
+        apply(Dpp, args(rep))
+      else
+        apply(op(rep), makelist(ienderiv(args(rep)[i]), i, 1, length(args(rep))));
+
+ilim(rep):=ielimit(rep, -1);
+elim(rep):=ielimit(rep, 1);
+
+/* x: ilim(uint) - elim(uext); */
+value_cond: ilim(uint)-c*elim(uext)=a;
+deriv_cond: ilim(ienderiv(uint))-k*elim(ienderiv(uext))=b;
+
+process_cond(c):=expand(c);
+value_cond: process_cond(value_cond);
+deriv_cond: process_cond(deriv_cond);
+
+display(expand(value_cond));
+display(expand(deriv_cond));
+display(ratcoeff(deriv_cond, Dp(t)));
