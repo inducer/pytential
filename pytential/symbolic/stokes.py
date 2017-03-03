@@ -53,9 +53,9 @@ class StokesletWrapper(object):
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """ Returns an object array of symbolic expressions for the vector
-            resulting from integrating the dyadic Stokeslet kernel with 
+            resulting from integrating the dyadic Stokeslet kernel with
             variable *density_vec_sym*.
- 
+
             :arg density_vec_sym: a symbolic vector variable for the density vector
             :arg mu_sym: a symbolic variable for the viscosity
             :arg qbx_forced_limit: the qbx_forced_limit argument to be passed on
@@ -87,8 +87,9 @@ class StokesletWrapper(object):
                     sym_expr[comp] = sym_expr[comp] + sym.IntG(
                                      self.kernel_dict[ctr_key], density_vec_sym[i],
                                      qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
- 
+
         return sym_expr
+
 
 class StressletWrapper(object):
     """ Wrapper class for the Stresslet kernel.  This class is meant to
