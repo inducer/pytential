@@ -9,6 +9,11 @@ from meshmode.discretization.poly_element import \
 from pytential import bind, sym, norm  # noqa
 
 # {{{ set some constants for use below
+# This program tests an exterior Stokes flow in 2D using the 
+# compound representation given in Hsiao & Kress,
+# ``On an integral equation for the two-dimensional exterior Stokes problem,''
+# Applied Numerical Mathematics 1 (1985).
+
 
 nelements = 50
 mesh_order = 4
