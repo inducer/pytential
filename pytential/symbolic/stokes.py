@@ -92,6 +92,27 @@ class StokesletWrapper(object):
 
         return sym_expr
 
+    def apply_pressure(self, density_vec_sym, mu_sym, qbx_forced_limit):
+        """ Returns a symbolic expression to compute the pressure field asssociated
+            with this stokeslet flow.
+        """
+
+        import itertools
+        from pytential.symbolic.mappers import DerivativeTaker
+        kernel = LaplaceKernel(dim=self.dim)
+
+        for i, j in itertools.product(range(self.dim), range(self.dim)):
+
+            if i + j < 1:
+                sym_expr = DerivativeTaker(i).map_int_g(
+                                sym.S(kernel, density_vec_sym[i],
+                                qbx_forced_limit=qbx_forced_limit))
+            else:
+                sym_expr = sym_expr + (DerivativeTaker(i).map_int_g(
+                                sym.S(kernel, density_vec_sym[i],
+                                qbx_forced_limit=qbx_forced_limit)))
+
+        return sym_expr
 
 class StressletWrapper(object):
     """ Wrapper class for the Stresslet kernel.  This class is meant to
