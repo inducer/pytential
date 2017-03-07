@@ -262,7 +262,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         if target_order is None:
             target_order = self.density_discr.groups[0].order
         lpot, connection = refiner(self,
-                InterpolatoryQuadratureSimplexGroupFactory(target_order), maxiter=maxiter)
+                InterpolatoryQuadratureSimplexGroupFactory(target_order),
+                maxiter=maxiter)
         return lpot, connection
 
     @property

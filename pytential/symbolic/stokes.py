@@ -1,4 +1,6 @@
 from __future__ import division, absolute_import
+__copyright__ = "Copyright (C) 2017 Natalie Beams"
+
 import numpy as np
 
 from pytential import sym
@@ -8,7 +10,7 @@ from sumpy.kernel import StokesletKernel, StressletKernel, LaplaceKernel
 class StokesletWrapper(object):
     """ Wrapper class for the Stokeslet kernel.  This class is meant to
      shield the user from the messiness of writing out every term
-     in the expansion of the double-indiced Stokeslet kernel applied to
+     in the expansion of the double-indexed Stokeslet kernel applied to
      the density vector.  The object is created
      to do some of the set-up and bookkeeping once, rather than every
      time we want to create a symbolic expression based on the kernel -- say,
@@ -94,7 +96,7 @@ class StokesletWrapper(object):
 class StressletWrapper(object):
     """ Wrapper class for the Stresslet kernel.  This class is meant to
      shield the user from the messiness of writing out every term
-     in the expansion of the triple-indiced Stresslet kernel applied to both
+     in the expansion of the triple-indexed Stresslet kernel applied to both
      a normal vector and the density vector.  The object is created
      to do some of the set-up and bookkeeping once, rather than every
      time we want to create a symbolic expression based on the kernel -- say,
@@ -196,29 +198,31 @@ class StressletWrapper(object):
         import itertools
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
-       
+
         factor = (2. * mu_sym)
 
         for i, j in itertools.product(range(self.dim), range(self.dim)):
 
             if i + j < 1:
-                sym_expr =  factor * DerivativeTaker(i).map_int_g(
-                            DerivativeTaker(j).map_int_g(
-                            sym.S(kernel, density_vec_sym[i] * dir_vec_sym[j],
-                            qbx_forced_limit=qbx_forced_limit)))
+                sym_expr = factor * DerivativeTaker(i).map_int_g(
+                             DerivativeTaker(j).map_int_g(
+                                 sym.S(kernel, density_vec_sym[i] * dir_vec_sym[j],
+                                 qbx_forced_limit=qbx_forced_limit)))
             else:
                 sym_expr = sym_expr + (
-                            factor * DerivativeTaker(i).map_int_g(
-                            DerivativeTaker(j).map_int_g(
-                            sym.S(kernel, density_vec_sym[i] * dir_vec_sym[j],
-                            qbx_forced_limit=qbx_forced_limit))))
-        
+                               factor * DerivativeTaker(i).map_int_g(
+                                   DerivativeTaker(j).map_int_g(
+                                       sym.S(kernel,
+                                             density_vec_sym[i] * dir_vec_sym[j],
+                                             qbx_forced_limit=qbx_forced_limit))))
+
         return sym_expr
 
-    def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
+    def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
+                             mu_sym, qbx_forced_limit):
         """ Returns an object array of symbolic expressions for the vector
             resulting from integrating the derivative of the
-            dyadic Stresslet kernel with direction vector
+            dyadic Stresslet kernel (wrt target, not source) with direction vector
             variable name *dir_vec_sym* and
             variable *density_vec_sym*.
 
