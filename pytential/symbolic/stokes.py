@@ -2,7 +2,7 @@ from __future__ import division, absolute_import
 import numpy as np
 
 from pytential import sym
-from sumpy.kernel import StokesletKernel, StressletKernel
+from sumpy.kernel import StokesletKernel, StressletKernel, LaplaceKernel
 
 
 class StokesletWrapper(object):
@@ -78,7 +78,7 @@ class StokesletWrapper(object):
                 var_ctr[i] += 1
                 ctr_key = tuple(var_ctr)
 
-                if i < 0.1:
+                if i < 1:
                     sym_expr[comp] = sym.IntG(
                                      self.kernel_dict[ctr_key], density_vec_sym[i],
                                      qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
@@ -173,7 +173,7 @@ class StressletWrapper(object):
                 var_ctr[j] += 1
                 ctr_key = tuple(var_ctr)
 
-                if i + j < 0.1:
+                if i + j < 1:
                     sym_expr[comp] = sym.IntG(
                                      self.kernel_dict[ctr_key],
                                      dir_vec_sym[i] * density_vec_sym[j],
@@ -185,5 +185,83 @@ class StressletWrapper(object):
                                                 dir_vec_sym[i] * density_vec_sym[j],
                                                 qbx_forced_limit=qbx_forced_limit,
                                                 mu=mu_sym)
+
+        return sym_expr
+
+    def apply_pressure(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
+        """ Returns a symbolic expression to compute the pressure field asssociated
+            with this stresslet flow.
+        """
+
+        import itertools
+        from pytential.symbolic.mappers import DerivativeTaker
+        kernel = LaplaceKernel(dim=self.dim)
+       
+        factor = (2. * mu_sym)
+
+        for i, j in itertools.product(range(self.dim), range(self.dim)):
+
+            if i + j < 1:
+                sym_expr =  factor * DerivativeTaker(i).map_int_g(
+                            DerivativeTaker(j).map_int_g(
+                            sym.S(kernel, density_vec_sym[i] * dir_vec_sym[j],
+                            qbx_forced_limit=qbx_forced_limit)))
+            else:
+                sym_expr = sym_expr + (
+                            factor * DerivativeTaker(i).map_int_g(
+                            DerivativeTaker(j).map_int_g(
+                            sym.S(kernel, density_vec_sym[i] * dir_vec_sym[j],
+                            qbx_forced_limit=qbx_forced_limit))))
+        
+        return sym_expr
+
+    def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
+        """ Returns an object array of symbolic expressions for the vector
+            resulting from integrating the derivative of the
+            dyadic Stresslet kernel with direction vector
+            variable name *dir_vec_sym* and
+            variable *density_vec_sym*.
+
+            :arg deriv_dir: which derivative we want: 0, 1, or 2 for x, y, z
+            :arg density_vec_sym: a symbolic vector variable for the density vector
+            :arg dir_vec_sym: a symbolic vector variable for the direction vector
+            :arg mu_sym: a symbolic variable for the viscosity
+            :arg qbx_forced_limit: the qbx_forced_limit argument to be passed
+                on to IntG.  +/-1 for exterior/interior one-sided boundary limit,
+                +/-2 for exterior/interior off-boundary evaluation, and 'avg'
+                for the average of the two one-sided boundary limits.
+        """
+
+        import itertools
+        from pytential.symbolic.mappers import DerivativeTaker
+
+        sym_expr = np.empty((self.dim,), dtype=object)
+
+        for comp in range(self.dim):
+
+            # Start variable count for kernel with 1 for the requested result
+            #   component
+            base_count = np.zeros(self.dim, dtype=np.int)
+            base_count[comp] += 1
+
+            for i, j in itertools.product(range(self.dim), range(self.dim)):
+                var_ctr = base_count.copy()
+                var_ctr[i] += 1
+                var_ctr[j] += 1
+                ctr_key = tuple(var_ctr)
+
+                if i + j < 1:
+                    sym_expr[comp] = DerivativeTaker(deriv_dir).map_int_g(
+                                     sym.IntG(self.kernel_dict[ctr_key],
+                                     dir_vec_sym[i] * density_vec_sym[j],
+                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym))
+
+                else:
+                    sym_expr[comp] = sym_expr[comp] + DerivativeTaker(
+                                        deriv_dir).map_int_g(
+                                        sym.IntG(self.kernel_dict[ctr_key],
+                                        dir_vec_sym[i] * density_vec_sym[j],
+                                        qbx_forced_limit=qbx_forced_limit,
+                                        mu=mu_sym))
 
         return sym_expr
