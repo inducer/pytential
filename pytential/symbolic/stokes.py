@@ -42,9 +42,9 @@ class StokesletWrapper(object):
      and is meant to work similarly to
      calling S() (which is IntG()).
 
-    Similar functions are available for other useful things related to 
+    Similar functions are available for other useful things related to
       the flow: apply_pressure, apply_derivative (target derivative),
-      apply_stress (applies symmetric viscous stress tensor in 
+      apply_stress (applies symmetric viscous stress tensor in
       the requested direction).
 
    .. attribute:: kernel_dict
@@ -122,7 +122,6 @@ class StokesletWrapper(object):
             with this Stokeslet flow.
         """
 
-        import itertools
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
 
@@ -155,9 +154,8 @@ class StokesletWrapper(object):
                 for the average of the two one-sided boundary limits.
         """
 
-        import itertools
         from pytential.symbolic.mappers import DerivativeTaker
-        
+
         sym_expr = np.empty((self.dim,), dtype=object)
 
         for comp in range(self.dim):
@@ -192,7 +190,7 @@ class StokesletWrapper(object):
     def apply_stress(self, density_vec_sym, dir_vec_sym,
                         mu_sym, qbx_forced_limit):
         """ Returns a vector of symbolic expressions for the force resulting
-            from the viscous stress: 
+            from the viscous stress:
                 -pressure * I + mu * ( grad U + (grad U).T)),
             applied in the direction of *dir_vec_sym*.
 
@@ -206,7 +204,7 @@ class StokesletWrapper(object):
             calculation (after binding) is the same length as the number
             of source points/nodes; when calling this routine, the number
             of direction vectors should be the same as the number of targets.
-            
+
             :arg density_vec_sym: a symbolic vector variable for the density vector
             :arg dir_vec_sym: a symbolic vector for the application direction
             :arg mu_sym: a symbolic variable for the viscosity
@@ -220,7 +218,7 @@ class StokesletWrapper(object):
 
         sym_expr = np.empty((self.dim,), dtype=object)
         stresslet_obj = StressletWrapper(dim=self.dim)
-         
+
         for comp in range(self.dim):
 
             # Start variable count for kernel with 1 for the requested result
@@ -264,9 +262,9 @@ class StressletWrapper(object):
      the kernel with a vectory density, and is meant to work similarly to
      calling S() (which is IntG()).
 
-    Similar functions are available for other useful things related to 
+    Similar functions are available for other useful things related to
       the flow: apply_pressure, apply_derivative (target derivative),
-      apply_stress (applies symmetric viscous stress tensor in 
+      apply_stress (applies symmetric viscous stress tensor in
       the requested direction).
 
     .. attribute:: kernel_dict
@@ -435,7 +433,7 @@ class StressletWrapper(object):
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
                         mu_sym, qbx_forced_limit):
         """ Returns a vector of symbolic expressions for the force resulting
-            from the viscous stress: 
+            from the viscous stress:
                 -pressure * I + mu * ( grad U + (grad U).T)),
             applied in the direction of *dir_vec_sym*.
 
@@ -455,7 +453,7 @@ class StressletWrapper(object):
         # Build velocity derivative matrix
         sym_grad_matrix = np.empty((self.dim, self.dim), dtype=object)
         for i in range(self.dim):
-            sym_grad_matrix[:,i] = self.apply_derivative(i, density_vec_sym,
+            sym_grad_matrix[:, i] = self.apply_derivative(i, density_vec_sym,
                                      normal_vec_sym, mu_sym, qbx_forced_limit)
 
         for comp in range(self.dim):
@@ -470,7 +468,7 @@ class StressletWrapper(object):
                 sym_expr[comp] = sym_expr[comp] + (
                                     dir_vec_sym[j] * mu_sym * (
                                         sym_grad_matrix[comp][j] +
-                                        sym_grad_matrix[j][comp] )
+                                        sym_grad_matrix[j][comp])
                                         )
 
         return sym_expr
