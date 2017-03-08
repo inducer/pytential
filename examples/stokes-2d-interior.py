@@ -20,7 +20,7 @@ target_order = 8
 ovsmp_target_order = 4*target_order
 qbx_order = 2
 fmm_order = 7
-mu = 2
+mu = 3
 
 # Test solution type -- either 'fundamental' or 'couette' (default is couette)
 soln_type = 'couette'  
@@ -109,8 +109,8 @@ def main(nelements):
    
     def couette_soln(x, y, dp, h):
         scaling = 1./(2*mu)
-        xcomp = dp * ((y+(h/2.))**2 - h * (y+(h/2.)))
-        ycomp = 0*y
+        xcomp = scaling * dp * ((y+(h/2.))**2 - h * (y+(h/2.)))
+        ycomp = scaling * 0*y
         return [xcomp, ycomp]
  
        
@@ -191,6 +191,32 @@ def main(nelements):
     max_error_loc = [abs(err[0]).argmax(), abs(err[1]).argmax()]
     print("max error at sampled points: ", max(abs(err[0])), max(abs(err[1])))
     print("exact velocity at max error points: x -> ", err[0][max_error_loc[0]], ", y -> ", err[1][max_error_loc[1]])
+
+    from pytential.symbolic.mappers import DerivativeTaker
+    rep_pressure = stresslet_obj.apply_pressure(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit=-2)
+    pressure = bind((qbx, PointsTarget(eval_points_dev)), 
+                     rep_pressure)(queue, sigma=sigma, mu=mu, normal=normal)
+    pressure = pressure.get()
+    print "pressure = ", pressure
+
+    x_dir_vecs = np.zeros((2,len(eval_points[0])))
+    x_dir_vecs[0,:] = 1.0
+    y_dir_vecs = np.zeros((2, len(eval_points[0])))
+    y_dir_vecs[1,:] = 1.0
+    x_dir_vecs = cl.array.to_device(queue, x_dir_vecs)
+    y_dir_vecs = cl.array.to_device(queue, y_dir_vecs)
+    dir_vec_sym = sym.make_sym_vector("force_direction", dim)
+    rep_stress = stresslet_obj.apply_stress(inv_sqrt_w_sigma, nvec_sym, dir_vec_sym, mu_sym, qbx_forced_limit=-2)
+
+    applied_stress_x = bind((qbx, PointsTarget(eval_points_dev)),
+                             rep_stress)(queue, sigma=sigma, normal=normal, force_direction=x_dir_vecs, mu=mu)
+    applied_stress_x = get_obj_array(applied_stress_x)
+    applied_stress_y = bind((qbx, PointsTarget(eval_points_dev)),
+                             rep_stress)(queue, sigma=sigma, normal=normal, force_direction=y_dir_vecs, mu=mu)
+    applied_stress_y = get_obj_array(applied_stress_y)
+
+    print "stress applied to x direction: ", applied_stress_x
+    print "stress applied to y direction: ", applied_stress_y
 
 
     import matplotlib.pyplot as plt
