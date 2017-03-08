@@ -77,8 +77,8 @@ def main():
     stresslet_obj = StressletWrapper(dim=2)
     stokeslet_obj = StokesletWrapper(dim=2)
     bdry_op_sym = -loc_sign * 0.5 * sigma_sym - sqrt_w * (
-                            stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit='avg') +
-                            stokeslet_obj.apply(meanless_inv_sqrt_w_sigma, mu_sym, qbx_forced_limit='avg') + 
+                            stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit='avg') -
+                            stokeslet_obj.apply(meanless_inv_sqrt_w_sigma, mu_sym, qbx_forced_limit='avg') +
                             (0.5/np.pi) * int_inv_sqrt_w_sigma )
 
     # }}}
@@ -105,7 +105,7 @@ def main():
         #with direction (1,0) for point source
         r = cl.clmath.sqrt((x - loc[0])**2 + (y - loc[1])**2)
         scaling = strength/(4*np.pi*mu)
-        xcomp = (-cl.clmath.log(r) + (x - loc[0])**2/r**2) * scaling - (y - loc[1])*strength*0.125/r**2
+        xcomp = (-cl.clmath.log(r) + (x - loc[0])**2/r**2) * scaling - (y - loc[1])*strength*0.125/r**2  
         ycomp = ((x - loc[0])*(y - loc[1])/r**2) * scaling + (x - loc[0])*strength*0.125/r**2
         return [ xcomp, ycomp ]
        
@@ -118,8 +118,8 @@ def main():
     omega_sym = sym.make_sym_vector("omega", dim)
     u_A_sym_bdry = stokeslet_obj.apply(omega_sym, mu_sym, qbx_forced_limit=1)
 
-    omega = [cl.array.to_device(queue, (strength/path_length)*np.ones(len(nodes[0]))), cl.array.to_device(queue, np.zeros(len(nodes[0])))]
-    bvp_rhs = bind(qbx, sqrt_w*(sym.make_sym_vector("bc",dim) - u_A_sym_bdry))(queue, bc=bc, mu=mu, omega=omega)
+    omega = [cl.array.to_device(queue, (-strength/path_length)*np.ones(len(nodes[0]))), cl.array.to_device(queue, np.zeros(len(nodes[0])))]
+    bvp_rhs = bind(qbx, sqrt_w*(sym.make_sym_vector("bc",dim) + u_A_sym_bdry))(queue, bc=bc, mu=mu, omega=omega)
     from pytential.solve import gmres
     gmres_result = gmres(
              bound_op.scipy_op(queue, "sigma", np.float64, mu=mu, normal=normal),
@@ -133,13 +133,13 @@ def main():
  # {{{ postprocess/visualize
     sigma = gmres_result.solution
     sigma_int_val_sym = sym.make_sym_vector("sigma_int_val", 2)
-    int_val = bind(qbx, sym.integral(2, 1, inv_sqrt_w_sigma))(queue, sigma=sigma)
-    int_val = -int_val/(np.pi)
+    int_val = bind(qbx, sym.integral(2, 1, sigma_sym))(queue, sigma=sigma)
+    int_val = int_val/(np.pi)
     print("int_val = ", int_val)
 
     u_A_sym_vol = stokeslet_obj.apply(omega_sym, mu_sym, qbx_forced_limit=2)
-    representation_sym = - stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit=2) - stokeslet_obj.apply(
-                                meanless_inv_sqrt_w_sigma, mu_sym, qbx_forced_limit=2) + sigma_int_val_sym + u_A_sym_vol
+    representation_sym = - stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit=2) + stokeslet_obj.apply(
+                                meanless_inv_sqrt_w_sigma, mu_sym, qbx_forced_limit=2) + u_A_sym_vol #+ sigma_int_val_sym
 
 
     from sumpy.visualization import FieldPlotter
