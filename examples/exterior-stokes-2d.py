@@ -22,6 +22,7 @@ ovsmp_target_order = 4*target_order
 qbx_order = 4
 fmm_order = 7
 mu = 1
+circle_rad = 1.5
 
 # }}}
 
@@ -36,7 +37,7 @@ def main():
     from meshmode.mesh.generation import (  # noqa
             make_curve_mesh, starfish, ellipse, drop)
     mesh = make_curve_mesh(
-            lambda t: ellipse(1, t),
+            lambda t: circle_rad * ellipse(1, t),
             np.linspace(0, 1, nelements+1),
             target_order)
     coarse_density_discr = Discretization(
@@ -53,7 +54,6 @@ def main():
     density_discr = qbx.density_discr
     normal = bind(density_discr, sym.normal(2).as_vector())(queue)
     path_length = bind(density_discr, sym.integral(2, 1, 1))(queue)
-    print("path_length = ", path_length)
 
     # {{{ describe bvp
 
@@ -64,7 +64,6 @@ def main():
 
     sigma_sym = sym.make_sym_vector("sigma", dim)
     sqrt_w = sym.sqrt_jac_q_weight(2)
-    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
     meanless_sigma_sym = cse(sigma_sym - sym.mean(2, 1, sigma_sym))
     int_sigma = sym.Ones() * sym.integral(2, 1, sigma_sym)
     
@@ -158,7 +157,7 @@ def main():
             row[mask]
             for row in test_points])
 
-    eval_points = outside_circle(eval_points, radius=1)
+    eval_points = outside_circle(eval_points, radius=circle_rad)
     from pytential.target import PointsTarget
     vel = bind(
             (qbx, PointsTarget(eval_points)),
@@ -167,7 +166,7 @@ def main():
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(2), extent=6, npoints=100)
-    plot_pts = outside_circle(fplot.points, radius=1)
+    plot_pts = outside_circle(fplot.points, radius=circle_rad)
     plot_vel = bind(
           (qbx, PointsTarget(plot_pts)),
           representation_sym)(queue, sigma=sigma, mu=mu, normal=normal, sigma_int_val=int_val, omega=omega)
@@ -197,7 +196,7 @@ def main():
     print("max rel error at sampled points: ", max(abs(rel_err[0])), max(abs(rel_err[1])))
 
     full_pot = np.zeros_like(fplot.points) * float("nan")
-    mask = circle_mask(fplot.points, radius=1)
+    mask = circle_mask(fplot.points, radius=circle_rad)
 
     for i, vel in enumerate(plot_vel):
         full_pot[i,mask] = vel.get()
