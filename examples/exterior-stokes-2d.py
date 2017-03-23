@@ -53,6 +53,7 @@ def main():
     density_discr = qbx.density_discr
     normal = bind(density_discr, sym.normal(2).as_vector())(queue)
     path_length = bind(density_discr, sym.integral(2, 1, 1))(queue)
+    print("path_length = ", path_length)
 
     # {{{ describe bvp
 
@@ -64,8 +65,8 @@ def main():
     sigma_sym = sym.make_sym_vector("sigma", dim)
     sqrt_w = sym.sqrt_jac_q_weight(2)
     inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
-    meanless_inv_sqrt_w_sigma = cse(inv_sqrt_w_sigma - sym.mean(2, 1, inv_sqrt_w_sigma))
-    int_inv_sqrt_w_sigma = sym.Ones() * sym.integral(2, 1, inv_sqrt_w_sigma)
+    meanless_sigma_sym = cse(sigma_sym - sym.mean(2, 1, sigma_sym))
+    int_sigma = sym.Ones() * sym.integral(2, 1, sigma_sym)
     
     nvec_sym = sym.make_sym_vector("normal", dim)
     mu_sym = sym.var("mu")
@@ -76,10 +77,9 @@ def main():
 
     stresslet_obj = StressletWrapper(dim=2)
     stokeslet_obj = StokesletWrapper(dim=2)
-    bdry_op_sym = -loc_sign * 0.5 * sigma_sym - sqrt_w * (
-                            stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit='avg') -
-                            stokeslet_obj.apply(meanless_inv_sqrt_w_sigma, mu_sym, qbx_forced_limit='avg') +
-                            (0.5/np.pi) * int_inv_sqrt_w_sigma )
+    bdry_op_sym = -loc_sign * 0.5 * sigma_sym - stresslet_obj.apply(sigma_sym, nvec_sym, mu_sym,
+                            qbx_forced_limit='avg') + stokeslet_obj.apply(meanless_sigma_sym, mu_sym,
+                                    qbx_forced_limit='avg') - (0.5/np.pi) * int_sigma 
 
     # }}}
 
@@ -105,8 +105,8 @@ def main():
         #with direction (1,0) for point source
         r = cl.clmath.sqrt((x - loc[0])**2 + (y - loc[1])**2)
         scaling = strength/(4*np.pi*mu)
-        xcomp = (-cl.clmath.log(r) + (x - loc[0])**2/r**2) * scaling - (y - loc[1])*strength*0.125/r**2  
-        ycomp = ((x - loc[0])*(y - loc[1])/r**2) * scaling + (x - loc[0])*strength*0.125/r**2
+        xcomp = (-cl.clmath.log(r) + (x - loc[0])**2/r**2) * scaling - (y - loc[1])*strength*0.125/r**2 + 3.3
+        ycomp = ((x - loc[0])*(y - loc[1])/r**2) * scaling + (x - loc[0])*strength*0.125/r**2 + 1.5
         return [ xcomp, ycomp ]
        
 
@@ -118,8 +118,8 @@ def main():
     omega_sym = sym.make_sym_vector("omega", dim)
     u_A_sym_bdry = stokeslet_obj.apply(omega_sym, mu_sym, qbx_forced_limit=1)
 
-    omega = [cl.array.to_device(queue, (-strength/path_length)*np.ones(len(nodes[0]))), cl.array.to_device(queue, np.zeros(len(nodes[0])))]
-    bvp_rhs = bind(qbx, sqrt_w*(sym.make_sym_vector("bc",dim) + u_A_sym_bdry))(queue, bc=bc, mu=mu, omega=omega)
+    omega = [cl.array.to_device(queue, (strength/path_length)*np.ones(len(nodes[0]))), cl.array.to_device(queue, np.zeros(len(nodes[0])))]
+    bvp_rhs = bind(qbx, (sym.make_sym_vector("bc",dim) + u_A_sym_bdry))(queue, bc=bc, mu=mu, omega=omega)
     from pytential.solve import gmres
     gmres_result = gmres(
              bound_op.scipy_op(queue, "sigma", np.float64, mu=mu, normal=normal),
@@ -134,12 +134,12 @@ def main():
     sigma = gmres_result.solution
     sigma_int_val_sym = sym.make_sym_vector("sigma_int_val", 2)
     int_val = bind(qbx, sym.integral(2, 1, sigma_sym))(queue, sigma=sigma)
-    int_val = int_val/(np.pi)
+    int_val = -int_val/(2 * np.pi)
     print("int_val = ", int_val)
 
     u_A_sym_vol = stokeslet_obj.apply(omega_sym, mu_sym, qbx_forced_limit=2)
-    representation_sym = - stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit=2) + stokeslet_obj.apply(
-                                meanless_inv_sqrt_w_sigma, mu_sym, qbx_forced_limit=2) + u_A_sym_vol #+ sigma_int_val_sym
+    representation_sym = - stresslet_obj.apply(sigma_sym, nvec_sym, mu_sym, qbx_forced_limit=2) + stokeslet_obj.apply(
+                                meanless_sigma_sym, mu_sym, qbx_forced_limit=2) - u_A_sym_vol + sigma_int_val_sym
 
 
     from sumpy.visualization import FieldPlotter
@@ -149,16 +149,16 @@ def main():
     eval_points[0,:] = np.tile(eval_points_1d, len(eval_points_1d))
     eval_points[1,:] = np.repeat(eval_points_1d, len(eval_points_1d))
 
-    def circle_mask(test_points):
-        return (test_points[0,:]**2 + test_points[1,:]**2 > 1)
+    def circle_mask(test_points, radius):
+        return (test_points[0,:]**2 + test_points[1,:]**2 > radius**2)
 
-    def outside_circle(test_points):
-        mask = circle_mask(test_points)
+    def outside_circle(test_points, radius):
+        mask = circle_mask(test_points, radius)
         return np.array([
             row[mask]
             for row in test_points])
 
-    eval_points = outside_circle(eval_points)
+    eval_points = outside_circle(eval_points, radius=1)
     from pytential.target import PointsTarget
     vel = bind(
             (qbx, PointsTarget(eval_points)),
@@ -167,7 +167,7 @@ def main():
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(2), extent=6, npoints=100)
-    plot_pts = outside_circle(fplot.points)
+    plot_pts = outside_circle(fplot.points, radius=1)
     plot_vel = bind(
           (qbx, PointsTarget(plot_pts)),
           representation_sym)(queue, sigma=sigma, mu=mu, normal=normal, sigma_int_val=int_val, omega=omega)
@@ -197,7 +197,7 @@ def main():
     print("max rel error at sampled points: ", max(abs(rel_err[0])), max(abs(rel_err[1])))
 
     full_pot = np.zeros_like(fplot.points) * float("nan")
-    mask = circle_mask(fplot.points)
+    mask = circle_mask(fplot.points, radius=1)
 
     for i, vel in enumerate(plot_vel):
         full_pot[i,mask] = vel.get()
