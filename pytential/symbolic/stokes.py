@@ -39,7 +39,7 @@ class StokesletWrapper(object):
     representation for the solution, for example.
 
     The apply() function returns the integral expressions needed for
-    the vector velocity resulting from convolution with the vectory density,
+    the vector velocity resulting from convolution with the vector density,
     and is meant to work similarly to
     calling S() (which is IntG()).
 
@@ -265,7 +265,7 @@ class StressletWrapper(object):
     we want a symbolic representation for the solution, for example.
 
     The apply() function returns the integral expressions needed for convolving
-    the kernel with a vectory density, and is meant to work similarly to
+    the kernel with a vector density, and is meant to work similarly to
     calling S() (which is IntG()).
 
     Similar functions are available for other useful things related to
