@@ -35,6 +35,7 @@ from pytools.obj_array import make_obj_array
 from sumpy.visualization import FieldPlotter
 
 from pytential import bind, sym, norm  # noqa
+from pytential.solve import gmres
 import logging
 
 
@@ -94,9 +95,12 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
 
     stresslet_obj = StressletWrapper(dim=2)
     stokeslet_obj = StokesletWrapper(dim=2)
-    bdry_op_sym = -loc_sign * 0.5 * sigma_sym - stresslet_obj.apply(sigma_sym, nvec_sym, mu_sym,
-                            qbx_forced_limit='avg') + stokeslet_obj.apply(meanless_sigma_sym, mu_sym,
-                                    qbx_forced_limit='avg') - (0.5/np.pi) * int_sigma
+    bdry_op_sym = (
+            -loc_sign * 0.5 * sigma_sym
+            - stresslet_obj.apply(sigma_sym, nvec_sym, mu_sym,
+                qbx_forced_limit='avg')
+            + stokeslet_obj.apply(meanless_sigma_sym, mu_sym,
+                qbx_forced_limit='avg') - (0.5/np.pi) * int_sigma)
 
     # }}}
 
@@ -122,8 +126,12 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
         #with direction (1,0) for point source
         r = cl.clmath.sqrt((x - loc[0])**2 + (y - loc[1])**2)
         scaling = strength/(4*np.pi*mu)
-        xcomp = (-cl.clmath.log(r) + (x - loc[0])**2/r**2) * scaling - (y - loc[1])*strength*0.125/r**2 + 3.3
-        ycomp = ((x - loc[0])*(y - loc[1])/r**2) * scaling + (x - loc[0])*strength*0.125/r**2 + 1.5
+        xcomp = (
+                (-cl.clmath.log(r) + (x - loc[0])**2/r**2) * scaling
+                - (y - loc[1])*strength*0.125/r**2 + 3.3)
+        ycomp = (
+                ((x - loc[0])*(y - loc[1])/r**2) * scaling
+                + (x - loc[0])*strength*0.125/r**2 + 1.5)
         return [xcomp, ycomp]
 
     nodes = density_discr.nodes().with_queue(queue)
@@ -132,11 +140,14 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     bc = fund_and_rot_soln(nodes[0], nodes[1], fund_soln_loc, strength)
 
     omega_sym = sym.make_sym_vector("omega", dim)
-    u_A_sym_bdry = stokeslet_obj.apply(omega_sym, mu_sym, qbx_forced_limit=1)
+    u_A_sym_bdry = stokeslet_obj.apply(omega_sym, mu_sym, qbx_forced_limit=1)  # noqa: N806, E501
 
-    omega = [cl.array.to_device(queue, (strength/path_length)*np.ones(len(nodes[0]))), cl.array.to_device(queue, np.zeros(len(nodes[0])))]
-    bvp_rhs = bind(qbx, (sym.make_sym_vector("bc",dim) + u_A_sym_bdry))(queue, bc=bc, mu=mu, omega=omega)
-    from pytential.solve import gmres
+    omega = [
+            cl.array.to_device(queue, (strength/path_length)*np.ones(len(nodes[0]))),
+            cl.array.to_device(queue, np.zeros(len(nodes[0])))]
+    bvp_rhs = bind(
+            qbx, sym.make_sym_vector("bc", dim) + u_A_sym_bdry
+            )(queue, bc=bc, mu=mu, omega=omega)
     gmres_result = gmres(
              bound_op.scipy_op(queue, "sigma", np.float64, mu=mu, normal=normal),
              bvp_rhs, tol=1e-9, progress=True,
@@ -153,9 +164,13 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     int_val = -int_val/(2 * np.pi)
     print("int_val = ", int_val)
 
-    u_A_sym_vol = stokeslet_obj.apply(omega_sym, mu_sym, qbx_forced_limit=2)
-    representation_sym = - stresslet_obj.apply(sigma_sym, nvec_sym, mu_sym, qbx_forced_limit=2) + stokeslet_obj.apply(
-                                meanless_sigma_sym, mu_sym, qbx_forced_limit=2) - u_A_sym_vol + sigma_int_val_sym
+    u_A_sym_vol = stokeslet_obj.apply(omega_sym, mu_sym, qbx_forced_limit=2)  # noqa: N806, E501
+    representation_sym = (
+            - stresslet_obj.apply(
+                sigma_sym, nvec_sym, mu_sym, qbx_forced_limit=2)
+            + stokeslet_obj.apply(
+                meanless_sigma_sym, mu_sym, qbx_forced_limit=2)
+            - u_A_sym_vol + sigma_int_val_sym)
 
     nsamp = 30
     eval_points_1d = np.linspace(-3., 3., nsamp)
@@ -213,13 +228,18 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
 
         print("@@@@@@@@")
 
-    l2_err = np.sqrt((6./(nsamp-1))**2*np.sum(err[0]*err[0]) + (6./(nsamp-1))**2*np.sum(err[1]*err[1]))
-    l2_rel_err = np.sqrt((6./(nsamp-1))**2*np.sum(rel_err[0]*rel_err[0]) + (6./(nsamp-1))**2*np.sum(rel_err[1]*rel_err[1]))
+    l2_err = np.sqrt(
+            (6./(nsamp-1))**2*np.sum(err[0]*err[0])
+            + (6./(nsamp-1))**2*np.sum(err[1]*err[1]))
+    l2_rel_err = np.sqrt(
+            (6./(nsamp-1))**2*np.sum(rel_err[0]*rel_err[0])
+            + (6./(nsamp-1))**2*np.sum(rel_err[1]*rel_err[1]))
 
     print("L2 error estimate: ", l2_err)
     print("L2 rel error estimate: ", l2_rel_err)
     print("max error at sampled points: ", max(abs(err[0])), max(abs(err[1])))
-    print("max rel error at sampled points: ", max(abs(rel_err[0])), max(abs(rel_err[1])))
+    print("max rel error at sampled points: ",
+            max(abs(rel_err[0])), max(abs(rel_err[1])))
 
     if do_plot:
         import matplotlib
@@ -237,6 +257,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
                 full_pot[0], full_pot[1],
                 linewidth=0.1)
         plt.savefig("exterior-2d-field.pdf")
+
+    # }}}
 
     return qbx.h_max, l2_err
 
