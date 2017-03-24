@@ -34,6 +34,9 @@ from meshmode.discretization.poly_element import \
 from pytools.obj_array import make_obj_array
 from sumpy.visualization import FieldPlotter
 
+from pyopencl.tools import (  # noqa
+        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+
 from pytential import bind, sym, norm  # noqa
 from pytential.solve import gmres
 import logging
