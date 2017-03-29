@@ -632,8 +632,8 @@ class QBXLayerPotentialSource(QBXLayerPotentialSourceBase):
 
         # {{{ execute global QBX
 
-        from pytential.qbx.fmm import drive_fmm
-        all_potentials_on_every_tgt = drive_fmm(wrangler, strengths)
+        from pytential.qbx.fmm import drive_qbx_fmm
+        all_potentials_on_every_tgt = drive_qbx_fmm(wrangler, strengths)
 
         # }}}
 

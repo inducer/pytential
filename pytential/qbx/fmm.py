@@ -38,10 +38,13 @@ logger = logging.getLogger(__name__)
 
 __doc__ = """
 .. autoclass:: QBXExpansionWranglerCodeContainer
+.. autoclass:: QBMXExpansionWranglerCodeContainer
 
 .. autoclass:: QBXExpansionWrangler
+.. autoclass:: QBMXExpansionWrangler
 
-.. autofunction:: drive_fmm
+.. autofunction:: drive_qbx_fmm
+.. autofunction:: drive_qbmx_fmm
 """
 
 
@@ -342,12 +345,294 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     # }}}
 
+
+class QBMXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
+    def __init__(self, cl_context,
+            multipole_expansion_factory, local_expansion_factory,
+            qbx_local_expansion_factory, out_kernels):
+        SumpyExpansionWranglerCodeContainer.__init__(self,
+                cl_context, multipole_expansion_factory, local_expansion_factory,
+                out_kernels)
+
+        self.qbx_local_expansion_factory = qbx_local_expansion_factory
+
+    @memoize_method
+    def qbx_multiple_expansion(self, order):
+        return self.qbx_multipole_expansion_factory(order)
+
+    @memoize_method
+    def p2qbxm(self, order):
+        return P2QBXLFromCSR(self.cl_context,
+                self.qbx_local_expansion(order))
+
+    @memoize_method
+    def qbxm2m(self, source_order, target_order):
+        return M2QBXL(self.cl_context,
+                self.multipole_expansion_factory(source_order),
+                self.qbx_local_expansion_factory(target_order))
+
+    def get_wrangler(self, queue, geo_data, dtype,
+            qbx_order, fmm_level_to_order,
+            source_extra_kwargs={},
+            kernel_extra_kwargs=None):
+        return QBXExpansionWrangler(self, queue, geo_data,
+                dtype,
+                qbx_order, fmm_level_to_order,
+                source_extra_kwargs,
+                kernel_extra_kwargs)
+
+
+class QBMXExpansionWrangler(SumpyExpansionWrangler):
+    """A specialized implementation of the
+    :class:`boxtree.fmm.ExpansionWranglerInterface` for the QBX FMM.
+    The conventional ('point') FMM is carried out on a filtered
+    set of targets
+    (see :meth:`pytential.discretization.qbx.geometry.\
+QBXFMMGeometryData.non_qbx_box_target_lists`),
+    and thus all *non-QBX* potential arrays handled by this wrangler don't
+    include all targets in the tree, just the non-QBX ones.
+
+    .. rubric:: QBMX-specific methods
+
+    .. automethod:: form_global_qbx_multipoles
+
+    .. automethod:: translate_qbx_multipole_to_box_multipole
+    """
+
+    def __init__(self, code_container, queue, geo_data, dtype,
+            qbx_order, fmm_level_to_order,
+            source_extra_kwargs, kernel_extra_kwargs):
+        SumpyExpansionWrangler.__init__(self,
+                code_container, queue, geo_data.tree(),
+                dtype, fmm_level_to_order, source_extra_kwargs, kernel_extra_kwargs)
+
+        self.qbx_order = qbx_order
+        self.geo_data = geo_data
+
+    # {{{ data vector utilities
+
+    def potential_zeros(self):
+        """This ought to be called ``non_qbx_potential_zeros``, but since
+        it has to override the superclass's behavior to integrate seamlessly,
+        it needs to be called just :meth:`potential_zeros`.
+        """
+
+        nqbtl = self.geo_data.non_qbx_box_target_lists()
+
+        from pytools.obj_array import make_obj_array
+        return make_obj_array([
+                cl.array.zeros(
+                    self.queue,
+                    nqbtl.nfiltered_targets,
+                    dtype=self.dtype)
+                for k in self.code.out_kernels])
+
+    def full_potential_zeros(self):
+        # The superclass generates a full field of zeros, for all
+        # (not just non-QBX) targets.
+        return SumpyExpansionWrangler.potential_zeros(self)
+
+    def qbx_local_expansion_zeros(self):
+        order = self.qbx_order
+        qbx_l_expn = self.code.qbx_local_expansion(order)
+
+        return cl.array.zeros(
+                    self.queue,
+                    (self.geo_data.center_info().ncenters,
+                        len(qbx_l_expn)),
+                    dtype=self.dtype)
+
+    def reorder_sources(self, source_array):
+        return (source_array
+                .with_queue(self.queue)
+                [self.tree.user_source_ids]
+                .with_queue(None))
+
+    def reorder_potentials(self, potentials):
+        raise NotImplementedError("reorder_potentials should not "
+            "be called on a QBXExpansionWrangler")
+
+        # Because this is a multi-stage, more complicated process that combines
+        # potentials from non-QBX targets and QBX targets, reordering takes
+        # place in multiple stages below.
+
+    # }}}
+
+    # {{{ source/target dispatch
+
+    def box_source_list_kwargs(self):
+        return dict(
+                box_source_starts=self.tree.box_source_starts,
+                box_source_counts_nonchild=(
+                    self.tree.box_source_counts_nonchild),
+                sources=self.tree.sources)
+
+    def box_target_list_kwargs(self):
+        # This only covers the non-QBX targets.
+
+        nqbtl = self.geo_data.non_qbx_box_target_lists()
+        return dict(
+                box_target_starts=nqbtl.box_target_starts,
+                box_target_counts_nonchild=(
+                    nqbtl.box_target_counts_nonchild),
+                targets=nqbtl.targets)
+
+    # }}}
+
+    # {{{ qbx-related
+
+    def form_global_qbx_locals(self, starts, lists, src_weights):
+        local_exps = self.qbx_local_expansion_zeros()
+
+        geo_data = self.geo_data
+        if len(geo_data.global_qbx_centers()) == 0:
+            return local_exps
+
+        kwargs = self.extra_kwargs.copy()
+        kwargs.update(self.box_source_list_kwargs())
+
+        p2qbxl = self.code.p2qbxl(self.qbx_order)
+
+        evt, (result,) = p2qbxl(
+                self.queue,
+                global_qbx_centers=geo_data.global_qbx_centers(),
+                qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+                qbx_centers=geo_data.center_info().centers,
+
+                source_box_starts=starts,
+                source_box_lists=lists,
+                strengths=src_weights,
+                qbx_expansions=local_exps,
+
+                **kwargs)
+
+        assert local_exps is result
+        result.add_event(evt)
+
+        return result
+
+    def translate_box_multipoles_to_qbx_local(self, multipole_exps):
+        qbx_expansions = self.qbx_local_expansion_zeros()
+
+        geo_data = self.geo_data
+        if geo_data.center_info().ncenters == 0:
+            return qbx_expansions
+
+        traversal = geo_data.traversal()
+
+        wait_for = multipole_exps.events
+
+        for isrc_level, ssn in enumerate(traversal.sep_smaller_by_level):
+            m2qbxl = self.code.m2qbxl(
+                    self.level_orders[isrc_level],
+                    self.qbx_order)
+
+            source_level_start_ibox, source_mpoles_view = \
+                    self.multipole_expansions_view(multipole_exps, isrc_level)
+
+            evt, (qbx_expansions_res,) = m2qbxl(self.queue,
+                    qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+
+                    centers=self.tree.box_centers,
+                    qbx_centers=geo_data.center_info().centers,
+
+                    src_expansions=source_mpoles_view,
+                    src_base_ibox=source_level_start_ibox,
+                    qbx_expansions=qbx_expansions,
+
+                    src_box_starts=ssn.starts,
+                    src_box_lists=ssn.lists,
+
+                    wait_for=wait_for,
+
+                    **self.kernel_extra_kwargs)
+
+            wait_for = [evt]
+            assert qbx_expansions_res is qbx_expansions
+
+        qbx_expansions.add_event(evt)
+
+        return qbx_expansions
+
+    def translate_box_local_to_qbx_local(self, local_exps):
+        qbx_expansions = self.qbx_local_expansion_zeros()
+
+        geo_data = self.geo_data
+        if geo_data.center_info().ncenters == 0:
+            return qbx_expansions
+        trav = geo_data.traversal()
+
+        wait_for = local_exps.events
+
+        for isrc_level in range(geo_data.tree().nlevels):
+            l2qbxl = self.code.l2qbxl(
+                    self.level_orders[isrc_level],
+                    self.qbx_order)
+
+            target_level_start_ibox, target_locals_view = \
+                    self.local_expansions_view(local_exps, isrc_level)
+
+            evt, (qbx_expansions_res,) = l2qbxl(
+                    self.queue,
+                    qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+                    target_boxes=trav.target_boxes,
+                    target_base_ibox=target_level_start_ibox,
+
+                    centers=self.tree.box_centers,
+                    qbx_centers=geo_data.center_info().centers,
+
+                    expansions=target_locals_view,
+                    qbx_expansions=qbx_expansions,
+
+                    wait_for=wait_for,
+
+                    **self.kernel_extra_kwargs)
+
+            wait_for = [evt]
+            assert qbx_expansions_res is qbx_expansions
+
+        qbx_expansions.add_event(evt)
+
+        return qbx_expansions
+
+    def eval_qbx_expansions(self, qbx_expansions):
+        pot = self.full_potential_zeros()
+
+        geo_data = self.geo_data
+        if len(geo_data.global_qbx_centers()) == 0:
+            return pot
+
+        ctt = geo_data.center_to_tree_targets()
+
+        qbxl2p = self.code.qbxl2p(self.qbx_order)
+
+        evt, pot_res = qbxl2p(self.queue,
+                qbx_centers=geo_data.center_info().centers,
+                global_qbx_centers=geo_data.global_qbx_centers(),
+
+                center_to_targets_starts=ctt.starts,
+                center_to_targets_lists=ctt.lists,
+
+                targets=self.tree.targets,
+
+                qbx_expansions=qbx_expansions,
+                result=pot,
+
+                **self.kernel_extra_kwargs.copy())
+
+        for pot_i, pot_res_i in zip(pot, pot_res):
+            assert pot_i is pot_res_i
+
+        return pot
+
+    # }}}
+
 # }}}
 
 
 # {{{ FMM top-level
 
-def drive_fmm(expansion_wrangler, src_weights):
+def drive_qbx_fmm(expansion_wrangler, src_weights):
     """Top-level driver routine for the QBX fast multipole calculation.
 
     :arg geo_data: A :class:`QBXFMMGeometryData` instance.
