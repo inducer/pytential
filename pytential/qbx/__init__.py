@@ -39,7 +39,9 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
+.. autoclass:: QBXLayerPotentialSourceBase
 .. autoclass:: QBXLayerPotentialSource
+.. autoclass:: QBMXLayerPotentialSource
 
 .. autoclass:: QBXTargetAssociationFailedException
 """
@@ -131,8 +133,8 @@ def get_multipole_expansion_class(base_kernel):
 
 # {{{ QBX layer potential source
 
-class QBXLayerPotentialSource(LayerPotentialSource):
-    """A source discretization for a QBX layer potential.
+class QBXLayerPotentialSourceBase(LayerPotentialSource):
+    """A source discretization for a QBX-like layer potential.
 
     .. attribute :: density_discr
     .. attribute :: qbx_order
@@ -258,7 +260,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from pytential.qbx.refinement import QBXLayerPotentialSourceRefiner
         refiner = QBXLayerPotentialSourceRefiner(self.cl_context)
         from meshmode.discretization.poly_element import (
-            InterpolatoryQuadratureSimplexGroupFactory)
+                InterpolatoryQuadratureSimplexGroupFactory)
         if target_order is None:
             target_order = self.density_discr.groups[0].order
         lpot, connection = refiner(self,
@@ -414,12 +416,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             return (area_element.with_queue(queue)*qweight).with_queue(None)
 
     def preprocess_optemplate(self, name, discretizations, expr):
-        """
-        :arg name: The symbolic name for *self*, which the preprocessor
-            should use to find which expressions it is allowed to modify.
-        """
-        from pytential.symbolic.mappers import QBXPreprocessor
-        return QBXPreprocessor(name, discretizations)(expr)
+        raise NotImplementedError()
 
     def op_group_features(self, expr):
         from sumpy.kernel import AxisTargetDerivativeRemover
@@ -438,8 +435,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         if not self.refined_for_global_qbx:
             from warnings import warn
             warn(
-                "Executing global QBX without refinement. "
-                "This is unlikely to work.")
+                    "Executing global QBX without refinement. "
+                    "This is unlikely to work.")
 
         def evaluate_wrapper(expr):
             value = evaluate(expr)
@@ -451,6 +448,26 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             func = self.exec_layer_potential_insn_fmm
 
         return func(queue, insn, bound_expr, evaluate_wrapper)
+
+    def exec_layer_potential_insn_fmm(self):
+        raise NotImplementedError()
+
+    def exec_layer_potential_insn_direct(self):
+        raise NotImplementedError()
+
+
+class QBXLayerPotentialSource(QBXLayerPotentialSourceBase):
+
+    def __init__(self, *args, **kwargs):
+        QBXLayerPotentialSourceBase.__init__(self, *args, **kwargs)
+
+    def preprocess_optemplate(self, name, discretizations, expr):
+        """
+        :arg name: The symbolic name for *self*, which the preprocessor
+            should use to find which expressions it is allowed to modify.
+        """
+        from pytential.symbolic.mappers import QBXPreprocessor
+        return QBXPreprocessor(name, discretizations)(expr)
 
     @property
     @memoize_method
@@ -807,12 +824,19 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     # }}}
 
+
+class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
+
+    def __init__(self, *args, **kwargs):
+        QBXLayerPotentialSource.__init__(self, *args, **kwargs)
+
 # }}}
 
 
 __all__ = (
         QBXLayerPotentialSource,
         QBXTargetAssociationFailedException,
+        QBMXLayerPotentialSource
         )
 
 # vim: fdm=marker
