@@ -131,7 +131,7 @@ def get_multipole_expansion_class(base_kernel):
         return VolumeTaylorMultipoleExpansion
 
 
-# {{{ QBX layer potential source
+# {{{ base class for layer potential sources
 
 class QBXLayerPotentialSourceBase(LayerPotentialSource):
     """A source discretization for a QBX-like layer potential.
@@ -455,6 +455,63 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
     def exec_layer_potential_insn_direct(self):
         raise NotImplementedError()
 
+    # {{{ helpers for setting up FMM
+
+    def get_base_kernel(self, kernels):
+        base_kernel = None
+
+        from sumpy.kernel import AxisTargetDerivativeRemover
+        for knl in kernels:
+            candidate_base_kernel = AxisTargetDerivativeRemover()(knl)
+
+            if base_kernel is None:
+                base_kernel = candidate_base_kernel
+            else:
+                assert base_kernel == candidate_base_kernel
+
+        return base_kernel
+
+    def get_value_dtype(self, base_kernel, strengths):
+        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
+            return self.complex_dtype
+        return self.real_dtype
+
+    def get_extra_kwargs_dictionaries(
+            self, queue, evaluate, insn, user_source_ids, out_kernels):
+        # This contains things like the Helmholtz parameter k or
+        # the normal directions for double layers.
+
+        def reorder_sources(source_array):
+            if isinstance(source_array, cl.array.Array):
+                return (source_array
+                        .with_queue(queue)
+                        [user_source_ids]
+                        .with_queue(None))
+            else:
+                return source_array
+
+        kernel_extra_kwargs = {}
+        source_extra_kwargs = {}
+
+        from sumpy.tools import gather_arguments, gather_source_arguments
+        from pytools.obj_array import with_object_array_or_scalar
+        for func, var_dict in [
+                (gather_arguments, kernel_extra_kwargs),
+                (gather_source_arguments, source_extra_kwargs),
+                ]:
+            for arg in func(out_kernels):
+                var_dict[arg.name] = with_object_array_or_scalar(
+                        reorder_sources,
+                        evaluate(insn.kernel_arguments[arg.name]))
+
+        return source_extra_kwargs, kernel_extra_kwargs
+
+    # }}}
+
+# }}}
+
+
+# {{{ QBX layer potential source
 
 class QBXLayerPotentialSource(QBXLayerPotentialSourceBase):
 
@@ -476,7 +533,6 @@ class QBXLayerPotentialSource(QBXLayerPotentialSourceBase):
         return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim,
                 debug=self.debug)
 
-    @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
         """
         :arg target_discrs_and_qbx_sides:
@@ -558,54 +614,16 @@ class QBXLayerPotentialSource(QBXLayerPotentialSourceBase):
 
         # {{{ get expansion wrangler
 
-        base_kernel = None
-        out_kernels = []
-
-        from sumpy.kernel import AxisTargetDerivativeRemover
-        for knl in insn.kernels:
-            candidate_base_kernel = AxisTargetDerivativeRemover()(knl)
-
-            if base_kernel is None:
-                base_kernel = candidate_base_kernel
-            else:
-                assert base_kernel == candidate_base_kernel
-
-        out_kernels = tuple(knl for knl in insn.kernels)
-
-        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
-            value_dtype = self.complex_dtype
-        else:
-            value_dtype = self.real_dtype
-
-        # {{{ build extra_kwargs dictionaries
-
-        # This contains things like the Helmholtz parameter k or
-        # the normal directions for double layers.
-
-        def reorder_sources(source_array):
-            if isinstance(source_array, cl.array.Array):
-                return (source_array
-                        .with_queue(queue)
-                        [geo_data.tree().user_source_ids]
-                        .with_queue(None))
-            else:
-                return source_array
-
-        kernel_extra_kwargs = {}
-        source_extra_kwargs = {}
-
-        from sumpy.tools import gather_arguments, gather_source_arguments
-        from pytools.obj_array import with_object_array_or_scalar
-        for func, var_dict in [
-                (gather_arguments, kernel_extra_kwargs),
-                (gather_source_arguments, source_extra_kwargs),
-                ]:
-            for arg in func(out_kernels):
-                var_dict[arg.name] = with_object_array_or_scalar(
-                        reorder_sources,
-                        evaluate(insn.kernel_arguments[arg.name]))
-
-        # }}}
+        base_kernel = self.get_base_kernel(insn.kernels)
+        out_kernels = tuple(insn.kernels)
+        value_dtype = self.get_value_dtype(base_kernel, strengths)
+        source_extra_kwargs, kernel_extra_kwargs = (
+                self.get_extra_kwargs_dictionaries(
+                    queue,
+                    evaluate,
+                    insn,
+                    geo_data.tree().user_source_ids,
+                    out_kernels))
 
         wrangler = self.expansion_wrangler_code_container(
                 base_kernel, out_kernels).get_wrangler(
@@ -824,11 +842,99 @@ class QBXLayerPotentialSource(QBXLayerPotentialSourceBase):
 
     # }}}
 
+# }}}
+
+
+# {{{ QBMX layer potential source
 
 class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
 
     def __init__(self, *args, **kwargs):
-        QBXLayerPotentialSource.__init__(self, *args, **kwargs)
+        QBXLayerPotentialSourceBase.__init__(self, *args, **kwargs)
+
+    # {{{ fmm-based execution
+
+    def qbmx_fmm_geometry_data(self, target_discrs, center_side):
+        """
+        :arg target_discrs: a list of *discr*,
+            where *discr* is a
+            :class:`meshmode.discretization.Discretization`
+            or
+            :class:`pytential.target.TargetBase`
+            instance
+        """
+        from pytential.qbx.geometry import QBMXFMMGeometryData
+
+        return QBMXFMMGeometryData(self.qbx_fmm_code_getter,
+                self, target_discrs,
+                target_stick_out_factor=self.target_stick_out_factor,
+                debug=self.debug)
+
+    def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
+        # map (name, qbx_side) to number in list
+        tgt_name_and_side_to_number = {}
+        # list of tuples (discr, qbx_side)
+        target_discrs_and_qbx_sides = []
+        side_to_targets = {}
+
+        for o in insn.outputs:
+            key = (o.target_name, o.qbx_forced_limit)
+            if key not in tgt_name_and_side_to_number:
+                tgt_name_and_side_to_number[key] = \
+                        len(target_discrs_and_qbx_sides)
+
+                target_discr = bound_expr.places[o.target_name]
+                if isinstance(target_discr, LayerPotentialSource):
+                    target_discr = target_discr.density_discr
+
+                qbx_forced_limit = o.qbx_forced_limit
+                if qbx_forced_limit is None:
+                    qbx_forced_limit = 0
+
+                target_discrs_and_qbx_sides.append(
+                        (target_discr, qbx_forced_limit))
+
+        target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
+
+        strengths = (evaluate(insn.density).with_queue(queue)
+                * self.weights_and_area_elements())
+
+        for tgt_side in (-1, 1):
+            relevant_target_discrs = side_to_targets[tgt_side]
+
+            if len(relevant_target_discrs) == 0:
+                continue
+
+            geo_data = self.qbmx_fmm_geometry_data(
+                    relevant_target_discrs, center_side=-tgt_side)
+
+            # {{{ get wrangler
+
+            base_kernel = self.get_base_kernel(insn.kernels)
+            out_kernels = tuple(insn.kernels)
+            value_dtype = self.get_value_dtype(base_kernel, strengths)
+            source_extra_kwargs, kernel_extra_kwargs = (
+                    self.get_extra_kwargs_dictionaries(
+                        queue,
+                        evaluate,
+                        insn,
+                        geo_data.tree().user_source_ids,
+                        out_kernels))
+
+            wrangler = self.expansion_wrangler_code_container(
+                    base_kernel, out_kernels).get_wrangler(
+                        queue, geo_data, value_dtype,
+                        self.qbx_order,
+                        self.fmm_level_to_order,
+                        source_extra_kwargs=source_extra_kwargs,
+                        kernel_extra_kwargs=kernel_extra_kwargs)
+
+            # }}}
+
+            from pytential.qbx.fmm import drive_qbmx_fmm
+            all_potentials_on_tgt_side = drive_qbmx_fmm(wrangler, strengths)
+
+        # }}}
 
 # }}}
 

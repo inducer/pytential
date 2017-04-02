@@ -393,7 +393,7 @@ class QBXFMMGeometryCodeGetter(object):
 # }}}
 
 
-# {{{ geometry data
+# {{{ geometry data (qbx)
 
 class TargetInfo(DeviceDataRecord):
     """Describes the internal structure of the QBX FMM's list of :attr:`targets`.
@@ -1075,6 +1075,35 @@ class QBXFMMGeometryData(object):
             pt.show()
 
     # }}}
+
+# }}}
+
+
+# {{{ geometry data (qbmx)
+
+class QBMXFMMGeometryData(object):
+    """
+    .. automethod:: center_info()
+    .. automethod:: target_info()
+    .. automethod:: tree()
+    .. automethod:: traversal()
+    .. automethod:: leaf_to_center_lookup
+    .. automethod:: qbx_center_to_target_box()
+    .. automethod:: global_qbx_flags()
+    .. automethod:: global_qbx_centers()
+    .. automethod:: user_target_to_center()
+    .. automethod:: center_to_tree_targets()
+    .. automethod:: global_qbx_centers_box_target_lists()
+    .. automethod:: non_qbx_box_target_lists()
+    .. automethod:: plot()
+    """
+
+    def __init__(self, code_getter, lpot_source, center_side, target_discrs, debug):
+        self.code_getter = code_getter
+        self.lpot_source = lpot_source
+        self.center_side = center_side
+        self.target_discrs = target_discrs
+        self.debug = debug
 
 # }}}
 

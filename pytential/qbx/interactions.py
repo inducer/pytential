@@ -32,7 +32,7 @@ from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
 
 
-# {{{ form qbx expansions from points
+# {{{ form qbx expansions (local, multipole) from points
 
 class P2QBXLFromCSR(P2EBase):
     default_name = "p2qbxl_from_csr"
@@ -115,6 +115,71 @@ class P2QBXLFromCSR(P2EBase):
         # FIXME
         knl = self.get_kernel()
         knl = lp.split_iname(knl, "itgt_center", 16, outer_tag="g.0")
+        return knl
+
+    def __call__(self, queue, **kwargs):
+        return self.get_cached_optimized_kernel()(queue, **kwargs)
+
+
+class P2QBXMFromCSR(P2EBase):
+    default_name = "p2qbxm_from_csr"
+
+    def get_kernel(self):
+        ncoeffs = len(self.expansion)
+
+        from sumpy.tools import gather_loopy_source_arguments
+        arguments = (
+                [
+                    lp.GlobalArg("sources", None, shape=(self.dim, "nsources"),
+                        dim_tags="sep,c"),
+                    lp.GlobalArg("strengths", None, shape="nsources"),
+                    lp.GlobalArg("qbx_center_to_source",
+                        None, shape=None),
+                    lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
+                        dim_tags="sep,c"),
+                    lp.GlobalArg("qbx_expansions", None,
+                        shape=("ncenters", ncoeffs)),
+                    lp.ValueArg("ncenters", np.int32),
+                    lp.ValueArg("nsources", np.int32),
+                    "..."
+                ] + gather_loopy_source_arguments([self.expansion]))
+
+        loopy_knl = lp.make_kernel(
+                [
+                    "{[iglobal_qbx_center]: "
+                    "0<=iglobal_qbx_center<nglobal_qbx_centers}",
+                    "{[idim]: 0<=idim<dim}",
+                    ],
+                ["""
+                for iglobal_qbx_center
+                    <> tgt_icenter = global_qbx_centers[iglobal_qbx_center]
+                    <> isrc = qbx_center_to_source[tgt_icenter]
+
+                    <> center[idim] = qbx_centers[idim, tgt_icenter]
+                    <> a[idim] = center[idim] - sources[idim, isrc] {dup=idim}
+                    <> strength = strengths[isrc]
+                    """] + self.get_loopy_instructions() + ["""
+                    """] + ["""
+                    qbx_expansions[tgt_icenter, {i}] = strength * coeff{i} \\
+                        {{id_prefix=write_expn}}
+                    """.format(i=i) for i in range(ncoeffs)] + ["""
+                end
+                """],
+                arguments,
+                name=self.name, assumptions="nglobal_qbx_centers>=1",
+                silenced_warnings="write_race(write_expn*)")
+
+        loopy_knl = lp.fix_parameters(loopy_knl, dim=self.dim)
+        loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
+        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
+
+        return loopy_knl
+
+    @memoize_method
+    def get_optimized_kernel(self):
+        # FIXME
+        knl = self.get_kernel()
+        knl = lp.split_iname(knl, "iglobal_qbx_center", 16, outer_tag="g.0")
         return knl
 
     def __call__(self, queue, **kwargs):
