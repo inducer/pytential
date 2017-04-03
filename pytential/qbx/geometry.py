@@ -393,7 +393,7 @@ class QBXFMMGeometryCodeGetter(object):
 # }}}
 
 
-# {{{ geometry data (qbx)
+# {{{ target/source/center info
 
 class TargetInfo(DeviceDataRecord):
     """Describes the internal structure of the QBX FMM's list of :attr:`targets`.
@@ -416,6 +416,17 @@ class TargetInfo(DeviceDataRecord):
         a fact which is not explicitly represented.)
 
     .. attribute:: ntargets
+    """
+
+
+class SourceInfo(DeviceDataRecord):
+    """Describes the internal structure of the QBX FMM's list of :attr:`sources`.
+
+    .. attribute:: sources
+
+        Shape: ``[dim,nsources]``
+
+    .. attribute:: nsources
     """
 
 
@@ -444,6 +455,95 @@ class CenterInfo(DeviceDataRecord):
     def ncenters(self):
         return len(self.radii)
 
+# }}}
+
+
+# {{{ base class for geometry data
+
+class QBXFMMGeometryDataBase(object):
+
+    # {{{ tree
+
+    @memoize_method
+    def tree(self):
+        """Build and return a :class:`boxtree.tree.Tree`
+        for this source with these targets.
+
+        |cached|
+        """
+
+        code_getter = self.code_getter
+        target_info = self.target_info()
+        source_info = self.source_info()
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            nparticles = source_info.nsources + target_info.ntargets
+
+            refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
+            refine_weights[:source_info.nsources] = 1
+            refine_weights.finish()
+
+            # NOTE: max_leaf_refine_weight has an impact on accuracy.
+            # For instance, if a panel contains 64*4 = 256 nodes, then
+            # a box with 128 sources will contain at most half a
+            # panel, meaning that its width will be on the order h/2,
+            # which means many QBX disks (diameter h) will be forced
+            # to cross boxes.
+            # So we set max_leaf_refine weight comfortably large
+            # to avoid having too many disks overlap more than one box.
+            #
+            # FIXME: Should investigate this further.
+            tree, _ = code_getter.build_tree(queue,
+                    particles=source_info.sources,
+                    targets=target_info.targets,
+                    max_leaf_refine_weight=256,
+                    refine_weights=refine_weights,
+                    debug=self.debug,
+                    kind="adaptive-level-restricted")
+
+            return tree
+
+    # }}}
+
+    # {{{ traversal
+
+    @memoize_method
+    def traversal(self):
+        """Return a :class:`boxtree.traversal.FMMTraversalInfo` with merged
+        close lists.
+        (See :meth:`boxtree.traversal.FMMTraversalInfo.merge_close_lists`)
+        |cached|
+        """
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            trav, _ = self.code_getter.build_traversal(queue, self.tree(),
+                    debug=self.debug)
+
+            return trav
+
+    # }}}
+
+    def center_info(self):
+        raise NotImplementedError()
+
+    def target_info(self):
+        raise NotImplementedError()
+
+    def source_info(self):
+        raise NotImplementedError()
+
+    @property
+    def cl_context(self):
+        return self.lpot_source.cl_context
+
+    @property
+    def coord_dtype(self):
+        return self.lpot_source.fine_density_discr.nodes().dtype
+
+# }}}
+
+
+# {{{ geometry data (qbx)
 
 class CenterToTargetList(DeviceDataRecord):
     """A lookup table of targets covered by each QBX disk. Indexed by global
@@ -460,9 +560,10 @@ class CenterToTargetList(DeviceDataRecord):
 
         Lists of targets in tree order. Use with :attr:`starts`.
     """
+    pass
 
 
-class QBXFMMGeometryData(object):
+class QBXFMMGeometryData(QBXFMMGeometryDataBase):
     """
 
     .. rubric :: Attributes
@@ -553,13 +654,15 @@ class QBXFMMGeometryData(object):
         self.target_stick_out_factor = target_stick_out_factor
         self.debug = debug
 
-    @property
-    def cl_context(self):
-        return self.lpot_source.cl_context
+    # {{{ source info
 
-    @property
-    def coord_dtype(self):
-        return self.lpot_source.fine_density_discr.nodes().dtype
+    @memoize_method
+    def source_info(self):
+        return SourceInfo(
+            sources=self.lpot_source.fine_density_discr.nodes(),
+            nsources=self.lpot_source.fine_density_discr.nnodes)
+
+    # }}}
 
     # {{{ center info
 
@@ -674,64 +777,6 @@ class QBXFMMGeometryData(object):
             return target_side_preferences.with_queue(None)
 
     # }}}
-
-    # {{{ tree
-
-    @memoize_method
-    def tree(self):
-        """Build and return a :class:`boxtree.tree.TreeWithLinkedPointSources`
-        for this source with these targets.
-
-        |cached|
-        """
-
-        code_getter = self.code_getter
-        lpot_src = self.lpot_source
-        target_info = self.target_info()
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            nsources = lpot_src.fine_density_discr.nnodes
-            nparticles = nsources + target_info.ntargets
-
-            refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
-            refine_weights[:nsources] = 1
-            refine_weights.finish()
-
-            # NOTE: max_leaf_refine_weight has an impact on accuracy.
-            # For instance, if a panel contains 64*4 = 256 nodes, then
-            # a box with 128 sources will contain at most half a
-            # panel, meaning that its width will be on the order h/2,
-            # which means many QBX disks (diameter h) will be forced
-            # to cross boxes.
-            # So we set max_leaf_refine weight comfortably large
-            # to avoid having too many disks overlap more than one box.
-            #
-            # FIXME: Should investigate this further.
-            tree, _ = code_getter.build_tree(queue,
-                    particles=lpot_src.fine_density_discr.nodes(),
-                    targets=target_info.targets,
-                    max_leaf_refine_weight=256,
-                    refine_weights=refine_weights,
-                    debug=self.debug,
-                    kind="adaptive-level-restricted")
-
-            return tree
-
-    # }}}
-
-    @memoize_method
-    def traversal(self):
-        """Return a :class:`boxtree.traversal.FMMTraversalInfo` with merged
-        close lists.
-        (See :meth:`boxtree.traversal.FMMTraversalInfo.merge_close_lists`)
-        |cached|
-        """
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            trav, _ = self.code_getter.build_traversal(queue, self.tree(),
-                    debug=self.debug)
-
-            return trav
 
     def leaf_to_center_lookup(self):
         """Return a :class:`boxtree.area_query.LeavesToBallsLookup` to look up
@@ -1081,21 +1126,13 @@ class QBXFMMGeometryData(object):
 
 # {{{ geometry data (qbmx)
 
-class QBMXFMMGeometryData(object):
+class QBMXFMMGeometryData(QBXFMMGeometryDataBase):
     """
+    .. automethod:: source_info()
     .. automethod:: center_info()
     .. automethod:: target_info()
     .. automethod:: tree()
     .. automethod:: traversal()
-    .. automethod:: leaf_to_center_lookup
-    .. automethod:: qbx_center_to_target_box()
-    .. automethod:: global_qbx_flags()
-    .. automethod:: global_qbx_centers()
-    .. automethod:: user_target_to_center()
-    .. automethod:: center_to_tree_targets()
-    .. automethod:: global_qbx_centers_box_target_lists()
-    .. automethod:: non_qbx_box_target_lists()
-    .. automethod:: plot()
     """
 
     def __init__(self, code_getter, lpot_source, center_side, target_discrs, debug):
@@ -1104,6 +1141,81 @@ class QBMXFMMGeometryData(object):
         self.center_side = center_side
         self.target_discrs = target_discrs
         self.debug = debug
+
+    @memoize_method
+    def lpot_sources_in_tree_order(self):
+        tree = self.tree()
+        lpot_src = self.lpot_source
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            source_nodes = lpot_src.fine_density_discr.nodes().with_queue(queue)
+            nsources = len(source_nodes[0])
+            user_source_ids = tree.user_source_ids
+
+            from pytools.obj_array import make_obj_array
+            sources = make_obj_array([
+                    source_nodes[i][user_source_ids].with_queue(None)
+                    for i in range(lpot_src.ambient_dim)])
+
+            return sources
+
+    @memoize_method
+    def source_info(self):
+        # For QBMX, the centers play the role of sources in the FMM.
+        center_info = self.center_info()
+        return SourceInfo(
+                sources=center_info.centers,
+                nsources=center_info.ncenters)
+
+    @memoize_method
+    def center_info(self):
+        """ Return a :class:`CenterInfo`. |cached|
+        """
+
+        lpot_source = self.lpot_source
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            centers = lpot_source.fine_centers(self.center_side)
+            sides = cl.array.empty(queue, len(centers[0]), dtype=np.int32)
+            sides.fill(self.center_side)
+            sides.finish()
+            radii = lpot_source.panel_sizes("nsources", "fine").with_queue(queue) / 2
+
+        return CenterInfo(
+                sides=sides,
+                radii=radii,
+                centers=centers).with_queue(None)
+
+    @memoize_method
+    def target_info(self):
+        code_getter = self.code_getter
+        lpot_src = self.lpot_source
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            target_discr_starts = []
+
+            ntargets = 0
+            for target_discr in self.target_discrs:
+                target_discr_starts.append(ntargets)
+                ntargets += target_discr.nnodes
+
+            target_discr_starts.append(ntargets)
+
+            targets = cl.array.empty(
+                    self.cl_context, (lpot_src.ambient_dim, ntargets),
+                    self.coord_dtype)
+
+            for start, target_discr in zip(
+                    target_discr_starts, self.target_discrs):
+                code_getter.copy_targets_kernel()(
+                        queue,
+                        targets=targets[:, start:start+target_discr.nnodes],
+                        points=target_discr.nodes())
+
+            return TargetInfo(
+                    targets=targets,
+                    target_discr_starts=target_discr_starts,
+                    ntargets=ntargets).with_queue(None)
 
 # }}}
 

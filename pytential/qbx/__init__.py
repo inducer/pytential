@@ -37,6 +37,8 @@ import pyopencl as cl
 import logging
 logger = logging.getLogger(__name__)
 
+print("HANDLERS FOR pytential.qbx are", logger.handlers)
+
 
 __doc__ = """
 .. autoclass:: QBXLayerPotentialSourceBase
@@ -202,7 +204,7 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
             ):
         # FIXME Could/should share wrangler and geometry kernels
         # if no relevant changes have been made.
-        return QBXLayerPotentialSource(
+        return self.__class__(
                 density_discr=density_discr or self.density_discr,
                 fine_order=(
                     fine_order if fine_order is not None else self.fine_order),
@@ -327,12 +329,15 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
             return tuple(panels[d, :] for d in range(mesh.ambient_dim))
 
     @memoize_method
-    def panel_sizes(self, last_dim_length="nsources"):
+    def panel_sizes(self, last_dim_length="nsources", discr_type="coarse"):
         assert last_dim_length in ("nsources", "ncenters", "npanels")
+        assert discr_type in ("coarse", "fine")
         # To get the panel size this does the equivalent of (∫ 1 ds)**(1/dim).
         # FIXME: Kernel optimizations
 
-        discr = self.density_discr
+        discr = (self.density_discr
+                if discr_type == "coarse"
+                else self.fine_density_discr)
 
         if last_dim_length == "nsources" or last_dim_length == "ncenters":
             knl = lp.make_kernel(
@@ -384,17 +389,28 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
                                         src1=panel_sizes, src2=panel_sizes)
             return panel_sizes.with_queue(None)
 
-    @memoize_method
-    def centers(self, sign):
-        adim = self.density_discr.ambient_dim
-        dim = self.density_discr.dim
+    def _centers_impl(self, sign, discr_type="coarse"):
+        discr = (self.density_discr
+                if discr_type == "coarse"
+                else self.fine_density_discr)
+
+        adim = discr.ambient_dim
+        dim = discr.dim
 
         from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
-            nodes = bind(self.density_discr, sym.nodes(adim))(queue)
-            normals = bind(self.density_discr, sym.normal(adim, dim=dim))(queue)
-            panel_sizes = self.panel_sizes().with_queue(queue)
+            nodes = bind(discr, sym.nodes(adim))(queue)
+            normals = bind(discr, sym.normal(adim, dim=dim))(queue)
+            panel_sizes = self.panel_sizes(discr_type=discr_type).with_queue(queue)
             return (nodes + normals * sign * panel_sizes / 2).as_vector(np.object)
+
+    @memoize_method
+    def centers(self, sign):
+        return self._centers_impl(sign)
+
+    @memoize_method
+    def fine_centers(self, sign):
+        return self._centers_impl(sign, discr_type="fine")
 
     @memoize_method
     def weights_and_area_elements(self):
@@ -414,9 +430,6 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
             qweight = bind(self.fine_density_discr, p.QWeight())(queue)
 
             return (area_element.with_queue(queue)*qweight).with_queue(None)
-
-    def preprocess_optemplate(self, name, discretizations, expr):
-        raise NotImplementedError()
 
     def op_group_features(self, expr):
         from sumpy.kernel import AxisTargetDerivativeRemover
@@ -506,6 +519,14 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
 
         return source_extra_kwargs, kernel_extra_kwargs
 
+    def preprocess_optemplate(self, name, discretizations, expr):
+        """
+        :arg name: The symbolic name for *self*, which the preprocessor
+            should use to find which expressions it is allowed to modify.
+        """
+        from pytential.symbolic.mappers import QBXPreprocessor
+        return QBXPreprocessor(name, discretizations)(expr)
+
     # }}}
 
 # }}}
@@ -517,14 +538,6 @@ class QBXLayerPotentialSource(QBXLayerPotentialSourceBase):
 
     def __init__(self, *args, **kwargs):
         QBXLayerPotentialSourceBase.__init__(self, *args, **kwargs)
-
-    def preprocess_optemplate(self, name, discretizations, expr):
-        """
-        :arg name: The symbolic name for *self*, which the preprocessor
-            should use to find which expressions it is allowed to modify.
-        """
-        from pytential.symbolic.mappers import QBXPreprocessor
-        return QBXPreprocessor(name, discretizations)(expr)
 
     @property
     @memoize_method
@@ -854,6 +867,13 @@ class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
 
     # {{{ fmm-based execution
 
+    @property
+    @memoize_method
+    def qbx_fmm_code_getter(self):
+        from pytential.qbx.geometry import QBXFMMGeometryCodeGetter
+        return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim,
+                debug=self.debug)
+
     def qbmx_fmm_geometry_data(self, target_discrs, center_side):
         """
         :arg target_discrs: a list of *discr*,
@@ -866,18 +886,41 @@ class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
         from pytential.qbx.geometry import QBMXFMMGeometryData
 
         return QBMXFMMGeometryData(self.qbx_fmm_code_getter,
-                self, target_discrs,
-                target_stick_out_factor=self.target_stick_out_factor,
+                self, center_side, target_discrs,
                 debug=self.debug)
+
+    @memoize_method
+    def expansion_wrangler_code_container(self, base_kernel, out_kernels):
+        mpole_expn_class = get_multipole_expansion_class(base_kernel)
+        local_expn_class = get_local_expansion_class(base_kernel)
+
+        from functools import partial
+        fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
+        fmm_local_factory = partial(local_expn_class, base_kernel)
+        qbx_mpole_factory = partial(mpole_expn_class, base_kernel)
+
+        from pytential.qbx.fmm import \
+                QBMXExpansionWranglerCodeContainer
+        return QBMXExpansionWranglerCodeContainer(
+                self.cl_context,
+                fmm_mpole_factory, fmm_local_factory, qbx_mpole_factory,
+                out_kernels)
 
     def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
         # map (name, qbx_side) to number in list
         tgt_name_and_side_to_number = {}
         # list of tuples (discr, qbx_side)
         target_discrs_and_qbx_sides = []
-        side_to_targets = {}
+        from collections import defaultdict
+        side_to_targets = defaultdict(list)
 
         for o in insn.outputs:
+            qbx_forced_limit = o.qbx_forced_limit
+            if qbx_forced_limit is None:
+                qbx_forced_limit = 0
+
+            side = 1 if qbx_forced_limit >= 0 else -1
+
             key = (o.target_name, o.qbx_forced_limit)
             if key not in tgt_name_and_side_to_number:
                 tgt_name_and_side_to_number[key] = \
@@ -887,14 +930,10 @@ class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
                 if isinstance(target_discr, LayerPotentialSource):
                     target_discr = target_discr.density_discr
 
-                qbx_forced_limit = o.qbx_forced_limit
-                if qbx_forced_limit is None:
-                    qbx_forced_limit = 0
-
                 target_discrs_and_qbx_sides.append(
                         (target_discr, qbx_forced_limit))
 
-        target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
+                side_to_targets[side].append(target_discr)
 
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
