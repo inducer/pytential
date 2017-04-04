@@ -394,7 +394,7 @@ def run_int_eq_test(
 
     pot_src = sym.IntG(
         # FIXME: qbx_forced_limit--really?
-        knl, sym.var("charges"), qbx_forced_limit=None, k=sym.var("k"))
+        knl, sym.var("charges"), qbx_forced_limit=None, **knl_kwargs)
 
     test_direct = bind((point_source, PointsTarget(test_targets)), pot_src)(
             queue, charges=source_charges_dev, **concrete_knl_kwargs)
@@ -518,9 +518,8 @@ def run_int_eq_test(
         #pt.plot(u)
         #pt.show()
 
-        evt, (fld_from_src,) = pot_p2p(
-                queue, fplot.points, point_sources, [source_charges],
-                **knl_kwargs)
+        fld_from_src = bind((point_source, PointsTarget(fplot.points)),
+                pot_src)(queue, charges=source_charges_dev, **concrete_knl_kwargs)
         fld_from_bdry = bind(
                 (qbx, PointsTarget(fplot.points)),
                 op.representation(sym.var("u"))
