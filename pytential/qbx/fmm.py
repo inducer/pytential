@@ -31,7 +31,8 @@ from sumpy.fmm import SumpyExpansionWranglerCodeContainer, SumpyExpansionWrangle
 
 from pytools import memoize_method
 from pytential.qbx.interactions import (
-        P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P, P2QBXM, QBXM2M, QBXM2PFromCSR)
+        P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P, P2QBXM, QBXM2M, QBXM2PFromCSR,
+        QBXM2LFromCSR)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -373,10 +374,16 @@ class QBMXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
                 self.multipole_expansion_factory(target_order))
 
     @memoize_method
-    def qbxm2p_from_csr(self, order):
+    def qbxm2p(self, order):
         return QBXM2PFromCSR(self.cl_context,
                  self.qbx_multipole_expansion(order),
                  self.out_kernels)
+
+    @memoize_method
+    def qbxm2l(self, source_order, target_order):
+        return QBXM2LFromCSR(self.cl_context,
+                self.qbx_multipole_expansion_factory(source_order),
+                self.local_expansion_factory(target_order))
 
     def get_wrangler(self, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
@@ -521,7 +528,7 @@ class QBMXExpansionWrangler(SumpyExpansionWrangler):
         kwargs.update(self.box_source_list_kwargs())
         kwargs.update(self.box_target_list_kwargs())
 
-        evt, pot_res = self.code.qbxm2p_from_csr(self.qbx_order)(self.queue,
+        evt, pot_res = self.code.qbxm2p(self.qbx_order)(self.queue,
                 target_boxes=target_boxes,
                 source_box_starts=source_box_starts,
                 source_box_lists=source_box_lists,
@@ -536,6 +543,50 @@ class QBMXExpansionWrangler(SumpyExpansionWrangler):
             pot_i.add_event(evt)
 
         return pot
+
+    def form_locals_from_qbx_multipoles(self,
+            level_start_target_or_target_parent_box_nrs,
+            target_or_target_parent_boxes, starts, lists, qbx_multipoles):
+        local_exps = self.local_expansion_zeros()
+
+        kwargs = self.extra_kwargs.copy()
+
+        kwargs.update(self.box_source_list_kwargs())
+
+        events = []
+        for lev in range(self.tree.nlevels):
+            start, stop = \
+                    level_start_target_or_target_parent_box_nrs[lev:lev+2]
+            if start == stop:
+                continue
+
+            qbxm2l = self.code.qbxm2l(self.qbx_order, self.level_orders[lev])
+
+            target_level_start_ibox, target_local_exps_view = \
+                    self.multipole_expansions_view(local_exps, lev)
+
+            evt, (result,) = qbxm2l(
+                    self.level_queues[lev],
+                    target_boxes=target_or_target_parent_boxes[start:stop],
+                    source_box_starts=starts[start:stop+1],
+                    source_box_lists=lists,
+                    centers=self.tree.box_centers,
+                    src_expansions=qbx_multipoles,
+
+                    tgt_expansions=target_local_exps_view,
+                    tgt_base_ibox=target_level_start_ibox,
+
+                    wait_for=events,
+
+                    **kwargs)
+
+            assert result is target_local_exps_view
+            events.append(evt)
+
+        cl.enqueue_marker(self.queue, wait_for=events)
+        self.queue.finish()
+
+        return local_exps
 
     # }}}
 
@@ -848,14 +899,12 @@ def drive_qbmx_fmm(expansion_wrangler, src_weights):
 
     logger.debug("form locals for separated bigger mpoles ('list 4 far')")
 
-    # XXX: FIXME
-
-    local_exps = local_exps + wrangler.form_locals(
+    local_exps = local_exps + wrangler.form_locals_from_qbx_multipoles(
             traversal.level_start_target_or_target_parent_box_nrs,
             traversal.target_or_target_parent_boxes,
             traversal.sep_bigger_starts,
             traversal.sep_bigger_lists,
-            src_weights)
+            qbx_mpole_exps)
 
     if traversal.sep_close_bigger_starts is not None:
         logger.debug("evaluate separated close bigger interactions directly "
