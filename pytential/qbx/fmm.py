@@ -491,7 +491,6 @@ class QBMXExpansionWrangler(SumpyExpansionWrangler):
             evt, (mpoles_res,) = qbxm2m(
                     self.queue,
                     source_boxes=source_boxes[start:stop],
-                    nsrc_boxes=stop-start+1,
                     centers=self.tree.box_centers,
                     qbx_expansions=qbx_expansions,
                     src_expansions=mpoles_view,
@@ -738,10 +737,12 @@ def drive_qbmx_fmm(expansion_wrangler, src_weights):
     qbx_mpole_exps = wrangler.form_global_qbx_multipoles(
             src_weights)
 
+    del src_weights
+
     logger.debug("construct box multipoles")
 
     mpole_exps = wrangler.translate_qbx_multipoles_to_box_multipole(
-            traversal.level_start_source_parent_box_nrs,
+            traversal.level_start_source_box_nrs,
             traversal.source_boxes,
             qbx_mpole_exps)
 
@@ -760,6 +761,8 @@ def drive_qbmx_fmm(expansion_wrangler, src_weights):
     # }}}
 
     # {{{ "Stage 3:" Direct evaluation from neighbor source boxes ("list 1")
+
+    # XXX: CHANGE
 
     logger.debug("direct evaluation from neighbor source boxes ('list 1')")
     potentials = wrangler.eval_direct(
@@ -801,6 +804,8 @@ def drive_qbmx_fmm(expansion_wrangler, src_weights):
 
     # these potentials are called beta in [1]
 
+    # XXX: CHANGE
+
     if traversal.sep_close_smaller_starts is not None:
         logger.debug("evaluate separated close smaller interactions directly "
                 "('list 3 close')")
@@ -823,6 +828,8 @@ def drive_qbmx_fmm(expansion_wrangler, src_weights):
             traversal.sep_bigger_starts,
             traversal.sep_bigger_lists,
             src_weights)
+
+    # XXX: CHANGE
 
     if traversal.sep_close_bigger_starts is not None:
         logger.debug("evaluate separated close bigger interactions directly "

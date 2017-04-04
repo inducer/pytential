@@ -1149,7 +1149,6 @@ class QBMXFMMGeometryData(QBXFMMGeometryDataBase):
 
         with cl.CommandQueue(self.cl_context) as queue:
             source_nodes = lpot_src.fine_density_discr.nodes().with_queue(queue)
-            nsources = len(source_nodes[0])
             user_source_ids = tree.user_source_ids
 
             from pytools.obj_array import make_obj_array

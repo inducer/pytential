@@ -907,12 +907,13 @@ class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
                 out_kernels)
 
     def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
-        # map (name, qbx_side) to number in list
-        tgt_name_and_side_to_number = {}
-        # list of tuples (discr, qbx_side)
-        target_discrs_and_qbx_sides = []
         from collections import defaultdict
+        # maps (interior/exterior) -> list of target discretizations
         side_to_targets = defaultdict(list)
+        # maps (interior/exterior) -> list of outputs for the given discretization
+        side_to_outputs = defaultdict(list)
+        # maps (tgt_name, limit) -> list of outputs for the given discretization
+        tgt_name_and_side_to_outputs = defaultdict(list)
 
         for o in insn.outputs:
             qbx_forced_limit = o.qbx_forced_limit
@@ -922,21 +923,24 @@ class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
             side = 1 if qbx_forced_limit >= 0 else -1
 
             key = (o.target_name, o.qbx_forced_limit)
-            if key not in tgt_name_and_side_to_number:
-                tgt_name_and_side_to_number[key] = \
-                        len(target_discrs_and_qbx_sides)
+            processed = key in tgt_name_and_side_to_outputs
 
-                target_discr = bound_expr.places[o.target_name]
-                if isinstance(target_discr, LayerPotentialSource):
-                    target_discr = target_discr.density_discr
+            tgt_name_and_side_to_outputs[key].append(o)
 
-                target_discrs_and_qbx_sides.append(
-                        (target_discr, qbx_forced_limit))
+            if processed:
+                continue
 
-                side_to_targets[side].append(target_discr)
+            target_discr = bound_expr.places[o.target_name]
+            if isinstance(target_discr, LayerPotentialSource):
+                target_discr = target_discr.density_discr
+
+            side_to_targets[side].append(target_discr)
+            side_to_outputs[side].append(tgt_name_and_side_to_outputs[key])
 
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
+
+        result = []
 
         for tgt_side in (-1, 1):
             relevant_target_discrs = side_to_targets[tgt_side]
@@ -973,7 +977,17 @@ class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
             from pytential.qbx.fmm import drive_qbmx_fmm
             all_potentials_on_tgt_side = drive_qbmx_fmm(wrangler, strengths)
 
-        # }}}
+            for tgt_number, tgt_output_set in (enumerate(side_to_outputs[tgt_side])):
+
+                tgt_slice = slice(*geo_data.target_info().target_discr_starts[
+                        tgt_number:tgt_number+2])
+
+                for o in tgt_output_set:
+                    result.append(
+                            (o.name,
+                             all_potentials_on_tgt_side[o.kernel_index][tgt_slice]))
+
+        return result, []
 
 # }}}
 

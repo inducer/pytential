@@ -130,7 +130,7 @@ class P2QBXM(P2EBase):
         arguments = (
                 [
                     lp.GlobalArg("sources", None, shape="dim, nsources",
-                        dim_tags="sep,c"),
+                                 dim_tags="sep,c", offset=lp.auto),
                     lp.GlobalArg("strengths", None, shape="nsources"),
                     lp.GlobalArg("qbx_centers", None, shape="dim, nsources",
                         dim_tags="sep,c"),
@@ -152,8 +152,8 @@ class P2QBXM(P2EBase):
                     <> strength = strengths[isrc]
                     """] + self.get_loopy_instructions() + ["""
                     """] + ["""
-                    qbx_expansions[isrc, {i} ] = strength * coeff{i} \
-                    {{id_prefix=write_expn}}
+                    qbx_expansions[isrc, {i}] = strength * coeff{i} \
+                        {{id_prefix=write_expn}}
                     """.format(i=i) for i in range(ncoeffs)] + ["""
                 end
                 """],
@@ -201,15 +201,13 @@ class QBXM2M(E2EBase):
                     <> src_ibox = source_boxes[isrc_box] {id=read_src_ibox}
                     <> isrc_start = box_source_starts[src_ibox]
                     <> isrc_end = isrc_start + box_source_counts_nonchild[src_ibox]
-                    <> center[idim] = centers[idim, src_ibox]
+                    <> center[idim] = centers[idim, src_ibox] {dup=idim}
 
                     for isrc
-                        <> d[idim] = center[idim] - sources[idim, src_ibox] {dup=idim}
+                        <> d[idim] = center[idim] - sources[idim, isrc] {dup=idim}
 
                         """] + ["""
-                        <> src_coeff{i} = \
-                            qbx_expansions[isrc, {i}] \
-                            {{dep=read_src_ibox}}
+                        <> src_coeff{i} = qbx_expansions[isrc, {i}] {{dep=read_src_ibox}}
 
                         """.format(i=i) for i in range(ncoeff_src)] + [
                         ] + self.get_translation_loopy_insns() + ["""
@@ -224,18 +222,18 @@ class QBXM2M(E2EBase):
                 end
                 """],
                 [
-                    lp.GlobalArg("source_boxes", np.int32, shape=None, offset=lp.auto),
-                    lp.GlobalArg("sources", None, shape=(self.dim, "nsources"),
+                    lp.GlobalArg("source_boxes", np.int32, shape=("nsrc_boxes"),
+                        offset=lp.auto),
+                    lp.GlobalArg("sources", None, shape="dim, nsources",
                         dim_tags="sep,c"),
-                    lp.GlobalArg("centers", None, shape="dim, aligned_nboxes"),
-                    lp.ValueArg("aligned_nboxes,nsrc_level_boxes", np.int32),
-                    lp.ValueArg("nsources", np.int32),
+                    lp.GlobalArg("centers", None, shape="dim, nbox_centers"),
                     lp.ValueArg("src_base_ibox", np.int32),
                     lp.GlobalArg("src_expansions", None,
                         shape=("nsrc_level_boxes", ncoeff_tgt), offset=lp.auto),
                     lp.GlobalArg("qbx_expansions", None, shape=("nsources", ncoeff_src)),
                     lp.GlobalArg("box_source_starts,box_source_counts_nonchild",
                         None, shape=None),
+                    lp.ValueArg("nsources,nbox_centers,nsrc_level_boxes", np.int32),
                     "..."
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name, assumptions="nsrc_boxes>=1",
