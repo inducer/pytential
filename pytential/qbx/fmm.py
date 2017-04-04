@@ -31,7 +31,7 @@ from sumpy.fmm import SumpyExpansionWranglerCodeContainer, SumpyExpansionWrangle
 
 from pytools import memoize_method
 from pytential.qbx.interactions import (
-        P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P, P2QBXM, QBXM2M)
+        P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P, P2QBXM, QBXM2M, QBXM2PFromCSR)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -372,6 +372,12 @@ class QBMXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
                 self.qbx_multipole_expansion_factory(source_order),
                 self.multipole_expansion_factory(target_order))
 
+    @memoize_method
+    def qbxm2p_from_csr(self, order):
+        return QBXM2PFromCSR(self.cl_context,
+                 self.qbx_multipole_expansion(order),
+                 self.out_kernels)
+
     def get_wrangler(self, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs={},
@@ -506,6 +512,30 @@ class QBMXExpansionWrangler(SumpyExpansionWrangler):
         mpoles.add_event(evt)
 
         return mpoles
+
+    def eval_qbx_multipoles_direct(self, target_boxes, source_box_starts,
+            source_box_lists, qbx_multipoles):
+        pot = self.potential_zeros()
+
+        kwargs = self.extra_kwargs.copy()
+        kwargs.update(self.box_source_list_kwargs())
+        kwargs.update(self.box_target_list_kwargs())
+
+        evt, pot_res = self.code.qbxm2p_from_csr(self.qbx_order)(self.queue,
+                target_boxes=target_boxes,
+                source_box_starts=source_box_starts,
+                source_box_lists=source_box_lists,
+                src_expansions=qbx_multipoles,
+
+                result=pot,
+
+                **kwargs)
+
+        for pot_i, pot_res_i in zip(pot, pot_res):
+            assert pot_i is pot_res_i
+            pot_i.add_event(evt)
+
+        return pot
 
     # }}}
 
@@ -762,14 +792,12 @@ def drive_qbmx_fmm(expansion_wrangler, src_weights):
 
     # {{{ "Stage 3:" Direct evaluation from neighbor source boxes ("list 1")
 
-    # XXX: CHANGE
-
     logger.debug("direct evaluation from neighbor source boxes ('list 1')")
-    potentials = wrangler.eval_direct(
+    potentials = wrangler.eval_qbx_multipoles_direct(
             traversal.target_boxes,
             traversal.neighbor_source_boxes_starts,
             traversal.neighbor_source_boxes_lists,
-            src_weights)
+            qbx_mpole_exps)
 
     # these potentials are called alpha in [1]
 
@@ -804,23 +832,23 @@ def drive_qbmx_fmm(expansion_wrangler, src_weights):
 
     # these potentials are called beta in [1]
 
-    # XXX: CHANGE
-
     if traversal.sep_close_smaller_starts is not None:
         logger.debug("evaluate separated close smaller interactions directly "
                 "('list 3 close')")
 
-        potentials = potentials + wrangler.eval_direct(
+        potentials = potentials + wrangler.eval_qbx_multipoles_direct(
                 traversal.target_boxes,
                 traversal.sep_close_smaller_starts,
                 traversal.sep_close_smaller_lists,
-                src_weights)
+                qbx_mpole_exps)
 
     # }}}
 
     # {{{ "Stage 6:" form locals for separated bigger mpoles ("list 4")
 
     logger.debug("form locals for separated bigger mpoles ('list 4 far')")
+
+    # XXX: FIXME
 
     local_exps = local_exps + wrangler.form_locals(
             traversal.level_start_target_or_target_parent_box_nrs,
@@ -829,17 +857,15 @@ def drive_qbmx_fmm(expansion_wrangler, src_weights):
             traversal.sep_bigger_lists,
             src_weights)
 
-    # XXX: CHANGE
-
     if traversal.sep_close_bigger_starts is not None:
         logger.debug("evaluate separated close bigger interactions directly "
                 "('list 4 close')")
 
-        potentials = potentials + wrangler.eval_direct(
+        potentials = potentials + wrangler.eval_qbx_multipoles_direct(
                 traversal.target_or_target_parent_boxes,
                 traversal.sep_close_bigger_starts,
                 traversal.sep_close_bigger_lists,
-                src_weights)
+                qbx_mpole_exps)
 
     # }}}
 

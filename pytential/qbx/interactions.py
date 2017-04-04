@@ -176,7 +176,7 @@ class P2QBXM(P2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_optimized_kernel()(queue, **kwargs)
+        return self.get_cached_optimized_kernel()(queue, **kwargs)
 
 # }}}
 
@@ -207,7 +207,8 @@ class QBXM2M(E2EBase):
                         <> d[idim] = center[idim] - sources[idim, isrc] {dup=idim}
 
                         """] + ["""
-                        <> src_coeff{i} = qbx_expansions[isrc, {i}] {{dep=read_src_ibox}}
+                        <> src_coeff{i} = qbx_expansions[isrc, {i}] \
+                            {{dep=read_src_ibox}}
 
                         """.format(i=i) for i in range(ncoeff_src)] + [
                         ] + self.get_translation_loopy_insns() + ["""
@@ -230,7 +231,8 @@ class QBXM2M(E2EBase):
                     lp.ValueArg("src_base_ibox", np.int32),
                     lp.GlobalArg("src_expansions", None,
                         shape=("nsrc_level_boxes", ncoeff_tgt), offset=lp.auto),
-                    lp.GlobalArg("qbx_expansions", None, shape=("nsources", ncoeff_src)),
+                    lp.GlobalArg("qbx_expansions", None,
+                        shape=("nsources", ncoeff_src)),
                     lp.GlobalArg("box_source_starts,box_source_counts_nonchild",
                         None, shape=None),
                     lp.ValueArg("nsources,nbox_centers,nsrc_level_boxes", np.int32),
@@ -256,7 +258,7 @@ class QBXM2M(E2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_optimized_kernel()(queue, **kwargs)
+        return self.get_cached_optimized_kernel()(queue, **kwargs)
 
 # }}}
 
@@ -519,6 +521,117 @@ class QBXL2P(E2PBase):
 
     def __call__(self, queue, **kwargs):
         return self.get_cached_optimized_kernel()(queue, **kwargs)
+
+
+class QBXM2PFromCSR(E2PBase):
+    default_name = "qbxm2p_from_csr"
+
+    def get_kernel(self):
+        ncoeffs = len(self.expansion)
+        loopy_insns, result_names = self.get_loopy_insns_and_result_names()
+
+        from sumpy.tools import gather_loopy_source_arguments
+        loopy_knl = lp.make_kernel(
+            [
+                "{[itgt_box]: 0<=itgt_box<ntgt_boxes}",
+                "{[isrc_box]: isrc_box_start<=isrc_box<isrc_box_end}",
+                "{[itgt,isrc,idim]: \
+                        itgt_start<=itgt<itgt_end and \
+                        isrc_start<=isrc<isrc_end and \
+                        0<=idim<dim }",
+                ],
+            self.get_kernel_scaling_assignment()
+            + [
+                """
+                for itgt_box
+                    <> tgt_ibox = target_boxes[itgt_box]
+                    <> itgt_start = box_target_starts[tgt_ibox]
+                    <> itgt_end = itgt_start+box_target_counts_nonchild[tgt_ibox]
+
+                    <> isrc_box_start = source_box_starts[itgt_box]
+                    <> isrc_box_end = source_box_starts[itgt_box+1]
+
+                    for isrc_box
+                        <> src_ibox = source_box_lists[isrc_box]
+                        <> isrc_start = box_source_starts[src_ibox]
+                        <> isrc_end = isrc_start+box_source_counts_nonchild[src_ibox]
+
+                        for itgt
+                            <> tgt[idim] = targets[idim, itgt]
+
+                            for isrc
+                                """] + ["""
+
+                                <> coeff{coeffidx} = \
+                                    src_expansions[isrc, {coeffidx}]
+
+                                """.format(coeffidx=i) for i in range(ncoeffs)] + [
+                                """
+
+                                <> src[idim] = sources[idim, isrc] {dup=idim}
+                                <> b[idim] = tgt[idim] - src[idim] {dup=idim}
+
+                                """] + loopy_insns + ["""
+                            end """] + ["""
+                            result[{resultidx}, itgt] = result[{resultidx}, itgt] + \
+                                    kernel_scaling * simul_reduce(sum, isrc,
+                                    result_{resultidx}_p) {{id_prefix=write_result}}
+                        """.format(resultidx=i) for i in range(len(result_names))] + ["""
+                        end
+                    end
+                end
+                """],
+            [
+                lp.GlobalArg("box_target_starts,box_target_counts_nonchild,"
+                    "box_source_starts,box_source_counts_nonchild,",
+                    None, shape=None),
+                lp.GlobalArg("source_box_starts, source_box_lists,",
+                    None, shape=None),
+                lp.GlobalArg("result", None,
+                    shape="nkernels,ntargets", dim_tags="sep,c"),
+                lp.GlobalArg("targets", None,
+                    shape="dim,ntargets", dim_tags="sep,c"),
+                lp.GlobalArg("sources", None,
+                    shape="dim,nsources", dim_tags="sep,c"),
+                lp.GlobalArg("src_expansions", None,
+                    shape="nsources,ncoeffs"),
+                lp.ValueArg("nsources", np.int32),
+                lp.ValueArg("ntargets", np.int32),
+                lp.ValueArg("ncoeffs", np.int32),
+                "...",
+            ] + gather_loopy_source_arguments(self.kernels),
+            name=self.name, assumptions="ntgt_boxes>=1",
+            silenced_warnings="temp_shape_fallback")
+
+        loopy_knl = lp.fix_parameters(
+                loopy_knl,
+                dim=self.dim,
+                nkernels=len(self.kernels))
+
+        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
+
+        for knl in self.kernels:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
+
+        return loopy_knl
+
+    def get_optimized_kernel(self):
+        # FIXME
+        knl = self.get_kernel()
+        """
+        import pyopencl as cl
+        dev = self.context.devices[0]
+        if dev.type & cl.device_type.CPU:
+            knl = lp.split_iname(knl, "itgt_box", 4, outer_tag="g.0")
+        else:
+            knl = lp.split_iname(knl, "itgt_box", 4, outer_tag="g.0")
+        """
+        return knl
+
+    def __call__(self, queue, **kwargs):
+        knl = self.get_cached_optimized_kernel()
+
+        return knl(queue, **kwargs)
 
 # }}}
 
