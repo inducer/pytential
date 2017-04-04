@@ -322,7 +322,7 @@ def run_int_eq_test(
             DirichletOperator,
             NeumannOperator)
 
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, AxisTargetDerivative
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
     if k:
         knl = HelmholtzKernel(2)
         knl_kwargs = {"k": sym.var("k")}
@@ -372,6 +372,8 @@ def run_int_eq_test(
     source_charges = source_charges.astype(dtype)
     assert np.sum(source_charges) < 1e-15
 
+    source_charges_dev = cl.array.to_device(queue, source_charges)
+
     # }}}
 
     if 0:
@@ -385,32 +387,28 @@ def run_int_eq_test(
 
     # {{{ establish BCs
 
-    from sumpy.p2p import P2P
-    pot_p2p = P2P(cl_ctx,
-            [knl], exclude_self=False, value_dtypes=dtype)
+    from pytential.source import PointPotentialSource
+    from pytential.target import PointsTarget
 
-    evt, (test_direct,) = pot_p2p(
-            queue, test_targets, point_sources, [source_charges],
-            out_host=False, **concrete_knl_kwargs)
+    point_source = PointPotentialSource(cl_ctx, point_sources)
 
-    nodes = density_discr.nodes()
+    pot_src = sym.IntG(
+        # FIXME: qbx_forced_limit--really?
+        knl, sym.var("charges"), qbx_forced_limit=None, **knl_kwargs)
 
-    evt, (src_pot,) = pot_p2p(
-            queue, nodes, point_sources, [source_charges],
-            **concrete_knl_kwargs)
-
-    grad_p2p = P2P(cl_ctx,
-            [AxisTargetDerivative(0, knl), AxisTargetDerivative(1, knl)],
-            exclude_self=False, value_dtypes=dtype)
-    evt, (src_grad0, src_grad1) = grad_p2p(
-            queue, nodes, point_sources, [source_charges],
-            **concrete_knl_kwargs)
+    test_direct = bind((point_source, PointsTarget(test_targets)), pot_src)(
+            queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     if bc_type == "dirichlet":
-        bc = src_pot
+        bc = bind((point_source, density_discr), pot_src)(
+                queue, charges=source_charges_dev, **concrete_knl_kwargs)
+
     elif bc_type == "neumann":
-        normal = bind(density_discr, sym.normal(2))(queue).as_vector(np.object)
-        bc = (src_grad0*normal[0] + src_grad1*normal[1])
+        bc = bind(
+                (point_source, density_discr),
+                sym.normal_derivative(
+                    qbx.ambient_dim, pot_src, where=sym.DEFAULT_TARGET)
+                )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     # }}}
 
@@ -449,8 +447,6 @@ def run_int_eq_test(
     # }}}
 
     # {{{ error check
-
-    from pytential.target import PointsTarget
 
     bound_tgt_op = bind((qbx, PointsTarget(test_targets)),
             op.representation(sym.var("u")))
@@ -493,19 +489,18 @@ def run_int_eq_test(
     tang_deriv_from_src = bound_t_deriv_op(
             queue, u=u, **concrete_knl_kwargs).as_scalar().get()
 
-    tangent = bind(
-            density_discr,
-            sym.pseudoscalar(2)/sym.area_element(2))(
-                    queue, **concrete_knl_kwargs).as_vector(np.object)
-
-    tang_deriv_ref = (src_grad0 * tangent[0] + src_grad1 * tangent[1]).get()
+    tang_deriv_ref = (bind(
+            (point_source, density_discr),
+            sym.tangential_derivative(2, pot_src)
+            )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
+            .as_scalar().get())
 
     if 0:
         pt.plot(tang_deriv_ref.real)
         pt.plot(tang_deriv_from_src.real)
         pt.show()
 
-    td_err = tang_deriv_from_src - tang_deriv_ref
+    td_err = (tang_deriv_from_src - tang_deriv_ref)
 
     rel_td_err_inf = la.norm(td_err, np.inf)/la.norm(tang_deriv_ref, np.inf)
 
@@ -523,9 +518,8 @@ def run_int_eq_test(
         #pt.plot(u)
         #pt.show()
 
-        evt, (fld_from_src,) = pot_p2p(
-                queue, fplot.points, point_sources, [source_charges],
-                **knl_kwargs)
+        fld_from_src = bind((point_source, PointsTarget(fplot.points)),
+                pot_src)(queue, charges=source_charges_dev, **concrete_knl_kwargs)
         fld_from_bdry = bind(
                 (qbx, PointsTarget(fplot.points)),
                 op.representation(sym.var("u"))
