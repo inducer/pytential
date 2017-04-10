@@ -30,6 +30,15 @@ from pytential.symbolic.execution import bind
 
 from pytools import memoize_on_first_arg
 
+import os
+
+
+PYTENTIAL_DEBUG = os.environ.get("PYTENTIAL_DEBUG")
+
+if PYTENTIAL_DEBUG:
+    from pytential.log import set_up_logging
+    set_up_logging(PYTENTIAL_DEBUG.split(":"))
+
 
 @memoize_on_first_arg
 def _integral_op(discr):
