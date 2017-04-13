@@ -405,6 +405,8 @@ class QBMXExpansionWrangler(SumpyExpansionWrangler):
     .. automethod:: form_global_qbx_multipoles
 
     .. automethod:: translate_qbx_multipole_to_box_multipole
+
+    .. automethod:: eval_qbx_multipoles_direct
     """
 
     def __init__(self, code_container, queue, geo_data, dtype,
@@ -780,23 +782,15 @@ def drive_qbx_fmm(expansion_wrangler, src_weights):
 # {{{ qbmx fmm top-level
 
 def drive_qbmx_fmm(expansion_wrangler, src_weights):
-    """Top-level driver routine for a fast multipole calculation.
+    """Top-level driver routine for the QBMX fast multipole calculation.
 
-    In part, this is intended as a template for custom FMMs, in the sense that
-    you may copy and paste its
-    `source code <https://github.com/inducer/boxtree/blob/master/boxtree/fmm.py>`_
-    as a starting point.
-
-    Nonetheless, many common applications (such as point-to-point FMMs) can be
-    covered by supplying the right *expansion_wrangler* to this routine.
-
-    :arg traversal: A :class:`boxtree.traversal.FMMTraversalInfo` instance.
-    :arg expansion_wrangler: An object exhibiting the
-        :class:`ExpansionWranglerInterface`.
+    :arg expansion_wrangler: A :class:`QBMXExpansionWrangler`
     :arg src_weights: Source 'density/weights/charges'.
         Passed unmodified to *expansion_wrangler*.
 
     Returns the potentials computed by *expansion_wrangler*.
+
+    See also :func:`boxtree.fmm.drive_fmm`.
     """
     wrangler = expansion_wrangler
 
@@ -818,6 +812,7 @@ def drive_qbmx_fmm(expansion_wrangler, src_weights):
     qbx_mpole_exps = wrangler.form_global_qbx_multipoles(
             src_weights)
 
+    # Henceforth, qbx_mpole_exps get treated as the sources for the FMM.
     del src_weights
 
     logger.debug("construct box multipoles")
