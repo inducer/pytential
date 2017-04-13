@@ -37,9 +37,6 @@ import pyopencl as cl
 import logging
 logger = logging.getLogger(__name__)
 
-print("HANDLERS FOR pytential.qbx are", logger.handlers)
-
-
 __doc__ = """
 .. autoclass:: QBXLayerPotentialSourceBase
 .. autoclass:: QBXLayerPotentialSource
