@@ -33,11 +33,22 @@ from pytools import memoize_on_first_arg
 import os
 
 
-PYTENTIAL_DEBUG = os.environ.get("PYTENTIAL_DEBUG")
+PYTENTIAL_LOG_DEBUG = os.environ.get("PYTENTIAL_LOG_DEBUG")
 
-if PYTENTIAL_DEBUG:
+
+if PYTENTIAL_LOG_DEBUG is not None:
+    import logging
     from pytential.log import set_up_logging
-    set_up_logging(PYTENTIAL_DEBUG.split(":"))
+    set_up_logging(PYTENTIAL_LOG_DEBUG.split(":"), level=logging.DEBUG)
+
+
+PYTENTIAL_LOG_INFO = os.environ.get("PYTENTIAL_LOG_INFO")
+
+
+if PYTENTIAL_LOG_INFO is not None:
+    import logging
+    from pytential.log import set_up_logging
+    set_up_logging(PYTENTIAL_LOG_INFO.split(":"), level=logging.INFO)
 
 
 @memoize_on_first_arg

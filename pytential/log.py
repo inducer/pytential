@@ -22,54 +22,78 @@ THE SOFTWARE.
 
 import logging
 
+#
+# This file is based heavily on
+# http://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
+#
 
-def set_up_logging(modules, level=logging.DEBUG):
-    """
-    Based heavily on
-    http://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
 
-    :arg modules: A list of modules for which logging output should be enabled
-    """
+# {{{ constants
+
+class colors:  # noqa
     BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
 
-    #These are the sequences need to get colored ouput
+
+class term_seq:  # noqa
     RESET_SEQ = "\033[0m"
     COLOR_SEQ = "\033[1;%dm"
     BOLD_SEQ = "\033[1m"
 
-    def formatter_message(message, use_color = True):
-        if use_color:
-            message = message.replace("$RESET", RESET_SEQ).replace("$BOLD", BOLD_SEQ)
-        else:
-            message = message.replace("$RESET", "").replace("$BOLD", "")
-        return message
 
-    COLORS = {
-        'WARNING': YELLOW,
-        'INFO': CYAN,
-        'DEBUG': WHITE,
-        'CRITICAL': YELLOW,
-        'ERROR': RED
-    }
+LEVEL_TO_COLOR = {
+    'WARNING': colors.YELLOW,
+    'INFO': colors.CYAN,
+    'DEBUG': colors.WHITE,
+    'CRITICAL': colors.YELLOW,
+    'ERROR': colors.RED
+}
 
-    class ColoredFormatter(logging.Formatter):
 
-        def __init__(self, msg, use_color = True):
-            logging.Formatter.__init__(self, msg)
-            self.use_color = use_color
+PYTENTIAL_LOG_FORMAT = (
+        "[$BOLD%(name)s$RESET][%(levelname)s]  %(message)s "
+        "($BOLD%(filename)s$RESET:%(lineno)d)"
+)
 
-        def format(self, record):
-            levelname = record.levelname
-            if self.use_color and levelname in COLORS:
-                levelname_color = (
-                        COLOR_SEQ % (30 + COLORS[levelname]) + levelname + RESET_SEQ)
-                record.levelname = levelname_color
-            return logging.Formatter.format(self, record)
+# }}}
 
-    FORMAT = "[$BOLD%(name)s$RESET][%(levelname)s]  %(message)s " \
-             "($BOLD%(filename)s$RESET:%(lineno)d)"
-    COLOR_FORMAT = formatter_message(FORMAT, True)
-    color_formatter = ColoredFormatter(COLOR_FORMAT)
+
+# {{{ formatting
+
+class ColoredFormatter(logging.Formatter):
+
+    def __init__(self, msg, use_color=True):
+        logging.Formatter.__init__(self, msg)
+        self.use_color = use_color
+
+    def format(self, record):
+        levelname = record.levelname
+        if self.use_color and levelname in LEVEL_TO_COLOR:
+            levelname_color = (
+                    (term_seq.COLOR_SEQ % (30 + LEVEL_TO_COLOR[levelname]))
+                    + levelname + term_seq.RESET_SEQ)
+            record.levelname = levelname_color
+        return logging.Formatter.format(self, record)
+
+
+def make_formatter_message(message, use_color=True):
+    if use_color:
+        message = (message
+                .replace("$RESET", term_seq.RESET_SEQ)
+                .replace("$BOLD", term_seq.BOLD_SEQ))
+    else:
+        message = message.replace("$RESET", "").replace("$BOLD", "")
+    return message
+
+# }}}
+
+
+def set_up_logging(modules, level=logging.DEBUG, use_color=True):
+    """
+    :arg modules: A list of modules for which logging output should be enabled
+    """
+
+    color_formatter = ColoredFormatter(
+            make_formatter_message(PYTENTIAL_LOG_FORMAT, use_color), use_color)
 
     handler = logging.StreamHandler()
     handler.setFormatter(color_formatter)
