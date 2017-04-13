@@ -16,6 +16,7 @@ from six.moves import range
 faulthandler.enable()
 
 import logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 cl_ctx = cl.create_some_context()
@@ -43,7 +44,7 @@ mesh = make_curve_mesh(
         np.linspace(0, 1, nelements+1),
         target_order)
 
-from pytential.qbx import QBMXLayerPotentialSource
+from pytential.qbx import QBXLayerPotentialSource
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -51,9 +52,9 @@ from meshmode.discretization.poly_element import \
 pre_density_discr = Discretization(
         cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-qbx, _ = QBMXLayerPotentialSource(
-        pre_density_discr, 4*target_order, qbx_order,
-        fmm_order=qbx_order+3).with_refinement()
+qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
+        fmm_order=qbx_order+3,
+        target_stick_out_factor=0.005).with_refinement()
 
 density_discr = qbx.density_discr
 
