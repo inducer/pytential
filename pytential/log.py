@@ -87,7 +87,7 @@ def make_formatter_message(message, use_color=True):
 # }}}
 
 
-def set_up_logging(modules, level=logging.DEBUG, use_color=True):
+def set_up_logging(modules, level, use_color=True):
     """
     :arg modules: A list of modules for which logging output should be enabled
     """
