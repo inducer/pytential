@@ -31,6 +31,7 @@ from pytools import memoize_method
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import QuadratureSimplexGroupFactory
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
+from pytential.source import PotentialSource
 
 import pyopencl as cl
 
@@ -85,18 +86,8 @@ class _JumpTermArgumentProvider(object):
 # }}}
 
 
-class LayerPotentialSource(object):
-    """
-    .. method:: preprocess_optemplate(name, expr)
-
-    .. method:: op_group_features(expr)
-
-        Return a characteristic tuple by which operators that can be
-        executed together can be grouped.
-
-        *expr* is a subclass of
-        :class:`pytential.symbolic.primitives.IntG`.
-    """
+class LayerPotentialSource(PotentialSource):
+    pass
 
 
 def get_local_expansion_class(base_kernel):
@@ -437,7 +428,7 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
 
         return result
 
-    def exec_layer_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         from pytools.obj_array import with_object_array_or_scalar
         from functools import partial
         oversample = partial(self.resampler, queue)
@@ -453,9 +444,9 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
             return with_object_array_or_scalar(oversample, value)
 
         if self.fmm_level_to_order is False:
-            func = self.exec_layer_potential_insn_direct
+            func = self.exec_compute_potential_insn_direct
         else:
-            func = self.exec_layer_potential_insn_fmm
+            func = self.exec_compute_potential_insn_fmm
 
         return func(queue, insn, bound_expr, evaluate_wrapper)
 
@@ -579,7 +570,7 @@ class QBXLayerPotentialSource(QBXLayerPotentialSourceBase):
                 fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
                 out_kernels)
 
-    def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
         # {{{ build list of unique target discretizations used
 
         # map (name, qbx_side) to number in list
@@ -751,7 +742,7 @@ class QBXLayerPotentialSource(QBXLayerPotentialSourceBase):
                         *count = item;
                     """)
 
-    def exec_layer_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
         lpot_applier = self.get_lpot_applier(insn.kernels)
         p2p = None
         lpot_applier_on_tgt_subset = None

@@ -326,8 +326,8 @@ def prepare_places(places):
 
     def cast_to_place(discr):
         from pytential.target import TargetBase
-        if not isinstance(discr, (Discretization, TargetBase,
-                LayerPotentialSource)):
+        from pytential.source import PotentialSource
+        if not isinstance(discr, (Discretization, TargetBase, PotentialSource)):
             raise TypeError("must pass discretizations, "
                     "layer potential sources or targets as 'places'")
         return discr

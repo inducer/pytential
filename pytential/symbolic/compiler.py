@@ -122,7 +122,7 @@ class Assign(Instruction):
 
 # {{{ layer pot instruction
 
-class LayerPotentialOutput(Record):
+class PotentialOutput(Record):
     """
     .. attribute:: name
 
@@ -140,11 +140,11 @@ class LayerPotentialOutput(Record):
     """
 
 
-class LayerPotentialInstruction(Instruction):
+class ComputePotentialInstruction(Instruction):
     """
     .. attribute:: outputs
 
-        A list of :class:`LayerPotentialOutput` instances
+        A list of :class:`PotentialOutput` instances
         The entries in the list correspond to :attr:`names`.
 
     .. attribute:: kernels
@@ -225,7 +225,7 @@ class LayerPotentialInstruction(Instruction):
 
     def get_exec_function(self, exec_mapper):
         source = exec_mapper.bound_expr.places[self.source]
-        return source.exec_layer_potential_insn
+        return source.exec_compute_potential_insn
 
     def __hash__(self):
         return id(self)
@@ -600,7 +600,7 @@ class OperatorCompiler(IdentityMapper):
                     for arg_name, arg_val in six.iteritems(expr.kernel_arguments))
 
             outputs = [
-                    LayerPotentialOutput(
+                    PotentialOutput(
                         name=name,
                         kernel_index=kernel_to_index[op.kernel],
                         target_name=op.target,
@@ -610,7 +610,7 @@ class OperatorCompiler(IdentityMapper):
                     ]
 
             self.code.append(
-                    LayerPotentialInstruction(
+                    ComputePotentialInstruction(
                         outputs=outputs,
                         kernels=tuple(kernels),
                         kernel_arguments=kernel_arguments,
