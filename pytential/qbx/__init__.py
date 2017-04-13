@@ -917,7 +917,13 @@ class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
             if qbx_forced_limit is None:
                 qbx_forced_limit = 0
 
-            side = 1 if qbx_forced_limit >= 0 else -1
+            if qbx_forced_limit == 0:
+                raise NotImplementedError(
+                        "Target side (interior/exterior) "
+                        "must be specified to use QBMX - "
+                        "this needs to be fixed eventually.")
+
+            side = 1 if qbx_forced_limit > 0 else -1
 
             key = (o.target_name, o.qbx_forced_limit)
             processed = key in tgt_name_and_side_to_outputs
