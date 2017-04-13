@@ -23,9 +23,9 @@ Logging
 =======
 
 Logging output for scripts that use :mod:`pytential` may be controlled through
-the environment variables ``PYTENTIAL_LOG_`` + *log_level*. Each variable accepts a
-colon-separated list of module names that set the logging level for the given
-module. Example usage::
+the environment variables ``PYTENTIAL_LOG_`` + *log_level*. The variable for the
+desired level should be set to a colon-separated list of module names. Example
+usage::
 
     PYTENTIAL_LOG_DEBUG=pytential:loopy PYTENTIAL_LOG_INFO=boxtree python test.py
 
