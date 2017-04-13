@@ -61,8 +61,19 @@ PYTENTIAL_LOG_FORMAT = (
 
 class ColoredFormatter(logging.Formatter):
 
-    def __init__(self, msg, use_color=True):
-        logging.Formatter.__init__(self, msg)
+    @staticmethod
+    def make_formatter_message(message, use_color):
+        if use_color:
+            message = (message
+                    .replace("$RESET", term_seq.RESET_SEQ)
+                    .replace("$BOLD", term_seq.BOLD_SEQ))
+        else:
+            message = message.replace("$RESET", "").replace("$BOLD", "")
+        return message
+
+    def __init__(self, use_color=True):
+        logging.Formatter.__init__(
+                self, self.make_formatter_message(PYTENTIAL_LOG_FORMAT, use_color))
         self.use_color = use_color
 
     def format(self, record):
@@ -74,16 +85,6 @@ class ColoredFormatter(logging.Formatter):
             record.levelname = levelname_color
         return logging.Formatter.format(self, record)
 
-
-def make_formatter_message(message, use_color=True):
-    if use_color:
-        message = (message
-                .replace("$RESET", term_seq.RESET_SEQ)
-                .replace("$BOLD", term_seq.BOLD_SEQ))
-    else:
-        message = message.replace("$RESET", "").replace("$BOLD", "")
-    return message
-
 # }}}
 
 
@@ -92,8 +93,7 @@ def set_up_logging(modules, level, use_color=True):
     :arg modules: A list of modules for which logging output should be enabled
     """
 
-    color_formatter = ColoredFormatter(
-            make_formatter_message(PYTENTIAL_LOG_FORMAT, use_color), use_color)
+    color_formatter = ColoredFormatter(use_color)
 
     handler = logging.StreamHandler()
     handler.setFormatter(color_formatter)
