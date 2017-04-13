@@ -30,25 +30,25 @@ from pytential.symbolic.execution import bind
 
 from pytools import memoize_on_first_arg
 
-import os
 
-
-PYTENTIAL_LOG_DEBUG = os.environ.get("PYTENTIAL_LOG_DEBUG")
-
-
-if PYTENTIAL_LOG_DEBUG is not None:
+def _set_up_logging_from_environment():
     import logging
+    import os
     from pytential.log import set_up_logging
-    set_up_logging(PYTENTIAL_LOG_DEBUG.split(":"), level=logging.DEBUG)
+
+    for level_name, level in (
+            ("DEBUG", logging.DEBUG),
+            ("INFO", logging.INFO),
+            ("WARNING", logging.WARNING),
+            ("ERROR", logging.ERROR),
+            ("CRITICAL", logging.CRITICAL)):
+
+        pytential_log_var = os.environ.get("PYTENTIAL_LOG_%s" % level_name)
+        if pytential_log_var is not None:
+            set_up_logging(pytential_log_var.split(":"), level=level)
 
 
-PYTENTIAL_LOG_INFO = os.environ.get("PYTENTIAL_LOG_INFO")
-
-
-if PYTENTIAL_LOG_INFO is not None:
-    import logging
-    from pytential.log import set_up_logging
-    set_up_logging(PYTENTIAL_LOG_INFO.split(":"), level=logging.INFO)
+_set_up_logging_from_environment()
 
 
 @memoize_on_first_arg
