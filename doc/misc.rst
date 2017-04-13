@@ -1,5 +1,8 @@
+Installation and Usage
+======================
+
 Installation
-============
+------------
 
 This command should install :mod:`pytential`::
 
@@ -20,7 +23,7 @@ and say::
 In addition, you need to have :mod:`numpy` installed.
 
 Logging
-=======
+-------
 
 Logging output for scripts that use :mod:`pytential` may be controlled on a
 per-module basis through the environment variables ``PYTENTIAL_LOG_`` +
