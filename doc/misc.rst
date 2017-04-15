@@ -1,5 +1,8 @@
+Installation and Usage
+======================
+
 Installation
-============
+------------
 
 This command should install :mod:`pytential`::
 
@@ -18,6 +21,22 @@ and say::
     python setup.py install
 
 In addition, you need to have :mod:`numpy` installed.
+
+Logging
+-------
+
+Logging output for scripts that use :mod:`pytential` may be controlled on a
+per-module basis through the environment variables ``PYTENTIAL_LOG_`` +
+*log_level*. The variable for the desired level should be set to a
+colon-separated list of module names. Example usage::
+
+    PYTENTIAL_LOG_DEBUG=pytential:loopy PYTENTIAL_LOG_INFO=boxtree python test.py
+
+This sets the logging level of :mod:`pytential` and :mod:`loopy` to
+:attr:`logging.DEBUG`, and the logging level of :mod:`boxtree` to
+:attr:`logging.INFO`.
+
+Note: This feature is incompatible with :func:`logging.basicConfig()`.
 
 User-visible Changes
 ====================
