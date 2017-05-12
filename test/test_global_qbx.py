@@ -112,13 +112,15 @@ def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
 
     discr = Discretization(cl_ctx, mesh, factory)
 
-    from pytential.qbx.refinement import QBXLayerPotentialSourceRefiner
+    from pytential.qbx.refinement import (
+            RefinerCodeContainer, refine_for_global_qbx)
 
     lpot_source = QBXLayerPotentialSource(discr, order)
     del discr
-    refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
 
-    lpot_source, conn = refiner(lpot_source, factory, helmholtz_k)
+    lpot_source, conn = refine_for_global_qbx(
+            lpot_source, RefinerCodeContainer(cl_ctx),
+            factory, helmholtz_k)
 
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
     int_centers = lpot_source.centers(-1)
@@ -132,11 +134,6 @@ def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
     # {{{ check if satisfying criteria
 
     def check_panel(panel):
-        # Check 2-to-1 panel to neighbor size ratio.
-        for neighbor in panel.neighbors:
-            assert panel_sizes[panel.element_nr] / panel_sizes[neighbor] <= 2, \
-                (panel_sizes[panel.element_nr], panel_sizes[neighbor])
-
         # Check wavenumber to panel size ratio.
         assert panel_sizes[panel.element_nr] * helmholtz_k <= 5
 
@@ -164,15 +161,6 @@ def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
         # panel.
 
         assert dist >= h_1 / 2, (dist, h_1, panel_1.element_nr, panel_2.element_nr)
-
-        # Criterion 2:
-        # A center cannot be closer to another panel than that panel's
-        # centers - unless the panels are adjacent, to allow for refinement.
-
-        if panel_2.element_nr in panel_1.neighbors:
-            return
-
-        assert dist >= h_2 / 2, (dist, h_2, panel_1.element_nr, panel_2.element_nr)
 
     for panel_1 in iter_elements(lpot_source.density_discr):
         check_panel(panel_1)
