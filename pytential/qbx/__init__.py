@@ -235,11 +235,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             return self._fine_density_discr
 
         from meshmode.discretization.poly_element import (
-                InterpolatoryQuadratureSimplexGroupFactory)
+                QuadratureSimplexGroupFactory)
 
         return Discretization(
             self.density_discr.cl_context, self.density_discr.mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(self.fine_order),
+            QuadratureSimplexGroupFactory(self.fine_order),
             self.real_dtype)
 
     @property
@@ -285,7 +285,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from pytential.qbx.refinement import refine_for_global_qbx
 
         from meshmode.discretization.poly_element import (
-                InterpolatoryQuadratureSimplexGroupFactory)
+                InterpolatoryQuadratureSimplexGroupFactory,
+                QuadratureSimplexGroupFactory)
 
         if target_order is None:
             target_order = self.density_discr.groups[0].order
@@ -294,7 +295,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 self,
                 self.refiner_code_container,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order),
-                InterpolatoryQuadratureSimplexGroupFactory(self.fine_order),
+                QuadratureSimplexGroupFactory(self.fine_order),
                 maxiter=maxiter)
 
         return lpot, connection

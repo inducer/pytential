@@ -482,7 +482,7 @@ def refine_for_global_qbx(lpot_source, code_container,
 
     :arg fine_group_factory: An instance of
         :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
-        discretizing the fine refined mesh.
+        oversample the refined mesh at the finest level.
 
     :arg helmholtz_k: The Helmholtz parameter, or `None` if not applicable.
 
@@ -501,21 +501,24 @@ def refine_for_global_qbx(lpot_source, code_container,
 
     # Algorithm:
     #
-    # 1. Do initial refinement, if requested.
+    # 1. Do an initial refinement, if requested.
     #
     # 2. While not converged:
     #        Refine until each center is closest to its own
     #        source and panel sizes bounded by wavelength.
+    #    This becomes the coarse discretization.
     #
     # 3. While not converged:
-    #        Refine fine density discretization until
+    #        Refine density discretization until
     #        sufficient quadrature resolution from all panels achieved.
+    #    Oversample the result to get the fine density discretization.
     #
     # TODO: Stop doing redundant checks by avoiding panels which no longer need
     # refinement.
 
     from meshmode.mesh.refinement import Refiner
-    from meshmode.discretization.connection import ChainedDiscretizationConnection
+    from meshmode.discretization.connection import (
+            ChainedDiscretizationConnection, make_same_mesh_connection)
 
     with cl.CommandQueue(lpot_source.cl_context) as queue:
         wrangler = code_container.get_wrangler(queue)
@@ -578,10 +581,15 @@ def refine_for_global_qbx(lpot_source, code_container,
 
         del refiner
 
+        density_discr = lpot_source.density_discr
+        lpot_source = lpot_source.copy(
+                fine_density_discr=density_discr,
+                resampler=make_same_mesh_connection(density_discr, density_discr))
+
         must_refine = True
         niter = 0
-        fine_refiner = Refiner(lpot_source.fine_density_discr.mesh)
-        fine_connections = [lpot_source.resampler]
+        fine_refiner = Refiner(lpot_source.density_discr.mesh)
+        fine_connections = []
 
         while must_refine:
             must_refine = False
@@ -606,7 +614,7 @@ def refine_for_global_qbx(lpot_source, code_container,
             if must_refine:
                 conn = wrangler.refine(
                         lpot_source.fine_density_discr,
-                        fine_refiner, refine_flags, fine_group_factory, debug)
+                        fine_refiner, refine_flags, group_factory, debug)
                 fine_connections.append(conn)
                 lpot_source = lpot_source.copy(
                         fine_density_discr=conn.to_discr,
@@ -618,10 +626,24 @@ def refine_for_global_qbx(lpot_source, code_container,
 
         # }}}
 
-    lpot_source = lpot_source.copy(debug=debug, refined_for_global_qbx=True)
+    # Oversample the fine mesh.
+    from meshmode.discretization import Discretization
+    ovsmp_fine_density_discr = Discretization(
+            lpot_source.fine_density_discr.cl_context,
+            lpot_source.fine_density_discr.mesh,
+            fine_group_factory,
+            lpot_source.real_dtype)
+
+    fine_connections.append(make_same_mesh_connection(
+            lpot_source.fine_density_discr, ovsmp_fine_density_discr))
+
+    lpot_source = lpot_source.copy(
+            fine_density_discr=ovsmp_fine_density_discr,
+            resampler=ChainedDiscretizationConnection(fine_connections),
+            debug=debug,
+            refined_for_global_qbx=True)
 
     if len(connections) == 0:
-        from meshmode.discretization.connection import make_same_mesh_connection
         connection = make_same_mesh_connection(
                 lpot_source.density_discr,
                 lpot_source.density_discr)
