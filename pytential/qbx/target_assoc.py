@@ -36,7 +36,7 @@ from boxtree.tools import DeviceDataRecord
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
 from pytential.qbx.utils import (
-    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, DiscrPlotterMixin)
+    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS)
 
 
 unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
@@ -318,11 +318,11 @@ class QBXTargetAssociation(DeviceDataRecord):
     pass
 
 
-class QBXTargetAssociator(DiscrPlotterMixin):
+class QBXTargetAssociator(object):
 
     def __init__(self, cl_context):
-        from pytential.qbx.utils import TreeWithQBXMetadataBuilder
-        self.tree_builder = TreeWithQBXMetadataBuilder(cl_context)
+        from boxtree.tree_build import TreeBuilder
+        self.tree_builder = TreeBuilder(cl_context)
         self.cl_context = cl_context
         from boxtree.area_query import PeerListFinder, SpaceInvaderQueryBuilder
         self.peer_list_finder = PeerListFinder(cl_context)
@@ -654,8 +654,14 @@ class QBXTargetAssociator(DiscrPlotterMixin):
         """
 
         with cl.CommandQueue(self.cl_context) as queue:
-            tree = self.tree_builder(queue, lpot_source,
+            from pytential.qbx.utils import build_tree_with_qbx_metadata
+
+            tree = build_tree_with_qbx_metadata(
+                    queue,
+                    self.tree_builder,
+                    lpot_source,
                     [discr for discr, _ in target_discrs_and_qbx_sides])
+
             peer_lists, evt = self.peer_list_finder(queue, tree, wait_for)
             wait_for = [evt]
 

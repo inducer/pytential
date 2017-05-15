@@ -29,7 +29,6 @@ import loopy as lp
 import numpy as np
 from pytools import memoize_method
 from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import QuadratureSimplexGroupFactory
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 from pytential.source import PotentialSource
 
@@ -141,6 +140,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             fmm_order=None,
             fmm_level_to_order=None,
             target_stick_out_factor=1e-10,
+            fine_density_discr=None,
+            resampler=None,
 
             # begin undocumented arguments
             # FIXME default debug=False once everything works
@@ -150,9 +151,20 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         """
         :arg fine_order: The total degree to which the (upsampled)
             underlying quadrature is exact.
+        :arg fine_density_discr: A discretization or *None.*
+             If non-*None*, should also supply *resampler.*
+        :arg resampler: A connection used for resampling.
+             If non-*None*, should also supply *fine_density_discr*.
         :arg fmm_order: `False` for direct calculation. ``None`` will set
             a reasonable(-ish?) default.
         """
+
+        if fine_density_discr is None and resampler is not None:
+            raise ValueError(
+                    "resampler is supplied; must also supply fine_density_discr")
+        if fine_density_discr is not None and resampler is None:
+            raise ValueError(
+                    "fine_density_discr is supplied; must also supply resampler")
 
         if fmm_level_to_order is None:
             if fmm_order is None and qbx_order is not None:
@@ -174,6 +186,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         self.fmm_level_to_order = fmm_level_to_order
         self.target_stick_out_factor = target_stick_out_factor
 
+        # Default values are lazily provided if these are None
+        self._fine_density_discr = fine_density_discr
+        self._resampler = resampler
+
         self.debug = debug
         self.refined_for_global_qbx = refined_for_global_qbx
         self.performance_data_file = performance_data_file
@@ -185,6 +201,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             qbx_order=None,
             fmm_level_to_order=None,
             target_stick_out_factor=None,
+            fine_density_discr=None,
+            resampler=None,
 
             debug=None,
             refined_for_global_qbx=None,
@@ -200,6 +218,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                     fmm_level_to_order or self.fmm_level_to_order),
                 target_stick_out_factor=(
                     target_stick_out_factor or self.target_stick_out_factor),
+                fine_density_discr=fine_density_discr or self._fine_density_discr,
+                resampler=resampler or self._resampler,
 
                 debug=(
                     debug if debug is not None else self.debug),
@@ -211,13 +231,23 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     @property
     @memoize_method
     def fine_density_discr(self):
+        if self._fine_density_discr is not None:
+            return self._fine_density_discr
+
+        from meshmode.discretization.poly_element import (
+                InterpolatoryQuadratureSimplexGroupFactory)
+
         return Discretization(
             self.density_discr.cl_context, self.density_discr.mesh,
-            QuadratureSimplexGroupFactory(self.fine_order), self.real_dtype)
+            InterpolatoryQuadratureSimplexGroupFactory(self.fine_order),
+            self.real_dtype)
 
     @property
     @memoize_method
     def resampler(self):
+        if self._resampler is not None:
+            return self._resampler
+
         from meshmode.discretization.connection import make_same_mesh_connection
         return make_same_mesh_connection(
                 self.fine_density_discr, self.density_discr)
@@ -238,23 +268,35 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 global_array.shape[:-1]
                 + (group.nelements,))
 
+    @property
     @memoize_method
-    def with_refinement(self, target_order=None, maxiter=3):
+    def refiner_code_container(self):
+        from pytential.qbx.refinement import RefinerCodeContainer
+        return RefinerCodeContainer(self.cl_context)
+
+    @memoize_method
+    def with_refinement(self, target_order=None, maxiter=10):
         """
         :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
             :class:`QBXLayerPotentialSource` and ``cnx`` is a
             :class:`meshmode.discretization.connection.DiscretizationConnection`
             from the originally given to the refined geometry.
         """
-        from pytential.qbx.refinement import QBXLayerPotentialSourceRefiner
-        refiner = QBXLayerPotentialSourceRefiner(self.cl_context)
+        from pytential.qbx.refinement import refine_for_global_qbx
+
         from meshmode.discretization.poly_element import (
-            InterpolatoryQuadratureSimplexGroupFactory)
+                InterpolatoryQuadratureSimplexGroupFactory)
+
         if target_order is None:
             target_order = self.density_discr.groups[0].order
-        lpot, connection = refiner(self,
+
+        lpot, connection = refine_for_global_qbx(
+                self,
+                self.refiner_code_container,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order),
+                InterpolatoryQuadratureSimplexGroupFactory(self.fine_order),
                 maxiter=maxiter)
+
         return lpot, connection
 
     @property
@@ -284,8 +326,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     def complex_dtype(self):
         return self.density_discr.complex_dtype
 
-    @memoize_method
-    def panel_centers_of_mass(self):
+    def _centers_of_mass_for_discr(self, discr):
         knl = lp.make_kernel(
             """{[dim,k,i]:
                 0<=dim<ndims and
@@ -302,26 +343,31 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         knl = lp.tag_inames(knl, dict(dim="ilp"))
 
         with cl.CommandQueue(self.cl_context) as queue:
-            mesh = self.density_discr.mesh
+            mesh = discr.mesh
             panels = cl.array.empty(queue, (mesh.ambient_dim, mesh.nelements),
-                                    dtype=self.density_discr.real_dtype)
-            for group_nr, group in enumerate(self.density_discr.groups):
+                                    dtype=discr.real_dtype)
+            for group_nr, group in enumerate(discr.groups):
                 _, (result,) = knl(queue,
                     nelements=group.nelements,
                     nunit_nodes=group.nunit_nodes,
-                    nodes=group.view(self.density_discr.nodes()),
-                    panels=self.el_view(self.density_discr, group_nr, panels))
+                    nodes=group.view(discr.nodes()),
+                    panels=self.el_view(discr, group_nr, panels))
             panels.finish()
             panels = panels.with_queue(None)
             return tuple(panels[d, :] for d in range(mesh.ambient_dim))
 
     @memoize_method
-    def panel_sizes(self, last_dim_length="nsources"):
+    def panel_centers_of_mass(self):
+        return self._centers_of_mass_for_discr(self.density_discr)
+
+    @memoize_method
+    def fine_panel_centers_of_mass(self):
+        return self._centers_of_mass_for_discr(self.fine_density_discr)
+
+    def _panel_sizes_for_discr(self, discr, last_dim_length):
         assert last_dim_length in ("nsources", "ncenters", "npanels")
         # To get the panel size this does the equivalent of (∫ 1 ds)**(1/dim).
         # FIXME: Kernel optimizations
-
-        discr = self.density_discr
 
         if last_dim_length == "nsources" or last_dim_length == "ncenters":
             knl = lp.make_kernel(
@@ -372,6 +418,14 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 _, (panel_sizes,) = knl(queue, dstlen=2*discr.nnodes,
                                         src1=panel_sizes, src2=panel_sizes)
             return panel_sizes.with_queue(None)
+
+    @memoize_method
+    def panel_sizes(self, last_dim_length="nsources"):
+        return self._panel_sizes_for_discr(self.density_discr, last_dim_length)
+
+    @memoize_method
+    def fine_panel_sizes(self, last_dim_length="nsources"):
+        return self._panel_sizes_for_discr(self.fine_density_discr, last_dim_length)
 
     @memoize_method
     def centers(self, sign):
