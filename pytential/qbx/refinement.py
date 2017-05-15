@@ -46,9 +46,6 @@ MAX_LEVELS_INCREMENT = 10
 
 
 __doc__ = """
-Refinement
-^^^^^^^^^^
-
 The refiner takes a layer potential source and refines it until it satisfies
 three global QBX refinement criteria:
 
