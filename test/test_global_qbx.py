@@ -39,7 +39,7 @@ from pytential.qbx import QBXLayerPotentialSource
 from functools import partial
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
-        make_curve_mesh)
+        make_curve_mesh, generate_icosphere, generate_torus)
 from extra_curve_data import horseshoe
 
 
@@ -58,59 +58,38 @@ FAR_TARGET_DIST_FROM_SOURCE = 10
 class ElementInfo(RecordWithoutPickling):
     """
     .. attribute:: element_nr
-    .. attribute:: neighbors
     .. attribute:: discr_slice
-    .. attribute:: mesh_slice
-    .. attribute:: element_group
-    .. attribute:: mesh_element_group
     """
     __slots__ = ["element_nr",
-                 "neighbors",
                  "discr_slice"]
 
 
 def iter_elements(discr):
     discr_nodes_idx = 0
     element_nr = 0
-    adjacency = discr.mesh.nodal_adjacency
 
     for discr_group in discr.groups:
         start = element_nr
         for element_nr in range(start, start + discr_group.nelements):
             yield ElementInfo(
                 element_nr=element_nr,
-                neighbors=list(adjacency.neighbors[
-                    slice(*adjacency.neighbors_starts[
-                        element_nr:element_nr+2])]),
                 discr_slice=slice(discr_nodes_idx,
                    discr_nodes_idx + discr_group.nunit_nodes))
 
             discr_nodes_idx += discr_group.nunit_nodes
 
-# }}}
 
-
-@pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
-    ("20-to-1 ellipse", partial(ellipse, 20), 100),
-    ("horseshoe", horseshoe, 64),
-    ])
-def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
+def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    # {{{ generate lpot source, run refiner
-
-    order = 16
-    helmholtz_k = 10
-
-    mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
-
     from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+            InterpolatoryQuadratureSimplexGroupFactory,
+            QuadratureSimplexGroupFactory)
 
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
-    fine_factory = InterpolatoryQuadratureSimplexGroupFactory(4 * order)
+    fine_factory = QuadratureSimplexGroupFactory(4 * order)
 
     discr = Discretization(cl_ctx, mesh, factory)
 
@@ -133,8 +112,6 @@ def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
     panel_sizes = lpot_source.panel_sizes("npanels").get(queue)
     fine_panel_sizes = lpot_source.fine_panel_sizes("npanels").get(queue)
 
-    # }}}
-
     # {{{ check if satisfying criteria
 
     def check_disk_undisturbed_by_sources(centers_panel, sources_panel):
@@ -150,7 +127,7 @@ def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
 
         nodes = discr_nodes[:, sources_panel.discr_slice]
 
-        # =distance(interior centers of panel 1, panel 2)
+        # =distance(centers of panel 1, panel 2)
         dist = (
             la.norm((
                     all_centers[..., np.newaxis] -
@@ -158,7 +135,7 @@ def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
                 axis=-1)
             .min())
 
-        # Criterion 1:
+        # Criterion:
         # A center cannot be closer to another panel than to its originating
         # panel.
 
@@ -182,10 +159,9 @@ def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
                 axis=-1)
             .min())
 
-        # Criterion 2:
-        # A center cannot be closer to another panel than to its originating
-        # panel.
-
+        # Criterion:
+        # The quadrature contribution from each panel is as accurate
+        # as from the center's own source panel.
         assert dist >= h / 4, \
                 (dist, h, centers_panel.element_nr, sources_panel.element_nr)
 
@@ -193,14 +169,39 @@ def test_source_refinement(ctx_getter, curve_name, curve_f, nelements):
         # Check wavenumber to panel size ratio.
         assert panel_sizes[panel.element_nr] * helmholtz_k <= 5
 
-    for panel_1 in iter_elements(lpot_source.density_discr):
+    for i, panel_1 in enumerate(iter_elements(lpot_source.density_discr)):
         for panel_2 in iter_elements(lpot_source.density_discr):
             check_disk_undisturbed_by_sources(panel_1, panel_2)
         for panel_2 in iter_elements(lpot_source.fine_density_discr):
             check_sufficient_quadrature_resolution(panel_1, panel_2)
-        check_panel_size_to_helmholtz_k_ratio(panel_1)
+        if helmholtz_k is not None:
+            check_panel_size_to_helmholtz_k_ratio(panel_1)
 
     # }}}
+
+# }}}
+
+
+@pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
+    ("20-to-1 ellipse", partial(ellipse, 20), 100),
+    ("horseshoe", horseshoe, 64),
+    ])
+def test_source_refinement_2d(ctx_getter, curve_name, curve_f, nelements):
+    # {{{ generate lpot source, run refiner
+    helmholtz_k = 10
+    order = 8
+
+    mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
+    run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k)
+
+
+@pytest.mark.parametrize(("surface_name", "surface_f", "order"), [
+    ("sphere", partial(generate_icosphere, 1), 4),
+    ("torus", partial(generate_torus, 3, 1, n_inner=10, n_outer=7), 6),
+    ])
+def test_source_refinement_3d(ctx_getter, surface_name, surface_f, order):
+    mesh = surface_f(order=order)
+    run_source_refinement_test(ctx_getter, mesh, order)
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
@@ -225,13 +226,8 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     discr = Discretization(cl_ctx, mesh, factory)
 
-    from pytential.qbx.refinement import QBXLayerPotentialSourceRefiner
-
-    lpot_source = QBXLayerPotentialSource(discr, order)
+    lpot_source, conn = QBXLayerPotentialSource(discr, order).with_refinement()
     del discr
-    refiner = QBXLayerPotentialSourceRefiner(cl_ctx)
-
-    lpot_source, conn = refiner(lpot_source, factory)
 
     int_centers = lpot_source.centers(-1)
     ext_centers = lpot_source.centers(+1)

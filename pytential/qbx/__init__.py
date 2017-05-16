@@ -140,8 +140,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             fmm_order=None,
             fmm_level_to_order=None,
             target_stick_out_factor=1e-10,
-            fine_density_discr=None,
-            resampler=None,
+            base_fine_density_discr=None,
+            base_resampler=None,
 
             # begin undocumented arguments
             # FIXME default debug=False once everything works
@@ -150,21 +150,36 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             performance_data_file=None):
         """
         :arg fine_order: The total degree to which the (upsampled)
-            underlying quadrature is exact.
-        :arg fine_density_discr: A discretization or *None.*
-             If non-*None*, should also supply *resampler.*
-        :arg resampler: A connection used for resampling.
-             If non-*None*, should also supply *fine_density_discr*.
+             underlying quadrature is exact.
+        :arg base_fine_density_discr: A discretization or *None.*
+             Represents the (non-upsampled) fine density discretization.
+             If *None*, defaults to *density_discr*.
+             If non-*None*, should also supply *resampler*.
+        :arg base_resampler: A connection used for resampling from *density_discr*
+             to *base_fine_density_discr*.
+             If non-*None*, should also supply *base_fine_density_discr*.
         :arg fmm_order: `False` for direct calculation. ``None`` will set
             a reasonable(-ish?) default.
         """
 
-        if fine_density_discr is None and resampler is not None:
+        if base_fine_density_discr is None and base_resampler is not None:
             raise ValueError(
-                    "resampler is supplied; must also supply fine_density_discr")
-        if fine_density_discr is not None and resampler is None:
+                    "base_resampler is supplied; must also supply "
+                    "base_fine_density_discr")
+
+        if base_fine_density_discr is not None and base_resampler is None:
             raise ValueError(
-                    "fine_density_discr is supplied; must also supply resampler")
+                    "base_fine_density_discr is supplied; must also supply "
+                    "base_resampler")
+
+        if base_resampler is not None and base_fine_density_discr is not None:
+            if base_resampler.from_discr is not density_discr:
+                raise ValueError("density_discr is not the same as "
+                                 "base_resampler.from_discr")
+
+            if base_resampler.to_discr is not base_fine_density_discr:
+                raise ValueError("base_fine_density_discr is not the same as "
+                                 "base_resampler.to_discr")
 
         if fmm_level_to_order is None:
             if fmm_order is None and qbx_order is not None:
@@ -187,8 +202,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         self.target_stick_out_factor = target_stick_out_factor
 
         # Default values are lazily provided if these are None
-        self._fine_density_discr = fine_density_discr
-        self._resampler = resampler
+        self._base_fine_density_discr = base_fine_density_discr
+        self._base_resampler = base_resampler
 
         self.debug = debug
         self.refined_for_global_qbx = refined_for_global_qbx
@@ -201,8 +216,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             qbx_order=None,
             fmm_level_to_order=None,
             target_stick_out_factor=None,
-            fine_density_discr=None,
-            resampler=None,
+            base_fine_density_discr=None,
+            base_resampler=None,
 
             debug=None,
             refined_for_global_qbx=None,
@@ -218,8 +233,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                     fmm_level_to_order or self.fmm_level_to_order),
                 target_stick_out_factor=(
                     target_stick_out_factor or self.target_stick_out_factor),
-                fine_density_discr=fine_density_discr or self._fine_density_discr,
-                resampler=resampler or self._resampler,
+                base_fine_density_discr=(
+                    base_fine_density_discr or self._base_fine_density_discr),
+                base_resampler=base_resampler or self._base_resampler,
 
                 debug=(
                     debug if debug is not None else self.debug),
@@ -231,26 +247,30 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     @property
     @memoize_method
     def fine_density_discr(self):
-        if self._fine_density_discr is not None:
-            return self._fine_density_discr
-
         from meshmode.discretization.poly_element import (
                 QuadratureSimplexGroupFactory)
 
+        base_fine_density_discr = (
+                self._base_fine_density_discr or self.density_discr)
+
         return Discretization(
-            self.density_discr.cl_context, self.density_discr.mesh,
+            self.density_discr.cl_context, base_fine_density_discr.mesh,
             QuadratureSimplexGroupFactory(self.fine_order),
             self.real_dtype)
 
     @property
     @memoize_method
     def resampler(self):
-        if self._resampler is not None:
-            return self._resampler
+        from meshmode.discretization.connection import (
+            make_same_mesh_connection, ChainedDiscretizationConnection)
 
-        from meshmode.discretization.connection import make_same_mesh_connection
-        return make_same_mesh_connection(
-                self.fine_density_discr, self.density_discr)
+        conn = make_same_mesh_connection(
+                self.fine_density_discr, self._base_fine_density_discr)
+
+        if self._base_resampler is not None:
+            return ChainedDiscretizationConnection([self._base_resampler, conn])
+
+        return conn
 
     def el_view(self, discr, group_nr, global_array):
         """Return a view of *global_array* of shape
@@ -363,7 +383,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def fine_panel_centers_of_mass(self):
-        return self._centers_of_mass_for_discr(self.fine_density_discr)
+        base_fine_density_discr = (
+                self._base_fine_density_discr or self.density_discr)
+        return self._centers_of_mass_for_discr(base_fine_density_discr)
 
     def _panel_sizes_for_discr(self, discr, last_dim_length):
         assert last_dim_length in ("nsources", "ncenters", "npanels")
@@ -426,7 +448,12 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def fine_panel_sizes(self, last_dim_length="nsources"):
-        return self._panel_sizes_for_discr(self.fine_density_discr, last_dim_length)
+        if last_dim_length != "npanels":
+            raise NotImplementedError()
+
+        base_fine_density_discr = (
+                self._base_fine_density_discr or self.density_discr)
+        return self._panel_sizes_for_discr(base_fine_density_discr, last_dim_length)
 
     @memoize_method
     def centers(self, sign):

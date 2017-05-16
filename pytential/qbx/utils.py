@@ -239,12 +239,15 @@ def build_tree_with_qbx_metadata(
 
     # Slices
     qbx_user_source_slice = slice(0, nsources)
-    panel_slice_start = nsources + ncenters
-    qbx_user_center_slice = slice(nsources, panel_slice_start)
-    target_slice_start = panel_slice_start + npanels
+
+    center_slice_start = nsources
+    qbx_user_center_slice = slice(center_slice_start, center_slice_start + ncenters)
+
+    panel_slice_start = center_slice_start + ncenters
     qbx_user_panel_slice = slice(panel_slice_start, panel_slice_start + npanels)
-    qbx_user_target_slice = slice(target_slice_start,
-                                  target_slice_start + ntargets)
+
+    target_slice_start = panel_slice_start + npanels
+    qbx_user_target_slice = slice(target_slice_start, target_slice_start + ntargets)
 
     # Build tree with sources, centers, and centers of mass. Split boxes
     # only because of sources.
@@ -265,7 +268,7 @@ def build_tree_with_qbx_metadata(
     for class_name, particle_slice, fixup in (
             ("box_to_qbx_source", qbx_user_source_slice, 0),
             ("box_to_qbx_target", qbx_user_target_slice, -target_slice_start),
-            ("box_to_qbx_center", qbx_user_center_slice, -nsources),
+            ("box_to_qbx_center", qbx_user_center_slice, -center_slice_start),
             ("box_to_qbx_panel", qbx_user_panel_slice, -panel_slice_start)):
         flags.fill(0)
         flags[particle_slice].fill(1)
@@ -291,7 +294,7 @@ def build_tree_with_qbx_metadata(
         density_discr = lpot_source.density_discr
 
     qbx_panel_to_source_starts = cl.array.empty(
-        queue, npanels + 1, dtype=tree.particle_id_dtype)
+            queue, npanels + 1, dtype=tree.particle_id_dtype)
     el_offset = 0
     for group in density_discr.groups:
         qbx_panel_to_source_starts[el_offset:el_offset + group.nelements] = \

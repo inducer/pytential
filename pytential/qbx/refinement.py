@@ -72,8 +72,8 @@ three global QBX refinement criteria:
 EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
     extra_args=r"""
         /* input */
-        particle_id_t *box_to_panel_starts,
-        particle_id_t *box_to_panel_lists,
+        particle_id_t *box_to_source_starts,
+        particle_id_t *box_to_source_lists,
         particle_id_t *panel_to_source_starts,
         particle_id_t *panel_to_center_starts,
         particle_id_t source_offset,
@@ -92,39 +92,35 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
         %endfor
         """,
     ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
+        /* Find the panel associated with this center. */
         particle_id_t my_panel = bsearch(panel_to_center_starts, npanels + 1, i);
 
         ${load_particle("INDEX_FOR_CENTER_PARTICLE(i)", ball_center)}
         ${ball_radius} = panel_sizes[my_panel] / 2;
         """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
-        for (particle_id_t panel_idx = box_to_panel_starts[${leaf_box_id}];
-             panel_idx < box_to_panel_starts[${leaf_box_id} + 1];
-             ++panel_idx)
-        {
-            particle_id_t panel = box_to_panel_lists[panel_idx];
+        /* Check that each source in the leaf box is sufficiently far from the
+           center; if not, mark the panel for refinement. */
 
-            // Skip self.
+        for (particle_id_t source_idx = box_to_source_starts[${leaf_box_id}];
+             source_idx < box_to_source_starts[${leaf_box_id} + 1];
+             ++source_idx)
+        {
+            particle_id_t source = box_to_source_lists[source_idx];
+            particle_id_t panel = bsearch(
+                panel_to_source_starts, npanels + 1, source);
+
             if (my_panel == panel)
             {
                 continue;
             }
 
-            bool is_close = false;
+            coord_vec_t source_coords;
+            ${load_particle("INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
 
-            for (particle_id_t source = panel_to_source_starts[panel];
-                 source < panel_to_source_starts[panel + 1];
-                 ++source)
-            {
-                coord_vec_t source_coords;
-
-                ${load_particle(
-                    "INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
-
-                is_close |= (
-                    distance(${ball_center}, source_coords)
-                    <= panel_sizes[my_panel] / 2);
-            }
+            bool is_close = (
+                distance(${ball_center}, source_coords)
+                <= panel_sizes[my_panel] / 2);
 
             if (is_close)
             {
@@ -301,8 +297,8 @@ class RefinerWrangler(object):
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
-                tree.box_to_qbx_panel_starts,
-                tree.box_to_qbx_panel_lists,
+                tree.box_to_qbx_source_starts,
+                tree.box_to_qbx_source_lists,
                 tree.qbx_panel_to_source_starts,
                 tree.qbx_panel_to_center_starts,
                 tree.qbx_user_source_slice.start,
@@ -347,7 +343,7 @@ class RefinerWrangler(object):
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
-        logger.info("refiner: checking adequate quadrature resolution")
+        logger.info("refiner: checking sufficient quadrature resolution")
 
         found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
         found_panel_to_refine.finish()
@@ -383,7 +379,7 @@ class RefinerWrangler(object):
                 logger.debug("refiner: found {} panel(s) to refine".format(
                     npanels_to_refine - npanels_to_refine_prev))
 
-        logger.info("refiner: done checking adequate quadrature resolution")
+        logger.info("refiner: done checking sufficient quadrature resolution")
 
         return found_panel_to_refine.get()[0] == 1
 
@@ -499,20 +495,6 @@ def refine_for_global_qbx(lpot_source, code_container,
         going from the original mesh to the refined mesh.
     """
 
-    # Algorithm:
-    #
-    # 1. Do an initial refinement, if requested.
-    #
-    # 2. While not converged:
-    #        Refine until each center is closest to its own
-    #        source and panel sizes bounded by wavelength.
-    #    This becomes the coarse discretization.
-    #
-    # 3. While not converged:
-    #        Refine density discretization until
-    #        sufficient quadrature resolution from all panels achieved.
-    #    Oversample the result to get the fine density discretization.
-    #
     # TODO: Stop doing redundant checks by avoiding panels which no longer need
     # refinement.
 
@@ -579,17 +561,11 @@ def refine_for_global_qbx(lpot_source, code_container,
 
         # {{{ second stage refinement
 
-        del refiner
-
-        density_discr = lpot_source.density_discr
-        lpot_source = lpot_source.copy(
-                fine_density_discr=density_discr,
-                resampler=make_same_mesh_connection(density_discr, density_discr))
-
         must_refine = True
         niter = 0
-        fine_refiner = Refiner(lpot_source.density_discr.mesh)
         fine_connections = []
+
+        base_fine_density_discr = lpot_source.density_discr
 
         while must_refine:
             must_refine = False
@@ -613,12 +589,14 @@ def refine_for_global_qbx(lpot_source, code_container,
 
             if must_refine:
                 conn = wrangler.refine(
-                        lpot_source.fine_density_discr,
-                        fine_refiner, refine_flags, group_factory, debug)
+                        base_fine_density_discr,
+                        refiner, refine_flags, group_factory, debug)
+                base_fine_density_discr = conn.to_discr
                 fine_connections.append(conn)
                 lpot_source = lpot_source.copy(
-                        fine_density_discr=conn.to_discr,
-                        resampler=ChainedDiscretizationConnection(fine_connections))
+                        base_fine_density_discr=base_fine_density_discr,
+                        base_resampler=ChainedDiscretizationConnection(
+                            fine_connections))
 
             del tree
             del refine_flags
@@ -626,22 +604,7 @@ def refine_for_global_qbx(lpot_source, code_container,
 
         # }}}
 
-    # Oversample the fine mesh.
-    from meshmode.discretization import Discretization
-    ovsmp_fine_density_discr = Discretization(
-            lpot_source.fine_density_discr.cl_context,
-            lpot_source.fine_density_discr.mesh,
-            fine_group_factory,
-            lpot_source.real_dtype)
-
-    fine_connections.append(make_same_mesh_connection(
-            lpot_source.fine_density_discr, ovsmp_fine_density_discr))
-
-    lpot_source = lpot_source.copy(
-            fine_density_discr=ovsmp_fine_density_discr,
-            resampler=ChainedDiscretizationConnection(fine_connections),
-            debug=debug,
-            refined_for_global_qbx=True)
+    lpot_source = lpot_source.copy(debug=debug, refined_for_global_qbx=True)
 
     if len(connections) == 0:
         connection = make_same_mesh_connection(
