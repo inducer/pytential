@@ -264,8 +264,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from meshmode.discretization.connection import (
             make_same_mesh_connection, ChainedDiscretizationConnection)
 
+        base_fine_density_discr = (
+                self._base_fine_density_discr or self.density_discr)
+
         conn = make_same_mesh_connection(
-                self.fine_density_discr, self._base_fine_density_discr)
+                self.fine_density_discr, base_fine_density_discr)
 
         if self._base_resampler is not None:
             return ChainedDiscretizationConnection([self._base_resampler, conn])
