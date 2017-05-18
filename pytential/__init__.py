@@ -31,6 +31,26 @@ from pytential.symbolic.execution import bind
 from pytools import memoize_on_first_arg
 
 
+def _set_up_logging_from_environment():
+    import logging
+    import os
+    from pytential.log import set_up_logging
+
+    for level_name, level in (
+            ("DEBUG", logging.DEBUG),
+            ("INFO", logging.INFO),
+            ("WARNING", logging.WARNING),
+            ("ERROR", logging.ERROR),
+            ("CRITICAL", logging.CRITICAL)):
+
+        pytential_log_var = os.environ.get("PYTENTIAL_LOG_%s" % level_name)
+        if pytential_log_var is not None:
+            set_up_logging(pytential_log_var.split(":"), level=level)
+
+
+_set_up_logging_from_environment()
+
+
 @memoize_on_first_arg
 def _integral_op(discr):
     from pytential import sym, bind

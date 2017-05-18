@@ -27,14 +27,17 @@ from six.moves import intern
 from warnings import warn
 
 import numpy as np
-from pymbolic.primitives import (  # noqa
+from pymbolic.primitives import (  # noqa: F401, N813
         Expression as ExpressionBase, Variable as var,
         cse_scope as cse_scope_base,
         make_common_subexpression as cse)
 from pymbolic.geometric_algebra import MultiVector, componentwise
-from pymbolic.geometric_algebra.primitives import (  # noqa
+from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
-from pymbolic.primitives import make_sym_vector  # noqa
+from pymbolic.primitives import make_sym_vector  # noqa: F401
+from pytools.obj_array import make_obj_array  # noqa: F401
+
+from functools import partial
 
 
 __doc__ = """
@@ -150,14 +153,43 @@ class Function(var):
 
             return with_object_array_or_scalar(make_op, operand)
         else:
-            return var.__call__(self, operand)
+            return var.__call__(self, operand, *args, **kwargs)
 
 
-real = Function("real")
-imag = Function("imag")
-conj = Function("conj")
-sqrt = Function("sqrt")
-abs = Function("abs")
+class EvalMapperFunction(Function):
+    pass
+
+
+class CLMathFunction(Function):
+    pass
+
+
+real = EvalMapperFunction("real")
+imag = EvalMapperFunction("imag")
+conj = EvalMapperFunction("conj")
+abs = EvalMapperFunction("abs")
+
+sqrt = CLMathFunction("sqrt")
+
+sin = CLMathFunction("sin")
+cos = CLMathFunction("cos")
+tan = CLMathFunction("tan")
+
+asin = CLMathFunction("asin")
+acos = CLMathFunction("acos")
+atan = CLMathFunction("atan")
+atan2 = CLMathFunction("atan2")
+
+sinh = CLMathFunction("sinh")
+cosh = CLMathFunction("cosh")
+tanh = CLMathFunction("tanh")
+
+asinh = CLMathFunction("asinh")
+acosh = CLMathFunction("acosh")
+atanh = CLMathFunction("atanh")
+
+exp = CLMathFunction("exp")
+log = CLMathFunction("log")
 
 
 class DiscretizationProperty(Expression):
@@ -203,7 +235,6 @@ def nodes(ambient_dim, where=None):
     locations.
     """
 
-    from pytools.obj_array import make_obj_array
     return MultiVector(
             make_obj_array([
                 NodeCoordinateComponent(i, where)
@@ -265,6 +296,9 @@ def parametrization_derivative(ambient_dim, dim, where=None):
 
 
 def pseudoscalar(ambient_dim, dim=None, where=None):
+    """
+    Same as the outer product of all parametrization derivative columns.
+    """
     if dim is None:
         dim = ambient_dim - 1
 
@@ -297,7 +331,9 @@ def normal(ambient_dim, dim=None, where=None):
     pder = (
             pseudoscalar(ambient_dim, dim, where)
             / area_element(ambient_dim, dim, where))
-    return cse(pder.I | pder, "normal",
+    return cse(
+            # Dorst Section 3.7.2
+            pder << pder.I.inv(),
             cse_scope.DISCRETIZATION)
 
 
@@ -413,6 +449,24 @@ class Derivative(DerivativeBase):
     def resolve(expr):
         from pytential.symbolic.mappers import DerivativeBinder
         return DerivativeBinder()(expr)
+
+
+def dd_axis(axis, ambient_dim, operand):
+    d = Derivative()
+
+    unit_vector = np.zeros(ambient_dim)
+    unit_vector[axis] = 1
+
+    unit_mvector = MultiVector(unit_vector)
+
+    return d.resolve(
+            (unit_mvector.scalar_product(d.dnabla(ambient_dim)))
+            * d(operand))
+
+
+d_dx = partial(dd_axis, 0)
+d_dy = partial(dd_axis, 1)
+d_dz = partial(dd_axis, 2)
 
 
 # {{{ potentials
