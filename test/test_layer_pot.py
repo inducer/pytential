@@ -712,6 +712,7 @@ def get_sphere_mesh(refinement_increment, target_order):
     #("circle", partial(ellipse, 1)),
     #("3-to-1 ellipse", partial(ellipse, 3)),
     ("starfish", get_starfish_mesh),
+    ("sphere", get_sphere_mesh),
     ])
 @pytest.mark.parametrize("qbx_order", [5])
 @pytest.mark.parametrize(("zero_op_name", "k"), [
