@@ -68,7 +68,6 @@ three global QBX refinement criteria:
 
 # {{{ kernels
 
-# Refinement checker for Condition 1.
 EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
     extra_args=r"""
         /* input */
@@ -134,7 +133,6 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
     preamble=str(InlineBinarySearch("particle_id_t")))
 
 
-# Refinement checker for Condition 2.
 SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
     extra_args=r"""
         /* input */
@@ -537,11 +535,9 @@ def refine_for_global_qbx(lpot_source, code_container,
             peer_lists = wrangler.find_peer_lists(tree)
             refine_flags = make_empty_refine_flags(queue, lpot_source)
 
-            # Check condition 1.
             must_refine |= wrangler.check_expansion_disks_undisturbed_by_sources(
                     lpot_source, tree, peer_lists, refine_flags, debug)
 
-            # Check condition 3.
             if helmholtz_k is not None:
                 must_refine |= wrangler.check_helmholtz_k_to_panel_size_ratio(
                         lpot_source, helmholtz_k, refine_flags, debug)
