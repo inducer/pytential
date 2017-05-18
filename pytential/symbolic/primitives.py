@@ -153,14 +153,43 @@ class Function(var):
 
             return with_object_array_or_scalar(make_op, operand)
         else:
-            return var.__call__(self, operand)
+            return var.__call__(self, operand, *args, **kwargs)
 
 
-real = Function("real")
-imag = Function("imag")
-conj = Function("conj")
-sqrt = Function("sqrt")
-abs = Function("abs")
+class EvalMapperFunction(Function):
+    pass
+
+
+class CLMathFunction(Function):
+    pass
+
+
+real = EvalMapperFunction("real")
+imag = EvalMapperFunction("imag")
+conj = EvalMapperFunction("conj")
+abs = EvalMapperFunction("abs")
+
+sqrt = CLMathFunction("sqrt")
+
+sin = CLMathFunction("sin")
+cos = CLMathFunction("cos")
+tan = CLMathFunction("tan")
+
+asin = CLMathFunction("asin")
+acos = CLMathFunction("acos")
+atan = CLMathFunction("atan")
+atan2 = CLMathFunction("atan2")
+
+sinh = CLMathFunction("sinh")
+cosh = CLMathFunction("cosh")
+tanh = CLMathFunction("tanh")
+
+asinh = CLMathFunction("asinh")
+acosh = CLMathFunction("acosh")
+atanh = CLMathFunction("atanh")
+
+exp = CLMathFunction("exp")
+log = CLMathFunction("log")
 
 
 class DiscretizationProperty(Expression):
@@ -267,6 +296,9 @@ def parametrization_derivative(ambient_dim, dim, where=None):
 
 
 def pseudoscalar(ambient_dim, dim=None, where=None):
+    """
+    Same as the outer product of all parametrization derivative columns.
+    """
     if dim is None:
         dim = ambient_dim - 1
 
@@ -299,7 +331,9 @@ def normal(ambient_dim, dim=None, where=None):
     pder = (
             pseudoscalar(ambient_dim, dim, where)
             / area_element(ambient_dim, dim, where))
-    return cse(pder.I | pder, "normal",
+    return cse(
+            # Dorst Section 3.7.2
+            pder << pder.I.inv(),
             cse_scope.DISCRETIZATION)
 
 
