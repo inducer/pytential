@@ -127,24 +127,24 @@ class EvaluationMapper(EvaluationMapperBase):
         assert not is_obj_array(result)  # numpy bug with obj_array.imag
         return result.imag
 
-    def apply_sqrt(self, args):
+    def apply_conj(self, args):
         arg, = args
-        return cl.clmath.sqrt(self.rec(arg))
+        return self.rec(arg).conj()
 
     def apply_abs(self, args):
         arg, = args
         return abs(self.rec(arg))
 
-    def apply_conj(self, args):
-        arg, = args
-        return self.rec(arg).conj()
-
     # }}}
 
     def map_call(self, expr):
-        from pytential.symbolic.primitives import Function
-        if isinstance(expr.function, Function):
+        from pytential.symbolic.primitives import EvalMapperFunction, CLMathFunction
+
+        if isinstance(expr.function, EvalMapperFunction):
             return getattr(self, "apply_"+expr.function.name)(expr.parameters)
+        elif isinstance(expr.function, CLMathFunction):
+            return getattr(cl.clmath, expr.function.name)(
+                    *(self.rec(arg) for arg in expr.parameters), queue=self.queue)
         else:
             return EvaluationMapperBase.map_call(self, expr)
 
