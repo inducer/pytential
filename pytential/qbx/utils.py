@@ -154,26 +154,77 @@ def plot_discr(lpot_source, outfilename="discr.pdf"):
 
 
 class TreeWithQBXMetadata(Tree):
-    """
+    """A subclass of :class:`boxtree.tree.Tree`. Has all of that class's
+    attributes, along with the following:
+
     .. attribute:: nqbxpanels
     .. attribuet:: nqbxsources
     .. attribute:: nqbxcenters
     .. attribute:: nqbxtargets
 
+    .. ------------------------------------------------------------------------
+    .. rubric:: Box properties
+    .. ------------------------------------------------------------------------
+
+    Box to QBX panels
+    ----
+
     .. attribute:: box_to_qbx_panel_starts
+
+    ``box_id_t [nboxes + 1]``
+
     .. attribute:: box_to_qbx_panel_lists
 
+    ``particle_id_t [*]``
+
+    Box to QBX sources
+    ----
+
     .. attribute:: box_to_qbx_source_starts
+
+    ``box_id_t [nboxes + 1]``
+
     .. attribute:: box_to_qbx_source_lists
 
+    ``particle_id_t [*]``
+
+    Box to QBX centers
+    ----
+
     .. attribute:: box_to_qbx_center_starts
+
+    ``box_id_t [nboxes + 1]``
+
     .. attribute:: box_to_qbx_center_lists
 
+    ``particle_id_t [*]``
+
+    Box to QBX targets
+    ----
+
     .. attribute:: box_to_qbx_target_starts
+
+    ``box_id_t [nboxes + 1]``
+
     .. attribute:: box_to_qbx_target_lists
 
+    ``particle_id_t [*]``
+
+    .. ------------------------------------------------------------------------
+    .. rubric:: Panel properties
+    .. ------------------------------------------------------------------------
+
     .. attribute:: qbx_panel_to_source_starts
+
+    ``particle_id_t [nqbxpanels + 1]``
+
     .. attribute:: qbx_panel_to_center_starts
+
+    ``particle_id_t [nqbxpanels + 1]``
+
+    .. ------------------------------------------------------------------------
+    .. rubric:: Particle order indices
+    .. ------------------------------------------------------------------------
 
     .. attribute:: qbx_user_source_slice
     .. attribute:: qbx_user_center_slice
