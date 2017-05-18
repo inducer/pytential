@@ -296,6 +296,9 @@ def parametrization_derivative(ambient_dim, dim, where=None):
 
 
 def pseudoscalar(ambient_dim, dim=None, where=None):
+    """
+    Same as the outer product of all parametrization derivative columns.
+    """
     if dim is None:
         dim = ambient_dim - 1
 
@@ -328,7 +331,9 @@ def normal(ambient_dim, dim=None, where=None):
     pder = (
             pseudoscalar(ambient_dim, dim, where)
             / area_element(ambient_dim, dim, where))
-    return cse(pder.I | pder, "normal",
+    return cse(
+            # Dorst Section 3.7.2
+            pder << pder.I.inv(),
             cse_scope.DISCRETIZATION)
 
 
