@@ -272,7 +272,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         return RefinerCodeContainer(self.cl_context)
 
     @memoize_method
-    def with_refinement(self, target_order=None, maxiter=10):
+    def with_refinement(self, target_order=None, maxiter=3):
         """
         :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
             :class:`QBXLayerPotentialSource` and ``cnx`` is a
