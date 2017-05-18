@@ -590,7 +590,6 @@ def refine_for_global_qbx(lpot_source, code_container,
                 base_fine_density_discr = conn.to_discr
                 fine_connections.append(conn)
                 lpot_source = lpot_source.copy(
-                        base_fine_density_discr=base_fine_density_discr,
                         base_resampler=ChainedDiscretizationConnection(
                             fine_connections))
 

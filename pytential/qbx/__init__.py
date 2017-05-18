@@ -140,7 +140,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             fmm_order=None,
             fmm_level_to_order=None,
             target_stick_out_factor=1e-10,
-            base_fine_density_discr=None,
             base_resampler=None,
 
             # begin undocumented arguments
@@ -151,35 +150,14 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         """
         :arg fine_order: The total degree to which the (upsampled)
              underlying quadrature is exact.
-        :arg base_fine_density_discr: A discretization or *None.*
-             Represents the (non-upsampled) fine density discretization.
-             If *None*, defaults to *density_discr*.
-             If non-*None*, should also supply *resampler*.
-        :arg base_resampler: A connection used for resampling from *density_discr*
-             to *base_fine_density_discr*.
-             If non-*None*, should also supply *base_fine_density_discr*.
+        :arg base_resampler: A connection used for resampling from
+             *density_discr* the fine density discretization.  It is assumed
+             that the fine density discretization given by
+             *base_resampler.to_discr* is *not* already upsampled. May
+             be *None*.
         :arg fmm_order: `False` for direct calculation. ``None`` will set
-            a reasonable(-ish?) default.
+             a reasonable(-ish?) default.
         """
-
-        if base_fine_density_discr is None and base_resampler is not None:
-            raise ValueError(
-                    "base_resampler is supplied; must also supply "
-                    "base_fine_density_discr")
-
-        if base_fine_density_discr is not None and base_resampler is None:
-            raise ValueError(
-                    "base_fine_density_discr is supplied; must also supply "
-                    "base_resampler")
-
-        if base_resampler is not None and base_fine_density_discr is not None:
-            if base_resampler.from_discr is not density_discr:
-                raise ValueError("density_discr is not the same as "
-                                 "base_resampler.from_discr")
-
-            if base_resampler.to_discr is not base_fine_density_discr:
-                raise ValueError("base_fine_density_discr is not the same as "
-                                 "base_resampler.to_discr")
 
         if fmm_level_to_order is None:
             if fmm_order is None and qbx_order is not None:
@@ -202,7 +180,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         self.target_stick_out_factor = target_stick_out_factor
 
         # Default values are lazily provided if these are None
-        self._base_fine_density_discr = base_fine_density_discr
         self._base_resampler = base_resampler
 
         self.debug = debug
@@ -216,7 +193,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             qbx_order=None,
             fmm_level_to_order=None,
             target_stick_out_factor=None,
-            base_fine_density_discr=None,
             base_resampler=None,
 
             debug=None,
@@ -233,8 +209,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                     fmm_level_to_order or self.fmm_level_to_order),
                 target_stick_out_factor=(
                     target_stick_out_factor or self.target_stick_out_factor),
-                base_fine_density_discr=(
-                    base_fine_density_discr or self._base_fine_density_discr),
                 base_resampler=base_resampler or self._base_resampler,
 
                 debug=(
@@ -245,16 +219,19 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 performance_data_file=self.performance_data_file)
 
     @property
+    def _base_fine_density_discr(self):
+        return (self._base_resampler.to_discr
+                if self._base_resampler is not None
+                else self.density_discr)
+
+    @property
     @memoize_method
     def fine_density_discr(self):
         from meshmode.discretization.poly_element import (
                 QuadratureSimplexGroupFactory)
 
-        base_fine_density_discr = (
-                self._base_fine_density_discr or self.density_discr)
-
         return Discretization(
-            self.density_discr.cl_context, base_fine_density_discr.mesh,
+            self.density_discr.cl_context, self._base_fine_density_discr.mesh,
             QuadratureSimplexGroupFactory(self.fine_order),
             self.real_dtype)
 
@@ -264,11 +241,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from meshmode.discretization.connection import (
             make_same_mesh_connection, ChainedDiscretizationConnection)
 
-        base_fine_density_discr = (
-                self._base_fine_density_discr or self.density_discr)
-
         conn = make_same_mesh_connection(
-                self.fine_density_discr, base_fine_density_discr)
+                self.fine_density_discr, self._base_fine_density_discr)
 
         if self._base_resampler is not None:
             return ChainedDiscretizationConnection([self._base_resampler, conn])
@@ -386,9 +360,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def fine_panel_centers_of_mass(self):
-        base_fine_density_discr = (
-                self._base_fine_density_discr or self.density_discr)
-        return self._centers_of_mass_for_discr(base_fine_density_discr)
+        return self._centers_of_mass_for_discr(self._base_fine_density_discr)
 
     def _panel_sizes_for_discr(self, discr, last_dim_length):
         assert last_dim_length in ("nsources", "ncenters", "npanels")
@@ -453,10 +425,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     def fine_panel_sizes(self, last_dim_length="nsources"):
         if last_dim_length != "npanels":
             raise NotImplementedError()
-
-        base_fine_density_discr = (
-                self._base_fine_density_discr or self.density_discr)
-        return self._panel_sizes_for_discr(base_fine_density_discr, last_dim_length)
+        return self._panel_sizes_for_discr(
+                self._base_fine_density_discr, last_dim_length)
 
     @memoize_method
     def centers(self, sign):
