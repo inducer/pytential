@@ -166,8 +166,7 @@ class TreeWithQBXMetadata(Tree):
     .. rubric:: Box properties
     .. ------------------------------------------------------------------------
 
-    Box to QBX panels
-    ----
+    .. rubric:: Box to QBX panels
 
     .. attribute:: box_to_qbx_panel_starts
 
@@ -177,8 +176,7 @@ class TreeWithQBXMetadata(Tree):
 
     ``particle_id_t [*]``
 
-    Box to QBX sources
-    ----
+    .. rubric:: Box to QBX sources
 
     .. attribute:: box_to_qbx_source_starts
 
@@ -188,8 +186,7 @@ class TreeWithQBXMetadata(Tree):
 
     ``particle_id_t [*]``
 
-    Box to QBX centers
-    ----
+    .. rubric:: Box to QBX centers
 
     .. attribute:: box_to_qbx_center_starts
 
@@ -199,8 +196,7 @@ class TreeWithQBXMetadata(Tree):
 
     ``particle_id_t [*]``
 
-    Box to QBX targets
-    ----
+    .. rubric:: Box to QBX targets
 
     .. attribute:: box_to_qbx_target_starts
 
