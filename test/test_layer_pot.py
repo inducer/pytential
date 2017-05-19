@@ -708,13 +708,12 @@ def get_sphere_mesh(refinement_increment, target_order):
     return mesh
 
 
-@pytest.mark.parametrize(("mesh_name", "mesh_getter"), [
+@pytest.mark.parametrize(("mesh_name", "mesh_getter", "qbx_order"), [
     #("circle", partial(ellipse, 1)),
     #("3-to-1 ellipse", partial(ellipse, 3)),
-    ("starfish", get_starfish_mesh),
-    ("sphere", get_sphere_mesh),
+    ("starfish", get_starfish_mesh, 5),
+    ("sphere", get_sphere_mesh, 3),
     ])
-@pytest.mark.parametrize("qbx_order", [5])
 @pytest.mark.parametrize(("zero_op_name", "k"), [
     ("green", 0),
     ("green", 1.2),
@@ -797,7 +796,7 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
         if d == 2:
             order_bump = 15
         elif d == 3:
-            order_bump = 6
+            order_bump = 8
 
         qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
