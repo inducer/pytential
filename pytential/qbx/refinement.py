@@ -81,7 +81,7 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
         particle_id_t source_offset,
         particle_id_t center_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *panel_sizes,
+        coord_t *center_danger_zone_radii_by_panel,
         int npanels,
 
         /* output */
@@ -98,7 +98,7 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
         particle_id_t my_panel = bsearch(panel_to_center_starts, npanels + 1, i);
 
         ${load_particle("INDEX_FOR_CENTER_PARTICLE(i)", ball_center)}
-        ${ball_radius} = panel_sizes[my_panel] / 2;
+        ${ball_radius} = center_danger_zone_radii_by_panel[my_panel];
         """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
         /* Check that each source in the leaf box is sufficiently far from the
@@ -122,7 +122,7 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
 
             bool is_close = (
                 distance(${ball_center}, source_coords)
-                <= panel_sizes[my_panel] / 2);
+                <= center_danger_zone_radii_by_panel[my_panel]);
 
             if (is_close)
             {
@@ -146,7 +146,7 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
         particle_id_t source_offset,
         particle_id_t center_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *ball_radii_by_panel,
+        coord_t *source_danger_zone_radii_by_panel,
         int npanels,
 
         /* output */
@@ -163,7 +163,7 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
         particle_id_t my_panel = bsearch(panel_to_source_starts, npanels + 1, i);
 
         ${load_particle("INDEX_FOR_SOURCE_PARTICLE(i)", ball_center)}
-        ${ball_radius} = ball_radii_by_panel[my_panel];
+        ${ball_radius} = source_danger_zone_radii_by_panel[my_panel];
         """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
         /* Check that each center in the leaf box is sufficiently far from the
@@ -181,7 +181,7 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
 
             bool is_close = (
                 distance(${ball_center}, center_coords)
-                <= ball_radii_by_panel[my_panel]);
+                <= source_danger_zone_radii_by_panel[my_panel]);
 
             if (is_close)
             {
@@ -296,6 +296,10 @@ class RefinerWrangler(object):
         found_panel_to_refine.finish()
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
+        center_danger_zone_radii_by_panel = (
+                lpot_source.panel_sizes("npanels")
+                .with_queue(self.queue) / 2)
+
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
@@ -306,7 +310,7 @@ class RefinerWrangler(object):
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_center_slice.start,
                 tree.sorted_target_ids,
-                lpot_source.panel_sizes("npanels"),
+                center_danger_zone_radii_by_panel,
                 tree.nqbxpanels,
                 refine_flags,
                 found_panel_to_refine,
@@ -350,7 +354,7 @@ class RefinerWrangler(object):
         found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
         found_panel_to_refine.finish()
 
-        ball_radii_by_panel = (
+        source_danger_zone_radii_by_panel = (
                 lpot_source.fine_panel_sizes("npanels")
                 .with_queue(self.queue) / 4)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
@@ -364,7 +368,7 @@ class RefinerWrangler(object):
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_center_slice.start,
                 tree.sorted_target_ids,
-                ball_radii_by_panel,
+                source_danger_zone_radii_by_panel,
                 tree.nqbxpanels,
                 refine_flags,
                 found_panel_to_refine,
