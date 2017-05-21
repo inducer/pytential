@@ -101,7 +101,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
 
     lpot_source, conn = refine_for_global_qbx(
             lpot_source, RefinerCodeContainer(cl_ctx),
-            factory, fine_factory, helmholtz_k)
+            factory, fine_factory, kernel_length_scale=5*helmholtz_k)
 
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
     fine_discr_nodes = lpot_source.fine_density_discr.nodes().get(queue)

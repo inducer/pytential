@@ -272,7 +272,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         return RefinerCodeContainer(self.cl_context)
 
     @memoize_method
-    def with_refinement(self, target_order=None, maxiter=3):
+    def with_refinement(self, target_order=None, kernel_length_scale=None,
+            maxiter=3):
         """
         :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
             :class:`QBXLayerPotentialSource` and ``cnx`` is a
@@ -293,6 +294,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 self.refiner_code_container,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order),
                 QuadratureSimplexGroupFactory(self.fine_order),
+                kernel_length_scale=kernel_length_scale,
                 maxiter=maxiter)
 
         return lpot, connection

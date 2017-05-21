@@ -56,8 +56,9 @@ three global QBX refinement criteria:
       The quadrature contribution from each panel is as accurate
       as from the center's own source panel.
 
-   * *Condition 3* (Panel size bounded based on wavelength)
-      (Helmholtz only) The panel size is bounded with respect to the wavelength.
+   * *Condition 3* (Panel size bounded based on kernel length scale)
+      The panel size is bounded by a kernel length scale. This
+      applies only to Helmholtz kernels.
 
 .. autoclass:: RefinerCodeContainer
 .. autoclass:: RefinerWrangler
@@ -224,12 +225,12 @@ class RefinerCodeContainer(object):
                 extra_type_aliases=(("particle_id_t", particle_id_dtype),))
 
     @memoize_method
-    def helmholtz_k_to_panel_size_ratio_checker(self):
+    def kernel_length_scale_to_panel_size_ratio_checker(self):
         knl = lp.make_kernel(
             "{[panel]: 0<=panel<npanels}",
             """
             for panel
-                <> oversize = panel_sizes[panel] * helmholtz_k > 5
+                <> oversize = panel_sizes[panel] > kernel_length_scale
                 if oversize
                     refine_flags[panel] = 1
                     refine_flags_updated = 1 {id=write_refine_flags_updated}
@@ -238,7 +239,7 @@ class RefinerCodeContainer(object):
             """,
             options="return_dict",
             silenced_warnings="write_race(write_refine_flags_updated)",
-            name="refine_helmholtz_k_to_panel_size_ratio")
+            name="refine_kernel_length_scale_to_panel_size_ratio")
         knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
@@ -384,11 +385,11 @@ class RefinerWrangler(object):
 
         return found_panel_to_refine.get()[0] == 1
 
-    def check_helmholtz_k_to_panel_size_ratio(self, lpot_source,
-            helmholtz_k, refine_flags, debug, wait_for=None):
-        knl = self.code_container.helmholtz_k_to_panel_size_ratio_checker()
+    def check_kernel_length_scale_to_panel_size_ratio(self, lpot_source,
+            kernel_length_scale, refine_flags, debug, wait_for=None):
+        knl = self.code_container.kernel_length_scale_to_panel_size_ratio_checker()
 
-        logger.info("refiner: checking helmholtz k to panel size ratio")
+        logger.info("refiner: checking kernel length scale to panel size ratio")
 
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
@@ -397,7 +398,7 @@ class RefinerWrangler(object):
                        panel_sizes=lpot_source.panel_sizes("npanels"),
                        refine_flags=refine_flags,
                        refine_flags_updated=np.array(0),
-                       helmholtz_k=np.array(helmholtz_k),
+                       kernel_length_scale=np.array(kernel_length_scale),
                        wait_for=wait_for)
 
         cl.wait_for_events([evt])
@@ -408,7 +409,7 @@ class RefinerWrangler(object):
                 logger.debug("refiner: found {} panel(s) to refine".format(
                     npanels_to_refine - npanels_to_refine_prev))
 
-        logger.info("refiner: done checking helmholtz k to panel size ratio")
+        logger.info("refiner: done checking kernel length scale to panel size ratio")
 
         return (out["refine_flags_updated"].get() == 1).all()
 
@@ -467,7 +468,7 @@ def make_empty_refine_flags(queue, lpot_source, use_fine_discr=False):
 
 
 def refine_for_global_qbx(lpot_source, code_container,
-        group_factory, fine_group_factory, helmholtz_k=None,
+        group_factory, fine_group_factory, kernel_length_scale=None,
         # FIXME: Set debug=False once everything works.
         refine_flags=None, debug=True, maxiter=50):
     """
@@ -485,7 +486,8 @@ def refine_for_global_qbx(lpot_source, code_container,
         :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
         oversample the refined mesh at the finest level.
 
-    :arg helmholtz_k: The Helmholtz parameter, or `None` if not applicable.
+    :arg kernel_length_scale: The kernel length scale, or *None* if not
+        applicable. All panels are refined to below this size.
 
     :arg refine_flags: A :class:`pyopencl.array.Array` indicating which
         panels should get refined initially, or `None` if no initial
@@ -549,9 +551,10 @@ def refine_for_global_qbx(lpot_source, code_container,
                     lpot_source, tree, peer_lists, refine_flags, debug)
 
             # Check condition 3.
-            if helmholtz_k is not None:
-                must_refine |= wrangler.check_helmholtz_k_to_panel_size_ratio(
-                        lpot_source, helmholtz_k, refine_flags, debug)
+            if kernel_length_scale is not None:
+                must_refine |= (
+                        wrangler.check_kernel_length_scale_to_panel_size_ratio(
+                            lpot_source, kernel_length_scale, refine_flags, debug))
 
             if must_refine:
                 conn = wrangler.refine(
