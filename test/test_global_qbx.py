@@ -99,9 +99,13 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     lpot_source = QBXLayerPotentialSource(discr, order)
     del discr
 
+    refiner_extra_kwargs = {}
+    if helmholtz_k is not None:
+        refiner_extra_kwargs["kernel_length_scale"] = 5*helmholtz_k
+
     lpot_source, conn = refine_for_global_qbx(
             lpot_source, RefinerCodeContainer(cl_ctx),
-            factory, fine_factory, kernel_length_scale=5*helmholtz_k)
+            factory, fine_factory, **refiner_extra_kwargs)
 
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
     fine_discr_nodes = lpot_source.fine_density_discr.nodes().get(queue)
