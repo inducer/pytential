@@ -312,7 +312,7 @@ def run_int_eq_test(
     refiner_extra_kwargs = {}
 
     if k != 0:
-        refiner_extra_kwargs["kernel_length_scale"] = 5*k
+        refiner_extra_kwargs["kernel_length_scale"] = 5/k
 
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, fine_order=source_order, qbx_order=qbx_order,
@@ -806,7 +806,7 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
         refiner_extra_kwargs = {}
 
         if k != 0:
-            refiner_extra_kwargs["kernel_length_scale"] = 5*k
+            refiner_extra_kwargs["kernel_length_scale"] = 5/k
 
         qbx, _ = (
                 QBXLayerPotentialSource(
