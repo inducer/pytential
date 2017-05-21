@@ -61,6 +61,7 @@ three global QBX refinement criteria:
 
 .. autoclass:: RefinerCodeContainer
 .. autoclass:: RefinerWrangler
+.. autoclass:: RefinerNotConvergedWarning
 
 .. autofunction:: make_empty_refine_flags
 .. autofunction:: refine_for_global_qbx
@@ -444,6 +445,10 @@ class RefinerWrangler(object):
 # }}}
 
 
+class RefinerNotConvergedWarning(UserWarning):
+    pass
+
+
 def make_empty_refine_flags(queue, lpot_source, use_fine_discr=False):
     """Return an array on the device suitable for use as element refine flags.
 
@@ -526,9 +531,11 @@ def refine_for_global_qbx(lpot_source, code_container,
             niter += 1
 
             if niter > maxiter:
-                logger.warning(
-                    "Max iteration count reached in QBX layer potential source"
-                    " refiner (first stage).")
+                from warnings import warn
+                warn(
+                        "Max iteration count reached in QBX layer potential source"
+                        " refiner.",
+                        RefinerNotConvergedWarning)
                 break
 
             # Build tree and auxiliary data.
@@ -572,9 +579,11 @@ def refine_for_global_qbx(lpot_source, code_container,
             niter += 1
 
             if niter > maxiter:
-                logger.warning(
-                    "Max iteration count reached in QBX layer potential source"
-                    " refiner (second stage).")
+                from warnings import warn
+                warn(
+                        "Max iteration count reached in QBX layer potential source"
+                        " refiner.",
+                        RefinerNotConvergedWarning)
                 break
 
             # Build tree and auxiliary data.

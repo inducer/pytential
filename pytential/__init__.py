@@ -48,7 +48,14 @@ def _set_up_logging_from_environment():
             set_up_logging(pytential_log_var.split(":"), level=level)
 
 
+def _set_up_errors():
+    import warnings
+    from pytential.qbx.refinement import RefinerNotConvergedWarning
+    warnings.filterwarnings("error", category=RefinerNotConvergedWarning)
+
+
 _set_up_logging_from_environment()
+_set_up_errors()
 
 
 @memoize_on_first_arg
