@@ -235,10 +235,14 @@ MAX_REFINE_WEIGHT = 64
 
 def build_tree_with_qbx_metadata(
         queue, tree_builder, lpot_source, targets_list=(),
-        use_fine_discr=False):
-    """
-    Return a :class:`TreeWithQBXMetadata` built from the given layer
-    potential source.
+        use_base_fine_discr=False):
+    """Return a :class:`TreeWithQBXMetadata` built from the given layer
+    potential source. This contains particles of four different types:
+
+       * source particles and panel centers of mass either from
+         ``lpot_source.density_discr`` or ``lpot_source.base_fine_density_discr``
+       * centers from ``lpot_source.centers()``
+       * targets from ``targets_list``.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`
 
@@ -247,9 +251,11 @@ def build_tree_with_qbx_metadata(
 
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
 
-    :arg use_fine_discr: If *True*,
+    :arg use_base_fine_discr: If *True*, builds a tree with sources/centers of
+        mass from ``lpot_source.base_fine_density_discr``. If *False* (default),
+        they are from ``lpot_source.density_discr``.
     """
-    # The ordering of particles is as follows:
+    # the ordering of particles is as follows:
     # - sources go first
     # - then centers
     # - then panels (=centers of mass)
@@ -259,14 +265,14 @@ def build_tree_with_qbx_metadata(
 
     sources = (
             lpot_source.density_discr.nodes()
-            if not use_fine_discr
+            if not use_base_fine_discr
             else lpot_source.fine_density_discr.nodes())
 
     centers = get_interleaved_centers(queue, lpot_source)
 
     centers_of_mass = (
             lpot_source.panel_centers_of_mass()
-            if not use_fine_discr
+            if not use_base_fine_discr
             else lpot_source.fine_panel_centers_of_mass())
 
     targets = (tgt.nodes() for tgt in targets_list)
@@ -281,7 +287,7 @@ def build_tree_with_qbx_metadata(
     nsources = len(sources[0])
     ncenters = len(centers[0])
     # Each source gets an interior / exterior center.
-    assert 2 * nsources == ncenters or use_fine_discr
+    assert 2 * nsources == ncenters or use_base_fine_discr
     ntargets = sum(tgt.nnodes for tgt in targets_list)
 
     # Slices
@@ -335,7 +341,7 @@ def build_tree_with_qbx_metadata(
     del box_to_class
 
     # Compute panel => source relation
-    if use_fine_discr:
+    if use_base_fine_discr:
         density_discr = lpot_source.fine_density_discr
     else:
         density_discr = lpot_source.density_discr
@@ -355,7 +361,7 @@ def build_tree_with_qbx_metadata(
     # Compute panel => center relation
     qbx_panel_to_center_starts = (
             2 * qbx_panel_to_source_starts
-            if not use_fine_discr
+            if not use_base_fine_discr
             else None)
 
     # Transfer all tree attributes.

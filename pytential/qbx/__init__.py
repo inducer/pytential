@@ -219,7 +219,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 performance_data_file=self.performance_data_file)
 
     @property
-    def _base_fine_density_discr(self):
+    def base_fine_density_discr(self):
+        """The fine density discretization before upsampling is applied.
+        """
         return (self._base_resampler.to_discr
                 if self._base_resampler is not None
                 else self.density_discr)
@@ -231,7 +233,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 QuadratureSimplexGroupFactory)
 
         return Discretization(
-            self.density_discr.cl_context, self._base_fine_density_discr.mesh,
+            self.density_discr.cl_context, self.base_fine_density_discr.mesh,
             QuadratureSimplexGroupFactory(self.fine_order),
             self.real_dtype)
 
@@ -242,7 +244,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             make_same_mesh_connection, ChainedDiscretizationConnection)
 
         conn = make_same_mesh_connection(
-                self.fine_density_discr, self._base_fine_density_discr)
+                self.fine_density_discr, self.base_fine_density_discr)
 
         if self._base_resampler is not None:
             return ChainedDiscretizationConnection([self._base_resampler, conn])
@@ -362,7 +364,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def fine_panel_centers_of_mass(self):
-        return self._centers_of_mass_for_discr(self._base_fine_density_discr)
+        return self._centers_of_mass_for_discr(self.base_fine_density_discr)
 
     def _panel_sizes_for_discr(self, discr, last_dim_length):
         assert last_dim_length in ("nsources", "ncenters", "npanels")
@@ -428,7 +430,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         if last_dim_length != "npanels":
             raise NotImplementedError()
         return self._panel_sizes_for_discr(
-                self._base_fine_density_discr, last_dim_length)
+                self.base_fine_density_discr, last_dim_length)
 
     @memoize_method
     def centers(self, sign):

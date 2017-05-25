@@ -256,7 +256,6 @@ class RefinerCodeContainer(object):
     def get_wrangler(self, queue):
         """
         :arg queue:
-        :arg refiner:
         """
         return RefinerWrangler(self, queue)
 
@@ -417,11 +416,11 @@ class RefinerWrangler(object):
 
         return (out["refine_flags_updated"].get() == 1).all()
 
-    def build_tree(self, lpot_source, use_fine_discr=False):
+    def build_tree(self, lpot_source, use_base_fine_discr=False):
         tb = self.code_container.tree_builder()
         from pytential.qbx.utils import build_tree_with_qbx_metadata
         return build_tree_with_qbx_metadata(
-                self.queue, tb, lpot_source, use_fine_discr=use_fine_discr)
+                self.queue, tb, lpot_source, use_base_fine_discr=use_base_fine_discr)
 
     def find_peer_lists(self, tree):
         plf = self.code_container.peer_list_finder()
@@ -454,7 +453,7 @@ class RefinerNotConvergedWarning(UserWarning):
     pass
 
 
-def make_empty_refine_flags(queue, lpot_source, use_fine_discr=False):
+def make_empty_refine_flags(queue, lpot_source, use_base_fine_discr=False):
     """Return an array on the device suitable for use as element refine flags.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`.
@@ -463,8 +462,8 @@ def make_empty_refine_flags(queue, lpot_source, use_fine_discr=False):
     :returns: A :class:`pyopencl.array.Array` suitable for use as refine flags,
         initialized to zero.
     """
-    discr = (lpot_source.fine_density_discr
-            if use_fine_discr
+    discr = (lpot_source.base_fine_density_discr
+            if use_base_fine_discr
             else lpot_source.density_discr)
     result = cl.array.zeros(queue, discr.mesh.nelements, np.int32)
     result.finish()
@@ -595,10 +594,10 @@ def refine_for_global_qbx(lpot_source, code_container,
 
             # Build tree and auxiliary data.
             # FIXME: The tree should not have to be rebuilt at each iteration.
-            tree = wrangler.build_tree(lpot_source, use_fine_discr=True)
+            tree = wrangler.build_tree(lpot_source, use_base_fine_discr=True)
             peer_lists = wrangler.find_peer_lists(tree)
             refine_flags = make_empty_refine_flags(
-                    queue, lpot_source, use_fine_discr=True)
+                    queue, lpot_source, use_base_fine_discr=True)
 
             must_refine |= wrangler.check_sufficient_source_quadrature_resolution(
                     lpot_source, tree, peer_lists, refine_flags, debug)
