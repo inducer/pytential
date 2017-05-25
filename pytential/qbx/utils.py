@@ -255,7 +255,7 @@ def build_tree_with_qbx_metadata(
         mass from ``lpot_source.base_fine_density_discr``. If *False* (default),
         they are from ``lpot_source.density_discr``.
     """
-    # the ordering of particles is as follows:
+    # The ordering of particles is as follows:
     # - sources go first
     # - then centers
     # - then panels (=centers of mass)
