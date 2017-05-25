@@ -53,7 +53,7 @@ RNG_SEED = 10
 FAR_TARGET_DIST_FROM_SOURCE = 10
 
 
-# {{{ utilities for iterating over panels
+# {{{ source refinement checker
 
 class ElementInfo(RecordWithoutPickling):
     """
@@ -191,7 +191,6 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     ("horseshoe", horseshoe, 64),
     ])
 def test_source_refinement_2d(ctx_getter, curve_name, curve_f, nelements):
-    # {{{ generate lpot source, run refiner
     helmholtz_k = 10
     order = 8
 
