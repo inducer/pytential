@@ -1,12 +1,10 @@
 numpy
 git+git://github.com/inducer/pymbolic
 sympy==1.0
-git+git://github.com/inducer/modepy
-git+git://github.com/pyopencl/pyopencl
-git+git://github.com/inducer/islpy
-git+git://github.com/inducer/loopy
-git+git://github.com/inducer/boxtree
-git+git://github.com/inducer/meshmode
-
-# FIXME: Point back at sumpy master before merging
-git+git://github.com/inducer/sumpy@revert-41712001
+git+https://github.com/inducer/modepy
+git+https://github.com/pyopencl/pyopencl
+git+https://github.com/inducer/islpy
+git+https://github.com/inducer/loopy
+git+https://github.com/inducer/boxtree
+git+https://github.com/inducer/meshmode
+git+https://github.com/inducer/sumpy
