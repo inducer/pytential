@@ -422,11 +422,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             return panel_sizes.with_queue(None)
 
     @memoize_method
-    def panel_sizes(self, last_dim_length="nsources"):
+    def panel_sizes(self, last_dim_length="npanels"):
         return self._panel_sizes_for_discr(self.density_discr, last_dim_length)
 
     @memoize_method
-    def fine_panel_sizes(self, last_dim_length="nsources"):
+    def fine_panel_sizes(self, last_dim_length="npanels"):
         if last_dim_length != "npanels":
             raise NotImplementedError()
         return self._panel_sizes_for_discr(
@@ -441,7 +441,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         with cl.CommandQueue(self.cl_context) as queue:
             nodes = bind(self.density_discr, sym.nodes(adim))(queue)
             normals = bind(self.density_discr, sym.normal(adim, dim=dim))(queue)
-            panel_sizes = self.panel_sizes().with_queue(queue)
+            panel_sizes = self.panel_sizes("nsources").with_queue(queue)
             return (nodes + normals * sign * panel_sizes / 2).as_vector(np.object)
 
     @memoize_method
