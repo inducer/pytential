@@ -118,203 +118,276 @@ def get_interleaved_centers(queue, lpot_source):
 # }}}
 
 
-# {{{ discr plotter mixin
+# {{{ discr plotter
 
-class DiscrPlotterMixin(object):
+def plot_discr(lpot_source, outfilename="discr.pdf"):
+    with cl.CommandQueue(lpot_source.cl_context) as queue:
+        from boxtree.tree_builder import TreeBuilder
+        tree_builder = TreeBuilder(lpot_source.cl_context)
+        tree = tree_builder(queue, lpot_source).get(queue=queue)
+        from boxtree.visualization import TreePlotter
 
-    def plot_discr(self, lpot_source, outfilename="discr.pdf"):
-        with cl.CommandQueue(self.cl_context) as queue:
-            tree = self.tree_builder(queue, lpot_source).get(queue=queue)
-            from boxtree.visualization import TreePlotter
-
-            import matplotlib
-            matplotlib.use('Agg')
-            import matplotlib.pyplot as plt
-            tp = TreePlotter(tree)
-            tp.draw_tree()
-            sources = (tree.sources[0], tree.sources[1])
-            sti = tree.sorted_target_ids
-            plt.plot(sources[0][sti[tree.qbx_user_source_slice]],
-                     sources[1][sti[tree.qbx_user_source_slice]],
-                     lw=0, marker=".", markersize=1, label="sources")
-            plt.plot(sources[0][sti[tree.qbx_user_center_slice]],
-                     sources[1][sti[tree.qbx_user_center_slice]],
-                     lw=0, marker=".", markersize=1, label="centers")
-            plt.plot(sources[0][sti[tree.qbx_user_target_slice]],
-                     sources[1][sti[tree.qbx_user_target_slice]],
-                     lw=0, marker=".", markersize=1, label="targets")
-            plt.axis("equal")
-            plt.legend()
-            plt.savefig(outfilename)
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        tp = TreePlotter(tree)
+        tp.draw_tree()
+        sources = (tree.sources[0], tree.sources[1])
+        sti = tree.sorted_target_ids
+        plt.plot(sources[0][sti[tree.qbx_user_source_slice]],
+                 sources[1][sti[tree.qbx_user_source_slice]],
+                 lw=0, marker=".", markersize=1, label="sources")
+        plt.plot(sources[0][sti[tree.qbx_user_center_slice]],
+                 sources[1][sti[tree.qbx_user_center_slice]],
+                 lw=0, marker=".", markersize=1, label="centers")
+        plt.plot(sources[0][sti[tree.qbx_user_target_slice]],
+                 sources[1][sti[tree.qbx_user_target_slice]],
+                 lw=0, marker=".", markersize=1, label="targets")
+        plt.axis("equal")
+        plt.legend()
+        plt.savefig(outfilename)
 
 # }}}
 
 
 # {{{ tree creation
 
-class TreeWithQBXMetadataBuilder(object):
 
-    MAX_REFINE_WEIGHT = 64
+class TreeWithQBXMetadata(Tree):
+    """A subclass of :class:`boxtree.tree.Tree`. Has all of that class's
+    attributes, along with the following:
 
-    class TreeWithQBXMetadata(Tree):
-        """
-        .. attribute:: nqbxpanels
-        .. attribuet:: nqbxsources
-        .. attribute:: nqbxcenters
-        .. attribute:: nqbxtargets
+    .. attribute:: nqbxpanels
+    .. attribuet:: nqbxsources
+    .. attribute:: nqbxcenters
+    .. attribute:: nqbxtargets
 
-        .. attribute:: box_to_qbx_panel_starts
-        .. attribute:: box_to_qbx_panel_lists
+    .. ------------------------------------------------------------------------
+    .. rubric:: Box properties
+    .. ------------------------------------------------------------------------
 
-        .. attribute:: box_to_qbx_source_starts
-        .. attribute:: box_to_qbx_source_lists
+    .. rubric:: Box to QBX panels
 
-        .. attribute:: box_to_qbx_center_starts
-        .. attribute:: box_to_qbx_center_lists
+    .. attribute:: box_to_qbx_panel_starts
 
-        .. attribute:: box_to_qbx_target_starts
-        .. attribute:: box_to_qbx_target_lists
+    ``box_id_t [nboxes + 1]``
 
-        .. attribute:: qbx_panel_to_source_starts
-        .. attribute:: qbx_panel_to_center_starts
+    .. attribute:: box_to_qbx_panel_lists
 
-        .. attribute:: qbx_user_source_slice
-        .. attribute:: qbx_user_center_slice
-        .. attribute:: qbx_user_panel_slice
-        .. attribute:: qbx_user_target_slice
-        """
-        pass
+    ``particle_id_t [*]``
 
-    def __init__(self, context):
-        self.context = context
-        from boxtree.tree_build import TreeBuilder
-        self.tree_builder = TreeBuilder(self.context)
+    .. rubric:: Box to QBX sources
 
-    def __call__(self, queue, lpot_source, targets_list=()):
-        """
-        Return a :class:`TreeWithQBXMetadata` built from the given layer
-        potential source.
+    .. attribute:: box_to_qbx_source_starts
 
-        :arg queue: An instance of :class:`pyopencl.CommandQueue`
+    ``box_id_t [nboxes + 1]``
 
-        :arg lpot_source: An instance of
-            :class:`pytential.qbx.NewQBXLayerPotentialSource`.
+    .. attribute:: box_to_qbx_source_lists
 
-        :arg targets_list: A list of :class:`pytential.target.TargetBase`
-        """
-        # The ordering of particles is as follows:
-        # - sources go first
-        # - then centers
-        # - then panels (=centers of mass)
-        # - then targets
+    ``particle_id_t [*]``
 
-        logger.info("start building tree with qbx metadata")
+    .. rubric:: Box to QBX centers
 
-        sources = lpot_source.density_discr.nodes()
-        centers = get_interleaved_centers(queue, lpot_source)
-        centers_of_mass = lpot_source.panel_centers_of_mass()
-        targets = (tgt.nodes() for tgt in targets_list)
+    .. attribute:: box_to_qbx_center_starts
 
-        particles = tuple(
-                cl.array.concatenate(dim_coords, queue=queue)
-                for dim_coords in zip(sources, centers, centers_of_mass, *targets))
+    ``box_id_t [nboxes + 1]``
 
-        # Counts
-        nparticles = len(particles[0])
-        npanels = len(centers_of_mass[0])
-        nsources = len(sources[0])
-        ncenters = len(centers[0])
-        # Each source gets an interior / exterior center.
-        assert 2 * nsources == ncenters
-        ntargets = sum(tgt.nnodes for tgt in targets_list)
+    .. attribute:: box_to_qbx_center_lists
 
-        # Slices
-        qbx_user_source_slice = slice(0, nsources)
-        panel_slice_start = 3 * nsources
-        qbx_user_center_slice = slice(nsources, panel_slice_start)
-        target_slice_start = panel_slice_start + npanels
-        qbx_user_panel_slice = slice(panel_slice_start, panel_slice_start + npanels)
-        qbx_user_target_slice = slice(target_slice_start,
-                                      target_slice_start + ntargets)
+    ``particle_id_t [*]``
 
-        # Build tree with sources, centers, and centers of mass. Split boxes
-        # only because of sources.
-        refine_weights = cl.array.zeros(queue, nparticles, np.int32)
-        refine_weights[:nsources].fill(1)
+    .. rubric:: Box to QBX targets
 
-        refine_weights.finish()
+    .. attribute:: box_to_qbx_target_starts
 
-        tree, evt = self.tree_builder(queue, particles,
-                                      max_leaf_refine_weight=self.MAX_REFINE_WEIGHT,
-                                      refine_weights=refine_weights)
+    ``box_id_t [nboxes + 1]``
 
-        # Compute box => particle class relations
-        flags = refine_weights
-        del refine_weights
-        particle_classes = {}
+    .. attribute:: box_to_qbx_target_lists
 
-        for class_name, particle_slice, fixup in (
-                ("box_to_qbx_source", qbx_user_source_slice, 0),
-                ("box_to_qbx_target", qbx_user_target_slice, -target_slice_start),
-                ("box_to_qbx_center", qbx_user_center_slice, -nsources),
-                ("box_to_qbx_panel", qbx_user_panel_slice, -panel_slice_start)):
-            flags.fill(0)
-            flags[particle_slice].fill(1)
-            flags.finish()
+    ``particle_id_t [*]``
 
-            from boxtree.tree import filter_target_lists_in_user_order
-            box_to_class = (
-                filter_target_lists_in_user_order(queue, tree, flags)
-                .with_queue(queue))
+    .. ------------------------------------------------------------------------
+    .. rubric:: Panel properties
+    .. ------------------------------------------------------------------------
 
-            if fixup:
-                box_to_class.target_lists += fixup
-            particle_classes[class_name + "_starts"] = box_to_class.target_starts
-            particle_classes[class_name + "_lists"] = box_to_class.target_lists
+    .. attribute:: qbx_panel_to_source_starts
 
-        del flags
-        del box_to_class
+    ``particle_id_t [nqbxpanels + 1]``
 
-        # Compute panel => source relation
-        qbx_panel_to_source_starts = cl.array.empty(
+    .. attribute:: qbx_panel_to_center_starts
+
+    ``particle_id_t [nqbxpanels + 1]``
+
+    .. ------------------------------------------------------------------------
+    .. rubric:: Particle order indices
+    .. ------------------------------------------------------------------------
+
+    .. attribute:: qbx_user_source_slice
+    .. attribute:: qbx_user_center_slice
+    .. attribute:: qbx_user_panel_slice
+    .. attribute:: qbx_user_target_slice
+    """
+    pass
+
+
+MAX_REFINE_WEIGHT = 64
+
+
+def build_tree_with_qbx_metadata(
+        queue, tree_builder, lpot_source, targets_list=(),
+        use_base_fine_discr=False):
+    """Return a :class:`TreeWithQBXMetadata` built from the given layer
+    potential source. This contains particles of four different types:
+
+       * source particles and panel centers of mass either from
+         ``lpot_source.density_discr`` or ``lpot_source.base_fine_density_discr``
+       * centers from ``lpot_source.centers()``
+       * targets from ``targets_list``.
+
+    :arg queue: An instance of :class:`pyopencl.CommandQueue`
+
+    :arg lpot_source: An instance of
+        :class:`pytential.qbx.NewQBXLayerPotentialSource`.
+
+    :arg targets_list: A list of :class:`pytential.target.TargetBase`
+
+    :arg use_base_fine_discr: If *True*, builds a tree with sources/centers of
+        mass from ``lpot_source.base_fine_density_discr``. If *False* (default),
+        they are from ``lpot_source.density_discr``.
+    """
+    # The ordering of particles is as follows:
+    # - sources go first
+    # - then centers
+    # - then panels (=centers of mass)
+    # - then targets
+
+    logger.info("start building tree with qbx metadata")
+
+    sources = (
+            lpot_source.density_discr.nodes()
+            if not use_base_fine_discr
+            else lpot_source.fine_density_discr.nodes())
+
+    centers = get_interleaved_centers(queue, lpot_source)
+
+    centers_of_mass = (
+            lpot_source.panel_centers_of_mass()
+            if not use_base_fine_discr
+            else lpot_source.fine_panel_centers_of_mass())
+
+    targets = (tgt.nodes() for tgt in targets_list)
+
+    particles = tuple(
+            cl.array.concatenate(dim_coords, queue=queue)
+            for dim_coords in zip(sources, centers, centers_of_mass, *targets))
+
+    # Counts
+    nparticles = len(particles[0])
+    npanels = len(centers_of_mass[0])
+    nsources = len(sources[0])
+    ncenters = len(centers[0])
+    # Each source gets an interior / exterior center.
+    assert 2 * nsources == ncenters or use_base_fine_discr
+    ntargets = sum(tgt.nnodes for tgt in targets_list)
+
+    # Slices
+    qbx_user_source_slice = slice(0, nsources)
+
+    center_slice_start = nsources
+    qbx_user_center_slice = slice(center_slice_start, center_slice_start + ncenters)
+
+    panel_slice_start = center_slice_start + ncenters
+    qbx_user_panel_slice = slice(panel_slice_start, panel_slice_start + npanels)
+
+    target_slice_start = panel_slice_start + npanels
+    qbx_user_target_slice = slice(target_slice_start, target_slice_start + ntargets)
+
+    # Build tree with sources, centers, and centers of mass. Split boxes
+    # only because of sources.
+    refine_weights = cl.array.zeros(queue, nparticles, np.int32)
+    refine_weights[:nsources].fill(1)
+
+    refine_weights.finish()
+
+    tree, evt = tree_builder(queue, particles,
+            max_leaf_refine_weight=MAX_REFINE_WEIGHT,
+            refine_weights=refine_weights)
+
+    # Compute box => particle class relations
+    flags = refine_weights
+    del refine_weights
+    particle_classes = {}
+
+    for class_name, particle_slice, fixup in (
+            ("box_to_qbx_source", qbx_user_source_slice, 0),
+            ("box_to_qbx_target", qbx_user_target_slice, -target_slice_start),
+            ("box_to_qbx_center", qbx_user_center_slice, -center_slice_start),
+            ("box_to_qbx_panel", qbx_user_panel_slice, -panel_slice_start)):
+        flags.fill(0)
+        flags[particle_slice].fill(1)
+        flags.finish()
+
+        from boxtree.tree import filter_target_lists_in_user_order
+        box_to_class = (
+            filter_target_lists_in_user_order(queue, tree, flags)
+            .with_queue(queue))
+
+        if fixup:
+            box_to_class.target_lists += fixup
+        particle_classes[class_name + "_starts"] = box_to_class.target_starts
+        particle_classes[class_name + "_lists"] = box_to_class.target_lists
+
+    del flags
+    del box_to_class
+
+    # Compute panel => source relation
+    if use_base_fine_discr:
+        density_discr = lpot_source.fine_density_discr
+    else:
+        density_discr = lpot_source.density_discr
+
+    qbx_panel_to_source_starts = cl.array.empty(
             queue, npanels + 1, dtype=tree.particle_id_dtype)
-        el_offset = 0
-        for group in lpot_source.density_discr.groups:
-            qbx_panel_to_source_starts[el_offset:el_offset + group.nelements] = \
-                    cl.array.arange(queue, group.node_nr_base,
-                                    group.node_nr_base + group.nnodes,
-                                    group.nunit_nodes,
-                                    dtype=tree.particle_id_dtype)
-            el_offset += group.nelements
-        qbx_panel_to_source_starts[-1] = nsources
+    el_offset = 0
+    for group in density_discr.groups:
+        qbx_panel_to_source_starts[el_offset:el_offset + group.nelements] = \
+                cl.array.arange(queue, group.node_nr_base,
+                                group.node_nr_base + group.nnodes,
+                                group.nunit_nodes,
+                                dtype=tree.particle_id_dtype)
+        el_offset += group.nelements
+    qbx_panel_to_source_starts[-1] = nsources
 
-        # Compute panel => center relation
-        qbx_panel_to_center_starts = 2 * qbx_panel_to_source_starts
+    # Compute panel => center relation
+    qbx_panel_to_center_starts = (
+            2 * qbx_panel_to_source_starts
+            if not use_base_fine_discr
+            else None)
 
-        # Transfer all tree attributes.
-        tree_attrs = {}
-        for attr_name in tree.__class__.fields:
-            try:
-                tree_attrs[attr_name] = getattr(tree, attr_name)
-            except AttributeError:
-                pass
+    # Transfer all tree attributes.
+    tree_attrs = {}
+    for attr_name in tree.__class__.fields:
+        try:
+            tree_attrs[attr_name] = getattr(tree, attr_name)
+        except AttributeError:
+            pass
 
-        tree_attrs.update(particle_classes)
+    tree_attrs.update(particle_classes)
 
-        logger.info("done building tree with qbx metadata")
+    logger.info("done building tree with qbx metadata")
 
-        return self.TreeWithQBXMetadata(
-            qbx_panel_to_source_starts=qbx_panel_to_source_starts,
-            qbx_panel_to_center_starts=qbx_panel_to_center_starts,
-            qbx_user_source_slice=qbx_user_source_slice,
-            qbx_user_panel_slice=qbx_user_panel_slice,
-            qbx_user_center_slice=qbx_user_center_slice,
-            qbx_user_target_slice=qbx_user_target_slice,
-            nqbxpanels=npanels,
-            nqbxsources=nsources,
-            nqbxcenters=ncenters,
-            nqbxtargets=ntargets,
-            **tree_attrs).with_queue(None)
+    return TreeWithQBXMetadata(
+        qbx_panel_to_source_starts=qbx_panel_to_source_starts,
+        qbx_panel_to_center_starts=qbx_panel_to_center_starts,
+        qbx_user_source_slice=qbx_user_source_slice,
+        qbx_user_panel_slice=qbx_user_panel_slice,
+        qbx_user_center_slice=qbx_user_center_slice,
+        qbx_user_target_slice=qbx_user_target_slice,
+        nqbxpanels=npanels,
+        nqbxsources=nsources,
+        nqbxcenters=ncenters,
+        nqbxtargets=ntargets,
+        **tree_attrs).with_queue(None)
 
 # }}}
 

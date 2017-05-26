@@ -309,10 +309,15 @@ def run_int_eq_test(
     if source_order is None:
         source_order = 4*target_order
 
+    refiner_extra_kwargs = {}
+
+    if k != 0:
+        refiner_extra_kwargs["kernel_length_scale"] = 5/k
+
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, fine_order=source_order, qbx_order=qbx_order,
             # Don't use FMM for now
-            fmm_order=False).with_refinement()
+            fmm_order=False).with_refinement(**refiner_extra_kwargs)
 
     density_discr = qbx.density_discr
 
@@ -322,7 +327,7 @@ def run_int_eq_test(
             DirichletOperator,
             NeumannOperator)
 
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel, AxisTargetDerivative
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
     if k:
         knl = HelmholtzKernel(2)
         knl_kwargs = {"k": sym.var("k")}
@@ -372,6 +377,8 @@ def run_int_eq_test(
     source_charges = source_charges.astype(dtype)
     assert np.sum(source_charges) < 1e-15
 
+    source_charges_dev = cl.array.to_device(queue, source_charges)
+
     # }}}
 
     if 0:
@@ -385,32 +392,28 @@ def run_int_eq_test(
 
     # {{{ establish BCs
 
-    from sumpy.p2p import P2P
-    pot_p2p = P2P(cl_ctx,
-            [knl], exclude_self=False, value_dtypes=dtype)
+    from pytential.source import PointPotentialSource
+    from pytential.target import PointsTarget
 
-    evt, (test_direct,) = pot_p2p(
-            queue, test_targets, point_sources, [source_charges],
-            out_host=False, **concrete_knl_kwargs)
+    point_source = PointPotentialSource(cl_ctx, point_sources)
 
-    nodes = density_discr.nodes()
+    pot_src = sym.IntG(
+        # FIXME: qbx_forced_limit--really?
+        knl, sym.var("charges"), qbx_forced_limit=None, **knl_kwargs)
 
-    evt, (src_pot,) = pot_p2p(
-            queue, nodes, point_sources, [source_charges],
-            **concrete_knl_kwargs)
-
-    grad_p2p = P2P(cl_ctx,
-            [AxisTargetDerivative(0, knl), AxisTargetDerivative(1, knl)],
-            exclude_self=False, value_dtypes=dtype)
-    evt, (src_grad0, src_grad1) = grad_p2p(
-            queue, nodes, point_sources, [source_charges],
-            **concrete_knl_kwargs)
+    test_direct = bind((point_source, PointsTarget(test_targets)), pot_src)(
+            queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     if bc_type == "dirichlet":
-        bc = src_pot
+        bc = bind((point_source, density_discr), pot_src)(
+                queue, charges=source_charges_dev, **concrete_knl_kwargs)
+
     elif bc_type == "neumann":
-        normal = bind(density_discr, sym.normal(2))(queue).as_vector(np.object)
-        bc = (src_grad0*normal[0] + src_grad1*normal[1])
+        bc = bind(
+                (point_source, density_discr),
+                sym.normal_derivative(
+                    qbx.ambient_dim, pot_src, where=sym.DEFAULT_TARGET)
+                )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     # }}}
 
@@ -449,8 +452,6 @@ def run_int_eq_test(
     # }}}
 
     # {{{ error check
-
-    from pytential.target import PointsTarget
 
     bound_tgt_op = bind((qbx, PointsTarget(test_targets)),
             op.representation(sym.var("u")))
@@ -493,19 +494,18 @@ def run_int_eq_test(
     tang_deriv_from_src = bound_t_deriv_op(
             queue, u=u, **concrete_knl_kwargs).as_scalar().get()
 
-    tangent = bind(
-            density_discr,
-            sym.pseudoscalar(2)/sym.area_element(2))(
-                    queue, **concrete_knl_kwargs).as_vector(np.object)
-
-    tang_deriv_ref = (src_grad0 * tangent[0] + src_grad1 * tangent[1]).get()
+    tang_deriv_ref = (bind(
+            (point_source, density_discr),
+            sym.tangential_derivative(2, pot_src)
+            )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
+            .as_scalar().get())
 
     if 0:
         pt.plot(tang_deriv_ref.real)
         pt.plot(tang_deriv_from_src.real)
         pt.show()
 
-    td_err = tang_deriv_from_src - tang_deriv_ref
+    td_err = (tang_deriv_from_src - tang_deriv_ref)
 
     rel_td_err_inf = la.norm(td_err, np.inf)/la.norm(tang_deriv_ref, np.inf)
 
@@ -523,9 +523,8 @@ def run_int_eq_test(
         #pt.plot(u)
         #pt.show()
 
-        evt, (fld_from_src,) = pot_p2p(
-                queue, fplot.points, point_sources, [source_charges],
-                **knl_kwargs)
+        fld_from_src = bind((point_source, PointsTarget(fplot.points)),
+                pot_src)(queue, charges=source_charges_dev, **concrete_knl_kwargs)
         fld_from_bdry = bind(
                 (qbx, PointsTarget(fplot.points)),
                 op.representation(sym.var("u"))
@@ -693,10 +692,31 @@ d1 = sym.Derivative()
 d2 = sym.Derivative()
 
 
-@pytest.mark.parametrize(("curve_name", "curve_f"), [
+def get_starfish_mesh(refinement_increment, target_order):
+    nelements = [30, 50, 70][refinement_increment]
+    return make_curve_mesh(starfish,
+                np.linspace(0, 1, nelements+1),
+                target_order)
+
+
+def get_sphere_mesh(refinement_increment, target_order):
+    from meshmode.mesh.generation import generate_icosphere
+    mesh = generate_icosphere(1, target_order)
+    from meshmode.mesh.refinement import Refiner
+
+    refiner = Refiner(mesh)
+    for i in range(refinement_increment):
+        flags = np.ones(mesh.nelements, dtype=bool)
+        refiner.refine(flags)
+        mesh = refiner.get_current_mesh()
+
+    return mesh
+
+
+@pytest.mark.parametrize(("mesh_name", "mesh_getter"), [
     #("circle", partial(ellipse, 1)),
     #("3-to-1 ellipse", partial(ellipse, 3)),
-    ("starfish", starfish),
+    ("starfish", get_starfish_mesh),
     ])
 @pytest.mark.parametrize("qbx_order", [5])
 @pytest.mark.parametrize(("zero_op_name", "k"), [
@@ -707,8 +727,8 @@ d2 = sym.Derivative()
     ("zero_calderon", 0),
     ])
 # sample invocation to copy and paste:
-# 'test_identities(cl._csc, "green", "circ", partial(ellipse, 1), 4, 0)'
-def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k):
+# 'test_identities(cl._csc, "green", "starfish", get_starfish_mesh, 4, 0)'
+def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order, k):
     logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
@@ -720,52 +740,55 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
     target_order = 8
 
-    u_sym = sym.var("u")
-    grad_u_sym = sym.make_sym_mv("grad_u", 2)
-    dn_u_sym = sym.var("dn_u")
-
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-    lap_k_sym = LaplaceKernel(2)
-    if k == 0:
-        k_sym = lap_k_sym
-        knl_kwargs = {}
-    else:
-        k_sym = HelmholtzKernel(2)
-        knl_kwargs = {"k": sym.var("k")}
-
-    zero_op_table = {
-            "green":
-            sym.S(k_sym, dn_u_sym, qbx_forced_limit=-1, **knl_kwargs)
-            - sym.D(k_sym, u_sym, qbx_forced_limit="avg", **knl_kwargs)
-            - 0.5*u_sym,
-
-            "green_grad":
-            d1.resolve(d1.dnabla(2) * d1(sym.S(k_sym, dn_u_sym,
-                qbx_forced_limit="avg", **knl_kwargs)))
-            - d2.resolve(d2.dnabla(2) * d2(sym.D(k_sym, u_sym,
-                qbx_forced_limit="avg", **knl_kwargs)))
-            - 0.5*grad_u_sym,
-
-            # only for k==0:
-            "zero_calderon":
-            -sym.Dp(lap_k_sym, sym.S(lap_k_sym, u_sym))
-            - 0.25*u_sym + sym.Sp(lap_k_sym, sym.Sp(lap_k_sym, u_sym))
-            }
     order_table = {
             "green": qbx_order,
             "green_grad": qbx_order-1,
             "zero_calderon": qbx_order-1,
             }
 
-    zero_op = zero_op_table[zero_op_name]
-
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
 
-    for nelements in [30, 50, 70]:
-        mesh = make_curve_mesh(curve_f,
-                np.linspace(0, 1, nelements+1),
-                target_order)
+    for refinement_increment in [0, 1, 2]:
+        mesh = mesh_getter(refinement_increment, target_order)
+        if mesh is None:
+            break
+
+        d = mesh.ambient_dim
+
+        u_sym = sym.var("u")
+        grad_u_sym = sym.make_sym_mv("grad_u",  d)
+        dn_u_sym = sym.var("dn_u")
+
+        from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+        lap_k_sym = LaplaceKernel(d)
+        if k == 0:
+            k_sym = lap_k_sym
+            knl_kwargs = {}
+        else:
+            k_sym = HelmholtzKernel(d)
+            knl_kwargs = {"k": sym.var("k")}
+
+        zero_op_table = {
+                "green":
+                sym.S(k_sym, dn_u_sym, qbx_forced_limit=-1, **knl_kwargs)
+                - sym.D(k_sym, u_sym, qbx_forced_limit="avg", **knl_kwargs)
+                - 0.5*u_sym,
+
+                "green_grad":
+                d1.resolve(d1.dnabla(d) * d1(sym.S(k_sym, dn_u_sym,
+                    qbx_forced_limit="avg", **knl_kwargs)))
+                - d2.resolve(d2.dnabla(d) * d2(sym.D(k_sym, u_sym,
+                    qbx_forced_limit="avg", **knl_kwargs)))
+                - 0.5*grad_u_sym,
+
+                # only for k==0:
+                "zero_calderon":
+                -sym.Dp(lap_k_sym, sym.S(lap_k_sym, u_sym))
+                - 0.25*u_sym + sym.Sp(lap_k_sym, sym.Sp(lap_k_sym, u_sym))
+                }
+
+        zero_op = zero_op_table[zero_op_name]
 
         from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \
@@ -775,16 +798,28 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-        qbx, _ = QBXLayerPotentialSource(
-            pre_density_discr, 4*target_order,
-            qbx_order, fmm_order=qbx_order + 15).with_refinement()
+        if d == 2:
+            order_bump = 15
+        elif d == 3:
+            order_bump = 6
+
+        refiner_extra_kwargs = {}
+
+        if k != 0:
+            refiner_extra_kwargs["kernel_length_scale"] = 5/k
+
+        qbx, _ = (
+                QBXLayerPotentialSource(
+                    pre_density_discr, 4*target_order,
+                    qbx_order, fmm_order=qbx_order + order_bump)
+                .with_refinement(**refiner_extra_kwargs))
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
 
         nodes_host = density_discr.nodes().get(queue)
-        normal = bind(density_discr, sym.normal(2))(queue).as_vector(np.object)
-        normal_host = [normal[0].get(), normal[1].get()]
+        normal = bind(density_discr, sym.normal(d))(queue).as_vector(np.object)
+        normal_host = [normal[j].get() for j in range(d)]
 
         if k != 0:
             angle = 0.3
@@ -792,14 +827,22 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
             u = np.exp(1j*k*np.tensordot(wave_vec, nodes_host, axes=1))
             grad_u = 1j*k*wave_vec[:, np.newaxis]*u
         else:
-            center = np.array([3, 1])
+            center = np.array([3, 1, 2])[:d]
             diff = nodes_host - center[:, np.newaxis]
             dist_squared = np.sum(diff**2, axis=0)
             dist = np.sqrt(dist_squared)
-            u = np.log(dist)
-            grad_u = diff/dist_squared
+            if d == 2:
+                u = np.log(dist)
+                grad_u = diff/dist_squared
+            elif d == 3:
+                u = 1/dist
+                grad_u = -diff/dist**3
+            else:
+                assert False
 
-        dn_u = normal_host[0]*grad_u[0] + normal_host[1]*grad_u[1]
+        dn_u = 0
+        for i in range(d):
+            dn_u = dn_u + normal_host[i]*grad_u[i]
 
         # }}}
 
@@ -807,7 +850,7 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
         dn_u_dev = cl.array.to_device(queue, dn_u)
         grad_u_dev = cl.array.to_device(queue, grad_u)
 
-        key = (qbx_order, curve_name, nelements, zero_op_name)
+        key = (qbx_order, mesh_name, refinement_increment, zero_op_name)
 
         bound_op = bind(qbx, zero_op)
         error = bound_op(

@@ -3,6 +3,11 @@
 QBX internals
 =============
 
+Refinement
+----------
+
+.. automodule:: pytential.qbx.refinement
+
 Data structures describing geometry
 -----------------------------------
 
