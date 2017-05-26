@@ -309,10 +309,15 @@ def run_int_eq_test(
     if source_order is None:
         source_order = 4*target_order
 
+    refiner_extra_kwargs = {}
+
+    if k != 0:
+        refiner_extra_kwargs["kernel_length_scale"] = 5/k
+
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, fine_order=source_order, qbx_order=qbx_order,
             # Don't use FMM for now
-            fmm_order=False).with_refinement()
+            fmm_order=False).with_refinement(**refiner_extra_kwargs)
 
     density_discr = qbx.density_discr
 
@@ -798,9 +803,16 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
         elif d == 3:
             order_bump = 6
 
-        qbx, _ = QBXLayerPotentialSource(
-            pre_density_discr, 4*target_order,
-            qbx_order, fmm_order=qbx_order + order_bump).with_refinement()
+        refiner_extra_kwargs = {}
+
+        if k != 0:
+            refiner_extra_kwargs["kernel_length_scale"] = 5/k
+
+        qbx, _ = (
+                QBXLayerPotentialSource(
+                    pre_density_discr, 4*target_order,
+                    qbx_order, fmm_order=qbx_order + order_bump)
+                .with_refinement(**refiner_extra_kwargs))
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
