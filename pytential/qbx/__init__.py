@@ -736,7 +736,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                             queue,
                             targets=target_discr.nodes(),
                             sources=self.fine_density_discr.nodes(),
-                            centers=geo_data.centers,
+                            centers=geo_data.centers(),
                             strengths=[strengths],
                             qbx_tgt_numbers=qbx_tgt_numbers,
                             qbx_center_numbers=qbx_center_numbers,
