@@ -365,7 +365,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
             return (area_element.with_queue(queue)*qweight).with_queue(None)
 
-
     # {{{ helpers for symbolic operator processing
 
     def preprocess_optemplate(self, name, discretizations, expr):
