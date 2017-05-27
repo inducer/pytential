@@ -329,11 +329,14 @@ class QBXFMMGeometryData(object):
 
     .. attribute:: coord_dtype
 
-    .. rubric :: Methods
+    .. rubric :: Expansion centers
 
     .. attribute:: ncenters
-
     .. automethod:: centers()
+    .. automethod:: radii()
+
+    .. rubric :: Methods
+
     .. automethod:: target_info()
     .. automethod:: tree()
     .. automethod:: traversal()
@@ -374,25 +377,36 @@ class QBXFMMGeometryData(object):
     def coord_dtype(self):
         return self.lpot_source.fine_density_discr.nodes().dtype
 
-    # {{{ centers
+    # {{{ centers/radii
+
+    @property
+    def ncenters(self):
+        return len(self.centers()[0])
 
     @memoize_method
     def centers(self):
-        """ Return a :class:`CenterInfo`. |cached|
-        """
+        """ Return an object array of (interleaved) center coordinates.
 
-        lpot_source = self.lpot_source
+        ``coord_t [ambient_dim][ncenters]``
+        """
 
         with cl.CommandQueue(self.cl_context) as queue:
             from pytential.qbx.utils import get_interleaved_centers
             from pytools.obj_array import make_obj_array
             return make_obj_array([
                 ccomp.with_queue(None)
-                for ccomp in get_interleaved_centers(queue, lpot_source)])
+                for ccomp in get_interleaved_centers(queue, self.lpot_source)])
 
-    @property
-    def ncenters(self):
-        return len(self.centers()[0])
+    @memoize_method
+    def expansion_radii(self):
+        """Return an  array of radii associated with the (interleaved)
+        expansion centers.
+
+        ``coord_t [ncenters]``
+        """
+        with cl.CommandQueue(self.cl_context) as queue:
+            from pytential.qbx.utils import get_interleaved_radii
+            return get_interleaved_radii(queue, self.lpot_source)
 
     # }}}
 
@@ -435,22 +449,6 @@ class QBXFMMGeometryData(object):
                     target_discr_starts=target_discr_starts,
                     ntargets=ntargets).with_queue(None)
 
-    # FIXME unused
-    def xxx_target_radii(self):
-        """Shape: ``[ntargets]``
-
-        A list of target radii for FMM tree construction. In this list, the QBX
-        centers have nonzero radii, and all other targets have radius zero.
-        """
-
-        tgt_info = self.target_info()
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            target_radii = cl.array.zeros(queue, tgt_info.ntargets, self.coord_dtype)
-            # target_radii[:self.ncenters] = center_info.radii
-
-            return target_radii.with_queue(None)
-
     def target_side_preferences(self):
         """Return one big array combining all the data from
         the *side* part of :attr:`TargetInfo.target_discrs_and_qbx_sides`.
@@ -492,6 +490,12 @@ class QBXFMMGeometryData(object):
             nsources = lpot_src.fine_density_discr.nnodes
             nparticles = nsources + target_info.ntargets
 
+            target_radii = None
+            if self.lpot_source.expansion_disks_in_tree_have_extent:
+                target_radii = cl.array.zeros(queue, target_info.ntargets,
+                        self.coord_dtype)
+                target_radii[:self.ncenters] = self.expansion_radii()
+
             refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
             refine_weights[:nsources] = 1
             refine_weights.finish()
@@ -506,13 +510,16 @@ class QBXFMMGeometryData(object):
             # to avoid having too many disks overlap more than one box.
             #
             # FIXME: Should investigate this further.
+
             tree, _ = code_getter.build_tree(queue,
                     particles=lpot_src.fine_density_discr.nodes(),
                     targets=target_info.targets,
+                    target_radii=target_radii,
                     max_leaf_refine_weight=256,
                     refine_weights=refine_weights,
                     debug=self.debug,
-                    kind="adaptive-level-restricted")
+                    stick_out_factor=0,
+                    kind="adaptive")
 
             return tree
 
@@ -529,6 +536,9 @@ class QBXFMMGeometryData(object):
         with cl.CommandQueue(self.cl_context) as queue:
             trav, _ = self.code_getter.build_traversal(queue, self.tree(),
                     debug=self.debug)
+
+            if self.lpot_source.expansion_disks_in_tree_have_extent:
+                trav = trav.merge_close_lists(queue)
 
             return trav
 

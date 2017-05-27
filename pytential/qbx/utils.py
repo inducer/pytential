@@ -67,6 +67,76 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 # }}}
 
 
+# {{{ interleaver kernel
+
+@memoize
+def get_interleaver_kernel(dtype):
+    # NOTE: Returned kernel needs dstlen or dst parameter
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "[srclen,dstlen] -> {[i]: 0<=i<srclen}",
+        """
+        dst[2*i] = src1[i]
+        dst[2*i+1] = src2[i]
+        """, [
+            lp.GlobalArg("src1", shape=(var("srclen"),), dtype=dtype),
+            lp.GlobalArg("src2", shape=(var("srclen"),), dtype=dtype),
+            lp.GlobalArg("dst", shape=(var("dstlen"),), dtype=dtype),
+            "..."
+        ],
+        assumptions="2*srclen = dstlen")
+    knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
+    return knl
+
+# }}}
+
+
+# {{{ make interleaved centers
+
+def get_interleaved_centers(queue, lpot_source):
+    """
+    Return an array of shape (dim, ncenters) in which interior centers are placed
+    next to corresponding exterior centers.
+    """
+    knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
+    int_centers = get_centers_on_side(lpot_source, -1)
+    ext_centers = get_centers_on_side(lpot_source, +1)
+
+    result = []
+    wait_for = []
+
+    for int_axis, ext_axis in zip(int_centers, ext_centers):
+        axis = cl.array.empty(queue, len(int_axis) * 2, int_axis.dtype)
+        evt, _ = knl(queue, src1=int_axis, src2=ext_axis, dst=axis)
+        result.append(axis)
+        wait_for.append(evt)
+
+    cl.wait_for_events(wait_for)
+
+    return result
+
+# }}}
+
+
+# {{{ make interleaved radii
+
+def get_interleaved_radii(queue, lpot_source):
+    """
+    Return an array of shape (dim, ncenters) in which interior centers are placed
+    next to corresponding exterior centers.
+    """
+    knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
+    radii = lpot_source._expansion_radii("nsources")
+
+    result = cl.array.empty(queue, len(radii) * 2, radii.dtype)
+    evt, _ = knl(queue, src1=radii, src2=radii, dst=result)
+    evt.wait()
+
+    return result
+
+# }}}
+
+
 # {{{ panel sizes
 
 def panel_sizes(discr, last_dim_length):
@@ -198,57 +268,6 @@ def el_view(discr, group_nr, global_array):
         .reshape(
             global_array.shape[:-1]
             + (group.nelements,))
-
-# }}}
-
-
-# {{{ make interleaved centers
-
-# {{{ interleaver kernel
-
-@memoize
-def get_interleaver_kernel(dtype):
-    # NOTE: Returned kernel needs dstlen or dst parameter
-    from pymbolic import var
-    knl = lp.make_kernel(
-        "[srclen,dstlen] -> {[i]: 0<=i<srclen}",
-        """
-        dst[2*i] = src1[i]
-        dst[2*i+1] = src2[i]
-        """, [
-            lp.GlobalArg("src1", shape=(var("srclen"),), dtype=dtype),
-            lp.GlobalArg("src2", shape=(var("srclen"),), dtype=dtype),
-            lp.GlobalArg("dst", shape=(var("dstlen"),), dtype=dtype),
-            "..."
-        ],
-        assumptions="2*srclen = dstlen")
-    knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
-    return knl
-
-# }}}
-
-
-def get_interleaved_centers(queue, lpot_source):
-    """
-    Return an array of shape (dim, ncenters) in which interior centers are placed
-    next to corresponding exterior centers.
-    """
-    knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
-    int_centers = get_centers_on_side(lpot_source, -1)
-    ext_centers = get_centers_on_side(lpot_source, +1)
-
-    result = []
-    wait_for = []
-
-    for int_axis, ext_axis in zip(int_centers, ext_centers):
-        axis = cl.array.empty(queue, len(int_axis) * 2, int_axis.dtype)
-        evt, _ = knl(queue, src1=int_axis, src2=ext_axis, dst=axis)
-        result.append(axis)
-        wait_for.append(evt)
-
-    cl.wait_for_events(wait_for)
-
-    return result
 
 # }}}
 

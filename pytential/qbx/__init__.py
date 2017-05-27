@@ -107,6 +107,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             # FIXME default debug=False once everything works
             debug=True,
             refined_for_global_qbx=False,
+            expansion_disks_in_tree_have_extent=False,
             performance_data_file=None):
         """
         :arg fine_order: The total degree to which the (upsampled)
@@ -145,6 +146,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         self.debug = debug
         self.refined_for_global_qbx = refined_for_global_qbx
+        self.expansion_disks_in_tree_have_extent = \
+                expansion_disks_in_tree_have_extent
         self.performance_data_file = performance_data_file
 
     def copy(
@@ -177,6 +180,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 refined_for_global_qbx=(
                     refined_for_global_qbx if refined_for_global_qbx is not None
                     else self.refined_for_global_qbx),
+                expansion_disks_in_tree_have_extent=(
+                    self.expansion_disks_in_tree_have_extent),
                 performance_data_file=self.performance_data_file)
 
     # }}}
