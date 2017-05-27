@@ -304,41 +304,41 @@ class TreeWithQBXMetadata(Tree):
 
     .. attribute:: box_to_qbx_panel_starts
 
-    ``box_id_t [nboxes + 1]``
+        ``box_id_t [nboxes + 1]``
 
     .. attribute:: box_to_qbx_panel_lists
 
-    ``particle_id_t [*]``
+        ``particle_id_t [*]``
 
     .. rubric:: Box to QBX sources
 
     .. attribute:: box_to_qbx_source_starts
 
-    ``box_id_t [nboxes + 1]``
+        ``box_id_t [nboxes + 1]``
 
     .. attribute:: box_to_qbx_source_lists
 
-    ``particle_id_t [*]``
+        ``particle_id_t [*]``
 
     .. rubric:: Box to QBX centers
 
     .. attribute:: box_to_qbx_center_starts
 
-    ``box_id_t [nboxes + 1]``
+        ``box_id_t [nboxes + 1]``
 
     .. attribute:: box_to_qbx_center_lists
 
-    ``particle_id_t [*]``
+        ``particle_id_t [*]``
 
     .. rubric:: Box to QBX targets
 
     .. attribute:: box_to_qbx_target_starts
 
-    ``box_id_t [nboxes + 1]``
+        ``box_id_t [nboxes + 1]``
 
     .. attribute:: box_to_qbx_target_lists
 
-    ``particle_id_t [*]``
+        ``particle_id_t [*]``
 
     .. ------------------------------------------------------------------------
     .. rubric:: Panel properties
@@ -346,11 +346,11 @@ class TreeWithQBXMetadata(Tree):
 
     .. attribute:: qbx_panel_to_source_starts
 
-    ``particle_id_t [nqbxpanels + 1]``
+        ``particle_id_t [nqbxpanels + 1]``
 
     .. attribute:: qbx_panel_to_center_starts
 
-    ``particle_id_t [nqbxpanels + 1]``
+        ``particle_id_t [nqbxpanels + 1]``
 
     .. ------------------------------------------------------------------------
     .. rubric:: Particle order indices
