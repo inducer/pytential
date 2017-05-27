@@ -183,11 +183,13 @@ class MatrixBuilder(EvaluationMapperBase):
 
         assert target_discr is source.density_discr
 
+        from pytential.qbx.utils import get_centers_on_side
+
         assert abs(expr.qbx_forced_limit) > 0
         _, (mat,) = mat_gen(self.queue,
                 target_discr.nodes(),
                 source.fine_density_discr.nodes(),
-                source.centers(expr.qbx_forced_limit),
+                get_centers_on_side(source, expr.qbx_forced_limit),
                 **kernel_args)
 
         mat = mat.get()

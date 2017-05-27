@@ -107,11 +107,13 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
             lpot_source, RefinerCodeContainer(cl_ctx),
             factory, fine_factory, **refiner_extra_kwargs)
 
+    from pytential.qbx.utils import get_centers_on_side
+
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
     fine_discr_nodes = lpot_source.fine_density_discr.nodes().get(queue)
-    int_centers = lpot_source.centers(-1)
+    int_centers = get_centers_on_side(lpot_source, -1)
     int_centers = np.array([axis.get(queue) for axis in int_centers])
-    ext_centers = lpot_source.centers(+1)
+    ext_centers = get_centers_on_side(lpot_source, +1)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
     panel_sizes = lpot_source.panel_sizes("npanels").get(queue)
     fine_panel_sizes = lpot_source.fine_panel_sizes("npanels").get(queue)
@@ -232,8 +234,10 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
     lpot_source, conn = QBXLayerPotentialSource(discr, order).with_refinement()
     del discr
 
-    int_centers = lpot_source.centers(-1)
-    ext_centers = lpot_source.centers(+1)
+    from pytential.qbx.utils import get_centers_on_side
+
+    int_centers = get_centers_on_side(lpot_source, -1)
+    ext_centers = get_centers_on_side(lpot_source, +1)
 
     # }}}
 

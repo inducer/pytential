@@ -436,18 +436,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 self.base_fine_density_discr, last_dim_length)
 
     @memoize_method
-    def centers(self, sign):
-        adim = self.density_discr.ambient_dim
-        dim = self.density_discr.dim
-
-        from pytential import sym, bind
-        with cl.CommandQueue(self.cl_context) as queue:
-            nodes = bind(self.density_discr, sym.nodes(adim))(queue)
-            normals = bind(self.density_discr, sym.normal(adim, dim=dim))(queue)
-            panel_sizes = self.panel_sizes("nsources").with_queue(queue)
-            return (nodes + normals * sign * panel_sizes / 2).as_vector(np.object)
-
-    @memoize_method
     def weights_and_area_elements(self):
         import pytential.symbolic.primitives as p
         from pytential.symbolic.execution import bind

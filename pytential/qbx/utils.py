@@ -67,6 +67,22 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 # }}}
 
 
+# {{{ compute center array
+
+def get_centers_on_side(lpot_src, sign):
+    adim = lpot_src.density_discr.ambient_dim
+    dim = lpot_src.density_discr.dim
+
+    from pytential import sym, bind
+    with cl.CommandQueue(lpot_src.cl_context) as queue:
+        nodes = bind(lpot_src.density_discr, sym.nodes(adim))(queue)
+        normals = bind(lpot_src.density_discr, sym.normal(adim, dim=dim))(queue)
+        panel_sizes = lpot_src.panel_sizes("nsources").with_queue(queue)
+        return (nodes + normals * sign * panel_sizes / 2).as_vector(np.object)
+
+# }}}
+
+
 # {{{ interleaver kernel
 
 @memoize
@@ -99,8 +115,8 @@ def get_interleaved_centers(queue, lpot_source):
     next to corresponding exterior centers.
     """
     knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
-    int_centers = lpot_source.centers(-1)
-    ext_centers = lpot_source.centers(+1)
+    int_centers = get_centers_on_side(lpot_source, -1)
+    ext_centers = get_centers_on_side(lpot_source, +1)
 
     result = []
     wait_for = []
