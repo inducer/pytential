@@ -120,35 +120,6 @@ class QBXFMMGeometryCodeGetter(object):
 
     @property
     @memoize_method
-    def pick_expansion_centers(self):
-        knl = lp.make_kernel(
-            """{[dim,k,i]:
-                0<=dim<ndims and
-                0<=k<nelements and
-                0<=i<nout_nodes}""",
-            """
-                centers[dim, k, i] = all_centers[dim, k, kept_center_indices[i]]
-                radii[k, i] = all_radii[k, kept_center_indices[i]]
-                """,
-            [
-                lp.GlobalArg("all_centers", None,
-                    shape="ndims,nelements,nunit_nodes"),
-                lp.GlobalArg("all_radii", None, shape="nelements,nunit_nodes"),
-                lp.ValueArg("nunit_nodes", np.int32),
-                "..."
-                ],
-            default_offset=lp.auto,
-            name="center_pick")
-
-        knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
-
-        knl = lp.tag_array_axes(knl, "centers,all_centers", "sep, C, C")
-
-        knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
-        return lp.tag_inames(knl, dict(k="g.0", dim="ilp"))
-
-    @property
-    @memoize_method
     def find_element_centers(self):
         knl = lp.make_kernel(
             """{[dim,k,i]:
@@ -164,25 +135,6 @@ class QBXFMMGeometryCodeGetter(object):
 
         knl = lp.split_iname(knl, "k", 128, inner_tag="l.0", outer_tag="g.0")
         return lp.tag_inames(knl, dict(dim="ilp"))
-
-    @property
-    @memoize_method
-    def find_element_radii(self):
-        knl = lp.make_kernel(
-            """{[dim,k,i]:
-                0<=dim<ndims and
-                0<=k<nelements and
-                0<=i<nunit_nodes}""",
-            """
-                el_radii[k] = max(dim, max(i, \
-                    fabs(nodes[dim, k, i] - el_centers[dim, k])))
-                """,
-            default_offset=lp.auto, name="find_element_radii")
-
-        knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
-
-        knl = lp.split_iname(knl, "k", 128, inner_tag="l.0", outer_tag="g.0")
-        return lp.tag_inames(knl, dict(dim="unr"))
 
     @memoize_method
     def copy_targets_kernel(self):
@@ -522,7 +474,6 @@ class QBXFMMGeometryData(object):
     .. automethod:: target_info()
     .. automethod:: tree()
     .. automethod:: traversal()
-    .. automethod:: leaf_to_center_lookup
     .. automethod:: qbx_center_to_target_box()
     .. automethod:: global_qbx_flags()
     .. automethod:: global_qbx_centers()
@@ -732,18 +683,6 @@ class QBXFMMGeometryData(object):
                     debug=self.debug)
 
             return trav
-
-    def leaf_to_center_lookup(self):
-        """Return a :class:`boxtree.area_query.LeavesToBallsLookup` to look up
-        which which QBX disks overlap each leaf box.
-        """
-
-        center_info = self.center_info()
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            lbl, _ = self.code_getter.build_leaf_to_ball_lookup(queue,
-                    self.tree(), center_info.centers, center_info.radii)
-            return lbl
 
     @memoize_method
     def qbx_center_to_target_box(self):
