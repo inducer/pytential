@@ -376,7 +376,7 @@ class CenterInfo(DeviceDataRecord):
 
     @property
     def ncenters(self):
-        return len(self.radii)
+        return len(self.centers[0])
 
 
 class CenterToTargetList(DeviceDataRecord):
@@ -515,13 +515,14 @@ class QBXFMMGeometryData(object):
         with cl.CommandQueue(self.cl_context) as queue:
             from pytential.qbx.utils import get_interleaved_centers
             centers = get_interleaved_centers(queue, lpot_source)
-            sides = cl.array.arange(queue, len(centers[0]), dtype=np.int32)
-            sides = 2 * (sides & 1) - 1
-            radii = lpot_source.panel_sizes("ncenters").with_queue(queue) / 2
+            # sides = cl.array.arange(queue, len(centers[0]), dtype=np.int32)
+            # sides = 2 * (sides & 1) - 1
+            # radii = lpot_source.panel_sizes("ncenters").with_queue(queue) / 2
 
         return CenterInfo(
-                sides=sides,
-                radii=radii,
+                # FIXME: Conceivably unused
+                # sides=sides,
+                # radii=radii,
                 centers=centers).with_queue(None)
 
     # }}}
