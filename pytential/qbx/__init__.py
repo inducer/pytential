@@ -658,6 +658,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
 
+        import pytential.qbx.utils as utils
+
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
@@ -673,7 +675,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
                         self.fine_density_discr.nodes(),
-                        self.centers(o.qbx_forced_limit),
+                        utils.get_centers_on_side(self, o.qbx_forced_limit),
                         [strengths], **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
             else:
