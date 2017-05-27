@@ -181,6 +181,29 @@ def get_centers_on_side(lpot_src, sign):
 # }}}
 
 
+# {{{ el_view
+
+def el_view(discr, group_nr, global_array):
+    """Return a view of *global_array* of shape
+    ``(..., discr.groups[group_nr].nelements)``
+    where *global_array* is of shape ``(..., nelements)``,
+    where *nelements* is the global (per-discretization) node count.
+    """
+
+    group = discr.groups[group_nr]
+    el_nr_base = sum(group.nelements for group in discr.groups[:group_nr])
+
+    return global_array[
+        ..., el_nr_base:el_nr_base + group.nelements] \
+        .reshape(
+            global_array.shape[:-1]
+            + (group.nelements,))
+
+# }}}
+
+
+# {{{ make interleaved centers
+
 # {{{ interleaver kernel
 
 @memoize
@@ -204,29 +227,6 @@ def get_interleaver_kernel(dtype):
 
 # }}}
 
-
-# {{{ el_view
-
-def el_view(discr, group_nr, global_array):
-    """Return a view of *global_array* of shape
-    ``(..., discr.groups[group_nr].nelements)``
-    where *global_array* is of shape ``(..., nelements)``,
-    where *nelements* is the global (per-discretization) node count.
-    """
-
-    group = discr.groups[group_nr]
-    el_nr_base = sum(group.nelements for group in discr.groups[:group_nr])
-
-    return global_array[
-        ..., el_nr_base:el_nr_base + group.nelements] \
-        .reshape(
-            global_array.shape[:-1]
-            + (group.nelements,))
-
-# }}}
-
-
-# {{{ make interleaved centers
 
 def get_interleaved_centers(queue, lpot_source):
     """
