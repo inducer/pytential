@@ -116,6 +116,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     ext_centers = get_centers_on_side(lpot_source, +1)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
     expansion_radii = lpot_source._expansion_radii("npanels").get(queue)
+    panel_sizes = lpot_source._panel_sizes("npanels").get(queue)
     fine_panel_sizes = lpot_source._fine_panel_sizes("npanels").get(queue)
 
     # {{{ check if satisfying criteria
