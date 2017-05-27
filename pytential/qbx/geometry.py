@@ -461,7 +461,6 @@ class QBXFMMGeometryData(object):
     .. automethod:: global_qbx_centers()
     .. automethod:: user_target_to_center()
     .. automethod:: center_to_tree_targets()
-    .. automethod:: global_qbx_centers_box_target_lists()
     .. automethod:: non_qbx_box_target_lists()
     .. automethod:: plot()
     """
@@ -848,31 +847,6 @@ class QBXFMMGeometryData(object):
                     lists=targets_sorted_by_center).with_queue(None)
 
             return result
-
-    @memoize_method
-    def global_qbx_centers_box_target_lists(self):
-        """Build a list of targets per box consisting only of global QBX centers.
-        Returns a :class:`boxtree.tree.FilteredTargetListsInUserOrder`.
-        (I.e. no new target order is created for these targets, as we expect
-        there to be (relatively) not many of them.)
-
-        |cached|
-        """
-
-        center_info = self.center_info()
-        with cl.CommandQueue(self.cl_context) as queue:
-            logger.info("find global qbx centers box target list: start")
-
-            flags = cl.array.zeros(queue, self.tree().ntargets, np.int8)
-
-            flags[:center_info.ncenters] = self.global_qbx_flags()
-
-            from boxtree.tree import filter_target_lists_in_user_order
-            result = filter_target_lists_in_user_order(queue, self.tree(), flags)
-
-            logger.info("find global qbx centers box target list: done")
-
-            return result.with_queue(None)
 
     @memoize_method
     def non_qbx_box_target_lists(self):
