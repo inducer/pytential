@@ -185,7 +185,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     def base_fine_density_discr(self):
         """The refined, interpolation-focused density discretization (no oversampling).
         """
-        # FIXME: Maybe rename interp_refined_discr
+        # FIXME: Maybe rename refined_interp_density_discr
         return (self._base_resampler.to_discr
                 if self._base_resampler is not None
                 else self.density_discr)
@@ -195,7 +195,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     def fine_density_discr(self):
         """The refined, quadrature-focused density discretization (with upsampling).
         """
-        # FIXME: Maybe rename quad_refined_discr
+        # FIXME: Maybe rename refined_quad_density_discr
         from meshmode.discretization.poly_element import (
                 QuadratureSimplexGroupFactory)
 
