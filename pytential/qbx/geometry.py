@@ -118,24 +118,6 @@ class QBXFMMGeometryCodeGetter(object):
         self.ambient_dim = ambient_dim
         self.debug = debug
 
-    @property
-    @memoize_method
-    def find_element_centers(self):
-        knl = lp.make_kernel(
-            """{[dim,k,i]:
-                0<=dim<ndims and
-                0<=k<nelements and
-                0<=i<nunit_nodes}""",
-            """
-                el_centers[dim, k] = sum(i, nodes[dim, k, i])/nunit_nodes
-                """,
-            default_offset=lp.auto, name="find_element_centers")
-
-        knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
-
-        knl = lp.split_iname(knl, "k", 128, inner_tag="l.0", outer_tag="g.0")
-        return lp.tag_inames(knl, dict(dim="ilp"))
-
     @memoize_method
     def copy_targets_kernel(self):
         knl = lp.make_kernel(
