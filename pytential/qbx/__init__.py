@@ -45,45 +45,6 @@ __doc__ = """
 """
 
 
-# {{{ jump term interface helper
-
-class _JumpTermArgumentProvider(object):
-    def __init__(self, discr, density, ds_direction, side=None):
-        self.discr = discr
-        self.density = density
-        self.ds_direction = ds_direction
-        self.side = side
-
-    @property
-    def normal(self):
-        return self.discr.curve.normals.reshape(2, -1).T
-
-    @property
-    def tangent(self):
-        return self.discr.curve.tangents.reshape(2, -1).T
-
-    @property
-    def src_derivative_dir(self):
-        return self.ds_direction
-
-    @property
-    def mean_curvature(self):
-        return self.discr.curve.curvature.reshape(-1)
-
-    @property
-    def density_0(self):
-        return self.density.reshape(-1)
-
-    @property
-    @memoize_method
-    def density_0_prime(self):
-        diff_mat = self.discr.curve.expansion.get_differentiation_matrix()
-        return (2 * np.dot(diff_mat, self.density.T).T.reshape(-1)
-                / self.discr.curve.speed.reshape(-1))
-
-# }}}
-
-
 class LayerPotentialSource(PotentialSource):
     pass
 
