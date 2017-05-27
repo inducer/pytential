@@ -398,16 +398,29 @@ class QBXTargetAssociator(object):
         # Perform a space invader query over the sources.
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
-        panel_sizes = lpot_source._panel_sizes("nsources").with_queue(queue)
+        tunnel_radius_by_source = \
+                lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
 
-        # FIXME: (AK) Not sure what's going on -- need comment
+        # Target-marking algorithm (TGTMARK):
+        #
+        # (1) Use a space invader query to tag each leaf box that intersects with the
+        # "near-source-detection tunnel" with the distance to the closest source.
+        #
+        # (2) Do an area query around all targets with the radius resulting
+        # from the space invader query, enumerate sources in that vicinity.
+        # If a source is found whose distance to the target is less than the
+        # source's tunnel radius, mark that target as pending.
+        # (or below: mark the source for refinement)
+
+        # Note that this comment is referred to below by "TGTMARK". If you
+        # remove this comment or change the algorithm here, make sure that
+        # the reference below is still accurate.
 
         box_to_search_dist, evt = self.space_invader_query(
                 queue,
                 tree,
                 sources,
-                # FIXME: Is this the right quantity? (as opposed to expansion radii?)
-                panel_sizes / 2,
+                tunnel_radius_by_source,
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
@@ -472,6 +485,12 @@ class QBXTargetAssociator(object):
                 lpot_source._expansion_radii("ncenters").with_queue(queue)
         expansion_radii_by_center_with_stick_out = \
                 expansion_radii_by_center * (1 + stick_out_factor)
+
+        # Idea:
+        #
+        # (1) Tag leaf boxes around centers with max distance to usable center.
+        # (2) Area query from targets with those radii to find closest eligible
+        # center.
 
         box_to_search_dist, evt = self.space_invader_query(
                 queue,
@@ -542,17 +561,16 @@ class QBXTargetAssociator(object):
         # Perform a space invader query over the sources.
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
-        panel_sizes = lpot_source._panel_sizes("nsources").with_queue(queue)
+        tunnel_radius_by_source = \
+                lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
 
-        # FIXME: (AK) Not sure what's going on -- need comment
+        # See (TGTMARK) above for algorithm.
 
         box_to_search_dist, evt = self.space_invader_query(
                 queue,
                 tree,
                 sources,
-                # FIXME: Is this the right quantity?
-                # (as opposed to expansion/tunnel radii?)
-                panel_sizes / 2,
+                tunnel_radius_by_source,
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
