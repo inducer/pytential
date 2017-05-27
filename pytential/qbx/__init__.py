@@ -540,7 +540,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         # }}}
 
-        if len(geo_data.global_qbx_centers()) != geo_data.center_info().ncenters:
+        if len(geo_data.global_qbx_centers()) != geo_data.ncenters:
             raise NotImplementedError("geometry has centers requiring local QBX")
 
         from pytential.qbx.geometry import target_state
@@ -699,12 +699,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                             (target_discr, qbx_forced_limit),
                         ))
 
-                # center_info is independent of targets
-                center_info = geo_data.center_info()
+                # center-related info is independent of targets
 
                 # First ncenters targets are the centers
                 tgt_to_qbx_center = (
-                        geo_data.user_target_to_center()[center_info.ncenters:]
+                        geo_data.user_target_to_center()[geo_data.ncenters:]
                         .copy(queue=queue))
 
                 qbx_tgt_numberer = self.get_qbx_target_numberer(
@@ -737,7 +736,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                             queue,
                             targets=target_discr.nodes(),
                             sources=self.fine_density_discr.nodes(),
-                            centers=center_info.centers,
+                            centers=geo_data.centers,
                             strengths=[strengths],
                             qbx_tgt_numbers=qbx_tgt_numbers,
                             qbx_center_numbers=qbx_center_numbers,

@@ -353,32 +353,6 @@ class TargetInfo(DeviceDataRecord):
     """
 
 
-class CenterInfo(DeviceDataRecord):
-    """Information on location of QBX centers.
-    Returned from :meth:`QBXFMMGeometryData.center_info`.
-
-    .. attribute:: centers
-
-        Shape: ``[dim][ncenters]``
-
-    .. attribute:: sides
-
-        Shape: ``[ncenters]``
-
-        -1 for inside, +1 for outside (relative to normal)
-
-    .. attribute:: radii
-
-        Shape: ``[ncenters]``
-
-    .. attribute:: ncenters
-    """
-
-    @property
-    def ncenters(self):
-        return len(self.centers[0])
-
-
 class CenterToTargetList(DeviceDataRecord):
     """A lookup table of targets covered by each QBX disk. Indexed by global
     number of QBX center, ``lists[start[i]:start[i+1]]`` indicates numbers
@@ -452,7 +426,9 @@ class QBXFMMGeometryData(object):
 
     .. rubric :: Methods
 
-    .. automethod:: center_info()
+    .. attribute:: ncenters
+
+    .. automethod:: centers()
     .. automethod:: target_info()
     .. automethod:: tree()
     .. automethod:: traversal()
@@ -493,19 +469,10 @@ class QBXFMMGeometryData(object):
     def coord_dtype(self):
         return self.lpot_source.fine_density_discr.nodes().dtype
 
-    # {{{ center info
+    # {{{ centers
 
     @memoize_method
-    def kept_center_indices(self, el_group):
-        """Return indices of unit nodes (of the target discretization)
-        that will give rise to QBX centers.
-        """
-
-        # FIXME: Be more careful about which nodes to keep
-        return np.arange(0, el_group.nunit_nodes)
-
-    @memoize_method
-    def center_info(self):
+    def centers(self):
         """ Return a :class:`CenterInfo`. |cached|
         """
 
@@ -513,16 +480,14 @@ class QBXFMMGeometryData(object):
 
         with cl.CommandQueue(self.cl_context) as queue:
             from pytential.qbx.utils import get_interleaved_centers
-            centers = get_interleaved_centers(queue, lpot_source)
-            # sides = cl.array.arange(queue, len(centers[0]), dtype=np.int32)
-            # sides = 2 * (sides & 1) - 1
-            # radii = lpot_source.panel_sizes("ncenters").with_queue(queue) / 2
+            from pytools.obj_array import make_obj_array
+            return make_obj_array([
+                ccomp.with_queue(None)
+                for ccomp in get_interleaved_centers(queue, lpot_source)])
 
-        return CenterInfo(
-                # FIXME: Conceivably unused
-                # sides=sides,
-                # radii=radii,
-                centers=centers).with_queue(None)
+    @property
+    def ncenters(self):
+        return len(self.centers()[0])
 
     # }}}
 
@@ -536,9 +501,7 @@ class QBXFMMGeometryData(object):
         lpot_src = self.lpot_source
 
         with cl.CommandQueue(self.cl_context) as queue:
-            center_info = self.center_info()
-
-            ntargets = center_info.ncenters
+            ntargets = self.ncenters
             target_discr_starts = []
 
             for target_discr, qbx_side in self.target_discrs_and_qbx_sides:
@@ -552,8 +515,8 @@ class QBXFMMGeometryData(object):
                     self.coord_dtype)
             code_getter.copy_targets_kernel()(
                     queue,
-                    targets=targets[:, :center_info.ncenters],
-                    points=center_info.centers)
+                    targets=targets[:, :self.ncenters],
+                    points=self.centers())
 
             for start, (target_discr, _) in zip(
                     target_discr_starts, self.target_discrs_and_qbx_sides):
@@ -567,20 +530,19 @@ class QBXFMMGeometryData(object):
                     target_discr_starts=target_discr_starts,
                     ntargets=ntargets).with_queue(None)
 
-    def target_radii(self):
+    # FIXME unused
+    def xxx_target_radii(self):
         """Shape: ``[ntargets]``
 
         A list of target radii for FMM tree construction. In this list, the QBX
-        centers have the radii determined by :meth:`center_info`, and all other
-        targets have radius zero.
+        centers have nonzero radii, and all other targets have radius zero.
         """
 
         tgt_info = self.target_info()
-        center_info = self.center_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
             target_radii = cl.array.zeros(queue, tgt_info.ntargets, self.coord_dtype)
-            target_radii[:center_info.ncenters] = center_info.radii
+            # target_radii[:self.ncenters] = center_info.radii
 
             return target_radii.with_queue(None)
 
@@ -591,12 +553,11 @@ class QBXFMMGeometryData(object):
         Shape: ``[ntargets]``, dtype: int8"""
 
         tgt_info = self.target_info()
-        center_info = self.center_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
             target_side_preferences = cl.array.empty(
                     queue, tgt_info.ntargets, np.int8)
-            target_side_preferences[:center_info.ncenters] = 0
+            target_side_preferences[:self.ncenters] = 0
 
             for tdstart, (target_discr, qbx_side) in \
                     zip(tgt_info.target_discr_starts,
@@ -668,15 +629,14 @@ class QBXFMMGeometryData(object):
 
     @memoize_method
     def qbx_center_to_target_box(self):
-        """Return a lookup table of length :attr:`CenterInfo.ncenters`
-        (see :meth:`center_info`) indicating the target box in which each
+        """Return a lookup table of length :attr:`ncenters`
+        indicating the target box in which each
         QBX disk is located.
 
         |cached|
         """
         tree = self.tree()
         trav = self.traversal()
-        center_info = self.center_info()
 
         qbx_center_to_target_box_lookup = \
                 self.code_getter.qbx_center_to_target_box_lookup(
@@ -709,18 +669,17 @@ class QBXFMMGeometryData(object):
                     box_target_starts=tree.box_target_starts,
                     box_target_counts_nonchild=tree.box_target_counts_nonchild,
                     user_target_from_tree_target=user_target_from_tree_target,
-                    ncenters=center_info.ncenters)
+                    ncenters=self.ncenters)
 
             return qbx_center_to_target_box.with_queue(None)
 
     @memoize_method
     def global_qbx_flags(self):
         """Return an array of :class:`numpy.int8` of length
-        :attr:`CenterInfo.ncenters` (see :meth:`center_info`) indicating
-        whether each center can use gloal QBX, i.e. whether a single expansion
-        can mediate interactions from *all* sources to all targets for which it
-        is valid. If global QBX can be used, the center's entry will be 1,
-        otherwise it will be 0.
+        :attr:`ncenters` indicating whether each center can use gloal QBX, i.e.
+        whether a single expansion can mediate interactions from *all* sources
+        to all targets for which it is valid. If global QBX can be used, the
+        center's entry will be 1, otherwise it will be 0.
 
         (If not, local QBX is needed, and the center may only be
         able to mediate some of the interactions to a given target.)
@@ -728,10 +687,8 @@ class QBXFMMGeometryData(object):
         |cached|
         """
 
-        center_info = self.center_info()
-
         with cl.CommandQueue(self.cl_context) as queue:
-            result = cl.array.empty(queue, center_info.ncenters, np.int8)
+            result = cl.array.empty(queue, self.ncenters, np.int8)
             result.fill(1)
 
         return result.with_queue(None)
@@ -750,7 +707,7 @@ class QBXFMMGeometryData(object):
 
             logger.info("find global qbx centers: start")
             result, count, _ = copy_if(
-                    cl.array.arange(queue, self.center_info().ncenters,
+                    cl.array.arange(queue, self.ncenters,
                         tree.particle_id_dtype),
                     "global_qbx_flags[i] != 0",
                     extra_args=[
@@ -778,16 +735,15 @@ class QBXFMMGeometryData(object):
         tgt_assoc = QBXTargetAssociator(self.cl_context)
 
         tgt_info = self.target_info()
-        center_info = self.center_info()
 
         from pytential.target import PointsTarget
 
         with cl.CommandQueue(self.cl_context) as queue:
             target_side_prefs = (self
-                .target_side_preferences()[center_info.ncenters:].get(queue=queue))
+                .target_side_preferences()[self.ncenters:].get(queue=queue))
 
         target_discrs_and_qbx_sides = [(
-                PointsTarget(tgt_info.targets[:, center_info.ncenters:]),
+                PointsTarget(tgt_info.targets[:, self.ncenters:]),
                 target_side_prefs.astype(np.int32))]
 
         # FIXME: try block...
@@ -799,8 +755,8 @@ class QBXFMMGeometryData(object):
 
         with cl.CommandQueue(self.cl_context) as queue:
             result = cl.array.empty(queue, tgt_info.ntargets, tree.particle_id_dtype)
-            result[:center_info.ncenters].fill(target_state.NO_QBX_NEEDED)
-            result[center_info.ncenters:] = tgt_assoc_result.target_to_center
+            result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
+            result[self.ncenters:] = tgt_assoc_result.target_to_center
 
         return result
 
@@ -812,7 +768,6 @@ class QBXFMMGeometryData(object):
         |cached|
         """
 
-        center_info = self.center_info()
         user_ttc = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
@@ -838,7 +793,7 @@ class QBXFMMGeometryData(object):
             center_target_starts, targets_sorted_by_center, _ = \
                     self.code_getter.key_value_sort(queue,
                             filtered_tree_ttc, filtered_target_ids,
-                            center_info.ncenters, tree_ttc.dtype)
+                            self.ncenters, tree_ttc.dtype)
 
             logger.info("build center -> targets lookup table: done")
 
@@ -869,7 +824,7 @@ class QBXFMMGeometryData(object):
 
             # 'flags' is in user order, and should be.
 
-            nqbx_centers = self.center_info().ncenters
+            nqbx_centers = self.ncenters
             flags[:nqbx_centers] = 0
 
             from boxtree.tree import filter_target_lists_in_tree_order
@@ -908,22 +863,22 @@ class QBXFMMGeometryData(object):
 
             # {{{ draw centers and circles
 
-            center_info = self.center_info()
+            centers = self.centers()
             centers = [
-                    center_info.centers[0].get(queue),
-                    center_info.centers[1].get(queue)]
+                    centers[0].get(queue),
+                    centers[1].get(queue)]
             pt.plot(centers[0][global_flags == 0],
                     centers[1][global_flags == 0], "oc",
                     label="centers needing local qbx")
             ax = pt.gca()
-            for icenter, (cx, cy, r) in enumerate(zip(
-                    centers[0], centers[1], center_info.radii.get(queue))):
-                ax.add_artist(
-                        pt.Circle((cx, cy), r, fill=False, ls="dotted", lw=1))
-                pt.text(cx, cy,
-                        str(icenter), fontsize=8,
-                        ha="left", va="center",
-                        bbox=dict(facecolor='white', alpha=0.5, lw=0))
+            # for icenter, (cx, cy, r) in enumerate(zip(
+            #         centers[0], centers[1], center_info.radii.get(queue))):
+            #     ax.add_artist(
+            #             pt.Circle((cx, cy), r, fill=False, ls="dotted", lw=1))
+            #     pt.text(cx, cy,
+            #             str(icenter), fontsize=8,
+            #             ha="left", va="center",
+            #             bbox=dict(facecolor='white', alpha=0.5, lw=0))
 
             # }}}
 
@@ -950,9 +905,9 @@ class QBXFMMGeometryData(object):
             tccount = 0
             checked = 0
             for tx, ty, tcenter in zip(
-                    targets[0][center_info.ncenters:],
-                    targets[1][center_info.ncenters:],
-                    ttc[center_info.ncenters:]):
+                    targets[0][self.ncenters:],
+                    targets[1][self.ncenters:],
+                    ttc[self.ncenters:]):
                 checked += 1
                 if tcenter >= 0:
                     tccount += 1
