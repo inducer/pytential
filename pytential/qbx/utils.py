@@ -150,8 +150,7 @@ def plot_discr(lpot_source, outfilename="discr.pdf"):
 # }}}
 
 
-# {{{ tree creation
-
+# {{{ tree-with-metadata: data structure
 
 class TreeWithQBXMetadata(Tree):
     """A subclass of :class:`boxtree.tree.Tree`. Has all of that class's
@@ -229,9 +228,12 @@ class TreeWithQBXMetadata(Tree):
     """
     pass
 
+# }}}
+
+
+# {{{ tree-with-metadata: creation
 
 MAX_REFINE_WEIGHT = 64
-
 
 def build_tree_with_qbx_metadata(
         queue, tree_builder, lpot_source, targets_list=(),

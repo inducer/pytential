@@ -679,7 +679,7 @@ class QBXFMMGeometryData(object):
 
     @memoize_method
     def tree(self):
-        """Build and return a :class:`boxtree.tree.TreeWithLinkedPointSources`
+        """Build and return a :class:`boxtree.tree.Tree`
         for this source with these targets.
 
         |cached|

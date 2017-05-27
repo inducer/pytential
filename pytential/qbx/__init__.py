@@ -367,7 +367,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         return self._centers_of_mass_for_discr(self.base_fine_density_discr)
 
     def _panel_sizes_for_discr(self, discr, last_dim_length):
-        assert last_dim_length in ("nsources", "ncenters", "npanels")
+        if last_dim_length not in ("nsources", "ncenters", "npanels"):
+            raise ValueError(
+                    "invalid value of last_dim_length: %s" % last_dim_length)
+
         # To get the panel size this does the equivalent of (∫ 1 ds)**(1/dim).
         # FIXME: Kernel optimizations
 

@@ -270,6 +270,8 @@ class RefinerWrangler(object):
         self.code_container = code_container
         self.queue = queue
 
+    # {{{ check subroutines for conditions 1-3
+
     def check_expansion_disks_undisturbed_by_sources(self,
             lpot_source, tree, peer_lists, refine_flags,
             debug, wait_for=None):
@@ -416,6 +418,8 @@ class RefinerWrangler(object):
 
         return (out["refine_flags_updated"].get() == 1).all()
 
+    # }}}
+
     def build_tree(self, lpot_source, use_base_fine_discr=False):
         tb = self.code_container.tree_builder()
         from pytential.qbx.utils import build_tree_with_qbx_metadata
@@ -469,6 +473,8 @@ def make_empty_refine_flags(queue, lpot_source, use_base_fine_discr=False):
     result.finish()
     return result
 
+
+# {{{ main entry point
 
 def refine_for_global_qbx(lpot_source, code_container,
         group_factory, fine_group_factory, kernel_length_scale=None,
@@ -621,6 +627,7 @@ def refine_for_global_qbx(lpot_source, code_container,
     lpot_source = lpot_source.copy(debug=debug, refined_for_global_qbx=True)
 
     if len(connections) == 0:
+        # FIXME: This is inefficient
         connection = make_same_mesh_connection(
                 lpot_source.density_discr,
                 lpot_source.density_discr)
@@ -628,6 +635,8 @@ def refine_for_global_qbx(lpot_source, code_container,
         connection = ChainedDiscretizationConnection(connections)
 
     return lpot_source, connection
+
+# }}}
 
 
 # vim: foldmethod=marker:filetype=pyopencl
