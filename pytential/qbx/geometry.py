@@ -215,7 +215,10 @@ class QBXFMMGeometryCodeGetter(object):
                     VectorArg(particle_id_dtype, "filtered_target_id"),
                     VectorArg(particle_id_dtype, "count"),
                     ],
+
+                # "Does this target have a QBX center?"
                 input_expr="(target_to_center[i] >= 0) ? 1 : 0",
+
                 scan_expr="a+b", neutral="0",
                 output_statement="""
                     if (prev_item != item)
