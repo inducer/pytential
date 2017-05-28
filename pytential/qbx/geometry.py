@@ -170,8 +170,10 @@ class QBXFMMGeometryCodeGetter(object):
 
                     # This write is race-free because each center only belongs
                     # to one box.
-                    qbx_center_to_target_box[itarget_user] = \
-                            box_to_target_box[ibox] {id=tgt_write,if=in_bounds}
+                    if in_bounds
+                        qbx_center_to_target_box[itarget_user] = \
+                                box_to_target_box[ibox] {id=tgt_write}
+                    end
                 end
             end
             """,
