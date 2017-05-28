@@ -751,9 +751,13 @@ class QBXFMMGeometryData(object):
 
     # {{{ plotting (for debugging)
 
-    def plot(self):
+    def plot(self, draw_circles=False, draw_center_numbers=False,
+            highlight_centers=None):
         """Plot most of the information contained in a :class:`QBXFMMGeometryData`
         object, for debugging.
+
+        :arg highlight_centers: If not *None*, an object with which the array of
+            centers can be indexed to find the highlighted centers.
 
         .. note::
 
@@ -766,8 +770,8 @@ class QBXFMMGeometryData(object):
 
         with cl.CommandQueue(self.cl_context) as queue:
             import matplotlib.pyplot as pt
-            nodes_host = self.lpot_source.fine_density_discr.nodes().get(queue)
-            pt.plot(nodes_host[0], nodes_host[1], "x-")
+            from meshmode.discretization.visualization import draw_curve
+            draw_curve(self.lpot_source.fine_density_discr)
 
             global_flags = self.global_qbx_flags().get(queue=queue)
 
@@ -785,15 +789,28 @@ class QBXFMMGeometryData(object):
             pt.plot(centers[0][global_flags == 0],
                     centers[1][global_flags == 0], "oc",
                     label="centers needing local qbx")
+
+            if highlight_centers is not None:
+                pt.plot(centers[0][highlight_centers],
+                        centers[1][highlight_centers], "oc",
+                        label="highlighted centers",
+                        markersize=15)
+
             ax = pt.gca()
-            # for icenter, (cx, cy, r) in enumerate(zip(
-            #         centers[0], centers[1], center_info.radii.get(queue))):
-            #     ax.add_artist(
-            #             pt.Circle((cx, cy), r, fill=False, ls="dotted", lw=1))
-            #     pt.text(cx, cy,
-            #             str(icenter), fontsize=8,
-            #             ha="left", va="center",
-            #             bbox=dict(facecolor='white', alpha=0.5, lw=0))
+
+            if draw_circles:
+                for icenter, (cx, cy, r) in enumerate(zip(
+                        centers[0], centers[1],
+                        self.expansion_radii().get(queue))):
+                    ax.add_artist(
+                            pt.Circle((cx, cy), r, fill=False, ls="dotted", lw=1))
+
+            if draw_center_numbers:
+                for icenter, (cx, cy, r) in enumerate(zip(centers[0], centers[1])):
+                    pt.text(cx, cy,
+                            str(icenter), fontsize=8,
+                            ha="left", va="center",
+                            bbox=dict(facecolor='white', alpha=0.5, lw=0))
 
             # }}}
 
