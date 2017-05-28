@@ -37,10 +37,14 @@ def test_muller(true_roots):
     :arg n: number of zeros sought
     :return: (roots, niter)
     """
+    np.random.seed(15)
+    z_start = np.random.rand(3) + 1j*np.random.rand(3)
+
     eps = 1e-12
     from pytential.muller import muller_deflate
     roots, niter = muller_deflate(
-        lambda z: poly_with_roots(z, true_roots), len(true_roots))
+        lambda z: poly_with_roots(z, true_roots), len(true_roots),
+        z_start=z_start)
 
     for r_i in roots:
         min_dist, true_root = min(

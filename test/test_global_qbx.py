@@ -107,20 +107,21 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
             lpot_source, RefinerCodeContainer(cl_ctx),
             factory, fine_factory, **refiner_extra_kwargs)
 
+    from pytential.qbx.utils import get_centers_on_side
+
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
     fine_discr_nodes = lpot_source.fine_density_discr.nodes().get(queue)
-    int_centers = lpot_source.centers(-1)
+    int_centers = get_centers_on_side(lpot_source, -1)
     int_centers = np.array([axis.get(queue) for axis in int_centers])
-    ext_centers = lpot_source.centers(+1)
+    ext_centers = get_centers_on_side(lpot_source, +1)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
-    panel_sizes = lpot_source.panel_sizes("npanels").get(queue)
-    fine_panel_sizes = lpot_source.fine_panel_sizes("npanels").get(queue)
+    expansion_radii = lpot_source._expansion_radii("npanels").get(queue)
+    panel_sizes = lpot_source._panel_sizes("npanels").get(queue)
+    fine_panel_sizes = lpot_source._fine_panel_sizes("npanels").get(queue)
 
     # {{{ check if satisfying criteria
 
     def check_disk_undisturbed_by_sources(centers_panel, sources_panel):
-        h = panel_sizes[centers_panel.element_nr]
-
         if centers_panel.element_nr == sources_panel.element_nr:
             # Same panel
             return
@@ -143,8 +144,9 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         # A center cannot be closer to another panel than to its originating
         # panel.
 
-        assert dist >= h / 2, \
-                (dist, h, centers_panel.element_nr, sources_panel.element_nr)
+        rad = expansion_radii[centers_panel.element_nr]
+        assert dist >= rad, \
+                (dist, rad, centers_panel.element_nr, sources_panel.element_nr)
 
     def check_sufficient_quadrature_resolution(centers_panel, sources_panel):
         h = fine_panel_sizes[sources_panel.element_nr]
@@ -232,8 +234,10 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
     lpot_source, conn = QBXLayerPotentialSource(discr, order).with_refinement()
     del discr
 
-    int_centers = lpot_source.centers(-1)
-    ext_centers = lpot_source.centers(+1)
+    from pytential.qbx.utils import get_centers_on_side
+
+    int_centers = get_centers_on_side(lpot_source, -1)
+    ext_centers = get_centers_on_side(lpot_source, +1)
 
     # }}}
 
@@ -243,7 +247,8 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
     nsources = lpot_source.density_discr.nnodes
     noise = rng.uniform(queue, nsources, dtype=np.float, a=0.01, b=1.0)
-    panel_sizes = lpot_source.panel_sizes("nsources").with_queue(queue)
+    tunnel_radius = \
+            lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
 
     def targets_from_sources(sign, dist):
         from pytential import sym, bind
@@ -254,8 +259,8 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     from pytential.target import PointsTarget
 
-    int_targets = PointsTarget(targets_from_sources(-1, noise * panel_sizes / 2))
-    ext_targets = PointsTarget(targets_from_sources(+1, noise * panel_sizes / 2))
+    int_targets = PointsTarget(targets_from_sources(-1, noise * tunnel_radius))
+    ext_targets = PointsTarget(targets_from_sources(+1, noise * tunnel_radius))
     far_targets = PointsTarget(targets_from_sources(+1, FAR_TARGET_DIST_FROM_SOURCE))
 
     # Create target discretizations.
@@ -290,7 +295,7 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
         QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs)
         .get(queue=queue))
 
-    panel_sizes = lpot_source.panel_sizes("nsources").get(queue)
+    expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
 
     int_centers = np.array([axis.get(queue) for axis in int_centers])
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
@@ -310,7 +315,7 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
                             target_to_source_result, target_to_side_result):
         assert (target_to_side_result == true_side).all()
         dists = la.norm((targets.T - centers.T[target_to_source_result]), axis=1)
-        assert (dists <= panel_sizes[target_to_source_result] / 2).all()
+        assert (dists <= expansion_radii[target_to_source_result]).all()
 
     # Checks that far targets are not assigned a center.
     def check_far_targets(target_to_source_result):

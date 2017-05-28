@@ -153,7 +153,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         return cl.array.zeros(
                     self.queue,
-                    (self.geo_data.center_info().ncenters,
+                    (self.geo_data.ncenters,
                         len(qbx_l_expn)),
                     dtype=self.dtype)
 
@@ -212,7 +212,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 self.queue,
                 global_qbx_centers=geo_data.global_qbx_centers(),
                 qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
-                qbx_centers=geo_data.center_info().centers,
+                qbx_centers=geo_data.centers(),
 
                 source_box_starts=starts,
                 source_box_lists=lists,
@@ -230,7 +230,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         qbx_expansions = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
-        if geo_data.center_info().ncenters == 0:
+        if geo_data.ncenters == 0:
             return qbx_expansions
 
         traversal = geo_data.traversal()
@@ -249,7 +249,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
 
                     centers=self.tree.box_centers,
-                    qbx_centers=geo_data.center_info().centers,
+                    qbx_centers=geo_data.centers(),
 
                     src_expansions=source_mpoles_view,
                     src_base_ibox=source_level_start_ibox,
@@ -273,7 +273,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         qbx_expansions = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
-        if geo_data.center_info().ncenters == 0:
+        if geo_data.ncenters == 0:
             return qbx_expansions
         trav = geo_data.traversal()
 
@@ -294,7 +294,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     target_base_ibox=target_level_start_ibox,
 
                     centers=self.tree.box_centers,
-                    qbx_centers=geo_data.center_info().centers,
+                    qbx_centers=geo_data.centers(),
 
                     expansions=target_locals_view,
                     qbx_expansions=qbx_expansions,
@@ -322,7 +322,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         qbxl2p = self.code.qbxl2p(self.qbx_order)
 
         evt, pot_res = qbxl2p(self.queue,
-                qbx_centers=geo_data.center_info().centers,
+                qbx_centers=geo_data.centers(),
                 global_qbx_centers=geo_data.global_qbx_centers(),
 
                 center_to_targets_starts=ctt.starts,
@@ -652,7 +652,7 @@ def write_performance_model(outf, geo_data):
     qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
     center_to_targets_starts = geo_data.center_to_tree_targets().starts
 
-    ncenters = geo_data.center_info().ncenters
+    ncenters = geo_data.ncenters
 
     outf.write("ncenters = {cost}\n"
             .format(cost=ncenters))

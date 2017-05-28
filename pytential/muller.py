@@ -25,7 +25,7 @@ THE SOFTWARE.
 import numpy as np
 
 
-def muller_deflate(f, n, maxiter=100, eps=1e-14):
+def muller_deflate(f, n, maxiter=100, eps=1e-14, z_start=None):
     """
     :arg n: number of zeros sought
     :returns: (roots, niter) - roots of the given function; number of
@@ -52,7 +52,7 @@ def muller_deflate(f, n, maxiter=100, eps=1e-14):
         niter.append(niter0)
 
         while (np.isnan(roots[i]) or niter[i] == maxiter) and miter < 50:
-            roots0, niter0 = muller(f_deflated, maxiter, eps)
+            roots0, niter0 = muller(f_deflated, maxiter, eps, z_start=z_start)
             roots[i] = roots0
             niter[i] = niter0
             miter = miter+1

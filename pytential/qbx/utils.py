@@ -99,8 +99,8 @@ def get_interleaved_centers(queue, lpot_source):
     next to corresponding exterior centers.
     """
     knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
-    int_centers = lpot_source.centers(-1)
-    ext_centers = lpot_source.centers(+1)
+    int_centers = get_centers_on_side(lpot_source, -1)
+    ext_centers = get_centers_on_side(lpot_source, +1)
 
     result = []
     wait_for = []
@@ -114,6 +114,160 @@ def get_interleaved_centers(queue, lpot_source):
     cl.wait_for_events(wait_for)
 
     return result
+
+# }}}
+
+
+# {{{ make interleaved radii
+
+def get_interleaved_radii(queue, lpot_source):
+    """
+    Return an array of shape (dim, ncenters) in which interior centers are placed
+    next to corresponding exterior centers.
+    """
+    knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
+    radii = lpot_source._expansion_radii("nsources")
+
+    result = cl.array.empty(queue, len(radii) * 2, radii.dtype)
+    evt, _ = knl(queue, src1=radii, src2=radii, dst=result)
+    evt.wait()
+
+    return result
+
+# }}}
+
+
+# {{{ panel sizes
+
+def panel_sizes(discr, last_dim_length):
+    if last_dim_length not in ("nsources", "ncenters", "npanels"):
+        raise ValueError(
+                "invalid value of last_dim_length: %s" % last_dim_length)
+
+    # To get the panel size this does the equivalent of (∫ 1 ds)**(1/dim).
+    # FIXME: Kernel optimizations
+
+    if last_dim_length == "nsources" or last_dim_length == "ncenters":
+        knl = lp.make_kernel(
+            "{[i,j,k]: 0<=i<nelements and 0<=j,k<nunit_nodes}",
+            "panel_sizes[i,j] = sum(k, ds[i,k])**(1/dim)",
+            name="compute_size")
+
+        def panel_size_view(discr, group_nr):
+            return discr.groups[group_nr].view
+
+    elif last_dim_length == "npanels":
+        knl = lp.make_kernel(
+            "{[i,j]: 0<=i<nelements and 0<=j<nunit_nodes}",
+            "panel_sizes[i] = sum(j, ds[i,j])**(1/dim)",
+            name="compute_size")
+        from functools import partial
+
+        def panel_size_view(discr, group_nr):
+            return partial(el_view, discr, group_nr)
+
+    else:
+        raise ValueError("unknown dim length specified")
+
+    knl = lp.fix_parameters(knl, dim=discr.dim)
+
+    with cl.CommandQueue(discr.cl_context) as queue:
+        from pytential import bind, sym
+        ds = bind(
+                discr,
+                sym.area_element(ambient_dim=discr.ambient_dim, dim=discr.dim)
+                * sym.QWeight()
+                )(queue)
+        panel_sizes = cl.array.empty(
+            queue, discr.nnodes
+            if last_dim_length in ("nsources", "ncenters")
+            else discr.mesh.nelements, discr.real_dtype)
+        for group_nr, group in enumerate(discr.groups):
+            _, (result,) = knl(queue,
+                nelements=group.nelements,
+                nunit_nodes=group.nunit_nodes,
+                ds=group.view(ds),
+                panel_sizes=panel_size_view(
+                    discr, group_nr)(panel_sizes))
+        panel_sizes.finish()
+        if last_dim_length == "ncenters":
+            from pytential.qbx.utils import get_interleaver_kernel
+            knl = get_interleaver_kernel(discr.real_dtype)
+            _, (panel_sizes,) = knl(queue, dstlen=2*discr.nnodes,
+                                    src1=panel_sizes, src2=panel_sizes)
+        return panel_sizes.with_queue(None)
+
+# }}}
+
+
+# {{{ element centers of mass
+
+def element_centers_of_mass(discr):
+    knl = lp.make_kernel(
+        """{[dim,k,i]:
+            0<=dim<ndims and
+            0<=k<nelements and
+            0<=i<nunit_nodes}""",
+        """
+            panels[dim, k] = sum(i, nodes[dim, k, i])/nunit_nodes
+            """,
+        default_offset=lp.auto, name="find_panel_centers_of_mass")
+
+    knl = lp.fix_parameters(knl, ndims=discr.ambient_dim)
+
+    knl = lp.split_iname(knl, "k", 128, inner_tag="l.0", outer_tag="g.0")
+    knl = lp.tag_inames(knl, dict(dim="ilp"))
+
+    with cl.CommandQueue(discr.cl_context) as queue:
+        mesh = discr.mesh
+        panels = cl.array.empty(queue, (mesh.ambient_dim, mesh.nelements),
+                                dtype=discr.real_dtype)
+        for group_nr, group in enumerate(discr.groups):
+            _, (result,) = knl(queue,
+                nelements=group.nelements,
+                nunit_nodes=group.nunit_nodes,
+                nodes=group.view(discr.nodes()),
+                panels=el_view(discr, group_nr, panels))
+        panels.finish()
+        panels = panels.with_queue(None)
+        return tuple(panels[d, :] for d in range(mesh.ambient_dim))
+
+# }}}
+
+
+# {{{ compute center array
+
+def get_centers_on_side(lpot_src, sign):
+    adim = lpot_src.density_discr.ambient_dim
+    dim = lpot_src.density_discr.dim
+
+    from pytential import sym, bind
+    with cl.CommandQueue(lpot_src.cl_context) as queue:
+        nodes = bind(lpot_src.density_discr, sym.nodes(adim))(queue)
+        normals = bind(lpot_src.density_discr, sym.normal(adim, dim=dim))(queue)
+        expansion_radii = lpot_src._expansion_radii("nsources").with_queue(queue)
+        return (nodes + normals * sign * expansion_radii).as_vector(np.object)
+
+# }}}
+
+
+# {{{ el_view
+
+def el_view(discr, group_nr, global_array):
+    """Return a view of *global_array* of shape
+    ``(..., discr.groups[group_nr].nelements)``
+    where *global_array* is of shape ``(..., nelements)``,
+    where *nelements* is the global (per-discretization) node count.
+    """
+
+    group = discr.groups[group_nr]
+    el_nr_base = sum(group.nelements for group in discr.groups[:group_nr])
+
+    return global_array[
+        ..., el_nr_base:el_nr_base + group.nelements] \
+        .reshape(
+            global_array.shape[:-1]
+            + (group.nelements,))
 
 # }}}
 
@@ -150,8 +304,7 @@ def plot_discr(lpot_source, outfilename="discr.pdf"):
 # }}}
 
 
-# {{{ tree creation
-
+# {{{ tree-with-metadata: data structure
 
 class TreeWithQBXMetadata(Tree):
     """A subclass of :class:`boxtree.tree.Tree`. Has all of that class's
@@ -170,41 +323,41 @@ class TreeWithQBXMetadata(Tree):
 
     .. attribute:: box_to_qbx_panel_starts
 
-    ``box_id_t [nboxes + 1]``
+        ``box_id_t [nboxes + 1]``
 
     .. attribute:: box_to_qbx_panel_lists
 
-    ``particle_id_t [*]``
+        ``particle_id_t [*]``
 
     .. rubric:: Box to QBX sources
 
     .. attribute:: box_to_qbx_source_starts
 
-    ``box_id_t [nboxes + 1]``
+        ``box_id_t [nboxes + 1]``
 
     .. attribute:: box_to_qbx_source_lists
 
-    ``particle_id_t [*]``
+        ``particle_id_t [*]``
 
     .. rubric:: Box to QBX centers
 
     .. attribute:: box_to_qbx_center_starts
 
-    ``box_id_t [nboxes + 1]``
+        ``box_id_t [nboxes + 1]``
 
     .. attribute:: box_to_qbx_center_lists
 
-    ``particle_id_t [*]``
+        ``particle_id_t [*]``
 
     .. rubric:: Box to QBX targets
 
     .. attribute:: box_to_qbx_target_starts
 
-    ``box_id_t [nboxes + 1]``
+        ``box_id_t [nboxes + 1]``
 
     .. attribute:: box_to_qbx_target_lists
 
-    ``particle_id_t [*]``
+        ``particle_id_t [*]``
 
     .. ------------------------------------------------------------------------
     .. rubric:: Panel properties
@@ -212,11 +365,11 @@ class TreeWithQBXMetadata(Tree):
 
     .. attribute:: qbx_panel_to_source_starts
 
-    ``particle_id_t [nqbxpanels + 1]``
+        ``particle_id_t [nqbxpanels + 1]``
 
     .. attribute:: qbx_panel_to_center_starts
 
-    ``particle_id_t [nqbxpanels + 1]``
+        ``particle_id_t [nqbxpanels + 1]``
 
     .. ------------------------------------------------------------------------
     .. rubric:: Particle order indices
@@ -229,6 +382,10 @@ class TreeWithQBXMetadata(Tree):
     """
     pass
 
+# }}}
+
+
+# {{{ tree-with-metadata: creation
 
 MAX_REFINE_WEIGHT = 64
 
@@ -271,9 +428,9 @@ def build_tree_with_qbx_metadata(
     centers = get_interleaved_centers(queue, lpot_source)
 
     centers_of_mass = (
-            lpot_source.panel_centers_of_mass()
+            lpot_source._panel_centers_of_mass()
             if not use_base_fine_discr
-            else lpot_source.fine_panel_centers_of_mass())
+            else lpot_source._fine_panel_centers_of_mass())
 
     targets = (tgt.nodes() for tgt in targets_list)
 

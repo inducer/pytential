@@ -160,7 +160,10 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
         if 0:
             # plot geometry, centers, normals
-            centers = qbx.centers(density_discr, 1)
+
+            from pytential.qbx.utils import get_centers_on_side
+            centers = get_centers_on_side(qbx, 1)
+
             nodes_h = nodes.get()
             centers_h = [centers[0].get(), centers[1].get()]
             pt.plot(nodes_h[0], nodes_h[1], "x-")
