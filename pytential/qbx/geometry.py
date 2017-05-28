@@ -523,6 +523,12 @@ class QBXFMMGeometryData(object):
                     stick_out_factor=0,
                     kind="adaptive")
 
+            if self.debug:
+                tgt_count_2 = cl.array.sum(
+                        tree.box_target_counts_nonchild, queue=queue).get()
+
+                assert (tree.ntargets == tgt_count_2), (tree.ntargets, tgt_count_2)
+
             return tree
 
     # }}}
@@ -580,13 +586,26 @@ class QBXFMMGeometryData(object):
                             queue, len(sorted_target_ids),
                             user_target_from_tree_target.dtype)
 
-            evt, (qbx_center_to_target_box,) = qbx_center_to_target_box_lookup(
+            qbx_center_to_target_box = cl.array.empty(
+                    queue, self.ncenters, tree.box_id_dtype)
+
+            if self.lpot_source.debug:
+                qbx_center_to_target_box.fill(-1)
+
+            evt, _ = qbx_center_to_target_box_lookup(
                     queue,
+                    qbx_center_to_target_box=qbx_center_to_target_box,
                     box_to_target_box=box_to_target_box,
                     box_target_starts=tree.box_target_starts,
                     box_target_counts_nonchild=tree.box_target_counts_nonchild,
                     user_target_from_tree_target=user_target_from_tree_target,
                     ncenters=self.ncenters)
+
+            if self.lpot_source.debug:
+                assert 0 <= cl.array.min(qbx_center_to_target_box).get()
+                assert (
+                        cl.array.max(qbx_center_to_target_box).get()
+                        < len(trav.target_boxes))
 
             return qbx_center_to_target_box.with_queue(None)
 
