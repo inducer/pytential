@@ -172,7 +172,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 fmm_level_to_order=(
                     fmm_level_to_order or self.fmm_level_to_order),
                 target_stick_out_factor=(
-                    target_stick_out_factor or self.target_stick_out_factor),
+                    target_stick_out_factor
+                    if target_stick_out_factor is not None
+                    else self.target_stick_out_factor),
                 base_resampler=base_resampler or self._base_resampler,
 
                 debug=(
