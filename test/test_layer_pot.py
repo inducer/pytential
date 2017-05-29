@@ -952,7 +952,6 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
 
 # {{{ test off-surface eval vs direct
 
-@pytest.mark.parametrize("use_fmm", [True, False])
 def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
