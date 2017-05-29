@@ -369,7 +369,7 @@ def drive_fmm(expansion_wrangler, src_weights):
     # Interface guidelines: Attributes of the tree are assumed to be known
     # to the expansion wrangler and should not be passed.
 
-    logger.debug("start qbx fmm")
+    logger.info("start qbx fmm")
 
     logger.debug("reorder source weights")
     src_weights = wrangler.reorder_sources(src_weights)
@@ -522,7 +522,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # }}}
 
-    logger.debug("qbx fmm complete")
+    logger.info("qbx fmm complete")
 
     return result
 
