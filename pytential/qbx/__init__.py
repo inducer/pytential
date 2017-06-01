@@ -95,6 +95,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             if fmm_order is None and qbx_order is not None:
                 fmm_order = qbx_order + 1
 
+                from warnings import warn
+                warn("Not specifying the FMM order is deprecated. "
+                        "fmm_order will soon be required.",
+                        DeprecationWarning, stacklevel=2)
+
         if fmm_order is not None and fmm_level_to_order is not None:
             raise TypeError("may not specify both fmm_order and fmm_level_to_order")
 
