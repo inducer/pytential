@@ -1,8 +1,8 @@
 import pyopencl as cl
 import numpy as np
-import numpy.linalg as la
+import numpy.linalg as la  # noqa: F401
 
-from pytential import bind, sym, norm
+from pytential import bind, sym, norm  # noqa: F401
 
 
 def main():
@@ -38,15 +38,15 @@ def main():
     sig_sym = sym.var("sig")
     knl = LaplaceKernel(2)
     op = join_fields(
-            sym.tangential_derivative(
-                sym.D(knl, sig_sym, qbx_forced_limit=+1)).a.as_scalar(),
-            sym.tangential_derivative(
-                sym.D(knl, sig_sym, qbx_forced_limit=-1)).a.as_scalar(),
+            sym.tangential_derivative(mesh.ambient_dim,
+                sym.D(knl, sig_sym, qbx_forced_limit=+1)).as_scalar(),
+            sym.tangential_derivative(mesh.ambient_dim,
+                sym.D(knl, sig_sym, qbx_forced_limit=-1)).as_scalar(),
             )
 
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
-    n = 30
+    n = 10
     sig = cl.clmath.sin(n*angle)
     dt_sig = n*cl.clmath.cos(n*angle)
 

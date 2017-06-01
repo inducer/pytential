@@ -36,7 +36,7 @@ from boxtree.tools import DeviceDataRecord
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
 from pytential.qbx.utils import (
-    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, DiscrPlotterMixin)
+    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS)
 
 
 unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
@@ -128,7 +128,7 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
         particle_id_t source_offset,
         particle_id_t target_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *panel_sizes,
+        coord_t *tunnel_radius_by_source,
         coord_t *box_to_search_dist,
 
         /* output */
@@ -140,7 +140,7 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
             coord_t *particles_${ax},
         %endfor
     """,
-    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
+    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""//CL//
         coord_vec_t tgt_coords;
         ${load_particle("INDEX_FOR_TARGET_PARTICLE(i)", "tgt_coords")}
         {
@@ -149,7 +149,7 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
             ${ball_radius} = box_to_search_dist[my_box];
         }
     """,
-    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
+    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""//CL//
         for (particle_id_t source_idx = box_to_source_starts[${leaf_box_id}];
              source_idx < box_to_source_starts[${leaf_box_id} + 1];
              ++source_idx)
@@ -158,7 +158,8 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
             coord_vec_t source_coords;
             ${load_particle("INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
 
-            if (distance(source_coords, tgt_coords) <= panel_sizes[source] / 2)
+            if (distance(source_coords, tgt_coords)
+                    <= tunnel_radius_by_source[source])
             {
                 target_status[i] = MARKED_QBX_CENTER_PENDING;
                 *found_target_close_to_panel = 1;
@@ -177,9 +178,8 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
         particle_id_t center_offset,
         particle_id_t target_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *panel_sizes,
+        coord_t *expansion_radii_by_center_with_stick_out,
         coord_t *box_to_search_dist,
-        coord_t stick_out_factor,
         int *target_flags,
 
         /* input/output */
@@ -222,7 +222,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
             coord_t my_dist_to_center = distance(tgt_coords, center_coords);
 
             if (my_dist_to_center
-                    <= (panel_sizes[center] / 2) * (1 + stick_out_factor)
+                    <= expansion_radii_by_center_with_stick_out[center]
                 && my_dist_to_center < min_dist_to_center[i])
             {
                 target_status[i] = MARKED_QBX_CENTER_FOUND;
@@ -245,7 +245,7 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
         particle_id_t target_offset,
         int npanels,
         particle_id_t *sorted_target_ids,
-        coord_t *panel_sizes,
+        coord_t *tunnel_radius_by_source,
         int *target_status,
         coord_t *box_to_search_dist,
 
@@ -258,7 +258,7 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
             coord_t *particles_${ax},
         %endfor
     """,
-    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
+    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""//CL//
         coord_vec_t target_coords;
         ${load_particle("INDEX_FOR_TARGET_PARTICLE(i)", "target_coords")}
         {
@@ -267,7 +267,7 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
             ${ball_radius} = box_to_search_dist[my_box];
         }
     """,
-    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
+    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""//CL//
         for (particle_id_t source_idx = box_to_source_starts[${leaf_box_id}];
              source_idx < box_to_source_starts[${leaf_box_id} + 1];
              ++source_idx)
@@ -279,7 +279,7 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
 
             bool is_close =
                 distance(target_coords, source_coords)
-                <= panel_sizes[source] / 2;
+                <= tunnel_radius_by_source[source];
 
             if (is_close && target_status[i] == MARKED_QBX_CENTER_PENDING)
             {
@@ -318,11 +318,11 @@ class QBXTargetAssociation(DeviceDataRecord):
     pass
 
 
-class QBXTargetAssociator(DiscrPlotterMixin):
+class QBXTargetAssociator(object):
 
     def __init__(self, cl_context):
-        from pytential.qbx.utils import TreeWithQBXMetadataBuilder
-        self.tree_builder = TreeWithQBXMetadataBuilder(cl_context)
+        from boxtree.tree_build import TreeBuilder
+        self.tree_builder = TreeBuilder(cl_context)
         self.cl_context = cl_context
         from boxtree.area_query import PeerListFinder, SpaceInvaderQueryBuilder
         self.peer_list_finder = PeerListFinder(cl_context)
@@ -398,18 +398,36 @@ class QBXTargetAssociator(DiscrPlotterMixin):
         # Perform a space invader query over the sources.
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
-        panel_sizes = lpot_source.panel_sizes("nsources").with_queue(queue)
+        tunnel_radius_by_source = \
+                lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
+
+        # Target-marking algorithm (TGTMARK):
+        #
+        # (1) Use a space invader query to tag each leaf box that intersects with the
+        # "near-source-detection tunnel" with the distance to the closest source.
+        #
+        # (2) Do an area query around all targets with the radius resulting
+        # from the space invader query, enumerate sources in that vicinity.
+        # If a source is found whose distance to the target is less than the
+        # source's tunnel radius, mark that target as pending.
+        # (or below: mark the source for refinement)
+
+        # Note that this comment is referred to below by "TGTMARK". If you
+        # remove this comment or change the algorithm here, make sure that
+        # the reference below is still accurate.
 
         box_to_search_dist, evt = self.space_invader_query(
                 queue,
                 tree,
                 sources,
-                panel_sizes / 2,
+                tunnel_radius_by_source,
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
 
         logger.info("target association: marking targets close to panels")
+
+        tunnel_radius_by_source = lpot_source._close_target_tunnel_radius("nsources")
 
         evt = knl(
             *unwrap_args(
@@ -419,7 +437,7 @@ class QBXTargetAssociator(DiscrPlotterMixin):
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_target_slice.start,
                 tree.sorted_target_ids,
-                panel_sizes,
+                tunnel_radius_by_source,
                 box_to_search_dist,
                 target_status,
                 found_target_close_to_panel,
@@ -463,13 +481,22 @@ class QBXTargetAssociator(DiscrPlotterMixin):
         center_slice = \
                 tree.sorted_target_ids[tree.qbx_user_center_slice].with_queue(queue)
         centers = [axis.with_queue(queue)[center_slice] for axis in tree.sources]
-        panel_sizes = lpot_source.panel_sizes("ncenters").with_queue(queue)
+        expansion_radii_by_center = \
+                lpot_source._expansion_radii("ncenters").with_queue(queue)
+        expansion_radii_by_center_with_stick_out = \
+                expansion_radii_by_center * (1 + stick_out_factor)
+
+        # Idea:
+        #
+        # (1) Tag leaf boxes around centers with max distance to usable center.
+        # (2) Area query from targets with those radii to find closest eligible
+        # center.
 
         box_to_search_dist, evt = self.space_invader_query(
                 queue,
                 tree,
                 centers,
-                panel_sizes * ((1 + stick_out_factor) / 2),
+                expansion_radii_by_center_with_stick_out,
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
@@ -490,9 +517,8 @@ class QBXTargetAssociator(DiscrPlotterMixin):
                 tree.qbx_user_center_slice.start,
                 tree.qbx_user_target_slice.start,
                 tree.sorted_target_ids,
-                panel_sizes,
+                expansion_radii_by_center_with_stick_out,
                 box_to_search_dist,
-                stick_out_factor,
                 target_flags,
                 target_status,
                 target_assoc.target_to_center,
@@ -535,13 +561,16 @@ class QBXTargetAssociator(DiscrPlotterMixin):
         # Perform a space invader query over the sources.
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
-        panel_sizes = lpot_source.panel_sizes("nsources").with_queue(queue)
+        tunnel_radius_by_source = \
+                lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
+
+        # See (TGTMARK) above for algorithm.
 
         box_to_search_dist, evt = self.space_invader_query(
                 queue,
                 tree,
                 sources,
-                panel_sizes / 2,
+                tunnel_radius_by_source,
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
@@ -558,7 +587,7 @@ class QBXTargetAssociator(DiscrPlotterMixin):
                 tree.qbx_user_target_slice.start,
                 tree.nqbxpanels,
                 tree.sorted_target_ids,
-                lpot_source.panel_sizes("nsources"),
+                lpot_source._close_target_tunnel_radius("nsources"),
                 target_status,
                 box_to_search_dist,
                 refine_flags,
@@ -654,8 +683,14 @@ class QBXTargetAssociator(DiscrPlotterMixin):
         """
 
         with cl.CommandQueue(self.cl_context) as queue:
-            tree = self.tree_builder(queue, lpot_source,
+            from pytential.qbx.utils import build_tree_with_qbx_metadata
+
+            tree = build_tree_with_qbx_metadata(
+                    queue,
+                    self.tree_builder,
+                    lpot_source,
                     [discr for discr, _ in target_discrs_and_qbx_sides])
+
             peer_lists, evt = self.peer_list_finder(queue, tree, wait_for)
             wait_for = [evt]
 

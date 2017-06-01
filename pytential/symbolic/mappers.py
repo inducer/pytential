@@ -282,6 +282,30 @@ class DerivativeTaker(Mapper):
     def __init__(self, ambient_axis):
         self.ambient_axis = ambient_axis
 
+    def map_sum(self, expr):
+        from pymbolic.primitives import flattened_sum
+        return flattened_sum(tuple(self.rec(child) for child in expr.children))
+
+    def map_product(self, expr):
+        from pymbolic.primitives import is_constant
+        const = []
+        nonconst = []
+        for subexpr in expr.children:
+            if is_constant(subexpr):
+                const.append(subexpr)
+            else:
+                nonconst.append(subexpr)
+
+        if len(nonconst) > 1:
+            raise RuntimeError("DerivativeTaker doesn't support products with "
+                    "more than one non-constant")
+
+        if not nonconst:
+            nonconst = [1]
+
+        from pytools import product
+        return product(const) * self.rec(nonconst[0])
+
     def map_int_g(self, expr):
         from sumpy.kernel import AxisTargetDerivative
         return expr.copy(kernel=AxisTargetDerivative(self.ambient_axis, expr.kernel))

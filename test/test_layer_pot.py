@@ -34,7 +34,7 @@ from pyopencl.tools import (  # noqa
 
 from functools import partial
 from meshmode.mesh.generation import (  # noqa
-        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
+        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
 from sumpy.visualization import FieldPlotter
 from pytential import bind, sym, norm
@@ -160,7 +160,10 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
         if 0:
             # plot geometry, centers, normals
-            centers = qbx.centers(density_discr, 1)
+
+            from pytential.qbx.utils import get_centers_on_side
+            centers = get_centers_on_side(qbx, 1)
+
             nodes_h = nodes.get()
             centers_h = [centers[0].get(), centers[1].get()]
             pt.plot(nodes_h[0], nodes_h[1], "x-")
@@ -309,10 +312,15 @@ def run_int_eq_test(
     if source_order is None:
         source_order = 4*target_order
 
+    refiner_extra_kwargs = {}
+
+    if k != 0:
+        refiner_extra_kwargs["kernel_length_scale"] = 5/k
+
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, fine_order=source_order, qbx_order=qbx_order,
             # Don't use FMM for now
-            fmm_order=False).with_refinement()
+            fmm_order=False).with_refinement(**refiner_extra_kwargs)
 
     density_discr = qbx.density_discr
 
@@ -694,6 +702,13 @@ def get_starfish_mesh(refinement_increment, target_order):
                 target_order)
 
 
+def get_wobbly_circle_mesh(refinement_increment, target_order):
+    nelements = [3000, 5000, 7000][refinement_increment]
+    return make_curve_mesh(WobblyCircle.random(30, seed=30),
+                np.linspace(0, 1, nelements+1),
+                target_order)
+
+
 def get_sphere_mesh(refinement_increment, target_order):
     from meshmode.mesh.generation import generate_icosphere
     mesh = generate_icosphere(1, target_order)
@@ -801,11 +816,17 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
             # FIXME: FMM kernel generation slow
             direct_eval = (k != 0)
 
+        refiner_extra_kwargs = {}
+
+        if k != 0:
+            refiner_extra_kwargs["kernel_length_scale"] = 5/k
+
         qbx, _ = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
                 qbx_order, fmm_order=(
                     False if direct_eval else qbx_order + order_bump)
-                ).with_refinement()
+                ).with_refinement(**refiner_extra_kwargs)
+
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
@@ -903,8 +924,12 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
 
     pre_density_discr = Discretization(
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
-    qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
-            fmm_order=fmm_order).with_refinement()
+    qbx, _ = QBXLayerPotentialSource(
+            pre_density_discr,
+            4*target_order,
+            qbx_order,
+            fmm_order=fmm_order,
+            ).with_refinement()
 
     density_discr = qbx.density_discr
 
@@ -919,9 +944,10 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
             (qbx, PointsTarget(fplot.points)),
             op)(queue, sigma=sigma)
 
-    print(fld_in_vol)
-
     err = cl.clmath.fabs(fld_in_vol - (-1))
+
+    linf_err = cl.array.max(err).get()
+    print("l_inf error:", linf_err)
 
     if do_plot:
         fplot.show_scalar_in_matplotlib(fld_in_vol.get())
@@ -930,7 +956,86 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
         pt.show()
 
     # FIXME: Why does the FMM only meet this sloppy tolerance?
-    assert (err < 1e-2).get().all()
+    assert linf_err < 1e-2
+
+# }}}
+
+
+# {{{ test off-surface eval vs direct
+
+def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
+    logging.basicConfig(level=logging.INFO)
+
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    # prevent cache 'splosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
+
+    nelements = 300
+    target_order = 8
+    qbx_order = 3
+
+    mesh = make_curve_mesh(WobblyCircle.random(8, seed=30),
+                np.linspace(0, 1, nelements+1),
+                target_order)
+
+    from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+
+    pre_density_discr = Discretization(
+            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+    direct_qbx, _ = QBXLayerPotentialSource(
+            pre_density_discr, 4*target_order, qbx_order,
+            fmm_order=False,
+            target_stick_out_factor=0.05,
+            ).with_refinement()
+    fmm_qbx, _ = QBXLayerPotentialSource(
+            pre_density_discr, 4*target_order, qbx_order,
+            fmm_order=qbx_order + 3,
+            expansion_disks_in_tree_have_extent=True,
+            target_stick_out_factor=0.05,
+            ).with_refinement()
+
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
+    from pytential.target import PointsTarget
+    ptarget = PointsTarget(fplot.points)
+    from sumpy.kernel import LaplaceKernel
+
+    op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
+
+    from pytential.qbx import QBXTargetAssociationFailedException
+    try:
+        direct_density_discr = direct_qbx.density_discr
+        direct_sigma = direct_density_discr.zeros(queue) + 1
+        direct_fld_in_vol = bind((direct_qbx, ptarget), op)(
+                queue, sigma=direct_sigma)
+
+    except QBXTargetAssociationFailedException as e:
+        fplot.show_scalar_in_matplotlib(e.failed_target_flags.get(queue))
+        import matplotlib.pyplot as pt
+        pt.show()
+        raise
+
+    fmm_density_discr = fmm_qbx.density_discr
+    fmm_sigma = fmm_density_discr.zeros(queue) + 1
+    fmm_fld_in_vol = bind((fmm_qbx, ptarget), op)(queue, sigma=fmm_sigma)
+
+    err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
+
+    linf_err = cl.array.max(err).get()
+    print("l_inf error:", linf_err)
+
+    if do_plot:
+        #fplot.show_scalar_in_mayavi(0.1*cl.clmath.log10(1e-15 + err).get(queue))
+        fplot.show_scalar_in_mayavi(fmm_fld_in_vol.get(queue))
+        import mayavi.mlab as mlab
+        mlab.show()
+
+    assert linf_err < 1e-3
 
 # }}}
 

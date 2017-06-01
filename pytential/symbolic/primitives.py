@@ -84,6 +84,12 @@ Elementary numerics
 Calculus
 ^^^^^^^^
 .. autoclass:: Derivative
+.. autofunction:: dd_axis
+.. autofunction:: d_dx
+.. autofunction:: d_dy
+.. autofunction:: d_dz
+.. autofunction:: grad_mv
+.. autofunction:: grad
 
 Layer potentials
 ^^^^^^^^^^^^^^^^
@@ -452,6 +458,9 @@ class Derivative(DerivativeBase):
 
 
 def dd_axis(axis, ambient_dim, operand):
+    """Return the derivative along (XYZ) axis *axis*
+    (in *ambient_dim*-dimensional space) of *operand*.
+    """
     d = Derivative()
 
     unit_vector = np.zeros(ambient_dim)
@@ -467,6 +476,23 @@ def dd_axis(axis, ambient_dim, operand):
 d_dx = partial(dd_axis, 0)
 d_dy = partial(dd_axis, 1)
 d_dz = partial(dd_axis, 2)
+
+
+def grad_mv(ambient_dim, operand):
+    """Return the *ambient_dim*-dimensional gradient of
+    *operand* as a :class:`pymbolic.geometric_algebra.MultiVector`.
+    """
+
+    d = Derivative()
+    return d.resolve(
+            d.dnabla(ambient_dim) * d(operand))
+
+
+def grad(ambient_dim, operand):
+    """Return the *ambient_dim*-dimensional gradient of
+    *operand* as a :class:`numpy.ndarray`.
+    """
+    return grad_mv(ambient_dim, operand).as_vector()
 
 
 # {{{ potentials
