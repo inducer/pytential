@@ -48,37 +48,6 @@ class LayerPotentialSource(PotentialSource):
     pass
 
 
-def get_local_expansion_class(base_kernel):
-    # FIXME: Don't hard-code expansion types
-    from sumpy.kernel import HelmholtzKernel, LaplaceKernel
-    if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
-            and base_kernel.dim == 2):
-        from sumpy.expansion.local import H2DLocalExpansion
-        return H2DLocalExpansion
-    elif isinstance(base_kernel.get_base_kernel(), LaplaceKernel):
-        from sumpy.expansion.local import LaplaceConformingVolumeTaylorLocalExpansion
-        return LaplaceConformingVolumeTaylorLocalExpansion
-    else:
-        from sumpy.expansion.local import VolumeTaylorLocalExpansion
-        return VolumeTaylorLocalExpansion
-
-
-def get_multipole_expansion_class(base_kernel):
-    # FIXME: Don't hard-code expansion types
-    from sumpy.kernel import HelmholtzKernel, LaplaceKernel
-    if (isinstance(base_kernel.get_base_kernel(), HelmholtzKernel)
-            and base_kernel.dim == 2):
-        from sumpy.expansion.multipole import H2DMultipoleExpansion
-        return H2DMultipoleExpansion
-    elif isinstance(base_kernel.get_base_kernel(), LaplaceKernel):
-        from sumpy.expansion.multipole import (
-                LaplaceConformingVolumeTaylorMultipoleExpansion)
-        return LaplaceConformingVolumeTaylorMultipoleExpansion
-    else:
-        from sumpy.expansion.multipole import VolumeTaylorMultipoleExpansion
-        return VolumeTaylorMultipoleExpansion
-
-
 # {{{ QBX layer potential source
 
 class QBXLayerPotentialSource(LayerPotentialSource):
@@ -102,6 +71,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             fmm_level_to_order=None,
             target_stick_out_factor=1e-10,
             base_resampler=None,
+            expansion_factory=None,
 
             # begin undocumented arguments
             # FIXME default debug=False once everything works
@@ -143,6 +113,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         # Default values are lazily provided if these are None
         self._base_resampler = base_resampler
+
+        if expansion_factory is None:
+            from sumpy.expansion import DefaultExpansionFactory
+            expansion_factory = DefaultExpansionFactory()
+        self.expansion_factory = expansion_factory
 
         self.debug = debug
         self.refined_for_global_qbx = refined_for_global_qbx
@@ -428,8 +403,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
     @memoize_method
     def expansion_wrangler_code_container(self, base_kernel, out_kernels):
-        mpole_expn_class = get_multipole_expansion_class(base_kernel)
-        local_expn_class = get_local_expansion_class(base_kernel)
+        mpole_expn_class = \
+                self.expansion_factory.get_multipole_expansion_class(base_kernel)
+        local_expn_class = \
+                self.expansion_factory.get_local_expansion_class(base_kernel)
 
         from functools import partial
         fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
