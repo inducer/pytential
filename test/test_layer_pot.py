@@ -795,12 +795,17 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
 
         if d == 2:
             order_bump = 15
+            direct_eval = False
         elif d == 3:
             order_bump = 8
+            # FIXME: FMM kernel generation slow
+            direct_eval = (k != 0)
 
         qbx, _ = QBXLayerPotentialSource(
-            pre_density_discr, 4*target_order,
-            qbx_order, fmm_order=qbx_order + order_bump).with_refinement()
+                pre_density_discr, 4*target_order,
+                qbx_order, fmm_order=(
+                    False if direct_eval else qbx_order + order_bump)
+                ).with_refinement()
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
