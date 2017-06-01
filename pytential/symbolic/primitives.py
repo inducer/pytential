@@ -451,6 +451,14 @@ class IterativeInverse(Expression):
 
 
 class Derivative(DerivativeBase):
+    @property
+    def nabla(self):
+        raise ValueError("Derivative.nabla should not be used"
+                "--use Derivative.dnabla instead. (Note the extra 'd')"
+                "To explain: 'nabla' was intended to be "
+                "dimension-independent, which turned out to be a bad "
+                "idea.")
+
     @staticmethod
     def resolve(expr):
         from pytential.symbolic.mappers import DerivativeBinder

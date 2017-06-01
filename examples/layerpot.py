@@ -62,8 +62,7 @@ nodes = density_discr.nodes().with_queue(queue)
 
 angle = cl.clmath.atan2(nodes[1], nodes[0])
 
-d = sym.Derivative()
-#op = d.nabla[0] * d(sym.S(kernel, sym.var("sigma")))
+#op = sym.d_dx(sym.S(kernel, sym.var("sigma")))
 op = sym.D(kernel, sym.var("sigma"), **kernel_kwargs)
 #op = sym.S(kernel, sym.var("sigma"), **kernel_kwargs)
 
