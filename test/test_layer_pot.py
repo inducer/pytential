@@ -810,10 +810,17 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
         normal_host = [normal[j].get() for j in range(d)]
 
         if k != 0:
-            angle = 0.3
-            wave_vec = np.array([np.cos(angle), np.sin(angle)])
-            u = np.exp(1j*k*np.tensordot(wave_vec, nodes_host, axes=1))
-            grad_u = 1j*k*wave_vec[:, np.newaxis]*u
+            if d == 2:
+                angle = 0.3
+                wave_vec = np.array([np.cos(angle), np.sin(angle)])
+                u = np.exp(1j*k*np.tensordot(wave_vec, nodes_host, axes=1))
+                grad_u = 1j*k*wave_vec[:, np.newaxis]*u
+            else:
+                center = np.array([3, 1, 2])
+                diff = nodes_host - center[:, np.newaxis]
+                r = la.norm(diff, axis=0)
+                u = np.exp(1j*k*r) / r
+                grad_u = diff * (1j*k*u/r - u/r**2)
         else:
             center = np.array([3, 1, 2])[:d]
             diff = nodes_host - center[:, np.newaxis]
