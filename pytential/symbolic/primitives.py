@@ -495,6 +495,13 @@ def grad(ambient_dim, operand):
     return grad_mv(ambient_dim, operand).as_vector()
 
 
+def laplace(ambient_dim, operand):
+    d = Derivative()
+    nabla = d.dnabla(ambient_dim)
+    return d.resolve(nabla | d(
+        d.resolve((nabla * d(operand))))).as_scalar()
+
+
 # {{{ potentials
 
 def hashable_kernel_args(kernel_arguments):
