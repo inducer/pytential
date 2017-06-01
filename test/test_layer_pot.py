@@ -748,6 +748,9 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
     from sympy.core.cache import clear_cache
     clear_cache()
 
+    if mesh_name == "sphere" and k != 0:
+        pytest.skip("both direct eval and generating the FMM kernels are too slow")
+
     target_order = 8
 
     order_table = {
@@ -823,8 +826,7 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
 
         qbx, _ = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
-                qbx_order, fmm_order=(
-                    False if direct_eval else qbx_order + order_bump)
+                qbx_order, fmm_order=qbx_order + order_bump
                 ).with_refinement(**refiner_extra_kwargs)
 
         density_discr = qbx.density_discr
