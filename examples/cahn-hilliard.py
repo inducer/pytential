@@ -50,9 +50,9 @@ def main():
               n=(int(ext/h), int(ext/h))
               )
     elif shape == Geometry.Circle:
-        from meshmode.mesh.io import import generate_gmsh
+        from meshmode.mesh.io import generate_gmsh, FileSource
         h    = 0.05
-        mesh = generate_emsh(
+        mesh = generate_gmsh(
                 FileSource("circle.step"),
                 2,
                 order=mesh_order,
@@ -291,7 +291,7 @@ def main():
     # a manufactured f1
     x_sin_factor = 30
     y_sin_factor = 10
-    def f1_func(x, y)
+    def f1_func(x, y):
         return 0.1 * cl.clmath.sin(x_sin_factor*x) * cl.clmath.sin(y_sin_factor*y)
 
     # strengths (with quadrature weights)
