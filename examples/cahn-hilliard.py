@@ -9,6 +9,7 @@ from meshmode.discretization.poly_element import \
 
 from pytential import bind, sym, norm  # noqa
 from pytential.target import PointsTarget
+
 # {{{ set some constants for use below
 
 nelements = 20
@@ -23,10 +24,121 @@ vol_qbx_order  = 2
 
 # }}}
 
+# {{{ a kernel class for G0
+# FIXME: will the expressions work when lambda is complex?
+# (may need conversion from 1j to var("I"))
+from sumpy.kernel import ExpressionKernel
+class ShidongKernel(ExpressionKernel):
+    init_arg_names = ("dim", "lambda1", "lambda2")
+
+    def __init__(self, dim=None, lambda1=0., lambda2=1.):
+        """
+        :arg lambda1,lambda2: The roots of the quadratic equation w.r.t
+             laplacian.
+         """
+        # Assert against repeated roots.
+        if abs(lambda1**2 - lambda2**2) < 1e-9:
+            raise RuntimeError("illposed since input roots are too close")
+
+# Based on http://mathworld.wolfram.com/ModifiedBesselFunctionoftheSecondKind.html
+        if dim == 2:
+            r       = pymbolic_real_norm_2(make_sym_vector("d", dim))
+            expr    = var("hankel_1")(0, var("I") * lambda1 * r) - \
+                        var("hankel_1")(0, var("I") * lambda2 * r)
+            scaling =  1. / ( 4. * var("I") * (lambda1**2 - lambda2**2) )
+        else:
+            raise RuntimeError("unsupported dimensionality")
+
+        ExpressionKernel.__init__(
+                self,
+                dim,
+                expression=expr,
+                scaling = scaling,
+                is_complex_valued=True)
+
+        self.lambda1 = lambda1
+        self.lambda2 = lambda2
+
+    def __getinitargs__(self):
+        return(self._dim, self.lambda1, self.lambda2)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_hash.update(type(self).__name__.encode("utf8"))
+        key_builder.rec(key_hash, 
+                (self._dim, self.lambda1, self.lambda2)
+                )
+
+    def __repr__(self):
+        if self._dim is not None:
+            return "ShdgKnl%dD(%f, %f)" % (
+                    self._dim, self.lambda1, self.lambda2)
+        else:
+            return "ShdgKnl(%f, %f)" % (self.lambda1, self.lambda2)
+
+    def prepare_loopy_kernel(self, loopy_knl):
+        from sumpy.codegen import (bessel_preamble_generator, bessel_mangler)
+        loopy_knl = lp.register_function_manglers(loopy_knl,
+                [bessel_mangler])
+        loopy_knl = lp.register_preamble_generators(loopy_knl,
+                [bessel_preamble_generator])
+        return loopy_knl
+
+    def get_args(self):
+        k_dtype = np.complex128
+        return [
+                KernelArgument(
+                    loopy_arg=lp.ValueArg("shidong_kernel", k_dtype),
+                    )]
+
+    mapper_method = "map_shidong_kernel"
+
+# }}}
+
+# {{{ extended kernel getters
+def get_extkernel_for_G0(lambda1, lambda2):
+    from sumpy.symbolic import pymbolic_real_norm_2
+    from pymbolic.primitives import make_sym_vector
+    from pymbolic import var
+
+    d = make_sym_vector("d", 3)
+    r2 = pymbolic_real_norm_2(d[:-1])
+    expr = var("hankel_1")(0, var("I") * lambda1 * r2
+            + var("I") * d[-1]**2) \
+            - var("hankel_1")(0, var("I") * lambda2 * r2
+            + var("I") * d[-1]**2)
+    scaling =  1. / ( 4. * var("I") * (lambda1**2 - lambda2**2) )
+
+    from sumpy.kernel import ExpressionKernel
+    return ExpressionKernel(
+            dim=3,
+            expression=expr,
+            scaling=scaling,
+            is_complex_valued=True)
+
+def get_extkernel_for_G1(lamb):
+    from sumpy.symbolic import pymbolic_real_norm_2
+    from pymbolic.primitives import make_sym_vector
+    from pymbolic import var
+
+    d = make_sym_vector("d", 3)
+    r2 = pymbolic_real_norm_2(d[:-1])
+    expr = var("hankel_1")(0, var("I") * lamb * r2
+            + var("I") * d[-1]**2)
+    scaling = - var("I") / 4.
+
+    from sumpy.kernel import ExpressionKernel
+    return ExpressionKernel(
+            dim=3,
+            expression=expr,
+            scaling=scaling,
+            is_complex_valued=True)
+
+# }}}
 
 def main():
     import logging
     logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
@@ -57,11 +169,11 @@ def main():
                 2,
                 order=mesh_order,
                 force_ambient_dim=2,
-                orther_options=["-string",
+                other_options=["-string",
                                 "Mesh.CharacteristicLengthMax = %g;" % h]
                 )
     else:
-        1/0
+        RuntimeError("unsupported geometry")
 
     logger.info("%d elements" % mesh.nelements)
 
@@ -69,7 +181,7 @@ def main():
 
 # {{{ discretization and connections
 
-    vol_discr = Discretization(ctx, mesh,
+    vol_discr = Discretization(cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(vol_quad_order))
 
     from meshmode.mesh import BTAG_ALL
@@ -120,117 +232,6 @@ def main():
 
 # }}}
 
-# {{{ a kernel class for G0
-# FIXME: will the expressions work when lambda is complex?
-# (may need conversion from 1j to var("I"))
-    class ShidongKernel(ExpressionKernel):
-        init_arg_names = ("dim", "lambda1", "lambda2")
-
-        def __init__(self, dim=None, lambda1=0., lambda2=1.):
-            """
-            :arg lambda1,lambda2: The roots of the quadratic equation w.r.t
-                laplacian.
-            """
-            # Assert against repeated roots.
-            if abs(lambda1**2 - lambda2**2) < 1e-9:
-                raise RuntimeError("illposed since input roots are too close")
-
-# Based on http://mathworld.wolfram.com/ModifiedBesselFunctionoftheSecondKind.html
-            if dim == 2:
-                r       = pymbolic_real_norm_2(make_sym_vector("d", dim))
-                expr    = var("hankel_1")(0, var("I") * lambda1 * r) - \
-                          var("hankel_1")(0, var("I") * lambda2 * r)
-                scaling =  1. / ( 4. * var("I") * (lambda1**2 - lambda2**2) )
-            else:
-                raise RuntimeError("unsupported dimensionality")
-
-            ExpressionKernel.__init__(
-                    self,
-                    dim,
-                    expression=expr,
-                    scaling = scaling,
-                    is_complex_valued=True)
-
-            self.lambda1 = lambda1
-            self.lambda2 = lambda2
-
-        def __getinitargs__(self):
-            return(self._dim, self.lambda1, self.lambda2)
-
-        def update_persistent_hash(self, key_hash, key_builder):
-            key_hash.update(type(self).__name__.encode("utf8"))
-            key_builder.rec(key_hash, 
-                    (self._dim, self.lambda1, self.lambda2)
-                    )
-
-        def __repr__(self):
-            if self._dim is not None:
-                return "ShdgKnl%dD(%f, %f)" % (
-                        self._dim, self.lambda1, self.lambda2)
-            else:
-                return "ShdgKnl(%f, %f)" % (self.lambda1, self.lambda2)
-
-        def prepare_loopy_kernel(self, loopy_knl):
-            from sumpy.codegen import (bessel_preamble_generator, bessel_mangler)
-            loopy_knl = lp.register_function_manglers(loopy_knl,
-                    [bessel_mangler])
-            loopy_knl = lp.register_preamble_generators(loopy_knl,
-                    [bessel_preamble_generator])
-            return loopy_knl
-
-        def get_args(self):
-            k_dtype = np.complex128
-            return [
-                    KernelArgument(
-                        loopy_arg=lp.ValueArg("shidong_kernel", k_dtype),
-                        )]
-
-        mapper_method = "map_shidong_kernel"
-
-# }}}
-
-# {{{ extended kernel getters
-    def get_extkernel_for_G0(lambda1, lambda2):
-        from sumpy.symbolic import pymbolic_real_norm_2
-        from pymbolic.primitives import make_sym_vector
-        from pymbolic import var
-
-        d = make_sym_vector("d", 3)
-        r2 = pymbolic_real_norm_2(d[:-1])
-        expr = var("hankel_1")(0, var("I") * lambda1 * r2
-                + var("I") * d[-1]**2) \
-               - var("hankel_1")(0, var("I") * lambda2 * r2
-                + var("I") * d[-1]**2)
-        scaling =  1. / ( 4. * var("I") * (lambda1**2 - lambda2**2) )
-
-        from sumpy.kernel import ExpressionKernel
-        return ExpressionKernel(
-                dim=3,
-                expression=expr,
-                scaling=scaling,
-                is_complex_valued=True)
-
-    def get_extkernel_for_G1(lamb):
-        from sumpy.symbolic import pymbolic_real_norm_2
-        from pymbolic.primitives import make_sym_vector
-        from pymbolic import var
-
-        d = make_sym_vector("d", 3)
-        r2 = pymbolic_real_norm_2(d[:-1])
-        expr = var("hankel_1")(0, var("I") * lamb * r2
-                + var("I") * d[-1]**2)
-        scaling = - var("I") / 4.
-
-        from sumpy.kernel import ExpressionKernel
-        return ExpressionKernel(
-                dim=3,
-                expression=expr,
-                scaling=scaling,
-                is_complex_valued=True)
-
-
-# }}}
-
 # {{{ equation info
 
     s = 1.5
@@ -239,6 +240,7 @@ def main():
 
     b = s / (epsilon**2)
     c = 1. / (epsilon * delta_t)
+    print ( ["CH operator b = ", b, ", c = ", c] )
 
     sqdet = np.sqrt( b**2 - 4. * c )
     assert np.abs(sqdet) > 1e-6
@@ -247,7 +249,7 @@ def main():
     lambda2 = ( b - sqdet ) / 2.
 
     from pytential.symbolic.pde.cahn_hilliard import CahnHilliardOperator
-    chop = CahnHilliardOperator(b=5, c=1)
+    chop = CahnHilliardOperator(b=b, c=c)
 
     unk = chop.make_unknown("sigma")
     bound_op = bind(qbx, chop.operator(unk))
@@ -257,10 +259,10 @@ def main():
 
     from sumpy.qbx import LayerPotential
     from sumpy.qbx import LineTaylorLocalExpansion
-    layer_pot_v0f1 = LayerPotential(ctx, [
+    layer_pot_v0f1 = LayerPotential(cl_ctx, [
         LineTaylorLocalExpansion(shidong_2d_in_3d_kernel,
             order=vol_qbx_order)])
-    layer_pot_v1f1 = LayerPotential(ctx, [
+    layer_pot_v1f1 = LayerPotential(cl_ctx, [
         LineTaylorLocalExpansion(yukawa_2d_in_3d_kernel_1,
             order=vol_qbx_order)])
 # }}}
@@ -322,7 +324,6 @@ def main():
             )
 
 # }}}
-
 
     # {{{ fix rhs and solve
 
