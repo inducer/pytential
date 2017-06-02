@@ -38,8 +38,14 @@ class CahnHilliardOperator(L2WeightedPDEOperator):
         self.b = b
         self.c = c
 
-        lam1 = -(np.sqrt(b**2-4*c)-b)/2
-        lam2 = (np.sqrt(b**2-4*c)+b)/2
+        lam1 = np.sqrt(-(np.sqrt(b**2-4*c)-b)/2)
+        lam2 = np.sqrt((np.sqrt(b**2-4*c)+b)/2)
+
+        def f(x):
+            return x**2 - b*x + c
+
+        assert np.abs(f(lam1**2)) < 1e-12
+        assert np.abs(f(lam2**2)) < 1e-12
 
         self.lambdas = sorted([lam1, lam2], key=abs, reverse=True)  # biggest first
 
