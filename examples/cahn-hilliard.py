@@ -304,6 +304,7 @@ def main():
     sources[:2] = vol_x
 
     # a manufactured f1
+    # FIXME: use f1 from the previous solution
     x_sin_factor = 30
     y_sin_factor = 10
     def f1_func(x, y):
@@ -397,8 +398,13 @@ def main():
             #    v + cp.laplace(u) - chop.b*u))
 
         from tabulate import tabulate
-        print(tabulate([vec_h, vec_ru, vec_rv],
-                headers=['h', 'resid_u', 'resid_v']))
+        # overwrite if file exists
+        # using .cache simply because it is in .gitignore
+        with open('check_pde.txt.cache', 'w') as f:
+            print(tabulate([["h"] + vec_h,
+                ["residual_u"] + vec_ru,
+                ["residual_v"] +, vec_rv]
+                ), file=f)
 
     check_pde()
 
@@ -421,6 +427,16 @@ def main():
             (indicator_qbx, PointsTarget(targets)),
             sym.D(LaplaceKernel(2), sym.var("sigma")))(
                     queue, sigma=ones_density).get()
+
+    # clean up the mess
+    def clean_file(filename):
+        import os
+        try:
+            os.remove(filename)
+        except OSError:
+            pass
+    clean_file("failed-targets.vts")
+    clean_file("potential.vts")
 
     try:
         u, v = bind(
