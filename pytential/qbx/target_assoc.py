@@ -416,6 +416,16 @@ class QBXTargetAssociator(object):
         # remove this comment or change the algorithm here, make sure that
         # the reference below is still accurate.
 
+        # Trade off for space-invaders vs directly tagging targets in
+        # endangered boxes:
+        #
+        # (-) More complicated
+        # (-) More actual work
+        # (+) Taking the point of view of the targets could potentially lead to
+        # more parallelism, if you think of the targets as unbounded while the
+        # sources are fixed (which sort of makes sense, given that the number
+        # of targets per box is not bounded).
+
         box_to_search_dist, evt = self.space_invader_query(
                 queue,
                 tree,
