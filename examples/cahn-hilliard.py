@@ -85,7 +85,7 @@ def main():
 
     def check_pde():
         from sumpy.point_calculus import CalculusPatch
-        cp = CalculusPatch(np.zeros(2))
+        cp = CalculusPatch(np.zeros(2), order=4, h=0.1)
         targets = cl.array.to_device(queue, cp.points)
 
         u, v = bind(
@@ -95,9 +95,12 @@ def main():
         u = u.get().real
         v = v.get().real
 
+        lap_u = -(v - chop.b*u)
+
         print(la.norm(u), la.norm(v))
+
         print(la.norm(
-            cp.laplace(cp.laplace(u)) - chop.b * cp.laplace(u) + chop.c*u))
+            cp.laplace(lap_u) - chop.b * cp.laplace(u) + chop.c*u))
 
         print(la.norm(
             v + cp.laplace(u) - chop.b*u))
@@ -114,6 +117,7 @@ def main():
 
     targets = cl.array.to_device(queue, fplot.points)
 
+    qbx_stick_out = qbx.copy(target_stick_out_factor=0.05)
     indicator_qbx = qbx_stick_out.copy(qbx_order=2)
 
     from sumpy.kernel import LaplaceKernel
