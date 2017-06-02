@@ -723,12 +723,12 @@ def get_sphere_mesh(refinement_increment, target_order):
     return mesh
 
 
-@pytest.mark.parametrize(("mesh_name", "mesh_getter"), [
+@pytest.mark.parametrize(("mesh_name", "mesh_getter", "qbx_order"), [
     #("circle", partial(ellipse, 1)),
     #("3-to-1 ellipse", partial(ellipse, 3)),
-    ("starfish", get_starfish_mesh),
+    ("starfish", get_starfish_mesh, 5),
+    ("sphere", get_sphere_mesh, 3),
     ])
-@pytest.mark.parametrize("qbx_order", [5])
 @pytest.mark.parametrize(("zero_op_name", "k"), [
     ("green", 0),
     ("green", 1.2),
@@ -747,6 +747,12 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
     clear_cache()
+
+    if mesh_name == "sphere" and k != 0:
+        pytest.skip("both direct eval and generating the FMM kernels are too slow")
+
+    if mesh_name == "sphere" and zero_op_name == "green_grad":
+        pytest.skip("does not achieve sufficient precision")
 
     target_order = 8
 
@@ -811,18 +817,18 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
         if d == 2:
             order_bump = 15
         elif d == 3:
-            order_bump = 6
+            order_bump = 8
 
         refiner_extra_kwargs = {}
 
         if k != 0:
             refiner_extra_kwargs["kernel_length_scale"] = 5/k
 
-        qbx, _ = (
-                QBXLayerPotentialSource(
-                    pre_density_discr, 4*target_order,
-                    qbx_order, fmm_order=qbx_order + order_bump)
-                .with_refinement(**refiner_extra_kwargs))
+        qbx, _ = QBXLayerPotentialSource(
+                pre_density_discr, 4*target_order,
+                qbx_order, fmm_order=qbx_order + order_bump
+                ).with_refinement(**refiner_extra_kwargs)
+
         density_discr = qbx.density_discr
 
         # {{{ compute values of a solution to the PDE
@@ -832,10 +838,17 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
         normal_host = [normal[j].get() for j in range(d)]
 
         if k != 0:
-            angle = 0.3
-            wave_vec = np.array([np.cos(angle), np.sin(angle)])
-            u = np.exp(1j*k*np.tensordot(wave_vec, nodes_host, axes=1))
-            grad_u = 1j*k*wave_vec[:, np.newaxis]*u
+            if d == 2:
+                angle = 0.3
+                wave_vec = np.array([np.cos(angle), np.sin(angle)])
+                u = np.exp(1j*k*np.tensordot(wave_vec, nodes_host, axes=1))
+                grad_u = 1j*k*wave_vec[:, np.newaxis]*u
+            else:
+                center = np.array([3, 1, 2])
+                diff = nodes_host - center[:, np.newaxis]
+                r = la.norm(diff, axis=0)
+                u = np.exp(1j*k*r) / r
+                grad_u = diff * (1j*k*u/r - u/r**2)
         else:
             center = np.array([3, 1, 2])[:d]
             diff = nodes_host - center[:, np.newaxis]
