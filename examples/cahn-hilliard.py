@@ -1,4 +1,5 @@
 import numpy as np
+import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
@@ -8,7 +9,6 @@ from meshmode.discretization.poly_element import \
 
 from pytential import bind, sym, norm  # noqa
 from pytential.target import PointsTarget
-
 # {{{ set some constants for use below
 
 nelements = 20
@@ -247,11 +247,7 @@ def main():
     lambda2 = ( b - sqdet ) / 2.
 
     from pytential.symbolic.pde.cahn_hilliard import CahnHilliardOperator
-    chop = CahnHilliardOperator(
-            # FIXME: Constants?
-            lambda1=lambda1,
-            lambda2=lambda2,
-            c=c)
+    chop = CahnHilliardOperator(b=5, c=1)
 
     unk = chop.make_unknown("sigma")
     bound_op = bind(qbx, chop.operator(unk))
@@ -334,12 +330,12 @@ def main():
 
     def g(xvec):
         x, y = xvec
-        return cl.clmath.atan2(y, x)
+        return cl.clmath.cos(5*cl.clmath.atan2(y, x))
 
     bc = sym.make_obj_array([
         # FIXME: Realistic BC
-        g(nodes),
-        -g(nodes),
+        5+g(nodes),
+        3-g(nodes),
         ])
 
     from pytential.solve import gmres
@@ -349,11 +345,40 @@ def main():
             stall_iterations=0,
             hard_failure=True)
 
+    sigma = gmres_result.solution
+
+    # }}}
+
+    # {{{ check pde
+
+    def check_pde():
+        from sumpy.point_calculus import CalculusPatch
+        cp = CalculusPatch(np.zeros(2), order=4, h=0.1)
+        targets = cl.array.to_device(queue, cp.points)
+
+        u, v = bind(
+                (qbx, PointsTarget(targets)),
+                chop.representation(unk))(queue, sigma=sigma)
+
+        u = u.get().real
+        v = v.get().real
+
+        lap_u = -(v - chop.b*u)
+
+        print(la.norm(u), la.norm(v))
+
+        print(la.norm(
+            cp.laplace(lap_u) - chop.b * cp.laplace(u) + chop.c*u))
+
+        print(la.norm(
+            v + cp.laplace(u) - chop.b*u))
+        1/0
+
+    check_pde()
+
     # }}}
 
     # {{{ postprocess/visualize
-
-    sigma = gmres_result.solution
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
@@ -361,7 +386,6 @@ def main():
     targets = cl.array.to_device(queue, fplot.points)
 
     qbx_stick_out = qbx.copy(target_stick_out_factor=0.05)
-
     indicator_qbx = qbx_stick_out.copy(qbx_order=2)
 
     from sumpy.kernel import LaplaceKernel
@@ -373,9 +397,9 @@ def main():
                     queue, sigma=ones_density).get()
 
     try:
-        fld_in_vol = bind(
+        u, v = bind(
                 (qbx_stick_out, PointsTarget(targets)),
-                chop.representation(unk))(queue, sigma=sigma).get()
+                chop.representation(unk))(queue, sigma=sigma)
     except QBXTargetAssociationFailedException as e:
         fplot.write_vtk_file(
                 "failed-targets.vts",
@@ -384,12 +408,15 @@ def main():
                     ]
                 )
         raise
+    u = u.get().real
+    v = v.get().real
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
     fplot.write_vtk_file(
             "potential.vts",
             [
-                ("potential", fld_in_vol),
+                ("u", u),
+                ("v", v),
                 ("indicator", indicator),
                 ]
             )
