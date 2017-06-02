@@ -40,19 +40,22 @@ class CahnHilliardOperator(L2WeightedPDEOperator):
 
         # Issue:
         # - let crat = np.abs(4.*c) / ( b**2 + 1e-12 )
-        # - when crat is close to zero, sqrt(b**2-4*c) is close to abs(b), then for b>=0,
-        #   sqrt(b**2-4*c) - b is inaccurate.
-        # - similarly, when crat is close to one, sqrt(b**2-4*c) is close to zero, then for b>0,
-        #   sqrt(b**2-4*c) + b is inaccurate.
+        # - when crat is close to zero, sqrt(b**2-4*c) is close to abs(b),
+        #   then for b>=0, sqrt(b**2-4*c) - b is inaccurate.
+        # - similarly, when crat is close to one, sqrt(b**2-4*c) is close to zero,
+        #   then for b>0, sqrt(b**2-4*c) + b is inaccurate.
         # Solution:
         # - find a criteria for crat to choose from formulae, or
         # - use the computed root with smaller residual
         def quadratic_formula_1(a, b, c):
-            return ( -b + np.sqrt(b**2 - 4*a*c) ) / (2*a)
+            return (-b + np.sqrt(b**2 - 4*a*c)) / (2*a)
+
         def quadratic_formula_2(a, b, c):
-            return ( -b - np.sqrt(b**2 - 4*a*c) ) / (2*a)
+            return (-b - np.sqrt(b**2 - 4*a*c)) / (2*a)
+
         def citardauq_formula_1(a, b, c):
             return 2*c / (-b - np.sqrt(b**2-4*a*c))
+
         def citardauq_formula_2(a, b, c):
             return 2*c / (-b + np.sqrt(b**2-4*a*c))
 

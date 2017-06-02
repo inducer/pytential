@@ -10,6 +10,12 @@ from meshmode.discretization.poly_element import \
 from pytential import bind, sym, norm  # noqa
 from pytential.target import PointsTarget
 
+from pytools.obj_array import make_obj_array
+import pytential.symbolic.primitives as p
+
+from sumpy.kernel import ExpressionKernel
+import loopy as lp
+
 # {{{ set some constants for use below
 
 nelements = 20
@@ -95,6 +101,17 @@ class ShidongKernel(ExpressionKernel):
 # }}}
 
 # {{{ extended kernel getters
+class HankelBasedKernel(ExpressionKernel):
+    def prepare_loopy_kernel(self, loopy_knl):
+        from sumpy.codegen import (bessel_preamble_generator, bessel_mangler)
+        loopy_knl = lp.register_function_manglers(loopy_knl,
+                [bessel_mangler])
+        loopy_knl = lp.register_preamble_generators(loopy_knl,
+                [bessel_preamble_generator])
+
+        return loopy_knl
+
+
 def get_extkernel_for_G0(lambda1, lambda2):
     from sumpy.symbolic import pymbolic_real_norm_2
     from pymbolic.primitives import make_sym_vector
@@ -108,8 +125,7 @@ def get_extkernel_for_G0(lambda1, lambda2):
             + var("I") * d[-1]**2)
     scaling =  1. / ( 4. * var("I") * (lambda1**2 - lambda2**2) )
 
-    from sumpy.kernel import ExpressionKernel
-    return ExpressionKernel(
+    return HankelBasedKernel(
             dim=3,
             expression=expr,
             scaling=scaling,
@@ -126,8 +142,7 @@ def get_extkernel_for_G1(lamb):
             + var("I") * d[-1]**2)
     scaling = - var("I") / 4.
 
-    from sumpy.kernel import ExpressionKernel
-    return ExpressionKernel(
+    return HankelBasedKernel(
             dim=3,
             expression=expr,
             scaling=scaling,
@@ -240,25 +255,22 @@ def main():
 
     b = s / (epsilon**2)
     c = 1. / (epsilon * delta_t)
-    print ( ["CH operator b = ", b, ", c = ", c] )
 
-    sqdet = np.sqrt( b**2 - 4. * c )
-    assert np.abs(sqdet) > 1e-6
-
-    lambda1 = ( b + sqdet ) / 2.
-    lambda2 = ( b - sqdet ) / 2.
-
+    print("-- setup Cahn-Hilliard operator")
     from pytential.symbolic.pde.cahn_hilliard import CahnHilliardOperator
-    chop = CahnHilliardOperator(b=b, c=c)
+    chop  = CahnHilliardOperator(b=b, c=c)
 
     unk = chop.make_unknown("sigma")
     bound_op = bind(qbx, chop.operator(unk))
 
-    yukawa_2d_in_3d_kernel_1 = get_extkernel_for_G1(lambda1)
-    shidong_2d_in_3d_kernel  = get_extkernel_for_G0(lambda1, lambda2)
+    print ("-- construct kernels")
+    yukawa_2d_in_3d_kernel_1 = get_extkernel_for_G1(chop.lambdas[0])
+    shidong_2d_in_3d_kernel  = get_extkernel_for_G0(chop.lambdas[0],
+            chop.lambdas[1])
 
+    print("-- construct layer potentials")
     from sumpy.qbx import LayerPotential
-    from sumpy.qbx import LineTaylorLocalExpansion
+    from sumpy.expansion.local import LineTaylorLocalExpansion
     layer_pot_v0f1 = LayerPotential(cl_ctx, [
         LineTaylorLocalExpansion(shidong_2d_in_3d_kernel,
             order=vol_qbx_order)])
@@ -269,7 +281,8 @@ def main():
 
 # {{{ volume integral
 
-    vol_x = vol_discr.nodes(),with_queue(queue)
+    print("-- perform volume integrals")
+    vol_x = vol_discr.nodes().with_queue(queue)
 
     # target points
     targets = cl.array.zeros(queue, (3,) + vol_x.shape[1:], vol_x.dtype)
@@ -354,26 +367,38 @@ def main():
 
     def check_pde():
         from sumpy.point_calculus import CalculusPatch
-        cp = CalculusPatch(np.zeros(2), order=4, h=0.1)
-        targets = cl.array.to_device(queue, cp.points)
+        vec_h  = [1e-1, 1e-2, 1e-3, 1e-4]
+        vec_ru = []
+        vec_rv = []
+        for dx in vec_h:
+            cp = CalculusPatch(np.zeros(2), order=4, h=dx)
+            targets = cl.array.to_device(queue, cp.points)
 
-        u, v = bind(
-                (qbx, PointsTarget(targets)),
-                chop.representation(unk))(queue, sigma=sigma)
+            u, v = bind(
+                    (qbx, PointsTarget(targets)),
+                    chop.representation(unk))(queue, sigma=sigma)
 
-        u = u.get().real
-        v = v.get().real
+            u = u.get().real
+            v = v.get().real
 
-        lap_u = -(v - chop.b*u)
+            lap_u = -(v - chop.b*u)
 
-        print(la.norm(u), la.norm(v))
+            vec_ru.append(la.norm(
+                cp.laplace(lap_u) - chop.b * cp.laplace(u) + chop.c*u))
+            vec_rv.append(la.norm(
+                v + cp.laplace(u) - chop.b*u))
 
-        print(la.norm(
-            cp.laplace(lap_u) - chop.b * cp.laplace(u) + chop.c*u))
+            # print(la.norm(u), la.norm(v))
 
-        print(la.norm(
-            v + cp.laplace(u) - chop.b*u))
-        1/0
+            #print(la.norm(
+            #    cp.laplace(lap_u) - chop.b * cp.laplace(u) + chop.c*u))
+
+            #print(la.norm(
+            #    v + cp.laplace(u) - chop.b*u))
+
+        from tabulate import tabulate
+        print(tabulate([vec_h, vec_ru, vec_rv],
+                headers=['h', 'resid_u', 'resid_v']))
 
     check_pde()
 
