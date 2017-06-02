@@ -399,11 +399,10 @@ def main():
 
         from tabulate import tabulate
         # overwrite if file exists
-        # using .cache simply because it is in .gitignore
-        with open('check_pde.txt.cache', 'w') as f:
+        with open('check_pde.dat', 'w') as f:
             print(tabulate([["h"] + vec_h,
                 ["residual_u"] + vec_ru,
-                ["residual_v"] +, vec_rv]
+                ["residual_v"] + vec_rv]
                 ), file=f)
 
     check_pde()
