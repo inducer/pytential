@@ -729,9 +729,9 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
 
     zero_op_table = {
             "green":
-            sym.S(k_sym, dn_u_sym, qbx_forced_limit=-1, **knl_kwargs)
-            - sym.D(k_sym, u_sym, qbx_forced_limit="avg", **knl_kwargs)
-            - 0.5*u_sym,
+            sym.S(k_sym, dn_u_sym, qbx_forced_limit=1, **knl_kwargs)
+            - sym.D(k_sym, u_sym, qbx_forced_limit=1, **knl_kwargs),
+            #- 0.5*u_sym
 
             "green_grad":
             d1.resolve(d1.dnabla(2) * d1(sym.S(k_sym, dn_u_sym,
@@ -764,12 +764,12 @@ def test_identities(ctx_getter, zero_op_name, curve_name, curve_f, qbx_order, k)
         from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \
                 InterpolatoryQuadratureSimplexGroupFactory
-        from pytential.qbx import QBXLayerPotentialSource
+        from pytential.qbx import QBMXLayerPotentialSource
         pre_density_discr = Discretization(
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-        qbx, _ = QBXLayerPotentialSource(
+        qbx, _ = QBMXLayerPotentialSource(
             pre_density_discr, 4*target_order,
             qbx_order, fmm_order=qbx_order + 15).with_refinement()
         density_discr = qbx.density_discr

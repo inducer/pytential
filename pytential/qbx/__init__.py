@@ -894,7 +894,7 @@ class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
                 fmm_mpole_factory, fmm_local_factory, qbx_mpole_factory,
                 out_kernels)
 
-    def exec_layer_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
         from collections import defaultdict
         # maps (interior/exterior) -> list of target discretizations
         side_to_targets = defaultdict(list)
@@ -982,6 +982,8 @@ class QBMXLayerPotentialSource(QBXLayerPotentialSourceBase):
                              all_potentials_on_tgt_side[o.kernel_index][tgt_slice]))
 
         return result, []
+
+# }}}
 
 # }}}
 
