@@ -389,8 +389,29 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
         with cl.CommandQueue(self.cl_context) as queue:
             nodes = bind(discr, sym.nodes(adim))(queue)
             normals = bind(discr, sym.normal(adim, dim=dim))(queue)
-            panel_sizes = self.panel_sizes(discr_type=discr_type).with_queue(queue)
-            return (nodes + normals * sign * panel_sizes / 2).as_vector(np.object)
+            #panel_sizes = self.panel_sizes(discr_type=discr_type).with_queue(queue)
+
+            discr = (self.density_discr
+                    if discr_type == "coarse"
+                    else self.fine_density_discr)
+
+            area_elements = bind(
+                    discr,
+                    sym.area_element(ambient_dim=discr.ambient_dim, dim=discr.dim)
+                    )(queue)
+
+            centers = (
+                    (nodes + normals * sign * area_elements)
+                    .as_vector(np.object))
+
+            if 1:
+                from meshmode.discretization.visualization import draw_curve
+                draw_curve(discr)
+                import matplotlib.pyplot as plt
+                plt.plot(centers[0].get(), centers[1].get(), 'o')
+                plt.show()
+
+            return centers
 
     @memoize_method
     def centers(self, sign):
