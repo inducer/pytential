@@ -18,7 +18,7 @@ import loopy as lp
 
 # {{{ set some constants for use below
 
-nelements = 20
+# {{{ all kinds of orders
 bdry_quad_order = 4
 mesh_order = bdry_quad_order
 qbx_order = bdry_quad_order
@@ -27,6 +27,57 @@ fmm_order = 8
 
 vol_quad_order = 5
 vol_qbx_order  = 2
+# }}}
+# {{{ mesh generation
+nelements = 20
+
+from enum import Enum
+class Geometry(Enum):
+    RegularRectangle = 1
+    Circle           = 2
+
+shape = Geometry.Circle
+# }}}
+# {{{ physical parameters
+s = 1.5
+epsilon = 0.01
+delta_t = 0.05
+final_t = delta_t * 1
+theta_y = 60. / 180. * np.pi
+
+b = s / (epsilon**2)
+c = 1. / (epsilon * delta_t)
+# }}}
+# {{{ initial phi
+
+# This phi function is also used to do PDE check
+import pymbolic as pmbl
+x = pmbl.var("x")
+y = pmbl.var("y")
+
+# FIXME: modify pymbolic to use tanh function
+# phi = tanh(x / sqrt (2 * epsilon))
+phi = x**2 + x*y + 2*y**2
+phi3 = phi**3
+laphi  = pmbl.differentiate(pmbl.differentiate(phi, 'x'), 'x') + \
+         pmbl.differentiate(pmbl.differentiate(phi, 'y'), 'y')
+laphi3 = pmbl.differentiate(pmbl.differentiate(phi3, 'x'), 'x') + \
+         pmbl.differentiate(pmbl.differentiate(phi3, 'y'), 'y')
+f1_expr = c * phi - (1+s) / epsilon**2 * laphi + 1 / epsilon**2  * laphi3
+f2_expr = (phi3 - (1+s) * phi) / epsilon**2
+
+def f1_func(x,y):
+    return pmbl.evaluate(f1_expr, {"x": x, "y": y})
+
+def f2_func(x,y):
+    return pmbl.evaluate(f2_expr, {"x": x, "y": y})
+
+def initial_phi(x,y):
+    return pmbl.evaluate(phi, {"x": x, "y": y})
+
+#def initial_phi(x, y):
+#   return np.tanh(x / np.sqrt(2. * initial_epsilon))
+# }}}
 
 # }}}
 
@@ -160,13 +211,6 @@ def main():
 
 # {{{ volume mesh generation
 
-    from enum import Enum
-    class Geometry(Enum):
-        RegularRectangle = 1
-        Circle           = 2
-
-    shape = Geometry.Circle
-
     if shape == Geometry.RegularRectangle:
       from meshmode.mesh.generation import generate_regular_rect_mesh
       ext = 1.
@@ -247,28 +291,21 @@ def main():
 
 # }}}
 
-# {{{ equation info
+# {{{ setup operator and potentials
 
-    s = 1.5
-    epsilon = 0.01
-    delta_t = 0.05
-
-    b = s / (epsilon**2)
-    c = 1. / (epsilon * delta_t)
-
-    print("-- setup Cahn-Hilliard operator")
+    #print("-- setup Cahn-Hilliard operator")
     from pytential.symbolic.pde.cahn_hilliard import CahnHilliardOperator
     chop  = CahnHilliardOperator(b=b, c=c)
 
     unk = chop.make_unknown("sigma")
     bound_op = bind(qbx, chop.operator(unk))
 
-    print ("-- construct kernels")
+    #print ("-- construct kernels")
     yukawa_2d_in_3d_kernel_1 = get_extkernel_for_G1(chop.lambdas[0])
     shidong_2d_in_3d_kernel  = get_extkernel_for_G0(chop.lambdas[0],
             chop.lambdas[1])
 
-    print("-- construct layer potentials")
+    #print("-- construct layer potentials")
     from sumpy.qbx import LayerPotential
     from sumpy.expansion.local import LineTaylorLocalExpansion
     layer_pot_v0f1 = LayerPotential(cl_ctx, [
@@ -279,9 +316,8 @@ def main():
             order=vol_qbx_order)])
 # }}}
 
-# {{{ volume integral
+# {{{ setup for volume integral
 
-    print("-- perform volume integrals")
     vol_x = vol_discr.nodes().with_queue(queue)
 
     # target points
@@ -299,19 +335,10 @@ def main():
     print(center_dist)
 
     # source points
-    # FIXME: use over sampled source points?
+    # TODO: use over sampled source points?
     sources = cl.array.zeros(queue, (3,) + vol_x.shape[1:], vol_x.dtype)
     sources[:2] = vol_x
 
-    # a manufactured f1
-    # FIXME: use f1 from the previous solution
-    x_sin_factor = 30
-    y_sin_factor = 10
-    def f1_func(x, y):
-        return 0.1 * cl.clmath.sin(x_sin_factor*x) * cl.clmath.sin(y_sin_factor*y)
-
-    # strengths (with quadrature weights)
-    f1 = f1_func(vol_x[0], vol_x[1])
     vol_weights = bind(vol_discr,
             p.area_element(mesh.ambient_dim, mesh.dim) * p.QWeight()
             )(queue)
@@ -319,25 +346,52 @@ def main():
     print("volume: %d source nodes, %d target nodes" % (
         vol_discr.nnodes, vol_discr.nnodes))
 
-    evt, (vol_pot_v0f1,) = layer_pot_v0f1(
-            queue,
-            targets=targets.reshape(3, vol_discr.nnodes),
-            centers=centers,
-            sources=sources.reshape(3, vol_discr.nnodes),
-            strengths=(
-                (vol_weights * f1).reshape(vol_discr.nnodes),)
-            )
-
-    evt, (vol_pot_v1f1,) = layer_pot_v1f1(
-            queue,
-            targets=targets.reshape(3, vol_discr.nnodes),
-            centers=centers,
-            sources=sources.reshape(3, vol_discr.nnodes),
-            strengths=(
-                (vol_weights * f1).reshape(vol_discr.nnodes),)
-            )
 
 # }}}
+
+# {{{ prepare for time stepping
+    timestep_number = 0
+    time            = 0
+    def get_vts_filename(tmstp_num):
+        return "solution-" + '{0:03}'.format(tmstp_num) + ".vts"
+    output_vts_filename = get_vts_filename(timestep_number)
+# }}}
+
+# {{{ [[TIME STEPPING]]
+    while time < final_t:
+        timestep_number += 1
+        time += delta_t
+        output_vts_filename = get_vts_filename(timestep_number)
+
+        # a manufactured f1 function
+        #x_sin_factor = 30
+        #y_sin_factor = 10
+        #def f1_func(x, y):
+        #    return 0.1 * cl.clmath.sin(x_sin_factor*x) \
+        #            * cl.clmath.sin(y_sin_factor*y)
+
+        # get f1 to compute strengths
+        f1 = f1_func(vol_x[0], vol_x[1])
+        f2 = f2_func(vol_x[0], vol_x[1])
+
+        evt, (vol_pot_v0f1,) = layer_pot_v0f1(
+                queue,
+                targets=targets.reshape(3, vol_discr.nnodes),
+                centers=centers,
+                sources=sources.reshape(3, vol_discr.nnodes),
+                strengths=(
+                    (vol_weights * f1).reshape(vol_discr.nnodes),)
+                )
+
+        evt, (vol_pot_v1f1,) = layer_pot_v1f1(
+                queue,
+                targets=targets.reshape(3, vol_discr.nnodes),
+                centers=centers,
+                sources=sources.reshape(3, vol_discr.nnodes),
+                strengths=(
+                    (vol_weights * f1).reshape(vol_discr.nnodes),)
+                )
+
 
     # {{{ fix rhs and solve
 
@@ -371,6 +425,8 @@ def main():
         vec_h  = [1e-1, 1e-2, 1e-3, 1e-4]
         vec_ru = []
         vec_rv = []
+        vec_rp = []
+        vec_rm = []
         for dx in vec_h:
             cp = CalculusPatch(np.zeros(2), order=4, h=dx)
             targets = cl.array.to_device(queue, cp.points)
@@ -384,10 +440,64 @@ def main():
 
             lap_u = -(v - chop.b*u)
 
+            # Check for homogeneous PDEs for u and v
             vec_ru.append(la.norm(
                 cp.laplace(lap_u) - chop.b * cp.laplace(u) + chop.c*u))
             vec_rv.append(la.norm(
                 v + cp.laplace(u) - chop.b*u))
+
+            # Check for inhomogeneous PDEs for phi and mu
+
+            targets_in_3d = cl.array.zeros(
+                    queue,
+                    (3,) + cp.points.shape[1:],
+                    vol_x.dtype)
+            targets_in_3d[:2] = cp.points
+
+            #center_dist = 0.125*np.min(
+            #        cl.clmath.sqrt(
+            #            bind(vol_discr,
+            #                p.area_element(mesh.ambient_dim, mesh.dim))
+            #            (queue)).get())
+
+            centers_in_3d = make_obj_array(
+                    [ci.copy()
+                        for ci in targets_in_3d])
+            centers_in_3d[2][:] = center_dist
+
+            evt, (v0f1,) = layer_pot_v0f1(
+                    queue,
+                    targets=targets_in_3d,
+                    centers=centers_in_3d,
+                    sources=sources.reshape(3, vol_discr.nnodes),
+                    strengths=(
+                        (vol_weights * f1).reshape(vol_discr.nnodes),)
+                    )
+
+            evt, (v1f1,) = layer_pot_v1f1(
+                    queue,
+                    targets=targets_in_3d,
+                    centers=centers_in_3d,
+                    sources=sources.reshape(3, vol_discr.nnodes),
+                    strengths=(
+                        (vol_weights * f1).reshape(vol_discr.nnodes),)
+                    )
+
+            f14ck = f1_func(cp.points[0], cp.points[1])
+            f24ck = f2_func(cp.points[0], cp.points[1])
+            utild = v0f1
+            vtild = f24ck - v1f1 + lambda1**2 * v0f1
+
+            ph = utild + u
+            mu = epsilon * (vtild + v)
+            lap_ph = f24ck + chop.b * ph - mu / epsilon
+
+            vec_rp.append(la.norm(
+                cp.laplace(lap_ph) - chop.b * cp.laplace(ph) + chop.c*ph
+                - f14ck))
+            vec_rm.append(la.norm(
+                mu / epsilon + cp.laplace(ph) - chop.b*ph
+                - f24ck))
 
             # print(la.norm(u), la.norm(v))
 
@@ -402,7 +512,10 @@ def main():
         with open('check_pde.dat', 'w') as f:
             print(tabulate([["h"] + vec_h,
                 ["residual_u"] + vec_ru,
-                ["residual_v"] + vec_rv]
+                ["residual_v"] + vec_rv,
+                ["residual_phi"] + vec_rp,
+                ["residual_mu"] + vec_rm,
+                ]
                 ), file=f)
 
     check_pde()
@@ -412,7 +525,7 @@ def main():
     # {{{ postprocess/visualize
 
     from sumpy.visualization import FieldPlotter
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
+    fplot = FieldPlotter(np.zeros(2), extent=1.5, npoints=500)
 
     targets = cl.array.to_device(queue, fplot.points)
 
@@ -463,6 +576,8 @@ def main():
             )
 
     # }}}
+
+# }}}
 
 
 if __name__ == "__main__":
