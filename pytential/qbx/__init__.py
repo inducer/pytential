@@ -399,12 +399,13 @@ class QBXLayerPotentialSourceBase(LayerPotentialSource):
                     discr,
                     sym.area_element(ambient_dim=discr.ambient_dim, dim=discr.dim)
                     )(queue)
+            avg_area_el = (cl.array.sum(area_elements)/len(area_elements)).get()[()]
 
             centers = (
-                    (nodes + normals * sign * area_elements)
+                    (nodes + normals * sign * avg_area_el)
                     .as_vector(np.object))
 
-            if 1:
+            if 0:
                 from meshmode.discretization.visualization import draw_curve
                 draw_curve(discr)
                 import matplotlib.pyplot as plt
