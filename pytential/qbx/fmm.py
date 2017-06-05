@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
-.. autoclass:: QBXExpansionWranglerCodeContainer
+.. autoclass:: QBXSumpyExpansionWranglerCodeContainer
 
 .. autoclass:: QBXExpansionWrangler
 
@@ -45,9 +45,9 @@ __doc__ = """
 """
 
 
-# {{{ expansion wrangler
+# {{{ sumpy expansion wrangler
 
-class QBXExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
+class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
     def __init__(self, cl_context,
             multipole_expansion_factory, local_expansion_factory,
             qbx_local_expansion_factory, out_kernels):
@@ -175,12 +175,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     # {{{ source/target dispatch
 
-    def box_source_list_kwargs(self):
-        return dict(
-                box_source_starts=self.tree.box_source_starts,
-                box_source_counts_nonchild=(
-                    self.tree.box_source_counts_nonchild),
-                sources=self.tree.sources)
+    # box_source_list_kwargs inherited from superclass
 
     def box_target_list_kwargs(self):
         # This only covers the non-QBX targets.
@@ -529,6 +524,8 @@ def drive_fmm(expansion_wrangler, src_weights):
 # }}}
 
 
+# {{{ performance model
+
 def write_performance_model(outf, geo_data):
     from pymbolic import var
     p_fmm = var("p_fmm")
@@ -714,5 +711,6 @@ def write_performance_model(outf, geo_data):
 
     # }}}
 
+# }}}
 
 # vim: foldmethod=marker
