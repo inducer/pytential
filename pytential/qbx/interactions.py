@@ -241,6 +241,8 @@ class L2QBXL(E2EBase):
                     <> src_ibox = target_boxes[isrc_box] \
                         {id=read_src_ibox}
 
+                    # Is the box number on the level currently under
+                    # consideration?
                     <> in_range = (target_base_ibox <= src_ibox
                             and src_ibox < target_base_ibox + nboxes)
 
