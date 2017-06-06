@@ -27,6 +27,7 @@ from pytools import memoize_method
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
 from boxtree.pyfmmlib_integration import HelmholtzExpansionWrangler
+from sumpy.kernel import HelmholtzKernel
 
 
 class QBXFMMLibExpansionWranglerCodeContainer(object):
@@ -45,17 +46,10 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
             source_extra_kwargs={},
             kernel_extra_kwargs=None):
 
-        from sumpy.kernel import HelmholtzKernel
-        for out_knl in self.out_kernels:
-            if not isinstance(out_knl, HelmholtzKernel):
-                raise NotImplementedError(
-                        "only the Helmholtz kernel is supported for now")
-
         return QBXFMMLibHelmholtzExpansionWrangler(self, queue, geo_data, dtype,
                 qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
-                kernel_extra_kwargs,
-                self.out_kernels)
+                kernel_extra_kwargs)
 
 # }}}
 
@@ -101,26 +95,64 @@ class ToHostTransferredGeoDataWrapper(object):
     def center_to_tree_targets(self):
         return self.geo_data.center_to_tree_targets().get(queue=self.queue)
 
+    @memoize_method
+    def all_targets(self):
+        """All (not just non-QBX) targets packaged into a single array."""
+        return np.array(list(self.tree().targets))
+
 # }}}
 
 
 # {{{ fmmlib expansion wrangler
 
 class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
-    def __init__(self, code_container, queue, geo_data, dtype,
+    def __init__(self, code, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs,
-            kernel_extra_kwargs,
-            out_kernels):
+            kernel_extra_kwargs):
+
+        self.code = code
+        self.queue = queue
+
+        # FMMLib is CPU-only. This wrapper gets the geometry out of
+        # OpenCL-land.
+        self.geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+
+        self.qbx_order = qbx_order
+
+        # {{{ digest out_kernels
+
+        from sumpy.kernel import AxisTargetDerivative
+
+        k_names = []
+
+        def is_supported_helmknl(knl):
+            result = isinstance(knl, HelmholtzKernel) and knl.dim == 3
+            if result:
+                k_names.append(knl.helmholtz_k_name)
+            return result
+
+        ifgrad = False
+        outputs = []
+        for out_knl in self.code.out_kernels:
+            if is_supported_helmknl(out_knl):
+                outputs.append(())
+            elif (isinstance(out_knl, AxisTargetDerivative)
+                    and is_supported_helmknl(out_knl.inner_kernel)):
+                outputs.append((out_knl.axis,))
+                ifgrad = True
+            else:
+                raise NotImplementedError(
+                        "only the 3D Helmholtz kernel and its target derivatives "
+                        "are supported for now")
+
+        self.outputs = outputs
+
+        # }}}
 
         from pytools import single_valued
-        k_name = single_valued(out_knl.helmholtz_k_name for out_knl in out_kernels)
+        k_name = single_valued(k_names)
         helmholtz_k = kernel_extra_kwargs[k_name]
-
-        self.code_container = code_container
-        self.queue = queue
-        self.geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
-        self.qbx_order = qbx_order
 
         self.level_orders = [
                 fmm_level_to_order(level)
@@ -131,36 +163,37 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         assert single_valued(self.level_orders)
 
         super(QBXFMMLibHelmholtzExpansionWrangler, self).__init__(
-                # FMMLib is CPU-only--get the tree out of OpenCL-land
                 self.geo_data.tree(),
 
                 helmholtz_k=helmholtz_k,
 
                 # FIXME
-                nterms=fmm_level_to_order(0))
+                nterms=fmm_level_to_order(0),
 
-    def potential_zeros(self):
-        """This ought to be called ``non_qbx_potential_zeros``, but since
+                ifgrad=ifgrad)
+
+    # {{{ data vector helpers
+
+    def output_zeros(self):
+        """This ought to be called ``non_qbx_output_zeros``, but since
         it has to override the superclass's behavior to integrate seamlessly,
-        it needs to be called just :meth:`potential_zeros`.
+        it needs to be called just :meth:`output_zeros`.
         """
 
         nqbtl = self.geo_data.non_qbx_box_target_lists()
 
-        # from pytools.obj_array import make_obj_array
-        # return make_obj_array([
-        #         cl.array.zeros(
-        #             self.queue,
-        #             nqbtl.nfiltered_targets,
-        #             dtype=self.dtype)
-        #         for k in self.code.out_kernels])
+        from pytools.obj_array import make_obj_array
+        return make_obj_array([
+                np.zeros(nqbtl.nfiltered_targets, self.dtype)
+                for k in self.outputs])
 
-        return np.zeros(nqbtl.nfiltered_targets, self.dtype)
+    def full_output_zeros(self):
+        """This includes QBX and non-QBX targets."""
 
-    def full_potential_zeros(self):
-        # The superclass generates a full field of zeros, for all
-        # (not just non-QBX) targets.
-        return super(QBXFMMLibHelmholtzExpansionWrangler, self).potential_zeros()
+        from pytools.obj_array import make_obj_array
+        return make_obj_array([
+                np.zeros(self.tree.ntargets, self.dtype)
+                for k in self.outputs])
 
     def reorder_sources(self, source_array):
         source_array = source_array.get(queue=self.queue)
@@ -173,6 +206,22 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
         # Because this is a multi-stage, more complicated process that combines
         # potentials from non-QBX targets and QBX targets.
+
+    def add_potgrad_onto_output(self, output, output_slice, pot, grad):
+        for i_out, out in enumerate(self.outputs):
+            if len(out) == 0:
+                output[i_out][output_slice] += pot
+            elif len(out) == 1:
+                axis, = out
+                if isinstance(grad, np.ndarray):
+                    output[i_out][output_slice] += grad[axis]
+                else:
+                    assert grad == 0
+            else:
+                raise ValueError("element '%s' of outputs array not "
+                        "understood" % out)
+
+    # }}}
 
     # {{{ override target lists to only hit non-QBX targets
 
@@ -338,43 +387,39 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         return qbx_expansions
 
     def eval_qbx_expansions(self, qbx_expansions):
-        pot = self.full_potential_zeros()
+        output = self.full_output_zeros()
 
         geo_data = self.geo_data
         ctt = geo_data.center_to_tree_targets()
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_centers = geo_data.centers()
+
+        all_targets = geo_data.all_targets()
 
         rscale = 1  # FIXME
 
         taeval = self.get_expn_eval_routine("ta")
 
-        for iglobal_center
-            src_icenter = global_qbx_centers[iglobal_center]
+        for isrc_center, src_icenter in enumerate(global_qbx_centers):
+            for icenter_tgt in range(
+                    ctt.starts[src_icenter],
+                    ctt.starts[src_icenter+1]):
 
-            icenter_tgt_start = center_to_targets_starts[src_icenter]
-            icenter_tgt_end = center_to_targets_starts[src_icenter+1]
-
-            for icenter_tgt
-
-                center_itgt = center_to_targets_lists[icenter_tgt]
+                center_itgt = ctt.lists[icenter_tgt]
 
                 center = qbx_centers[:, src_icenter]
-                b[idim] = targets[idim, center_itgt] - center[idim]
 
-                """] + ["""
-                <> coeff{i} = qbx_expansions[src_icenter, {i}]
-                """.format(i=i) for i in range(ncoeffs)] + [
-
-                ] + loopy_insns + ["""
-
-                result[{i},center_itgt] = kernel_scaling * result_{i}_p \
-                        {{id_prefix=write_result}}
-                """.format(i=i) for i in range(len(result_names))] + ["""
-                tmp_pot = taeval(self.helmholtz_k, rscale,
+                pot, grad = taeval(self.helmholtz_k, rscale,
                         center, qbx_expansions[src_icenter],
-                        self._get_targets(tgt_pslice))
+                        all_targets[:, center_itgt])
 
-            end
-        end
+                self.add_potgrad_onto_output(output, center_itgt, pot, grad)
+
+        return output
+
+    def finalize_potential(self, potential):
+        return cl.array.to_device(self.queue, potential)
+
     # }}}
 
 # }}}
