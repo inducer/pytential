@@ -126,7 +126,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     # {{{ data vector utilities
 
-    def potential_zeros(self):
+    def output_zeros(self):
         """This ought to be called ``non_qbx_potential_zeros``, but since
         it has to override the superclass's behavior to integrate seamlessly,
         it needs to be called just :meth:`potential_zeros`.
@@ -142,7 +142,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     dtype=self.dtype)
                 for k in self.code.out_kernels])
 
-    def full_potential_zeros(self):
+    def full_output_zeros(self):
         # The superclass generates a full field of zeros, for all
         # (not just non-QBX) targets.
         return SumpyExpansionWrangler.potential_zeros(self)
@@ -498,17 +498,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     nqbtl = geo_data.non_qbx_box_target_lists()
 
-    # FIXME
-    from pytools.obj_array import make_obj_array
-    all_potentials_in_tree_order = make_obj_array([
-        wrangler.full_potential_zeros()
-        ])
-    qbx_potentials = make_obj_array([
-        qbx_potentials
-        ])
-    non_qbx_potentials = make_obj_array([
-        non_qbx_potentials
-        ])
+    all_potentials_in_tree_order = wrangler.full_output_zeros()
 
     for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
         ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
