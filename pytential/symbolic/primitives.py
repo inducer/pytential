@@ -332,7 +332,7 @@ def normal(ambient_dim, dim=None, where=None):
     """Exterior unit normals."""
 
     # Don't be tempted to add a sign here. As it is, it produces
-    # exterior normals for positively oriented curves.
+    # exterior normals for positively oriented curves and surfaces.
 
     pder = (
             pseudoscalar(ambient_dim, dim, where)
@@ -911,8 +911,9 @@ def tangential_onb(ambient_dim, dim=None, where=None):
         q = avec
         for j in range(k):
             q = q - np.dot(avec, orth_pd_mat[:, j])*orth_pd_mat[:, j]
+        q = cse(q, "q%d" % k)
 
-        orth_pd_mat[:, k] = cse(q/sqrt(np.sum(q**2)), "orth_pd_vec")
+        orth_pd_mat[:, k] = cse(q/sqrt(np.sum(q**2)), "orth_pd_vec%d_" % k)
 
     # }}}
 
@@ -936,9 +937,51 @@ def tangential_to_xyz(tangential_vec, where=None):
         for i in range(ambient_dim - 1))
 
 
-def project_to_tangential(xyz_vec, which=None):
+def project_to_tangential(xyz_vec, where=None):
     return tangential_to_xyz(
-            cse(xyz_to_tangential(xyz_vec, which), which))
+            cse(xyz_to_tangential(xyz_vec, where), where))
+
+
+def n_dot(vec, where=None):
+    nrm = normal(len(vec), where).as_vector()
+
+    return np.dot(nrm, vec)
+
+
+def n_cross(vec, where=None):
+    nrm = normal(3, where).as_vector()
+
+    from pytools import levi_civita
+    from pytools.obj_array import make_obj_array
+    return make_obj_array([
+        sum(
+            levi_civita((i, j, k)) * nrm[j] * vec[k]
+            for j in range(3) for k in range(3))
+        for i in range(3)])
+
+
+def div_S(kernel, arg, ambient_dim=None, **kwargs):  # noqa: N802
+    if ambient_dim is None:
+        ambient_dim = len(arg)
+
+    return sum(dd_axis(iaxis, ambient_dim, S(kernel, arg[iaxis]))
+            for iaxis in range(ambient_dim))
+
+
+def curl_S(kernel, arg, **kwargs):  # noqa: N802
+    from pytools import levi_civita
+    from pytools.obj_array import make_obj_array
+
+    return make_obj_array([
+        sum(
+            levi_civita((l, m, n)) * dd_axis(m, 3, S(kernel, arg[n], **kwargs))
+            for m in range(3) for n in range(3))
+        for l in range(3)])
+
+# }}}
+
+
+# {{{ vectorial (non-geometric-algebra) differential operators
 
 # }}}
 
