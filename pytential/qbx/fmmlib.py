@@ -113,17 +113,45 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
         self.code = code
         self.queue = queue
+
+        # FMMLib is CPU-only. This wrapper gets the geometry out of
+        # OpenCL-land.
         self.geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+
         self.qbx_order = qbx_order
 
+        # {{{ digest out_kernels
+
+        from sumpy.kernel import AxisTargetDerivative
+
+        k_names = []
+
+        def is_supported_helmknl(knl):
+            result = isinstance(knl, HelmholtzKernel) and knl.dim == 3
+            if result:
+                k_names.append(knl.helmholtz_k_name)
+            return result
+
+        ifgrad = False
+        outputs = []
         for out_knl in self.code.out_kernels:
-            if not isinstance(out_knl, HelmholtzKernel) and out_knl.dim == 3:
+            if is_supported_helmknl(out_knl):
+                outputs.append(())
+            elif (isinstance(out_knl, AxisTargetDerivative)
+                    and is_supported_helmknl(out_knl.inner_kernel)):
+                outputs.append((out_knl.axis,))
+                ifgrad = True
+            else:
                 raise NotImplementedError(
-                        "only the 3D Helmholtz kernel is supported for now")
+                        "only the 3D Helmholtz kernel and its target derivatives "
+                        "are supported for now")
+
+        self.outputs = outputs
+
+        # }}}
 
         from pytools import single_valued
-        k_name = single_valued(out_knl.helmholtz_k_name
-                for out_knl in code.out_kernels)
+        k_name = single_valued(k_names)
         helmholtz_k = kernel_extra_kwargs[k_name]
 
         self.level_orders = [
@@ -135,13 +163,16 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         assert single_valued(self.level_orders)
 
         super(QBXFMMLibHelmholtzExpansionWrangler, self).__init__(
-                # FMMLib is CPU-only--get the tree out of OpenCL-land
                 self.geo_data.tree(),
 
                 helmholtz_k=helmholtz_k,
 
                 # FIXME
-                nterms=fmm_level_to_order(0))
+                nterms=fmm_level_to_order(0),
+
+                ifgrad=ifgrad)
+
+    # {{{ data vector helpers
 
     def output_zeros(self):
         """This ought to be called ``non_qbx_output_zeros``, but since
@@ -154,7 +185,7 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         from pytools.obj_array import make_obj_array
         return make_obj_array([
                 np.zeros(nqbtl.nfiltered_targets, self.dtype)
-                for k in self.code.out_kernels])
+                for k in self.outputs])
 
     def full_output_zeros(self):
         """This includes QBX and non-QBX targets."""
@@ -162,7 +193,7 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         from pytools.obj_array import make_obj_array
         return make_obj_array([
                 np.zeros(self.tree.ntargets, self.dtype)
-                for k in self.code.out_kernels])
+                for k in self.outputs])
 
     def reorder_sources(self, source_array):
         source_array = source_array.get(queue=self.queue)
@@ -177,10 +208,20 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         # potentials from non-QBX targets and QBX targets.
 
     def add_potgrad_onto_output(self, output, output_slice, pot, grad):
-        assert (len(self.code.out_kernels) == 1
-                and isinstance(self.code.out_kernels[0], HelmholtzKernel))
+        for i_out, out in enumerate(self.outputs):
+            if len(out) == 0:
+                output[i_out][output_slice] += pot
+            elif len(out) == 1:
+                axis, = out
+                if isinstance(grad, np.ndarray):
+                    output[i_out][output_slice] += grad[axis]
+                else:
+                    assert grad == 0
+            else:
+                raise ValueError("element '%s' of outputs array not "
+                        "understood" % out)
 
-        output[0][output_slice] += pot
+    # }}}
 
     # {{{ override target lists to only hit non-QBX targets
 

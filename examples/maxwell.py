@@ -31,6 +31,11 @@ def main():
     mesh = generate_gmsh(
             FileSource("ellipsoid.step"), 2, order=2,
             other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h])
+
+    from meshmode.mesh.processing import perform_flips
+    # Flip elements--gmsh generates inside-out geometry.
+    mesh = perform_flips(mesh, np.ones(mesh.nelements))
+
     print("%d elements" % mesh.nelements)
 
     from meshmode.mesh.processing import find_bounding_box
@@ -49,15 +54,15 @@ def main():
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
-            fmm_order=qbx_order + 3, fmm_backend="fmmlib")
+            fmm_order=qbx_order + 10, fmm_backend="fmmlib")
 
     from pytential.symbolic.pde.maxwell import PECAugmentedMFIEOperator
     pde_op = PECAugmentedMFIEOperator()
     from pytential import bind, sym
 
-    jt_sym = sym.make_sym_vector("jt", 2)
     rho_sym = sym.var("rho")
-    repr_op = pde_op.scattered_volume_field(jt_sym, rho_sym)
+    # jt_sym = sym.make_sym_vector("jt", 2)
+    # repr_op = pde_op.scattered_volume_field(jt_sym, rho_sym)
 
     # {{{ make a density
 
@@ -100,8 +105,16 @@ def main():
         try:
             fld_in_vol = bind(
                     (qbx_stick_out, PointsTarget(fplot.points)),
-                    sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
-                        qbx_forced_limit=None)
+                    sym.make_obj_array([
+                        # sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
+                        #     qbx_forced_limit=None),
+                        # sym.d_dx(3, sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
+                        #     qbx_forced_limit=None)),
+                        sym.d_dy(3, sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
+                            qbx_forced_limit=None)),
+                        # sym.d_dz(3, sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
+                        #     qbx_forced_limit=None)),
+                        ])
                     )(queue, jt=jt, rho=rho, k=k)
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
@@ -111,15 +124,15 @@ def main():
                         ])
             raise
 
-        fld_in_vol = fld_in_vol.get()
-        # fld_in_vol = sym.make_obj_array(
-        #     [fiv.get() for fiv in fld_in_vol])
+        fld_in_vol = sym.make_obj_array(
+            [fiv.get() for fiv in fld_in_vol])
 
         #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         fplot.write_vtk_file(
                 "potential.vts",
                 [
-                    ("potential", fld_in_vol)
+                    ("potential", fld_in_vol[0]),
+                    ("grad", fld_in_vol[1:]),
                     ]
                 )
 
