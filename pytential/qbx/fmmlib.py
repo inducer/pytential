@@ -101,6 +101,11 @@ class ToHostTransferredGeoDataWrapper(object):
     def center_to_tree_targets(self):
         return self.geo_data.center_to_tree_targets().get(queue=self.queue)
 
+    @memoize_method
+    def all_targets(self):
+        """All (not just non-QBX) targets packaged into a single array."""
+        return np.array(list(self.tree().targets))
+
 # }}}
 
 
@@ -342,39 +347,33 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
         geo_data = self.geo_data
         ctt = geo_data.center_to_tree_targets()
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_centers = geo_data.centers()
+
+        all_targets = geo_data.all_targets()
 
         rscale = 1  # FIXME
 
         taeval = self.get_expn_eval_routine("ta")
 
-        for iglobal_center
-            src_icenter = global_qbx_centers[iglobal_center]
+        for isrc_center, src_icenter in enumerate(global_qbx_centers):
+            for icenter_tgt in range(
+                    ctt.starts[src_icenter],
+                    ctt.starts[src_icenter+1]):
 
-            icenter_tgt_start = center_to_targets_starts[src_icenter]
-            icenter_tgt_end = center_to_targets_starts[src_icenter+1]
-
-            for icenter_tgt
-
-                center_itgt = center_to_targets_lists[icenter_tgt]
+                center_itgt = ctt.lists[icenter_tgt]
 
                 center = qbx_centers[:, src_icenter]
-                b[idim] = targets[idim, center_itgt] - center[idim]
 
-                """] + ["""
-                <> coeff{i} = qbx_expansions[src_icenter, {i}]
-                """.format(i=i) for i in range(ncoeffs)] + [
-
-                ] + loopy_insns + ["""
-
-                result[{i},center_itgt] = kernel_scaling * result_{i}_p \
-                        {{id_prefix=write_result}}
-                """.format(i=i) for i in range(len(result_names))] + ["""
-                tmp_pot = taeval(self.helmholtz_k, rscale,
+                pot[center_itgt] += taeval(self.helmholtz_k, rscale,
                         center, qbx_expansions[src_icenter],
-                        self._get_targets(tgt_pslice))
+                        all_targets[:, center_itgt])
 
-            end
-        end
+        return pot
+
+    def finalize_potential(self, potential):
+        return cl.array.to_device(self.queue, potential)
+
     # }}}
 
 # }}}

@@ -498,13 +498,17 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     nqbtl = geo_data.non_qbx_box_target_lists()
 
+    # FIXME
     from pytools.obj_array import make_obj_array
     all_potentials_in_tree_order = make_obj_array([
-            cl.array.zeros(
-                wrangler.queue,
-                tree.ntargets,
-                dtype=wrangler.dtype)
-            for k in wrangler.code.out_kernels])
+        wrangler.full_potential_zeros()
+        ])
+    qbx_potentials = make_obj_array([
+        qbx_potentials
+        ])
+    non_qbx_potentials = make_obj_array([
+        non_qbx_potentials
+        ])
 
     for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
         ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
