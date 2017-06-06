@@ -106,14 +106,14 @@ def main():
             fld_in_vol = bind(
                     (qbx_stick_out, PointsTarget(fplot.points)),
                     sym.make_obj_array([
-                        # sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
-                        #     qbx_forced_limit=None),
-                        # sym.d_dx(3, sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
-                        #     qbx_forced_limit=None)),
+                        sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
+                            qbx_forced_limit=None),
+                        sym.d_dx(3, sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
+                            qbx_forced_limit=None)),
                         sym.d_dy(3, sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
                             qbx_forced_limit=None)),
-                        # sym.d_dz(3, sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
-                        #     qbx_forced_limit=None)),
+                        sym.d_dz(3, sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
+                            qbx_forced_limit=None)),
                         ])
                     )(queue, jt=jt, rho=rho, k=k)
         except QBXTargetAssociationFailedException as e:
