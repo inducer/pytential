@@ -56,13 +56,51 @@ def main():
     qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order + 10, fmm_backend="fmmlib")
 
-    from pytential.symbolic.pde.maxwell import PECAugmentedMFIEOperator
-    pde_op = PECAugmentedMFIEOperator()
+    from pytential.symbolic.pde.maxwell import MuellerAugmentedMFIEOperator
+    pde_op = MuellerAugmentedMFIEOperator(
+            omega=3,
+            epss=[1.5, 1],
+            mus=[1, 1],
+            )
     from pytential import bind, sym
 
-    rho_sym = sym.var("rho")
-    # jt_sym = sym.make_sym_vector("jt", 2)
-    # repr_op = pde_op.scattered_volume_field(jt_sym, rho_sym)
+    unk = pde_op.make_unknown("sigma")
+    sym_operator = pde_op.operator(unk)
+    sym_rhs = pde_op.rhs(
+            sym.make_sym_vector("Einc", 3),
+            sym.make_sym_vector("Hinc", 3))
+    sym_repr = pde_op.representation(0, unk)
+
+    if 1:
+        expr = sym_repr
+        print(sym.pretty(expr))
+
+        print("#"*80)
+        bound_op = bind(qbx, expr)
+        print(bound_op.code)
+        1/0
+
+    if 0:
+        bvp_rhs = bind(qbx, sym_rhs)(queue,
+                Einc=make_obj_array([
+                    ...
+                    ]),
+                Hinc=make_obj_array([
+                    ...
+                    ]),
+                )
+
+        bound_op = bind(qbx, sym_operator)
+
+        from pytential.solve import gmres
+        gmres_result = gmres(
+                bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
+                bvp_rhs, tol=1e-8, progress=True,
+                stall_iterations=0,
+                hard_failure=True)
+
+        sigma = gmres_result.solution
+
 
     # {{{ make a density
 
