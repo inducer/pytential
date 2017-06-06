@@ -17,13 +17,13 @@ cl_ctx = cl.create_some_context()
 queue = cl.CommandQueue(cl_ctx)
 
 target_order = 5
-qbx_order = 2
+qbx_order = 3
 nelements = 60
 mode_nr = 0
 
-h = .5
+h = 1
 
-k = 2
+k = 4
 
 
 def main():
@@ -31,6 +31,7 @@ def main():
     mesh = generate_gmsh(
             FileSource("ellipsoid.step"), 2, order=2,
             other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h])
+    print("%d elements" % mesh.nelements)
 
     from meshmode.mesh.processing import find_bounding_box
     bbox_min, bbox_max = find_bounding_box(mesh)
@@ -48,7 +49,7 @@ def main():
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
-            fmm_order=qbx_order, fmm_backend="fmmlib")
+            fmm_order=qbx_order + 3, fmm_backend="fmmlib")
 
     from pytential.symbolic.pde.maxwell import PECAugmentedMFIEOperator
     pde_op = PECAugmentedMFIEOperator()
@@ -80,13 +81,39 @@ def main():
 
     #mlab.figure(bgcolor=(1, 1, 1))
     if 1:
-        fplot = FieldPlotter(bbox_center, extent=1.5*bbox_size, npoints=30)
+        from meshmode.discretization.visualization import make_visualizer
+        bdry_vis = make_visualizer(queue, density_discr, target_order)
+
+        bdry_normals = bind(density_discr, sym.normal(3))(queue)\
+                .as_vector(dtype=object)
+
+        bdry_vis.write_vtk_file("source.vtu", [
+            ("sigma", sigma),
+            ("bdry_normals", bdry_normals),
+            ])
+
+        fplot = FieldPlotter(bbox_center, extent=2*bbox_size, npoints=(150, 150, 1))
 
         qbx_stick_out = qbx.copy(target_stick_out_factor=0.1)
         from pytential.target import PointsTarget
-        fld_in_vol = bind(
-                (qbx_stick_out, PointsTarget(fplot.points)),
-                repr_op)(queue, jt=jt, rho=rho, k=k).get()
+        from pytential.qbx import QBXTargetAssociationFailedException
+        try:
+            fld_in_vol = bind(
+                    (qbx_stick_out, PointsTarget(fplot.points)),
+                    sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
+                        qbx_forced_limit=None)
+                    )(queue, jt=jt, rho=rho, k=k)
+        except QBXTargetAssociationFailedException as e:
+            fplot.write_vtk_file(
+                    "failed-targets.vts",
+                    [
+                        ("failed_targets", e.failed_target_flags.get(queue))
+                        ])
+            raise
+
+        fld_in_vol = fld_in_vol.get()
+        # fld_in_vol = sym.make_obj_array(
+        #     [fiv.get() for fiv in fld_in_vol])
 
         #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         fplot.write_vtk_file(
@@ -95,17 +122,6 @@ def main():
                     ("potential", fld_in_vol)
                     ]
                 )
-
-        bdry_normals = bind(density_discr, sym.normal())(queue)\
-                .as_vector(dtype=object)
-
-        from meshmode.discretization.visualization import make_visualizer
-        bdry_vis = make_visualizer(queue, density_discr, target_order)
-
-        bdry_vis.write_vtk_file("source.vtu", [
-            ("sigma", sigma),
-            ("bdry_normals", bdry_normals),
-            ])
 
 
 if __name__ == "__main__":
