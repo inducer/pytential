@@ -22,10 +22,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range, zip
 import numpy as np  # noqa
-from pymbolic.primitives import Variable
 from pytential import sym
+from collections import namedtuple
+from functools import partial
+
+tangential_to_xyz = sym.tangential_to_xyz
+xyz_to_tangential = sym.xyz_to_tangential
+cse = sym.cse
+
+from pytools.obj_array import join_fields
 
 
 # {{{ Charge-Current MFIE
@@ -45,41 +51,41 @@ class PECAugmentedMFIEOperator:
     def j_operator(self, loc, Jt):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
         return xyz_to_tangential(
-                (loc*0.5)*Jxyz-nxcurl_S(self.k, 0, Jxyz))
+                (loc*0.5)*Jxyz - sym.nxcurl_S(self.kernel, 0, Jxyz, k=self.k))
 
     def j_rhs(self, Hinc_xyz):
-        return xyz_to_tangential(n_cross(Hinc_xyz))
+        return xyz_to_tangential(sym.n_cross(Hinc_xyz))
 
     def rho_operator(self, loc, rho):
-        return (loc*0.5)*rho+Sp(self.k, rho)
+        return (loc*0.5)*rho+sym.Sp(self.kernel, rho, k=self.k)
 
     def rho_rhs(self, Jt, Einc_xyz):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
 
-        return n_dot(Einc_xyz) + 1j*self.k*n_dot(S(self.k, Jxyz))
+        return (sym.n_dot(Einc_xyz)
+                + 1j*self.k*sym.n_dot(sym.S(self.kernel, Jxyz, k=self.k)))
 
     def scattered_boundary_field(self, Jt, rho, loc):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
 
-        A = S(self.kernel, Jxyz, k=self.k)
-        grad_phi = grad_S(k, rho, 3)
+        A = sym.S(self.kernel, Jxyz, k=self.k)
+        grad_phi = sym.grad(3, sym.S(self.kernel, rho, k=self.k))
 
         # use - n x n x v = v_tangential
 
-        E_scat = 1j*k*A - grad_phi + 0.5*loc*rho
-        H_scat = curl_S_volume(k, Jxyz) + (loc*0.5)*Jxyz
+        E_scat = 1j*self.k*A - grad_phi + 0.5*loc*rho
+        H_scat = sym.curl_S(self.kernel, Jxyz, k=self.k) + (loc*0.5)*Jxyz
 
-        from pytools.obj_array import join_fields
         return join_fields(E_scat, H_scat)
 
     def scattered_volume_field(self, Jt, rho):
         Jxyz = sym.cse(sym.tangential_to_xyz(Jt), "Jxyz")
 
         A = sym.S(self.kernel, Jxyz, k=self.k, qbx_forced_limit=None)
-        #grad_phi = grad_S(self.kernel, rho, 3, k=self.k)
+        grad_phi = sym.grad(3, sym.S(self.kernel, rho, 3, k=self.k))
 
-        E_scat = 1j*self.k*A# - grad_phi
-        #H_scat = curl_S_volume(k, Jxyz)
+        E_scat = 1j*self.k*A - grad_phi
+        H_scat = sym.curl_S(self.kernel, Jxyz, k=self.k)
 
         from pytools.obj_array import join_fields
         return E_scat #join_fields(E_scat, H_scat)
