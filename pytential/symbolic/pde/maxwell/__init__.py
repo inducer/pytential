@@ -28,7 +28,7 @@ from pymbolic.primitives import Variable
 from pytential import sym
 
 
-# {{{ MFIE
+# {{{ Charge-Current MFIE
 
 class PECAugmentedMFIEOperator:
     """Magnetic Field Integral Equation operator,
@@ -83,6 +83,81 @@ class PECAugmentedMFIEOperator:
 
         from pytools.obj_array import join_fields
         return E_scat #join_fields(E_scat, H_scat)
+
+# }}}
+
+
+# {{{ Charge-Current Mueller MFIE
+
+class MuellerAugmentedMFIEOperator:
+    """Magnetic Field Integral Equation operator,
+    under the assumption of no surface charges.
+    """
+
+    def __init__(self,omg,mu0,eps0,mu1,eps1):
+        from sumpy.kernel import HelmholtzKernel
+        self.kernel = HelmholtzKernel(3)
+        self.omg = omg
+        self.mu0 = mu0
+        self.eps0 = eps0
+        self.mu1=mu1
+        self.eps1=eps1
+        self.k0 = omg*sqrt(eps0*mu0)
+        self.k1 = omg*sqrt(eps1*mu1)
+
+    def make_unknown(self, name):
+        return sym.make_sym_vector(name, 6)
+
+    unk_structure = namedtuple(["jt", "rho_e", "mt", "rho_m"]
+    def split_unknown(self, unk):
+        return self.unk_structure(
+            jt=unk[:2],
+            rho_e=unk[2],
+            mt=unk[3:5],
+            rho_m=unk[5])
+
+    def augmul_operator(self, unk):
+        u = self.split_unknown(unk)
+        
+        Jxyz = cse(tangential_to_xyz(u.jt), "Jxyz")
+        Mxyz = cse(tangential_to_xyz(u.mt), "Mxyz")
+        E0 = cse(1j*self.omg*self.mu0*self.eps0*S(self.k0,0,Jxyz) +
+            self.mu0*gradScross(self.k0,Mxyz)-grad_S(self.k0,u.rho_e,3),"E0")
+        H0 = cse(-1j*self.omg*self.mu0*self.eps0*S(self.k0,0,Mxyz) +
+            self.eps0*gradScross(self.k0,Jxyz)+grad_S(self.k0,u.rho_m,3),"H0")
+        E1 = cse(1j*self.omg*self.mu1*self.eps1*S(self.k1,0,Jxyz) +
+            self.mu1*gradScross(self.k1,Mxyz)-grad_S(self.k1,u.rho_e,3),"E1")
+        H1 = cse(-1j*self.omg*self.mu1*self.eps1*S(self.k1,0,Mxyz) +
+            self.eps1*gradScross(self.k1,Jxyz)+grad_S(self.k1,u.rho_m,3),"H1")
+        F1 = cse(xyz_to_tangential(n_cross(H1-H0) 
+            + 0.5*(self.eps0+self.eps1)*Jxyz),"F1")
+        F2 = cse(n_dot(self.eps1*E1-self.eps0*E0) 
+            + 0.5*(self.eps1+self.eps0)*u.rho_e,"F2")    
+        F3 = cse(xyz_to_tangential(n_cross(E1-E0) 
+            + 0.5*(self.mu0+self.mu1)*Mxyz),"F3")
+        # sign flip included    
+        F4 = cse(-n_dot(self.mu1*H1-self.mu0*H0) 
+            + 0.5*(self.mu1+self.mu0)*u.rho_m,"F4")    
+
+        return sym.join_fields([F1,F2,F3,F4])
+
+    def augmul_rhs(self, Einc_xyz,Hinc_xyz):
+        return sym.join_fields([xyz_to_tangential(n_cross(Hinc_xyz)),
+            n_dot(self.eps1*Einc_xyz),xyz_to_tangential(n_cross(Einc_xyz)),
+            n_dot(-self.mu1*Hinc_xyz)]
+
+    def scattered_volume_field(self, sol):
+        u = self.split_unknown(sol)
+        Jxyz = sym.cse(sym.tangential_to_xyz(u.jt), "Jxyz")
+        Mxyz = sym.cse(sym.tangential_to_xyz(u.mt), "Mxyz")
+
+        E0 = cse(1j*self.omg*self.mu0*self.eps0*S(self.k0,0,Jxyz) +
+            self.mu0*gradScross(self.k0,Mxyz)-grad_S(self.k0,u.rho_e,3),"E0")
+        H0 = cse(-1j*self.omg*self.mu0*self.eps0*S(self.k0,0,Mxyz) +
+            self.eps0*gradScross(self.k0,Jxyz)+grad_S(self.k0,u.rho_m,3),"H0")
+
+        from pytools.obj_array import join_fields
+        return join_fields(E0, H0)
 
 # }}}
 
