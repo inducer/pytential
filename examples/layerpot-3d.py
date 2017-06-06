@@ -90,7 +90,9 @@ if 1:
                 ]
             )
 
-    bdry_normals = bind(density_discr, sym.normal())(queue).as_vector(dtype=object)
+    bdry_normals = bind(
+            density_discr,
+            sym.normal(density_discr.ambient_dim))(queue).as_vector(dtype=object)
 
     from meshmode.discretization.visualization import make_visualizer
     bdry_vis = make_visualizer(queue, density_discr, target_order)
