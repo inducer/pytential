@@ -8,3 +8,4 @@ git+https://github.com/inducer/loopy
 git+https://github.com/inducer/boxtree
 git+https://github.com/inducer/meshmode
 git+https://github.com/inducer/sumpy
+git+https://github.com/inducer/pyfmmlib
