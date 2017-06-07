@@ -797,7 +797,6 @@ class EllipsoidIntEqTestCase(IntEqTestCase):
     ] + [
     EllipsoidIntEqTestCase(0.7, "neumann", +1)
     ])
-@pytest.mark.parametrize("qbx_order", [5])
 # Sample test run:
 # 'test_integral_equation(cl._csc, EllipseIntEqTestCase(0, "dirichlet", +1), 5)'  # noqa: E501
 def test_integral_equation(ctx_getter, case):
