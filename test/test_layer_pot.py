@@ -287,13 +287,9 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
 # {{{ integral equation test backend
 
-def run_int_eq_test(
-        cl_ctx, queue, curve_f, nelements, qbx_order, bc_type, loc_sign, k,
+def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
         target_order, source_order):
-
-    mesh = make_curve_mesh(curve_f,
-            np.linspace(0, 1, nelements+1),
-            target_order)
+    mesh = case.get_mesh(resolution, target_order)
 
     if 0:
         from pytential.visualization import show_mesh
@@ -314,8 +310,8 @@ def run_int_eq_test(
 
     refiner_extra_kwargs = {}
 
-    if k != 0:
-        refiner_extra_kwargs["kernel_length_scale"] = 5/k
+    if case.k != 0:
+        refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
 
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, fine_order=source_order, qbx_order=qbx_order,
@@ -331,10 +327,10 @@ def run_int_eq_test(
             NeumannOperator)
 
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-    if k:
+    if case.k:
         knl = HelmholtzKernel(2)
         knl_kwargs = {"k": sym.var("k")}
-        concrete_knl_kwargs = {"k": k}
+        concrete_knl_kwargs = {"k": case.k}
     else:
         knl = LaplaceKernel(2)
         knl_kwargs = {}
@@ -345,11 +341,11 @@ def run_int_eq_test(
     else:
         dtype = np.float64
 
-    if bc_type == "dirichlet":
-        op = DirichletOperator(knl, loc_sign, use_l2_weighting=True,
+    if case.bc_type == "dirichlet":
+        op = DirichletOperator(knl, case.loc_sign, use_l2_weighting=True,
                 kernel_arguments=knl_kwargs)
-    elif bc_type == "neumann":
-        op = NeumannOperator(knl, loc_sign, use_l2_weighting=True,
+    elif case.bc_type == "neumann":
+        op = NeumannOperator(knl, case.loc_sign, use_l2_weighting=True,
                  use_improved_operator=False, kernel_arguments=knl_kwargs)
     else:
         assert False
@@ -363,7 +359,7 @@ def run_int_eq_test(
     inner_radius = 0.1
     outer_radius = 2
 
-    if loc_sign < 0:
+    if case.loc_sign < 0:
         test_src_geo_radius = outer_radius
         test_tgt_geo_radius = inner_radius
     else:
@@ -407,11 +403,11 @@ def run_int_eq_test(
     test_direct = bind((point_source, PointsTarget(test_targets)), pot_src)(
             queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
-    if bc_type == "dirichlet":
+    if case.bc_type == "dirichlet":
         bc = bind((point_source, density_discr), pot_src)(
                 queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
-    elif bc_type == "neumann":
+    elif case.bc_type == "neumann":
         bc = bind(
                 (point_source, density_discr),
                 sym.normal_derivative(
@@ -439,7 +435,7 @@ def run_int_eq_test(
         # {{{ build matrix for spectrum check
 
         from sumpy.tools import build_matrix
-        mat = build_matrix(bound_op.scipy_op("u", dtype=dtype, k=k))
+        mat = build_matrix(bound_op.scipy_op("u", dtype=dtype, k=case.k))
         w, v = la.eig(mat)
         if 0:
             pt.imshow(np.log10(1e-20+np.abs(mat)))
@@ -459,7 +455,7 @@ def run_int_eq_test(
     bound_tgt_op = bind((qbx, PointsTarget(test_targets)),
             op.representation(sym.var("u")))
 
-    test_via_bdry = bound_tgt_op(queue, u=u, k=k)
+    test_via_bdry = bound_tgt_op(queue, u=u, k=case.k)
 
     err = test_direct-test_via_bdry
 
@@ -469,7 +465,7 @@ def run_int_eq_test(
 
     # {{{ remove effect of net source charge
 
-    if k == 0 and bc_type == "neumann" and loc_sign == -1:
+    if case.k == 0 and case.bc_type == "neumann" and case.loc_sign == -1:
         # remove constant offset in interior Laplace Neumann error
         tgt_ones = np.ones_like(test_direct)
         tgt_ones = tgt_ones/la.norm(tgt_ones)
@@ -490,7 +486,7 @@ def run_int_eq_test(
             op.representation(
                 sym.var("u"),
                 map_potentials=lambda pot: sym.tangential_derivative(2, pot),
-                qbx_forced_limit=loc_sign))
+                qbx_forced_limit=case.loc_sign))
 
     #print(bound_t_deriv_op.code)
 
@@ -531,7 +527,7 @@ def run_int_eq_test(
         fld_from_bdry = bind(
                 (qbx, PointsTarget(fplot.points)),
                 op.representation(sym.var("u"))
-                )(queue, u=u, k=k)
+                )(queue, u=u, k=case.k)
         fld_from_src = fld_from_src.get()
         fld_from_bdry = fld_from_bdry.get()
 
@@ -554,7 +550,7 @@ def run_int_eq_test(
         prep()
         if 1:
             pt.subplot(131)
-            pt.title("Field error (loc_sign=%s)" % loc_sign)
+            pt.title("Field error (loc_sign=%s)" % case.loc_sign)
             log_err = np.log10(1e-20+np.abs(fld_from_src-fld_from_bdry))
             log_err = np.minimum(-3, log_err)
             fplot.show_scalar_in_matplotlib(log_err, cmap=cmap)
@@ -627,24 +623,51 @@ def run_int_eq_test(
 
 # {{{ integral equation test frontend
 
-@pytest.mark.parametrize(("curve_name", "curve_f"), [
-    # booo-ring.
-    #("circle", partial(ellipse, 1)),
+class IntEqTestCase:
+    @property
+    def k(self):
+        return self.helmholtz_k
 
-    ("3-to-1 ellipse", partial(ellipse, 3)),
+    def __str__(self):
+        return ("name: %s, bc_type: %s, loc_sign: %s, "
+            "helmholtz_k: %s"
+            % (self.name, self.bc_type, self.loc_sign, self.helmholtz_k))
 
-    # underresolved at resolutions that take tolerable time
-    #("starfish", starfish),
+
+class CurveIntEqTestCase(IntEqTestCase):
+    resolutions = [30, 40, 50]
+
+    def __init__(self, helmholtz_k, bc_type, loc_sign):
+        self.helmholtz_k = helmholtz_k
+        self.bc_type = bc_type
+        self.loc_sign = loc_sign
+
+    def get_mesh(self, resolution, target_order):
+        return make_curve_mesh(
+                self.curve_func,
+                np.linspace(0, 1, resolution+1),
+                target_order)
+
+
+class EllipseIntEqTestCase(CurveIntEqTestCase):
+    name = "3-to-1 ellipse"
+
+    def curve_func(self, x):
+        return ellipse(3, x)
+
+
+@pytest.mark.parametrize("case", [
+    EllipseIntEqTestCase(helmholtz_k=helmholtz_k, bc_type=bc_type,
+        loc_sign=loc_sign)
+    for helmholtz_k in [0, 1.2]
+    for bc_type in ["dirichlet", "neumann"]
+    for loc_sign in [-1, +1]
     ])
-@pytest.mark.parametrize("k", [0, 1.2])
-@pytest.mark.parametrize("bc_type", ["dirichlet", "neumann"])
-@pytest.mark.parametrize("loc_sign", [+1, -1])
 @pytest.mark.parametrize("qbx_order", [5])
 # Sample test run:
-# 'test_integral_equation(cl._csc, "circle", circle, 5, "dirichlet", +1, 5)'
+# 'test_integral_equation(cl._csc, EllipseIntEqTestCase(0, "dirichlet", +1), 5)'  # noqa: E501
 def test_integral_equation(
-        ctx_getter, curve_name, curve_f, qbx_order, bc_type, loc_sign, k,
-        target_order=7, source_order=None):
+        ctx_getter, case, qbx_order, target_order=7, source_order=None):
     logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
@@ -655,25 +678,22 @@ def test_integral_equation(
     clear_cache()
 
     from pytools.convergence import EOCRecorder
-    print(("curve_name: %s, qbx_order: %d, bc_type: %s, loc_sign: %s, "
-            "helmholtz_k: %s"
-            % (curve_name, qbx_order, bc_type, loc_sign, k)))
+    print("qbx_order: %d, %s" % (qbx_order, case))
 
     eoc_rec_target = EOCRecorder()
     eoc_rec_td = EOCRecorder()
 
-    for nelements in [30, 40, 50]:
+    for resolution in case.resolutions:
         result = run_int_eq_test(
-                cl_ctx, queue, curve_f, nelements, qbx_order,
-                bc_type, loc_sign, k, target_order=target_order,
-                source_order=source_order)
+                cl_ctx, queue, case, resolution, qbx_order,
+                target_order=target_order, source_order=source_order)
 
         eoc_rec_target.add_data_point(result.h_max, result.rel_err_2)
         eoc_rec_td.add_data_point(result.h_max, result.rel_td_err_inf)
 
-    if bc_type == "dirichlet":
+    if case.bc_type == "dirichlet":
         tgt_order = qbx_order
-    elif bc_type == "neumann":
+    elif case.bc_type == "neumann":
         tgt_order = qbx_order-1
     else:
         assert False
