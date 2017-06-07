@@ -288,26 +288,19 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 
 # {{{ integral equation test backend
 
-def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
-        target_order, source_order):
-    mesh = case.get_mesh(resolution, target_order)
-
-    if 0:
-        from pytential.visualization import show_mesh
-        show_mesh(mesh)
-
-        pt.gca().set_aspect("equal")
-        pt.show()
+def run_int_eq_test(cl_ctx, queue, case, resolution):
+    mesh = case.get_mesh(resolution, case.target_order)
+    print("%d elements" % mesh.nelements)
 
     from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
     pre_density_discr = Discretization(
-            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+            cl_ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
-    if source_order is None:
-        source_order = 4*target_order
+    source_order = 4*case.target_order
 
     refiner_extra_kwargs = {}
 
@@ -317,17 +310,45 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
     if case.fmm_backend is None:
         fmm_order = False
     else:
-        fmm_order = qbx_order + 10
+        fmm_order = case.qbx_order + 5
 
     qbx = QBXLayerPotentialSource(
-            pre_density_discr, fine_order=source_order, qbx_order=qbx_order,
-            # Don't use FMM for now
+            pre_density_discr, fine_order=source_order, qbx_order=case.qbx_order,
             fmm_order=fmm_order, fmm_backend=case.fmm_backend)
 
     if case.use_refinement:
         qbx, _ = qbx.with_refinement(**refiner_extra_kwargs)
 
     density_discr = qbx.density_discr
+
+    # {{{ plot geometry
+
+    if 0:
+        if mesh.ambient_dim == 2:
+            # show geometry, centers, normals
+            nodes_h = density_discr.nodes().get(queue=queue)
+            pt.plot(nodes_h[0], nodes_h[1], "x-")
+            normal = bind(density_discr, sym.normal(2))(queue).as_vector(np.object)
+            pt.quiver(nodes_h[0], nodes_h[1],
+                    normal[0].get(queue), normal[1].get(queue))
+            pt.gca().set_aspect("equal")
+            pt.show()
+
+        elif mesh.ambient_dim == 3:
+            from meshmode.discretization.visualization import make_visualizer
+            bdry_vis = make_visualizer(queue, density_discr, case.target_order)
+
+            bdry_normals = bind(density_discr, sym.normal(3))(queue)\
+                    .as_vector(dtype=object)
+
+            bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
+                ("bdry_normals", bdry_normals),
+                ])
+
+        else:
+            raise ValueError("invalid mesh dim")
+
+    # }}}
 
     # {{{ set up operator
 
@@ -366,15 +387,12 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
 
     # {{{ set up test data
 
-    inner_radius = 0.1
-    outer_radius = 2
-
     if case.loc_sign < 0:
-        test_src_geo_radius = outer_radius
-        test_tgt_geo_radius = inner_radius
+        test_src_geo_radius = case.outer_radius
+        test_tgt_geo_radius = case.inner_radius
     else:
-        test_src_geo_radius = inner_radius
-        test_tgt_geo_radius = outer_radius
+        test_src_geo_radius = case.inner_radius
+        test_tgt_geo_radius = case.outer_radius
 
     point_sources = make_circular_point_group(
             mesh.ambient_dim, 10, test_src_geo_radius,
@@ -391,15 +409,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
     source_charges_dev = cl.array.to_device(queue, source_charges)
 
     # }}}
-
-    if 0:
-        # show geometry, centers, normals
-        nodes_h = density_discr.nodes().get(queue=queue)
-        pt.plot(nodes_h[0], nodes_h[1], "x-")
-        normal = bind(density_discr, sym.normal(2))(queue).as_vector(np.object)
-        pt.quiver(nodes_h[0], nodes_h[1], normal[0].get(queue), normal[1].get(queue))
-        pt.gca().set_aspect("equal")
-        pt.show()
 
     # {{{ establish BCs
 
@@ -437,15 +446,19 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
     from pytential.solve import gmres
     gmres_result = gmres(
             bound_op.scipy_op(queue, "u", dtype, **concrete_knl_kwargs),
-            rhs, tol=1e-14, progress=True,
-            hard_failure=False)
+            rhs,
+            tol=case.gmres_tol,
+            progress=True,
+            hard_failure=True)
 
-    u = gmres_result.solution
     print("gmres state:", gmres_result.state)
+    u = gmres_result.solution
+
+    # }}}
+
+    # {{{ build matrix for spectrum check
 
     if 0:
-        # {{{ build matrix for spectrum check
-
         from sumpy.tools import build_matrix
         mat = build_matrix(bound_op.scipy_op("u", dtype=dtype, k=case.k))
         w, v = la.eig(mat)
@@ -457,8 +470,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
         #assert abs(s[-1]) < 1e-13, "h
         #assert abs(s[-2]) > 1e-7
         #from pudb import set_trace; set_trace()
-
-        # }}}
 
     # }}}
 
@@ -478,6 +489,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
     # {{{ remove effect of net source charge
 
     if case.k == 0 and case.bc_type == "neumann" and case.loc_sign == -1:
+
         # remove constant offset in interior Laplace Neumann error
         tgt_ones = np.ones_like(test_direct)
         tgt_ones = tgt_ones/la.norm(tgt_ones)
@@ -494,37 +506,97 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
 
     # {{{ test tangential derivative
 
-    bound_t_deriv_op = bind(qbx,
-            op.representation(
-                sym.var("u"),
-                map_potentials=lambda pot: sym.tangential_derivative(2, pot),
-                qbx_forced_limit=case.loc_sign))
+    if case.check_tangential_deriv:
+        bound_t_deriv_op = bind(qbx,
+                op.representation(
+                    sym.var("u"),
+                    map_potentials=lambda pot: sym.tangential_derivative(2, pot),
+                    qbx_forced_limit=case.loc_sign))
 
-    #print(bound_t_deriv_op.code)
+        #print(bound_t_deriv_op.code)
 
-    tang_deriv_from_src = bound_t_deriv_op(
-            queue, u=u, **concrete_knl_kwargs).as_scalar().get()
+        tang_deriv_from_src = bound_t_deriv_op(
+                queue, u=u, **concrete_knl_kwargs).as_scalar().get()
 
-    tang_deriv_ref = (bind(
-            (point_source, density_discr),
-            sym.tangential_derivative(2, pot_src)
-            )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
-            .as_scalar().get())
+        tang_deriv_ref = (bind(
+                (point_source, density_discr),
+                sym.tangential_derivative(2, pot_src)
+                )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
+                .as_scalar().get())
 
-    if 0:
-        pt.plot(tang_deriv_ref.real)
-        pt.plot(tang_deriv_from_src.real)
-        pt.show()
+        if 0:
+            pt.plot(tang_deriv_ref.real)
+            pt.plot(tang_deriv_from_src.real)
+            pt.show()
 
-    td_err = (tang_deriv_from_src - tang_deriv_ref)
+        td_err = (tang_deriv_from_src - tang_deriv_ref)
 
-    rel_td_err_inf = la.norm(td_err, np.inf)/la.norm(tang_deriv_ref, np.inf)
+        rel_td_err_inf = la.norm(td_err, np.inf)/la.norm(tang_deriv_ref, np.inf)
 
-    print("rel_td_err_inf: %g" % rel_td_err_inf)
+        print("rel_td_err_inf: %g" % rel_td_err_inf)
+
+    else:
+        rel_td_err_inf = None
 
     # }}}
 
-    # {{{ plotting
+    # {{{ 3D plotting
+
+    if 0:
+        from meshmode.discretization.visualization import make_visualizer
+        bdry_vis = make_visualizer(queue, density_discr, case.target_order)
+
+        bdry_normals = bind(density_discr, sym.normal(3))(queue)\
+                .as_vector(dtype=object)
+
+        bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
+            ("u", u),
+            ("bc", bc),
+            ("bdry_normals", bdry_normals),
+            ])
+
+        from meshmode.mesh.processing import find_bounding_box
+        bbox_min, bbox_max = find_bounding_box(mesh)
+        bbox_center = 0.5*(bbox_min+bbox_max)
+        bbox_size = max(bbox_max-bbox_min) / 2
+        fplot = FieldPlotter(
+                bbox_center, extent=2*2*bbox_size, npoints=(150, 150, 1))
+
+        qbx_stick_out = qbx.copy(target_stick_out_factor=0.15)
+        from pytential.target import PointsTarget
+        from pytential.qbx import QBXTargetAssociationFailedException
+
+        try:
+            solved_pot = bind(
+                    (qbx_stick_out, PointsTarget(fplot.points)),
+                    op.representation(sym.var("u"))
+                    )(queue, u=u, k=case.k)
+        except QBXTargetAssociationFailedException as e:
+            fplot.write_vtk_file(
+                    "failed-targets.vts",
+                    [
+                        ("failed_targets", e.failed_target_flags.get(queue))
+                        ])
+            raise
+
+        solved_pot = solved_pot.get()
+
+        true_pot = bind((point_source, PointsTarget(fplot.points)), pot_src)(
+                queue, charges=source_charges_dev, **concrete_knl_kwargs).get()
+
+        #fplot.show_scalar_in_mayavi(solved_pot.real, max_val=5)
+        fplot.write_vtk_file(
+                "potential.vts",
+                [
+                    ("solved_pot", solved_pot),
+                    ("true_pot", true_pot),
+                    ("pot_diff", solved_pot-true_pot),
+                    ]
+                )
+
+    # }}}
+
+    # {{{ 2D plotting
 
     if 0:
         fplot = FieldPlotter(np.zeros(2),
@@ -647,10 +719,12 @@ class IntEqTestCase:
 
     def __str__(self):
         return ("name: %s, bc_type: %s, loc_sign: %s, "
-            "helmholtz_k: %s"
-            % (self.name, self.bc_type, self.loc_sign, self.helmholtz_k))
+                "helmholtz_k: %s, qbx_order: %d, target_order: %d"
+            % (self.name, self.bc_type, self.loc_sign, self.helmholtz_k,
+                self.qbx_order, self.target_order))
 
     fmm_backend = "sumpy"
+    gmres_tol = 1e-14
 
 
 class CurveIntEqTestCase(IntEqTestCase):
@@ -666,6 +740,14 @@ class CurveIntEqTestCase(IntEqTestCase):
     use_refinement = True
     neumann_alpha = None  # default
 
+    inner_radius = 0.1
+    outer_radius = 2
+
+    qbx_order = 5
+    target_order = qbx_order
+
+    check_tangential_deriv = True
+
 
 class EllipseIntEqTestCase(CurveIntEqTestCase):
     name = "3-to-1 ellipse"
@@ -675,7 +757,7 @@ class EllipseIntEqTestCase(CurveIntEqTestCase):
 
 
 class EllipsoidIntEqTestCase(IntEqTestCase):
-    resolutions = [2, 1, 0.5]
+    resolutions = [2, 1]
     name = "ellipsoid"
 
     def get_mesh(self, resolution, target_order):
@@ -694,6 +776,17 @@ class EllipsoidIntEqTestCase(IntEqTestCase):
     use_refinement = False
     neumann_alpha = 0  # no double layers in FMMlib backend yet
 
+    inner_radius = 0.4
+    outer_radius = 5
+
+    qbx_order = 2
+    target_order = qbx_order
+    check_tangential_deriv = False
+
+    # We're only expecting three digits based on FMM settings. Who are we
+    # kidding?
+    gmres_tol = 1e-5
+
 
 @pytest.mark.parametrize("case", [
     EllipseIntEqTestCase(helmholtz_k=helmholtz_k, bc_type=bc_type,
@@ -701,12 +794,13 @@ class EllipsoidIntEqTestCase(IntEqTestCase):
     for helmholtz_k in [0, 1.2]
     for bc_type in ["dirichlet", "neumann"]
     for loc_sign in [-1, +1]
+    ] + [
+    EllipsoidIntEqTestCase(0.7, "neumann", +1)
     ])
 @pytest.mark.parametrize("qbx_order", [5])
 # Sample test run:
 # 'test_integral_equation(cl._csc, EllipseIntEqTestCase(0, "dirichlet", +1), 5)'  # noqa: E501
-def test_integral_equation(
-        ctx_getter, case, qbx_order, target_order=7, source_order=None):
+def test_integral_equation(ctx_getter, case):
     logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
@@ -717,23 +811,23 @@ def test_integral_equation(
     clear_cache()
 
     from pytools.convergence import EOCRecorder
-    print("qbx_order: %d, %s" % (qbx_order, case))
+    print("qbx_order: %d, %s" % (case.qbx_order, case))
 
     eoc_rec_target = EOCRecorder()
     eoc_rec_td = EOCRecorder()
 
     for resolution in case.resolutions:
-        result = run_int_eq_test(
-                cl_ctx, queue, case, resolution, qbx_order,
-                target_order=target_order, source_order=source_order)
+        result = run_int_eq_test(cl_ctx, queue, case, resolution)
 
         eoc_rec_target.add_data_point(result.h_max, result.rel_err_2)
-        eoc_rec_td.add_data_point(result.h_max, result.rel_td_err_inf)
+
+        if result.rel_td_err_inf is not None:
+            eoc_rec_td.add_data_point(result.h_max, result.rel_td_err_inf)
 
     if case.bc_type == "dirichlet":
-        tgt_order = qbx_order
+        tgt_order = case.qbx_order
     elif case.bc_type == "neumann":
-        tgt_order = qbx_order-1
+        tgt_order = case.qbx_order-1
     else:
         assert False
 
@@ -741,9 +835,10 @@ def test_integral_equation(
     print(eoc_rec_target)
     assert eoc_rec_target.order_estimate() > tgt_order - 1.3
 
-    print("TANGENTIAL DERIVATIVE ERROR:")
-    print(eoc_rec_td)
-    assert eoc_rec_td.order_estimate() > tgt_order - 2.3
+    if case.check_tangential_deriv:
+        print("TANGENTIAL DERIVATIVE ERROR:")
+        print(eoc_rec_td)
+        assert eoc_rec_td.order_estimate() > tgt_order - 2.3
 
 # }}}
 
