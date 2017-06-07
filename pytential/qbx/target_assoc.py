@@ -223,7 +223,8 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
 
             if (my_dist_to_center
                     <= expansion_radii_by_center_with_stick_out[center]
-                && my_dist_to_center < min_dist_to_center[i])
+                && my_dist_to_center < min_dist_to_center[i]
+                && target_status[i] == MARKED_QBX_CENTER_PENDING)
             {
                 target_status[i] = MARKED_QBX_CENTER_FOUND;
                 min_dist_to_center[i] = my_dist_to_center;
