@@ -171,7 +171,7 @@ class MuellerAugmentedMFIEOperator(object):
         k = self.ks[i]
 
         S = partial(sym.S, self.kernel, qbx_forced_limit=None, k=k)
-        curl_S = partial(sym.curl_S, self.kernel, qbx_forced_limit="avg", k=k)
+        curl_S = partial(sym.curl_S, self.kernel, qbx_forced_limit=None, k=k)
         grad = partial(sym.grad, 3)
 
         E0 = 1j*omega*mu*eps*S(Jxyz) + mu*curl_S(Mxyz) - grad(S(u.rho_e))
