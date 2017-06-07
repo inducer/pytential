@@ -50,11 +50,12 @@ except ImportError:
     pass
 
 
-def make_circular_point_group(npoints, radius,
+def make_circular_point_group(ambient_dim, npoints, radius,
         center=np.array([0., 0.]), func=lambda x: x):
     t = func(np.linspace(0, 1, npoints, endpoint=False)) * (2 * np.pi)
     center = np.asarray(center)
-    result = center[:, np.newaxis] + radius*np.vstack((np.cos(t), np.sin(t)))
+    result = np.zeros((ambient_dim, npoints))
+    result[:2, :] = center[:, np.newaxis] + radius*np.vstack((np.cos(t), np.sin(t)))
     return result
 
 
@@ -313,10 +314,18 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
     if case.k != 0:
         refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
 
-    qbx, _ = QBXLayerPotentialSource(
+    if case.fmm_backend is None:
+        fmm_order = False
+    else:
+        fmm_order = qbx_order + 10
+
+    qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=source_order, qbx_order=qbx_order,
             # Don't use FMM for now
-            fmm_order=False).with_refinement(**refiner_extra_kwargs)
+            fmm_order=fmm_order, fmm_backend=case.fmm_backend)
+
+    if case.use_refinement:
+        qbx, _ = qbx.with_refinement(**refiner_extra_kwargs)
 
     density_discr = qbx.density_discr
 
@@ -328,11 +337,11 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
 
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
     if case.k:
-        knl = HelmholtzKernel(2)
+        knl = HelmholtzKernel(mesh.ambient_dim)
         knl_kwargs = {"k": sym.var("k")}
         concrete_knl_kwargs = {"k": case.k}
     else:
-        knl = LaplaceKernel(2)
+        knl = LaplaceKernel(mesh.ambient_dim)
         knl_kwargs = {}
         concrete_knl_kwargs = {}
 
@@ -346,7 +355,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
                 kernel_arguments=knl_kwargs)
     elif case.bc_type == "neumann":
         op = NeumannOperator(knl, case.loc_sign, use_l2_weighting=True,
-                 use_improved_operator=False, kernel_arguments=knl_kwargs)
+                 use_improved_operator=False, kernel_arguments=knl_kwargs,
+                 alpha=case.neumann_alpha)
     else:
         assert False
 
@@ -366,9 +376,11 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
         test_src_geo_radius = inner_radius
         test_tgt_geo_radius = outer_radius
 
-    point_sources = make_circular_point_group(10, test_src_geo_radius,
+    point_sources = make_circular_point_group(
+            mesh.ambient_dim, 10, test_src_geo_radius,
             func=lambda x: x**1.5)
-    test_targets = make_circular_point_group(20, test_tgt_geo_radius)
+    test_targets = make_circular_point_group(
+            mesh.ambient_dim, 20, test_tgt_geo_radius)
 
     np.random.seed(22)
     source_charges = np.random.randn(point_sources.shape[1])
@@ -624,6 +636,11 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, qbx_order,
 # {{{ integral equation test frontend
 
 class IntEqTestCase:
+    def __init__(self, helmholtz_k, bc_type, loc_sign):
+        self.helmholtz_k = helmholtz_k
+        self.bc_type = bc_type
+        self.loc_sign = loc_sign
+
     @property
     def k(self):
         return self.helmholtz_k
@@ -633,14 +650,11 @@ class IntEqTestCase:
             "helmholtz_k: %s"
             % (self.name, self.bc_type, self.loc_sign, self.helmholtz_k))
 
+    fmm_backend = "sumpy"
+
 
 class CurveIntEqTestCase(IntEqTestCase):
     resolutions = [30, 40, 50]
-
-    def __init__(self, helmholtz_k, bc_type, loc_sign):
-        self.helmholtz_k = helmholtz_k
-        self.bc_type = bc_type
-        self.loc_sign = loc_sign
 
     def get_mesh(self, resolution, target_order):
         return make_curve_mesh(
@@ -648,12 +662,37 @@ class CurveIntEqTestCase(IntEqTestCase):
                 np.linspace(0, 1, resolution+1),
                 target_order)
 
+    fmm_backend = None
+    use_refinement = True
+    neumann_alpha = None  # default
+
 
 class EllipseIntEqTestCase(CurveIntEqTestCase):
     name = "3-to-1 ellipse"
 
     def curve_func(self, x):
         return ellipse(3, x)
+
+
+class EllipsoidIntEqTestCase(IntEqTestCase):
+    resolutions = [2, 1, 0.5]
+    name = "ellipsoid"
+
+    def get_mesh(self, resolution, target_order):
+        from meshmode.mesh.io import generate_gmsh, FileSource
+        mesh = generate_gmsh(
+                FileSource("ellipsoid.step"), 2, order=2,
+                other_options=[
+                    "-string",
+                    "Mesh.CharacteristicLengthMax = %g;" % resolution])
+
+        from meshmode.mesh.processing import perform_flips
+        # Flip elements--gmsh generates inside-out geometry.
+        return perform_flips(mesh, np.ones(mesh.nelements))
+
+    fmm_backend = "fmmlib"
+    use_refinement = False
+    neumann_alpha = 0  # no double layers in FMMlib backend yet
 
 
 @pytest.mark.parametrize("case", [
