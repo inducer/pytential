@@ -300,7 +300,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     @memoize_method
     def _close_target_tunnel_radius(self, last_dim_length):
         with cl.CommandQueue(self.cl_context) as queue:
-                return (self._panel_sizes(last_dim_length).with_queue(queue) * 0.25
+                return (self._panel_sizes(last_dim_length).with_queue(queue) * 0.5
                         ).with_queue(None)
 
     @memoize_method
