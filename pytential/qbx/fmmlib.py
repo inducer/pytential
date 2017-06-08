@@ -418,7 +418,13 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         return output
 
     def finalize_potential(self, potential):
-        return cl.array.to_device(self.queue, potential)
+        if self.dim == 3:
+            scale_factor = 1/(4*np.pi)
+        else:
+            raise NotImplementedError(
+                    "scale factor for pyfmmlib for %d dimensions" % self.dim)
+
+        return cl.array.to_device(self.queue, potential) * scale_factor
 
     # }}}
 
