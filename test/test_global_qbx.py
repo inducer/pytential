@@ -234,10 +234,9 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
     lpot_source, conn = QBXLayerPotentialSource(discr, order).with_refinement()
     del discr
 
-    from pytential.qbx.utils import get_centers_on_side
-
-    int_centers = get_centers_on_side(lpot_source, -1)
-    ext_centers = get_centers_on_side(lpot_source, +1)
+    from pytential.qbx.utils import get_interleaved_centers
+    centers = np.array([ax.get(queue)
+            for ax in get_interleaved_centers(queue, lpot_source)])
 
     # }}}
 
@@ -295,59 +294,61 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
         QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs)
         .get(queue=queue))
 
-    expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
+    expansion_radii = lpot_source._expansion_radii("ncenters").get(queue)
 
-    int_centers = np.array([axis.get(queue) for axis in int_centers])
-    ext_centers = np.array([axis.get(queue) for axis in ext_centers])
     int_targets = np.array([axis.get(queue) for axis in int_targets.nodes()])
     ext_targets = np.array([axis.get(queue) for axis in ext_targets.nodes()])
 
     # Checks that the sources match with their own centers.
-    def check_on_surface_targets(nsources, true_side, target_to_source_result,
+    def check_on_surface_targets(nsources, true_side, target_to_center,
                                  target_to_side_result):
+        assert (target_to_center >= 0).all()
+
         sources = np.arange(0, nsources)
-        assert (target_to_source_result == sources).all()
+
+        # Centers are on alternating sides of the geometry. Dividing by
+        # two yields the number of the source that spawned the center.
+        assert (target_to_center//2 == sources).all()
+
         assert (target_to_side_result == true_side).all()
 
     # Checks that the targets match with centers on the appropriate side and
     # within the allowable distance.
     def check_close_targets(centers, targets, true_side,
-                            target_to_source_result, target_to_side_result):
+                            target_to_center, target_to_side_result,
+                            tgt_slice):
+        assert (target_to_center >= 0).all()
         assert (target_to_side_result == true_side).all()
-        dists = la.norm((targets.T - centers.T[target_to_source_result]), axis=1)
-        assert (dists <= expansion_radii[target_to_source_result]).all()
+        dists = la.norm((targets.T - centers.T[target_to_center]), axis=1)
+        assert (dists <= expansion_radii[target_to_center]).all()
 
-    # Checks that far targets are not assigned a center.
-    def check_far_targets(target_to_source_result):
-        assert (target_to_source_result == -1).all()
-
-    # Centers for source i are located at indices 2 * i, 2 * i + 1
-    target_to_source = target_assoc.target_to_center // 2
     # Center side order = -1, 1, -1, 1, ...
     target_to_center_side = 2 * (target_assoc.target_to_center % 2) - 1
 
     check_on_surface_targets(
         nsources, -1,
-        target_to_source[surf_int_slice],
+        target_assoc.target_to_center[surf_int_slice],
         target_to_center_side[surf_int_slice])
 
     check_on_surface_targets(
         nsources, +1,
-        target_to_source[surf_ext_slice],
+        target_assoc.target_to_center[surf_ext_slice],
         target_to_center_side[surf_ext_slice])
 
     check_close_targets(
-        int_centers, int_targets, -1,
-        target_to_source[vol_int_slice],
-        target_to_center_side[vol_int_slice])
+        centers, int_targets, -1,
+        target_assoc.target_to_center[vol_int_slice],
+        target_to_center_side[vol_int_slice],
+        vol_int_slice)
 
     check_close_targets(
-        ext_centers, ext_targets, +1,
-        target_to_source[vol_ext_slice],
-        target_to_center_side[vol_ext_slice])
+        centers, ext_targets, +1,
+        target_assoc.target_to_center[vol_ext_slice],
+        target_to_center_side[vol_ext_slice],
+        vol_ext_slice)
 
-    check_far_targets(
-        target_to_source[far_slice])
+    # Checks that far targets are not assigned a center.
+    assert (target_assoc.target_to_center[far_slice] == -1).all()
 
     # }}}
 
