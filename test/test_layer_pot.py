@@ -805,6 +805,9 @@ def test_integral_equation(ctx_getter, case):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
+    if case.fmm_backend == "fmmlib":
+        pytest.importorskip("pyfmmlib")
+
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
     clear_cache()
