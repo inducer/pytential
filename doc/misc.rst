@@ -4,18 +4,25 @@ Installation and Usage
 Installing :mod:`pytential`
 ---------------------------
 
-1.  Start by installing `miniconda for Python 3 on 64-bit Linux <https://conda.io/miniconda.html>`_.
-1.  ``export CONDA=/WHERE/YOU/INSTALLED/miniconda3``
+#.  Start by installing `miniconda for Python 3 on 64-bit Linux <https://conda.io/miniconda.html>`_.
+
+#.  ``export CONDA=/WHERE/YOU/INSTALLED/miniconda3``
 
     If you accepted the default location, this should work:
 
     ``export CONDA=$HOME/miniconda3``
-1.  ``$CONDA/bin/conda create -n inteq python=3.5.2``
-1.  ``source $CONDA/bin/activate inteq``
-1.  ``conda config --add channels conda-forge``
-1.  ``conda config --add channels inducer``
-1.  ``conda install git pip pocl islpy pyopencl sympy meshpy``
-1.  Type the following command::
+
+#.  ``$CONDA/bin/conda create -n inteq python=3.5.2``
+
+#.  ``source $CONDA/bin/activate inteq``
+
+#.  ``conda config --add channels conda-forge``
+
+#.  ``conda config --add channels inducer``
+
+#.  ``conda install git pip pocl islpy pyopencl sympy meshpy``
+
+#.  Type the following command::
 
         hash -r; for i in pymbolic cgen genpy modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
 
