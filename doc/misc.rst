@@ -1,26 +1,59 @@
 Installation and Usage
 ======================
 
-Installation
-------------
+Installing :mod:`pytential`
+---------------------------
 
-This command should install :mod:`pytential`::
+1.  Start by installing `miniconda for Python 3 on 64-bit Linux <https://conda.io/miniconda.html>`_.
+1.  ``export CONDA=/WHERE/YOU/INSTALLED/miniconda3``
 
-    pip install pytential
+If you accepted the default location, this should work:
 
-You may need to run this with :command:`sudo`.
-If you don't already have `pip <https://pypi.python.org/pypi/pip>`_,
-run this beforehand::
+`export CONDA=$HOME/miniconda3`
+1.  `$CONDA/bin/conda create -n inteq python=3.5.2`
+1.  `source $CONDA/bin/activate inteq`
+1.  `conda config --add channels conda-forge`
+1.  `conda config --add channels inducer`
+1.  `conda install git pip pocl islpy pyopencl sympy meshpy`
+1.  Type the following command::
 
-    curl -O https://raw.github.com/pypa/pip/master/contrib/get-pip.py
-    python get-pip.py
+        hash -r; for i in pymbolic cgen genpy modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
 
-For a more manual installation, download the source, unpack it,
-and say::
+Next time you want to use `pytential`, just run the following command::
 
-    python setup.py install
+    source /WHERE/YOU/INSTALLED/miniconda3/bin/activate inteq
 
-In addition, you need to have :mod:`numpy` installed.
+You may also like to add this to a startup file (like :file:`$HOME/.bashrc`) or create an alias for it.
+
+After this, you should be able to run the `tests <https://github.com/inducer/pytential/tree/master/test>`_
+or `examples <https://github.com/inducer/pytential/tree/master/examples|examples>`_.
+
+Troubleshooting the Installation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+No CL platforms found/unknown error -1001
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you get
+{{{
+pyopencl.cffi_cl.LogicError: clGetPlatformIDs failed: <unknown error -1001>
+}}}
+try
+{{{
+conda update ocl-icd pocl
+}}}
+
+(This indicates that the OpenCL driver loader didn't find any drivers, or the
+drivers were themselves missing dependencies.)
+
+Assertion 'error == 0'
+~~~~~~~~~~~~~~~~~~~~~~~
+
+If you get::
+
+    /opt/conda/conda-bld/home_1484016200338/work/pocl-0.13/lib/CL/devices/common.c:108:
+    llvm_codegen: Assertion 'error == 0 ' failed. Aborted (core dumped)
+
+then you're likely out of memory.
 
 Logging
 -------
