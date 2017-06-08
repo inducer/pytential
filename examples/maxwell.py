@@ -247,6 +247,9 @@ def main():
         qbx_stick_out = qbx.copy(target_stick_out_factor=0.1)
         from pytential.target import PointsTarget
         from pytential.qbx import QBXTargetAssociationFailedException
+
+        rho_sym = sym.var("rho")
+
         try:
             fld_in_vol = bind(
                     (qbx_stick_out, PointsTarget(fplot.points)),
