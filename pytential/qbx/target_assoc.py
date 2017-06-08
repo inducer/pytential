@@ -386,7 +386,8 @@ class QBXTargetAssociator(object):
 
     def mark_targets(self, queue, tree, peer_lists, lpot_source, target_status,
                      debug, wait_for=None):
-        # Avoid generating too many kernels.
+        # Round up level count--this gets included in the kernel as
+        # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
 
@@ -477,7 +478,8 @@ class QBXTargetAssociator(object):
     def try_find_centers(self, queue, tree, peer_lists, lpot_source,
                          target_status, target_flags, target_assoc,
                          stick_out_factor, debug, wait_for=None):
-        # Avoid generating too many kernels.
+        # Round up level count--this gets included in the kernel as
+        # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
 
@@ -559,7 +561,8 @@ class QBXTargetAssociator(object):
     def mark_panels_for_refinement(self, queue, tree, peer_lists, lpot_source,
                                    target_status, refine_flags, debug,
                                    wait_for=None):
-        # Avoid generating too many kernels.
+        # Round up level count--this gets included in the kernel as
+        # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
 
