@@ -235,7 +235,8 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
     del discr
 
     from pytential.qbx.utils import get_interleaved_centers
-    centers = get_interleaved_centers(queue, lpot_source)
+    centers = np.array([ax.get(queue)
+            for ax in get_interleaved_centers(queue, lpot_source)])
 
     # }}}
 
@@ -293,7 +294,7 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
         QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs)
         .get(queue=queue))
 
-    expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
+    expansion_radii = lpot_source._expansion_radii("ncenters").get(queue)
 
     int_targets = np.array([axis.get(queue) for axis in int_targets.nodes()])
     ext_targets = np.array([axis.get(queue) for axis in ext_targets.nodes()])
@@ -316,30 +317,7 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
     def check_close_targets(centers, targets, true_side,
                             target_to_center, target_to_side_result,
                             tgt_slice):
-        if 1:
-            # FIXME Remove
-            bad_index, = np.where(target_to_center < 0)
-            bad_index += tgt_slice.start
-            print(bad_index)
-
         assert (target_to_center >= 0).all()
-
-        if 0:
-            # FIXME Remove
-            bad = target_to_side_result != true_side
-            bad_index, = np.where(bad)
-            print(bad_index+tgt_slice.start)
-
-            # FIXME maybe preserve?
-            from meshmode.discretization.visualization import draw_curve
-            draw_curve(lpot_source.density_discr)
-
-            import matplotlib.pyplot as plt
-            plt.plot(centers[0], centers[1], "gv")
-            plt.plot(targets[0][bad], targets[1][bad], "ro")
-            plt.plot(targets[0], targets[1], "x")
-            plt.show()
-
         assert (target_to_side_result == true_side).all()
         dists = la.norm((targets.T - centers.T[target_to_center]), axis=1)
         assert (dists <= expansion_radii[target_to_center]).all()
