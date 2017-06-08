@@ -405,7 +405,7 @@ class QBXTargetAssociator(object):
         found_target_close_to_panel.finish()
 
         # Perform a space invader query over the sources.
-        source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
+        source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
         sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
         tunnel_radius_by_source = \
                 lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
