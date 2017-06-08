@@ -18,7 +18,6 @@ queue = cl.CommandQueue(cl_ctx)
 
 target_order = 5
 qbx_order = 3
-nelements = 60
 mode_nr = 0
 
 h = 1
@@ -27,6 +26,7 @@ k = 4
 
 
 def main():
+    # cl.array.to_device(queue, numpy_array)
     from meshmode.mesh.io import generate_gmsh, FileSource
     mesh = generate_gmsh(
             FileSource("ellipsoid.step"), 2, order=2,
@@ -58,9 +58,9 @@ def main():
 
     from pytential.symbolic.pde.maxwell import MuellerAugmentedMFIEOperator
     pde_op = MuellerAugmentedMFIEOperator(
-            omega=3,
-            epss=[1.5, 1],
-            mus=[1, 1],
+            omega=0.4,
+            epss=[1.4, 1.0],
+            mus=[1.2, 1.0],
             )
     from pytential import bind, sym
 
@@ -76,49 +76,156 @@ def main():
         print(sym.pretty(expr))
 
         print("#"*80)
-        bound_op = bind(qbx, expr)
-        print(bound_op.code)
-        1/0
+        from pytential.target import PointsTarget
 
-    if 0:
-        bvp_rhs = bind(qbx, sym_rhs)(queue,
-                Einc=make_obj_array([
-                    ...
-                    ]),
-                Hinc=make_obj_array([
-                    ...
-                    ]),
-                )
+        tgt_points=np.zeros((3,1))
+        tgt_points[0,0] = 100
+        tgt_points[1,0] = -200
+        tgt_points[2,0] = 300
+
+        bound_op = bind((qbx, PointsTarget(tgt_points)), expr)
+        print(bound_op.code)
+
+    if 1:
+
+        def green3e(x,y,z,source,strength,k):
+        # electric field corresponding to dyadic green's function
+        # due to monochromatic electric dipole located at "source".
+        # "strength" is the the intensity of the dipole.
+        #  E = (I + Hess)(exp(ikr)/r) dot (strength)
+        #
+            dx = x - source[0]
+            dy = y - source[1]
+            dz = z - source[2]
+            rr = np.sqrt(dx**2 + dy**2 + dz**2)
+
+            fout = np.exp(1j*k*rr)/rr
+            evec = fout*strength
+            qmat = np.zeros((3,3),dtype=np.complex128)
+
+            qmat[0,0]=(2*dx**2-dy**2-dz**2)*(1-1j*k*rr)
+            qmat[1,1]=(2*dy**2-dz**2-dx**2)*(1-1j*k*rr)
+            qmat[2,2]=(2*dz**2-dx**2-dy**2)*(1-1j*k*rr)
+
+            qmat[0,0]=qmat[0,0]+(-k**2*dx**2*rr**2)
+            qmat[1,1]=qmat[1,1]+(-k**2*dy**2*rr**2)
+            qmat[2,2]=qmat[2,2]+(-k**2*dz**2*rr**2)
+
+            qmat[0,1]=(3-k**2*rr**2-3*1j*k*rr)*(dx*dy)
+            qmat[1,2]=(3-k**2*rr**2-3*1j*k*rr)*(dy*dz)
+            qmat[2,0]=(3-k**2*rr**2-3*1j*k*rr)*(dz*dx)
+
+            qmat[1,0]=qmat[0,1]
+            qmat[2,1]=qmat[1,2]
+            qmat[0,2]=qmat[2,0]
+
+            fout=np.exp(1j*k*rr)/rr**5/k**2
+
+            fvec = fout*np.dot(qmat,strength)
+            evec = evec + fvec
+            return evec
+
+        def green3m(x,y,z,source,strength,k):
+        # magnetic field corresponding to dyadic green's function
+        # due to monochromatic electric dipole located at "source".
+        # "strength" is the the intensity of the dipole.
+        #  H = curl((I + Hess)(exp(ikr)/r) dot (strength)) = 
+        #  strength \cross \grad (exp(ikr)/r)
+        #
+            dx = x - source[0]
+            dy = y - source[1]
+            dz = z - source[2]
+            rr = np.sqrt(dx**2 + dy**2 + dz**2)
+
+            fout=(1-1j*k*rr)*np.exp(1j*k*rr)/rr**3
+            fvec = np.zeros(3,dtype=np.complex128)
+            fvec[0] = fout*dx
+            fvec[1] = fout*dy
+            fvec[2] = fout*dz
+
+            hvec = np.cross(strength,fvec)
+
+            return hvec
+
+        def dipole3e(x,y,z,source,strength,k):
+        #
+        #  evalaute electric and magnetic field due
+        #  to monochromatic electric dipole located at "source"
+        #  with intensity "strength"
+
+            evec = green3e(x,y,z,source,strength,k)
+            evec = evec*1j*k
+            hvec = green3m(x,y,z,source,strength,k)
+            return evec,hvec
+            
+        def dipole3m(x,y,z,source,strength,k):
+        #
+        #  evalaute electric and magnetic field due
+        #  to monochromatic magnetic dipole located at "source"
+        #  with intensity "strength"
+            evec = green3m(x,y,z,source,strength,k)
+            hvec = green3e(x,y,z,source,strength,k)
+            hvec = -hvec*1j*k
+            return evec,hvec
+            
+
+        def dipole3eall(x,y,z,sources,strengths,k):
+            ns = len(strengths)
+            evec = np.zeros(3,dtype=np.complex128)
+            hvec = np.zeros(3,dtype=np.complex128)
+
+            for i in range(ns):
+                evect,hvect = dipole3e(x,y,z,sources[i],strengths[i],k)
+                evec = evec + evect
+                hvec = hvec + hvect
+
+        nodes = density_discr.nodes().with_queue(queue).get()
+        source = [0.01,-0.03,0.02]
+#        source = cl.array.to_device(queue,np.zeros(3))
+#        source[0] = 0.01
+#        source[1] =-0.03
+#        source[2] = 0.02
+        strength = np.ones(3)
+       
+#        evec = cl.array.to_device(queue,np.zeros((3,len(nodes[0])),dtype=np.complex128))
+#        hvec = cl.array.to_device(queue,np.zeros((3,len(nodes[0])),dtype=np.complex128))
+
+        evec = np.zeros((3,len(nodes[0])),dtype=np.complex128)
+        hvec = np.zeros((3,len(nodes[0])),dtype=np.complex128)
+        for i in range(len(nodes[0])):
+            evec[:,i],hvec[:,i] = dipole3e(nodes[0][i],nodes[1][i],nodes[2][i],source,strength,k)
+        print(np.shape(hvec))
+        print(type(evec))
+        print(type(hvec))
+
+        evec = cl.array.to_device(queue,evec)
+        hvec = cl.array.to_device(queue,hvec)
+
+        bvp_rhs = bind(qbx, sym_rhs)(queue,Einc=evec,Hinc=hvec)
+        print(np.shape(bvp_rhs))
+        print(type(bvp_rhs))
+#        print(bvp_rhs)
+        1/-1
 
         bound_op = bind(qbx, sym_operator)
 
         from pytential.solve import gmres
-        gmres_result = gmres(
+        if 0:
+            gmres_result = gmres(
                 bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
                 bvp_rhs, tol=1e-8, progress=True,
                 stall_iterations=0,
                 hard_failure=True)
 
-        sigma = gmres_result.solution
+            sigma = gmres_result.solution
 
-
-    # {{{ make a density
-
-    nodes = density_discr.nodes().with_queue(queue)
-
-    angle = cl.clmath.atan2(nodes[1], nodes[0])
-
-    sigma = cl.clmath.cos(mode_nr*angle)
-    if 0:
-        sigma = 0*angle
-        from random import randrange
-        for i in range(5):
-            sigma[randrange(len(sigma))] = 1
-
-    sigma = sigma.astype(np.complex128)
-
-    jt = sym.make_obj_array([sigma, sigma])
-    rho = sigma
+        fld_at_tgt = bind((qbx, PointsTarget(tgt_points)), sym_repr)(queue,
+        sigma=bvp_rhs,k=k)
+        fld_at_tgt = np.array([
+            fi.get() for fi in fld_at_tgt
+            ])
+        print(fld_at_tgt)
+        1/0
 
     # }}}
 
