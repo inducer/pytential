@@ -194,7 +194,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
             coord_t *particles_${ax},
         %endfor
     """,
-    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
+    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""//CL//
         coord_vec_t tgt_coords;
         ${load_particle("INDEX_FOR_TARGET_PARTICLE(i)", "tgt_coords")}
         {
@@ -203,32 +203,36 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
             ${ball_radius} = box_to_search_dist[my_box];
         }
     """,
-    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
-        for (particle_id_t center_idx = box_to_center_starts[${leaf_box_id}];
-             center_idx < box_to_center_starts[${leaf_box_id} + 1];
-             ++center_idx)
+    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""//CL//
+        if  (target_status[i] == MARKED_QBX_CENTER_PENDING)
         {
-            particle_id_t center = box_to_center_lists[center_idx];
-            int center_side = SIDE_FOR_CENTER_PARTICLE(center);
-
-            // Sign of side should match requested target sign.
-            if (center_side * target_flags[i] < 0)
+            for (particle_id_t center_idx = box_to_center_starts[${leaf_box_id}];
+                 center_idx < box_to_center_starts[${leaf_box_id} + 1];
+                 ++center_idx)
             {
-                continue;
-            }
+                particle_id_t center = box_to_center_lists[center_idx];
 
-            coord_vec_t center_coords;
-            ${load_particle("INDEX_FOR_CENTER_PARTICLE(center)", "center_coords")}
-            coord_t my_dist_to_center = distance(tgt_coords, center_coords);
+                int center_side = SIDE_FOR_CENTER_PARTICLE(center);
 
-            if (my_dist_to_center
-                    <= expansion_radii_by_center_with_stick_out[center]
-                && my_dist_to_center < min_dist_to_center[i]
-                && target_status[i] == MARKED_QBX_CENTER_PENDING)
-            {
-                target_status[i] = MARKED_QBX_CENTER_FOUND;
-                min_dist_to_center[i] = my_dist_to_center;
-                target_to_center[i] = center;
+                // Sign of side should match requested target sign.
+                if (center_side * target_flags[i] < 0)
+                {
+                    continue;
+                }
+
+                coord_vec_t center_coords;
+                ${load_particle(
+                    "INDEX_FOR_CENTER_PARTICLE(center)", "center_coords")}
+                coord_t my_dist_to_center = distance(tgt_coords, center_coords);
+
+                if (my_dist_to_center
+                        <= expansion_radii_by_center_with_stick_out[center]
+                    && my_dist_to_center < min_dist_to_center[i])
+                {
+                    target_status[i] = MARKED_QBX_CENTER_FOUND;
+                    min_dist_to_center[i] = my_dist_to_center;
+                    target_to_center[i] = center;
+                }
             }
         }
     """,
