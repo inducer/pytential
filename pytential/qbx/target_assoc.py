@@ -204,7 +204,10 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
         }
     """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""//CL//
-        if  (target_status[i] == MARKED_QBX_CENTER_PENDING)
+        if (target_status[i] == MARKED_QBX_CENTER_PENDING
+                // Found one in a prior leaf, but there may well be another
+                // that's closer.
+                || target_status[i] == MARKED_QBX_CENTER_FOUND)
         {
             for (particle_id_t center_idx = box_to_center_starts[${leaf_box_id}];
                  center_idx < box_to_center_starts[${leaf_box_id} + 1];
