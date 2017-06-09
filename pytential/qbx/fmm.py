@@ -131,10 +131,10 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     # {{{ data vector utilities
 
-    def potential_zeros(self):
-        """This ought to be called ``non_qbx_potential_zeros``, but since
+    def output_zeros(self):
+        """This ought to be called ``non_qbx_output_zeros``, but since
         it has to override the superclass's behavior to integrate seamlessly,
-        it needs to be called just :meth:`potential_zeros`.
+        it needs to be called just :meth:`output_zeros`.
         """
 
         nqbtl = self.geo_data.non_qbx_box_target_lists()
@@ -147,10 +147,10 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     dtype=self.dtype)
                 for k in self.code.out_kernels])
 
-    def full_potential_zeros(self):
+    def full_output_zeros(self):
         # The superclass generates a full field of zeros, for all
         # (not just non-QBX) targets.
-        return SumpyExpansionWrangler.potential_zeros(self)
+        return SumpyExpansionWrangler.output_zeros(self)
 
     def qbx_local_expansion_zeros(self):
         order = self.qbx_order
@@ -316,7 +316,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         return qbx_expansions
 
     def eval_qbx_expansions(self, qbx_expansions):
-        pot = self.full_potential_zeros()
+        pot = self.full_output_zeros()
 
         geo_data = self.geo_data
         if len(geo_data.global_qbx_centers()) == 0:
@@ -524,7 +524,7 @@ class QBMXExpansionWrangler(SumpyExpansionWrangler):
 
     def eval_qbx_multipoles_direct(self, target_boxes, source_box_starts,
             source_box_lists, qbx_multipoles):
-        pot = self.potential_zeros()
+        pot = self.output_zeros()
 
         kwargs = self.extra_kwargs.copy()
         kwargs.update(self.box_source_list_kwargs())
