@@ -38,11 +38,43 @@ class CahnHilliardOperator(L2WeightedPDEOperator):
         self.b = b
         self.c = c
 
-        lam1 = np.sqrt(-(np.sqrt(b**2-4*c)-b)/2)
-        lam2 = np.sqrt((np.sqrt(b**2-4*c)+b)/2)
+        # Issue:
+        # - let crat = np.abs(4.*c) / ( b**2 + 1e-12 )
+        # - when crat is close to zero, sqrt(b**2-4*c) is close to abs(b),
+        #   then for b>=0, sqrt(b**2-4*c) - b is inaccurate.
+        # - similarly, when crat is close to one, sqrt(b**2-4*c) is close to zero,
+        #   then for b>0, sqrt(b**2-4*c) + b is inaccurate.
+        # Solution:
+        # - find a criteria for crat to choose from formulae, or
+        # - use the computed root with smaller residual
+        def quadratic_formula_1(a, b, c):
+            return (-b + np.sqrt(b**2 - 4*a*c)) / (2*a)
+
+        def quadratic_formula_2(a, b, c):
+            return (-b - np.sqrt(b**2 - 4*a*c)) / (2*a)
+
+        def citardauq_formula_1(a, b, c):
+            return 2*c / (-b - np.sqrt(b**2-4*a*c))
+
+        def citardauq_formula_2(a, b, c):
+            return 2*c / (-b + np.sqrt(b**2-4*a*c))
 
         def f(x):
             return x**2 - b*x + c
+
+        root11 = quadratic_formula_1(1, -b, c)
+        root12 = citardauq_formula_1(1, -b, c)
+        if np.abs(f(root11)) < np.abs(f(root12)):
+            lam1 = np.sqrt(root11)
+        else:
+            lam1 = np.sqrt(root12)
+
+        root21 = quadratic_formula_2(1, -b, c)
+        root22 = citardauq_formula_2(1, -b, c)
+        if np.abs(f(root21)) < np.abs(f(root22)):
+            lam1 = np.sqrt(root21)
+        else:
+            lam2 = np.sqrt(root22)
 
         assert np.abs(f(lam1**2)) < 1e-12
         assert np.abs(f(lam2**2)) < 1e-12
