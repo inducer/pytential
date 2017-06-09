@@ -517,10 +517,10 @@ class QBXFMMGeometryData(object):
                     particles=lpot_src.fine_density_discr.nodes(),
                     targets=target_info.targets,
                     target_radii=target_radii,
-                    max_leaf_refine_weight=256,
+                    max_leaf_refine_weight=32,
                     refine_weights=refine_weights,
                     debug=self.debug,
-                    stick_out_factor=0,
+                    stick_out_factor=lpot_src._expansion_disk_stick_out_factor,
                     kind="adaptive")
 
             if self.debug:

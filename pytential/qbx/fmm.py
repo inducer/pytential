@@ -600,9 +600,9 @@ def write_performance_model(outf, geo_data):
     for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
         ntargets = box_target_counts_nonchild[tgt_ibox]
 
-        start, end = traversal.sep_smaller_starts[itgt_box:itgt_box+2]
-
-        nmp_eval += ntargets * (end-start)
+        for sep_smaller_list in traversal.sep_smaller_by_level:
+            start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
+            nmp_eval += ntargets * (end-start)
 
     outf.write("mp_eval = {cost}\n"
             .format(cost=nmp_eval * p_fmm))
@@ -680,8 +680,9 @@ def write_performance_model(outf, geo_data):
     for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
         itgt_box = qbx_center_to_target_box[tgt_icenter]
 
-        start, end = traversal.sep_smaller_starts[itgt_box:itgt_box+2]
-        nqbx_m2l += end - start
+        for sep_smaller_list in traversal.sep_smaller_by_level:
+            start, end = sep_smaller_list.starts[tgt_ibox:tgt_ibox+2]
+            nqbx_m2l += ntargets * (end-start)
 
     outf.write("qbx_m2l = {cost}\n"
             .format(cost=nqbx_m2l * p_fmm * p_qbx))

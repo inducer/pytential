@@ -78,6 +78,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             debug=True,
             refined_for_global_qbx=False,
             expansion_disks_in_tree_have_extent=False,
+            _expansion_disk_stick_out_factor=0,
             performance_data_file=None,
             fmm_backend="sumpy"):
         """
@@ -130,6 +131,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         self.refined_for_global_qbx = refined_for_global_qbx
         self.expansion_disks_in_tree_have_extent = \
                 expansion_disks_in_tree_have_extent
+        self._expansion_disk_stick_out_factor = _expansion_disk_stick_out_factor
         self.performance_data_file = performance_data_file
 
     def copy(
@@ -140,6 +142,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             fmm_level_to_order=None,
             target_stick_out_factor=None,
             base_resampler=None,
+            _expansion_disk_stick_out_factor=None,
+            performance_data_file=None,
 
             debug=None,
             refined_for_global_qbx=None,
@@ -166,7 +170,13 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                     else self.refined_for_global_qbx),
                 expansion_disks_in_tree_have_extent=(
                     self.expansion_disks_in_tree_have_extent),
-                performance_data_file=self.performance_data_file,
+                _expansion_disk_stick_out_factor=(
+                    # 0 is a valid value here
+                    _expansion_disk_stick_out_factor
+                    if _expansion_disk_stick_out_factor is not None
+                    else self._expansion_disk_stick_out_factor),
+                performance_data_file=(
+                    performance_data_file or self.performance_data_file),
                 fmm_backend=self.fmm_backend)
 
     # }}}
