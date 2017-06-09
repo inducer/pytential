@@ -565,64 +565,75 @@ def write_performance_model(outf, geo_data):
 
     # {{{ direct evaluation from neighbor source boxes ("list 1")
 
-    npart_direct = 0
-    for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
-        ntargets = box_target_counts_nonchild[tgt_ibox]
+    def process_list1():
+        npart_direct = 0
+        for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
+            ntargets = box_target_counts_nonchild[tgt_ibox]
 
-        start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
-        for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
-            nsources = tree.box_source_counts_nonchild[src_ibox]
+            start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
+            for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
+                nsources = tree.box_source_counts_nonchild[src_ibox]
 
-            npart_direct += ntargets * nsources
+                npart_direct += ntargets * nsources
 
-    outf.write("part_direct = {cost}\n"
-            .format(cost=npart_direct))
+        outf.write("part_direct = {cost}\n"
+                .format(cost=npart_direct))
+
+    process_list1()
 
     # }}}
 
     # {{{ translate separated siblings' ("list 2") mpoles to local
 
-    nm2l = 0
-    for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
-        start, end = traversal.sep_siblings_starts[itgt_box:itgt_box+2]
+    def process_list2():
+        nm2l = 0
+        for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
+            start, end = traversal.sep_siblings_starts[itgt_box:itgt_box+2]
 
-        nm2l += (end-start)
+            nm2l += (end-start)
 
-    outf.write("m2l = {cost}\n"
-            .format(cost=nm2l * p_fmm**2))
+        outf.write("m2l = {cost}\n"
+                .format(cost=nm2l * p_fmm**2))
+
+    process_list2()
 
     # }}}
 
     # {{{ evaluate sep. smaller mpoles ("list 3") at particles
 
-    nmp_eval = 0
+    def process_list3():
+        nmp_eval = 0
+        for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
+            ntargets = box_target_counts_nonchild[tgt_ibox]
 
-    for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
-        ntargets = box_target_counts_nonchild[tgt_ibox]
+            for sep_smaller_list in traversal.sep_smaller_by_level:
+                start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
+                nmp_eval += ntargets * (end-start)
 
-        for sep_smaller_list in traversal.sep_smaller_by_level:
-            start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
-            nmp_eval += ntargets * (end-start)
+        outf.write("mp_eval = {cost}\n"
+                .format(cost=nmp_eval * p_fmm))
 
-    outf.write("mp_eval = {cost}\n"
-            .format(cost=nmp_eval * p_fmm))
+    process_list3()
 
     # }}}
 
     # {{{ form locals for separated bigger mpoles ("list 4")
 
-    nform_local = 0
+    def process_list4():
+        nform_local = 0
 
-    for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
-        start, end = traversal.sep_bigger_starts[itgt_box:itgt_box+2]
+        for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
+            start, end = traversal.sep_bigger_starts[itgt_box:itgt_box+2]
 
-        for src_ibox in traversal.sep_bigger_lists[start:end]:
-            nsources = tree.box_source_counts_nonchild[src_ibox]
+            for src_ibox in traversal.sep_bigger_lists[start:end]:
+                nsources = tree.box_source_counts_nonchild[src_ibox]
 
-            nform_local += nsources
+                nform_local += nsources
 
-    outf.write("form_local = {cost}\n"
-            .format(cost=nform_local * p_fmm))
+        outf.write("form_local = {cost}\n"
+                .format(cost=nform_local * p_fmm))
+
+    process_list4()
 
     # }}}
 
@@ -642,72 +653,84 @@ def write_performance_model(outf, geo_data):
 
     # {{{ form global qbx locals
 
-    nqbxl_direct = 0
-
     global_qbx_centers = geo_data.global_qbx_centers()
     qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
     center_to_targets_starts = geo_data.center_to_tree_targets().starts
 
-    ncenters = geo_data.ncenters
-
-    outf.write("ncenters = {cost}\n"
-            .format(cost=ncenters))
-
     with cl.CommandQueue(geo_data.cl_context) as queue:
-        global_qbx_centers = global_qbx_centers.get(queue=queue)
-        qbx_center_to_target_box = qbx_center_to_target_box.get(queue=queue)
-        center_to_targets_starts = center_to_targets_starts.get(queue=queue)
+        global_qbx_centers = global_qbx_centers.get(
+                queue=queue)
+        qbx_center_to_target_box = qbx_center_to_target_box.get(
+                queue=queue)
+        center_to_targets_starts = center_to_targets_starts.get(
+                queue=queue)
 
-    for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
-        itgt_box = qbx_center_to_target_box[tgt_icenter]
-        tgt_ibox = traversal.target_or_target_parent_boxes[itgt_box]
+    def process_form_qbxl():
+        nqbxl_direct = 0
 
-        start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
-        for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
-            nsources = tree.box_source_counts_nonchild[src_ibox]
+        ncenters = geo_data.ncenters
 
-            nqbxl_direct += nsources
+        outf.write("ncenters = {cost}\n"
+                .format(cost=ncenters))
 
-    outf.write("qbxl_direct = {cost}\n"
-            .format(cost=nqbxl_direct * p_qbx))
+        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+
+            start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
+            for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
+                nsources = tree.box_source_counts_nonchild[src_ibox]
+
+                nqbxl_direct += nsources
+
+        outf.write("qbxl_direct = {cost}\n"
+                .format(cost=nqbxl_direct * p_qbx))
 
     # }}}
 
     # {{{ translate from list 3 multipoles to qbx local expansions
 
-    nqbx_m2l = 0
+    def process_m2qbxl():
+        nqbx_m2l = 0
 
-    for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
-        itgt_box = qbx_center_to_target_box[tgt_icenter]
+        for isrc_level, ssn in enumerate(traversal.sep_smaller_by_level):
+            for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+                icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
 
-        for sep_smaller_list in traversal.sep_smaller_by_level:
-            start, end = sep_smaller_list.starts[tgt_ibox:tgt_ibox+2]
-            nqbx_m2l += ntargets * (end-start)
+                start, stop = (
+                        ssn.starts[icontaining_tgt_box],
+                        ssn.starts[icontaining_tgt_box+1])
 
-    outf.write("qbx_m2l = {cost}\n"
-            .format(cost=nqbx_m2l * p_fmm * p_qbx))
+                nqbx_m2l += stop-start
+
+        outf.write("qbx_m2l = {cost}\n"
+                .format(cost=nqbx_m2l * p_fmm * p_qbx))
+
+    process_m2qbxl()
 
     # }}}
 
     # {{{ translate from box local expansions to qbx local expansions
 
     outf.write("qbx_l2l = {cost}\n"
-            .format(cost=ncenters * p_fmm * p_qbx))
+            .format(cost=geo_data.ncenters * p_fmm * p_qbx))
 
     # }}}
 
     # {{{ evaluate qbx local expansions
 
-    nqbx_eval = 0
+    def process_eval_qbxl():
+        nqbx_eval = 0
 
-    for iglobal_center in range(ncenters):
-        src_icenter = global_qbx_centers[iglobal_center]
+        for iglobal_center in range(geo_data.ncenters):
+            src_icenter = global_qbx_centers[iglobal_center]
 
-        start, end = center_to_targets_starts[src_icenter:src_icenter+2]
-        nqbx_eval += end-start
+            start, end = center_to_targets_starts[src_icenter:src_icenter+2]
+            nqbx_eval += end-start
 
-    outf.write("qbx_eval = {cost}\n"
-            .format(cost=nqbx_eval * p_qbx))
+        outf.write("qbx_eval = {cost}\n"
+                .format(cost=nqbx_eval * p_qbx))
+
+    process_eval_qbxl()
 
     # }}}
 
