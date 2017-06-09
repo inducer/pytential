@@ -78,7 +78,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             debug=True,
             refined_for_global_qbx=False,
             expansion_disks_in_tree_have_extent=False,
-            performance_data_file=None):
+            performance_data_file=None,
+            fmm_backend="sumpy"):
         """
         :arg fine_order: The total degree to which the (upsampled)
              underlying quadrature is exact.
@@ -115,6 +116,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         self.density_discr = density_discr
         self.fmm_level_to_order = fmm_level_to_order
         self.target_stick_out_factor = target_stick_out_factor
+        self.fmm_backend = fmm_backend
 
         # Default values are lazily provided if these are None
         self._base_resampler = base_resampler
@@ -164,7 +166,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                     else self.refined_for_global_qbx),
                 expansion_disks_in_tree_have_extent=(
                     self.expansion_disks_in_tree_have_extent),
-                performance_data_file=self.performance_data_file)
+                performance_data_file=self.performance_data_file,
+                fmm_backend=self.fmm_backend)
 
     # }}}
 
@@ -418,12 +421,24 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         fmm_local_factory = partial(local_expn_class, base_kernel)
         qbx_local_factory = partial(local_expn_class, base_kernel)
 
-        from pytential.qbx.fmm import \
-                QBXExpansionWranglerCodeContainer
-        return QBXExpansionWranglerCodeContainer(
-                self.cl_context,
-                fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
-                out_kernels)
+        if self.fmm_backend == "sumpy":
+            from pytential.qbx.fmm import \
+                    QBXSumpyExpansionWranglerCodeContainer
+            return QBXSumpyExpansionWranglerCodeContainer(
+                    self.cl_context,
+                    fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
+                    out_kernels)
+
+        elif self.fmm_backend == "fmmlib":
+            from pytential.qbx.fmmlib import \
+                    QBXFMMLibExpansionWranglerCodeContainer
+            return QBXFMMLibExpansionWranglerCodeContainer(
+                    self.cl_context,
+                    fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
+                    out_kernels)
+
+        else:
+            raise ValueError("invalid FMM backend: %s" % self.fmm_backend)
 
     def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
         # {{{ build list of unique target discretizations used

@@ -894,6 +894,55 @@ def Dp(kernel, *args, **kwargs):  # noqa
 # }}}
 
 
+# {{{ geometric operations
+
+def tangential_onb(ambient_dim, dim=None, where=None):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    pd_mat = cse(parametrization_derivative_matrix(ambient_dim, dim, where),
+            "pd_matrix", cse_scope.DISCRETIZATION)
+
+    # {{{ Gram-Schmidt
+
+    orth_pd_mat = np.zeros_like(pd_mat)
+    for k in range(pd_mat.shape[1]):
+        avec = pd_mat[:, k]
+        q = avec
+        for j in range(k):
+            q = q - np.dot(avec, orth_pd_mat[:, j])*orth_pd_mat[:, j]
+
+        orth_pd_mat[:, k] = cse(q/sqrt(np.sum(q**2)), "orth_pd_vec")
+
+    # }}}
+
+    return orth_pd_mat
+
+
+def xyz_to_tangential(xyz_vec, where=None):
+    ambient_dim = len(xyz_vec)
+    tonb = tangential_onb(ambient_dim, where=where)
+    return make_obj_array([
+        np.dot(tonb[:, i], xyz_vec)
+        for i in range(ambient_dim - 1)
+        ])
+
+
+def tangential_to_xyz(tangential_vec, where=None):
+    ambient_dim = len(tangential_vec) + 1
+    tonb = tangential_onb(ambient_dim, where=where)
+    return sum(
+        tonb[:, i] * tangential_vec[i]
+        for i in range(ambient_dim - 1))
+
+
+def project_to_tangential(xyz_vec, which=None):
+    return tangential_to_xyz(
+            cse(xyz_to_tangential(xyz_vec, which), which))
+
+# }}}
+
+
 def pretty(expr):
     # Doesn't quite belong here, but this is exposed to the user as
     # "pytential.sym", so in here it goes.
