@@ -685,6 +685,8 @@ def write_performance_model(outf, geo_data):
         outf.write("qbxl_direct = {cost}\n"
                 .format(cost=nqbxl_direct * p_qbx))
 
+    process_form_qbxl()
+
     # }}}
 
     # {{{ translate from list 3 multipoles to qbx local expansions
