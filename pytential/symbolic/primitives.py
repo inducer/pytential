@@ -365,14 +365,10 @@ def mean_curvature(ambient_dim, dim=None, where=None):
                 "only know how to calculate curvature for a curve in 2D")
 
     xp, yp = parametrization_derivative_matrix(ambient_dim, dim, where)
-    xp = cse(xp[0], cse_scope.DISCRETIZATION)
-    yp = cse(yp[0], cse_scope.DISCRETIZATION)
-    xpp, ypp = reference_jacobian([xp, yp], ambient_dim, dim, where)
-    xpp = cse(xpp[0], cse_scope.DISCRETIZATION)
-    ypp = cse(ypp[0], cse_scope.DISCRETIZATION)
+    xpp, ypp = reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where)
 
     return MultiVector(make_obj_array(
-            [(xp*ypp - yp*xpp) / (xp**2 + yp**2)**(3/2)]))
+            [(xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)]))
 
 # FIXME: make sense of this in the context of GA
 # def xyz_to_local_matrix(dim, where=None):
