@@ -364,8 +364,13 @@ def mean_curvature(ambient_dim, dim=None, where=None):
         raise NotImplementedError(
                 "only know how to calculate curvature for a curve in 2D")
 
-    xp, yp = parametrization_derivative_matrix(ambient_dim, dim, where)
-    xpp, ypp = reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where)
+    xp, yp = cse(
+            parametrization_derivative_matrix(ambient_dim, dim, where),
+            "pd_matrix", cse_scope.DISCRETIZATION)
+
+    xpp, ypp = cse(
+            reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
+            "p2d_matrix", cse_scope.DISCRETIZATION)
 
     return MultiVector(make_obj_array(
             [(xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)]))
