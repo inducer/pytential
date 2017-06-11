@@ -351,8 +351,8 @@ class QBXPreprocessor(IdentityMapper):
         source = self.places[self.source_name]
         target_discr = self.places[expr.target]
 
-        from pytential.qbx import LayerPotentialSource
-        if isinstance(target_discr, LayerPotentialSource):
+        from pytential.source import LayerPotentialSourceBase
+        if isinstance(target_discr, LayerPotentialSourceBase):
             target_discr = target_discr.density_discr
 
         if expr.qbx_forced_limit == 0:
