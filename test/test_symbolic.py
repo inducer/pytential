@@ -79,10 +79,6 @@ def get_square_with_ref_mean_curvature(cl_ctx):
             np.linspace(0, 1, nelements+1),
             order)
 
-    from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
-
     discr = Discretization(cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(order))
 
