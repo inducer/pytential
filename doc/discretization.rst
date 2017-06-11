@@ -15,6 +15,11 @@ and you can start computing.
 
 .. automodule:: pytential.qbx
 
+Nyström discretization
+-------
+
+.. automodule:: pytential.nystrom
+
 Sources
 -------
 

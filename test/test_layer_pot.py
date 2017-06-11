@@ -1273,6 +1273,48 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
 # }}}
 
 
+# {{{ nystrom tests
+
+
+def test_nystrom_with_ones_kernel(ctx_getter):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    nelements = 20
+    order = 8
+
+    mesh = make_curve_mesh(partial(ellipse, 1),
+            np.linspace(0, 1, nelements+1),
+            order)
+
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+
+    discr = Discretization(cl_ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(order))
+
+    from pytential.nystrom import NystromLayerPotentialSource
+    lpot_src = NystromLayerPotentialSource(discr)
+
+    from sumpy.kernel import one_kernel_2d
+    import pytential.symbolic.primitives as prim
+
+    op = bind(lpot_src,
+            sym.IntG(one_kernel_2d, sym.var("sigma"), qbx_forced_limit=None))
+
+    with cl.CommandQueue(cl_ctx) as queue:
+        sigma = cl.array.zeros(queue, discr.nnodes, dtype=float)
+        sigma.fill(1)
+        sigma.finish()
+
+        result = op(queue, sigma=sigma)
+
+    assert np.allclose(result.get(), 2 * np.pi)
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_layer_pot.py 'test_routine()'
 

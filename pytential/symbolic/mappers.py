@@ -169,6 +169,7 @@ class EvaluationMapper(EvaluationMapperBase):
                         expr.kernel,
                         self.rec(subexpr),
                         expr.qbx_forced_limit, expr.source, expr.target,
+                        expr.diagonal_kernel,
                         kernel_arguments=dict(
                                 (name, self.rec(arg_expr))
                                 for name, arg_expr in expr.kernel_arguments.items()
@@ -237,6 +238,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 expr.kernel,
                 self.operand_rec(expr.density),
                 expr.qbx_forced_limit, source, target,
+                diagonal_kernel=expr.diagonal_kernel,
                 kernel_arguments=dict(
                     (name, self.operand_rec(arg_expr))
                     for name, arg_expr in expr.kernel_arguments.items()
@@ -340,6 +342,32 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
 # }}}
 
 
+# {{{ Nystrom preprocessor
+
+class NystromPreprocessor(IdentityMapper):
+
+    def __init__(self, source_name, places):
+        self.source_name = source_name
+        self.places = places
+
+    def map_int_g(self, expr):
+        if expr.qbx_forced_limit in (-1, 1):
+            raise ValueError("Nystrom evaluation does not support one-sided limits")
+
+        expr = expr.copy(
+                qbx_forced_limit=None,
+                kernel=expr.kernel,
+                density=self.rec(expr.density),
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
+
+        return expr
+
+# }}}
+
+
 # {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
@@ -365,6 +393,7 @@ class QBXPreprocessor(IdentityMapper):
         expr = expr.copy(
                 kernel=expr.kernel,
                 density=self.rec(expr.density),
+                # QBX does not use the diagonal kernel. Ignore.
                 kernel_arguments=dict(
                     (name, self.rec(arg_expr))
                     for name, arg_expr in expr.kernel_arguments.items()
@@ -467,14 +496,17 @@ class StringifyMapper(BaseStringifyMapper):
                     for name, arg_expr in kernel_arguments.items())
 
     def map_int_g(self, expr, enclosing_prec):
-        return u"Int[%s->%s]@(%s)%s (%s * %s)" % (
+        return u"Int[%s->%s]@(%s)%s (%s * %s%s)" % (
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
                 self._stringify_kernel_args(
                     expr.kernel_arguments),
                 expr.kernel,
-                self.rec(expr.density, PREC_PRODUCT))
+                self.rec(expr.density, PREC_PRODUCT),
+                (
+                    "" if expr.diagonal_kernel is None
+                    else (", diag=" + self.rec(expr.diagonal_kernel, PREC_NONE))))
 
 # }}}
 
@@ -518,11 +550,16 @@ class GraphvizMapper(GraphvizMapperBase):
     map_q_weight = map_pytential_leaf
 
     def map_int_g(self, expr):
-        descr = u"Int[%s->%s]@(%d) (%s)" % (
+        diag_descr = (
+                "" if expr.diagonal_kernel is None
+                else "diag=%s" % self.rec(expr.diagonal_kernel))
+
+        descr = u"Int[%s->%s]@(%d) (%s%s)" % (
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
                 expr.kernel,
+                diag_descr,
                 )
         self.lines.append(
                 "%s [label=\"%s\",shape=box];" % (
