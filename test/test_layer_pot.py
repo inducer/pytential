@@ -1280,7 +1280,7 @@ def test_nystrom_with_ones_kernel(ctx_getter):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    nelements = 20
+    nelements = 10
     order = 8
 
     mesh = make_curve_mesh(partial(ellipse, 1),
@@ -1298,19 +1298,23 @@ def test_nystrom_with_ones_kernel(ctx_getter):
     lpot_src = NystromLayerPotentialSource(discr)
 
     from sumpy.kernel import one_kernel_2d
-    import pytential.symbolic.primitives as prim
 
-    op = bind(lpot_src,
-            sym.IntG(one_kernel_2d, sym.var("sigma"), qbx_forced_limit=None))
+    expr = sym.IntG(one_kernel_2d, sym.var("sigma"), qbx_forced_limit=None)
+
+    from pytential.target import PointsTarget
+    op_self = bind(lpot_src, expr)
+    op_nonself = bind((lpot_src, PointsTarget(np.zeros((2, 1), dtype=float))), expr)
 
     with cl.CommandQueue(cl_ctx) as queue:
         sigma = cl.array.zeros(queue, discr.nnodes, dtype=float)
         sigma.fill(1)
         sigma.finish()
 
-        result = op(queue, sigma=sigma)
+        result_self = op_self(queue, sigma=sigma)
+        result_nonself = op_nonself(queue, sigma=sigma)
 
-    assert np.allclose(result.get(), 2 * np.pi)
+    assert np.allclose(result_self.get(), 2 * np.pi)
+    assert np.allclose(result_nonself.get(), 2 * np.pi)
 
 # }}}
 
