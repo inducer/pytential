@@ -130,10 +130,6 @@ class PotentialOutput(Record):
 
     .. attribute:: kernel_index
 
-    .. attribute:: diagonal_kernel_index
-
-        Index for the diagonal of the kernel. May be *None* if not required.
-
     .. attribute:: target_name
 
     .. attribute:: qbx_forced_limit
@@ -156,17 +152,6 @@ class ComputePotentialInstruction(Instruction):
         a list of :class:`sumpy.kernel.Kernel` instances, indexed by
         :attr:`LayerPotentialOutput.kernel_index`.
 
-    .. attribute:: exclude_self
-
-        If *True*, avoid evaluating a kernel diagonal when computing a self
-        interaction. Instead, evalute the diagonal using the
-        value from :attr:`diagonal_kernels`.
-
-    .. attribute:: diagonal_kernels
-
-        A :class:`tuple` of expressions for the kernel diagonals, indexed by
-        :attr:`LayerPotentialOutput.diagonal_kernel_index`.
-
     .. attribute:: kernel_arguments
 
         a dictionary mapping arg names to kernel arguments
@@ -180,7 +165,6 @@ class ComputePotentialInstruction(Instruction):
     .. attribute:: source
 
     .. attribute:: priority
-
     """
 
     def get_assignees(self):
@@ -460,9 +444,6 @@ class OperatorCompiler(IdentityMapper):
         from pytential.symbolic.primitives import hashable_kernel_args
         return (
                 self.places[expr.source].op_group_features(expr)
-                # The presence of a diagonal kernel determines
-                # whether or not exclude_self should be True.
-                + (expr.diagonal_kernel is not None,)
                 + hashable_kernel_args(expr.kernel_arguments))
 
     @memoize_method
@@ -601,15 +582,9 @@ class OperatorCompiler(IdentityMapper):
             kernels = sorted(
                     set(op.kernel for op in group),
                     key=lambda kernel: repr(kernel))
+
             kernel_to_index = dict(
                     (kernel, i) for i, kernel in enumerate(kernels))
-
-            diagonal_kernels = sorted(
-                    set(op.diagonal_kernel for op in group) - set([None]),
-                    key=lambda diagonal_kernel: repr(diagonal_kernel))
-            diagonal_kernel_to_index = dict(
-                    (diagonal_kernel, i) for i, diagonal_kernel
-                    in enumerate(diagonal_kernels))
 
             from pytools import single_valued
             from sumpy.kernel import AxisTargetDerivativeRemover
@@ -628,9 +603,6 @@ class OperatorCompiler(IdentityMapper):
                     PotentialOutput(
                         name=name,
                         kernel_index=kernel_to_index[op.kernel],
-                        diagonal_kernel_index=(
-                            None if op.diagonal_kernel is None
-                            else diagonal_kernel_to_index[op.diagonal_kernel]),
                         target_name=op.target,
                         qbx_forced_limit=op.qbx_forced_limit,
                         )
@@ -641,14 +613,10 @@ class OperatorCompiler(IdentityMapper):
                     ComputePotentialInstruction(
                         outputs=outputs,
                         kernels=tuple(kernels),
-                        diagonal_kernels=tuple(diagonal_kernels),
                         kernel_arguments=kernel_arguments,
                         base_kernel=base_kernel,
                         density=density_var,
                         source=expr.source,
-                        exclude_self=any(
-                            op.diagonal_kernel is not None
-                            for op in group),
                         priority=max(getattr(op, "priority", 0) for op in group),
                         dep_mapper_factory=self.dep_mapper_factory))
 

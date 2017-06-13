@@ -550,7 +550,6 @@ class IntG(Expression):
 
     def __init__(self, kernel, density,
             qbx_forced_limit, source=None, target=None,
-            diagonal_kernel=None,
             kernel_arguments=None,
             **kwargs):
         """*target_derivatives* and later arguments should be considered
@@ -559,7 +558,6 @@ class IntG(Expression):
         :arg kernel: a kernel as accepted by
             :func:`sumpy.kernel.to_kernel_and_args`,
             likely a :class:`sumpy.kernel.Kernel`.
-
         :arg qbx_forced_limit: +1 if the output is required to originate from a
             QBX center on the "+" side of the boundary. -1 for the other side.
             Evaluation at a target with a value of +/- 1 in *qbx_forced_limit*
@@ -575,8 +573,6 @@ class IntG(Expression):
 
             ``'avg'`` may be used as a shorthand to evaluate this potential
             as an average of the ``+1`` and the ``-1`` value.
-
-        :arg diagonal_kernel: The diagonal kernel, if necessary
 
         :arg kernel_arguments: A dictionary mapping named
             :class:`sumpy.kernel.Kernel` arguments
@@ -636,8 +632,6 @@ class IntG(Expression):
 
                 kernel_arguments[name] = val
 
-        print("KERNEL_ARGUMENTS PROVIDED", set(kernel_arguments.keys()))
-
         provided_arg_names = set(kernel_arguments.keys())
         missing_args = kernel_arg_names - provided_arg_names
         if missing_args:
@@ -655,7 +649,6 @@ class IntG(Expression):
         self.source = source
         self.target = target
         self.kernel_arguments = kernel_arguments
-        self.diagonal_kernel = diagonal_kernel
 
     def copy(self, kernel=None, density=None, qbx_forced_limit=_NoArgSentinel,
             source=None, target=None, kernel_arguments=None):
@@ -666,9 +659,8 @@ class IntG(Expression):
         source = source or self.source
         target = target or self.target
         kernel_arguments = kernel_arguments or self.kernel_arguments
-        diagonal_kernel = self.diagonal_kernel
         return type(self)(kernel, density, qbx_forced_limit, source, target,
-                          diagonal_kernel, kernel_arguments)
+                kernel_arguments)
 
     def __getinitargs__(self):
         return (self.kernel, self.density, self.qbx_forced_limit,
@@ -784,8 +776,8 @@ class _unspecified:  # noqa
 
 
 def S(kernel, density,  # noqa
-      qbx_forced_limit=_unspecified, source=None, target=None,
-      kernel_arguments=None, **kwargs):
+        qbx_forced_limit=_unspecified, source=None, target=None,
+        kernel_arguments=None, **kwargs):
 
     if qbx_forced_limit is _unspecified:
         warn("not specifying qbx_forced_limit on call to 'S' is deprecated, "
