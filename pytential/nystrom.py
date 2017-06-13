@@ -41,8 +41,8 @@ __doc__ = """
 # {{{ (panel-based) Nystrom layer potential source
 
 class NystromLayerPotentialSource(LayerPotentialSourceBase):
-    """A source discretization for a Nyström layer potential with panel-based
-    quadrature.
+    """A source discretization for a layer potential discretized with a Nyström
+    method that uses panel-based quadrature.
     """
 
     def __init__(self, density_discr,
