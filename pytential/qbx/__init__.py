@@ -29,7 +29,7 @@ import numpy as np
 from pytools import memoize_method
 from meshmode.discretization import Discretization
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
-from pytential.source import PotentialSource
+from pytential.source import LayerPotentialSourceBase
 
 import pyopencl as cl
 
@@ -44,21 +44,13 @@ __doc__ = """
 """
 
 
-class LayerPotentialSource(PotentialSource):
-    pass
-
-
 # {{{ QBX layer potential source
 
-class QBXLayerPotentialSource(LayerPotentialSource):
+class QBXLayerPotentialSource(LayerPotentialSourceBase):
     """A source discretization for a QBX layer potential.
 
-    .. attribute :: density_discr
     .. attribute :: qbx_order
     .. attribute :: fmm_order
-    .. attribute :: cl_context
-    .. automethod :: weights_and_area_elements
-    .. automethod :: with_refinement
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
@@ -249,26 +241,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             panel_sizes = self._panel_sizes("npanels").with_queue(queue)
             return np.asscalar(cl.array.max(panel_sizes).get())
 
-    @property
-    def ambient_dim(self):
-        return self.density_discr.ambient_dim
-
-    @property
-    def dim(self):
-        return self.density_discr.dim
-
-    @property
-    def cl_context(self):
-        return self.density_discr.cl_context
-
-    @property
-    def real_dtype(self):
-        return self.density_discr.real_dtype
-
-    @property
-    def complex_dtype(self):
-        return self.density_discr.complex_dtype
-
     # {{{ internal API
 
     @memoize_method
@@ -455,7 +427,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                         len(target_discrs_and_qbx_sides)
 
                 target_discr = bound_expr.places[o.target_name]
-                if isinstance(target_discr, LayerPotentialSource):
+                if isinstance(target_discr, LayerPotentialSourceBase):
                     target_discr = target_discr.density_discr
 
                 qbx_forced_limit = o.qbx_forced_limit
