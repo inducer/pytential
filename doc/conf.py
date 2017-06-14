@@ -273,6 +273,7 @@ intersphinx_mapping = {
     'http://docs.scipy.org/doc/numpy/': None,
     'http://documen.tician.de/modepy/': None,
     'http://documen.tician.de/pyopencl/': None,
+    'http://documen.tician.de/pytools/': None,
     'http://documen.tician.de/pymbolic/': None,
     'http://documen.tician.de/loopy/': None,
     'http://documen.tician.de/sumpy/': None,

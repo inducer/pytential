@@ -44,6 +44,37 @@ __doc__ = """
 .. |where-blurb| replace:: A symbolic name for a
     :class:`pytential.discretization.Discretization`
 
+Object types
+^^^^^^^^^^^^
+Based on the mathematical quantity being represented, the following types of
+objects occur as part of a symbolic operator representation:
+
+*   If a quantity is a scalar, it is just a symbolic expression--that is, a nested
+    combination of placeholders (see below), arithmetic on them (see
+    :mod:`pymbolic.primitives`. These objects are created simply by doing
+    arithmetic on placeholders.
+
+*   If the quantity is "just a bunch of scalars" (like, say, rows in a system
+    of integral equations), the symbolic representation an object array. Each
+    element of the object array contains a symbolic expression.
+
+    :func:`pytools.obj_array.make_obj_array` and
+    :func:`pytools.obj_array.join_fields`
+    can help create those.
+
+*   If it is a geometric quantity (that makes sense without explicit reference to
+    coordinates), it is a :class:`pymbolic.geometric_algebra.MultiVector`.
+    This can be converted to an object array by calling :
+    :meth:`pymbolic.geometric_algebra.MultiVector.as_vector`.
+
+:mod:`pyopencl.array.Array` instances do not occur on the symbolic of
+:mod:`pymbolic` at all.  Those hold per-node degrees of freedom (and only
+those), which is not visible as an array axis in symbolic code. (They're
+visible only once evaluated.)
+
+Placeholders
+^^^^^^^^^^^^
+
 .. autoclass:: Variable
 .. autoclass:: make_sym_vector
 .. autoclass:: make_sym_mv
