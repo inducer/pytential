@@ -787,6 +787,43 @@ class EllipsoidIntEqTestCase(IntEqTestCase):
     # kidding?
     gmres_tol = 1e-5
 
+class SphereIntEqTestCase(IntEqTestCase):
+    resolutions = [2, 1]
+    name = "sphere"
+
+    def get_mesh(self, resolution, target_order):
+        from meshmode.mesh.io import generate_gmsh, FileSource
+        from meshmode.mesh.generation import generate_icosphere
+        from meshmode.mesh.refinement import Refiner
+        mesh = generate_icosphere(1,target_order)
+
+        refinement_increment = 1
+        refiner = Refiner(mesh)
+        for i in range(refinement_increment):
+            flags = np.ones(mesh.nelements, dtype=bool)
+            refiner.refine(flags)
+            mesh = refiner.get_current_mesh()
+
+
+        from meshmode.mesh.processing import perform_flips
+        # Flip elements--gmsh generates inside-out geometry.
+        return perform_flips(mesh, np.ones(mesh.nelements))
+
+
+    fmm_backend = "fmmlib"
+    use_refinement = False
+    neumann_alpha = 0  # no double layers in FMMlib backend yet
+
+    inner_radius = 0.4
+    outer_radius = 5
+
+    qbx_order = 2
+    target_order = qbx_order
+    check_tangential_deriv = False
+
+    # We're only expecting three digits based on FMM settings. Who are we
+    # kidding?
+    gmres_tol = 1e-5
 
 @pytest.mark.parametrize("case", [
     EllipseIntEqTestCase(helmholtz_k=helmholtz_k, bc_type=bc_type,

@@ -102,7 +102,7 @@ class MuellerAugmentedMFIEOperator(object):
         self.mus = mus
         self.epss = epss
         self.ks = [
-                sym.cse(omega*sym.sqrt(eps*mu), "k%d" % i)
+                sym.cse(omega*(eps*mu)**0.5, "k%d" % i)
                 for i, (eps, mu) in enumerate(zip(epss, mus))]
 
     def make_unknown(self, name):
@@ -146,7 +146,7 @@ class MuellerAugmentedMFIEOperator(object):
         F3 = (xyz_to_tangential(sym.n_cross(E1-E0) + 0.5*(mu0+mu1)*Mxyz))
 
         # sign flip included
-        F4 = - sym.n_dot(mu1*H1-mu0*H0) + 0.5*(mu1+mu0)*u.rho_m
+        F4 = -sym.n_dot(mu1*H1-mu0*H0) + 0.5*(mu1+mu0)*u.rho_m
 
         return join_fields(F1, F2, F3, F4)
 
@@ -174,8 +174,8 @@ class MuellerAugmentedMFIEOperator(object):
         curl_S = partial(sym.curl_S, self.kernel, qbx_forced_limit=None, k=k)
         grad = partial(sym.grad, 3)
 
-        E0 = 1j*omega*mu*eps*S(Jxyz) + mu*curl_S(Mxyz) - grad(S(u.rho_e))
-        H0 = -1j*omega*mu*eps*S(Mxyz) + eps*curl_S(Jxyz) + grad(S(u.rho_m))
+        E0 = 1j*k*eps*S(Jxyz) + mu*curl_S(Mxyz) - grad(S(u.rho_e))
+        H0 = -1j*k*mu*S(Mxyz) + eps*curl_S(Jxyz) + grad(S(u.rho_m))
 
         from pytools.obj_array import join_fields
         return join_fields(E0, H0)
