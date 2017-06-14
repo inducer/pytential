@@ -246,8 +246,8 @@ class BoundExpression:
     def get_discretization(self, where):
         discr = self.places[where]
 
-        from pytential.qbx import LayerPotentialSource
-        if isinstance(discr, LayerPotentialSource):
+        from pytential.source import LayerPotentialSourceBase
+        if isinstance(discr, LayerPotentialSourceBase):
             discr = discr.density_discr
 
         return discr
@@ -303,9 +303,9 @@ class BoundExpression:
 def prepare_places(places):
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
     from meshmode.discretization import Discretization
-    from pytential.qbx import LayerPotentialSource
+    from pytential.source import LayerPotentialSourceBase
 
-    if isinstance(places, LayerPotentialSource):
+    if isinstance(places, LayerPotentialSourceBase):
         places = {
                 DEFAULT_SOURCE: places,
                 DEFAULT_TARGET: places.density_discr,
@@ -345,7 +345,7 @@ def prepare_expr(places, expr, auto_where=None):
     """
 
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-    from pytential.qbx import LayerPotentialSource
+    from pytential.source import LayerPotentialSourceBase
 
     from pytential.symbolic.mappers import (
             ToTargetTagger,
@@ -364,7 +364,7 @@ def prepare_expr(places, expr, auto_where=None):
     expr = DerivativeBinder()(expr)
 
     for name, place in six.iteritems(places):
-        if isinstance(place, LayerPotentialSource):
+        if isinstance(place, LayerPotentialSourceBase):
             expr = place.preprocess_optemplate(name, places, expr)
 
     return expr

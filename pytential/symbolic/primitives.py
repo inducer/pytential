@@ -612,7 +612,7 @@ class IntG(Expression):
             to expressions that determine them)
 
         :arg source: The symbolic name of the source discretization. This name
-            is bound to a concrete :class:`pytential.qbx.QBXLayerPotentialSource`
+            is bound to a concrete :class:`pytential.source.LayerPotentialSourceBase`
             by :func:`pytential.bind`.
 
         :arg target: The symbolic name of the set of targets. This name gets

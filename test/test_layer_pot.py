@@ -304,20 +304,22 @@ def run_int_eq_test(cl_ctx, queue, case, resolution):
 
     refiner_extra_kwargs = {}
 
-    if case.k != 0:
-        refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
-
     if case.fmm_backend is None:
         fmm_order = False
     else:
-        fmm_order = case.qbx_order + 5
+        fmm_order = case.fmm_order
 
     qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=source_order, qbx_order=case.qbx_order,
             fmm_order=fmm_order, fmm_backend=case.fmm_backend)
 
     if case.use_refinement:
+        if case.k != 0:
+            refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
+
+        print("%d elements before refinement" % pre_density_discr.mesh.nelements)
         qbx, _ = qbx.with_refinement(**refiner_extra_kwargs)
+        print("%d elements after refinement" % qbx.density_discr.mesh.nelements)
 
     density_discr = qbx.density_discr
 
@@ -336,12 +338,12 @@ def run_int_eq_test(cl_ctx, queue, case, resolution):
 
         elif mesh.ambient_dim == 3:
             from meshmode.discretization.visualization import make_visualizer
-            bdry_vis = make_visualizer(queue, density_discr, case.target_order)
+            bdry_vis = make_visualizer(queue, density_discr, case.target_order + 5)
 
             bdry_normals = bind(density_discr, sym.normal(3))(queue)\
                     .as_vector(dtype=object)
 
-            bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
+            bdry_vis.write_vtk_file("pre-solve-source-%s.vtu" % resolution, [
                 ("bdry_normals", bdry_normals),
                 ])
 
@@ -544,7 +546,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution):
 
     if 0:
         from meshmode.discretization.visualization import make_visualizer
-        bdry_vis = make_visualizer(queue, density_discr, case.target_order)
+        bdry_vis = make_visualizer(queue, density_discr, case.target_order+5)
 
         bdry_normals = bind(density_discr, sym.normal(3))(queue)\
                 .as_vector(dtype=object)
@@ -736,7 +738,6 @@ class CurveIntEqTestCase(IntEqTestCase):
                 np.linspace(0, 1, resolution+1),
                 target_order)
 
-    fmm_backend = None
     use_refinement = True
     neumann_alpha = None  # default
 
@@ -745,6 +746,7 @@ class CurveIntEqTestCase(IntEqTestCase):
 
     qbx_order = 5
     target_order = qbx_order
+    fmm_backend = None
 
     check_tangential_deriv = True
 
@@ -756,7 +758,22 @@ class EllipseIntEqTestCase(CurveIntEqTestCase):
         return ellipse(3, x)
 
 
-class EllipsoidIntEqTestCase(IntEqTestCase):
+class Helmholtz3DIntEqTestCase(IntEqTestCase):
+    fmm_backend = "fmmlib"
+    use_refinement = False
+    neumann_alpha = 0  # no double layers in FMMlib backend yet
+
+    qbx_order = 2
+    fmm_order = 7
+    target_order = qbx_order
+    check_tangential_deriv = False
+
+    # We're only expecting three digits based on FMM settings. Who are we
+    # kidding?
+    gmres_tol = 1e-5
+
+
+class EllipsoidIntEqTestCase(Helmholtz3DIntEqTestCase):
     resolutions = [2, 1]
     name = "ellipsoid"
 
@@ -772,20 +789,78 @@ class EllipsoidIntEqTestCase(IntEqTestCase):
         # Flip elements--gmsh generates inside-out geometry.
         return perform_flips(mesh, np.ones(mesh.nelements))
 
-    fmm_backend = "fmmlib"
-    use_refinement = False
-    neumann_alpha = 0  # no double layers in FMMlib backend yet
+    fmm_order = 13
 
     inner_radius = 0.4
     outer_radius = 5
 
-    qbx_order = 2
-    target_order = qbx_order
-    check_tangential_deriv = False
 
-    # We're only expecting three digits based on FMM settings. Who are we
-    # kidding?
-    gmres_tol = 1e-5
+class MergedCubesIntEqTestCase(Helmholtz3DIntEqTestCase):
+    resolutions = [1.4]
+    name = "merged-cubes"
+
+    def get_mesh(self, resolution, target_order):
+        from meshmode.mesh.io import generate_gmsh, FileSource
+        mesh = generate_gmsh(
+                FileSource("merged-cubes.step"), 2, order=2,
+                other_options=[
+                    "-string",
+                    "Mesh.CharacteristicLengthMax = %g;" % resolution])
+
+        from meshmode.mesh.processing import perform_flips
+        # Flip elements--gmsh generates inside-out geometry.
+        mesh = perform_flips(mesh, np.ones(mesh.nelements))
+
+        return mesh
+
+    use_refinement = True
+
+    inner_radius = 0.4
+    outer_radius = 12
+
+
+class ManyEllipsoidIntEqTestCase(Helmholtz3DIntEqTestCase):
+    resolutions = [2, 1]
+    name = "ellipsoid"
+
+    nx = 2
+    ny = 2
+    nz = 2
+
+    def get_mesh(self, resolution, target_order):
+        from meshmode.mesh.io import generate_gmsh, FileSource
+        base_mesh = generate_gmsh(
+                FileSource("ellipsoid.step"), 2, order=2,
+                other_options=[
+                    "-string",
+                    "Mesh.CharacteristicLengthMax = %g;" % resolution])
+
+        from meshmode.mesh.processing import perform_flips
+        # Flip elements--gmsh generates inside-out geometry.
+        base_mesh = perform_flips(base_mesh, np.ones(base_mesh.nelements))
+
+        from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
+        from meshmode.mesh.tools import rand_rotation_matrix
+        pitch = 10
+        meshes = [
+                affine_map(
+                    base_mesh,
+                    A=rand_rotation_matrix(3),
+                    b=pitch*np.array([
+                        (ix-self.nx//2),
+                        (iy-self.ny//2),
+                        (iz-self.ny//2)]))
+                for ix in range(self.nx)
+                for iy in range(self.ny)
+                for iz in range(self.nz)
+                ]
+
+        mesh = merge_disjoint_meshes(meshes, single_group=True)
+        return mesh
+
+    inner_radius = 0.4
+    # This should sit in the area just outside the middle ellipsoid
+    outer_radius = 5
 
 
 @pytest.mark.parametrize("case", [
