@@ -143,7 +143,7 @@ def main():
 
     u_incoming = u_incoming_func(targets)
 
-    qbx_stick_out = qbx.copy(target_stick_out_factor=0.05)
+    qbx_stick_out = qbx.copy(target_association_tolerance=0.05)
 
     indicator_qbx = qbx_stick_out.copy(
             fmm_level_to_order=lambda lev: 7, qbx_order=2)

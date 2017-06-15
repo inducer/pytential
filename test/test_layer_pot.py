@@ -564,13 +564,13 @@ def run_int_eq_test(cl_ctx, queue, case, resolution):
         fplot = FieldPlotter(
                 bbox_center, extent=2*2*bbox_size, npoints=(150, 150, 1))
 
-        qbx_stick_out = qbx.copy(target_stick_out_factor=0.15)
+        qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
         from pytential.target import PointsTarget
         from pytential.qbx import QBXTargetAssociationFailedException
 
         try:
             solved_pot = bind(
-                    (qbx_stick_out, PointsTarget(fplot.points)),
+                    (qbx_tgt_tol, PointsTarget(fplot.points)),
                     op.representation(sym.var("u"))
                     )(queue, u=u, k=case.k)
         except QBXTargetAssociationFailedException as e:
@@ -1224,13 +1224,13 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
     direct_qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=False,
-            target_stick_out_factor=0.05,
+            target_association_tolerance=0.05,
             ).with_refinement()
     fmm_qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order + 3,
             expansion_disks_in_tree_have_extent=True,
-            target_stick_out_factor=0.05,
+            target_association_tolerance=0.05,
             ).with_refinement()
 
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)

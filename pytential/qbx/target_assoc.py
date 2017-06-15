@@ -178,7 +178,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
         particle_id_t center_offset,
         particle_id_t target_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *expansion_radii_by_center_with_stick_out,
+        coord_t *expansion_radii_by_center_with_tolerance,
         coord_t *box_to_search_dist,
         int *target_flags,
 
@@ -229,7 +229,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
                 coord_t my_dist_to_center = distance(tgt_coords, center_coords);
 
                 if (my_dist_to_center
-                        <= expansion_radii_by_center_with_stick_out[center]
+                        <= expansion_radii_by_center_with_tolerance[center]
                     && my_dist_to_center < min_dist_to_center[i])
                 {
                     target_status[i] = MARKED_QBX_CENTER_FOUND;
@@ -480,7 +480,7 @@ class QBXTargetAssociator(object):
 
     def try_find_centers(self, queue, tree, peer_lists, lpot_source,
                          target_status, target_flags, target_assoc,
-                         stick_out_factor, debug, wait_for=None):
+                         target_association_tolerance, debug, wait_for=None):
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
@@ -503,8 +503,8 @@ class QBXTargetAssociator(object):
         centers = [axis.with_queue(queue)[center_slice] for axis in tree.sources]
         expansion_radii_by_center = \
                 lpot_source._expansion_radii("ncenters").with_queue(queue)
-        expansion_radii_by_center_with_stick_out = \
-                expansion_radii_by_center * (1 + stick_out_factor)
+        expansion_radii_by_center_with_tolerance = \
+                expansion_radii_by_center * (1 + target_association_tolerance)
 
         # Idea:
         #
@@ -516,7 +516,7 @@ class QBXTargetAssociator(object):
                 queue,
                 tree,
                 centers,
-                expansion_radii_by_center_with_stick_out,
+                expansion_radii_by_center_with_tolerance,
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
@@ -537,7 +537,7 @@ class QBXTargetAssociator(object):
                 tree.qbx_user_center_slice.start,
                 tree.qbx_user_target_slice.start,
                 tree.sorted_target_ids,
-                expansion_radii_by_center_with_stick_out,
+                expansion_radii_by_center_with_tolerance,
                 box_to_search_dist,
                 target_flags,
                 target_status,
@@ -655,7 +655,7 @@ class QBXTargetAssociator(object):
         return QBXTargetAssociation(target_to_center=target_to_center)
 
     def __call__(self, lpot_source, target_discrs_and_qbx_sides,
-                 stick_out_factor=1e-10, debug=True, wait_for=None):
+                 target_association_tolerance, debug=True, wait_for=None):
         """
         Entry point for calling the target associator.
 
@@ -732,7 +732,7 @@ class QBXTargetAssociator(object):
 
             self.try_find_centers(queue, tree, peer_lists, lpot_source,
                                   target_status, target_flags, target_assoc,
-                                  stick_out_factor, debug)
+                                  target_association_tolerance, debug)
 
             center_not_found = (
                 target_status == target_status_enum.MARKED_QBX_CENTER_PENDING)
@@ -745,8 +745,8 @@ class QBXTargetAssociator(object):
                 if (center_not_found & surface_target).any().get():
                     logger.warning("An on-surface target was not "
                             "assigned a center. As a remedy you can try increasing "
-                            "the \"stick_out_factor\" parameter, but this could "
-                            "also cause an invalid center assignment.")
+                            "the \"target_association_tolerance\" parameter, but "
+                            "this could also cause an invalid center assignment.")
 
                 refine_flags = cl.array.zeros(queue, tree.nqbxpanels, dtype=np.int32)
                 have_panel_to_refine = self.mark_panels_for_refinement(queue,

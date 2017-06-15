@@ -91,7 +91,7 @@ def main():
 
     targets = cl.array.to_device(queue, fplot.points)
 
-    qbx_stick_out = qbx.copy(target_stick_out_factor=0.05)
+    qbx_stick_out = qbx.copy(target_association_tolerance=0.05)
 
     indicator_qbx = qbx_stick_out.copy(qbx_order=2)
 

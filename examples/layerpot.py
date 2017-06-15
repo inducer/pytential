@@ -54,7 +54,7 @@ pre_density_discr = Discretization(
 
 qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
         fmm_order=qbx_order+3,
-        target_stick_out_factor=0.005).with_refinement()
+        target_association_tolerance=0.005).with_refinement()
 
 density_discr = qbx.density_discr
 
