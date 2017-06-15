@@ -340,6 +340,33 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
 # }}}
 
 
+# {{{ Unregularized preprocessor
+
+class UnregularizedPreprocessor(IdentityMapper):
+
+    def __init__(self, source_name, places):
+        self.source_name = source_name
+        self.places = places
+
+    def map_int_g(self, expr):
+        if expr.qbx_forced_limit in (-1, 1):
+            raise ValueError(
+                    "Unregularized evaluation does not support one-sided limits")
+
+        expr = expr.copy(
+                qbx_forced_limit=None,
+                kernel=expr.kernel,
+                density=self.rec(expr.density),
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
+
+        return expr
+
+# }}}
+
+
 # {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):

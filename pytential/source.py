@@ -190,6 +190,22 @@ class LayerPotentialSourceBase(PotentialSource):
     def complex_dtype(self):
         return self.density_discr.complex_dtype
 
+    @memoize_method
+    def get_p2p(self, kernels):
+        # needs to be separate method for caching
+
+        from pytools import any
+        if any(knl.is_complex_valued for knl in kernels):
+            value_dtype = self.density_discr.complex_dtype
+        else:
+            value_dtype = self.density_discr.real_dtype
+
+        from sumpy.p2p import P2P
+        p2p = P2P(self.cl_context,
+                  kernels, exclude_self=False, value_dtypes=value_dtype)
+
+        return p2p
+
     # {{{ weights and area elements
 
     @memoize_method
