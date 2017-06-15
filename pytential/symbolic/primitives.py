@@ -360,7 +360,7 @@ def mean_curvature(ambient_dim, dim=None, where=None):
     if dim is None:
         dim = ambient_dim - 1
 
-    if dim != 1 and ambient_dim != 2:
+    if not (dim == 1 and ambient_dim == 2):
         raise NotImplementedError(
                 "only know how to calculate curvature for a curve in 2D")
 
