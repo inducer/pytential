@@ -1060,7 +1060,9 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
 
         qbx, _ = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
-                qbx_order, fmm_order=qbx_order + order_bump
+                qbx_order,
+                fmm_order=qbx_order + order_bump,
+                _expansion_disks_in_tree_have_extent=True,
                 ).with_refinement(**refiner_extra_kwargs)
 
         density_discr = qbx.density_discr
