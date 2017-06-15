@@ -118,9 +118,9 @@ def test_mean_curvature(ctx_getter, discr_name, discr_and_ref_mean_curvature_get
         from pytential import bind
         mean_curvature = bind(
             discr,
-            prim.mean_curvature(discr.ambient_dim))(queue).as_vector(np.object)
+            prim.mean_curvature(discr.ambient_dim))(queue)
 
-    assert np.allclose(mean_curvature[0].get(), ref_mean_curvature)
+    assert np.allclose(mean_curvature.get(), ref_mean_curvature)
 
 
 # You can test individual routines by typing

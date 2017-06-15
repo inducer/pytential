@@ -372,8 +372,7 @@ def mean_curvature(ambient_dim, dim=None, where=None):
             reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
             "p2d_matrix", cse_scope.DISCRETIZATION)
 
-    return MultiVector(make_obj_array(
-            [(xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)]))
+    return (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
 
 # FIXME: make sense of this in the context of GA
 # def xyz_to_local_matrix(dim, where=None):
