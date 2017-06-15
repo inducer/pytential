@@ -29,6 +29,13 @@ import six
 from pytools import memoize_method
 
 
+__doc__ = """
+.. autoclass:: PotentialSource
+.. autoclass:: PointPotentialSource
+.. autoclass:: LayerPotentialSourceBase
+"""
+
+
 class PotentialSource(object):
     """
     .. method:: preprocess_optemplate(name, expr)
@@ -43,12 +50,13 @@ class PotentialSource(object):
     """
 
 
+# {{{ point potential source
+
 class PointPotentialSource(PotentialSource):
     """
     ... attributes:: points
 
         An :class:`pyopencl.array.Array` of shape ``[ambient_dim, npoints]``.
-
     """
 
     def __init__(self, cl_context, points):
@@ -130,3 +138,95 @@ class PointPotentialSource(PotentialSource):
             result.fill(1)
 
         return result.with_queue(None)
+
+# }}}
+
+
+# {{{ layer potential source
+
+class LayerPotentialSourceBase(PotentialSource):
+    """A discretization of a layer potential using panel-based geometry, with
+    support for refinement and upsampling.
+
+    .. rubric:: Discretizations
+
+    .. attribute:: density_discr
+    .. attribute:: fine_density_discr
+    .. attribute:: resampler
+    .. method:: with_refinement
+
+    .. rubric:: Discretization data
+
+    .. attribute:: cl_context
+    .. attribute:: ambient_dim
+    .. attribute:: dim
+    .. attribute:: real_dtype
+    .. attribute:: complex_dtype
+    .. attribute:: h_max
+
+    .. rubric:: Execution
+
+    .. automethod:: weights_and_area_elements
+    .. method:: exec_compute_potential_insn
+    """
+
+    @property
+    def ambient_dim(self):
+        return self.density_discr.ambient_dim
+
+    @property
+    def dim(self):
+        return self.density_discr.dim
+
+    @property
+    def cl_context(self):
+        return self.density_discr.cl_context
+
+    @property
+    def real_dtype(self):
+        return self.density_discr.real_dtype
+
+    @property
+    def complex_dtype(self):
+        return self.density_discr.complex_dtype
+
+    @memoize_method
+    def get_p2p(self, kernels):
+        # needs to be separate method for caching
+
+        from pytools import any
+        if any(knl.is_complex_valued for knl in kernels):
+            value_dtype = self.density_discr.complex_dtype
+        else:
+            value_dtype = self.density_discr.real_dtype
+
+        from sumpy.p2p import P2P
+        p2p = P2P(self.cl_context,
+                  kernels, exclude_self=False, value_dtypes=value_dtype)
+
+        return p2p
+
+    # {{{ weights and area elements
+
+    @memoize_method
+    def weights_and_area_elements(self):
+        import pytential.symbolic.primitives as p
+        from pytential.symbolic.execution import bind
+        with cl.CommandQueue(self.cl_context) as queue:
+            # fine_density_discr is not guaranteed to be usable for
+            # interpolation/differentiation. Use density_discr to find
+            # area element instead, then upsample that.
+
+            area_element = self.resampler(queue,
+                    bind(
+                        self.density_discr,
+                        p.area_element(self.ambient_dim, self.dim)
+                        )(queue))
+
+            qweight = bind(self.fine_density_discr, p.QWeight())(queue)
+
+            return (area_element.with_queue(queue)*qweight).with_queue(None)
+
+    # }}}
+
+# }}}

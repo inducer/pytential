@@ -194,7 +194,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
             coord_t *particles_${ax},
         %endfor
     """,
-    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
+    ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""//CL//
         coord_vec_t tgt_coords;
         ${load_particle("INDEX_FOR_TARGET_PARTICLE(i)", "tgt_coords")}
         {
@@ -203,31 +203,39 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
             ${ball_radius} = box_to_search_dist[my_box];
         }
     """,
-    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
-        for (particle_id_t center_idx = box_to_center_starts[${leaf_box_id}];
-             center_idx < box_to_center_starts[${leaf_box_id} + 1];
-             ++center_idx)
+    leaf_found_op=QBX_TREE_MAKO_DEFS + r"""//CL//
+        if (target_status[i] == MARKED_QBX_CENTER_PENDING
+                // Found one in a prior leaf, but there may well be another
+                // that's closer.
+                || target_status[i] == MARKED_QBX_CENTER_FOUND)
         {
-            particle_id_t center = box_to_center_lists[center_idx];
-            int center_side = SIDE_FOR_CENTER_PARTICLE(center);
-
-            // Sign of side should match requested target sign.
-            if (center_side * target_flags[i] < 0)
+            for (particle_id_t center_idx = box_to_center_starts[${leaf_box_id}];
+                 center_idx < box_to_center_starts[${leaf_box_id} + 1];
+                 ++center_idx)
             {
-                continue;
-            }
+                particle_id_t center = box_to_center_lists[center_idx];
 
-            coord_vec_t center_coords;
-            ${load_particle("INDEX_FOR_CENTER_PARTICLE(center)", "center_coords")}
-            coord_t my_dist_to_center = distance(tgt_coords, center_coords);
+                int center_side = SIDE_FOR_CENTER_PARTICLE(center);
 
-            if (my_dist_to_center
-                    <= expansion_radii_by_center_with_stick_out[center]
-                && my_dist_to_center < min_dist_to_center[i])
-            {
-                target_status[i] = MARKED_QBX_CENTER_FOUND;
-                min_dist_to_center[i] = my_dist_to_center;
-                target_to_center[i] = center;
+                // Sign of side should match requested target sign.
+                if (center_side * target_flags[i] < 0)
+                {
+                    continue;
+                }
+
+                coord_vec_t center_coords;
+                ${load_particle(
+                    "INDEX_FOR_CENTER_PARTICLE(center)", "center_coords")}
+                coord_t my_dist_to_center = distance(tgt_coords, center_coords);
+
+                if (my_dist_to_center
+                        <= expansion_radii_by_center_with_stick_out[center]
+                    && my_dist_to_center < min_dist_to_center[i])
+                {
+                    target_status[i] = MARKED_QBX_CENTER_FOUND;
+                    min_dist_to_center[i] = my_dist_to_center;
+                    target_to_center[i] = center;
+                }
             }
         }
     """,
@@ -381,7 +389,8 @@ class QBXTargetAssociator(object):
 
     def mark_targets(self, queue, tree, peer_lists, lpot_source, target_status,
                      debug, wait_for=None):
-        # Avoid generating too many kernels.
+        # Round up level count--this gets included in the kernel as
+        # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
 
@@ -396,7 +405,7 @@ class QBXTargetAssociator(object):
         found_target_close_to_panel.finish()
 
         # Perform a space invader query over the sources.
-        source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
+        source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
         sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
         tunnel_radius_by_source = \
                 lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
@@ -472,7 +481,8 @@ class QBXTargetAssociator(object):
     def try_find_centers(self, queue, tree, peer_lists, lpot_source,
                          target_status, target_flags, target_assoc,
                          stick_out_factor, debug, wait_for=None):
-        # Avoid generating too many kernels.
+        # Round up level count--this gets included in the kernel as
+        # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
 
@@ -554,7 +564,8 @@ class QBXTargetAssociator(object):
     def mark_panels_for_refinement(self, queue, tree, peer_lists, lpot_source,
                                    target_status, refine_flags, debug,
                                    wait_for=None):
-        # Avoid generating too many kernels.
+        # Round up level count--this gets included in the kernel as
+        # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
 
