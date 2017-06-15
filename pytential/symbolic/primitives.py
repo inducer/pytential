@@ -305,20 +305,31 @@ class NumReferenceDerivative(DiscretizationProperty):
     mapper_method = intern("map_num_reference_derivative")
 
 
+def reference_jacobian(field, field_dim, dim, where=None):
+    """Return a :class:`np.array` representing the Jacobian of a vector field with
+    respect to the reference coordinates.
+    """
+    jac = np.zeros((field_dim, dim), np.object)
+
+    for i in range(field_dim):
+        field_component = field[i]
+        for j in range(dim):
+            jac[i, j] = NumReferenceDerivative(
+                frozenset([j]),
+                field_component,
+                where)
+
+    return jac
+
+
 def parametrization_derivative_matrix(ambient_dim, dim, where=None):
-    """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
-    the derivative of the reference-to-global parametrization.
+    """Return a :class:`np.array` representing the derivative of the
+    reference-to-global parametrization.
     """
 
-    par_grad = np.zeros((ambient_dim, dim), np.object)
-    for i in range(ambient_dim):
-        for j in range(dim):
-            par_grad[i, j] = NumReferenceDerivative(
-                    frozenset([j]),
-                    NodeCoordinateComponent(i, where),
-                    where)
-
-    return par_grad
+    return reference_jacobian(
+            [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
+            ambient_dim, dim)
 
 
 def parametrization_derivative(ambient_dim, dim, where=None):
@@ -374,9 +385,25 @@ def normal(ambient_dim, dim=None, where=None):
             cse_scope.DISCRETIZATION)
 
 
-def mean_curvature(where):
-    raise NotImplementedError()
+def mean_curvature(ambient_dim, dim=None, where=None):
+    """(Numerical) mean curvature."""
 
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if not (dim == 1 and ambient_dim == 2):
+        raise NotImplementedError(
+                "only know how to calculate curvature for a curve in 2D")
+
+    xp, yp = cse(
+            parametrization_derivative_matrix(ambient_dim, dim, where),
+            "pd_matrix", cse_scope.DISCRETIZATION)
+
+    xpp, ypp = cse(
+            reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
+            "p2d_matrix", cse_scope.DISCRETIZATION)
+
+    return (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
 
 # FIXME: make sense of this in the context of GA
 # def xyz_to_local_matrix(dim, where=None):

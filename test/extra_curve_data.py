@@ -158,3 +158,10 @@ horseshoe = (
     Segment((-5, 1), (0, 1)) +
     Arc((0, 1), (0.5, 0.5), (0, 0))
     )
+
+# unit square
+unit_square = (
+    Segment((1, -1), (1, 1)) +
+    Segment((1, 1), (-1, 1)) +
+    Segment((-1, 1), (-1, -1)) +
+    Segment((-1, -1), (1, -1)))
