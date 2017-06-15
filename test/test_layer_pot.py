@@ -153,8 +153,11 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
         pre_density_discr = Discretization(
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
-        qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
-                qbx_order, fmm_order=fmm_order).with_refinement()
+        qbx, _ = QBXLayerPotentialSource(
+                pre_density_discr, 4*target_order,
+                qbx_order, fmm_order=fmm_order,
+                _expansion_disks_in_tree_have_extent=True,
+                ).with_refinement()
 
         density_discr = qbx.density_discr
         nodes = density_discr.nodes().with_queue(queue)
