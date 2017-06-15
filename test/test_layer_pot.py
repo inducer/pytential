@@ -1295,7 +1295,7 @@ def test_unregularized_with_ones_kernel(ctx_getter):
             InterpolatoryQuadratureSimplexGroupFactory(order))
 
     from pytential.unregularized import UnregularizedLayerPotentialSource
-    lpot_src = UnregularizedLayerPotentialSource
+    lpot_src = UnregularizedLayerPotentialSource(discr)
 
     from sumpy.kernel import one_kernel_2d
 
