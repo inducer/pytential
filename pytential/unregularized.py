@@ -34,15 +34,15 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
-.. autoclass:: NystromLayerPotentialSource
+.. autoclass:: UnregularizedLayerPotentialSource
 """
 
 
-# {{{ (panel-based) Nystrom layer potential source
+# {{{ (panel-based) unregularized layer potential source
 
-class NystromLayerPotentialSource(LayerPotentialSourceBase):
+class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     """A source discretization for a layer potential discretized with a Nyström
-    method that uses panel-based quadrature.
+    method that uses panel-based quadrature and does not modify the kernel.
     """
 
     def __init__(self, density_discr,
@@ -97,8 +97,8 @@ class NystromLayerPotentialSource(LayerPotentialSourceBase):
         :arg name: The symbolic name for *self*, which the preprocessor
             should use to find which expressions it is allowed to modify.
         """
-        from pytential.symbolic.mappers import NystromPreprocessor
-        return NystromPreprocessor(name, discretizations)(expr)
+        from pytential.symbolic.mappers import UnregularizedPreprocessor
+        return UnregularizedPreprocessor(name, discretizations)(expr)
 
     def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
         kernel_args = {}
@@ -130,7 +130,7 @@ class NystromLayerPotentialSource(LayerPotentialSourceBase):
 
 
 __all__ = (
-        NystromLayerPotentialSource,
+        UnregularizedLayerPotentialSource,
         )
 
 # vim: fdm=marker

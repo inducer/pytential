@@ -15,10 +15,10 @@ and you can start computing.
 
 .. automodule:: pytential.qbx
 
-Nyström discretization
+Unregularized discretization
 -------
 
-.. automodule:: pytential.nystrom
+.. automodule:: pytential.unregularized
 
 Sources
 -------

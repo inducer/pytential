@@ -340,9 +340,9 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
 # }}}
 
 
-# {{{ Nystrom preprocessor
+# {{{ Unregularized preprocessor
 
-class NystromPreprocessor(IdentityMapper):
+class UnregularizedPreprocessor(IdentityMapper):
 
     def __init__(self, source_name, places):
         self.source_name = source_name
@@ -350,7 +350,8 @@ class NystromPreprocessor(IdentityMapper):
 
     def map_int_g(self, expr):
         if expr.qbx_forced_limit in (-1, 1):
-            raise ValueError("Nystrom evaluation does not support one-sided limits")
+            raise ValueError(
+                    "Unregularized evaluation does not support one-sided limits")
 
         expr = expr.copy(
                 qbx_forced_limit=None,

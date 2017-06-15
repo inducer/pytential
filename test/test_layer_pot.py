@@ -1273,10 +1273,10 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
 # }}}
 
 
-# {{{ nystrom tests
+# {{{ unregularized tests
 
 
-def test_nystrom_with_ones_kernel(ctx_getter):
+def test_unregularized_with_ones_kernel(ctx_getter):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -1294,8 +1294,8 @@ def test_nystrom_with_ones_kernel(ctx_getter):
     discr = Discretization(cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    from pytential.nystrom import NystromLayerPotentialSource
-    lpot_src = NystromLayerPotentialSource(discr)
+    from pytential.unregularized import UnregularizedLayerPotentialSource
+    lpot_src = UnregularizedLayerPotentialSource
 
     from sumpy.kernel import one_kernel_2d
 
