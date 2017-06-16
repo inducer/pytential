@@ -477,7 +477,7 @@ def make_empty_refine_flags(queue, lpot_source, use_base_fine_discr=False):
 # {{{ main entry point
 
 def refine_for_global_qbx(lpot_source, code_container,
-        group_factory, fine_group_factory, kernel_length_scale=None,
+        group_factory, kernel_length_scale=None,
         # FIXME: Set debug=False once everything works.
         refine_flags=None, debug=True, maxiter=50):
     """
@@ -490,10 +490,6 @@ def refine_for_global_qbx(lpot_source, code_container,
     :arg group_factory: An instance of
         :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
         discretizing the coarse refined mesh.
-
-    :arg fine_group_factory: An instance of
-        :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
-        oversample the refined mesh at the finest level.
 
     :arg kernel_length_scale: The kernel length scale, or *None* if not
         applicable. All panels are refined to below this size.

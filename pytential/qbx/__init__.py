@@ -218,8 +218,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.qbx.refinement import refine_for_global_qbx
 
         from meshmode.discretization.poly_element import (
-                InterpolatoryQuadratureSimplexGroupFactory,
-                QuadratureSimplexGroupFactory)
+                InterpolatoryQuadratureSimplexGroupFactory)
 
         if target_order is None:
             target_order = self.density_discr.groups[0].order
@@ -228,7 +227,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 self,
                 self.refiner_code_container,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order),
-                QuadratureSimplexGroupFactory(self.fine_order),
                 kernel_length_scale=kernel_length_scale,
                 maxiter=maxiter)
 
