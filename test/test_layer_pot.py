@@ -1234,7 +1234,7 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
     fmm_qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order + 3,
-            expansion_disks_in_tree_have_extent=True,
+            _expansion_disks_in_tree_have_extent=True,
             target_association_tolerance=0.05,
             ).with_refinement()
 
