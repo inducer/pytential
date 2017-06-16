@@ -85,11 +85,9 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
-            InterpolatoryQuadratureSimplexGroupFactory,
-            QuadratureSimplexGroupFactory)
+            InterpolatoryQuadratureSimplexGroupFactory)
 
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
-    fine_factory = QuadratureSimplexGroupFactory(4 * order)
 
     discr = Discretization(cl_ctx, mesh, factory)
 
@@ -105,7 +103,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
 
     lpot_source, conn = refine_for_global_qbx(
             lpot_source, RefinerCodeContainer(cl_ctx),
-            factory, fine_factory, **refiner_extra_kwargs)
+            factory, **refiner_extra_kwargs)
 
     from pytential.qbx.utils import get_centers_on_side
 
