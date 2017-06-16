@@ -353,7 +353,7 @@ class QBXFMMGeometryData(object):
 
     def __init__(self, code_getter, lpot_source,
             target_discrs_and_qbx_sides,
-            target_stick_out_factor, debug):
+            target_association_tolerance, debug):
         """
         .. rubric:: Constructor arguments
 
@@ -368,7 +368,7 @@ class QBXFMMGeometryData(object):
         self.lpot_source = lpot_source
         self.target_discrs_and_qbx_sides = \
                 target_discrs_and_qbx_sides
-        self.target_stick_out_factor = target_stick_out_factor
+        self.target_association_tolerance = target_association_tolerance
         self.debug = debug
 
     @property
@@ -493,7 +493,7 @@ class QBXFMMGeometryData(object):
             nparticles = nsources + target_info.ntargets
 
             target_radii = None
-            if self.lpot_source.expansion_disks_in_tree_have_extent:
+            if self.lpot_source._expansion_disks_in_tree_have_extent:
                 target_radii = cl.array.zeros(queue, target_info.ntargets,
                         self.coord_dtype)
                 target_radii[:self.ncenters] = self.expansion_radii()
@@ -517,10 +517,10 @@ class QBXFMMGeometryData(object):
                     particles=lpot_src.fine_density_discr.nodes(),
                     targets=target_info.targets,
                     target_radii=target_radii,
-                    max_leaf_refine_weight=256,
+                    max_leaf_refine_weight=32,
                     refine_weights=refine_weights,
                     debug=self.debug,
-                    stick_out_factor=0,
+                    stick_out_factor=lpot_src._expansion_disk_stick_out_factor,
                     kind="adaptive")
 
             if self.debug:
@@ -545,7 +545,7 @@ class QBXFMMGeometryData(object):
             trav, _ = self.code_getter.build_traversal(queue, self.tree(),
                     debug=self.debug)
 
-            if self.lpot_source.expansion_disks_in_tree_have_extent:
+            if self.lpot_source._expansion_disks_in_tree_have_extent:
                 trav = trav.merge_close_lists(queue)
 
             return trav
@@ -685,7 +685,8 @@ class QBXFMMGeometryData(object):
         # FIXME: try block...
         tgt_assoc_result = tgt_assoc(self.lpot_source,
                                      target_discrs_and_qbx_sides,
-                                     stick_out_factor=self.target_stick_out_factor)
+                                     target_association_tolerance=(
+                                         self.target_association_tolerance))
 
         tree = self.tree()
 

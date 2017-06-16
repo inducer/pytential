@@ -289,7 +289,8 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     from pytential.qbx.target_assoc import QBXTargetAssociator
     target_assoc = (
-        QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs)
+        QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs,
+            target_association_tolerance=1e-10)
         .get(queue=queue))
 
     expansion_radii = lpot_source._expansion_radii("ncenters").get(queue)
@@ -390,7 +391,8 @@ def test_target_association_failure(ctx_getter):
         QBXTargetAssociator, QBXTargetAssociationFailedException)
 
     with pytest.raises(QBXTargetAssociationFailedException):
-        QBXTargetAssociator(cl_ctx)(lpot_source, targets)
+        QBXTargetAssociator(cl_ctx)(lpot_source, targets,
+                target_association_tolerance=1e-10)
 
     # }}}
 

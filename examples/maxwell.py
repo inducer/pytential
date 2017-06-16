@@ -99,12 +99,12 @@ def main():
 
         fplot = FieldPlotter(bbox_center, extent=2*bbox_size, npoints=(150, 150, 1))
 
-        qbx_stick_out = qbx.copy(target_stick_out_factor=0.1)
+        qbx_tgt_tol = qbx.copy(target_association_tolerance=0.1)
         from pytential.target import PointsTarget
         from pytential.qbx import QBXTargetAssociationFailedException
         try:
             fld_in_vol = bind(
-                    (qbx_stick_out, PointsTarget(fplot.points)),
+                    (qbx_tgt_tol, PointsTarget(fplot.points)),
                     sym.make_obj_array([
                         sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
                             qbx_forced_limit=None),

@@ -620,7 +620,7 @@ def refine_for_global_qbx(lpot_source, code_container,
 
         # }}}
 
-    lpot_source = lpot_source.copy(debug=debug, refined_for_global_qbx=True)
+    lpot_source = lpot_source.copy(debug=debug, _refined_for_global_qbx=True)
 
     if len(connections) == 0:
         # FIXME: This is inefficient
