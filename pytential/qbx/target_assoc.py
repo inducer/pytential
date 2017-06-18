@@ -109,7 +109,7 @@ class target_flag_enum(Enum):  # noqa
 
 
 def _generate_enum_code(enum):
-    return "\n".join(list(enum.generate()))
+    return "\n".join(enum.generate())
 
 
 TARGET_ASSOC_DEFINES = "".join([
