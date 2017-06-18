@@ -287,9 +287,15 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     # {{{ run target associator and check
 
-    from pytential.qbx.target_assoc import QBXTargetAssociator
-    target_assoc = (
-        QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs,
+    from pytential.qbx.target_assoc import (
+            TargetAssociationCodeContainer, associate_targets_to_qbx_centers)
+
+    code_container = TargetAssociationCodeContainer(cl_ctx)
+
+    target_assoc = (associate_targets_to_qbx_centers(
+            lpot_source,
+            code_container.get_wrangler(queue),
+            target_discrs,
             target_association_tolerance=1e-10)
         .get(queue=queue))
 
@@ -388,11 +394,17 @@ def test_target_association_failure(ctx_getter):
         )
 
     from pytential.qbx.target_assoc import (
-        QBXTargetAssociator, QBXTargetAssociationFailedException)
+            TargetAssociationCodeContainer, associate_targets_to_qbx_centers,
+            QBXTargetAssociationFailedException)
+
+    code_container = TargetAssociationCodeContainer(cl_ctx)
 
     with pytest.raises(QBXTargetAssociationFailedException):
-        QBXTargetAssociator(cl_ctx)(lpot_source, targets,
-                target_association_tolerance=1e-10)
+        associate_targets_to_qbx_centers(
+            lpot_source,
+            code_container.get_wrangler(queue),
+            targets,
+            target_association_tolerance=1e-10)
 
     # }}}
 

@@ -279,6 +279,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.qbx.refinement import RefinerCodeContainer
         return RefinerCodeContainer(self.cl_context)
 
+    @property
+    @memoize_method
+    def target_association_code_container(self):
+        from pytential.qbx.target_assoc import TargetAssociationCodeContainer
+        return TargetAssociationCodeContainer(self.cl_context)
+
     @memoize_method
     def with_refinement(self, target_order=None, kernel_length_scale=None,
             maxiter=10):

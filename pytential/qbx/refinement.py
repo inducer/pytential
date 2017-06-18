@@ -34,7 +34,8 @@ import pyopencl as cl
 from pytools import memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
-from pytential.qbx.utils import QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS
+from pytential.qbx.utils import (
+        QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -264,7 +265,7 @@ class RefinerCodeContainer(object):
 
 # {{{ wrangler
 
-class RefinerWrangler(object):
+class RefinerWrangler(TreeWranglerBase):
 
     def __init__(self, code_container, queue):
         self.code_container = code_container
@@ -419,18 +420,6 @@ class RefinerWrangler(object):
         return (out["refine_flags_updated"].get() == 1).all()
 
     # }}}
-
-    def build_tree(self, lpot_source, use_base_fine_discr=False):
-        tb = self.code_container.tree_builder()
-        from pytential.qbx.utils import build_tree_with_qbx_metadata
-        return build_tree_with_qbx_metadata(
-                self.queue, tb, lpot_source, use_base_fine_discr=use_base_fine_discr)
-
-    def find_peer_lists(self, tree):
-        plf = self.code_container.peer_list_finder()
-        peer_lists, evt = plf(self.queue, tree)
-        cl.wait_for_events([evt])
-        return peer_lists
 
     def refine(self, density_discr, refiner, refine_flags, factory, debug):
         """
