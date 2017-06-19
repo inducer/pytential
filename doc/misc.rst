@@ -38,6 +38,15 @@ or `examples <https://github.com/inducer/pytential/tree/master/examples|examples
 Troubleshooting the Installation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+/usr/bin/ld: cannot find -lstdc++
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Try::
+
+    sudo apt-get install libstdc++-6-dev
+
+to install the missing C++ development package.
+
 No CL platforms found/unknown error -1001
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 If you get::
