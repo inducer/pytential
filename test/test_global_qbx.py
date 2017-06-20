@@ -102,7 +102,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
     lpot_source, conn = refine_for_global_qbx(
-            lpot_source, RefinerCodeContainer(cl_ctx),
+            lpot_source, RefinerCodeContainer(cl_ctx).get_wrangler(queue),
             factory, **refiner_extra_kwargs)
 
     from pytential.qbx.utils import get_centers_on_side

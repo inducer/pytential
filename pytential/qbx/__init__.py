@@ -302,12 +302,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if target_order is None:
             target_order = self.density_discr.groups[0].order
 
-        lpot, connection = refine_for_global_qbx(
-                self,
-                self.refiner_code_container,
-                InterpolatoryQuadratureSimplexGroupFactory(target_order),
-                kernel_length_scale=kernel_length_scale,
-                maxiter=maxiter)
+        with cl.CommandQueue(self.cl_context) as queue:
+            lpot, connection = refine_for_global_qbx(
+                    self,
+                    self.refiner_code_container.get_wrangler(queue),
+                    InterpolatoryQuadratureSimplexGroupFactory(target_order),
+                    kernel_length_scale=kernel_length_scale,
+                    maxiter=maxiter)
 
         return lpot, connection
 

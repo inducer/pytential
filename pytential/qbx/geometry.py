@@ -684,7 +684,7 @@ class QBXFMMGeometryData(object):
 
             tgt_assoc_result = associate_targets_to_qbx_centers(
                     self.lpot_source,
-                    wrangler,
+                    target_association_wrangler,
                     target_discrs_and_qbx_sides,
                     target_association_tolerance=(
                         self.target_association_tolerance))
