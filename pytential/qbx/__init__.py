@@ -723,7 +723,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 # First ncenters targets are the centers
                 tgt_to_qbx_center = (
                         geo_data.user_target_to_center()[geo_data.ncenters:]
-                        .copy(queue=queue))
+                        .copy(queue=queue)
+                        .with_queue(queue))
 
                 qbx_tgt_numberer = self.get_qbx_target_numberer(
                         tgt_to_qbx_center.dtype)
