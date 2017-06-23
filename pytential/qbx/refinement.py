@@ -34,7 +34,8 @@ import pyopencl as cl
 from pytools import memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
-from pytential.qbx.utils import QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS
+from pytential.qbx.utils import (
+        QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -264,7 +265,7 @@ class RefinerCodeContainer(object):
 
 # {{{ wrangler
 
-class RefinerWrangler(object):
+class RefinerWrangler(TreeWranglerBase):
 
     def __init__(self, code_container, queue):
         self.code_container = code_container
@@ -420,18 +421,6 @@ class RefinerWrangler(object):
 
     # }}}
 
-    def build_tree(self, lpot_source, use_base_fine_discr=False):
-        tb = self.code_container.tree_builder()
-        from pytential.qbx.utils import build_tree_with_qbx_metadata
-        return build_tree_with_qbx_metadata(
-                self.queue, tb, lpot_source, use_base_fine_discr=use_base_fine_discr)
-
-    def find_peer_lists(self, tree):
-        plf = self.code_container.peer_list_finder()
-        peer_lists, evt = plf(self.queue, tree)
-        cl.wait_for_events([evt])
-        return peer_lists
-
     def refine(self, density_discr, refiner, refine_flags, factory, debug):
         """
         Refine the underlying mesh and discretization.
@@ -476,7 +465,7 @@ def make_empty_refine_flags(queue, lpot_source, use_base_fine_discr=False):
 
 # {{{ main entry point
 
-def refine_for_global_qbx(lpot_source, code_container,
+def refine_for_global_qbx(lpot_source, wrangler,
         group_factory, kernel_length_scale=None,
         # FIXME: Set debug=False once everything works.
         refine_flags=None, debug=True, maxiter=50):
@@ -485,7 +474,7 @@ def refine_for_global_qbx(lpot_source, code_container,
 
     :arg lpot_source: An instance of :class:`QBXLayerPotentialSource`.
 
-    :arg code_container: An instance of :class:`RefinerCodeContainer`.
+    :arg wrangler: An instance of :class:`RefinerWrangler`.
 
     :arg group_factory: An instance of
         :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
@@ -514,111 +503,108 @@ def refine_for_global_qbx(lpot_source, code_container,
     from meshmode.discretization.connection import (
             ChainedDiscretizationConnection, make_same_mesh_connection)
 
-    with cl.CommandQueue(lpot_source.cl_context) as queue:
-        wrangler = code_container.get_wrangler(queue)
+    refiner = Refiner(lpot_source.density_discr.mesh)
+    connections = []
 
-        refiner = Refiner(lpot_source.density_discr.mesh)
-        connections = []
+    # Do initial refinement.
+    if refine_flags is not None:
+        conn = wrangler.refine(
+                lpot_source.density_discr, refiner, refine_flags, group_factory,
+                debug)
+        connections.append(conn)
+        lpot_source = lpot_source.copy(density_discr=conn.to_discr)
 
-        # Do initial refinement.
-        if refine_flags is not None:
+    # {{{ first stage refinement
+
+    must_refine = True
+    niter = 0
+
+    while must_refine:
+        must_refine = False
+        niter += 1
+
+        if niter > maxiter:
+            from warnings import warn
+            warn(
+                    "Max iteration count reached in QBX layer potential source"
+                    " refiner.",
+                    RefinerNotConvergedWarning)
+            break
+
+        # Build tree and auxiliary data.
+        # FIXME: The tree should not have to be rebuilt at each iteration.
+        tree = wrangler.build_tree(lpot_source)
+        peer_lists = wrangler.find_peer_lists(tree)
+        refine_flags = make_empty_refine_flags(wrangler.queue, lpot_source)
+
+        # Check condition 1.
+        must_refine |= wrangler.check_expansion_disks_undisturbed_by_sources(
+                lpot_source, tree, peer_lists, refine_flags, debug)
+
+        # Check condition 3.
+        if kernel_length_scale is not None:
+            must_refine |= (
+                    wrangler.check_kernel_length_scale_to_panel_size_ratio(
+                        lpot_source, kernel_length_scale, refine_flags, debug))
+
+        if must_refine:
             conn = wrangler.refine(
-                    lpot_source.density_discr, refiner, refine_flags, group_factory,
-                    debug)
+                    lpot_source.density_discr, refiner, refine_flags,
+                    group_factory, debug)
             connections.append(conn)
             lpot_source = lpot_source.copy(density_discr=conn.to_discr)
 
-        # {{{ first stage refinement
+        del tree
+        del refine_flags
+        del peer_lists
 
-        must_refine = True
-        niter = 0
+    # }}}
 
-        while must_refine:
-            must_refine = False
-            niter += 1
+    # {{{ second stage refinement
 
-            if niter > maxiter:
-                from warnings import warn
-                warn(
-                        "Max iteration count reached in QBX layer potential source"
-                        " refiner.",
-                        RefinerNotConvergedWarning)
-                break
+    must_refine = True
+    niter = 0
+    fine_connections = []
 
-            # Build tree and auxiliary data.
-            # FIXME: The tree should not have to be rebuilt at each iteration.
-            tree = wrangler.build_tree(lpot_source)
-            peer_lists = wrangler.find_peer_lists(tree)
-            refine_flags = make_empty_refine_flags(queue, lpot_source)
+    base_fine_density_discr = lpot_source.density_discr
 
-            # Check condition 1.
-            must_refine |= wrangler.check_expansion_disks_undisturbed_by_sources(
-                    lpot_source, tree, peer_lists, refine_flags, debug)
+    while must_refine:
+        must_refine = False
+        niter += 1
 
-            # Check condition 3.
-            if kernel_length_scale is not None:
-                must_refine |= (
-                        wrangler.check_kernel_length_scale_to_panel_size_ratio(
-                            lpot_source, kernel_length_scale, refine_flags, debug))
+        if niter > maxiter:
+            from warnings import warn
+            warn(
+                    "Max iteration count reached in QBX layer potential source"
+                    " refiner.",
+                    RefinerNotConvergedWarning)
+            break
 
-            if must_refine:
-                conn = wrangler.refine(
-                        lpot_source.density_discr, refiner, refine_flags,
-                        group_factory, debug)
-                connections.append(conn)
-                lpot_source = lpot_source.copy(density_discr=conn.to_discr)
+        # Build tree and auxiliary data.
+        # FIXME: The tree should not have to be rebuilt at each iteration.
+        tree = wrangler.build_tree(lpot_source, use_base_fine_discr=True)
+        peer_lists = wrangler.find_peer_lists(tree)
+        refine_flags = make_empty_refine_flags(
+                wrangler.queue, lpot_source, use_base_fine_discr=True)
 
-            del tree
-            del refine_flags
-            del peer_lists
+        must_refine |= wrangler.check_sufficient_source_quadrature_resolution(
+                lpot_source, tree, peer_lists, refine_flags, debug)
 
-        # }}}
+        if must_refine:
+            conn = wrangler.refine(
+                    base_fine_density_discr,
+                    refiner, refine_flags, group_factory, debug)
+            base_fine_density_discr = conn.to_discr
+            fine_connections.append(conn)
+            lpot_source = lpot_source.copy(
+                    base_resampler=ChainedDiscretizationConnection(
+                        fine_connections))
 
-        # {{{ second stage refinement
+        del tree
+        del refine_flags
+        del peer_lists
 
-        must_refine = True
-        niter = 0
-        fine_connections = []
-
-        base_fine_density_discr = lpot_source.density_discr
-
-        while must_refine:
-            must_refine = False
-            niter += 1
-
-            if niter > maxiter:
-                from warnings import warn
-                warn(
-                        "Max iteration count reached in QBX layer potential source"
-                        " refiner.",
-                        RefinerNotConvergedWarning)
-                break
-
-            # Build tree and auxiliary data.
-            # FIXME: The tree should not have to be rebuilt at each iteration.
-            tree = wrangler.build_tree(lpot_source, use_base_fine_discr=True)
-            peer_lists = wrangler.find_peer_lists(tree)
-            refine_flags = make_empty_refine_flags(
-                    queue, lpot_source, use_base_fine_discr=True)
-
-            must_refine |= wrangler.check_sufficient_source_quadrature_resolution(
-                    lpot_source, tree, peer_lists, refine_flags, debug)
-
-            if must_refine:
-                conn = wrangler.refine(
-                        base_fine_density_discr,
-                        refiner, refine_flags, group_factory, debug)
-                base_fine_density_discr = conn.to_discr
-                fine_connections.append(conn)
-                lpot_source = lpot_source.copy(
-                        base_resampler=ChainedDiscretizationConnection(
-                            fine_connections))
-
-            del tree
-            del refine_flags
-            del peer_lists
-
-        # }}}
+    # }}}
 
     lpot_source = lpot_source.copy(debug=debug, _refined_for_global_qbx=True)
 

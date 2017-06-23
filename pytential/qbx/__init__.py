@@ -279,6 +279,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.qbx.refinement import RefinerCodeContainer
         return RefinerCodeContainer(self.cl_context)
 
+    @property
+    @memoize_method
+    def target_association_code_container(self):
+        from pytential.qbx.target_assoc import TargetAssociationCodeContainer
+        return TargetAssociationCodeContainer(self.cl_context)
+
     @memoize_method
     def with_refinement(self, target_order=None, kernel_length_scale=None,
             maxiter=10):
@@ -296,12 +302,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if target_order is None:
             target_order = self.density_discr.groups[0].order
 
-        lpot, connection = refine_for_global_qbx(
-                self,
-                self.refiner_code_container,
-                InterpolatoryQuadratureSimplexGroupFactory(target_order),
-                kernel_length_scale=kernel_length_scale,
-                maxiter=maxiter)
+        with cl.CommandQueue(self.cl_context) as queue:
+            lpot, connection = refine_for_global_qbx(
+                    self,
+                    self.refiner_code_container.get_wrangler(queue),
+                    InterpolatoryQuadratureSimplexGroupFactory(target_order),
+                    kernel_length_scale=kernel_length_scale,
+                    maxiter=maxiter)
 
         return lpot, connection
 
@@ -716,7 +723,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 # First ncenters targets are the centers
                 tgt_to_qbx_center = (
                         geo_data.user_target_to_center()[geo_data.ncenters:]
-                        .copy(queue=queue))
+                        .copy(queue=queue)
+                        .with_queue(queue))
 
                 qbx_tgt_numberer = self.get_qbx_target_numberer(
                         tgt_to_qbx_center.dtype)
