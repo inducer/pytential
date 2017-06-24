@@ -258,33 +258,109 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
 
-        formta = self.get_routine("%ddformta")
+        # {{{ parallel
 
+        print("par data prep")
+
+        center_source_counts = [0]
         for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
             itgt_box = qbx_center_to_target_box[tgt_icenter]
 
             isrc_box_start = starts[itgt_box]
             isrc_box_stop = starts[itgt_box+1]
 
-            tgt_center = qbx_centers[:, tgt_icenter]
+            source_count = sum(
+                    self.tree.box_source_counts_nonchild[lists[isrc_box]]
+                    for isrc_box in range(isrc_box_start, isrc_box_stop))
 
-            ctr_coeffs = 0
+            center_source_counts.append(source_count)
+
+        center_source_counts = np.array(center_source_counts)
+        center_source_starts = np.cumsum(center_source_counts)
+        nsources_total = center_source_starts[-1]
+
+        sources = np.empty((3, nsources_total), dtype=np.float64)
+        charges = np.empty(nsources_total, dtype=np.complex128)
+
+        isource = 0
+        for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
+            assert isource == center_source_starts[itgt_center]
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+
+            isrc_box_start = starts[itgt_box]
+            isrc_box_stop = starts[itgt_box+1]
 
             for isrc_box in range(isrc_box_start, isrc_box_stop):
                 src_ibox = lists[isrc_box]
 
                 src_pslice = self._get_source_slice(src_ibox)
+                ns = self.tree.box_source_counts_nonchild[src_ibox]
+                sources[:, isource:isource+ns] = self._get_sources(src_pslice)
+                charges[isource:isource+ns] = src_weights[src_pslice]
+                isource += ns
 
-                ier, coeffs = formta(
-                        self.helmholtz_k, rscale,
-                        self._get_sources(src_pslice), src_weights[src_pslice],
-                        tgt_center, self.nterms)
-                if ier:
-                    raise RuntimeError("formta failed")
+        centers = qbx_centers[:, geo_data.global_qbx_centers()]
 
-                ctr_coeffs += coeffs
+        rscale_vec = np.empty(len(center_source_counts) - 1, dtype=np.float64)
+        rscale_vec.fill(rscale)  # FIXME
 
-            local_exps[tgt_icenter] += ctr_coeffs
+        formta_vec = self.get_vec_routine("%ddformta")
+        print("par data prep done")
+
+        ier, loc_exp_pre = formta_vec(
+                self.helmholtz_k, rscale_vec,
+                sources, center_source_starts[:-1],
+                charges, center_source_starts[:-1],
+                center_source_counts[1:],
+                centers, self.nterms)
+
+        if np.any(ier != 0):
+            raise RuntimeError("formta returned an error")
+
+        loc_exp_pre = np.moveaxis(loc_exp_pre, -1, 0)
+        local_exps[geo_data.global_qbx_centers()] = loc_exp_pre
+
+        if 0:
+            # {{{ sequential
+
+            formta = self.get_routine("%ddformta")
+
+            local_exps_1 = np.zeros_like(local_exps)
+
+            for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
+                itgt_box = qbx_center_to_target_box[tgt_icenter]
+
+                isrc_box_start = starts[itgt_box]
+                isrc_box_stop = starts[itgt_box+1]
+
+                tgt_center = qbx_centers[:, tgt_icenter]
+
+                ctr_coeffs = 0
+
+                for isrc_box in range(isrc_box_start, isrc_box_stop):
+                    src_ibox = lists[isrc_box]
+
+                    src_pslice = self._get_source_slice(src_ibox)
+
+                    ier, coeffs = formta(
+                            self.helmholtz_k, rscale,
+                            self._get_sources(src_pslice), src_weights[src_pslice],
+                            tgt_center, self.nterms)
+                    if ier:
+                        raise RuntimeError("formta failed")
+
+                    ctr_coeffs += coeffs
+
+                local_exps_1[tgt_icenter] += ctr_coeffs
+
+            diff = local_exps - local_exps_1
+
+            # At least in 3D, this will have two "triangles" of non-zeros.
+            print(diff)
+
+            # }}}
+
+        # }}}
 
         return local_exps
 
