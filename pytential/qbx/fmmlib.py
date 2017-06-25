@@ -317,8 +317,7 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         if np.any(ier != 0):
             raise RuntimeError("formta returned an error")
 
-        loc_exp_pre = np.moveaxis(loc_exp_pre, -1, 0)
-        local_exps[geo_data.global_qbx_centers()] = loc_exp_pre
+        local_exps[geo_data.global_qbx_centers()] = loc_exp_pre.T
 
         if 0:
             # {{{ sequential
@@ -372,40 +371,80 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         qbx_centers = geo_data.centers()
         centers = self.tree.box_centers
 
-        mploc = self.get_translation_routine("%ddmploc")
+        if 0:
+            mploc = self.get_translation_routine("%ddmploc", vec_suffix="_csr")
 
-        for isrc_level, ssn in enumerate(geo_data.traversal().sep_smaller_by_level):
-            source_level_start_ibox, source_mpoles_view = \
-                    self.multipole_expansions_view(multipole_exps, isrc_level)
+            for isrc_level, ssn in enumerate(geo_data.traversal().sep_smaller_by_level):
 
-            # FIXME
-            rscale = 1
+                # FIXME
+                rscale = 1
 
-            kwargs = {}
-            if self.dim == 3:
-                # FIXME Is this right?
-                kwargs["radius"] = self.tree.root_extent * 2**(-isrc_level)
+                kwargs = {}
+                if self.dim == 3:
+                    # FIXME Is this right?
+                    kwargs["radius"] = self.tree.root_extent * 2**(-isrc_level)
 
-            for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
-                ctr_loc = 0
+                print("par data prep lev %d" % isrc_level)
 
+                itgt_center = np.arange(len(geo_data.global_qbx_centers()))
+                tgt_icenter = geo_data.global_qbx_centers()
                 icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
 
-                tgt_center = qbx_centers[:, tgt_icenter]
+                tgt_centers = qbx_centers[:, tgt_icenter]
 
-                for isrc_box in range(
-                        ssn.starts[icontaining_tgt_box],
-                        ssn.starts[icontaining_tgt_box+1]):
+                print("end par data prep")
 
-                    src_ibox = ssn.lists[isrc_box]
-                    src_center = centers[:, src_ibox]
+                ctr_loc = ctr_loc + mploc(
+                    self.helmholtz_k,
+                    rscale, src_center, multipole_exps[src_ibox].T,
+                    rscale, tgt_center, self.nterms, **kwargs)[..., 0].T
 
-                    ctr_loc = ctr_loc + mploc(
-                        self.helmholtz_k,
-                        rscale, src_center, multipole_exps[src_ibox],
-                        rscale, tgt_center, self.nterms, **kwargs)[..., 0]
 
-                local_exps[tgt_icenter] += ctr_loc
+
+        if 1:
+            # {{{ sequential
+
+            mploc = self.get_translation_routine("%ddmploc")
+
+            local_exps_1 = self.qbx_local_expansion_zeros()
+
+            for isrc_level, ssn in enumerate(geo_data.traversal().sep_smaller_by_level):
+                #source_level_start_ibox, source_mpoles_view = \
+                #        self.multipole_expansions_view(multipole_exps, isrc_level)
+
+                # FIXME
+                rscale = 1
+
+                kwargs = {}
+                if self.dim == 3:
+                    # FIXME Is this right?
+                    kwargs["radius"] = self.tree.root_extent * 2**(-isrc_level)
+
+                for itgt_center, tgt_icenter in enumerate(
+                        geo_data.global_qbx_centers()):
+                    ctr_loc = 0
+
+                    icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
+
+                    tgt_center = qbx_centers[:, tgt_icenter]
+
+                    for isrc_box in range(
+                            ssn.starts[icontaining_tgt_box],
+                            ssn.starts[icontaining_tgt_box+1]):
+
+                        src_ibox = ssn.lists[isrc_box]
+                        src_center = centers[:, src_ibox]
+
+                        ctr_loc = ctr_loc + mploc(
+                            self.helmholtz_k,
+                            rscale, src_center, multipole_exps[src_ibox].T,
+                            rscale, tgt_center, self.nterms, **kwargs)[..., 0].T
+
+                    local_exps_1[tgt_icenter] += ctr_loc
+
+            # }}}
+
+            return local_exps_1
 
         return local_exps
 
@@ -455,8 +494,8 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                     src_center = self.tree.box_centers[:, src_ibox]
                     tmp_loc_exp = locloc(
                                 self.helmholtz_k,
-                                rscale, src_center, local_exps[src_ibox],
-                                rscale, tgt_center, local_order, **kwargs)[..., 0]
+                                rscale, src_center, local_exps[src_ibox].T,
+                                rscale, tgt_center, local_order, **kwargs)[..., 0].T
 
                     qbx_expansions[tgt_icenter] += tmp_loc_exp
 
@@ -486,7 +525,7 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                 center = qbx_centers[:, src_icenter]
 
                 pot, grad = taeval(self.helmholtz_k, rscale,
-                        center, qbx_expansions[src_icenter],
+                        center, qbx_expansions[src_icenter].T,
                         all_targets[:, center_itgt])
 
                 self.add_potgrad_onto_output(output, center_itgt, pot, grad)
