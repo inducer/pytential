@@ -319,15 +319,22 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @property
     @memoize_method
+    def tree_code_container(self):
+        from pytential.qbx.utils import TreeCodeContainer
+        return TreeCodeContainer(self.cl_context)
+
+    @property
+    @memoize_method
     def refiner_code_container(self):
         from pytential.qbx.refinement import RefinerCodeContainer
-        return RefinerCodeContainer(self.cl_context)
+        return RefinerCodeContainer(self.cl_context, self.tree_code_container)
 
     @property
     @memoize_method
     def target_association_code_container(self):
         from pytential.qbx.target_assoc import TargetAssociationCodeContainer
-        return TargetAssociationCodeContainer(self.cl_context)
+        return TargetAssociationCodeContainer(
+                self.cl_context, self.tree_code_container)
 
     @memoize_method
     def with_refinement(self, target_order=None, kernel_length_scale=None,
@@ -481,7 +488,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def qbx_fmm_code_getter(self):
         from pytential.qbx.geometry import QBXFMMGeometryCodeGetter
         return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim,
-                debug=self.debug, _well_sep_is_n_away=self._well_sep_is_n_away)
+                self.tree_code_container, debug=self.debug,
+                _well_sep_is_n_away=self._well_sep_is_n_away)
 
     # {{{ fmm-based execution
 
