@@ -173,7 +173,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             performance_data_file=None,
 
             debug=_not_provided,
-            _refined_for_global_qbx=None,
+            _refined_for_global_qbx=_not_provided,
             target_stick_out_factor=_not_provided,
             ):
 
