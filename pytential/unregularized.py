@@ -30,7 +30,7 @@ import six
 import numpy as np
 import loopy as lp
 
-from boxtre.tools import DeviceDataRecord
+from boxtree.tools import DeviceDataRecord
 from pytential.source import LayerPotentialSourceBase
 from pytools import memoize_method
 
