@@ -51,11 +51,14 @@ __doc__ = """
 class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     """A source discretization for a layer potential discretized with a Nyström
     method that uses panel-based quadrature and does not modify the kernel.
+
+    .. attribute:: fmm_level_to_order
     """
 
     def __init__(self, density_discr,
             fmm_order=None,
             fmm_level_to_order=None,
+            expansion_factory=None,
             # begin undocumented arguments
             # FIXME default debug=False once everything works
             debug=True):
@@ -72,9 +75,16 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             if fmm_order is not None:
                 def fmm_level_to_order(level):
                     return fmm_order
+            else:
+                fmm_level_to_order = False
 
         self.density_discr = density_discr
         self.fmm_level_to_order = fmm_level_to_order
+
+        if expansion_factory is None:
+            from sumpy.expansion import DefaultExpansionFactory
+            expansion_factory = DefaultExpansionFactory()
+        self.expansion_factory = expansion_factory
 
         self.debug = debug
 
@@ -106,6 +116,11 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         def evaluate_wrapper(expr):
             value = evaluate(expr)
             return with_object_array_or_scalar(lambda x: x, value)
+
+        if self.fmm_level_to_order is False:
+            func = self.exec_compute_potential_insn_direct
+        else:
+            func = self.exec_compute_potential_insn_fmm
 
         func = self.exec_compute_potential_insn_direct
         return func(queue, insn, bound_expr, evaluate_wrapper)
@@ -152,6 +167,108 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
         return result, []
+
+    # {{{ fmm-based execution
+
+    @memoize_method
+    def expansion_wrangler_code_container(self, base_kernel, out_kernels):
+        mpole_expn_class = \
+                self.expansion_factory.get_multipole_expansion_class(base_kernel)
+        local_expn_class = \
+                self.expansion_factory.get_local_expansion_class(base_kernel)
+
+        from functools import partial
+        fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
+        fmm_local_factory = partial(local_expn_class, base_kernel)
+
+        from sumpy.fmm import SumpyExpansionWrangerCodeContainer
+        return SumpyExpansionWrangerCodeContainer(
+                self.cl_context,
+                fmm_mpole_factory,
+                fmm_local_factory,
+                out_kernels)
+
+    @property
+    @memoize_method
+    def fmm_geometry_code_container(self):
+        return _FMMGeometryCodeContainer(
+                self.cl_context, self.ambient_dim, self.debug)
+
+    def fmm_geometry_data(self, targets):
+        return _FMMGeometryData(
+                self,
+                self.fmm_geometry_code_container,
+                targets,
+                self.debug)
+
+    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
+
+        # {{{ gather unique target discretizations used
+
+        target_name_to_index = {}
+        targets = []
+
+        for o in insn.outputs:
+            assert o.qbx_forced_limit not in (-1, 1)
+
+            if o.target_name in target_name_to_index:
+                continue
+
+            target_name_to_index[o.target_name] = len(targets)
+            targets.append(bound_expr.places[o.target_name])
+
+        targets = tuple(targets)
+
+        # }}}
+
+        # {{{ get wrangler
+
+        geo_data = self.fmm_geometry_data(targets)
+
+        strengths = (evaluate(insn.density).with_queue(queue)
+                * self.weights_and_area_elements())
+
+        out_kernels = tuple(knl for knl in insn.kernels)
+        base_kernel = self.get_fmm_base_kernel(out_kernels)
+        value_dtype = self.get_fmm_value_dtype(base_kernel, strengths)
+        kernel_extra_kwargs, source_extra_kwargs = (
+                self.get_fmm_expansion_wrangler_extra_kwargs(
+                    queue, out_kernels, geo_data.tree().user_source_ids,
+                    insn.kernel_arguments, evaluate))
+
+        wrangler = self.expansion_wrangler_code_container(
+                out_kernels, base_kernel).get_wrangler(
+                    queue,
+                    geo_data.tree(),
+                    value_dtype,
+                    self.fmm_level_to_order,
+                    source_extra_kwargs=source_extra_kwargs,
+                    kernel_extra_kwargs=kernel_extra_kwargs)
+
+        # }}}
+
+        from boxtree.fmm import drive_fmm
+        all_potentials_on_every_tgt = drive_fmm(
+                geo_data.traversal(), wrangler, strengths)
+
+        # {{{ postprocess fmm
+
+        result = []
+
+        for o in insn.outputs:
+            target_index = target_name_to_index[o.target_name]
+            target_slice = slice(*geo_data.target_info().target_discr_starts[
+                    target_index:target_index+2])
+
+            result.append(
+                    (o.name,
+                        all_potentials_on_every_tgt[o.kernel_index][target_slice]))
+
+        # }}}
+
+        return result, []
+
+    # }}}
 
 # }}}
 
