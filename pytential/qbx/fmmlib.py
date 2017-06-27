@@ -308,11 +308,17 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         print("par data prep done")
 
         ier, loc_exp_pre = formta_vec(
-                self.helmholtz_k, rscale_vec,
-                sources, center_source_starts[:-1],
-                charges, center_source_starts[:-1],
-                center_source_counts[1:],
-                centers, self.nterms)
+                zk=self.helmholtz_k,
+                rscale=rscale_vec,
+
+                sources=sources,
+                sources_offsets=center_source_starts[:-1],
+                charges=charges,
+                charges_offsets=center_source_starts[:-1],
+
+                nsources=center_source_counts[1:],
+                center=centers,
+                nterms=self.nterms)
 
         if np.any(ier != 0):
             raise RuntimeError("formta returned an error")
@@ -371,46 +377,107 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         qbx_centers = geo_data.centers()
         centers = self.tree.box_centers
 
-        if 0:
-            mploc = self.get_translation_routine("%ddmploc", vec_suffix="_csr")
+        if 1:
+            # {{{ parallel
 
-            for isrc_level, ssn in enumerate(geo_data.traversal().sep_smaller_by_level):
+            mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
+
+            for isrc_level, ssn in enumerate(
+                    geo_data.traversal().sep_smaller_by_level):
+                source_level_start_ibox, source_mpoles_view = \
+                        self.multipole_expansions_view(multipole_exps, isrc_level)
 
                 # FIXME
-                rscale = 1
+
+                print("par data prep lev %d" % isrc_level)
+
+                ngqbx_centers = len(geo_data.global_qbx_centers())
+                tgt_icenter_vec = geo_data.global_qbx_centers()
+                icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
+
+                tgt_centers = qbx_centers[:, tgt_icenter_vec]
+
+                # FIXME
+                rscale2 = np.ones(ngqbx_centers, np.float64)
 
                 kwargs = {}
                 if self.dim == 3:
                     # FIXME Is this right?
-                    kwargs["radius"] = self.tree.root_extent * 2**(-isrc_level)
+                    kwargs["radius"] = (
+                            np.ones(ngqbx_centers)
+                            * self.tree.root_extent * 2**(-isrc_level))
 
-                print("par data prep lev %d" % isrc_level)
+                nsrc_boxes_per_gqbx_center = (
+                        ssn.starts[icontaining_tgt_box_vec+1]
+                        - ssn.starts[icontaining_tgt_box_vec])
+                nsrc_boxes = np.sum(nsrc_boxes_per_gqbx_center)
 
-                itgt_center = np.arange(len(geo_data.global_qbx_centers()))
-                tgt_icenter = geo_data.global_qbx_centers()
-                icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
+                src_boxes_starts = np.empty(ngqbx_centers+1, dtype=np.int32)
+                src_boxes_starts[0] = 0
+                src_boxes_starts[1:] = np.cumsum(nsrc_boxes_per_gqbx_center)
 
-                tgt_centers = qbx_centers[:, tgt_icenter]
+                # FIXME
+                rscale1 = np.ones(nsrc_boxes)
+                rscale1_offsets = np.arange(nsrc_boxes)
+
+                src_ibox = np.empty(nsrc_boxes, dtype=np.int32)
+                for itgt_center, tgt_icenter in enumerate(
+                        geo_data.global_qbx_centers()):
+                    icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
+                    src_ibox[
+                            src_boxes_starts[itgt_center]:
+                            src_boxes_starts[itgt_center+1]] = (
+                        ssn.lists[
+                            ssn.starts[icontaining_tgt_box]:
+                            ssn.starts[icontaining_tgt_box+1]])
+
+                del itgt_center
+                del tgt_icenter
+                del icontaining_tgt_box
 
                 print("end par data prep")
 
-                ctr_loc = ctr_loc + mploc(
-                    self.helmholtz_k,
-                    rscale, src_center, multipole_exps[src_ibox].T,
-                    rscale, tgt_center, self.nterms, **kwargs)[..., 0].T
+                # These get max'd/added onto: pass initialized versions.
+                ier = np.zeros(ngqbx_centers, dtype=np.int32)
+                expn2 = np.zeros(
+                        (ngqbx_centers,) + self.expansion_shape(self.qbx_order),
+                        dtype=self.dtype)
 
+                expn2 = mploc(
+                        zk=self.helmholtz_k,
 
+                        rscale1=rscale1,
+                        rscale1_offsets=rscale1_offsets,
+                        rscale1_starts=src_boxes_starts,
 
-        if 1:
+                        center1=centers,
+                        center1_offsets=src_ibox,
+                        center1_starts=src_boxes_starts,
+
+                        expn1=source_mpoles_view.T,
+                        expn1_offsets=src_ibox - source_level_start_ibox,
+                        expn1_starts=src_boxes_starts,
+
+                        rscale2=rscale2,
+                        center2=tgt_centers,  # FIXME: wrong layout, will copy
+                        expn2=expn2.T,
+                        ier=ier, **kwargs).T
+
+                local_exps[geo_data.global_qbx_centers()] += expn2
+
+            # }}}
+
+        if 0:
             # {{{ sequential
 
             mploc = self.get_translation_routine("%ddmploc")
 
             local_exps_1 = self.qbx_local_expansion_zeros()
 
-            for isrc_level, ssn in enumerate(geo_data.traversal().sep_smaller_by_level):
-                #source_level_start_ibox, source_mpoles_view = \
-                #        self.multipole_expansions_view(multipole_exps, isrc_level)
+            for isrc_level, ssn in enumerate(
+                    geo_data.traversal().sep_smaller_by_level):
+                source_level_start_ibox, source_mpoles_view = \
+                        self.multipole_expansions_view(multipole_exps, isrc_level)
 
                 # FIXME
                 rscale = 1
@@ -437,14 +504,15 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
                         ctr_loc = ctr_loc + mploc(
                             self.helmholtz_k,
-                            rscale, src_center, multipole_exps[src_ibox].T,
+                            rscale, src_center,
+                            source_mpoles_view[src_ibox - source_level_start_ibox].T,
                             rscale, tgt_center, self.nterms, **kwargs)[..., 0].T
 
                     local_exps_1[tgt_icenter] += ctr_loc
 
-            # }}}
+            # diff = local_exps - local_exps_1
 
-            return local_exps_1
+            # }}}
 
         return local_exps
 
