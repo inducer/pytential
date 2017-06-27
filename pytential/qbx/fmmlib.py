@@ -395,8 +395,6 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                 tgt_icenter_vec = geo_data.global_qbx_centers()
                 icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
 
-                tgt_centers = qbx_centers[:, tgt_icenter_vec]
-
                 # FIXME
                 rscale2 = np.ones(ngqbx_centers, np.float64)
 
@@ -459,7 +457,8 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                         expn1_starts=src_boxes_starts,
 
                         rscale2=rscale2,
-                        center2=tgt_centers,  # FIXME: wrong layout, will copy
+                        # FIXME: center2 has wrong layout, will copy
+                        center2=qbx_centers[:, tgt_icenter_vec],
                         expn2=expn2.T,
                         ier=ier, **kwargs).T
 
