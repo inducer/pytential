@@ -206,6 +206,60 @@ class LayerPotentialSourceBase(PotentialSource):
 
         return p2p
 
+    # {{{ fmm setup helpers
+
+    def get_fmm_base_kernel(self, kernels):
+        base_kernel = None
+
+        from sumpy.kernel import AxisTargetDerivativeRemover
+        for knl in kernels:
+            candidate_base_kernel = AxisTargetDerivativeRemover()(knl)
+
+            if base_kernel is None:
+                base_kernel = candidate_base_kernel
+            else:
+                assert base_kernel == candidate_base_kernel
+
+        return base_kernel
+
+    def get_fmm_value_dtype(self, base_kernel, strengths):
+        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
+            return self.complex_dtype
+        else:
+            return self.real_dtype
+
+    def get_fmm_expansion_wrangler_extra_kwargs(
+            self, queue, out_kernels, tree_user_source_ids, arguments, evaluator):
+        # This contains things like the Helmholtz parameter k or
+        # the normal directions for double layers.
+
+        def reorder_sources(source_array):
+            if isinstance(source_array, cl.array.Array):
+                return (source_array
+                        .with_queue(queue)
+                        [tree_user_source_ids]
+                        .with_queue(None))
+            else:
+                return source_array
+
+        kernel_extra_kwargs = {}
+        source_extra_kwargs = {}
+
+        from sumpy.tools import gather_arguments, gather_source_arguments
+        from pytools.obj_array import with_object_array_or_scalar
+        for func, var_dict in [
+                (gather_arguments, kernel_extra_kwargs),
+                (gather_source_arguments, source_extra_kwargs),
+                ]:
+            for arg in func(out_kernels):
+                var_dict[arg.name] = with_object_array_or_scalar(
+                        reorder_sources,
+                        evaluator(arguments[arg.name]))
+
+        return kernel_extra_kwargs, source_extra_kwargs
+
+    # }}}
+
     # {{{ weights and area elements
 
     @memoize_method

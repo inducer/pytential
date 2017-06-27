@@ -514,56 +514,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
 
-        # {{{ get expansion wrangler
-
-        base_kernel = None
-        out_kernels = []
-
-        from sumpy.kernel import AxisTargetDerivativeRemover
-        for knl in insn.kernels:
-            candidate_base_kernel = AxisTargetDerivativeRemover()(knl)
-
-            if base_kernel is None:
-                base_kernel = candidate_base_kernel
-            else:
-                assert base_kernel == candidate_base_kernel
-
         out_kernels = tuple(knl for knl in insn.kernels)
-
-        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
-            value_dtype = self.complex_dtype
-        else:
-            value_dtype = self.real_dtype
-
-        # {{{ build extra_kwargs dictionaries
-
-        # This contains things like the Helmholtz parameter k or
-        # the normal directions for double layers.
-
-        def reorder_sources(source_array):
-            if isinstance(source_array, cl.array.Array):
-                return (source_array
-                        .with_queue(queue)
-                        [geo_data.tree().user_source_ids]
-                        .with_queue(None))
-            else:
-                return source_array
-
-        kernel_extra_kwargs = {}
-        source_extra_kwargs = {}
-
-        from sumpy.tools import gather_arguments, gather_source_arguments
-        from pytools.obj_array import with_object_array_or_scalar
-        for func, var_dict in [
-                (gather_arguments, kernel_extra_kwargs),
-                (gather_source_arguments, source_extra_kwargs),
-                ]:
-            for arg in func(out_kernels):
-                var_dict[arg.name] = with_object_array_or_scalar(
-                        reorder_sources,
-                        evaluate(insn.kernel_arguments[arg.name]))
-
-        # }}}
+        base_kernel = self.get_fmm_base_kernel(out_kernels)
+        value_dtype = self.get_fmm_value_dtype(base_kernel, strengths)
+        kernel_extra_kwargs, source_extra_kwargs = (
+                self.get_fmm_expansion_wrangler_extra_kwargs(
+                    queue, out_kernels, geo_data.tree().user_source_ids,
+                    insn.kernel_arguments, evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
                 base_kernel, out_kernels).get_wrangler(
@@ -572,8 +529,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
                         kernel_extra_kwargs=kernel_extra_kwargs)
-
-        # }}}
 
         if len(geo_data.global_qbx_centers()) != geo_data.ncenters:
             raise NotImplementedError("geometry has centers requiring local QBX")
