@@ -56,7 +56,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     """
 
     def __init__(self, density_discr,
-            fmm_order=None,
+            fmm_order=False,
             fmm_level_to_order=None,
             expansion_factory=None,
             # begin undocumented arguments
@@ -68,11 +68,11 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         self.density_discr = density_discr
         self.debug = debug
 
-        if fmm_order is not None and fmm_level_to_order is not None:
+        if fmm_order is not False and fmm_level_to_order is not None:
             raise TypeError("may not specify both fmm_order and fmm_level_to_order")
 
         if fmm_level_to_order is None:
-            if fmm_order is not None:
+            if fmm_order is not False:
                 def fmm_level_to_order(level):
                     return fmm_order
             else:
@@ -122,7 +122,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         else:
             func = self.exec_compute_potential_insn_fmm
 
-        func = self.exec_compute_potential_insn_direct
         return func(queue, insn, bound_expr, evaluate_wrapper)
 
     def op_group_features(self, expr):
@@ -181,8 +180,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
         fmm_local_factory = partial(local_expn_class, base_kernel)
 
-        from sumpy.fmm import SumpyExpansionWrangerCodeContainer
-        return SumpyExpansionWrangerCodeContainer(
+        from sumpy.fmm import SumpyExpansionWranglerCodeContainer
+        return SumpyExpansionWranglerCodeContainer(
                 self.cl_context,
                 fmm_mpole_factory,
                 fmm_local_factory,
@@ -237,7 +236,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     insn.kernel_arguments, evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
-                out_kernels, base_kernel).get_wrangler(
+                base_kernel, out_kernels).get_wrangler(
                     queue,
                     geo_data.tree(),
                     value_dtype,
@@ -317,7 +316,13 @@ class _FMMGeometryCodeContainer(object):
 class _TargetInfo(DeviceDataRecord):
     """
     .. attribute:: targets
+
+        Shape: ``[dim,ntargets]``
+
     .. attribute:: target_discr_starts
+
+        Shape: ``[ndiscrs+1]``
+
     .. attribute:: ntargets
     """
 
@@ -395,6 +400,8 @@ class _FMMGeometryData(object):
             for target_discr in target_discrs:
                 target_discr_starts.append(ntargets)
                 ntargets += target_discr.nnodes
+
+            target_discr_starts.append(ntargets)
 
             targets = cl.array.empty(
                     self.cl_context,

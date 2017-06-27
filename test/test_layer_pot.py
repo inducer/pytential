@@ -1321,6 +1321,50 @@ def test_unregularized_with_ones_kernel(ctx_getter):
     assert np.allclose(result_self.get(), 2 * np.pi)
     assert np.allclose(result_nonself.get(), 2 * np.pi)
 
+
+def test_unregularized_off_surface_fmm_vs_direct(ctx_getter):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    nelements = 300
+    target_order = 8
+    fmm_order = 4
+
+    mesh = make_curve_mesh(WobblyCircle.random(8, seed=30),
+                np.linspace(0, 1, nelements+1),
+                target_order)
+
+    from pytential.unregularized import UnregularizedLayerPotentialSource
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+
+    density_discr = Discretization(
+            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+    direct = UnregularizedLayerPotentialSource(
+            density_discr,
+            fmm_order=False,
+            )
+    fmm = direct.copy(fmm_level_to_order=lambda _: fmm_order)
+
+    sigma = density_discr.zeros(queue) + 1
+
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=100)
+    from pytential.target import PointsTarget
+    ptarget = PointsTarget(fplot.points)
+    from sumpy.kernel import LaplaceKernel
+
+    op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
+
+    direct_fld_in_vol = bind((direct, ptarget), op)(queue, sigma=sigma)
+    fmm_fld_in_vol = bind((fmm, ptarget), op)(queue, sigma=sigma)
+
+    err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
+
+    linf_err = cl.array.max(err).get()
+    print("l_inf error:", linf_err)
+    assert linf_err < 5e-3
+
 # }}}
 
 
