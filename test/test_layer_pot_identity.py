@@ -257,7 +257,7 @@ def test_identity_convergence(ctx_getter,  case, visualize=False):
                 case.qbx_order,
                 fmm_order=case.fmm_order,
                 fmm_backend=case.fmm_backend,
-                _expansion_disks_in_tree_have_extent=True,
+                _expansions_in_tree_have_extent=True,
                 ).with_refinement(**refiner_extra_kwargs)
 
         density_discr = qbx.density_discr

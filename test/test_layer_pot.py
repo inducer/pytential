@@ -146,7 +146,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
         qbx, _ = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
                 qbx_order, fmm_order=fmm_order,
-                _expansion_disks_in_tree_have_extent=True,
+                _expansions_in_tree_have_extent=True,
                 ).with_refinement()
 
         density_discr = qbx.density_discr
@@ -383,7 +383,7 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
     fmm_qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order + 3,
-            _expansion_disks_in_tree_have_extent=True,
+            _expansions_in_tree_have_extent=True,
             target_association_tolerance=0.05,
             ).with_refinement()
 
