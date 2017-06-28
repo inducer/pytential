@@ -37,6 +37,7 @@ from meshmode.mesh.generation import (  # noqa
         make_curve_mesh)
 # from sumpy.visualization import FieldPlotter
 from pytential import bind, sym, norm
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -49,17 +50,8 @@ except ImportError:
     pass
 
 
-# {{{ integral identity tester
-
 d1 = sym.Derivative()
 d2 = sym.Derivative()
-
-
-def get_starfish_mesh(refinement_increment, target_order):
-    nelements = [30, 50, 70][refinement_increment]
-    return make_curve_mesh(starfish,
-                np.linspace(0, 1, nelements+1),
-                target_order)
 
 
 def get_wobbly_circle_mesh(refinement_increment, target_order):
@@ -83,23 +75,141 @@ def get_sphere_mesh(refinement_increment, target_order):
     return mesh
 
 
-@pytest.mark.parametrize(("mesh_name", "mesh_getter", "qbx_order"), [
-    #("circle", partial(ellipse, 1)),
-    #("3-to-1 ellipse", partial(ellipse, 3)),
-    ("starfish", get_starfish_mesh, 5),
-    ("sphere", get_sphere_mesh, 3),
-    ])
-@pytest.mark.parametrize(("zero_op_name", "k"), [
-    ("green", 0),
-    ("green", 1.2),
-    ("green_grad", 0),
-    ("green_grad", 1.2),
-    ("zero_calderon", 0),
-    ])
-# sample invocation to copy and paste:
-# 'test_identities(cl._csc, "green", "starfish", get_starfish_mesh, 4, 0)'
-def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order, k):
+class StarfishGeometry(object):
+    mesh_name = "starfish"
+    dim = 2
+
+    resolutions = [30, 50, 70]
+
+    def get_mesh(self, nelements, target_order):
+        return make_curve_mesh(starfish,
+                    np.linspace(0, 1, nelements+1),
+                    target_order)
+
+
+class SphereGeometry(object):
+    mesh_name = "sphere"
+    dim = 3
+
+    resolutions = [0, 1, 2]
+
+    def get_mesh(self, resolution, tgt_order):
+        return get_sphere_mesh(resolution, tgt_order)
+
+
+class GreenExpr(object):
+    zero_op_name = "green"
+
+    def get_zero_op(self, kernel, **knl_kwargs):
+
+        u_sym = sym.var("u")
+        dn_u_sym = sym.var("dn_u")
+
+        return (
+            sym.S(kernel, dn_u_sym, qbx_forced_limit=-1, **knl_kwargs)
+            - sym.D(kernel, u_sym, qbx_forced_limit="avg", **knl_kwargs)
+            - 0.5*u_sym)
+
+    order_drop = 0
+
+
+class GradGreenExpr(object):
+    zero_op_name = "grad_green"
+
+    def get_zero_op(self, kernel, **knl_kwargs):
+        d = kernel.dim
+        u_sym = sym.var("u")
+        grad_u_sym = sym.make_sym_mv("grad_u",  d)
+        dn_u_sym = sym.var("dn_u")
+
+        return (
+                d1.resolve(d1.dnabla(d) * d1(sym.S(kernel, dn_u_sym,
+                    qbx_forced_limit="avg", **knl_kwargs)))
+                - d2.resolve(d2.dnabla(d) * d2(sym.D(kernel, u_sym,
+                    qbx_forced_limit="avg", **knl_kwargs)))
+                - 0.5*grad_u_sym
+                )
+
+    order_drop = 1
+
+
+class ZeroCalderonExpr(object):
+    zero_op_name = "calderon"
+
+    def get_zero_op(self, kernel, **knl_kwargs):
+        assert isinstance(kernel, LaplaceKernel)
+        assert not knl_kwargs
+
+        u_sym = sym.var("u")
+
+        return (
+                    -sym.Dp(kernel, sym.S(kernel, u_sym))
+                    - 0.25*u_sym + sym.Sp(kernel, sym.Sp(kernel, u_sym))
+                    )
+
+    order_drop = 1
+
+
+class StaticTestCase(object):
+    def check(self):
+        pass
+
+
+class SphereGreenTest(StaticTestCase):
+    expr = GreenExpr()
+    geometry = SphereGeometry()
+    k = 1.2
+    qbx_order = 3
+    fmm_order = 15
+
+    fmm_backend = "fmmlib"
+
+
+class DynamicTestCase(object):
+    fmm_backend = "sumpy"
+
+    def __init__(self, geometry, expr, k):
+        self.geometry = geometry
+        self.expr = expr
+        self.k = k
+        self.qbx_order = 5 if geometry.dim == 2 else 3
+
+        if geometry.dim == 2:
+            order_bump = 15
+        elif geometry.dim == 3:
+            order_bump = 8
+
+        self.fmm_order = self.qbx_order + order_bump
+
+    def check(self):
+        if self.geometry.mesh_name == "sphere" and self.k != 0:
+            pytest.skip("both direct eval and generating the FMM kernels "
+                    "are too slow")
+
+        if (self.geometry.mesh_name == "sphere"
+                and self.expr.zero_op_name == "green_grad"):
+            pytest.skip("does not achieve sufficient precision")
+
+
+# {{{ integral identity tester
+
+@pytest.mark.parametrize("case", [
+    tc
+    for geom in [
+        StarfishGeometry(),
+        SphereGeometry(),
+        ]
+    for tc in [
+        DynamicTestCase(geom, GreenExpr(), 0),
+        DynamicTestCase(geom, GreenExpr(), 1.2),
+        DynamicTestCase(geom, GradGreenExpr(), 0),
+        DynamicTestCase(geom, GradGreenExpr(), 1.2),
+        DynamicTestCase(geom, ZeroCalderonExpr(), 0),
+        ]])
+def test_identity_convergence(ctx_getter,  case):
     logging.basicConfig(level=logging.INFO)
+
+    case.check()
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
@@ -108,35 +218,19 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
     from sympy.core.cache import clear_cache
     clear_cache()
 
-    if mesh_name == "sphere" and k != 0:
-        pytest.skip("both direct eval and generating the FMM kernels are too slow")
-
-    if mesh_name == "sphere" and zero_op_name == "green_grad":
-        pytest.skip("does not achieve sufficient precision")
-
     target_order = 8
-
-    order_table = {
-            "green": qbx_order,
-            "green_grad": qbx_order-1,
-            "zero_calderon": qbx_order-1,
-            }
 
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
 
-    for refinement_increment in [0, 1, 2]:
-        mesh = mesh_getter(refinement_increment, target_order)
+    for resolution in case.geometry.resolutions:
+        mesh = case.geometry.get_mesh(resolution, target_order)
         if mesh is None:
             break
 
         d = mesh.ambient_dim
+        k = case.k
 
-        u_sym = sym.var("u")
-        grad_u_sym = sym.make_sym_mv("grad_u",  d)
-        dn_u_sym = sym.var("dn_u")
-
-        from sumpy.kernel import LaplaceKernel, HelmholtzKernel
         lap_k_sym = LaplaceKernel(d)
         if k == 0:
             k_sym = lap_k_sym
@@ -144,27 +238,6 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
         else:
             k_sym = HelmholtzKernel(d)
             knl_kwargs = {"k": sym.var("k")}
-
-        zero_op_table = {
-                "green":
-                sym.S(k_sym, dn_u_sym, qbx_forced_limit=-1, **knl_kwargs)
-                - sym.D(k_sym, u_sym, qbx_forced_limit="avg", **knl_kwargs)
-                - 0.5*u_sym,
-
-                "green_grad":
-                d1.resolve(d1.dnabla(d) * d1(sym.S(k_sym, dn_u_sym,
-                    qbx_forced_limit="avg", **knl_kwargs)))
-                - d2.resolve(d2.dnabla(d) * d2(sym.D(k_sym, u_sym,
-                    qbx_forced_limit="avg", **knl_kwargs)))
-                - 0.5*grad_u_sym,
-
-                # only for k==0:
-                "zero_calderon":
-                -sym.Dp(lap_k_sym, sym.S(lap_k_sym, u_sym))
-                - 0.25*u_sym + sym.Sp(lap_k_sym, sym.Sp(lap_k_sym, u_sym))
-                }
-
-        zero_op = zero_op_table[zero_op_name]
 
         from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \
@@ -174,19 +247,15 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-        if d == 2:
-            order_bump = 15
-        elif d == 3:
-            order_bump = 8
-
         refiner_extra_kwargs = {}
 
-        if k != 0:
-            refiner_extra_kwargs["kernel_length_scale"] = 5/k
+        if case.k != 0:
+            refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
 
         qbx, _ = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
-                qbx_order, fmm_order=qbx_order + order_bump
+                case.qbx_order, fmm_order=case.fmm_order,
+                fmm_backend=case.fmm_backend,
                 ).with_refinement(**refiner_extra_kwargs)
 
         density_discr = qbx.density_discr
@@ -203,12 +272,14 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
                 wave_vec = np.array([np.cos(angle), np.sin(angle)])
                 u = np.exp(1j*k*np.tensordot(wave_vec, nodes_host, axes=1))
                 grad_u = 1j*k*wave_vec[:, np.newaxis]*u
-            else:
+            elif d == 3:
                 center = np.array([3, 1, 2])
                 diff = nodes_host - center[:, np.newaxis]
                 r = la.norm(diff, axis=0)
                 u = np.exp(1j*k*r) / r
                 grad_u = diff * (1j*k*u/r - u/r**2)
+            else:
+                raise ValueError("invalid dim")
         else:
             center = np.array([3, 1, 2])[:d]
             diff = nodes_host - center[:, np.newaxis]
@@ -233,11 +304,12 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
         dn_u_dev = cl.array.to_device(queue, dn_u)
         grad_u_dev = cl.array.to_device(queue, grad_u)
 
-        key = (qbx_order, mesh_name, refinement_increment, zero_op_name)
+        key = (case.qbx_order, case.geometry.mesh_name, resolution,
+                case.expr.zero_op_name)
 
-        bound_op = bind(qbx, zero_op)
+        bound_op = bind(qbx, case.expr.get_zero_op(k_sym, **knl_kwargs))
         error = bound_op(
-                queue, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=k)
+                queue, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=case.k)
         if 0:
             pt.plot(error)
             pt.show()
@@ -248,7 +320,7 @@ def test_identities(ctx_getter, zero_op_name, mesh_name, mesh_getter, qbx_order,
         eoc_rec.add_data_point(qbx.h_max, l2_error_norm)
 
     print(eoc_rec)
-    tgt_order = order_table[zero_op_name]
+    tgt_order = case.qbx_order - case.expr.order_drop
     assert eoc_rec.order_estimate() > tgt_order - 1.3
 
 # }}}
