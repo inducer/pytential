@@ -160,7 +160,11 @@ class SphereGreenTest(StaticTestCase):
     geometry = SphereGeometry()
     k = 1.2
     qbx_order = 3
-    fmm_order = 15
+    fmm_order = 10
+
+    resolutions = [0, 1]
+
+    _expansion_stick_out_factor = 0.75
 
     fmm_backend = "fmmlib"
 
@@ -223,7 +227,10 @@ def test_identity_convergence(ctx_getter,  case, visualize=False):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
 
-    for resolution in case.geometry.resolutions:
+    for resolution in (
+            getattr(case, "resolutions", None)
+            or case.geometry.resolutions
+            ):
         mesh = case.geometry.get_mesh(resolution, target_order)
         if mesh is None:
             break
@@ -258,6 +265,8 @@ def test_identity_convergence(ctx_getter,  case, visualize=False):
                 fmm_order=case.fmm_order,
                 fmm_backend=case.fmm_backend,
                 _expansions_in_tree_have_extent=True,
+                _expansion_stick_out_factor=getattr(
+                    case, "_expansion_stick_out_factor", 0),
                 ).with_refinement(**refiner_extra_kwargs)
 
         density_discr = qbx.density_discr
@@ -323,7 +332,7 @@ def test_identity_convergence(ctx_getter,  case, visualize=False):
 
         if visualize:
             from meshmode.discretization.visualization import make_visualizer
-            bdry_vis = make_visualizer(queue, density_discr, target_order+3)
+            bdry_vis = make_visualizer(queue, density_discr, target_order)
 
             bdry_normals = bind(density_discr, sym.normal(3))(queue)\
                     .as_vector(dtype=object)
