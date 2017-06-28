@@ -277,7 +277,7 @@ def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
         eoc_rec.add_data_point(h_max, l2_err)
 
     print(eoc_rec)
-    assert eoc_rec.order_estimate() > qbx_order
+    assert eoc_rec.order_estimate() >= qbx_order - 1
 
 
 # You can test individual routines by typing
