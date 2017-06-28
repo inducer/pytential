@@ -130,11 +130,18 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         # {{{ digest out_kernels
 
-        from sumpy.kernel import AxisTargetDerivative
+        from sumpy.kernel import AxisTargetDerivative, DirectionalSourceDerivative
 
         k_names = []
+        source_deriv_names = []
 
         def is_supported_helmknl(knl):
+            if isinstance(knl, DirectionalSourceDerivative):
+                source_deriv_names.append(knl.dir_vec_name)
+                knl = knl.inner_kernel
+            else:
+                source_deriv_names.append(None)
+
             result = isinstance(knl, HelmholtzKernel) and knl.dim == 3
             if result:
                 k_names.append(knl.helmholtz_k_name)
@@ -154,6 +161,12 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                         "only the 3D Helmholtz kernel and its target derivatives "
                         "are supported for now")
 
+        from pytools import is_single_valued
+        if not is_single_valued(source_deriv_names):
+            raise ValueError("not all kernels passed are the same in"
+                    "whether they represent a source derivative")
+
+        source_deriv_name = source_deriv_names[0]
         self.outputs = outputs
 
         # }}}
@@ -170,10 +183,18 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         from pytools import single_valued
         assert single_valued(self.level_orders)
 
+        dipole_vec = None
+        if source_deriv_name is not None:
+            dipole_vec = np.array([
+                    d_i.get(queue=queue)
+                    for d_i in source_extra_kwargs[source_deriv_name]],
+                    order="F")
+
         super(QBXFMMLibExpansionWrangler, self).__init__(
                 self.geo_data.tree(),
 
                 helmholtz_k=helmholtz_k,
+                dipole_vec=dipole_vec,
 
                 # FIXME
                 nterms=fmm_level_to_order(0),
@@ -288,8 +309,13 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         center_source_starts = np.cumsum(center_source_counts)
         nsources_total = center_source_starts[-1]
 
-        sources = np.empty((3, nsources_total), dtype=np.float64)
-        charges = np.empty(nsources_total, dtype=np.complex128)
+        sources = np.empty((self.dim, nsources_total), dtype=np.float64)
+        charge = np.empty(nsources_total, dtype=np.complex128)
+
+        full_dipvec = self.dipole_vec
+        if full_dipvec is not None:
+            dipvec = np.empty((self.dim, nsources_total), dtype=np.float64,
+                    order="F")
 
         isource = 0
         for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
@@ -305,7 +331,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 src_pslice = self._get_source_slice(src_ibox)
                 ns = self.tree.box_source_counts_nonchild[src_ibox]
                 sources[:, isource:isource+ns] = self._get_sources(src_pslice)
-                charges[isource:isource+ns] = src_weights[src_pslice]
+                charge[isource:isource+ns] = src_weights[src_pslice]
+
+                if full_dipvec is not None:
+                    dipvec[:, isource:isource+ns] = full_dipvec[:, src_pslice]
+
                 isource += ns
 
         centers = qbx_centers[:, geo_data.global_qbx_centers()]
@@ -313,15 +343,26 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         rscale_vec = np.empty(len(center_source_counts) - 1, dtype=np.float64)
         rscale_vec.fill(rscale)  # FIXME
 
+        source_kwargs = {}
+        if self.dipole_vec is None:
+            source_kwargs["charge"] = charge
+            source_kwargs["charge_offsets"] = center_source_starts[:-1]
+
+        else:
+            source_kwargs["dipstr"] = charge
+            source_kwargs["dipstr_offsets"] = center_source_starts[:-1]
+            source_kwargs["dipvec"] = dipvec
+            source_kwargs["dipvec_offsets"] = center_source_starts[:-1]
+
         logger.info("preparing interaction list for p2qbxl: done")
 
         return P2QBXLInfo(
                 sources=sources,
                 centers=centers,
-                charges=charges,
                 center_source_starts=center_source_starts,
                 center_source_counts=center_source_counts,
                 rscale_vec=rscale_vec,
+                source_kwargs=source_kwargs,
                 )
 
     def form_global_qbx_locals(self, src_weights):
@@ -332,22 +373,24 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         if len(geo_data.global_qbx_centers()) == 0:
             return local_exps
 
-        formta_vec = self.get_vec_routine("%ddformta")
+        formta_vec = self.get_vec_routine("%ddformta" + self.dp_suffix)
         info = self._info_for_form_global_qbx_locals(src_weights)
+
+        kwargs = {}
+        kwargs.update(info.source_kwargs)
+        kwargs.update(self.kernel_kwargs)
 
         ier, loc_exp_pre = formta_vec(
                 rscale=info.rscale_vec,
 
                 sources=info.sources,
                 sources_offsets=info.center_source_starts[:-1],
-                charge=info.charges,
-                charge_offsets=info.center_source_starts[:-1],
 
                 nsources=info.center_source_counts[1:],
                 center=info.centers,
                 nterms=self.nterms,
 
-                **self.kernel_kwargs)
+                **kwargs)
 
         if np.any(ier != 0):
             raise RuntimeError("formta returned an error")
