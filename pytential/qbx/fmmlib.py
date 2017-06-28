@@ -23,11 +23,19 @@ THE SOFTWARE.
 """
 
 import numpy as np
-from pytools import memoize_method
+from pytools import memoize_method, Record
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
 from boxtree.pyfmmlib_integration import HelmholtzExpansionWrangler
 from sumpy.kernel import HelmholtzKernel
+
+
+import logging
+logger = logging.getLogger(__name__)
+
+
+class P2QBXLInfo(Record):
+    pass
 
 
 class QBXFMMLibExpansionWranglerCodeContainer(object):
@@ -239,28 +247,27 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
     # }}}
 
-    # {{{ qbx-related
-
     def qbx_local_expansion_zeros(self):
         return np.zeros(
                     (self.geo_data.ncenters,) + self.expansion_shape(self.qbx_order),
                     dtype=self.dtype)
 
-    def form_global_qbx_locals(self, starts, lists, src_weights):
-        local_exps = self.qbx_local_expansion_zeros()
+    # {{{ p2qbxl
+
+    #@memoize_method
+    def _info_for_form_global_qbx_locals(self, src_weights):
+        logger.info("preparing interaction list for p2qbxl: start")
 
         rscale = 1  # FIXME
-        geo_data = self.geo_data
 
-        if len(geo_data.global_qbx_centers()) == 0:
-            return local_exps
+        geo_data = self.geo_data
+        traversal = geo_data.traversal()
+
+        starts = traversal.neighbor_source_boxes_starts
+        lists = traversal.neighbor_source_boxes_lists
 
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
-
-        # {{{ parallel
-
-        print("par data prep")
 
         center_source_counts = [0]
         for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
@@ -304,20 +311,39 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         rscale_vec = np.empty(len(center_source_counts) - 1, dtype=np.float64)
         rscale_vec.fill(rscale)  # FIXME
 
+        logger.info("preparing interaction list for p2qbxl: done")
+
+        return P2QBXLInfo(
+                sources=sources,
+                centers=centers,
+                charges=charges,
+                center_source_starts=center_source_starts,
+                center_source_counts=center_source_counts,
+                rscale_vec=rscale_vec,
+                )
+
+    def form_global_qbx_locals(self, src_weights):
+        geo_data = self.geo_data
+
+        local_exps = self.qbx_local_expansion_zeros(src_weights)
+
+        if len(geo_data.global_qbx_centers()) == 0:
+            return local_exps
+
         formta_vec = self.get_vec_routine("%ddformta")
-        print("par data prep done")
+        info = self._info_for_form_global_qbx_locals()
 
         ier, loc_exp_pre = formta_vec(
                 zk=self.helmholtz_k,
-                rscale=rscale_vec,
+                rscale=info.rscale_vec,
 
-                sources=sources,
-                sources_offsets=center_source_starts[:-1],
-                charges=charges,
-                charges_offsets=center_source_starts[:-1],
+                sources=info.sources,
+                sources_offsets=info.center_source_starts[:-1],
+                charges=info.charges,
+                charges_offsets=info.center_source_starts[:-1],
 
-                nsources=center_source_counts[1:],
-                center=centers,
+                nsources=info.center_source_counts[1:],
+                center=info.centers,
                 nterms=self.nterms)
 
         if np.any(ier != 0):
@@ -325,49 +351,9 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
         local_exps[geo_data.global_qbx_centers()] = loc_exp_pre.T
 
-        if 0:
-            # {{{ sequential
-
-            formta = self.get_routine("%ddformta")
-
-            local_exps_1 = np.zeros_like(local_exps)
-
-            for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
-                itgt_box = qbx_center_to_target_box[tgt_icenter]
-
-                isrc_box_start = starts[itgt_box]
-                isrc_box_stop = starts[itgt_box+1]
-
-                tgt_center = qbx_centers[:, tgt_icenter]
-
-                ctr_coeffs = 0
-
-                for isrc_box in range(isrc_box_start, isrc_box_stop):
-                    src_ibox = lists[isrc_box]
-
-                    src_pslice = self._get_source_slice(src_ibox)
-
-                    ier, coeffs = formta(
-                            self.helmholtz_k, rscale,
-                            self._get_sources(src_pslice), src_weights[src_pslice],
-                            tgt_center, self.nterms)
-                    if ier:
-                        raise RuntimeError("formta failed")
-
-                    ctr_coeffs += coeffs
-
-                local_exps_1[tgt_icenter] += ctr_coeffs
-
-            diff = local_exps - local_exps_1
-
-            # At least in 3D, this will have two "triangles" of non-zeros.
-            print(diff)
-
-            # }}}
-
-        # }}}
-
         return local_exps
+
+    # }}}
 
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
         local_exps = self.qbx_local_expansion_zeros()
@@ -607,8 +593,6 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                     "scale factor for pyfmmlib for %d dimensions" % self.dim)
 
         return cl.array.to_device(self.queue, potential) * scale_factor
-
-    # }}}
 
 # }}}
 
