@@ -468,6 +468,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     (ngqbx_centers,) + self.expansion_shape(self.qbx_order),
                     dtype=self.dtype)
 
+            kwargs.update(self.kernel_kwargs)
+
             expn2 = mploc(
                     rscale1=rscale1,
                     rscale1_offsets=rscale1_offsets,
@@ -487,8 +489,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     expn2=expn2.T,
                     ier=ier,
 
-                    **kwargs,
-                    **self.kernel_kwargs).T
+                    **kwargs).T
 
             local_exps[geo_data.global_qbx_centers()] += expn2
 
