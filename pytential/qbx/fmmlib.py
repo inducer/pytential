@@ -195,6 +195,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
                 helmholtz_k=helmholtz_k,
                 dipole_vec=dipole_vec,
+                dipoles_already_reordered=True,
 
                 # FIXME
                 nterms=fmm_level_to_order(0),
