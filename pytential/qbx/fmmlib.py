@@ -325,13 +325,13 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
     def form_global_qbx_locals(self, src_weights):
         geo_data = self.geo_data
 
-        local_exps = self.qbx_local_expansion_zeros(src_weights)
+        local_exps = self.qbx_local_expansion_zeros()
 
         if len(geo_data.global_qbx_centers()) == 0:
             return local_exps
 
         formta_vec = self.get_vec_routine("%ddformta")
-        info = self._info_for_form_global_qbx_locals()
+        info = self._info_for_form_global_qbx_locals(src_weights)
 
         ier, loc_exp_pre = formta_vec(
                 zk=self.helmholtz_k,
