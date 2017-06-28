@@ -143,8 +143,11 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
         pre_density_discr = Discretization(
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
-        qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
-                qbx_order, fmm_order=fmm_order).with_refinement()
+        qbx, _ = QBXLayerPotentialSource(
+                pre_density_discr, 4*target_order,
+                qbx_order, fmm_order=fmm_order,
+                _expansion_disks_in_tree_have_extent=True,
+                ).with_refinement()
 
         density_discr = qbx.density_discr
         nodes = density_discr.nodes().with_queue(queue)
@@ -375,13 +378,13 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
     direct_qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=False,
-            target_stick_out_factor=0.05,
+            target_association_tolerance=0.05,
             ).with_refinement()
     fmm_qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order + 3,
-            expansion_disks_in_tree_have_extent=True,
-            target_stick_out_factor=0.05,
+            _expansion_disks_in_tree_have_extent=True,
+            target_association_tolerance=0.05,
             ).with_refinement()
 
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
@@ -420,6 +423,52 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
         mlab.show()
 
     assert linf_err < 1e-3
+
+# }}}
+
+
+# {{{ unregularized tests
+
+
+def test_unregularized_with_ones_kernel(ctx_getter):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    nelements = 10
+    order = 8
+
+    mesh = make_curve_mesh(partial(ellipse, 1),
+            np.linspace(0, 1, nelements+1),
+            order)
+
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+
+    discr = Discretization(cl_ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(order))
+
+    from pytential.unregularized import UnregularizedLayerPotentialSource
+    lpot_src = UnregularizedLayerPotentialSource(discr)
+
+    from sumpy.kernel import one_kernel_2d
+
+    expr = sym.IntG(one_kernel_2d, sym.var("sigma"), qbx_forced_limit=None)
+
+    from pytential.target import PointsTarget
+    op_self = bind(lpot_src, expr)
+    op_nonself = bind((lpot_src, PointsTarget(np.zeros((2, 1), dtype=float))), expr)
+
+    with cl.CommandQueue(cl_ctx) as queue:
+        sigma = cl.array.zeros(queue, discr.nnodes, dtype=float)
+        sigma.fill(1)
+        sigma.finish()
+
+        result_self = op_self(queue, sigma=sigma)
+        result_nonself = op_nonself(queue, sigma=sigma)
+
+    assert np.allclose(result_self.get(), 2 * np.pi)
+    assert np.allclose(result_nonself.get(), 2 * np.pi)
 
 # }}}
 

@@ -85,11 +85,9 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
-            InterpolatoryQuadratureSimplexGroupFactory,
-            QuadratureSimplexGroupFactory)
+            InterpolatoryQuadratureSimplexGroupFactory)
 
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
-    fine_factory = QuadratureSimplexGroupFactory(4 * order)
 
     discr = Discretization(cl_ctx, mesh, factory)
 
@@ -104,8 +102,8 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
     lpot_source, conn = refine_for_global_qbx(
-            lpot_source, RefinerCodeContainer(cl_ctx),
-            factory, fine_factory, **refiner_extra_kwargs)
+            lpot_source, RefinerCodeContainer(cl_ctx).get_wrangler(queue),
+            factory, **refiner_extra_kwargs)
 
     from pytential.qbx.utils import get_centers_on_side
 
@@ -289,9 +287,16 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     # {{{ run target associator and check
 
-    from pytential.qbx.target_assoc import QBXTargetAssociator
-    target_assoc = (
-        QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs)
+    from pytential.qbx.target_assoc import (
+            TargetAssociationCodeContainer, associate_targets_to_qbx_centers)
+
+    code_container = TargetAssociationCodeContainer(cl_ctx)
+
+    target_assoc = (associate_targets_to_qbx_centers(
+            lpot_source,
+            code_container.get_wrangler(queue),
+            target_discrs,
+            target_association_tolerance=1e-10)
         .get(queue=queue))
 
     expansion_radii = lpot_source._expansion_radii("ncenters").get(queue)
@@ -389,10 +394,17 @@ def test_target_association_failure(ctx_getter):
         )
 
     from pytential.qbx.target_assoc import (
-        QBXTargetAssociator, QBXTargetAssociationFailedException)
+            TargetAssociationCodeContainer, associate_targets_to_qbx_centers,
+            QBXTargetAssociationFailedException)
+
+    code_container = TargetAssociationCodeContainer(cl_ctx)
 
     with pytest.raises(QBXTargetAssociationFailedException):
-        QBXTargetAssociator(cl_ctx)(lpot_source, targets)
+        associate_targets_to_qbx_centers(
+            lpot_source,
+            code_container.get_wrangler(queue),
+            targets,
+            target_association_tolerance=1e-10)
 
     # }}}
 

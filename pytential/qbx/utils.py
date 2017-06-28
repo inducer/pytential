@@ -137,6 +137,27 @@ def get_interleaved_radii(queue, lpot_source):
 # }}}
 
 
+# {{{ peer list wrangler mixin
+
+class TreeWranglerBase(object):
+
+    def build_tree(self, lpot_source, targets_list=(),
+                   use_base_fine_discr=False):
+        tb = self.code_container.tree_builder()
+        from pytential.qbx.utils import build_tree_with_qbx_metadata
+        return build_tree_with_qbx_metadata(
+                self.queue, tb, lpot_source, targets_list=targets_list,
+                use_base_fine_discr=use_base_fine_discr)
+
+    def find_peer_lists(self, tree):
+        plf = self.code_container.peer_list_finder()
+        peer_lists, evt = plf(self.queue, tree)
+        cl.wait_for_events([evt])
+        return peer_lists
+
+# }}}
+
+
 # {{{ panel sizes
 
 def panel_sizes(discr, last_dim_length):

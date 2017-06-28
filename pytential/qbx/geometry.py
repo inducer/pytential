@@ -353,7 +353,7 @@ class QBXFMMGeometryData(object):
 
     def __init__(self, code_getter, lpot_source,
             target_discrs_and_qbx_sides,
-            target_stick_out_factor, debug):
+            target_association_tolerance, debug):
         """
         .. rubric:: Constructor arguments
 
@@ -368,7 +368,7 @@ class QBXFMMGeometryData(object):
         self.lpot_source = lpot_source
         self.target_discrs_and_qbx_sides = \
                 target_discrs_and_qbx_sides
-        self.target_stick_out_factor = target_stick_out_factor
+        self.target_association_tolerance = target_association_tolerance
         self.debug = debug
 
     @property
@@ -493,7 +493,7 @@ class QBXFMMGeometryData(object):
             nparticles = nsources + target_info.ntargets
 
             target_radii = None
-            if self.lpot_source.expansion_disks_in_tree_have_extent:
+            if self.lpot_source._expansion_disks_in_tree_have_extent:
                 target_radii = cl.array.zeros(queue, target_info.ntargets,
                         self.coord_dtype)
                 target_radii[:self.ncenters] = self.expansion_radii()
@@ -517,10 +517,10 @@ class QBXFMMGeometryData(object):
                     particles=lpot_src.fine_density_discr.nodes(),
                     targets=target_info.targets,
                     target_radii=target_radii,
-                    max_leaf_refine_weight=256,
+                    max_leaf_refine_weight=32,
                     refine_weights=refine_weights,
                     debug=self.debug,
-                    stick_out_factor=0,
+                    stick_out_factor=lpot_src._expansion_disk_stick_out_factor,
                     kind="adaptive")
 
             if self.debug:
@@ -545,7 +545,7 @@ class QBXFMMGeometryData(object):
             trav, _ = self.code_getter.build_traversal(queue, self.tree(),
                     debug=self.debug)
 
-            if self.lpot_source.expansion_disks_in_tree_have_extent:
+            if self.lpot_source._expansion_disks_in_tree_have_extent:
                 trav = trav.merge_close_lists(queue)
 
             return trav
@@ -665,11 +665,7 @@ class QBXFMMGeometryData(object):
         Shape: ``[ntargets]`` of :attr:`boxtree.Tree.particle_id_dtype`, with extra
         values from :class:`target_state` allowed. Targets occur in user order.
         """
-        from pytential.qbx.target_assoc import QBXTargetAssociator
-
-        # FIXME: kernel ownership...
-        tgt_assoc = QBXTargetAssociator(self.cl_context)
-
+        from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
         tgt_info = self.target_info()
 
         from pytential.target import PointsTarget
@@ -678,23 +674,28 @@ class QBXFMMGeometryData(object):
             target_side_prefs = (self
                 .target_side_preferences()[self.ncenters:].get(queue=queue))
 
-        target_discrs_and_qbx_sides = [(
-                PointsTarget(tgt_info.targets[:, self.ncenters:]),
-                target_side_prefs.astype(np.int32))]
+            target_discrs_and_qbx_sides = [(
+                    PointsTarget(tgt_info.targets[:, self.ncenters:]),
+                    target_side_prefs.astype(np.int32))]
 
-        # FIXME: try block...
-        tgt_assoc_result = tgt_assoc(self.lpot_source,
-                                     target_discrs_and_qbx_sides,
-                                     stick_out_factor=self.target_stick_out_factor)
+            target_association_wrangler = (
+                    self.lpot_source.target_association_code_container
+                    .get_wrangler(queue))
 
-        tree = self.tree()
+            tgt_assoc_result = associate_targets_to_qbx_centers(
+                    self.lpot_source,
+                    target_association_wrangler,
+                    target_discrs_and_qbx_sides,
+                    target_association_tolerance=(
+                        self.target_association_tolerance))
 
-        with cl.CommandQueue(self.cl_context) as queue:
+            tree = self.tree()
+
             result = cl.array.empty(queue, tgt_info.ntargets, tree.particle_id_dtype)
             result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
             result[self.ncenters:] = tgt_assoc_result.target_to_center
 
-        return result
+        return result.with_queue(None)
 
     @memoize_method
     def center_to_tree_targets(self):

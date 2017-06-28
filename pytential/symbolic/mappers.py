@@ -340,6 +340,33 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
 # }}}
 
 
+# {{{ Unregularized preprocessor
+
+class UnregularizedPreprocessor(IdentityMapper):
+
+    def __init__(self, source_name, places):
+        self.source_name = source_name
+        self.places = places
+
+    def map_int_g(self, expr):
+        if expr.qbx_forced_limit in (-1, 1):
+            raise ValueError(
+                    "Unregularized evaluation does not support one-sided limits")
+
+        expr = expr.copy(
+                qbx_forced_limit=None,
+                kernel=expr.kernel,
+                density=self.rec(expr.density),
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
+
+        return expr
+
+# }}}
+
+
 # {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
@@ -351,8 +378,8 @@ class QBXPreprocessor(IdentityMapper):
         source = self.places[self.source_name]
         target_discr = self.places[expr.target]
 
-        from pytential.qbx import LayerPotentialSource
-        if isinstance(target_discr, LayerPotentialSource):
+        from pytential.source import LayerPotentialSourceBase
+        if isinstance(target_discr, LayerPotentialSourceBase):
             target_discr = target_discr.density_discr
 
         if expr.qbx_forced_limit == 0:

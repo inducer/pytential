@@ -142,9 +142,9 @@ def timing_run(nx, ny):
 
         targets = cl.array.to_device(queue, fplot.points)
 
-        qbx_stick_out = qbx.copy(target_stick_out_factor=0.05)
+        qbx_tgt_tol = qbx.copy(target_association_tolerance=0.05)
 
-        indicator_qbx = qbx_stick_out.copy(
+        indicator_qbx = qbx_tgt_tol.copy(
                 fmm_level_to_order=lambda lev: 7, qbx_order=2)
 
         ones_density = density_discr.zeros(queue)
