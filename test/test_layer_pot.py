@@ -310,7 +310,10 @@ def run_int_eq_test(cl_ctx, queue, case, resolution):
     if case.fmm_backend is None:
         fmm_order = False
     else:
-        fmm_order = case.qbx_order + 5
+        if hasattr(case, "fmm_order"):
+            fmm_order = case.fmm_order
+        else:
+            fmm_order = case.qbx_order + 5
 
     qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=source_order, qbx_order=case.qbx_order,
@@ -757,7 +760,7 @@ class EllipseIntEqTestCase(CurveIntEqTestCase):
 
 
 class EllipsoidIntEqTestCase(IntEqTestCase):
-    resolutions = [2, 1]
+    resolutions = [2, 0.8]
     name = "ellipsoid"
 
     def get_mesh(self, resolution, target_order):
@@ -773,13 +776,14 @@ class EllipsoidIntEqTestCase(IntEqTestCase):
         return perform_flips(mesh, np.ones(mesh.nelements))
 
     fmm_backend = "fmmlib"
+    fmm_order = 25
     use_refinement = False
     neumann_alpha = 0  # no double layers in FMMlib backend yet
 
     inner_radius = 0.4
     outer_radius = 5
 
-    qbx_order = 2
+    qbx_order = 4
     target_order = qbx_order
     check_tangential_deriv = False
 
