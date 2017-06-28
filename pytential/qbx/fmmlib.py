@@ -310,7 +310,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         center_source_starts = np.cumsum(center_source_counts)
         nsources_total = center_source_starts[-1]
 
-        sources = np.empty((self.dim, nsources_total), dtype=np.float64)
+        sources = np.empty((self.dim, nsources_total), dtype=np.float64,
+                order="F")
         charge = np.empty(nsources_total, dtype=np.complex128)
 
         full_dipvec = self.dipole_vec
