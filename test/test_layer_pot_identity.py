@@ -206,7 +206,7 @@ class DynamicTestCase(object):
         DynamicTestCase(geom, GradGreenExpr(), 1.2),
         DynamicTestCase(geom, ZeroCalderonExpr(), 0),
         ]])
-def test_identity_convergence(ctx_getter,  case):
+def test_identity_convergence(ctx_getter,  case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     case.check()
@@ -320,6 +320,19 @@ def test_identity_convergence(ctx_getter,  case):
         print(key, l2_error_norm)
 
         eoc_rec.add_data_point(qbx.h_max, l2_error_norm)
+
+        if visualize:
+            from meshmode.discretization.visualization import make_visualizer
+            bdry_vis = make_visualizer(queue, density_discr, target_order+3)
+
+            bdry_normals = bind(density_discr, sym.normal(3))(queue)\
+                    .as_vector(dtype=object)
+
+            bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
+                ("u", u_dev),
+                ("bdry_normals", bdry_normals),
+                ("error", error),
+                ])
 
     print(eoc_rec)
     tgt_order = case.qbx_order - case.expr.order_drop
