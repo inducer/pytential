@@ -366,142 +366,88 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         qbx_centers = geo_data.centers()
         centers = self.tree.box_centers
 
-        if 1:
-            # {{{ parallel
+        mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
 
-            mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
+        for isrc_level, ssn in enumerate(
+                geo_data.traversal().sep_smaller_by_level):
+            source_level_start_ibox, source_mpoles_view = \
+                    self.multipole_expansions_view(multipole_exps, isrc_level)
 
-            for isrc_level, ssn in enumerate(
-                    geo_data.traversal().sep_smaller_by_level):
-                source_level_start_ibox, source_mpoles_view = \
-                        self.multipole_expansions_view(multipole_exps, isrc_level)
+            print("par data prep lev %d" % isrc_level)
 
-                # FIXME
+            ngqbx_centers = len(geo_data.global_qbx_centers())
+            tgt_icenter_vec = geo_data.global_qbx_centers()
+            icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
 
-                print("par data prep lev %d" % isrc_level)
+            # FIXME
+            rscale2 = np.ones(ngqbx_centers, np.float64)
 
-                ngqbx_centers = len(geo_data.global_qbx_centers())
-                tgt_icenter_vec = geo_data.global_qbx_centers()
-                icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
+            kwargs = {}
+            if self.dim == 3:
+                # FIXME Is this right?
+                kwargs["radius"] = (
+                        np.ones(ngqbx_centers)
+                        * self.tree.root_extent * 2**(-isrc_level))
 
-                # FIXME
-                rscale2 = np.ones(ngqbx_centers, np.float64)
+            nsrc_boxes_per_gqbx_center = (
+                    ssn.starts[icontaining_tgt_box_vec+1]
+                    - ssn.starts[icontaining_tgt_box_vec])
+            nsrc_boxes = np.sum(nsrc_boxes_per_gqbx_center)
 
-                kwargs = {}
-                if self.dim == 3:
-                    # FIXME Is this right?
-                    kwargs["radius"] = (
-                            np.ones(ngqbx_centers)
-                            * self.tree.root_extent * 2**(-isrc_level))
+            src_boxes_starts = np.empty(ngqbx_centers+1, dtype=np.int32)
+            src_boxes_starts[0] = 0
+            src_boxes_starts[1:] = np.cumsum(nsrc_boxes_per_gqbx_center)
 
-                nsrc_boxes_per_gqbx_center = (
-                        ssn.starts[icontaining_tgt_box_vec+1]
-                        - ssn.starts[icontaining_tgt_box_vec])
-                nsrc_boxes = np.sum(nsrc_boxes_per_gqbx_center)
+            # FIXME
+            rscale1 = np.ones(nsrc_boxes)
+            rscale1_offsets = np.arange(nsrc_boxes)
 
-                src_boxes_starts = np.empty(ngqbx_centers+1, dtype=np.int32)
-                src_boxes_starts[0] = 0
-                src_boxes_starts[1:] = np.cumsum(nsrc_boxes_per_gqbx_center)
+            src_ibox = np.empty(nsrc_boxes, dtype=np.int32)
+            for itgt_center, tgt_icenter in enumerate(
+                    geo_data.global_qbx_centers()):
+                icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
+                src_ibox[
+                        src_boxes_starts[itgt_center]:
+                        src_boxes_starts[itgt_center+1]] = (
+                    ssn.lists[
+                        ssn.starts[icontaining_tgt_box]:
+                        ssn.starts[icontaining_tgt_box+1]])
 
-                # FIXME
-                rscale1 = np.ones(nsrc_boxes)
-                rscale1_offsets = np.arange(nsrc_boxes)
+            del itgt_center
+            del tgt_icenter
+            del icontaining_tgt_box
 
-                src_ibox = np.empty(nsrc_boxes, dtype=np.int32)
-                for itgt_center, tgt_icenter in enumerate(
-                        geo_data.global_qbx_centers()):
-                    icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
-                    src_ibox[
-                            src_boxes_starts[itgt_center]:
-                            src_boxes_starts[itgt_center+1]] = (
-                        ssn.lists[
-                            ssn.starts[icontaining_tgt_box]:
-                            ssn.starts[icontaining_tgt_box+1]])
+            print("end par data prep")
 
-                del itgt_center
-                del tgt_icenter
-                del icontaining_tgt_box
+            # These get max'd/added onto: pass initialized versions.
+            ier = np.zeros(ngqbx_centers, dtype=np.int32)
+            expn2 = np.zeros(
+                    (ngqbx_centers,) + self.expansion_shape(self.qbx_order),
+                    dtype=self.dtype)
 
-                print("end par data prep")
+            expn2 = mploc(
+                    rscale1=rscale1,
+                    rscale1_offsets=rscale1_offsets,
+                    rscale1_starts=src_boxes_starts,
 
-                # These get max'd/added onto: pass initialized versions.
-                ier = np.zeros(ngqbx_centers, dtype=np.int32)
-                expn2 = np.zeros(
-                        (ngqbx_centers,) + self.expansion_shape(self.qbx_order),
-                        dtype=self.dtype)
+                    center1=centers,
+                    center1_offsets=src_ibox,
+                    center1_starts=src_boxes_starts,
 
-                expn2 = mploc(
-                        rscale1=rscale1,
-                        rscale1_offsets=rscale1_offsets,
-                        rscale1_starts=src_boxes_starts,
+                    expn1=source_mpoles_view.T,
+                    expn1_offsets=src_ibox - source_level_start_ibox,
+                    expn1_starts=src_boxes_starts,
 
-                        center1=centers,
-                        center1_offsets=src_ibox,
-                        center1_starts=src_boxes_starts,
+                    rscale2=rscale2,
+                    # FIXME: center2 has wrong layout, will copy
+                    center2=qbx_centers[:, tgt_icenter_vec],
+                    expn2=expn2.T,
+                    ier=ier,
 
-                        expn1=source_mpoles_view.T,
-                        expn1_offsets=src_ibox - source_level_start_ibox,
-                        expn1_starts=src_boxes_starts,
+                    **kwargs,
+                    **self.kernel_kwargs).T
 
-                        rscale2=rscale2,
-                        # FIXME: center2 has wrong layout, will copy
-                        center2=qbx_centers[:, tgt_icenter_vec],
-                        expn2=expn2.T,
-                        ier=ier,
-
-                        **kwargs,
-                        **self.kernel_kwargs).T
-
-                local_exps[geo_data.global_qbx_centers()] += expn2
-
-            # }}}
-
-        if 0:
-            # {{{ sequential
-
-            mploc = self.get_translation_routine("%ddmploc")
-
-            local_exps_1 = self.qbx_local_expansion_zeros()
-
-            for isrc_level, ssn in enumerate(
-                    geo_data.traversal().sep_smaller_by_level):
-                source_level_start_ibox, source_mpoles_view = \
-                        self.multipole_expansions_view(multipole_exps, isrc_level)
-
-                # FIXME
-                rscale = 1
-
-                kwargs = {}
-                if self.dim == 3:
-                    # FIXME Is this right?
-                    kwargs["radius"] = self.tree.root_extent * 2**(-isrc_level)
-
-                for itgt_center, tgt_icenter in enumerate(
-                        geo_data.global_qbx_centers()):
-                    ctr_loc = 0
-
-                    icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
-
-                    tgt_center = qbx_centers[:, tgt_icenter]
-
-                    for isrc_box in range(
-                            ssn.starts[icontaining_tgt_box],
-                            ssn.starts[icontaining_tgt_box+1]):
-
-                        src_ibox = ssn.lists[isrc_box]
-                        src_center = centers[:, src_ibox]
-
-                        ctr_loc = ctr_loc + mploc(
-                            self.helmholtz_k,
-                            rscale, src_center,
-                            source_mpoles_view[src_ibox - source_level_start_ibox].T,
-                            rscale, tgt_center, self.nterms, **kwargs)[..., 0].T
-
-                    local_exps_1[tgt_icenter] += ctr_loc
-
-            # diff = local_exps - local_exps_1
-
-            # }}}
+            local_exps[geo_data.global_qbx_centers()] += expn2
 
         return local_exps
 
