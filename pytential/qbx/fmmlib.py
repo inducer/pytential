@@ -26,7 +26,7 @@ import numpy as np
 from pytools import memoize_method, Record
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
-from boxtree.pyfmmlib_integration import HelmholtzExpansionWrangler
+from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
 from sumpy.kernel import HelmholtzKernel
 
 
@@ -54,7 +54,7 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
             source_extra_kwargs={},
             kernel_extra_kwargs=None):
 
-        return QBXFMMLibHelmholtzExpansionWrangler(self, queue, geo_data, dtype,
+        return QBXFMMLibExpansionWrangler(self, queue, geo_data, dtype,
                 qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
                 kernel_extra_kwargs)
@@ -113,7 +113,7 @@ class ToHostTransferredGeoDataWrapper(object):
 
 # {{{ fmmlib expansion wrangler
 
-class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
+class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     def __init__(self, code, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs,
@@ -170,7 +170,7 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         from pytools import single_valued
         assert single_valued(self.level_orders)
 
-        super(QBXFMMLibHelmholtzExpansionWrangler, self).__init__(
+        super(QBXFMMLibExpansionWrangler, self).__init__(
                 self.geo_data.tree(),
 
                 helmholtz_k=helmholtz_k,
@@ -204,8 +204,10 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                 for k in self.outputs])
 
     def reorder_sources(self, source_array):
-        source_array = source_array.get(queue=self.queue)
-        return (super(QBXFMMLibHelmholtzExpansionWrangler, self)
+        if isinstance(source_array, cl.array.Array):
+            source_array = source_array.get(queue=self.queue)
+
+        return (super(QBXFMMLibExpansionWrangler, self)
                 .reorder_sources(source_array))
 
     def reorder_potentials(self, potentials):
