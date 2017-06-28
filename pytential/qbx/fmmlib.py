@@ -334,17 +334,18 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         info = self._info_for_form_global_qbx_locals(src_weights)
 
         ier, loc_exp_pre = formta_vec(
-                zk=self.helmholtz_k,
                 rscale=info.rscale_vec,
 
                 sources=info.sources,
                 sources_offsets=info.center_source_starts[:-1],
-                charges=info.charges,
-                charges_offsets=info.center_source_starts[:-1],
+                charge=info.charges,
+                charge_offsets=info.center_source_starts[:-1],
 
                 nsources=info.center_source_counts[1:],
                 center=info.centers,
-                nterms=self.nterms)
+                nterms=self.nterms,
+
+                **self.kernel_kwargs)
 
         if np.any(ier != 0):
             raise RuntimeError("formta returned an error")
@@ -428,8 +429,6 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                         dtype=self.dtype)
 
                 expn2 = mploc(
-                        zk=self.helmholtz_k,
-
                         rscale1=rscale1,
                         rscale1_offsets=rscale1_offsets,
                         rscale1_starts=src_boxes_starts,
@@ -446,7 +445,10 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                         # FIXME: center2 has wrong layout, will copy
                         center2=qbx_centers[:, tgt_icenter_vec],
                         expn2=expn2.T,
-                        ier=ier, **kwargs).T
+                        ier=ier,
+
+                        **kwargs,
+                        **self.kernel_kwargs).T
 
                 local_exps[geo_data.global_qbx_centers()] += expn2
 
@@ -546,9 +548,16 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                 if in_range:
                     src_center = self.tree.box_centers[:, src_ibox]
                     tmp_loc_exp = locloc(
-                                self.helmholtz_k,
-                                rscale, src_center, local_exps[src_ibox].T,
-                                rscale, tgt_center, local_order, **kwargs)[..., 0].T
+                                rscale1=rscale,
+                                center1=src_center,
+                                expn1=local_exps[src_ibox].T,
+
+                                rscale2=rscale,
+                                center2=tgt_center,
+                                nterms2=local_order,
+
+                                **kwargs,
+                                **self.kernel_kwargs)[..., 0].T
 
                     qbx_expansions[tgt_icenter] += tmp_loc_exp
 
@@ -577,9 +586,12 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
                 center = qbx_centers[:, src_icenter]
 
-                pot, grad = taeval(self.helmholtz_k, rscale,
-                        center, qbx_expansions[src_icenter].T,
-                        all_targets[:, center_itgt])
+                pot, grad = taeval(
+                        rscale=rscale,
+                        center=center,
+                        expn=qbx_expansions[src_icenter].T,
+                        ztarg=all_targets[:, center_itgt],
+                        **self.kernel_kwargs)
 
                 self.add_potgrad_onto_output(output, center_itgt, pot, grad)
 
