@@ -40,15 +40,8 @@ logger = logging.getLogger(__name__)
 # {{{ docs
 
 __doc__ = """
-
-.. note::
-
-    This module documents :mod:`pytential` internals and is not typically
-    needed in end-user applications.
-
-This module documents data structures created for the execution of the QBX
-FMM.  For each pair of (target discretizations, kernels),
-:class:`pytential.discretization.qbx.QBXDiscretization` creates an instance of
+For each invocation of the QBX FMM with a distinct set of (target, side request)
+pairs, :class:`pytential.qbx.QBXLayerPotentialSource` creates an instance of
 :class:`QBXFMMGeometryData`.
 
 The module is described in top-down fashion, with the (conceptually)
@@ -61,8 +54,6 @@ Geometry data
 
 Subordinate data structures
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: CenterInfo()
 
 .. autoclass:: TargetInfo()
 
@@ -288,7 +279,7 @@ class QBXFMMGeometryData(object):
 
     .. attribute:: lpot_source
 
-        The :class:`pytential.discretization.qbx.QBXDiscretization`
+        The :class:`pytential.qbx.QBXLayerPotentialSource`
         acting as the source geometry.
 
     .. attribute:: target_discrs_and_qbx_sides
@@ -301,29 +292,8 @@ class QBXFMMGeometryData(object):
         *sides* is an array of (:class:`numpy.int8`) side requests for each
         target.
 
-        The side request can take the following values for each target:
-
-        ===== ==============================================
-        Value Meaning
-        ===== ==============================================
-        0     Volume target. If near a QBX center,
-              the value from the QBX expansion is returned,
-              otherwise the volume potential is returned.
-
-        -1    Surface target. Return interior limit from
-              interior-side QBX expansion.
-
-        +1    Surface target. Return exterior limit from
-              exterior-side QBX expansion.
-
-        -2    Volume target. If within an *interior* QBX disk,
-              the value from the QBX expansion is returned,
-              otherwise the volume potential is returned.
-
-        +2    Volume target. If within an *exterior* QBX disk,
-              the value from the QBX expansion is returned,
-              otherwise the volume potential is returned.
-        ===== ==============================================
+        The side request can take on the values
+        found in :ref:`qbx-side-request-table`.
 
     .. attribute:: cl_context
 
@@ -335,7 +305,6 @@ class QBXFMMGeometryData(object):
 
     .. attribute:: ncenters
     .. automethod:: centers()
-    .. automethod:: radii()
 
     .. rubric :: Methods
 
