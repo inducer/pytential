@@ -191,12 +191,17 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     # {{{ qbx-related
 
-    def form_global_qbx_locals(self, starts, lists, src_weights):
+    def form_global_qbx_locals(self, src_weights):
         local_exps = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
         if len(geo_data.global_qbx_centers()) == 0:
             return local_exps
+
+        traversal = geo_data.traversal()
+
+        starts = traversal.neighbor_source_boxes_starts
+        lists = traversal.neighbor_source_boxes_lists
 
         kwargs = self.extra_kwargs.copy()
         kwargs.update(self.box_source_list_kwargs())
@@ -472,10 +477,7 @@ def drive_fmm(expansion_wrangler, src_weights):
     # {{{ wrangle qbx expansions
 
     logger.info("form global qbx expansions from list 1")
-    qbx_expansions = wrangler.form_global_qbx_locals(
-            traversal.neighbor_source_boxes_starts,
-            traversal.neighbor_source_boxes_lists,
-            src_weights)
+    qbx_expansions = wrangler.form_global_qbx_locals(src_weights)
 
     logger.info("translate from list 3 multipoles to qbx local expansions")
     qbx_expansions = qbx_expansions + \
