@@ -26,7 +26,7 @@ import numpy as np
 from pytools import memoize_method
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
-from boxtree.pyfmmlib_integration import HelmholtzExpansionWrangler
+from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
 from sumpy.kernel import HelmholtzKernel
 
 
@@ -105,7 +105,7 @@ class ToHostTransferredGeoDataWrapper(object):
 
 # {{{ fmmlib expansion wrangler
 
-class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
+class QBXFMMLibHelmholtzExpansionWrangler(FMMLibExpansionWrangler):
     def __init__(self, code, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs,
