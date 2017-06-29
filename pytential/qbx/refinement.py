@@ -61,11 +61,23 @@ three global QBX refinement criteria:
       The panel size is bounded by a kernel length scale. This
       applies only to Helmholtz kernels.
 
-.. autoclass:: RefinerCodeContainer
-.. autoclass:: RefinerWrangler
+Warnings emitted by refinement
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: RefinerNotConvergedWarning
 
+Helper functions
+^^^^^^^^^^^^^^^^
+
 .. autofunction:: make_empty_refine_flags
+
+Refiner driver
+^^^^^^^^^^^^^^
+
+.. autoclass:: RefinerCodeContainer
+
+.. autoclass:: RefinerWrangler
+
 .. autofunction:: refine_for_global_qbx
 """
 
