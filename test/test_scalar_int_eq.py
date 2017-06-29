@@ -253,7 +253,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution):
 
     # {{{ error check
 
-    bound_tgt_op = bind((qbx, PointsTarget(test_targets)),
+    points_target = PointsTarget(test_targets)
+    bound_tgt_op = bind((qbx, points_target),
             op.representation(sym.var("u")))
 
     test_via_bdry = bound_tgt_op(queue, u=u, k=case.k)
@@ -282,6 +283,36 @@ def run_int_eq_test(cl_ctx, queue, case, resolution):
 
     print("rel_err_2: %g rel_err_inf: %g" % (rel_err_2, rel_err_inf))
 
+    # {{{ test gradient
+
+    if case.check_gradient:
+        bound_grad_op = bind((qbx, points_target),
+                op.representation(
+                    sym.var("u"),
+                    map_potentials=lambda pot: sym.grad(mesh.ambient_dim, pot),
+                    qbx_forced_limit=None))
+
+        #print(bound_t_deriv_op.code)
+
+        grad_from_src = bound_grad_op(
+                queue, u=u, **concrete_knl_kwargs)
+
+        grad_ref = (bind(
+                (point_source, points_target),
+                sym.grad(mesh.ambient_dim, pot_src)
+                )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
+                )
+
+        grad_err = (grad_from_src - grad_ref)
+
+        rel_grad_err_inf = (
+                la.norm(grad_err[0].get(), np.inf)
+                /
+                la.norm(grad_ref[0].get(), np.inf))
+
+        print("rel_grad_err_inf: %g" % rel_grad_err_inf)
+
+    # }}}
     # {{{ test tangential derivative
 
     if case.check_tangential_deriv:
@@ -525,6 +556,7 @@ class CurveIntEqTestCase(IntEqTestCase):
     fmm_backend = None
 
     check_tangential_deriv = True
+    check_gradient = False
 
 
 class EllipseIntEqTestCase(CurveIntEqTestCase):
@@ -569,6 +601,8 @@ class EllipsoidIntEqTestCase(Helmholtz3DIntEqTestCase):
 
     inner_radius = 0.4
     outer_radius = 5
+
+    check_gradient = True
 
 
 class MergedCubesIntEqTestCase(Helmholtz3DIntEqTestCase):
