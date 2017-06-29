@@ -137,14 +137,15 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         def is_supported_helmknl(knl):
             if isinstance(knl, DirectionalSourceDerivative):
-                source_deriv_names.append(knl.dir_vec_name)
+                source_deriv_name = knl.dir_vec_name
                 knl = knl.inner_kernel
             else:
-                source_deriv_names.append(None)
+                source_deriv_name = None
 
             result = isinstance(knl, HelmholtzKernel) and knl.dim == 3
             if result:
                 k_names.append(knl.helmholtz_k_name)
+                source_deriv_names.append(source_deriv_name)
             return result
 
         ifgrad = False
@@ -163,7 +164,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         from pytools import is_single_valued
         if not is_single_valued(source_deriv_names):
-            raise ValueError("not all kernels passed are the same in"
+            raise ValueError("not all kernels passed are the same in "
                     "whether they represent a source derivative")
 
         source_deriv_name = source_deriv_names[0]
