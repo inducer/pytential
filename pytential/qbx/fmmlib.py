@@ -23,11 +23,19 @@ THE SOFTWARE.
 """
 
 import numpy as np
-from pytools import memoize_method
+from pytools import memoize_method, Record
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
-from boxtree.pyfmmlib_integration import HelmholtzExpansionWrangler
+from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
 from sumpy.kernel import HelmholtzKernel
+
+
+import logging
+logger = logging.getLogger(__name__)
+
+
+class P2QBXLInfo(Record):
+    pass
 
 
 class QBXFMMLibExpansionWranglerCodeContainer(object):
@@ -46,7 +54,7 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
             source_extra_kwargs={},
             kernel_extra_kwargs=None):
 
-        return QBXFMMLibHelmholtzExpansionWrangler(self, queue, geo_data, dtype,
+        return QBXFMMLibExpansionWrangler(self, queue, geo_data, dtype,
                 qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
                 kernel_extra_kwargs)
@@ -105,7 +113,7 @@ class ToHostTransferredGeoDataWrapper(object):
 
 # {{{ fmmlib expansion wrangler
 
-class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
+class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     def __init__(self, code, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs,
@@ -122,14 +130,22 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
         # {{{ digest out_kernels
 
-        from sumpy.kernel import AxisTargetDerivative
+        from sumpy.kernel import AxisTargetDerivative, DirectionalSourceDerivative
 
         k_names = []
+        source_deriv_names = []
 
         def is_supported_helmknl(knl):
+            if isinstance(knl, DirectionalSourceDerivative):
+                source_deriv_name = knl.dir_vec_name
+                knl = knl.inner_kernel
+            else:
+                source_deriv_name = None
+
             result = isinstance(knl, HelmholtzKernel) and knl.dim == 3
             if result:
                 k_names.append(knl.helmholtz_k_name)
+                source_deriv_names.append(source_deriv_name)
             return result
 
         ifgrad = False
@@ -146,6 +162,12 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                         "only the 3D Helmholtz kernel and its target derivatives "
                         "are supported for now")
 
+        from pytools import is_single_valued
+        if not is_single_valued(source_deriv_names):
+            raise ValueError("not all kernels passed are the same in "
+                    "whether they represent a source derivative")
+
+        source_deriv_name = source_deriv_names[0]
         self.outputs = outputs
 
         # }}}
@@ -162,10 +184,19 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         from pytools import single_valued
         assert single_valued(self.level_orders)
 
-        super(QBXFMMLibHelmholtzExpansionWrangler, self).__init__(
+        dipole_vec = None
+        if source_deriv_name is not None:
+            dipole_vec = np.array([
+                    d_i.get(queue=queue)
+                    for d_i in source_extra_kwargs[source_deriv_name]],
+                    order="F")
+
+        super(QBXFMMLibExpansionWrangler, self).__init__(
                 self.geo_data.tree(),
 
                 helmholtz_k=helmholtz_k,
+                dipole_vec=dipole_vec,
+                dipoles_already_reordered=True,
 
                 # FIXME
                 nterms=fmm_level_to_order(0),
@@ -196,8 +227,10 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                 for k in self.outputs])
 
     def reorder_sources(self, source_array):
-        source_array = source_array.get(queue=self.queue)
-        return (super(QBXFMMLibHelmholtzExpansionWrangler, self)
+        if isinstance(source_array, cl.array.Array):
+            source_array = source_array.get(queue=self.queue)
+
+        return (super(QBXFMMLibExpansionWrangler, self)
                 .reorder_sources(source_array))
 
     def reorder_potentials(self, potentials):
@@ -239,54 +272,145 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
     # }}}
 
-    # {{{ qbx-related
-
     def qbx_local_expansion_zeros(self):
         return np.zeros(
                     (self.geo_data.ncenters,) + self.expansion_shape(self.qbx_order),
                     dtype=self.dtype)
 
-    def form_global_qbx_locals(self, starts, lists, src_weights):
-        local_exps = self.qbx_local_expansion_zeros()
+    # {{{ p2qbxl
 
-        rscale = 1  # FIXME
+    @memoize_method
+    def _info_for_form_global_qbx_locals(self):
+        logger.info("preparing interaction list for p2qbxl: start")
+
         geo_data = self.geo_data
+        traversal = geo_data.traversal()
 
-        if len(geo_data.global_qbx_centers()) == 0:
-            return local_exps
+        starts = traversal.neighbor_source_boxes_starts
+        lists = traversal.neighbor_source_boxes_lists
 
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
 
-        formta = self.get_routine("%ddformta")
-
+        center_source_counts = [0]
         for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
             itgt_box = qbx_center_to_target_box[tgt_icenter]
 
             isrc_box_start = starts[itgt_box]
             isrc_box_stop = starts[itgt_box+1]
 
-            tgt_center = qbx_centers[:, tgt_icenter]
+            source_count = sum(
+                    self.tree.box_source_counts_nonchild[lists[isrc_box]]
+                    for isrc_box in range(isrc_box_start, isrc_box_stop))
 
-            ctr_coeffs = 0
+            center_source_counts.append(source_count)
+
+        center_source_counts = np.array(center_source_counts)
+        center_source_starts = np.cumsum(center_source_counts)
+        nsources_total = center_source_starts[-1]
+        center_source_offsets = np.empty(nsources_total, np.int32)
+
+        isource = 0
+        for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
+            assert isource == center_source_starts[itgt_center]
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+
+            isrc_box_start = starts[itgt_box]
+            isrc_box_stop = starts[itgt_box+1]
 
             for isrc_box in range(isrc_box_start, isrc_box_stop):
                 src_ibox = lists[isrc_box]
 
                 src_pslice = self._get_source_slice(src_ibox)
+                ns = self.tree.box_source_counts_nonchild[src_ibox]
+                center_source_offsets[isource:isource+ns] = np.arange(
+                        src_pslice.start, src_pslice.stop)
 
-                ier, coeffs = formta(
-                        self.helmholtz_k, rscale,
-                        self._get_sources(src_pslice), src_weights[src_pslice],
-                        tgt_center, self.nterms)
-                if ier:
-                    raise RuntimeError("formta failed")
+                isource += ns
 
-                ctr_coeffs += coeffs
+        centers = qbx_centers[:, geo_data.global_qbx_centers()]
 
-            local_exps[tgt_icenter] += ctr_coeffs
+        rscale = 1  # FIXME
+        rscale_vec = np.empty(len(center_source_counts) - 1, dtype=np.float64)
+        rscale_vec.fill(rscale)  # FIXME
+
+        nsources_vec = np.ones(self.tree.nsources, np.int32)
+
+        logger.info("preparing interaction list for p2qbxl: done")
+
+        return P2QBXLInfo(
+                centers=centers,
+                center_source_starts=center_source_starts,
+                center_source_offsets=center_source_offsets,
+                nsources_vec=nsources_vec,
+                rscale_vec=rscale_vec,
+                ngqbx_centers=centers.shape[1],
+                )
+
+    def form_global_qbx_locals(self, src_weights):
+        geo_data = self.geo_data
+
+        local_exps = self.qbx_local_expansion_zeros()
+
+        if len(geo_data.global_qbx_centers()) == 0:
+            return local_exps
+
+        formta_imany = self.get_routine("%ddformta" + self.dp_suffix,
+                suffix="_imany")
+        info = self._info_for_form_global_qbx_locals()
+
+        kwargs = {}
+        kwargs.update(self.kernel_kwargs)
+
+        if self.dipole_vec is None:
+            kwargs["charge"] = src_weights
+            kwargs["charge_offsets"] = info.center_source_offsets
+            kwargs["charge_starts"] = info.center_source_starts
+
+        else:
+            kwargs["dipstr"] = src_weights
+            kwargs["dipstr_offsets"] = info.center_source_offsets
+            kwargs["dipstr_starts"] = info.center_source_starts
+
+            kwargs["dipvec"] = self.dipole_vec
+            kwargs["dipvec_offsets"] = info.center_source_offsets
+            kwargs["dipvec_starts"] = info.center_source_starts
+
+        # These get max'd/added onto: pass initialized versions.
+        ier = np.zeros(info.ngqbx_centers, dtype=np.int32)
+        expn = np.zeros(
+                (info.ngqbx_centers,) + self.expansion_shape(self.qbx_order),
+                dtype=self.dtype)
+
+        ier, expn = formta_imany(
+                rscale=info.rscale_vec,
+
+                sources=self._get_single_sources_array(),
+                sources_offsets=info.center_source_offsets,
+                sources_starts=info.center_source_starts,
+
+                nsources=info.nsources_vec,
+                nsources_offsets=info.center_source_offsets,
+                nsources_starts=info.center_source_starts,
+
+                center=info.centers,
+                nterms=self.nterms,
+
+                ier=ier,
+                expn=expn.T,
+
+                **kwargs)
+
+        if np.any(ier != 0):
+            raise RuntimeError("formta returned an error")
+
+        local_exps[geo_data.global_qbx_centers()] = expn.T
 
         return local_exps
+
+    # }}}
+
+    # {{{ m2qbxl
 
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
         local_exps = self.qbx_local_expansion_zeros()
@@ -296,42 +420,93 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
         qbx_centers = geo_data.centers()
         centers = self.tree.box_centers
 
-        mploc = self.get_translation_routine("%ddmploc")
+        mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
 
-        for isrc_level, ssn in enumerate(geo_data.traversal().sep_smaller_by_level):
+        for isrc_level, ssn in enumerate(
+                geo_data.traversal().sep_smaller_by_level):
             source_level_start_ibox, source_mpoles_view = \
                     self.multipole_expansions_view(multipole_exps, isrc_level)
 
+            print("par data prep lev %d" % isrc_level)
+
+            ngqbx_centers = len(geo_data.global_qbx_centers())
+            tgt_icenter_vec = geo_data.global_qbx_centers()
+            icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
+
             # FIXME
-            rscale = 1
+            rscale2 = np.ones(ngqbx_centers, np.float64)
 
             kwargs = {}
             if self.dim == 3:
                 # FIXME Is this right?
-                kwargs["radius"] = self.tree.root_extent * 2**(-isrc_level)
+                kwargs["radius"] = (
+                        np.ones(ngqbx_centers)
+                        * self.tree.root_extent * 2**(-isrc_level))
 
-            for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
-                ctr_loc = 0
+            nsrc_boxes_per_gqbx_center = (
+                    ssn.starts[icontaining_tgt_box_vec+1]
+                    - ssn.starts[icontaining_tgt_box_vec])
+            nsrc_boxes = np.sum(nsrc_boxes_per_gqbx_center)
 
+            src_boxes_starts = np.empty(ngqbx_centers+1, dtype=np.int32)
+            src_boxes_starts[0] = 0
+            src_boxes_starts[1:] = np.cumsum(nsrc_boxes_per_gqbx_center)
+
+            # FIXME
+            rscale1 = np.ones(nsrc_boxes)
+            rscale1_offsets = np.arange(nsrc_boxes)
+
+            src_ibox = np.empty(nsrc_boxes, dtype=np.int32)
+            for itgt_center, tgt_icenter in enumerate(
+                    geo_data.global_qbx_centers()):
                 icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
+                src_ibox[
+                        src_boxes_starts[itgt_center]:
+                        src_boxes_starts[itgt_center+1]] = (
+                    ssn.lists[
+                        ssn.starts[icontaining_tgt_box]:
+                        ssn.starts[icontaining_tgt_box+1]])
 
-                tgt_center = qbx_centers[:, tgt_icenter]
+            del itgt_center
+            del tgt_icenter
+            del icontaining_tgt_box
 
-                for isrc_box in range(
-                        ssn.starts[icontaining_tgt_box],
-                        ssn.starts[icontaining_tgt_box+1]):
+            print("end par data prep")
 
-                    src_ibox = ssn.lists[isrc_box]
-                    src_center = centers[:, src_ibox]
+            # These get max'd/added onto: pass initialized versions.
+            ier = np.zeros(ngqbx_centers, dtype=np.int32)
+            expn2 = np.zeros(
+                    (ngqbx_centers,) + self.expansion_shape(self.qbx_order),
+                    dtype=self.dtype)
 
-                    ctr_loc = ctr_loc + mploc(
-                        self.helmholtz_k,
-                        rscale, src_center, multipole_exps[src_ibox],
-                        rscale, tgt_center, self.nterms, **kwargs)[..., 0]
+            kwargs.update(self.kernel_kwargs)
 
-                local_exps[tgt_icenter] += ctr_loc
+            expn2 = mploc(
+                    rscale1=rscale1,
+                    rscale1_offsets=rscale1_offsets,
+                    rscale1_starts=src_boxes_starts,
+
+                    center1=centers,
+                    center1_offsets=src_ibox,
+                    center1_starts=src_boxes_starts,
+
+                    expn1=source_mpoles_view.T,
+                    expn1_offsets=src_ibox - source_level_start_ibox,
+                    expn1_starts=src_boxes_starts,
+
+                    rscale2=rscale2,
+                    # FIXME: center2 has wrong layout, will copy
+                    center2=qbx_centers[:, tgt_icenter_vec],
+                    expn2=expn2.T,
+                    ier=ier,
+
+                    **kwargs).T
+
+            local_exps[geo_data.global_qbx_centers()] += expn2
 
         return local_exps
+
+    # }}}
 
     def translate_box_local_to_qbx_local(self, local_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
@@ -361,6 +536,8 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                 # FIXME Is this right?
                 kwargs["radius"] = self.tree.root_extent * 2**(-isrc_level)
 
+            kwargs.update(self.kernel_kwargs)
+
             for tgt_icenter in range(geo_data.ncenters):
                 isrc_box = qbx_center_to_target_box[tgt_icenter]
 
@@ -378,9 +555,15 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                 if in_range:
                     src_center = self.tree.box_centers[:, src_ibox]
                     tmp_loc_exp = locloc(
-                                self.helmholtz_k,
-                                rscale, src_center, local_exps[src_ibox],
-                                rscale, tgt_center, local_order, **kwargs)[..., 0]
+                                rscale1=rscale,
+                                center1=src_center,
+                                expn1=local_exps[src_ibox].T,
+
+                                rscale2=rscale,
+                                center2=tgt_center,
+                                nterms2=local_order,
+
+                                **kwargs)[..., 0].T
 
                     qbx_expansions[tgt_icenter] += tmp_loc_exp
 
@@ -409,9 +592,12 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
 
                 center = qbx_centers[:, src_icenter]
 
-                pot, grad = taeval(self.helmholtz_k, rscale,
-                        center, qbx_expansions[src_icenter],
-                        all_targets[:, center_itgt])
+                pot, grad = taeval(
+                        rscale=rscale,
+                        center=center,
+                        expn=qbx_expansions[src_icenter].T,
+                        ztarg=all_targets[:, center_itgt],
+                        **self.kernel_kwargs)
 
                 self.add_potgrad_onto_output(output, center_itgt, pot, grad)
 
@@ -425,8 +611,6 @@ class QBXFMMLibHelmholtzExpansionWrangler(HelmholtzExpansionWrangler):
                     "scale factor for pyfmmlib for %d dimensions" % self.dim)
 
         return cl.array.to_device(self.queue, potential) * scale_factor
-
-    # }}}
 
 # }}}
 

@@ -23,7 +23,7 @@ fmm_order = 7
 mu = 3
 
 # Test solution type -- either 'fundamental' or 'couette' (default is couette)
-soln_type = 'couette'  
+soln_type = 'couette'
 
 # }}}
 
@@ -53,19 +53,20 @@ def main(nelements):
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     from pytential.qbx import QBXLayerPotentialSource
-    stick_out = 0.05
+    target_association_tolerance = 0.05
     qbx, _ = QBXLayerPotentialSource(
             coarse_density_discr, fine_order=ovsmp_target_order, qbx_order=qbx_order,
-            fmm_order=fmm_order, target_stick_out_factor=stick_out
+            fmm_order=fmm_order,
+            target_association_tolerance=target_association_tolerance,
             ).with_refinement()
 
     density_discr = qbx.density_discr
     nodes = density_discr.nodes().with_queue(queue)
 
-    # Get normal vectors for the density discretization -- used in integration with stresslet    
+    # Get normal vectors for the density discretization -- used in integration with stresslet
     mv_normal = bind(density_discr, sym.normal(2))(queue)
     normal = mv_normal.as_vector(np.object)
-    
+
 
     # {{{ describe bvp
 
@@ -88,7 +89,7 @@ def main(nelements):
     # Create stresslet object
     stresslet_obj = StressletWrapper(dim=2)
 
-    # Describe boundary operator 
+    # Describe boundary operator
     bdry_op_sym = loc_sign * 0.5 * sigma_sym + sqrt_w * stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit='avg')
 
     # Bind to the qbx discretization
@@ -106,14 +107,14 @@ def main(nelements):
         xcomp = (-cl.clmath.log(r) + (x - loc[0])**2/r**2) * scaling
         ycomp = ((x - loc[0])*(y - loc[1])/r**2) * scaling
         return [ xcomp, ycomp ]
-   
+
     def couette_soln(x, y, dp, h):
         scaling = 1./(2*mu)
         xcomp = scaling * dp * ((y+(h/2.))**2 - h * (y+(h/2.)))
         ycomp = scaling * 0*y
         return [xcomp, ycomp]
- 
-       
+
+
 
     if soln_type == 'fundamental':
         pt_loc = np.array([2.0, 0.0])
@@ -122,8 +123,8 @@ def main(nelements):
         dp = -10.
         h = 2.5
         bc = couette_soln(nodes[0], nodes[1], dp, h)
-    
-    # Get rhs vector    
+
+    # Get rhs vector
     bvp_rhs = bind(qbx, sqrt_w*sym.make_sym_vector("bc",dim))(queue, bc=bc)
 
     from pytential.solve import gmres
@@ -137,7 +138,7 @@ def main(nelements):
 
     # {{{ postprocess/visualize
     sigma = gmres_result.solution
-    
+
     # Describe representation of solution for evaluation in domain
     representation_sym = stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit=-2)
 
@@ -163,7 +164,7 @@ def main(nelements):
         return np.array([
             row[mask]
             for row in test_points])
- 
+
     def stride_hack(arr):
         from numpy.lib.stride_tricks import as_strided
         return np.array(as_strided(arr, strides=(8 * len(arr[0]), 8)))
@@ -180,13 +181,13 @@ def main(nelements):
 
 
     if soln_type == 'fundamental':
-        exact_soln = fund_soln(eval_points_dev[0], eval_points_dev[1], pt_loc) 
+        exact_soln = fund_soln(eval_points_dev[0], eval_points_dev[1], pt_loc)
     else:
         exact_soln = couette_soln(eval_points_dev[0], eval_points_dev[1], dp, h)
     err = vel - get_obj_array(exact_soln)
 
     print("@@@@@@@@")
-    
+
     print("L2 error estimate: ", np.sqrt((2./(nsamp-1))**2*np.sum(err[0]*err[0]) + (2./(nsamp-1))**2*np.sum(err[1]*err[1])))
     max_error_loc = [abs(err[0]).argmax(), abs(err[1]).argmax()]
     print("max error at sampled points: ", max(abs(err[0])), max(abs(err[1])))
@@ -194,7 +195,7 @@ def main(nelements):
 
     from pytential.symbolic.mappers import DerivativeTaker
     rep_pressure = stresslet_obj.apply_pressure(inv_sqrt_w_sigma, nvec_sym, mu_sym, qbx_forced_limit=-2)
-    pressure = bind((qbx, PointsTarget(eval_points_dev)), 
+    pressure = bind((qbx, PointsTarget(eval_points_dev)),
                      rep_pressure)(queue, sigma=sigma, mu=mu, normal=normal)
     pressure = pressure.get()
     print "pressure = ", pressure

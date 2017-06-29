@@ -44,6 +44,37 @@ __doc__ = """
 .. |where-blurb| replace:: A symbolic name for a
     :class:`pytential.discretization.Discretization`
 
+Object types
+^^^^^^^^^^^^
+Based on the mathematical quantity being represented, the following types of
+objects occur as part of a symbolic operator representation:
+
+*   If a quantity is a scalar, it is just a symbolic expression--that is, a nested
+    combination of placeholders (see below), arithmetic on them (see
+    :mod:`pymbolic.primitives`. These objects are created simply by doing
+    arithmetic on placeholders.
+
+*   If the quantity is "just a bunch of scalars" (like, say, rows in a system
+    of integral equations), the symbolic representation an object array. Each
+    element of the object array contains a symbolic expression.
+
+    :func:`pytools.obj_array.make_obj_array` and
+    :func:`pytools.obj_array.join_fields`
+    can help create those.
+
+*   If it is a geometric quantity (that makes sense without explicit reference to
+    coordinates), it is a :class:`pymbolic.geometric_algebra.MultiVector`.
+    This can be converted to an object array by calling :
+    :meth:`pymbolic.geometric_algebra.MultiVector.as_vector`.
+
+:mod:`pyopencl.array.Array` instances do not occur on the symbolic of
+:mod:`pymbolic` at all.  Those hold per-node degrees of freedom (and only
+those), which is not visible as an array axis in symbolic code. (They're
+visible only once evaluated.)
+
+Placeholders
+^^^^^^^^^^^^
+
 .. autoclass:: Variable
 .. autoclass:: make_sym_vector
 .. autoclass:: make_sym_mv
@@ -274,20 +305,31 @@ class NumReferenceDerivative(DiscretizationProperty):
     mapper_method = intern("map_num_reference_derivative")
 
 
+def reference_jacobian(field, field_dim, dim, where=None):
+    """Return a :class:`np.array` representing the Jacobian of a vector field with
+    respect to the reference coordinates.
+    """
+    jac = np.zeros((field_dim, dim), np.object)
+
+    for i in range(field_dim):
+        field_component = field[i]
+        for j in range(dim):
+            jac[i, j] = NumReferenceDerivative(
+                frozenset([j]),
+                field_component,
+                where)
+
+    return jac
+
+
 def parametrization_derivative_matrix(ambient_dim, dim, where=None):
-    """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
-    the derivative of the reference-to-global parametrization.
+    """Return a :class:`np.array` representing the derivative of the
+    reference-to-global parametrization.
     """
 
-    par_grad = np.zeros((ambient_dim, dim), np.object)
-    for i in range(ambient_dim):
-        for j in range(dim):
-            par_grad[i, j] = NumReferenceDerivative(
-                    frozenset([j]),
-                    NodeCoordinateComponent(i, where),
-                    where)
-
-    return par_grad
+    return reference_jacobian(
+            [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
+            ambient_dim, dim)
 
 
 def parametrization_derivative(ambient_dim, dim, where=None):
@@ -343,9 +385,25 @@ def normal(ambient_dim, dim=None, where=None):
             cse_scope.DISCRETIZATION)
 
 
-def mean_curvature(where):
-    raise NotImplementedError()
+def mean_curvature(ambient_dim, dim=None, where=None):
+    """(Numerical) mean curvature."""
 
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if not (dim == 1 and ambient_dim == 2):
+        raise NotImplementedError(
+                "only know how to calculate curvature for a curve in 2D")
+
+    xp, yp = cse(
+            parametrization_derivative_matrix(ambient_dim, dim, where),
+            "pd_matrix", cse_scope.DISCRETIZATION)
+
+    xpp, ypp = cse(
+            reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
+            "p2d_matrix", cse_scope.DISCRETIZATION)
+
+    return (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
 
 # FIXME: make sense of this in the context of GA
 # def xyz_to_local_matrix(dim, where=None):
@@ -581,7 +639,7 @@ class IntG(Expression):
             to expressions that determine them)
 
         :arg source: The symbolic name of the source discretization. This name
-            is bound to a concrete :class:`pytential.qbx.QBXLayerPotentialSource`
+            is bound to a concrete :class:`pytential.source.LayerPotentialSourceBase`
             by :func:`pytential.bind`.
 
         :arg target: The symbolic name of the set of targets. This name gets

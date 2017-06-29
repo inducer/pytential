@@ -4,7 +4,18 @@ Installation and Usage
 Installing :mod:`pytential`
 ---------------------------
 
-#.  Start by installing `miniconda for Python 3 on 64-bit Linux <https://conda.io/miniconda.html>`_.
+This set of instructions is intended for 64-bit Linux computers.
+MacOS support is in the works.
+
+#.  Make sure your system has the basics to build software.
+
+    On Debian derivatives (Ubuntu and many more),
+    installing ``build-essential`` should do the trick.
+
+    Everywhere else, just making sure you have the ``g++`` package should be
+    enough.
+
+#.  Installing `miniconda for Python 3 on 64-bit Linux <https://conda.io/miniconda.html>`_.
 
 #.  ``export CONDA=/WHERE/YOU/INSTALLED/miniconda3``
 
@@ -37,6 +48,15 @@ or `examples <https://github.com/inducer/pytential/tree/master/examples|examples
 
 Troubleshooting the Installation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/usr/bin/ld: cannot find -lstdc++
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Try::
+
+    sudo apt-get install libstdc++-6-dev
+
+to install the missing C++ development package.
 
 No CL platforms found/unknown error -1001
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
