@@ -278,11 +278,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
     # {{{ p2qbxl
 
-    #@memoize_method
-    def _info_for_form_global_qbx_locals(self, src_weights):
+    @memoize_method
+    def _info_for_form_global_qbx_locals(self):
         logger.info("preparing interaction list for p2qbxl: start")
-
-        rscale = 1  # FIXME
 
         geo_data = self.geo_data
         traversal = geo_data.traversal()
@@ -309,15 +307,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         center_source_counts = np.array(center_source_counts)
         center_source_starts = np.cumsum(center_source_counts)
         nsources_total = center_source_starts[-1]
-
-        sources = np.empty((self.dim, nsources_total), dtype=np.float64,
-                order="F")
-        charge = np.empty(nsources_total, dtype=np.complex128)
-
-        full_dipvec = self.dipole_vec
-        if full_dipvec is not None:
-            dipvec = np.empty((self.dim, nsources_total), dtype=np.float64,
-                    order="F")
+        center_source_offsets = np.empty(nsources_total, np.int32)
 
         isource = 0
         for itgt_center, tgt_icenter in enumerate(geo_data.global_qbx_centers()):
@@ -332,39 +322,28 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
                 src_pslice = self._get_source_slice(src_ibox)
                 ns = self.tree.box_source_counts_nonchild[src_ibox]
-                sources[:, isource:isource+ns] = self._get_sources(src_pslice)
-                charge[isource:isource+ns] = src_weights[src_pslice]
-
-                if full_dipvec is not None:
-                    dipvec[:, isource:isource+ns] = full_dipvec[:, src_pslice]
+                center_source_offsets[isource:isource+ns] = np.arange(
+                        src_pslice.start, src_pslice.stop)
 
                 isource += ns
 
         centers = qbx_centers[:, geo_data.global_qbx_centers()]
 
+        rscale = 1  # FIXME
         rscale_vec = np.empty(len(center_source_counts) - 1, dtype=np.float64)
         rscale_vec.fill(rscale)  # FIXME
 
-        source_kwargs = {}
-        if self.dipole_vec is None:
-            source_kwargs["charge"] = charge
-            source_kwargs["charge_offsets"] = center_source_starts[:-1]
-
-        else:
-            source_kwargs["dipstr"] = charge
-            source_kwargs["dipstr_offsets"] = center_source_starts[:-1]
-            source_kwargs["dipvec"] = dipvec
-            source_kwargs["dipvec_offsets"] = center_source_starts[:-1]
+        nsources_vec = np.ones(self.tree.nsources, np.int32)
 
         logger.info("preparing interaction list for p2qbxl: done")
 
         return P2QBXLInfo(
-                sources=sources,
                 centers=centers,
                 center_source_starts=center_source_starts,
-                center_source_counts=center_source_counts,
+                center_source_offsets=center_source_offsets,
+                nsources_vec=nsources_vec,
                 rscale_vec=rscale_vec,
-                source_kwargs=source_kwargs,
+                ngqbx_centers=centers.shape[1],
                 )
 
     def form_global_qbx_locals(self, src_weights):
@@ -375,33 +354,62 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         if len(geo_data.global_qbx_centers()) == 0:
             return local_exps
 
-        formta_vec = self.get_vec_routine("%ddformta" + self.dp_suffix)
-        info = self._info_for_form_global_qbx_locals(src_weights)
+        formta_imany = self.get_routine("%ddformta" + self.dp_suffix,
+                suffix="_imany")
+        info = self._info_for_form_global_qbx_locals()
 
         kwargs = {}
-        kwargs.update(info.source_kwargs)
         kwargs.update(self.kernel_kwargs)
 
-        ier, loc_exp_pre = formta_vec(
+        if self.dipole_vec is None:
+            kwargs["charge"] = src_weights
+            kwargs["charge_offsets"] = info.center_source_offsets
+            kwargs["charge_starts"] = info.center_source_starts
+
+        else:
+            kwargs["dipstr"] = src_weights
+            kwargs["dipstr_offsets"] = info.center_source_offsets
+            kwargs["dipstr_starts"] = info.center_source_starts
+
+            kwargs["dipvec"] = self.dipole_vec
+            kwargs["dipvec_offsets"] = info.center_source_offsets
+            kwargs["dipvec_starts"] = info.center_source_starts
+
+        # These get max'd/added onto: pass initialized versions.
+        ier = np.zeros(info.ngqbx_centers, dtype=np.int32)
+        expn = np.zeros(
+                (info.ngqbx_centers,) + self.expansion_shape(self.qbx_order),
+                dtype=self.dtype)
+
+        ier, expn = formta_imany(
                 rscale=info.rscale_vec,
 
-                sources=info.sources,
-                sources_offsets=info.center_source_starts[:-1],
+                sources=self._get_single_sources_array(),
+                sources_offsets=info.center_source_offsets,
+                sources_starts=info.center_source_starts,
 
-                nsources=info.center_source_counts[1:],
+                nsources=info.nsources_vec,
+                nsources_offsets=info.center_source_offsets,
+                nsources_starts=info.center_source_starts,
+
                 center=info.centers,
                 nterms=self.nterms,
+
+                ier=ier,
+                expn=expn.T,
 
                 **kwargs)
 
         if np.any(ier != 0):
             raise RuntimeError("formta returned an error")
 
-        local_exps[geo_data.global_qbx_centers()] = loc_exp_pre.T
+        local_exps[geo_data.global_qbx_centers()] = expn.T
 
         return local_exps
 
     # }}}
+
+    # {{{ m2qbxl
 
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
         local_exps = self.qbx_local_expansion_zeros()
@@ -496,6 +504,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             local_exps[geo_data.global_qbx_centers()] += expn2
 
         return local_exps
+
+    # }}}
 
     def translate_box_local_to_qbx_local(self, local_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
