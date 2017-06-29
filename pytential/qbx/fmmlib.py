@@ -525,6 +525,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 # FIXME Is this right?
                 kwargs["radius"] = self.tree.root_extent * 2**(-isrc_level)
 
+            kwargs.update(self.kernel_kwargs)
+
             for tgt_icenter in range(geo_data.ncenters):
                 isrc_box = qbx_center_to_target_box[tgt_icenter]
 
@@ -550,8 +552,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                                 center2=tgt_center,
                                 nterms2=local_order,
 
-                                **kwargs,
-                                **self.kernel_kwargs)[..., 0].T
+                                **kwargs)[..., 0].T
 
                     qbx_expansions[tgt_icenter] += tmp_loc_exp
 
