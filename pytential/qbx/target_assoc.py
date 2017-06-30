@@ -46,18 +46,65 @@ unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 import logging
 logger = logging.getLogger(__name__)
 
+__doc__ = """
+The goal of target association is to:
+   * decide which targets require QBX,
+   * decide which centers to use for targets that require QBX,
+   * if no good centers are available for a target that requires QBX,
+     flag the appropriate panels for refinement.
+
+Requesting a target side
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+A target may further specify how it should be treated by target association.
+
+.. _qbx-side-request-table:
+
+.. table:: Values for target side requests
+
+   ===== ==============================================
+   Value Meaning
+   ===== ==============================================
+   0     Volume target. If near a QBX center,
+         the value from the QBX expansion is returned,
+         otherwise the volume potential is returned.
+
+   -1    Surface target. Return interior limit from
+         interior-side QBX expansion.
+
+   +1    Surface target. Return exterior limit from
+         exterior-side QBX expansion.
+
+   -2    Volume target. If within an *interior* QBX disk,
+         the value from the QBX expansion is returned,
+         otherwise the volume potential is returned.
+
+   +2    Volume target. If within an *exterior* QBX disk,
+         the value from the QBX expansion is returned,
+         otherwise the volume potential is returned.
+   ===== ==============================================
+
+Return values
+^^^^^^^^^^^^^
+
+.. autoclass:: QBXTargetAssociation
+
+.. autoclass:: QBXTargetAssociationFailedException
+
+Target association driver
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: TargetAssociationCodeContainer
+
+.. autoclass:: TargetAssociationWrangler
+
+.. autofunction:: associate_targets_to_qbx_centers
+"""
+
+
 #
-# TODO:
-# - Documentation
-#
-#==================
 # HOW DOES TARGET ASSOCIATION WORK?
 #
-# The goal of the target association is to:
-#   a) decide which targets require QBX, and
-#   b) decide which centers to use for targets that require QBX, and
-#   c) if no good centers are available for a target that requires QBX,
-#      flag the appropriate panels for refinement.
 #
 # The flow chart of what happens to target t is shown below. Pass names are in
 # parentheses:
@@ -82,6 +129,7 @@ logger = logging.getLogger(__name__)
 # |Associate t with the   |
 # |best available center. |
 # +-----------------------+
+#
 
 
 # {{{ kernels
@@ -668,7 +716,7 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
         target_discrs_and_qbx_sides, target_association_tolerance,
         debug=True, wait_for=None):
     """
-    Entry point for calling the target associator.
+    Associate targets to centers in a layer potential source.
 
     :arg lpot_source: An instance of :class:`QBXLayerPotentialSource`
 
@@ -685,29 +733,7 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
         an array of (:class:`numpy.int8`) side requests for each
         target.
 
-        The side request can take the following values for each target:
-
-        ===== ==============================================
-        Value Meaning
-        ===== ==============================================
-        0     Volume target. If near a QBX center,
-              the value from the QBX expansion is returned,
-              otherwise the volume potential is returned.
-
-        -1    Surface target. Return interior limit from
-              interior-side QBX expansion.
-
-        +1    Surface target. Return exterior limit from
-              exterior-side QBX expansion.
-
-        -2    Volume target. If within an *interior* QBX disk,
-              the value from the QBX expansion is returned,
-              otherwise the volume potential is returned.
-
-        +2    Volume target. If within an *exterior* QBX disk,
-              the value from the QBX expansion is returned,
-              otherwise the volume potential is returned.
-        ===== ==============================================
+        The side request can take on the values in :ref:`qbx-side-request-table`.
 
     :raises QBXTargetAssociationFailedException:
         when target association failed to find a center for a target.

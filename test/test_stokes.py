@@ -74,7 +74,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
             coarse_density_discr, fine_order=ovsmp_target_order, qbx_order=qbx_order,
             fmm_order=fmm_order,
             target_association_tolerance=target_association_tolerance,
-            _expansion_disks_in_tree_have_extent=True,
+            _expansions_in_tree_have_extent=True,
             ).with_refinement()
 
     density_discr = qbx.density_discr
@@ -277,7 +277,7 @@ def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
         eoc_rec.add_data_point(h_max, l2_err)
 
     print(eoc_rec)
-    assert eoc_rec.order_estimate() > qbx_order
+    assert eoc_rec.order_estimate() >= qbx_order - 1
 
 
 # You can test individual routines by typing

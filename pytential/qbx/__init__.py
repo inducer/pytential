@@ -75,8 +75,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # FIXME default debug=False once everything works
             debug=True,
             _refined_for_global_qbx=False,
-            _expansion_disks_in_tree_have_extent=False,
-            _expansion_disk_stick_out_factor=0,
+            _expansions_in_tree_have_extent=False,
+            _expansion_stick_out_factor=0,
             performance_data_file=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
@@ -155,9 +155,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         self.debug = debug
         self._refined_for_global_qbx = _refined_for_global_qbx
-        self._expansion_disks_in_tree_have_extent = \
-                _expansion_disks_in_tree_have_extent
-        self._expansion_disk_stick_out_factor = _expansion_disk_stick_out_factor
+        self._expansions_in_tree_have_extent = \
+                _expansions_in_tree_have_extent
+        self._expansion_stick_out_factor = _expansion_stick_out_factor
         self.performance_data_file = performance_data_file
 
     def copy(
@@ -168,12 +168,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             fmm_level_to_order=None,
             base_resampler=None,
             target_association_tolerance=_not_provided,
-            _expansion_disks_in_tree_have_extent=_not_provided,
-            _expansion_disk_stick_out_factor=_not_provided,
+            _expansions_in_tree_have_extent=_not_provided,
+            _expansion_stick_out_factor=_not_provided,
             performance_data_file=None,
 
             debug=_not_provided,
-            _refined_for_global_qbx=None,
+            _refined_for_global_qbx=_not_provided,
             target_stick_out_factor=_not_provided,
             ):
 
@@ -220,16 +220,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     _refined_for_global_qbx
                     if _refined_for_global_qbx is not _not_provided
                     else self._refined_for_global_qbx),
-                _expansion_disks_in_tree_have_extent=(
+                _expansions_in_tree_have_extent=(
                     # False is a valid value here
-                    _expansion_disks_in_tree_have_extent
-                    if _expansion_disks_in_tree_have_extent is not _not_provided
-                    else self._expansion_disks_in_tree_have_extent),
-                _expansion_disk_stick_out_factor=(
+                    _expansions_in_tree_have_extent
+                    if _expansions_in_tree_have_extent is not _not_provided
+                    else self._expansions_in_tree_have_extent),
+                _expansion_stick_out_factor=(
                     # 0 is a valid value here
-                    _expansion_disk_stick_out_factor
-                    if _expansion_disk_stick_out_factor is not _not_provided
-                    else self._expansion_disk_stick_out_factor),
+                    _expansion_stick_out_factor
+                    if _expansion_stick_out_factor is not _not_provided
+                    else self._expansion_stick_out_factor),
                 performance_data_file=(
                     performance_data_file or self.performance_data_file),
                 fmm_backend=self.fmm_backend)
