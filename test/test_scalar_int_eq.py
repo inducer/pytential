@@ -373,14 +373,14 @@ def run_int_eq_test(cl_ctx, queue, case, resolution):
 
         qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
         from pytential.target import PointsTarget
-        from pytential.qbx import QBXTargetAssociationFailedException
+        from pytential.qbx import TargetAssociationFailedException
 
         try:
             solved_pot = bind(
                     (qbx_tgt_tol, PointsTarget(fplot.points)),
                     op.representation(sym.var("u"))
                     )(queue, u=u, k=case.k)
-        except QBXTargetAssociationFailedException as e:
+        except TargetAssociationFailedException as e:
             fplot.write_vtk_file(
                     "failed-targets.vts",
                     [

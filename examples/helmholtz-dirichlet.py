@@ -69,7 +69,7 @@ def main():
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     from pytential.qbx import (
-            QBXLayerPotentialSource, QBXTargetAssociationFailedException)
+            QBXLayerPotentialSource, TargetAssociationFailedException)
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
@@ -159,7 +159,7 @@ def main():
         fld_in_vol = bind(
                 (qbx_stick_out, PointsTarget(targets)),
                 representation_sym)(queue, sigma=sigma, k=k).get()
-    except QBXTargetAssociationFailedException as e:
+    except TargetAssociationFailedException as e:
         fplot.write_vtk_file(
                 "failed-targets.vts",
                 [
