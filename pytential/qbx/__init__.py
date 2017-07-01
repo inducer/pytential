@@ -28,7 +28,7 @@ import six
 import numpy as np
 from pytools import memoize_method
 from meshmode.discretization import Discretization
-from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
+from pytential.qbx.target_assoc import TargetAssociationFailedException
 from pytential.source import LayerPotentialSourceBase
 
 import pyopencl as cl
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 __doc__ = """
 .. autoclass:: QBXLayerPotentialSource
 
-.. autoclass:: QBXTargetAssociationFailedException
+.. autoclass:: TargetAssociationFailedException
 """
 
 
@@ -775,7 +775,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
 __all__ = (
         QBXLayerPotentialSource,
-        QBXTargetAssociationFailedException,
+        TargetAssociationFailedException,
         )
 
 # vim: fdm=marker

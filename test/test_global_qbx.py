@@ -395,11 +395,11 @@ def test_target_association_failure(ctx_getter):
 
     from pytential.qbx.target_assoc import (
             TargetAssociationCodeContainer, associate_targets_to_qbx_centers,
-            QBXTargetAssociationFailedException)
+            TargetAssociationFailedException)
 
     code_container = TargetAssociationCodeContainer(cl_ctx)
 
-    with pytest.raises(QBXTargetAssociationFailedException):
+    with pytest.raises(TargetAssociationFailedException):
         associate_targets_to_qbx_centers(
             lpot_source,
             code_container.get_wrangler(queue),

@@ -87,9 +87,9 @@ A target may further specify how it should be treated by target association.
 Return values
 ^^^^^^^^^^^^^
 
-.. autoclass:: QBXTargetAssociation
+.. autoclass:: TargetAssociation
 
-.. autoclass:: QBXTargetAssociationFailedException
+.. autoclass:: TargetAssociationFailedException
 
 Target association driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -352,7 +352,7 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
 
 # {{{ target associator
 
-class QBXTargetAssociationFailedException(Exception):
+class TargetAssociationFailedException(Exception):
     """
     .. attribute:: refine_flags
     .. attribute:: failed_target_flags
@@ -365,7 +365,7 @@ class QBXTargetAssociationFailedException(Exception):
         return "<%s>" % type(self).__name__
 
 
-class QBXTargetAssociation(DeviceDataRecord):
+class TargetAssociation(DeviceDataRecord):
     """
     .. attribute:: target_to_center
     """
@@ -709,7 +709,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         target_to_center.fill(-1)
         target_to_center.finish()
 
-        return QBXTargetAssociation(target_to_center=target_to_center)
+        return TargetAssociation(target_to_center=target_to_center)
 
 
 def associate_targets_to_qbx_centers(lpot_source, wrangler,
@@ -735,11 +735,11 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
 
         The side request can take on the values in :ref:`qbx-side-request-table`.
 
-    :raises QBXTargetAssociationFailedException:
+    :raises TargetAssociationFailedException:
         when target association failed to find a center for a target.
         The returned exception object contains suggested refine flags.
 
-    :returns: A :class:`QBXTargetAssociation`.
+    :returns: A :class:`TargetAssociation`.
     """
 
     tree = wrangler.build_tree(lpot_source,
@@ -783,7 +783,7 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
                 tree, peer_lists, lpot_source, target_status, refine_flags, debug)
 
         assert have_panel_to_refine
-        raise QBXTargetAssociationFailedException(
+        raise TargetAssociationFailedException(
                 refine_flags=refine_flags.with_queue(None),
                 failed_target_flags=center_not_found.with_queue(None))
 
