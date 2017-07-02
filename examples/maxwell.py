@@ -101,7 +101,7 @@ def main():
 
         qbx_tgt_tol = qbx.copy(target_association_tolerance=0.1)
         from pytential.target import PointsTarget
-        from pytential.qbx import TargetAssociationFailedException
+        from pytential.qbx import QBXTargetAssociationFailedException
         try:
             fld_in_vol = bind(
                     (qbx_tgt_tol, PointsTarget(fplot.points)),
@@ -116,7 +116,7 @@ def main():
                             qbx_forced_limit=None)),
                         ])
                     )(queue, jt=jt, rho=rho, k=k)
-        except TargetAssociationFailedException as e:
+        except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
                     "failed-targets.vts",
                     [
