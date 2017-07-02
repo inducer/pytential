@@ -394,14 +394,14 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
 
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
 
-    from pytential.qbx import TargetAssociationFailedException
+    from pytential.qbx import QBXTargetAssociationFailedException
     try:
         direct_density_discr = direct_qbx.density_discr
         direct_sigma = direct_density_discr.zeros(queue) + 1
         direct_fld_in_vol = bind((direct_qbx, ptarget), op)(
                 queue, sigma=direct_sigma)
 
-    except TargetAssociationFailedException as e:
+    except QBXTargetAssociationFailedException as e:
         fplot.show_scalar_in_matplotlib(e.failed_target_flags.get(queue))
         import matplotlib.pyplot as pt
         pt.show()
