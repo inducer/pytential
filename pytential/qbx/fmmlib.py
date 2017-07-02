@@ -422,7 +422,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         ngqbx_centers = len(geo_data.global_qbx_centers())
 
         if ngqbx_centers == 0:
-            return
+            return local_exps
 
         mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
 
