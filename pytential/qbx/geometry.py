@@ -222,6 +222,28 @@ class QBXFMMGeometryCodeGetter(object):
                     if (i+1 == N) *count = item;
                     """)
 
+    @property
+    @memoize_method
+    def pick_used_centers(self):
+        knl = lp.make_kernel(
+            """{[i]: 0<=i<ntargets}""",
+            """
+                <>target_has_center = (target_to_center[i] >= 0)
+                center_is_used[target_to_center[i]] = 1 \
+                    {id=center_is_used_write,if=target_has_center}
+            """,
+            [
+                lp.GlobalArg("target_to_center", shape="ntargets", offset=lp.auto),
+                lp.GlobalArg("center_is_used", shape="ncenters"),
+                lp.ValueArg("ncenters", np.int32),
+                lp.ValueArg("ntargets", np.int32),
+            ],
+            name="pick_used_centers",
+            silenced_warnings="write_race(center_is_used_write)")
+
+        knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
+        return knl
+
 # }}}
 
 
@@ -603,24 +625,46 @@ class QBXFMMGeometryData(object):
         """Build a list of indices of QBX centers that use global QBX.  This
         indexes into the global list of targets, (see :meth:`target_info`) of
         which the QBX centers occupy the first *ncenters*.
+
+        Centers without any associated targets are excluded.
         """
 
         tree = self.tree()
+        user_target_to_center = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
+            logger.info("find global qbx centers: start")
+
+            tgt_assoc_result = (
+                    user_target_to_center.with_queue(queue)[self.ncenters:])
+
+            center_is_used = cl.array.zeros(queue, self.ncenters, np.int8)
+
+            self.code_getter.pick_used_centers(
+                    queue,
+                    center_is_used=center_is_used,
+                    target_to_center=tgt_assoc_result,
+                    ncenters=self.ncenters,
+                    ntargets=len(tgt_assoc_result))
+
             from pyopencl.algorithm import copy_if
 
-            logger.info("find global qbx centers: start")
             result, count, _ = copy_if(
                     cl.array.arange(queue, self.ncenters,
                         tree.particle_id_dtype),
-                    "global_qbx_flags[i] != 0",
+                    "global_qbx_flags[i] != 0 && center_is_used[i] != 0",
                     extra_args=[
-                        ("global_qbx_flags", self.global_qbx_flags())
+                        ("global_qbx_flags", self.global_qbx_flags()),
+                        ("center_is_used", center_is_used)
                         ],
                     queue=queue)
 
             logger.info("find global qbx centers: done")
+
+            if self.debug:
+                logger.debug(
+                        "find global qbx centers: using %d/%d centers"
+                        % (int(count.get()), self.ncenters))
 
             return result[:count.get()].with_queue(None)
 

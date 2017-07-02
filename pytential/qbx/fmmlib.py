@@ -419,6 +419,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
         centers = self.tree.box_centers
+        ngqbx_centers = len(geo_data.global_qbx_centers())
+
+        if ngqbx_centers == 0:
+            return local_exps
 
         mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
 
@@ -429,7 +433,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
             print("par data prep lev %d" % isrc_level)
 
-            ngqbx_centers = len(geo_data.global_qbx_centers())
             tgt_icenter_vec = geo_data.global_qbx_centers()
             icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
 
