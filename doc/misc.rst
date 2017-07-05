@@ -44,7 +44,7 @@ Next time you want to use `pytential`, just run the following command::
 You may also like to add this to a startup file (like :file:`$HOME/.bashrc`) or create an alias for it.
 
 After this, you should be able to run the `tests <https://github.com/inducer/pytential/tree/master/test>`_
-or `examples <https://github.com/inducer/pytential/tree/master/examples|examples>`_.
+or `examples <https://github.com/inducer/pytential/tree/master/examples>`_.
 
 Troubleshooting the Installation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
