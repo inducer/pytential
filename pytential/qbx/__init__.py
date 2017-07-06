@@ -530,9 +530,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         source_extra_kwargs=source_extra_kwargs,
                         kernel_extra_kwargs=kernel_extra_kwargs)
 
-        if len(geo_data.global_qbx_centers()) != geo_data.ncenters:
-            raise NotImplementedError("geometry has centers requiring local QBX")
-
         from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)
                 == target_state.FAILED).any().get():
