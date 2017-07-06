@@ -441,16 +441,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, base_kernel, out_kernels):
+    def expansion_wrangler_code_container(self, fmm_kernel, out_kernels):
         mpole_expn_class = \
-                self.expansion_factory.get_multipole_expansion_class(base_kernel)
+                self.expansion_factory.get_multipole_expansion_class(fmm_kernel)
         local_expn_class = \
-                self.expansion_factory.get_local_expansion_class(base_kernel)
+                self.expansion_factory.get_local_expansion_class(fmm_kernel)
 
         from functools import partial
-        fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
-        fmm_local_factory = partial(local_expn_class, base_kernel)
-        qbx_local_factory = partial(local_expn_class, base_kernel)
+        fmm_mpole_factory = partial(mpole_expn_class, fmm_kernel)
+        fmm_local_factory = partial(local_expn_class, fmm_kernel)
+        qbx_local_factory = partial(local_expn_class, fmm_kernel)
 
         if self.fmm_backend == "sumpy":
             from pytential.qbx.fmm import \
@@ -515,16 +515,17 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 * self.weights_and_area_elements())
 
         out_kernels = tuple(knl for knl in insn.kernels)
-        base_kernel = self.get_fmm_base_kernel(out_kernels)
-        value_dtype = self.get_fmm_value_dtype(base_kernel, strengths)
+        fmm_kernel = self.get_fmm_kernel(out_kernels)
+        output_and_expansion_dtype = (
+                self.get_fmm_output_and_expansion_dtype(fmm_kernel, strengths))
         kernel_extra_kwargs, source_extra_kwargs = (
                 self.get_fmm_expansion_wrangler_extra_kwargs(
                     queue, out_kernels, geo_data.tree().user_source_ids,
                     insn.kernel_arguments, evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
-                base_kernel, out_kernels).get_wrangler(
-                        queue, geo_data, value_dtype,
+                fmm_kernel, out_kernels).get_wrangler(
+                        queue, geo_data, output_and_expansion_dtype,
                         self.qbx_order,
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,

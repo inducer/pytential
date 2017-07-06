@@ -208,21 +208,21 @@ class LayerPotentialSourceBase(PotentialSource):
 
     # {{{ fmm setup helpers
 
-    def get_fmm_base_kernel(self, kernels):
-        base_kernel = None
+    def get_fmm_kernel(self, kernels):
+        fmm_kernel = None
 
         from sumpy.kernel import AxisTargetDerivativeRemover
         for knl in kernels:
-            candidate_base_kernel = AxisTargetDerivativeRemover()(knl)
+            candidate_fmm_kernel = AxisTargetDerivativeRemover()(knl)
 
-            if base_kernel is None:
-                base_kernel = candidate_base_kernel
+            if fmm_kernel is None:
+                fmm_kernel = candidate_fmm_kernel
             else:
-                assert base_kernel == candidate_base_kernel
+                assert fmm_kernel == candidate_fmm_kernel
 
-        return base_kernel
+        return fmm_kernel
 
-    def get_fmm_value_dtype(self, base_kernel, strengths):
+    def get_fmm_output_and_expansion_dtype(self, base_kernel, strengths):
         if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
             return self.complex_dtype
         else:
