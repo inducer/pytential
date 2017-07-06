@@ -441,16 +441,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, base_kernel, out_kernels):
+    def expansion_wrangler_code_container(self, fmm_kernel, out_kernels):
         mpole_expn_class = \
-                self.expansion_factory.get_multipole_expansion_class(base_kernel)
+                self.expansion_factory.get_multipole_expansion_class(fmm_kernel)
         local_expn_class = \
-                self.expansion_factory.get_local_expansion_class(base_kernel)
+                self.expansion_factory.get_local_expansion_class(fmm_kernel)
 
         from functools import partial
-        fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
-        fmm_local_factory = partial(local_expn_class, base_kernel)
-        qbx_local_factory = partial(local_expn_class, base_kernel)
+        fmm_mpole_factory = partial(mpole_expn_class, fmm_kernel)
+        fmm_local_factory = partial(local_expn_class, fmm_kernel)
+        qbx_local_factory = partial(local_expn_class, fmm_kernel)
 
         if self.fmm_backend == "sumpy":
             from pytential.qbx.fmm import \
@@ -514,66 +514,22 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
 
-        # {{{ get expansion wrangler
-
-        base_kernel = None
-        out_kernels = []
-
-        from sumpy.kernel import AxisTargetDerivativeRemover
-        for knl in insn.kernels:
-            candidate_base_kernel = AxisTargetDerivativeRemover()(knl)
-
-            if base_kernel is None:
-                base_kernel = candidate_base_kernel
-            else:
-                assert base_kernel == candidate_base_kernel
-
         out_kernels = tuple(knl for knl in insn.kernels)
-
-        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
-            value_dtype = self.complex_dtype
-        else:
-            value_dtype = self.real_dtype
-
-        # {{{ build extra_kwargs dictionaries
-
-        # This contains things like the Helmholtz parameter k or
-        # the normal directions for double layers.
-
-        def reorder_sources(source_array):
-            if isinstance(source_array, cl.array.Array):
-                return (source_array
-                        .with_queue(queue)
-                        [geo_data.tree().user_source_ids]
-                        .with_queue(None))
-            else:
-                return source_array
-
-        kernel_extra_kwargs = {}
-        source_extra_kwargs = {}
-
-        from sumpy.tools import gather_arguments, gather_source_arguments
-        from pytools.obj_array import with_object_array_or_scalar
-        for func, var_dict in [
-                (gather_arguments, kernel_extra_kwargs),
-                (gather_source_arguments, source_extra_kwargs),
-                ]:
-            for arg in func(out_kernels):
-                var_dict[arg.name] = with_object_array_or_scalar(
-                        reorder_sources,
-                        evaluate(insn.kernel_arguments[arg.name]))
-
-        # }}}
+        fmm_kernel = self.get_fmm_kernel(out_kernels)
+        output_and_expansion_dtype = (
+                self.get_fmm_output_and_expansion_dtype(fmm_kernel, strengths))
+        kernel_extra_kwargs, source_extra_kwargs = (
+                self.get_fmm_expansion_wrangler_extra_kwargs(
+                    queue, out_kernels, geo_data.tree().user_source_ids,
+                    insn.kernel_arguments, evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
-                base_kernel, out_kernels).get_wrangler(
-                        queue, geo_data, value_dtype,
+                fmm_kernel, out_kernels).get_wrangler(
+                        queue, geo_data, output_and_expansion_dtype,
                         self.qbx_order,
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
                         kernel_extra_kwargs=kernel_extra_kwargs)
-
-        # }}}
 
         from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)
