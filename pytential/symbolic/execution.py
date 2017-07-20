@@ -127,24 +127,24 @@ class EvaluationMapper(EvaluationMapperBase):
         assert not is_obj_array(result)  # numpy bug with obj_array.imag
         return result.imag
 
-    def apply_sqrt(self, args):
+    def apply_conj(self, args):
         arg, = args
-        return cl.clmath.sqrt(self.rec(arg))
+        return self.rec(arg).conj()
 
     def apply_abs(self, args):
         arg, = args
         return abs(self.rec(arg))
 
-    def apply_conj(self, args):
-        arg, = args
-        return self.rec(arg).conj()
-
     # }}}
 
     def map_call(self, expr):
-        from pytential.symbolic.primitives import Function
-        if isinstance(expr.function, Function):
+        from pytential.symbolic.primitives import EvalMapperFunction, CLMathFunction
+
+        if isinstance(expr.function, EvalMapperFunction):
             return getattr(self, "apply_"+expr.function.name)(expr.parameters)
+        elif isinstance(expr.function, CLMathFunction):
+            return getattr(cl.clmath, expr.function.name)(
+                    *(self.rec(arg) for arg in expr.parameters), queue=self.queue)
         else:
             return EvaluationMapperBase.map_call(self, expr)
 
@@ -246,8 +246,8 @@ class BoundExpression:
     def get_discretization(self, where):
         discr = self.places[where]
 
-        from pytential.qbx import LayerPotentialSource
-        if isinstance(discr, LayerPotentialSource):
+        from pytential.source import LayerPotentialSourceBase
+        if isinstance(discr, LayerPotentialSourceBase):
             discr = discr.density_discr
 
         return discr
@@ -303,9 +303,9 @@ class BoundExpression:
 def prepare_places(places):
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
     from meshmode.discretization import Discretization
-    from pytential.qbx import LayerPotentialSource
+    from pytential.source import LayerPotentialSourceBase
 
-    if isinstance(places, LayerPotentialSource):
+    if isinstance(places, LayerPotentialSourceBase):
         places = {
                 DEFAULT_SOURCE: places,
                 DEFAULT_TARGET: places.density_discr,
@@ -326,8 +326,8 @@ def prepare_places(places):
 
     def cast_to_place(discr):
         from pytential.target import TargetBase
-        if not isinstance(discr, (Discretization, TargetBase,
-                LayerPotentialSource)):
+        from pytential.source import PotentialSource
+        if not isinstance(discr, (Discretization, TargetBase, PotentialSource)):
             raise TypeError("must pass discretizations, "
                     "layer potential sources or targets as 'places'")
         return discr
@@ -345,7 +345,7 @@ def prepare_expr(places, expr, auto_where=None):
     """
 
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-    from pytential.qbx import LayerPotentialSource
+    from pytential.source import LayerPotentialSourceBase
 
     from pytential.symbolic.mappers import (
             ToTargetTagger,
@@ -364,7 +364,7 @@ def prepare_expr(places, expr, auto_where=None):
     expr = DerivativeBinder()(expr)
 
     for name, place in six.iteritems(places):
-        if isinstance(place, LayerPotentialSource):
+        if isinstance(place, LayerPotentialSourceBase):
             expr = place.preprocess_optemplate(name, places, expr)
 
     return expr

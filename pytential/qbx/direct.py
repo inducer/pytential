@@ -28,69 +28,6 @@ import numpy as np
 from sumpy.qbx import LayerPotential as LayerPotentialBase
 
 
-# {{{ center finder
-
-class CenterFinder:
-    def __init__(self, ambient_dim):
-        self.ambient_dim = ambient_dim
-
-    def get_kernel(self):
-        knl = lp.make_kernel(
-                "{[ictr,itgt,idim]: "
-                "0<=itgt<ntargets "
-                "and 0<=ictr<ncenters "
-                "and 0<=idim<ambient_dim}",
-
-                """
-                for itgt
-                    for ictr
-                        <> dist_sq = sum(idim,
-                                (tgt[idim,itgt] - center[idim,ictr])**2)
-                        <> in_disk = dist_sq < (radius[ictr]*1.05)**2
-                        <> matches = (
-                                (in_disk
-                                    and qbx_forced_limit == 0)
-                                or (in_disk
-                                        and qbx_forced_limit != 0
-                                        and qbx_forced_limit * center_side[ictr] > 0)
-                                )
-
-                        <> post_dist_sq = if(matches, dist_sq, HUGE)
-                    end
-                    <> min_dist_sq, <> min_ictr = argmin(ictr, post_dist_sq)
-
-                    tgt_to_qbx_center[itgt] = if(min_dist_sq < HUGE, min_ictr, -1)
-                end
-                """,
-                [
-                    lp.ValueArg("qbx_forced_limit", np.int32),
-                    "..."
-                    ],
-                name="find_centers_direct")
-
-        knl = lp.fix_parameters(knl,
-                ambient_dim=self.ambient_dim,
-                HUGE=2**30)
-
-        knl = lp.tag_array_axes(knl, "center", "sep,C")
-        knl = lp.tag_inames(knl, "idim:unr")
-
-        return knl
-
-    def get_optimized_kernel(self):
-        knl = self.get_kernel()
-        knl = lp.split_iname(knl, "itgt", 128, outer_tag="g.0")
-        return knl
-
-    def __call__(self, queue, tgt, center, center_side, qbx_forced_limit, radius):
-        return self.get_optimized_kernel()(
-                queue, tgt=tgt, center=center, center_side=center_side,
-                qbx_forced_limit=qbx_forced_limit,
-                radius=radius)
-
-# }}}
-
-
 # {{{ qbx applier on a target/center subset
 
 class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):

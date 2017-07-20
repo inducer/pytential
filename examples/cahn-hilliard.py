@@ -1,5 +1,4 @@
 import numpy as np
-import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
@@ -17,8 +16,7 @@ bdry_quad_order = 4
 mesh_order = bdry_quad_order
 qbx_order = bdry_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
-fmm_order = 25
-k = 25
+fmm_order = 8
 
 # }}}
 
@@ -33,36 +31,10 @@ def main():
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
 
-    if 0:
-        mesh = make_curve_mesh(
-                partial(ellipse, 1),
+    mesh = make_curve_mesh(
+                partial(ellipse, 2),
                 np.linspace(0, 1, nelements+1),
                 mesh_order)
-    else:
-        base_mesh = make_curve_mesh(
-                partial(ellipse, 1),
-                np.linspace(0, 1, nelements+1),
-                mesh_order)
-
-        from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
-        nx = 2
-        ny = 2
-        dx = 2 / nx
-        meshes = [
-                affine_map(
-                    base_mesh,
-                    A=np.diag([dx*0.25, dx*0.25]),
-                    b=np.array([dx*(ix-nx/2), dx*(iy-ny/2)]))
-                for ix in range(nx)
-                for iy in range(ny)]
-
-        mesh = merge_disjoint_meshes(meshes, single_group=True)
-
-        if 0:
-            from meshmode.mesh.visualization import draw_curve
-            draw_curve(mesh)
-            import matplotlib.pyplot as plt
-            plt.show()
 
     pre_density_discr = Discretization(
             cl_ctx, mesh,
@@ -72,56 +44,39 @@ def main():
             QBXLayerPotentialSource, QBXTargetAssociationFailedException)
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
-            fmm_order=fmm_order
+            fmm_order=fmm_order,
+            expansion_disks_in_tree_have_extent=True,
             ).with_refinement()
     density_discr = qbx.density_discr
 
-    # {{{ describe bvp
+    from pytential.symbolic.pde.cahn_hilliard import CahnHilliardOperator
+    chop = CahnHilliardOperator(
+            # FIXME: Constants?
+            lambda1=1.5,
+            lambda2=1.25,
+            c=1)
 
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-    kernel = HelmholtzKernel(2)
-
-    cse = sym.cse
-
-    sigma_sym = sym.var("sigma")
-    sqrt_w = sym.sqrt_jac_q_weight(2)
-    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
-
-    # Brakhage-Werner parameter
-    alpha = 1j
-
-    # -1 for interior Dirichlet
-    # +1 for exterior Dirichlet
-    loc_sign = +1
-
-    bdry_op_sym = (-loc_sign*0.5*sigma_sym
-            + sqrt_w*(
-                alpha*sym.S(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
-                - sym.D(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
-                ))
-
-    # }}}
-
-    bound_op = bind(qbx, bdry_op_sym)
+    unk = chop.make_unknown("sigma")
+    bound_op = bind(qbx, chop.operator(unk))
 
     # {{{ fix rhs and solve
 
     nodes = density_discr.nodes().with_queue(queue)
-    k_vec = np.array([2, 1])
-    k_vec = k * k_vec / la.norm(k_vec, 2)
 
-    def u_incoming_func(x):
-        return cl.clmath.exp(
-                1j * (x[0] * k_vec[0] + x[1] * k_vec[1]))
+    def g(xvec):
+        x, y = xvec
+        return cl.clmath.atan2(y, x)
 
-    bc = -u_incoming_func(nodes)
-
-    bvp_rhs = bind(qbx, sqrt_w*sym.var("bc"))(queue, bc=bc)
+    bc = sym.make_obj_array([
+        # FIXME: Realistic BC
+        g(nodes),
+        -g(nodes),
+        ])
 
     from pytential.solve import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
-            bvp_rhs, tol=1e-8, progress=True,
+            bound_op.scipy_op(queue, "sigma", dtype=np.complex128),
+            bc, tol=1e-8, progress=True,
             stall_iterations=0,
             hard_failure=True)
 
@@ -131,23 +86,16 @@ def main():
 
     sigma = gmres_result.solution
 
-    repr_kwargs = dict(k=sym.var("k"), qbx_forced_limit=None)
-    representation_sym = (
-            alpha*sym.S(kernel, inv_sqrt_w_sigma, **repr_kwargs)
-            - sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
-
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
 
     targets = cl.array.to_device(queue, fplot.points)
 
-    u_incoming = u_incoming_func(targets)
-
     qbx_stick_out = qbx.copy(target_association_tolerance=0.05)
 
-    indicator_qbx = qbx_stick_out.copy(
-            fmm_level_to_order=lambda lev: 7, qbx_order=2)
+    indicator_qbx = qbx_stick_out.copy(qbx_order=2)
 
+    from sumpy.kernel import LaplaceKernel
     ones_density = density_discr.zeros(queue)
     ones_density.fill(1)
     indicator = bind(
@@ -158,7 +106,7 @@ def main():
     try:
         fld_in_vol = bind(
                 (qbx_stick_out, PointsTarget(targets)),
-                representation_sym)(queue, sigma=sigma, k=k).get()
+                chop.representation(unk))(queue, sigma=sigma).get()
     except QBXTargetAssociationFailedException as e:
         fplot.write_vtk_file(
                 "failed-targets.vts",
@@ -174,7 +122,6 @@ def main():
             [
                 ("potential", fld_in_vol),
                 ("indicator", indicator),
-                ("u_incoming", u_incoming.get()),
                 ]
             )
 

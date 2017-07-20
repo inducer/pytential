@@ -37,7 +37,9 @@ class PECAugmentedMFIEOperator:
     see notes/mfie.tm
     """
 
-    def __init__(self, k):
+    def __init__(self, k=sym.var("k")):
+        from sumpy.kernel import HelmholtzKernel
+        self.kernel = HelmholtzKernel(3)
         self.k = k
 
     def j_operator(self, loc, Jt):
@@ -58,9 +60,8 @@ class PECAugmentedMFIEOperator:
 
     def scattered_boundary_field(self, Jt, rho, loc):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
-        k = self.k
 
-        A = S(k, Jxyz)
+        A = S(self.kernel, Jxyz, k=self.k)
         grad_phi = grad_S(k, rho, 3)
 
         # use - n x n x v = v_tangential
@@ -72,18 +73,16 @@ class PECAugmentedMFIEOperator:
         return join_fields(E_scat, H_scat)
 
     def scattered_volume_field(self, Jt, rho):
-        Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
+        Jxyz = sym.cse(sym.tangential_to_xyz(Jt), "Jxyz")
 
-        k = self.k
+        A = sym.S(self.kernel, Jxyz, k=self.k, qbx_forced_limit=None)
+        #grad_phi = grad_S(self.kernel, rho, 3, k=self.k)
 
-        A = S(k, Jxyz)
-        grad_phi = grad_S(k, rho, 3)
-
-        E_scat = 1j*k*A - grad_phi
-        H_scat = curl_S_volume(k, Jxyz)
+        E_scat = 1j*self.k*A# - grad_phi
+        #H_scat = curl_S_volume(k, Jxyz)
 
         from pytools.obj_array import join_fields
-        return join_fields(E_scat, H_scat)
+        return E_scat #join_fields(E_scat, H_scat)
 
 # }}}
 

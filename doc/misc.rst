@@ -1,23 +1,101 @@
-Installation
-============
+Installation and Usage
+======================
 
-This command should install :mod:`pytential`::
+Installing :mod:`pytential`
+---------------------------
 
-    pip install pytential
+This set of instructions is intended for 64-bit Linux computers.
+MacOS support is in the works.
 
-You may need to run this with :command:`sudo`.
-If you don't already have `pip <https://pypi.python.org/pypi/pip>`_,
-run this beforehand::
+#.  Make sure your system has the basics to build software.
 
-    curl -O https://raw.github.com/pypa/pip/master/contrib/get-pip.py
-    python get-pip.py
+    On Debian derivatives (Ubuntu and many more),
+    installing ``build-essential`` should do the trick.
 
-For a more manual installation, download the source, unpack it,
-and say::
+    Everywhere else, just making sure you have the ``g++`` package should be
+    enough.
 
-    python setup.py install
+#.  Installing `miniconda for Python 3 on 64-bit Linux <https://conda.io/miniconda.html>`_.
 
-In addition, you need to have :mod:`numpy` installed.
+#.  ``export CONDA=/WHERE/YOU/INSTALLED/miniconda3``
+
+    If you accepted the default location, this should work:
+
+    ``export CONDA=$HOME/miniconda3``
+
+#.  ``$CONDA/bin/conda create -n inteq python=3.5.2``
+
+#.  ``source $CONDA/bin/activate inteq``
+
+#.  ``conda config --add channels conda-forge``
+
+#.  ``conda config --add channels inducer``
+
+#.  ``conda install git pip pocl islpy pyopencl sympy meshpy``
+
+#.  Type the following command::
+
+        hash -r; for i in pymbolic cgen genpy modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
+
+Next time you want to use `pytential`, just run the following command::
+
+    source /WHERE/YOU/INSTALLED/miniconda3/bin/activate inteq
+
+You may also like to add this to a startup file (like :file:`$HOME/.bashrc`) or create an alias for it.
+
+After this, you should be able to run the `tests <https://github.com/inducer/pytential/tree/master/test>`_
+or `examples <https://github.com/inducer/pytential/tree/master/examples>`_.
+
+Troubleshooting the Installation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/usr/bin/ld: cannot find -lstdc++
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Try::
+
+    sudo apt-get install libstdc++-6-dev
+
+to install the missing C++ development package.
+
+No CL platforms found/unknown error -1001
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you get::
+
+    pyopencl.cffi_cl.LogicError: clGetPlatformIDs failed: <unknown error -1001>
+
+try::
+
+    conda update ocl-icd pocl
+
+(This indicates that the OpenCL driver loader didn't find any drivers, or the
+drivers were themselves missing dependencies.)
+
+Assertion 'error == 0'
+~~~~~~~~~~~~~~~~~~~~~~~
+
+If you get::
+
+    /opt/conda/conda-bld/home_1484016200338/work/pocl-0.13/lib/CL/devices/common.c:108:
+    llvm_codegen: Assertion 'error == 0 ' failed. Aborted (core dumped)
+
+then you're likely out of memory.
+
+Logging
+-------
+
+Logging output for scripts that use :mod:`pytential` may be controlled on a
+per-module basis through the environment variables ``PYTENTIAL_LOG_`` +
+*log_level*. The variable for the desired level should be set to a
+colon-separated list of module names. Example usage::
+
+    PYTENTIAL_LOG_DEBUG=pytential:loopy PYTENTIAL_LOG_INFO=boxtree python test.py
+
+This sets the logging level of :mod:`pytential` and :mod:`loopy` to
+:attr:`logging.DEBUG`, and the logging level of :mod:`boxtree` to
+:attr:`logging.INFO`.
+
+Note: This feature is incompatible with :func:`logging.basicConfig()`.
 
 User-visible Changes
 ====================

@@ -54,7 +54,7 @@ pre_density_discr = Discretization(
 
 qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
         fmm_order=qbx_order+3,
-        target_stick_out_factor=0.005).with_refinement()
+        target_association_tolerance=0.005).with_refinement()
 
 density_discr = qbx.density_discr
 
@@ -62,8 +62,7 @@ nodes = density_discr.nodes().with_queue(queue)
 
 angle = cl.clmath.atan2(nodes[1], nodes[0])
 
-d = sym.Derivative()
-#op = d.nabla[0] * d(sym.S(kernel, sym.var("sigma")))
+#op = sym.d_dx(sym.S(kernel, sym.var("sigma")))
 op = sym.D(kernel, sym.var("sigma"), **kernel_kwargs)
 #op = sym.S(kernel, sym.var("sigma"), **kernel_kwargs)
 

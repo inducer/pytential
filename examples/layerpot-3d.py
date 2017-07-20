@@ -58,8 +58,7 @@ nodes = density_discr.nodes().with_queue(queue)
 angle = cl.clmath.atan2(nodes[1], nodes[0])
 
 from pytential import bind, sym
-d = sym.Derivative()
-#op = d.nabla[0] * d(sym.S(kernel, sym.var("sigma")))
+#op = sym.d_dx(sym.S(kernel, sym.var("sigma")))
 op = sym.D(kernel, sym.var("sigma"))
 #op = sym.S(kernel, sym.var("sigma"))
 
@@ -91,7 +90,9 @@ if 1:
                 ]
             )
 
-    bdry_normals = bind(density_discr, sym.normal())(queue).as_vector(dtype=object)
+    bdry_normals = bind(
+            density_discr,
+            sym.normal(density_discr.ambient_dim))(queue).as_vector(dtype=object)
 
     from meshmode.discretization.visualization import make_visualizer
     bdry_vis = make_visualizer(queue, density_discr, target_order)

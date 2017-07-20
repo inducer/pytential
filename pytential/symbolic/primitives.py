@@ -27,19 +27,53 @@ from six.moves import intern
 from warnings import warn
 
 import numpy as np
-from pymbolic.primitives import (  # noqa
+from pymbolic.primitives import (  # noqa: F401, N813
         Expression as ExpressionBase, Variable as var,
         cse_scope as cse_scope_base,
         make_common_subexpression as cse)
 from pymbolic.geometric_algebra import MultiVector, componentwise
-from pymbolic.geometric_algebra.primitives import (  # noqa
+from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
-from pymbolic.primitives import make_sym_vector  # noqa
+from pymbolic.primitives import make_sym_vector  # noqa: F401
+from pytools.obj_array import make_obj_array  # noqa: F401
+
+from functools import partial
 
 
 __doc__ = """
 .. |where-blurb| replace:: A symbolic name for a
     :class:`pytential.discretization.Discretization`
+
+Object types
+^^^^^^^^^^^^
+Based on the mathematical quantity being represented, the following types of
+objects occur as part of a symbolic operator representation:
+
+*   If a quantity is a scalar, it is just a symbolic expression--that is, a nested
+    combination of placeholders (see below), arithmetic on them (see
+    :mod:`pymbolic.primitives`. These objects are created simply by doing
+    arithmetic on placeholders.
+
+*   If the quantity is "just a bunch of scalars" (like, say, rows in a system
+    of integral equations), the symbolic representation an object array. Each
+    element of the object array contains a symbolic expression.
+
+    :func:`pytools.obj_array.make_obj_array` and
+    :func:`pytools.obj_array.join_fields`
+    can help create those.
+
+*   If it is a geometric quantity (that makes sense without explicit reference to
+    coordinates), it is a :class:`pymbolic.geometric_algebra.MultiVector`.
+    This can be converted to an object array by calling :
+    :meth:`pymbolic.geometric_algebra.MultiVector.as_vector`.
+
+:mod:`pyopencl.array.Array` instances do not occur on the symbolic of
+:mod:`pymbolic` at all.  Those hold per-node degrees of freedom (and only
+those), which is not visible as an array axis in symbolic code. (They're
+visible only once evaluated.)
+
+Placeholders
+^^^^^^^^^^^^
 
 .. autoclass:: Variable
 .. autoclass:: make_sym_vector
@@ -81,6 +115,12 @@ Elementary numerics
 Calculus
 ^^^^^^^^
 .. autoclass:: Derivative
+.. autofunction:: dd_axis
+.. autofunction:: d_dx
+.. autofunction:: d_dy
+.. autofunction:: d_dz
+.. autofunction:: grad_mv
+.. autofunction:: grad
 
 Layer potentials
 ^^^^^^^^^^^^^^^^
@@ -150,14 +190,43 @@ class Function(var):
 
             return with_object_array_or_scalar(make_op, operand)
         else:
-            return var.__call__(self, operand)
+            return var.__call__(self, operand, *args, **kwargs)
 
 
-real = Function("real")
-imag = Function("imag")
-conj = Function("conj")
-sqrt = Function("sqrt")
-abs = Function("abs")
+class EvalMapperFunction(Function):
+    pass
+
+
+class CLMathFunction(Function):
+    pass
+
+
+real = EvalMapperFunction("real")
+imag = EvalMapperFunction("imag")
+conj = EvalMapperFunction("conj")
+abs = EvalMapperFunction("abs")
+
+sqrt = CLMathFunction("sqrt")
+
+sin = CLMathFunction("sin")
+cos = CLMathFunction("cos")
+tan = CLMathFunction("tan")
+
+asin = CLMathFunction("asin")
+acos = CLMathFunction("acos")
+atan = CLMathFunction("atan")
+atan2 = CLMathFunction("atan2")
+
+sinh = CLMathFunction("sinh")
+cosh = CLMathFunction("cosh")
+tanh = CLMathFunction("tanh")
+
+asinh = CLMathFunction("asinh")
+acosh = CLMathFunction("acosh")
+atanh = CLMathFunction("atanh")
+
+exp = CLMathFunction("exp")
+log = CLMathFunction("log")
 
 
 class DiscretizationProperty(Expression):
@@ -203,7 +272,6 @@ def nodes(ambient_dim, where=None):
     locations.
     """
 
-    from pytools.obj_array import make_obj_array
     return MultiVector(
             make_obj_array([
                 NodeCoordinateComponent(i, where)
@@ -237,20 +305,31 @@ class NumReferenceDerivative(DiscretizationProperty):
     mapper_method = intern("map_num_reference_derivative")
 
 
+def reference_jacobian(field, field_dim, dim, where=None):
+    """Return a :class:`np.array` representing the Jacobian of a vector field with
+    respect to the reference coordinates.
+    """
+    jac = np.zeros((field_dim, dim), np.object)
+
+    for i in range(field_dim):
+        field_component = field[i]
+        for j in range(dim):
+            jac[i, j] = NumReferenceDerivative(
+                frozenset([j]),
+                field_component,
+                where)
+
+    return jac
+
+
 def parametrization_derivative_matrix(ambient_dim, dim, where=None):
-    """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
-    the derivative of the reference-to-global parametrization.
+    """Return a :class:`np.array` representing the derivative of the
+    reference-to-global parametrization.
     """
 
-    par_grad = np.zeros((ambient_dim, dim), np.object)
-    for i in range(ambient_dim):
-        for j in range(dim):
-            par_grad[i, j] = NumReferenceDerivative(
-                    frozenset([j]),
-                    NodeCoordinateComponent(i, where),
-                    where)
-
-    return par_grad
+    return reference_jacobian(
+            [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
+            ambient_dim, dim)
 
 
 def parametrization_derivative(ambient_dim, dim, where=None):
@@ -265,6 +344,9 @@ def parametrization_derivative(ambient_dim, dim, where=None):
 
 
 def pseudoscalar(ambient_dim, dim=None, where=None):
+    """
+    Same as the outer product of all parametrization derivative columns.
+    """
     if dim is None:
         dim = ambient_dim - 1
 
@@ -297,13 +379,31 @@ def normal(ambient_dim, dim=None, where=None):
     pder = (
             pseudoscalar(ambient_dim, dim, where)
             / area_element(ambient_dim, dim, where))
-    return cse(pder.I | pder, "normal",
+    return cse(
+            # Dorst Section 3.7.2
+            pder << pder.I.inv(),
             cse_scope.DISCRETIZATION)
 
 
-def mean_curvature(where):
-    raise NotImplementedError()
+def mean_curvature(ambient_dim, dim=None, where=None):
+    """(Numerical) mean curvature."""
 
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if not (dim == 1 and ambient_dim == 2):
+        raise NotImplementedError(
+                "only know how to calculate curvature for a curve in 2D")
+
+    xp, yp = cse(
+            parametrization_derivative_matrix(ambient_dim, dim, where),
+            "pd_matrix", cse_scope.DISCRETIZATION)
+
+    xpp, ypp = cse(
+            reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
+            "p2d_matrix", cse_scope.DISCRETIZATION)
+
+    return (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
 
 # FIXME: make sense of this in the context of GA
 # def xyz_to_local_matrix(dim, where=None):
@@ -409,10 +509,63 @@ class IterativeInverse(Expression):
 
 
 class Derivative(DerivativeBase):
+    @property
+    def nabla(self):
+        raise ValueError("Derivative.nabla should not be used"
+                "--use Derivative.dnabla instead. (Note the extra 'd')"
+                "To explain: 'nabla' was intended to be "
+                "dimension-independent, which turned out to be a bad "
+                "idea.")
+
     @staticmethod
     def resolve(expr):
         from pytential.symbolic.mappers import DerivativeBinder
         return DerivativeBinder()(expr)
+
+
+def dd_axis(axis, ambient_dim, operand):
+    """Return the derivative along (XYZ) axis *axis*
+    (in *ambient_dim*-dimensional space) of *operand*.
+    """
+    d = Derivative()
+
+    unit_vector = np.zeros(ambient_dim)
+    unit_vector[axis] = 1
+
+    unit_mvector = MultiVector(unit_vector)
+
+    return d.resolve(
+            (unit_mvector.scalar_product(d.dnabla(ambient_dim)))
+            * d(operand))
+
+
+d_dx = partial(dd_axis, 0)
+d_dy = partial(dd_axis, 1)
+d_dz = partial(dd_axis, 2)
+
+
+def grad_mv(ambient_dim, operand):
+    """Return the *ambient_dim*-dimensional gradient of
+    *operand* as a :class:`pymbolic.geometric_algebra.MultiVector`.
+    """
+
+    d = Derivative()
+    return d.resolve(
+            d.dnabla(ambient_dim) * d(operand))
+
+
+def grad(ambient_dim, operand):
+    """Return the *ambient_dim*-dimensional gradient of
+    *operand* as a :class:`numpy.ndarray`.
+    """
+    return grad_mv(ambient_dim, operand).as_vector()
+
+
+def laplace(ambient_dim, operand):
+    d = Derivative()
+    nabla = d.dnabla(ambient_dim)
+    return d.resolve(nabla | d(
+        d.resolve((nabla * d(operand))))).as_scalar()
 
 
 # {{{ potentials
@@ -486,7 +639,7 @@ class IntG(Expression):
             to expressions that determine them)
 
         :arg source: The symbolic name of the source discretization. This name
-            is bound to a concrete :class:`pytential.qbx.QBXLayerPotentialSource`
+            is bound to a concrete :class:`pytential.source.LayerPotentialSourceBase`
             by :func:`pytential.bind`.
 
         :arg target: The symbolic name of the set of targets. This name gets
@@ -795,6 +948,55 @@ def Dp(kernel, *args, **kwargs):  # noqa
 # }}}
 
 # }}}
+
+# }}}
+
+
+# {{{ geometric operations
+
+def tangential_onb(ambient_dim, dim=None, where=None):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    pd_mat = cse(parametrization_derivative_matrix(ambient_dim, dim, where),
+            "pd_matrix", cse_scope.DISCRETIZATION)
+
+    # {{{ Gram-Schmidt
+
+    orth_pd_mat = np.zeros_like(pd_mat)
+    for k in range(pd_mat.shape[1]):
+        avec = pd_mat[:, k]
+        q = avec
+        for j in range(k):
+            q = q - np.dot(avec, orth_pd_mat[:, j])*orth_pd_mat[:, j]
+
+        orth_pd_mat[:, k] = cse(q/sqrt(np.sum(q**2)), "orth_pd_vec")
+
+    # }}}
+
+    return orth_pd_mat
+
+
+def xyz_to_tangential(xyz_vec, where=None):
+    ambient_dim = len(xyz_vec)
+    tonb = tangential_onb(ambient_dim, where=where)
+    return make_obj_array([
+        np.dot(tonb[:, i], xyz_vec)
+        for i in range(ambient_dim - 1)
+        ])
+
+
+def tangential_to_xyz(tangential_vec, where=None):
+    ambient_dim = len(tangential_vec) + 1
+    tonb = tangential_onb(ambient_dim, where=where)
+    return sum(
+        tonb[:, i] * tangential_vec[i]
+        for i in range(ambient_dim - 1))
+
+
+def project_to_tangential(xyz_vec, which=None):
+    return tangential_to_xyz(
+            cse(xyz_to_tangential(xyz_vec, which), which))
 
 # }}}
 

@@ -282,6 +282,30 @@ class DerivativeTaker(Mapper):
     def __init__(self, ambient_axis):
         self.ambient_axis = ambient_axis
 
+    def map_sum(self, expr):
+        from pymbolic.primitives import flattened_sum
+        return flattened_sum(tuple(self.rec(child) for child in expr.children))
+
+    def map_product(self, expr):
+        from pymbolic.primitives import is_constant
+        const = []
+        nonconst = []
+        for subexpr in expr.children:
+            if is_constant(subexpr):
+                const.append(subexpr)
+            else:
+                nonconst.append(subexpr)
+
+        if len(nonconst) > 1:
+            raise RuntimeError("DerivativeTaker doesn't support products with "
+                    "more than one non-constant")
+
+        if not nonconst:
+            nonconst = [1]
+
+        from pytools import product
+        return product(const) * self.rec(nonconst[0])
+
     def map_int_g(self, expr):
         from sumpy.kernel import AxisTargetDerivative
         return expr.copy(kernel=AxisTargetDerivative(self.ambient_axis, expr.kernel))
@@ -316,6 +340,33 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
 # }}}
 
 
+# {{{ Unregularized preprocessor
+
+class UnregularizedPreprocessor(IdentityMapper):
+
+    def __init__(self, source_name, places):
+        self.source_name = source_name
+        self.places = places
+
+    def map_int_g(self, expr):
+        if expr.qbx_forced_limit in (-1, 1):
+            raise ValueError(
+                    "Unregularized evaluation does not support one-sided limits")
+
+        expr = expr.copy(
+                qbx_forced_limit=None,
+                kernel=expr.kernel,
+                density=self.rec(expr.density),
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
+
+        return expr
+
+# }}}
+
+
 # {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
@@ -327,8 +378,8 @@ class QBXPreprocessor(IdentityMapper):
         source = self.places[self.source_name]
         target_discr = self.places[expr.target]
 
-        from pytential.qbx import LayerPotentialSource
-        if isinstance(target_discr, LayerPotentialSource):
+        from pytential.source import LayerPotentialSourceBase
+        if isinstance(target_discr, LayerPotentialSourceBase):
             target_discr = target_discr.density_discr
 
         if expr.qbx_forced_limit == 0:

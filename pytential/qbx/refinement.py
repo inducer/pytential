@@ -3,7 +3,7 @@ from __future__ import division, absolute_import, print_function
 
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
-Copyright (C) 2016 Matt Wala
+Copyright (C) 2016, 2017 Matt Wala
 """
 
 __license__ = """
@@ -32,98 +32,69 @@ import numpy as np
 import pyopencl as cl
 
 from pytools import memoize_method
-from pytential.qbx.utils import DiscrPlotterMixin
 from boxtree.area_query import AreaQueryElementwiseTemplate
-from pyopencl.elementwise import ElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
-from pytential.qbx.utils import QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS
-
-unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
+from pytential.qbx.utils import (
+        QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase)
 
 import logging
 logger = logging.getLogger(__name__)
 
-__doc__ = """
-Refinement
-^^^^^^^^^^
 
-.. autoclass:: QBXLayerPotentialSourceRefiner
+# max_levels granularity for the stack used by the tree descent code in the
+# area query kernel.
+MAX_LEVELS_INCREMENT = 10
+
+
+__doc__ = """
+The refiner takes a layer potential source and refines it until it satisfies
+three global QBX refinement criteria:
+
+   * *Condition 1* (Expansion disk undisturbed by sources)
+      A center must be closest to its own source.
+
+   * *Condition 2* (Sufficient quadrature sampling from all source panels)
+      The quadrature contribution from each panel is as accurate
+      as from the center's own source panel.
+
+   * *Condition 3* (Panel size bounded based on kernel length scale)
+      The panel size is bounded by a kernel length scale. This
+      applies only to Helmholtz kernels.
+
+Warnings emitted by refinement
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: RefinerNotConvergedWarning
+
+Helper functions
+^^^^^^^^^^^^^^^^
+
+.. autofunction:: make_empty_refine_flags
+
+Refiner driver
+^^^^^^^^^^^^^^
+
+.. autoclass:: RefinerCodeContainer
+
+.. autoclass:: RefinerWrangler
+
+.. autofunction:: refine_for_global_qbx
 """
 
 # {{{ kernels
 
-TUNNEL_QUERY_DISTANCE_FINDER_TEMPLATE = ElementwiseTemplate(
-    arguments=r"""//CL:mako//
-        /* input */
-        particle_id_t source_offset,
-        particle_id_t panel_offset,
-        int npanels,
-        particle_id_t *panel_to_source_starts,
-        particle_id_t *sorted_target_ids,
-        coord_t *panel_sizes,
-
-        /* output */
-        float *tunnel_query_dists,
-
-        /* input, dim-dependent size */
-        %for ax in AXIS_NAMES[:dimensions]:
-            coord_t *particles_${ax},
-        %endfor
-        """,
-    operation=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""//CL:mako//
-        /* Find my panel. */
-        particle_id_t panel = bsearch(panel_to_source_starts, npanels + 1, i);
-
-        /* Compute dist(tunnel region, panel center) */
-
-        coord_vec_t center_of_mass;
-        ${load_particle("INDEX_FOR_PANEL_PARTICLE(panel)", "center_of_mass")}
-
-        coord_vec_t center;
-        ${load_particle("INDEX_FOR_SOURCE_PARTICLE(i)", "center")}
-
-        coord_t panel_size = panel_sizes[panel];
-
-        coord_t max_dist = 0;
-
-        %for ax in AXIS_NAMES[:dimensions]:
-        {
-            max_dist = fmax(max_dist,
-                distance(center_of_mass.${ax}, center.${ax} + panel_size / 2));
-            max_dist = fmax(max_dist,
-                distance(center_of_mass.${ax}, center.${ax} - panel_size / 2));
-        }
-        %endfor
-
-        // The atomic max operation supports only integer types.
-        // However, max_dist is of a floating point type.
-        // For comparison purposes we reinterpret the bits of max_dist
-        // as an integer. The comparison result is the same as for positive
-        // IEEE floating point numbers, so long as the float/int endianness
-        // matches (fingers crossed).
-        atomic_max(
-            (volatile __global int *)
-                &tunnel_query_dists[panel],
-            as_int((float) max_dist));
-        """,
-    name="find_tunnel_query_distance",
-    preamble=str(InlineBinarySearch("particle_id_t")))
-
-
-# Implements "Algorithm for triggering refinement based on Condition 1"
-#
-# Does not use r_max as we do not use Newton for checking center-panel closeness.
-CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER = AreaQueryElementwiseTemplate(
+# Refinement checker for Condition 1.
+EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
     extra_args=r"""
         /* input */
-        particle_id_t *box_to_panel_starts,
-        particle_id_t *box_to_panel_lists,
+        particle_id_t *box_to_source_starts,
+        particle_id_t *box_to_source_lists,
         particle_id_t *panel_to_source_starts,
         particle_id_t *panel_to_center_starts,
         particle_id_t source_offset,
         particle_id_t center_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *panel_sizes,
+        coord_t *center_danger_zone_radii_by_panel,
         int npanels,
 
         /* output */
@@ -136,39 +107,35 @@ CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER = AreaQueryElementwiseTemplate(
         %endfor
         """,
     ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
+        /* Find the panel associated with this center. */
         particle_id_t my_panel = bsearch(panel_to_center_starts, npanels + 1, i);
 
         ${load_particle("INDEX_FOR_CENTER_PARTICLE(i)", ball_center)}
-        ${ball_radius} = panel_sizes[my_panel] / 2;
+        ${ball_radius} = center_danger_zone_radii_by_panel[my_panel];
         """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
-        for (particle_id_t panel_idx = box_to_panel_starts[${leaf_box_id}];
-             panel_idx < box_to_panel_starts[${leaf_box_id} + 1];
-             ++panel_idx)
-        {
-            particle_id_t panel = box_to_panel_lists[panel_idx];
+        /* Check that each source in the leaf box is sufficiently far from the
+           center; if not, mark the panel for refinement. */
 
-            // Skip self.
+        for (particle_id_t source_idx = box_to_source_starts[${leaf_box_id}];
+             source_idx < box_to_source_starts[${leaf_box_id} + 1];
+             ++source_idx)
+        {
+            particle_id_t source = box_to_source_lists[source_idx];
+            particle_id_t panel = bsearch(
+                panel_to_source_starts, npanels + 1, source);
+
             if (my_panel == panel)
             {
                 continue;
             }
 
-            bool is_close = false;
+            coord_vec_t source_coords;
+            ${load_particle("INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
 
-            for (particle_id_t source = panel_to_source_starts[panel];
-                 source < panel_to_source_starts[panel + 1];
-                 ++source)
-            {
-                coord_vec_t source_coords;
-
-                ${load_particle(
-                    "INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
-
-                is_close |= (
-                    distance(${ball_center}, source_coords)
-                    <= panel_sizes[my_panel] / 2);
-            }
+            bool is_close = (
+                distance(${ball_center}, source_coords)
+                <= center_danger_zone_radii_by_panel[my_panel]);
 
             if (is_close)
             {
@@ -178,27 +145,22 @@ CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER = AreaQueryElementwiseTemplate(
             }
         }
         """,
-    name="refine_center_closest_to_orig_panel",
+    name="check_center_closest_to_orig_panel",
     preamble=str(InlineBinarySearch("particle_id_t")))
 
 
-# Implements "Algorithm for triggering refinement based on Condition 2"
-CENTER_IS_FAR_FROM_NONNEIGHBOR_PANEL_REFINER = AreaQueryElementwiseTemplate(
+# Refinement checker for Condition 2.
+SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
     extra_args=r"""
         /* input */
-        particle_id_t *box_to_panel_starts,
-        particle_id_t *box_to_panel_lists,
+        particle_id_t *box_to_center_starts,
+        particle_id_t *box_to_center_lists,
         particle_id_t *panel_to_source_starts,
-        particle_id_t *panel_to_center_starts,
         particle_id_t source_offset,
         particle_id_t center_offset,
-        particle_id_t panel_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *panel_sizes,
-        particle_id_t *panel_adjacency_starts,
-        particle_id_t *panel_adjacency_lists,
+        coord_t *source_danger_zone_radii_by_panel,
         int npanels,
-        coord_t *tunnel_query_dists,
 
         /* output */
         int *panel_refine_flags,
@@ -210,51 +172,29 @@ CENTER_IS_FAR_FROM_NONNEIGHBOR_PANEL_REFINER = AreaQueryElementwiseTemplate(
         %endfor
         """,
     ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
-        particle_id_t my_panel = bsearch(panel_to_center_starts, npanels + 1, i);
-        coord_vec_t my_center_coords;
+        /* Find the panel associated with this source. */
+        particle_id_t my_panel = bsearch(panel_to_source_starts, npanels + 1, i);
 
-        ${load_particle("INDEX_FOR_CENTER_PARTICLE(i)", "my_center_coords")}
-        ${load_particle("INDEX_FOR_PANEL_PARTICLE(my_panel)", ball_center)}
-        ${ball_radius} = tunnel_query_dists[my_panel];
+        ${load_particle("INDEX_FOR_SOURCE_PARTICLE(i)", ball_center)}
+        ${ball_radius} = source_danger_zone_radii_by_panel[my_panel];
         """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
-        for (particle_id_t panel_idx = box_to_panel_starts[${leaf_box_id}];
-             panel_idx < box_to_panel_starts[${leaf_box_id} + 1];
-             ++panel_idx)
+        /* Check that each center in the leaf box is sufficiently far from the
+           panel; if not, mark the panel for refinement. */
+
+        for (particle_id_t center_idx = box_to_center_starts[${leaf_box_id}];
+             center_idx < box_to_center_starts[${leaf_box_id} + 1];
+             ++center_idx)
         {
-            particle_id_t panel = box_to_panel_lists[panel_idx];
+            particle_id_t center = box_to_center_lists[center_idx];
 
-            bool is_self_or_adjacent = (my_panel == panel);
+            coord_vec_t center_coords;
+            ${load_particle(
+                "INDEX_FOR_CENTER_PARTICLE(center)", "center_coords")}
 
-            for (particle_id_t adj_panel_idx = panel_adjacency_starts[my_panel];
-                 adj_panel_idx < panel_adjacency_starts[my_panel + 1];
-                 ++adj_panel_idx)
-            {
-                is_self_or_adjacent |= (
-                    panel_adjacency_lists[adj_panel_idx] == panel);
-            }
-
-            // Skip self and adjacent panels.
-            if (is_self_or_adjacent)
-            {
-                continue;
-            }
-
-            bool is_close = false;
-
-            for (particle_id_t source = panel_to_source_starts[panel];
-                 source < panel_to_source_starts[panel + 1];
-                 ++source)
-            {
-                coord_vec_t source_coords;
-
-                ${load_particle(
-                    "INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
-
-                is_close |= (
-                    distance(my_center_coords, source_coords)
-                    <= panel_sizes[panel] / 2);
-            }
+            bool is_close = (
+                distance(${ball_center}, center_coords)
+                <= source_danger_zone_radii_by_panel[my_panel]);
 
             if (is_close)
             {
@@ -264,123 +204,46 @@ CENTER_IS_FAR_FROM_NONNEIGHBOR_PANEL_REFINER = AreaQueryElementwiseTemplate(
             }
         }
         """,
-    name="refine_center_far_from_nonneighbor_panels",
+    name="check_source_quadrature_resolution",
     preamble=str(InlineBinarySearch("particle_id_t")))
 
 # }}}
 
 
-# {{{ lpot source refiner
+# {{{ code container
 
-class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
-    """
-    Driver for refining the QBX source grid. Follows [1]_.
+class RefinerCodeContainer(object):
 
-    .. [1] Rachh, Manas, Andreas Klöckner, and Michael O'Neil. "Fast
-       algorithms for Quadrature by Expansion I: Globally valid expansions."
-
-    .. automethod:: get_refine_flags
-    .. automethod:: __call__
-    """
-
-    def __init__(self, context):
-        self.cl_context = context
-        from pytential.qbx.utils import TreeWithQBXMetadataBuilder
-        self.tree_builder = TreeWithQBXMetadataBuilder(self.cl_context)
-        from boxtree.area_query import PeerListFinder
-        self.peer_list_finder = PeerListFinder(self.cl_context)
-
-    # {{{ kernels
+    def __init__(self, cl_context):
+        self.cl_context = cl_context
 
     @memoize_method
-    def get_tunnel_query_distance_finder(self, dimensions, coord_dtype,
-                                         particle_id_dtype):
-        from pyopencl.tools import dtype_to_ctype
-        from boxtree.tools import AXIS_NAMES
-        logger.info("refiner: building tunnel query distance finder kernel")
-
-        knl = TUNNEL_QUERY_DISTANCE_FINDER_TEMPLATE.build(
+    def expansion_disk_undisturbed_by_sources_checker(
+            self, dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
+            particle_id_dtype, max_levels):
+        return EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER.generate(
                 self.cl_context,
-                type_aliases=(
-                    ("particle_id_t", particle_id_dtype),
-                    ("coord_t", coord_dtype),
-                    ),
-                var_values=(
-                    ("dimensions", dimensions),
-                    ("AXIS_NAMES", AXIS_NAMES),
-                    ("coord_dtype", coord_dtype),
-                    ("dtype_to_ctype", dtype_to_ctype),
-                    ("vec_types", tuple(cl.array.vec.types.items())),
-                    ))
-
-        logger.info("refiner: done building tunnel query distance finder kernel")
-        return knl
-
-    @memoize_method
-    def get_center_is_closest_to_orig_panel_refiner(self, dimensions,
-                                                    coord_dtype, box_id_dtype,
-                                                    peer_list_idx_dtype,
-                                                    particle_id_dtype,
-                                                    max_levels):
-        return CENTER_IS_CLOSEST_TO_ORIG_PANEL_REFINER.generate(self.cl_context,
                 dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
                 max_levels,
                 extra_type_aliases=(("particle_id_t", particle_id_dtype),))
 
     @memoize_method
-    def get_center_is_far_from_nonneighbor_panel_refiner(self, dimensions,
-                                                         coord_dtype,
-                                                         box_id_dtype,
-                                                         peer_list_idx_dtype,
-                                                         particle_id_dtype,
-                                                         max_levels):
-        return CENTER_IS_FAR_FROM_NONNEIGHBOR_PANEL_REFINER.generate(self.cl_context,
+    def sufficient_source_quadrature_resolution_checker(
+            self, dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
+            particle_id_dtype, max_levels):
+        return SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER.generate(
+                self.cl_context,
                 dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
                 max_levels,
                 extra_type_aliases=(("particle_id_t", particle_id_dtype),))
 
     @memoize_method
-    def get_2_to_1_panel_ratio_refiner(self):
-        knl = lp.make_kernel([
-            "{[panel]: 0<=panel<npanels}",
-            "{[ineighbor]: neighbor_start<=ineighbor<neighbor_stop}"
-            ],
-            """
-            for panel
-                <> neighbor_start = panel_adjacency_starts[panel]
-                <> neighbor_stop = panel_adjacency_starts[panel + 1]
-                for ineighbor
-                    <> neighbor = panel_adjacency_lists[ineighbor]
-
-                    <> oversize = (refine_flags_prev[panel] == 0
-                           and (
-                               (panel_sizes[panel] > 2 * panel_sizes[neighbor]) or
-                               (panel_sizes[panel] > panel_sizes[neighbor] and
-                                   refine_flags_prev[neighbor] == 1)))
-
-                    if oversize
-                        refine_flags[panel] = 1
-                        refine_flags_updated = 1 {id=write_refine_flags_updated}
-                    end
-                end
-            end
-            """, [
-            lp.GlobalArg("panel_adjacency_lists", shape=None),
-            "..."
-            ],
-            options="return_dict",
-            silenced_warnings="write_race(write_refine_flags_updated)",
-            name="refine_2_to_1_adj_panel_size_ratio")
-        knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
-        return knl
-
-    @memoize_method
-    def get_helmholtz_k_to_panel_ratio_refiner(self):
+    def kernel_length_scale_to_panel_size_ratio_checker(self):
         knl = lp.make_kernel(
             "{[panel]: 0<=panel<npanels}",
             """
             for panel
-                <> oversize = panel_sizes[panel] * helmholtz_k > 5
+                <> oversize = panel_sizes[panel] > kernel_length_scale
                 if oversize
                     refine_flags[panel] = 1
                     refine_flags_updated = 1 {id=write_refine_flags_updated}
@@ -389,21 +252,49 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
             """,
             options="return_dict",
             silenced_warnings="write_race(write_refine_flags_updated)",
-            name="refine_helmholtz_k_to_panel_size_ratio")
+            name="refine_kernel_length_scale_to_panel_size_ratio")
         knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
-    # }}}
+    @memoize_method
+    def tree_builder(self):
+        from boxtree.tree_build import TreeBuilder
+        return TreeBuilder(self.cl_context)
 
-    # {{{ refinement triggering
+    @memoize_method
+    def peer_list_finder(self):
+        from boxtree.area_query import PeerListFinder
+        return PeerListFinder(self.cl_context)
 
-    def refinement_check_center_is_closest_to_orig_panel(self, queue, tree,
-            lpot_source, peer_lists, refine_flags, debug, wait_for=None):
+    def get_wrangler(self, queue):
+        """
+        :arg queue:
+        """
+        return RefinerWrangler(self, queue)
+
+# }}}
+
+
+# {{{ wrangler
+
+class RefinerWrangler(TreeWranglerBase):
+
+    def __init__(self, code_container, queue):
+        self.code_container = code_container
+        self.queue = queue
+
+    # {{{ check subroutines for conditions 1-3
+
+    def check_expansion_disks_undisturbed_by_sources(self,
+            lpot_source, tree, peer_lists, refine_flags,
+            debug, wait_for=None):
+
         # Avoid generating too many kernels.
         from pytools import div_ceil
-        max_levels = 10 * div_ceil(tree.nlevels, 10)
+        max_levels = MAX_LEVELS_INCREMENT * div_ceil(
+                tree.nlevels, MAX_LEVELS_INCREMENT)
 
-        knl = self.get_center_is_closest_to_orig_panel_refiner(
+        knl = self.code_container.expansion_disk_undisturbed_by_sources_checker(
                 tree.dimensions,
                 tree.coord_dtype, tree.box_id_dtype,
                 peer_lists.peer_list_starts.dtype,
@@ -415,26 +306,32 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
-        found_panel_to_refine = cl.array.zeros(queue, 1, np.int32)
+        found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
         found_panel_to_refine.finish()
+        unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
+
+        # FIXME: This shouldn't be by panel
+        center_danger_zone_radii_by_panel = \
+                lpot_source._expansion_radii("npanels")
 
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
-                tree.box_to_qbx_panel_starts,
-                tree.box_to_qbx_panel_lists,
+                tree.box_to_qbx_source_starts,
+                tree.box_to_qbx_source_lists,
                 tree.qbx_panel_to_source_starts,
                 tree.qbx_panel_to_center_starts,
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_center_slice.start,
                 tree.sorted_target_ids,
-                lpot_source.panel_sizes("npanels"),
+                center_danger_zone_radii_by_panel,
                 tree.nqbxpanels,
                 refine_flags,
                 found_panel_to_refine,
                 *tree.sources),
             range=slice(tree.nqbxcenters),
-            queue=queue)
+            queue=self.queue,
+            wait_for=wait_for)
 
         cl.wait_for_events([evt])
 
@@ -448,51 +345,51 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
 
         return found_panel_to_refine.get()[0] == 1
 
-    def refinement_check_center_is_far_from_nonneighbor_panels(self, queue,
-                tree, lpot_source, peer_lists, tq_dists, refine_flags, debug,
-                wait_for=None):
+    def check_sufficient_source_quadrature_resolution(
+            self, lpot_source, tree, peer_lists, refine_flags, debug,
+            wait_for=None):
+
         # Avoid generating too many kernels.
         from pytools import div_ceil
-        max_levels = 10 * div_ceil(tree.nlevels, 10)
+        max_levels = MAX_LEVELS_INCREMENT * div_ceil(
+                tree.nlevels, MAX_LEVELS_INCREMENT)
 
-        knl = self.get_center_is_far_from_nonneighbor_panel_refiner(
+        knl = self.code_container.sufficient_source_quadrature_resolution_checker(
                 tree.dimensions,
                 tree.coord_dtype, tree.box_id_dtype,
                 peer_lists.peer_list_starts.dtype,
                 tree.particle_id_dtype,
                 max_levels)
-
-        logger.info("refiner: checking center is far from nonneighbor panels")
-
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
-        found_panel_to_refine = cl.array.zeros(queue, 1, np.int32)
+        logger.info("refiner: checking sufficient quadrature resolution")
+
+        found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
         found_panel_to_refine.finish()
 
-        adjacency = self.get_adjacency_on_device(queue, lpot_source)
+        source_danger_zone_radii_by_panel = (
+                lpot_source._fine_panel_sizes("npanels")
+                .with_queue(self.queue) / 4)
+        unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
-                tree.box_to_qbx_panel_starts,
-                tree.box_to_qbx_panel_lists,
+                tree.box_to_qbx_center_starts,
+                tree.box_to_qbx_center_lists,
                 tree.qbx_panel_to_source_starts,
-                tree.qbx_panel_to_center_starts,
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_center_slice.start,
-                tree.qbx_user_panel_slice.start,
                 tree.sorted_target_ids,
-                lpot_source.panel_sizes("npanels"),
-                adjacency.adjacency_starts,
-                adjacency.adjacency_lists,
+                source_danger_zone_radii_by_panel,
                 tree.nqbxpanels,
-                tq_dists,
                 refine_flags,
                 found_panel_to_refine,
                 *tree.sources),
-            range=slice(tree.nqbxcenters),
-            queue=queue)
+            range=slice(tree.nqbxsources),
+            queue=self.queue,
+            wait_for=wait_for)
 
         cl.wait_for_events([evt])
 
@@ -502,24 +399,24 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
                 logger.debug("refiner: found {} panel(s) to refine".format(
                     npanels_to_refine - npanels_to_refine_prev))
 
-        logger.info("refiner: done checking center is far from nonneighbor panels")
+        logger.info("refiner: done checking sufficient quadrature resolution")
 
         return found_panel_to_refine.get()[0] == 1
 
-    def refinement_check_helmholtz_k_to_panel_size_ratio(self, queue, lpot_source,
-                helmholtz_k, refine_flags, debug, wait_for=None):
-        knl = self.get_helmholtz_k_to_panel_ratio_refiner()
+    def check_kernel_length_scale_to_panel_size_ratio(self, lpot_source,
+            kernel_length_scale, refine_flags, debug, wait_for=None):
+        knl = self.code_container.kernel_length_scale_to_panel_size_ratio_checker()
 
-        logger.info("refiner: checking helmholtz k to panel size ratio")
+        logger.info("refiner: checking kernel length scale to panel size ratio")
 
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
-        evt, out = knl(queue,
-                       panel_sizes=lpot_source.panel_sizes("npanels"),
+        evt, out = knl(self.queue,
+                       panel_sizes=lpot_source._panel_sizes("npanels"),
                        refine_flags=refine_flags,
                        refine_flags_updated=np.array(0),
-                       helmholtz_k=np.array(helmholtz_k),
+                       kernel_length_scale=np.array(kernel_length_scale),
                        wait_for=wait_for)
 
         cl.wait_for_events([evt])
@@ -530,246 +427,210 @@ class QBXLayerPotentialSourceRefiner(DiscrPlotterMixin):
                 logger.debug("refiner: found {} panel(s) to refine".format(
                     npanels_to_refine - npanels_to_refine_prev))
 
-        logger.info("refiner: done checking helmholtz k to panel size ratio")
+        logger.info("refiner: done checking kernel length scale to panel size ratio")
 
         return (out["refine_flags_updated"].get() == 1).all()
 
-    def refinement_check_2_to_1_panel_size_ratio(self, queue, lpot_source,
-                refine_flags, debug, wait_for=None):
-        knl = self.get_2_to_1_panel_ratio_refiner()
-        adjacency = self.get_adjacency_on_device(queue, lpot_source)
-
-        refine_flags_updated = False
-
-        logger.info("refiner: checking 2-to-1 panel size ratio")
-
-        if debug:
-            npanels_to_refine_prev = cl.array.sum(refine_flags).get()
-
-        # Iterative refinement until no more panels can be marked
-        while True:
-            evt, out = knl(queue,
-                           npanels=lpot_source.density_discr.mesh.nelements,
-                           panel_sizes=lpot_source.panel_sizes("npanels"),
-                           refine_flags=refine_flags,
-                           # It's safe to pass this here, as the resulting data
-                           # race won't affect the final result of the
-                           # computation.
-                           refine_flags_prev=refine_flags,
-                           refine_flags_updated=np.array(0),
-                           panel_adjacency_starts=adjacency.adjacency_starts,
-                           panel_adjacency_lists=adjacency.adjacency_lists,
-                           wait_for=wait_for)
-
-            cl.wait_for_events([evt])
-
-            if (out["refine_flags_updated"].get() == 1).all():
-                refine_flags_updated = True
-            else:
-                break
-
-        if debug:
-            npanels_to_refine = cl.array.sum(refine_flags).get()
-            if npanels_to_refine > npanels_to_refine_prev:
-                logger.debug("refiner: found {} panel(s) to refine".format(
-                    npanels_to_refine - npanels_to_refine_prev))
-
-        logger.info("refiner: done checking 2-to-1 panel size ratio")
-
-        return refine_flags_updated
-
     # }}}
 
-    # {{{ other utilities
-
-    def get_tunnel_query_dists(self, queue, tree, lpot_source):
-        """
-        Compute radii for the tubular neighborhood around each panel center of mass.
-        """
-        nqbxpanels = lpot_source.density_discr.mesh.nelements
-        # atomic_max only works on float32
-        tq_dists = cl.array.zeros(queue, nqbxpanels, np.float32)
-        tq_dists.finish()
-
-        knl = self.get_tunnel_query_distance_finder(tree.dimensions,
-                tree.coord_dtype, tree.particle_id_dtype)
-
-        evt = knl(tree.qbx_user_source_slice.start,
-                  tree.qbx_user_panel_slice.start,
-                  nqbxpanels,
-                  tree.qbx_panel_to_source_starts,
-                  tree.sorted_target_ids,
-                  lpot_source.panel_sizes("npanels"),
-                  tq_dists,
-                  *tree.sources,
-                  queue=queue,
-                  range=slice(tree.nqbxsources))
-
-        cl.wait_for_events([evt])
-
-        if tree.coord_dtype != tq_dists.dtype:
-            tq_dists = tq_dists.astype(tree.coord_dtype)
-
-        return tq_dists, evt
-
-    def get_adjacency_on_device(self, queue, lpot_source):
-        """
-        Take adjacency information from the mesh and place it onto the device.
-        """
-        from boxtree.tools import DeviceDataRecord
-        adjacency = lpot_source.density_discr.mesh.nodal_adjacency
-        adjacency_starts = cl.array.to_device(queue, adjacency.neighbors_starts)
-        adjacency_lists = cl.array.to_device(queue, adjacency.neighbors)
-
-        return DeviceDataRecord(
-            adjacency_starts=adjacency_starts,
-            adjacency_lists=adjacency_lists)
-
-    def get_refine_flags(self, queue, lpot_source):
-        """
-        Return an array on the device suitable for use as element refine flags.
-
-        :arg queue: An instance of :class:`pyopencl.CommandQueue`.
-        :arg lpot_source: An instance of :class:`QBXLayerPotentialSource`.
-
-        :returns: An instance of :class:`pyopencl.array.Array` suitable for
-            use as refine flags, initialized to zero.
-        """
-        result = cl.array.zeros(
-            queue, lpot_source.density_discr.mesh.nelements, np.int32)
-        return result, result.events[0]
-
-    # }}}
-
-    def refine(self, queue, lpot_source, refine_flags, refiner, factory, debug):
+    def refine(self, density_discr, refiner, refine_flags, factory, debug):
         """
         Refine the underlying mesh and discretization.
         """
         if isinstance(refine_flags, cl.array.Array):
-            refine_flags = refine_flags.get(queue)
+            refine_flags = refine_flags.get(self.queue)
         refine_flags = refine_flags.astype(np.bool)
 
         logger.info("refiner: calling meshmode")
 
         refiner.refine(refine_flags)
         from meshmode.discretization.connection import make_refinement_connection
-
-        conn = make_refinement_connection(
-                refiner, lpot_source.density_discr,
-                factory)
+        conn = make_refinement_connection(refiner, density_discr, factory)
 
         logger.info("refiner: done calling meshmode")
 
-        new_density_discr = conn.to_discr
-
-        new_lpot_source = lpot_source.copy(
-                density_discr=new_density_discr,
-                refined_for_global_qbx=True)
-
-        return new_lpot_source, conn
-
-    def __call__(self, lpot_source, discr_factory, helmholtz_k=None,
-                 # FIXME: Set debug=False once everything works.
-                 refine_flags=None, debug=True, maxiter=50):
-        """
-        Entry point for calling the refiner.
-
-        :arg lpot_source: An instance of :class:`QBXLayerPotentialSource`.
-
-        :arg group_factory: An instance of
-            :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
-            discretizing the refined mesh.
-
-        :arg helmholtz_k: The Helmholtz parameter, or `None` if not applicable.
-
-        :arg refine_flags: A :class:`pyopencl.array.Array` indicating which
-            panels should get refined initially, or `None` if no initial
-            refinement should be done. Should have size equal to the number of
-            panels. See also :meth:`get_refine_flags()`.
-
-        :returns: A tuple ``(lpot_source, conns)`` where ``lpot_source`` is the
-            refined layer potential source, and ``conns`` is a list of
-            :class:`meshmode.discretization.connection.DiscretizationConnection`
-            objects going from the original mesh to the refined mesh.
-        """
-        from meshmode.mesh.refinement import Refiner
-        refiner = Refiner(lpot_source.density_discr.mesh)
-        connections = []
-
-        lpot_source = lpot_source.copy(
-            debug=debug,
-            refined_for_global_qbx=True)
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            if refine_flags:
-                lpot_source, conn = self.refine(
-                            queue, lpot_source, refine_flags, refiner, discr_factory,
-                            debug)
-                connections.append(conn)
-
-            done_refining = False
-            niter = 0
-
-            while not done_refining:
-                niter += 1
-
-                if niter > maxiter:
-                    logger.warning(
-                        "Max iteration count reached in QBX layer potential source"
-                        " refiner.")
-                    break
-
-                # Build tree and auxiliary data.
-                # FIXME: The tree should not have to be rebuilt at each iteration.
-                tree = self.tree_builder(queue, lpot_source)
-                wait_for = []
-
-                peer_lists, evt = self.peer_list_finder(queue, tree, wait_for)
-                wait_for = [evt]
-
-                refine_flags, evt = self.get_refine_flags(queue, lpot_source)
-                wait_for.append(evt)
-
-                tq_dists, evt = self.get_tunnel_query_dists(queue, tree, lpot_source)
-                wait_for.append(evt)
-
-                # Run refinement checkers.
-                must_refine = False
-
-                must_refine |= \
-                        self.refinement_check_center_is_closest_to_orig_panel(
-                            queue, tree, lpot_source, peer_lists, refine_flags,
-                            debug, wait_for)
-
-                must_refine |= \
-                        self.refinement_check_center_is_far_from_nonneighbor_panels(
-                            queue, tree, lpot_source, peer_lists, tq_dists,
-                            refine_flags, debug, wait_for)
-
-                must_refine |= \
-                        self.refinement_check_2_to_1_panel_size_ratio(
-                            queue, lpot_source, refine_flags, debug, wait_for)
-
-                if helmholtz_k:
-                    must_refine |= \
-                            self.refinement_check_helmholtz_k_to_panel_size_ratio(
-                                queue, lpot_source, helmholtz_k, refine_flags, debug,
-                                wait_for)
-
-                if must_refine:
-                    lpot_source, conn = self.refine(
-                            queue, lpot_source, refine_flags, refiner, discr_factory,
-                            debug)
-                    connections.append(conn)
-
-                del tree
-                del peer_lists
-                del tq_dists
-                del refine_flags
-                done_refining = not must_refine
-
-        return lpot_source, connections
+        return conn
 
 # }}}
+
+
+class RefinerNotConvergedWarning(UserWarning):
+    pass
+
+
+def make_empty_refine_flags(queue, lpot_source, use_base_fine_discr=False):
+    """Return an array on the device suitable for use as element refine flags.
+
+    :arg queue: An instance of :class:`pyopencl.CommandQueue`.
+    :arg lpot_source: An instance of :class:`QBXLayerPotentialSource`.
+
+    :returns: A :class:`pyopencl.array.Array` suitable for use as refine flags,
+        initialized to zero.
+    """
+    discr = (lpot_source.base_fine_density_discr
+            if use_base_fine_discr
+            else lpot_source.density_discr)
+    result = cl.array.zeros(queue, discr.mesh.nelements, np.int32)
+    result.finish()
+    return result
+
+
+# {{{ main entry point
+
+def refine_for_global_qbx(lpot_source, wrangler,
+        group_factory, kernel_length_scale=None,
+        # FIXME: Set debug=False once everything works.
+        refine_flags=None, debug=True, maxiter=50):
+    """
+    Entry point for calling the refiner.
+
+    :arg lpot_source: An instance of :class:`QBXLayerPotentialSource`.
+
+    :arg wrangler: An instance of :class:`RefinerWrangler`.
+
+    :arg group_factory: An instance of
+        :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
+        discretizing the coarse refined mesh.
+
+    :arg kernel_length_scale: The kernel length scale, or *None* if not
+        applicable. All panels are refined to below this size.
+
+    :arg refine_flags: A :class:`pyopencl.array.Array` indicating which
+        panels should get refined initially, or `None` if no initial
+        refinement should be done. Should have size equal to the number of
+        panels. See also :func:`make_empty_refine_flags()`.
+
+    :arg maxiter: The maximum number of refiner iterations.
+
+    :returns: A tuple ``(lpot_source, *conn*)`` where ``lpot_source`` is the
+        refined layer potential source, and ``conn`` is a
+        :class:`meshmode.discretization.connection.DiscretizationConnection`
+        going from the original mesh to the refined mesh.
+    """
+
+    # TODO: Stop doing redundant checks by avoiding panels which no longer need
+    # refinement.
+
+    from meshmode.mesh.refinement import Refiner
+    from meshmode.discretization.connection import (
+            ChainedDiscretizationConnection, make_same_mesh_connection)
+
+    refiner = Refiner(lpot_source.density_discr.mesh)
+    connections = []
+
+    # Do initial refinement.
+    if refine_flags is not None:
+        conn = wrangler.refine(
+                lpot_source.density_discr, refiner, refine_flags, group_factory,
+                debug)
+        connections.append(conn)
+        lpot_source = lpot_source.copy(density_discr=conn.to_discr)
+
+    # {{{ first stage refinement
+
+    must_refine = True
+    niter = 0
+
+    while must_refine:
+        must_refine = False
+        niter += 1
+
+        if niter > maxiter:
+            from warnings import warn
+            warn(
+                    "Max iteration count reached in QBX layer potential source"
+                    " refiner.",
+                    RefinerNotConvergedWarning)
+            break
+
+        # Build tree and auxiliary data.
+        # FIXME: The tree should not have to be rebuilt at each iteration.
+        tree = wrangler.build_tree(lpot_source)
+        peer_lists = wrangler.find_peer_lists(tree)
+        refine_flags = make_empty_refine_flags(wrangler.queue, lpot_source)
+
+        # Check condition 1.
+        must_refine |= wrangler.check_expansion_disks_undisturbed_by_sources(
+                lpot_source, tree, peer_lists, refine_flags, debug)
+
+        # Check condition 3.
+        if kernel_length_scale is not None:
+            must_refine |= (
+                    wrangler.check_kernel_length_scale_to_panel_size_ratio(
+                        lpot_source, kernel_length_scale, refine_flags, debug))
+
+        if must_refine:
+            conn = wrangler.refine(
+                    lpot_source.density_discr, refiner, refine_flags,
+                    group_factory, debug)
+            connections.append(conn)
+            lpot_source = lpot_source.copy(density_discr=conn.to_discr)
+
+        del tree
+        del refine_flags
+        del peer_lists
+
+    # }}}
+
+    # {{{ second stage refinement
+
+    must_refine = True
+    niter = 0
+    fine_connections = []
+
+    base_fine_density_discr = lpot_source.density_discr
+
+    while must_refine:
+        must_refine = False
+        niter += 1
+
+        if niter > maxiter:
+            from warnings import warn
+            warn(
+                    "Max iteration count reached in QBX layer potential source"
+                    " refiner.",
+                    RefinerNotConvergedWarning)
+            break
+
+        # Build tree and auxiliary data.
+        # FIXME: The tree should not have to be rebuilt at each iteration.
+        tree = wrangler.build_tree(lpot_source, use_base_fine_discr=True)
+        peer_lists = wrangler.find_peer_lists(tree)
+        refine_flags = make_empty_refine_flags(
+                wrangler.queue, lpot_source, use_base_fine_discr=True)
+
+        must_refine |= wrangler.check_sufficient_source_quadrature_resolution(
+                lpot_source, tree, peer_lists, refine_flags, debug)
+
+        if must_refine:
+            conn = wrangler.refine(
+                    base_fine_density_discr,
+                    refiner, refine_flags, group_factory, debug)
+            base_fine_density_discr = conn.to_discr
+            fine_connections.append(conn)
+            lpot_source = lpot_source.copy(
+                    base_resampler=ChainedDiscretizationConnection(
+                        fine_connections))
+
+        del tree
+        del refine_flags
+        del peer_lists
+
+    # }}}
+
+    lpot_source = lpot_source.copy(debug=debug, _refined_for_global_qbx=True)
+
+    if len(connections) == 0:
+        # FIXME: This is inefficient
+        connection = make_same_mesh_connection(
+                lpot_source.density_discr,
+                lpot_source.density_discr)
+    else:
+        connection = ChainedDiscretizationConnection(connections)
+
+    return lpot_source, connection
+
+# }}}
+
 
 # vim: foldmethod=marker:filetype=pyopencl

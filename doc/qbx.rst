@@ -3,6 +3,21 @@
 QBX internals
 =============
 
+.. note::
+
+    This page documents :mod:`pytential` internals and is not typically
+    needed in end-user applications.
+
+Refinement
+----------
+
+.. automodule:: pytential.qbx.refinement
+
+Target association
+------------------
+
+.. automodule:: pytential.qbx.target_assoc
+
 Data structures describing geometry
 -----------------------------------
 
