@@ -27,7 +27,7 @@ from six.moves import intern
 from warnings import warn
 
 import numpy as np
-from pymbolic.primitives import (  # noqa: F401, N813
+from pymbolic.primitives import (  # noqa: F401,N813
         Expression as ExpressionBase, Variable as var,
         cse_scope as cse_scope_base,
         make_common_subexpression as cse)
