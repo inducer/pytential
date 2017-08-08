@@ -427,7 +427,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
 
         for isrc_level, ssn in enumerate(
-                geo_data.traversal().sep_smaller_by_level):
+                geo_data.traversal().from_sep_smaller_by_level):
             source_level_start_ibox, source_mpoles_view = \
                     self.multipole_expansions_view(multipole_exps, isrc_level)
 
