@@ -237,7 +237,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         wait_for = multipole_exps.events
 
-        for isrc_level, ssn in enumerate(traversal.sep_smaller_by_level):
+        for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
             m2qbxl = self.code.m2qbxl(
                     self.level_orders[isrc_level],
                     self.qbx_order)
@@ -414,8 +414,8 @@ def drive_fmm(expansion_wrangler, src_weights):
     local_exps = wrangler.multipole_to_local(
             traversal.level_start_target_or_target_parent_box_nrs,
             traversal.target_or_target_parent_boxes,
-            traversal.sep_siblings_starts,
-            traversal.sep_siblings_lists,
+            traversal.from_sep_siblings_starts,
+            traversal.from_sep_siblings_lists,
             mpole_exps)
 
     # }}}
@@ -430,11 +430,11 @@ def drive_fmm(expansion_wrangler, src_weights):
     non_qbx_potentials = non_qbx_potentials + wrangler.eval_multipoles(
             traversal.level_start_target_box_nrs,
             traversal.target_boxes,
-            traversal.sep_smaller_by_level,
+            traversal.from_sep_smaller_by_level,
             mpole_exps)
 
     # assert that list 3 close has been merged into list 1
-    assert traversal.sep_close_smaller_starts is None
+    assert traversal.from_sep_close_smaller_starts is None
 
     # }}}
 
@@ -445,12 +445,12 @@ def drive_fmm(expansion_wrangler, src_weights):
     local_exps = local_exps + wrangler.form_locals(
             traversal.level_start_target_or_target_parent_box_nrs,
             traversal.target_or_target_parent_boxes,
-            traversal.sep_bigger_starts,
-            traversal.sep_bigger_lists,
+            traversal.from_sep_bigger_starts,
+            traversal.from_sep_bigger_lists,
             src_weights)
 
     # assert that list 4 close has been merged into list 1
-    assert traversal.sep_close_bigger_starts is None
+    assert traversal.from_sep_close_bigger_starts is None
 
     # }}}
 
@@ -590,7 +590,7 @@ def write_performance_model(outf, geo_data):
     def process_list2():
         nm2l = 0
         for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
-            start, end = traversal.sep_siblings_starts[itgt_box:itgt_box+2]
+            start, end = traversal.from_sep_siblings_starts[itgt_box:itgt_box+2]
 
             nm2l += (end-start)
 
@@ -608,7 +608,7 @@ def write_performance_model(outf, geo_data):
         for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
             ntargets = box_target_counts_nonchild[tgt_ibox]
 
-            for sep_smaller_list in traversal.sep_smaller_by_level:
+            for sep_smaller_list in traversal.from_sep_smaller_by_level:
                 start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
                 nmp_eval += ntargets * (end-start)
 
@@ -625,9 +625,9 @@ def write_performance_model(outf, geo_data):
         nform_local = 0
 
         for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
-            start, end = traversal.sep_bigger_starts[itgt_box:itgt_box+2]
+            start, end = traversal.from_sep_bigger_starts[itgt_box:itgt_box+2]
 
-            for src_ibox in traversal.sep_bigger_lists[start:end]:
+            for src_ibox in traversal.from_sep_bigger_lists[start:end]:
                 nsources = tree.box_source_counts_nonchild[src_ibox]
 
                 nform_local += nsources
@@ -696,7 +696,7 @@ def write_performance_model(outf, geo_data):
     def process_m2qbxl():
         nqbx_m2l = 0
 
-        for isrc_level, ssn in enumerate(traversal.sep_smaller_by_level):
+        for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
             for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
                 icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
 
