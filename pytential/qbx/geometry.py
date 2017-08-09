@@ -139,7 +139,9 @@ class QBXFMMGeometryCodeGetter(object):
     @memoize_method
     def build_traversal(self):
         from boxtree.traversal import FMMTraversalBuilder
-        return FMMTraversalBuilder(self.cl_context, well_sep_is_n_away=self._well_sep_is_n_away)
+        return FMMTraversalBuilder(
+                self.cl_context,
+                well_sep_is_n_away=self._well_sep_is_n_away)
 
     @memoize_method
     def qbx_center_to_target_box_lookup(self, particle_id_dtype, box_id_dtype):
