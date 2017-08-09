@@ -75,8 +75,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # FIXME default debug=False once everything works
             debug=True,
             _refined_for_global_qbx=False,
-            _expansions_in_tree_have_extent=False,
-            _expansion_stick_out_factor=0,
+            _expansions_in_tree_have_extent=True,
+            _expansion_stick_out_factor=0.5,
+            _well_sep_is_n_away=2,
             performance_data_file=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
@@ -158,6 +159,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._expansions_in_tree_have_extent = \
                 _expansions_in_tree_have_extent
         self._expansion_stick_out_factor = _expansion_stick_out_factor
+        self._well_sep_is_n_away = _well_sep_is_n_away
         self.performance_data_file = performance_data_file
 
     def copy(
@@ -436,7 +438,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def qbx_fmm_code_getter(self):
         from pytential.qbx.geometry import QBXFMMGeometryCodeGetter
         return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim,
-                debug=self.debug)
+                debug=self.debug, _well_sep_is_n_away=self._well_sep_is_n_away)
 
     # {{{ fmm-based execution
 

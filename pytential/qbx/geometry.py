@@ -104,10 +104,11 @@ class target_state(Enum):  # noqa
 
 
 class QBXFMMGeometryCodeGetter(object):
-    def __init__(self, cl_context, ambient_dim, debug):
+    def __init__(self, cl_context, ambient_dim, debug, _well_sep_is_n_away):
         self.cl_context = cl_context
         self.ambient_dim = ambient_dim
         self.debug = debug
+        self._well_sep_is_n_away = _well_sep_is_n_away
 
     @memoize_method
     def copy_targets_kernel(self):
@@ -138,7 +139,7 @@ class QBXFMMGeometryCodeGetter(object):
     @memoize_method
     def build_traversal(self):
         from boxtree.traversal import FMMTraversalBuilder
-        return FMMTraversalBuilder(self.cl_context, well_sep_is_n_away=2)
+        return FMMTraversalBuilder(self.cl_context, well_sep_is_n_away=self._well_sep_is_n_away)
 
     @memoize_method
     def qbx_center_to_target_box_lookup(self, particle_id_dtype, box_id_dtype):
