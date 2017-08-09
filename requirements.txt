@@ -5,7 +5,7 @@ git+https://github.com/inducer/modepy
 git+https://github.com/pyopencl/pyopencl
 git+https://github.com/inducer/islpy
 git+https://github.com/inducer/loopy
-git+https://github.com/inducer/boxtree
+git+https://gitlab.tiker.net/inducer/boxtree@two-away
 git+https://github.com/inducer/meshmode
 git+https://github.com/inducer/sumpy
 git+https://github.com/inducer/pyfmmlib
