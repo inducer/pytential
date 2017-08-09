@@ -155,6 +155,20 @@ class StaticTestCase(object):
         pass
 
 
+class StarfishGreenTest(StaticTestCase):
+    expr = GreenExpr()
+    geometry = StarfishGeometry()
+    k = 0
+    qbx_order = 3
+    fmm_order = 6
+
+    resolutions = [3000, 4000]
+
+    _expansion_stick_out_factor = 0.5
+
+    fmm_backend = "sumpy"
+
+
 class SphereGreenTest(StaticTestCase):
     expr = GreenExpr()
     geometry = SphereGeometry()
@@ -164,7 +178,7 @@ class SphereGreenTest(StaticTestCase):
 
     resolutions = [0, 1]
 
-    _expansion_stick_out_factor = 0.75
+    _expansion_stick_out_factor = 0.5
 
     fmm_backend = "fmmlib"
 
