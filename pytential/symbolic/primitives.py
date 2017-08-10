@@ -421,9 +421,7 @@ def mean_curvature(ambient_dim, dim=None, where=None):
 
 # {{{ operators
 
-class NodeSum(Expression):
-    """Implements a global sum over all discretization nodes."""
-
+class NodalOperation(Expression):
     def __new__(cls, operand):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
@@ -443,7 +441,17 @@ class NodeSum(Expression):
     def __getinitargs__(self):
         return (self.operand,)
 
+
+class NodeSum(NodalOperation):
+    """Implements a global sum over all discretization nodes."""
+
     mapper_method = "map_node_sum"
+
+
+class NodeMax(NodalOperation):
+    """Implements a global maximum over all discretization nodes."""
+
+    mapper_method = "map_node_max"
 
 
 def integral(ambient_dim, dim, operand, where=None):
