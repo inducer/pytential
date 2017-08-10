@@ -162,7 +162,7 @@ class StarfishGreenTest(StaticTestCase):
     qbx_order = 3
     fmm_order = 6
 
-    resolutions = [3000, 4000]
+    resolutions = [30, 50, 70]
 
     _expansion_stick_out_factor = 0.5
 
