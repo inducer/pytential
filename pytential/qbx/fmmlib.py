@@ -88,6 +88,10 @@ class ToHostTransferredGeoDataWrapper(object):
             for ci in self.geo_data.centers()])
 
     @memoize_method
+    def expansion_radii(self):
+        return self.geo_data.expansion_radii().get(queue=self.queue)
+
+    @memoize_method
     def global_qbx_centers(self):
         return self.geo_data.global_qbx_centers().get(queue=self.queue)
 
@@ -441,10 +445,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
             kwargs = {}
             if self.dim == 3:
-                # FIXME Is this right?
-                kwargs["radius"] = (
-                        np.ones(ngqbx_centers)
-                        * self.tree.root_extent * 2**(-isrc_level))
+                kwargs["radius"] = (0.5 *
+                        geo_data.expansion_radii()[geo_data.global_qbx_centers()])
 
             nsrc_boxes_per_gqbx_center = (
                     ssn.starts[icontaining_tgt_box_vec+1]
@@ -535,13 +537,14 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             assert target_level_start_ibox == lev_box_start
 
             kwargs = {}
-            if self.dim == 3:
-                # FIXME Is this right?
-                kwargs["radius"] = self.tree.root_extent * 2**(-isrc_level)
-
             kwargs.update(self.kernel_kwargs)
 
             for tgt_icenter in range(geo_data.ncenters):
+                if self.dim == 3:
+                    # Yuck: This keeps overwriting 'radius' in the dict.
+                    kwargs["radius"] = 0.5 * (
+                            geo_data.expansion_radii()[tgt_icenter])
+
                 isrc_box = qbx_center_to_target_box[tgt_icenter]
 
                 tgt_center = qbx_centers[:, tgt_icenter]
