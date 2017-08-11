@@ -60,6 +60,8 @@ class IdentityMapper(IdentityMapperBase):
     def map_node_sum(self, expr):
         return type(expr)(self.rec(expr.operand))
 
+    map_node_max = map_node_sum
+
     def map_num_reference_derivative(self, expr):
         return type(expr)(expr.ref_axes, self.rec(expr.operand),
                 expr.where)
@@ -100,6 +102,7 @@ class CombineMapper(CombineMapperBase):
     def map_node_sum(self, expr):
         return self.rec(expr.operand)
 
+    map_node_max = map_node_sum
     map_num_reference_derivative = map_node_sum
 
     def map_int_g(self, expr):
@@ -153,6 +156,8 @@ class EvaluationMapper(EvaluationMapperBase):
 
     def map_node_sum(self, expr):
         return componentwise(type(expr), self.rec(expr.operand))
+
+    map_node_max = map_node_sum
 
     def map_node_coordinate_component(self, expr):
         return expr
@@ -462,6 +467,9 @@ class StringifyMapper(BaseStringifyMapper):
 
     def map_node_sum(self, expr, enclosing_prec):
         return "NodeSum(%s)" % self.rec(expr.operand, PREC_NONE)
+
+    def map_node_max(self, expr, enclosing_prec):
+        return "NodeMax(%s)" % self.rec(expr.operand, PREC_NONE)
 
     def map_node_coordinate_component(self, expr, enclosing_prec):
         return "x%d.%s" % (expr.ambient_axis,

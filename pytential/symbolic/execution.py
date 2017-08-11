@@ -50,7 +50,10 @@ class EvaluationMapper(EvaluationMapperBase):
     # {{{ map_XXX
 
     def map_node_sum(self, expr):
-        return cl.array.sum(self.rec(expr.operand)).get()
+        return cl.array.sum(self.rec(expr.operand)).get()[()]
+
+    def map_node_max(self, expr):
+        return cl.array.max(self.rec(expr.operand)).get()[()]
 
     def map_ones(self, expr):
         discr = self.bound_expr.get_discretization(expr.where)
