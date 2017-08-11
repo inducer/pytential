@@ -34,6 +34,7 @@ from pyopencl.tools import (  # noqa
 from functools import partial
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
+        NArmedStarfish,
         make_curve_mesh)
 # from sumpy.visualization import FieldPlotter
 from pytential import bind, sym, norm
@@ -76,15 +77,25 @@ def get_sphere_mesh(refinement_increment, target_order):
 
 
 class StarfishGeometry(object):
-    mesh_name = "starfish"
+    def __init__(self, n_arms=5, amplitude=0.25):
+        self.n_arms = n_arms
+        self.amplitude = amplitude
+
+    @property
+    def mesh_name(self):
+        return "%d-starfish-%s" % (
+                self.n_arms,
+                self.amplitude)
+
     dim = 2
 
     resolutions = [30, 50, 70]
 
     def get_mesh(self, nelements, target_order):
-        return make_curve_mesh(starfish,
-                    np.linspace(0, 1, nelements+1),
-                    target_order)
+        return make_curve_mesh(
+                NArmedStarfish(self.n_arms, self.amplitude),
+                np.linspace(0, 1, nelements+1),
+                target_order)
 
 
 class SphereGeometry(object):
