@@ -55,13 +55,6 @@ d1 = sym.Derivative()
 d2 = sym.Derivative()
 
 
-def get_wobbly_circle_mesh(refinement_increment, target_order):
-    nelements = [3000, 5000, 7000][refinement_increment]
-    return make_curve_mesh(WobblyCircle.random(30, seed=30),
-                np.linspace(0, 1, nelements+1),
-                target_order)
-
-
 def get_sphere_mesh(refinement_increment, target_order):
     from meshmode.mesh.generation import generate_icosphere
     mesh = generate_icosphere(1, target_order)
@@ -95,6 +88,19 @@ class StarfishGeometry(object):
         return make_curve_mesh(
                 NArmedStarfish(self.n_arms, self.amplitude),
                 np.linspace(0, 1, nelements+1),
+                target_order)
+
+
+class WobblyCircleGeometry(object):
+    dim = 2
+    mesh_name = "wobbly-circle"
+
+    resolutions = [2000, 3000, 4000]
+
+    def get_mesh(self, resolution, target_order):
+        return make_curve_mesh(
+                WobblyCircle.random(30, seed=30),
+                np.linspace(0, 1, resolution+1),
                 target_order)
 
 
@@ -174,6 +180,18 @@ class StarfishGreenTest(StaticTestCase):
     fmm_order = 6
 
     resolutions = [30, 50, 70]
+
+    _expansion_stick_out_factor = 0.5
+
+    fmm_backend = "sumpy"
+
+
+class WobblyCircleGreenTest(StaticTestCase):
+    expr = GreenExpr()
+    geometry = WobblyCircleGeometry()
+    k = 0
+    qbx_order = 3
+    fmm_order = 10
 
     _expansion_stick_out_factor = 0.5
 
