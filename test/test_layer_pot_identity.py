@@ -377,7 +377,7 @@ def test_identity_convergence(ctx_getter,  case, visualize=False):
             from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, density_discr, target_order)
 
-            bdry_normals = bind(density_discr, sym.normal(3))(queue)\
+            bdry_normals = bind(density_discr, sym.normal(mesh.ambient_dim))(queue)\
                     .as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
