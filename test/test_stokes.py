@@ -145,8 +145,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     bc = fund_and_rot_soln(nodes[0], nodes[1], fund_soln_loc, strength)
 
     omega_sym = sym.make_sym_vector("omega", dim)
-    u_A_sym_bdry = stokeslet_obj.apply(
-            omega_sym, mu_sym, qbx_forced_limit=1)  # noqa: N806
+    u_A_sym_bdry = stokeslet_obj.apply(  # noqa: N806
+            omega_sym, mu_sym, qbx_forced_limit=1)
 
     omega = [
             cl.array.to_device(queue, (strength/path_length)*np.ones(len(nodes[0]))),
@@ -170,8 +170,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     int_val = -int_val/(2 * np.pi)
     print("int_val = ", int_val)
 
-    u_A_sym_vol = stokeslet_obj.apply(
-            omega_sym, mu_sym, qbx_forced_limit=2)  # noqa: N806
+    u_A_sym_vol = stokeslet_obj.apply(  # noqa: N806
+            omega_sym, mu_sym, qbx_forced_limit=2)
     representation_sym = (
             - stresslet_obj.apply(
                 sigma_sym, nvec_sym, mu_sym, qbx_forced_limit=2)

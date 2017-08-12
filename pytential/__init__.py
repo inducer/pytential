@@ -1,5 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
@@ -71,7 +70,7 @@ def integral(discr, queue, x):
 
 
 @memoize_on_first_arg
-def _norm_op(discr, num_components):
+def _norm_2_op(discr, num_components):
     from pytential import sym, bind
     if num_components is not None:
         from pymbolic.primitives import make_sym_vector
@@ -106,9 +105,21 @@ def norm(discr, queue, x, p=2):
     if isinstance(x, np.ndarray):
         num_components, = x.shape
 
-    norm_op = _norm_op(discr, num_components)
-    from math import sqrt
-    return sqrt(norm_op(queue, integrand=x))
+    if p == 2:
+        norm_op = _norm_2_op(discr, num_components)
+        from math import sqrt
+        return sqrt(norm_op(queue, integrand=x))
+
+    elif p == np.inf or p == "inf":
+        norm_op = _norm_inf_op(discr, num_components)
+        norm_res = norm_op(queue, arg=x)
+        if isinstance(norm_res, np.ndarray):
+            return max(norm_res)
+        else:
+            return norm_res
+
+    else:
+        raise ValueError("unsupported norm order: %s" % p)
 
 
 __all__ = ["sym", "bind"]

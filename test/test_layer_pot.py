@@ -417,10 +417,11 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
     print("l_inf error:", linf_err)
 
     if do_plot:
-        #fplot.show_scalar_in_mayavi(0.1*cl.clmath.log10(1e-15 + err).get(queue))
-        fplot.show_scalar_in_mayavi(fmm_fld_in_vol.get(queue))
-        import mayavi.mlab as mlab
-        mlab.show()
+        #fplot.show_scalar_in_mayavi(0.1*.get(queue))
+        fplot.write_vtk_file("potential.vts", [
+            ("fmm_fld_in_vol", fmm_fld_in_vol.get(queue)),
+            ("direct_fld_in_vol", direct_fld_in_vol.get(queue))
+            ])
 
     assert linf_err < 1e-3
 
