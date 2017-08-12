@@ -345,7 +345,7 @@ def test_identity_convergence(ctx_getter,  case, visualize=False):
 
     print(eoc_rec)
     tgt_order = case.qbx_order - case.expr.order_drop
-    assert eoc_rec.order_estimate() > tgt_order - 1.3
+    assert eoc_rec.order_estimate() > tgt_order - 1.6
 
 # }}}
 
