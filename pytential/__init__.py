@@ -89,11 +89,11 @@ def _norm_inf_op(discr, num_components):
     if num_components is not None:
         from pymbolic.primitives import make_sym_vector
         v = make_sym_vector("arg", num_components)
-        max_arg = sym.abs(np.dot(sym.conj(v), v))
+        max_arg = sym.abs(v)
     else:
-        max_arg = sym.abs(sym.var("arg"))**2
+        max_arg = sym.abs(sym.var("arg"))
 
-    return bind(discr, sym.NodeSum(max_arg))
+    return bind(discr, sym.NodeMax(max_arg))
 
 
 def norm(discr, queue, x, p=2):
