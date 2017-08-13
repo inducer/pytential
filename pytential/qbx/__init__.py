@@ -67,7 +67,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             qbx_order=None,
             fmm_order=None,
             fmm_level_to_order=None,
-            base_resampler=None,
+            to_refined_connection=None,
             expansion_factory=None,
             target_association_tolerance=_not_provided,
 
@@ -83,10 +83,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """
         :arg fine_order: The total degree to which the (upsampled)
              underlying quadrature is exact.
-        :arg base_resampler: A connection used for resampling from
+        :arg to_refined_connection: A connection used for resampling from
              *density_discr* the fine density discretization.  It is assumed
              that the fine density discretization given by
-             *base_resampler.to_discr* is *not* already upsampled. May
+             *to_refined_connection.to_discr* is *not* already upsampled. May
              be *None*.
         :arg fmm_order: `False` for direct calculation. ``None`` will set
              a reasonable(-ish?) default.
@@ -146,7 +146,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self.fmm_backend = fmm_backend
 
         # Default values are lazily provided if these are None
-        self._base_resampler = base_resampler
+        self._to_refined_connection = to_refined_connection
 
         if expansion_factory is None:
             from sumpy.expansion import DefaultExpansionFactory
@@ -166,7 +166,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             fine_order=None,
             qbx_order=None,
             fmm_level_to_order=None,
-            base_resampler=None,
+            to_refined_connection=None,
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
@@ -210,7 +210,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 fmm_level_to_order=(
                     fmm_level_to_order or self.fmm_level_to_order),
                 target_association_tolerance=target_association_tolerance,
-                base_resampler=base_resampler or self._base_resampler,
+                to_refined_connection=(
+                    to_refined_connection or self._to_refined_connection),
 
                 debug=(
                     # False is a valid value here
@@ -237,25 +238,23 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
     @property
-    def base_fine_density_discr(self):
+    def refined_interp_density_discr(self):
         """The refined, interpolation-focused density discretization (no oversampling).
         """
-        # FIXME: Maybe rename refined_interp_density_discr
-        return (self._base_resampler.to_discr
-                if self._base_resampler is not None
+        return (self._to_refined_connection.to_discr
+                if self._to_refined_connection is not None
                 else self.density_discr)
 
     @property
     @memoize_method
-    def fine_density_discr(self):
+    def refined_ovsmp_quad_density_discr(self):
         """The refined, quadrature-focused density discretization (with upsampling).
         """
-        # FIXME: Maybe rename refined_quad_density_discr
         from meshmode.discretization.poly_element import (
                 QuadratureSimplexGroupFactory)
 
         return Discretization(
-            self.density_discr.cl_context, self.base_fine_density_discr.mesh,
+            self.density_discr.cl_context, self.refined_interp_density_discr.mesh,
             QuadratureSimplexGroupFactory(self.fine_order),
             self.real_dtype)
 
@@ -266,10 +265,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             make_same_mesh_connection, ChainedDiscretizationConnection)
 
         conn = make_same_mesh_connection(
-                self.fine_density_discr, self.base_fine_density_discr)
+                self.refined_ovsmp_quad_density_discr,
+                self.refined_interp_density_discr)
 
-        if self._base_resampler is not None:
-            return ChainedDiscretizationConnection([self._base_resampler, conn])
+        if self._to_refined_connection is not None:
+            return ChainedDiscretizationConnection(
+                    [self._to_refined_connection, conn])
 
         return conn
 
@@ -329,7 +330,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @memoize_method
     def _fine_panel_centers_of_mass(self):
         import pytential.qbx.utils as utils
-        return utils.element_centers_of_mass(self.base_fine_density_discr)
+        return utils.element_centers_of_mass(self.refined_interp_density_discr)
 
     @memoize_method
     def _expansion_radii(self, last_dim_length):
@@ -364,7 +365,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             raise NotImplementedError()
 
         import pytential.qbx.utils as utils
-        return utils.panel_sizes(self.base_fine_density_discr, last_dim_length)
+        return utils.panel_sizes(self.refined_interp_density_discr, last_dim_length)
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
@@ -646,7 +647,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
-                        self.fine_density_discr.nodes(),
+                        self.refined_ovsmp_quad_density_discr.nodes(),
                         utils.get_centers_on_side(self, o.qbx_forced_limit),
                         [strengths], **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
@@ -659,7 +660,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                             insn.kernels)
 
                 evt, output_for_each_kernel = p2p(queue,
-                        target_discr.nodes(), self.fine_density_discr.nodes(),
+                        target_discr.nodes(),
+                        self.refined_ovsmp_quad_density_discr.nodes(),
                         [strengths], **kernel_args)
 
                 qbx_forced_limit = o.qbx_forced_limit
@@ -708,7 +710,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     lpot_applier_on_tgt_subset(
                             queue,
                             targets=target_discr.nodes(),
-                            sources=self.fine_density_discr.nodes(),
+                            sources=self.refined_ovsmp_quad_density_discr.nodes(),
                             centers=geo_data.centers(),
                             strengths=[strengths],
                             qbx_tgt_numbers=qbx_tgt_numbers,

@@ -368,7 +368,7 @@ class QBXFMMGeometryData(object):
 
     @property
     def coord_dtype(self):
-        return self.lpot_source.fine_density_discr.nodes().dtype
+        return self.lpot_source.refined_ovsmp_quad_density_discr.nodes().dtype
 
     # {{{ centers/radii
 
@@ -480,7 +480,7 @@ class QBXFMMGeometryData(object):
         target_info = self.target_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            nsources = lpot_src.fine_density_discr.nnodes
+            nsources = lpot_src.refined_ovsmp_quad_density_discr.nnodes
             nparticles = nsources + target_info.ntargets
 
             target_radii = None
@@ -505,7 +505,7 @@ class QBXFMMGeometryData(object):
             # FIXME: Should investigate this further.
 
             tree, _ = code_getter.build_tree(queue,
-                    particles=lpot_src.fine_density_discr.nodes(),
+                    particles=lpot_src.refined_ovsmp_quad_density_discr.nodes(),
                     targets=target_info.targets,
                     target_radii=target_radii,
                     max_leaf_refine_weight=32,
@@ -806,7 +806,7 @@ class QBXFMMGeometryData(object):
         with cl.CommandQueue(self.cl_context) as queue:
             import matplotlib.pyplot as pt
             from meshmode.discretization.visualization import draw_curve
-            draw_curve(self.lpot_source.fine_density_discr)
+            draw_curve(self.lpot_source.refined_ovsmp_quad_density_discr)
 
             global_flags = self.global_qbx_flags().get(queue=queue)
 

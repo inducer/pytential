@@ -151,7 +151,7 @@ class LayerPotentialSourceBase(PotentialSource):
     .. rubric:: Discretizations
 
     .. attribute:: density_discr
-    .. attribute:: fine_density_discr
+    .. attribute:: refined_ovsmp_quad_density_discr
     .. attribute:: resampler
     .. method:: with_refinement
 
@@ -267,7 +267,7 @@ class LayerPotentialSourceBase(PotentialSource):
         import pytential.symbolic.primitives as p
         from pytential.symbolic.execution import bind
         with cl.CommandQueue(self.cl_context) as queue:
-            # fine_density_discr is not guaranteed to be usable for
+            # refined_ovsmp_quad_density_discr is not guaranteed to be usable for
             # interpolation/differentiation. Use density_discr to find
             # area element instead, then upsample that.
 
@@ -277,7 +277,7 @@ class LayerPotentialSourceBase(PotentialSource):
                         p.area_element(self.ambient_dim, self.dim)
                         )(queue))
 
-            qweight = bind(self.fine_density_discr, p.QWeight())(queue)
+            qweight = bind(self.refined_ovsmp_quad_density_discr, p.QWeight())(queue)
 
             return (area_element.with_queue(queue)*qweight).with_queue(None)
 
