@@ -609,14 +609,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         return output
 
-    def finalize_potential(self, potential):
-        if self.dim == 3:
-            scale_factor = 1/(4*np.pi)
-        else:
-            raise NotImplementedError(
-                    "scale factor for pyfmmlib for %d dimensions" % self.dim)
+    def finalize_potentials(self, potential):
+        potential = super(QBXFMMLibExpansionWrangler, self).finalize_potentials(
+                potential)
 
-        return cl.array.to_device(self.queue, potential) * scale_factor
+        return cl.array.to_device(self.queue, potential)
 
 # }}}
 
