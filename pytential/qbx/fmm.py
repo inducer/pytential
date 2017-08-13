@@ -342,9 +342,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     # }}}
 
-    def finalize_potential(self, potential):
-        return potential
-
 # }}}
 
 
@@ -507,14 +504,14 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     all_potentials_in_tree_order += qbx_potentials
 
-    def reorder_potentials(x):
+    def reorder_and_finalize_potentials(x):
         # "finalize" gives host FMMs (like FMMlib) a chance to turn the
         # potential back into a CL array.
         return wrangler.finalize_potential(x[tree.sorted_target_ids])
 
     from pytools.obj_array import with_object_array_or_scalar
     result = with_object_array_or_scalar(
-            reorder_potentials, all_potentials_in_tree_order)
+            reorder_and_finalize_potentials, all_potentials_in_tree_order)
 
     # }}}
 
