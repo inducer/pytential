@@ -458,7 +458,7 @@ class RefinerNotConvergedWarning(UserWarning):
     pass
 
 
-def make_empty_refine_flags(queue, lpot_source, use_refined_interp_discr=False):
+def make_empty_refine_flags(queue, lpot_source, use_stage2_discr=False):
     """Return an array on the device suitable for use as element refine flags.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`.
@@ -467,8 +467,8 @@ def make_empty_refine_flags(queue, lpot_source, use_refined_interp_discr=False):
     :returns: A :class:`pyopencl.array.Array` suitable for use as refine flags,
         initialized to zero.
     """
-    discr = (lpot_source.refined_interp_density_discr
-            if use_refined_interp_discr
+    discr = (lpot_source.stage2_density_discr
+            if use_stage2_discr
             else lpot_source.density_discr)
     result = cl.array.zeros(queue, discr.mesh.nelements, np.int32)
     result.finish()
@@ -578,7 +578,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
     niter = 0
     fine_connections = []
 
-    refined_interp_density_discr = lpot_source.density_discr
+    stage2_density_discr = lpot_source.density_discr
 
     while must_refine:
         must_refine = False
@@ -594,19 +594,19 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
         # Build tree and auxiliary data.
         # FIXME: The tree should not have to be rebuilt at each iteration.
-        tree = wrangler.build_tree(lpot_source, use_refined_interp_discr=True)
+        tree = wrangler.build_tree(lpot_source, use_stage2_discr=True)
         peer_lists = wrangler.find_peer_lists(tree)
         refine_flags = make_empty_refine_flags(
-                wrangler.queue, lpot_source, use_refined_interp_discr=True)
+                wrangler.queue, lpot_source, use_stage2_discr=True)
 
         must_refine |= wrangler.check_sufficient_source_quadrature_resolution(
                 lpot_source, tree, peer_lists, refine_flags, debug)
 
         if must_refine:
             conn = wrangler.refine(
-                    refined_interp_density_discr,
+                    stage2_density_discr,
                     refiner, refine_flags, group_factory, debug)
-            refined_interp_density_discr = conn.to_discr
+            stage2_density_discr = conn.to_discr
             fine_connections.append(conn)
             lpot_source = lpot_source.copy(
                     to_refined_connection=ChainedDiscretizationConnection(

@@ -151,8 +151,8 @@ class LayerPotentialSourceBase(PotentialSource):
     .. rubric:: Discretizations
 
     .. attribute:: density_discr
-    .. attribute:: refined_interp_density_discr
-    .. attribute:: refined_ovsmp_quad_density_discr
+    .. attribute:: stage2_density_discr
+    .. attribute:: quad_stage2_density_discr
     .. attribute:: resampler
     .. method:: with_refinement
 

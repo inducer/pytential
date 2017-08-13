@@ -238,7 +238,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
     @property
-    def refined_interp_density_discr(self):
+    def stage2_density_discr(self):
         """The refined, interpolation-focused density discretization (no oversampling).
         """
         return (self._to_refined_connection.to_discr
@@ -251,19 +251,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from meshmode.discretization.connection import make_same_mesh_connection
 
         return make_same_mesh_connection(
-                self.refined_ovsmp_quad_density_discr,
-                self.refined_interp_density_discr)
+                self.quad_stage2_density_discr,
+                self.stage2_density_discr)
 
     @property
     @memoize_method
-    def refined_ovsmp_quad_density_discr(self):
+    def quad_stage2_density_discr(self):
         """The refined, quadrature-focused density discretization (with upsampling).
         """
         from meshmode.discretization.poly_element import (
                 QuadratureSimplexGroupFactory)
 
         return Discretization(
-            self.density_discr.cl_context, self.refined_interp_density_discr.mesh,
+            self.density_discr.cl_context, self.stage2_density_discr.mesh,
             QuadratureSimplexGroupFactory(self.fine_order),
             self.real_dtype)
 
@@ -274,18 +274,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         import pytential.symbolic.primitives as p
         from pytential.symbolic.execution import bind
         with cl.CommandQueue(self.cl_context) as queue:
-            # refined_ovsmp_quad_density_discr is not guaranteed to be usable for
+            # quad_stage2_density_discr is not guaranteed to be usable for
             # interpolation/differentiation. Use density_discr to find
             # area element instead, then upsample that.
 
             area_element = self.refined_interp_to_ovsmp_quad_connection(
                     queue,
                     bind(
-                        self.refined_interp_density_discr,
+                        self.stage2_density_discr,
                         p.area_element(self.ambient_dim, self.dim)
                         )(queue))
 
-            qweight = bind(self.refined_ovsmp_quad_density_discr, p.QWeight())(queue)
+            qweight = bind(self.quad_stage2_density_discr, p.QWeight())(queue)
 
             return (area_element.with_queue(queue)*qweight).with_queue(None)
 
@@ -361,7 +361,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @memoize_method
     def _fine_panel_centers_of_mass(self):
         import pytential.qbx.utils as utils
-        return utils.element_centers_of_mass(self.refined_interp_density_discr)
+        return utils.element_centers_of_mass(self.stage2_density_discr)
 
     @memoize_method
     def _expansion_radii(self, last_dim_length):
@@ -396,7 +396,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             raise NotImplementedError()
 
         import pytential.qbx.utils as utils
-        return utils.panel_sizes(self.refined_interp_density_discr, last_dim_length)
+        return utils.panel_sizes(self.stage2_density_discr, last_dim_length)
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
@@ -678,7 +678,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
-                        self.refined_ovsmp_quad_density_discr.nodes(),
+                        self.quad_stage2_density_discr.nodes(),
                         utils.get_centers_on_side(self, o.qbx_forced_limit),
                         [strengths], **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
@@ -692,7 +692,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 evt, output_for_each_kernel = p2p(queue,
                         target_discr.nodes(),
-                        self.refined_ovsmp_quad_density_discr.nodes(),
+                        self.quad_stage2_density_discr.nodes(),
                         [strengths], **kernel_args)
 
                 qbx_forced_limit = o.qbx_forced_limit
@@ -741,7 +741,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     lpot_applier_on_tgt_subset(
                             queue,
                             targets=target_discr.nodes(),
-                            sources=self.refined_ovsmp_quad_density_discr.nodes(),
+                            sources=self.quad_stage2_density_discr.nodes(),
                             centers=geo_data.centers(),
                             strengths=[strengths],
                             qbx_tgt_numbers=qbx_tgt_numbers,
