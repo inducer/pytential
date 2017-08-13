@@ -267,6 +267,30 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             QuadratureSimplexGroupFactory(self.fine_order),
             self.real_dtype)
 
+    # {{{ weights and area elements
+
+    @memoize_method
+    def weights_and_area_elements(self):
+        import pytential.symbolic.primitives as p
+        from pytential.symbolic.execution import bind
+        with cl.CommandQueue(self.cl_context) as queue:
+            # refined_ovsmp_quad_density_discr is not guaranteed to be usable for
+            # interpolation/differentiation. Use density_discr to find
+            # area element instead, then upsample that.
+
+            area_element = self.refined_interp_to_ovsmp_quad_connection(
+                    queue,
+                    bind(
+                        self.refined_interp_density_discr,
+                        p.area_element(self.ambient_dim, self.dim)
+                        )(queue))
+
+            qweight = bind(self.refined_ovsmp_quad_density_discr, p.QWeight())(queue)
+
+            return (area_element.with_queue(queue)*qweight).with_queue(None)
+
+    # }}}
+
     @property
     @memoize_method
     def resampler(self):
