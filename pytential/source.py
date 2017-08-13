@@ -151,6 +151,7 @@ class LayerPotentialSourceBase(PotentialSource):
     .. rubric:: Discretizations
 
     .. attribute:: density_discr
+    .. attribute:: refined_interp_density_discr
     .. attribute:: refined_ovsmp_quad_density_discr
     .. attribute:: resampler
     .. method:: with_refinement
@@ -271,9 +272,10 @@ class LayerPotentialSourceBase(PotentialSource):
             # interpolation/differentiation. Use density_discr to find
             # area element instead, then upsample that.
 
-            area_element = self.resampler(queue,
+            area_element = self.refined_interp_to_ovsmp_quad_connection(
+                    queue,
                     bind(
-                        self.density_discr,
+                        self.refined_interp_density_discr,
                         p.area_element(self.ambient_dim, self.dim)
                         )(queue))
 

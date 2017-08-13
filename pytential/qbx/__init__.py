@@ -247,6 +247,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @property
     @memoize_method
+    def refined_interp_to_ovsmp_quad_connection(self):
+        from meshmode.discretization.connection import make_same_mesh_connection
+
+        return make_same_mesh_connection(
+                self.refined_ovsmp_quad_density_discr,
+                self.refined_interp_density_discr)
+
+    @property
+    @memoize_method
     def refined_ovsmp_quad_density_discr(self):
         """The refined, quadrature-focused density discretization (with upsampling).
         """
@@ -261,12 +270,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @property
     @memoize_method
     def resampler(self):
-        from meshmode.discretization.connection import (
-            make_same_mesh_connection, ChainedDiscretizationConnection)
+        from meshmode.discretization.connection import \
+                ChainedDiscretizationConnection
 
-        conn = make_same_mesh_connection(
-                self.refined_ovsmp_quad_density_discr,
-                self.refined_interp_density_discr)
+        conn = self.refined_interp_to_ovsmp_quad_connection
 
         if self._to_refined_connection is not None:
             return ChainedDiscretizationConnection(
