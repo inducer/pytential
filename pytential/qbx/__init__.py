@@ -78,6 +78,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.5,
             _well_sep_is_n_away=2,
+            _max_leaf_refine_weight=32,
             geometry_data_inspector=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
@@ -160,7 +161,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _expansions_in_tree_have_extent
         self._expansion_stick_out_factor = _expansion_stick_out_factor
         self._well_sep_is_n_away = _well_sep_is_n_away
+        self._max_leaf_refine_weight = _max_leaf_refine_weight
         self.geometry_data_inspector = geometry_data_inspector
+
+        # /!\ *All* parameters set here must also be set by copy() below,
+        # otherwise they will be reset to their default values behind your
+        # back if the layer potential source is ever copied. (such as
+        # during refinement)
 
     def copy(
             self,
@@ -233,9 +240,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     _expansion_stick_out_factor
                     if _expansion_stick_out_factor is not _not_provided
                     else self._expansion_stick_out_factor),
+                _well_sep_is_n_away=self._well_sep_is_n_away,
+                _max_leaf_refine_weight=self._max_leaf_refine_weight,
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
-                fmm_backend=self.fmm_backend)
+                fmm_backend=self.fmm_backend,
+                )
 
     # }}}
 
