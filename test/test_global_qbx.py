@@ -108,7 +108,8 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     from pytential.qbx.utils import get_centers_on_side
 
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
-    fine_discr_nodes = lpot_source.fine_density_discr.nodes().get(queue)
+    fine_discr_nodes = \
+            lpot_source.quad_stage2_density_discr.nodes().get(queue)
     int_centers = get_centers_on_side(lpot_source, -1)
     int_centers = np.array([axis.get(queue) for axis in int_centers])
     ext_centers = get_centers_on_side(lpot_source, +1)
@@ -176,7 +177,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     for i, panel_1 in enumerate(iter_elements(lpot_source.density_discr)):
         for panel_2 in iter_elements(lpot_source.density_discr):
             check_disk_undisturbed_by_sources(panel_1, panel_2)
-        for panel_2 in iter_elements(lpot_source.fine_density_discr):
+        for panel_2 in iter_elements(lpot_source.quad_stage2_density_discr):
             check_sufficient_quadrature_resolution(panel_1, panel_2)
         if helmholtz_k is not None:
             check_panel_size_to_helmholtz_k_ratio(panel_1)
