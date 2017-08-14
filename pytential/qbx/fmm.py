@@ -522,9 +522,21 @@ def drive_fmm(expansion_wrangler, src_weights):
 # }}}
 
 
-# {{{ performance model
+# {{{ performance data
 
-def write_performance_model(outf, geo_data):
+def assemble_performance_data(geo_data, uses_pde_expansions,
+        translation_source_power=None, translation_target_power=None):
+    """
+    :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
+        uses translation operators that make use of the knowledge that the
+        potential satisfies a PDE.
+    """
+
+    # FIXME: This should suport target filtering.
+
+    from collections import OrderedDict
+    result = OrderedDict()
+
     from pymbolic import var
     p_fmm = var("p_fmm")
     p_qbx = var("p_qbx")
@@ -537,28 +549,54 @@ def write_performance_model(outf, geo_data):
         box_target_counts_nonchild = (
                 nqbtl.box_target_counts_nonchild.get(queue=queue))
 
-    outf.write("# ------------------------------\n")
+    d = tree.dimensions
+    if uses_pde_expansions:
+        ncoeffs_fmm = p_fmm ** (d-1)
+        ncoeffs_qbx = p_qbx ** (d-1)
 
-    outf.write("nlevels = {cost}\n"
-            .format(cost=tree.nlevels))
-    outf.write("nboxes = {cost}\n"
-            .format(cost=tree.nboxes))
-    outf.write("nsources = {cost}\n"
-            .format(cost=tree.nsources))
-    outf.write("ntargets = {cost}\n"
-            .format(cost=tree.ntargets))
+        if d == 2:
+            default_translation_source_power = 1
+            default_translation_target_power = 1
+
+        elif d == 3:
+            default_translation_source_power = 2
+            default_translation_target_power = 1
+
+        else:
+            raise ValueError("Don't know how to estimate expansion complexities "
+                    "for dimension %d" % d)
+
+    else:
+        ncoeffs_fmm = p_fmm ** d
+        ncoeffs_qbx = p_qbx ** d
+        default_translation_source_power = d
+        default_translation_target_power = d
+
+    if translation_source_power is None:
+        translation_source_power = default_translation_source_power
+    if translation_target_power is None:
+        translation_target_power = default_translation_target_power
+
+    def xlat_cost(p_source, p_target):
+        return (
+                p_source ** translation_source_power
+                * p_target ** translation_target_power)
+
+    result.update(
+            nlevels=tree.nlevels,
+            nboxes=tree.nboxes,
+            nsources=tree.nsources,
+            ntargets=tree.ntargets)
 
     # {{{ construct local multipoles
 
-    outf.write("form_mp = {cost}\n"
-            .format(cost=tree.nsources*p_fmm))
+    result["form_mp"] = tree.nsources*ncoeffs_fmm
 
     # }}}
 
     # {{{ propagate multipoles upward
 
-    outf.write("prop_upward = {cost}\n"
-            .format(cost=tree.nboxes*p_fmm**2))
+    result["prop_upward"] = tree.nboxes * xlat_cost(p_fmm, p_fmm)
 
     # }}}
 
@@ -575,8 +613,7 @@ def write_performance_model(outf, geo_data):
 
                 npart_direct += ntargets * nsources
 
-        outf.write("part_direct = {cost}\n"
-                .format(cost=npart_direct))
+        result["part_direct"] = npart_direct
 
     process_list1()
 
@@ -591,8 +628,7 @@ def write_performance_model(outf, geo_data):
 
             nm2l += (end-start)
 
-        outf.write("m2l = {cost}\n"
-                .format(cost=nm2l * p_fmm**2))
+        result["m2l"] = nm2l * xlat_cost(p_fmm, p_fmm)
 
     process_list2()
 
@@ -609,8 +645,8 @@ def write_performance_model(outf, geo_data):
                 start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
                 nmp_eval += ntargets * (end-start)
 
-        outf.write("mp_eval = {cost}\n"
-                .format(cost=nmp_eval * p_fmm))
+        # FIXME: This is missing a particle count multiplier
+        result["mp_eval"] = nmp_eval * ncoeffs_fmm
 
     process_list3()
 
@@ -629,8 +665,7 @@ def write_performance_model(outf, geo_data):
 
                 nform_local += nsources
 
-        outf.write("form_local = {cost}\n"
-                .format(cost=nform_local * p_fmm))
+        result["form_local"] = nform_local * xlat_cost(p_fmm, p_fmm)
 
     process_list4()
 
@@ -638,15 +673,13 @@ def write_performance_model(outf, geo_data):
 
     # {{{ propagate local_exps downward
 
-    outf.write("prop_downward = {cost}\n"
-            .format(cost=tree.nboxes*p_fmm**2))
+    result["prop_downward"] = tree.nboxes * xlat_cost(p_fmm, p_fmm)
 
     # }}}
 
     # {{{ evaluate locals
 
-    outf.write("eval_part = {cost}\n"
-            .format(cost=tree.ntargets*p_fmm))
+    result["eval_part"] = tree.ntargets * ncoeffs_fmm
 
     # }}}
 
@@ -669,8 +702,7 @@ def write_performance_model(outf, geo_data):
 
         ncenters = geo_data.ncenters
 
-        outf.write("ncenters = {cost}\n"
-                .format(cost=ncenters))
+        result["ncenters"] = ncenters
 
         for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
             itgt_box = qbx_center_to_target_box[tgt_icenter]
@@ -681,8 +713,7 @@ def write_performance_model(outf, geo_data):
 
                 nqbxl_direct += nsources
 
-        outf.write("qbxl_direct = {cost}\n"
-                .format(cost=nqbxl_direct * p_qbx))
+        result["p2qbxl"] = nqbxl_direct * ncoeffs_qbx
 
     process_form_qbxl()
 
@@ -703,8 +734,7 @@ def write_performance_model(outf, geo_data):
 
                 nqbx_m2l += stop-start
 
-        outf.write("qbx_m2l = {cost}\n"
-                .format(cost=nqbx_m2l * p_fmm * p_qbx))
+        result["m2qbxl"] = nqbx_m2l * xlat_cost(p_fmm, p_qbx)
 
     process_m2qbxl()
 
@@ -712,8 +742,7 @@ def write_performance_model(outf, geo_data):
 
     # {{{ translate from box local expansions to qbx local expansions
 
-    outf.write("qbx_l2l = {cost}\n"
-            .format(cost=geo_data.ncenters * p_fmm * p_qbx))
+    result["l2qbxl"] = geo_data.ncenters * xlat_cost(p_fmm, p_qbx)
 
     # }}}
 
@@ -722,18 +751,17 @@ def write_performance_model(outf, geo_data):
     def process_eval_qbxl():
         nqbx_eval = 0
 
-        for iglobal_center in range(geo_data.ncenters):
-            src_icenter = global_qbx_centers[iglobal_center]
-
+        for src_icenter in global_qbx_centers:
             start, end = center_to_targets_starts[src_icenter:src_icenter+2]
             nqbx_eval += end-start
 
-        outf.write("qbx_eval = {cost}\n"
-                .format(cost=nqbx_eval * p_qbx))
+        result["qbxl2p"] = nqbx_eval * ncoeffs_qbx
 
     process_eval_qbxl()
 
     # }}}
+
+    return result
 
 # }}}
 

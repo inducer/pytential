@@ -72,12 +72,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             target_association_tolerance=_not_provided,
 
             # begin undocumented arguments
-            # FIXME default debug=False once everything works
+            # FIXME default debug=False once everything has matured
             debug=True,
             _refined_for_global_qbx=False,
             _expansions_in_tree_have_extent=False,
             _expansion_stick_out_factor=0,
-            performance_data_file=None,
+            geometry_data_inspector=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
         """
@@ -158,7 +158,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._expansions_in_tree_have_extent = \
                 _expansions_in_tree_have_extent
         self._expansion_stick_out_factor = _expansion_stick_out_factor
-        self.performance_data_file = performance_data_file
+        self.geometry_data_inspector = geometry_data_inspector
 
     def copy(
             self,
@@ -170,7 +170,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
-            performance_data_file=None,
+            geometry_data_inspector=None,
 
             debug=_not_provided,
             _refined_for_global_qbx=_not_provided,
@@ -231,8 +231,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     _expansion_stick_out_factor
                     if _expansion_stick_out_factor is not _not_provided
                     else self._expansion_stick_out_factor),
-                performance_data_file=(
-                    performance_data_file or self.performance_data_file),
+                geometry_data_inspector=(
+                    geometry_data_inspector or self.geometry_data_inspector),
                 fmm_backend=self.fmm_backend)
 
     # }}}
@@ -568,10 +568,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 == target_state.FAILED).any().get():
             raise RuntimeError("geometry has failed targets")
 
-        if self.performance_data_file is not None:
-            from pytential.qbx.fmm import write_performance_model
-            with open(self.performance_data_file, "w") as outf:
-                write_performance_model(outf, geo_data)
+        # {{{ performance data hook
+
+        if self.geometry_data_inspector is not None:
+            perform_fmm = self.geometry_data_inspector(insn, bound_expr, geo_data)
+            if not perform_fmm:
+                return [(o.name, 0) for o in insn.outputs], []
+
+        # }}}
 
         # {{{ execute global QBX
 
