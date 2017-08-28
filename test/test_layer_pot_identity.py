@@ -34,6 +34,7 @@ from pyopencl.tools import (  # noqa
 from functools import partial
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
+        NArmedStarfish,
         make_curve_mesh)
 # from sumpy.visualization import FieldPlotter
 from pytential import bind, sym, norm
@@ -54,13 +55,6 @@ d1 = sym.Derivative()
 d2 = sym.Derivative()
 
 
-def get_wobbly_circle_mesh(refinement_increment, target_order):
-    nelements = [3000, 5000, 7000][refinement_increment]
-    return make_curve_mesh(WobblyCircle.random(30, seed=30),
-                np.linspace(0, 1, nelements+1),
-                target_order)
-
-
 def get_sphere_mesh(refinement_increment, target_order):
     from meshmode.mesh.generation import generate_icosphere
     mesh = generate_icosphere(1, target_order)
@@ -76,15 +70,38 @@ def get_sphere_mesh(refinement_increment, target_order):
 
 
 class StarfishGeometry(object):
-    mesh_name = "starfish"
+    def __init__(self, n_arms=5, amplitude=0.25):
+        self.n_arms = n_arms
+        self.amplitude = amplitude
+
+    @property
+    def mesh_name(self):
+        return "%d-starfish-%s" % (
+                self.n_arms,
+                self.amplitude)
+
     dim = 2
 
     resolutions = [30, 50, 70]
 
     def get_mesh(self, nelements, target_order):
-        return make_curve_mesh(starfish,
-                    np.linspace(0, 1, nelements+1),
-                    target_order)
+        return make_curve_mesh(
+                NArmedStarfish(self.n_arms, self.amplitude),
+                np.linspace(0, 1, nelements+1),
+                target_order)
+
+
+class WobblyCircleGeometry(object):
+    dim = 2
+    mesh_name = "wobbly-circle"
+
+    resolutions = [2000, 3000, 4000]
+
+    def get_mesh(self, resolution, target_order):
+        return make_curve_mesh(
+                WobblyCircle.random(30, seed=30),
+                np.linspace(0, 1, resolution+1),
+                target_order)
 
 
 class SphereGeometry(object):
@@ -155,6 +172,32 @@ class StaticTestCase(object):
         pass
 
 
+class StarfishGreenTest(StaticTestCase):
+    expr = GreenExpr()
+    geometry = StarfishGeometry()
+    k = 0
+    qbx_order = 3
+    fmm_order = 6
+
+    resolutions = [30, 50, 70]
+
+    _expansion_stick_out_factor = 0.5
+
+    fmm_backend = "sumpy"
+
+
+class WobblyCircleGreenTest(StaticTestCase):
+    expr = GreenExpr()
+    geometry = WobblyCircleGeometry()
+    k = 0
+    qbx_order = 3
+    fmm_order = 10
+
+    _expansion_stick_out_factor = 0.5
+
+    fmm_backend = "sumpy"
+
+
 class SphereGreenTest(StaticTestCase):
     expr = GreenExpr()
     geometry = SphereGeometry()
@@ -164,7 +207,7 @@ class SphereGreenTest(StaticTestCase):
 
     resolutions = [0, 1]
 
-    _expansion_stick_out_factor = 0.75
+    _expansion_stick_out_factor = 0.5
 
     fmm_backend = "fmmlib"
 
@@ -334,7 +377,7 @@ def test_identity_convergence(ctx_getter,  case, visualize=False):
             from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, density_discr, target_order)
 
-            bdry_normals = bind(density_discr, sym.normal(3))(queue)\
+            bdry_normals = bind(density_discr, sym.normal(mesh.ambient_dim))(queue)\
                     .as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
