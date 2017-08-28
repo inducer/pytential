@@ -30,9 +30,6 @@ import pyopencl.array  # noqa
 from sumpy.fmm import (SumpyExpansionWranglerCodeContainer,
         SumpyExpansionWrangler, level_to_rscale)
 
-# FIXME: This should be replaced with the radius of the QBX expansions
-_QBX_RSCALE = 1
-
 from pytools import memoize_method
 from pytential.qbx.interactions import P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P
 
@@ -217,13 +214,12 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 global_qbx_centers=geo_data.global_qbx_centers(),
                 qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
                 qbx_centers=geo_data.centers(),
+                qbx_expansion_radii=geo_data.expansion_radii(),
 
                 source_box_starts=starts,
                 source_box_lists=lists,
                 strengths=src_weights,
                 qbx_expansions=local_exps,
-
-                rscale=_QBX_RSCALE,
 
                 **kwargs)
 
@@ -256,6 +252,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                     centers=self.tree.box_centers,
                     qbx_centers=geo_data.centers(),
+                    qbx_expansion_radii=geo_data.expansion_radii(),
 
                     src_expansions=source_mpoles_view,
                     src_base_ibox=source_level_start_ibox,
@@ -265,7 +262,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     src_box_lists=ssn.lists,
 
                     src_rscale=level_to_rscale(self.tree, isrc_level),
-                    tgt_rscale=_QBX_RSCALE,
 
                     wait_for=wait_for,
 
@@ -304,12 +300,12 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                     centers=self.tree.box_centers,
                     qbx_centers=geo_data.centers(),
+                    qbx_expansion_radii=geo_data.expansion_radii(),
 
                     expansions=target_locals_view,
                     qbx_expansions=qbx_expansions,
 
                     src_rscale=level_to_rscale(self.tree, isrc_level),
-                    tgt_rscale=_QBX_RSCALE,
 
                     wait_for=wait_for,
 
@@ -335,6 +331,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         evt, pot_res = qbxl2p(self.queue,
                 qbx_centers=geo_data.centers(),
+                qbx_expansion_radii=geo_data.expansion_radii(),
+
                 global_qbx_centers=geo_data.global_qbx_centers(),
 
                 center_to_targets_starts=ctt.starts,
@@ -344,8 +342,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                 qbx_expansions=qbx_expansions,
                 result=pot,
-
-                rscale=_QBX_RSCALE,
 
                 **self.kernel_extra_kwargs.copy())
 
