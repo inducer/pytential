@@ -150,7 +150,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             else:
                 source_deriv_name = None
 
-            result = isinstance(knl, HelmholtzKernel) and knl.dim == 3
+            result = isinstance(knl, HelmholtzKernel) and knl.dim in [2, 3]
             if result:
                 k_names.append(knl.helmholtz_k_name)
                 source_deriv_names.append(source_deriv_name)
@@ -481,8 +481,12 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
             print("end par data prep")
 
-            # These get max'd/added onto: pass initialized versions.
-            ier = np.zeros(ngqbx_centers, dtype=np.int32)
+            if self.dim == 3:
+                # This gets max'd onto: pass initialized version.
+                ier = np.zeros(ngqbx_centers, dtype=np.int32)
+                kwargs["ier"] = ier
+
+            # This gets added onto: pass initialized version.
             expn2 = np.zeros(
                     (ngqbx_centers,) + self.expansion_shape(self.qbx_order),
                     dtype=self.dtype)
@@ -506,9 +510,12 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     # FIXME: center2 has wrong layout, will copy
                     center2=qbx_centers[:, tgt_icenter_vec],
                     expn2=expn2.T,
-                    ier=ier,
 
                     **kwargs).T
+
+            if self.dim == 3:
+                if ier.any():
+                    raise RuntimeError("m2qbxl failed")
 
             local_exps[geo_data.global_qbx_centers()] += expn2
 
