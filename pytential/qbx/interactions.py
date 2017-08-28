@@ -32,10 +32,17 @@ from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
 
 
+PYTENTIAL_KERNEL_VERSION = 5
+
+
 # {{{ form qbx expansions from points
 
 class P2QBXLFromCSR(P2EBase):
     default_name = "p2qbxl_from_csr"
+
+    def get_cache_key(self):
+        return super(P2QBXLFromCSR, self).get_cache_key() + (
+                PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
@@ -141,6 +148,9 @@ class M2QBXL(E2EBase):
 
     default_name = "m2qbxl_from_csr"
 
+    def get_cache_key(self):
+        return super(M2QBXL, self).get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+
     def get_kernel(self):
         ncoeff_src = len(self.src_expansion)
         ncoeff_tgt = len(self.tgt_expansion)
@@ -240,6 +250,9 @@ class M2QBXL(E2EBase):
 class L2QBXL(E2EBase):
     default_name = "l2qbxl"
 
+    def get_cache_key(self):
+        return super(L2QBXL, self).get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+
     def get_kernel(self):
         ncoeff_src = len(self.src_expansion)
         ncoeff_tgt = len(self.tgt_expansion)
@@ -336,6 +349,9 @@ class L2QBXL(E2EBase):
 
 class QBXL2P(E2PBase):
     default_name = "qbx_potential_from_local"
+
+    def get_cache_key(self):
+        return super(QBXL2P, self).get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
