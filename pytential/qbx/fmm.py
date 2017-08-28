@@ -27,7 +27,11 @@ from six.moves import range, zip
 import numpy as np  # noqa
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa
-from sumpy.fmm import SumpyExpansionWranglerCodeContainer, SumpyExpansionWrangler
+from sumpy.fmm import (SumpyExpansionWranglerCodeContainer,
+        SumpyExpansionWrangler, level_to_rscale)
+
+# FIXME: This should be replaced with the radius of the QBX expansions
+_QBX_RSCALE = 1
 
 from pytools import memoize_method
 from pytential.qbx.interactions import P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P
@@ -59,7 +63,7 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
 
     @memoize_method
     def qbx_local_expansion(self, order):
-        return self.qbx_local_expansion_factory(order)
+        return self.qbx_local_expansion_factory(order, self.use_rscale)
 
     @memoize_method
     def p2qbxl(self, order):
@@ -219,6 +223,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 strengths=src_weights,
                 qbx_expansions=local_exps,
 
+                rscale=_QBX_RSCALE,
+
                 **kwargs)
 
         assert local_exps is result
@@ -257,6 +263,9 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                     src_box_starts=ssn.starts,
                     src_box_lists=ssn.lists,
+
+                    src_rscale=level_to_rscale(self.tree, isrc_level),
+                    tgt_rscale=_QBX_RSCALE,
 
                     wait_for=wait_for,
 
@@ -299,6 +308,9 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     expansions=target_locals_view,
                     qbx_expansions=qbx_expansions,
 
+                    src_rscale=level_to_rscale(self.tree, isrc_level),
+                    tgt_rscale=_QBX_RSCALE,
+
                     wait_for=wait_for,
 
                     **self.kernel_extra_kwargs)
@@ -332,6 +344,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                 qbx_expansions=qbx_expansions,
                 result=pot,
+
+                rscale=_QBX_RSCALE,
 
                 **self.kernel_extra_kwargs.copy())
 

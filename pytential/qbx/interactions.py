@@ -54,6 +54,7 @@ class P2QBXLFromCSR(P2EBase):
                         None, shape=None),
                     lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
                         dim_tags="sep,c"),
+                    lp.ValueArg("rscale", None),
                     lp.GlobalArg("qbx_expansions", None,
                         shape=("ncenters", ncoeffs)),
                     lp.ValueArg("ncenters", np.int32),
@@ -118,7 +119,15 @@ class P2QBXLFromCSR(P2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_cached_optimized_kernel()(queue, **kwargs)
+        qbx_centers = kwargs.pop("qbx_centers")
+        # "1" may be passed for rscale, which won't have its type
+        # meaningfully inferred. Make the type of rscale explicit.
+        rscale = qbx_centers[0].dtype.type(kwargs.pop("rscale"))
+
+        return self.get_cached_optimized_kernel()(queue,
+                qbx_centers=qbx_centers,
+                rscale=rscale,
+                **kwargs)
 
 # }}}
 
@@ -179,6 +188,7 @@ class M2QBXL(E2EBase):
                 """],
                 [
                     lp.GlobalArg("centers", None, shape="dim, aligned_nboxes"),
+                    lp.ValueArg("src_rscale,tgt_rscale", None),
                     lp.GlobalArg("src_box_starts, src_box_lists",
                         None, shape=None, strides=(1,)),
                     lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
@@ -211,7 +221,16 @@ class M2QBXL(E2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_cached_optimized_kernel()(queue, **kwargs)
+        centers = kwargs.pop("centers")
+        # "1" may be passed for rscale, which won't have its type
+        # meaningfully inferred. Make the type of rscale explicit.
+        src_rscale = centers.dtype.type(kwargs.pop("src_rscale"))
+        tgt_rscale = centers.dtype.type(kwargs.pop("tgt_rscale"))
+
+        return self.get_cached_optimized_kernel()(queue,
+                centers=centers,
+                src_rscale=src_rscale, tgt_rscale=tgt_rscale,
+                **kwargs)
 
 # }}}
 
@@ -268,6 +287,7 @@ class L2QBXL(E2EBase):
                     lp.GlobalArg("target_boxes", None, shape=None,
                         offset=lp.auto),
                     lp.GlobalArg("centers", None, shape="dim, naligned_boxes"),
+                    lp.ValueArg("src_rscale,tgt_rscale", None),
                     lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
                         dim_tags="sep,c"),
                     lp.ValueArg("naligned_boxes,target_base_ibox,nboxes", np.int32),
@@ -298,7 +318,16 @@ class L2QBXL(E2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_cached_optimized_kernel()(queue, **kwargs)
+        centers = kwargs.pop("centers")
+        # "1" may be passed for rscale, which won't have its type
+        # meaningfully inferred. Make the type of rscale explicit.
+        src_rscale = centers.dtype.type(kwargs.pop("src_rscale"))
+        tgt_rscale = centers.dtype.type(kwargs.pop("tgt_rscale"))
+
+        return self.get_cached_optimized_kernel()(queue,
+                centers=centers,
+                src_rscale=src_rscale, tgt_rscale=tgt_rscale,
+                **kwargs)
 
 # }}}
 
@@ -352,6 +381,7 @@ class QBXL2P(E2PBase):
                         dim_tags="sep,C"),
                     lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
                         dim_tags="sep,c"),
+                    lp.ValueArg("rscale", None),
                     lp.GlobalArg("center_to_targets_starts,center_to_targets_lists",
                         None, shape=None),
                     lp.GlobalArg("qbx_expansions", None,
@@ -382,7 +412,15 @@ class QBXL2P(E2PBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_cached_optimized_kernel()(queue, **kwargs)
+        qbx_centers = kwargs.pop("qbx_centers")
+        # "1" may be passed for rscale, which won't have its type
+        # meaningfully inferred. Make the type of rscale explicit.
+        rscale = qbx_centers[0].dtype.type(kwargs.pop("rscale"))
+
+        return self.get_cached_optimized_kernel()(queue,
+                qbx_centers=qbx_centers,
+                rscale=rscale,
+                **kwargs)
 
 # }}}
 
