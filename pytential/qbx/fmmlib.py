@@ -26,9 +26,13 @@ import numpy as np
 from pytools import memoize_method, Record
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
-from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
+from boxtree.pyfmmlib_integration import (
+        FMMLibExpansionWrangler, level_to_rscale)
 from sumpy.kernel import HelmholtzKernel
 
+
+# FIXME: This should be replaced with the radius of the QBX expansions
+_QBX_RSCALE = 1
 
 import logging
 logger = logging.getLogger(__name__)
@@ -334,7 +338,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         centers = qbx_centers[:, geo_data.global_qbx_centers()]
 
-        rscale = 1  # FIXME
+        rscale = _QBX_RSCALE  # FIXME
         rscale_vec = np.empty(len(center_source_counts) - 1, dtype=np.float64)
         rscale_vec.fill(rscale)  # FIXME
 
@@ -441,7 +445,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
 
             # FIXME
-            rscale2 = np.ones(ngqbx_centers, np.float64)
+            rscale2 = np.ones(ngqbx_centers, np.float64) * _QBX_RSCALE
 
             kwargs = {}
             if self.dim == 3:
@@ -457,8 +461,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             src_boxes_starts[0] = 0
             src_boxes_starts[1:] = np.cumsum(nsrc_boxes_per_gqbx_center)
 
-            # FIXME
-            rscale1 = np.ones(nsrc_boxes)
+            rscale1 = np.ones(nsrc_boxes) * level_to_rscale(self.tree, isrc_level)
             rscale1_offsets = np.arange(nsrc_boxes)
 
             src_ibox = np.empty(nsrc_boxes, dtype=np.int32)
@@ -523,8 +526,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
 
-        rscale = 1  # FIXME
-
         locloc = self.get_translation_routine("%ddlocloc")
 
         for isrc_level in range(geo_data.tree().nlevels):
@@ -561,11 +562,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 if in_range:
                     src_center = self.tree.box_centers[:, src_ibox]
                     tmp_loc_exp = locloc(
-                                rscale1=rscale,
+                                rscale1=level_to_rscale(self.tree, isrc_level),
                                 center1=src_center,
                                 expn1=local_exps[src_ibox].T,
 
-                                rscale2=rscale,
+                                rscale2=_QBX_RSCALE,
                                 center2=tgt_center,
                                 nterms2=local_order,
 
@@ -585,8 +586,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         all_targets = geo_data.all_targets()
 
-        rscale = 1  # FIXME
-
         taeval = self.get_expn_eval_routine("ta")
 
         for isrc_center, src_icenter in enumerate(global_qbx_centers):
@@ -599,7 +598,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 center = qbx_centers[:, src_icenter]
 
                 pot, grad = taeval(
-                        rscale=rscale,
+                        rscale=_QBX_RSCALE,
                         center=center,
                         expn=qbx_expansions[src_icenter].T,
                         ztarg=all_targets[:, center_itgt],
