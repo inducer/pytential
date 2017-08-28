@@ -31,9 +31,6 @@ from boxtree.pyfmmlib_integration import (
 from sumpy.kernel import HelmholtzKernel
 
 
-# FIXME: This should be replaced with the radius of the QBX expansions
-_QBX_RSCALE = 1
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -337,10 +334,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 isource += ns
 
         centers = qbx_centers[:, geo_data.global_qbx_centers()]
-
-        rscale = _QBX_RSCALE  # FIXME
-        rscale_vec = np.empty(len(center_source_counts) - 1, dtype=np.float64)
-        rscale_vec.fill(rscale)  # FIXME
+        rscale_vec = geo_data.expansion_radii()[geo_data.global_qbx_centers()]
 
         nsources_vec = np.ones(self.tree.nsources, np.int32)
 
@@ -444,8 +438,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             tgt_icenter_vec = geo_data.global_qbx_centers()
             icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
 
-            # FIXME
-            rscale2 = np.ones(ngqbx_centers, np.float64) * _QBX_RSCALE
+            rscale2 = geo_data.expansion_radii()[geo_data.global_qbx_centers()]
 
             kwargs = {}
             if self.dim == 3:
@@ -532,6 +525,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         trav = geo_data.traversal()
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
+        qbx_radii = geo_data.expansion_radii()
 
         locloc = self.get_translation_routine("%ddlocloc")
 
@@ -573,7 +567,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                                 center1=src_center,
                                 expn1=local_exps[src_ibox].T,
 
-                                rscale2=_QBX_RSCALE,
+                                rscale2=qbx_radii[tgt_icenter],
                                 center2=tgt_center,
                                 nterms2=local_order,
 
@@ -590,6 +584,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         ctt = geo_data.center_to_tree_targets()
         global_qbx_centers = geo_data.global_qbx_centers()
         qbx_centers = geo_data.centers()
+        qbx_radii = geo_data.expansion_radii()
 
         all_targets = geo_data.all_targets()
 
@@ -605,7 +600,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 center = qbx_centers[:, src_icenter]
 
                 pot, grad = taeval(
-                        rscale=_QBX_RSCALE,
+                        rscale=qbx_radii[src_icenter],
                         center=center,
                         expn=qbx_expansions[src_icenter].T,
                         ztarg=all_targets[:, center_itgt],
