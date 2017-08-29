@@ -39,6 +39,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
             <> a[idim] = center[idim,icenter] - src[idim,isrc] {id=compute_a}
             <> b[idim] = tgt[idim,itgt_overall] - center[idim,icenter] \
                     {id=compute_b}
+            <> rscale = expansion_radii[icenter]
             end
             """
 
@@ -50,6 +51,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                     shape=(self.dim, "ntargets_total"), order="C"),
                 lp.GlobalArg("center", None,
                     shape=(self.dim, "ncenters_total"), order="C"),
+                lp.GlobalArg("expansion_radii", None, shape="ncenters_total"),
                 lp.GlobalArg("qbx_tgt_numbers", None, shape="ntargets"),
                 lp.GlobalArg("qbx_center_numbers", None, shape="ntargets"),
                 lp.ValueArg("nsources", np.int32),

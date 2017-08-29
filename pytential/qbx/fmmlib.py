@@ -28,7 +28,7 @@ import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
 from boxtree.pyfmmlib_integration import (
         FMMLibExpansionWrangler, level_to_rscale)
-from sumpy.kernel import HelmholtzKernel
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 
 import logging
@@ -147,11 +147,16 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             else:
                 source_deriv_name = None
 
-            result = isinstance(knl, HelmholtzKernel) and knl.dim in [2, 3]
-            if result:
+            if isinstance(knl, HelmholtzKernel) and knl.dim in [2, 3]:
                 k_names.append(knl.helmholtz_k_name)
                 source_deriv_names.append(source_deriv_name)
-            return result
+                return True
+            elif isinstance(knl, LaplaceKernel) and knl.dim in [2, 3]:
+                k_names.append(None)
+                source_deriv_names.append(source_deriv_name)
+                return True
+
+            return False
 
         ifgrad = False
         outputs = []
@@ -164,8 +169,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 ifgrad = True
             else:
                 raise NotImplementedError(
-                        "only the 3D Helmholtz kernel and its target derivatives "
-                        "are supported for now")
+                        "only the 2/3D Laplace and Helmholtz kernel "
+                        "and their derivatives are supported")
 
         from pytools import is_single_valued
         if not is_single_valued(source_deriv_names):
@@ -179,7 +184,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         from pytools import single_valued
         k_name = single_valued(k_names)
-        helmholtz_k = kernel_extra_kwargs[k_name]
+        if k_name is None:
+            helmholtz_k = 0
+        else:
+            helmholtz_k = kernel_extra_kwargs[k_name]
 
         self.level_orders = [
                 fmm_level_to_order(level)
@@ -370,13 +378,18 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             kwargs["charge_starts"] = info.center_source_starts
 
         else:
-            kwargs["dipstr"] = src_weights
             kwargs["dipstr_offsets"] = info.center_source_offsets
             kwargs["dipstr_starts"] = info.center_source_starts
 
-            kwargs["dipvec"] = self.dipole_vec
-            kwargs["dipvec_offsets"] = info.center_source_offsets
-            kwargs["dipvec_starts"] = info.center_source_starts
+            if self.dim == 2 and self.eqn_letter == "l":
+                kwargs["dipstr"] = -src_weights * (
+                        self.dipole_vec[0] + 1j*self.dipole_vec[1])
+            else:
+                kwargs["dipstr"] = src_weights
+
+                kwargs["dipvec"] = self.dipole_vec
+                kwargs["dipvec_offsets"] = info.center_source_offsets
+                kwargs["dipvec_starts"] = info.center_source_starts
 
         # These get max'd/added onto: pass initialized versions.
         ier = np.zeros(info.ngqbx_centers, dtype=np.int32)
@@ -441,7 +454,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             rscale2 = geo_data.expansion_radii()[geo_data.global_qbx_centers()]
 
             kwargs = {}
-            if self.dim == 3:
+            if self.dim == 3 and self.eqn_letter == "h":
                 kwargs["radius"] = (0.5 *
                         geo_data.expansion_radii()[geo_data.global_qbx_centers()])
 
@@ -542,7 +555,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             kwargs.update(self.kernel_kwargs)
 
             for tgt_icenter in range(geo_data.ncenters):
-                if self.dim == 3:
+                if self.dim == 3 and self.eqn_letter == "h":
                     # Yuck: This keeps overwriting 'radius' in the dict.
                     kwargs["radius"] = 0.5 * (
                             geo_data.expansion_radii()[tgt_icenter])

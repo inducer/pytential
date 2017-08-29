@@ -183,7 +183,7 @@ class StarfishGreenTest(StaticTestCase):
 
     _expansion_stick_out_factor = 0.5
 
-    fmm_backend = "sumpy"
+    fmm_backend = "fmmlib"
 
 
 class WobblyCircleGreenTest(StaticTestCase):
@@ -201,7 +201,7 @@ class WobblyCircleGreenTest(StaticTestCase):
 class SphereGreenTest(StaticTestCase):
     expr = GreenExpr()
     geometry = SphereGeometry()
-    k = 1.2
+    k = 0
     qbx_order = 3
     fmm_order = 10
 
