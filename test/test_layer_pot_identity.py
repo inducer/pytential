@@ -108,7 +108,7 @@ class SphereGeometry(object):
     mesh_name = "sphere"
     dim = 3
 
-    resolutions = [0, 1, 2]
+    resolutions = [0, 1]
 
     def get_mesh(self, resolution, tgt_order):
         return get_sphere_mesh(resolution, tgt_order)
@@ -230,7 +230,9 @@ class DynamicTestCase(object):
         self.fmm_order = self.qbx_order + order_bump
 
     def check(self):
-        if self.geometry.mesh_name == "sphere" and self.k != 0:
+        if (self.geometry.mesh_name == "sphere"
+                and self.k != 0
+                and self.fmm_backend == "sumpy"):
             pytest.skip("both direct eval and generating the FMM kernels "
                     "are too slow")
 
