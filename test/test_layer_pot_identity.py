@@ -215,11 +215,12 @@ class SphereGreenTest(StaticTestCase):
 class DynamicTestCase(object):
     fmm_backend = "sumpy"
 
-    def __init__(self, geometry, expr, k):
+    def __init__(self, geometry, expr, k, fmm_backend="sumpy"):
         self.geometry = geometry
         self.expr = expr
         self.k = k
         self.qbx_order = 5 if geometry.dim == 2 else 3
+        self.fmm_backend = fmm_backend
 
         if geometry.dim == 2:
             order_bump = 15
@@ -252,6 +253,9 @@ class DynamicTestCase(object):
         DynamicTestCase(geom, GradGreenExpr(), 0),
         DynamicTestCase(geom, GradGreenExpr(), 1.2),
         DynamicTestCase(geom, ZeroCalderonExpr(), 0),
+
+        DynamicTestCase(geom, GreenExpr(), 0, fmm_backend="fmmlib"),
+        DynamicTestCase(geom, GreenExpr(), 1.2, fmm_backend="fmmlib"),
         ]])
 def test_identity_convergence(ctx_getter,  case, visualize=False):
     logging.basicConfig(level=logging.INFO)
