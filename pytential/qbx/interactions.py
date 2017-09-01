@@ -112,9 +112,9 @@ class P2QBXLFromCSR(P2EBase):
                 """],
                 arguments,
                 name=self.name, assumptions="ntgt_centers>=1",
-                silenced_warnings="write_race(write_expn*)")
+                silenced_warnings="write_race(write_expn*)",
+                fixed_parameters=dict(dim=self.dim))
 
-        loopy_knl = lp.fix_parameters(loopy_knl, dim=self.dim)
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
@@ -208,9 +208,8 @@ class M2QBXL(E2EBase):
                     "..."
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name, assumptions="ncenters>=1",
-                silenced_warnings="write_race(write_expn*)")
-
-        loopy_knl = lp.fix_parameters(loopy_knl, dim=self.dim)
+                silenced_warnings="write_race(write_expn*)",
+                fixed_parameters=dict(dim=self.dim))
 
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
@@ -309,11 +308,8 @@ class L2QBXL(E2EBase):
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name,
                 assumptions="ncenters>=1",
-                silenced_warnings="write_race(write_expn*)")
-
-        loopy_knl = lp.fix_parameters(loopy_knl,
-                dim=self.dim,
-                nchildren=2**self.dim)
+                silenced_warnings="write_race(write_expn*)",
+                fixed_parameters=dict(dim=self.dim, nchildren=2**self.dim))
 
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
@@ -408,11 +404,8 @@ class QBXL2P(E2PBase):
                 ] + [arg.loopy_arg for arg in self.expansion.get_args()],
                 name=self.name,
                 assumptions="nglobal_qbx_centers>=1",
-                silenced_warnings="write_race(write_result*)")
-
-        loopy_knl = lp.fix_parameters(loopy_knl,
-                dim=self.dim,
-                nresults=len(result_names))
+                silenced_warnings="write_race(write_result*)",
+                fixed_parameters=dict(dim=self.dim, nresults=len(result_names)))
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)

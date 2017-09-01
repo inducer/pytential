@@ -51,7 +51,7 @@ def main():
               "pyopencl>=2013.1",
               "boxtree>=2013.1",
               "pymbolic>=2013.2",
-              "loo.py>=2013.1beta",
+              "loo.py>=2017.2",
               "sumpy>=2013.1",
               "cgen>=2013.1.2",
 
