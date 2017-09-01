@@ -26,8 +26,9 @@ import numpy as np
 from pytools import memoize_method, Record
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
-from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
-from sumpy.kernel import HelmholtzKernel
+from boxtree.pyfmmlib_integration import (
+        FMMLibExpansionWrangler, level_to_rscale)
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 
 import logging
@@ -146,11 +147,16 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             else:
                 source_deriv_name = None
 
-            result = isinstance(knl, HelmholtzKernel) and knl.dim == 3
-            if result:
+            if isinstance(knl, HelmholtzKernel) and knl.dim in [2, 3]:
                 k_names.append(knl.helmholtz_k_name)
                 source_deriv_names.append(source_deriv_name)
-            return result
+                return True
+            elif isinstance(knl, LaplaceKernel) and knl.dim in [2, 3]:
+                k_names.append(None)
+                source_deriv_names.append(source_deriv_name)
+                return True
+
+            return False
 
         ifgrad = False
         outputs = []
@@ -163,8 +169,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 ifgrad = True
             else:
                 raise NotImplementedError(
-                        "only the 3D Helmholtz kernel and its target derivatives "
-                        "are supported for now")
+                        "only the 2/3D Laplace and Helmholtz kernel "
+                        "and their derivatives are supported")
 
         from pytools import is_single_valued
         if not is_single_valued(source_deriv_names):
@@ -178,7 +184,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         from pytools import single_valued
         k_name = single_valued(k_names)
-        helmholtz_k = kernel_extra_kwargs[k_name]
+        if k_name is None:
+            helmholtz_k = 0
+        else:
+            helmholtz_k = kernel_extra_kwargs[k_name]
 
         self.level_orders = [
                 fmm_level_to_order(level)
@@ -333,10 +342,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 isource += ns
 
         centers = qbx_centers[:, geo_data.global_qbx_centers()]
-
-        rscale = 1  # FIXME
-        rscale_vec = np.empty(len(center_source_counts) - 1, dtype=np.float64)
-        rscale_vec.fill(rscale)  # FIXME
+        rscale_vec = geo_data.expansion_radii()[geo_data.global_qbx_centers()]
 
         nsources_vec = np.ones(self.tree.nsources, np.int32)
 
@@ -372,13 +378,18 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             kwargs["charge_starts"] = info.center_source_starts
 
         else:
-            kwargs["dipstr"] = src_weights
             kwargs["dipstr_offsets"] = info.center_source_offsets
             kwargs["dipstr_starts"] = info.center_source_starts
 
-            kwargs["dipvec"] = self.dipole_vec
-            kwargs["dipvec_offsets"] = info.center_source_offsets
-            kwargs["dipvec_starts"] = info.center_source_starts
+            if self.dim == 2 and self.eqn_letter == "l":
+                kwargs["dipstr"] = -src_weights * (
+                        self.dipole_vec[0] + 1j*self.dipole_vec[1])
+            else:
+                kwargs["dipstr"] = src_weights
+
+                kwargs["dipvec"] = self.dipole_vec
+                kwargs["dipvec_offsets"] = info.center_source_offsets
+                kwargs["dipvec_starts"] = info.center_source_starts
 
         # These get max'd/added onto: pass initialized versions.
         ier = np.zeros(info.ngqbx_centers, dtype=np.int32)
@@ -440,11 +451,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             tgt_icenter_vec = geo_data.global_qbx_centers()
             icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
 
-            # FIXME
-            rscale2 = np.ones(ngqbx_centers, np.float64)
+            rscale2 = geo_data.expansion_radii()[geo_data.global_qbx_centers()]
 
             kwargs = {}
-            if self.dim == 3:
+            if self.dim == 3 and self.eqn_letter == "h":
                 kwargs["radius"] = (0.5 *
                         geo_data.expansion_radii()[geo_data.global_qbx_centers()])
 
@@ -457,8 +467,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             src_boxes_starts[0] = 0
             src_boxes_starts[1:] = np.cumsum(nsrc_boxes_per_gqbx_center)
 
-            # FIXME
-            rscale1 = np.ones(nsrc_boxes)
+            rscale1 = np.ones(nsrc_boxes) * level_to_rscale(self.tree, isrc_level)
             rscale1_offsets = np.arange(nsrc_boxes)
 
             src_ibox = np.empty(nsrc_boxes, dtype=np.int32)
@@ -478,8 +487,12 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
             print("end par data prep")
 
-            # These get max'd/added onto: pass initialized versions.
-            ier = np.zeros(ngqbx_centers, dtype=np.int32)
+            if self.dim == 3:
+                # This gets max'd onto: pass initialized version.
+                ier = np.zeros(ngqbx_centers, dtype=np.int32)
+                kwargs["ier"] = ier
+
+            # This gets added onto: pass initialized version.
             expn2 = np.zeros(
                     (ngqbx_centers,) + self.expansion_shape(self.qbx_order),
                     dtype=self.dtype)
@@ -503,9 +516,12 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     # FIXME: center2 has wrong layout, will copy
                     center2=qbx_centers[:, tgt_icenter_vec],
                     expn2=expn2.T,
-                    ier=ier,
 
                     **kwargs).T
+
+            if self.dim == 3:
+                if ier.any():
+                    raise RuntimeError("m2qbxl failed")
 
             local_exps[geo_data.global_qbx_centers()] += expn2
 
@@ -522,8 +538,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         trav = geo_data.traversal()
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
-
-        rscale = 1  # FIXME
+        qbx_radii = geo_data.expansion_radii()
 
         locloc = self.get_translation_routine("%ddlocloc")
 
@@ -540,7 +555,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             kwargs.update(self.kernel_kwargs)
 
             for tgt_icenter in range(geo_data.ncenters):
-                if self.dim == 3:
+                if self.dim == 3 and self.eqn_letter == "h":
                     # Yuck: This keeps overwriting 'radius' in the dict.
                     kwargs["radius"] = 0.5 * (
                             geo_data.expansion_radii()[tgt_icenter])
@@ -561,11 +576,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 if in_range:
                     src_center = self.tree.box_centers[:, src_ibox]
                     tmp_loc_exp = locloc(
-                                rscale1=rscale,
+                                rscale1=level_to_rscale(self.tree, isrc_level),
                                 center1=src_center,
                                 expn1=local_exps[src_ibox].T,
 
-                                rscale2=rscale,
+                                rscale2=qbx_radii[tgt_icenter],
                                 center2=tgt_center,
                                 nterms2=local_order,
 
@@ -582,10 +597,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         ctt = geo_data.center_to_tree_targets()
         global_qbx_centers = geo_data.global_qbx_centers()
         qbx_centers = geo_data.centers()
+        qbx_radii = geo_data.expansion_radii()
 
         all_targets = geo_data.all_targets()
-
-        rscale = 1  # FIXME
 
         taeval = self.get_expn_eval_routine("ta")
 
@@ -599,7 +613,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 center = qbx_centers[:, src_icenter]
 
                 pot, grad = taeval(
-                        rscale=rscale,
+                        rscale=qbx_radii[src_icenter],
                         center=center,
                         expn=qbx_expansions[src_icenter].T,
                         ztarg=all_targets[:, center_itgt],

@@ -190,6 +190,7 @@ class MatrixBuilder(EvaluationMapperBase):
                 target_discr.nodes(),
                 source.quad_stage2_density_discr.nodes(),
                 get_centers_on_side(source, expr.qbx_forced_limit),
+                expansion_radii=self.dep_source._expansion_radii("nsources"),
                 **kernel_args)
 
         mat = mat.get()

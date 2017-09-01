@@ -696,7 +696,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         queue, target_discr.nodes(),
                         self.quad_stage2_density_discr.nodes(),
                         utils.get_centers_on_side(self, o.qbx_forced_limit),
-                        [strengths], **kernel_args)
+                        [strengths],
+                        expansion_radii=self._expansion_radii("nsources"),
+                        **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
             else:
                 # no on-disk kernel caching
@@ -759,6 +761,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                             targets=target_discr.nodes(),
                             sources=self.quad_stage2_density_discr.nodes(),
                             centers=geo_data.centers(),
+                            expansion_radii=geo_data.expansion_radii(),
                             strengths=[strengths],
                             qbx_tgt_numbers=qbx_tgt_numbers,
                             qbx_center_numbers=qbx_center_numbers,

@@ -27,7 +27,8 @@ from six.moves import range, zip
 import numpy as np  # noqa
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa
-from sumpy.fmm import SumpyExpansionWranglerCodeContainer, SumpyExpansionWrangler
+from sumpy.fmm import (SumpyExpansionWranglerCodeContainer,
+        SumpyExpansionWrangler, level_to_rscale)
 
 from pytools import memoize_method
 from pytential.qbx.interactions import P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P
@@ -59,7 +60,7 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
 
     @memoize_method
     def qbx_local_expansion(self, order):
-        return self.qbx_local_expansion_factory(order)
+        return self.qbx_local_expansion_factory(order, self.use_rscale)
 
     @memoize_method
     def p2qbxl(self, order):
@@ -213,6 +214,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 global_qbx_centers=geo_data.global_qbx_centers(),
                 qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
                 qbx_centers=geo_data.centers(),
+                qbx_expansion_radii=geo_data.expansion_radii(),
 
                 source_box_starts=starts,
                 source_box_lists=lists,
@@ -250,6 +252,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                     centers=self.tree.box_centers,
                     qbx_centers=geo_data.centers(),
+                    qbx_expansion_radii=geo_data.expansion_radii(),
 
                     src_expansions=source_mpoles_view,
                     src_base_ibox=source_level_start_ibox,
@@ -257,6 +260,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                     src_box_starts=ssn.starts,
                     src_box_lists=ssn.lists,
+
+                    src_rscale=level_to_rscale(self.tree, isrc_level),
 
                     wait_for=wait_for,
 
@@ -295,9 +300,12 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                     centers=self.tree.box_centers,
                     qbx_centers=geo_data.centers(),
+                    qbx_expansion_radii=geo_data.expansion_radii(),
 
                     expansions=target_locals_view,
                     qbx_expansions=qbx_expansions,
+
+                    src_rscale=level_to_rscale(self.tree, isrc_level),
 
                     wait_for=wait_for,
 
@@ -323,6 +331,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         evt, pot_res = qbxl2p(self.queue,
                 qbx_centers=geo_data.centers(),
+                qbx_expansion_radii=geo_data.expansion_radii(),
+
                 global_qbx_centers=geo_data.global_qbx_centers(),
 
                 center_to_targets_starts=ctt.starts,

@@ -683,8 +683,6 @@ class ManyEllipsoidIntEqTestCase(Helmholtz3DIntEqTestCase):
     for helmholtz_k in [0, 1.2]
     for bc_type in ["dirichlet", "neumann"]
     for loc_sign in [-1, +1]
-    ] + [
-    EllipsoidIntEqTestCase(0.7, "neumann", +1)
     ])
 # Sample test run:
 # 'test_integral_equation(cl._csc, EllipseIntEqTestCase(0, "dirichlet", +1), 5)'  # noqa: E501
