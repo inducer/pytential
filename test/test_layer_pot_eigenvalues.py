@@ -347,7 +347,7 @@ def no_test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order):
     print("Errors for S:")
     print(s_eoc_rec)
     required_order = qbx_order + 1
-    assert s_eoc_rec.order_estimate() > required_order - 0.5
+    assert s_eoc_rec.order_estimate() > required_order - 1.5
 
     print("Errors for D:")
     print(d_eoc_rec)
