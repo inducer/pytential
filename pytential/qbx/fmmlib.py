@@ -544,9 +544,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         for isrc_level in range(geo_data.tree().nlevels):
             lev_box_start, lev_box_stop = self.tree.level_start_box_nrs[
                     isrc_level:isrc_level+2]
-            target_level_start_ibox, target_locals_view = \
+            locals_level_start_ibox, locals_view = \
                     self.local_expansions_view(local_exps, isrc_level)
-            assert target_level_start_ibox == lev_box_start
+            assert locals_level_start_ibox == lev_box_start
 
             kwargs = {}
             kwargs.update(self.kernel_kwargs)
@@ -575,7 +575,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     tmp_loc_exp = locloc(
                                 rscale1=level_to_rscale(self.tree, isrc_level),
                                 center1=src_center,
-                                expn1=local_exps[src_ibox].T,
+                                expn1=locals_view[
+                                    src_ibox - locals_level_start_ibox].T,
 
                                 rscale2=qbx_radii[tgt_icenter],
                                 center2=tgt_center,
