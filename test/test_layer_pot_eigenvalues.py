@@ -1,6 +1,6 @@
 from __future__ import division, absolute_import, print_function
 
-__copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
+__copyright__ = "Copyright (C) 2013-7 Andreas Kloeckner"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -50,21 +50,19 @@ except ImportError:
 
 # {{{ ellipse eigenvalues
 
-@pytest.mark.parametrize(["ellipse_aspect", "mode_nr", "qbx_order"], [
-    # Run with FMM
-    (1, 5, 3),
-    (1, 6, 3),
-    # (2, 5, 3), /!\ FIXME: Does not achieve sufficient FMM precision
+@pytest.mark.parametrize(["ellipse_aspect", "mode_nr", "qbx_order", "force_direct"],
+        [
+            (1, 5, 3, False),
+            (1, 6, 3, False),
+            (2, 5, 3, False),
+            (1, 5, 4, False),
+            (1, 7, 5, False),
+            (2, 7, 5, False),
 
-    # Run without FMM
-    (1, 5, 4),
-    (1, 6, 4),
-    (1, 7, 5),
-    (2, 5, 4),
-    (2, 6, 4),
-    (2, 7, 5),
-    ])
-def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
+            (2, 7, 5, True),
+            ])
+def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
+        force_direct):
     logging.basicConfig(level=logging.INFO)
 
     print("ellipse_aspect: %s, mode_nr: %d, qbx_order: %d" % (
@@ -102,9 +100,8 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-        fmm_order = qbx_order + 3
-        if fmm_order > 6:
-            # FIXME: for now
+        fmm_order = 10
+        if force_direct:
             fmm_order = False
 
         pre_density_discr = Discretization(
@@ -246,6 +243,131 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order):
 # }}}
 
 
+# {{{ sphere eigenvalues
+
+@pytest.mark.parametrize(["mode_m", "mode_n", "qbx_order"], [
+    # Run with FMM
+    (2, 5, 3),
+    (1, 6, 3),
+    ])
+def no_test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order):
+    logging.basicConfig(level=logging.INFO)
+
+    special = pytest.importorskip("scipy.special")
+
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    target_order = 8
+
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+    from pytential.qbx import QBXLayerPotentialSource
+    from pytools.convergence import EOCRecorder
+
+    s_eoc_rec = EOCRecorder()
+    d_eoc_rec = EOCRecorder()
+    sp_eoc_rec = EOCRecorder()
+    dp_eoc_rec = EOCRecorder()
+
+    def rel_err(comp, ref):
+        return (
+                norm(density_discr, queue, comp - ref)
+                /
+                norm(density_discr, queue, ref))
+
+    for nrefinements in [0, 1]:
+        from meshmode.mesh.generation import generate_icosphere
+        mesh = generate_icosphere(1, target_order)
+        from meshmode.mesh.refinement import Refiner
+
+        refiner = Refiner(mesh)
+        for i in range(nrefinements):
+            flags = np.ones(mesh.nelements, dtype=bool)
+            refiner.refine(flags)
+            mesh = refiner.get_current_mesh()
+
+        pre_density_discr = Discretization(
+                cl_ctx, mesh,
+                InterpolatoryQuadratureSimplexGroupFactory(target_order))
+        qbx, _ = QBXLayerPotentialSource(
+                pre_density_discr, 4*target_order,
+                qbx_order, fmm_order=6,
+                fmm_backend="sumpy",
+                ).with_refinement()
+
+        density_discr = qbx.density_discr
+        nodes = density_discr.nodes().with_queue(queue)
+        r = cl.clmath.sqrt(nodes[0]**2 + nodes[1]**2 + nodes[2]**2)
+        phi = cl.clmath.acos(nodes[2]/r)
+        theta = cl.clmath.atan2(nodes[0], nodes[1])
+
+        ymn = cl.array.to_device(queue,
+                special.sph_harm(mode_m, mode_n, theta.get(), phi.get()))
+
+        from sumpy.kernel import LaplaceKernel
+        lap_knl = LaplaceKernel(3)
+
+        # {{{ single layer
+
+        s_sigma_op = bind(qbx, sym.S(lap_knl, sym.var("sigma")))
+        s_sigma = s_sigma_op(queue=queue, sigma=ymn)
+        s_eigval = 1/(2*mode_n + 1)
+        s_eoc_rec.add_data_point(qbx.h_max, rel_err(s_sigma, s_eigval*ymn))
+
+        # }}}
+
+        # {{{ double layer
+
+        d_sigma_op = bind(qbx, sym.D(lap_knl, sym.var("sigma")))
+        d_sigma = d_sigma_op(queue=queue, sigma=ymn)
+        d_eigval = -1/(2*(2*mode_n + 1))
+        d_eoc_rec.add_data_point(qbx.h_max, rel_err(d_sigma, d_eigval*ymn))
+
+        # }}}
+
+        # {{{ S'
+
+        sp_sigma_op = bind(qbx, sym.Sp(lap_knl, sym.var("sigma")))
+        sp_sigma = sp_sigma_op(queue=queue, sigma=ymn)
+        sp_eigval = -1/(2*(2*mode_n + 1))
+        sp_eoc_rec.add_data_point(qbx.h_max, rel_err(sp_sigma, sp_eigval*ymn))
+
+        # }}}
+
+        # {{{ D'
+
+        dp_sigma_op = bind(qbx, sym.Dp(lap_knl, sym.var("sigma")))
+        dp_sigma = dp_sigma_op(queue=queue, sigma=ymn)
+        dp_eigval = -(mode_n*(mode_n+1))/(2*mode_n + 1)
+        dp_eoc_rec.add_data_point(qbx.h_max, rel_err(dp_sigma, dp_eigval*ymn))
+
+        # }}}
+
+    print("Errors for S:")
+    print(s_eoc_rec)
+    required_order = qbx_order + 1
+    assert s_eoc_rec.order_estimate() > required_order - 0.5
+
+    print("Errors for D:")
+    print(d_eoc_rec)
+    required_order = qbx_order
+    assert d_eoc_rec.order_estimate() > required_order - 0.5
+
+    print("Errors for S':")
+    print(sp_eoc_rec)
+    required_order = qbx_order
+    assert sp_eoc_rec.order_estimate() > required_order - 1.5
+
+    print("Errors for D':")
+    print(dp_eoc_rec)
+    required_order = qbx_order
+    assert dp_eoc_rec.order_estimate() > required_order - 1.5
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_layer_pot_eigenvalues.py 'test_routine()'
 
@@ -256,6 +378,5 @@ if __name__ == "__main__":
     else:
         from py.test.cmdline import main
         main([__file__])
-
 
 # vim: fdm=marker
