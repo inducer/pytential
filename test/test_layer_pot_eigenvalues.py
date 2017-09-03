@@ -247,8 +247,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
 
 @pytest.mark.parametrize(["mode_m", "mode_n", "qbx_order"], [
     # Run with FMM
-    (2, 5, 3),
-    (1, 6, 3),
+    (2, 3, 3),
     ])
 def no_test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order):
     logging.basicConfig(level=logging.INFO)
