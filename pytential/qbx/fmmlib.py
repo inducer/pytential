@@ -409,7 +409,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 nsources_starts=info.center_source_starts,
 
                 center=info.centers,
-                nterms=self.nterms,
 
                 ier=ier,
                 expn=expn.T,
@@ -543,8 +542,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         locloc = self.get_translation_routine("%ddlocloc")
 
         for isrc_level in range(geo_data.tree().nlevels):
-            local_order = self.level_orders[isrc_level]
-
             lev_box_start, lev_box_stop = self.tree.level_start_box_nrs[
                     isrc_level:isrc_level+2]
             target_level_start_ibox, target_locals_view = \
@@ -582,7 +579,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
                                 rscale2=qbx_radii[tgt_icenter],
                                 center2=tgt_center,
-                                nterms2=local_order,
+                                nterms2=self.qbx_order,
 
                                 **kwargs)[..., 0].T
 
