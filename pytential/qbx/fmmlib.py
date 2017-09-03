@@ -360,10 +360,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     def form_global_qbx_locals(self, src_weights):
         geo_data = self.geo_data
 
-        local_exps = self.qbx_local_expansion_zeros()
+        qbx_exps = self.qbx_local_expansion_zeros()
 
         if len(geo_data.global_qbx_centers()) == 0:
-            return local_exps
+            return qbx_exps
 
         formta_imany = self.get_routine("%ddformta" + self.dp_suffix,
                 suffix="_imany")
@@ -418,16 +418,16 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         if np.any(ier != 0):
             raise RuntimeError("formta returned an error")
 
-        local_exps[geo_data.global_qbx_centers()] = expn.T
+        qbx_exps[geo_data.global_qbx_centers()] = expn.T
 
-        return local_exps
+        return qbx_exps
 
     # }}}
 
     # {{{ m2qbxl
 
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
-        local_exps = self.qbx_local_expansion_zeros()
+        qbx_exps = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
@@ -436,7 +436,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         ngqbx_centers = len(geo_data.global_qbx_centers())
 
         if ngqbx_centers == 0:
-            return local_exps
+            return qbx_exps
 
         mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
 
@@ -522,9 +522,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 if ier.any():
                     raise RuntimeError("m2qbxl failed")
 
-            local_exps[geo_data.global_qbx_centers()] += expn2
+            qbx_exps[geo_data.global_qbx_centers()] += expn2
 
-        return local_exps
+        return qbx_exps
 
     # }}}
 
