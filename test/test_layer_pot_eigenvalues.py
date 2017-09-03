@@ -246,13 +246,20 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
 # {{{ sphere eigenvalues
 
 @pytest.mark.parametrize(["mode_m", "mode_n", "qbx_order"], [
-    # Run with FMM
     (2, 3, 3),
     ])
-def no_test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order):
+@pytest.mark.parametrize("fmm_backend", [
+    "sumpy",
+    "fmmlib",
+    ])
+def no_test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
+        fmm_backend):
     logging.basicConfig(level=logging.INFO)
 
     special = pytest.importorskip("scipy.special")
+
+    if fmm_backend == "fmmlib":
+        pytest.importorskip("pyfmmlib")
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
@@ -293,7 +300,7 @@ def no_test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order):
         qbx, _ = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
                 qbx_order, fmm_order=6,
-                fmm_backend="sumpy",
+                fmm_backend=fmm_backend,
                 ).with_refinement()
 
         density_discr = qbx.density_discr
