@@ -176,10 +176,10 @@ class StarfishGreenTest(StaticTestCase):
     expr = GreenExpr()
     geometry = StarfishGeometry()
     k = 0
-    qbx_order = 3
-    fmm_order = 6
+    qbx_order = 5
+    fmm_order = 15
 
-    resolutions = [30, 50, 70]
+    resolutions = [30, 50]
 
     _expansion_stick_out_factor = 0.5
 
