@@ -360,10 +360,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     def form_global_qbx_locals(self, src_weights):
         geo_data = self.geo_data
 
-        local_exps = self.qbx_local_expansion_zeros()
+        qbx_exps = self.qbx_local_expansion_zeros()
 
         if len(geo_data.global_qbx_centers()) == 0:
-            return local_exps
+            return qbx_exps
 
         formta_imany = self.get_routine("%ddformta" + self.dp_suffix,
                 suffix="_imany")
@@ -409,7 +409,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 nsources_starts=info.center_source_starts,
 
                 center=info.centers,
-                nterms=self.nterms,
 
                 ier=ier,
                 expn=expn.T,
@@ -419,16 +418,16 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         if np.any(ier != 0):
             raise RuntimeError("formta returned an error")
 
-        local_exps[geo_data.global_qbx_centers()] = expn.T
+        qbx_exps[geo_data.global_qbx_centers()] = expn.T
 
-        return local_exps
+        return qbx_exps
 
     # }}}
 
     # {{{ m2qbxl
 
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
-        local_exps = self.qbx_local_expansion_zeros()
+        qbx_exps = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
@@ -437,7 +436,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         ngqbx_centers = len(geo_data.global_qbx_centers())
 
         if ngqbx_centers == 0:
-            return local_exps
+            return qbx_exps
 
         mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
 
@@ -523,9 +522,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 if ier.any():
                     raise RuntimeError("m2qbxl failed")
 
-            local_exps[geo_data.global_qbx_centers()] += expn2
+            qbx_exps[geo_data.global_qbx_centers()] += expn2
 
-        return local_exps
+        return qbx_exps
 
     # }}}
 
@@ -543,13 +542,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         locloc = self.get_translation_routine("%ddlocloc")
 
         for isrc_level in range(geo_data.tree().nlevels):
-            local_order = self.level_orders[isrc_level]
-
             lev_box_start, lev_box_stop = self.tree.level_start_box_nrs[
                     isrc_level:isrc_level+2]
-            target_level_start_ibox, target_locals_view = \
+            locals_level_start_ibox, locals_view = \
                     self.local_expansions_view(local_exps, isrc_level)
-            assert target_level_start_ibox == lev_box_start
+            assert locals_level_start_ibox == lev_box_start
 
             kwargs = {}
             kwargs.update(self.kernel_kwargs)
@@ -578,11 +575,12 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     tmp_loc_exp = locloc(
                                 rscale1=level_to_rscale(self.tree, isrc_level),
                                 center1=src_center,
-                                expn1=local_exps[src_ibox].T,
+                                expn1=locals_view[
+                                    src_ibox - locals_level_start_ibox].T,
 
                                 rscale2=qbx_radii[tgt_icenter],
                                 center2=tgt_center,
-                                nterms2=local_order,
+                                nterms2=self.qbx_order,
 
                                 **kwargs)[..., 0].T
 
