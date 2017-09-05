@@ -40,7 +40,7 @@ class PECAugmentedMFIEOperator:
     """Magnetic Field Integral Equation operator,
     under the assumption of no surface charges.
 
-    see notes/mfie.tm
+    see :file:`contrib/notes/mfie.tm`
     """
 
     def __init__(self, k=sym.var("k")):
@@ -95,6 +95,10 @@ class PECAugmentedMFIEOperator:
 # {{{ Charge-Current Mueller MFIE
 
 class MuellerAugmentedMFIEOperator(object):
+    """
+    ... warning:: currently untested
+    """
+
     def __init__(self, omega, mus, epss):
         from sumpy.kernel import HelmholtzKernel
         self.kernel = HelmholtzKernel(3)
@@ -165,7 +169,7 @@ class MuellerAugmentedMFIEOperator(object):
         Jxyz = sym.cse(sym.tangential_to_xyz(u.jt), "Jxyz")
         Mxyz = sym.cse(sym.tangential_to_xyz(u.mt), "Mxyz")
 
-        omega = self.omega
+        # omega = self.omega
         mu = self.mus[i]
         eps = self.epss[i]
         k = self.ks[i]
