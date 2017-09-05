@@ -611,19 +611,12 @@ class SphereIntEqTestCase(IntEqTestCase):
 
     def get_mesh(self, resolution, target_order):
         from meshmode.mesh.generation import generate_icosphere
-        from meshmode.mesh.refinement import Refiner
-        mesh = generate_icosphere(1, target_order)
+        from meshmode.mesh.refinement import refine_uniformly
+        mesh = refine_uniformly(
+                generate_icosphere(1, target_order),
+                resolution)
 
-        refinement_increment = 1
-        refiner = Refiner(mesh)
-        for i in range(refinement_increment):
-            flags = np.ones(mesh.nelements, dtype=bool)
-            refiner.refine(flags)
-            mesh = refiner.get_current_mesh()
-
-        from meshmode.mesh.processing import perform_flips
-        # Flip elements--gmsh generates inside-out geometry.
-        return perform_flips(mesh, np.ones(mesh.nelements))
+        return mesh
 
     fmm_backend = "fmmlib"
     use_refinement = False
