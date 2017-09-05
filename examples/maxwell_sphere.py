@@ -28,9 +28,17 @@ k = 4
 def main():
     # cl.array.to_device(queue, numpy_array)
     from meshmode.mesh.io import generate_gmsh, FileSource
-    mesh = generate_gmsh(
-            FileSource("ellipsoid.step"), 2, order=2,
-            other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h])
+    from meshmode.mesh.generation import generate_icosphere
+    from meshmode.mesh.refinement import Refiner
+    mesh = generate_icosphere(1,target_order)
+
+    refinement_increment = 1
+    refiner = Refiner(mesh)
+    for i in range(refinement_increment):
+        flags = np.ones(mesh.nelements, dtype=bool)
+        refiner.refine(flags)
+        mesh = refiner.get_current_mesh()
+
 
     from meshmode.mesh.processing import perform_flips
     # Flip elements--gmsh generates inside-out geometry.
@@ -54,13 +62,13 @@ def main():
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
-            fmm_order=qbx_order + 10, fmm_backend="fmmlib")
+            fmm_order=False, fmm_backend="fmmlib")
 
     from pytential.symbolic.pde.maxwell import MuellerAugmentedMFIEOperator
     pde_op = MuellerAugmentedMFIEOperator(
-            omega=0.4,
-            epss=[1.4, 1.0],
-            mus=[1.2, 1.0],
+            omega=1.0,
+            epss=[1.0, 1.0],
+            mus=[1.0, 1.0],
             )
     from pytential import bind, sym
 
@@ -69,7 +77,7 @@ def main():
     sym_rhs = pde_op.rhs(
             sym.make_sym_vector("Einc", 3),
             sym.make_sym_vector("Hinc", 3))
-    sym_repr = pde_op.representation(0, unk)
+    sym_repr = pde_op.representation(1, unk)
 
     if 1:
         expr = sym_repr
@@ -156,6 +164,8 @@ def main():
             evec = green3e(x,y,z,source,strength,k)
             evec = evec*1j*k
             hvec = green3m(x,y,z,source,strength,k)
+#            print(hvec)
+#            print(strength)
             return evec,hvec
             
         def dipole3m(x,y,z,source,strength,k):
@@ -210,7 +220,7 @@ def main():
         bound_op = bind(qbx, sym_operator)
 
         from pytential.solve import gmres
-        if 0:
+        if 1:
             gmres_result = gmres(
                 bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
                 bvp_rhs, tol=1e-8, progress=True,
@@ -220,11 +230,14 @@ def main():
             sigma = gmres_result.solution
 
         fld_at_tgt = bind((qbx, PointsTarget(tgt_points)), sym_repr)(queue,
-        sigma=bvp_rhs,k=k)
+        sigma=sigma,k=k)
         fld_at_tgt = np.array([
             fi.get() for fi in fld_at_tgt
             ])
         print(fld_at_tgt)
+        fld_exact_e,fld_exact_h = dipole3e(tgt_points[0,0],tgt_points[1,0],tgt_points[2,0],source,strength,k)
+        print(fld_exact_e)
+        print(fld_exact_h)
         1/0
 
     # }}}
@@ -244,7 +257,7 @@ def main():
 
         fplot = FieldPlotter(bbox_center, extent=2*bbox_size, npoints=(150, 150, 1))
 
-        qbx_tgt_tol = qbx.copy(target_association_tolerance=0.1)
+        qbx_stick_out = qbx.copy(target_stick_out_factor=0.1)
         from pytential.target import PointsTarget
         from pytential.qbx import QBXTargetAssociationFailedException
 
@@ -252,7 +265,7 @@ def main():
 
         try:
             fld_in_vol = bind(
-                    (qbx_tgt_tol, PointsTarget(fplot.points)),
+                    (qbx_stick_out, PointsTarget(fplot.points)),
                     sym.make_obj_array([
                         sym.S(pde_op.kernel, rho_sym, k=sym.var("k"),
                             qbx_forced_limit=None),

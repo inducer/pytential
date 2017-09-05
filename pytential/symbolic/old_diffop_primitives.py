@@ -39,21 +39,6 @@ def surf_grad_S(kernel, arg, dim):
     return project_to_tangential(cse(grad_S(kernel, arg, dim)))
 
 
-def div_S_volume(kernel, arg):
-    return sum(IntGdTarget(kernel, arg_n, n) for n, arg_n in enumerate(arg))
-
-
-def curl_S_volume(kernel, arg):
-    from pytools import levi_civita
-    from pytools.obj_array import make_obj_array
-
-    return make_obj_array([
-        sum(
-            levi_civita((l, m, n)) * IntGdTarget(kernel, arg[n], m)
-            for m in range(3) for n in range(3))
-        for l in range(3)])
-
-
 def curl_curl_S_volume(k, arg):
     # By vector identity, this is grad div S volume + k^2 S_k(arg),
     # since S_k(arg) satisfies a Helmholtz equation.
@@ -145,22 +130,6 @@ def tangential_to_xyz(tangential_vec, which=None):
 def project_to_tangential(xyz_vec, which=None):
     return tangential_to_xyz(
             cse(xyz_to_tangential(xyz_vec, which), which))
-
-
-def n_dot(vec, which=None):
-    return np.dot(normal(len(vec), which), vec)
-
-
-def n_cross(vec, which=None):
-    nrm = normal(3, which)
-
-    from pytools import levi_civita
-    from pytools.obj_array import make_obj_array
-    return make_obj_array([
-        sum(
-            levi_civita((i, j, k)) * nrm[j] * vec[k]
-            for j in range(3) for k in range(3))
-        for i in range(3)])
 
 
 def surf_n_cross(tangential_vec):
