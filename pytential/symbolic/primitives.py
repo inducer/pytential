@@ -35,7 +35,7 @@ from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
-from pytools.obj_array import make_obj_array  # noqa: F401
+from pytools.obj_array import make_obj_array, join_fields  # noqa: F401
 
 from functools import partial
 
