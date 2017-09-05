@@ -189,14 +189,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         else:
             helmholtz_k = kernel_extra_kwargs[k_name]
 
-        self.level_orders = [
-                fmm_level_to_order(level)
-                for level in range(self.geo_data.tree().nlevels)]
-
-        # FIXME: For now
-        from pytools import single_valued
-        assert single_valued(self.level_orders)
-
         dipole_vec = None
         if source_deriv_name is not None:
             dipole_vec = np.array([
@@ -211,8 +203,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 dipole_vec=dipole_vec,
                 dipoles_already_reordered=True,
 
-                # FIXME
-                nterms=fmm_level_to_order(0),
+                fmm_level_to_nterms=fmm_level_to_order,
 
                 ifgrad=ifgrad)
 
@@ -432,6 +423,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     center2=qbx_centers[:, tgt_icenter_vec],
                     expn2=expn2.T,
 
+                    level_for_projection=isrc_level,
+
                     **kwargs).T
 
             if self.dim == 3:
@@ -497,6 +490,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                                 rscale2=qbx_radii[tgt_icenter],
                                 center2=tgt_center,
                                 nterms2=self.qbx_order,
+
+                                level_for_projection=isrc_level,
 
                                 **kwargs)[..., 0].T
 
