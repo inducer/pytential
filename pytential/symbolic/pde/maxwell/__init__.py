@@ -31,8 +31,6 @@ tangential_to_xyz = sym.tangential_to_xyz
 xyz_to_tangential = sym.xyz_to_tangential
 cse = sym.cse
 
-from pytools.obj_array import join_fields
-
 
 # {{{ Charge-Current MFIE
 
@@ -76,18 +74,18 @@ class PECAugmentedMFIEOperator:
         E_scat = 1j*self.k*A - grad_phi + 0.5*loc*rho
         H_scat = sym.curl_S(self.kernel, Jxyz, k=self.k) + (loc*0.5)*Jxyz
 
-        return join_fields(E_scat, H_scat)
+        return sym.join_fields(E_scat, H_scat)
 
     def scattered_volume_field(self, Jt, rho):
         Jxyz = sym.cse(sym.tangential_to_xyz(Jt), "Jxyz")
 
         A = sym.S(self.kernel, Jxyz, k=self.k, qbx_forced_limit=None)
-        grad_phi = sym.grad(3, sym.S(self.kernel, rho, 3, k=self.k))
+        grad_phi = sym.grad(3, sym.S(self.kernel, rho, k=self.k))
 
         E_scat = 1j*self.k*A - grad_phi
         H_scat = sym.curl_S(self.kernel, Jxyz, k=self.k)
 
-        return join_fields(E_scat, H_scat)
+        return sym.join_fields(E_scat, H_scat)
 
 # }}}
 
@@ -152,13 +150,13 @@ class MuellerAugmentedMFIEOperator(object):
         # sign flip included
         F4 = -sym.n_dot(mu1*H1-mu0*H0) + 0.5*(mu1+mu0)*u.rho_m
 
-        return join_fields(F1, F2, F3, F4)
+        return sym.join_fields(F1, F2, F3, F4)
 
     def rhs(self, Einc_xyz, Hinc_xyz):
         mu1 = self.mus[1]
         eps1 = self.epss[1]
 
-        return join_fields(
+        return sym.join_fields(
             xyz_to_tangential(sym.n_cross(Hinc_xyz)),
             sym.n_dot(eps1*Einc_xyz),
             xyz_to_tangential(sym.n_cross(Einc_xyz)),
@@ -181,8 +179,7 @@ class MuellerAugmentedMFIEOperator(object):
         E0 = 1j*k*eps*S(Jxyz) + mu*curl_S(Mxyz) - grad(S(u.rho_e))
         H0 = -1j*k*mu*S(Mxyz) + eps*curl_S(Jxyz) + grad(S(u.rho_m))
 
-        from pytools.obj_array import join_fields
-        return join_fields(E0, H0)
+        return sym.join_fields(E0, H0)
 
 # }}}
 
