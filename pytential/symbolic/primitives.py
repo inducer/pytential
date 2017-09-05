@@ -1034,20 +1034,19 @@ def div_S(kernel, arg, ambient_dim=None, **kwargs):  # noqa: N802
             for iaxis in range(ambient_dim))
 
 
-def curl_S(kernel, arg, **kwargs):  # noqa: N802
+def curl(vec):
     from pytools import levi_civita
     from pytools.obj_array import make_obj_array
 
     return make_obj_array([
         sum(
-            levi_civita((l, m, n)) * dd_axis(m, 3, S(kernel, arg[n], **kwargs))
+            levi_civita((l, m, n)) * dd_axis(m, 3, vec[n])
             for m in range(3) for n in range(3))
         for l in range(3)])
 
-# }}}
 
-
-# {{{ vectorial (non-geometric-algebra) differential operators
+def curl_S(kernel, arg, **kwargs):  # noqa: N802
+    return curl(S(kernel, arg, **kwargs))
 
 # }}}
 
