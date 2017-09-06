@@ -1,4 +1,4 @@
-<TeXmacs|1.0.7.13>
+<TeXmacs|1.99.5>
 
 <style|generic>
 
@@ -65,25 +65,28 @@
     n\<cdot\><around*|(|E<rsup|+><rsub|inc>+E<rsup|+><rsub|scat>|)>=\<rho\><rsup|s>.
   </equation*>
 
-  Now use the representation <math|E<rsub|scat>=i*k*A-\<nabla\>\<varphi\>=i*k*S<rsub|k>J<rsup|s>-\<nabla\>S<rsub|k>\<rho\><rsup|s>>
+  Now use the representation <math|E<rsub|scat>=-i*k*A-\<nabla\>\<varphi\>=i*k*S<rsub|k>J<rsup|s>-\<nabla\>S<rsub|k>\<rho\><rsup|s>>
   and obtain
 
   <\equation*>
-    n\<cdot\>E<rsup|+><rsub|inc>+<around*|(|n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>-\<nabla\>S<rsub|k>\<rho\><rsup|s>|)>|)><rsup|+>=\<rho\><rsup|s>.
+    n\<cdot\>E<rsup|+><rsub|inc>+<around*|(|n\<cdot\><around*|(|-i*k*S<rsub|k>J<rsup|s>-\<nabla\>S<rsub|k>\<rho\><rsup|s>|)>|)><rsup|+>=\<rho\><rsup|s>.
   </equation*>
 
   Carrying out the limit, we obtain:
 
   <\equation*>
-    n\<cdot\>E<rsup|+><rsub|inc>+n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>|)>-S<rsub|k><rprime|'>\<rho\><rsup|s>+<frac|1|2>\<rho\><rsup|s>=\<rho\><rsup|s>.
+    n\<cdot\>E<rsup|+><rsub|inc>-n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>|)>-S<rsub|k><rprime|'>\<rho\><rsup|s>+<frac|1|2>\<rho\><rsup|s>=\<rho\><rsup|s>.
   </equation*>
 
   Rearrange:
 
   <\equation*>
-    n\<cdot\>E<rsup|+><rsub|inc>+n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>|)>=<frac|1|2>\<rho\><rsup|s>+S<rsub|k><rprime|'>\<rho\><rsup|s>.
+    n\<cdot\>E<rsup|+><rsub|inc>-n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>|)>=<frac|1|2>\<rho\><rsup|s>+S<rsub|k><rprime|'>\<rho\><rsup|s>.
   </equation*>
 </body>
+
+<initial|<\collection>
+</collection>>
 
 <\references>
   <\collection>
@@ -96,15 +99,15 @@
 <\auxiliary>
   <\collection>
     <\associate|toc>
-      <vspace*|1fn><with|font-series|<quote|bold>|math-font-series|<quote|bold>|Augmented
+      <vspace*|1fn><with|font-series|<quote|bold>|math-font-series|<quote|bold>|1<space|2spc>Augmented
       MFIE derivation> <datoms|<macro|x|<repeat|<arg|x>|<with|font-series|medium|<with|font-size|1|<space|0.2fn>.<space|0.2fn>>>>>|<htab|5mm>>
       <no-break><pageref|auto-1><vspace|0.5fn>
 
-      <with|par-left|<quote|1.5fn>|MFIE derivation
+      <with|par-left|<quote|1tab>|1.1<space|2spc>MFIE derivation
       <datoms|<macro|x|<repeat|<arg|x>|<with|font-series|medium|<with|font-size|1|<space|0.2fn>.<space|0.2fn>>>>>|<htab|5mm>>
       <no-break><pageref|auto-2>>
 
-      <with|par-left|<quote|1.5fn>|<with|mode|<quote|math>|\<rho\>>
+      <with|par-left|<quote|1tab>|1.2<space|2spc><with|mode|<quote|math>|\<rho\>>
       postprocessor derivation <datoms|<macro|x|<repeat|<arg|x>|<with|font-series|medium|<with|font-size|1|<space|0.2fn>.<space|0.2fn>>>>>|<htab|5mm>>
       <no-break><pageref|auto-3>>
     </associate>
