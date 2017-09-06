@@ -235,12 +235,17 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
 
         # }}}
 
+        jxyz = bind(qbx, sym.tangential_to_xyz(jt_sym))(queue, jt=jt)
+
         # {{{ volume eval
 
         sym_repr = mfie.scattered_volume_field(jt_sym, rho_sym)
 
-        def eval_repr_at(tgt):
-            return bind((qbx, tgt), sym_repr)(queue, jt=jt, rho=rho, **knl_kwargs)
+        def eval_repr_at(tgt, source=None):
+            if source is None:
+                source = qbx
+
+            return bind((source, tgt), sym_repr)(queue, jt=jt, rho=rho, **knl_kwargs)
 
         pde_test_repr = eval_repr_at(calc_patch_tgt)
 
@@ -252,7 +257,61 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
                 for x in frequency_domain_maxwell(
                     calc_patch, pde_test_e, pde_test_h, case.k)])
 
-        calc_patch_tgt
+        #test_repr = eval_repr_at(test_discr)
+
+        # {{{ visualization
+
+        if visualize:
+            from meshmode.discretization.visualization import make_visualizer
+            bdry_vis = make_visualizer(queue, scat_discr, case.target_order+3)
+
+            bdry_normals = bind(scat_discr, sym.normal(3))(queue)\
+                    .as_vector(dtype=object)
+
+            bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
+                ("j", jxyz),
+                ("rho", rho),
+                ("Einc", inc_field_scat[:3]),
+                ("Hinc", inc_field_scat[3:]),
+                ("bdry_normals", bdry_normals),
+                ])
+
+            bbox_center = np.zeros(3)
+            bbox_size = 6
+
+            fplot = FieldPlotter(
+                    bbox_center, extent=bbox_size, npoints=(150, 150, 5))
+
+            from pytential.qbx import QBXTargetAssociationFailedException
+
+            qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
+
+            fplot_tgt = PointsTarget(fplot.points)
+            try:
+                fplot_repr = eval_repr_at(fplot_tgt, source=qbx_tgt_tol)
+            except QBXTargetAssociationFailedException as e:
+                fplot.write_vtk_file(
+                        "failed-targets.vts",
+                        [
+                            ("failed_targets", e.failed_target_flags.get(queue))
+                            ])
+                raise
+
+            fplot_inc = eval_inc_field_at(fplot_tgt)
+
+            fplot.write_vtk_file(
+                    "potential.vts",
+                    [
+                        ("E", fplot_repr[:3]),
+                        ("H", fplot_repr[3:]),
+                        ("Einc", fplot_inc[:3]),
+                        ("Hinc", fplot_inc[3:]),
+                        ]
+                    )
+
+        # }}}
+
+
 
 
 
