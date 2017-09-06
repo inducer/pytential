@@ -82,10 +82,12 @@ class PECAugmentedMFIEOperator:
         Jxyz = sym.cse(sym.tangential_to_xyz(Jt), "Jxyz")
 
         A = sym.S(self.kernel, Jxyz, k=self.k, qbx_forced_limit=None)
-        grad_phi = sym.grad(3, sym.S(self.kernel, rho, k=self.k))
+        grad_phi = sym.grad(3, sym.S(self.kernel, rho, k=self.k,
+            qbx_forced_limit=None))
 
         E_scat = - 1j*self.k*A - grad_phi
-        H_scat = sym.curl(sym.S(self.kernel, Jxyz, k=self.k))
+        H_scat = sym.curl(sym.S(self.kernel, Jxyz, k=self.k,
+            qbx_forced_limit=None))
 
         return sym.join_fields(E_scat, H_scat)
 
