@@ -1044,10 +1044,6 @@ def curl(vec):
             for m in range(3) for n in range(3))
         for l in range(3)])
 
-
-def curl_S(kernel, arg, **kwargs):  # noqa: N802
-    return curl(S(kernel, arg, **kwargs))
-
 # }}}
 
 

@@ -49,7 +49,9 @@ class PECAugmentedMFIEOperator:
     def j_operator(self, loc, Jt):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
         return xyz_to_tangential(
-                (loc*0.5)*Jxyz - sym.nxcurl_S(self.kernel, 0, Jxyz, k=self.k))
+                (loc*0.5)*Jxyz - sym.n_cross(
+                    sym.curl(sym.S(self.kernel, Jxyz, k=self.k,
+                        qbx_forced_limit="avg"))))
 
     def j_rhs(self, Hinc_xyz):
         return xyz_to_tangential(sym.n_cross(Hinc_xyz))
@@ -72,7 +74,7 @@ class PECAugmentedMFIEOperator:
         # use - n x n x v = v_tangential
 
         E_scat = 1j*self.k*A - grad_phi + 0.5*loc*rho
-        H_scat = sym.curl_S(self.kernel, Jxyz, k=self.k) + (loc*0.5)*Jxyz
+        H_scat = sym.curl(sym.S(self.kernel, Jxyz, k=self.k)) + (loc*0.5)*Jxyz
 
         return sym.join_fields(E_scat, H_scat)
 
@@ -83,7 +85,7 @@ class PECAugmentedMFIEOperator:
         grad_phi = sym.grad(3, sym.S(self.kernel, rho, k=self.k))
 
         E_scat = 1j*self.k*A - grad_phi
-        H_scat = sym.curl_S(self.kernel, Jxyz, k=self.k)
+        H_scat = sym.curl(sym.S(self.kernel, Jxyz, k=self.k))
 
         return sym.join_fields(E_scat, H_scat)
 
@@ -131,7 +133,10 @@ class MuellerAugmentedMFIEOperator(object):
         k0, k1 = self.ks
 
         S = partial(sym.S, self.kernel, qbx_forced_limit="avg")
-        curl_S = partial(sym.curl_S, self.kernel, qbx_forced_limit="avg")
+
+        def curl_S(dens):
+            return sym.curl(sym.S(self.kernel, dens, qbx_forced_limit="avg"))
+
         grad = partial(sym.grad, 3)
 
         E0 = sym.cse(1j*omega*mu0*eps0*S(Jxyz, k=k0) +
@@ -173,7 +178,10 @@ class MuellerAugmentedMFIEOperator(object):
         k = self.ks[i]
 
         S = partial(sym.S, self.kernel, qbx_forced_limit=None, k=k)
-        curl_S = partial(sym.curl_S, self.kernel, qbx_forced_limit=None, k=k)
+
+        def curl_S(dens):
+            return sym.curl(sym.S(self.kernel, dens, qbx_forced_limit=None, k=k))
+
         grad = partial(sym.grad, 3)
 
         E0 = 1j*k*eps*S(Jxyz) + mu*curl_S(Mxyz) - grad(S(u.rho_e))
