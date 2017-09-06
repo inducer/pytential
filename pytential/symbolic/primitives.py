@@ -847,7 +847,7 @@ def S(kernel, density,  # noqa
 
     if qbx_forced_limit is _unspecified:
         warn("not specifying qbx_forced_limit on call to 'S' is deprecated, "
-                "defaulting to +1", DeprecationWarning, stacklevel=2)
+                "defaulting to +1", stacklevel=2)
         qbx_forced_limit = +1
 
     return IntG(kernel, density, qbx_forced_limit, source, target,
