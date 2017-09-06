@@ -33,6 +33,7 @@ from pytential import bind, sym
 
 from sumpy.visualization import FieldPlotter  # noqa
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
+from sumpy.tools import vector_from_device
 from pytential.target import PointsTarget
 
 import logging
@@ -43,6 +44,8 @@ from pyopencl.tools import (  # noqa
 
 
 class TestCase:
+    fmm_backend = "fmmlib"
+
     def __init__(self, k, is_interior, resolutions, qbx_order,
             fmm_order):
         self.k = k
@@ -53,6 +56,9 @@ class TestCase:
 
 
 class SphereTestCase(TestCase):
+    target_order = 8
+    gmres_tol = 1e-10
+
     def get_mesh(self, resolution, target_order):
         from meshmode.mesh.generation import generate_icosphere
         from meshmode.mesh.refinement import refine_uniformly
@@ -82,9 +88,9 @@ class SphereTestCase(TestCase):
                 cl.array.to_device(queue, sources))
 
 
-tc_int = SphereTestCase(k=10.2, is_interior=True, resolutions=[0, 1],
+tc_int = SphereTestCase(k=1.2, is_interior=True, resolutions=[0, 1],
         qbx_order=3, fmm_order=10)
-tc_ext = SphereTestCase(k=10.2, is_interior=False, resolutions=[0, 1],
+tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0, 1],
         qbx_order=3, fmm_order=10)
 
 
@@ -105,58 +111,55 @@ def get_sym_maxwell_source(kernel, jxyz, k):
     tc_ext
     ])
 def test_mfie_from_source(ctx_getter, case, visualize=False):
-    logging.basicConfig(level=logging.INFO)
+    #logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
     pytest.importorskip("pyfmmlib")
-    pytest.importorskip("scipy")
 
     np.random.seed(12)
+
+    knl_kwargs = {"k": case.k}
 
     # {{{ come up with a solution to Maxwell's equations
 
     j_sym = sym.make_sym_vector("j", 3)
+    jt_sym = sym.make_sym_vector("jt", 2)
+    rho_sym = sym.var("rho")
 
     from pytential.symbolic.pde.maxwell import PECAugmentedMFIEOperator
     mfie = PECAugmentedMFIEOperator()
 
     test_source = case.get_source(queue)
 
-    calc_patch = CalculusPatch(np.array([-2, 0, 0]), h=0.01)
+    calc_patch = CalculusPatch(np.array([-3, 0, 0]), h=0.01)
     calc_patch_tgt = PointsTarget(calc_patch.points)
 
     rng = cl.clrandom.PhiloxGenerator(cl_ctx, seed=12)
     src_j = rng.normal(queue, (3, test_source.nnodes), dtype=np.float64)
 
-    pde_test_field = bind(
-            (test_source, calc_patch_tgt),
-            get_sym_maxwell_source(mfie.kernel, j_sym, mfie.k)
-            )(queue, j=src_j, k=case.k)
+    def eval_inc_field_at(tgt):
+        return bind(
+                (test_source, tgt),
+                get_sym_maxwell_source(mfie.kernel, j_sym, mfie.k)
+                )(queue, j=src_j, k=case.k)
 
-    from sumpy.tools import vector_from_device
-    pde_test_e = vector_from_device(queue, pde_test_field[:3])
-    pde_test_h = vector_from_device(queue, pde_test_field[3:])
+    pde_test_inc = eval_inc_field_at(calc_patch_tgt)
 
-    print([
+    pde_test_e = vector_from_device(queue, pde_test_inc[:3])
+    pde_test_h = vector_from_device(queue, pde_test_inc[3:])
+
+    assert max(
             calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_e, np.inf)
             for x in frequency_domain_maxwell(
-                calc_patch, pde_test_e, pde_test_h, case.k)])
+                calc_patch, pde_test_e, pde_test_h, case.k)) < 1e-6
 
+    loc_sign = -1 if case.is_interior else +1
+    # xyz_mfie_bdry_vol_op = mfie.boundary_field(0, Jxyz)
+    # xyz_mfie_vol_op = mfie.volume_field(Jxyz)
 
-    1/0
-
-
-
-
-
-    mfie_ext_op = xyz_to_tangential(mfie.boundary_field(+1, Jxyz))
-    mfie_int_op = xyz_to_tangential(mfie.boundary_field(-1, Jxyz))
-    xyz_mfie_bdry_vol_op = mfie.boundary_field(0, Jxyz)
-    xyz_mfie_vol_op = mfie.volume_field(Jxyz)
-
-    n_cross_op = n_cross(make_vector_field("vec", 3))
+    # n_cross_op = n_cross(make_vector_field("vec", 3))
 
     from pytools.convergence import EOCRecorder
 
@@ -164,46 +167,94 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
     eoc_rec_E = EOCRecorder()
     eoc_rec_H = EOCRecorder()
 
+    from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
 
     for resolution in case.resolutions:
-        scat_mesh = generate_icosphere(2, i)
-        if is_interior:
-            tgt_mesh = generate_icosphere(5, 0)
-        else:
-            tgt_mesh = generate_icosphere(0.5, 1)
+        scat_mesh = case.get_mesh(resolution, case.target_order)
+        test_mesh = case.get_test_mesh(case.target_order)
 
-        scat_discr = FlatConstantDiscretization(scat_mesh)
-        tgt_discr = FlatConstantDiscretization(tgt_mesh)
+        pre_scat_discr = Discretization(
+                cl_ctx, scat_mesh,
+                InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
+        qbx, _ = QBXLayerPotentialSource(
+                pre_scat_discr, fine_order=4*case.target_order,
+                qbx_order=case.qbx_order,
+                fmm_order=case.fmm_order, fmm_backend=case.fmm_backend
+                ).with_refinement()
+        scat_discr = qbx.density_discr
+        test_discr = Discretization(
+                cl_ctx, test_mesh,
+                InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
-        def sbind(op): return bind(op, scat_discr, iprec=iprec)
+        inc_field_scat = eval_inc_field_at(scat_discr)
+        inc_field_test = eval_inc_field_at(test_discr)
 
-        source_func = gen_field_multipole
-
-        E_scat, H_scat = source_func(k, is_interior, scat_mesh.centroids)
-        E_tgt_true, H_tgt_true = source_func(k, is_interior, tgt_mesh.centroids)
-
-        nxHinc_xyz_mid = sbind(n_cross_op)(vec=H_scat)
-        nxH_tgt_true = bind(n_cross_op, tgt_discr, iprec=iprec)(
-                vec=H_tgt_true)
+        # nxHinc_xyz_mid = sbind(n_cross_op)(vec=H_scat)
+        # nxH_tgt_true = bind(n_cross_op, tgt_discr, iprec=iprec)(
+        #         vec=H_tgt_true)
 
         # {{{ system solve
 
-        nxHinc_t_mid = sbind(
-                xyz_to_tangential(make_vector_field("vec", 3))
-                )(vec=nxHinc_xyz_mid)
+        # nxHinc_t_mid = sbind(
+        #         xyz_to_tangential(make_vector_field("vec", 3))
+        #         )(vec=nxHinc_xyz_mid)
 
-        if is_interior:
-            mfie_solve_op = mfie_int_op
-        else:
-            mfie_solve_op = mfie_ext_op
+        inc_xyz_sym = sym.make_sym_vector("inc_fld", 6)
+        e_inc_xyz_sym = inc_xyz_sym[:3]
+        h_inc_xyz_sym = inc_xyz_sym[3:]
 
-        Jt_mid = solve_lin_op(
-                sbind(mfie_solve_op).scipy_op("Jt"),
-                nxHinc_t_mid)
+        bound_j_op = bind(qbx, mfie.j_operator(loc_sign, jt_sym))
+        j_rhs = bind(qbx, mfie.j_rhs(h_inc_xyz_sym))(
+                queue, inc_fld=inc_field_scat, **knl_kwargs)
+
+        from pytential.solve import gmres
+        gmres_result = gmres(
+                bound_j_op.scipy_op(queue, "jt", np.complex128, **knl_kwargs),
+                j_rhs,
+                tol=case.gmres_tol,
+                progress=True,
+                hard_failure=True)
+
+        jt = gmres_result.solution
+
+        bound_rho_op = bind(qbx, mfie.rho_operator(loc_sign, rho_sym))
+        rho_rhs = bind(qbx, mfie.rho_rhs(jt_sym, e_inc_xyz_sym))(
+                queue, jt=jt, inc_fld=inc_field_scat, **knl_kwargs)
+
+        gmres_result = gmres(
+                bound_rho_op.scipy_op(queue, "rho", np.complex128, **knl_kwargs),
+                rho_rhs,
+                tol=case.gmres_tol,
+                progress=True,
+                hard_failure=True)
+
+        rho = gmres_result.solution
 
         # }}}
 
-        # {{{ error in nxH
+        # {{{ volume eval
+
+        sym_repr = mfie.scattered_volume_field(jt_sym, rho_sym)
+
+        def eval_repr_at(tgt):
+            return bind((qbx, tgt), sym_repr)(queue, jt=jt, rho=rho, **knl_kwargs)
+
+        pde_test_repr = eval_repr_at(calc_patch_tgt)
+
+        pde_test_e = vector_from_device(queue, pde_test_repr[:3])
+        pde_test_h = vector_from_device(queue, pde_test_repr[3:])
+
+        print([
+                calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_e, np.inf)
+                for x in frequency_domain_maxwell(
+                    calc_patch, pde_test_e, pde_test_h, case.k)])
+
+        calc_patch_tgt
+
+
 
         nxH_tgt = bind(xyz_mfie_bdry_vol_op, (scat_discr, tgt_discr), iprec=iprec) \
                 (Jt=Jt_mid)
