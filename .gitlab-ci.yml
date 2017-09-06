@@ -31,7 +31,6 @@ Python 3.5 Conda:
   - REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
-  allow_failure: true  # takes very long
   tags:
   - linux
   except:
