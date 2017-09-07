@@ -25,17 +25,20 @@ THE SOFTWARE.
 import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
+import pytest
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
         make_curve_mesh)
 from pytential import bind, sym
 from functools import partial
+from sumpy.symbolic import USE_SYMENGINE
 
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 
 
+@pytest.mark.skipif(USE_SYMENGINE, reason="line taylor in SymEngine is broken")
 def test_matrix_build(ctx_factory):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
