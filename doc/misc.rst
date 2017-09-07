@@ -31,7 +31,7 @@ MacOS support is in the works.
 
 #.  ``conda config --add channels inducer``
 
-#.  ``conda install git pip pocl islpy pyopencl sympy meshpy``
+#.  ``conda install git pip pocl islpy pyopencl sympy meshpy pyfmmlib``
 
 #.  Type the following command::
 
