@@ -492,7 +492,7 @@ class QBXFMMGeometryData(object):
                         self.coord_dtype)
                 target_radii[:self.ncenters] = self.expansion_radii()
 
-            # FIXME: https://gitlab.tiker.net/inducer/pytential/merge_requests/65
+            # FIXME: https://gitlab.tiker.net/inducer/pytential/issues/72
             # refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
             # refine_weights[:nsources] = 1
             refine_weights = cl.array.empty(queue, nparticles, dtype=np.int32)
