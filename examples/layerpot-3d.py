@@ -18,8 +18,7 @@ queue = cl.CommandQueue(cl_ctx)
 
 target_order = 5
 qbx_order = 3
-nelements = 60
-mode_nr = 0
+mode_nr = 4
 
 if 1:
     cad_file_name = "ellipsoid.step"
@@ -55,9 +54,9 @@ from meshmode.discretization.poly_element import \
 density_discr = Discretization(
         cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
+qbx, _ = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
         fmm_order=qbx_order + 3,
-        target_association_tolerance=0.15)
+        target_association_tolerance=0.15).with_refinement()
 
 nodes = density_discr.nodes().with_queue(queue)
 
@@ -78,7 +77,7 @@ if 0:
 if isinstance(kernel, HelmholtzKernel):
     sigma = sigma.astype(np.complex128)
 
-fplot = FieldPlotter(bbox_center, extent=1.5*bbox_size, npoints=150)
+fplot = FieldPlotter(bbox_center, extent=3.5*bbox_size, npoints=150)
 
 from pytential.target import PointsTarget
 fld_in_vol = bind(
