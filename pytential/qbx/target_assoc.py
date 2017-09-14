@@ -357,9 +357,17 @@ class QBXTargetAssociationFailedException(Exception):
     .. attribute:: refine_flags
     .. attribute:: failed_target_flags
     """
-    def __init__(self, refine_flags, failed_target_flags):
+    def __init__(self, refine_flags, failed_target_flags, message):
         self.refine_flags = refine_flags
         self.failed_target_flags = failed_target_flags
+        self.message = message
+
+    def __str__(self):
+        return (
+                self.message
+                + " You may examine this exception object's 'failed_target_flags' "
+                "attribute as per-node data on the target geometry to determine "
+                "which targets were not associated.")
 
     def __repr__(self):
         return "<%s>" % type(self).__name__
@@ -772,10 +780,21 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
             | (target_flags == target_flag_enum.EXTERIOR_SURFACE_TARGET))
 
         if (center_not_found & surface_target).any().get():
-            logger.warning("An on-surface target was not "
-                    "assigned a center. As a remedy you can try increasing "
-                    "the \"target_association_tolerance\" parameter, but "
-                    "this could also cause an invalid center assignment.")
+            fail_msg = "An on-surface target was not assigned a QBX center."
+        else:
+            fail_msg = "Some targets were not assigned a QBX center."
+
+        fail_msg += (
+            " Make sure to check the values you are passing "
+            "for qbx_forced_limit on your symbolic layer potential "
+            "operators. Those (or their default values) may "
+            "constrain center choice to on-or-near surface "
+            "sides of the geometry in a way that causes this issue.")
+
+        fail_msg += (
+            " As a last resort, you can try increasing "
+            "the 'target_association_tolerance' parameter, but "
+            "this could also cause an invalid center assignment.")
 
         refine_flags = cl.array.zeros(
                 wrangler.queue, tree.nqbxpanels, dtype=np.int32)
@@ -785,7 +804,8 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
         assert have_panel_to_refine
         raise QBXTargetAssociationFailedException(
                 refine_flags=refine_flags.with_queue(None),
-                failed_target_flags=center_not_found.with_queue(None))
+                failed_target_flags=center_not_found.with_queue(None),
+                message=fail_msg)
 
     return target_assoc.with_queue(None)
 
