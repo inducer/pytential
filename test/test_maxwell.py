@@ -29,7 +29,7 @@ import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
 import pytest
 
-from pytential import bind, sym
+from pytential import bind, sym, norm
 
 from sumpy.visualization import FieldPlotter  # noqa
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
@@ -66,7 +66,7 @@ class SphereTestCase(TestCase):
                 generate_icosphere(2, target_order),
                 resolution)
 
-    def get_test_mesh(self, target_order):
+    def get_observation_mesh(self, target_order):
         from meshmode.mesh.generation import generate_icosphere
 
         if self.is_interior:
@@ -81,7 +81,9 @@ class SphereTestCase(TestCase):
         else:
             source_ctr = np.array([[5, 0.1, 0.15]]).T
 
-        sources = source_ctr + np.random.rand(3, 10)
+        source_rad = 0.3
+
+        sources = source_ctr + source_rad*2*(np.random.rand(3, 10)-0.5)
         from pytential.source import PointPotentialSource
         return PointPotentialSource(
                 queue.context,
@@ -111,7 +113,7 @@ def get_sym_maxwell_source(kernel, jxyz, k):
     tc_ext
     ])
 def test_mfie_from_source(ctx_getter, case, visualize=False):
-    #logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
@@ -164,8 +166,8 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
     from pytools.convergence import EOCRecorder
 
     eoc_rec_nxH = EOCRecorder()
-    eoc_rec_E = EOCRecorder()
-    eoc_rec_H = EOCRecorder()
+    eoc_rec_e = EOCRecorder()
+    eoc_rec_h = EOCRecorder()
 
     from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
@@ -174,7 +176,7 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
 
     for resolution in case.resolutions:
         scat_mesh = case.get_mesh(resolution, case.target_order)
-        test_mesh = case.get_test_mesh(case.target_order)
+        observation_mesh = case.get_observation_mesh(case.target_order)
 
         pre_scat_discr = Discretization(
                 cl_ctx, scat_mesh,
@@ -185,12 +187,12 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
                 fmm_order=case.fmm_order, fmm_backend=case.fmm_backend
                 ).with_refinement()
         scat_discr = qbx.density_discr
-        test_discr = Discretization(
-                cl_ctx, test_mesh,
+        obs_discr = Discretization(
+                cl_ctx, observation_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
         inc_field_scat = eval_inc_field_at(scat_discr)
-        inc_field_test = eval_inc_field_at(test_discr)
+        inc_field_obs = eval_inc_field_at(obs_discr)
 
         # nxHinc_xyz_mid = sbind(n_cross_op)(vec=H_scat)
         # nxH_tgt_true = bind(n_cross_op, tgt_discr, iprec=iprec)(
@@ -257,7 +259,7 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
                 for x in frequency_domain_maxwell(
                     calc_patch, pde_test_e, pde_test_h, case.k)])
 
-        #test_repr = eval_repr_at(test_discr)
+        # }}}
 
         # {{{ visualization
 
@@ -284,7 +286,7 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
 
             from pytential.qbx import QBXTargetAssociationFailedException
 
-            qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
+            qbx_tgt_tol = qbx.copy(target_association_tolerance=0.2)
 
             fplot_tgt = PointsTarget(fplot.points)
             try:
@@ -302,87 +304,58 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
             fplot.write_vtk_file(
                     "potential.vts",
                     [
-                        ("E", fplot_repr[:3]),
-                        ("H", fplot_repr[3:]),
-                        ("Einc", fplot_inc[:3]),
-                        ("Hinc", fplot_inc[3:]),
+                        ("E", vector_from_device(queue, fplot_repr[:3])),
+                        ("H", vector_from_device(queue, fplot_repr[3:])),
+                        ("Einc", vector_from_device(queue, fplot_inc[:3])),
+                        ("Hinc", vector_from_device(queue, fplot_inc[3:])),
                         ]
                     )
 
         # }}}
 
-
-
-
-
-        nxH_tgt = bind(xyz_mfie_bdry_vol_op, (scat_discr, tgt_discr), iprec=iprec) \
-                (Jt=Jt_mid)
-        rel_err_nxH = (tgt_discr.norm(nxH_tgt_true+nxH_tgt)
-                / tgt_discr.norm(nxH_tgt_true))
-
-        # }}}
-
         # {{{ error in E, H
 
-        EH_tgt = bind(xyz_mfie_vol_op, (scat_discr, tgt_discr), iprec=iprec) \
-                (Jt=Jt_mid)
-        E_tgt = EH_tgt[:3]
-        H_tgt = EH_tgt[3:]
-        rel_err_H = (tgt_discr.norm(H_tgt_true-H_tgt)
-                / tgt_discr.norm(H_tgt_true))
-        rel_err_E = (tgt_discr.norm(E_tgt_true-E_tgt)
-                / tgt_discr.norm(E_tgt_true))
+        obs_repr = eval_repr_at(obs_discr)
+
+        obs_e = obs_repr[:3]
+        obs_h = obs_repr[3:]
+
+        inc_obs_e = inc_field_obs[:3]
+        inc_obs_h = inc_field_obs[3:]
+
+        def obs_norm(f):
+            return norm(obs_discr, queue, f, p=np.inf)
+
+        # FIXME: Why "+"?
+        rel_err_e = (obs_norm(inc_obs_e + obs_e)
+                / obs_norm(inc_obs_e))
+        rel_err_h = (obs_norm(inc_obs_h + obs_h)
+                / obs_norm(inc_obs_h))
 
         # }}}
 
-        print("ERR", h, rel_err_nxH, rel_err_H, rel_err_E)
+        h_max = qbx.h_max
+        print("ERR", h_max, rel_err_h, rel_err_e)
 
-        eoc_rec_nxH.add_data_point(h, rel_err_nxH)
-        eoc_rec_H.add_data_point(h, rel_err_H)
-        eoc_rec_E.add_data_point(h, rel_err_E)
+        eoc_rec_h.add_data_point(h_max, rel_err_h)
+        eoc_rec_e.add_data_point(h_max, rel_err_e)
 
-        # {{{ visualization
-        if write_vis:
-            from pyvisfile.silo import SiloFile
-            from hellskitchen.visualization import add_to_silo_file
-            from pytools.obj_array import oarray_real_copy
-
-            Jxyz_mid = bind(
-                    tangential_to_xyz(make_vector_field("vec", 2)))(vec=Jt_mid)
-
-            silo = SiloFile("mfie-int%s-%d.silo" % (is_interior, i))
-            add_to_silo_file(silo, scat_geo, cell_data=[
-                ("nxHinc_mid", oarray_real_copy(nxHinc_xyz_mid)),
-                ("J_mid", oarray_real_copy(Jxyz_mid)),
-                ])
-            add_to_silo_file(silo, tgt_geo, cell_data=[
-                ("nxHinc_tgt", oarray_real_copy(nxH_tgt)),
-                ("nxHinc_tgt_true", oarray_real_copy(nxH_tgt_true)),
-                ("Hinc_tgt", oarray_real_copy(H_tgt)),
-                ("Hinc_tgt_true", oarray_real_copy(H_tgt_true)),
-                ("Einc_tgt", oarray_real_copy(E_tgt)),
-                ("Einc_tgt_true", oarray_real_copy(E_tgt_true)),
-                ], mesh_name="tgt_mesh")
-            silo.close()
-
-        # }}}
+    # TODO: Add Maxwellian-ness convergence
+    # TODO: Check that total field verifies BC
+    # TODO: Check for extinction on the interior
 
     print("--------------------------------------------------------")
     print("is_interior=%s" % case.is_interior)
     print("--------------------------------------------------------")
     for which_eoc, eoc_rec in [
-            ("nxH", eoc_rec_nxH),
-            ("H", eoc_rec_H),
-            ("E", eoc_rec_E)]:
+            #("nxH", eoc_rec_nxH),
+            ("H", eoc_rec_h),
+            ("E", eoc_rec_e)]:
         print(which_eoc)
         print(eoc_rec.pretty_print())
 
         if len(eoc_rec.history) > 1:
-            assert eoc_rec.order_estimate() > 0.8
-
-
-
-
+            assert eoc_rec.order_estimate() > case.qbx_order - 1
 
 
 # You can test individual routines by typing
