@@ -39,6 +39,10 @@ mesh = generate_gmsh(
         FileSource(cad_file_name), 2, order=2,
         other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h])
 
+from meshmode.mesh.processing import perform_flips
+# Flip elements--gmsh generates inside-out geometry.
+mesh = perform_flips(mesh, np.ones(mesh.nelements))
+
 from meshmode.mesh.processing import find_bounding_box
 bbox_min, bbox_max = find_bounding_box(mesh)
 bbox_center = 0.5*(bbox_min+bbox_max)
