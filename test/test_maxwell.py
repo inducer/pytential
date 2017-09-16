@@ -309,7 +309,7 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
             fplot_inc = eval_inc_field_at(fplot_tgt)
 
             fplot.write_vtk_file(
-                    "potential.vts",
+                    "potential-%s.vts" % resolution,
                     [
                         ("E", vector_from_device(queue, fplot_repr[:3])),
                         ("H", vector_from_device(queue, fplot_repr[3:])),
