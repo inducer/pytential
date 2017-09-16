@@ -165,7 +165,7 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
 
     from pytools.convergence import EOCRecorder
 
-    eoc_rec_nxH = EOCRecorder()
+    eoc_rec_repr_maxwell = EOCRecorder()
     eoc_rec_e = EOCRecorder()
     eoc_rec_h = EOCRecorder()
 
@@ -186,6 +186,8 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
                 qbx_order=case.qbx_order,
                 fmm_order=case.fmm_order, fmm_backend=case.fmm_backend
                 ).with_refinement()
+        h_max = qbx.h_max
+
         scat_discr = qbx.density_discr
         obs_discr = Discretization(
                 cl_ctx, observation_mesh,
@@ -254,10 +256,13 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
         pde_test_e = vector_from_device(queue, pde_test_repr[:3])
         pde_test_h = vector_from_device(queue, pde_test_repr[3:])
 
-        print([
+        maxwell_residuals = [
                 calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_e, np.inf)
                 for x in frequency_domain_maxwell(
-                    calc_patch, pde_test_e, pde_test_h, case.k)])
+                    calc_patch, pde_test_e, pde_test_h, case.k)]
+        print("Maxwell residuals:", maxwell_residuals)
+
+        eoc_rec_repr_maxwell.add_data_point(h_max, max(maxwell_residuals))
 
         # }}}
 
@@ -334,28 +339,31 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
 
         # }}}
 
-        h_max = qbx.h_max
         print("ERR", h_max, rel_err_h, rel_err_e)
 
         eoc_rec_h.add_data_point(h_max, rel_err_h)
         eoc_rec_e.add_data_point(h_max, rel_err_e)
 
-    # TODO: Add Maxwellian-ness convergence
     # TODO: Check that total field verifies BC
     # TODO: Check for extinction on the interior
 
     print("--------------------------------------------------------")
     print("is_interior=%s" % case.is_interior)
     print("--------------------------------------------------------")
+
+    good = True
     for which_eoc, eoc_rec in [
-            #("nxH", eoc_rec_nxH),
+            ("maxwell", eoc_rec_repr_maxwell),
             ("H", eoc_rec_h),
             ("E", eoc_rec_e)]:
         print(which_eoc)
         print(eoc_rec.pretty_print())
 
         if len(eoc_rec.history) > 1:
-            assert eoc_rec.order_estimate() > case.qbx_order - 1
+            if eoc_rec.order_estimate() < case.qbx_order - 1:
+                good = False
+
+    assert good
 
 
 # You can test individual routines by typing
