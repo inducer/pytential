@@ -63,17 +63,17 @@ class PECAugmentedMFIEOperator:
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
 
         return (sym.n_dot(Einc_xyz)
-                - 1j*self.k*sym.n_dot(sym.S(self.kernel, Jxyz, k=self.k)))
+                + 1j*self.k*sym.n_dot(sym.S(self.kernel, Jxyz, k=self.k)))
 
     def scattered_boundary_field(self, Jt, rho, loc):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
 
         A = sym.S(self.kernel, Jxyz, k=self.k)
-        grad_phi = sym.grad(3, sym.S(self.kernel, rho, k=self.k))
+        phi = sym.S(self.kernel, rho, k=self.k)
 
         # use - n x n x v = v_tangential
 
-        E_scat = - 1j*self.k*A - grad_phi + 0.5*loc*rho
+        E_scat = 1j*self.k*A - sym.grad(3, phi) + 0.5*loc*rho
         H_scat = sym.curl(sym.S(self.kernel, Jxyz, k=self.k)) + (loc*0.5)*Jxyz
 
         return sym.join_fields(E_scat, H_scat)
@@ -82,12 +82,10 @@ class PECAugmentedMFIEOperator:
         Jxyz = sym.cse(sym.tangential_to_xyz(Jt), "Jxyz")
 
         A = sym.S(self.kernel, Jxyz, k=self.k, qbx_forced_limit=None)
-        grad_phi = sym.grad(3, sym.S(self.kernel, rho, k=self.k,
-            qbx_forced_limit=None))
+        phi = sym.S(self.kernel, rho, k=self.k, qbx_forced_limit=None)
 
-        E_scat = - 1j*self.k*A - grad_phi
-        H_scat = sym.curl(sym.S(self.kernel, Jxyz, k=self.k,
-            qbx_forced_limit=None))
+        E_scat = 1j*self.k*A - sym.grad(3, phi)
+        H_scat = sym.curl(A)
 
         return sym.join_fields(E_scat, H_scat)
 

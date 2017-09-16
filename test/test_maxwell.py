@@ -103,8 +103,10 @@ def get_sym_maxwell_source(kernel, jxyz, k):
     A = sym.curl(sym.S(kernel, jxyz, k=k, qbx_forced_limit=None))
 
     # https://en.wikipedia.org/w/index.php?title=Maxwell%27s_equations&oldid=798940325#Alternative_formulations
+    # (Vector calculus/Potentials/Any Gauge)
+    # assumed time dependence exp(-1j*omega*t)
     return sym.join_fields(
-        - 1j*k*A,
+        1j*k*A,
         sym.curl(A))
 
 
@@ -152,10 +154,12 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
     pde_test_e = vector_from_device(queue, pde_test_inc[:3])
     pde_test_h = vector_from_device(queue, pde_test_inc[3:])
 
-    assert max(
+    source_maxwell_resids = [
             calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_e, np.inf)
             for x in frequency_domain_maxwell(
-                calc_patch, pde_test_e, pde_test_h, case.k)) < 1e-6
+                calc_patch, pde_test_e, pde_test_h, case.k)]
+    print("Source Maxwell residuals:", source_maxwell_resids)
+    assert max(source_maxwell_resids) < 1e-6
 
     # }}}
 
