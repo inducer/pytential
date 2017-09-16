@@ -157,6 +157,8 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
             for x in frequency_domain_maxwell(
                 calc_patch, pde_test_e, pde_test_h, case.k)) < 1e-6
 
+    # }}}
+
     loc_sign = -1 if case.is_interior else +1
     # xyz_mfie_bdry_vol_op = mfie.boundary_field(0, Jxyz)
     # xyz_mfie_vol_op = mfie.volume_field(Jxyz)
@@ -352,15 +354,15 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
     print("--------------------------------------------------------")
 
     good = True
-    for which_eoc, eoc_rec in [
-            ("maxwell", eoc_rec_repr_maxwell),
-            ("H", eoc_rec_h),
-            ("E", eoc_rec_e)]:
+    for which_eoc, eoc_rec, order_tol in [
+            ("maxwell", eoc_rec_repr_maxwell, 1.5),
+            ("H", eoc_rec_h, 1),
+            ("E", eoc_rec_e, 1)]:
         print(which_eoc)
         print(eoc_rec.pretty_print())
 
         if len(eoc_rec.history) > 1:
-            if eoc_rec.order_estimate() < case.qbx_order - 1:
+            if eoc_rec.order_estimate() < case.qbx_order - order_tol:
                 good = False
 
     assert good
