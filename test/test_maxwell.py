@@ -110,6 +110,20 @@ def get_sym_maxwell_source(kernel, jxyz, k):
         sym.curl(A))
 
 
+class EHField(object):
+    def __init__(self, eh_field):
+        assert len(eh_field) == 6
+        self.field = eh_field
+
+    @property
+    def e(self):
+        return self.field[:3]
+
+    @property
+    def h(self):
+        return self.field[3:]
+
+
 @pytest.mark.parametrize("case", [
     tc_int,
     tc_ext
@@ -149,15 +163,13 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
                 get_sym_maxwell_source(mfie.kernel, j_sym, mfie.k)
                 )(queue, j=src_j, k=case.k)
 
-    pde_test_inc = eval_inc_field_at(calc_patch_tgt)
-
-    pde_test_e = vector_from_device(queue, pde_test_inc[:3])
-    pde_test_h = vector_from_device(queue, pde_test_inc[3:])
+    pde_test_inc = EHField(
+            vector_from_device(queue, eval_inc_field_at(calc_patch_tgt)))
 
     source_maxwell_resids = [
-            calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_e, np.inf)
+            calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_inc.e, np.inf)
             for x in frequency_domain_maxwell(
-                calc_patch, pde_test_e, pde_test_h, case.k)]
+                calc_patch, pde_test_inc.e, pde_test_inc.h, case.k)]
     print("Source Maxwell residuals:", source_maxwell_resids)
     assert max(source_maxwell_resids) < 1e-6
 
@@ -199,26 +211,16 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
                 cl_ctx, observation_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
-        inc_field_scat = eval_inc_field_at(scat_discr)
-        inc_field_obs = eval_inc_field_at(obs_discr)
-
-        # nxHinc_xyz_mid = sbind(n_cross_op)(vec=H_scat)
-        # nxH_tgt_true = bind(n_cross_op, tgt_discr, iprec=iprec)(
-        #         vec=H_tgt_true)
+        inc_field_scat = EHField(eval_inc_field_at(scat_discr))
+        inc_field_obs = EHField(eval_inc_field_at(obs_discr))
 
         # {{{ system solve
 
-        # nxHinc_t_mid = sbind(
-        #         xyz_to_tangential(make_vector_field("vec", 3))
-        #         )(vec=nxHinc_xyz_mid)
-
-        inc_xyz_sym = sym.make_sym_vector("inc_fld", 6)
-        e_inc_xyz_sym = inc_xyz_sym[:3]
-        h_inc_xyz_sym = inc_xyz_sym[3:]
+        inc_xyz_sym = EHField(sym.make_sym_vector("inc_fld", 6))
 
         bound_j_op = bind(qbx, mfie.j_operator(loc_sign, jt_sym))
-        j_rhs = bind(qbx, mfie.j_rhs(h_inc_xyz_sym))(
-                queue, inc_fld=inc_field_scat, **knl_kwargs)
+        j_rhs = bind(qbx, mfie.j_rhs(inc_xyz_sym.h))(
+                queue, inc_fld=inc_field_scat.field, **knl_kwargs)
 
         from pytential.solve import gmres
         gmres_result = gmres(
@@ -231,8 +233,8 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
         jt = gmres_result.solution
 
         bound_rho_op = bind(qbx, mfie.rho_operator(loc_sign, rho_sym))
-        rho_rhs = bind(qbx, mfie.rho_rhs(jt_sym, e_inc_xyz_sym))(
-                queue, jt=jt, inc_fld=inc_field_scat, **knl_kwargs)
+        rho_rhs = bind(qbx, mfie.rho_rhs(jt_sym, inc_xyz_sym.e))(
+                queue, jt=jt, inc_fld=inc_field_scat.field, **knl_kwargs)
 
         gmres_result = gmres(
                 bound_rho_op.scipy_op(queue, "rho", np.complex128, **knl_kwargs),
@@ -257,15 +259,13 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
 
             return bind((source, tgt), sym_repr)(queue, jt=jt, rho=rho, **knl_kwargs)
 
-        pde_test_repr = eval_repr_at(calc_patch_tgt)
-
-        pde_test_e = vector_from_device(queue, pde_test_repr[:3])
-        pde_test_h = vector_from_device(queue, pde_test_repr[3:])
+        pde_test_repr = EHField(
+                vector_from_device(queue, eval_repr_at(calc_patch_tgt)))
 
         maxwell_residuals = [
-                calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_e, np.inf)
+                calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_repr.e, np.inf)
                 for x in frequency_domain_maxwell(
-                    calc_patch, pde_test_e, pde_test_h, case.k)]
+                    calc_patch, pde_test_repr.e, pde_test_repr.h, case.k)]
         print("Maxwell residuals:", maxwell_residuals)
 
         eoc_rec_repr_maxwell.add_data_point(h_max, max(maxwell_residuals))
@@ -284,8 +284,8 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
                 ("j", jxyz),
                 ("rho", rho),
-                ("Einc", inc_field_scat[:3]),
-                ("Hinc", inc_field_scat[3:]),
+                ("Einc", inc_field_scat.e),
+                ("Hinc", inc_field_scat.h),
                 ("bdry_normals", bdry_normals),
                 ])
 
@@ -310,15 +310,18 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
                             ])
                 raise
 
-            fplot_inc = eval_inc_field_at(fplot_tgt)
+            fplot_repr = EHField(vector_from_device(queue, fplot_repr))
+
+            fplot_inc = EHField(
+                    vector_from_device(queue, eval_inc_field_at(fplot_tgt)))
 
             fplot.write_vtk_file(
                     "potential-%s.vts" % resolution,
                     [
-                        ("E", vector_from_device(queue, fplot_repr[:3])),
-                        ("H", vector_from_device(queue, fplot_repr[3:])),
-                        ("Einc", vector_from_device(queue, fplot_inc[:3])),
-                        ("Hinc", vector_from_device(queue, fplot_inc[3:])),
+                        ("E", fplot_repr.e),
+                        ("H", fplot_repr.h),
+                        ("Einc", fplot_inc.e),
+                        ("Hinc", fplot_inc.h),
                         ]
                     )
 
@@ -326,22 +329,15 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
 
         # {{{ error in E, H
 
-        obs_repr = eval_repr_at(obs_discr)
-
-        obs_e = obs_repr[:3]
-        obs_h = obs_repr[3:]
-
-        inc_obs_e = inc_field_obs[:3]
-        inc_obs_h = inc_field_obs[3:]
+        obs_repr = EHField(eval_repr_at(obs_discr))
 
         def obs_norm(f):
             return norm(obs_discr, queue, f, p=np.inf)
 
-        # FIXME: Why "+"?
-        rel_err_e = (obs_norm(inc_obs_e + obs_e)
-                / obs_norm(inc_obs_e))
-        rel_err_h = (obs_norm(inc_obs_h + obs_h)
-                / obs_norm(inc_obs_h))
+        rel_err_e = (obs_norm(inc_field_obs.e - obs_repr.e)
+                / obs_norm(inc_field_obs.e))
+        rel_err_h = (obs_norm(inc_field_obs.h - obs_repr.h)
+                / obs_norm(inc_field_obs.h))
 
         # }}}
 
