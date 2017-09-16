@@ -62,9 +62,14 @@ nodes = density_discr.nodes().with_queue(queue)
 
 angle = cl.clmath.atan2(nodes[1], nodes[0])
 
-#op = sym.d_dx(sym.S(kernel, sym.var("sigma")))
-op = sym.D(kernel, sym.var("sigma"), **kernel_kwargs)
-#op = sym.S(kernel, sym.var("sigma"), **kernel_kwargs)
+
+def op(**kwargs):
+    kwargs.update(kernel_kwargs)
+
+    #op = sym.d_dx(sym.S(kernel, sym.var("sigma"), **kwargs))
+    return sym.D(kernel, sym.var("sigma"), **kwargs)
+    #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None, **kwargs)
+
 
 sigma = cl.clmath.cos(mode_nr*angle)
 if 0:
@@ -76,7 +81,7 @@ if 0:
 if isinstance(kernel, HelmholtzKernel):
     sigma = sigma.astype(np.complex128)
 
-bound_bdry_op = bind(qbx, op)
+bound_bdry_op = bind(qbx, op())
 #mlab.figure(bgcolor=(1, 1, 1))
 if 1:
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
@@ -85,7 +90,7 @@ if 1:
     targets_dev = cl.array.to_device(queue, fplot.points)
     fld_in_vol = bind(
             (qbx, PointsTarget(targets_dev)),
-            op)(queue, sigma=sigma, k=k).get()
+            op(qbx_forced_limit=None))(queue, sigma=sigma, k=k).get()
 
     if enable_mayavi:
         fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
