@@ -35,10 +35,13 @@ cse = sym.cse
 # {{{ Charge-Current MFIE
 
 class PECAugmentedMFIEOperator:
-    """Magnetic Field Integral Equation operator,
+    r"""Magnetic Field Integral Equation operator,
     under the assumption of no surface charges.
 
     see :file:`contrib/notes/mfie.tm`
+
+    Uses the sign convention :math:`\exp(-1 \omega t)`
+    for the sinusoidal time dependency.
     """
 
     def __init__(self, k=sym.var("k")):
