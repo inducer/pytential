@@ -31,10 +31,90 @@ tangential_to_xyz = sym.tangential_to_xyz
 xyz_to_tangential = sym.xyz_to_tangential
 cse = sym.cse
 
+__doc__ = """
+
+.. autofunction:: get_sym_maxwell_point_source
+.. autofunction:: get_sym_maxwell_plane_wave
+.. autoclass:: PECChargeCurrentMFIEOperator
+"""
+
+
+# {{{ point source
+
+def get_sym_maxwell_point_source(kernel, jxyz, k):
+    """Return a symbolic expression that, when bound to a
+    :class:`pytential.source.PointPotentialSource` will yield
+    a field satisfying Maxwell's equations.
+
+    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
+
+    This will return an object of six entries, the first three of which
+    represent the electric, and the second three of which represent the
+    magnetic field. This satisfies the time-domain Maxwell's equations
+    as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
+    """
+    # This ensures div A = 0, which is simply a consequence of div curl S=0.
+    # This means we use the Coulomb gauge to generate this field.
+
+    A = sym.curl(sym.S(kernel, jxyz, k=k, qbx_forced_limit=None))
+
+    # https://en.wikipedia.org/w/index.php?title=Maxwell%27s_equations&oldid=798940325#Alternative_formulations
+    # (Vector calculus/Potentials/Any Gauge)
+    # assumed time dependence exp(-1j*omega*t)
+    return sym.join_fields(
+        1j*k*A,
+        sym.curl(A))
+
+# }}}
+
+
+# {{{ plane wave
+
+def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=None):
+    """Return a symbolic expression that, when bound to a
+    :class:`pytential.source.PointPotentialSource` will yield
+    a field satisfying Maxwell's equations.
+
+    :arg amplitude_vec: should be orthogonal to *v*. If it is not,
+        it will be orthogonalized.
+    :arg v: a three-vector representing the phase velocity of the wave
+        (may be an object array of variables or a vector of concrete numbers)
+        While *v* may mathematically be complex-valued, this function
+        is for now only tested for real values.
+    :arg omega: Accepts the "Helmholtz k" to be compatible with other parts
+        of this module.
+
+    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
+
+    This will return an object of six entries, the first three of which
+    represent the electric, and the second three of which represent the
+    magnetic field. This satisfies the time-domain Maxwell's equations
+    as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
+    """
+
+    # See section 7.1 of Jackson, third ed. for derivation.
+
+    # NOTE: for complex, need to ensure real(n).dot(imag(n)) = 0  (7.15)
+
+    x = sym.nodes(3, where).as_vector()
+
+    v_mag_squared = sym.cse(np.dot(v, v), "v_mag_squared")
+    n = v/sym.sqrt(v_mag_squared)
+
+    amplitude_vec = amplitude_vec - np.dot(amplitude_vec, n)*n
+
+    c_inv = np.sqrt(mu*epsilon)
+
+    e = amplitude_vec * sym.exp(1j*np.dot(n*omega, x))
+
+    return sym.join_fields(e, c_inv * sym.cross(n, e))
+
+# }}}
+
 
 # {{{ Charge-Current MFIE
 
-class PECAugmentedMFIEOperator:
+class PECChargeCurrentMFIEOperator:
     r"""Magnetic Field Integral Equation operator with PEC boundary
     conditions, under the assumption of no surface charges.
 

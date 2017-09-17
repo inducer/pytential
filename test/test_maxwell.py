@@ -142,20 +142,6 @@ tc_rc_ext = RoundedCubeTestCase(k=1.2, is_interior=False, resolutions=[0.3],
         qbx_order=3, fmm_order=10)
 
 
-def get_sym_maxwell_source(kernel, jxyz, k):
-    # This ensures div A = 0, which is simply a consequence of div curl S=0.
-    # This means we use the Coulomb gauge to generate this field.
-
-    A = sym.curl(sym.S(kernel, jxyz, k=k, qbx_forced_limit=None))
-
-    # https://en.wikipedia.org/w/index.php?title=Maxwell%27s_equations&oldid=798940325#Alternative_formulations
-    # (Vector calculus/Potentials/Any Gauge)
-    # assumed time dependence exp(-1j*omega*t)
-    return sym.join_fields(
-        1j*k*A,
-        sym.curl(A))
-
-
 class EHField(object):
     def __init__(self, eh_field):
         assert len(eh_field) == 6
@@ -196,22 +182,36 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
     jt_sym = sym.make_sym_vector("jt", 2)
     rho_sym = sym.var("rho")
 
-    from pytential.symbolic.pde.maxwell import PECAugmentedMFIEOperator
-    mfie = PECAugmentedMFIEOperator()
+    from pytential.symbolic.pde.maxwell import (
+            PECChargeCurrentMFIEOperator,
+            get_sym_maxwell_point_source,
+            get_sym_maxwell_plane_wave)
+    mfie = PECChargeCurrentMFIEOperator()
 
     test_source = case.get_source(queue)
 
     calc_patch = CalculusPatch(np.array([-3, 0, 0]), h=0.01)
-    calc_patch_tgt = PointsTarget(calc_patch.points)
+    calc_patch_tgt = PointsTarget(cl.array.to_device(queue, calc_patch.points))
 
     rng = cl.clrandom.PhiloxGenerator(cl_ctx, seed=12)
     src_j = rng.normal(queue, (3, test_source.nnodes), dtype=np.float64)
 
     def eval_inc_field_at(tgt):
-        return bind(
-                (test_source, tgt),
-                get_sym_maxwell_source(mfie.kernel, j_sym, mfie.k)
-                )(queue, j=src_j, k=case.k)
+        if 0:
+            # plane wave
+            return bind(
+                    tgt,
+                    get_sym_maxwell_plane_wave(
+                        amplitude_vec=np.array([1, 1, 1]),
+                        v=np.array([1, 0, 0]),
+                        omega=case.k)
+                    )(queue)
+        else:
+            # point source
+            return bind(
+                    (test_source, tgt),
+                    get_sym_maxwell_point_source(mfie.kernel, j_sym, mfie.k)
+                    )(queue, j=src_j, k=case.k)
 
     pde_test_inc = EHField(
             vector_from_device(queue, eval_inc_field_at(calc_patch_tgt)))
@@ -369,7 +369,7 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
 
             qbx_tgt_tol = qbx.copy(target_association_tolerance=0.2)
 
-            fplot_tgt = PointsTarget(fplot.points)
+            fplot_tgt = PointsTarget(cl.array.to_device(queue, fplot.points))
             try:
                 fplot_repr = eval_repr_at(fplot_tgt, source=qbx_tgt_tol)
             except QBXTargetAssociationFailedException as e:
