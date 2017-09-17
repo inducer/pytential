@@ -48,12 +48,14 @@
   The interior MFIE is derived similarly as:
 
   <\equation*>
-    n\<times\>H<rsup|+><rsub|inc>=-<frac|J<rsup|s>|2>-<around*|(|n\<times\><around*|(|\<nabla\>\<times\>S<rsub|k>J<rsup|s>|)>|)><rsup|s>.
+    n\<times\>H<rsup|+><rsub|inc>=-<frac|J<rsup|s>|2>-<around*|(|n\<times\><around*|(|\<nabla\>\<times\>S<rsub|k>J<rsup|s>|)>|)><rsup|s>
   </equation*>
+
+  (Note the sign flip originating from the boundary condition.)
 
   <subsection|<math|\<rho\>> postprocessor derivation>
 
-  We'll start with the boundary condition
+  Start with the boundary condition
 
   <\equation*>
     n\<cdot\><around*|(|E<rsup|+><rsub|tot>-E<rsup|-><rsub|tot>|)>=\<rho\><rsup|s>.
@@ -65,23 +67,23 @@
     n\<cdot\><around*|(|E<rsup|+><rsub|inc>+E<rsup|+><rsub|scat>|)>=\<rho\><rsup|s>.
   </equation*>
 
-  Now use the representation <math|E<rsub|scat>=-i*k*A-\<nabla\>\<varphi\>=i*k*S<rsub|k>J<rsup|s>-\<nabla\>S<rsub|k>\<rho\><rsup|s>>
+  Now use the representation <math|E<rsub|scat>=i*k*A-\<nabla\>\<varphi\>=i*k*S<rsub|k>J<rsup|s>-\<nabla\>S<rsub|k>\<rho\><rsup|s>>
   and obtain
 
   <\equation*>
-    n\<cdot\>E<rsup|+><rsub|inc>+<around*|(|n\<cdot\><around*|(|-i*k*S<rsub|k>J<rsup|s>-\<nabla\>S<rsub|k>\<rho\><rsup|s>|)>|)><rsup|+>=\<rho\><rsup|s>.
+    n\<cdot\>E<rsup|+><rsub|inc>+<around*|(|n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>-\<nabla\>S<rsub|k>\<rho\><rsup|s>|)>|)><rsup|+>=\<rho\><rsup|s>.
   </equation*>
 
   Carrying out the limit, we obtain:
 
   <\equation*>
-    n\<cdot\>E<rsup|+><rsub|inc>-n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>|)>-S<rsub|k><rprime|'>\<rho\><rsup|s>+<frac|1|2>\<rho\><rsup|s>=\<rho\><rsup|s>.
+    n\<cdot\>E<rsup|+><rsub|inc>+n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>|)>-S<rsub|k><rprime|'>\<rho\><rsup|s>+<frac|1|2>\<rho\><rsup|s>=\<rho\><rsup|s>.
   </equation*>
 
   Rearrange:
 
   <\equation*>
-    n\<cdot\>E<rsup|+><rsub|inc>-n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>|)>=<frac|1|2>\<rho\><rsup|s>+S<rsub|k><rprime|'>\<rho\><rsup|s>.
+    n\<cdot\>E<rsup|+><rsub|inc>+n\<cdot\><around*|(|i*k*S<rsub|k>J<rsup|s>|)>=<frac|1|2>\<rho\><rsup|s>+S<rsub|k><rprime|'>\<rho\><rsup|s>.
   </equation*>
 </body>
 
