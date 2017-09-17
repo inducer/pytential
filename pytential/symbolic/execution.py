@@ -313,13 +313,14 @@ def prepare_places(places):
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
     from meshmode.discretization import Discretization
     from pytential.source import LayerPotentialSourceBase
+    from pytential.target import TargetBase
 
     if isinstance(places, LayerPotentialSourceBase):
         places = {
                 DEFAULT_SOURCE: places,
                 DEFAULT_TARGET: places.density_discr,
                 }
-    elif isinstance(places, Discretization):
+    elif isinstance(places, (Discretization, TargetBase)):
         places = {
                 DEFAULT_TARGET: places,
                 }
