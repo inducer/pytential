@@ -70,7 +70,6 @@ class SphereTestCase(TestCase):
         from meshmode.mesh.generation import generate_icosphere
 
         if self.is_interior:
-
             return generate_icosphere(5, target_order)
         else:
             return generate_icosphere(0.5, target_order)
@@ -128,7 +127,11 @@ class EHField(object):
     tc_int,
     tc_ext
     ])
-def test_mfie_from_source(ctx_getter, case, visualize=False):
+def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
+    """For (say) is_interior=False (the 'exterior' MFIE), this test verifies
+    extinction of the combined (incoming + scattered) field on the interior
+    of the scatterer.
+    """
     logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
@@ -176,14 +179,11 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
     # }}}
 
     loc_sign = -1 if case.is_interior else +1
-    # xyz_mfie_bdry_vol_op = mfie.boundary_field(0, Jxyz)
-    # xyz_mfie_vol_op = mfie.volume_field(Jxyz)
-
-    # n_cross_op = n_cross(make_vector_field("vec", 3))
 
     from pytools.convergence import EOCRecorder
 
     eoc_rec_repr_maxwell = EOCRecorder()
+    eoc_pec_bc = EOCRecorder()
     eoc_rec_e = EOCRecorder()
     eoc_rec_h = EOCRecorder()
 
@@ -272,6 +272,29 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
 
         # }}}
 
+        # {{{ check PEC BC on total field
+
+        bc_repr = EHField(mfie.scattered_volume_field(
+            jt_sym, rho_sym, qbx_forced_limit=loc_sign))
+        pec_bc_e = sym.n_cross(bc_repr.e + inc_xyz_sym.e)
+        pec_bc_h = sym.normal(3).as_vector().dot(bc_repr.h + inc_xyz_sym.h)
+
+        eh_bc_values = bind(qbx, sym.join_fields(pec_bc_e, pec_bc_h))(
+                    queue, jt=jt, rho=rho, inc_fld=inc_field_scat.field,
+                    **knl_kwargs)
+
+        def scat_norm(f):
+            return norm(qbx, queue, f, p=np.inf)
+
+        e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
+        h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
+
+        print("E/H PEC BC residuals:", h_max, e_bc_residual, h_bc_residual)
+
+        eoc_pec_bc.add_data_point(h_max, max(e_bc_residual, h_bc_residual))
+
+        # }}}
+
         # {{{ visualization
 
         if visualize:
@@ -334,9 +357,9 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
         def obs_norm(f):
             return norm(obs_discr, queue, f, p=np.inf)
 
-        rel_err_e = (obs_norm(inc_field_obs.e - obs_repr.e)
+        rel_err_e = (obs_norm(inc_field_obs.e + obs_repr.e)
                 / obs_norm(inc_field_obs.e))
-        rel_err_h = (obs_norm(inc_field_obs.h - obs_repr.h)
+        rel_err_h = (obs_norm(inc_field_obs.h + obs_repr.h)
                 / obs_norm(inc_field_obs.h))
 
         # }}}
@@ -346,9 +369,6 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
         eoc_rec_h.add_data_point(h_max, rel_err_h)
         eoc_rec_e.add_data_point(h_max, rel_err_e)
 
-    # TODO: Check that total field verifies BC
-    # TODO: Check for extinction on the interior
-
     print("--------------------------------------------------------")
     print("is_interior=%s" % case.is_interior)
     print("--------------------------------------------------------")
@@ -356,6 +376,7 @@ def test_mfie_from_source(ctx_getter, case, visualize=False):
     good = True
     for which_eoc, eoc_rec, order_tol in [
             ("maxwell", eoc_rec_repr_maxwell, 1.5),
+            ("PEC BC", eoc_pec_bc, 1),
             ("H", eoc_rec_h, 1),
             ("E", eoc_rec_e, 1)]:
         print(which_eoc)

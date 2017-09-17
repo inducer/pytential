@@ -35,13 +35,24 @@ cse = sym.cse
 # {{{ Charge-Current MFIE
 
 class PECAugmentedMFIEOperator:
-    r"""Magnetic Field Integral Equation operator,
-    under the assumption of no surface charges.
+    r"""Magnetic Field Integral Equation operator with PEC boundary
+    conditions, under the assumption of no surface charges.
 
     see :file:`contrib/notes/mfie.tm`
 
+    The arguments *loc* below decide between the exterior and the
+    interior MFIE. The "exterior" (loc=1) MFIE enforces a zero field
+    on the interior of the integration surface, whereas the "interior" MFIE
+    (loc=-1) enforces a zero field on the exterior.
+
     Uses the sign convention :math:`\exp(-1 \omega t)`
     for the sinusoidal time dependency.
+
+    .. automethod:: j_operator
+    .. automethod:: j_rhs
+    .. automethod:: rho_operator
+    .. automethod:: rho_rhs
+    .. automethod:: scattered_volume_field
     """
 
     def __init__(self, k=sym.var("k")):
@@ -52,7 +63,7 @@ class PECAugmentedMFIEOperator:
     def j_operator(self, loc, Jt):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
         return xyz_to_tangential(
-                (loc*0.5)*Jxyz - sym.n_cross(
+                loc*0.5*Jxyz - sym.n_cross(
                     sym.curl(sym.S(self.kernel, Jxyz, k=self.k,
                         qbx_forced_limit="avg"))))
 
@@ -60,32 +71,22 @@ class PECAugmentedMFIEOperator:
         return xyz_to_tangential(sym.n_cross(Hinc_xyz))
 
     def rho_operator(self, loc, rho):
-        return (loc*0.5)*rho+sym.Sp(self.kernel, rho, k=self.k)
+        return loc*0.5*rho+sym.Sp(self.kernel, rho, k=self.k)
 
     def rho_rhs(self, Jt, Einc_xyz):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
 
         return (sym.n_dot(Einc_xyz)
-                + 1j*self.k*sym.n_dot(sym.S(self.kernel, Jxyz, k=self.k)))
+                + 1j*self.k*sym.n_dot(sym.S(
+                    self.kernel, Jxyz, k=self.k,
+                    # continuous--qbx_forced_limit doesn't really matter
+                    qbx_forced_limit="avg")))
 
-    def scattered_boundary_field(self, Jt, rho, loc):
-        Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
-
-        A = sym.S(self.kernel, Jxyz, k=self.k)
-        phi = sym.S(self.kernel, rho, k=self.k)
-
-        # use - n x n x v = v_tangential
-
-        E_scat = 1j*self.k*A - sym.grad(3, phi) + 0.5*loc*rho
-        H_scat = sym.curl(sym.S(self.kernel, Jxyz, k=self.k)) + (loc*0.5)*Jxyz
-
-        return sym.join_fields(E_scat, H_scat)
-
-    def scattered_volume_field(self, Jt, rho):
+    def scattered_volume_field(self, Jt, rho, qbx_forced_limit=None):
         Jxyz = sym.cse(sym.tangential_to_xyz(Jt), "Jxyz")
 
-        A = sym.S(self.kernel, Jxyz, k=self.k, qbx_forced_limit=None)
-        phi = sym.S(self.kernel, rho, k=self.k, qbx_forced_limit=None)
+        A = sym.S(self.kernel, Jxyz, k=self.k, qbx_forced_limit=qbx_forced_limit)
+        phi = sym.S(self.kernel, rho, k=self.k, qbx_forced_limit=qbx_forced_limit)
 
         E_scat = 1j*self.k*A - sym.grad(3, phi)
         H_scat = sym.curl(A)
