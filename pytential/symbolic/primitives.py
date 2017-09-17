@@ -86,8 +86,29 @@ Functions
 .. data:: real
 .. data:: imag
 .. data:: conj
-.. data:: sqrt
 .. data:: abs
+
+.. data:: sqrt
+
+.. data:: sin
+.. data:: cos
+.. data:: tan
+
+.. data:: asin
+.. data:: acos
+.. data:: atan
+.. data:: atan2
+
+.. data:: sinh
+.. data:: cosh
+.. data:: tanh
+
+.. data:: asinh
+.. data:: acosh
+.. data:: atanh
+
+.. data:: exp
+.. data:: log
 
 Discretization properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -106,14 +127,17 @@ Elementary numerics
 
 .. autoclass:: NumReferenceDerivative
 .. autoclass:: NodeSum
+.. autoclass:: NodeMax
 .. autofunction:: integral
 .. autoclass:: Ones
 .. autofunction:: ones_vec
 .. autofunction:: area
+.. autofunction:: mean
 .. autoclass:: IterativeInverse
 
-Calculus
-^^^^^^^^
+Calculus (based on Geometric Algebra)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: Derivative
 .. autofunction:: dd_axis
 .. autofunction:: d_dx
@@ -121,12 +145,39 @@ Calculus
 .. autofunction:: d_dz
 .. autofunction:: grad_mv
 .. autofunction:: grad
+.. autofunction:: laplace
 
 Layer potentials
 ^^^^^^^^^^^^^^^^
 
 .. autoclass:: IntG
 .. autofunction:: int_g_dsource
+
+.. autofunction:: S
+.. autofunction:: Sp
+.. autofunction:: Spp
+.. autofunction:: D
+.. autofunction:: Dp
+.. autofunction:: normal_derivative
+.. autofunction:: tangential_derivative
+
+"Conventional" Vector Calculus
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: tangential_onb
+.. autofunction:: xyz_to_tangential
+.. autofunction:: tangential_to_xyz
+.. autofunction:: project_to_tangential
+.. autofunction:: cross
+.. autofunction:: n_dot
+.. autofunction:: n_cross
+.. autofunction:: curl
+.. autofunction:: pretty
+
+Pretty-printing expressions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: pretty
 """
 
 
@@ -961,7 +1012,7 @@ def Dp(kernel, *args, **kwargs):  # noqa
 # }}}
 
 
-# {{{ geometric operations
+# {{{ conventional vector calculus
 
 def tangential_onb(ambient_dim, dim=None, where=None):
     if dim is None:
@@ -1015,24 +1066,25 @@ def n_dot(vec, where=None):
     return np.dot(nrm, vec)
 
 
-def n_cross(vec, where=None):
-    nrm = normal(3, where).as_vector()
+def cross(vec_a, vec_b):
+    assert len(vec_a) == len(vec_b) == 3
 
     from pytools import levi_civita
     from pytools.obj_array import make_obj_array
     return make_obj_array([
         sum(
-            levi_civita((i, j, k)) * nrm[j] * vec[k]
+            levi_civita((i, j, k)) * vec_a[j] * vec_b[k]
             for j in range(3) for k in range(3))
         for i in range(3)])
 
 
-def div_S(kernel, arg, ambient_dim=None, **kwargs):  # noqa: N802
-    if ambient_dim is None:
-        ambient_dim = len(arg)
+def n_cross(vec, where=None):
+    return cross(normal(3, where).as_vector(), 3)
 
-    return sum(dd_axis(iaxis, ambient_dim, S(kernel, arg[iaxis]))
-            for iaxis in range(ambient_dim))
+
+def div(vec):
+    ambient_dim = len(vec)
+    return sum(dd_axis(iaxis, ambient_dim, vec) for iaxis in range(ambient_dim))
 
 
 def curl(vec):
