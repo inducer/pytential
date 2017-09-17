@@ -146,8 +146,14 @@ class EvaluationMapper(EvaluationMapperBase):
         if isinstance(expr.function, EvalMapperFunction):
             return getattr(self, "apply_"+expr.function.name)(expr.parameters)
         elif isinstance(expr.function, CLMathFunction):
-            return getattr(cl.clmath, expr.function.name)(
-                    *(self.rec(arg) for arg in expr.parameters), queue=self.queue)
+            args = [self.rec(arg) for arg in expr.parameters]
+            from numbers import Number
+            if all(isinstance(arg, Number) for arg in args):
+                return getattr(np, expr.function.name)(*args)
+            else:
+                return getattr(cl.clmath, expr.function.name)(
+                        *args, queue=self.queue)
+
         else:
             return EvaluationMapperBase.map_call(self, expr)
 
