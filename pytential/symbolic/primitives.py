@@ -382,7 +382,8 @@ def normal(ambient_dim, dim=None, where=None):
     return cse(
             # Dorst Section 3.7.2
             pder << pder.I.inv(),
-            cse_scope.DISCRETIZATION)
+            "normal",
+            scope=cse_scope.DISCRETIZATION)
 
 
 def mean_curvature(ambient_dim, dim=None, where=None):
