@@ -89,9 +89,56 @@ class SphereTestCase(TestCase):
                 cl.array.to_device(queue, sources))
 
 
+class RoundedCubeTestCase(TestCase):
+    target_order = 8
+    gmres_tol = 1e-10
+
+    def get_mesh(self, resolution, target_order):
+        from meshmode.mesh.io import generate_gmsh, FileSource
+        mesh = generate_gmsh(
+                FileSource("rounded-cube.step"), 2, order=3,
+                other_options=[
+                    "-string",
+                    "Mesh.CharacteristicLengthMax = %g;" % resolution])
+
+        from meshmode.mesh.processing import perform_flips, affine_map
+        mesh = affine_map(mesh, b=np.array([-0.5, -0.5, -0.5]))
+        mesh = affine_map(mesh, A=np.eye(3)*2)
+
+        # now centered at origin and extends to -1,1
+
+        # Flip elements--gmsh generates inside-out geometry.
+        return perform_flips(mesh, np.ones(mesh.nelements))
+
+    def get_observation_mesh(self, target_order):
+        from meshmode.mesh.generation import generate_icosphere
+
+        if self.is_interior:
+            return generate_icosphere(5, target_order)
+        else:
+            return generate_icosphere(0.5, target_order)
+
+    def get_source(self, queue):
+        if self.is_interior:
+            source_ctr = np.array([[0.35, 0.1, 0.15]]).T
+        else:
+            source_ctr = np.array([[5, 0.1, 0.15]]).T
+
+        source_rad = 0.3
+
+        sources = source_ctr + source_rad*2*(np.random.rand(3, 10)-0.5)
+        from pytential.source import PointPotentialSource
+        return PointPotentialSource(
+                queue.context,
+                cl.array.to_device(queue, sources))
+
+
 tc_int = SphereTestCase(k=1.2, is_interior=True, resolutions=[0, 1],
         qbx_order=3, fmm_order=10)
 tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0, 1],
+        qbx_order=3, fmm_order=10)
+
+tc_rc_ext = RoundedCubeTestCase(k=1.2, is_interior=False, resolutions=[0.3],
         qbx_order=3, fmm_order=10)
 
 
