@@ -423,9 +423,9 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
     good = True
     for which_eoc, eoc_rec, order_tol in [
             ("maxwell", eoc_rec_repr_maxwell, 1.5),
-            ("PEC BC", eoc_pec_bc, 1),
-            ("H", eoc_rec_h, 1),
-            ("E", eoc_rec_e, 1)]:
+            ("PEC BC", eoc_pec_bc, 1.5),
+            ("H", eoc_rec_h, 1.5),
+            ("E", eoc_rec_e, 1.5)]:
         print(which_eoc)
         print(eoc_rec.pretty_print())
 
