@@ -23,16 +23,9 @@ THE SOFTWARE.
 """
 
 __doc__ = """
-
 .. autoclass:: L2WeightedPDEOperator
 .. autoclass:: DirichletOperator
 .. autoclass:: NeumannOperator
-
-2D Dielectric
-^^^^^^^^^^^^^
-
-.. autoclass:: DielectricSRep2DBoundaryOperator
-.. autoclass:: DielectricSDRep2DBoundaryOperator
 """
 
 
@@ -76,9 +69,20 @@ class L2WeightedPDEOperator(object):
 # {{{ dirichlet
 
 class DirichletOperator(L2WeightedPDEOperator):
-    """When testing this as a potential matcher, note that it can only
-    access potentials that come from charge distributions having *no* net
-    charge. (This is true at least in 2D.)
+    """IE operator and field representation for solving Dirichlet boundary
+    value problems with scalar kernels (e.g.
+    :class:`sumpy.kernel.LaplaceKernel`,
+    :class:`sumpy.kernel.HelmholtzKernel`, :class:`sumpy.kernel.YukawaKernel`)
+
+    ..note ::
+
+        When testing this as a potential matcher, note that it can only
+        access potentials that come from charge distributions having *no* net
+        charge. (This is true at least in 2D.)
+
+    .. automethod:: is_unique_only_up_to_constant
+    .. automethod:: representation
+    .. automethod:: operator
     """
 
     def __init__(self, kernel, loc_sign, alpha=None, use_l2_weighting=False,
@@ -171,6 +175,22 @@ class DirichletOperator(L2WeightedPDEOperator):
 # {{{ neumann
 
 class NeumannOperator(L2WeightedPDEOperator):
+    """IE operator and field representation for solving Dirichlet boundary
+    value problems with scalar kernels (e.g.
+    :class:`sumpy.kernel.LaplaceKernel`,
+    :class:`sumpy.kernel.HelmholtzKernel`, :class:`sumpy.kernel.YukawaKernel`)
+
+    ..note ::
+
+        When testing this as a potential matcher, note that it can only
+        access potentials that come from charge distributions having *no* net
+        charge. (This is true at least in 2D.)
+
+    .. automethod:: is_unique_only_up_to_constant
+    .. automethod:: representation
+    .. automethod:: operator
+    """
+
     def __init__(self, kernel, loc_sign, alpha=None,
             use_improved_operator=True,
             laplace_kernel=0, use_l2_weighting=False,
