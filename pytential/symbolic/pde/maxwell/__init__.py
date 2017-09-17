@@ -118,14 +118,15 @@ class PECChargeCurrentMFIEOperator:
     r"""Magnetic Field Integral Equation operator with PEC boundary
     conditions, under the assumption of no surface charges.
 
-    see :file:`contrib/notes/mfie.tm`
+    See :file:`contrib/notes/mfie.tm` in the repository for a derivation.
 
     The arguments *loc* below decide between the exterior and the
     interior MFIE. The "exterior" (loc=1) MFIE enforces a zero field
     on the interior of the integration surface, whereas the "interior" MFIE
     (loc=-1) enforces a zero field on the exterior.
 
-    Uses the sign convention :math:`\exp(-1 \omega t)`
+    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
+
     for the sinusoidal time dependency.
 
     .. automethod:: j_operator
@@ -163,6 +164,12 @@ class PECChargeCurrentMFIEOperator:
                     qbx_forced_limit="avg")))
 
     def scattered_volume_field(self, Jt, rho, qbx_forced_limit=None):
+        """
+        This will return an object of six entries, the first three of which
+        represent the electric, and the second three of which represent the
+        magnetic field. This satisfies the time-domain Maxwell's equations
+        as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
+        """
         Jxyz = sym.cse(sym.tangential_to_xyz(Jt), "Jxyz")
 
         A = sym.S(self.kernel, Jxyz, k=self.k, qbx_forced_limit=qbx_forced_limit)
