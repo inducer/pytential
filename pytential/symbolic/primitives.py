@@ -1079,7 +1079,7 @@ def cross(vec_a, vec_b):
 
 
 def n_cross(vec, where=None):
-    return cross(normal(3, where).as_vector(), 3)
+    return cross(normal(3, where).as_vector(), vec)
 
 
 def div(vec):
