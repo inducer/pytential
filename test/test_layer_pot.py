@@ -36,7 +36,7 @@ from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh, NArmedStarfish)
 from sumpy.visualization import FieldPlotter
-from pytential import bind, sym
+from pytential import bind, sym, norm
 
 import logging
 logger = logging.getLogger(__name__)
@@ -382,6 +382,151 @@ def test_perf_data_gathering(ctx_getter, n_arms=5):
     sigma = cl.clmath.sin(10 * nodes[0])
 
     bind(lpot_source, sym_op)(queue, sigma=sigma)
+
+# }}}
+
+
+# {{{ test 3D jump relations
+
+@pytest.mark.parametrize("relation", ["sp", "nxcurls"])
+def test_3d_jump_relations(ctx_factory, relation, visualize=False):
+    #logging.basicConfig(level=logging.INFO)
+
+    pytest.importorskip("pyfmmlib")
+
+    cl_ctx = ctx_factory()
+    queue = cl.CommandQueue(cl_ctx)
+
+    target_order = 4
+    qbx_order = target_order
+
+    from pytools.convergence import EOCRecorder
+    eoc_rec = EOCRecorder()
+
+    for nel_factor in [6, 8, 12]:
+        from meshmode.mesh.generation import generate_torus
+        mesh = generate_torus(
+                5, 2, order=target_order,
+                n_outer=2*nel_factor, n_inner=nel_factor)
+
+        from meshmode.discretization import Discretization
+        from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+        pre_discr = Discretization(
+                cl_ctx, mesh,
+                InterpolatoryQuadratureSimplexGroupFactory(3))
+
+        from pytential.qbx import QBXLayerPotentialSource
+        qbx, _ = QBXLayerPotentialSource(
+                pre_discr, fine_order=4*target_order,
+                qbx_order=qbx_order,
+                fmm_order=qbx_order + 5,
+                fmm_backend="fmmlib"
+                ).with_refinement()
+
+        from sumpy.kernel import LaplaceKernel
+        knl = LaplaceKernel(3)
+
+        def nxcurlS(qbx_forced_limit):
+
+            return sym.n_cross(sym.curl(sym.S(
+                knl,
+                sym.cse(sym.tangential_to_xyz(density_sym), "jxyz"),
+                qbx_forced_limit=qbx_forced_limit)))
+
+        x, y, z = qbx.density_discr.nodes().with_queue(queue)
+        m = cl.clmath
+
+        if relation == "nxcurls":
+            density_sym = sym.make_sym_vector("density", 2)
+
+            jump_identity_sym = (
+                    nxcurlS(+1)
+                    - (nxcurlS("avg") + 0.5*sym.tangential_to_xyz(density_sym)))
+
+            # The tangential coordinate system is element-local, so we can't just
+            # conjure up some globally smooth functions, interpret their values
+            # in the tangential coordinate system, and be done. Instead, generate
+            # an XYZ function and project it.
+            density = bind(
+                    qbx,
+                    sym.xyz_to_tangential(sym.make_sym_vector("jxyz", 3)))(
+                            queue,
+                            jxyz=sym.make_obj_array([
+                                m.cos(0.5*x) * m.cos(0.5*y) * m.cos(0.5*z),
+                                m.sin(0.5*x) * m.cos(0.5*y) * m.sin(0.5*z),
+                                m.sin(0.5*x) * m.cos(0.5*y) * m.cos(0.5*z),
+                                ]))
+
+        elif relation == "sp":
+
+            density = m.cos(2*x) * m.cos(2*y) * m.cos(z)
+            density_sym = sym.var("density")
+
+            jump_identity_sym = (
+                    sym.Sp(knl, density_sym, qbx_forced_limit=+1)
+                    - (sym.Sp(knl, density_sym, qbx_forced_limit="avg")
+                        - 0.5*density_sym))
+
+        else:
+            raise ValueError("unexpected value of 'relation': %s" % relation)
+
+        bound_jump_identity = bind(qbx, jump_identity_sym)
+        jump_identity = bound_jump_identity(queue, density=density)
+
+        err = (
+                norm(qbx, queue, jump_identity, np.inf)
+                /
+                norm(qbx, queue, density, np.inf))
+        print("ERROR", qbx.h_max, err)
+
+        eoc_rec.add_data_point(qbx.h_max, err)
+
+        # {{{ visualization
+
+        if visualize and relation == "nxcurls":
+            nxcurlS_ext = bind(qbx, nxcurlS(+1))(queue, density=density)
+            nxcurlS_avg = bind(qbx, nxcurlS("avg"))(queue, density=density)
+            jtxyz = bind(qbx, sym.tangential_to_xyz(density_sym))(
+                    queue, density=density)
+
+            from meshmode.discretization.visualization import make_visualizer
+            bdry_vis = make_visualizer(queue, qbx.density_discr, target_order+3)
+
+            bdry_normals = bind(qbx, sym.normal(3))(queue)\
+                    .as_vector(dtype=object)
+
+            bdry_vis.write_vtk_file("source-%s.vtu" % nel_factor, [
+                ("jt", jtxyz),
+                ("nxcurlS_ext", nxcurlS_ext),
+                ("nxcurlS_avg", nxcurlS_avg),
+                ("bdry_normals", bdry_normals),
+                ])
+
+        if visualize and relation == "sp":
+            sp_ext = bind(qbx, sym.Sp(knl, density_sym, qbx_forced_limit=+1))(
+                    queue, density=density)
+            sp_avg = bind(qbx, sym.Sp(knl, density_sym, qbx_forced_limit="avg"))(
+                    queue, density=density)
+
+            from meshmode.discretization.visualization import make_visualizer
+            bdry_vis = make_visualizer(queue, qbx.density_discr, target_order+3)
+
+            bdry_normals = bind(qbx, sym.normal(3))(queue)\
+                    .as_vector(dtype=object)
+
+            bdry_vis.write_vtk_file("source-%s.vtu" % nel_factor, [
+                ("density", density),
+                ("sp_ext", sp_ext),
+                ("sp_avg", sp_avg),
+                ("bdry_normals", bdry_normals),
+                ])
+
+        # }}}
+
+    print(eoc_rec)
+
+    assert eoc_rec.order_estimate() >= qbx_order - 1.5
 
 # }}}
 

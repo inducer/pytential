@@ -352,8 +352,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             source_level_start_ibox, source_mpoles_view = \
                     self.multipole_expansions_view(multipole_exps, isrc_level)
 
-            print("par data prep lev %d" % isrc_level)
-
             tgt_icenter_vec = geo_data.global_qbx_centers()
             icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
 
@@ -390,8 +388,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             del itgt_center
             del tgt_icenter
             del icontaining_tgt_box
-
-            print("end par data prep")
 
             if self.dim == 3:
                 # This gets max'd onto: pass initialized version.

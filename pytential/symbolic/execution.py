@@ -146,8 +146,14 @@ class EvaluationMapper(EvaluationMapperBase):
         if isinstance(expr.function, EvalMapperFunction):
             return getattr(self, "apply_"+expr.function.name)(expr.parameters)
         elif isinstance(expr.function, CLMathFunction):
-            return getattr(cl.clmath, expr.function.name)(
-                    *(self.rec(arg) for arg in expr.parameters), queue=self.queue)
+            args = [self.rec(arg) for arg in expr.parameters]
+            from numbers import Number
+            if all(isinstance(arg, Number) for arg in args):
+                return getattr(np, expr.function.name)(*args)
+            else:
+                return getattr(cl.clmath, expr.function.name)(
+                        *args, queue=self.queue)
+
         else:
             return EvaluationMapperBase.map_call(self, expr)
 
@@ -307,13 +313,14 @@ def prepare_places(places):
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
     from meshmode.discretization import Discretization
     from pytential.source import LayerPotentialSourceBase
+    from pytential.target import TargetBase
 
     if isinstance(places, LayerPotentialSourceBase):
         places = {
                 DEFAULT_SOURCE: places,
                 DEFAULT_TARGET: places.density_discr,
                 }
-    elif isinstance(places, Discretization):
+    elif isinstance(places, (Discretization, TargetBase)):
         places = {
                 DEFAULT_TARGET: places,
                 }

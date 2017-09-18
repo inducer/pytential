@@ -605,6 +605,35 @@ class EllipsoidIntEqTestCase(Helmholtz3DIntEqTestCase):
     check_gradient = True
 
 
+class SphereIntEqTestCase(IntEqTestCase):
+    resolutions = [2, 1]
+    name = "sphere"
+
+    def get_mesh(self, resolution, target_order):
+        from meshmode.mesh.generation import generate_icosphere
+        from meshmode.mesh.refinement import refine_uniformly
+        mesh = refine_uniformly(
+                generate_icosphere(1, target_order),
+                resolution)
+
+        return mesh
+
+    fmm_backend = "fmmlib"
+    use_refinement = False
+    neumann_alpha = 0  # no double layers in FMMlib backend yet
+
+    inner_radius = 0.4
+    outer_radius = 5
+
+    qbx_order = 2
+    target_order = qbx_order
+    check_tangential_deriv = False
+
+    # We're only expecting three digits based on FMM settings. Who are we
+    # kidding?
+    gmres_tol = 1e-5
+
+
 class MergedCubesIntEqTestCase(Helmholtz3DIntEqTestCase):
     resolutions = [1.4]
     name = "merged-cubes"

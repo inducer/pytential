@@ -54,9 +54,11 @@ class PotentialSource(object):
 
 class PointPotentialSource(PotentialSource):
     """
-    ... attributes:: points
+    ... attribute:: points
 
         An :class:`pyopencl.array.Array` of shape ``[ambient_dim, npoints]``.
+
+    .. attribute:: nnodes
     """
 
     def __init__(self, cl_context, points):
@@ -66,6 +68,10 @@ class PointPotentialSource(PotentialSource):
     @property
     def real_dtype(self):
         return self.points.dtype
+
+    @property
+    def nnodes(self):
+        return self.points.shape[-1]
 
     @property
     def complex_dtype(self):

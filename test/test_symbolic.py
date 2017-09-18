@@ -26,6 +26,10 @@ import pytest
 
 import numpy as np
 import pyopencl as cl
+import pyopencl.array  # noqa
+import pyopencl.clmath  # noqa
+
+from pytential import bind, sym
 
 import logging
 logger = logging.getLogger(__name__)
@@ -99,18 +103,21 @@ def get_unit_sphere_with_ref_mean_curvature(cl_ctx):
 # }}}
 
 
+# {{{ test_mean_curvature
+
 @pytest.mark.parametrize(("discr_name", "discr_and_ref_mean_curvature_getter"), [
     ("unit_circle", get_ellipse_with_ref_mean_curvature),
     ("2-to-1 ellipse", partial(get_ellipse_with_ref_mean_curvature, aspect=2)),
     ("square", get_square_with_ref_mean_curvature),
     ("unit sphere", get_unit_sphere_with_ref_mean_curvature),
     ])
-def test_mean_curvature(ctx_getter, discr_name, discr_and_ref_mean_curvature_getter):
+def test_mean_curvature(ctx_factory, discr_name,
+        discr_and_ref_mean_curvature_getter):
     if discr_name == "unit sphere":
         pytest.skip("not implemented in 3D yet")
 
     import pytential.symbolic.primitives as prim
-    ctx = ctx_getter()
+    ctx = ctx_factory()
 
     discr, ref_mean_curvature = discr_and_ref_mean_curvature_getter(ctx)
 
@@ -121,6 +128,45 @@ def test_mean_curvature(ctx_getter, discr_name, discr_and_ref_mean_curvature_get
             prim.mean_curvature(discr.ambient_dim))(queue)
 
     assert np.allclose(mean_curvature.get(), ref_mean_curvature)
+
+# }}}
+
+
+# {{{ test_tangential_onb
+
+def test_tangential_onb(ctx_factory):
+    cl_ctx = ctx_factory()
+    queue = cl.CommandQueue(cl_ctx)
+
+    from meshmode.mesh.generation import generate_torus
+    mesh = generate_torus(5, 2, order=3)
+
+    discr = Discretization(
+            cl_ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(3))
+
+    tob = sym.tangential_onb(mesh.ambient_dim)
+    nvecs = tob.shape[1]
+
+    # make sure tangential_onb is mutually orthogonal and normalized
+    orth_check = bind(discr, sym.make_obj_array([
+        np.dot(tob[:, i], tob[:, j]) - (1 if i == j else 0)
+        for i in range(nvecs) for j in range(nvecs)])
+        )(queue)
+
+    for i, orth_i in enumerate(orth_check):
+        assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
+
+    # make sure tangential_onb is orthogonal to normal
+    orth_check = bind(discr, sym.make_obj_array([
+        np.dot(tob[:, i], sym.normal(mesh.ambient_dim).as_vector())
+        for i in range(nvecs)])
+        )(queue)
+
+    for i, orth_i in enumerate(orth_check):
+        assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
+
+# }}}
 
 
 # You can test individual routines by typing

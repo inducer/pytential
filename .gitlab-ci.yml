@@ -8,6 +8,7 @@ Python 3.5 POCL:
   tags:
   - python3.5
   - pocl
+  - large-node
   except:
   - tags
 
@@ -21,6 +22,7 @@ Python 3.6 POCL:
   tags:
   - python3.6
   - pocl
+  - large-node
   except:
   - tags
 
@@ -33,6 +35,7 @@ Python 3.5 Conda:
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
   - linux
+  - large-node
   except:
   - tags
 
@@ -46,6 +49,7 @@ Python 2.7 POCL:
   tags:
   - python2.7
   - pocl
+  - large-node
   except:
   - tags
 

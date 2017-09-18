@@ -35,7 +35,7 @@ from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
-from pytools.obj_array import make_obj_array  # noqa: F401
+from pytools.obj_array import make_obj_array, join_fields  # noqa: F401
 
 from functools import partial
 
@@ -86,8 +86,29 @@ Functions
 .. data:: real
 .. data:: imag
 .. data:: conj
-.. data:: sqrt
 .. data:: abs
+
+.. data:: sqrt
+
+.. data:: sin
+.. data:: cos
+.. data:: tan
+
+.. data:: asin
+.. data:: acos
+.. data:: atan
+.. data:: atan2
+
+.. data:: sinh
+.. data:: cosh
+.. data:: tanh
+
+.. data:: asinh
+.. data:: acosh
+.. data:: atanh
+
+.. data:: exp
+.. data:: log
 
 Discretization properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -106,14 +127,17 @@ Elementary numerics
 
 .. autoclass:: NumReferenceDerivative
 .. autoclass:: NodeSum
+.. autoclass:: NodeMax
 .. autofunction:: integral
 .. autoclass:: Ones
 .. autofunction:: ones_vec
 .. autofunction:: area
+.. autofunction:: mean
 .. autoclass:: IterativeInverse
 
-Calculus
-^^^^^^^^
+Calculus (based on Geometric Algebra)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: Derivative
 .. autofunction:: dd_axis
 .. autofunction:: d_dx
@@ -121,12 +145,39 @@ Calculus
 .. autofunction:: d_dz
 .. autofunction:: grad_mv
 .. autofunction:: grad
+.. autofunction:: laplace
 
 Layer potentials
 ^^^^^^^^^^^^^^^^
 
 .. autoclass:: IntG
 .. autofunction:: int_g_dsource
+
+.. autofunction:: S
+.. autofunction:: Sp
+.. autofunction:: Spp
+.. autofunction:: D
+.. autofunction:: Dp
+.. autofunction:: normal_derivative
+.. autofunction:: tangential_derivative
+
+"Conventional" Vector Calculus
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: tangential_onb
+.. autofunction:: xyz_to_tangential
+.. autofunction:: tangential_to_xyz
+.. autofunction:: project_to_tangential
+.. autofunction:: cross
+.. autofunction:: n_dot
+.. autofunction:: n_cross
+.. autofunction:: curl
+.. autofunction:: pretty
+
+Pretty-printing expressions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: pretty
 """
 
 
@@ -374,7 +425,7 @@ def normal(ambient_dim, dim=None, where=None):
     """Exterior unit normals."""
 
     # Don't be tempted to add a sign here. As it is, it produces
-    # exterior normals for positively oriented curves.
+    # exterior normals for positively oriented curves and surfaces.
 
     pder = (
             pseudoscalar(ambient_dim, dim, where)
@@ -382,7 +433,8 @@ def normal(ambient_dim, dim=None, where=None):
     return cse(
             # Dorst Section 3.7.2
             pder << pder.I.inv(),
-            cse_scope.DISCRETIZATION)
+            "normal",
+            scope=cse_scope.DISCRETIZATION)
 
 
 def mean_curvature(ambient_dim, dim=None, where=None):
@@ -847,7 +899,7 @@ def S(kernel, density,  # noqa
 
     if qbx_forced_limit is _unspecified:
         warn("not specifying qbx_forced_limit on call to 'S' is deprecated, "
-                "defaulting to +1", DeprecationWarning, stacklevel=2)
+                "defaulting to +1", stacklevel=2)
         qbx_forced_limit = +1
 
     return IntG(kernel, density, qbx_forced_limit, source, target,
@@ -960,7 +1012,7 @@ def Dp(kernel, *args, **kwargs):  # noqa
 # }}}
 
 
-# {{{ geometric operations
+# {{{ conventional vector calculus
 
 def tangential_onb(ambient_dim, dim=None, where=None):
     if dim is None:
@@ -977,8 +1029,9 @@ def tangential_onb(ambient_dim, dim=None, where=None):
         q = avec
         for j in range(k):
             q = q - np.dot(avec, orth_pd_mat[:, j])*orth_pd_mat[:, j]
+        q = cse(q, "q%d" % k)
 
-        orth_pd_mat[:, k] = cse(q/sqrt(np.sum(q**2)), "orth_pd_vec")
+        orth_pd_mat[:, k] = cse(q/sqrt(np.sum(q**2)), "orth_pd_vec%d_" % k)
 
     # }}}
 
@@ -1002,9 +1055,47 @@ def tangential_to_xyz(tangential_vec, where=None):
         for i in range(ambient_dim - 1))
 
 
-def project_to_tangential(xyz_vec, which=None):
+def project_to_tangential(xyz_vec, where=None):
     return tangential_to_xyz(
-            cse(xyz_to_tangential(xyz_vec, which), which))
+            cse(xyz_to_tangential(xyz_vec, where), where))
+
+
+def n_dot(vec, where=None):
+    nrm = normal(len(vec), where).as_vector()
+
+    return np.dot(nrm, vec)
+
+
+def cross(vec_a, vec_b):
+    assert len(vec_a) == len(vec_b) == 3
+
+    from pytools import levi_civita
+    from pytools.obj_array import make_obj_array
+    return make_obj_array([
+        sum(
+            levi_civita((i, j, k)) * vec_a[j] * vec_b[k]
+            for j in range(3) for k in range(3))
+        for i in range(3)])
+
+
+def n_cross(vec, where=None):
+    return cross(normal(3, where).as_vector(), vec)
+
+
+def div(vec):
+    ambient_dim = len(vec)
+    return sum(dd_axis(iaxis, ambient_dim, vec) for iaxis in range(ambient_dim))
+
+
+def curl(vec):
+    from pytools import levi_civita
+    from pytools.obj_array import make_obj_array
+
+    return make_obj_array([
+        sum(
+            levi_civita((l, m, n)) * dd_axis(m, 3, vec[n])
+            for m in range(3) for n in range(3))
+        for l in range(3)])
 
 # }}}
 
