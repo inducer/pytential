@@ -157,8 +157,8 @@ class EHField(object):
 
 
 @pytest.mark.parametrize("case", [
-    tc_int,
-    tc_ext
+    #tc_int,
+    tc_ext,
     ])
 def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
     """For (say) is_interior=False (the 'exterior' MFIE), this test verifies
