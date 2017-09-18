@@ -134,9 +134,9 @@ class RoundedCubeTestCase(TestCase):
 
 
 tc_int = SphereTestCase(k=1.2, is_interior=True, resolutions=[0, 1],
-        qbx_order=3, fmm_order=10)
+        qbx_order=3, fmm_order=5)
 tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0, 1],
-        qbx_order=3, fmm_order=10)
+        qbx_order=3, fmm_order=5)
 
 tc_rc_ext = RoundedCubeTestCase(k=1.2, is_interior=False, resolutions=[0.3],
         qbx_order=3, fmm_order=10)
