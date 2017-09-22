@@ -479,8 +479,8 @@ def make_empty_refine_flags(queue, lpot_source, use_stage2_discr=False):
 
 def refine_for_global_qbx(lpot_source, wrangler,
         group_factory, kernel_length_scale=None,
-        # FIXME: Set debug=False once everything works.
-        refine_flags=None, debug=True, maxiter=50):
+        refine_flags=None, debug=None, maxiter=None,
+        visualize=None):
     """
     Entry point for calling the refiner.
 
@@ -508,6 +508,13 @@ def refine_for_global_qbx(lpot_source, wrangler,
         going from the original mesh to the refined mesh.
     """
 
+    if maxiter is None:
+        maxiter = 10
+
+    if debug is None:
+        # FIXME: Set debug=False by default once everything works.
+        debug = True
+
     # TODO: Stop doing redundant checks by avoiding panels which no longer need
     # refinement.
 
@@ -531,6 +538,34 @@ def refine_for_global_qbx(lpot_source, wrangler,
     must_refine = True
     niter = 0
 
+    def visualize_refinement(niter, stage, flags):
+        if not visualize:
+            return
+
+        discr = lpot_source.density_discr
+        from meshmode.discretization.visualization import make_visualizer
+        vis = make_visualizer(wrangler.queue, discr, 10)
+
+        flags = flags.get().astype(np.bool)
+        nodes_flags = np.zeros(discr.nnodes)
+        for grp in discr.groups:
+            meg = grp.mesh_el_group
+            grp.view(nodes_flags)[
+                    flags[meg.element_nr_base:meg.nelements+meg.element_nr_base]] = 1
+
+        nodes_flags = cl.array.to_device(wrangler.queue, nodes_flags)
+        vis_data = [
+            ("refine_flags", nodes_flags),
+            ]
+
+        if 0:
+            from pytential import sym, bind
+            bdry_normals = bind(discr, sym.normal(discr.ambient_dim))(
+                    wrangler.queue).as_vector(dtype=object)
+            vis_data.append(("bdry_normals", bdry_normals),)
+
+        vis.write_vtk_file("refinement-%03d-%s.vtu" % (niter, stage), vis_data)
+
     while must_refine:
         must_refine = False
         niter += 1
@@ -550,14 +585,23 @@ def refine_for_global_qbx(lpot_source, wrangler,
         refine_flags = make_empty_refine_flags(wrangler.queue, lpot_source)
 
         # Check condition 1.
-        must_refine |= wrangler.check_expansion_disks_undisturbed_by_sources(
-                lpot_source, tree, peer_lists, refine_flags, debug)
+        has_disturbed_expansions = \
+                wrangler.check_expansion_disks_undisturbed_by_sources(
+                        lpot_source, tree, peer_lists, refine_flags, debug)
+        must_refine = must_refine or has_disturbed_expansions
+        if has_disturbed_expansions:
+            visualize_refinement(niter, "disturbed-expansions", refine_flags)
 
         # Check condition 3.
         if kernel_length_scale is not None:
-            must_refine |= (
+
+            violates_kernel_length_scale = \
                     wrangler.check_kernel_length_scale_to_panel_size_ratio(
-                        lpot_source, kernel_length_scale, refine_flags, debug))
+                            lpot_source, kernel_length_scale, refine_flags, debug)
+            must_refine = must_refine or violates_kernel_length_scale
+
+            if violates_kernel_length_scale:
+                visualize_refinement(niter, "kernel-length-scale", refine_flags)
 
         if must_refine:
             conn = wrangler.refine(
@@ -599,8 +643,12 @@ def refine_for_global_qbx(lpot_source, wrangler,
         refine_flags = make_empty_refine_flags(
                 wrangler.queue, lpot_source, use_stage2_discr=True)
 
-        must_refine |= wrangler.check_sufficient_source_quadrature_resolution(
-                lpot_source, tree, peer_lists, refine_flags, debug)
+        has_insufficient_quad_res = \
+                wrangler.check_sufficient_source_quadrature_resolution(
+                        lpot_source, tree, peer_lists, refine_flags, debug)
+        must_refine = must_refine or has_insufficient_quad_res
+        if has_insufficient_quad_res:
+            visualize_refinement(niter, "quad-resolution", refine_flags)
 
         if must_refine:
             conn = wrangler.refine(
