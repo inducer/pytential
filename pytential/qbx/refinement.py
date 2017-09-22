@@ -569,7 +569,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
         vis.write_vtk_file("refinement-%03d-%s.vtu" % (niter, stage), vis_data)
 
-    def warn_not_converging():
+    def warn_max_iterations():
         from warnings import warn
         warn(
                 "QBX layer potential source refiner did not terminate "
@@ -582,10 +582,12 @@ def refine_for_global_qbx(lpot_source, wrangler,
                 "As a last resort, "
                 "you may use Python's warning filtering mechanism to "
                 "not treat this warning as an error. "
-                "The criteria tiggering refinement in each iteration "
+                "The criteria triggering refinement in each iteration "
                 "were: %s. " % (
                     len(violated_criteria),
-                    ", ".join(violated_criteria)),
+                    ", ".join(
+                        "%d: %s" % (i+1, vc_text)
+                        for i, vc_text in enumerate(violated_criteria))),
                 RefinerNotConvergedWarning)
 
     violated_criteria = []
@@ -598,7 +600,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
         niter += 1
 
         if niter > maxiter:
-            warn_not_converging()
+            warn_max_iterations()
             break
 
         # Build tree and auxiliary data.
@@ -656,7 +658,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
         niter += 1
 
         if niter > maxiter:
-            warn_not_converging()
+            warn_max_iterations()
             break
 
         # Build tree and auxiliary data.
