@@ -94,7 +94,8 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
         particle_id_t source_offset,
         particle_id_t center_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *center_danger_zone_radii_by_panel,
+        coord_t *center_danger_zone_radii,
+        coord_t expansion_disturbance_tolerance,
         int npanels,
 
         /* output */
@@ -107,11 +108,11 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
         %endfor
         """,
     ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
-        /* Find the panel associated with this center. */
-        particle_id_t my_panel = bsearch(panel_to_center_starts, npanels + 1, i);
+        particle_id_t icenter = i;
 
-        ${load_particle("INDEX_FOR_CENTER_PARTICLE(i)", ball_center)}
-        ${ball_radius} = center_danger_zone_radii_by_panel[my_panel];
+        ${load_particle("INDEX_FOR_CENTER_PARTICLE(icenter)", ball_center)}
+        ${ball_radius} = (1-expansion_disturbance_tolerance)
+                    * center_danger_zone_radii[icenter];
         """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
         /* Check that each source in the leaf box is sufficiently far from the
@@ -122,24 +123,27 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
              ++source_idx)
         {
             particle_id_t source = box_to_source_lists[source_idx];
-            particle_id_t panel = bsearch(
+            particle_id_t source_panel = bsearch(
                 panel_to_source_starts, npanels + 1, source);
 
-            if (my_panel == panel)
-            {
+            /* Find the panel associated with this center. */
+            particle_id_t center_panel = bsearch(panel_to_center_starts, npanels + 1,
+                icenter);
+
+            if (center_panel == source_panel)
                 continue;
-            }
 
             coord_vec_t source_coords;
             ${load_particle("INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
 
             bool is_close = (
                 distance(${ball_center}, source_coords)
-                <= center_danger_zone_radii_by_panel[my_panel]);
+                <= (1-expansion_disturbance_tolerance)
+                        * center_danger_zone_radii[icenter]);
 
             if (is_close)
             {
-                panel_refine_flags[my_panel] = 1;
+                panel_refine_flags[center_panel] = 1;
                 *found_panel_to_refine = 1;
                 break;
             }
@@ -286,7 +290,9 @@ class RefinerWrangler(TreeWranglerBase):
     # {{{ check subroutines for conditions 1-3
 
     def check_expansion_disks_undisturbed_by_sources(self,
-            lpot_source, tree, peer_lists, refine_flags,
+            lpot_source, tree, peer_lists,
+            expansion_disturbance_tolerance,
+            refine_flags,
             debug, wait_for=None):
 
         # Avoid generating too many kernels.
@@ -301,7 +307,8 @@ class RefinerWrangler(TreeWranglerBase):
                 tree.particle_id_dtype,
                 max_levels)
 
-        logger.info("refiner: checking center is closest to orig panel")
+        logger.info("refiner: checking that expansion disk is "
+                "undisturbed by sources")
 
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
@@ -310,9 +317,7 @@ class RefinerWrangler(TreeWranglerBase):
         found_panel_to_refine.finish()
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
-        # FIXME: This shouldn't be by panel
-        center_danger_zone_radii_by_panel = \
-                lpot_source._expansion_radii("npanels")
+        center_danger_zone_radii = lpot_source._expansion_radii("ncenters")
 
         evt = knl(
             *unwrap_args(
@@ -324,7 +329,8 @@ class RefinerWrangler(TreeWranglerBase):
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_center_slice.start,
                 tree.sorted_target_ids,
-                center_danger_zone_radii_by_panel,
+                center_danger_zone_radii,
+                expansion_disturbance_tolerance,
                 tree.nqbxpanels,
                 refine_flags,
                 found_panel_to_refine,
@@ -480,7 +486,7 @@ def make_empty_refine_flags(queue, lpot_source, use_stage2_discr=False):
 def refine_for_global_qbx(lpot_source, wrangler,
         group_factory, kernel_length_scale=None,
         refine_flags=None, debug=None, maxiter=None,
-        visualize=None):
+        visualize=None, expansion_disturbance_tolerance=None):
     """
     Entry point for calling the refiner.
 
@@ -514,6 +520,9 @@ def refine_for_global_qbx(lpot_source, wrangler,
     if debug is None:
         # FIXME: Set debug=False by default once everything works.
         debug = True
+
+    if expansion_disturbance_tolerance is None:
+        expansion_disturbance_tolerance = 0
 
     # TODO: Stop doing redundant checks by avoiding panels which no longer need
     # refinement.
@@ -587,7 +596,9 @@ def refine_for_global_qbx(lpot_source, wrangler,
         # Check condition 1.
         has_disturbed_expansions = \
                 wrangler.check_expansion_disks_undisturbed_by_sources(
-                        lpot_source, tree, peer_lists, refine_flags, debug)
+                        lpot_source, tree, peer_lists,
+                        expansion_disturbance_tolerance,
+                        refine_flags, debug)
         must_refine = must_refine or has_disturbed_expansions
         if has_disturbed_expansions:
             visualize_refinement(niter, "disturbed-expansions", refine_flags)
