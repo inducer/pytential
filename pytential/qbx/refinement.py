@@ -519,7 +519,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
         debug = True
 
     if expansion_disturbance_tolerance is None:
-        raise ValueError("must specify expansion_disturbance_tolerance")
+        expansion_disturbance_tolerance = 0.025
 
     # TODO: Stop doing redundant checks by avoiding panels which no longer need
     # refinement.
