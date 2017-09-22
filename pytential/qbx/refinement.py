@@ -544,9 +544,6 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
     # {{{ first stage refinement
 
-    must_refine = True
-    niter = 0
-
     def visualize_refinement(niter, stage, flags):
         if not visualize:
             return
@@ -575,16 +572,36 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
         vis.write_vtk_file("refinement-%03d-%s.vtu" % (niter, stage), vis_data)
 
-    while must_refine:
-        must_refine = False
+    def warn_not_converging():
+        from warnings import warn
+        warn(
+                "QBX layer potential source refiner did not terminate "
+                "after %d iterations (the maximum). "
+                "You may pass 'visualize=True' to with_refinement() "
+                "to see what area of the geometry is causing trouble. "
+                "If the issue is disturbance of expansion disks, you may "
+                "pass a slightly increased value (say 1e-2) for "
+                "_expansion_disturbance_tolerance in with_refinement(). "
+                "As a last resort, "
+                "you may use Python's warning filtering mechanism to "
+                "not treat this warning as an error. "
+                "The criteria tiggering refinement in each iteration "
+                "were: %s. " % (
+                    len(violated_criteria),
+                    ", ".join(violated_criteria)),
+                RefinerNotConvergedWarning)
+
+    violated_criteria = []
+    iter_violated_criteria = ["start"]
+
+    niter = 0
+
+    while iter_violated_criteria:
+        iter_violated_criteria = []
         niter += 1
 
         if niter > maxiter:
-            from warnings import warn
-            warn(
-                    "Max iteration count reached in QBX layer potential source"
-                    " refiner.",
-                    RefinerNotConvergedWarning)
+            warn_not_converging()
             break
 
         # Build tree and auxiliary data.
@@ -599,8 +616,8 @@ def refine_for_global_qbx(lpot_source, wrangler,
                         lpot_source, tree, peer_lists,
                         expansion_disturbance_tolerance,
                         refine_flags, debug)
-        must_refine = must_refine or has_disturbed_expansions
         if has_disturbed_expansions:
+            iter_violated_criteria.append("disturbed expansions")
             visualize_refinement(niter, "disturbed-expansions", refine_flags)
 
         # Check condition 3.
@@ -609,12 +626,14 @@ def refine_for_global_qbx(lpot_source, wrangler,
             violates_kernel_length_scale = \
                     wrangler.check_kernel_length_scale_to_panel_size_ratio(
                             lpot_source, kernel_length_scale, refine_flags, debug)
-            must_refine = must_refine or violates_kernel_length_scale
 
             if violates_kernel_length_scale:
+                iter_violated_criteria.append("kernel length scale")
                 visualize_refinement(niter, "kernel-length-scale", refine_flags)
 
-        if must_refine:
+        if iter_violated_criteria:
+            violated_criteria.append(" and ".join(iter_violated_criteria))
+
             conn = wrangler.refine(
                     lpot_source.density_discr, refiner, refine_flags,
                     group_factory, debug)
@@ -629,22 +648,18 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
     # {{{ second stage refinement
 
-    must_refine = True
+    iter_violated_criteria = ["start"]
     niter = 0
     fine_connections = []
 
     stage2_density_discr = lpot_source.density_discr
 
-    while must_refine:
-        must_refine = False
+    while iter_violated_criteria:
+        iter_violated_criteria = []
         niter += 1
 
         if niter > maxiter:
-            from warnings import warn
-            warn(
-                    "Max iteration count reached in QBX layer potential source"
-                    " refiner.",
-                    RefinerNotConvergedWarning)
+            warn_not_converging()
             break
 
         # Build tree and auxiliary data.
@@ -657,11 +672,13 @@ def refine_for_global_qbx(lpot_source, wrangler,
         has_insufficient_quad_res = \
                 wrangler.check_sufficient_source_quadrature_resolution(
                         lpot_source, tree, peer_lists, refine_flags, debug)
-        must_refine = must_refine or has_insufficient_quad_res
         if has_insufficient_quad_res:
+            iter_violated_criteria.append("insufficient quadrature resolution")
             visualize_refinement(niter, "quad-resolution", refine_flags)
 
-        if must_refine:
+        if iter_violated_criteria:
+            violated_criteria.append(" and ".join(iter_violated_criteria))
+
             conn = wrangler.refine(
                     stage2_density_discr,
                     refiner, refine_flags, group_factory, debug)
