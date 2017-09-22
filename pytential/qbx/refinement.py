@@ -130,9 +130,6 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
             particle_id_t center_panel = bsearch(panel_to_center_starts, npanels + 1,
                 icenter);
 
-            if (center_panel == source_panel)
-                continue;
-
             coord_vec_t source_coords;
             ${load_particle("INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
 
@@ -522,7 +519,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
         debug = True
 
     if expansion_disturbance_tolerance is None:
-        expansion_disturbance_tolerance = 0
+        raise ValueError("must specify expansion_disturbance_tolerance")
 
     # TODO: Stop doing redundant checks by avoiding panels which no longer need
     # refinement.

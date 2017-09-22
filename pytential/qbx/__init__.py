@@ -331,7 +331,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def with_refinement(self, target_order=None, kernel_length_scale=None,
-            maxiter=None, visualize=False, _expansion_disturbance_tolerance=0):
+            maxiter=None, visualize=False, _expansion_disturbance_tolerance=0.025):
         """
         :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
             :class:`QBXLayerPotentialSource` and ``cnx`` is a
