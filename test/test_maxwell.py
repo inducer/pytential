@@ -31,10 +31,11 @@ import pytest
 
 from pytential import bind, sym, norm
 
-from sumpy.visualization import FieldPlotter  # noqa
+from sumpy.visualization import make_field_plotter_from_bbox  # noqa
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
 from sumpy.tools import vector_from_device
 from pytential.target import PointsTarget
+from meshmode.mesh.processing import find_bounding_box
 
 import logging
 logger = logging.getLogger(__name__)
@@ -43,7 +44,9 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 
-class TestCase:
+# {{{ test cases
+
+class MaxwellTestCase:
     fmm_backend = "fmmlib"
 
     def __init__(self, k, is_interior, resolutions, qbx_order,
@@ -55,7 +58,7 @@ class TestCase:
         self.fmm_order = fmm_order
 
 
-class SphereTestCase(TestCase):
+class SphereTestCase(MaxwellTestCase):
     target_order = 8
     gmres_tol = 1e-10
 
@@ -89,7 +92,7 @@ class SphereTestCase(TestCase):
                 cl.array.to_device(queue, sources))
 
 
-class RoundedCubeTestCase(TestCase):
+class RoundedCubeTestCase(MaxwellTestCase):
     target_order = 8
     gmres_tol = 1e-10
 
@@ -133,12 +136,64 @@ class RoundedCubeTestCase(TestCase):
                 cl.array.to_device(queue, sources))
 
 
+class ElliptiPlaneTestCase(MaxwellTestCase):
+    target_order = 4
+    gmres_tol = 1e-5
+
+    def get_mesh(self, resolution, target_order):
+        from pytools import download_from_web_if_not_present
+
+        download_from_web_if_not_present(
+                "https://raw.githubusercontent.com/inducer/geometries/master/"
+                "surface-3d/elliptiplane.brep")
+
+        from meshmode.mesh.io import generate_gmsh, FileSource
+        mesh = generate_gmsh(
+                FileSource("elliptiplane.brep"), 2, order=2,
+                other_options=[
+                    "-string",
+                    "Mesh.CharacteristicLengthMax = %g;" % resolution])
+
+        # now centered at origin and extends to -1,1
+
+        # Flip elements--gmsh generates inside-out geometry.
+        from meshmode.mesh.processing import perform_flips
+        return perform_flips(mesh, np.ones(mesh.nelements))
+
+    def get_observation_mesh(self, target_order):
+        from meshmode.mesh.generation import generate_icosphere
+
+        if self.is_interior:
+            return generate_icosphere(12, target_order)
+        else:
+            return generate_icosphere(0.5, target_order)
+
+    def get_source(self, queue):
+        if self.is_interior:
+            source_ctr = np.array([[0.35, 0.1, 0.15]]).T
+        else:
+            source_ctr = np.array([[3, 1, 10]]).T
+
+        source_rad = 0.3
+
+        sources = source_ctr + source_rad*2*(np.random.rand(3, 10)-0.5)
+        from pytential.source import PointPotentialSource
+        return PointPotentialSource(
+                queue.context,
+                cl.array.to_device(queue, sources))
+
+# }}}
+
+
 tc_int = SphereTestCase(k=1.2, is_interior=True, resolutions=[0, 1],
         qbx_order=3, fmm_order=5)
 tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0, 1],
         qbx_order=3, fmm_order=5)
 
-tc_rc_ext = RoundedCubeTestCase(k=1.2, is_interior=False, resolutions=[0.3],
+tc_rc_ext = RoundedCubeTestCase(k=6.4, is_interior=False, resolutions=[0.1],
+        qbx_order=3, fmm_order=10)
+
+tc_plane_ext = ElliptiPlaneTestCase(k=1.4, is_interior=False, resolutions=[0.2],
         qbx_order=3, fmm_order=10)
 
 
@@ -155,6 +210,8 @@ class EHField(object):
     def h(self):
         return self.field[3:]
 
+
+# {{{ driver
 
 @pytest.mark.parametrize("case", [
     #tc_int,
@@ -250,7 +307,7 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
                 pre_scat_discr, fine_order=4*case.target_order,
                 qbx_order=case.qbx_order,
                 fmm_order=case.fmm_order, fmm_backend=case.fmm_backend
-                ).with_refinement()
+                ).with_refinement(_expansion_disturbance_tolerance=0.05)
         h_max = qbx.h_max
 
         scat_discr = qbx.density_discr
@@ -269,13 +326,15 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
         j_rhs = bind(qbx, mfie.j_rhs(inc_xyz_sym.h))(
                 queue, inc_fld=inc_field_scat.field, **knl_kwargs)
 
+        gmres_settings = dict(
+                tol=case.gmres_tol,
+                progress=True,
+                hard_failure=True,
+                stall_iterations=50, no_progress_factor=1.05)
         from pytential.solve import gmres
         gmres_result = gmres(
                 bound_j_op.scipy_op(queue, "jt", np.complex128, **knl_kwargs),
-                j_rhs,
-                tol=case.gmres_tol,
-                progress=True,
-                hard_failure=True)
+                j_rhs, **gmres_settings)
 
         jt = gmres_result.solution
 
@@ -285,10 +344,7 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
 
         gmres_result = gmres(
                 bound_rho_op.scipy_op(queue, "rho", np.complex128, **knl_kwargs),
-                rho_rhs,
-                tol=case.gmres_tol,
-                progress=True,
-                hard_failure=True)
+                rho_rhs, **gmres_settings)
 
         rho = gmres_result.solution
 
@@ -357,13 +413,12 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
                 ("Einc", inc_field_scat.e),
                 ("Hinc", inc_field_scat.h),
                 ("bdry_normals", bdry_normals),
+                ("e_bc_residual", eh_bc_values[:3]),
+                ("h_bc_residual", eh_bc_values[3]),
                 ])
 
-            bbox_center = np.zeros(3)
-            bbox_size = 6
-
-            fplot = FieldPlotter(
-                    bbox_center, extent=bbox_size, npoints=(150, 150, 5))
+            fplot = make_field_plotter_from_bbox(
+                    find_bounding_box(scat_discr.mesh), h=(0.025, 0.025, 0.15))
 
             from pytential.qbx import QBXTargetAssociationFailedException
 
@@ -434,6 +489,8 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
                 good = False
 
     assert good
+
+# }}}
 
 
 # You can test individual routines by typing
