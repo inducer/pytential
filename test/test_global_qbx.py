@@ -97,7 +97,10 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     lpot_source = QBXLayerPotentialSource(discr, order)
     del discr
 
-    refiner_extra_kwargs = {}
+    expansion_disturbance_tolerance = 0.025
+    refiner_extra_kwargs = {
+            "expansion_disturbance_tolerance": expansion_disturbance_tolerance,
+            }
     if helmholtz_k is not None:
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
@@ -144,7 +147,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         # panel.
 
         rad = expansion_radii[centers_panel.element_nr]
-        assert dist >= rad, \
+        assert dist >= rad * (1-expansion_disturbance_tolerance), \
                 (dist, rad, centers_panel.element_nr, sources_panel.element_nr)
 
     def check_sufficient_quadrature_resolution(centers_panel, sources_panel):
