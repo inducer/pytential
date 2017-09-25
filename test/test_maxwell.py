@@ -50,12 +50,12 @@ class MaxwellTestCase:
     fmm_backend = "fmmlib"
 
     def __init__(self, k, is_interior, resolutions, qbx_order,
-            fmm_order):
+            fmm_tolerance):
         self.k = k
         self.is_interior = is_interior
         self.resolutions = resolutions
         self.qbx_order = qbx_order
-        self.fmm_order = fmm_order
+        self.fmm_tolerance = fmm_tolerance
 
 
 class SphereTestCase(MaxwellTestCase):
@@ -186,15 +186,15 @@ class ElliptiPlaneTestCase(MaxwellTestCase):
 
 
 tc_int = SphereTestCase(k=1.2, is_interior=True, resolutions=[0, 1],
-        qbx_order=3, fmm_order=5)
+        qbx_order=3, fmm_tolerance=1e-4)
 tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0, 1],
-        qbx_order=3, fmm_order=5)
+        qbx_order=3, fmm_tolerance=1e-4)
 
 tc_rc_ext = RoundedCubeTestCase(k=6.4, is_interior=False, resolutions=[0.1],
-        qbx_order=3, fmm_order=10)
+        qbx_order=3, fmm_tolerance=1e-4)
 
-tc_plane_ext = ElliptiPlaneTestCase(k=1.4, is_interior=False, resolutions=[0.2],
-        qbx_order=3, fmm_order=10)
+tc_plane_ext = ElliptiPlaneTestCase(k=0.4, is_interior=False, resolutions=[0.2],
+        qbx_order=3, fmm_tolerance=1e-3)
 
 
 class EHField(object):
@@ -209,6 +209,65 @@ class EHField(object):
     @property
     def h(self):
         return self.field[3:]
+
+
+class HelmholtzFMMOrderFinder(object):
+    r"""
+    This models the error as:
+
+    .. math::
+
+        C_{\text{lap}} \left(\frac{\sqrt{d}}{3}\right)^{p+1}
+        +
+        C_{\text{helm}} \frac 1{p!} (hk)^{p+1},
+
+    where :math:`d` is the number of dimensions, :math:`p` is the expansion order,
+    :math:`h` is the box size, and :math:`k` is the wave number.
+    """
+
+    def __init__(self, tol, helmholtz_k, err_const_laplace=0.01,
+            err_const_helmholtz=100, extra_order=1):
+        """
+        :arg extra_order: order increase to accommodate, say, the taking of
+            oderivatives f the FMM expansions.
+        """
+        self.tol = tol
+        self.helmholtz_k = helmholtz_k
+
+        self.err_const_laplace = err_const_laplace
+        self.err_const_helmholtz = err_const_helmholtz
+
+        self.extra_order = extra_order
+
+    def __call__(self, tree, level):
+        laplace_order = int(np.ceil(
+                (np.log(self.tol) - np.log(self.err_const_laplace))
+                /
+                np.log(
+                    np.sqrt(tree.dimensions)/3
+                    ) - 1))
+
+        box_lengthscale = (
+            tree.stick_out_factor
+            * tree.root_extent / (1 << level))
+
+        from math import factorial
+        helm_order = 1
+        while True:
+            helm_error = (
+                    1/factorial(helm_order+1)
+                    * self.err_const_helmholtz
+                    * (box_lengthscale * self.helmholtz_k)**(helm_order+1))
+            if helm_error < self.tol:
+                break
+
+            helm_order += 1
+
+            if helm_order > 500:
+                raise ValueError("unable to find suitable order estimate "
+                        "for Helmholtz expansion")
+
+        return max(laplace_order, helm_order) + self.extra_order
 
 
 # {{{ driver
@@ -306,7 +365,9 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
         qbx, _ = QBXLayerPotentialSource(
                 pre_scat_discr, fine_order=4*case.target_order,
                 qbx_order=case.qbx_order,
-                fmm_order=case.fmm_order, fmm_backend=case.fmm_backend
+                fmm_level_to_order=HelmholtzFMMOrderFinder(
+                    case.fmm_tolerance, case.k),
+                fmm_backend=case.fmm_backend
                 ).with_refinement(_expansion_disturbance_tolerance=0.05)
         h_max = qbx.h_max
 
