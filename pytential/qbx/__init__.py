@@ -132,7 +132,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             if fmm_order is False:
                 fmm_level_to_order = False
             else:
-                def fmm_level_to_order(level):
+                def fmm_level_to_order(tree, level):
                     return fmm_order
 
         # }}}
