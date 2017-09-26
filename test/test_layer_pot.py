@@ -292,7 +292,7 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_getter):
             density_discr,
             fmm_order=False,
             )
-    fmm = direct.copy(fmm_level_to_order=lambda _: fmm_order)
+    fmm = direct.copy(fmm_level_to_order=lambda tree, level: fmm_order)
 
     sigma = density_discr.zeros(queue) + 1
 
