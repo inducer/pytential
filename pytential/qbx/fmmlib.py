@@ -419,7 +419,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     center2=qbx_centers[:, tgt_icenter_vec],
                     expn2=expn2.T,
 
-                    level_for_projection=isrc_level,
+                    nterms2=self.qbx_order,
 
                     **kwargs).T
 
@@ -486,8 +486,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                                 rscale2=qbx_radii[tgt_icenter],
                                 center2=tgt_center,
                                 nterms2=self.qbx_order,
-
-                                level_for_projection=isrc_level,
 
                                 **kwargs)[..., 0].T
 
