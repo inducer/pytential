@@ -94,6 +94,8 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     from pytential.qbx.refinement import (
             RefinerCodeContainer, refine_for_global_qbx)
 
+    from pytential.qbx.utils import TreeCodeContainer
+
     lpot_source = QBXLayerPotentialSource(discr, order)
     del discr
 
@@ -105,7 +107,9 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
     lpot_source, conn = refine_for_global_qbx(
-            lpot_source, RefinerCodeContainer(cl_ctx).get_wrangler(queue),
+            lpot_source,
+            RefinerCodeContainer(
+                cl_ctx, TreeCodeContainer(cl_ctx)).get_wrangler(queue),
             factory, **refiner_extra_kwargs)
 
     from pytential.qbx.utils import get_centers_on_side
@@ -294,7 +298,10 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
     from pytential.qbx.target_assoc import (
             TargetAssociationCodeContainer, associate_targets_to_qbx_centers)
 
-    code_container = TargetAssociationCodeContainer(cl_ctx)
+    from pytential.qbx.utils import TreeCodeContainer
+
+    code_container = TargetAssociationCodeContainer(
+            cl_ctx, TreeCodeContainer(cl_ctx))
 
     target_assoc = (associate_targets_to_qbx_centers(
             lpot_source,
@@ -401,7 +408,10 @@ def test_target_association_failure(ctx_getter):
             TargetAssociationCodeContainer, associate_targets_to_qbx_centers,
             QBXTargetAssociationFailedException)
 
-    code_container = TargetAssociationCodeContainer(cl_ctx)
+    from pytential.qbx.utils import TreeCodeContainer
+
+    code_container = TargetAssociationCodeContainer(
+            cl_ctx, TreeCodeContainer(cl_ctx))
 
     with pytest.raises(QBXTargetAssociationFailedException):
         associate_targets_to_qbx_centers(
