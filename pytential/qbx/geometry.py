@@ -498,7 +498,7 @@ class QBXFMMGeometryData(object):
 
             refine_weights.finish()
 
-            tree, _ = code_getter.build_tree(queue,
+            tree, _ = code_getter.build_tree()(queue,
                     particles=lpot_src.quad_stage2_density_discr.nodes(),
                     targets=target_info.targets,
                     target_radii=target_radii,

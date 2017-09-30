@@ -179,7 +179,7 @@ class TreeWranglerBase(object):
 
     def build_tree(self, lpot_source, targets_list=(),
                    use_stage2_discr=False):
-        tb = self.code_container.tree_builder()
+        tb = self.code_container.build_tree()
         from pytential.qbx.utils import build_tree_with_qbx_metadata
         return build_tree_with_qbx_metadata(
                 self.queue, tb, lpot_source, targets_list=targets_list,
