@@ -31,7 +31,7 @@ import numpy as np
 from boxtree.tree import Tree
 import pyopencl as cl
 import pyopencl.array # noqa
-from pytools import memoize
+from pytools import memoize, memoize_method
 
 import logging
 logger = logging.getLogger(__name__)
@@ -137,13 +137,49 @@ def get_interleaved_radii(queue, lpot_source):
 # }}}
 
 
-# {{{ peer list wrangler mixin
+# {{{ tree code container
+
+class TreeCodeContainer(object):
+
+    def __init__(self, cl_context):
+        self.cl_context = cl_context
+
+    @memoize_method
+    def build_tree(self):
+        from boxtree.tree_build import TreeBuilder
+        return TreeBuilder(self.cl_context)
+
+    @memoize_method
+    def peer_list_finder(self):
+        from boxtree.area_query import PeerListFinder
+        return PeerListFinder(self.cl_context)
+
+# }}}
+
+
+# {{{ tree code container mixin
+
+class TreeCodeContainerMixin(object):
+    """Forwards requests for tree-related code to an inner code container named
+    self.tree_code_container.
+    """
+
+    def build_tree(self):
+        return self.tree_code_container.build_tree()
+
+    def peer_list_finder(self):
+        return self.tree_code_container.peer_list_finder()
+
+# }}}
+
+
+# {{{ tree wrangler base class
 
 class TreeWranglerBase(object):
 
     def build_tree(self, lpot_source, targets_list=(),
                    use_stage2_discr=False):
-        tb = self.code_container.tree_builder()
+        tb = self.code_container.build_tree()
         from pytential.qbx.utils import build_tree_with_qbx_metadata
         return build_tree_with_qbx_metadata(
                 self.queue, tb, lpot_source, targets_list=targets_list,

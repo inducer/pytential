@@ -33,6 +33,9 @@ import loopy as lp
 from cgen import Enum
 
 
+from pytential.qbx.utils import TreeCodeContainerMixin
+
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -103,10 +106,12 @@ class target_state(Enum):  # noqa
     FAILED = -2
 
 
-class QBXFMMGeometryCodeGetter(object):
-    def __init__(self, cl_context, ambient_dim, debug, _well_sep_is_n_away):
+class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
+    def __init__(self, cl_context, ambient_dim, tree_code_container, debug,
+            _well_sep_is_n_away):
         self.cl_context = cl_context
         self.ambient_dim = ambient_dim
+        self.tree_code_container = tree_code_container
         self.debug = debug
         self._well_sep_is_n_away = _well_sep_is_n_away
 
@@ -128,12 +133,6 @@ class QBXFMMGeometryCodeGetter(object):
 
         knl = lp.tag_array_axes(knl, "targets", "stride:auto, stride:1")
         return lp.tag_inames(knl, dict(dim="ilp"))
-
-    @property
-    @memoize_method
-    def build_tree(self):
-        from boxtree import TreeBuilder
-        return TreeBuilder(self.cl_context)
 
     @property
     @memoize_method
@@ -500,7 +499,7 @@ class QBXFMMGeometryData(object):
 
             refine_weights.finish()
 
-            tree, _ = code_getter.build_tree(queue,
+            tree, _ = code_getter.build_tree()(queue,
                     particles=lpot_src.quad_stage2_density_discr.nodes(),
                     targets=target_info.targets,
                     target_radii=target_radii,

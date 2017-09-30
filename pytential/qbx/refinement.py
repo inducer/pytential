@@ -35,7 +35,8 @@ from pytools import memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
 from pytential.qbx.utils import (
-        QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase)
+        QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
+        TreeCodeContainerMixin)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -213,10 +214,11 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
 
 # {{{ code container
 
-class RefinerCodeContainer(object):
+class RefinerCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, cl_context):
+    def __init__(self, cl_context, tree_code_container):
         self.cl_context = cl_context
+        self.tree_code_container = tree_code_container
 
     @memoize_method
     def expansion_disk_undisturbed_by_sources_checker(
@@ -256,16 +258,6 @@ class RefinerCodeContainer(object):
             name="refine_kernel_length_scale_to_panel_size_ratio")
         knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
-
-    @memoize_method
-    def tree_builder(self):
-        from boxtree.tree_build import TreeBuilder
-        return TreeBuilder(self.cl_context)
-
-    @memoize_method
-    def peer_list_finder(self):
-        from boxtree.area_query import PeerListFinder
-        return PeerListFinder(self.cl_context)
 
     def get_wrangler(self, queue):
         """
