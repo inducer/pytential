@@ -106,8 +106,9 @@ class target_state(Enum):  # noqa
     FAILED = -2
 
 
-class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):    
-    def __init__(self, cl_context, ambient_dim, tree_code_container, debug, _well_sep_is_n_away):
+class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
+    def __init__(self, cl_context, ambient_dim, tree_code_container, debug,
+            _well_sep_is_n_away):
         self.cl_context = cl_context
         self.ambient_dim = ambient_dim
         self.tree_code_container = tree_code_container
