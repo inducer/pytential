@@ -655,7 +655,6 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
                 start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
                 nmp_eval += ntargets * (end-start)
 
-        # FIXME: This is missing a particle count multiplier
         result["mp_eval"] = nmp_eval * ncoeffs_fmm
 
     process_list3()
