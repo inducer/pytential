@@ -37,7 +37,8 @@ from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
 from cgen import Enum
 from pytential.qbx.utils import (
-    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase)
+    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
+    TreeCodeContainerMixin)
 
 
 unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
@@ -380,10 +381,11 @@ class QBXTargetAssociation(DeviceDataRecord):
     pass
 
 
-class TargetAssociationCodeContainer(object):
+class TargetAssociationCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, cl_context):
+    def __init__(self, cl_context, tree_code_container):
         self.cl_context = cl_context
+        self.tree_code_container = tree_code_container
 
     @memoize_method
     def target_marker(self, dimensions, coord_dtype, box_id_dtype,
@@ -422,19 +424,9 @@ class TargetAssociationCodeContainer(object):
                 extra_type_aliases=(("particle_id_t", particle_id_dtype),))
 
     @memoize_method
-    def peer_list_finder(self):
-        from boxtree.area_query import PeerListFinder
-        return PeerListFinder(self.cl_context)
-
-    @memoize_method
     def space_invader_query(self):
         from boxtree.area_query import SpaceInvaderQueryBuilder
         return SpaceInvaderQueryBuilder(self.cl_context)
-
-    @memoize_method
-    def tree_builder(self):
-        from boxtree.tree_build import TreeBuilder
-        return TreeBuilder(self.cl_context)
 
     def get_wrangler(self, queue):
         return TargetAssociationWrangler(self, queue)
