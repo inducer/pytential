@@ -79,6 +79,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansion_stick_out_factor=0.5,
             _well_sep_is_n_away=2,
             _max_leaf_refine_weight=32,
+            _box_extent_norm=None,
+            _from_sep_smaller_crit=None,
             geometry_data_inspector=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
@@ -162,6 +164,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._expansion_stick_out_factor = _expansion_stick_out_factor
         self._well_sep_is_n_away = _well_sep_is_n_away
         self._max_leaf_refine_weight = _max_leaf_refine_weight
+        self._box_extent_norm = _box_extent_norm
+        self._from_sep_smaller_crit = _from_sep_smaller_crit
         self.geometry_data_inspector = geometry_data_inspector
 
         # /!\ *All* parameters set here must also be set by copy() below,
@@ -242,6 +246,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     else self._expansion_stick_out_factor),
                 _well_sep_is_n_away=self._well_sep_is_n_away,
                 _max_leaf_refine_weight=self._max_leaf_refine_weight,
+                _box_extent_norm=self._box_extent_norm,
+                _from_sep_smaller_crit=self._from_sep_smaller_crit,
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
                 fmm_backend=self.fmm_backend,
@@ -481,7 +487,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def qbx_fmm_code_getter(self):
         from pytential.qbx.geometry import QBXFMMGeometryCodeGetter
         return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim,
-                debug=self.debug, _well_sep_is_n_away=self._well_sep_is_n_away)
+                debug=self.debug,
+                _well_sep_is_n_away=self._well_sep_is_n_away,
+                _from_sep_smaller_crit=self._from_sep_smaller_crit)
 
     # {{{ fmm-based execution
 
