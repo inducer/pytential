@@ -675,7 +675,7 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
                 nform_local += nsources
 
-        result["form_local"] = nform_local * xlat_cost(p_fmm, p_fmm)
+        result["form_local"] = nform_local * ncoeffs_fmm
 
     process_list4()
 
