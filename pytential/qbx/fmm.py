@@ -535,14 +535,23 @@ def drive_fmm(expansion_wrangler, src_weights):
 # {{{ performance data
 
 def assemble_performance_data(geo_data, uses_pde_expansions,
-        translation_source_power=None, translation_target_power=None):
+        translation_source_power=None, translation_target_power=None,
+        summarize_parallel=None):
     """
     :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
         uses translation operators that make use of the knowledge that the
         potential satisfies a PDE.
+    :arg summarize_parallel: a function of two arguments
+        *(parallel_array, sym_multipliers)* used to process an array of
+        workloads of 'parallelizable units'. By default, all workloads are
+        summed into one number encompassing the total workload.
     """
 
     # FIXME: This should suport target filtering.
+
+    if summarize_parallel is None:
+        def summarize_parallel(parallel_array, sym_multipliers):
+            return np.sum(parallel_array) * sym_multipliers
 
     from collections import OrderedDict
     result = OrderedDict()
@@ -613,17 +622,21 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     # {{{ direct evaluation from neighbor source boxes ("list 1")
 
     def process_list1():
-        npart_direct = 0
+        npart_direct = np.zeros(len(traversal.target_boxes), dtype=np.intp)
+
         for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
             ntargets = box_target_counts_nonchild[tgt_ibox]
 
+            npart_direct_box = 0
             start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
             for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
                 nsources = tree.box_source_counts_nonchild[src_ibox]
 
-                npart_direct += ntargets * nsources
+                npart_direct_box += nsources
 
-        result["part_direct"] = npart_direct
+            npart_direct[itgt_box] = ntargets * npart_direct_box
+
+        result["part_direct"] = summarize_parallel(npart_direct, 1)
 
     process_list1()
 
@@ -632,13 +645,14 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     # {{{ translate separated siblings' ("list 2") mpoles to local
 
     def process_list2():
-        nm2l = 0
+        nm2l = np.zeros(len(traversal.target_or_target_parent_boxes), dtype=np.intp)
+
         for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
             start, end = traversal.from_sep_siblings_starts[itgt_box:itgt_box+2]
 
-            nm2l += (end-start)
+            nm2l[itgt_box] += end-start
 
-        result["m2l"] = nm2l * xlat_cost(p_fmm, p_fmm)
+        result["m2l"] = summarize_parallel(nm2l, xlat_cost(p_fmm, p_fmm))
 
     process_list2()
 
@@ -647,15 +661,21 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     # {{{ evaluate sep. smaller mpoles ("list 3") at particles
 
     def process_list3():
-        nmp_eval = 0
+        nmp_eval = np.zeros(
+                (tree.nlevels, len(traversal.target_boxes)),
+                dtype=np.intp)
+
+        assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
+
         for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
             ntargets = box_target_counts_nonchild[tgt_ibox]
 
-            for sep_smaller_list in traversal.from_sep_smaller_by_level:
+            for ilevel, sep_smaller_list in enumerate(
+                    traversal.from_sep_smaller_by_level):
                 start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
-                nmp_eval += ntargets * (end-start)
+                nmp_eval[ilevel, itgt_box] += ntargets * (end-start)
 
-        result["mp_eval"] = nmp_eval * ncoeffs_fmm
+        result["mp_eval"] = summarize_parallel(nmp_eval, ncoeffs_fmm)
 
     process_list3()
 
@@ -664,17 +684,22 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     # {{{ form locals for separated bigger source boxes ("list 4")
 
     def process_list4():
-        nform_local = 0
+        nform_local = np.zeros(
+                len(traversal.target_or_target_parent_boxes),
+                dtype=np.intp)
 
         for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
             start, end = traversal.from_sep_bigger_starts[itgt_box:itgt_box+2]
 
+            nform_local_box = 0
             for src_ibox in traversal.from_sep_bigger_lists[start:end]:
                 nsources = tree.box_source_counts_nonchild[src_ibox]
 
-                nform_local += nsources
+                nform_local_box += nsources
 
-        result["form_local"] = nform_local * ncoeffs_fmm
+            nform_local[itgt_box] = nform_local_box
+
+        result["form_local"] = summarize_parallel(nform_local, ncoeffs_fmm)
 
     process_list4()
 
@@ -707,22 +732,25 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
                 queue=queue)
 
     def process_form_qbxl():
-        nqbxl_direct = 0
-
         ncenters = geo_data.ncenters
 
         result["ncenters"] = ncenters
 
+        nqbxl_direct = np.zeros(len(global_qbx_centers), dtype=np.intp)
+
         for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
             itgt_box = qbx_center_to_target_box[tgt_icenter]
 
+            nqbxl_direct_center = 0
             start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
             for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
                 nsources = tree.box_source_counts_nonchild[src_ibox]
 
-                nqbxl_direct += nsources
+                nqbxl_direct_center += nsources
 
-        result["p2qbxl"] = nqbxl_direct * ncoeffs_qbx
+            nqbxl_direct[itgt_center] = nqbxl_direct_center
+
+        result["p2qbxl"] = summarize_parallel(nqbxl_direct, ncoeffs_qbx)
 
     process_form_qbxl()
 
@@ -731,7 +759,11 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     # {{{ translate from list 3 multipoles to qbx local expansions
 
     def process_m2qbxl():
-        nqbx_m2l = 0
+        nm2qbxl = np.zeros(
+                (tree.nlevels, len(global_qbx_centers)),
+                dtype=np.intp)
+
+        assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
             for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
@@ -741,9 +773,9 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
                         ssn.starts[icontaining_tgt_box],
                         ssn.starts[icontaining_tgt_box+1])
 
-                nqbx_m2l += stop-start
+                nm2qbxl[isrc_level, itgt_center] += stop-start
 
-        result["m2qbxl"] = nqbx_m2l * xlat_cost(p_fmm, p_qbx)
+        result["m2qbxl"] = summarize_parallel(nm2qbxl, xlat_cost(p_fmm, p_qbx))
 
     process_m2qbxl()
 
@@ -758,13 +790,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     # {{{ evaluate qbx local expansions
 
     def process_eval_qbxl():
-        nqbx_eval = 0
+        nqbx_eval = np.zeros(len(global_qbx_centers), dtype=np.intp)
 
-        for src_icenter in global_qbx_centers:
+        for isrc_center, src_icenter in enumerate(global_qbx_centers):
             start, end = center_to_targets_starts[src_icenter:src_icenter+2]
-            nqbx_eval += end-start
+            nqbx_eval[isrc_center] += end-start
 
-        result["qbxl2p"] = nqbx_eval * ncoeffs_qbx
+        result["qbxl2p"] = summarize_parallel(nqbx_eval, ncoeffs_qbx)
 
     process_eval_qbxl()
 
