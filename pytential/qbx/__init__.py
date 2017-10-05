@@ -93,8 +93,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
              that the fine density discretization given by
              *to_refined_connection.to_discr* is *not* already upsampled. May
              be *None*.
-        :arg fmm_order: `False` for direct calculation. ``None`` will set
-             a reasonable(-ish?) default.
+        :arg fmm_order: `False` for direct calculation. May not be given if
+            *fmm_level_to_order* is given.
+        :arg fmm_level_to_order: A function that takes arguments of
+             *(kernel, kernel_args, tree, level)* and returns the expansion
+             order to be used on a given *level* of *tree* with *kernel*, where
+             *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
+             *kernel_args* is a set of *(key, value)* tuples with evaluated
+             kernel arguments. May not be given if *fmm_order* is given.
         """
 
         # {{{ argument processing
@@ -119,15 +125,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             target_association_tolerance = float(
                     np.finfo(density_discr.real_dtype).eps) * 1e3
 
-        if fmm_level_to_order is None:
-            if fmm_order is None and qbx_order is not None:
-                fmm_order = qbx_order + 1
-
-                from warnings import warn
-                warn("Not specifying the FMM order is deprecated. "
-                        "fmm_order will soon be required.",
-                        DeprecationWarning, stacklevel=2)
-
         if fmm_order is not None and fmm_level_to_order is not None:
             raise TypeError("may not specify both fmm_order and fmm_level_to_order")
 
@@ -135,7 +132,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             if fmm_order is False:
                 fmm_level_to_order = False
             else:
-                def fmm_level_to_order(tree, level):
+                def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
 
         # }}}
