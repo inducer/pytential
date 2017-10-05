@@ -533,7 +533,9 @@ class QBXFMMGeometryData(object):
 
         with cl.CommandQueue(self.cl_context) as queue:
             trav, _ = self.code_getter.build_traversal(queue, self.tree(),
-                    debug=self.debug)
+                    debug=self.debug,
+                    _from_sep_smaller_min_nsources_cumul=(
+                        self.lpot_source._from_sep_smaller_min_nsources_cumul))
 
             if self.lpot_source._expansions_in_tree_have_extent:
                 trav = trav.merge_close_lists(queue)

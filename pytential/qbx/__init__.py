@@ -81,6 +81,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _max_leaf_refine_weight=32,
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
+            _from_sep_smaller_min_nsources_cumul=None,
             geometry_data_inspector=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
@@ -166,6 +167,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._max_leaf_refine_weight = _max_leaf_refine_weight
         self._box_extent_norm = _box_extent_norm
         self._from_sep_smaller_crit = _from_sep_smaller_crit
+        self._from_sep_smaller_min_nsources_cumul = \
+                _from_sep_smaller_min_nsources_cumul
         self.geometry_data_inspector = geometry_data_inspector
 
         # /!\ *All* parameters set here must also be set by copy() below,
@@ -248,6 +251,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _max_leaf_refine_weight=self._max_leaf_refine_weight,
                 _box_extent_norm=self._box_extent_norm,
                 _from_sep_smaller_crit=self._from_sep_smaller_crit,
+                _from_sep_smaller_min_nsources_cumul=(
+                    self._from_sep_smaller_min_nsources_cumul),
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
                 fmm_backend=self.fmm_backend,
