@@ -211,65 +211,6 @@ class EHField(object):
         return self.field[3:]
 
 
-class HelmholtzFMMOrderFinder(object):
-    r"""
-    This models the error as:
-
-    .. math::
-
-        C_{\text{lap}} \left(\frac{\sqrt{d}}{3}\right)^{p+1}
-        +
-        C_{\text{helm}} \frac 1{p!} (hk)^{p+1},
-
-    where :math:`d` is the number of dimensions, :math:`p` is the expansion order,
-    :math:`h` is the box size, and :math:`k` is the wave number.
-    """
-
-    def __init__(self, tol, helmholtz_k, err_const_laplace=0.01,
-            err_const_helmholtz=100, extra_order=1):
-        """
-        :arg extra_order: order increase to accommodate, say, the taking of
-            oderivatives f the FMM expansions.
-        """
-        self.tol = tol
-        self.helmholtz_k = helmholtz_k
-
-        self.err_const_laplace = err_const_laplace
-        self.err_const_helmholtz = err_const_helmholtz
-
-        self.extra_order = extra_order
-
-    def __call__(self, tree, level):
-        laplace_order = int(np.ceil(
-                (np.log(self.tol) - np.log(self.err_const_laplace))
-                /
-                np.log(
-                    np.sqrt(tree.dimensions)/3
-                    ) - 1))
-
-        box_lengthscale = (
-            tree.stick_out_factor
-            * tree.root_extent / (1 << level))
-
-        from math import factorial
-        helm_order = 1
-        while True:
-            helm_error = (
-                    1/factorial(helm_order+1)
-                    * self.err_const_helmholtz
-                    * (box_lengthscale * self.helmholtz_k)**(helm_order+1))
-            if helm_error < self.tol:
-                break
-
-            helm_order += 1
-
-            if helm_order > 500:
-                raise ValueError("unable to find suitable order estimate "
-                        "for Helmholtz expansion")
-
-        return max(laplace_order, helm_order) + self.extra_order
-
-
 # {{{ driver
 
 @pytest.mark.parametrize("case", [
@@ -354,6 +295,7 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
+    from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
 
     for resolution in case.resolutions:
         scat_mesh = case.get_mesh(resolution, case.target_order)
@@ -365,8 +307,8 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
         qbx, _ = QBXLayerPotentialSource(
                 pre_scat_discr, fine_order=4*case.target_order,
                 qbx_order=case.qbx_order,
-                fmm_level_to_order=HelmholtzFMMOrderFinder(
-                    case.fmm_tolerance, case.k),
+                fmm_level_to_order=SimpleExpansionOrderFinder(
+                    case.fmm_tolerance),
                 fmm_backend=case.fmm_backend
                 ).with_refinement(_expansion_disturbance_tolerance=0.05)
         h_max = qbx.h_max

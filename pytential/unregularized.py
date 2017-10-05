@@ -73,7 +73,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         if fmm_level_to_order is None:
             if fmm_order is not False:
-                def fmm_level_to_order(level):
+                def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
             else:
                 fmm_level_to_order = False

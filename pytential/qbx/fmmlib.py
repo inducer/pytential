@@ -196,6 +196,17 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     for d_i in source_extra_kwargs[source_deriv_name]],
                     order="F")
 
+        def inner_fmm_level_to_nterms(tree, level):
+            from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+            if helmholtz_k == 0:
+                return fmm_level_to_order(
+                        LaplaceKernel(tree.dimensions),
+                        frozenset(), tree, level)
+            else:
+                return fmm_level_to_order(
+                        HelmholtzKernel(tree.dimensions),
+                        frozenset([("k", helmholtz_k)]), tree, level)
+
         super(QBXFMMLibExpansionWrangler, self).__init__(
                 self.geo_data.tree(),
 
@@ -203,7 +214,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 dipole_vec=dipole_vec,
                 dipoles_already_reordered=True,
 
-                fmm_level_to_nterms=fmm_level_to_order,
+                fmm_level_to_nterms=inner_fmm_level_to_nterms,
 
                 ifgrad=ifgrad)
 
