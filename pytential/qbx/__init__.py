@@ -128,6 +128,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if fmm_order is not None and fmm_level_to_order is not None:
             raise TypeError("may not specify both fmm_order and fmm_level_to_order")
 
+        if _box_extent_norm is None:
+            _box_extent_norm = "l2"
+
         if fmm_level_to_order is None:
             if fmm_order is False:
                 fmm_level_to_order = False
