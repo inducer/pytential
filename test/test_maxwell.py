@@ -138,7 +138,7 @@ class RoundedCubeTestCase(MaxwellTestCase):
 
 class ElliptiPlaneTestCase(MaxwellTestCase):
     target_order = 4
-    gmres_tol = 1e-5
+    gmres_tol = 1e-7
 
     def get_mesh(self, resolution, target_order):
         from pytools import download_from_web_if_not_present
@@ -193,8 +193,8 @@ tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0, 1],
 tc_rc_ext = RoundedCubeTestCase(k=6.4, is_interior=False, resolutions=[0.1],
         qbx_order=3, fmm_tolerance=1e-4)
 
-tc_plane_ext = ElliptiPlaneTestCase(k=0.4, is_interior=False, resolutions=[0.2],
-        qbx_order=3, fmm_tolerance=1e-3)
+tc_plane_ext = ElliptiPlaneTestCase(k=2, is_interior=False, resolutions=[0.15],
+        qbx_order=3, fmm_tolerance=1e-4)
 
 
 class EHField(object):
@@ -479,7 +479,8 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
                 ])
 
             fplot = make_field_plotter_from_bbox(
-                    find_bounding_box(scat_discr.mesh), h=(0.025, 0.025, 0.15))
+                    find_bounding_box(scat_discr.mesh), h=(0.05, 0.05, 0.3),
+                    extend_factor=0.3)
 
             from pytential.qbx import QBXTargetAssociationFailedException
 
