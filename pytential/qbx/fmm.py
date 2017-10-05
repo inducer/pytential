@@ -379,6 +379,8 @@ def drive_fmm(expansion_wrangler, src_weights):
     # Interface guidelines: Attributes of the tree are assumed to be known
     # to the expansion wrangler and should not be passed.
 
+    from time import time
+    start_time = time()
     logger.info("start qbx fmm")
 
     logger.info("reorder source weights")
@@ -525,7 +527,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # }}}
 
-    logger.info("qbx fmm complete")
+    logger.info("qbx fmm complete in %.2f s" % (time() - start_time))
 
     return result
 
