@@ -108,12 +108,13 @@ class target_state(Enum):  # noqa
 
 class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
     def __init__(self, cl_context, ambient_dim, tree_code_container, debug,
-            _well_sep_is_n_away):
+            _well_sep_is_n_away, _from_sep_smaller_crit):
         self.cl_context = cl_context
         self.ambient_dim = ambient_dim
         self.tree_code_container = tree_code_container
         self.debug = debug
         self._well_sep_is_n_away = _well_sep_is_n_away
+        self._from_sep_smaller_crit = _from_sep_smaller_crit
 
     @memoize_method
     def copy_targets_kernel(self):
@@ -140,7 +141,9 @@ class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
         from boxtree.traversal import FMMTraversalBuilder
         return FMMTraversalBuilder(
                 self.cl_context,
-                well_sep_is_n_away=self._well_sep_is_n_away)
+                well_sep_is_n_away=self._well_sep_is_n_away,
+                from_sep_smaller_crit=self._from_sep_smaller_crit,
+                )
 
     @memoize_method
     def qbx_center_to_target_box_lookup(self, particle_id_dtype, box_id_dtype):
@@ -507,6 +510,7 @@ class QBXFMMGeometryData(object):
                     refine_weights=refine_weights,
                     debug=self.debug,
                     stick_out_factor=lpot_src._expansion_stick_out_factor,
+                    extent_norm=lpot_src._box_extent_norm,
                     kind="adaptive")
 
             if self.debug:
@@ -529,7 +533,9 @@ class QBXFMMGeometryData(object):
 
         with cl.CommandQueue(self.cl_context) as queue:
             trav, _ = self.code_getter.build_traversal(queue, self.tree(),
-                    debug=self.debug)
+                    debug=self.debug,
+                    _from_sep_smaller_min_nsources_cumul=(
+                        self.lpot_source._from_sep_smaller_min_nsources_cumul))
 
             if self.lpot_source._expansions_in_tree_have_extent:
                 trav = trav.merge_close_lists(queue)

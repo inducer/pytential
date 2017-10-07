@@ -79,6 +79,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansion_stick_out_factor=0.5,
             _well_sep_is_n_away=2,
             _max_leaf_refine_weight=32,
+            _box_extent_norm=None,
+            _from_sep_smaller_crit=None,
+            _from_sep_smaller_min_nsources_cumul=None,
             geometry_data_inspector=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
@@ -125,12 +128,23 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if fmm_order is not None and fmm_level_to_order is not None:
             raise TypeError("may not specify both fmm_order and fmm_level_to_order")
 
+        if _box_extent_norm is None:
+            _box_extent_norm = "l2"
+
         if fmm_level_to_order is None:
             if fmm_order is False:
                 fmm_level_to_order = False
             else:
                 def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
+
+        if _from_sep_smaller_min_nsources_cumul is None:
+            # See here for the comment thread that led to these defaults:
+            # https://gitlab.tiker.net/inducer/boxtree/merge_requests/28#note_18661
+            if density_discr.dim == 1:
+                _from_sep_smaller_min_nsources_cumul = 15
+            else:
+                _from_sep_smaller_min_nsources_cumul = 30
 
         # }}}
 
@@ -159,6 +173,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._expansion_stick_out_factor = _expansion_stick_out_factor
         self._well_sep_is_n_away = _well_sep_is_n_away
         self._max_leaf_refine_weight = _max_leaf_refine_weight
+        self._box_extent_norm = _box_extent_norm
+        self._from_sep_smaller_crit = _from_sep_smaller_crit
+        self._from_sep_smaller_min_nsources_cumul = \
+                _from_sep_smaller_min_nsources_cumul
         self.geometry_data_inspector = geometry_data_inspector
 
         # /!\ *All* parameters set here must also be set by copy() below,
@@ -239,6 +257,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     else self._expansion_stick_out_factor),
                 _well_sep_is_n_away=self._well_sep_is_n_away,
                 _max_leaf_refine_weight=self._max_leaf_refine_weight,
+                _box_extent_norm=self._box_extent_norm,
+                _from_sep_smaller_crit=self._from_sep_smaller_crit,
+                _from_sep_smaller_min_nsources_cumul=(
+                    self._from_sep_smaller_min_nsources_cumul),
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
                 fmm_backend=self.fmm_backend,
@@ -486,7 +508,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.qbx.geometry import QBXFMMGeometryCodeGetter
         return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim,
                 self.tree_code_container, debug=self.debug,
-                _well_sep_is_n_away=self._well_sep_is_n_away)
+                _well_sep_is_n_away=self._well_sep_is_n_away,
+                _from_sep_smaller_crit=self._from_sep_smaller_crit)
 
     # {{{ fmm-based execution
 
