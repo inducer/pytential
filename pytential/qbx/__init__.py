@@ -138,6 +138,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
 
+        if _from_sep_smaller_min_nsources_cumul is None:
+            # See here for the comment thread that led to these defaults:
+            # https://gitlab.tiker.net/inducer/boxtree/merge_requests/28#note_18661
+            if density_discr.dim == 1:
+                _from_sep_smaller_min_nsources_cumul = 15
+            else:
+                _from_sep_smaller_min_nsources_cumul = 30
+
         # }}}
 
         self.fine_order = fine_order
