@@ -26,8 +26,7 @@ import numpy as np
 from pytools import memoize_method, Record
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
-from boxtree.pyfmmlib_integration import (
-        FMMLibExpansionWrangler, level_to_rscale)
+from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 
@@ -382,7 +381,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             src_boxes_starts[0] = 0
             src_boxes_starts[1:] = np.cumsum(nsrc_boxes_per_gqbx_center)
 
-            rscale1 = np.ones(nsrc_boxes) * level_to_rscale(self.tree, isrc_level)
+            rscale1 = np.ones(nsrc_boxes) * self.level_to_rscale(isrc_level)
             rscale1_offsets = np.arange(nsrc_boxes)
 
             src_ibox = np.empty(nsrc_boxes, dtype=np.int32)
@@ -489,7 +488,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 if in_range:
                     src_center = self.tree.box_centers[:, src_ibox]
                     tmp_loc_exp = locloc(
-                                rscale1=level_to_rscale(self.tree, isrc_level),
+                                rscale1=self.level_to_rscale(isrc_level),
                                 center1=src_center,
                                 expn1=locals_view[
                                     src_ibox - locals_level_start_ibox].T,
