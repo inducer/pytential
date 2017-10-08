@@ -569,7 +569,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
                 "You may pass 'visualize=True' to with_refinement() "
                 "to see what area of the geometry is causing trouble. "
                 "If the issue is disturbance of expansion disks, you may "
-                "pass a slightly increased value (say 1e-2) for "
+                "pass a slightly increased value (currently: %g) for "
                 "_expansion_disturbance_tolerance in with_refinement(). "
                 "As a last resort, "
                 "you may use Python's warning filtering mechanism to "
@@ -577,6 +577,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
                 "The criteria triggering refinement in each iteration "
                 "were: %s. " % (
                     len(violated_criteria),
+                    expansion_disturbance_tolerance,
                     ", ".join(
                         "%d: %s" % (i+1, vc_text)
                         for i, vc_text in enumerate(violated_criteria))),
