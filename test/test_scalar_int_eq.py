@@ -40,7 +40,6 @@ from sumpy.visualization import FieldPlotter
 from sumpy.symbolic import USE_SYMENGINE
 from pytential import bind, sym
 
-
 import logging
 logger = logging.getLogger(__name__)
 
