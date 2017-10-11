@@ -524,10 +524,12 @@ class QBXFMMGeometryData(object):
     # }}}
 
     @memoize_method
-    def traversal(self):
-        """Return a :class:`boxtree.traversal.FMMTraversalInfo` with merged
-        close lists.
-        (See :meth:`boxtree.traversal.FMMTraversalInfo.merge_close_lists`)
+    def traversal(self, merge_close_lists=True):
+        """Return a :class:`boxtree.traversal.FMMTraversalInfo`.
+
+        :arg merge_close_lists: Use merged close lists. (See
+            :meth:`boxtree.traversal.FMMTraversalInfo.merge_close_lists`)
+
         |cached|
         """
 
@@ -537,7 +539,8 @@ class QBXFMMGeometryData(object):
                     _from_sep_smaller_min_nsources_cumul=(
                         self.lpot_source._from_sep_smaller_min_nsources_cumul))
 
-            if self.lpot_source._expansions_in_tree_have_extent:
+            if (merge_close_lists
+                    and self.lpot_source._expansions_in_tree_have_extent):
                 trav = trav.merge_close_lists(queue)
 
             return trav

@@ -538,7 +538,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
 def assemble_performance_data(geo_data, uses_pde_expansions,
         translation_source_power=None, translation_target_power=None,
-        summarize_parallel=None):
+        summarize_parallel=None, merge_close_lists=True):
     """
     :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
         uses translation operators that make use of the knowledge that the
@@ -547,6 +547,14 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         *(parallel_array, sym_multipliers)* used to process an array of
         workloads of 'parallelizable units'. By default, all workloads are
         summed into one number encompassing the total workload.
+    :arg merge_close_lists: A :class:`bool` indicating whether or not all
+        boxes requiring direct evaluation should be merged into a single
+        interaction list. If *False*, *part_direct* and *p2qbxl* will be
+        suffixed with the originating list as follows:
+
+        * *_neighbor* (List 1)
+        * *_sep_smaller* (List 3 close)
+        * *_sep_bigger* (List 4 close).
     """
 
     # FIXME: This should suport target filtering.
@@ -566,7 +574,7 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
     with cl.CommandQueue(geo_data.cl_context) as queue:
         tree = geo_data.tree().get(queue=queue)
-        traversal = geo_data.traversal().get(queue=queue)
+        traversal = geo_data.traversal(merge_close_lists).get(queue=queue)
         box_target_counts_nonchild = (
                 nqbtl.box_target_counts_nonchild.get(queue=queue))
 
@@ -621,26 +629,58 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
     # }}}
 
-    # {{{ direct evaluation from neighbor source boxes ("list 1")
+    # {{{ direct evaluation to point targets (lists 1, 3 close, 4 close)
 
-    def process_list1():
-        npart_direct = np.zeros(len(traversal.target_boxes), dtype=np.intp)
+    def process_direct():
+        # box -> nsources * ntargets
+        npart_direct_list1 = np.zeros(len(traversal.target_boxes), dtype=np.intp)
+        npart_direct_list3 = np.zeros(len(traversal.target_boxes), dtype=np.intp)
+        npart_direct_list4 = np.zeros(len(traversal.target_boxes), dtype=np.intp)
 
         for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
             ntargets = box_target_counts_nonchild[tgt_ibox]
 
-            npart_direct_box = 0
+            npart_direct_list1_srcs = 0
             start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
             for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
                 nsources = tree.box_source_counts_nonchild[src_ibox]
 
-                npart_direct_box += nsources
+                npart_direct_list1_srcs += nsources
 
-            npart_direct[itgt_box] = ntargets * npart_direct_box
+            npart_direct_list1[itgt_box] = ntargets * npart_direct_list1_srcs
 
-        result["part_direct"] = summarize_parallel(npart_direct, 1)
+            if merge_close_lists:
+                continue
 
-    process_list1()
+            npart_direct_list3_srcs = 0
+            start, end = traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2]
+            for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
+                nsources = tree.box_source_counts_nonchild[src_ibox]
+
+                npart_direct_list3_srcs += nsources
+
+            npart_direct_list3[itgt_box] = ntargets * npart_direct_list3_srcs
+
+            npart_direct_list4_srcs = 0
+            start, end = traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2]
+            for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
+                nsources = tree.box_source_counts_nonchild[src_ibox]
+
+                npart_direct_list4_srcs += nsources
+
+            npart_direct_list4[itgt_box] = ntargets * npart_direct_list4_srcs
+
+        if merge_close_lists:
+            result["part_direct"] = summarize_parallel(npart_direct_list1, 1)
+        else:
+            result["part_direct_neighbor"] = (
+                    summarize_parallel(npart_direct_list1, 1))
+            result["part_direct_sep_smaller"] = (
+                    summarize_parallel(npart_direct_list3, 1))
+            result["part_direct_sep_bigger"] = (
+                    summarize_parallel(npart_direct_list4, 1))
+
+    process_direct()
 
     # }}}
 
@@ -738,21 +778,53 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
         result["ncenters"] = ncenters
 
-        nqbxl_direct = np.zeros(len(global_qbx_centers), dtype=np.intp)
+        # center -> nsources
+        np2qbxl_list1 = np.zeros(len(global_qbx_centers), dtype=np.intp)
+        np2qbxl_list3 = np.zeros(len(global_qbx_centers), dtype=np.intp)
+        np2qbxl_list4 = np.zeros(len(global_qbx_centers), dtype=np.intp)
 
         for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
             itgt_box = qbx_center_to_target_box[tgt_icenter]
 
-            nqbxl_direct_center = 0
+            np2qbxl_list1_srcs = 0
             start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
             for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
                 nsources = tree.box_source_counts_nonchild[src_ibox]
 
-                nqbxl_direct_center += nsources
+                np2qbxl_list1_srcs += nsources
 
-            nqbxl_direct[itgt_center] = nqbxl_direct_center
+            np2qbxl_list1[itgt_center] = np2qbxl_list1_srcs
 
-        result["p2qbxl"] = summarize_parallel(nqbxl_direct, ncoeffs_qbx)
+            if merge_close_lists:
+                continue
+
+            np2qbxl_list3_srcs = 0
+            start, end = traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2]
+            for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
+                nsources = tree.box_source_counts_nonchild[src_ibox]
+
+                np2qbxl_list3_srcs += nsources
+
+            np2qbxl_list3[itgt_center] = np2qbxl_list3_srcs
+
+            np2qbxl_list4_srcs = 0
+            start, end = traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2]
+            for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
+                nsources = tree.box_source_counts_nonchild[src_ibox]
+
+                np2qbxl_list4_srcs += nsources
+
+            np2qbxl_list4[itgt_center] = np2qbxl_list4_srcs
+
+        if merge_close_lists:
+            result["p2qbxl"] = summarize_parallel(np2qbxl_list1, ncoeffs_qbx)
+        else:
+            result["p2qbxl_neighbor"] = (
+                    summarize_parallel(np2qbxl_list1, ncoeffs_qbx))
+            result["p2qbxl_sep_smaller"] = (
+                    summarize_parallel(np2qbxl_list3, ncoeffs_qbx))
+            result["p2qbxl_sep_bigger"] = (
+                    summarize_parallel(np2qbxl_list4, ncoeffs_qbx))
 
     process_form_qbxl()
 
