@@ -37,6 +37,7 @@ from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
 from sumpy.visualization import FieldPlotter
+from sumpy.symbolic import USE_SYMENGINE
 from pytential import bind, sym
 
 import logging
@@ -766,6 +767,9 @@ def test_integral_equation(ctx_getter, case, visualize=False):
 
     if case.fmm_backend == "fmmlib":
         pytest.importorskip("pyfmmlib")
+
+    if USE_SYMENGINE and case.fmm_backend is None:
+        pytest.skip("https://gitlab.tiker.net/inducer/sumpy/issues/25")
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
