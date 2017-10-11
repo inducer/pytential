@@ -40,6 +40,7 @@ from meshmode.mesh.generation import (  # noqa
 from pytential import bind, sym, norm
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
+
 import logging
 logger = logging.getLogger(__name__)
 
