@@ -38,7 +38,8 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 
 
-@pytest.mark.skipif(USE_SYMENGINE, reason="line taylor in SymEngine is broken")
+@pytest.mark.skipif(USE_SYMENGINE,
+        reason="https://gitlab.tiker.net/inducer/sumpy/issues/25")
 def test_matrix_build(ctx_factory):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
