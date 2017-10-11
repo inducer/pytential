@@ -39,8 +39,6 @@ from meshmode.mesh.generation import (  # noqa
 # from sumpy.visualization import FieldPlotter
 from pytential import bind, sym, norm
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-from sumpy.symbolic import USE_SYMENGINE
-
 
 import logging
 logger = logging.getLogger(__name__)
@@ -280,9 +278,6 @@ def test_identity_convergence(ctx_getter,  case, visualize=False):
 
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
-
-    if USE_SYMENGINE and case.fmm_order is None:
-        pytest.skip("https://gitlab.tiker.net/inducer/sumpy/issues/25")
 
     for resolution in (
             getattr(case, "resolutions", None)
