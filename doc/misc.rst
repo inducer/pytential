@@ -15,7 +15,8 @@ MacOS support is in the works.
     Everywhere else, just making sure you have the ``g++`` package should be
     enough.
 
-#.  Installing `miniconda for Python 3 on 64-bit Linux <https://conda.io/miniconda.html>`_.
+#.  Install your favorite variant of `miniconda <https://conda.io/miniconda.html>`_.
+    (Both Python 2 and 3 should work. In the absence of other constraints, prefer Python 3.)
 
 #.  ``export CONDA=/WHERE/YOU/INSTALLED/miniconda3``
 
@@ -37,7 +38,7 @@ MacOS support is in the works.
 
         hash -r; for i in pymbolic cgen genpy modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
 
-Next time you want to use `pytential`, just run the following command::
+Next time you want to use :mod:`pytential`, just run the following command::
 
     source /WHERE/YOU/INSTALLED/miniconda3/bin/activate inteq
 
