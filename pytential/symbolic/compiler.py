@@ -72,7 +72,7 @@ class Assign(Instruction):
     def get_dependencies(self):
         try:
             return self._dependencies
-        except:
+        except Exception:
             # arg is include_subscripts
             dep_mapper = self.dep_mapper_factory()
 
