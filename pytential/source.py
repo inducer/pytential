@@ -54,7 +54,7 @@ class PotentialSource(object):
 
 class PointPotentialSource(PotentialSource):
     """
-    ... attribute:: points
+    .. attribute:: points
 
         An :class:`pyopencl.array.Array` of shape ``[ambient_dim, npoints]``.
 

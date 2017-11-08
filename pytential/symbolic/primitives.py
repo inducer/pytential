@@ -356,18 +356,18 @@ class NumReferenceDerivative(DiscretizationProperty):
     mapper_method = intern("map_num_reference_derivative")
 
 
-def reference_jacobian(field, field_dim, dim, where=None):
-    """Return a :class:`np.array` representing the Jacobian of a vector field with
-    respect to the reference coordinates.
+def reference_jacobian(func, output_dim, dim, where=None):
+    """Return a :class:`np.array` representing the Jacobian of a vector function
+    with respect to the reference coordinates.
     """
-    jac = np.zeros((field_dim, dim), np.object)
+    jac = np.zeros((output_dim, dim), np.object)
 
-    for i in range(field_dim):
-        field_component = field[i]
+    for i in range(output_dim):
+        func_component = func[i]
         for j in range(dim):
             jac[i, j] = NumReferenceDerivative(
                 frozenset([j]),
-                field_component,
+                func_component,
                 where)
 
     return jac

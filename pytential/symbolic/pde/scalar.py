@@ -74,7 +74,7 @@ class DirichletOperator(L2WeightedPDEOperator):
     :class:`sumpy.kernel.LaplaceKernel`,
     :class:`sumpy.kernel.HelmholtzKernel`, :class:`sumpy.kernel.YukawaKernel`)
 
-    ..note ::
+    .. note ::
 
         When testing this as a potential matcher, note that it can only
         access potentials that come from charge distributions having *no* net
@@ -180,7 +180,7 @@ class NeumannOperator(L2WeightedPDEOperator):
     :class:`sumpy.kernel.LaplaceKernel`,
     :class:`sumpy.kernel.HelmholtzKernel`, :class:`sumpy.kernel.YukawaKernel`)
 
-    ..note ::
+    .. note ::
 
         When testing this as a potential matcher, note that it can only
         access potentials that come from charge distributions having *no* net
