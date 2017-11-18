@@ -17,8 +17,8 @@ bdry_quad_order = 4
 mesh_order = bdry_quad_order
 qbx_order = bdry_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
-fmm_order = 25
-k = 25
+fmm_order = 10
+k = 3
 
 # }}}
 
@@ -145,14 +145,11 @@ def main():
 
     qbx_stick_out = qbx.copy(target_association_tolerance=0.05)
 
-    indicator_qbx = qbx_stick_out.copy(
-            fmm_level_to_order=lambda lev: 7, qbx_order=2)
-
     ones_density = density_discr.zeros(queue)
     ones_density.fill(1)
     indicator = bind(
-            (indicator_qbx, PointsTarget(targets)),
-            sym.D(LaplaceKernel(2), sym.var("sigma")))(
+            (qbx_stick_out, PointsTarget(targets)),
+            sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None))(
             queue, sigma=ones_density).get()
 
     try:
