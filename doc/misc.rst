@@ -24,7 +24,7 @@ MacOS support is in the works.
 
     ``export CONDA=$HOME/miniconda3``
 
-#.  ``$CONDA/bin/conda create -n inteq python=3.5.2``
+#.  ``$CONDA/bin/conda create -n inteq 'python=3.5``
 
 #.  ``source $CONDA/bin/activate inteq``
 
@@ -32,7 +32,7 @@ MacOS support is in the works.
 
 #.  ``conda config --add channels inducer``
 
-#.  ``conda install git pip pocl islpy pyopencl sympy meshpy pyfmmlib``
+#.  ``conda install git pip pocl=0.13 islpy pyopencl sympy meshpy pyfmmlib``
 
 #.  Type the following command::
 
@@ -46,6 +46,14 @@ You may also like to add this to a startup file (like :file:`$HOME/.bashrc`) or 
 
 After this, you should be able to run the `tests <https://github.com/inducer/pytential/tree/master/test>`_
 or `examples <https://github.com/inducer/pytential/tree/master/examples>`_.
+
+.. note::
+
+    You may have noticed that we prescribed pocl version 0.13 above. That's
+    because newer versions have a `bug
+    <https://gitlab.tiker.net/inducer/pytential/issues/64>`_ that we haven't
+    tracked down just yet. Until this bug is found, we discourage the use of
+    pocl 0.14 as results may be silently inaccurate.
 
 Troubleshooting the Installation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
