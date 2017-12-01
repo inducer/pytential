@@ -189,7 +189,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             density_discr=None,
             fine_order=None,
             qbx_order=None,
-            fmm_level_to_order=None,
+            fmm_level_to_order=_not_provided,
             to_refined_connection=None,
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
@@ -232,7 +232,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     fine_order if fine_order is not None else self.fine_order),
                 qbx_order=qbx_order if qbx_order is not None else self.qbx_order,
                 fmm_level_to_order=(
-                    fmm_level_to_order or self.fmm_level_to_order),
+                    # False is a valid value here
+                    fmm_level_to_order
+                    if fmm_level_to_order is not _not_provided
+                    else self.fmm_level_to_order),
+
                 target_association_tolerance=target_association_tolerance,
                 to_refined_connection=(
                     to_refined_connection or self._to_refined_connection),
