@@ -653,20 +653,28 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
                 continue
 
             npart_direct_list3_srcs = 0
-            start, end = traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2]
-            for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
-                nsources = tree.box_source_counts_nonchild[src_ibox]
 
-                npart_direct_list3_srcs += nsources
+            # Could be None, if not using targets with extent.
+            if traversal.from_sep_close_smaller_starts is not None:
+                start, end = (
+                        traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2])
+                for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
+                    nsources = tree.box_source_counts_nonchild[src_ibox]
+
+                    npart_direct_list3_srcs += nsources
 
             npart_direct_list3[itgt_box] = ntargets * npart_direct_list3_srcs
 
             npart_direct_list4_srcs = 0
-            start, end = traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2]
-            for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
-                nsources = tree.box_source_counts_nonchild[src_ibox]
 
-                npart_direct_list4_srcs += nsources
+            # Could be None, if not using targets with extent.
+            if traversal.from_sep_close_bigger_starts is not None:
+                start, end = (
+                        traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2])
+                for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
+                    nsources = tree.box_source_counts_nonchild[src_ibox]
+
+                    npart_direct_list4_srcs += nsources
 
             npart_direct_list4[itgt_box] = ntargets * npart_direct_list4_srcs
 
@@ -799,20 +807,28 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
                 continue
 
             np2qbxl_list3_srcs = 0
-            start, end = traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2]
-            for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
-                nsources = tree.box_source_counts_nonchild[src_ibox]
 
-                np2qbxl_list3_srcs += nsources
+            # Could be None, if not using targets with extent.
+            if traversal.from_sep_close_smaller_starts is not None:
+                start, end = (
+                        traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2])
+                for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
+                    nsources = tree.box_source_counts_nonchild[src_ibox]
+
+                    np2qbxl_list3_srcs += nsources
 
             np2qbxl_list3[itgt_center] = np2qbxl_list3_srcs
 
             np2qbxl_list4_srcs = 0
-            start, end = traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2]
-            for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
-                nsources = tree.box_source_counts_nonchild[src_ibox]
 
-                np2qbxl_list4_srcs += nsources
+            # Could be None, if not using targets with extent.
+            if traversal.from_sep_close_bigger_starts is not None:
+                start, end = (
+                        traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2])
+                for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
+                    nsources = tree.box_source_counts_nonchild[src_ibox]
+
+                    np2qbxl_list4_srcs += nsources
 
             np2qbxl_list4[itgt_center] = np2qbxl_list4_srcs
 
