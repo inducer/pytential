@@ -30,7 +30,7 @@ MacOS support is in the works.
 
 #.  ``conda config --add channels conda-forge``
 
-#.  ``conda install git pip pocl=0.13 islpy pyopencl sympy pyfmmlib``
+#.  ``conda install git pip pocl=0.13 islpy pyopencl sympy pyfmmlib pytest``
 
 #.  Type the following command::
 
