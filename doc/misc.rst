@@ -24,7 +24,7 @@ MacOS support is in the works.
 
     ``export CONDA=$HOME/miniconda3``
 
-#.  ``$CONDA/bin/conda create -n inteq 'python=3.5``
+#.  ``$CONDA/bin/conda create -n inteq``
 
 #.  ``source $CONDA/bin/activate inteq``
 
