@@ -68,7 +68,6 @@ vol_ovsmp_quad_order = 4*vol_quad_order
 bdry_quad_order = vol_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
 qbx_order = 4
-vol_qbx_order = 2
 fmm_order = False
 
 
@@ -159,24 +158,35 @@ def main():
         from pymbolic import var
 
         d = make_sym_vector("d", 3)
-        r2 = pymbolic_real_norm_2(d[:-1])
-        # r3 = pymbolic_real_norm_2(d)
-        expr = var("log")(r2 + d[-1]**2)
-        #expr = var("log")(r3)
+        r = pymbolic_real_norm_2(d[:-1])
+        # r3d = pymbolic_real_norm_2(d)
+        #expr = var("log")(r3d)
+
+        log = var("log")
+        sqrt = var("sqrt")
+
+        a = d[-1]
+
+        expr = log(r)
+        expr = log(sqrt(r**2 + a**2))
+        expr = log(sqrt(r + a**2))
+        #expr = log(sqrt(r**2 + a**2))-a**2/2/(r**2+a**2)
+        #expr = 2*log(sqrt(r**2 + a**2))
+
         scaling = 1/(2*var("pi"))
 
         from sumpy.kernel import ExpressionKernel
         return ExpressionKernel(
                 dim=3,
                 expression=expr,
-                scaling=scaling,
+                global_scaling_const=scaling,
                 is_complex_valued=False)
 
     laplace_2d_in_3d_kernel = get_kernel()
 
     layer_pot = LayerPotential(ctx, [
         LineTaylorLocalExpansion(laplace_2d_in_3d_kernel,
-            order=vol_qbx_order)])
+            order=0)])
 
     targets = cl.array.zeros(queue, (3,) + vol_x.shape[1:], vol_x.dtype)
     targets[:2] = vol_x
@@ -208,7 +218,8 @@ def main():
             centers=centers,
             sources=sources.reshape(3, ovsmp_vol_discr.nnodes),
             strengths=(
-                (ovsmp_vol_weights*ovsmp_rhs).reshape(ovsmp_vol_discr.nnodes),)
+                (ovsmp_vol_weights*ovsmp_rhs).reshape(ovsmp_vol_discr.nnodes),),
+            expansion_radii=np.zeros(vol_discr.nnodes),
             )
 
     vol_pot_bdry = bdry_connection(queue, vol_pot)
@@ -281,7 +292,7 @@ def main():
     print("bdry_quad_order = %s" % bdry_quad_order)
     print("bdry_ovsmp_quad_order = %s" % bdry_ovsmp_quad_order)
     print("qbx_order = %s" % qbx_order)
-    print("vol_qbx_order = %s" % vol_qbx_order)
+    #print("vol_qbx_order = %s" % vol_qbx_order)
     print("fmm_order = %s" % fmm_order)
     print()
     print("rel err: %g" % rel_err)
