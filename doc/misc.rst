@@ -30,13 +30,11 @@ MacOS support is in the works.
 
 #.  ``conda config --add channels conda-forge``
 
-#.  ``conda config --add channels inducer``
-
-#.  ``conda install git pip pocl=0.13 islpy pyopencl sympy meshpy pyfmmlib``
+#.  ``conda install git pip pocl=0.13 islpy pyopencl sympy pyfmmlib``
 
 #.  Type the following command::
 
-        hash -r; for i in pymbolic cgen genpy modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
 
 Next time you want to use :mod:`pytential`, just run the following command::
 

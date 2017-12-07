@@ -1,6 +1,5 @@
 name: test-conda-env-py3
 channels:
-- inducer
 - conda-forge
 - defaults
 dependencies:
@@ -10,7 +9,6 @@ dependencies:
 - pocl=0.13
 - islpy
 - pyopencl
-- meshpy
 - python=3.5
 - symengine=0.3.0
 - python-symengine=0.3.0
