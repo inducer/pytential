@@ -781,8 +781,9 @@ class QBXFMMGeometryData(object):
             nqbx_centers = self.ncenters
             flags[:nqbx_centers] = 0
 
-            from boxtree.tree import filter_target_lists_in_tree_order
-            result = filter_target_lists_in_tree_order(queue, self.tree(), flags)
+            tree = self.tree()
+            plfilt = self.code_getter.particle_list_filter()
+            result = plfilt.filter_target_lists_in_tree_order(queue, tree, flags)
 
             logger.info("find non-qbx box target lists: done")
 
