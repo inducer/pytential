@@ -115,7 +115,7 @@ def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=N
 # {{{ Charge-Current MFIE
 
 class PECChargeCurrentMFIEOperator:
-    r"""Magnetic Field Integral Equation operator with PEC boundary
+    """Magnetic Field Integral Equation operator with PEC boundary
     conditions, under the assumption of no surface charges.
 
     See :file:`contrib/notes/mfie.tm` in the repository for a derivation.
@@ -282,5 +282,140 @@ class MuellerAugmentedMFIEOperator(object):
 
 # }}}
 
+
+
+# {{{ Decoupled Potential Integral Equation Operator
+class DPIEOperator:
+    """
+    Decoupled Potential Integral Equation operator with PEC boundary
+    conditions, defaults as scaled DPIE.
+
+    See https://arxiv.org/abs/1404.0749 for derivation.
+
+    Uses E(x,t) = Re{E(x) exp(-i omega t)} and H(x,t) = Re{H(x) exp(-i omega t)}
+    and solves for the E(x), H(x) fields using vector and scalar potentials via
+    the Lorenz Gauage. The DPIE formulates the problem purely in terms of the 
+    vector and scalar potentials, A and phi, and then backs out E(x) and H(x) 
+    via relationships to the vector and scalar potentials.
+    """
+
+    def __init__(self, k=sym.var("k"), char_funcs):
+        from sumpy.kernel import HelmholtzKernel
+        self.k          = k
+        self.kernel     = HelmholtzKernel(3)
+        self.char_funcs = char_funcs
+
+
+    def phi_operator(self,sigma,V_array):
+        """
+        Integral Equation operator for obtaining scalar potential, `phi`
+        """
+        return sym.join_fields(
+                        0.5*sigma + sym.D(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
+                         - 1j*self.k*sym.S(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
+                         + np.sum(V_array,self.char_funcs),
+                         # include integral here 
+                         )
+
+
+    def phi_rhs(self, phi_inc, Q_array):
+        """
+        The Right-Hand-Side for the Integral Equation for `phi`
+        """
+        return sym.join_fields(-phi_inc,
+                                Q_array/self.k)
+
+    def A_operator(self, a, rho, v_array):
+        """
+        Integral Equation operator for obtaining vector potential, `A`
+        """
+
+        # define Derivative instance for divergence
+        d = sym.Derivative()
+
+        # define the normal vector in symbolic form
+        n = sym.normal(len(a), where).as_vector()
+
+        # define system of integral equations for A
+        return sym.join_fields(
+            0.5*a + sym.n_cross(sym.S(self.kernel,a,k=self.k,qbx_forced_limit="avg"))
+                    -self.k * sym.n_cross(sym.S(self.kernel,n*rho,k=self.k,qbx_forced_limit="avg"))
+                    + 1j*(
+                        self.k*sym.n_cross(sym.cross(sym.S(self.kernel,n,k=self.k,qbx_forced_limit="avg"),a))
+                        + sym.n_cross(sym.grad(3,sym.S(self.kernel,rho,k=self.k,qbx_forced_limit="avg")))
+                        ),
+            0.5*rho + sym.D(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
+                    + 1j*(
+                        d.dnabla(sym.S(self.kernel,sym.n_cross(a),k=self.k,qbx_forced_limit="avg"))
+                        - self.k*sym.S(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
+                        ) 
+                    + np.sum(v_array,self.char_funcs),
+                    # linear equation used for uniqueness
+            )
+
+    def A_rhs(self, A_inc, q_array):
+        """
+        The Right-Hand-Side for the Integral Equation for `A`
+        """
+
+        # define Derivative instance for divergence
+        d = sym.Derivative()
+
+        # define RHS for `A` integral equation system
+        return sym.join_fields(
+                -sym.n_cross(A_inc),
+                -d.dnabla(A_inc)/self.k,
+                q_array
+            )
+
+
+    def scalar_potential_rep(self, sigma, qbx_forced_limit=None):
+        """
+        This method is a representation of the scalar potential, phi,
+        based on the density `sigma`.
+        """
+        return sym.D(self.kernel,sigma,k=self.k,qbx_forced_limit=qbx_forced_limit)
+                - 1j*self.k*sym.S(self.kernel,sigma,k=self.k,qbx_forced_limit=qbx_forced_limit)
+
+    def vector_potential_rep(self, a, rho, qbx_forced_limit=None):
+        """
+        This method is a representation of the vector potential, phi,
+        based on the vector density `a` and scalar density `rho`
+        """
+        # define the normal vector in symbolic form
+        n = sym.normal(len(a), where).as_vector()
+
+        # define the vector potential representation
+        return sym.curl(sym.S(self.kernel,a,k=self.k,qbx_forced_limit=qbx_forced_limit))
+                - self.k*sym.S(self,kernel,rho*n,k=self.k,qbx_forced_limit=qbx_forced_limit)
+                + 1j*(
+                    self.k*sym.S(self.kernel,sym.n_cross(a),k=self.k,qbx_forced_limit=qbx_forced_limit)
+                    + sym.grad(3,sym.S(self.kernel,rho,k=self.k,qbx_forced_limit=qbx_forced_limit))
+                    )
+
+
+    def scattered_volume_field(self, sigma_soln, a_soln, rho_soln, qbx_forced_limit=None):
+        """
+        This will return an object of six entries, the first three of which
+        represent the electric, and the second three of which represent the
+        magnetic field. 
+
+        <NOT TRUE YET>
+        This satisfies the time-domain Maxwell's equations
+        as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
+        """
+
+        # obtain expressions for scalar and vector potentials
+        A   = self.vector_potential_rep(a_soln,rho_soln,qbx_forced_limit=qbx_forced_limit)
+        phi = self.scalar_potential_rep(sigma_soln,qbx_forced_limit=qbx_forced_limit)
+
+        # evaluate the potential form for the electric and magnetic fields
+        E_scat = 1j*self.k*A - sym.grad(3, phi)
+        H_scat = sym.curl(A)
+
+        # join the fields into a vector
+        return sym.join_fields(E_scat, H_scat)
+
+# }}}
 
 # vim: foldmethod=marker
