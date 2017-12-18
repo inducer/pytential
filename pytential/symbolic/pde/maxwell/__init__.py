@@ -334,7 +334,7 @@ class DPIEOperator:
         d = sym.Derivative()
 
         # define the normal vector in symbolic form
-        n = sym.normal(len(a), where).as_vector()
+        n = sym.normal(len(a), None).as_vector()
 
         # define system of integral equations for A
         return sym.join_fields(
@@ -383,7 +383,7 @@ class DPIEOperator:
         based on the vector density `a` and scalar density `rho`
         """
         # define the normal vector in symbolic form
-        n = sym.normal(len(a), where).as_vector()
+        n = sym.normal(len(a), None).as_vector()
 
         # define the vector potential representation
         return sym.curl(sym.S(self.kernel,a,k=self.k,qbx_forced_limit=qbx_forced_limit))
