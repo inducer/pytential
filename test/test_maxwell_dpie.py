@@ -222,16 +222,25 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     extinction of the combined (incoming + scattered) field on the interior
     of the scatterer.
     """
+
+    # setup the basic config for logging
     logging.basicConfig(level=logging.INFO)
 
+    # setup the OpenCL context and queue
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
+    # import or skip pyfmmlib
     pytest.importorskip("pyfmmlib")
 
+    # initialize the random seed
     np.random.seed(12)
 
+    # specify a dictionary with some useful arguments
     knl_kwargs = {"k": case.k}
+
+    # specify the list of geometry objects being used
+    geom_list = ["g0"]
 
     # {{{ come up with a solution to Maxwell's equations
 
@@ -239,22 +248,41 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     jt_sym = sym.make_sym_vector("jt", 2)
     rho_sym = sym.var("rho")
 
+    # specify some symbolic variables that will be used
+    # in the process to solve integral equations for the DPIE
+    rho_sym     = sym.var("rho")
+    sigma_sym   = sym.var("sigma")
+    a_sym       = sym.make_sym_vector("a", 3)
+    V_sym       = sym.make_sym_vector("V", len(geom_list))
+    v_sym       = sym.make_sym_vector("v", len(geom_list))
+
+
+    # import some functionality from maxwell into this
+    # local scope environment
     from pytential.symbolic.pde.maxwell import (
             DPIEOperator,
             get_sym_maxwell_point_source,
             get_sym_maxwell_plane_wave)
 
-    geom_list = [None]
-    dpie = DPIEOperator(geometry_list = geom_list)
+    # initialize the DPIE operator based on the geometry list
+    dpie = DPIEOperator(geometry_list=geom_list)
 
+    # get test source locations from the passed in case's queue
     test_source = case.get_source(queue)
 
+    # create the calculus patch and get calculus patch for targets
     calc_patch = CalculusPatch(np.array([-3, 0, 0]), h=0.01)
     calc_patch_tgt = PointsTarget(cl.array.to_device(queue, calc_patch.points))
 
+    # define a random number generator based on OpenCL
     rng = cl.clrandom.PhiloxGenerator(cl_ctx, seed=12)
+
+    # use OpenCL random number generator to create a set of random
+    # source locations for various variables being solved for
     src_j = rng.normal(queue, (3, test_source.nnodes), dtype=np.float64)
 
+    # define a local method that will evaluate some incident field
+    # at a set of target locations
     def eval_inc_field_at(tgt):
         if 0:
             # plane wave
@@ -269,43 +297,58 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
             # point source
             return bind(
                     (test_source, tgt),
-                    get_sym_maxwell_point_source(mfie.kernel, j_sym, mfie.k)
+                    get_sym_maxwell_point_source(dpie.kernel, j_sym, dpie.k)
                     )(queue, j=src_j, k=case.k)
 
+    # get the Electromagnetic field evaluated at the target calculus patch
     pde_test_inc = EHField(
             vector_from_device(queue, eval_inc_field_at(calc_patch_tgt)))
 
+    # compute residuals of incident field at source points
     source_maxwell_resids = [
             calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_inc.e, np.inf)
             for x in frequency_domain_maxwell(
                 calc_patch, pde_test_inc.e, pde_test_inc.h, case.k)]
+
+    # make sure Maxwell residuals are small so we know the incident field
+    # properly satisfies the maxwell equations
     print("Source Maxwell residuals:", source_maxwell_resids)
     assert max(source_maxwell_resids) < 1e-6
 
     # }}}
 
+
+    # {{{ Solve for the scattered field
+
     loc_sign = -1 if case.is_interior else +1
 
+    # import a bunch of stuff that will be useful
     from pytools.convergence import EOCRecorder
-
-    eoc_rec_repr_maxwell = EOCRecorder()
-    eoc_pec_bc = EOCRecorder()
-    eoc_rec_e = EOCRecorder()
-    eoc_rec_h = EOCRecorder()
-
     from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
+        InterpolatoryQuadratureSimplexGroupFactory
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
 
-    for resolution in case.resolutions:
-        scat_mesh = case.get_mesh(resolution, case.target_order)
-        observation_mesh = case.get_observation_mesh(case.target_order)
+    # setup an EOC Recorder
+    eoc_rec_repr_maxwell    = EOCRecorder()
+    eoc_pec_bc              = EOCRecorder()
+    eoc_rec_e               = EOCRecorder()
+    eoc_rec_h               = EOCRecorder()
 
+    # loop through the case's resolutions and compute the scattered field solution
+    for resolution in case.resolutions:
+
+        # get the scattered and observation mesh
+        scat_mesh           = case.get_mesh(resolution, case.target_order)
+        observation_mesh    = case.get_observation_mesh(case.target_order)
+
+        # define the pre-scattered discretization
         pre_scat_discr = Discretization(
                 cl_ctx, scat_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
+
+        # obtain the QBX layer potential source object
         qbx, _ = QBXLayerPotentialSource(
                 pre_scat_discr, fine_order=4*case.target_order,
                 qbx_order=case.qbx_order,
@@ -313,36 +356,48 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                     case.fmm_tolerance),
                 fmm_backend=case.fmm_backend
                 ).with_refinement(_expansion_disturbance_tolerance=0.05)
+
+        # define the geometry dictionary
+        geom_map = {"g0": qbx}
+
+        # get the maximum mesh element edge length
         h_max = qbx.h_max
 
-        scat_discr = qbx.density_discr
-        obs_discr = Discretization(
-                cl_ctx, observation_mesh,
-                InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
+        # define the scattered and observation discretization
+        scat_discr  = qbx.density_discr
+        obs_discr   = Discretization(cl_ctx, observation_mesh,
+                                     InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
-        inc_field_scat = EHField(eval_inc_field_at(scat_discr))
-        inc_field_obs = EHField(eval_inc_field_at(obs_discr))
+        # get the incident field at the scatter and observation locations
+        inc_field_scat  = EHField(eval_inc_field_at(scat_discr))
+        inc_field_obs   = EHField(eval_inc_field_at(obs_discr))
 
-        # {{{ system solve
+        # {{{ solve the system of integral equations
 
         inc_xyz_sym = EHField(sym.make_sym_vector("inc_fld", 6))
 
-        bound_j_op = bind(qbx, mfie.j_operator(loc_sign, jt_sym))
-        j_rhs = bind(qbx, mfie.j_rhs(inc_xyz_sym.h))(
-                queue, inc_fld=inc_field_scat.field, **knl_kwargs)
+        # setup operators that will be solved
+        phi_op  = bind(geom_map,dpie.phi_operator(sigma=sigma_sym,V_array=V_sym))
+        phi_rhs = bind(geom_map,dpie.phi_rhs(phi_inc=))
+        A_op    = bind(geom_map,dpie.A_operator(a=a_sym,rho=rho_sym,v_array=v_sym))
+        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=A_inc_field))
 
+        # set GMRES settings for solving
         gmres_settings = dict(
                 tol=case.gmres_tol,
                 progress=True,
                 hard_failure=True,
                 stall_iterations=50, no_progress_factor=1.05)
+
+        # setup GMRES to solve vector equation
         from pytential.solve import gmres
         gmres_result = gmres(
-                bound_j_op.scipy_op(queue, "jt", np.complex128, **knl_kwargs),
-                j_rhs, **gmres_settings)
+                A_op.scipy_op(queue, "jt", np.complex128, **knl_kwargs),
+                A_rhs, **gmres_settings)
 
         jt = gmres_result.solution
 
+        # setup GMRES to solve scalar equation
         bound_rho_op = bind(qbx, mfie.rho_operator(loc_sign, rho_sym))
         rho_rhs = bind(qbx, mfie.rho_rhs(jt_sym, inc_xyz_sym.e))(
                 queue, jt=jt, inc_fld=inc_field_scat.field, **knl_kwargs)
