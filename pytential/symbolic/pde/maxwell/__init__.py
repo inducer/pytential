@@ -299,11 +299,23 @@ class DPIEOperator:
     via relationships to the vector and scalar potentials.
     """
 
-    def __init__(self, k=sym.var("k"), char_funcs):
+    def __init__(self, k=sym.var("k"), geometry_list):
         from sumpy.kernel import HelmholtzKernel
+
+        # specify the frequency variable that will be tuned
         self.k          = k
+
+        # specify the 3-D Helmholtz kernel 
         self.kernel     = HelmholtzKernel(3)
-        self.char_funcs = char_funcs
+
+        # specify a list of strings representing geometry objects
+        self.geom_list   = geometry_list
+
+        # create the characteristic functions that give a value of
+        # 1 when we are on some surface/valume and a value of 0 otherwise
+        self.char_funcs = np.zeros((len(geometry_list),), dtype=sym.var)
+        for idx in range(0,len(geometry_list)):
+            self.char_funcs[idx] = sym.D(self.kernel,1,source=self.geom_list[idx])
 
 
     def phi_operator(self,sigma,V_array):
@@ -313,15 +325,25 @@ class DPIEOperator:
         return sym.join_fields(
                         0.5*sigma + sym.D(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
                          - 1j*self.k*sym.S(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
-                         + np.sum(V_array,self.char_funcs),
-                         # include integral here 
+                         + np.dot(V_array,self.char_funcs),
+                         sym.integral(ambient_dim=3,dim=2,
+                            sym.Dp(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")/self.k
+                            + 1j*sigma/2.0 - 1j*sym.Sp(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
+                            )
                          )
 
 
-    def phi_rhs(self, phi_inc, Q_array):
+    def phi_rhs(self, phi_inc):
         """
         The Right-Hand-Side for the Integral Equation for `phi`
         """
+
+        # get the Q_array
+        Q_array = np.zeros((len(geometry_list),),dtype=sym.var)
+        for i in range(0,len(geometry_list)):
+            Q_array[i] = -sym.integral(3,2,sym.n_dot(sym.grad(3,phi_inc)),where=geometry_list[i])
+
+        # return the resulting field
         return sym.join_fields(-phi_inc,
                                 Q_array/self.k)
 
@@ -329,9 +351,6 @@ class DPIEOperator:
         """
         Integral Equation operator for obtaining vector potential, `A`
         """
-
-        # define Derivative instance for divergence
-        d = sym.Derivative()
 
         # define the normal vector in symbolic form
         n = sym.normal(len(a), None).as_vector()
@@ -346,25 +365,35 @@ class DPIEOperator:
                         ),
             0.5*rho + sym.D(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
                     + 1j*(
-                        d.dnabla(sym.S(self.kernel,sym.n_cross(a),k=self.k,qbx_forced_limit="avg"))
+                        sym.div(sym.S(self.kernel,sym.n_cross(a),k=self.k,qbx_forced_limit="avg"))
                         - self.k*sym.S(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
                         ) 
-                    + np.sum(v_array,self.char_funcs),
-                    # linear equation used for uniqueness
+                    + np.dot(v_array,self.char_funcs),
+            sym.integral(ambient_dim=3,dim=2,
+                sym.n_dot(sym.curl(sym.S(self.kernel,a,k=self.k,qbx_forced_limit="avg")))
+                - self.k * sym.n_dot(sym.S(self.kernel,n*rho,k=self.k,qbx_forced_limit="avg"))
+                + 1j*(
+                    self.k*sym.n_dot(sym.S(self.kernel,sym.n_cross(a),k=self.k,qbx_forced_limit="avg")) 
+                    - rho/2.0 
+                    + sym.Sp(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
+                    )
+                )
             )
 
-    def A_rhs(self, A_inc, q_array):
+    def A_rhs(self, A_inc):
         """
         The Right-Hand-Side for the Integral Equation for `A`
         """
 
-        # define Derivative instance for divergence
-        d = sym.Derivative()
+        # get the q_array
+        q_array = np.zeros((len(geometry_list),),dtype=sym.var)
+        for i in range(0,len(geometry_list)):
+            q_array[i] = -sym.integral(3,2,sym.n_dot(A_inc),where=geometry_list[i])
 
         # define RHS for `A` integral equation system
         return sym.join_fields(
                 -sym.n_cross(A_inc),
-                -d.dnabla(A_inc)/self.k,
+                -sym.div(A_inc)/self.k,
                 q_array
             )
 
