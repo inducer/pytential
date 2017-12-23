@@ -29,6 +29,10 @@ Python 3.6 POCL:
 Python 3.5 Conda:
   script:
   - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
+
+  - export XDG_CACHE_HOME=$HOME/.cache-conda
+  - mkdir -p $XDG_CACHE_HOME
+
   - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
   - REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
