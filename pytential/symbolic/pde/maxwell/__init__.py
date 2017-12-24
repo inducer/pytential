@@ -306,7 +306,7 @@ class MuellerAugmentedMFIEOperator(object):
 
 
 # {{{ Decoupled Potential Integral Equation Operator
-class DPIEOperator(object):
+class DPIEOperator:
     """
     Decoupled Potential Integral Equation operator with PEC boundary
     conditions, defaults as scaled DPIE.
