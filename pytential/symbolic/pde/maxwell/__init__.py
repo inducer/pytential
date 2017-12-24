@@ -317,11 +317,22 @@ class DPIEOperator:
         for idx in range(0,len(geometry_list)):
             self.char_funcs[idx] = sym.D(self.kernel,1,source=self.geom_list[idx])
 
+    def numVectorPotentialDensities():
+        return 3 + len(geometry_list)
 
-    def phi_operator(self,sigma,V_array):
+    def numScalarPotentialDensities():
+        return 1 + len(geometry_list)
+
+    def phi_operator(self,phi_densities):
         """
         Integral Equation operator for obtaining scalar potential, `phi`
         """
+
+        # extract the densities needed to solve the system of equations
+        sigma       = phi_densities[0]
+        V_array     = phi_densities[1:]
+
+        # produce integral equation system
         return sym.join_fields(
                         0.5*sigma + sym.D(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
                          - 1j*self.k*sym.S(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
@@ -347,10 +358,15 @@ class DPIEOperator:
         return sym.join_fields(-phi_inc,
                                 Q_array/self.k)
 
-    def A_operator(self, a, rho, v_array):
+    def A_operator(self, A_densities):
         """
         Integral Equation operator for obtaining vector potential, `A`
         """
+
+        # extract the densities needed to solve the system of equations
+        rho     = A_densities[0]
+        a       = sym.tangential_to_xyz(A_densities[1:3])
+        v_array = A_densities[3:]
 
         # define the normal vector in symbolic form
         n = sym.normal(len(a), None).as_vector()
@@ -396,19 +412,29 @@ class DPIEOperator:
             )
 
 
-    def scalar_potential_rep(self, sigma, qbx_forced_limit=None):
+    def scalar_potential_rep(self, phi_densities, qbx_forced_limit=None):
         """
         This method is a representation of the scalar potential, phi,
         based on the density `sigma`.
         """
+
+        # extract the densities needed to solve the system of equations
+        sigma       = phi_densities[0]
+
+        # evaluate scalar potential representation
         return sym.D(self.kernel,sigma,k=self.k,qbx_forced_limit=qbx_forced_limit)\
                - 1j*self.k*sym.S(self.kernel,sigma,k=self.k,qbx_forced_limit=qbx_forced_limit)
 
-    def vector_potential_rep(self, a, rho, qbx_forced_limit=None):
+    def vector_potential_rep(self, A_densities, qbx_forced_limit=None):
         """
         This method is a representation of the vector potential, phi,
         based on the vector density `a` and scalar density `rho`
         """
+
+        # extract the densities needed to solve the system of equations
+        rho     = A_densities[0]
+        a       = sym.tangential_to_xyz(A_densities[1:3])
+
         # define the normal vector in symbolic form
         n = sym.normal(len(a), None).as_vector()
 
@@ -421,7 +447,7 @@ class DPIEOperator:
                )
 
 
-    def scattered_volume_field(self, sigma_soln, a_soln, rho_soln, qbx_forced_limit=None):
+    def scattered_volume_field(self, phi_densities, A_densities, qbx_forced_limit=None):
         """
         This will return an object of six entries, the first three of which
         represent the electric, and the second three of which represent the
@@ -433,8 +459,8 @@ class DPIEOperator:
         """
 
         # obtain expressions for scalar and vector potentials
-        A   = self.vector_potential_rep(a_soln,rho_soln,qbx_forced_limit=qbx_forced_limit)
-        phi = self.scalar_potential_rep(sigma_soln,qbx_forced_limit=qbx_forced_limit)
+        A   = self.vector_potential_rep(A_densities,qbx_forced_limit=qbx_forced_limit)
+        phi = self.scalar_potential_rep(phi_densities,qbx_forced_limit=qbx_forced_limit)
 
         # evaluate the potential form for the electric and magnetic fields
         E_scat = 1j*self.k*A - sym.grad(3, phi)

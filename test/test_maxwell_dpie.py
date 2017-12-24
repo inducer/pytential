@@ -248,14 +248,6 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     jt_sym = sym.make_sym_vector("jt", 2)
     rho_sym = sym.var("rho")
 
-    # specify some symbolic variables that will be used
-    # in the process to solve integral equations for the DPIE
-    rho_sym     = sym.var("rho")
-    sigma_sym   = sym.var("sigma")
-    a_sym       = sym.make_sym_vector("a", 3)
-    V_sym       = sym.make_sym_vector("V", len(geom_list))
-    v_sym       = sym.make_sym_vector("v", len(geom_list))
-
 
     # import some functionality from maxwell into this
     # local scope environment
@@ -266,6 +258,13 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
     # initialize the DPIE operator based on the geometry list
     dpie = DPIEOperator(geometry_list=geom_list)
+
+
+    # specify some symbolic variables that will be used
+    # in the process to solve integral equations for the DPIE
+    phi_densities   = sym.make_sym_vector("phi_densities", dpie.numScalarPotentialDensities())
+    A_densities     = sym.make_sym_vector("A_densities", dpie.numVectorPotentialDensities())
+
 
     # get test source locations from the passed in case's queue
     test_source = case.get_source(queue)
@@ -377,10 +376,10 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
         inc_xyz_sym = EHField(sym.make_sym_vector("inc_fld", 6))
 
         # setup operators that will be solved
-        phi_op  = bind(geom_map,dpie.phi_operator(sigma=sigma_sym,V_array=V_sym))
+        phi_op  = bind(geom_map,dpie.phi_operator(phi_densities=phi_densities))
         phi_rhs = bind(geom_map,dpie.phi_rhs(phi_inc=))
-        A_op    = bind(geom_map,dpie.A_operator(a=a_sym,rho=rho_sym,v_array=v_sym))
-        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=A_inc_field))
+        A_op    = bind(geom_map,dpie.A_operator(A_densities=A_densities))
+        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=))
 
         # set GMRES settings for solving
         gmres_settings = dict(
@@ -389,32 +388,26 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                 hard_failure=True,
                 stall_iterations=50, no_progress_factor=1.05)
 
-        # setup GMRES to solve vector equation
+        # get the GMRES functionality
         from pytential.solve import gmres
+
+        # solve for the scalar potential densities
         gmres_result = gmres(
-                A_op.scipy_op(queue, "jt", np.complex128, **knl_kwargs),
+                        phi_op.scipy_op(queue, "phi_densities", np.complex128, **knl_kwargs),
+                        phi_rhs, **gmres_settings)
+        phi_dens    = gmres_result.solution
+
+        # solve for the vector potential densities
+        gmres_result = gmres(
+                A_op.scipy_op(queue, "A_densities", np.complex128, **knl_kwargs),
                 A_rhs, **gmres_settings)
-
-        jt = gmres_result.solution
-
-        # setup GMRES to solve scalar equation
-        bound_rho_op = bind(qbx, mfie.rho_operator(loc_sign, rho_sym))
-        rho_rhs = bind(qbx, mfie.rho_rhs(jt_sym, inc_xyz_sym.e))(
-                queue, jt=jt, inc_fld=inc_field_scat.field, **knl_kwargs)
-
-        gmres_result = gmres(
-                bound_rho_op.scipy_op(queue, "rho", np.complex128, **knl_kwargs),
-                rho_rhs, **gmres_settings)
-
-        rho = gmres_result.solution
+        A_dens      = gmres_result.solution
 
         # }}}
 
-        jxyz = bind(qbx, sym.tangential_to_xyz(jt_sym))(queue, jt=jt)
-
         # {{{ volume eval
 
-        sym_repr = mfie.scattered_volume_field(jt_sym, rho_sym)
+        sym_repr = dpie.scattered_volume_field(phi_dens,A_dens)
 
         def eval_repr_at(tgt, source=None):
             if source is None:
