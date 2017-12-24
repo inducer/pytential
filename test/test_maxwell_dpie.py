@@ -240,7 +240,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     knl_kwargs = {"k": case.k}
 
     # specify the list of geometry objects being used
-    geom_list = ["g0"]
+    geom_list = [None]
 
     # {{{ come up with a solution to Maxwell's equations
 
@@ -363,7 +363,8 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                 ).with_refinement(_expansion_disturbance_tolerance=0.05)
 
         # define the geometry dictionary
-        geom_map = {"g0": qbx}
+        #geom_map = {"g0": qbx}
+        geom_map = qbx
 
         # get the maximum mesh element edge length
         h_max = qbx.h_max
