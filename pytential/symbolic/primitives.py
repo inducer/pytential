@@ -507,7 +507,15 @@ class NodeMax(NodalOperation):
 
 
 def integral(ambient_dim, dim, operand, where=None):
-    """A volume integral of *operand*."""
+    '''
+    Performs boundary integral on *operand*.
+    `ambient_dim` is the number of dimensions used to represent space while `dim`
+    is the dimensionality of the surface being integrated over.
+
+    Example|
+    We wish to integrate over the 2-D surface of a sphere that resides in 
+    in 3-dimensions, so `ambient_dim` = 3 and `dim` = 2.
+    '''
 
     return NodeSum(
             area_element(ambient_dim, dim, where)
