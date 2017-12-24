@@ -244,10 +244,9 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
     # {{{ come up with a solution to Maxwell's equations
 
+    # define symbolic variable for current density
+    # for use in defining incident field
     j_sym = sym.make_sym_vector("j", 3)
-    jt_sym = sym.make_sym_vector("jt", 2)
-    rho_sym = sym.var("rho")
-
 
     # import some functionality from maxwell into this
     # local scope environment
@@ -298,6 +297,12 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                     (test_source, tgt),
                     get_sym_maxwell_point_source(dpie.kernel, j_sym, dpie.k)
                     )(queue, j=src_j, k=case.k)
+
+    # method to get vector potential and scalar potential for incident 
+    # E-M fields
+    def get_inc_potentials(tgt):
+        return bind((test_source, tgt),
+            get_sym_maxwell_point_source_potentials(dpie.kernel, j_sym, dpie.k))(queue, j=src_j, k=case.k)
 
     # get the Electromagnetic field evaluated at the target calculus patch
     pde_test_inc = EHField(
@@ -368,18 +373,20 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                                      InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
         # get the incident field at the scatter and observation locations
-        inc_field_scat  = EHField(eval_inc_field_at(scat_discr))
-        inc_field_obs   = EHField(eval_inc_field_at(obs_discr))
+        inc_EM_field_scat   = EHField(eval_inc_field_at(scat_discr))
+        inc_EM_field_obs    = EHField(eval_inc_field_at(obs_discr))
+        inc_vec_field_scat  = get_inc_potentials(scat_discr)
+        inv_vec_field_obs   = get_inc_potentials(obs_discr)
 
         # {{{ solve the system of integral equations
 
-        inc_xyz_sym = EHField(sym.make_sym_vector("inc_fld", 6))
+        inc_xyz_vec_sym = sym.make_sym_vector("inc_vec_fld", 4)
 
         # setup operators that will be solved
         phi_op  = bind(geom_map,dpie.phi_operator(phi_densities=phi_densities))
-        phi_rhs = bind(geom_map,dpie.phi_rhs(phi_inc=))
+        phi_rhs = bind(geom_map,dpie.phi_rhs(phi_inc=inc_xyz_vec_sym[0]))(queue,inc_vec_fld=inc_vec_field_scat,**knl_kwargs)
         A_op    = bind(geom_map,dpie.A_operator(A_densities=A_densities))
-        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=))
+        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=inc_xyz_vec_sym[1:]))(queue,inc_vec_fld=inc_vec_field_scat,**knl_kwargs)
 
         # set GMRES settings for solving
         gmres_settings = dict(
@@ -403,17 +410,20 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                 A_rhs, **gmres_settings)
         A_dens      = gmres_result.solution
 
+        # extract useful solutions
+        phi     = bind(qbx, dpie.scalar_potential_rep(phi_densities=phi_densities))(queue, phi_densities=phi_dens)
+        Axyz    = bind(qbx, dpie.vector_potential_rep(A_densities=A_densities))(queue, A_densities=A_dens)
+
         # }}}
 
         # {{{ volume eval
 
-        sym_repr = dpie.scattered_volume_field(phi_dens,A_dens)
+        sym_repr = dpie.scattered_volume_field(phi_densities,A_densities)
 
         def eval_repr_at(tgt, source=None):
             if source is None:
                 source = qbx
-
-            return bind((source, tgt), sym_repr)(queue, jt=jt, rho=rho, **knl_kwargs)
+            return bind((source, tgt), sym_repr)(queue, phi_densities=phi_dens, A_densities=A_dens, **knl_kwargs)
 
         pde_test_repr = EHField(
                 vector_from_device(queue, eval_repr_at(calc_patch_tgt)))
@@ -430,20 +440,20 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
         # {{{ check PEC BC on total field
 
-        bc_repr = EHField(mfie.scattered_volume_field(
-            jt_sym, rho_sym, qbx_forced_limit=loc_sign))
+        bc_repr = EHField(dpie.scattered_volume_field(
+            phi_densities, A_densities, qbx_forced_limit=loc_sign))
         pec_bc_e = sym.n_cross(bc_repr.e + inc_xyz_sym.e)
-        pec_bc_h = sym.normal(3).as_vector().dot(bc_repr.h + inc_xyz_sym.h)
+        pec_bc_h = sym.normal(3).as_vector().dot(bc_repr.h + sym.curl(inc_xyz_vec_sym[1:]))
 
         eh_bc_values = bind(qbx, sym.join_fields(pec_bc_e, pec_bc_h))(
-                    queue, jt=jt, rho=rho, inc_fld=inc_field_scat.field,
+                    queue, phi_densities=phi_dens, A_densities=A_dens, inc_vec_fld=inc_field_vec_scat,
                     **knl_kwargs)
 
         def scat_norm(f):
             return norm(qbx, queue, f, p=np.inf)
 
-        e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
-        h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
+        e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_EM_field_scat.e)
+        h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_EM_field_scat.h)
 
         print("E/H PEC BC residuals:", h_max, e_bc_residual, h_bc_residual)
 
@@ -461,10 +471,10 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                     .as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
-                ("j", jxyz),
-                ("rho", rho),
-                ("Einc", inc_field_scat.e),
-                ("Hinc", inc_field_scat.h),
+                ("phi", phi),
+                ("Axyz", Axyz),
+                ("Einc", inc_EM_field_scat.e),
+                ("Hinc", inc_EM_field_scat.h),
                 ("bdry_normals", bdry_normals),
                 ("e_bc_residual", eh_bc_values[:3]),
                 ("h_bc_residual", eh_bc_values[3]),

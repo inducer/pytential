@@ -67,6 +67,27 @@ def get_sym_maxwell_point_source(kernel, jxyz, k):
 
 # }}}
 
+# {{{ point source for vector potential
+
+def get_sym_maxwell_point_source_potentials(kernel, jxyz, k):
+    """Return a symbolic expression that, when bound to a
+    :class:`pytential.source.PointPotentialSource` will yield
+    a potential fields satisfying Maxwell's equations.
+
+    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
+
+    This will return an object of four entries, the first being the
+    scalar potential and the last three being the components of the
+    vector potential.
+    """
+    field = get_sym_maxwell_point_source(kernel, jxyz, k)
+    return sym.join_fields(
+        0*1j,               # scalar potential
+        field[:3]/(1j*k)    # vector potential
+        )
+
+# }}}
+
 
 # {{{ plane wave
 
@@ -285,7 +306,7 @@ class MuellerAugmentedMFIEOperator(object):
 
 
 # {{{ Decoupled Potential Integral Equation Operator
-class DPIEOperator:
+class DPIEOperator(object):
     """
     Decoupled Potential Integral Equation operator with PEC boundary
     conditions, defaults as scaled DPIE.
@@ -313,7 +334,7 @@ class DPIEOperator:
 
         # create the characteristic functions that give a value of
         # 1 when we are on some surface/valume and a value of 0 otherwise
-        self.char_funcs = np.zeros((len(geometry_list),), dtype=sym.var)
+        self.char_funcs = sym.make_sym_vector("Q_array",len(self.geometry_list))
         for idx in range(0,len(geometry_list)):
             self.char_funcs[idx] = sym.D(self.kernel,1,source=self.geom_list[idx])
 
@@ -350,7 +371,7 @@ class DPIEOperator:
         """
 
         # get the Q_array
-        Q_array = np.zeros((len(self.geometry_list),),dtype=sym.var)
+        Q_array = sym.make_sym_vector("Q_array",len(self.geometry_list))
         for i in range(0,len(self.geometry_list)):
             Q_array[i] = -sym.integral(3,2,sym.n_dot(sym.grad(3,phi_inc)),where=self.geometry_list[i])
 
@@ -400,7 +421,7 @@ class DPIEOperator:
         """
 
         # get the q_array
-        q_array = np.zeros((len(self.geometry_list),),dtype=sym.var)
+        q_array = sym.make_sym_vector("Q_array",len(self.geometry_list))
         for i in range(0,len(self.geometry_list)):
             q_array[i] = -sym.integral(3,2,sym.n_dot(A_inc),where=self.geometry_list[i])
 
