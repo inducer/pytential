@@ -253,6 +253,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     from pytential.symbolic.pde.maxwell import (
         DPIEOperator,
         get_sym_maxwell_point_source,
+        get_sym_maxwell_point_source_potentials,
         get_sym_maxwell_plane_wave)
 
     # initialize the DPIE operator based on the geometry list

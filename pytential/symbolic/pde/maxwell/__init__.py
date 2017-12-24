@@ -336,13 +336,13 @@ class DPIEOperator:
         # 1 when we are on some surface/valume and a value of 0 otherwise
         self.char_funcs = sym.make_sym_vector("Q_array",len(self.geometry_list))
         for idx in range(0,len(geometry_list)):
-            self.char_funcs[idx] = sym.D(self.kernel,1,source=self.geom_list[idx])
+            self.char_funcs[idx] = sym.D(self.kernel,1,k=self.k,source=self.geometry_list[idx])
 
-    def numVectorPotentialDensities():
-        return 3 + len(geometry_list)
+    def numVectorPotentialDensities(self):
+        return 3 + len(self.geometry_list)
 
-    def numScalarPotentialDensities():
-        return 1 + len(geometry_list)
+    def numScalarPotentialDensities(self):
+        return 1 + len(self.geometry_list)
 
     def phi_operator(self,phi_densities):
         """
