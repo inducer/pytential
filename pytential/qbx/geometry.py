@@ -685,7 +685,8 @@ class QBXFMMGeometryData(object):
         if a center needs to be used, but none was found.
         See :meth:`center_to_tree_targets` for the reverse look-up table.
 
-        Shape: ``[ntargets]`` of :class:`numpy.int32`. Targets occur in user order.
+        Shape: ``[ntargets]`` of :attr:`boxtree.Tree.particle_id_dtype`, with extra
+        values from :class:`target_state` allowed. Targets occur in user order.
         """
         from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
         tgt_info = self.target_info()
@@ -711,7 +712,8 @@ class QBXFMMGeometryData(object):
                     target_association_tolerance=(
                         self.target_association_tolerance))
 
-            result = cl.array.empty(queue, tgt_info.ntargets, np.int32)
+            result = cl.array.empty(queue, tgt_info.ntargets,
+                    tgt_assoc_result.target_to_center.dtype)
             result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
             result[self.ncenters:] = tgt_assoc_result.target_to_center
 
@@ -730,11 +732,7 @@ class QBXFMMGeometryData(object):
         with cl.CommandQueue(self.cl_context) as queue:
             logger.info("build center -> targets lookup table: start")
 
-            user_ttc = (user_ttc
-                    .with_queue(queue)
-                    .astype(self.tree().particle_id_dtype))
-
-            tree_ttc = cl.array.empty_like(user_ttc)
+            tree_ttc = cl.array.empty_like(user_ttc).with_queue(queue)
             tree_ttc[self.tree().sorted_target_ids] = user_ttc
 
             filtered_tree_ttc = cl.array.empty(queue, tree_ttc.shape, tree_ttc.dtype)
