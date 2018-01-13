@@ -409,12 +409,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @memoize_method
     def _expansion_radii(self, last_dim_length):
         if last_dim_length == "npanels":
-            # FIXME: Make this an error
-
-            from warnings import warn
-            warn("Passing 'npanels' as last_dim_length to _expansion_radii is "
-                    "deprecated. Expansion radii should be allowed to vary "
-                    "within a panel.", stacklevel=3)
+            raise ValueError(
+                    "Passing 'npanels' as last_dim_length to _expansion_radii is "
+                    "not allowed. Allowed values are 'nsources' and 'ncenters'.")
 
         with cl.CommandQueue(self.cl_context) as queue:
                 return (self._panel_sizes(last_dim_length).with_queue(queue) * 0.5
