@@ -494,11 +494,17 @@ class QBXFMMGeometryData(object):
                         self.coord_dtype)
                 target_radii[:self.ncenters] = self.expansion_radii()
 
-            # FIXME: https://gitlab.tiker.net/inducer/pytential/issues/72
-            # refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
-            # refine_weights[:nsources] = 1
             refine_weights = cl.array.empty(queue, nparticles, dtype=np.int32)
-            refine_weights.fill(1)
+
+            # Assign a weight of 1 to all sources, QBX centers, and conventional
+            # (non-QBX) targets. Assign a weight of 0 to all targets that need
+            # QBX centers. The potential at the latter targets is mediated
+            # entirely by the QBX center, so as a matter of evaluation cost,
+            # their location in the tree is irrelevant.
+            refine_weights[:-target_info.ntargets] = 1
+            user_ttc = self.user_target_to_center().with_queue(queue)
+            refine_weights[-target_info.ntargets:] = (
+                    user_ttc == target_state.NO_QBX_NEEDED).astype(np.int32)
 
             refine_weights.finish()
 
@@ -689,7 +695,7 @@ class QBXFMMGeometryData(object):
 
         with cl.CommandQueue(self.cl_context) as queue:
             target_side_prefs = (self
-                .target_side_preferences()[self.ncenters:].get(queue=queue))
+                    .target_side_preferences()[self.ncenters:].get(queue=queue))
 
             target_discrs_and_qbx_sides = [(
                     PointsTarget(tgt_info.targets[:, self.ncenters:]),
@@ -706,9 +712,8 @@ class QBXFMMGeometryData(object):
                     target_association_tolerance=(
                         self.target_association_tolerance))
 
-            tree = self.tree()
-
-            result = cl.array.empty(queue, tgt_info.ntargets, tree.particle_id_dtype)
+            result = cl.array.empty(queue, tgt_info.ntargets,
+                    tgt_assoc_result.target_to_center.dtype)
             result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
             result[self.ncenters:] = tgt_assoc_result.target_to_center
 
