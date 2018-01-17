@@ -167,7 +167,7 @@ def main():
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
     fplot.write_vtk_file(
-            "potential.vts",
+            "potential-helm.vts",
             [
                 ("potential", fld_in_vol),
                 ("indicator", indicator),

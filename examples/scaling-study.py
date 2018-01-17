@@ -154,6 +154,7 @@ def timing_run(nx, ny):
                 sym_op)(
                 queue, sigma=ones_density).get()
 
+        qbx_stick_out = qbx.copy(target_stick_out_factor=0.1)
         try:
             fld_in_vol = bind(
                     (qbx_stick_out, PointsTarget(targets)),
@@ -169,7 +170,7 @@ def timing_run(nx, ny):
 
         #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         fplot.write_vtk_file(
-                "potential.vts",
+                "potential-scaling.vts",
                 [
                     ("potential", fld_in_vol),
                     ("indicator", indicator)

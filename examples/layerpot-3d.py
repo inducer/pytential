@@ -9,10 +9,6 @@ import faulthandler
 from six.moves import range
 faulthandler.enable()
 
-import logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 cl_ctx = cl.create_some_context()
 queue = cl.CommandQueue(cl_ctx)
 
@@ -37,6 +33,7 @@ else:
 
 def main():
     import logging
+    logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
     from meshmode.mesh.io import generate_gmsh, FileSource
@@ -95,7 +92,7 @@ def main():
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
     fplot.write_vtk_file(
-            "potential.vts",
+            "potential-3d.vts",
             [
                 ("potential", fld_in_vol)
                 ]
@@ -108,7 +105,7 @@ def main():
     from meshmode.discretization.visualization import make_visualizer
     bdry_vis = make_visualizer(queue, density_discr, target_order)
 
-    bdry_vis.write_vtk_file("source.vtu", [
+    bdry_vis.write_vtk_file("source-3d.vtu", [
         ("sigma", sigma),
         ("bdry_normals", bdry_normals),
         ])

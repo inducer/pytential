@@ -95,7 +95,7 @@ def main():
             fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         else:
             fplot.write_vtk_file(
-                    "potential.vts",
+                    "potential-2d.vts",
                     [
                         ("potential", fld_in_vol)
                         ]
