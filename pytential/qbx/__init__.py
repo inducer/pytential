@@ -189,6 +189,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             density_discr=None,
             fine_order=None,
             qbx_order=None,
+            fmm_order=_not_provided,
             fmm_level_to_order=_not_provided,
             to_refined_connection=None,
             target_association_tolerance=_not_provided,
@@ -224,6 +225,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
+        kwargs = {}
+
+        if (fmm_order is not _not_provided
+                and fmm_level_to_order is not _not_provided):
+            raise TypeError("may not specify both fmm_order and fmm_level_to_order")
+        elif fmm_order is not _not_provided:
+            kwargs["fmm_order"] = fmm_order
+        elif fmm_level_to_order is not _not_provided:
+            kwargs["fmm_level_to_order"] = fmm_level_to_order
+        else:
+            kwargs["fmm_level_to_order"] = self.fmm_level_to_order
+
         # FIXME Could/should share wrangler and geometry kernels
         # if no relevant changes have been made.
         return QBXLayerPotentialSource(
@@ -231,11 +244,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 fine_order=(
                     fine_order if fine_order is not None else self.fine_order),
                 qbx_order=qbx_order if qbx_order is not None else self.qbx_order,
-                fmm_level_to_order=(
-                    # False is a valid value here
-                    fmm_level_to_order
-                    if fmm_level_to_order is not _not_provided
-                    else self.fmm_level_to_order),
 
                 target_association_tolerance=target_association_tolerance,
                 to_refined_connection=(
@@ -268,7 +276,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
                 fmm_backend=self.fmm_backend,
-                )
+                **kwargs)
 
     # }}}
 
