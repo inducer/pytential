@@ -16,8 +16,8 @@ bdry_quad_order = 4
 mesh_order = bdry_quad_order
 qbx_order = bdry_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
-fmm_order = 25
-k = 25
+fmm_order = 10
+k = 0
 
 # }}}
 

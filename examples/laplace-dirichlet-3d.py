@@ -17,8 +17,7 @@ bdry_quad_order = 4
 mesh_order = bdry_quad_order
 qbx_order = bdry_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
-fmm_order = 10
-k = 3
+fmm_order = 3
 
 # }}}
 
@@ -30,31 +29,26 @@ def main():
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
 
-    from meshmode.mesh.generation import ellipse, make_curve_mesh
-    from functools import partial
+    from meshmode.mesh.generation import generate_torus
 
-    if 0:
-        mesh = make_curve_mesh(
-                partial(ellipse, 1),
-                np.linspace(0, 1, nelements+1),
-                mesh_order)
-    else:
-        base_mesh = make_curve_mesh(
-                partial(ellipse, 1),
-                np.linspace(0, 1, nelements+1),
+    rout = 10
+    rin = 1
+    if 1:
+        base_mesh = generate_torus(
+                rout, rin, 40, 4,
                 mesh_order)
 
         from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
-        nx = 2
-        ny = 2
-        dx = 2 / nx
+        # nx = 1
+        # ny = 1
+        nz = 1
+        dz = 0
         meshes = [
                 affine_map(
                     base_mesh,
-                    A=np.diag([dx*0.25, dx*0.25]),
-                    b=np.array([dx*(ix-nx/2), dx*(iy-ny/2)]))
-                for ix in range(nx)
-                for iy in range(ny)]
+                    A=np.diag([1, 1, 1]),
+                    b=np.array([0, 0, iz*dz]))
+                for iz in range(nz)]
 
         mesh = merge_disjoint_meshes(meshes, single_group=True)
 
@@ -78,26 +72,24 @@ def main():
 
     # {{{ describe bvp
 
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-    kernel = HelmholtzKernel(2)
+    from sumpy.kernel import LaplaceKernel
+    kernel = LaplaceKernel(3)
 
     cse = sym.cse
 
     sigma_sym = sym.var("sigma")
-    sqrt_w = sym.sqrt_jac_q_weight(2)
+    #sqrt_w = sym.sqrt_jac_q_weight(3)
+    sqrt_w = 1
     inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
-
-    # Brakhage-Werner parameter
-    alpha = 1j
 
     # -1 for interior Dirichlet
     # +1 for exterior Dirichlet
     loc_sign = +1
 
-    bdry_op_sym = (-loc_sign*0.5*sigma_sym
+    bdry_op_sym = (loc_sign*0.5*sigma_sym
             + sqrt_w*(
-                alpha*sym.S(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
-                - sym.D(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
+                sym.S(kernel, inv_sqrt_w_sigma)
+                + sym.D(kernel, inv_sqrt_w_sigma)
                 ))
 
     # }}}
@@ -107,55 +99,53 @@ def main():
     # {{{ fix rhs and solve
 
     nodes = density_discr.nodes().with_queue(queue)
-    k_vec = np.array([2, 1])
-    k_vec = k * k_vec / la.norm(k_vec, 2)
+    source = np.array([rout, 0, 0])
 
     def u_incoming_func(x):
-        return cl.clmath.exp(
-                1j * (x[0] * k_vec[0] + x[1] * k_vec[1]))
+        #        return 1/cl.clmath.sqrt( (x[0] - source[0])**2
+        #                                +(x[1] - source[1])**2
+        #                                +(x[2] - source[2])**2 )
+        return 1.0/la.norm(x.get()-source[:, None], axis=0)
 
-    bc = -u_incoming_func(nodes)
+    bc = cl.array.to_device(queue, u_incoming_func(nodes))
 
     bvp_rhs = bind(qbx, sqrt_w*sym.var("bc"))(queue, bc=bc)
 
     from pytential.solve import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
-            bvp_rhs, tol=1e-8, progress=True,
+            bound_op.scipy_op(queue, "sigma", dtype=np.float64),
+            bvp_rhs, tol=1e-14, progress=True,
             stall_iterations=0,
             hard_failure=True)
 
+    sigma = bind(qbx, sym.var("sigma")/sqrt_w)(queue, sigma=gmres_result.solution)
+
     # }}}
+
+    from meshmode.discretization.visualization import make_visualizer
+    bdry_vis = make_visualizer(queue, density_discr, 20)
+    bdry_vis.write_vtk_file("laplace.vtu", [
+        ("sigma", sigma),
+        ])
 
     # {{{ postprocess/visualize
 
-    sigma = gmres_result.solution
-
-    repr_kwargs = dict(k=sym.var("k"), qbx_forced_limit=None)
+    repr_kwargs = dict(qbx_forced_limit=None)
     representation_sym = (
-            alpha*sym.S(kernel, inv_sqrt_w_sigma, **repr_kwargs)
-            - sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
+            sym.S(kernel, inv_sqrt_w_sigma, **repr_kwargs)
+            + sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
 
     from sumpy.visualization import FieldPlotter
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
+    fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)
 
     targets = cl.array.to_device(queue, fplot.points)
 
-    u_incoming = u_incoming_func(targets)
-
-    qbx_stick_out = qbx.copy(target_association_tolerance=0.05)
-
-    ones_density = density_discr.zeros(queue)
-    ones_density.fill(1)
-    indicator = bind(
-            (qbx_stick_out, PointsTarget(targets)),
-            sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None))(
-            queue, sigma=ones_density).get()
+    qbx_stick_out = qbx.copy(target_stick_out_factor=0.2)
 
     try:
         fld_in_vol = bind(
                 (qbx_stick_out, PointsTarget(targets)),
-                representation_sym)(queue, sigma=sigma, k=k).get()
+                representation_sym)(queue, sigma=sigma).get()
     except QBXTargetAssociationFailedException as e:
         fplot.write_vtk_file(
                 "failed-targets.vts",
@@ -170,8 +160,6 @@ def main():
             "potential.vts",
             [
                 ("potential", fld_in_vol),
-                ("indicator", indicator),
-                ("u_incoming", u_incoming.get()),
                 ]
             )
 

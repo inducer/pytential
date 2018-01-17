@@ -21,10 +21,10 @@ qbx_order = 3
 mode_nr = 4
 
 if 1:
-    cad_file_name = "ellipsoid.step"
+    cad_file_name = "geometries/ellipsoid.step"
     h = 0.6
 else:
-    cad_file_name = "two-cylinders-smooth.step"
+    cad_file_name = "geometries/two-cylinders-smooth.step"
     h = 0.4
 
 k = 0
@@ -34,76 +34,85 @@ else:
     kernel = LaplaceKernel(3)
 #kernel = OneKernel()
 
-from meshmode.mesh.io import generate_gmsh, FileSource
-mesh = generate_gmsh(
-        FileSource(cad_file_name), 2, order=2,
-        other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h])
 
-from meshmode.mesh.processing import perform_flips
-# Flip elements--gmsh generates inside-out geometry.
-mesh = perform_flips(mesh, np.ones(mesh.nelements))
+def main():
+    import logging
+    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
-from meshmode.mesh.processing import find_bounding_box
-bbox_min, bbox_max = find_bounding_box(mesh)
-bbox_center = 0.5*(bbox_min+bbox_max)
-bbox_size = max(bbox_max-bbox_min) / 2
+    from meshmode.mesh.io import generate_gmsh, FileSource
+    mesh = generate_gmsh(
+            FileSource(cad_file_name), 2, order=2,
+            other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h])
 
-logger.info("%d elements" % mesh.nelements)
+    from meshmode.mesh.processing import perform_flips
+    # Flip elements--gmsh generates inside-out geometry.
+    mesh = perform_flips(mesh, np.ones(mesh.nelements))
 
-from pytential.qbx import QBXLayerPotentialSource
-from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import \
-        InterpolatoryQuadratureSimplexGroupFactory
+    from meshmode.mesh.processing import find_bounding_box
+    bbox_min, bbox_max = find_bounding_box(mesh)
+    bbox_center = 0.5*(bbox_min+bbox_max)
+    bbox_size = max(bbox_max-bbox_min) / 2
 
-density_discr = Discretization(
-        cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+    logger.info("%d elements" % mesh.nelements)
 
-qbx, _ = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
-        fmm_order=qbx_order + 3,
-        target_association_tolerance=0.15).with_refinement()
+    from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
 
-nodes = density_discr.nodes().with_queue(queue)
+    density_discr = Discretization(
+            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-angle = cl.clmath.atan2(nodes[1], nodes[0])
+    qbx, _ = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
+            fmm_order=qbx_order + 3,
+            target_association_tolerance=0.15).with_refinement()
 
-from pytential import bind, sym
-#op = sym.d_dx(sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None))
-op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None)
-#op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
+    nodes = density_discr.nodes().with_queue(queue)
 
-sigma = cl.clmath.cos(mode_nr*angle)
-if 0:
-    sigma = 0*angle
-    from random import randrange
-    for i in range(5):
-        sigma[randrange(len(sigma))] = 1
+    angle = cl.clmath.atan2(nodes[1], nodes[0])
 
-if isinstance(kernel, HelmholtzKernel):
-    sigma = sigma.astype(np.complex128)
+    from pytential import bind, sym
+    #op = sym.d_dx(sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None))
+    op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None)
+    #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
 
-fplot = FieldPlotter(bbox_center, extent=3.5*bbox_size, npoints=150)
+    sigma = cl.clmath.cos(mode_nr*angle)
+    if 0:
+        sigma = 0*angle
+        from random import randrange
+        for i in range(5):
+            sigma[randrange(len(sigma))] = 1
 
-from pytential.target import PointsTarget
-fld_in_vol = bind(
-        (qbx, PointsTarget(fplot.points)),
-        op)(queue, sigma=sigma, k=k).get()
+    if isinstance(kernel, HelmholtzKernel):
+        sigma = sigma.astype(np.complex128)
 
-#fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-fplot.write_vtk_file(
-        "potential.vts",
-        [
-            ("potential", fld_in_vol)
-            ]
-        )
+    fplot = FieldPlotter(bbox_center, extent=3.5*bbox_size, npoints=150)
 
-bdry_normals = bind(
-        density_discr,
-        sym.normal(density_discr.ambient_dim))(queue).as_vector(dtype=object)
+    from pytential.target import PointsTarget
+    fld_in_vol = bind(
+            (qbx, PointsTarget(fplot.points)),
+            op)(queue, sigma=sigma, k=k).get()
 
-from meshmode.discretization.visualization import make_visualizer
-bdry_vis = make_visualizer(queue, density_discr, target_order)
+    #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+    fplot.write_vtk_file(
+            "potential.vts",
+            [
+                ("potential", fld_in_vol)
+                ]
+            )
 
-bdry_vis.write_vtk_file("source.vtu", [
-    ("sigma", sigma),
-    ("bdry_normals", bdry_normals),
-    ])
+    bdry_normals = bind(
+            density_discr,
+            sym.normal(density_discr.ambient_dim))(queue).as_vector(dtype=object)
+
+    from meshmode.discretization.visualization import make_visualizer
+    bdry_vis = make_visualizer(queue, density_discr, target_order)
+
+    bdry_vis.write_vtk_file("source.vtu", [
+        ("sigma", sigma),
+        ("bdry_normals", bdry_normals),
+        ])
+
+
+if __name__ == "__main__":
+    main()
