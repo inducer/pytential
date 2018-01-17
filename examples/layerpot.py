@@ -15,13 +15,6 @@ import faulthandler
 from six.moves import range
 faulthandler.enable()
 
-import logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-cl_ctx = cl.create_some_context()
-queue = cl.CommandQueue(cl_ctx)
-
 target_order = 16
 qbx_order = 3
 nelements = 60
@@ -38,6 +31,12 @@ else:
 
 
 def main():
+    import logging
+    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
+
+    cl_ctx = cl.create_some_context()
+    queue = cl.CommandQueue(cl_ctx)
+
     from meshmode.mesh.generation import (  # noqa
             make_curve_mesh, starfish, ellipse, drop)
     mesh = make_curve_mesh(
