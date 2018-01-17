@@ -135,10 +135,14 @@ Elementary numerics
 .. autofunction:: mean
 .. autoclass:: IterativeInverse
 
-Calculus (based on Geometric Algebra)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Geometric Calculus (based on Geometric/Clifford Algebra)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: Derivative
+
+Conventional Calculus
+^^^^^^^^^^^^^^^^^^^^^
+
 .. autofunction:: dd_axis
 .. autofunction:: d_dx
 .. autofunction:: d_dy

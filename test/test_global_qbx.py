@@ -121,7 +121,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     int_centers = np.array([axis.get(queue) for axis in int_centers])
     ext_centers = get_centers_on_side(lpot_source, +1)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
-    expansion_radii = lpot_source._expansion_radii("npanels").get(queue)
+    expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
     panel_sizes = lpot_source._panel_sizes("npanels").get(queue)
     fine_panel_sizes = lpot_source._fine_panel_sizes("npanels").get(queue)
 
@@ -150,8 +150,8 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         # A center cannot be closer to another panel than to its originating
         # panel.
 
-        rad = expansion_radii[centers_panel.element_nr]
-        assert dist >= rad * (1-expansion_disturbance_tolerance), \
+        rad = expansion_radii[centers_panel.discr_slice]
+        assert (dist >= rad * (1-expansion_disturbance_tolerance)).all(), \
                 (dist, rad, centers_panel.element_nr, sources_panel.element_nr)
 
     def check_sufficient_quadrature_resolution(centers_panel, sources_panel):
