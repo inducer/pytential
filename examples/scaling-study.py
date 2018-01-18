@@ -54,7 +54,7 @@ def make_mesh(nx, ny):
 
 def timing_run(nx, ny):
     import logging
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
