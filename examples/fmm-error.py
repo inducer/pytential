@@ -75,6 +75,9 @@ def main():
             op)(queue, sigma=sigma, k=k).get()
 
     err = fmm_fld_in_vol-fld_in_vol
+
+    import matplotlib
+    matplotlib.use('Agg')
     im = fplot.show_scalar_in_matplotlib(np.log10(np.abs(err)))
 
     from matplotlib.colors import Normalize
