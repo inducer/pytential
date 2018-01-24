@@ -250,12 +250,10 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
     # import some functionality from maxwell into this
     # local scope environment
-    from pytential.symbolic.pde.maxwell import (
-        DPIEOperator,
-        get_sym_maxwell_point_source,
-        get_sym_maxwell_point_source_potentials,
-        get_sym_maxwell_plane_wave)
-
+    #from pytential.symbolic.pde.maxwell import (get_sym_maxwell_point_source,get_sym_maxwell_point_source_potentials,get_sym_maxwell_plane_wave,DPIEOperator)
+    #from pytential.symbolic.pde.maxwell.dpie import (get_sym_maxwell_point_source,get_sym_maxwell_point_source_potentials,get_sym_maxwell_plane_wave,DPIEOperator)
+    import pytential.symbolic.pde.maxwell.dpie as mw
+    
     # initialize the DPIE operator based on the geometry list
     dpie = DPIEOperator(geometry_list=geom_list)
 
@@ -302,8 +300,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     # method to get vector potential and scalar potential for incident 
     # E-M fields
     def get_inc_potentials(tgt):
-        return bind((test_source, tgt),
-            get_sym_maxwell_point_source_potentials(dpie.kernel, j_sym, dpie.k))(queue, j=src_j, k=case.k)
+        return bind((test_source, tgt),get_sym_maxwell_point_source_potentials(dpie.kernel, j_sym, dpie.k))(queue, j=src_j, k=case.k)
 
     # get the Electromagnetic field evaluated at the target calculus patch
     pde_test_inc = EHField(
