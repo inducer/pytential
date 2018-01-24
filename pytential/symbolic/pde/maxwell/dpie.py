@@ -164,7 +164,7 @@ class DPIEOperator:
 
         # create the characteristic functions that give a value of
         # 1 when we are on some surface/valume and a value of 0 otherwise
-        self.char_funcs = sym.make_sym_vector("Q_array",len(self.geometry_list))
+        self.char_funcs = sym.make_sym_vector("chi",len(self.geometry_list))
         for idx in range(0,len(geometry_list)):
             self.char_funcs[idx] = sym.D(self.kernel,1,k=self.k,source=self.geometry_list[idx])
 
@@ -203,7 +203,8 @@ class DPIEOperator:
         # get the Q_array
         Q_array = sym.make_sym_vector("Q_array",len(self.geometry_list))
         for i in range(0,len(self.geometry_list)):
-            Q_array[i] = -sym.integral(3,2,sym.n_dot(sym.grad(3,phi_inc)),where=self.geometry_list[i])
+            #Q_array[i] = -sym.integral(3,2,sym.n_dot(sym.grad(3,phi_inc)),where=self.geometry_list[i])
+            Q_array[i] = 0
 
         # return the resulting field
         return sym.join_fields(-phi_inc,

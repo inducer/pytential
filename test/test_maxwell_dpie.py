@@ -255,7 +255,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     import pytential.symbolic.pde.maxwell.dpie as mw
     
     # initialize the DPIE operator based on the geometry list
-    dpie = DPIEOperator(geometry_list=geom_list)
+    dpie = mw.DPIEOperator(geometry_list=geom_list)
 
 
     # specify some symbolic variables that will be used
@@ -285,7 +285,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
             # plane wave
             return bind(
                     tgt,
-                    get_sym_maxwell_plane_wave(
+                    mw.get_sym_maxwell_plane_wave(
                         amplitude_vec=np.array([1, 1, 1]),
                         v=np.array([1, 0, 0]),
                         omega=case.k)
@@ -294,13 +294,13 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
             # point source
             return bind(
                     (test_source, tgt),
-                    get_sym_maxwell_point_source(dpie.kernel, j_sym, dpie.k)
+                    mw.get_sym_maxwell_point_source(dpie.kernel, j_sym, dpie.k)
                     )(queue, j=src_j, k=case.k)
 
     # method to get vector potential and scalar potential for incident 
     # E-M fields
     def get_inc_potentials(tgt):
-        return bind((test_source, tgt),get_sym_maxwell_point_source_potentials(dpie.kernel, j_sym, dpie.k))(queue, j=src_j, k=case.k)
+        return bind((test_source, tgt),mw.get_sym_maxwell_point_source_potentials(dpie.kernel, j_sym, dpie.k))(queue, j=src_j, k=case.k)
 
     # get the Electromagnetic field evaluated at the target calculus patch
     pde_test_inc = EHField(
@@ -378,7 +378,6 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
         inv_vec_field_obs   = get_inc_potentials(obs_discr)
 
         # {{{ solve the system of integral equations
-
         inc_xyz_vec_sym = sym.make_sym_vector("inc_vec_fld", 4)
 
         # setup operators that will be solved
