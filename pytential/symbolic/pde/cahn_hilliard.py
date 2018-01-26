@@ -34,9 +34,52 @@ from functools import partial
 
 
 class CahnHilliardOperator(L2WeightedPDEOperator):
-    def __init__(self, lambda1, lambda2, c):
-        self.lambdas = (lambda1, lambda2)
+    def __init__(self, b, c):
+        self.b = b
         self.c = c
+
+        # Issue:
+        # - let crat = np.abs(4.*c) / ( b**2 + 1e-12 )
+        # - when crat is close to zero, sqrt(b**2-4*c) is close to abs(b),
+        #   then for b>=0, sqrt(b**2-4*c) - b is inaccurate.
+        # - similarly, when crat is close to one, sqrt(b**2-4*c) is close to zero,
+        #   then for b>0, sqrt(b**2-4*c) + b is inaccurate.
+        # Solution:
+        # - find a criteria for crat to choose from formulae, or
+        # - use the computed root with smaller residual
+        def quadratic_formula_1(a, b, c):
+            return (-b + np.sqrt(b**2 - 4*a*c)) / (2*a)
+
+        def quadratic_formula_2(a, b, c):
+            return (-b - np.sqrt(b**2 - 4*a*c)) / (2*a)
+
+        def citardauq_formula_1(a, b, c):
+            return 2*c / (-b - np.sqrt(b**2-4*a*c))
+
+        def citardauq_formula_2(a, b, c):
+            return 2*c / (-b + np.sqrt(b**2-4*a*c))
+
+        def f(x):
+            return x**2 - b*x + c
+
+        root11 = quadratic_formula_1(1, -b, c)
+        root12 = citardauq_formula_1(1, -b, c)
+        if np.abs(f(root11)) < np.abs(f(root12)):
+            lam1 = np.sqrt(root11)
+        else:
+            lam1 = np.sqrt(root12)
+
+        root21 = quadratic_formula_2(1, -b, c)
+        root22 = citardauq_formula_2(1, -b, c)
+        if np.abs(f(root21)) < np.abs(f(root22)):
+            lam1 = np.sqrt(root21)
+        else:
+            lam2 = np.sqrt(root22)
+
+        assert np.abs(f(lam1**2)) < 1e-12
+        assert np.abs(f(lam2**2)) < 1e-12
+
+        self.lambdas = sorted([lam1, lam2], key=abs, reverse=True)  # biggest first
 
     def make_unknown(self, name):
         return sym.make_sym_vector(name, 2)
@@ -45,35 +88,38 @@ class CahnHilliardOperator(L2WeightedPDEOperator):
         if op_map is None:
             op_map = lambda x: x  # noqa: E731
 
-        from sumpy.kernel import HelmholtzKernel
-        hhk = HelmholtzKernel(2, allow_evanescent=True)
-        hhk_scaling = 1j/4
+        from sumpy.kernel import YukawaKernel
+        knl = YukawaKernel(2)
 
         if i == 0:
             lam1, lam2 = self.lambdas
             return (
-                    # FIXME: Verify scaling
-                    -1/(2*np.pi*(lam1**2-lam2**2)) / hhk_scaling
-                    *
-                    (
-                        op_map(sym.S(hhk, density, k=1j*lam1,
+                    1/(lam1**2-lam2**2)
+                    * (
+                        op_map(sym.S(knl, density, lam=lam1,
                             qbx_forced_limit=qbx_forced_limit))
                         -
-                        op_map(sym.S(hhk, density, k=1j*lam2,
+                        op_map(sym.S(knl, density, lam=lam2,
                             qbx_forced_limit=qbx_forced_limit))))
         else:
             return (
-                    # FIXME: Verify scaling
-
-                    -1/(2*np.pi) / hhk_scaling
-                    * op_map(sym.S(hhk, density, k=1j*self.lambdas[i-1],
+                    op_map(sym.S(knl, density, lam=self.lambdas[i-1],
                         qbx_forced_limit=qbx_forced_limit)))
 
     def representation(self, unknown):
+        """Return (u, v) in a :mod:`numpy` object array.
+        """
         sig1, sig2 = unknown
         S_G = partial(self.S_G, qbx_forced_limit=None)  # noqa: N806
+        laplacian = partial(sym.laplace, 2)
 
-        return S_G(1, sig1) + S_G(0, sig2)
+        def u(op_map=None):
+            return S_G(1, sig1, op_map=op_map) + S_G(0, sig2, op_map=op_map)
+
+        return sym.make_obj_array([
+            u(),
+            -u(op_map=laplacian) + self.b*u()
+            ])
 
     def operator(self, unknown):
         sig1, sig2 = unknown
