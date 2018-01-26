@@ -476,7 +476,7 @@ def main():
 
     # }}}
 
-    # {{{ postprocess/visualize
+    qbx_stick_out = qbx.copy(target_association_tolerance=0.05)
 
     immersed_visualization = False
     if immersed_visualization == True:

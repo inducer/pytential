@@ -60,6 +60,8 @@ class IdentityMapper(IdentityMapperBase):
     def map_node_sum(self, expr):
         return type(expr)(self.rec(expr.operand))
 
+    map_node_max = map_node_sum
+
     def map_num_reference_derivative(self, expr):
         return type(expr)(expr.ref_axes, self.rec(expr.operand),
                 expr.where)
@@ -100,6 +102,7 @@ class CombineMapper(CombineMapperBase):
     def map_node_sum(self, expr):
         return self.rec(expr.operand)
 
+    map_node_max = map_node_sum
     map_num_reference_derivative = map_node_sum
 
     def map_int_g(self, expr):
@@ -153,6 +156,8 @@ class EvaluationMapper(EvaluationMapperBase):
 
     def map_node_sum(self, expr):
         return componentwise(type(expr), self.rec(expr.operand))
+
+    map_node_max = map_node_sum
 
     def map_node_coordinate_component(self, expr):
         return expr
@@ -340,6 +345,33 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
 # }}}
 
 
+# {{{ Unregularized preprocessor
+
+class UnregularizedPreprocessor(IdentityMapper):
+
+    def __init__(self, source_name, places):
+        self.source_name = source_name
+        self.places = places
+
+    def map_int_g(self, expr):
+        if expr.qbx_forced_limit in (-1, 1):
+            raise ValueError(
+                    "Unregularized evaluation does not support one-sided limits")
+
+        expr = expr.copy(
+                qbx_forced_limit=None,
+                kernel=expr.kernel,
+                density=self.rec(expr.density),
+                kernel_arguments=dict(
+                    (name, self.rec(arg_expr))
+                    for name, arg_expr in expr.kernel_arguments.items()
+                    ))
+
+        return expr
+
+# }}}
+
+
 # {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
@@ -351,8 +383,8 @@ class QBXPreprocessor(IdentityMapper):
         source = self.places[self.source_name]
         target_discr = self.places[expr.target]
 
-        from pytential.qbx import LayerPotentialSource
-        if isinstance(target_discr, LayerPotentialSource):
+        from pytential.source import LayerPotentialSourceBase
+        if isinstance(target_discr, LayerPotentialSourceBase):
             target_discr = target_discr.density_discr
 
         if expr.qbx_forced_limit == 0:
@@ -372,12 +404,12 @@ class QBXPreprocessor(IdentityMapper):
 
         if not is_self:
             # non-self evaluation
-            if expr.qbx_forced_limit == 'avg':
-                from warnings import warn
-                warn("qbx_forced_limit == 'avg' is deprecated "
-                        "for non-self evaluation, defaulting to 'None'",
-                        DeprecationWarning)
-                expr = expr.copy(qbx_forced_limit=None)
+            if expr.qbx_forced_limit in ['avg', 1, -1]:
+                raise ValueError("May not specify +/-1 or \"avg\" for "
+                        "qbx_forced_limit for non-self evaluation. "
+                        "Specify 'None' for automatic choice or +/-2 "
+                        "to force a QBX side in the near-evaluation "
+                        "regime.")
 
             return expr
 
@@ -387,9 +419,9 @@ class QBXPreprocessor(IdentityMapper):
 
         if (isinstance(expr.qbx_forced_limit, int)
                 and abs(expr.qbx_forced_limit) == 2):
-            warn("qbx_forced_limit == +/-2 is deprecated "
-                    "for self evaluation--must require evaluation side",
-                    DeprecationWarning)
+            raise ValueError("May not specify qbx_forced_limit == +/-2 "
+                    "for self-evaluation. "
+                    "Specify +/-1 or \"avg\" instead.")
 
         if expr.qbx_forced_limit == "avg":
             return 0.5*(
@@ -435,6 +467,9 @@ class StringifyMapper(BaseStringifyMapper):
 
     def map_node_sum(self, expr, enclosing_prec):
         return "NodeSum(%s)" % self.rec(expr.operand, PREC_NONE)
+
+    def map_node_max(self, expr, enclosing_prec):
+        return "NodeMax(%s)" % self.rec(expr.operand, PREC_NONE)
 
     def map_node_coordinate_component(self, expr, enclosing_prec):
         return "x%d.%s" % (expr.ambient_axis,

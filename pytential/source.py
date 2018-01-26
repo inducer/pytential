@@ -29,6 +29,13 @@ import six
 from pytools import memoize_method
 
 
+__doc__ = """
+.. autoclass:: PotentialSource
+.. autoclass:: PointPotentialSource
+.. autoclass:: LayerPotentialSourceBase
+"""
+
+
 class PotentialSource(object):
     """
     .. method:: preprocess_optemplate(name, expr)
@@ -43,12 +50,15 @@ class PotentialSource(object):
     """
 
 
+# {{{ point potential source
+
 class PointPotentialSource(PotentialSource):
     """
-    ... attributes:: points
+    .. attribute:: points
 
         An :class:`pyopencl.array.Array` of shape ``[ambient_dim, npoints]``.
 
+    .. attribute:: nnodes
     """
 
     def __init__(self, cl_context, points):
@@ -58,6 +68,10 @@ class PointPotentialSource(PotentialSource):
     @property
     def real_dtype(self):
         return self.points.dtype
+
+    @property
+    def nnodes(self):
+        return self.points.shape[-1]
 
     @property
     def complex_dtype(self):
@@ -130,3 +144,128 @@ class PointPotentialSource(PotentialSource):
             result.fill(1)
 
         return result.with_queue(None)
+
+# }}}
+
+
+# {{{ layer potential source
+
+class LayerPotentialSourceBase(PotentialSource):
+    """A discretization of a layer potential using panel-based geometry, with
+    support for refinement and upsampling.
+
+    .. rubric:: Discretizations
+
+    .. attribute:: density_discr
+    .. attribute:: stage2_density_discr
+    .. attribute:: quad_stage2_density_discr
+    .. attribute:: resampler
+    .. method:: with_refinement
+
+    .. rubric:: Discretization data
+
+    .. attribute:: cl_context
+    .. attribute:: ambient_dim
+    .. attribute:: dim
+    .. attribute:: real_dtype
+    .. attribute:: complex_dtype
+    .. attribute:: h_max
+
+    .. rubric:: Execution
+
+    .. automethod:: weights_and_area_elements
+    .. method:: exec_compute_potential_insn
+    """
+
+    @property
+    def ambient_dim(self):
+        return self.density_discr.ambient_dim
+
+    @property
+    def dim(self):
+        return self.density_discr.dim
+
+    @property
+    def cl_context(self):
+        return self.density_discr.cl_context
+
+    @property
+    def real_dtype(self):
+        return self.density_discr.real_dtype
+
+    @property
+    def complex_dtype(self):
+        return self.density_discr.complex_dtype
+
+    @memoize_method
+    def get_p2p(self, kernels):
+        # needs to be separate method for caching
+
+        from pytools import any
+        if any(knl.is_complex_valued for knl in kernels):
+            value_dtype = self.density_discr.complex_dtype
+        else:
+            value_dtype = self.density_discr.real_dtype
+
+        from sumpy.p2p import P2P
+        p2p = P2P(self.cl_context,
+                  kernels, exclude_self=False, value_dtypes=value_dtype)
+
+        return p2p
+
+    # {{{ fmm setup helpers
+
+    def get_fmm_kernel(self, kernels):
+        fmm_kernel = None
+
+        from sumpy.kernel import AxisTargetDerivativeRemover
+        for knl in kernels:
+            candidate_fmm_kernel = AxisTargetDerivativeRemover()(knl)
+
+            if fmm_kernel is None:
+                fmm_kernel = candidate_fmm_kernel
+            else:
+                assert fmm_kernel == candidate_fmm_kernel
+
+        return fmm_kernel
+
+    def get_fmm_output_and_expansion_dtype(self, base_kernel, strengths):
+        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
+            return self.complex_dtype
+        else:
+            return self.real_dtype
+
+    def get_fmm_expansion_wrangler_extra_kwargs(
+            self, queue, out_kernels, tree_user_source_ids, arguments, evaluator):
+        # This contains things like the Helmholtz parameter k or
+        # the normal directions for double layers.
+
+        def reorder_sources(source_array):
+            if isinstance(source_array, cl.array.Array):
+                return (source_array
+                        .with_queue(queue)
+                        [tree_user_source_ids]
+                        .with_queue(None))
+            else:
+                return source_array
+
+        kernel_extra_kwargs = {}
+        source_extra_kwargs = {}
+
+        from sumpy.tools import gather_arguments, gather_source_arguments
+        from pytools.obj_array import with_object_array_or_scalar
+        for func, var_dict in [
+                (gather_arguments, kernel_extra_kwargs),
+                (gather_source_arguments, source_extra_kwargs),
+                ]:
+            for arg in func(out_kernels):
+                var_dict[arg.name] = with_object_array_or_scalar(
+                        reorder_sources,
+                        evaluator(arguments[arg.name]))
+
+        return kernel_extra_kwargs, source_extra_kwargs
+
+    # }}}
+
+
+# }}}

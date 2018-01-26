@@ -35,8 +35,10 @@ import pyopencl.array # noqa
 from boxtree.tools import DeviceDataRecord
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
+from cgen import Enum
 from pytential.qbx.utils import (
-    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS)
+    QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
+    TreeCodeContainerMixin)
 
 
 unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
@@ -45,18 +47,65 @@ unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 import logging
 logger = logging.getLogger(__name__)
 
+__doc__ = """
+The goal of target association is to:
+   * decide which targets require QBX,
+   * decide which centers to use for targets that require QBX,
+   * if no good centers are available for a target that requires QBX,
+     flag the appropriate panels for refinement.
+
+Requesting a target side
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+A target may further specify how it should be treated by target association.
+
+.. _qbx-side-request-table:
+
+.. table:: Values for target side requests
+
+   ===== ==============================================
+   Value Meaning
+   ===== ==============================================
+   0     Volume target. If near a QBX center,
+         the value from the QBX expansion is returned,
+         otherwise the volume potential is returned.
+
+   -1    Surface target. Return interior limit from
+         interior-side QBX expansion.
+
+   +1    Surface target. Return exterior limit from
+         exterior-side QBX expansion.
+
+   -2    Volume target. If within an *interior* QBX disk,
+         the value from the QBX expansion is returned,
+         otherwise the volume potential is returned.
+
+   +2    Volume target. If within an *exterior* QBX disk,
+         the value from the QBX expansion is returned,
+         otherwise the volume potential is returned.
+   ===== ==============================================
+
+Return values
+^^^^^^^^^^^^^
+
+.. autoclass:: QBXTargetAssociation
+
+.. autoclass:: QBXTargetAssociationFailedException
+
+Target association driver
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: TargetAssociationCodeContainer
+
+.. autoclass:: TargetAssociationWrangler
+
+.. autofunction:: associate_targets_to_qbx_centers
+"""
+
+
 #
-# TODO:
-# - Documentation
-#
-#==================
 # HOW DOES TARGET ASSOCIATION WORK?
 #
-# The goal of the target association is to:
-#   a) decide which targets require QBX, and
-#   b) decide which centers to use for targets that require QBX, and
-#   c) if no good centers are available for a target that requires QBX,
-#      flag the appropriate panels for refinement.
 #
 # The flow chart of what happens to target t is shown below. Pass names are in
 # parentheses:
@@ -81,43 +130,41 @@ logger = logging.getLogger(__name__)
 # |Associate t with the   |
 # |best available center. |
 # +-----------------------+
+#
 
 
 # {{{ kernels
 
-TARGET_ASSOC_DEFINES = r"""
-enum TargetStatus
-{
-    UNMARKED,
-    MARKED_QBX_CENTER_PENDING,
-    MARKED_QBX_CENTER_FOUND
-};
+class target_status_enum(Enum):  # noqa
+    c_name = "TargetStatus"
+    dtype = np.int32
+    c_value_prefix = ""
 
-enum TargetFlag
-{
-    INTERIOR_OR_EXTERIOR_VOLUME_TARGET = 0,
-    INTERIOR_SURFACE_TARGET = -1,
-    EXTERIOR_SURFACE_TARGET = +1,
-    INTERIOR_VOLUME_TARGET  = -2,
-    EXTERIOR_VOLUME_TARGET  = +2
-};
-"""
-
-
-class target_status_enum(object):  # noqa
-    # NOTE: Must match "enum TargetStatus" above
     UNMARKED = 0
     MARKED_QBX_CENTER_PENDING = 1
     MARKED_QBX_CENTER_FOUND = 2
 
 
-class target_flag_enum(object):  # noqa
-    # NOTE: Must match "enum TargetFlag" above
+class target_flag_enum(Enum):  # noqa
+    c_name = "TargetFlag"
+    dtype = np.int32
+    c_value_prefix = ""
+
     INTERIOR_OR_EXTERIOR_VOLUME_TARGET = 0
     INTERIOR_SURFACE_TARGET = -1
     EXTERIOR_SURFACE_TARGET = +1
     INTERIOR_VOLUME_TARGET = -2
     EXTERIOR_VOLUME_TARGET = +2
+
+
+def _generate_enum_code(enum):
+    return "\n".join(enum.generate())
+
+
+TARGET_ASSOC_DEFINES = "".join([
+    _generate_enum_code(target_status_enum),
+    _generate_enum_code(target_flag_enum),
+])
 
 
 QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
@@ -178,7 +225,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
         particle_id_t center_offset,
         particle_id_t target_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *expansion_radii_by_center_with_stick_out,
+        coord_t *expansion_radii_by_center_with_tolerance,
         coord_t *box_to_search_dist,
         int *target_flags,
 
@@ -229,7 +276,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
                 coord_t my_dist_to_center = distance(tgt_coords, center_coords);
 
                 if (my_dist_to_center
-                        <= expansion_radii_by_center_with_stick_out[center]
+                        <= expansion_radii_by_center_with_tolerance[center]
                     && my_dist_to_center < min_dist_to_center[i])
                 {
                     target_status[i] = MARKED_QBX_CENTER_FOUND;
@@ -311,9 +358,17 @@ class QBXTargetAssociationFailedException(Exception):
     .. attribute:: refine_flags
     .. attribute:: failed_target_flags
     """
-    def __init__(self, refine_flags, failed_target_flags):
+    def __init__(self, refine_flags, failed_target_flags, message):
         self.refine_flags = refine_flags
         self.failed_target_flags = failed_target_flags
+        self.message = message
+
+    def __str__(self):
+        return (
+                self.message
+                + " You may examine this exception object's 'failed_target_flags' "
+                "attribute as per-node data on the target geometry to determine "
+                "which targets were not associated.")
 
     def __repr__(self):
         return "<%s>" % type(self).__name__
@@ -326,89 +381,87 @@ class QBXTargetAssociation(DeviceDataRecord):
     pass
 
 
-class QBXTargetAssociator(object):
+class TargetAssociationCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, cl_context):
-        from boxtree.tree_build import TreeBuilder
-        self.tree_builder = TreeBuilder(cl_context)
+    def __init__(self, cl_context, tree_code_container):
         self.cl_context = cl_context
-        from boxtree.area_query import PeerListFinder, SpaceInvaderQueryBuilder
-        self.peer_list_finder = PeerListFinder(cl_context)
-        self.space_invader_query = SpaceInvaderQueryBuilder(cl_context)
-
-    # {{{ kernel generation
+        self.tree_code_container = tree_code_container
 
     @memoize_method
-    def get_qbx_target_marker(self,
-                              dimensions,
-                              coord_dtype,
-                              box_id_dtype,
-                              peer_list_idx_dtype,
-                              particle_id_dtype,
-                              max_levels):
+    def target_marker(self, dimensions, coord_dtype, box_id_dtype,
+            peer_list_idx_dtype, particle_id_dtype, max_levels):
         return QBX_TARGET_MARKER.generate(
-            self.cl_context,
-            dimensions,
-            coord_dtype,
-            box_id_dtype,
-            peer_list_idx_dtype,
-            max_levels,
-            extra_type_aliases=(("particle_id_t", particle_id_dtype),))
+                self.cl_context,
+                dimensions,
+                coord_dtype,
+                box_id_dtype,
+                peer_list_idx_dtype,
+                max_levels,
+                extra_type_aliases=(("particle_id_t", particle_id_dtype),))
 
     @memoize_method
-    def get_qbx_center_finder(self,
-                              dimensions,
-                              coord_dtype,
-                              box_id_dtype,
-                              peer_list_idx_dtype,
-                              particle_id_dtype,
-                              max_levels):
+    def center_finder(self, dimensions, coord_dtype, box_id_dtype,
+            peer_list_idx_dtype, particle_id_dtype, max_levels):
         return QBX_CENTER_FINDER.generate(
-            self.cl_context,
-            dimensions,
-            coord_dtype,
-            box_id_dtype,
-            peer_list_idx_dtype,
-            max_levels,
-            extra_type_aliases=(("particle_id_t", particle_id_dtype),))
+                self.cl_context,
+                dimensions,
+                coord_dtype,
+                box_id_dtype,
+                peer_list_idx_dtype,
+                max_levels,
+                extra_type_aliases=(("particle_id_t", particle_id_dtype),))
 
     @memoize_method
-    def get_qbx_failed_target_association_refiner(self, dimensions, coord_dtype,
-                                                 box_id_dtype, peer_list_idx_dtype,
-                                                 particle_id_dtype, max_levels):
+    def refiner_for_failed_target_association(self, dimensions, coord_dtype,
+            box_id_dtype, peer_list_idx_dtype, particle_id_dtype, max_levels):
         return QBX_FAILED_TARGET_ASSOCIATION_REFINER.generate(
-            self.cl_context,
-            dimensions,
-            coord_dtype,
-            box_id_dtype,
-            peer_list_idx_dtype,
-            max_levels,
-            extra_type_aliases=(("particle_id_t", particle_id_dtype),))
+                self.cl_context,
+                dimensions,
+                coord_dtype,
+                box_id_dtype,
+                peer_list_idx_dtype,
+                max_levels,
+                extra_type_aliases=(("particle_id_t", particle_id_dtype),))
 
-    # }}}
+    @memoize_method
+    def space_invader_query(self):
+        from boxtree.area_query import SpaceInvaderQueryBuilder
+        return SpaceInvaderQueryBuilder(self.cl_context)
 
-    def mark_targets(self, queue, tree, peer_lists, lpot_source, target_status,
+    def get_wrangler(self, queue):
+        return TargetAssociationWrangler(self, queue)
+
+
+class TargetAssociationWrangler(TreeWranglerBase):
+
+    def __init__(self, code_container, queue):
+        self.code_container = code_container
+        self.queue = queue
+
+    def mark_targets(self, tree, peer_lists, lpot_source, target_status,
                      debug, wait_for=None):
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
 
-        knl = self.get_qbx_target_marker(
+        knl = self.code_container.target_marker(
                 tree.dimensions,
                 tree.coord_dtype, tree.box_id_dtype,
                 peer_lists.peer_list_starts.dtype,
                 tree.particle_id_dtype,
                 max_levels)
 
-        found_target_close_to_panel = cl.array.zeros(queue, 1, np.int32)
+        found_target_close_to_panel = cl.array.zeros(self.queue, 1, np.int32)
         found_target_close_to_panel.finish()
 
         # Perform a space invader query over the sources.
         source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
-        sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = \
-                lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
+        sources = [
+                axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
+        tunnel_radius_by_source = (
+                lpot_source._close_target_tunnel_radius("nsources")
+                .with_queue(self.queue))
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -435,8 +488,8 @@ class QBXTargetAssociator(object):
         # sources are fixed (which sort of makes sense, given that the number
         # of targets per box is not bounded).
 
-        box_to_search_dist, evt = self.space_invader_query(
-                queue,
+        box_to_search_dist, evt = self.code_container.space_invader_query()(
+                self.queue,
                 tree,
                 sources,
                 tunnel_radius_by_source,
@@ -462,7 +515,7 @@ class QBXTargetAssociator(object):
                 found_target_close_to_panel,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
-            queue=queue,
+            queue=self.queue,
             wait_for=wait_for)
 
         if debug:
@@ -478,15 +531,15 @@ class QBXTargetAssociator(object):
 
         return (found_target_close_to_panel == 1).all().get()
 
-    def try_find_centers(self, queue, tree, peer_lists, lpot_source,
+    def try_find_centers(self, tree, peer_lists, lpot_source,
                          target_status, target_flags, target_assoc,
-                         stick_out_factor, debug, wait_for=None):
+                         target_association_tolerance, debug, wait_for=None):
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
 
-        knl = self.get_qbx_center_finder(
+        knl = self.code_container.center_finder(
                 tree.dimensions,
                 tree.coord_dtype, tree.box_id_dtype,
                 peer_lists.peer_list_starts.dtype,
@@ -498,13 +551,15 @@ class QBXTargetAssociator(object):
             marked_target_count = int(cl.array.sum(target_status).get())
 
         # Perform a space invader query over the centers.
-        center_slice = \
-                tree.sorted_target_ids[tree.qbx_user_center_slice].with_queue(queue)
-        centers = [axis.with_queue(queue)[center_slice] for axis in tree.sources]
+        center_slice = (
+                tree.sorted_target_ids[tree.qbx_user_center_slice]
+                .with_queue(self.queue))
+        centers = [
+                axis.with_queue(self.queue)[center_slice] for axis in tree.sources]
         expansion_radii_by_center = \
-                lpot_source._expansion_radii("ncenters").with_queue(queue)
-        expansion_radii_by_center_with_stick_out = \
-                expansion_radii_by_center * (1 + stick_out_factor)
+                lpot_source._expansion_radii("ncenters").with_queue(self.queue)
+        expansion_radii_by_center_with_tolerance = \
+                expansion_radii_by_center * (1 + target_association_tolerance)
 
         # Idea:
         #
@@ -512,17 +567,17 @@ class QBXTargetAssociator(object):
         # (2) Area query from targets with those radii to find closest eligible
         # center.
 
-        box_to_search_dist, evt = self.space_invader_query(
-                queue,
+        box_to_search_dist, evt = self.code_container.space_invader_query()(
+                self.queue,
                 tree,
                 centers,
-                expansion_radii_by_center_with_stick_out,
+                expansion_radii_by_center_with_tolerance,
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
 
         min_dist_to_center = cl.array.empty(
-                queue, tree.nqbxtargets, tree.coord_dtype)
+                self.queue, tree.nqbxtargets, tree.coord_dtype)
         min_dist_to_center.fill(np.inf)
 
         wait_for.extend(min_dist_to_center.events)
@@ -537,7 +592,7 @@ class QBXTargetAssociator(object):
                 tree.qbx_user_center_slice.start,
                 tree.qbx_user_target_slice.start,
                 tree.sorted_target_ids,
-                expansion_radii_by_center_with_stick_out,
+                expansion_radii_by_center_with_tolerance,
                 box_to_search_dist,
                 target_flags,
                 target_status,
@@ -545,7 +600,7 @@ class QBXTargetAssociator(object):
                 min_dist_to_center,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
-            queue=queue,
+            queue=self.queue,
             wait_for=wait_for)
 
         if debug:
@@ -561,7 +616,7 @@ class QBXTargetAssociator(object):
         logger.info("target association: done finding centers for targets")
         return
 
-    def mark_panels_for_refinement(self, queue, tree, peer_lists, lpot_source,
+    def mark_panels_for_refinement(self, tree, peer_lists, lpot_source,
                                    target_status, refine_flags, debug,
                                    wait_for=None):
         # Round up level count--this gets included in the kernel as
@@ -569,26 +624,28 @@ class QBXTargetAssociator(object):
         from pytools import div_ceil
         max_levels = 10 * div_ceil(tree.nlevels, 10)
 
-        knl = self.get_qbx_failed_target_association_refiner(
+        knl = self.code_container.refiner_for_failed_target_association(
                 tree.dimensions,
                 tree.coord_dtype, tree.box_id_dtype,
                 peer_lists.peer_list_starts.dtype,
                 tree.particle_id_dtype,
                 max_levels)
 
-        found_panel_to_refine = cl.array.zeros(queue, 1, np.int32)
+        found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
         found_panel_to_refine.finish()
 
         # Perform a space invader query over the sources.
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
-        sources = [axis.with_queue(queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = \
-                lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
+        sources = [
+                axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
+        tunnel_radius_by_source = (
+                lpot_source._close_target_tunnel_radius("nsources")
+                .with_queue(self.queue))
 
         # See (TGTMARK) above for algorithm.
 
-        box_to_search_dist, evt = self.space_invader_query(
-                queue,
+        box_to_search_dist, evt = self.code_container.space_invader_query()(
+                self.queue,
                 tree,
                 sources,
                 tunnel_radius_by_source,
@@ -615,7 +672,7 @@ class QBXTargetAssociator(object):
                 found_panel_to_refine,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
-            queue=queue,
+            queue=self.queue,
             wait_for=wait_for)
 
         if debug:
@@ -631,9 +688,9 @@ class QBXTargetAssociator(object):
 
         return (found_panel_to_refine == 1).all().get()
 
-    def make_target_flags(self, queue, target_discrs_and_qbx_sides):
+    def make_target_flags(self, target_discrs_and_qbx_sides):
         ntargets = sum(discr.nnodes for discr, _ in target_discrs_and_qbx_sides)
-        target_flags = cl.array.empty(queue, ntargets, dtype=np.int32)
+        target_flags = cl.array.empty(self.queue, ntargets, dtype=np.int32)
         offset = 0
 
         for discr, flags in target_discrs_and_qbx_sides:
@@ -647,118 +704,102 @@ class QBXTargetAssociator(object):
         target_flags.finish()
         return target_flags
 
-    def make_default_target_association(self, queue, ntargets):
-        target_to_center = cl.array.empty(queue, ntargets, dtype=np.int32)
+    def make_default_target_association(self, ntargets):
+        target_to_center = cl.array.empty(self.queue, ntargets, dtype=np.int32)
         target_to_center.fill(-1)
         target_to_center.finish()
 
         return QBXTargetAssociation(target_to_center=target_to_center)
 
-    def __call__(self, lpot_source, target_discrs_and_qbx_sides,
-                 stick_out_factor=1e-10, debug=True, wait_for=None):
-        """
-        Entry point for calling the target associator.
 
-        :arg lpot_source: An instance of :class:`NewQBXLayerPotentialSource`
+def associate_targets_to_qbx_centers(lpot_source, wrangler,
+        target_discrs_and_qbx_sides, target_association_tolerance,
+        debug=True, wait_for=None):
+    """
+    Associate targets to centers in a layer potential source.
 
-        :arg target_discrs_and_qbx_sides:
+    :arg lpot_source: An instance of :class:`QBXLayerPotentialSource`
 
-            a list of tuples ``(discr, sides)``, where
-            *discr* is a
-            :class:`pytential.discretization.Discretization`
-            or a
-            :class:`pytential.discretization.target.TargetBase` instance, and
-            *sides* is either a :class:`int` or
-            an array of (:class:`numpy.int8`) side requests for each
-            target.
+    :arg wrangler: An instance of :class:`TargetAssociationWrangler`
 
-            The side request can take the following values for each target:
+    :arg target_discrs_and_qbx_sides:
 
-            ===== ==============================================
-            Value Meaning
-            ===== ==============================================
-            0     Volume target. If near a QBX center,
-                  the value from the QBX expansion is returned,
-                  otherwise the volume potential is returned.
+        a list of tuples ``(discr, sides)``, where
+        *discr* is a
+        :class:`pytential.discretization.Discretization`
+        or a
+        :class:`pytential.discretization.target.TargetBase` instance, and
+        *sides* is either a :class:`int` or
+        an array of (:class:`numpy.int8`) side requests for each
+        target.
 
-            -1    Surface target. Return interior limit from
-                  interior-side QBX expansion.
+        The side request can take on the values in :ref:`qbx-side-request-table`.
 
-            +1    Surface target. Return exterior limit from
-                  exterior-side QBX expansion.
+    :raises QBXTargetAssociationFailedException:
+        when target association failed to find a center for a target.
+        The returned exception object contains suggested refine flags.
 
-            -2    Volume target. If within an *interior* QBX disk,
-                  the value from the QBX expansion is returned,
-                  otherwise the volume potential is returned.
+    :returns: A :class:`QBXTargetAssociation`.
+    """
 
-            +2    Volume target. If within an *exterior* QBX disk,
-                  the value from the QBX expansion is returned,
-                  otherwise the volume potential is returned.
-            ===== ==============================================
+    tree = wrangler.build_tree(lpot_source,
+            [discr for discr, _ in target_discrs_and_qbx_sides])
 
-        :raises QBXTargetAssociationFailedException:
-            when target association failed to find a center for a target.
-            The returned exception object contains suggested refine flags.
+    peer_lists = wrangler.find_peer_lists(tree)
 
-        :returns:
-        """
+    target_status = cl.array.zeros(wrangler.queue, tree.nqbxtargets, dtype=np.int32)
+    target_status.finish()
 
-        with cl.CommandQueue(self.cl_context) as queue:
-            from pytential.qbx.utils import build_tree_with_qbx_metadata
+    have_close_targets = wrangler.mark_targets(tree, peer_lists,
+           lpot_source, target_status, debug)
 
-            tree = build_tree_with_qbx_metadata(
-                    queue,
-                    self.tree_builder,
-                    lpot_source,
-                    [discr for discr, _ in target_discrs_and_qbx_sides])
+    target_assoc = wrangler.make_default_target_association(tree.nqbxtargets)
 
-            peer_lists, evt = self.peer_list_finder(queue, tree, wait_for)
-            wait_for = [evt]
+    if not have_close_targets:
+        return target_assoc.with_queue(None)
 
-            target_status = cl.array.zeros(queue, tree.nqbxtargets, dtype=np.int32)
-            target_status.finish()
+    target_flags = wrangler.make_target_flags(target_discrs_and_qbx_sides)
 
-            have_close_targets = self.mark_targets(queue, tree, peer_lists,
-                                                   lpot_source, target_status,
-                                                   debug)
+    wrangler.try_find_centers(tree, peer_lists, lpot_source, target_status,
+            target_flags, target_assoc, target_association_tolerance, debug)
 
-            target_assoc = self.make_default_target_association(
-                queue, tree.nqbxtargets)
+    center_not_found = (
+        target_status == target_status_enum.MARKED_QBX_CENTER_PENDING)
 
-            if not have_close_targets:
-                return target_assoc.with_queue(None)
+    if center_not_found.any().get():
+        surface_target = (
+            (target_flags == target_flag_enum.INTERIOR_SURFACE_TARGET)
+            | (target_flags == target_flag_enum.EXTERIOR_SURFACE_TARGET))
 
-            target_flags = self.make_target_flags(queue, target_discrs_and_qbx_sides)
+        if (center_not_found & surface_target).any().get():
+            fail_msg = "An on-surface target was not assigned a QBX center."
+        else:
+            fail_msg = "Some targets were not assigned a QBX center."
 
-            self.try_find_centers(queue, tree, peer_lists, lpot_source,
-                                  target_status, target_flags, target_assoc,
-                                  stick_out_factor, debug)
+        fail_msg += (
+            " Make sure to check the values you are passing "
+            "for qbx_forced_limit on your symbolic layer potential "
+            "operators. Those (or their default values) may "
+            "constrain center choice to on-or-near surface "
+            "sides of the geometry in a way that causes this issue.")
 
-            center_not_found = (
-                target_status == target_status_enum.MARKED_QBX_CENTER_PENDING)
+        fail_msg += (
+            " As a last resort, you can try increasing "
+            "the 'target_association_tolerance' parameter, but "
+            "this could also cause an invalid center assignment.")
 
-            if center_not_found.any().get():
-                surface_target = (
-                    (target_flags == target_flag_enum.INTERIOR_SURFACE_TARGET)
-                    | (target_flags == target_flag_enum.EXTERIOR_SURFACE_TARGET))
+        refine_flags = cl.array.zeros(
+                wrangler.queue, tree.nqbxpanels, dtype=np.int32)
+        have_panel_to_refine = wrangler.mark_panels_for_refinement(
+                tree, peer_lists, lpot_source, target_status, refine_flags, debug)
 
-                if (center_not_found & surface_target).any().get():
-                    logger.warning("An on-surface target was not "
-                            "assigned a center. As a remedy you can try increasing "
-                            "the \"stick_out_factor\" parameter, but this could "
-                            "also cause an invalid center assignment.")
+        assert have_panel_to_refine
+        raise QBXTargetAssociationFailedException(
+                refine_flags=refine_flags.with_queue(None),
+                failed_target_flags=center_not_found.with_queue(None),
+                message=fail_msg)
 
-                refine_flags = cl.array.zeros(queue, tree.nqbxpanels, dtype=np.int32)
-                have_panel_to_refine = self.mark_panels_for_refinement(queue,
-                                                tree, peer_lists,
-                                                lpot_source, target_status,
-                                                refine_flags, debug)
-                assert have_panel_to_refine
-                raise QBXTargetAssociationFailedException(
-                        refine_flags=refine_flags.with_queue(None),
-                        failed_target_flags=center_not_found.with_queue(None))
-
-            return target_assoc.with_queue(None)
+    return target_assoc.with_queue(None)
 
 # }}}
 

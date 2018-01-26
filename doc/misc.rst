@@ -4,7 +4,19 @@ Installation and Usage
 Installing :mod:`pytential`
 ---------------------------
 
-#.  Start by installing `miniconda for Python 3 on 64-bit Linux <https://conda.io/miniconda.html>`_.
+This set of instructions is intended for 64-bit Linux computers.
+MacOS support is in the works.
+
+#.  Make sure your system has the basics to build software.
+
+    On Debian derivatives (Ubuntu and many more),
+    installing ``build-essential`` should do the trick.
+
+    Everywhere else, just making sure you have the ``g++`` package should be
+    enough.
+
+#.  Install your favorite variant of `miniconda <https://conda.io/miniconda.html>`_.
+    (Both Python 2 and 3 should work. In the absence of other constraints, prefer Python 3.)
 
 #.  ``export CONDA=/WHERE/YOU/INSTALLED/miniconda3``
 
@@ -12,31 +24,38 @@ Installing :mod:`pytential`
 
     ``export CONDA=$HOME/miniconda3``
 
-#.  ``$CONDA/bin/conda create -n inteq python=3.5.2``
+#.  ``$CONDA/bin/conda create -n inteq``
 
 #.  ``source $CONDA/bin/activate inteq``
 
 #.  ``conda config --add channels conda-forge``
 
-#.  ``conda config --add channels inducer``
-
-#.  ``conda install git pip pocl islpy pyopencl sympy meshpy``
+#.  ``conda install git pip pocl islpy pyopencl sympy pyfmmlib pytest``
 
 #.  Type the following command::
 
-        hash -r; for i in pymbolic cgen genpy modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
 
-Next time you want to use `pytential`, just run the following command::
+Next time you want to use :mod:`pytential`, just run the following command::
 
     source /WHERE/YOU/INSTALLED/miniconda3/bin/activate inteq
 
 You may also like to add this to a startup file (like :file:`$HOME/.bashrc`) or create an alias for it.
 
 After this, you should be able to run the `tests <https://github.com/inducer/pytential/tree/master/test>`_
-or `examples <https://github.com/inducer/pytential/tree/master/examples|examples>`_.
+or `examples <https://github.com/inducer/pytential/tree/master/examples>`_.
 
 Troubleshooting the Installation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+/usr/bin/ld: cannot find -lstdc++
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Try::
+
+    sudo apt-get install libstdc++-6-dev
+
+to install the missing C++ development package.
 
 No CL platforms found/unknown error -1001
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

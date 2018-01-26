@@ -65,7 +65,7 @@ def test_interpolatory_error_reporting(ctx_factory):
     h = 0.2
     from meshmode.mesh.io import generate_gmsh, FileSource
     mesh = generate_gmsh(
-            FileSource("circle.step"), 2, order=4,
+            FileSource("circle.step"), 2, order=4, force_ambient_dim=2,
             other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h]
             )
 

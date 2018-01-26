@@ -29,7 +29,7 @@ import numpy as np
 from pytools import memoize_method
 from meshmode.discretization import Discretization
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
-from pytential.source import PotentialSource
+from pytential.source import LayerPotentialSourceBase
 
 import pyopencl as cl
 
@@ -44,82 +44,122 @@ __doc__ = """
 """
 
 
-class LayerPotentialSource(PotentialSource):
+# {{{ QBX layer potential source
+
+class _not_provided:  # noqa: N801
     pass
 
 
-# {{{ QBX layer potential source
-
-class QBXLayerPotentialSource(LayerPotentialSource):
+class QBXLayerPotentialSource(LayerPotentialSourceBase):
     """A source discretization for a QBX layer potential.
 
-    .. attribute :: density_discr
     .. attribute :: qbx_order
     .. attribute :: fmm_order
-    .. attribute :: cl_context
-    .. automethod :: weights_and_area_elements
-    .. automethod :: with_refinement
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
 
     # {{{ constructor / copy
 
-    def __init__(self, density_discr, fine_order,
+    def __init__(self,
+            density_discr,
+            fine_order,
             qbx_order=None,
             fmm_order=None,
             fmm_level_to_order=None,
-            target_stick_out_factor=1e-10,
-            base_resampler=None,
+            to_refined_connection=None,
             expansion_factory=None,
+            target_association_tolerance=_not_provided,
 
             # begin undocumented arguments
-            # FIXME default debug=False once everything works
+            # FIXME default debug=False once everything has matured
             debug=True,
-            refined_for_global_qbx=False,
-            expansion_disks_in_tree_have_extent=False,
-            performance_data_file=None,
-            fmm_backend="sumpy"):
+            _refined_for_global_qbx=False,
+            _expansions_in_tree_have_extent=True,
+            _expansion_stick_out_factor=0.5,
+            _well_sep_is_n_away=2,
+            _max_leaf_refine_weight=32,
+            _box_extent_norm=None,
+            _from_sep_smaller_crit=None,
+            _from_sep_smaller_min_nsources_cumul=None,
+            geometry_data_inspector=None,
+            fmm_backend="sumpy",
+            target_stick_out_factor=_not_provided):
         """
         :arg fine_order: The total degree to which the (upsampled)
              underlying quadrature is exact.
-        :arg base_resampler: A connection used for resampling from
+        :arg to_refined_connection: A connection used for resampling from
              *density_discr* the fine density discretization.  It is assumed
              that the fine density discretization given by
-             *base_resampler.to_discr* is *not* already upsampled. May
+             *to_refined_connection.to_discr* is *not* already upsampled. May
              be *None*.
-        :arg fmm_order: `False` for direct calculation. ``None`` will set
-             a reasonable(-ish?) default.
+        :arg fmm_order: `False` for direct calculation. May not be given if
+            *fmm_level_to_order* is given.
+        :arg fmm_level_to_order: A function that takes arguments of
+             *(kernel, kernel_args, tree, level)* and returns the expansion
+             order to be used on a given *level* of *tree* with *kernel*, where
+             *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
+             *kernel_args* is a set of *(key, value)* tuples with evaluated
+             kernel arguments. May not be given if *fmm_order* is given.
         """
 
-        if fmm_level_to_order is None:
-            if fmm_order is None and qbx_order is not None:
-                fmm_order = qbx_order + 1
+        # {{{ argument processing
 
-                from warnings import warn
-                warn("Not specifying the FMM order is deprecated. "
-                        "fmm_order will soon be required.",
-                        DeprecationWarning, stacklevel=2)
+        if target_stick_out_factor is not _not_provided:
+            from warnings import warn
+            warn("target_stick_out_factor has been renamed to "
+                    "target_association_tolerance. "
+                    "Using target_stick_out_factor is deprecated "
+                    "and will stop working in 2018.",
+                    DeprecationWarning, stacklevel=2)
+
+            if target_association_tolerance is not _not_provided:
+                raise TypeError("May not pass both target_association_tolerance and "
+                        "target_stick_out_factor.")
+
+            target_association_tolerance = target_stick_out_factor
+
+        del target_stick_out_factor
+
+        if target_association_tolerance is _not_provided:
+            target_association_tolerance = float(
+                    np.finfo(density_discr.real_dtype).eps) * 1e3
 
         if fmm_order is not None and fmm_level_to_order is not None:
             raise TypeError("may not specify both fmm_order and fmm_level_to_order")
+
+        if _box_extent_norm is None:
+            _box_extent_norm = "l2"
 
         if fmm_level_to_order is None:
             if fmm_order is False:
                 fmm_level_to_order = False
             else:
-                def fmm_level_to_order(level):
+                def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
+
+        if _from_sep_smaller_min_nsources_cumul is None:
+            # See here for the comment thread that led to these defaults:
+            # https://gitlab.tiker.net/inducer/boxtree/merge_requests/28#note_18661
+            if density_discr.dim == 1:
+                _from_sep_smaller_min_nsources_cumul = 15
+            else:
+                _from_sep_smaller_min_nsources_cumul = 30
+
+        # }}}
 
         self.fine_order = fine_order
         self.qbx_order = qbx_order
         self.density_discr = density_discr
         self.fmm_level_to_order = fmm_level_to_order
-        self.target_stick_out_factor = target_stick_out_factor
+
+        assert target_association_tolerance is not None
+
+        self.target_association_tolerance = target_association_tolerance
         self.fmm_backend = fmm_backend
 
         # Default values are lazily provided if these are None
-        self._base_resampler = base_resampler
+        self._to_refined_connection = to_refined_connection
 
         if expansion_factory is None:
             from sumpy.expansion import DefaultExpansionFactory
@@ -127,23 +167,63 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         self.expansion_factory = expansion_factory
 
         self.debug = debug
-        self.refined_for_global_qbx = refined_for_global_qbx
-        self.expansion_disks_in_tree_have_extent = \
-                expansion_disks_in_tree_have_extent
-        self.performance_data_file = performance_data_file
+        self._refined_for_global_qbx = _refined_for_global_qbx
+        self._expansions_in_tree_have_extent = \
+                _expansions_in_tree_have_extent
+        self._expansion_stick_out_factor = _expansion_stick_out_factor
+        self._well_sep_is_n_away = _well_sep_is_n_away
+        self._max_leaf_refine_weight = _max_leaf_refine_weight
+        self._box_extent_norm = _box_extent_norm
+        self._from_sep_smaller_crit = _from_sep_smaller_crit
+        self._from_sep_smaller_min_nsources_cumul = \
+                _from_sep_smaller_min_nsources_cumul
+        self.geometry_data_inspector = geometry_data_inspector
+
+        # /!\ *All* parameters set here must also be set by copy() below,
+        # otherwise they will be reset to their default values behind your
+        # back if the layer potential source is ever copied. (such as
+        # during refinement)
 
     def copy(
             self,
             density_discr=None,
             fine_order=None,
             qbx_order=None,
-            fmm_level_to_order=None,
-            target_stick_out_factor=None,
-            base_resampler=None,
+            fmm_level_to_order=_not_provided,
+            to_refined_connection=None,
+            target_association_tolerance=_not_provided,
+            _expansions_in_tree_have_extent=_not_provided,
+            _expansion_stick_out_factor=_not_provided,
+            geometry_data_inspector=None,
 
-            debug=None,
-            refined_for_global_qbx=None,
+            debug=_not_provided,
+            _refined_for_global_qbx=_not_provided,
+            target_stick_out_factor=_not_provided,
             ):
+
+        # {{{ argument processing
+
+        if target_stick_out_factor is not _not_provided:
+            from warnings import warn
+            warn("target_stick_out_factor has been renamed to "
+                    "target_association_tolerance. "
+                    "Using target_stick_out_factor is deprecated "
+                    "and will stop working in 2018.",
+                    DeprecationWarning, stacklevel=2)
+
+            if target_association_tolerance is not _not_provided:
+                raise TypeError("May not pass both target_association_tolerance and "
+                        "target_stick_out_factor.")
+
+            target_association_tolerance = target_stick_out_factor
+
+        elif target_association_tolerance is _not_provided:
+            target_association_tolerance = self.target_association_tolerance
+
+        del target_stick_out_factor
+
+        # }}}
+
         # FIXME Could/should share wrangler and geometry kernels
         # if no relevant changes have been made.
         return QBXLayerPotentialSource(
@@ -152,71 +232,136 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                     fine_order if fine_order is not None else self.fine_order),
                 qbx_order=qbx_order if qbx_order is not None else self.qbx_order,
                 fmm_level_to_order=(
-                    fmm_level_to_order or self.fmm_level_to_order),
-                target_stick_out_factor=(
-                    target_stick_out_factor
-                    if target_stick_out_factor is not None
-                    else self.target_stick_out_factor),
-                base_resampler=base_resampler or self._base_resampler,
+                    # False is a valid value here
+                    fmm_level_to_order
+                    if fmm_level_to_order is not _not_provided
+                    else self.fmm_level_to_order),
+
+                target_association_tolerance=target_association_tolerance,
+                to_refined_connection=(
+                    to_refined_connection or self._to_refined_connection),
 
                 debug=(
-                    debug if debug is not None else self.debug),
-                refined_for_global_qbx=(
-                    refined_for_global_qbx if refined_for_global_qbx is not None
-                    else self.refined_for_global_qbx),
-                expansion_disks_in_tree_have_extent=(
-                    self.expansion_disks_in_tree_have_extent),
-                performance_data_file=self.performance_data_file,
-                fmm_backend=self.fmm_backend)
+                    # False is a valid value here
+                    debug if debug is not _not_provided else self.debug),
+                _refined_for_global_qbx=(
+                    # False is a valid value here
+                    _refined_for_global_qbx
+                    if _refined_for_global_qbx is not _not_provided
+                    else self._refined_for_global_qbx),
+                _expansions_in_tree_have_extent=(
+                    # False is a valid value here
+                    _expansions_in_tree_have_extent
+                    if _expansions_in_tree_have_extent is not _not_provided
+                    else self._expansions_in_tree_have_extent),
+                _expansion_stick_out_factor=(
+                    # 0 is a valid value here
+                    _expansion_stick_out_factor
+                    if _expansion_stick_out_factor is not _not_provided
+                    else self._expansion_stick_out_factor),
+                _well_sep_is_n_away=self._well_sep_is_n_away,
+                _max_leaf_refine_weight=self._max_leaf_refine_weight,
+                _box_extent_norm=self._box_extent_norm,
+                _from_sep_smaller_crit=self._from_sep_smaller_crit,
+                _from_sep_smaller_min_nsources_cumul=(
+                    self._from_sep_smaller_min_nsources_cumul),
+                geometry_data_inspector=(
+                    geometry_data_inspector or self.geometry_data_inspector),
+                fmm_backend=self.fmm_backend,
+                )
 
     # }}}
 
     @property
-    def base_fine_density_discr(self):
+    def stage2_density_discr(self):
         """The refined, interpolation-focused density discretization (no oversampling).
         """
-        # FIXME: Maybe rename refined_interp_density_discr
-        return (self._base_resampler.to_discr
-                if self._base_resampler is not None
+        return (self._to_refined_connection.to_discr
+                if self._to_refined_connection is not None
                 else self.density_discr)
 
     @property
     @memoize_method
-    def fine_density_discr(self):
+    def refined_interp_to_ovsmp_quad_connection(self):
+        from meshmode.discretization.connection import make_same_mesh_connection
+
+        return make_same_mesh_connection(
+                self.quad_stage2_density_discr,
+                self.stage2_density_discr)
+
+    @property
+    @memoize_method
+    def quad_stage2_density_discr(self):
         """The refined, quadrature-focused density discretization (with upsampling).
         """
-        # FIXME: Maybe rename refined_quad_density_discr
         from meshmode.discretization.poly_element import (
                 QuadratureSimplexGroupFactory)
 
         return Discretization(
-            self.density_discr.cl_context, self.base_fine_density_discr.mesh,
+            self.density_discr.cl_context, self.stage2_density_discr.mesh,
             QuadratureSimplexGroupFactory(self.fine_order),
             self.real_dtype)
+
+    # {{{ weights and area elements
+
+    @memoize_method
+    def weights_and_area_elements(self):
+        import pytential.symbolic.primitives as p
+        from pytential.symbolic.execution import bind
+        with cl.CommandQueue(self.cl_context) as queue:
+            # quad_stage2_density_discr is not guaranteed to be usable for
+            # interpolation/differentiation. Use density_discr to find
+            # area element instead, then upsample that.
+
+            area_element = self.refined_interp_to_ovsmp_quad_connection(
+                    queue,
+                    bind(
+                        self.stage2_density_discr,
+                        p.area_element(self.ambient_dim, self.dim)
+                        )(queue))
+
+            qweight = bind(self.quad_stage2_density_discr, p.QWeight())(queue)
+
+            return (area_element.with_queue(queue)*qweight).with_queue(None)
+
+    # }}}
 
     @property
     @memoize_method
     def resampler(self):
-        from meshmode.discretization.connection import (
-            make_same_mesh_connection, ChainedDiscretizationConnection)
+        from meshmode.discretization.connection import \
+                ChainedDiscretizationConnection
 
-        conn = make_same_mesh_connection(
-                self.fine_density_discr, self.base_fine_density_discr)
+        conn = self.refined_interp_to_ovsmp_quad_connection
 
-        if self._base_resampler is not None:
-            return ChainedDiscretizationConnection([self._base_resampler, conn])
+        if self._to_refined_connection is not None:
+            return ChainedDiscretizationConnection(
+                    [self._to_refined_connection, conn])
 
         return conn
 
     @property
     @memoize_method
+    def tree_code_container(self):
+        from pytential.qbx.utils import TreeCodeContainer
+        return TreeCodeContainer(self.cl_context)
+
+    @property
+    @memoize_method
     def refiner_code_container(self):
         from pytential.qbx.refinement import RefinerCodeContainer
-        return RefinerCodeContainer(self.cl_context)
+        return RefinerCodeContainer(self.cl_context, self.tree_code_container)
+
+    @property
+    @memoize_method
+    def target_association_code_container(self):
+        from pytential.qbx.target_assoc import TargetAssociationCodeContainer
+        return TargetAssociationCodeContainer(
+                self.cl_context, self.tree_code_container)
 
     @memoize_method
     def with_refinement(self, target_order=None, kernel_length_scale=None,
-            maxiter=10):
+            maxiter=None, visualize=False, _expansion_disturbance_tolerance=None):
         """
         :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
             :class:`QBXLayerPotentialSource` and ``cnx`` is a
@@ -226,19 +371,19 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from pytential.qbx.refinement import refine_for_global_qbx
 
         from meshmode.discretization.poly_element import (
-                InterpolatoryQuadratureSimplexGroupFactory,
-                QuadratureSimplexGroupFactory)
+                InterpolatoryQuadratureSimplexGroupFactory)
 
         if target_order is None:
             target_order = self.density_discr.groups[0].order
 
-        lpot, connection = refine_for_global_qbx(
-                self,
-                self.refiner_code_container,
-                InterpolatoryQuadratureSimplexGroupFactory(target_order),
-                QuadratureSimplexGroupFactory(self.fine_order),
-                kernel_length_scale=kernel_length_scale,
-                maxiter=maxiter)
+        with cl.CommandQueue(self.cl_context) as queue:
+            lpot, connection = refine_for_global_qbx(
+                    self,
+                    self.refiner_code_container.get_wrangler(queue),
+                    InterpolatoryQuadratureSimplexGroupFactory(target_order),
+                    kernel_length_scale=kernel_length_scale,
+                    maxiter=maxiter, visualize=visualize,
+                    expansion_disturbance_tolerance=_expansion_disturbance_tolerance)
 
         return lpot, connection
 
@@ -248,26 +393,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         with cl.CommandQueue(self.cl_context) as queue:
             panel_sizes = self._panel_sizes("npanels").with_queue(queue)
             return np.asscalar(cl.array.max(panel_sizes).get())
-
-    @property
-    def ambient_dim(self):
-        return self.density_discr.ambient_dim
-
-    @property
-    def dim(self):
-        return self.density_discr.dim
-
-    @property
-    def cl_context(self):
-        return self.density_discr.cl_context
-
-    @property
-    def real_dtype(self):
-        return self.density_discr.real_dtype
-
-    @property
-    def complex_dtype(self):
-        return self.density_discr.complex_dtype
 
     # {{{ internal API
 
@@ -279,7 +404,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     @memoize_method
     def _fine_panel_centers_of_mass(self):
         import pytential.qbx.utils as utils
-        return utils.element_centers_of_mass(self.base_fine_density_discr)
+        return utils.element_centers_of_mass(self.stage2_density_discr)
 
     @memoize_method
     def _expansion_radii(self, last_dim_length):
@@ -314,7 +439,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
             raise NotImplementedError()
 
         import pytential.qbx.utils as utils
-        return utils.panel_sizes(self.base_fine_density_discr, last_dim_length)
+        return utils.panel_sizes(self.stage2_density_discr, last_dim_length)
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
@@ -331,29 +456,10 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
         return QBXFMMGeometryData(self.qbx_fmm_code_getter,
                 self, target_discrs_and_qbx_sides,
-                target_stick_out_factor=self.target_stick_out_factor,
+                target_association_tolerance=self.target_association_tolerance,
                 debug=self.debug)
 
     # }}}
-
-    @memoize_method
-    def weights_and_area_elements(self):
-        import pytential.symbolic.primitives as p
-        from pytential.symbolic.execution import bind
-        with cl.CommandQueue(self.cl_context) as queue:
-            # fine_density_discr is not guaranteed to be usable for
-            # interpolation/differentiation. Use density_discr to find
-            # area element instead, then upsample that.
-
-            area_element = self.resampler(queue,
-                    bind(
-                        self.density_discr,
-                        p.area_element(self.ambient_dim, self.dim)
-                        )(queue))
-
-            qweight = bind(self.fine_density_discr, p.QWeight())(queue)
-
-            return (area_element.with_queue(queue)*qweight).with_queue(None)
 
     # {{{ helpers for symbolic operator processing
 
@@ -383,7 +489,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         from functools import partial
         oversample = partial(self.resampler, queue)
 
-        if not self.refined_for_global_qbx:
+        if not self._refined_for_global_qbx:
             from warnings import warn
             warn(
                 "Executing global QBX without refinement. "
@@ -405,21 +511,23 @@ class QBXLayerPotentialSource(LayerPotentialSource):
     def qbx_fmm_code_getter(self):
         from pytential.qbx.geometry import QBXFMMGeometryCodeGetter
         return QBXFMMGeometryCodeGetter(self.cl_context, self.ambient_dim,
-                debug=self.debug)
+                self.tree_code_container, debug=self.debug,
+                _well_sep_is_n_away=self._well_sep_is_n_away,
+                _from_sep_smaller_crit=self._from_sep_smaller_crit)
 
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, base_kernel, out_kernels):
+    def expansion_wrangler_code_container(self, fmm_kernel, out_kernels):
         mpole_expn_class = \
-                self.expansion_factory.get_multipole_expansion_class(base_kernel)
+                self.expansion_factory.get_multipole_expansion_class(fmm_kernel)
         local_expn_class = \
-                self.expansion_factory.get_local_expansion_class(base_kernel)
+                self.expansion_factory.get_local_expansion_class(fmm_kernel)
 
         from functools import partial
-        fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
-        fmm_local_factory = partial(local_expn_class, base_kernel)
-        qbx_local_factory = partial(local_expn_class, base_kernel)
+        fmm_mpole_factory = partial(mpole_expn_class, fmm_kernel)
+        fmm_local_factory = partial(local_expn_class, fmm_kernel)
+        qbx_local_factory = partial(local_expn_class, fmm_kernel)
 
         if self.fmm_backend == "sumpy":
             from pytential.qbx.fmm import \
@@ -455,7 +563,7 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                         len(target_discrs_and_qbx_sides)
 
                 target_discr = bound_expr.places[o.target_name]
-                if isinstance(target_discr, LayerPotentialSource):
+                if isinstance(target_discr, LayerPotentialSourceBase):
                     target_discr = target_discr.density_discr
 
                 qbx_forced_limit = o.qbx_forced_limit
@@ -483,79 +591,36 @@ class QBXLayerPotentialSource(LayerPotentialSource):
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
 
-        # {{{ get expansion wrangler
-
-        base_kernel = None
-        out_kernels = []
-
-        from sumpy.kernel import AxisTargetDerivativeRemover
-        for knl in insn.kernels:
-            candidate_base_kernel = AxisTargetDerivativeRemover()(knl)
-
-            if base_kernel is None:
-                base_kernel = candidate_base_kernel
-            else:
-                assert base_kernel == candidate_base_kernel
-
         out_kernels = tuple(knl for knl in insn.kernels)
-
-        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
-            value_dtype = self.complex_dtype
-        else:
-            value_dtype = self.real_dtype
-
-        # {{{ build extra_kwargs dictionaries
-
-        # This contains things like the Helmholtz parameter k or
-        # the normal directions for double layers.
-
-        def reorder_sources(source_array):
-            if isinstance(source_array, cl.array.Array):
-                return (source_array
-                        .with_queue(queue)
-                        [geo_data.tree().user_source_ids]
-                        .with_queue(None))
-            else:
-                return source_array
-
-        kernel_extra_kwargs = {}
-        source_extra_kwargs = {}
-
-        from sumpy.tools import gather_arguments, gather_source_arguments
-        from pytools.obj_array import with_object_array_or_scalar
-        for func, var_dict in [
-                (gather_arguments, kernel_extra_kwargs),
-                (gather_source_arguments, source_extra_kwargs),
-                ]:
-            for arg in func(out_kernels):
-                var_dict[arg.name] = with_object_array_or_scalar(
-                        reorder_sources,
-                        evaluate(insn.kernel_arguments[arg.name]))
-
-        # }}}
+        fmm_kernel = self.get_fmm_kernel(out_kernels)
+        output_and_expansion_dtype = (
+                self.get_fmm_output_and_expansion_dtype(fmm_kernel, strengths))
+        kernel_extra_kwargs, source_extra_kwargs = (
+                self.get_fmm_expansion_wrangler_extra_kwargs(
+                    queue, out_kernels, geo_data.tree().user_source_ids,
+                    insn.kernel_arguments, evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
-                base_kernel, out_kernels).get_wrangler(
-                        queue, geo_data, value_dtype,
+                fmm_kernel, out_kernels).get_wrangler(
+                        queue, geo_data, output_and_expansion_dtype,
                         self.qbx_order,
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
                         kernel_extra_kwargs=kernel_extra_kwargs)
-
-        # }}}
-
-        if len(geo_data.global_qbx_centers()) != geo_data.ncenters:
-            raise NotImplementedError("geometry has centers requiring local QBX")
 
         from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)
                 == target_state.FAILED).any().get():
             raise RuntimeError("geometry has failed targets")
 
-        if self.performance_data_file is not None:
-            from pytential.qbx.fmm import write_performance_model
-            with open(self.performance_data_file, "w") as outf:
-                write_performance_model(outf, geo_data)
+        # {{{ performance data hook
+
+        if self.geometry_data_inspector is not None:
+            perform_fmm = self.geometry_data_inspector(insn, bound_expr, geo_data)
+            if not perform_fmm:
+                return [(o.name, 0) for o in insn.outputs], []
+
+        # }}}
 
         # {{{ execute global QBX
 
@@ -618,22 +683,6 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 value_dtypes=value_dtype)
 
     @memoize_method
-    def get_p2p(self, kernels):
-        # needs to be separate method for caching
-
-        from pytools import any
-        if any(knl.is_complex_valued for knl in kernels):
-            value_dtype = self.density_discr.complex_dtype
-        else:
-            value_dtype = self.density_discr.real_dtype
-
-        from sumpy.p2p import P2P
-        p2p = P2P(self.cl_context,
-                    kernels, exclude_self=False, value_dtypes=value_dtype)
-
-        return p2p
-
-    @memoize_method
     def get_qbx_target_numberer(self, dtype):
         assert dtype == np.int32
         from pyopencl.scan import GenericScanKernel
@@ -678,9 +727,11 @@ class QBXLayerPotentialSource(LayerPotentialSource):
 
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
-                        self.fine_density_discr.nodes(),
+                        self.quad_stage2_density_discr.nodes(),
                         utils.get_centers_on_side(self, o.qbx_forced_limit),
-                        [strengths], **kernel_args)
+                        [strengths],
+                        expansion_radii=self._expansion_radii("nsources"),
+                        **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
             else:
                 # no on-disk kernel caching
@@ -691,7 +742,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                             insn.kernels)
 
                 evt, output_for_each_kernel = p2p(queue,
-                        target_discr.nodes(), self.fine_density_discr.nodes(),
+                        target_discr.nodes(),
+                        self.quad_stage2_density_discr.nodes(),
                         [strengths], **kernel_args)
 
                 qbx_forced_limit = o.qbx_forced_limit
@@ -708,7 +760,8 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                 # First ncenters targets are the centers
                 tgt_to_qbx_center = (
                         geo_data.user_target_to_center()[geo_data.ncenters:]
-                        .copy(queue=queue))
+                        .copy(queue=queue)
+                        .with_queue(queue))
 
                 qbx_tgt_numberer = self.get_qbx_target_numberer(
                         tgt_to_qbx_center.dtype)
@@ -739,8 +792,9 @@ class QBXLayerPotentialSource(LayerPotentialSource):
                     lpot_applier_on_tgt_subset(
                             queue,
                             targets=target_discr.nodes(),
-                            sources=self.fine_density_discr.nodes(),
+                            sources=self.quad_stage2_density_discr.nodes(),
                             centers=geo_data.centers(),
+                            expansion_radii=geo_data.expansion_radii(),
                             strengths=[strengths],
                             qbx_tgt_numbers=qbx_tgt_numbers,
                             qbx_center_numbers=qbx_center_numbers,

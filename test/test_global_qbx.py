@@ -85,32 +85,38 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
-            InterpolatoryQuadratureSimplexGroupFactory,
-            QuadratureSimplexGroupFactory)
+            InterpolatoryQuadratureSimplexGroupFactory)
 
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
-    fine_factory = QuadratureSimplexGroupFactory(4 * order)
 
     discr = Discretization(cl_ctx, mesh, factory)
 
     from pytential.qbx.refinement import (
             RefinerCodeContainer, refine_for_global_qbx)
 
+    from pytential.qbx.utils import TreeCodeContainer
+
     lpot_source = QBXLayerPotentialSource(discr, order)
     del discr
 
-    refiner_extra_kwargs = {}
+    expansion_disturbance_tolerance = 0.025
+    refiner_extra_kwargs = {
+            "expansion_disturbance_tolerance": expansion_disturbance_tolerance,
+            }
     if helmholtz_k is not None:
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
     lpot_source, conn = refine_for_global_qbx(
-            lpot_source, RefinerCodeContainer(cl_ctx),
-            factory, fine_factory, **refiner_extra_kwargs)
+            lpot_source,
+            RefinerCodeContainer(
+                cl_ctx, TreeCodeContainer(cl_ctx)).get_wrangler(queue),
+            factory, **refiner_extra_kwargs)
 
     from pytential.qbx.utils import get_centers_on_side
 
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
-    fine_discr_nodes = lpot_source.fine_density_discr.nodes().get(queue)
+    fine_discr_nodes = \
+            lpot_source.quad_stage2_density_discr.nodes().get(queue)
     int_centers = get_centers_on_side(lpot_source, -1)
     int_centers = np.array([axis.get(queue) for axis in int_centers])
     ext_centers = get_centers_on_side(lpot_source, +1)
@@ -145,7 +151,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         # panel.
 
         rad = expansion_radii[centers_panel.element_nr]
-        assert dist >= rad, \
+        assert dist >= rad * (1-expansion_disturbance_tolerance), \
                 (dist, rad, centers_panel.element_nr, sources_panel.element_nr)
 
     def check_sufficient_quadrature_resolution(centers_panel, sources_panel):
@@ -178,7 +184,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     for i, panel_1 in enumerate(iter_elements(lpot_source.density_discr)):
         for panel_2 in iter_elements(lpot_source.density_discr):
             check_disk_undisturbed_by_sources(panel_1, panel_2)
-        for panel_2 in iter_elements(lpot_source.fine_density_discr):
+        for panel_2 in iter_elements(lpot_source.quad_stage2_density_discr):
             check_sufficient_quadrature_resolution(panel_1, panel_2)
         if helmholtz_k is not None:
             check_panel_size_to_helmholtz_k_ratio(panel_1)
@@ -289,9 +295,19 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     # {{{ run target associator and check
 
-    from pytential.qbx.target_assoc import QBXTargetAssociator
-    target_assoc = (
-        QBXTargetAssociator(cl_ctx)(lpot_source, target_discrs)
+    from pytential.qbx.target_assoc import (
+            TargetAssociationCodeContainer, associate_targets_to_qbx_centers)
+
+    from pytential.qbx.utils import TreeCodeContainer
+
+    code_container = TargetAssociationCodeContainer(
+            cl_ctx, TreeCodeContainer(cl_ctx))
+
+    target_assoc = (associate_targets_to_qbx_centers(
+            lpot_source,
+            code_container.get_wrangler(queue),
+            target_discrs,
+            target_association_tolerance=1e-10)
         .get(queue=queue))
 
     expansion_radii = lpot_source._expansion_radii("ncenters").get(queue)
@@ -389,10 +405,20 @@ def test_target_association_failure(ctx_getter):
         )
 
     from pytential.qbx.target_assoc import (
-        QBXTargetAssociator, QBXTargetAssociationFailedException)
+            TargetAssociationCodeContainer, associate_targets_to_qbx_centers,
+            QBXTargetAssociationFailedException)
+
+    from pytential.qbx.utils import TreeCodeContainer
+
+    code_container = TargetAssociationCodeContainer(
+            cl_ctx, TreeCodeContainer(cl_ctx))
 
     with pytest.raises(QBXTargetAssociationFailedException):
-        QBXTargetAssociator(cl_ctx)(lpot_source, targets)
+        associate_targets_to_qbx_centers(
+            lpot_source,
+            code_container.get_wrangler(queue),
+            targets,
+            target_association_tolerance=1e-10)
 
     # }}}
 

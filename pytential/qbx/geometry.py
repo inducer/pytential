@@ -33,6 +33,9 @@ import loopy as lp
 from cgen import Enum
 
 
+from pytential.qbx.utils import TreeCodeContainerMixin
+
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -40,15 +43,8 @@ logger = logging.getLogger(__name__)
 # {{{ docs
 
 __doc__ = """
-
-.. note::
-
-    This module documents :mod:`pytential` internals and is not typically
-    needed in end-user applications.
-
-This module documents data structures created for the execution of the QBX
-FMM.  For each pair of (target discretizations, kernels),
-:class:`pytential.discretization.qbx.QBXDiscretization` creates an instance of
+For each invocation of the QBX FMM with a distinct set of (target, side request)
+pairs, :class:`pytential.qbx.QBXLayerPotentialSource` creates an instance of
 :class:`QBXFMMGeometryData`.
 
 The module is described in top-down fashion, with the (conceptually)
@@ -61,8 +57,6 @@ Geometry data
 
 Subordinate data structures
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: CenterInfo()
 
 .. autoclass:: TargetInfo()
 
@@ -112,11 +106,15 @@ class target_state(Enum):  # noqa
     FAILED = -2
 
 
-class QBXFMMGeometryCodeGetter(object):
-    def __init__(self, cl_context, ambient_dim, debug):
+class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
+    def __init__(self, cl_context, ambient_dim, tree_code_container, debug,
+            _well_sep_is_n_away, _from_sep_smaller_crit):
         self.cl_context = cl_context
         self.ambient_dim = ambient_dim
+        self.tree_code_container = tree_code_container
         self.debug = debug
+        self._well_sep_is_n_away = _well_sep_is_n_away
+        self._from_sep_smaller_crit = _from_sep_smaller_crit
 
     @memoize_method
     def copy_targets_kernel(self):
@@ -139,15 +137,13 @@ class QBXFMMGeometryCodeGetter(object):
 
     @property
     @memoize_method
-    def build_tree(self):
-        from boxtree import TreeBuilder
-        return TreeBuilder(self.cl_context)
-
-    @property
-    @memoize_method
     def build_traversal(self):
         from boxtree.traversal import FMMTraversalBuilder
-        return FMMTraversalBuilder(self.cl_context)
+        return FMMTraversalBuilder(
+                self.cl_context,
+                well_sep_is_n_away=self._well_sep_is_n_away,
+                from_sep_smaller_crit=self._from_sep_smaller_crit,
+                )
 
     @memoize_method
     def qbx_center_to_target_box_lookup(self, particle_id_dtype, box_id_dtype):
@@ -231,6 +227,28 @@ class QBXFMMGeometryCodeGetter(object):
                     if (i+1 == N) *count = item;
                     """)
 
+    @property
+    @memoize_method
+    def pick_used_centers(self):
+        knl = lp.make_kernel(
+            """{[i]: 0<=i<ntargets}""",
+            """
+                <>target_has_center = (target_to_center[i] >= 0)
+                center_is_used[target_to_center[i]] = 1 \
+                    {id=center_is_used_write,if=target_has_center}
+            """,
+            [
+                lp.GlobalArg("target_to_center", shape="ntargets", offset=lp.auto),
+                lp.GlobalArg("center_is_used", shape="ncenters"),
+                lp.ValueArg("ncenters", np.int32),
+                lp.ValueArg("ntargets", np.int32),
+            ],
+            name="pick_used_centers",
+            silenced_warnings="write_race(center_is_used_write)")
+
+        knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
+        return knl
+
 # }}}
 
 
@@ -288,7 +306,7 @@ class QBXFMMGeometryData(object):
 
     .. attribute:: lpot_source
 
-        The :class:`pytential.discretization.qbx.QBXDiscretization`
+        The :class:`pytential.qbx.QBXLayerPotentialSource`
         acting as the source geometry.
 
     .. attribute:: target_discrs_and_qbx_sides
@@ -301,29 +319,8 @@ class QBXFMMGeometryData(object):
         *sides* is an array of (:class:`numpy.int8`) side requests for each
         target.
 
-        The side request can take the following values for each target:
-
-        ===== ==============================================
-        Value Meaning
-        ===== ==============================================
-        0     Volume target. If near a QBX center,
-              the value from the QBX expansion is returned,
-              otherwise the volume potential is returned.
-
-        -1    Surface target. Return interior limit from
-              interior-side QBX expansion.
-
-        +1    Surface target. Return exterior limit from
-              exterior-side QBX expansion.
-
-        -2    Volume target. If within an *interior* QBX disk,
-              the value from the QBX expansion is returned,
-              otherwise the volume potential is returned.
-
-        +2    Volume target. If within an *exterior* QBX disk,
-              the value from the QBX expansion is returned,
-              otherwise the volume potential is returned.
-        ===== ==============================================
+        The side request can take on the values
+        found in :ref:`qbx-side-request-table`.
 
     .. attribute:: cl_context
 
@@ -335,7 +332,6 @@ class QBXFMMGeometryData(object):
 
     .. attribute:: ncenters
     .. automethod:: centers()
-    .. automethod:: radii()
 
     .. rubric :: Methods
 
@@ -353,7 +349,7 @@ class QBXFMMGeometryData(object):
 
     def __init__(self, code_getter, lpot_source,
             target_discrs_and_qbx_sides,
-            target_stick_out_factor, debug):
+            target_association_tolerance, debug):
         """
         .. rubric:: Constructor arguments
 
@@ -368,7 +364,7 @@ class QBXFMMGeometryData(object):
         self.lpot_source = lpot_source
         self.target_discrs_and_qbx_sides = \
                 target_discrs_and_qbx_sides
-        self.target_stick_out_factor = target_stick_out_factor
+        self.target_association_tolerance = target_association_tolerance
         self.debug = debug
 
     @property
@@ -377,7 +373,7 @@ class QBXFMMGeometryData(object):
 
     @property
     def coord_dtype(self):
-        return self.lpot_source.fine_density_discr.nodes().dtype
+        return self.lpot_source.quad_stage2_density_discr.nodes().dtype
 
     # {{{ centers/radii
 
@@ -489,38 +485,32 @@ class QBXFMMGeometryData(object):
         target_info = self.target_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            nsources = lpot_src.fine_density_discr.nnodes
+            nsources = lpot_src.quad_stage2_density_discr.nnodes
             nparticles = nsources + target_info.ntargets
 
             target_radii = None
-            if self.lpot_source.expansion_disks_in_tree_have_extent:
+            if self.lpot_source._expansions_in_tree_have_extent:
                 target_radii = cl.array.zeros(queue, target_info.ntargets,
                         self.coord_dtype)
                 target_radii[:self.ncenters] = self.expansion_radii()
 
-            refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
-            refine_weights[:nsources] = 1
+            # FIXME: https://gitlab.tiker.net/inducer/pytential/issues/72
+            # refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
+            # refine_weights[:nsources] = 1
+            refine_weights = cl.array.empty(queue, nparticles, dtype=np.int32)
+            refine_weights.fill(1)
+
             refine_weights.finish()
 
-            # NOTE: max_leaf_refine_weight has an impact on accuracy.
-            # For instance, if a panel contains 64*4 = 256 nodes, then
-            # a box with 128 sources will contain at most half a
-            # panel, meaning that its width will be on the order h/2,
-            # which means many QBX disks (diameter h) will be forced
-            # to cross boxes.
-            # So we set max_leaf_refine weight comfortably large
-            # to avoid having too many disks overlap more than one box.
-            #
-            # FIXME: Should investigate this further.
-
-            tree, _ = code_getter.build_tree(queue,
-                    particles=lpot_src.fine_density_discr.nodes(),
+            tree, _ = code_getter.build_tree()(queue,
+                    particles=lpot_src.quad_stage2_density_discr.nodes(),
                     targets=target_info.targets,
                     target_radii=target_radii,
-                    max_leaf_refine_weight=256,
+                    max_leaf_refine_weight=lpot_src._max_leaf_refine_weight,
                     refine_weights=refine_weights,
                     debug=self.debug,
-                    stick_out_factor=0,
+                    stick_out_factor=lpot_src._expansion_stick_out_factor,
+                    extent_norm=lpot_src._box_extent_norm,
                     kind="adaptive")
 
             if self.debug:
@@ -534,18 +524,23 @@ class QBXFMMGeometryData(object):
     # }}}
 
     @memoize_method
-    def traversal(self):
-        """Return a :class:`boxtree.traversal.FMMTraversalInfo` with merged
-        close lists.
-        (See :meth:`boxtree.traversal.FMMTraversalInfo.merge_close_lists`)
+    def traversal(self, merge_close_lists=True):
+        """Return a :class:`boxtree.traversal.FMMTraversalInfo`.
+
+        :arg merge_close_lists: Use merged close lists. (See
+            :meth:`boxtree.traversal.FMMTraversalInfo.merge_close_lists`)
+
         |cached|
         """
 
         with cl.CommandQueue(self.cl_context) as queue:
             trav, _ = self.code_getter.build_traversal(queue, self.tree(),
-                    debug=self.debug)
+                    debug=self.debug,
+                    _from_sep_smaller_min_nsources_cumul=(
+                        self.lpot_source._from_sep_smaller_min_nsources_cumul))
 
-            if self.lpot_source.expansion_disks_in_tree_have_extent:
+            if (merge_close_lists
+                    and self.lpot_source._expansions_in_tree_have_extent):
                 trav = trav.merge_close_lists(queue)
 
             return trav
@@ -634,24 +629,46 @@ class QBXFMMGeometryData(object):
         """Build a list of indices of QBX centers that use global QBX.  This
         indexes into the global list of targets, (see :meth:`target_info`) of
         which the QBX centers occupy the first *ncenters*.
+
+        Centers without any associated targets are excluded.
         """
 
         tree = self.tree()
+        user_target_to_center = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
+            logger.info("find global qbx centers: start")
+
+            tgt_assoc_result = (
+                    user_target_to_center.with_queue(queue)[self.ncenters:])
+
+            center_is_used = cl.array.zeros(queue, self.ncenters, np.int8)
+
+            self.code_getter.pick_used_centers(
+                    queue,
+                    center_is_used=center_is_used,
+                    target_to_center=tgt_assoc_result,
+                    ncenters=self.ncenters,
+                    ntargets=len(tgt_assoc_result))
+
             from pyopencl.algorithm import copy_if
 
-            logger.info("find global qbx centers: start")
             result, count, _ = copy_if(
                     cl.array.arange(queue, self.ncenters,
                         tree.particle_id_dtype),
-                    "global_qbx_flags[i] != 0",
+                    "global_qbx_flags[i] != 0 && center_is_used[i] != 0",
                     extra_args=[
-                        ("global_qbx_flags", self.global_qbx_flags())
+                        ("global_qbx_flags", self.global_qbx_flags()),
+                        ("center_is_used", center_is_used)
                         ],
                     queue=queue)
 
             logger.info("find global qbx centers: done")
+
+            if self.debug:
+                logger.debug(
+                        "find global qbx centers: using %d/%d centers"
+                        % (int(count.get()), self.ncenters))
 
             return result[:count.get()].with_queue(None)
 
@@ -665,11 +682,7 @@ class QBXFMMGeometryData(object):
         Shape: ``[ntargets]`` of :attr:`boxtree.Tree.particle_id_dtype`, with extra
         values from :class:`target_state` allowed. Targets occur in user order.
         """
-        from pytential.qbx.target_assoc import QBXTargetAssociator
-
-        # FIXME: kernel ownership...
-        tgt_assoc = QBXTargetAssociator(self.cl_context)
-
+        from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
         tgt_info = self.target_info()
 
         from pytential.target import PointsTarget
@@ -678,23 +691,28 @@ class QBXFMMGeometryData(object):
             target_side_prefs = (self
                 .target_side_preferences()[self.ncenters:].get(queue=queue))
 
-        target_discrs_and_qbx_sides = [(
-                PointsTarget(tgt_info.targets[:, self.ncenters:]),
-                target_side_prefs.astype(np.int32))]
+            target_discrs_and_qbx_sides = [(
+                    PointsTarget(tgt_info.targets[:, self.ncenters:]),
+                    target_side_prefs.astype(np.int32))]
 
-        # FIXME: try block...
-        tgt_assoc_result = tgt_assoc(self.lpot_source,
-                                     target_discrs_and_qbx_sides,
-                                     stick_out_factor=self.target_stick_out_factor)
+            target_association_wrangler = (
+                    self.lpot_source.target_association_code_container
+                    .get_wrangler(queue))
 
-        tree = self.tree()
+            tgt_assoc_result = associate_targets_to_qbx_centers(
+                    self.lpot_source,
+                    target_association_wrangler,
+                    target_discrs_and_qbx_sides,
+                    target_association_tolerance=(
+                        self.target_association_tolerance))
 
-        with cl.CommandQueue(self.cl_context) as queue:
+            tree = self.tree()
+
             result = cl.array.empty(queue, tgt_info.ntargets, tree.particle_id_dtype)
             result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
             result[self.ncenters:] = tgt_assoc_result.target_to_center
 
-        return result
+        return result.with_queue(None)
 
     @memoize_method
     def center_to_tree_targets(self):
@@ -763,8 +781,9 @@ class QBXFMMGeometryData(object):
             nqbx_centers = self.ncenters
             flags[:nqbx_centers] = 0
 
-            from boxtree.tree import filter_target_lists_in_tree_order
-            result = filter_target_lists_in_tree_order(queue, self.tree(), flags)
+            tree = self.tree()
+            plfilt = self.code_getter.particle_list_filter()
+            result = plfilt.filter_target_lists_in_tree_order(queue, tree, flags)
 
             logger.info("find non-qbx box target lists: done")
 
@@ -792,7 +811,7 @@ class QBXFMMGeometryData(object):
         with cl.CommandQueue(self.cl_context) as queue:
             import matplotlib.pyplot as pt
             from meshmode.discretization.visualization import draw_curve
-            draw_curve(self.lpot_source.fine_density_discr)
+            draw_curve(self.lpot_source.quad_stage2_density_discr)
 
             global_flags = self.global_qbx_flags().get(queue=queue)
 

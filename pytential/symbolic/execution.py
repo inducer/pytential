@@ -50,7 +50,10 @@ class EvaluationMapper(EvaluationMapperBase):
     # {{{ map_XXX
 
     def map_node_sum(self, expr):
-        return cl.array.sum(self.rec(expr.operand)).get()
+        return cl.array.sum(self.rec(expr.operand)).get()[()]
+
+    def map_node_max(self, expr):
+        return cl.array.max(self.rec(expr.operand)).get()[()]
 
     def map_ones(self, expr):
         discr = self.bound_expr.get_discretization(expr.where)
@@ -143,8 +146,14 @@ class EvaluationMapper(EvaluationMapperBase):
         if isinstance(expr.function, EvalMapperFunction):
             return getattr(self, "apply_"+expr.function.name)(expr.parameters)
         elif isinstance(expr.function, CLMathFunction):
-            return getattr(cl.clmath, expr.function.name)(
-                    *(self.rec(arg) for arg in expr.parameters), queue=self.queue)
+            args = [self.rec(arg) for arg in expr.parameters]
+            from numbers import Number
+            if all(isinstance(arg, Number) for arg in args):
+                return getattr(np, expr.function.name)(*args)
+            else:
+                return getattr(cl.clmath, expr.function.name)(
+                        *args, queue=self.queue)
+
         else:
             return EvaluationMapperBase.map_call(self, expr)
 
@@ -246,8 +255,8 @@ class BoundExpression:
     def get_discretization(self, where):
         discr = self.places[where]
 
-        from pytential.qbx import LayerPotentialSource
-        if isinstance(discr, LayerPotentialSource):
+        from pytential.source import LayerPotentialSourceBase
+        if isinstance(discr, LayerPotentialSourceBase):
             discr = discr.density_discr
 
         return discr
@@ -303,14 +312,15 @@ class BoundExpression:
 def prepare_places(places):
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
     from meshmode.discretization import Discretization
-    from pytential.qbx import LayerPotentialSource
+    from pytential.source import LayerPotentialSourceBase
+    from pytential.target import TargetBase
 
-    if isinstance(places, LayerPotentialSource):
+    if isinstance(places, LayerPotentialSourceBase):
         places = {
                 DEFAULT_SOURCE: places,
                 DEFAULT_TARGET: places.density_discr,
                 }
-    elif isinstance(places, Discretization):
+    elif isinstance(places, (Discretization, TargetBase)):
         places = {
                 DEFAULT_TARGET: places,
                 }
@@ -345,7 +355,7 @@ def prepare_expr(places, expr, auto_where=None):
     """
 
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-    from pytential.qbx import LayerPotentialSource
+    from pytential.source import LayerPotentialSourceBase
 
     from pytential.symbolic.mappers import (
             ToTargetTagger,
@@ -364,7 +374,7 @@ def prepare_expr(places, expr, auto_where=None):
     expr = DerivativeBinder()(expr)
 
     for name, place in six.iteritems(places):
-        if isinstance(place, LayerPotentialSource):
+        if isinstance(place, LayerPotentialSourceBase):
             expr = place.preprocess_optemplate(name, places, expr)
 
     return expr

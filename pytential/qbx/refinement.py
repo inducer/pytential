@@ -34,7 +34,9 @@ import pyopencl as cl
 from pytools import memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
-from pytential.qbx.utils import QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS
+from pytential.qbx.utils import (
+        QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
+        TreeCodeContainerMixin)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -60,11 +62,23 @@ three global QBX refinement criteria:
       The panel size is bounded by a kernel length scale. This
       applies only to Helmholtz kernels.
 
-.. autoclass:: RefinerCodeContainer
-.. autoclass:: RefinerWrangler
+Warnings emitted by refinement
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: RefinerNotConvergedWarning
 
+Helper functions
+^^^^^^^^^^^^^^^^
+
 .. autofunction:: make_empty_refine_flags
+
+Refiner driver
+^^^^^^^^^^^^^^
+
+.. autoclass:: RefinerCodeContainer
+
+.. autoclass:: RefinerWrangler
+
 .. autofunction:: refine_for_global_qbx
 """
 
@@ -81,7 +95,8 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
         particle_id_t source_offset,
         particle_id_t center_offset,
         particle_id_t *sorted_target_ids,
-        coord_t *center_danger_zone_radii_by_panel,
+        coord_t *center_danger_zone_radii,
+        coord_t expansion_disturbance_tolerance,
         int npanels,
 
         /* output */
@@ -94,11 +109,11 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
         %endfor
         """,
     ball_center_and_radius_expr=QBX_TREE_C_PREAMBLE + QBX_TREE_MAKO_DEFS + r"""
-        /* Find the panel associated with this center. */
-        particle_id_t my_panel = bsearch(panel_to_center_starts, npanels + 1, i);
+        particle_id_t icenter = i;
 
-        ${load_particle("INDEX_FOR_CENTER_PARTICLE(i)", ball_center)}
-        ${ball_radius} = center_danger_zone_radii_by_panel[my_panel];
+        ${load_particle("INDEX_FOR_CENTER_PARTICLE(icenter)", ball_center)}
+        ${ball_radius} = (1-expansion_disturbance_tolerance)
+                    * center_danger_zone_radii[icenter];
         """,
     leaf_found_op=QBX_TREE_MAKO_DEFS + r"""
         /* Check that each source in the leaf box is sufficiently far from the
@@ -109,24 +124,24 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
              ++source_idx)
         {
             particle_id_t source = box_to_source_lists[source_idx];
-            particle_id_t panel = bsearch(
+            particle_id_t source_panel = bsearch(
                 panel_to_source_starts, npanels + 1, source);
 
-            if (my_panel == panel)
-            {
-                continue;
-            }
+            /* Find the panel associated with this center. */
+            particle_id_t center_panel = bsearch(panel_to_center_starts, npanels + 1,
+                icenter);
 
             coord_vec_t source_coords;
             ${load_particle("INDEX_FOR_SOURCE_PARTICLE(source)", "source_coords")}
 
             bool is_close = (
                 distance(${ball_center}, source_coords)
-                <= center_danger_zone_radii_by_panel[my_panel]);
+                <= (1-expansion_disturbance_tolerance)
+                        * center_danger_zone_radii[icenter]);
 
             if (is_close)
             {
-                panel_refine_flags[my_panel] = 1;
+                panel_refine_flags[center_panel] = 1;
                 *found_panel_to_refine = 1;
                 break;
             }
@@ -199,10 +214,11 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
 
 # {{{ code container
 
-class RefinerCodeContainer(object):
+class RefinerCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, cl_context):
+    def __init__(self, cl_context, tree_code_container):
         self.cl_context = cl_context
+        self.tree_code_container = tree_code_container
 
     @memoize_method
     def expansion_disk_undisturbed_by_sources_checker(
@@ -243,16 +259,6 @@ class RefinerCodeContainer(object):
         knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
-    @memoize_method
-    def tree_builder(self):
-        from boxtree.tree_build import TreeBuilder
-        return TreeBuilder(self.cl_context)
-
-    @memoize_method
-    def peer_list_finder(self):
-        from boxtree.area_query import PeerListFinder
-        return PeerListFinder(self.cl_context)
-
     def get_wrangler(self, queue):
         """
         :arg queue:
@@ -264,7 +270,7 @@ class RefinerCodeContainer(object):
 
 # {{{ wrangler
 
-class RefinerWrangler(object):
+class RefinerWrangler(TreeWranglerBase):
 
     def __init__(self, code_container, queue):
         self.code_container = code_container
@@ -273,7 +279,9 @@ class RefinerWrangler(object):
     # {{{ check subroutines for conditions 1-3
 
     def check_expansion_disks_undisturbed_by_sources(self,
-            lpot_source, tree, peer_lists, refine_flags,
+            lpot_source, tree, peer_lists,
+            expansion_disturbance_tolerance,
+            refine_flags,
             debug, wait_for=None):
 
         # Avoid generating too many kernels.
@@ -288,7 +296,8 @@ class RefinerWrangler(object):
                 tree.particle_id_dtype,
                 max_levels)
 
-        logger.info("refiner: checking center is closest to orig panel")
+        logger.info("refiner: checking that expansion disk is "
+                "undisturbed by sources")
 
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
@@ -297,9 +306,7 @@ class RefinerWrangler(object):
         found_panel_to_refine.finish()
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
-        # FIXME: This shouldn't be by panel
-        center_danger_zone_radii_by_panel = \
-                lpot_source._expansion_radii("npanels")
+        center_danger_zone_radii = lpot_source._expansion_radii("ncenters")
 
         evt = knl(
             *unwrap_args(
@@ -311,7 +318,8 @@ class RefinerWrangler(object):
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_center_slice.start,
                 tree.sorted_target_ids,
-                center_danger_zone_radii_by_panel,
+                center_danger_zone_radii,
+                expansion_disturbance_tolerance,
                 tree.nqbxpanels,
                 refine_flags,
                 found_panel_to_refine,
@@ -420,18 +428,6 @@ class RefinerWrangler(object):
 
     # }}}
 
-    def build_tree(self, lpot_source, use_base_fine_discr=False):
-        tb = self.code_container.tree_builder()
-        from pytential.qbx.utils import build_tree_with_qbx_metadata
-        return build_tree_with_qbx_metadata(
-                self.queue, tb, lpot_source, use_base_fine_discr=use_base_fine_discr)
-
-    def find_peer_lists(self, tree):
-        plf = self.code_container.peer_list_finder()
-        peer_lists, evt = plf(self.queue, tree)
-        cl.wait_for_events([evt])
-        return peer_lists
-
     def refine(self, density_discr, refiner, refine_flags, factory, debug):
         """
         Refine the underlying mesh and discretization.
@@ -457,7 +453,7 @@ class RefinerNotConvergedWarning(UserWarning):
     pass
 
 
-def make_empty_refine_flags(queue, lpot_source, use_base_fine_discr=False):
+def make_empty_refine_flags(queue, lpot_source, use_stage2_discr=False):
     """Return an array on the device suitable for use as element refine flags.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`.
@@ -466,8 +462,8 @@ def make_empty_refine_flags(queue, lpot_source, use_base_fine_discr=False):
     :returns: A :class:`pyopencl.array.Array` suitable for use as refine flags,
         initialized to zero.
     """
-    discr = (lpot_source.base_fine_density_discr
-            if use_base_fine_discr
+    discr = (lpot_source.stage2_density_discr
+            if use_stage2_discr
             else lpot_source.density_discr)
     result = cl.array.zeros(queue, discr.mesh.nelements, np.int32)
     result.finish()
@@ -476,24 +472,20 @@ def make_empty_refine_flags(queue, lpot_source, use_base_fine_discr=False):
 
 # {{{ main entry point
 
-def refine_for_global_qbx(lpot_source, code_container,
-        group_factory, fine_group_factory, kernel_length_scale=None,
-        # FIXME: Set debug=False once everything works.
-        refine_flags=None, debug=True, maxiter=50):
+def refine_for_global_qbx(lpot_source, wrangler,
+        group_factory, kernel_length_scale=None,
+        refine_flags=None, debug=None, maxiter=None,
+        visualize=None, expansion_disturbance_tolerance=None):
     """
     Entry point for calling the refiner.
 
     :arg lpot_source: An instance of :class:`QBXLayerPotentialSource`.
 
-    :arg code_container: An instance of :class:`RefinerCodeContainer`.
+    :arg wrangler: An instance of :class:`RefinerWrangler`.
 
     :arg group_factory: An instance of
         :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
         discretizing the coarse refined mesh.
-
-    :arg fine_group_factory: An instance of
-        :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
-        oversample the refined mesh at the finest level.
 
     :arg kernel_length_scale: The kernel length scale, or *None* if not
         applicable. All panels are refined to below this size.
@@ -511,6 +503,16 @@ def refine_for_global_qbx(lpot_source, code_container,
         going from the original mesh to the refined mesh.
     """
 
+    if maxiter is None:
+        maxiter = 10
+
+    if debug is None:
+        # FIXME: Set debug=False by default once everything works.
+        debug = True
+
+    if expansion_disturbance_tolerance is None:
+        expansion_disturbance_tolerance = 0.025
+
     # TODO: Stop doing redundant checks by avoiding panels which no longer need
     # refinement.
 
@@ -518,113 +520,173 @@ def refine_for_global_qbx(lpot_source, code_container,
     from meshmode.discretization.connection import (
             ChainedDiscretizationConnection, make_same_mesh_connection)
 
-    with cl.CommandQueue(lpot_source.cl_context) as queue:
-        wrangler = code_container.get_wrangler(queue)
+    refiner = Refiner(lpot_source.density_discr.mesh)
+    connections = []
 
-        refiner = Refiner(lpot_source.density_discr.mesh)
-        connections = []
+    # Do initial refinement.
+    if refine_flags is not None:
+        conn = wrangler.refine(
+                lpot_source.density_discr, refiner, refine_flags, group_factory,
+                debug)
+        connections.append(conn)
+        lpot_source = lpot_source.copy(density_discr=conn.to_discr)
 
-        # Do initial refinement.
-        if refine_flags is not None:
+    # {{{ first stage refinement
+
+    def visualize_refinement(niter, stage, flags):
+        if not visualize:
+            return
+
+        discr = lpot_source.density_discr
+        from meshmode.discretization.visualization import make_visualizer
+        vis = make_visualizer(wrangler.queue, discr, 10)
+
+        flags = flags.get().astype(np.bool)
+        nodes_flags = np.zeros(discr.nnodes)
+        for grp in discr.groups:
+            meg = grp.mesh_el_group
+            grp.view(nodes_flags)[
+                    flags[meg.element_nr_base:meg.nelements+meg.element_nr_base]] = 1
+
+        nodes_flags = cl.array.to_device(wrangler.queue, nodes_flags)
+        vis_data = [
+            ("refine_flags", nodes_flags),
+            ]
+
+        if 0:
+            from pytential import sym, bind
+            bdry_normals = bind(discr, sym.normal(discr.ambient_dim))(
+                    wrangler.queue).as_vector(dtype=object)
+            vis_data.append(("bdry_normals", bdry_normals),)
+
+        vis.write_vtk_file("refinement-%03d-%s.vtu" % (niter, stage), vis_data)
+
+    def warn_max_iterations():
+        from warnings import warn
+        warn(
+                "QBX layer potential source refiner did not terminate "
+                "after %d iterations (the maximum). "
+                "You may pass 'visualize=True' to with_refinement() "
+                "to see what area of the geometry is causing trouble. "
+                "If the issue is disturbance of expansion disks, you may "
+                "pass a slightly increased value (currently: %g) for "
+                "_expansion_disturbance_tolerance in with_refinement(). "
+                "As a last resort, "
+                "you may use Python's warning filtering mechanism to "
+                "not treat this warning as an error. "
+                "The criteria triggering refinement in each iteration "
+                "were: %s. " % (
+                    len(violated_criteria),
+                    expansion_disturbance_tolerance,
+                    ", ".join(
+                        "%d: %s" % (i+1, vc_text)
+                        for i, vc_text in enumerate(violated_criteria))),
+                RefinerNotConvergedWarning)
+
+    violated_criteria = []
+    iter_violated_criteria = ["start"]
+
+    niter = 0
+
+    while iter_violated_criteria:
+        iter_violated_criteria = []
+        niter += 1
+
+        if niter > maxiter:
+            warn_max_iterations()
+            break
+
+        # Build tree and auxiliary data.
+        # FIXME: The tree should not have to be rebuilt at each iteration.
+        tree = wrangler.build_tree(lpot_source)
+        peer_lists = wrangler.find_peer_lists(tree)
+        refine_flags = make_empty_refine_flags(wrangler.queue, lpot_source)
+
+        # Check condition 1.
+        has_disturbed_expansions = \
+                wrangler.check_expansion_disks_undisturbed_by_sources(
+                        lpot_source, tree, peer_lists,
+                        expansion_disturbance_tolerance,
+                        refine_flags, debug)
+        if has_disturbed_expansions:
+            iter_violated_criteria.append("disturbed expansions")
+            visualize_refinement(niter, "disturbed-expansions", refine_flags)
+
+        # Check condition 3.
+        if kernel_length_scale is not None:
+
+            violates_kernel_length_scale = \
+                    wrangler.check_kernel_length_scale_to_panel_size_ratio(
+                            lpot_source, kernel_length_scale, refine_flags, debug)
+
+            if violates_kernel_length_scale:
+                iter_violated_criteria.append("kernel length scale")
+                visualize_refinement(niter, "kernel-length-scale", refine_flags)
+
+        if iter_violated_criteria:
+            violated_criteria.append(" and ".join(iter_violated_criteria))
+
             conn = wrangler.refine(
-                    lpot_source.density_discr, refiner, refine_flags, group_factory,
-                    debug)
+                    lpot_source.density_discr, refiner, refine_flags,
+                    group_factory, debug)
             connections.append(conn)
             lpot_source = lpot_source.copy(density_discr=conn.to_discr)
 
-        # {{{ first stage refinement
+        del tree
+        del refine_flags
+        del peer_lists
 
-        must_refine = True
-        niter = 0
+    # }}}
 
-        while must_refine:
-            must_refine = False
-            niter += 1
+    # {{{ second stage refinement
 
-            if niter > maxiter:
-                from warnings import warn
-                warn(
-                        "Max iteration count reached in QBX layer potential source"
-                        " refiner.",
-                        RefinerNotConvergedWarning)
-                break
+    iter_violated_criteria = ["start"]
+    niter = 0
+    fine_connections = []
 
-            # Build tree and auxiliary data.
-            # FIXME: The tree should not have to be rebuilt at each iteration.
-            tree = wrangler.build_tree(lpot_source)
-            peer_lists = wrangler.find_peer_lists(tree)
-            refine_flags = make_empty_refine_flags(queue, lpot_source)
+    stage2_density_discr = lpot_source.density_discr
 
-            # Check condition 1.
-            must_refine |= wrangler.check_expansion_disks_undisturbed_by_sources(
-                    lpot_source, tree, peer_lists, refine_flags, debug)
+    while iter_violated_criteria:
+        iter_violated_criteria = []
+        niter += 1
 
-            # Check condition 3.
-            if kernel_length_scale is not None:
-                must_refine |= (
-                        wrangler.check_kernel_length_scale_to_panel_size_ratio(
-                            lpot_source, kernel_length_scale, refine_flags, debug))
+        if niter > maxiter:
+            warn_max_iterations()
+            break
 
-            if must_refine:
-                conn = wrangler.refine(
-                        lpot_source.density_discr, refiner, refine_flags,
-                        group_factory, debug)
-                connections.append(conn)
-                lpot_source = lpot_source.copy(density_discr=conn.to_discr)
+        # Build tree and auxiliary data.
+        # FIXME: The tree should not have to be rebuilt at each iteration.
+        tree = wrangler.build_tree(lpot_source, use_stage2_discr=True)
+        peer_lists = wrangler.find_peer_lists(tree)
+        refine_flags = make_empty_refine_flags(
+                wrangler.queue, lpot_source, use_stage2_discr=True)
 
-            del tree
-            del refine_flags
-            del peer_lists
+        has_insufficient_quad_res = \
+                wrangler.check_sufficient_source_quadrature_resolution(
+                        lpot_source, tree, peer_lists, refine_flags, debug)
+        if has_insufficient_quad_res:
+            iter_violated_criteria.append("insufficient quadrature resolution")
+            visualize_refinement(niter, "quad-resolution", refine_flags)
 
-        # }}}
+        if iter_violated_criteria:
+            violated_criteria.append(" and ".join(iter_violated_criteria))
 
-        # {{{ second stage refinement
+            conn = wrangler.refine(
+                    stage2_density_discr,
+                    refiner, refine_flags, group_factory, debug)
+            stage2_density_discr = conn.to_discr
+            fine_connections.append(conn)
+            lpot_source = lpot_source.copy(
+                    to_refined_connection=ChainedDiscretizationConnection(
+                        fine_connections))
 
-        must_refine = True
-        niter = 0
-        fine_connections = []
+        del tree
+        del refine_flags
+        del peer_lists
 
-        base_fine_density_discr = lpot_source.density_discr
+    # }}}
 
-        while must_refine:
-            must_refine = False
-            niter += 1
-
-            if niter > maxiter:
-                from warnings import warn
-                warn(
-                        "Max iteration count reached in QBX layer potential source"
-                        " refiner.",
-                        RefinerNotConvergedWarning)
-                break
-
-            # Build tree and auxiliary data.
-            # FIXME: The tree should not have to be rebuilt at each iteration.
-            tree = wrangler.build_tree(lpot_source, use_base_fine_discr=True)
-            peer_lists = wrangler.find_peer_lists(tree)
-            refine_flags = make_empty_refine_flags(
-                    queue, lpot_source, use_base_fine_discr=True)
-
-            must_refine |= wrangler.check_sufficient_source_quadrature_resolution(
-                    lpot_source, tree, peer_lists, refine_flags, debug)
-
-            if must_refine:
-                conn = wrangler.refine(
-                        base_fine_density_discr,
-                        refiner, refine_flags, group_factory, debug)
-                base_fine_density_discr = conn.to_discr
-                fine_connections.append(conn)
-                lpot_source = lpot_source.copy(
-                        base_resampler=ChainedDiscretizationConnection(
-                            fine_connections))
-
-            del tree
-            del refine_flags
-            del peer_lists
-
-        # }}}
-
-    lpot_source = lpot_source.copy(debug=debug, refined_for_global_qbx=True)
+    lpot_source = lpot_source.copy(debug=debug, _refined_for_global_qbx=True)
 
     if len(connections) == 0:
         # FIXME: This is inefficient

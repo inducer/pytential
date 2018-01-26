@@ -32,10 +32,17 @@ from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
 
 
+PYTENTIAL_KERNEL_VERSION = 5
+
+
 # {{{ form qbx expansions from points
 
 class P2QBXLFromCSR(P2EBase):
     default_name = "p2qbxl_from_csr"
+
+    def get_cache_key(self):
+        return super(P2QBXLFromCSR, self).get_cache_key() + (
+                PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
@@ -54,6 +61,7 @@ class P2QBXLFromCSR(P2EBase):
                         None, shape=None),
                     lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
                         dim_tags="sep,c"),
+                    lp.GlobalArg("qbx_expansion_radii", None, shape="ncenters"),
                     lp.GlobalArg("qbx_expansions", None,
                         shape=("ncenters", ncoeffs)),
                     lp.ValueArg("ncenters", np.int32),
@@ -65,11 +73,15 @@ class P2QBXLFromCSR(P2EBase):
                 [
                     "{[itgt_center]: 0<=itgt_center<ntgt_centers}",
                     "{[isrc_box]: isrc_box_start<=isrc_box<isrc_box_stop}",
-                    "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
+                    "{[isrc]: isrc_start<=isrc<isrc_end}",
+                    "{[idim]: 0<=idim<dim}",
                     ],
                 ["""
                 for itgt_center
                     <> tgt_icenter = global_qbx_centers[itgt_center]
+
+                    <> center[idim] = qbx_centers[idim, tgt_icenter] {dup=idim}
+                    <> rscale = qbx_expansion_radii[tgt_icenter]
 
                     <> itgt_box = qbx_center_to_target_box[tgt_icenter]
 
@@ -80,8 +92,6 @@ class P2QBXLFromCSR(P2EBase):
                         <> src_ibox = source_box_lists[isrc_box]
                         <> isrc_start = box_source_starts[src_ibox]
                         <> isrc_end = isrc_start+box_source_counts_nonchild[src_ibox]
-
-                        <> center[idim] = qbx_centers[idim, tgt_icenter]
 
                         for isrc
                             <> a[idim] = center[idim] - sources[idim, isrc] \
@@ -102,9 +112,9 @@ class P2QBXLFromCSR(P2EBase):
                 """],
                 arguments,
                 name=self.name, assumptions="ntgt_centers>=1",
-                silenced_warnings="write_race(write_expn*)")
+                silenced_warnings="write_race(write_expn*)",
+                fixed_parameters=dict(dim=self.dim))
 
-        loopy_knl = lp.fix_parameters(loopy_knl, dim=self.dim)
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
@@ -132,6 +142,9 @@ class M2QBXL(E2EBase):
 
     default_name = "m2qbxl_from_csr"
 
+    def get_cache_key(self):
+        return super(M2QBXL, self).get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+
     def get_kernel(self):
         ncoeff_src = len(self.src_expansion)
         ncoeff_tgt = len(self.tgt_expansion)
@@ -149,6 +162,7 @@ class M2QBXL(E2EBase):
 
                     <> tgt_center[idim] = qbx_centers[idim, icenter] \
                             {id=fetch_tgt_center}
+                    <> tgt_rscale = qbx_expansion_radii[icenter]
 
                     <> isrc_start = src_box_starts[icontaining_tgt_box]
                     <> isrc_stop = src_box_starts[icontaining_tgt_box+1]
@@ -179,10 +193,12 @@ class M2QBXL(E2EBase):
                 """],
                 [
                     lp.GlobalArg("centers", None, shape="dim, aligned_nboxes"),
+                    lp.ValueArg("src_rscale", None),
                     lp.GlobalArg("src_box_starts, src_box_lists",
                         None, shape=None, strides=(1,)),
                     lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
                         dim_tags="sep,c"),
+                    lp.GlobalArg("qbx_expansion_radii", None, shape="ncenters"),
                     lp.ValueArg("aligned_nboxes,nsrc_level_boxes", np.int32),
                     lp.ValueArg("src_base_ibox", np.int32),
                     lp.GlobalArg("src_expansions", None,
@@ -192,9 +208,8 @@ class M2QBXL(E2EBase):
                     "..."
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name, assumptions="ncenters>=1",
-                silenced_warnings="write_race(write_expn*)")
-
-        loopy_knl = lp.fix_parameters(loopy_knl, dim=self.dim)
+                silenced_warnings="write_race(write_expn*)",
+                fixed_parameters=dict(dim=self.dim))
 
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
@@ -211,7 +226,15 @@ class M2QBXL(E2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_cached_optimized_kernel()(queue, **kwargs)
+        centers = kwargs.pop("centers")
+        # "1" may be passed for rscale, which won't have its type
+        # meaningfully inferred. Make the type of rscale explicit.
+        src_rscale = centers.dtype.type(kwargs.pop("src_rscale"))
+
+        return self.get_cached_optimized_kernel()(queue,
+                centers=centers,
+                src_rscale=src_rscale,
+                **kwargs)
 
 # }}}
 
@@ -220,6 +243,9 @@ class M2QBXL(E2EBase):
 
 class L2QBXL(E2EBase):
     default_name = "l2qbxl"
+
+    def get_cache_key(self):
+        return super(L2QBXL, self).get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         ncoeff_src = len(self.src_expansion)
@@ -249,6 +275,9 @@ class L2QBXL(E2EBase):
                     if in_range
                         <> tgt_center[idim] = qbx_centers[idim, icenter]
                         <> src_center[idim] = centers[idim, src_ibox] {dup=idim}
+
+                        <> tgt_rscale = qbx_expansion_radii[icenter]
+
                         <> d[idim] = tgt_center[idim] - src_center[idim] {dup=idim}
 
                         """] + ["""
@@ -268,8 +297,10 @@ class L2QBXL(E2EBase):
                     lp.GlobalArg("target_boxes", None, shape=None,
                         offset=lp.auto),
                     lp.GlobalArg("centers", None, shape="dim, naligned_boxes"),
+                    lp.ValueArg("src_rscale", None),
                     lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
                         dim_tags="sep,c"),
+                    lp.GlobalArg("qbx_expansion_radii", None, shape="ncenters"),
                     lp.ValueArg("naligned_boxes,target_base_ibox,nboxes", np.int32),
                     lp.GlobalArg("expansions", None,
                         shape=("nboxes", ncoeff_src), offset=lp.auto),
@@ -277,11 +308,8 @@ class L2QBXL(E2EBase):
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name,
                 assumptions="ncenters>=1",
-                silenced_warnings="write_race(write_expn*)")
-
-        loopy_knl = lp.fix_parameters(loopy_knl,
-                dim=self.dim,
-                nchildren=2**self.dim)
+                silenced_warnings="write_race(write_expn*)",
+                fixed_parameters=dict(dim=self.dim, nchildren=2**self.dim))
 
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
@@ -298,7 +326,15 @@ class L2QBXL(E2EBase):
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_cached_optimized_kernel()(queue, **kwargs)
+        centers = kwargs.pop("centers")
+        # "1" may be passed for rscale, which won't have its type
+        # meaningfully inferred. Make the type of rscale explicit.
+        src_rscale = centers.dtype.type(kwargs.pop("src_rscale"))
+
+        return self.get_cached_optimized_kernel()(queue,
+                centers=centers,
+                src_rscale=src_rscale,
+                **kwargs)
 
 # }}}
 
@@ -307,6 +343,9 @@ class L2QBXL(E2EBase):
 
 class QBXL2P(E2PBase):
     default_name = "qbx_potential_from_local"
+
+    def get_cache_key(self):
+        return super(QBXL2P, self).get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
@@ -328,11 +367,13 @@ class QBXL2P(E2PBase):
                     <> icenter_tgt_start = center_to_targets_starts[src_icenter]
                     <> icenter_tgt_end = center_to_targets_starts[src_icenter+1]
 
+                    <> center[idim] = qbx_centers[idim, src_icenter] {dup=idim}
+                    <> rscale = qbx_expansion_radii[src_icenter]
+
                     for icenter_tgt
 
                         <> center_itgt = center_to_targets_lists[icenter_tgt]
 
-                        <> center[idim] = qbx_centers[idim, src_icenter] {dup=idim}
                         <> b[idim] = targets[idim, center_itgt] - center[idim]
 
                         """] + ["""
@@ -363,11 +404,8 @@ class QBXL2P(E2PBase):
                 ] + [arg.loopy_arg for arg in self.expansion.get_args()],
                 name=self.name,
                 assumptions="nglobal_qbx_centers>=1",
-                silenced_warnings="write_race(write_result*)")
-
-        loopy_knl = lp.fix_parameters(loopy_knl,
-                dim=self.dim,
-                nresults=len(result_names))
+                silenced_warnings="write_race(write_result*)",
+                fixed_parameters=dict(dim=self.dim, nresults=len(result_names)))
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)

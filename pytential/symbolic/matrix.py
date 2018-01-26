@@ -188,8 +188,9 @@ class MatrixBuilder(EvaluationMapperBase):
         assert abs(expr.qbx_forced_limit) > 0
         _, (mat,) = mat_gen(self.queue,
                 target_discr.nodes(),
-                source.fine_density_discr.nodes(),
+                source.quad_stage2_density_discr.nodes(),
                 get_centers_on_side(source, expr.qbx_forced_limit),
+                expansion_radii=self.dep_source._expansion_radii("nsources"),
                 **kernel_args)
 
         mat = mat.get()

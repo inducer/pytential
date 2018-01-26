@@ -8,18 +8,34 @@ Python 3.5 POCL:
   tags:
   - python3.5
   - pocl
+  - large-node
+  except:
+  - tags
+
+Python 3.6 POCL:
+  script:
+  - export PY_EXE=python3.6
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="numpy mako"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3.6
+  - pocl
+  - large-node
   except:
   - tags
 
 Python 3.5 Conda:
   script:
-  - export SUMPY_NO_CACHE=1
+  - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
   - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
   - REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
   - linux
+  - large-node
   except:
   - tags
 
@@ -33,6 +49,7 @@ Python 2.7 POCL:
   tags:
   - python2.7
   - pocl
+  - large-node
   except:
   - tags
 

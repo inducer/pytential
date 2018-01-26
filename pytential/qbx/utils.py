@@ -31,7 +31,7 @@ import numpy as np
 from boxtree.tree import Tree
 import pyopencl as cl
 import pyopencl.array # noqa
-from pytools import memoize
+from pytools import memoize, memoize_method
 
 import logging
 logger = logging.getLogger(__name__)
@@ -133,6 +133,72 @@ def get_interleaved_radii(queue, lpot_source):
     evt.wait()
 
     return result
+
+# }}}
+
+
+# {{{ tree code container
+
+class TreeCodeContainer(object):
+
+    def __init__(self, cl_context):
+        self.cl_context = cl_context
+
+    @memoize_method
+    def build_tree(self):
+        from boxtree.tree_build import TreeBuilder
+        return TreeBuilder(self.cl_context)
+
+    @memoize_method
+    def peer_list_finder(self):
+        from boxtree.area_query import PeerListFinder
+        return PeerListFinder(self.cl_context)
+
+    @memoize_method
+    def particle_list_filter(self):
+        from boxtree.tree import ParticleListFilter
+        return ParticleListFilter(self.cl_context)
+
+# }}}
+
+
+# {{{ tree code container mixin
+
+class TreeCodeContainerMixin(object):
+    """Forwards requests for tree-related code to an inner code container named
+    self.tree_code_container.
+    """
+
+    def build_tree(self):
+        return self.tree_code_container.build_tree()
+
+    def peer_list_finder(self):
+        return self.tree_code_container.peer_list_finder()
+
+    def particle_list_filter(self):
+        return self.tree_code_container.particle_list_filter()
+
+# }}}
+
+
+# {{{ tree wrangler base class
+
+class TreeWranglerBase(object):
+
+    def build_tree(self, lpot_source, targets_list=(),
+                   use_stage2_discr=False):
+        tb = self.code_container.build_tree()
+        plfilt = self.code_container.particle_list_filter()
+        from pytential.qbx.utils import build_tree_with_qbx_metadata
+        return build_tree_with_qbx_metadata(
+                self.queue, tb, plfilt, lpot_source, targets_list=targets_list,
+                use_stage2_discr=use_stage2_discr)
+
+    def find_peer_lists(self, tree):
+        plf = self.code_container.peer_list_finder()
+        peer_lists, evt = plf(self.queue, tree)
+        cl.wait_for_events([evt])
+        return peer_lists
 
 # }}}
 
@@ -391,13 +457,14 @@ MAX_REFINE_WEIGHT = 64
 
 
 def build_tree_with_qbx_metadata(
-        queue, tree_builder, lpot_source, targets_list=(),
-        use_base_fine_discr=False):
+        queue, tree_builder, particle_list_filter, lpot_source, targets_list=(),
+        use_stage2_discr=False):
     """Return a :class:`TreeWithQBXMetadata` built from the given layer
     potential source. This contains particles of four different types:
 
        * source particles and panel centers of mass either from
-         ``lpot_source.density_discr`` or ``lpot_source.base_fine_density_discr``
+         ``lpot_source.density_discr`` or
+         ``lpot_source.stage2_density_discr``
        * centers from ``lpot_source.centers()``
        * targets from ``targets_list``.
 
@@ -408,8 +475,8 @@ def build_tree_with_qbx_metadata(
 
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
 
-    :arg use_base_fine_discr: If *True*, builds a tree with sources/centers of
-        mass from ``lpot_source.base_fine_density_discr``. If *False* (default),
+    :arg use_stage2_discr: If *True*, builds a tree with sources/centers of
+        mass from ``lpot_source.stage2_density_discr``. If *False* (default),
         they are from ``lpot_source.density_discr``.
     """
     # The ordering of particles is as follows:
@@ -422,14 +489,14 @@ def build_tree_with_qbx_metadata(
 
     sources = (
             lpot_source.density_discr.nodes()
-            if not use_base_fine_discr
-            else lpot_source.fine_density_discr.nodes())
+            if not use_stage2_discr
+            else lpot_source.quad_stage2_density_discr.nodes())
 
     centers = get_interleaved_centers(queue, lpot_source)
 
     centers_of_mass = (
             lpot_source._panel_centers_of_mass()
-            if not use_base_fine_discr
+            if not use_stage2_discr
             else lpot_source._fine_panel_centers_of_mass())
 
     targets = (tgt.nodes() for tgt in targets_list)
@@ -444,7 +511,7 @@ def build_tree_with_qbx_metadata(
     nsources = len(sources[0])
     ncenters = len(centers[0])
     # Each source gets an interior / exterior center.
-    assert 2 * nsources == ncenters or use_base_fine_discr
+    assert 2 * nsources == ncenters or use_stage2_discr
     ntargets = sum(tgt.nnodes for tgt in targets_list)
 
     # Slices
@@ -484,9 +551,9 @@ def build_tree_with_qbx_metadata(
         flags[particle_slice].fill(1)
         flags.finish()
 
-        from boxtree.tree import filter_target_lists_in_user_order
         box_to_class = (
-            filter_target_lists_in_user_order(queue, tree, flags)
+            particle_list_filter
+            .filter_target_lists_in_user_order(queue, tree, flags)
             .with_queue(queue))
 
         if fixup:
@@ -498,8 +565,8 @@ def build_tree_with_qbx_metadata(
     del box_to_class
 
     # Compute panel => source relation
-    if use_base_fine_discr:
-        density_discr = lpot_source.fine_density_discr
+    if use_stage2_discr:
+        density_discr = lpot_source.quad_stage2_density_discr
     else:
         density_discr = lpot_source.density_discr
 
@@ -518,7 +585,7 @@ def build_tree_with_qbx_metadata(
     # Compute panel => center relation
     qbx_panel_to_center_starts = (
             2 * qbx_panel_to_source_starts
-            if not use_base_fine_discr
+            if not use_stage2_discr
             else None)
 
     # Transfer all tree attributes.

@@ -27,7 +27,7 @@ from six.moves import intern
 from warnings import warn
 
 import numpy as np
-from pymbolic.primitives import (  # noqa: F401, N813
+from pymbolic.primitives import (  # noqa: F401,N813
         Expression as ExpressionBase, Variable as var,
         cse_scope as cse_scope_base,
         make_common_subexpression as cse)
@@ -35,7 +35,7 @@ from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
-from pytools.obj_array import make_obj_array  # noqa: F401
+from pytools.obj_array import make_obj_array, join_fields  # noqa: F401
 
 from functools import partial
 
@@ -43,6 +43,37 @@ from functools import partial
 __doc__ = """
 .. |where-blurb| replace:: A symbolic name for a
     :class:`pytential.discretization.Discretization`
+
+Object types
+^^^^^^^^^^^^
+Based on the mathematical quantity being represented, the following types of
+objects occur as part of a symbolic operator representation:
+
+*   If a quantity is a scalar, it is just a symbolic expression--that is, a nested
+    combination of placeholders (see below), arithmetic on them (see
+    :mod:`pymbolic.primitives`. These objects are created simply by doing
+    arithmetic on placeholders.
+
+*   If the quantity is "just a bunch of scalars" (like, say, rows in a system
+    of integral equations), the symbolic representation an object array. Each
+    element of the object array contains a symbolic expression.
+
+    :func:`pytools.obj_array.make_obj_array` and
+    :func:`pytools.obj_array.join_fields`
+    can help create those.
+
+*   If it is a geometric quantity (that makes sense without explicit reference to
+    coordinates), it is a :class:`pymbolic.geometric_algebra.MultiVector`.
+    This can be converted to an object array by calling :
+    :meth:`pymbolic.geometric_algebra.MultiVector.as_vector`.
+
+:mod:`pyopencl.array.Array` instances do not occur on the symbolic of
+:mod:`pymbolic` at all.  Those hold per-node degrees of freedom (and only
+those), which is not visible as an array axis in symbolic code. (They're
+visible only once evaluated.)
+
+Placeholders
+^^^^^^^^^^^^
 
 .. autoclass:: Variable
 .. autoclass:: make_sym_vector
@@ -55,8 +86,29 @@ Functions
 .. data:: real
 .. data:: imag
 .. data:: conj
-.. data:: sqrt
 .. data:: abs
+
+.. data:: sqrt
+
+.. data:: sin
+.. data:: cos
+.. data:: tan
+
+.. data:: asin
+.. data:: acos
+.. data:: atan
+.. data:: atan2
+
+.. data:: sinh
+.. data:: cosh
+.. data:: tanh
+
+.. data:: asinh
+.. data:: acosh
+.. data:: atanh
+
+.. data:: exp
+.. data:: log
 
 Discretization properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -75,14 +127,17 @@ Elementary numerics
 
 .. autoclass:: NumReferenceDerivative
 .. autoclass:: NodeSum
+.. autoclass:: NodeMax
 .. autofunction:: integral
 .. autoclass:: Ones
 .. autofunction:: ones_vec
 .. autofunction:: area
+.. autofunction:: mean
 .. autoclass:: IterativeInverse
 
-Calculus
-^^^^^^^^
+Calculus (based on Geometric Algebra)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: Derivative
 .. autofunction:: dd_axis
 .. autofunction:: d_dx
@@ -90,12 +145,39 @@ Calculus
 .. autofunction:: d_dz
 .. autofunction:: grad_mv
 .. autofunction:: grad
+.. autofunction:: laplace
 
 Layer potentials
 ^^^^^^^^^^^^^^^^
 
 .. autoclass:: IntG
 .. autofunction:: int_g_dsource
+
+.. autofunction:: S
+.. autofunction:: Sp
+.. autofunction:: Spp
+.. autofunction:: D
+.. autofunction:: Dp
+.. autofunction:: normal_derivative
+.. autofunction:: tangential_derivative
+
+"Conventional" Vector Calculus
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: tangential_onb
+.. autofunction:: xyz_to_tangential
+.. autofunction:: tangential_to_xyz
+.. autofunction:: project_to_tangential
+.. autofunction:: cross
+.. autofunction:: n_dot
+.. autofunction:: n_cross
+.. autofunction:: curl
+.. autofunction:: pretty
+
+Pretty-printing expressions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: pretty
 """
 
 
@@ -274,20 +356,31 @@ class NumReferenceDerivative(DiscretizationProperty):
     mapper_method = intern("map_num_reference_derivative")
 
 
+def reference_jacobian(func, output_dim, dim, where=None):
+    """Return a :class:`np.array` representing the Jacobian of a vector function
+    with respect to the reference coordinates.
+    """
+    jac = np.zeros((output_dim, dim), np.object)
+
+    for i in range(output_dim):
+        func_component = func[i]
+        for j in range(dim):
+            jac[i, j] = NumReferenceDerivative(
+                frozenset([j]),
+                func_component,
+                where)
+
+    return jac
+
+
 def parametrization_derivative_matrix(ambient_dim, dim, where=None):
-    """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
-    the derivative of the reference-to-global parametrization.
+    """Return a :class:`np.array` representing the derivative of the
+    reference-to-global parametrization.
     """
 
-    par_grad = np.zeros((ambient_dim, dim), np.object)
-    for i in range(ambient_dim):
-        for j in range(dim):
-            par_grad[i, j] = NumReferenceDerivative(
-                    frozenset([j]),
-                    NodeCoordinateComponent(i, where),
-                    where)
-
-    return par_grad
+    return reference_jacobian(
+            [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
+            ambient_dim, dim)
 
 
 def parametrization_derivative(ambient_dim, dim, where=None):
@@ -332,7 +425,7 @@ def normal(ambient_dim, dim=None, where=None):
     """Exterior unit normals."""
 
     # Don't be tempted to add a sign here. As it is, it produces
-    # exterior normals for positively oriented curves.
+    # exterior normals for positively oriented curves and surfaces.
 
     pder = (
             pseudoscalar(ambient_dim, dim, where)
@@ -340,12 +433,29 @@ def normal(ambient_dim, dim=None, where=None):
     return cse(
             # Dorst Section 3.7.2
             pder << pder.I.inv(),
-            cse_scope.DISCRETIZATION)
+            "normal",
+            scope=cse_scope.DISCRETIZATION)
 
 
-def mean_curvature(where):
-    raise NotImplementedError()
+def mean_curvature(ambient_dim, dim=None, where=None):
+    """(Numerical) mean curvature."""
 
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if not (dim == 1 and ambient_dim == 2):
+        raise NotImplementedError(
+                "only know how to calculate curvature for a curve in 2D")
+
+    xp, yp = cse(
+            parametrization_derivative_matrix(ambient_dim, dim, where),
+            "pd_matrix", cse_scope.DISCRETIZATION)
+
+    xpp, ypp = cse(
+            reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
+            "p2d_matrix", cse_scope.DISCRETIZATION)
+
+    return (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
 
 # FIXME: make sense of this in the context of GA
 # def xyz_to_local_matrix(dim, where=None):
@@ -363,9 +473,7 @@ def mean_curvature(where):
 
 # {{{ operators
 
-class NodeSum(Expression):
-    """Implements a global sum over all discretization nodes."""
-
+class NodalOperation(Expression):
     def __new__(cls, operand):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
@@ -385,7 +493,17 @@ class NodeSum(Expression):
     def __getinitargs__(self):
         return (self.operand,)
 
+
+class NodeSum(NodalOperation):
+    """Implements a global sum over all discretization nodes."""
+
     mapper_method = "map_node_sum"
+
+
+class NodeMax(NodalOperation):
+    """Implements a global maximum over all discretization nodes."""
+
+    mapper_method = "map_node_max"
 
 
 def integral(ambient_dim, dim, operand, where=None):
@@ -581,7 +699,7 @@ class IntG(Expression):
             to expressions that determine them)
 
         :arg source: The symbolic name of the source discretization. This name
-            is bound to a concrete :class:`pytential.qbx.QBXLayerPotentialSource`
+            is bound to a concrete :class:`pytential.source.LayerPotentialSourceBase`
             by :func:`pytential.bind`.
 
         :arg target: The symbolic name of the set of targets. This name gets
@@ -781,7 +899,7 @@ def S(kernel, density,  # noqa
 
     if qbx_forced_limit is _unspecified:
         warn("not specifying qbx_forced_limit on call to 'S' is deprecated, "
-                "defaulting to +1", DeprecationWarning, stacklevel=2)
+                "defaulting to +1", stacklevel=2)
         qbx_forced_limit = +1
 
     return IntG(kernel, density, qbx_forced_limit, source, target,
@@ -894,7 +1012,7 @@ def Dp(kernel, *args, **kwargs):  # noqa
 # }}}
 
 
-# {{{ geometric operations
+# {{{ conventional vector calculus
 
 def tangential_onb(ambient_dim, dim=None, where=None):
     if dim is None:
@@ -911,8 +1029,9 @@ def tangential_onb(ambient_dim, dim=None, where=None):
         q = avec
         for j in range(k):
             q = q - np.dot(avec, orth_pd_mat[:, j])*orth_pd_mat[:, j]
+        q = cse(q, "q%d" % k)
 
-        orth_pd_mat[:, k] = cse(q/sqrt(np.sum(q**2)), "orth_pd_vec")
+        orth_pd_mat[:, k] = cse(q/sqrt(np.sum(q**2)), "orth_pd_vec%d_" % k)
 
     # }}}
 
@@ -936,9 +1055,47 @@ def tangential_to_xyz(tangential_vec, where=None):
         for i in range(ambient_dim - 1))
 
 
-def project_to_tangential(xyz_vec, which=None):
+def project_to_tangential(xyz_vec, where=None):
     return tangential_to_xyz(
-            cse(xyz_to_tangential(xyz_vec, which), which))
+            cse(xyz_to_tangential(xyz_vec, where), where))
+
+
+def n_dot(vec, where=None):
+    nrm = normal(len(vec), where).as_vector()
+
+    return np.dot(nrm, vec)
+
+
+def cross(vec_a, vec_b):
+    assert len(vec_a) == len(vec_b) == 3
+
+    from pytools import levi_civita
+    from pytools.obj_array import make_obj_array
+    return make_obj_array([
+        sum(
+            levi_civita((i, j, k)) * vec_a[j] * vec_b[k]
+            for j in range(3) for k in range(3))
+        for i in range(3)])
+
+
+def n_cross(vec, where=None):
+    return cross(normal(3, where).as_vector(), vec)
+
+
+def div(vec):
+    ambient_dim = len(vec)
+    return sum(dd_axis(iaxis, ambient_dim, vec) for iaxis in range(ambient_dim))
+
+
+def curl(vec):
+    from pytools import levi_civita
+    from pytools.obj_array import make_obj_array
+
+    return make_obj_array([
+        sum(
+            levi_civita((l, m, n)) * dd_axis(m, 3, vec[n])
+            for m in range(3) for n in range(3))
+        for l in range(3)])
 
 # }}}
 
