@@ -75,10 +75,10 @@ visible only once evaluated.)
 Placeholders
 ^^^^^^^^^^^^
 
-.. autoclass:: Variable
-.. autoclass:: make_sym_vector
-.. autoclass:: make_sym_mv
-.. autoclass:: make_sym_surface_mv
+.. autoclass:: var
+.. autofunction:: make_sym_vector
+.. autofunction:: make_sym_mv
+.. autofunction:: make_sym_surface_mv
 
 Functions
 ^^^^^^^^^
@@ -144,9 +144,9 @@ Conventional Calculus
 ^^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: dd_axis
-.. autofunction:: d_dx
-.. autofunction:: d_dy
-.. autofunction:: d_dz
+.. function:: d_dx
+.. function:: d_dy
+.. function:: d_dz
 .. autofunction:: grad_mv
 .. autofunction:: grad
 .. autofunction:: laplace
