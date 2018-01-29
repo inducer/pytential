@@ -213,6 +213,7 @@ class EHField(object):
 
 # {{{ driver
 
+@pytest.mark.slowtest
 @pytest.mark.parametrize("case", [
     #tc_int,
     tc_ext,
