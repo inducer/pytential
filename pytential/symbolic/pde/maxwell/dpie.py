@@ -155,12 +155,14 @@ class DPIEOperator:
 
         # specify the frequency variable that will be tuned
         self.k          = k
+        self.stype      = type(self.k)
 
         # specify the 3-D Helmholtz kernel 
         self.kernel     = HelmholtzKernel(3)
 
         # specify a list of strings representing geometry objects
         self.geometry_list   = geometry_list
+        self.nobjs           = len(geometry_list)
 
         # create the characteristic functions that give a value of
         # 1 when we are on some surface/valume and a value of 0 otherwise
@@ -169,12 +171,98 @@ class DPIEOperator:
             self.char_funcs[idx] = sym.D(self.kernel,1,k=self.k,source=self.geometry_list[idx])
 
     def numVectorPotentialDensities(self):
-        return 3 + len(self.geometry_list)
+        return 4*len(self.geometry_list)
 
     def numScalarPotentialDensities(self):
-        return 1 + len(self.geometry_list)
+        return 2*len(self.geometry_list)
 
-    def phi_operator(self,phi_densities):
+    def D(self, density_vec, target):
+        """
+        Double layer potential operator across multiple disjoint objects
+        """
+
+        # get the shape of density_vec
+        (ndim, nobj) = density_vec.shape
+
+        # init output symbolic quantity with zeros
+        output = np.zeros((ndim,), dtype=type(density))
+
+        # compute individual double layer potential evaluations at the given
+        # density across all the disjoint objects
+        for i in range(0,nobj):
+            output = output + sym.D(self.kernel, density_vec[:,i],
+                k=self.k,qbx_forced_limit="avg",
+                source=self.geometry_list[i],target=target)
+
+        # return the output summation
+        return output
+
+    def S(self, density_vec, target):
+        """
+        Double layer potential operator across multiple disjoint objects
+        """
+
+        # get the shape of density_vec
+        (ndim, nobj) = density_vec.shape
+
+        # init output symbolic quantity with zeros
+        output = np.zeros((ndim,), dtype=self.stype)
+
+        # compute individual double layer potential evaluations at the given
+        # density across all the disjoint objects
+        for i in range(0,nobj):
+            output = output + sym.S(self.kernel, density_vec[:,i],
+                k=self.k, qbx_forced_limit="avg",
+                source=self.geometry_list[i], target=target)
+
+        # return the output summation
+        return output
+
+
+    def Dp(self, density_vec, target):
+        """
+        D' layer potential operator across multiple disjoint objects
+        """
+
+        # get the shape of density_vec
+        (ndim, nobj) = density_vec.shape
+
+        # init output symbolic quantity with zeros
+        output = np.zeros((ndim,), dtype=self.stype)
+
+        # compute individual double layer potential evaluations at the given
+        # density across all the disjoint objects
+        for i in range(0,nobj):
+            output = output + sym.Dp(self.kernel, density_vec[:,i],
+                k=self.k,qbx_forced_limit="avg",
+                source=self.geometry_list[i],target=target)
+
+        # return the output summation
+        return output
+
+    def Sp(self, density_vec, target):
+        """
+        S' layer potential operator across multiple disjoint objects
+        """
+
+        # get the shape of density_vec
+        (ndim, nobj) = density_vec.shape
+
+        # init output symbolic quantity with zeros
+        output = np.zeros((ndim,), dtype=self.stype)
+
+        # compute individual double layer potential evaluations at the given
+        # density across all the disjoint objects
+        for i in range(0,nobj):
+            output = output + sym.Sp(self.kernel, density_vec[:,i],
+                k=self.k, qbx_forced_limit="avg",
+                source=self.geometry_list[i], target=target)
+
+        # return the output summation
+        return output
+
+
+    def phi_operator0(self, phi_densities):
         """
         Integral Equation operator for obtaining scalar potential, `phi`
         """
@@ -194,23 +282,50 @@ class DPIEOperator:
                             )
                          )
 
+    def phi_operator(self, phi_densities):
+        """
+        Integral Equation operator for obtaining scalar potential, `phi`
+        """
 
-    def phi_rhs(self, phi_inc):
+        # extract the densities needed to solve the system of equations
+        sigma   = phi_densities[:self.nobjs]
+        sigma_m = sigma.reshape((1,self.nobjs))
+        V       = phi_densities[self.nobjs:]
+
+        # init output matvec vector for the phi density IE
+        output = np.zeros((2*self.nobjs,), dtype=self.stype)
+
+        # produce integral equation system over each disjoint object
+        for n in range(0,self.nobjs):
+
+            # get nth disjoint object 
+            obj_n = self.geometry_list[n]
+
+            # setup IE for evaluation over the nth disjoint object's surface
+            output[n] = 0.5*sigma[n] + self.D(sigma_m,obj_n) - 1j*self.k*self.S(sigma_m,obj_n) - V[n]
+
+            # setup equation that integrates some integral operators over the nth surface
+            output[self.nobjs + n] = sym.integral(ambient_dim=3,dim=2,
+                operand=(self.Dp(sigma_m,target=None)/self.k+ 1j*sigma/2.0 - 1j*self.Sp(sigma_m,target=None)))
+
+        # return the resulting system of IE
+        return output
+
+
+    def phi_rhs(self, phi_inc, gradphi_inc):
         """
         The Right-Hand-Side for the Integral Equation for `phi`
         """
 
-        # get the Q_array
-        Q_array = sym.make_sym_vector("Q_array",len(self.geometry_list))
-        for i in range(0,len(self.geometry_list)):
-            #Q_array[i] = -sym.integral(3,2,sym.n_dot(sym.grad(3,phi_inc)),where=self.geometry_list[i])
-            Q_array[i] = 0
+        # get the Q_{j} terms inside RHS expression
+        Q = np.zeros((self.nobjs,), dtype=self.stype)
+        for i in range(0,self.nobjs):
+            Q[i] = -sym.integral(3,2,sym.n_dot(gradphi_inc),where=self.geometry_list[i])
 
         # return the resulting field
-        return sym.join_fields(-phi_inc,
-                                Q_array/self.k)
+        return sym.join_fields(-phi_inc, Q/self.k)
 
-    def A_operator(self, A_densities):
+    def A_operator0(self, A_densities):
         """
         Integral Equation operator for obtaining vector potential, `A`
         """
@@ -222,6 +337,7 @@ class DPIEOperator:
 
         # define the normal vector in symbolic form
         n = sym.normal(len(a), None).as_vector()
+        r = sym.n_cross(a)
 
         # define system of integral equations for A
         return sym.join_fields(
@@ -233,7 +349,9 @@ class DPIEOperator:
                         ),
             0.5*rho + sym.D(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
                     + 1j*(
-                        sym.div(sym.S(self.kernel,sym.n_cross(a),k=self.k,qbx_forced_limit="avg"))
+                        sym.d_dx(3,sym.S(self.kernel,r[0],k=self.k,qbx_forced_limit="avg"))
+                        + sym.d_dy(3,sym.S(self.kernel,r[1],k=self.k,qbx_forced_limit="avg"))
+                        + sym.d_dz(3,sym.S(self.kernel,r[2],k=self.k,qbx_forced_limit="avg"))
                         - self.k*sym.S(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
                         ) 
                     + np.dot(v_array,self.char_funcs),
@@ -246,22 +364,42 @@ class DPIEOperator:
                          )
             )
 
-    def A_rhs(self, A_inc):
+    def A_operator(self, A_densities):
+        """
+        Integral Equation operator for obtaining vector potential, `A`
+        """
+
+        # extract the densities needed to solve the system of equations
+        v       = A_densities[:self.nobjs]
+        rho     = A_densities[self.nobjs:(2*self.nobjs)]
+        rho_m   = rho.resize((1,self.nobjs))
+        a_loc   = A_densities[2*self.nobjs:]
+        a       = np.zeros((3,self.nobjs),dtype=self.stype)
+        for n in range(0,self.nobjs):
+            a[:,n] = sym.tangential_to_xyz(a_loc[2*n:2*(n+1)],where=self.geometry_list[n])
+
+        # define the normal vector in symbolic form
+        n = sym.normal(len(a), None).as_vector()
+        r = sym.n_cross(a)
+
+        # init output matvec vector for the phi density IE
+        output = np.zeros((5*self.nobjs,), dtype=self.stype)
+
+        # produce integral equation system over each disjoint object
+        for n in range(0,self.nobjs):
+
+    def A_rhs(self, A_inc, divA_inc):
         """
         The Right-Hand-Side for the Integral Equation for `A`
         """
 
         # get the q_array
-        q_array = sym.make_sym_vector("Q_array",len(self.geometry_list))
-        for i in range(0,len(self.geometry_list)):
-            q_array[i] = -sym.integral(3,2,sym.n_dot(A_inc),where=self.geometry_list[i])
+        q = np.zeros((self.nobjs,), dtype=self.stype)
+        for i in range(0,self.nobjs):
+            q[i] = -sym.integral(3,2,sym.n_dot(A_inc),where=self.geometry_list[i])
 
         # define RHS for `A` integral equation system
-        return sym.join_fields(
-                -sym.n_cross(A_inc),
-                -sym.div(A_inc)/self.k,
-                q_array
-            )
+        return sym.join_fields( -sym.n_cross(A_inc), -divA_inc/self.k, q)
 
 
     def scalar_potential_rep(self, phi_densities, qbx_forced_limit=None):
