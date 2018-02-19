@@ -106,7 +106,7 @@ class P2QBXLFromCSR(P2EBase):
                     """] + ["""
                     qbx_expansions[tgt_icenter, {i}] = \
                             simul_reduce(sum, (isrc_box, isrc), strength*coeff{i}) \
-                            {{id_prefix=write_expn}}
+                            {{id_prefix=write_expn,nosync=write_expn*}}
                     """.format(i=i) for i in range(ncoeffs)] + ["""
 
                 end
@@ -188,7 +188,7 @@ class M2QBXL(E2EBase):
                     """] + ["""
                     qbx_expansions[icenter, {i}] = qbx_expansions[icenter, {i}] + \
                             simul_reduce(sum, isrc_box, coeff{i}) \
-                            {{id_prefix=write_expn}}
+                            {{id_prefix=write_expn,nosync=write_expn*}}
                     """.format(i=i) for i in range(ncoeff_tgt)] + ["""
 
                 end
@@ -291,7 +291,7 @@ class L2QBXL(E2EBase):
                         ] + self.get_translation_loopy_insns() + ["""
                         qbx_expansions[icenter, {i}] = \
                             qbx_expansions[icenter, {i}] + coeff{i} \
-                            {{id_prefix=write_expn}}
+                            {{id_prefix=write_expn,nosync=write_expn*}}
                         """.format(i=i) for i in range(ncoeff_tgt)] + ["""
                     end
                 end
