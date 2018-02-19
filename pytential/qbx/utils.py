@@ -32,6 +32,7 @@ from boxtree.tree import Tree
 import pyopencl as cl
 import pyopencl.array # noqa
 from pytools import memoize, memoize_method
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 import logging
 logger = logging.getLogger(__name__)
@@ -84,7 +85,8 @@ def get_interleaver_kernel(dtype):
             lp.GlobalArg("dst", shape=(var("dstlen"),), dtype=dtype),
             "..."
         ],
-        assumptions="2*srclen = dstlen")
+        assumptions="2*srclen = dstlen",
+        lang_version=MOST_RECENT_LANGUAGE_VERSION)
     knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
     return knl
 
@@ -217,7 +219,8 @@ def panel_sizes(discr, last_dim_length):
         knl = lp.make_kernel(
             "{[i,j,k]: 0<=i<nelements and 0<=j,k<nunit_nodes}",
             "panel_sizes[i,j] = sum(k, ds[i,k])**(1/dim)",
-            name="compute_size")
+            name="compute_size",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         def panel_size_view(discr, group_nr):
             return discr.groups[group_nr].view
@@ -226,7 +229,8 @@ def panel_sizes(discr, last_dim_length):
         knl = lp.make_kernel(
             "{[i,j]: 0<=i<nelements and 0<=j<nunit_nodes}",
             "panel_sizes[i] = sum(j, ds[i,j])**(1/dim)",
-            name="compute_size")
+            name="compute_size",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
         from functools import partial
 
         def panel_size_view(discr, group_nr):
@@ -277,7 +281,8 @@ def element_centers_of_mass(discr):
         """
             panels[dim, k] = sum(i, nodes[dim, k, i])/nunit_nodes
             """,
-        default_offset=lp.auto, name="find_panel_centers_of_mass")
+        default_offset=lp.auto, name="find_panel_centers_of_mass",
+        lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
     knl = lp.fix_parameters(knl, ndims=discr.ambient_dim)
 
