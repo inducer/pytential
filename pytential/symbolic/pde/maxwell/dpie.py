@@ -316,10 +316,6 @@ class DPIEOperator:
         for n in range(0,self.nobjs):
             a[:,n] = sym.tangential_to_xyz(a_loc[2*n:2*(n+1)],where=self.geometry_list[n])
 
-        # define the normal vector in symbolic form
-        n = sym.normal(3, None).as_vector()
-        r = sym.n_cross(a)
-
         # init output matvec vector for the phi density IE
         output = np.zeros((5*self.nobjs,), dtype=self.stype)
 
@@ -405,9 +401,6 @@ class DPIEOperator:
         # extract the densities needed to solve the system of equations
         rho     = A_densities[0]
         a       = sym.tangential_to_xyz(A_densities[1:3])
-
-        # define the normal vector in symbolic form
-        n = sym.normal(3, None).as_vector()
 
         # define the vector potential representation
         return sym.curl(sym.S(self.kernel,a,k=self.k,qbx_forced_limit=qbx_forced_limit)) \
