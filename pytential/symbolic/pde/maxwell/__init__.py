@@ -1,7 +1,9 @@
 from __future__ import division, absolute_import
 
-__copyright__ = """ Copyright (C) 2010-2013 Andreas Kloeckner
-                    Copyright (C) 2018 Christian Howard"""
+__copyright__ = """
+Copyright (C) 2010-2018 Andreas Kloeckner
+Copyright (C) 2018 Christian Howard
+"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -133,6 +135,31 @@ def get_sym_maxwell_point_source_potentials(kernel, jxyz, k):
 
 # }}}
 
+def get_sym_maxwell_planewave_gradphi(u, Ep, k, where=None):
+    """
+    Return symbolic expression that can be bound to a :class:`pytential.source.PointPotentialSource`
+    and yield the gradient of a scalar potential field satisfying Maxwell's equations.
+
+    Should be representing the following:
+    .. math::
+        \nabla \phi(x) = - e^{i k x^T u} E_p^T \left( 1 + i k x^T u\right)
+    """
+    x = sym.nodes(3, where).as_vector()
+    grad_phi = -np.exp(1j*k*np.dot(x,u)) * (1 + 1j*k*np.dot(x,u)) * Ep.T
+    return grad_phi
+
+def get_sym_maxwell_planewave_divA(u, Ep, k, epsilon=1, mu=1, where=None):
+    """
+    Return symbolic expression that can be bound to a :class:`pytential.source.PointPotentialSource`
+    and yield the divergence of a vector potential field satisfying Maxwell's equations.
+
+    Should be representing the following:
+    .. math::
+        \nabla \cdot \boldsymbol{A} = -\sqrt{\mu \epsilon} e^{i k x^T u} E_p^T \left( u + i k x\right)
+    """
+    x = sym.nodes(3, where).as_vector()
+    divA = -np.sqrt(epsilon*mu) * np.exp(1j*k*np.dot(x,u)) * np.dot(Ep,u + 1j*k*x)
+    return divA
 
 # {{{ Charge-Current MFIE
 
