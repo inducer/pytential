@@ -148,7 +148,7 @@ def get_sym_maxwell_planewave_gradphi(u, Ep, k, where=None):
         \nabla \phi(x) = - e^{i k x^T u} E_p^T \left( 1 + i k x^T u\right)
     """
     x = sym.nodes(3, where).as_vector()
-    grad_phi = -np.exp(1j*k*np.dot(x,u)) * (1 + 1j*k*np.dot(x,u)) * Ep.T
+    grad_phi = -np.exp(1j*k*np.dot(x,u)) * (Ep.T + 1j*k*np.dot(Ep,x)*u.T)
     return grad_phi
 
 def get_sym_maxwell_planewave_divA(u, Ep, k, epsilon=1, mu=1, where=None):
