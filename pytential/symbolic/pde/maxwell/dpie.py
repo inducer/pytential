@@ -419,17 +419,14 @@ class DPIEOperator:
         # extract the densities needed to solve the system of equations
         rho     = A_densities[:self.nobjs]
         rho_m   = rho.resize((1,self.nobjs))
-        a_loc   = A_densities[self.nobjs:]
+        a_loc   = A_densities[(2*self.nobjs):]
         a       = np.zeros((3,self.nobjs),dtype=self.stype)
         for n in range(0,self.nobjs):
             a[:,n] = sym.tangential_to_xyz(a_loc[2*n:2*(n+1)],where=self.geometry_list[n])
 
-        # define the normal vector in symbolic form
-        n = sym.normal(len(a), None).as_vector()
-
         # define the vector potential representation
-        return sym.curl(self.S(a,target)) - self.k*self.S(n*rho_m,target) \
-                + 1j*(self.k*self.S(sym.n_cross(a),target) + sym.grad(self.S(rho_m,target)))
+        return sym.curl(self.S(a,target)) - self.k*self.S(self.n_times_multi(rho_m,self.geometry_list),target) \
+                + 1j*(self.k*self.S(self.n_cross_multi(a,self.geometry_list),target) + sym.grad(self.S(rho_m,target)))
 
 
     def scattered_volume_field(self, phi_densities, A_densities, qbx_forced_limit=None):
