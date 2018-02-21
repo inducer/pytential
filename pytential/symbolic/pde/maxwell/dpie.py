@@ -1,6 +1,6 @@
 from __future__ import division, absolute_import
 
-__copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
+__copyright__ = "Copyright (C) 2018 Christian Howard"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -22,132 +22,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np  # noqa
-from pytential import sym
-from collections import namedtuple
-from functools import partial
+# import useful tools/libs
+import numpy        as np  # noqa
+from pytential      import sym
+from collections    import namedtuple
+from functools      import partial
 
+# define a few functions based on existing functions
 tangential_to_xyz = sym.tangential_to_xyz
 xyz_to_tangential = sym.xyz_to_tangential
 cse = sym.cse
 
 __doc__ = """
-
-.. autofunction:: get_sym_maxwell_point_source
-.. autofunction:: get_sym_maxwell_point_source_potentials
-.. autofunction:: get_sym_maxwell_plane_wave
 .. autoclass:: DPIEOperator
 """
-
-
-# {{{ point source
-
-def get_sym_maxwell_point_source(kernel, jxyz, k):
-    """Return a symbolic expression that, when bound to a
-    :class:`pytential.source.PointPotentialSource` will yield
-    a field satisfying Maxwell's equations.
-
-    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
-
-    This will return an object of six entries, the first three of which
-    represent the electric, and the second three of which represent the
-    magnetic field. This satisfies the time-domain Maxwell's equations
-    as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
-    """
-    # This ensures div A = 0, which is simply a consequence of div curl S=0.
-    # This means we use the Coulomb gauge to generate this field.
-
-    A = sym.curl(sym.S(kernel, jxyz, k=k, qbx_forced_limit=None))
-
-    # https://en.wikipedia.org/w/index.php?title=Maxwell%27s_equations&oldid=798940325#Alternative_formulations
-    # (Vector calculus/Potentials/Any Gauge)
-    # assumed time dependence exp(-1j*omega*t)
-    return sym.join_fields(
-        1j*k*A,
-        sym.curl(A))
-
-# }}}
-
-# {{{ point source for vector potential
-
-def get_sym_maxwell_point_source_potentials(kernel, jxyz, k):
-    """Return a symbolic expression that, when bound to a
-    :class:`pytential.source.PointPotentialSource` will yield
-    a potential fields satisfying Maxwell's equations.
-
-    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
-
-    This will return an object of four entries, the first being the
-    scalar potential and the last three being the components of the
-    vector potential.
-    """
-    field = get_sym_maxwell_point_source(kernel, jxyz, k)
-    return sym.join_fields(
-        0*1j,               # scalar potential
-        field[:3]/(1j*k)    # vector potential
-        )
-
-# }}}
-
-
-# {{{ plane wave
-
-def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=None):
-    """Return a symbolic expression that, when bound to a
-    :class:`pytential.source.PointPotentialSource` will yield
-    a field satisfying Maxwell's equations.
-
-    :arg amplitude_vec: should be orthogonal to *v*. If it is not,
-        it will be orthogonalized.
-    :arg v: a three-vector representing the phase velocity of the wave
-        (may be an object array of variables or a vector of concrete numbers)
-        While *v* may mathematically be complex-valued, this function
-        is for now only tested for real values.
-    :arg omega: Accepts the "Helmholtz k" to be compatible with other parts
-        of this module.
-
-    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
-
-    This will return an object of six entries, the first three of which
-    represent the electric, and the second three of which represent the
-    magnetic field. This satisfies the time-domain Maxwell's equations
-    as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
-    """
-
-    # See section 7.1 of Jackson, third ed. for derivation.
-
-    # NOTE: for complex, need to ensure real(n).dot(imag(n)) = 0  (7.15)
-
-    x = sym.nodes(3, where).as_vector()
-
-    v_mag_squared = sym.cse(np.dot(v, v), "v_mag_squared")
-    n = v/sym.sqrt(v_mag_squared)
-
-    amplitude_vec = amplitude_vec - np.dot(amplitude_vec, n)*n
-
-    c_inv = np.sqrt(mu*epsilon)
-
-    e = amplitude_vec * sym.exp(1j*np.dot(n*omega, x))
-
-    return sym.join_fields(e, c_inv * sym.cross(n, e))
-
-# }}}
 
 
 
 # {{{ Decoupled Potential Integral Equation Operator
 class DPIEOperator:
-    """
+    r"""
     Decoupled Potential Integral Equation operator with PEC boundary
     conditions, defaults as scaled DPIE.
 
     See https://arxiv.org/abs/1404.0749 for derivation.
 
-    Uses E(x,t) = Re{E(x) exp(-i omega t)} and H(x,t) = Re{H(x) exp(-i omega t)}
-    and solves for the E(x), H(x) fields using vector and scalar potentials via
+    Uses :math:`E(x,t) = Re \lbrace E(x) \exp(-i \omega t) \rbrace` and 
+    :math:`H(x,t) = Re \lbrace H(x) \exp(-i \omega t) \rbrace` and solves for 
+    the :math:`E(x)`, :math:`H(x)` fields using vector and scalar potentials via
     the Lorenz Gauage. The DPIE formulates the problem purely in terms of the 
-    vector and scalar potentials, A and phi, and then backs out E(x) and H(x) 
-    via relationships to the vector and scalar potentials.
+    vector and scalar potentials, :math:`\boldsymbol{A}` and :math:`\phi`, 
+    and then backs out :math:`E(x)` and :math:`H(x)` via relationships to 
+    the vector and scalar potentials.
     """
 
     def __init__(self, geometry_list, k=sym.var("k")):

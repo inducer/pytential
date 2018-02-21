@@ -1,6 +1,7 @@
 from __future__ import division, absolute_import
 
-__copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
+__copyright__ = """ Copyright (C) 2010-2013 Andreas Kloeckner
+                    Copyright (C) 2018 Christian Howard"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -111,11 +112,32 @@ def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=N
 
 # }}}
 
+# {{{ point source for vector potential based on Lorenz gauge 
+
+def get_sym_maxwell_point_source_potentials(kernel, jxyz, k):
+    """Return a symbolic expression that, when bound to a
+    :class:`pytential.source.PointPotentialSource` will yield
+    a potential fields satisfying Maxwell's equations.
+
+    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
+
+    This will return an object of four entries, the first being the
+    scalar potential and the last three being the components of the
+    vector potential.
+    """
+    field = get_sym_maxwell_point_source(kernel, jxyz, k)
+    return sym.join_fields(
+        0*1j,               # scalar potential
+        field[:3]/(1j*k)    # vector potential
+        )
+
+# }}}
+
 
 # {{{ Charge-Current MFIE
 
 class PECChargeCurrentMFIEOperator:
-    """Magnetic Field Integral Equation operator with PEC boundary
+    r"""Magnetic Field Integral Equation operator with PEC boundary
     conditions, under the assumption of no surface charges.
 
     See :file:`contrib/notes/mfie.tm` in the repository for a derivation.
