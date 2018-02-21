@@ -74,13 +74,62 @@ class DPIEOperator:
         # 1 when we are on some surface/valume and a value of 0 otherwise
         self.char_funcs = sym.make_sym_vector("chi",len(self.geometry_list))
         for idx in range(0,len(geometry_list)):
-            self.char_funcs[idx] = sym.D(self.kernel,1,k=self.k,source=self.geometry_list[idx])
+            self.char_funcs[idx] = sym.D(self.kernel, 1, k=self.k,source=self.geometry_list[idx])
 
     def numVectorPotentialDensities(self):
         return 4*len(self.geometry_list)
 
     def numScalarPotentialDensities(self):
         return 2*len(self.geometry_list)
+
+    def getVectorDomainList(self):
+        """
+        Method to return domain list that will be used within the scipy_op method to
+        solve the system of discretized integral equations. What is returned should just
+        be a list with values that are strings or None.
+        """
+
+        # initialize domain list
+        domain_list = [None]*self.numVectorPotentialDensities()
+
+        # get strings for the actual densities
+        for n in range(0,self.nobjs):
+
+            # grab nth location identifier
+            location                            = self.geometry_list[n]
+
+            # assign domain for nth scalar density
+            domain_list[n]                      = location
+
+            # assign domain for nth vector density
+            domain_list[2*self.nobjs + 2*n]     = location
+            domain_list[2*self.nobjs + 2*n+1]   = location
+
+        # return the domain list
+        return domain_list
+
+    def getScalarDomainList(self):
+        """
+        Method to return domain list that will be used within the scipy_op method to
+        solve the system of discretized integral equations. What is returned should just
+        be a list with values that are strings or None.
+        """
+
+        # initialize domain list
+        domain_list = [None]*self.numScalarPotentialDensities()
+
+        # get strings for the actual densities
+        for n in range(0,self.nobjs):
+
+            # grab nth location identifier
+            location                            = self.geometry_list[n]
+
+            # assign domain for nth scalar density
+            domain_list[n]                      = location
+
+        # return the domain list
+        return domain_list
+
 
     def D(self, density_vec, target=None):
         """
