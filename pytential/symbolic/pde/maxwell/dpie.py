@@ -167,29 +167,96 @@ class DPIEOperator:
         # return the output summation
         return output
 
+    def n_cross_multi(self, density_vec, sources):
+        r"""
+        This method is such that an cross(n,a) can operate across vectors
+        a and n that are local to a set of disjoint source surfaces. Essentially,
+        imagine that :math:`\bar{a} = [a_1, a_2, \cdots, a_m]`, where :math:`a_k` represents a vector density
+        defined on the :math:`k^{th}` disjoint object. Also imagine that :math:`bar{n} = [n_1, n_2, \cdots, n_m]`,
+        where :math:`n_k` represents a normal that exists on the :math:`k^{th}` disjoint object. The goal, then,
+        is to have an operator that does element-wise cross products.. ie:
 
-    def phi_operator0(self, phi_densities):
+        .. math::
+            \bar{n} \times \bar{a}) = [ \left(n_1 \times a_1\right), ..., \left(n_m \times a_m \right)]
         """
-        Integral Equation operator for obtaining scalar potential, `phi`
-        Old Operator without looking into multiple bodies
+
+        # get the shape of density_vec
+        (ndim, nobj) = density_vec.shape
+
+        # assert that the ndim value is 3
+        assert ndim == 3
+
+        # init output symbolic quantity with zeros
+        output = np.zeros(density_vec.shape, dtype=self.stype)
+
+        # loop through the density and sources to construct the appropriate
+        # element-wise cross product operation
+        for k in range(0,nobj):
+            output[:,k] = sym.n_cross(density_vec[:,k],where=sources[k])
+
+        # return result from element-wise cross product
+        return output
+
+    def n_times_multi(self, density_vec, sources):
+        r"""
+        This method is such that an :math:`\boldsymbol{n} \rho`, for some normal :math:`\boldsymbol{n}` and
+        some scalar :math:`\rho` can be done across normals and scalars that exist on multiple surfaces. Essentially,
+        imagine that :math:`\bar{\rho} = [\rho_1, \cdots, \rho_m]`, where :math:`\rho_k` represents a scalar density
+        defined on the :math:`k^{th}` disjoint object. Also imagine that :math:`bar{n} = [\boldsymbol{n}_1, \cdots, \boldsymbol{n}_m]`,
+        where :math:`n_k` represents a normal that exists on the :math:`k^{th}` disjoint object. The goal, then,
+        is to have an operator that does element-wise products.. ie:
+
+        .. math::
+            \bar{n}\bar{\rho} = [ \left(\boldsymbol{n}_1 \rho_1\right), ..., \left(\boldsymbol{n}_m \rho_m \right)]
         """
 
-        # extract the densities needed to solve the system of equations
-        sigma       = phi_densities[0]
-        V_array     = phi_densities[1:]
+        # get the shape of density_vec
+        (ndim, nobj) = density_vec.shape
 
-        # produce integral equation system
-        return sym.join_fields(
-                        0.5*sigma + sym.D(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
-                         - 1j*self.k*sym.S(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
-                         + np.dot(V_array,self.char_funcs),
-                         sym.integral(ambient_dim=3,dim=2,operand=
-                            sym.Dp(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")/self.k
-                            + 1j*sigma/2.0 - 1j*sym.Sp(self.kernel,sigma,k=self.k,qbx_forced_limit="avg")
-                            )
-                         )
+        # assert that the ndim value is 1
+        assert ndim == 1
 
-    def phi_operator(self, phi_densities, V):
+        # init output symbolic quantity with zeros
+        output = np.zeros(density_vec.shape, dtype=self.stype)
+
+        # loop through the density and sources to construct the appropriate
+        # element-wise cross product operation
+        for k in range(0,nobj):
+            output[:,k] = sym.normal(3,where=sources[k]) * density_vec[0,k]
+
+        # return result from element-wise cross product
+        return output
+
+    def n_cross(self, density_vec, where=None):
+        r"""
+        This method is so, given a single surface identifier, we can compute the cross product of a normal
+        on this surface for a set of vectors represented as columns of some matrix
+        :math:`\bar{a} = [a_1, a_2, \cdots, a_m]`. The goal, then, is to perform the following, given 
+        some normal :math:`\hat{n}`:
+
+        .. math::
+            \hat{n} \times \bar{a}) = [ \left(\hat{n} \times a_1\right), ..., \left(\hat{n} \times a_m \right)]
+        """
+
+        # get the shape of density_vec
+        (ndim, nobj) = density_vec.shape
+
+        # assert that the ndim value is 1
+        assert ndim == 3
+
+        # init output symbolic quantity with zeros
+        output = np.zeros(density_vec.shape, dtype=self.stype)
+
+        # loop through the density and sources to construct the appropriate
+        # element-wise cross product operation
+        for k in range(0,nobj):
+            output[:,k] = sym.n_cross(density_vec[:,k],where=where)
+
+        # return result from element-wise cross product
+        return output
+
+
+    def phi_operator(self, phi_densities):
         """
         Integral Equation operator for obtaining scalar potential, `phi`
         """
@@ -197,6 +264,9 @@ class DPIEOperator:
         # extract the densities needed to solve the system of equations
         sigma   = phi_densities[:self.nobjs]
         sigma_m = sigma.reshape((1,self.nobjs))
+
+        # extract the scalar quantities, { V_j }, that remove the nullspace
+        V = phi_densities[self.nobjs:]
 
         # init output matvec vector for the phi density IE
         output = np.zeros((2*self.nobjs,), dtype=self.stype)
@@ -232,47 +302,7 @@ class DPIEOperator:
         # return the resulting field
         return sym.join_fields(-phi_inc, Q/self.k)
 
-    def A_operator0(self, A_densities):
-        """
-        Integral Equation operator for obtaining vector potential, `A`
-        Old Operator without looking into multiple bodies
-        """
-
-        # extract the densities needed to solve the system of equations
-        rho     = A_densities[0]
-        a       = sym.tangential_to_xyz(A_densities[1:3])
-        v_array = A_densities[3:]
-
-        # define the normal vector in symbolic form
-        n = sym.normal(len(a), None).as_vector()
-        r = sym.n_cross(a)
-
-        # define system of integral equations for A
-        return sym.join_fields(
-            0.5*a + sym.n_cross(sym.S(self.kernel,a,k=self.k,qbx_forced_limit="avg"))
-                    -self.k * sym.n_cross(sym.S(self.kernel,n*rho,k=self.k,qbx_forced_limit="avg"))
-                    + 1j*(
-                        self.k*sym.n_cross(sym.cross(sym.S(self.kernel,n,k=self.k,qbx_forced_limit="avg"),a))
-                        + sym.n_cross(sym.grad(3,sym.S(self.kernel,rho,k=self.k,qbx_forced_limit="avg")))
-                        ),
-            0.5*rho + sym.D(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
-                    + 1j*(
-                        sym.d_dx(3,sym.S(self.kernel,r[0],k=self.k,qbx_forced_limit="avg"))
-                        + sym.d_dy(3,sym.S(self.kernel,r[1],k=self.k,qbx_forced_limit="avg"))
-                        + sym.d_dz(3,sym.S(self.kernel,r[2],k=self.k,qbx_forced_limit="avg"))
-                        - self.k*sym.S(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
-                        ) 
-                    + np.dot(v_array,self.char_funcs),
-            sym.integral(ambient_dim=3,dim=2,operand=sym.n_dot(sym.curl(sym.S(self.kernel,a,k=self.k,qbx_forced_limit="avg")))
-                                                     - self.k * sym.n_dot(sym.S(self.kernel,n*rho,k=self.k,qbx_forced_limit="avg"))
-                                                     + 1j*(
-                                                             self.k*sym.n_dot(sym.S(self.kernel,sym.n_cross(a),k=self.k,qbx_forced_limit="avg"))
-                                                             - rho/2.0 + sym.Sp(self.kernel,rho,k=self.k,qbx_forced_limit="avg")
-                                                     )
-                         )
-            )
-
-    def A_operator(self, A_densities, v):
+    def A_operator(self, A_densities):
         """
         Integral Equation operator for obtaining vector potential, `A`
         """
@@ -280,13 +310,14 @@ class DPIEOperator:
         # extract the densities needed to solve the system of equations
         rho     = A_densities[:self.nobjs]
         rho_m   = rho.resize((1,self.nobjs))
-        a_loc   = A_densities[self.nobjs:]
+        v       = A_densities[self.nobjs:(2*self.nobjs)]
+        a_loc   = A_densities[(2*self.nobjs):]
         a       = np.zeros((3,self.nobjs),dtype=self.stype)
         for n in range(0,self.nobjs):
             a[:,n] = sym.tangential_to_xyz(a_loc[2*n:2*(n+1)],where=self.geometry_list[n])
 
         # define the normal vector in symbolic form
-        n = sym.normal(len(a), None).as_vector()
+        n = sym.normal(3, None).as_vector()
         r = sym.n_cross(a)
 
         # init output matvec vector for the phi density IE
@@ -301,23 +332,23 @@ class DPIEOperator:
             # generate the set of equations for the vector densities, a, coupled
             # across the various geometries involved
             output[3*n:3*(n+1)] = 0.5*a[:,n] + sym.n_cross(self.S(a,target_loc),where=target_loc) \
-                                             + -self.k * sym.n_cross(self.S(n*rho_m,target_loc),where=target_loc) \
-                                             + 1j*( self.k* sym.n_cross(self.S(sym.n_cross(a),target_loc),where=target_loc) \
+                                             + -self.k * sym.n_cross(self.S(self.n_times_multi(rho_m,self.geometry_list),target_loc),where=target_loc) \
+                                             + 1j*( self.k* sym.n_cross(self.S(self.n_cross_multi(a,self.geometry_list),target_loc),where=target_loc) \
                                                     sym.n_cross(sym.grad(ambient_dim=3,operand=self.S(rho_m,target_loc)),where=target_loc)
                                                 )
 
             # generate the set of equations for the scalar densities, rho, coupled
             # across the various geometries involved
             output[(3*self.nobjs + n)] = 0.5*rho[n] + self.D(rho_m,target_loc) \
-                                            + 1j*(  sym.div(self.S(sym.n_cross(a,where=target_loc))) \
+                                            + 1j*(  sym.div(self.S(self.n_cross_multi(a,self.geometry_list),target_loc)) \
                                                     -self.k*self.S(rho_m)
                                                 )\
                                             + v[n]
 
             # add the equation that integrates everything out into some constant
             output[(4*self.nobjs + n)] = sym.integral(ambient_dim=3,dim=2,\
-                operand=(sym.n_dot(sym.curl(self.S(a))) - self.k*sym.n_dot(self.S(n*rho_m)) + \
-                    1j*(self.k*sym.n_dot(sym.n_cross(a)) - 0.5*rho[n] + self.Sp(rho_m))),\
+                operand=(sym.n_dot(sym.curl(self.S(a))) - self.k*sym.n_dot(self.S(self.n_times_multi(rho_m,self.geometry_list))) + \
+                    1j*(self.k*sym.n_dot(self.S(self.n_cross_multi(a,self.geometry_list))) - 0.5*rho[n] + self.Sp(rho_m))),\
                 where=target_loc)
 
         # return output equations
@@ -376,7 +407,7 @@ class DPIEOperator:
         a       = sym.tangential_to_xyz(A_densities[1:3])
 
         # define the normal vector in symbolic form
-        n = sym.normal(len(a), None).as_vector()
+        n = sym.normal(3, None).as_vector()
 
         # define the vector potential representation
         return sym.curl(sym.S(self.kernel,a,k=self.k,qbx_forced_limit=qbx_forced_limit)) \
