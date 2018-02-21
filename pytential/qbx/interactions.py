@@ -33,7 +33,7 @@ from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
 
 
-PYTENTIAL_KERNEL_VERSION = 5
+PYTENTIAL_KERNEL_VERSION = 6
 
 
 # {{{ form qbx expansions from points
