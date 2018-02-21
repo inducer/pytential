@@ -28,6 +28,7 @@ THE SOFTWARE.
 
 
 import loopy as lp
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 import numpy as np
 import pyopencl as cl
 
@@ -255,7 +256,8 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
             """,
             options="return_dict",
             silenced_warnings="write_race(write_refine_flags_updated)",
-            name="refine_kernel_length_scale_to_panel_size_ratio")
+            name="refine_kernel_length_scale_to_panel_size_ratio",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
         knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
