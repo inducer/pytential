@@ -140,7 +140,7 @@ class DPIEOperator:
         (ndim, nobj) = density_vec.shape
 
         # init output symbolic quantity with zeros
-        output = np.zeros((ndim,), dtype=type(density))
+        output = np.zeros((ndim,), dtype=self.stype)
 
         # compute individual double layer potential evaluations at the given
         # density across all the disjoint objects
@@ -378,7 +378,7 @@ class DPIEOperator:
             # across the various geometries involved
             output[3*n:3*(n+1)] = 0.5*a[:,n] + sym.n_cross(self.S(a,target_loc),where=target_loc) \
                                              + -self.k * sym.n_cross(self.S(self.n_times_multi(rho_m,self.geometry_list),target_loc),where=target_loc) \
-                                             + 1j*( self.k* sym.n_cross(self.S(self.n_cross_multi(a,self.geometry_list),target_loc),where=target_loc) \
+                                             + 1j*( self.k* sym.n_cross(self.S(self.n_cross_multi(a,self.geometry_list),target_loc),where=target_loc) + \
                                                     sym.n_cross(sym.grad(ambient_dim=3,operand=self.S(rho_m,target_loc)),where=target_loc)
                                                 )
 

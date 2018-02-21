@@ -252,10 +252,11 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     # local scope environment
     #from pytential.symbolic.pde.maxwell import (get_sym_maxwell_point_source,get_sym_maxwell_point_source_potentials,get_sym_maxwell_plane_wave,DPIEOperator)
     #from pytential.symbolic.pde.maxwell.dpie import (get_sym_maxwell_point_source,get_sym_maxwell_point_source_potentials,get_sym_maxwell_plane_wave,DPIEOperator)
-    import pytential.symbolic.pde.maxwell.dpie as mw
+    import pytential.symbolic.pde.maxwell       as mw
+    import pytential.symbolic.pde.maxwell.dpie  as mw_dpie
     
     # initialize the DPIE operator based on the geometry list
-    dpie = mw.DPIEOperator(geometry_list=geom_list)
+    dpie = mw_dpie.DPIEOperator(geometry_list=geom_list)
 
 
     # specify some symbolic variables that will be used
@@ -404,7 +405,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
         # solve for the vector potential densities
         gmres_result = gmres(
-                A_op.scipy_op(queue, "A_densities", np.complex128, , domains=dpie.getVectorDomainList(), **knl_kwargs),
+                A_op.scipy_op(queue, "A_densities", np.complex128, domains=dpie.getVectorDomainList(), **knl_kwargs),
                 A_rhs, **gmres_settings)
         A_dens      = gmres_result.solution
 
