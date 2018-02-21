@@ -398,19 +398,19 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
         # solve for the scalar potential densities
         gmres_result = gmres(
-                        phi_op.scipy_op(queue, "phi_densities", np.complex128, **knl_kwargs),
+                        phi_op.scipy_op(queue, "phi_densities", np.complex128, domains=dpie.getScalarDomainList(),**knl_kwargs),
                         phi_rhs, **gmres_settings)
         phi_dens    = gmres_result.solution
 
         # solve for the vector potential densities
         gmres_result = gmres(
-                A_op.scipy_op(queue, "A_densities", np.complex128, **knl_kwargs),
+                A_op.scipy_op(queue, "A_densities", np.complex128, , domains=dpie.getVectorDomainList(), **knl_kwargs),
                 A_rhs, **gmres_settings)
         A_dens      = gmres_result.solution
 
         # extract useful solutions
-        phi     = bind(qbx, dpie.scalar_potential_rep(phi_densities=phi_densities))(queue, phi_densities=phi_dens)
-        Axyz    = bind(qbx, dpie.vector_potential_rep(A_densities=A_densities))(queue, A_densities=A_dens)
+        phi     = bind(geom_map, dpie.scalar_potential_rep(phi_densities=phi_densities))(queue, phi_densities=phi_dens)
+        Axyz    = bind(geom_map, dpie.vector_potential_rep(A_densities=A_densities))(queue, A_densities=A_dens)
 
         # }}}
 
