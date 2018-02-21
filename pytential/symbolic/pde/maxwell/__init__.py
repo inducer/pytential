@@ -38,6 +38,9 @@ __doc__ = """
 
 .. autofunction:: get_sym_maxwell_point_source
 .. autofunction:: get_sym_maxwell_plane_wave
+.. autofunction:: get_sym_maxwell_point_source_potentials
+.. autofunction:: get_sym_maxwell_planewave_gradphi
+.. autofunction:: get_sym_maxwell_planewave_divA
 .. autoclass:: PECChargeCurrentMFIEOperator
 """
 
