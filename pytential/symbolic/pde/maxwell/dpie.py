@@ -364,21 +364,6 @@ class DPIEOperator:
         # define RHS for `A` integral equation system
         return sym.join_fields( -sym.n_cross(A_inc), -divA_inc/self.k, q)
 
-
-    def scalar_potential_rep0(self, phi_densities, qbx_forced_limit=None):
-        """
-        This method is a representation of the scalar potential, phi,
-        based on the density `sigma`.
-        Old representation
-        """
-
-        # extract the densities needed to solve the system of equations
-        sigma       = phi_densities[0]
-
-        # evaluate scalar potential representation
-        return sym.D(self.kernel,sigma,k=self.k,qbx_forced_limit=qbx_forced_limit)\
-               - 1j*self.k*sym.S(self.kernel,sigma,k=self.k,qbx_forced_limit=qbx_forced_limit)
-
     def scalar_potential_rep(self, phi_densities, target=None):
         """
         This method is a representation of the scalar potential, phi,
@@ -391,24 +376,6 @@ class DPIEOperator:
 
         # evaluate scalar potential representation
         return self.D(sigma_m,target) - 1j*self.k*self.S(sigma_m,target)
-
-    def vector_potential_rep0(self, A_densities, qbx_forced_limit=None):
-        """
-        This method is a representation of the vector potential, phi,
-        based on the vector density `a` and scalar density `rho`
-        """
-
-        # extract the densities needed to solve the system of equations
-        rho     = A_densities[0]
-        a       = sym.tangential_to_xyz(A_densities[1:3])
-
-        # define the vector potential representation
-        return sym.curl(sym.S(self.kernel,a,k=self.k,qbx_forced_limit=qbx_forced_limit)) \
-               - self.k*sym.S(self.kernel,rho*n,k=self.k,qbx_forced_limit=qbx_forced_limit)\
-               + 1j*(
-                       self.k*sym.S(self.kernel,sym.n_cross(a),k=self.k,qbx_forced_limit=qbx_forced_limit)
-                       + sym.grad(3,sym.S(self.kernel,rho,k=self.k,qbx_forced_limit=qbx_forced_limit))
-               )
 
     def vector_potential_rep(self, A_densities, target=None):
         """
