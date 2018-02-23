@@ -266,7 +266,7 @@ class BoundExpression:
         :arg domains: a list of discretization identifiers or
             *None* values indicating the domains on which each component of the
             solution vector lives.  *None* values indicate that the component
-            is a scalar.  If *None*,
+            is a scalar.  If *domains* is *None*,
             :class:`pytential.symbolic.primitives.DEFAULT_TARGET`, is required
             to be a key in :attr:`places`.
         """
