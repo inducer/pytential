@@ -406,8 +406,10 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
     :arg places: a mapping of symbolic names to
         :class:`pytential.discretization.Discretization` objects or a subclass
         of :class:`pytential.discretization.target.TargetBase`.
-    :arg input_exprs: A sequence of expressions corresponding to the
+    :arg input_exprs: An object array of expressions corresponding to the
         input block columns of the matrix.
+
+        May also be a single expression.
     :arg domains: a list of discretization identifiers (see 'places') or
         *None* values indicating the domains on which each component of the
         solution vector lives.  *None* values indicate that the component
@@ -431,6 +433,12 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
     from pytential.symbolic.primitives import DEFAULT_SOURCE
     domains = _domains_default(len(input_exprs), places, domains,
             DEFAULT_SOURCE)
+
+    try:
+        iter(input_exprs)
+    except TypeError:
+        # not iterable, wrap in a list
+        input_exprs = [input_exprs]
 
     input_exprs = list(input_exprs)
 

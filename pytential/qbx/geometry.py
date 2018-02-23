@@ -30,6 +30,7 @@ import pyopencl.array  # noqa
 from pytools import memoize_method
 from boxtree.tools import DeviceDataRecord
 import loopy as lp
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from cgen import Enum
 
 
@@ -125,7 +126,8 @@ class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
             """
                 targets[dim, i] = points[dim, i]
                 """,
-            default_offset=lp.auto, name="copy_targets")
+            default_offset=lp.auto, name="copy_targets",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
 
@@ -182,7 +184,8 @@ class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
                 "..."
                 ],
             name="qbx_center_to_target_box_lookup",
-            silenced_warnings="write_race(tgt_write)")
+            silenced_warnings="write_race(tgt_write)",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "ibox", 128,
                 inner_tag="l.0", outer_tag="g.0")
@@ -244,7 +247,8 @@ class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
                 lp.ValueArg("ntargets", np.int32),
             ],
             name="pick_used_centers",
-            silenced_warnings="write_race(center_is_used_write)")
+            silenced_warnings="write_race(center_is_used_write)",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
         return knl

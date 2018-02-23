@@ -31,6 +31,7 @@ import numpy as np
 import loopy as lp
 
 from boxtree.tools import DeviceDataRecord
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from pytential.source import LayerPotentialSourceBase
 from pytools import memoize_method
 
@@ -312,7 +313,8 @@ class _FMMGeometryCodeContainer(object):
             """
                 targets[dim, i] = points[dim, i]
                 """,
-            default_offset=lp.auto, name="copy_targets")
+            default_offset=lp.auto, name="copy_targets",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
 

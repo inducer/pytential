@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 import numpy as np
 import loopy as lp
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from pytools import memoize_method
 from six.moves import range
 
@@ -32,7 +33,7 @@ from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
 
 
-PYTENTIAL_KERNEL_VERSION = 5
+PYTENTIAL_KERNEL_VERSION = 7
 
 
 # {{{ form qbx expansions from points
@@ -105,15 +106,19 @@ class P2QBXLFromCSR(P2EBase):
                     """] + ["""
                     qbx_expansions[tgt_icenter, {i}] = \
                             simul_reduce(sum, (isrc_box, isrc), strength*coeff{i}) \
-                            {{id_prefix=write_expn}}
-                    """.format(i=i) for i in range(ncoeffs)] + ["""
+                            {{id_prefix=write_expn{nosync}}}
+                    """.format(i=i,
+                               nosync=",nosync=write_expn*"
+                               if ncoeffs > 1 else "")
+                        for i in range(ncoeffs)] + ["""
 
                 end
                 """],
                 arguments,
                 name=self.name, assumptions="ntgt_centers>=1",
                 silenced_warnings="write_race(write_expn*)",
-                fixed_parameters=dict(dim=self.dim))
+                fixed_parameters=dict(dim=self.dim),
+                lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
@@ -186,8 +191,11 @@ class M2QBXL(E2EBase):
                     """] + ["""
                     qbx_expansions[icenter, {i}] = qbx_expansions[icenter, {i}] + \
                             simul_reduce(sum, isrc_box, coeff{i}) \
-                            {{id_prefix=write_expn}}
-                    """.format(i=i) for i in range(ncoeff_tgt)] + ["""
+                            {{id_prefix=write_expn{nosync}}}
+                    """.format(i=i,
+                               nosync=",nosync=write_expn*"
+                               if ncoeff_tgt > 1 else "")
+                            for i in range(ncoeff_tgt)] + ["""
 
                 end
                 """],
@@ -209,7 +217,8 @@ class M2QBXL(E2EBase):
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name, assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)",
-                fixed_parameters=dict(dim=self.dim))
+                fixed_parameters=dict(dim=self.dim),
+                lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
@@ -288,8 +297,11 @@ class L2QBXL(E2EBase):
                         ] + self.get_translation_loopy_insns() + ["""
                         qbx_expansions[icenter, {i}] = \
                             qbx_expansions[icenter, {i}] + coeff{i} \
-                            {{id_prefix=write_expn}}
-                        """.format(i=i) for i in range(ncoeff_tgt)] + ["""
+                            {{id_prefix=write_expn{nosync}}}
+                        """.format(i=i,
+                                   nosync=",nosync=write_expn*"
+                                   if ncoeff_tgt > 1 else "")
+                            for i in range(ncoeff_tgt)] + ["""
                     end
                 end
                 """],
@@ -309,7 +321,8 @@ class L2QBXL(E2EBase):
                 name=self.name,
                 assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)",
-                fixed_parameters=dict(dim=self.dim, nchildren=2**self.dim))
+                fixed_parameters=dict(dim=self.dim, nchildren=2**self.dim),
+                lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         for expn in [self.src_expansion, self.tgt_expansion]:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
@@ -383,8 +396,11 @@ class QBXL2P(E2PBase):
                         ] + loopy_insns + ["""
 
                         result[{i},center_itgt] = kernel_scaling * result_{i}_p \
-                                {{id_prefix=write_result}}
-                        """.format(i=i) for i in range(len(result_names))] + ["""
+                                {{id_prefix=write_result{nosync}}}
+                        """.format(i=i,
+                                   nosync=",nosync=write_result*"
+                                   if len(result_names) > 1 else "")
+                            for i in range(len(result_names))] + ["""
                     end
                 end
                 """],
@@ -405,7 +421,8 @@ class QBXL2P(E2PBase):
                 name=self.name,
                 assumptions="nglobal_qbx_centers>=1",
                 silenced_warnings="write_race(write_result*)",
-                fixed_parameters=dict(dim=self.dim, nresults=len(result_names)))
+                fixed_parameters=dict(dim=self.dim, nresults=len(result_names)),
+                lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)

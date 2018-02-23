@@ -316,6 +316,7 @@ class Code(object):
         return "\n".join(lines)
 
     # {{{ dynamic scheduler (generates static schedules by self-observation)
+
     class NoInstructionAvailable(Exception):
         pass
 
@@ -579,9 +580,7 @@ class OperatorCompiler(IdentityMapper):
             group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
 
-            kernels = sorted(
-                    set(op.kernel for op in group),
-                    key=lambda kernel: repr(kernel))
+            kernels = sorted(set(op.kernel for op in group), key=repr)
 
             kernel_to_index = dict(
                     (kernel, i) for i, kernel in enumerate(kernels))
