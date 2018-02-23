@@ -491,8 +491,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         from pytools.obj_array import with_object_array_or_scalar
-        from functools import partial
-        oversample = partial(self.resampler, queue)
+
+        def oversample_nonscalars(vec):
+            from numbers import Number
+            if isinstance(vec, Number):
+                return vec
+            else:
+                return self.resampler(queue, vec)
 
         if not self._refined_for_global_qbx:
             from warnings import warn
@@ -502,7 +507,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         def evaluate_wrapper(expr):
             value = evaluate(expr)
-            return with_object_array_or_scalar(oversample, value)
+            return with_object_array_or_scalar(oversample_nonscalars, value)
 
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
