@@ -32,8 +32,7 @@ from sumpy.p2e import P2EBase
 from sumpy.e2e import E2EBase
 from sumpy.e2p import E2PBase
 
-
-PYTENTIAL_KERNEL_VERSION = 7
+from pytential.version import PYTENTIAL_KERNEL_VERSION
 
 
 # {{{ form qbx expansions from points
@@ -106,10 +105,8 @@ class P2QBXLFromCSR(P2EBase):
                     """] + ["""
                     qbx_expansions[tgt_icenter, {i}] = \
                             simul_reduce(sum, (isrc_box, isrc), strength*coeff{i}) \
-                            {{id_prefix=write_expn{nosync}}}
-                    """.format(i=i,
-                               nosync=",nosync=write_expn*"
-                               if ncoeffs > 1 else "")
+                            {{id_prefix=write_expn}}
+                    """.format(i=i)
                         for i in range(ncoeffs)] + ["""
 
                 end
@@ -191,10 +188,8 @@ class M2QBXL(E2EBase):
                     """] + ["""
                     qbx_expansions[icenter, {i}] = qbx_expansions[icenter, {i}] + \
                             simul_reduce(sum, isrc_box, coeff{i}) \
-                            {{id_prefix=write_expn{nosync}}}
-                    """.format(i=i,
-                               nosync=",nosync=write_expn*"
-                               if ncoeff_tgt > 1 else "")
+                            {{id_prefix=write_expn}}
+                    """.format(i=i)
                             for i in range(ncoeff_tgt)] + ["""
 
                 end
@@ -297,10 +292,8 @@ class L2QBXL(E2EBase):
                         ] + self.get_translation_loopy_insns() + ["""
                         qbx_expansions[icenter, {i}] = \
                             qbx_expansions[icenter, {i}] + coeff{i} \
-                            {{id_prefix=write_expn{nosync}}}
-                        """.format(i=i,
-                                   nosync=",nosync=write_expn*"
-                                   if ncoeff_tgt > 1 else "")
+                            {{id_prefix=write_expn}}
+                        """.format(i=i)
                             for i in range(ncoeff_tgt)] + ["""
                     end
                 end
@@ -396,10 +389,8 @@ class QBXL2P(E2PBase):
                         ] + loopy_insns + ["""
 
                         result[{i},center_itgt] = kernel_scaling * result_{i}_p \
-                                {{id_prefix=write_result{nosync}}}
-                        """.format(i=i,
-                                   nosync=",nosync=write_result*"
-                                   if len(result_names) > 1 else "")
+                                {{id_prefix=write_result}}
+                        """.format(i=i)
                             for i in range(len(result_names))] + ["""
                     end
                 end
