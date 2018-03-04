@@ -175,7 +175,8 @@ class M2QBXL(E2EBase):
                             <> src_ibox = src_box_lists[isrc_box] \
                                     {id=read_src_ibox}
                             <> src_center[idim] = centers[idim, src_ibox] {dup=idim}
-                            <> d[idim] = tgt_center[idim] - src_center[idim] {dup=idim}
+                            <> d[idim] = tgt_center[idim] - src_center[idim] \
+                                    {dup=idim}
                             """] + ["""
 
                             <> src_coeff{i} = \
@@ -188,7 +189,8 @@ class M2QBXL(E2EBase):
 
                         end
                         """] + ["""
-                        qbx_expansions[icenter, {i}] = qbx_expansions[icenter, {i}] + \
+                        qbx_expansions[icenter, {i}] = \
+                                qbx_expansions[icenter, {i}] + \
                                 simul_reduce(sum, isrc_box, coeff{i}) \
                                 {{id_prefix=write_expn}}
                         """.format(i=i)

@@ -249,8 +249,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
             qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
             target_box_to_target_box_source_level = cl.array.empty(
-               self.queue, len(traversal.target_boxes),
-               dtype=traversal.tree.box_id_dtype
+                self.queue, len(traversal.target_boxes),
+                dtype=traversal.tree.box_id_dtype
             )
             target_box_to_target_box_source_level.fill(-1)
             target_box_to_target_box_source_level[ssn.nonempty_indices] = (
