@@ -455,7 +455,6 @@ def drive_fmm(expansion_wrangler, src_weights):
     # contribution *out* of the downward-propagating local expansions)
 
     non_qbx_potentials = non_qbx_potentials + wrangler.eval_multipoles(
-            traversal.level_start_target_box_nrs,
             traversal.target_boxes_sep_smaller_by_source_level,
             traversal.from_sep_smaller_by_level,
             mpole_exps)
