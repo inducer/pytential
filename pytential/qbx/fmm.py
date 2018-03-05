@@ -738,12 +738,12 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         for ilevel, sep_smaller_list in enumerate(
                 traversal.from_sep_smaller_by_level):
             for itgt_box, tgt_ibox in enumerate(
-                        traversal.target_boxes_by_source_level[ilevel]):
+                        traversal.target_boxes_sep_smaller_by_source_level[ilevel]):
                 ntargets = box_target_counts_nonchild[tgt_ibox]
                 start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
-                nmp_eval[ilevel,
-                         traversal.from_sep_smaller_by_level.nonempty_indices[
-                             itgt_box]] = ntargets * (end-start)
+                nmp_eval[ilevel, sep_smaller_list.nonempty_indices[itgt_box]] = (
+                        ntargets * (end-start)
+                )
 
         result["mp_eval"] = summarize_parallel(nmp_eval, ncoeffs_fmm)
 
