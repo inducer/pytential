@@ -347,7 +347,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         qbx_exps = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
-        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
         centers = self.tree.box_centers
         ngqbx_centers = len(geo_data.global_qbx_centers())
@@ -362,18 +361,12 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             source_level_start_ibox, source_mpoles_view = \
                     self.multipole_expansions_view(multipole_exps, isrc_level)
 
-            target_box_to_target_box_source_level = np.empty(
-                (len(traversal.target_boxes),),
-                dtype=traversal.tree.box_id_dtype
-            )
-            target_box_to_target_box_source_level[:] = -1
-            target_box_to_target_box_source_level[ssn.nonempty_indices] = (
-                np.arange(ssn.num_nonempty_lists, dtype=traversal.tree.box_id_dtype)
-            )
-
             tgt_icenter_vec = geo_data.global_qbx_centers()
-            icontaining_tgt_box_vec = target_box_to_target_box_source_level[
-                qbx_center_to_target_box[tgt_icenter_vec]
+            qbx_center_to_target_box_source_level = (
+                geo_data.qbx_center_to_target_box_source_level(isrc_level).get()
+            )
+            icontaining_tgt_box_vec = qbx_center_to_target_box_source_level[
+                tgt_icenter_vec
             ]
 
             rscale2 = geo_data.expansion_radii()[geo_data.global_qbx_centers()]
@@ -402,8 +395,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             src_ibox = np.empty(nsrc_boxes, dtype=np.int32)
             for itgt_center, tgt_icenter in enumerate(
                     geo_data.global_qbx_centers()):
-                icontaining_tgt_box = target_box_to_target_box_source_level[
-                    qbx_center_to_target_box[tgt_icenter]
+                icontaining_tgt_box = qbx_center_to_target_box_source_level[
+                    tgt_icenter
                 ]
                 src_ibox[
                         src_boxes_starts[itgt_center]:

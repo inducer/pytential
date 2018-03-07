@@ -247,25 +247,9 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
             source_level_start_ibox, source_mpoles_view = \
                     self.multipole_expansions_view(multipole_exps, isrc_level)
 
-            qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
-            target_box_to_target_box_source_level = cl.array.empty(
-                self.queue, len(traversal.target_boxes),
-                dtype=traversal.tree.box_id_dtype
-            )
-            target_box_to_target_box_source_level.fill(-1)
-            target_box_to_target_box_source_level[ssn.nonempty_indices] = (
-                cl.array.arange(self.queue, ssn.num_nonempty_lists,
-                                dtype=traversal.tree.box_id_dtype)
-            )
-            qbx_center_to_target_box_source_level = (
-                target_box_to_target_box_source_level[
-                    qbx_center_to_target_box
-                ]
-            )
-
             evt, (qbx_expansions_res,) = m2qbxl(self.queue,
                     qbx_center_to_target_box_source_level=(
-                        qbx_center_to_target_box_source_level
+                        geo_data.qbx_center_to_target_box_source_level(isrc_level)
                     ),
 
                     centers=self.tree.box_centers,
@@ -875,18 +859,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
-            target_box_to_target_box_source_level = np.empty(
-                (len(traversal.target_boxes),),
-                dtype=traversal.tree.box_id_dtype
-            )
-            target_box_to_target_box_source_level[:] = -1
-            target_box_to_target_box_source_level[ssn.nonempty_indices] = (
-                np.arange(ssn.num_nonempty_lists, dtype=traversal.tree.box_id_dtype)
+            qbx_center_to_target_box_source_level = (
+                geo_data.qbx_center_to_target_box_source_level(isrc_level).get()
             )
 
             for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
-                icontaining_tgt_box = target_box_to_target_box_source_level[
-                    qbx_center_to_target_box[tgt_icenter]
+                icontaining_tgt_box = qbx_center_to_target_box_source_level[
+                    tgt_icenter
                 ]
 
                 if icontaining_tgt_box == -1:
