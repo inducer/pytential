@@ -1,0 +1,21 @@
+{
+  "test/test_layer_pot.py::test_off_surface_eval[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x555786e8c120>>-False]": true,
+  "test/test_layer_pot.py::test_off_surface_eval[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x55c36549f840>>-False]": true,
+  "test/test_layer_pot.py::test_off_surface_eval[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x55c502d20840>>-False]": true,
+  "test/test_layer_pot.py::test_off_surface_eval[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x55da249410f0>>-False]": true,
+  "test/test_layer_pot.py::test_off_surface_eval[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x5607b1775eb0>>-False]": true,
+  "test/test_layer_pot.py::test_off_surface_eval[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56117a907250>>-False]": true,
+  "test/test_layer_pot.py::test_off_surface_eval[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x5641d100a550>>-False]": true,
+  "test/test_layer_pot_eigenvalues.py::test_ellipse_eigenvalues[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x556eb8a1aaf0>>-1-5-3-False]": true,
+  "test/test_layer_pot_eigenvalues.py::test_ellipse_eigenvalues[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-1-5-3-False]": true,
+  "test/test_layer_pot_eigenvalues.py::test_ellipse_eigenvalues[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-1-5-4-False]": true,
+  "test/test_layer_pot_eigenvalues.py::test_ellipse_eigenvalues[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-1-6-3-False]": true,
+  "test/test_layer_pot_eigenvalues.py::test_ellipse_eigenvalues[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-1-7-5-False]": true,
+  "test/test_layer_pot_identity.py::test_identity_convergence[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-case11]": true,
+  "test/test_layer_pot_identity.py::test_identity_convergence[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-case2]": true,
+  "test/test_layer_pot_identity.py::test_identity_convergence[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-case3]": true,
+  "test/test_layer_pot_identity.py::test_identity_convergence[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-case4]": true,
+  "test/test_layer_pot_identity.py::test_identity_convergence[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-case9]": true,
+  "test/test_scalar_int_eq.py::test_integral_equation[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-case6]": true,
+  "test/test_scalar_int_eq.py::test_integral_equation[ctx_getter=<context factory for <pyopencl.Device 'pthread-Intel(R) Core(TM) i7-4712HQ CPU @ 2.30GHz' on 'Portable Computing Language' at 0x56348261d8b0>>-case7]": true
+}
