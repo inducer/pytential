@@ -88,7 +88,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                         {{inames=itgt}}
                 """.format(i=iknl)
                 for iknl in range(len(self.expansions))]
-            +["end"],
+            + ["end"],
             arguments,
             name=self.name,
             assumptions="ntargets>=1 and nsources>=1",
