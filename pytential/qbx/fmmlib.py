@@ -100,6 +100,11 @@ class ToHostTransferredGeoDataWrapper(object):
         return self.geo_data.qbx_center_to_target_box().get(queue=self.queue)
 
     @memoize_method
+    def qbx_center_to_target_box_source_level(self, source_level):
+        return self.geo_data.qbx_center_to_target_box_source_level(
+            source_level).get(queue=self.queue)
+
+    @memoize_method
     def non_qbx_box_target_lists(self):
         return self.geo_data.non_qbx_box_target_lists().get(queue=self.queue)
 
@@ -363,9 +368,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
             tgt_icenter_vec = geo_data.global_qbx_centers()
             qbx_center_to_target_box_source_level = (
-                geo_data.qbx_center_to_target_box_source_level(isrc_level).get(
-                    self.queue
-                )
+                geo_data.qbx_center_to_target_box_source_level(isrc_level)
             )
             icontaining_tgt_box_vec = qbx_center_to_target_box_source_level[
                 tgt_icenter_vec

@@ -776,7 +776,7 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
     center_to_targets_starts = geo_data.center_to_tree_targets().starts
     qbx_center_to_target_box_source_level = np.empty(
-        (len(tree.nlevels),), dtype=object
+        (tree.nlevels,), dtype=object
     )
     for src_level in range(tree.nlevels):
         qbx_center_to_target_box_source_level[src_level] = (
@@ -791,8 +791,9 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         center_to_targets_starts = center_to_targets_starts.get(
                 queue=queue)
         for src_level in range(tree.nlevels):
-            qbx_center_to_target_box_source_level[src_level].get(
-                queue=queue)
+            qbx_center_to_target_box_source_level[src_level] = (
+                qbx_center_to_target_box_source_level[src_level].get(queue=queue)
+            )
 
     def process_form_qbxl():
         ncenters = geo_data.ncenters
