@@ -775,6 +775,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     global_qbx_centers = geo_data.global_qbx_centers()
     qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
     center_to_targets_starts = geo_data.center_to_tree_targets().starts
+    qbx_center_to_target_box_source_level = np.empty(
+        (len(tree.nlevels),), dtype=object
+    )
+    for src_level in range(tree.nlevels):
+        qbx_center_to_target_box_source_level[src_level] = (
+            geo_data.qbx_center_to_target_box_source_level(src_level)
+        )
 
     with cl.CommandQueue(geo_data.cl_context) as queue:
         global_qbx_centers = global_qbx_centers.get(
@@ -782,6 +789,9 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         qbx_center_to_target_box = qbx_center_to_target_box.get(
                 queue=queue)
         center_to_targets_starts = center_to_targets_starts.get(
+                queue=queue)
+        for src_level in range(tree.nlevels):
+            qbx_center_to_target_box_source_level[src_level].get(
                 queue=queue)
 
     def process_form_qbxl():
@@ -859,14 +869,10 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
-            qbx_center_to_target_box_source_level = (
-                geo_data.qbx_center_to_target_box_source_level(isrc_level).get()
-            )
 
             for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
                 icontaining_tgt_box = qbx_center_to_target_box_source_level[
-                    tgt_icenter
-                ]
+                    isrc_level][tgt_icenter]
 
                 if icontaining_tgt_box == -1:
                     continue

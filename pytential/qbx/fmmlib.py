@@ -363,7 +363,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
             tgt_icenter_vec = geo_data.global_qbx_centers()
             qbx_center_to_target_box_source_level = (
-                geo_data.qbx_center_to_target_box_source_level(isrc_level).get()
+                geo_data.qbx_center_to_target_box_source_level(isrc_level).get(
+                    self.queue
+                )
             )
             icontaining_tgt_box_vec = qbx_center_to_target_box_source_level[
                 tgt_icenter_vec
