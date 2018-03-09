@@ -616,8 +616,10 @@ class QBXFMMGeometryData(object):
 
     @memoize_method
     def qbx_center_to_target_box_source_level(self, source_level):
-        """Return an array for mapping qbx centers to
-        `traversal.from_sep_smaller_by_level[source_level]`.
+        """Return an array for mapping qbx centers to indices into
+        interaction lists as found in
+        ``traversal.from_sep_smaller_by_level[source_level].``
+        -1 if no such interaction list exist on *source_level*.
         """
         traversal = self.traversal()
         sep_smaller = traversal.from_sep_smaller_by_level[source_level]
