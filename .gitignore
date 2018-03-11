@@ -24,3 +24,5 @@ examples/*.pdf
 .cache
 
 tags
+
+pytential/_git_rev.py
