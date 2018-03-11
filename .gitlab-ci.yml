@@ -80,6 +80,7 @@ Python 3.5 Conda Apple:
   - apple
   except:
   - tags
+  retry: 2
 
 Documentation:
   script:
