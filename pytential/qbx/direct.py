@@ -100,7 +100,16 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
 
         return loopy_knl
 
-# }}}
+    def __call__(self, queue, targets, sources, centers, strengths, expansion_radii,
+            **kwargs):
+        knl = self.get_cached_optimized_kernel()
 
+        for i, dens in enumerate(strengths):
+            kwargs["strength_%d" % i] = dens
+
+        return knl(queue, src=sources, tgt=targets, center=centers,
+                expansion_radii=expansion_radii, **kwargs)
+
+# }}}
 
 # vim: foldmethod=marker
