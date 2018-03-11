@@ -100,6 +100,11 @@ class ToHostTransferredGeoDataWrapper(object):
         return self.geo_data.qbx_center_to_target_box().get(queue=self.queue)
 
     @memoize_method
+    def qbx_center_to_target_box_source_level(self, source_level):
+        return self.geo_data.qbx_center_to_target_box_source_level(
+            source_level).get(queue=self.queue)
+
+    @memoize_method
     def non_qbx_box_target_lists(self):
         return self.geo_data.non_qbx_box_target_lists().get(queue=self.queue)
 
@@ -347,23 +352,27 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         qbx_exps = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
-        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
         centers = self.tree.box_centers
         ngqbx_centers = len(geo_data.global_qbx_centers())
+        traversal = geo_data.traversal()
 
         if ngqbx_centers == 0:
             return qbx_exps
 
         mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
 
-        for isrc_level, ssn in enumerate(
-                geo_data.traversal().from_sep_smaller_by_level):
+        for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
             source_level_start_ibox, source_mpoles_view = \
                     self.multipole_expansions_view(multipole_exps, isrc_level)
 
             tgt_icenter_vec = geo_data.global_qbx_centers()
-            icontaining_tgt_box_vec = qbx_center_to_target_box[tgt_icenter_vec]
+            qbx_center_to_target_box_source_level = (
+                geo_data.qbx_center_to_target_box_source_level(isrc_level)
+            )
+            icontaining_tgt_box_vec = qbx_center_to_target_box_source_level[
+                tgt_icenter_vec
+            ]
 
             rscale2 = geo_data.expansion_radii()[geo_data.global_qbx_centers()]
 
@@ -372,9 +381,13 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 kwargs["radius"] = (0.5 *
                         geo_data.expansion_radii()[geo_data.global_qbx_centers()])
 
-            nsrc_boxes_per_gqbx_center = (
-                    ssn.starts[icontaining_tgt_box_vec+1]
-                    - ssn.starts[icontaining_tgt_box_vec])
+            nsrc_boxes_per_gqbx_center = np.zeros(icontaining_tgt_box_vec.shape,
+                                                  dtype=traversal.tree.box_id_dtype)
+            mask = (icontaining_tgt_box_vec != -1)
+            nsrc_boxes_per_gqbx_center[mask] = (
+                ssn.starts[icontaining_tgt_box_vec[mask] + 1] -
+                ssn.starts[icontaining_tgt_box_vec[mask]]
+            )
             nsrc_boxes = np.sum(nsrc_boxes_per_gqbx_center)
 
             src_boxes_starts = np.empty(ngqbx_centers+1, dtype=np.int32)
@@ -387,7 +400,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             src_ibox = np.empty(nsrc_boxes, dtype=np.int32)
             for itgt_center, tgt_icenter in enumerate(
                     geo_data.global_qbx_centers()):
-                icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
+                icontaining_tgt_box = qbx_center_to_target_box_source_level[
+                    tgt_icenter
+                ]
                 src_ibox[
                         src_boxes_starts[itgt_center]:
                         src_boxes_starts[itgt_center+1]] = (

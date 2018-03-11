@@ -248,7 +248,9 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     self.multipole_expansions_view(multipole_exps, isrc_level)
 
             evt, (qbx_expansions_res,) = m2qbxl(self.queue,
-                    qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+                    qbx_center_to_target_box_source_level=(
+                        geo_data.qbx_center_to_target_box_source_level(isrc_level)
+                    ),
 
                     centers=self.tree.box_centers,
                     qbx_centers=geo_data.centers(),
@@ -437,8 +439,7 @@ def drive_fmm(expansion_wrangler, src_weights):
     # contribution *out* of the downward-propagating local expansions)
 
     non_qbx_potentials = non_qbx_potentials + wrangler.eval_multipoles(
-            traversal.level_start_target_box_nrs,
-            traversal.target_boxes,
+            traversal.target_boxes_sep_smaller_by_source_level,
             traversal.from_sep_smaller_by_level,
             mpole_exps)
 
@@ -717,13 +718,15 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
         assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
-        for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
-            ntargets = box_target_counts_nonchild[tgt_ibox]
-
-            for ilevel, sep_smaller_list in enumerate(
-                    traversal.from_sep_smaller_by_level):
+        for ilevel, sep_smaller_list in enumerate(
+                traversal.from_sep_smaller_by_level):
+            for itgt_box, tgt_ibox in enumerate(
+                        traversal.target_boxes_sep_smaller_by_source_level[ilevel]):
+                ntargets = box_target_counts_nonchild[tgt_ibox]
                 start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
-                nmp_eval[ilevel, itgt_box] += ntargets * (end-start)
+                nmp_eval[ilevel, sep_smaller_list.nonempty_indices[itgt_box]] = (
+                        ntargets * (end-start)
+                )
 
         result["mp_eval"] = summarize_parallel(nmp_eval, ncoeffs_fmm)
 
@@ -772,6 +775,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     global_qbx_centers = geo_data.global_qbx_centers()
     qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
     center_to_targets_starts = geo_data.center_to_tree_targets().starts
+    qbx_center_to_target_box_source_level = np.empty(
+        (tree.nlevels,), dtype=object
+    )
+    for src_level in range(tree.nlevels):
+        qbx_center_to_target_box_source_level[src_level] = (
+            geo_data.qbx_center_to_target_box_source_level(src_level)
+        )
 
     with cl.CommandQueue(geo_data.cl_context) as queue:
         global_qbx_centers = global_qbx_centers.get(
@@ -780,6 +790,10 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
                 queue=queue)
         center_to_targets_starts = center_to_targets_starts.get(
                 queue=queue)
+        for src_level in range(tree.nlevels):
+            qbx_center_to_target_box_source_level[src_level] = (
+                qbx_center_to_target_box_source_level[src_level].get(queue=queue)
+            )
 
     def process_form_qbxl():
         ncenters = geo_data.ncenters
@@ -856,8 +870,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
+
             for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
-                icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
+                icontaining_tgt_box = qbx_center_to_target_box_source_level[
+                    isrc_level][tgt_icenter]
+
+                if icontaining_tgt_box == -1:
+                    continue
 
                 start, stop = (
                         ssn.starts[icontaining_tgt_box],

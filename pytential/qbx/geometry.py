@@ -615,6 +615,36 @@ class QBXFMMGeometryData(object):
             return qbx_center_to_target_box.with_queue(None)
 
     @memoize_method
+    def qbx_center_to_target_box_source_level(self, source_level):
+        """Return an array for mapping qbx centers to indices into
+        interaction lists as found in
+        ``traversal.from_sep_smaller_by_level[source_level].``
+        -1 if no such interaction list exist on *source_level*.
+        """
+        traversal = self.traversal()
+        sep_smaller = traversal.from_sep_smaller_by_level[source_level]
+        qbx_center_to_target_box = self.qbx_center_to_target_box()
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            target_box_to_target_box_source_level = cl.array.empty(
+                queue, len(traversal.target_boxes),
+                dtype=traversal.tree.box_id_dtype
+            )
+            target_box_to_target_box_source_level.fill(-1)
+            target_box_to_target_box_source_level[sep_smaller.nonempty_indices] = (
+                cl.array.arange(queue, sep_smaller.num_nonempty_lists,
+                                dtype=traversal.tree.box_id_dtype)
+            )
+
+            qbx_center_to_target_box_source_level = (
+                target_box_to_target_box_source_level[
+                    qbx_center_to_target_box
+                ]
+            )
+
+            return qbx_center_to_target_box_source_level.with_queue(None)
+
+    @memoize_method
     def global_qbx_flags(self):
         """Return an array of :class:`numpy.int8` of length
         :attr:`ncenters` indicating whether each center can use gloal QBX, i.e.
