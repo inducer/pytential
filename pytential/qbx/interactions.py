@@ -160,38 +160,42 @@ class M2QBXL(E2EBase):
                     ],
                 ["""
                 for icenter
-                    <> icontaining_tgt_box = qbx_center_to_target_box[icenter]
+                    <> icontaining_tgt_box = \
+                        qbx_center_to_target_box_source_level[icenter]
 
-                    <> tgt_center[idim] = qbx_centers[idim, icenter] \
-                            {id=fetch_tgt_center}
-                    <> tgt_rscale = qbx_expansion_radii[icenter]
+                    if icontaining_tgt_box != -1
+                        <> tgt_center[idim] = qbx_centers[idim, icenter] \
+                                {id=fetch_tgt_center}
+                        <> tgt_rscale = qbx_expansion_radii[icenter]
 
-                    <> isrc_start = src_box_starts[icontaining_tgt_box]
-                    <> isrc_stop = src_box_starts[icontaining_tgt_box+1]
+                        <> isrc_start = src_box_starts[icontaining_tgt_box]
+                        <> isrc_stop = src_box_starts[icontaining_tgt_box+1]
 
-                    for isrc_box
-                        <> src_ibox = src_box_lists[isrc_box] \
-                                {id=read_src_ibox}
-                        <> src_center[idim] = centers[idim, src_ibox] {dup=idim}
-                        <> d[idim] = tgt_center[idim] - src_center[idim] {dup=idim}
+                        for isrc_box
+                            <> src_ibox = src_box_lists[isrc_box] \
+                                    {id=read_src_ibox}
+                            <> src_center[idim] = centers[idim, src_ibox] {dup=idim}
+                            <> d[idim] = tgt_center[idim] - src_center[idim] \
+                                    {dup=idim}
+                            """] + ["""
+
+                            <> src_coeff{i} = \
+                                src_expansions[src_ibox - src_base_ibox, {i}] \
+                                {{dep=read_src_ibox}}
+
+                            """.format(i=i) for i in range(ncoeff_src)] + [
+
+                            ] + self.get_translation_loopy_insns() + ["""
+
+                        end
                         """] + ["""
-
-                        <> src_coeff{i} = \
-                            src_expansions[src_ibox - src_base_ibox, {i}] \
-                            {{dep=read_src_ibox}}
-
-                        """.format(i=i) for i in range(ncoeff_src)] + [
-
-                        ] + self.get_translation_loopy_insns() + ["""
-
+                        qbx_expansions[icenter, {i}] = \
+                                qbx_expansions[icenter, {i}] + \
+                                simul_reduce(sum, isrc_box, coeff{i}) \
+                                {{id_prefix=write_expn}}
+                        """.format(i=i)
+                                for i in range(ncoeff_tgt)] + ["""
                     end
-                    """] + ["""
-                    qbx_expansions[icenter, {i}] = qbx_expansions[icenter, {i}] + \
-                            simul_reduce(sum, isrc_box, coeff{i}) \
-                            {{id_prefix=write_expn}}
-                    """.format(i=i)
-                            for i in range(ncoeff_tgt)] + ["""
-
                 end
                 """],
                 [
