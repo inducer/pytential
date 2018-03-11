@@ -25,7 +25,7 @@ THE SOFTWARE.
 import loopy as lp
 import numpy as np
 
-from sumpy.qbx import LayerPotential as LayerPotentialBase
+from sumpy.qbx import LayerPotentialBase
 
 
 # {{{ qbx applier on a target/center subset
