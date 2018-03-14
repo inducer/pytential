@@ -258,12 +258,10 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     # initialize the DPIE operator based on the geometry list
     dpie = mw_dpie.DPIEOperator(geometry_list=geom_list)
 
-
     # specify some symbolic variables that will be used
     # in the process to solve integral equations for the DPIE
     phi_densities   = sym.make_sym_vector("phi_densities", dpie.numScalarPotentialDensities())
     A_densities     = sym.make_sym_vector("A_densities", dpie.numVectorPotentialDensities())
-
 
     # get test source locations from the passed in case's queue
     test_source = case.get_source(queue)
@@ -279,33 +277,33 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     # source locations for various variables being solved for
     src_j = rng.normal(queue, (3, test_source.nnodes), dtype=np.float64)
 
-    # define a local method that will evaluate some incident field
-    # at a set of target locations
-    def eval_inc_field_at(tgt):
-        if 0:
-            # plane wave
-            return bind(
-                    tgt,
-                    mw.get_sym_maxwell_plane_wave(
-                        amplitude_vec=np.array([1, 1, 1]),
-                        v=np.array([1, 0, 0]),
-                        omega=case.k)
-                    )(queue)
-        else:
-            # point source
-            return bind(
-                    (test_source, tgt),
-                    mw.get_sym_maxwell_point_source(dpie.kernel, j_sym, dpie.k)
-                    )(queue, j=src_j, k=case.k)
+    # define some parameters for the incident wave
+    # direction for the wave
+    u_dir = np.array([1, 0, 0])
+
+    # polarization vector
+    Ep = np.array([1, 1, 1])
+
+    # define functions that can be used to generate incident fields for an input discretization
+    # define potentials based on incident plane wave
+    def get_incident_plane_wave_EHField(tgt):
+        return bind((test_source,tgt),mw.get_sym_maxwell_plane_wave(amplitude_vec=Ep, v=u_dir, omega=dpie.k))(queue,k=case.k)
+
+    # get the gradphi_inc field evaluated at some source locations
+    def get_incident_gradphi(tgt,where=None):
+        return bind((test_source,tgt),mw.get_sym_maxwell_planewave_gradphi(u=u_dir, Ep=Ep, k=dpie.k,where=where))(queue,k=case.k)
+
+    # get the incident plane wave div(A)
+    def get_incident_divA(tgt,where=None):
+        return bind((test_source,tgt),mw.get_sym_maxwell_planewave_divA(u=u_dir, Ep=Ep, k=dpie.k,where=where))(queue,k=case.k)
 
     # method to get vector potential and scalar potential for incident 
     # E-M fields
-    def get_inc_potentials(tgt):
-        return bind((test_source, tgt),mw.get_sym_maxwell_point_source_potentials(dpie.kernel, j_sym, dpie.k))(queue, j=src_j, k=case.k)
+    def get_incident_potentials(tgt):
+        return bind((test_source, tgt),mw.get_sym_maxwell_planewave_potentials(u=u_dir, Ep=Ep, k=dpie.k))(queue, k=case.k)
 
     # get the Electromagnetic field evaluated at the target calculus patch
-    pde_test_inc = EHField(
-            vector_from_device(queue, eval_inc_field_at(calc_patch_tgt)))
+    pde_test_inc = EHField(vector_from_device(queue, get_incident_plane_wave_EHField(calc_patch_tgt)))
 
     # compute residuals of incident field at source points
     source_maxwell_resids = [
@@ -373,19 +371,29 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                                      InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
         # get the incident field at the scatter and observation locations
-        inc_EM_field_scat   = EHField(eval_inc_field_at(scat_discr))
-        inc_EM_field_obs    = EHField(eval_inc_field_at(obs_discr))
-        inc_vec_field_scat  = get_inc_potentials(scat_discr)
-        inv_vec_field_obs   = get_inc_potentials(obs_discr)
+        #inc_EM_field_scat   = EHField(eval_inc_field_at(scat_discr))
+        #inc_EM_field_obs    = EHField(eval_inc_field_at(obs_discr))
+        #inc_vec_field_scat  = get_inc_potentials(scat_discr)
+        #inc_vec_field_obs   = get_inc_potentials(obs_discr)
+
+        # get the incident fields used for boundary conditions
+        (phi_inc, A_inc) = get_incident_potentials(scat_discr)
+        inc_divA_scat = get_incident_divA(scat_discr)
+        inc_gradPhi_scat = get_incident_gradphi(scat_discr)
 
         # {{{ solve the system of integral equations
-        inc_xyz_vec_sym = sym.make_sym_vector("inc_vec_fld", 4)
+        inc_A = sym.make_sym_vector("inc_A", 3)
+        inc_phi = sym.var("inc_phi")
+        inc_divA = sym.var("inc_divA")
+        inc_gradPhi = sym.make_sym_vector("inc_gradPhi", 3)
 
         # setup operators that will be solved
         phi_op  = bind(geom_map,dpie.phi_operator(phi_densities=phi_densities))
-        phi_rhs = bind(geom_map,dpie.phi_rhs(phi_inc=inc_xyz_vec_sym[0]))(queue,inc_vec_fld=inc_vec_field_scat,**knl_kwargs)
         A_op    = bind(geom_map,dpie.A_operator(A_densities=A_densities))
-        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=inc_xyz_vec_sym[1:]))(queue,inc_vec_fld=inc_vec_field_scat,**knl_kwargs)
+
+        # setup the RHS with provided data so we can solve for density values across the domain
+        phi_rhs = bind(geom_map,dpie.phi_rhs(phi_inc=inc_phi,gradphi_inc=inc_gradPhi))(queue,inc_phi=phi_inc,inc_gradPhi=inc_gradPhi_scat,**knl_kwargs)
+        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=inc_A,divA_inc=inc_divA_scat))(queue,inc_A=A_inc,inc_divA=inc_divA_scat,**knl_kwargs)
 
         # set GMRES settings for solving
         gmres_settings = dict(

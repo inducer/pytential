@@ -150,7 +150,10 @@ class DPIEOperator:
                 source=self.geometry_list[i],target=target)
 
         # return the output summation
-        return output
+        if ndim == 1:
+            return output[0]
+        else:
+            return output
 
     def S(self, density_vec, target=None):
         """
@@ -171,7 +174,10 @@ class DPIEOperator:
                 source=self.geometry_list[i], target=target)
 
         # return the output summation
-        return output
+        if ndim == 1:
+            return output[0]
+        else:
+            return output
 
 
     def Dp(self, density_vec, target=None):
@@ -193,7 +199,10 @@ class DPIEOperator:
                 source=self.geometry_list[i],target=target)
 
         # return the output summation
-        return output
+        if ndim == 1:
+            return output[0]
+        else:
+            return output
 
     def Sp(self, density_vec, target=None):
         """
@@ -214,7 +223,10 @@ class DPIEOperator:
                 source=self.geometry_list[i], target=target)
 
         # return the output summation
-        return output
+        if ndim == 1:
+            return output[0]
+        else:
+            return output
 
     def n_cross_multi(self, density_vec, sources):
         r"""
@@ -266,12 +278,12 @@ class DPIEOperator:
         assert ndim == 1
 
         # init output symbolic quantity with zeros
-        output = np.zeros(density_vec.shape, dtype=self.stype)
+        output = np.zeros((3,nobj), dtype=self.stype)
 
         # loop through the density and sources to construct the appropriate
         # element-wise cross product operation
         for k in range(0,nobj):
-            output[:,k] = sym.normal(3,where=sources[k]) * density_vec[0,k]
+            output[:,k] = sym.normal(3,where=sources[k]).as_vector() * density_vec[0,k]
 
         # return result from element-wise cross product
         return output
@@ -331,7 +343,7 @@ class DPIEOperator:
 
             # setup equation that integrates some integral operators over the nth surface
             output[self.nobjs + n] = sym.integral(ambient_dim=3,dim=2,
-                operand=(self.Dp(sigma_m,target=None)/self.k+ 1j*sigma/2.0 - 1j*self.Sp(sigma_m,target=None)),\
+                operand=(self.Dp(sigma_m,target=obj_n)/self.k+ 1j*sigma/2.0 - 1j*self.Sp(sigma_m,target=obj_n)),\
                 where=obj_n)
 
         # return the resulting system of IE
@@ -357,8 +369,8 @@ class DPIEOperator:
         """
 
         # extract the densities needed to solve the system of equations
-        rho     = A_densities[:self.nobjs]
-        rho_m   = rho.resize((1,self.nobjs))
+        rho     = A_densities[0:self.nobjs]
+        rho_m   = rho.reshape((1,self.nobjs))
         v       = A_densities[self.nobjs:(2*self.nobjs)]
         a_loc   = A_densities[(2*self.nobjs):]
         a       = np.zeros((3,self.nobjs),dtype=self.stype)
@@ -372,29 +384,32 @@ class DPIEOperator:
         for n in range(0,self.nobjs):
 
             # get the nth target geometry to have IE solved across
-            target_loc = self.geometry_list[n]
+            obj_n = self.geometry_list[n]
 
             # generate the set of equations for the vector densities, a, coupled
             # across the various geometries involved
-            output[3*n:3*(n+1)] = 0.5*a[:,n] + sym.n_cross(self.S(a,target_loc),where=target_loc) \
-                                             + -self.k * sym.n_cross(self.S(self.n_times_multi(rho_m,self.geometry_list),target_loc),where=target_loc) \
-                                             + 1j*( self.k* sym.n_cross(self.S(self.n_cross_multi(a,self.geometry_list),target_loc),where=target_loc) + \
-                                                    sym.n_cross(sym.grad(ambient_dim=3,operand=self.S(rho_m,target_loc)),where=target_loc)
+            output[3*n:3*(n+1)] = 0.5*a[:,n] + sym.n_cross(self.S(a,obj_n),where=obj_n) \
+                                             + -self.k * sym.n_cross(self.S(self.n_times_multi(rho_m,self.geometry_list),obj_n),where=obj_n) \
+                                             + 1j*( self.k* sym.n_cross(self.S(self.n_cross_multi(a,self.geometry_list),obj_n),where=obj_n) + \
+                                                    sym.n_cross(sym.grad(ambient_dim=3,operand=self.S(rho_m,obj_n)),where=obj_n)
                                                 )
 
             # generate the set of equations for the scalar densities, rho, coupled
             # across the various geometries involved
-            output[(3*self.nobjs + n)] = 0.5*rho[n] + self.D(rho_m,target_loc) \
-                                            + 1j*(  sym.div(self.S(self.n_cross_multi(a,self.geometry_list),target_loc)) \
+            output[(3*self.nobjs + n)] = 0.5*rho[n] + self.D(rho_m,obj_n) \
+                                            + 1j*(  sym.div(self.S(self.n_cross_multi(a,self.geometry_list),obj_n)) \
                                                     -self.k*self.S(rho_m)
                                                 )\
                                             + v[n]
 
             # add the equation that integrates everything out into some constant
             output[(4*self.nobjs + n)] = sym.integral(ambient_dim=3,dim=2,\
-                operand=(sym.n_dot(sym.curl(self.S(a))) - self.k*sym.n_dot(self.S(self.n_times_multi(rho_m,self.geometry_list))) + \
-                    1j*(self.k*sym.n_dot(self.S(self.n_cross_multi(a,self.geometry_list))) - 0.5*rho[n] + self.Sp(rho_m))),\
-                where=target_loc)
+                operand=(sym.n_dot(sym.curl(self.S(a,target=obj_n)),where=obj_n) - self.k*sym.n_dot(self.S(self.n_times_multi(rho_m,self.geometry_list),target=obj_n),where=obj_n) + \
+                    1j*(self.k*sym.n_dot(self.S(self.n_cross_multi(a,self.geometry_list),target=obj_n),where=obj_n) - 0.5*rho[n] + self.Sp(rho_m,target=obj_n))),\
+                where=obj_n)
+
+        # print something to help with debugging
+        print(sym.pretty(output))
 
         # return output equations
         return output

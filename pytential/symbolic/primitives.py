@@ -382,6 +382,15 @@ def parametrization_derivative_matrix(ambient_dim, dim, where=None):
 
     return reference_jacobian(
             [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
+            ambient_dim, dim, where)
+
+def parametrization_derivative_matrix_old(ambient_dim, dim, where=None):
+    """Return a :class:`np.array` representing the derivative of the
+    reference-to-global parametrization.
+    """
+
+    return reference_jacobian(
+            [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
             ambient_dim, dim)
 
 
@@ -928,9 +937,22 @@ def tangential_derivative(ambient_dim, operand, dim=None, where=None):
 
 
 def normal_derivative(ambient_dim, operand, dim=None, where=None):
-    d = Derivative()
-    return d.resolve(
-            (normal(ambient_dim, dim, where).scalar_product(d.dnabla(ambient_dim)))
+    #d = Derivative()
+    #return d.resolve(
+    #        (normal(ambient_dim, dim, where).scalar_product(d.dnabla(ambient_dim)))
+    #        * d(operand))
+    if isinstance(operand, (np.ndarray, MultiVector)):
+        def make_op(operand_i):
+            d = Derivative()
+            return d.resolve(
+                (normal(ambient_dim, dim, where).scalar_product(d.dnabla(ambient_dim))) 
+                * d(operand_i))
+
+        return componentwise(make_op, operand)
+    else:
+        d = Derivative()
+        return d.resolve(
+            (normal(ambient_dim, dim, where).scalar_product(d.dnabla(ambient_dim))) 
             * d(operand))
 
 
@@ -1071,7 +1093,7 @@ def project_to_tangential(xyz_vec, where=None):
 
 
 def n_dot(vec, where=None):
-    nrm = normal(len(vec), where).as_vector()
+    nrm = normal(len(vec), where=where).as_vector()
 
     return np.dot(nrm, vec)
 
@@ -1089,13 +1111,16 @@ def cross(vec_a, vec_b):
 
 
 def n_cross(vec, where=None):
-    return cross(normal(3, where).as_vector(), vec)
+    return cross(normal(3, where=where).as_vector(), vec)
 
 
 def div(vec):
     ambient_dim = len(vec)
-    return sum(dd_axis(iaxis, ambient_dim, vec) for iaxis in range(ambient_dim))
+    return sum(dd_axis(iaxis, ambient_dim, vec[iaxis]) for iaxis in range(ambient_dim))
 
+def div_old(vec):
+    ambient_dim = len(vec)
+    return sum(dd_axis(iaxis, ambient_dim, vec) for iaxis in range(ambient_dim))
 
 def curl(vec):
     from pytools import levi_civita
