@@ -96,7 +96,7 @@ class DPIEOperator:
         for n in range(0,self.nobjs):
 
             # grab nth location identifier
-            location                            = self.geometry_list[n]
+            location                            = self.geometry_list[n] + "t"
 
             # assign domain for nth scalar density
             domain_list[n]                      = location
@@ -122,7 +122,7 @@ class DPIEOperator:
         for n in range(0,self.nobjs):
 
             # grab nth location identifier
-            location                            = self.geometry_list[n]
+            location                            = self.geometry_list[n] + "t"
 
             # assign domain for nth scalar density
             domain_list[n]                      = location
@@ -343,7 +343,7 @@ class DPIEOperator:
 
             # setup equation that integrates some integral operators over the nth surface
             output[self.nobjs + n] = sym.integral(ambient_dim=3,dim=2,
-                operand=(self.Dp(sigma_m,target=obj_n)/self.k+ 1j*sigma/2.0 - 1j*self.Sp(sigma_m,target=obj_n)),\
+                operand=(self.Dp(sigma_m,target=obj_n)/self.k+ 1j*sigma[n]/2.0 - 1j*self.Sp(sigma_m,target=obj_n)),\
                 where=obj_n)
 
         # return the resulting system of IE
@@ -355,13 +355,18 @@ class DPIEOperator:
         The Right-Hand-Side for the Integral Equation for `phi`
         """
 
+        # get the scalar f expression for each object
+        f = np.zeros((self.nobjs,), dtype=self.stype)
+        for i in range(0,self.nobjs):
+            f[i] = -phi_inc[i]
+
         # get the Q_{j} terms inside RHS expression
         Q = np.zeros((self.nobjs,), dtype=self.stype)
         for i in range(0,self.nobjs):
-            Q[i] = -sym.integral(3,2,sym.n_dot(gradphi_inc),where=self.geometry_list[i])
+            Q[i] = -sym.integral(3,2,sym.n_dot(gradphi_inc,where=self.geometry_list[i]),where=self.geometry_list[i])
 
         # return the resulting field
-        return sym.join_fields(-phi_inc, Q/self.k)
+        return sym.join_fields(f, Q/self.k)
 
     def A_operator(self, A_densities):
         """
@@ -398,7 +403,7 @@ class DPIEOperator:
             # across the various geometries involved
             output[(3*self.nobjs + n)] = 0.5*rho[n] + self.D(rho_m,obj_n) \
                                             + 1j*(  sym.div(self.S(self.n_cross_multi(a,self.geometry_list),obj_n)) \
-                                                    -self.k*self.S(rho_m)
+                                                    -self.k*self.S(rho_m,target=obj_n)
                                                 )\
                                             + v[n]
 
@@ -420,13 +425,17 @@ class DPIEOperator:
         The Right-Hand-Side for the Integral Equation for `A`
         """
 
-        # get the q_array
+        # get the q , h , and vec(f) associated with each object
         q = np.zeros((self.nobjs,), dtype=self.stype)
+        h = np.zeros((self.nobjs,), dtype=self.stype)
+        f = np.zeros((3*self.nobjs,), dtype=self.stype)
         for i in range(0,self.nobjs):
-            q[i] = -sym.integral(3,2,sym.n_dot(A_inc),where=self.geometry_list[i])
+            q[i] = -sym.integral(3,2,sym.n_dot(A_inc[3*i:3*(i+1)],where=self.geometry_list[i]),where=self.geometry_list[i])
+            h[i] = -divA_inc[i]/self.k
+            f[3*i:3*(i+1)] = -sym.n_cross(A_inc[3*i:3*(i+1)],where=self.geometry_list[i])
 
         # define RHS for `A` integral equation system
-        return sym.join_fields( -sym.n_cross(A_inc), -divA_inc/self.k, q)
+        return sym.join_fields( f, h, q)
 
     def scalar_potential_rep(self, phi_densities, target=None):
         """

@@ -161,7 +161,7 @@ def get_sym_maxwell_planewave_divA(u, Ep, k, epsilon=1, mu=1, where=None):
         \nabla \cdot \boldsymbol{A} = -\sqrt{\mu \epsilon} e^{i k x^T u} E_p^T \left( u + i k x\right)
     """
     x = sym.nodes(3, where).as_vector()
-    divA = -sym.sqrt(epsilon*mu) * sym.exp(1j*k*np.dot(x,u)) * np.dot(Ep,u + 1j*k*x)
+    divA = sym.join_fields(-sym.sqrt(epsilon*mu) * sym.exp(1j*k*np.dot(x,u)) * np.dot(Ep,u + 1j*k*x))
     return divA
 
 def get_sym_maxwell_planewave_potentials(u, Ep, k, epsilon=1, mu=1, where=None):
@@ -178,7 +178,7 @@ def get_sym_maxwell_planewave_potentials(u, Ep, k, epsilon=1, mu=1, where=None):
     """
     x = sym.nodes(3, where).as_vector()
     A = -u * np.dot(x,Ep) * sym.sqrt(epsilon*mu) * sym.exp(1j*k*np.dot(x,u))
-    phi = -np.dot(x,Ep) * sym.exp(1j*k*np.dot(x,u))
+    phi = sym.join_fields(-np.dot(x,Ep) * sym.exp(1j*k*np.dot(x,u)))
     return (phi, A)
 
 # {{{ Charge-Current MFIE

@@ -299,8 +299,8 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
     # method to get vector potential and scalar potential for incident 
     # E-M fields
-    def get_incident_potentials(tgt):
-        return bind((test_source, tgt),mw.get_sym_maxwell_planewave_potentials(u=u_dir, Ep=Ep, k=dpie.k))(queue, k=case.k)
+    def get_incident_potentials(tgt,where=None):
+        return bind((test_source, tgt),mw.get_sym_maxwell_planewave_potentials(u=u_dir, Ep=Ep, k=dpie.k,where=where))(queue, k=case.k)
 
     # get the Electromagnetic field evaluated at the target calculus patch
     pde_test_inc = EHField(vector_from_device(queue, get_incident_plane_wave_EHField(calc_patch_tgt)))
@@ -360,7 +360,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
         # define the geometry dictionary
         #geom_map = {"g0": qbx}
-        geom_map = {"obj0":qbx}
+        geom_map = {"obj0":qbx, "obj0t":qbx.density_discr}
 
         # get the maximum mesh element edge length
         h_max = qbx.h_max
@@ -383,8 +383,8 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
         # {{{ solve the system of integral equations
         inc_A = sym.make_sym_vector("inc_A", 3)
-        inc_phi = sym.var("inc_phi")
-        inc_divA = sym.var("inc_divA")
+        inc_phi = sym.make_sym_vector("inc_phi",1)
+        inc_divA = sym.make_sym_vector("inc_divA",1)
         inc_gradPhi = sym.make_sym_vector("inc_gradPhi", 3)
 
         # setup operators that will be solved
@@ -393,7 +393,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
         # setup the RHS with provided data so we can solve for density values across the domain
         phi_rhs = bind(geom_map,dpie.phi_rhs(phi_inc=inc_phi,gradphi_inc=inc_gradPhi))(queue,inc_phi=phi_inc,inc_gradPhi=inc_gradPhi_scat,**knl_kwargs)
-        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=inc_A,divA_inc=inc_divA_scat))(queue,inc_A=A_inc,inc_divA=inc_divA_scat,**knl_kwargs)
+        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=inc_A,divA_inc=inc_divA))(queue,inc_A=A_inc,inc_divA=inc_divA_scat,**knl_kwargs)
 
         # set GMRES settings for solving
         gmres_settings = dict(

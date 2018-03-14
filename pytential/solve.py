@@ -325,6 +325,11 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     amod = get_array_module(rhs)
 
     chopper = VectorChopper(rhs)
+
+    for n in range(0,len(rhs)):
+        if len(rhs[n].shape) == 0:
+            rhs[n] = rhs[n].reshape((1,))
+
     stacked_rhs = chopper.stack(rhs)
 
     if inner_product is None:
