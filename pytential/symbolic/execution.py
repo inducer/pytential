@@ -197,6 +197,11 @@ class MatVecOp:
             x = make_obj_array(
                     [x[start:end] for start, end in self.starts_and_ends])
 
+        # make any scalar terms actually scalars
+        for n in range(0,len(x)):
+            if x[n].shape == (1,):
+                x[n] = x[n].get(self.queue)[0]
+
         args = self.extra_args.copy()
         args[self.arg_name] = x
         result = self.bound_expr(self.queue, **args)

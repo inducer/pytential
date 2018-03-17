@@ -52,10 +52,11 @@ def get_array_module(vec):
 # {{{ block system support
 
 class VectorChopper(object):
-    def __init__(self, structured_vec):
+    def __init__(self, structured_vec, queue = None):
         from pytools.obj_array import is_obj_array
         self.is_structured = is_obj_array(structured_vec)
         self.array_module = get_array_module(structured_vec)
+        self.queue = queue
 
         if self.is_structured:
             self.slices = []
@@ -63,15 +64,23 @@ class VectorChopper(object):
             for entry in structured_vec:
                 if isinstance(entry, self.array_module.ndarray):
                     length = len(entry)
+                    isScalar = False
                 else:
                     length = 1
+                    isScalar = True
 
-                self.slices.append(slice(num_dofs, num_dofs+length))
+                self.slices.append((isScalar,slice(num_dofs, num_dofs+length)))
                 num_dofs += length
 
     def stack(self, vec):
+        import pyopencl as cl
+        import numpy as np
         if not self.is_structured:
             return vec
+
+        for n in range(0,len(self.slices)):
+            if self.slices[n][0]:
+                vec[n] = cl.array.to_device(self.queue, np.array([vec[n]]))
 
         return self.array_module.hstack(vec)
 
@@ -80,7 +89,12 @@ class VectorChopper(object):
             return vec
 
         from pytools.obj_array import make_obj_array
-        return make_obj_array([vec[slc] for slc in self.slices])
+        result = make_obj_array([vec[slc] for (isScalar,slc) in self.slices])
+        if self.queue is not None:
+            for n in range(0,len(self.slices)):
+                if self.slices[n][0]:
+                    result[n] = result[n].get(self.queue)[0]
+        return result
 
 # }}}
 
@@ -323,13 +337,7 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     :return: a :class:`GMRESResult`
     """
     amod = get_array_module(rhs)
-
-    chopper = VectorChopper(rhs)
-
-    for n in range(0,len(rhs)):
-        if len(rhs[n].shape) == 0:
-            rhs[n] = rhs[n].reshape((1,))
-
+    chopper = VectorChopper(rhs,op.queue)
     stacked_rhs = chopper.stack(rhs)
 
     if inner_product is None:

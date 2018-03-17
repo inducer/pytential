@@ -60,7 +60,7 @@ class MaxwellTestCase:
 
 class SphereTestCase(MaxwellTestCase):
     target_order = 8
-    gmres_tol = 1e-10
+    gmres_tol = 1e-3
 
     def get_mesh(self, resolution, target_order):
         from meshmode.mesh.generation import generate_icosphere
@@ -279,28 +279,32 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
     # define some parameters for the incident wave
     # direction for the wave
-    u_dir = np.array([1, 0, 0])
+    u_dir = np.array([1, 0, 0],dtype=np.complex128)
 
     # polarization vector
-    Ep = np.array([1, 1, 1])
+    Ep = np.array([1, 1, 1],dtype=np.complex128)
+
+    # define symbolic vectors for use
+    uvar = sym.make_sym_vector("u", 3)
+    Evar = sym.make_sym_vector("Ep",3)
 
     # define functions that can be used to generate incident fields for an input discretization
     # define potentials based on incident plane wave
     def get_incident_plane_wave_EHField(tgt):
-        return bind((test_source,tgt),mw.get_sym_maxwell_plane_wave(amplitude_vec=Ep, v=u_dir, omega=dpie.k))(queue,k=case.k)
+        return bind((test_source,tgt),mw.get_sym_maxwell_plane_wave(amplitude_vec=Ep, v=u_dir, omega=dpie.k))(queue,k=case.k,u=u_dir,Ep=Ep)
 
     # get the gradphi_inc field evaluated at some source locations
-    def get_incident_gradphi(tgt,where=None):
-        return bind((test_source,tgt),mw.get_sym_maxwell_planewave_gradphi(u=u_dir, Ep=Ep, k=dpie.k,where=where))(queue,k=case.k)
+    def get_incident_gradphi(objects, target=None):
+        return bind(objects,mw.get_sym_maxwell_planewave_gradphi(u=u_dir, Ep=Ep, k=dpie.k,where=target))(queue,k=case.k,u=u_dir,Ep=Ep)
 
     # get the incident plane wave div(A)
-    def get_incident_divA(tgt,where=None):
-        return bind((test_source,tgt),mw.get_sym_maxwell_planewave_divA(u=u_dir, Ep=Ep, k=dpie.k,where=where))(queue,k=case.k)
+    def get_incident_divA(objects, target=None):
+        return bind(objects,mw.get_sym_maxwell_planewave_divA(u=uvar, Ep=Evar, k=dpie.k,where=target))(queue,k=case.k,u=u_dir,Ep=Ep)
 
     # method to get vector potential and scalar potential for incident 
     # E-M fields
-    def get_incident_potentials(tgt,where=None):
-        return bind((test_source, tgt),mw.get_sym_maxwell_planewave_potentials(u=u_dir, Ep=Ep, k=dpie.k,where=where))(queue, k=case.k)
+    def get_incident_potentials(objects, target=None):
+        return bind(objects,mw.get_sym_maxwell_planewave_potentials(u=uvar, Ep=Evar, k=dpie.k,where=target))(queue, k=case.k,u=u_dir,Ep=Ep)
 
     # get the Electromagnetic field evaluated at the target calculus patch
     pde_test_inc = EHField(vector_from_device(queue, get_incident_plane_wave_EHField(calc_patch_tgt)))
@@ -360,7 +364,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
         # define the geometry dictionary
         #geom_map = {"g0": qbx}
-        geom_map = {"obj0":qbx, "obj0t":qbx.density_discr}
+        geom_map = {"obj0":qbx, "obj0t":qbx.density_discr, "scat":qbx.density_discr}
 
         # get the maximum mesh element edge length
         h_max = qbx.h_max
@@ -377,9 +381,9 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
         #inc_vec_field_obs   = get_inc_potentials(obs_discr)
 
         # get the incident fields used for boundary conditions
-        (phi_inc, A_inc) = get_incident_potentials(scat_discr)
-        inc_divA_scat = get_incident_divA(scat_discr)
-        inc_gradPhi_scat = get_incident_gradphi(scat_discr)
+        (phi_inc, A_inc) = get_incident_potentials(geom_map,'scat')
+        inc_divA_scat = get_incident_divA(geom_map,'scat')
+        inc_gradPhi_scat = get_incident_gradphi(geom_map,'scat')
 
         # {{{ solve the system of integral equations
         inc_A = sym.make_sym_vector("inc_A", 3)
@@ -418,22 +422,21 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
         A_dens      = gmres_result.solution
 
         # extract useful solutions
-        phi     = bind(geom_map, dpie.scalar_potential_rep(phi_densities=phi_densities))(queue, phi_densities=phi_dens)
-        Axyz    = bind(geom_map, dpie.vector_potential_rep(A_densities=A_densities))(queue, A_densities=A_dens)
+        #phi     = bind(geom_map, dpie.scalar_potential_rep(phi_densities=phi_densities))(queue, phi_densities=phi_dens)
+        #Axyz    = bind(geom_map, dpie.vector_potential_rep(A_densities=A_densities))(queue, A_densities=A_dens)
 
         # }}}
 
         # {{{ volume eval
 
-        sym_repr = dpie.scattered_volume_field(phi_densities,A_densities)
+        sym_repr = dpie.scattered_volume_field(phi_densities,A_densities,target='tgt')
 
-        def eval_repr_at(tgt, source=None):
-            if source is None:
-                source = qbx
-            return bind((source, tgt), sym_repr)(queue, phi_densities=phi_dens, A_densities=A_dens, **knl_kwargs)
+        def eval_repr_at(tgt):
+            map = geom_map
+            map['tgt'] = tgt
+            return bind(map, sym_repr)(queue, phi_densities=phi_dens, A_densities=A_dens, **knl_kwargs)
 
-        pde_test_repr = EHField(
-                vector_from_device(queue, eval_repr_at(calc_patch_tgt)))
+        pde_test_repr = EHField(vector_from_device(queue, eval_repr_at(calc_patch_tgt)))
 
         maxwell_residuals = [
                 calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_repr.e, np.inf)
