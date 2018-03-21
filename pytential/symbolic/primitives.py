@@ -385,15 +385,6 @@ def parametrization_derivative_matrix(ambient_dim, dim, where=None):
             [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
             ambient_dim, dim, where)
 
-def parametrization_derivative_matrix_old(ambient_dim, dim, where=None):
-    """Return a :class:`np.array` representing the derivative of the
-    reference-to-global parametrization.
-    """
-
-    return reference_jacobian(
-            [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
-            ambient_dim, dim)
-
 
 def parametrization_derivative(ambient_dim, dim, where=None):
     """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
@@ -1118,10 +1109,6 @@ def n_cross(vec, where=None):
 def div(vec):
     ambient_dim = len(vec)
     return sum(dd_axis(iaxis, ambient_dim, vec[iaxis]) for iaxis in range(ambient_dim))
-
-def div_old(vec):
-    ambient_dim = len(vec)
-    return sum(dd_axis(iaxis, ambient_dim, vec) for iaxis in range(ambient_dim))
 
 def curl(vec):
     from pytools import levi_civita
