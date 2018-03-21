@@ -1,6 +1,9 @@
 from __future__ import division, absolute_import, print_function
 
-__copyright__ = "Copyright (C) 2012-2013 Andreas Kloeckner"
+__copyright__ = """
+Copyright (C) 2012-2018 Andreas Kloeckner
+Copyright (C) 2018 Christian Howard
+"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -64,12 +67,12 @@ class VectorChopper(object):
             for entry in structured_vec:
                 if isinstance(entry, self.array_module.ndarray):
                     length = len(entry)
-                    isScalar = False
+                    is_scalar = False
                 else:
                     length = 1
-                    isScalar = True
+                    is_scalar = True
 
-                self.slices.append((isScalar,slice(num_dofs, num_dofs+length)))
+                self.slices.append((is_scalar,slice(num_dofs, num_dofs+length)))
                 num_dofs += length
 
     def stack(self, vec):
@@ -89,11 +92,13 @@ class VectorChopper(object):
             return vec
 
         from pytools.obj_array import make_obj_array
-        result = make_obj_array([vec[slc] for (isScalar,slc) in self.slices])
+        result = make_obj_array([vec[slc] for (is_scalar,slc) in self.slices])
+
         if self.queue is not None:
             for n in range(0,len(self.slices)):
                 if self.slices[n][0]:
                     result[n] = result[n].get(self.queue)[0]
+                    
         return result
 
 # }}}

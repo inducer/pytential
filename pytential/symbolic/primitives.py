@@ -2,6 +2,7 @@ from __future__ import division, absolute_import
 
 __copyright__ = """
 Copyright (C) 2010-2018 Andreas Kloeckner
+Copyright (C) 2018 Christian Howard
 """
 
 __license__ = """

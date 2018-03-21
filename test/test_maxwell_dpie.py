@@ -1,6 +1,9 @@
 from __future__ import division, absolute_import, print_function
 
-__copyright__ = "Copyright (C) 2017 Andreas Kloeckner"
+__copyright__ = """
+Copyright (C) 2017 - 2018 Andreas Kloeckner
+Copyright (C) 2017 - 2018 Christian Howard
+"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -260,8 +263,8 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
     # specify some symbolic variables that will be used
     # in the process to solve integral equations for the DPIE
-    phi_densities   = sym.make_sym_vector("phi_densities", dpie.numScalarPotentialDensities())
-    A_densities     = sym.make_sym_vector("A_densities", dpie.numVectorPotentialDensities())
+    phi_densities   = sym.make_sym_vector("phi_densities", dpie.num_scalar_potential_densities())
+    A_densities     = sym.make_sym_vector("A_densities", dpie.num_vector_potential_densities())
 
     # get test source locations from the passed in case's queue
     test_source = case.get_source(queue)
@@ -393,11 +396,11 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
         # setup operators that will be solved
         phi_op  = bind(geom_map,dpie.phi_operator(phi_densities=phi_densities))
-        A_op    = bind(geom_map,dpie.A_operator(A_densities=A_densities))
+        A_op    = bind(geom_map,dpie.a_operator(A_densities=A_densities))
 
         # setup the RHS with provided data so we can solve for density values across the domain
         phi_rhs = bind(geom_map,dpie.phi_rhs(phi_inc=inc_phi,gradphi_inc=inc_gradPhi))(queue,inc_phi=phi_inc,inc_gradPhi=inc_gradPhi_scat,**knl_kwargs)
-        A_rhs   = bind(geom_map,dpie.A_rhs(A_inc=inc_A,divA_inc=inc_divA))(queue,inc_A=A_inc,inc_divA=inc_divA_scat,**knl_kwargs)
+        A_rhs   = bind(geom_map,dpie.a_rhs(A_inc=inc_A,divA_inc=inc_divA))(queue,inc_A=A_inc,inc_divA=inc_divA_scat,**knl_kwargs)
 
         # set GMRES settings for solving
         gmres_settings = dict(
@@ -411,13 +414,13 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
         # solve for the scalar potential densities
         gmres_result = gmres(
-                        phi_op.scipy_op(queue, "phi_densities", np.complex128, domains=dpie.getScalarDomainList(),**knl_kwargs),
+                        phi_op.scipy_op(queue, "phi_densities", np.complex128, domains=dpie.get_scalar_domain_list(),**knl_kwargs),
                         phi_rhs, **gmres_settings)
         phi_dens    = gmres_result.solution
 
         # solve for the vector potential densities
         gmres_result = gmres(
-                A_op.scipy_op(queue, "A_densities", np.complex128, domains=dpie.getVectorDomainList(), **knl_kwargs),
+                A_op.scipy_op(queue, "A_densities", np.complex128, domains=dpie.get_vector_domain_list(), **knl_kwargs),
                 A_rhs, **gmres_settings)
         A_dens      = gmres_result.solution
 

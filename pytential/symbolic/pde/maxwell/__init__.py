@@ -48,7 +48,7 @@ __doc__ = """
 # {{{ point source
 
 def get_sym_maxwell_point_source(kernel, jxyz, k):
-    """Return a symbolic expression that, when bound to a
+    r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
 
@@ -77,7 +77,7 @@ def get_sym_maxwell_point_source(kernel, jxyz, k):
 # {{{ plane wave
 
 def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=None):
-    """Return a symbolic expression that, when bound to a
+    r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
 
@@ -120,7 +120,7 @@ def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=N
 # {{{ point source for vector potential based on Lorenz gauge 
 
 def get_sym_maxwell_point_source_potentials(kernel, jxyz, k):
-    """Return a symbolic expression that, when bound to a
+    r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a potential fields satisfying Maxwell's equations.
 
@@ -139,7 +139,7 @@ def get_sym_maxwell_point_source_potentials(kernel, jxyz, k):
 # }}}
 
 def get_sym_maxwell_planewave_gradphi(u, Ep, k, where=None):
-    """
+    r"""
     Return symbolic expression that can be bound to a :class:`pytential.source.PointPotentialSource`
     and yield the gradient of a scalar potential field satisfying Maxwell's equations.
 
@@ -152,7 +152,7 @@ def get_sym_maxwell_planewave_gradphi(u, Ep, k, where=None):
     return grad_phi
 
 def get_sym_maxwell_planewave_divA(u, Ep, k, epsilon=1, mu=1, where=None):
-    """
+    r"""
     Return symbolic expression that can be bound to a :class:`pytential.source.PointPotentialSource`
     and yield the divergence of a vector potential field satisfying Maxwell's equations.
 
@@ -165,7 +165,7 @@ def get_sym_maxwell_planewave_divA(u, Ep, k, epsilon=1, mu=1, where=None):
     return divA
 
 def get_sym_maxwell_planewave_potentials(u, Ep, k, epsilon=1, mu=1, where=None):
-    """
+    r"""
     Return a 2-tuple of symbolic expressions that can be bound to a :class:`pytential.source.PointPotentialSource`
     and yield the scalar and vector potential fields satisfying Maxwell's equations that represent
     a plane wave.
