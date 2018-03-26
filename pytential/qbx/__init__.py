@@ -38,10 +38,41 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
+.. autoclass:: GeometryCollection
 .. autoclass:: QBXLayerPotentialSource
 
 .. autoclass:: QBXTargetAssociationFailedException
 """
+
+
+# {{{ GeometryCollection
+
+class GeometryCollection:
+    """
+    .. attribute:: places
+    .. attribute:: refined_places
+    """
+
+    def __init__(self, places):
+        """
+        :arg places: a mapping of symbolic names to
+            :class:`pytential.discretization.Discretization` objects or a subclass
+            of :class:`pytential.discretization.target.TargetBase`.
+        """
+        pass
+
+    def drive_refinement(self, get_refiner):
+        # This needs to construct all sources' QBX centers and refine other
+        # sources for them.
+        pass
+
+    def __getitem__(self, name):
+        pass
+
+    def _tree_for_source(self, name):
+        pass
+
+# }}}
 
 
 # {{{ QBX layer potential source
