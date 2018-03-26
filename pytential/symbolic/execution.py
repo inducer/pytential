@@ -33,6 +33,10 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+
+from pytools import memoize_in
+
 
 # FIXME caches: fix up queues
 
@@ -54,6 +58,39 @@ class EvaluationMapper(EvaluationMapperBase):
 
     def map_node_max(self, expr):
         return cl.array.max(self.rec(expr.operand)).get()[()]
+
+    def _map_elementwise_reduction(self, reduction_name, expr):
+        @memoize_in(self.bound_expr, "elementwise_"+reduction_name)
+        def knl():
+            import loopy as lp
+            knl = lp.make_kernel(
+                "{[el, idof, jdof]: 0<=el<nelements and 0<=idof,jdof<ndofs}",
+                "result[el, idof] = %s(jdof, input[el, jdof])" % reduction_name,
+                default_offset=lp.auto,
+                lang_version=MOST_RECENT_LANGUAGE_VERSION)
+            knl = lp.tag_inames(knl, "el:g.0,idof:l.0")
+            return knl
+
+        discr = self.bound_expr.get_discretization(expr.where)
+
+        operand = self.rec(expr.operand)
+
+        result = cl.array.empty(self.queue, discr.nnodes, operand.dtype)
+        for group in discr.groups:
+            knl()(self.queue,
+                    input=group.view(operand),
+                    result=group.view(result))
+
+        return result
+
+    def map_elementwise_sum(self, expr):
+        return self._map_elementwise_reduction("sum", expr)
+
+    def map_elementwise_min(self, expr):
+        return self._map_elementwise_reduction("min", expr)
+
+    def map_elementwise_max(self, expr):
+        return self._map_elementwise_reduction("max", expr)
 
     def map_ones(self, expr):
         discr = self.bound_expr.get_discretization(expr.where)
@@ -253,6 +290,11 @@ class BoundExpression:
         return self.caches.setdefault(name, {})
 
     def get_discretization(self, where):
+        from pytential.symbolic.primitives import _QBXSourceStage2
+        if isinstance(where, _QBXSourceStage2):
+            discr = self.places[where.where]
+            return discr.stage2_density_discr
+
         discr = self.places[where]
 
         from pytential.source import LayerPotentialSourceBase

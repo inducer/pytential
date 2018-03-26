@@ -365,9 +365,8 @@ class RefinerWrangler(TreeWranglerBase):
         found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
         found_panel_to_refine.finish()
 
-        source_danger_zone_radii_by_panel = (
-                lpot_source._fine_panel_sizes("npanels")
-                .with_queue(self.queue) / 4)
+        source_danger_zone_radii_by_panel = \
+                lpot_source._source_danger_zone_radii("npanels")
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
@@ -410,7 +409,7 @@ class RefinerWrangler(TreeWranglerBase):
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
         evt, out = knl(self.queue,
-                       panel_sizes=lpot_source._panel_sizes("npanels"),
+                       panel_sizes=lpot_source._coarsest_quad_resolution("npanels"),
                        refine_flags=refine_flags,
                        refine_flags_updated=np.array(0),
                        kernel_length_scale=np.array(kernel_length_scale),

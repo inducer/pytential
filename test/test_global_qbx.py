@@ -122,8 +122,9 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     ext_centers = get_centers_on_side(lpot_source, +1)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
     expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
-    panel_sizes = lpot_source._panel_sizes("npanels").get(queue)
-    fine_panel_sizes = lpot_source._fine_panel_sizes("npanels").get(queue)
+    quad_res = lpot_source._coarsest_quad_resolution("npanels").get(queue)
+    source_danger_zone_radii = \
+            lpot_source._source_danger_zone_radii("npanels").get("queue")
 
     # {{{ check if satisfying criteria
 
@@ -155,7 +156,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
                 (dist, rad, centers_panel.element_nr, sources_panel.element_nr)
 
     def check_sufficient_quadrature_resolution(centers_panel, sources_panel):
-        h = fine_panel_sizes[sources_panel.element_nr]
+        dz_radius = source_danger_zone_radii[sources_panel.element_nr]
 
         my_int_centers = int_centers[:, centers_panel.discr_slice]
         my_ext_centers = ext_centers[:, centers_panel.discr_slice]
@@ -174,12 +175,12 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         # Criterion:
         # The quadrature contribution from each panel is as accurate
         # as from the center's own source panel.
-        assert dist >= h / 4, \
-                (dist, h, centers_panel.element_nr, sources_panel.element_nr)
+        assert dist >= dz_radius, \
+                (dist, dz_radius, centers_panel.element_nr, sources_panel.element_nr)
 
-    def check_panel_size_to_helmholtz_k_ratio(panel):
+    def check_quad_res_to_helmholtz_k_ratio(panel):
         # Check wavenumber to panel size ratio.
-        assert panel_sizes[panel.element_nr] * helmholtz_k <= 5
+        assert quad_res[panel.element_nr] * helmholtz_k <= 5
 
     for i, panel_1 in enumerate(iter_elements(lpot_source.density_discr)):
         for panel_2 in iter_elements(lpot_source.density_discr):
@@ -187,7 +188,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         for panel_2 in iter_elements(lpot_source.quad_stage2_density_discr):
             check_sufficient_quadrature_resolution(panel_1, panel_2)
         if helmholtz_k is not None:
-            check_panel_size_to_helmholtz_k_ratio(panel_1)
+            check_quad_res_to_helmholtz_k_ratio(panel_1)
 
     # }}}
 

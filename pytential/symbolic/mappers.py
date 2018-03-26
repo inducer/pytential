@@ -62,6 +62,12 @@ class IdentityMapper(IdentityMapperBase):
 
     map_node_max = map_node_sum
 
+    def map_elementwise_sum(self, expr):
+        return type(expr)(self.rec(expr.operand), expr.where)
+
+    map_elementwise_min = map_elementwise_sum
+    map_elementwise_max = map_elementwise_sum
+
     def map_num_reference_derivative(self, expr):
         return type(expr)(expr.ref_axes, self.rec(expr.operand),
                 expr.where)
@@ -104,6 +110,9 @@ class CombineMapper(CombineMapperBase):
 
     map_node_max = map_node_sum
     map_num_reference_derivative = map_node_sum
+    map_elementwise_sum = map_node_sum
+    map_elementwise_min = map_node_sum
+    map_elementwise_max = map_node_sum
 
     def map_int_g(self, expr):
         return self.combine(
@@ -228,6 +237,14 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     expr.ref_axes, self.rec(expr.operand), self.default_where)
         else:
             return expr
+
+    def map_elementwise_sum(self, expr):
+        return type(expr)(
+                self.rec(expr.operand),
+                expr.where if expr.where is not None else self.default_where)
+
+    map_elementwise_min = map_elementwise_sum
+    map_elementwise_max = map_elementwise_sum
 
     def map_int_g(self, expr):
         source = expr.source
