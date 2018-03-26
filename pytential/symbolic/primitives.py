@@ -531,7 +531,7 @@ def _small_mat_eigenvalues(mat):
         (a, b), (c, d) = mat
         return make_obj_array([
                 -(sqrt(d**2-2*a*d+4*b*c+a**2)-d-a)/2,
-                +(sqrt(d**2-2*a*d+4*b*c+a**2)+d+a)/2
+                 (sqrt(d**2-2*a*d+4*b*c+a**2)+d+a)/2
                 ])
     else:
         raise NotImplementedError(
