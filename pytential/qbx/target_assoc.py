@@ -39,6 +39,7 @@ from cgen import Enum
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
     TreeCodeContainerMixin)
+from time import time
 
 
 unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
@@ -497,7 +498,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        logger.info("target association: marking targets close to panels")
+        logger.debug("target association: marking targets close to panels")
+        mark_start_time = time()
 
         tunnel_radius_by_source = lpot_source._close_target_tunnel_radius("nsources")
 
@@ -527,7 +529,13 @@ class TargetAssociationWrangler(TreeWranglerBase):
 
         cl.wait_for_events([evt])
 
-        logger.info("target association: done marking targets close to panels")
+        mark_elapsed = time() - mark_start_time
+        if mark_elapsed > 0.1:
+            done_logger = logger.info
+        else:
+            done_logger = logger.debug
+        done_logger("target association: done marking targets close to panels "
+                "after %g seconds", mark_elapsed)
 
         return (found_target_close_to_panel == 1).all().get()
 
@@ -582,7 +590,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
 
         wait_for.extend(min_dist_to_center.events)
 
-        logger.info("target association: finding centers for targets")
+        logger.debug("target association: finding centers for targets")
+        center_find_start_time = time()
 
         evt = knl(
             *unwrap_args(
@@ -613,8 +622,15 @@ class TargetAssociationWrangler(TreeWranglerBase):
                          .format(ntargets_associated))
 
         cl.wait_for_events([evt])
-        logger.info("target association: done finding centers for targets")
-        return
+
+        center_find_elapsed = time() - center_find_start_time
+        if center_find_elapsed > 0.1:
+            done_logger = logger.info
+        else:
+            done_logger = logger.debug
+
+        done_logger("target association: done finding centers for targets "
+                "after %g seconds", center_find_elapsed)
 
     def mark_panels_for_refinement(self, tree, peer_lists, lpot_source,
                                    target_status, refine_flags, debug,
@@ -653,7 +669,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        logger.info("target association: marking panels for refinement")
+        logger.debug("target association: marking panels for refinement")
+        mark_start_time = time()
 
         evt = knl(
             *unwrap_args(
@@ -684,7 +701,14 @@ class TargetAssociationWrangler(TreeWranglerBase):
 
         cl.wait_for_events([evt])
 
-        logger.info("target association: done marking panels for refinement")
+        mark_elapsed = time() - mark_start_time
+        if mark_elapsed > 0.1:
+            done_logger = logger.info
+        else:
+            done_logger = logger.debug
+
+        done_logger("target association: done marking panels for refinement "
+                "after %g seconds", mark_elapsed)
 
         return (found_panel_to_refine == 1).all().get()
 
