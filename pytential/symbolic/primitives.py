@@ -558,7 +558,10 @@ def mapping_max_stretch_factor(ambient_dim, dim=None, where=None):
                     2 * _parametrization_jtj(ambient_dim, dim, where)))]
 
     from pymbolic.primitives import Max
-    return cse(ElementwiseMax(Max(tuple(stretch_factors))),
+    return cse(
+            ElementwiseMax(
+                Max(tuple(stretch_factors)),
+                where=where),
             "mapping_max_stretch", cse_scope.DISCRETIZATION)
 
 # }}}
