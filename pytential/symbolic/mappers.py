@@ -453,6 +453,9 @@ class QBXPreprocessor(IdentityMapper):
 # {{{ stringifier
 
 def stringify_where(where):
+    if isinstance(where, prim._QBXSourceStage2):
+        return "stage2(%s)" % stringify_where(where.where)
+
     if where is None:
         return "?"
     elif where is prim.DEFAULT_SOURCE:
@@ -482,8 +485,20 @@ class StringifyMapper(BaseStringifyMapper):
                 for name_expr in six.itervalues(expr.extra_vars)),
                 set())
 
-    def map_node_sum(self, expr, enclosing_prec):
-        return "NodeSum(%s)" % self.rec(expr.operand, PREC_NONE)
+    def map_elementwise_sum(self, expr, enclosing_prec):
+        return "ElwiseSum.%s(%s)" % (
+                stringify_where(expr.where),
+                self.rec(expr.operand, PREC_NONE))
+
+    def map_elementwise_min(self, expr, enclosing_prec):
+        return "ElwiseMin.%s(%s)" % (
+                stringify_where(expr.where),
+                self.rec(expr.operand, PREC_NONE))
+
+    def map_elementwise_max(self, expr, enclosing_prec):
+        return "ElwiseMax.%s(%s)" % (
+                stringify_where(expr.where),
+                self.rec(expr.operand, PREC_NONE))
 
     def map_node_max(self, expr, enclosing_prec):
         return "NodeMax(%s)" % self.rec(expr.operand, PREC_NONE)
