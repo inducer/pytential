@@ -209,7 +209,7 @@ class _QBXSourceStage2(object):
 
     .. note::
 
-        This is not documented functioanlity and only intended for
+        This is not documented functionality and only intended for
         internal use.
     """
 
