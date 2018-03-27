@@ -95,6 +95,8 @@ class EvaluationMapper(EvaluationMapperBase):
 
         operand = self.rec(expr.operand)
 
+        assert operand.shape == (discr.nnodes,)
+
         result = cl.array.empty(self.queue, discr.nnodes, operand.dtype)
         for group in discr.groups:
             knl()(self.queue,
