@@ -420,7 +420,7 @@ def parametrization_derivative_matrix(ambient_dim, dim, where=None):
     return cse(
             reference_jacobian(
                 [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
-                ambient_dim, dim),
+                ambient_dim, dim, where=where),
             "pd_matrix", cse_scope.DISCRETIZATION)
 
 
