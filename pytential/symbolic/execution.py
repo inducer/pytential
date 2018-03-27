@@ -314,8 +314,8 @@ class BoundExpression:
     def get_discretization(self, where):
         from pytential.symbolic.primitives import _QBXSourceStage2
         if isinstance(where, _QBXSourceStage2):
-            discr = self.places[where.where]
-            return discr.stage2_density_discr
+            lpot_source = self.places[where.where]
+            return lpot_source.stage2_density_discr
 
         discr = self.places[where]
 
