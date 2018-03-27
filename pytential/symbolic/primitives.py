@@ -549,6 +549,15 @@ def mapping_max_stretch_factor(ambient_dim, dim=None, where=None):
     if dim is None:
         dim = ambient_dim - 1
 
+    # The 'technique' here is ad-hoc, but I'm fairly confident it's better than
+    # what we had. The idea is that singular values of the mapping Jacobian
+    # yield "stretch factors" of the mapping Why? because it maps a right
+    # singular vector $`v_1`$ (of unit length) to $`\sigma_1 u_1`$, where
+    # $`u_1`$ is the corresponding left singular vector (also of unit length).
+    # And so the biggest one tells us about the direction with the 'biggest'
+    # stretching, where 'stretching' (*2 to remove bi-unit reference element)
+    # reflects available quadrature resolution in that direction.
+
     stretch_factors = [
             cse(sqrt(s), "mapping_singval_%d" % i, cse_scope.DISCRETIZATION)
             for i, s in enumerate(
