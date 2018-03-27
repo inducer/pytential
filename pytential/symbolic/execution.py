@@ -53,6 +53,26 @@ class EvaluationMapper(EvaluationMapperBase):
 
     # {{{ map_XXX
 
+    def _map_minmax(self, func, inherited, expr):
+        ev_children = [self.rec(ch) for ch in expr.children]
+        from functools import reduce, partial
+        if any(isinstance(ch, cl.array.Array) for ch in ev_children):
+            return reduce(partial(func, queue=self.queue), ev_children)
+        else:
+            return inherited(expr)
+
+    def map_max(self, expr):
+        return self._map_minmax(
+                cl.array.maximum,
+                super(EvaluationMapper, self).map_max,
+                expr)
+
+    def map_min(self, expr):
+        return self._map_minmax(
+                cl.array.minimum,
+                super(EvaluationMapper, self).map_min,
+                expr)
+
     def map_node_sum(self, expr):
         return cl.array.sum(self.rec(expr.operand)).get()[()]
 
