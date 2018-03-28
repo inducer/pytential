@@ -449,8 +449,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         import pytential.qbx.utils as utils
         from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
+            # These fudge factors bring this measure to the same rough magnitude
+            # as the prior (el area)**(1/dim) measure.
+            if self.density_discr.dim == 1:
+                fudge_factor = 1.3
+            elif self.density_discr.dim == 2:
+                fudge_factor = 0.7
+            else:
+                fudge_factor = 1  # ??
+
             maxstretch = bind(
-                    self, sym.mapping_max_stretch_factor(self.ambient_dim))(queue)
+                    self,
+                    fudge_factor*sym.mapping_max_stretch_factor(self.ambient_dim)
+                    )(queue)
 
             maxstretch = utils.to_last_dim_length(
                     self.density_discr, maxstretch, last_dim_length)
