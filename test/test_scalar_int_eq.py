@@ -303,7 +303,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
-    source_order = 5*case.target_order
+    source_order = 4*case.target_order
 
     refiner_extra_kwargs = {}
 
