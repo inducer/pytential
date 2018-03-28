@@ -124,7 +124,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
     quad_res = lpot_source._coarsest_quad_resolution("npanels").get(queue)
     source_danger_zone_radii = \
-            lpot_source._source_danger_zone_radii("npanels").get("queue")
+            lpot_source._source_danger_zone_radii("npanels").get(queue)
 
     # {{{ check if satisfying criteria
 
