@@ -217,7 +217,7 @@ def test_source_refinement_3d(ctx_getter, surface_name, surface_f, order):
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
-    ("20-to-1 ellipse", partial(ellipse, 20), 100),
+    ("18-to-1 ellipse", partial(ellipse, 18), 100),
     ("horseshoe", horseshoe, 64),
     ])
 def test_target_association(ctx_getter, curve_name, curve_f, nelements):
