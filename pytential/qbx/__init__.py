@@ -421,10 +421,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     "Passing 'npanels' as last_dim_length to _expansion_radii is "
                     "not allowed. Allowed values are 'nsources' and 'ncenters'.")
 
+        if self.density_discr.dim == 2:
+            # A triangle has half the area of a square,
+            # so the prior (area)**(1/dim) quadrature resolution measure
+            # may be viewed as having an extraneous factor of 1/sqrt(2)
+            # for triangles.
+            fudge_factor = 0.5
+        else:
+            fudge_factor = 1
+
         with cl.CommandQueue(self.cl_context) as queue:
                 return (self._coarsest_quad_resolution(last_dim_length)
                         .with_queue(queue)
-                        * 0.5).with_queue(None)
+                        * 0.5 * fudge_factor).with_queue(None)
 
     # _expansion_radii should not be needed for the fine discretization
 
@@ -449,11 +458,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         import pytential.qbx.utils as utils
         from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
-            # Potential FIXME: A triangle has half the area of a square,
-            # so the prior (area)**(1/dim) quadrature resolution measure
-            # may be viewed as having an extraneous factor of 1/sqrt(2)
-            # for triangles.
-
             maxstretch = bind(
                     self,
                     sym._simplex_mapping_max_stretch_factor(
