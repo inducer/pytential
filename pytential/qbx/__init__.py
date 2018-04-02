@@ -649,6 +649,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
 
+        # geo_data.plot()
+
         # FIXME Exert more positive control over geo_data attribute lifetimes using
         # geo_data.<method>.clear_cache(geo_data).
 

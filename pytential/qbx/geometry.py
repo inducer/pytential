@@ -843,12 +843,14 @@ class QBXFMMGeometryData(object):
             This only works for two-dimensional geometries.
         """
 
+        import matplotlib.pyplot as pt
+        pt.clf()
+
         dims = self.tree().targets.shape[0]
         if dims != 2:
             raise ValueError("only 2-dimensional geometry info can be plotted")
 
         with cl.CommandQueue(self.cl_context) as queue:
-            import matplotlib.pyplot as pt
             from meshmode.discretization.visualization import draw_curve
             draw_curve(self.lpot_source.quad_stage2_density_discr)
 
@@ -933,8 +935,10 @@ class QBXFMMGeometryData(object):
             # }}}
 
             pt.gca().set_aspect("equal")
-            pt.legend()
-            pt.show()
+            #pt.legend()
+            pt.savefig(
+                    "geodata-stage2-nelem%d.pdf"
+                    % self.lpot_source.stage2_density_discr.mesh.nelements)
 
     # }}}
 
