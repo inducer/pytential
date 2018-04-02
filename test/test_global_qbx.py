@@ -220,7 +220,8 @@ def test_source_refinement_3d(ctx_getter, surface_name, surface_f, order):
     ("18-to-1 ellipse", partial(ellipse, 18), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_target_association(ctx_getter, curve_name, curve_f, nelements):
+def test_target_association(ctx_getter, curve_name, curve_f, nelements,
+        visualize=False):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -315,6 +316,35 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     int_targets = np.array([axis.get(queue) for axis in int_targets.nodes()])
     ext_targets = np.array([axis.get(queue) for axis in ext_targets.nodes()])
+
+    def visualize():
+        import matplotlib.pyplot as plt
+        from meshmode.mesh.visualization import draw_curve
+
+        draw_curve(lpot_source.density_discr.mesh)
+
+        targets = int_targets
+        tgt_slice = surf_int_slice
+
+        plt.plot(centers[0], centers[1], "+", color="orange")
+        ax = plt.gca()
+
+        for tx, ty, tcenter in zip(
+                targets[0, tgt_slice],
+                targets[1, tgt_slice],
+                target_assoc.target_to_center[tgt_slice]):
+            if tcenter >= 0:
+                ax.add_artist(
+                        plt.Line2D(
+                            (tx, centers[0, tcenter]),
+                            (ty, centers[1, tcenter]),
+                            ))
+
+        ax.set_aspect("equal")
+        plt.show()
+
+    if visualize:
+        visualize()
 
     # Checks that the sources match with their own centers.
     def check_on_surface_targets(nsources, true_side, target_to_center,
