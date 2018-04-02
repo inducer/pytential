@@ -83,7 +83,7 @@ class IntEqTestCase:
 
 
 class CurveIntEqTestCase(IntEqTestCase):
-    resolutions = [30, 40, 50]
+    resolutions = [40, 50, 60]
 
     def get_mesh(self, resolution, target_order):
         return make_curve_mesh(
