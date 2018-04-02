@@ -449,18 +449,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         import pytential.qbx.utils as utils
         from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
-            # These fudge factors bring this measure to the same rough magnitude
-            # as the prior (el area)**(1/dim) measure.
-            if self.density_discr.dim == 1:
-                fudge_factor = 1.3
-            elif self.density_discr.dim == 2:
-                fudge_factor = 0.7
-            else:
-                fudge_factor = 1  # ??
+            # Potential FIXME: A triangle has half the area of a square,
+            # so the prior (area)**(1/dim) quadrature resolution measure
+            # may be viewed as having an extraneous factor of 1/sqrt(2)
+            # for triangles.
 
             maxstretch = bind(
                     self,
-                    fudge_factor*sym.mapping_max_stretch_factor(self.ambient_dim)
+                    sym._simplex_mapping_max_stretch_factor(
+                        self.ambient_dim)
                     )(queue)
 
             maxstretch = utils.to_last_dim_length(
@@ -487,7 +484,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential import sym, bind
         with cl.CommandQueue(self.cl_context) as queue:
             maxstretch = bind(
-                    self, sym.mapping_max_stretch_factor(
+                    self, sym._simplex_mapping_max_stretch_factor(
                         self.ambient_dim,
                         where=sym._QBXSourceStage2(sym.DEFAULT_SOURCE))
                     )(queue)

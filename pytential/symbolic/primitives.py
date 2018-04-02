@@ -508,18 +508,6 @@ def _panel_size(ambient_dim, dim=None, where=None):
             * QWeight())**(1/dim)
 
 
-def _parametrization_jtj(ambient_dim, dim=None, where=None):
-    """For the mapping Jacobian :math:`J` as returned by
-    :func:`parametrization_derivative`, return :math:`J^TJ`.
-    """
-
-    pder_mat = parametrization_derivative_matrix(ambient_dim, dim, where)
-
-    return cse(
-            np.dot(pder_mat.T, pder_mat),
-            "pd_mat_jtj", cse_scope.DISCRETIZATION)
-
-
 def _small_mat_eigenvalues(mat):
     m, n = mat.shape
     if m != n:
@@ -538,7 +526,8 @@ def _small_mat_eigenvalues(mat):
                 "eigenvalue formula for %dx%d matrices" % (m, n))
 
 
-def mapping_max_stretch_factor(ambient_dim, dim=None, where=None):
+def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, where=None,
+        with_elementwise_max=True):
     """Return the largest factor by which the reference-to-global
     mapping stretches the bi-unit (i.e. :math:`[-1,1]`) reference
     element along any axis.
@@ -558,20 +547,39 @@ def mapping_max_stretch_factor(ambient_dim, dim=None, where=None):
     # stretching, where 'stretching' (*2 to remove bi-unit reference element)
     # reflects available quadrature resolution in that direction.
 
+    pder_mat = parametrization_derivative_matrix(ambient_dim, dim, where)
+
+    # The above procedure works well only when the 'reference' end of the
+    # mapping is in equilateral coordinates.
+    from modepy.tools import EQUILATERAL_TO_UNIT_MAP
+    equi_to_unit = EQUILATERAL_TO_UNIT_MAP[dim].a
+
+    # This is the Jacobian of the (equilateral reference element) -> (global) map.
+    equi_pder_mat = cse(
+            np.dot(pder_mat, equi_to_unit),
+            "equilateral_pder_mat")
+
+    # Compute eigenvalues of J^T to compute SVD.
+    equi_pder_mat_jtj = cse(
+            np.dot(equi_pder_mat.T, equi_pder_mat),
+            "pd_mat_jtj")
+
     stretch_factors = [
-            cse(sqrt(s), "mapping_singval_%d" % i, cse_scope.DISCRETIZATION)
+            cse(sqrt(s), "mapping_singval_%d" % i)
             for i, s in enumerate(
                 _small_mat_eigenvalues(
-                    # Multiply by 2 to compensate for bi-unit (i.e. [-1,1])
-                    # reference elements.
-                    2 * _parametrization_jtj(ambient_dim, dim, where)))]
+                    # Multiply by 4 to compensate for equilateral reference
+                    # elements of side length 2. (J^T J contains two factors of
+                    # two.)
+                    4 * equi_pder_mat_jtj))]
 
     from pymbolic.primitives import Max
-    return cse(
-            ElementwiseMax(
-                Max(tuple(stretch_factors)),
-                where=where),
-            "mapping_max_stretch", cse_scope.DISCRETIZATION)
+    result = Max(tuple(stretch_factors))
+
+    if with_elementwise_max:
+        result = ElementwiseMax(result, where=where)
+
+    return cse(result, "mapping_max_stretch", cse_scope.DISCRETIZATION)
 
 # }}}
 
