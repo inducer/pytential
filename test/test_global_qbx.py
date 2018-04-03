@@ -317,7 +317,7 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements,
     int_targets = np.array([axis.get(queue) for axis in int_targets.nodes()])
     ext_targets = np.array([axis.get(queue) for axis in ext_targets.nodes()])
 
-    def visualize():
+    def visualize_curve_and_assoc():
         import matplotlib.pyplot as plt
         from meshmode.mesh.visualization import draw_curve
 
@@ -344,7 +344,7 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements,
         plt.show()
 
     if visualize:
-        visualize()
+        visualize_curve_and_assoc()
 
     # Checks that the sources match with their own centers.
     def check_on_surface_targets(nsources, true_side, target_to_center,
