@@ -369,7 +369,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def with_refinement(self, target_order=None, kernel_length_scale=None,
-            maxiter=None, visualize=False, _expansion_disturbance_tolerance=None):
+            maxiter=None, visualize=False, _expansion_disturbance_tolerance=None,
+            _max_expansion_radius=None):
         """
         :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
             :class:`QBXLayerPotentialSource` and ``cnx`` is a
@@ -391,7 +392,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     InterpolatoryQuadratureSimplexGroupFactory(target_order),
                     kernel_length_scale=kernel_length_scale,
                     maxiter=maxiter, visualize=visualize,
-                    expansion_disturbance_tolerance=_expansion_disturbance_tolerance)
+                    expansion_disturbance_tolerance=_expansion_disturbance_tolerance,
+                    max_expansion_radius=_max_expansion_radius)
 
         return lpot, connection
 
@@ -416,11 +418,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def _expansion_radii(self, last_dim_length):
-        if last_dim_length == "npanels":
-            raise ValueError(
-                    "Passing 'npanels' as last_dim_length to _expansion_radii is "
-                    "not allowed. Allowed values are 'nsources' and 'ncenters'.")
-
         if self.density_discr.dim == 2:
             # A triangle has half the area of a square,
             # so the prior (area)**(1/dim) quadrature resolution measure

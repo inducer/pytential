@@ -242,23 +242,24 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
                 extra_type_aliases=(("particle_id_t", particle_id_dtype),))
 
     @memoize_method
-    def kernel_length_scale_to_panel_size_ratio_checker(self):
+    def element_prop_threshold_checker(self):
         knl = lp.make_kernel(
-            "{[panel]: 0<=panel<npanels}",
+            "{[ielement]: 0<=ielement<nelements}",
             """
-            for panel
-                <> oversize = panel_sizes[panel] > kernel_length_scale
-                if oversize
-                    refine_flags[panel] = 1
+            for ielement
+                <> over_threshold = element_property[ielement] > threshold
+                if over_threshold
+                    refine_flags[ielement] = 1
                     refine_flags_updated = 1 {id=write_refine_flags_updated}
                 end
             end
             """,
             options="return_dict",
             silenced_warnings="write_race(write_refine_flags_updated)",
-            name="refine_kernel_length_scale_to_panel_size_ratio",
+            name="refine_kernel_length_scale_to_quad_resolution_ratio",
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
-        knl = lp.split_iname(knl, "panel", 128, inner_tag="l.0", outer_tag="g.0")
+
+        knl = lp.split_iname(knl, "ielement", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
     def get_wrangler(self, queue):
@@ -399,9 +400,9 @@ class RefinerWrangler(TreeWranglerBase):
 
         return found_panel_to_refine.get()[0] == 1
 
-    def check_kernel_length_scale_to_panel_size_ratio(self, lpot_source,
-            kernel_length_scale, refine_flags, debug, wait_for=None):
-        knl = self.code_container.kernel_length_scale_to_panel_size_ratio_checker()
+    def check_element_prop_threshold(self, element_property, threshold, refine_flags,
+            debug, wait_for=None):
+        knl = self.code_container.element_prop_threshold_checker()
 
         logger.info("refiner: checking kernel length scale to panel size ratio")
 
@@ -409,10 +410,11 @@ class RefinerWrangler(TreeWranglerBase):
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
         evt, out = knl(self.queue,
-                       panel_sizes=lpot_source._coarsest_quad_resolution("npanels"),
+                       element_property=element_property,
+                       # lpot_source._coarsest_quad_resolution("npanels")),
                        refine_flags=refine_flags,
                        refine_flags_updated=np.array(0),
-                       kernel_length_scale=np.array(kernel_length_scale),
+                       threshold=np.array(threshold),
                        wait_for=wait_for)
 
         cl.wait_for_events([evt])
@@ -475,7 +477,8 @@ def make_empty_refine_flags(queue, lpot_source, use_stage2_discr=False):
 
 def refine_for_global_qbx(lpot_source, wrangler,
         group_factory, kernel_length_scale=None,
-        refine_flags=None, debug=None, maxiter=None,
+        max_expansion_radius=None,
+        debug=None, maxiter=None,
         visualize=None, expansion_disturbance_tolerance=None):
     """
     Entry point for calling the refiner.
@@ -490,11 +493,6 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
     :arg kernel_length_scale: The kernel length scale, or *None* if not
         applicable. All panels are refined to below this size.
-
-    :arg refine_flags: A :class:`pyopencl.array.Array` indicating which
-        panels should get refined initially, or `None` if no initial
-        refinement should be done. Should have size equal to the number of
-        panels. See also :func:`make_empty_refine_flags()`.
 
     :arg maxiter: The maximum number of refiner iterations.
 
@@ -523,14 +521,6 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
     refiner = Refiner(lpot_source.density_discr.mesh)
     connections = []
-
-    # Do initial refinement.
-    if refine_flags is not None:
-        conn = wrangler.refine(
-                lpot_source.density_discr, refiner, refine_flags, group_factory,
-                debug)
-        connections.append(conn)
-        lpot_source = lpot_source.copy(density_discr=conn.to_discr)
 
     # {{{ first stage refinement
 
@@ -597,32 +587,52 @@ def refine_for_global_qbx(lpot_source, wrangler,
             warn_max_iterations()
             break
 
-        # Build tree and auxiliary data.
-        # FIXME: The tree should not have to be rebuilt at each iteration.
-        tree = wrangler.build_tree(lpot_source)
-        peer_lists = wrangler.find_peer_lists(tree)
         refine_flags = make_empty_refine_flags(wrangler.queue, lpot_source)
 
-        # Check condition 1.
-        has_disturbed_expansions = \
-                wrangler.check_expansion_disks_undisturbed_by_sources(
-                        lpot_source, tree, peer_lists,
-                        expansion_disturbance_tolerance,
-                        refine_flags, debug)
-        if has_disturbed_expansions:
-            iter_violated_criteria.append("disturbed expansions")
-            visualize_refinement(niter, "disturbed-expansions", refine_flags)
-
-        # Check condition 3.
         if kernel_length_scale is not None:
-
             violates_kernel_length_scale = \
-                    wrangler.check_kernel_length_scale_to_panel_size_ratio(
-                            lpot_source, kernel_length_scale, refine_flags, debug)
+                    wrangler.check_element_prop_threshold(
+                            element_property=lpot_source._coarsest_quad_resolution(
+                                "npanels"),
+                            threshold=kernel_length_scale,
+                            refine_flags=refine_flags, debug=debug)
 
             if violates_kernel_length_scale:
                 iter_violated_criteria.append("kernel length scale")
                 visualize_refinement(niter, "kernel-length-scale", refine_flags)
+
+        if max_expansion_radius is not None:
+            violates_expansion_radii = \
+                    wrangler.check_element_prop_threshold(
+                            element_property=lpot_source._expansion_radii(
+                                "npanels"),
+                            threshold=max_expansion_radius,
+                            refine_flags=refine_flags, debug=debug)
+
+            if violates_expansion_radii:
+                iter_violated_criteria.append("expansion radii")
+                visualize_refinement(niter, "expansion-radii", refine_flags)
+
+        if not iter_violated_criteria:
+            # Only start building trees once the simple length-based criteria
+            # are happy.
+
+            # Build tree and auxiliary data.
+            # FIXME: The tree should not have to be rebuilt at each iteration.
+            tree = wrangler.build_tree(lpot_source)
+            peer_lists = wrangler.find_peer_lists(tree)
+
+            has_disturbed_expansions = \
+                    wrangler.check_expansion_disks_undisturbed_by_sources(
+                            lpot_source, tree, peer_lists,
+                            expansion_disturbance_tolerance,
+                            refine_flags, debug)
+            if has_disturbed_expansions:
+                iter_violated_criteria.append("disturbed expansions")
+                visualize_refinement(niter, "disturbed-expansions", refine_flags)
+
+            del tree
+            del peer_lists
 
         if iter_violated_criteria:
             violated_criteria.append(" and ".join(iter_violated_criteria))
@@ -633,9 +643,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
             connections.append(conn)
             lpot_source = lpot_source.copy(density_discr=conn.to_discr)
 
-        del tree
         del refine_flags
-        del peer_lists
 
     # }}}
 
