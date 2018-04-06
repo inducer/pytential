@@ -82,6 +82,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
+            _tree_kind="adaptive",
             geometry_data_inspector=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
@@ -177,6 +178,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._from_sep_smaller_crit = _from_sep_smaller_crit
         self._from_sep_smaller_min_nsources_cumul = \
                 _from_sep_smaller_min_nsources_cumul
+        self._tree_kind = _tree_kind
         self.geometry_data_inspector = geometry_data_inspector
 
         # /!\ *All* parameters set here must also be set by copy() below,
@@ -195,6 +197,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
+            _tree_kind=None,
             geometry_data_inspector=None,
 
             debug=_not_provided,
@@ -273,6 +276,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _from_sep_smaller_crit=self._from_sep_smaller_crit,
                 _from_sep_smaller_min_nsources_cumul=(
                     self._from_sep_smaller_min_nsources_cumul),
+                _tree_kind=_tree_kind or self._tree_kind,
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
                 fmm_backend=self.fmm_backend,
@@ -462,6 +466,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return QBXFMMGeometryData(self.qbx_fmm_code_getter,
                 self, target_discrs_and_qbx_sides,
                 target_association_tolerance=self.target_association_tolerance,
+                tree_kind=self._tree_kind,
                 debug=self.debug)
 
     # }}}
