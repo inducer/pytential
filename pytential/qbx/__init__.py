@@ -423,21 +423,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         import pytential.qbx.utils as utils
         return utils.element_centers_of_mass(self.stage2_density_discr)
 
+    def _dim_fudge_factor(self):
+        if self.density_discr.dim == 2:
+            return 0.75
+        else:
+            return 1
+
     @memoize_method
     def _expansion_radii(self, last_dim_length):
-        if self.density_discr.dim == 2:
-            # A triangle has half the area of a square,
-            # so the prior (area)**(1/dim) quadrature resolution measure
-            # may be viewed as having an extraneous factor of 1/sqrt(2)
-            # for triangles.
-            fudge_factor = 0.5
-        else:
-            fudge_factor = 1
-
         with cl.CommandQueue(self.cl_context) as queue:
                 return (self._coarsest_quad_resolution(last_dim_length)
                         .with_queue(queue)
-                        * 0.5 * fudge_factor).with_queue(None)
+                        * 0.5 * self._dim_fudge_factor()).with_queue(None)
 
     # _expansion_radii should not be needed for the fine discretization
 
@@ -505,10 +502,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @memoize_method
     def _source_danger_zone_radii(self, last_dim_length="npanels"):
         quad_res = self._stage2_coarsest_quad_resolution(last_dim_length)
+
         with cl.CommandQueue(self.cl_context) as queue:
             return (quad_res
                     .with_queue(queue)
-                    * 0.25).with_queue(None)
+                    * 0.25 * self._dim_fudge_factor()).with_queue(None)
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
