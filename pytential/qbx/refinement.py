@@ -479,7 +479,8 @@ def refine_for_global_qbx(lpot_source, wrangler,
         group_factory, kernel_length_scale=None,
         max_expansion_radius=None,
         debug=None, maxiter=None,
-        visualize=None, expansion_disturbance_tolerance=None):
+        visualize=None, expansion_disturbance_tolerance=None,
+        refiner=None):
     """
     Entry point for calling the refiner.
 
@@ -519,7 +520,11 @@ def refine_for_global_qbx(lpot_source, wrangler,
     from meshmode.discretization.connection import (
             ChainedDiscretizationConnection, make_same_mesh_connection)
 
-    refiner = Refiner(lpot_source.density_discr.mesh)
+    if refiner is None:
+        assert refiner.get_current_mesh() == lpot_source.density_discr.mesh
+    else:
+        refiner = Refiner(lpot_source.density_discr.mesh)
+
     connections = []
 
     # {{{ first stage refinement
