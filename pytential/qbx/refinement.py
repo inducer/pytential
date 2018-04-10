@@ -520,7 +520,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
     from meshmode.discretization.connection import (
             ChainedDiscretizationConnection, make_same_mesh_connection)
 
-    if refiner is None:
+    if refiner is not None:
         assert refiner.get_current_mesh() == lpot_source.density_discr.mesh
     else:
         refiner = Refiner(lpot_source.density_discr.mesh)
