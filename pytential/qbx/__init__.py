@@ -439,6 +439,27 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # _expansion_radii should not be needed for the fine discretization
 
     @memoize_method
+    def _source_danger_zone_radii(self, last_dim_length="npanels"):
+        # This should be the expression of the expansion radii, but
+        #
+        # - in reference to the stage 2 discretization
+        # - mutliplied by 0.75 because
+        #
+        #   - Setting this equal to the expansion radii ensures that *every*
+        #     stage 2 element will be refined, which is wasteful.
+        #     (so this needs to be smaller than that)
+        #
+
+        #   - Setting this equal to half the expansion radius will not provide
+        #     a refinement 'buffer layer' at a 2x coarsening fringe.
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            return (
+                    (self._stage2_coarsest_quad_resolution(last_dim_length)
+                        .with_queue(queue))
+                    * 0.5 * 0.75 * self._dim_fudge_factor()).with_queue(None)
+
+    @memoize_method
     def _close_target_tunnel_radius(self, last_dim_length):
         with cl.CommandQueue(self.cl_context) as queue:
                 return (
@@ -451,10 +472,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """This measures the quadrature resolution across the
         mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
         should be the same as the panel length.
-
-        It is empirically about a factor of 1.2 larger than sym._panel_size for
-        an ellipse, presumably because it uses the largest 'parametrization
-        speed'/'stretch factor' across the whole element.
         """
         import pytential.qbx.utils as utils
         from pytential import sym, bind
@@ -476,10 +493,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """This measures the quadrature resolution across the
         mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
         should be the same as the panel length.
-
-        It is empirically about a factor of 1.2 larger than sym._panel_size for
-        an ellipse, presumably because it uses the largest 'parametrization
-        speed'/'stretch factor' across the whole element.
         """
         if last_dim_length != "npanels":
             # Not technically required below, but no need to loosen for now.
@@ -498,15 +511,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             maxstretch = maxstretch.with_queue(None)
 
         return maxstretch
-
-    @memoize_method
-    def _source_danger_zone_radii(self, last_dim_length="npanels"):
-        quad_res = self._stage2_coarsest_quad_resolution(last_dim_length)
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (quad_res
-                    .with_queue(queue)
-                    * 0.25 * self._dim_fudge_factor()).with_queue(None)
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
