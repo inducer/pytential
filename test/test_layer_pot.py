@@ -404,7 +404,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
 
-    for nel_factor in [6, 8, 12]:
+    for nel_factor in [6, 10, 14]:
         from meshmode.mesh.generation import generate_torus
         mesh = generate_torus(
                 5, 2, order=target_order,
