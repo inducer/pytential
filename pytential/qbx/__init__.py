@@ -425,7 +425,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def _dim_fudge_factor(self):
         if self.density_discr.dim == 2:
-            return 0.75
+            return 0.5
         else:
             return 1
 
