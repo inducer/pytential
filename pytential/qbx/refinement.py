@@ -516,14 +516,16 @@ def refine_for_global_qbx(lpot_source, wrangler,
     # TODO: Stop doing redundant checks by avoiding panels which no longer need
     # refinement.
 
-    from meshmode.mesh.refinement import Refiner
+    from meshmode.mesh.refinement import RefinerWithoutAdjacency
     from meshmode.discretization.connection import (
             ChainedDiscretizationConnection, make_same_mesh_connection)
 
     if refiner is not None:
         assert refiner.get_current_mesh() == lpot_source.density_discr.mesh
     else:
-        refiner = Refiner(lpot_source.density_discr.mesh)
+        # We may be handed a mesh that's already non-conforming, we don't rely
+        # on adjacency, and the no-adjacency refiner is faster.
+        refiner = RefinerWithoutAdjacency(lpot_source.density_discr.mesh)
 
     connections = []
 
