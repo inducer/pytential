@@ -374,18 +374,46 @@ class NumReferenceDerivative(DiscretizationProperty):
     reference coordinates.
     """
 
+    def __new__(cls, ref_axes, operand, where=None):
+        # If the constructor is handed a multivector object, return an
+        # object array of the operator applied to each of the
+        # coefficients in the multivector.
+
+        if isinstance(operand, (np.ndarray)):
+            def make_op(operand_i):
+                return cls(ref_axes, operand_i, where=where)
+
+            return componentwise(make_op, operand)
+        else:
+            return DiscretizationProperty.__new__(cls)
+
     def __init__(self, ref_axes, operand, where=None):
         """
-        :arg ref_axes: a :class:`frozenset` of indices of
-            reference coordinates along which derivatives
-            will be taken.
+        :arg ref_axes: a :class:`tuple` of tuples indicating indices of
+            coordinate axes of the reference element to the number of derivatives
+            which will be taken.  For example, the value ``((0, 2), (1, 1))``
+            indicates that Each axis must occur at most once. The tuple must be
+            sorted by the axis index.
+
+            May also be a singile integer *i*, which is viewed as equivalent
+            to ``((i, 1),)``.
         :arg where: |where-blurb|
         """
 
-        if not isinstance(ref_axes, frozenset):
-            raise ValueError("ref_axes must be a frozenset")
+        if isinstance(ref_axes, int):
+            ref_axes = ((ref_axes, 1),)
+
+        if not isinstance(ref_axes, tuple):
+            raise ValueError("ref_axes must be a tuple")
+
+        if tuple(sorted(ref_axes)) != ref_axes:
+            raise ValueError("ref_axes must be sorted")
+
+        if len(dict(ref_axes)) != len(ref_axes):
+            raise ValueError("ref_axes must not contain an axis more than once")
 
         self.ref_axes = ref_axes
+
         self.operand = operand
         DiscretizationProperty.__init__(self, where)
 
@@ -404,10 +432,7 @@ def reference_jacobian(func, output_dim, dim, where=None):
     for i in range(output_dim):
         func_component = func[i]
         for j in range(dim):
-            jac[i, j] = NumReferenceDerivative(
-                frozenset([j]),
-                func_component,
-                where)
+            jac[i, j] = NumReferenceDerivative(j, func_component, where)
 
     return jac
 

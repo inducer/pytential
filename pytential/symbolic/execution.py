@@ -132,9 +132,11 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_num_reference_derivative(self, expr):
         discr = self.bound_expr.get_discretization(expr.where)
 
+        from pytools import flatten
+        ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
         return discr.num_reference_derivative(
                 self.queue,
-                expr.ref_axes, self.rec(expr.operand)) \
+                ref_axes, self.rec(expr.operand)) \
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):

@@ -508,8 +508,14 @@ class StringifyMapper(BaseStringifyMapper):
                 stringify_where(expr.where))
 
     def map_num_reference_derivative(self, expr, enclosing_prec):
-        result = "d/dr%s.%s %s" % (
-                ",".join(str(ax) for ax in expr.ref_axes),
+        diff_op = " ".join(
+                "d/dr%d" % axis
+                if mult == 1 else
+                "d/dr%d^%d" % (axis, mult)
+                for axis, mult in expr.ref_axes)
+
+        result = "%s.%s %s" % (
+                diff_op,
                 stringify_where(expr.where),
                 self.rec(expr.operand, PREC_PRODUCT),
                 )
