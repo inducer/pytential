@@ -478,6 +478,7 @@ def make_empty_refine_flags(queue, lpot_source, use_stage2_discr=False):
 def refine_for_global_qbx(lpot_source, wrangler,
         group_factory, kernel_length_scale=None,
         max_expansion_radius=None,
+        force_stage2_uniform_refinement_rounds=None,
         debug=None, maxiter=None,
         visualize=None, expansion_disturbance_tolerance=None,
         refiner=None):
@@ -512,6 +513,9 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
     if expansion_disturbance_tolerance is None:
         expansion_disturbance_tolerance = 0.025
+
+    if force_stage2_uniform_refinement_rounds is None:
+        force_stage2_uniform_refinement_rounds = 0
 
     # TODO: Stop doing redundant checks by avoiding panels which no longer need
     # refinement.
@@ -699,6 +703,18 @@ def refine_for_global_qbx(lpot_source, wrangler,
         del tree
         del refine_flags
         del peer_lists
+
+    for round in range(force_stage2_uniform_refinement_rounds):
+        conn = wrangler.refine(
+                stage2_density_discr,
+                refiner,
+                np.ones(stage2_density_discr.mesh.nelements, dtype=np.bool),
+                group_factory, debug)
+        stage2_density_discr = conn.to_discr
+        fine_connections.append(conn)
+        lpot_source = lpot_source.copy(
+                to_refined_connection=ChainedDiscretizationConnection(
+                    fine_connections))
 
     # }}}
 

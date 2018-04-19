@@ -370,7 +370,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @memoize_method
     def with_refinement(self, target_order=None, kernel_length_scale=None,
             maxiter=None, visualize=False, refiner=None,
-            _expansion_disturbance_tolerance=None, _max_expansion_radius=None):
+            _expansion_disturbance_tolerance=None,
+            _max_expansion_radius=None,
+            _force_stage2_uniform_refinement_rounds=None):
         """
         :arg refiner: If the mesh underlying :attr:`density_discr`
             is itself the result of refinement, then its
@@ -400,6 +402,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     maxiter=maxiter, visualize=visualize,
                     expansion_disturbance_tolerance=_expansion_disturbance_tolerance,
                     max_expansion_radius=_max_expansion_radius,
+                    force_stage2_uniform_refinement_rounds=(
+                        _force_stage2_uniform_refinement_rounds),
                     refiner=refiner)
 
         return lpot, connection
