@@ -541,7 +541,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
         discr = lpot_source.density_discr
         from meshmode.discretization.visualization import make_visualizer
-        vis = make_visualizer(wrangler.queue, discr, 10)
+        vis = make_visualizer(wrangler.queue, discr, 3)
 
         flags = flags.get().astype(np.bool)
         nodes_flags = np.zeros(discr.nnodes)
