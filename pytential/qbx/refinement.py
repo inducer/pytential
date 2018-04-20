@@ -477,8 +477,8 @@ def make_empty_refine_flags(queue, lpot_source, use_stage2_discr=False):
 
 def refine_for_global_qbx(lpot_source, wrangler,
         group_factory, kernel_length_scale=None,
-        max_expansion_radius=None,
         force_stage2_uniform_refinement_rounds=None,
+        scaled_max_curvature_threshold=None,
         debug=None, maxiter=None,
         visualize=None, expansion_disturbance_tolerance=None,
         refiner=None):
@@ -612,17 +612,26 @@ def refine_for_global_qbx(lpot_source, wrangler,
                 iter_violated_criteria.append("kernel length scale")
                 visualize_refinement(niter, "kernel-length-scale", refine_flags)
 
-        if max_expansion_radius is not None:
-            violates_expansion_radii = \
+        if scaled_max_curvature_threshold is not None:
+            from pytential.qbx.utils import to_last_dim_length
+            from pytential import sym, bind
+            scaled_max_curv = to_last_dim_length(
+                    lpot_source.density_discr,
+                    bind(lpot_source,
+                        sym.ElementwiseMax(
+                            sym._scaled_max_curvature(
+                                lpot_source.density_discr.ambient_dim)))
+                        (wrangler.queue), "npanels")
+
+            violates_scaled_max_curv = \
                     wrangler.check_element_prop_threshold(
-                            element_property=lpot_source._expansion_radii(
-                                "npanels"),
-                            threshold=max_expansion_radius,
+                            element_property=scaled_max_curv,
+                            threshold=scaled_max_curvature_threshold,
                             refine_flags=refine_flags, debug=debug)
 
-            if violates_expansion_radii:
-                iter_violated_criteria.append("expansion radii")
-                visualize_refinement(niter, "expansion-radii", refine_flags)
+            if violates_scaled_max_curv:
+                iter_violated_criteria.append("curvature")
+                visualize_refinement(niter, "curvature", refine_flags)
 
         if not iter_violated_criteria:
             # Only start building trees once the simple length-based criteria
