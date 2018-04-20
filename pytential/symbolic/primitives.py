@@ -703,6 +703,38 @@ def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, where=None,
 
     return cse(result, "mapping_max_stretch", cse_scope.DISCRETIZATION)
 
+
+def _max_curvature(ambient_dim, dim=None, where=None):
+    # An attempt at a 'max curvature' criterion.
+
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if ambient_dim == 2:
+        return abs(mean_curvature(ambient_dim, dim, where=where))
+    elif ambient_dim == 3:
+        shape_op = shape_operator(ambient_dim, dim, where=where)
+
+        abs_principal_curvatures = [
+                abs(x) for x in _small_mat_eigenvalues(shape_op)]
+        from pymbolic.primitives import Max
+        return cse(Max(tuple(abs_principal_curvatures)))
+    else:
+        raise NotImplementedError("curvature criterion not implemented in %d "
+                "dimensions" % ambient_dim)
+
+
+def _scaled_max_curvature(ambient_dim, dim=None, where=None):
+    """An attempt at a unit-less, scale-invariant quantity that characterizes
+    'how much curviness there is on an element'. Values seem to hover around 1
+    on typical meshes. Empirical evidence suggests that elements exceeding
+    a threshold of about 0.8-1 will have high QBX truncation error.
+    """
+
+    return _max_curvature(ambient_dim, dim, where=where) * \
+            _simplex_mapping_max_stretch_factor(ambient_dim, dim, where=where,
+                    with_elementwise_max=False)
+
 # }}}
 
 
