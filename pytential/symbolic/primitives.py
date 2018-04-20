@@ -612,6 +612,24 @@ def _panel_size(ambient_dim, dim=None, where=None):
             * QWeight())**(1/dim)
 
 
+def _small_mat_inverse(mat):
+    m, n = mat.shape
+    if m != n:
+        raise ValueError("inverses only make sense for square matrices")
+
+    if m == 1:
+        return make_obj_array([1/mat[0, 0]])
+    elif m == 2:
+        (a, b), (c, d) = mat
+        return 1/(a*d-b*c) * make_obj_array([
+            [d, -b],
+            [-c, a],
+            ])
+    else:
+        raise NotImplementedError(
+                "inverse formula for %dx%d matrices" % (m, n))
+
+
 def _small_mat_eigenvalues(mat):
     m, n = mat.shape
     if m != n:
