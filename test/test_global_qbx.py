@@ -217,6 +217,12 @@ def test_source_refinement_3d(ctx_getter, surface_name, surface_f, order):
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
+    # TODO: This used to pass for a 20-to-1 ellipse (with different center
+    # placement).  It still produces valid output right now, but the current
+    # test is not smart enough to recognize it. It might be useful to fix that.
+    #
+    # See discussion at
+    # https://gitlab.tiker.net/inducer/pytential/merge_requests/95#note_24003
     ("18-to-1 ellipse", partial(ellipse, 18), 100),
     ("horseshoe", horseshoe, 64),
     ])
