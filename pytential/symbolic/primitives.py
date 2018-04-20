@@ -121,6 +121,10 @@ Discretization properties
 .. autofunction:: area_element
 .. autofunction:: sqrt_jac_q_weight
 .. autofunction:: normal
+.. autofunction:: mean_curvature
+.. autofunction:: first_fundamental_form
+.. autofunction:: second_fundamental_form
+.. autofunction:: shape_operator
 
 Elementary numerics
 ^^^^^^^^^^^^^^^^^^^
@@ -520,6 +524,81 @@ def mean_curvature(ambient_dim, dim=None, where=None):
             "p2d_matrix", cse_scope.DISCRETIZATION)
 
     return (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
+
+
+def first_fundamental_form(ambient_dim, dim=None, where=None):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if ambient_dim != 3 and dim != 2:
+        raise NotImplementedError("only available for surfaces in 3D")
+
+    pd_mat = parametrization_derivative_matrix(ambient_dim, dim, where)
+
+    return cse(
+            np.dot(pd_mat.T, pd_mat),
+            "fundform1")
+
+
+def second_fundamental_form(ambient_dim, dim=None, where=None):
+    """Compute the second fundamental form of a surface. This is in reference
+    to the reference-to-global mapping in use for each element.
+
+    .. note::
+
+        Some references assume that the second fundamental form is computed
+        with respect to an orthonormal basis, which this is not.
+    """
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if ambient_dim != 3 and dim != 2:
+        raise NotImplementedError("only available for surfaces in 3D")
+
+    r = nodes(ambient_dim, where=where).as_vector()
+
+    # https://en.wikipedia.org/w/index.php?title=Second_fundamental_form&oldid=821047433#Classical_notation
+
+    from functools import partial
+    d = partial(NumReferenceDerivative, where=where)
+    ruu = d(((0, 2),), r)
+    ruv = d(((0, 1), (1, 1)), r)
+    rvv = d(((1, 2),), r)
+
+    nrml = normal(ambient_dim, dim, where).as_vector()
+
+    ff2_l = cse(np.dot(ruu, nrml), "fundform2_L")
+    ff2_m = cse(np.dot(ruv, nrml), "fundform2_M")
+    ff2_n = cse(np.dot(rvv, nrml), "fundform2_N")
+
+    result = np.zeros((2, 2), dtype=object)
+    result[0, 0] = ff2_l
+    result[0, 1] = result[1, 0] = ff2_m
+    result[1, 1] = ff2_n
+
+    return result
+
+
+def shape_operator(ambient_dim, dim=None, where=None):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if ambient_dim != 3 and dim != 2:
+        raise NotImplementedError("only available for surfaces in 3D")
+
+    # https://en.wikipedia.org/w/index.php?title=Differential_geometry_of_surfaces&oldid=833587563
+    (E, F), (F, G) = first_fundamental_form(ambient_dim, dim, where)
+    (e, f), (f, g) = second_fundamental_form(ambient_dim, dim, where)
+
+    result = np.zeros((2, 2), dtype=object)
+    result[0, 0] = e*G-f*F
+    result[0, 1] = f*G-g*F
+    result[1, 0] = f*E-e*F
+    result[1, 1] = g*E-f*F
+
+    return cse(
+            1/(E*G-F*F)*result,
+            "shape_operator")
 
 
 def _panel_size(ambient_dim, dim=None, where=None):
