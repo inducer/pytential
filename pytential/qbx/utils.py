@@ -37,6 +37,8 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 import logging
 logger = logging.getLogger(__name__)
 
+from pytools import log_process
+
 
 # {{{ c and mako snippets
 
@@ -443,6 +445,7 @@ class TreeWithQBXMetadata(Tree):
 MAX_REFINE_WEIGHT = 64
 
 
+@log_process(logger)
 def build_tree_with_qbx_metadata(
         queue, tree_builder, particle_list_filter, lpot_source, targets_list=(),
         use_stage2_discr=False):
@@ -471,8 +474,6 @@ def build_tree_with_qbx_metadata(
     # - then centers
     # - then panels (=centers of mass)
     # - then targets
-
-    logger.info("start building tree with qbx metadata")
 
     sources = (
             lpot_source.density_discr.nodes()
@@ -584,8 +585,6 @@ def build_tree_with_qbx_metadata(
             pass
 
     tree_attrs.update(particle_classes)
-
-    logger.info("done building tree with qbx metadata")
 
     return TreeWithQBXMetadata(
         qbx_panel_to_source_starts=qbx_panel_to_source_starts,

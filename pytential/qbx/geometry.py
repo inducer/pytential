@@ -36,6 +36,7 @@ from cgen import Enum
 
 from pytential.qbx.utils import TreeCodeContainerMixin
 
+from pytools import log_process
 
 import logging
 logger = logging.getLogger(__name__)
@@ -665,6 +666,7 @@ class QBXFMMGeometryData(object):
         return result.with_queue(None)
 
     @memoize_method
+    @log_process(logger)
     def global_qbx_centers(self):
         """Build a list of indices of QBX centers that use global QBX.  This
         indexes into the global list of targets, (see :meth:`target_info`) of
@@ -677,8 +679,6 @@ class QBXFMMGeometryData(object):
         user_target_to_center = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            logger.info("find global qbx centers: start")
-
             tgt_assoc_result = (
                     user_target_to_center.with_queue(queue)[self.ncenters:])
 
@@ -702,8 +702,6 @@ class QBXFMMGeometryData(object):
                         ("center_is_used", center_is_used)
                         ],
                     queue=queue)
-
-            logger.info("find global qbx centers: done")
 
             if self.debug:
                 logger.debug(
@@ -754,6 +752,7 @@ class QBXFMMGeometryData(object):
         return result.with_queue(None)
 
     @memoize_method
+    @log_process(logger)
     def center_to_tree_targets(self):
         """Return a :class:`CenterToTargetList`. See :meth:`target_to_center`
         for the reverse look-up table with targets in user order.
@@ -764,8 +763,6 @@ class QBXFMMGeometryData(object):
         user_ttc = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            logger.info("build center -> targets lookup table: start")
-
             tree_ttc = cl.array.empty_like(user_ttc).with_queue(queue)
             tree_ttc[self.tree().sorted_target_ids] = user_ttc
 
@@ -788,8 +785,6 @@ class QBXFMMGeometryData(object):
                             filtered_tree_ttc, filtered_target_ids,
                             self.ncenters, tree_ttc.dtype)
 
-            logger.info("build center -> targets lookup table: done")
-
             result = CenterToTargetList(
                     starts=center_target_starts,
                     lists=targets_sorted_by_center).with_queue(None)
@@ -797,6 +792,7 @@ class QBXFMMGeometryData(object):
             return result
 
     @memoize_method
+    @log_process(logger)
     def non_qbx_box_target_lists(self):
         """Build a list of targets per box that don't need to bother with QBX.
         Returns a :class:`boxtree.tree.FilteredTargetListsInTreeOrder`.
@@ -807,8 +803,6 @@ class QBXFMMGeometryData(object):
         """
 
         with cl.CommandQueue(self.cl_context) as queue:
-            logger.info("find non-qbx box target lists: start")
-
             flags = (self.user_target_to_center().with_queue(queue)
                     == target_state.NO_QBX_NEEDED)
 
@@ -823,8 +817,6 @@ class QBXFMMGeometryData(object):
             tree = self.tree()
             plfilt = self.code_getter.particle_list_filter()
             result = plfilt.filter_target_lists_in_tree_order(queue, tree, flags)
-
-            logger.info("find non-qbx box target lists: done")
 
             return result.with_queue(None)
 

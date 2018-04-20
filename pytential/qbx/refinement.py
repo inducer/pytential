@@ -39,6 +39,8 @@ from pytential.qbx.utils import (
         QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
         TreeCodeContainerMixin)
 
+from pytools import ProcessLogger, log_process
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -281,6 +283,7 @@ class RefinerWrangler(TreeWranglerBase):
 
     # {{{ check subroutines for conditions 1-3
 
+    @log_process(logger)
     def check_expansion_disks_undisturbed_by_sources(self,
             lpot_source, tree, peer_lists,
             expansion_disturbance_tolerance,
@@ -298,9 +301,6 @@ class RefinerWrangler(TreeWranglerBase):
                 peer_lists.peer_list_starts.dtype,
                 tree.particle_id_dtype,
                 max_levels)
-
-        logger.info("refiner: checking that expansion disk is "
-                "undisturbed by sources")
 
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
@@ -339,10 +339,9 @@ class RefinerWrangler(TreeWranglerBase):
                 logger.debug("refiner: found {} panel(s) to refine".format(
                     npanels_to_refine - npanels_to_refine_prev))
 
-        logger.info("refiner: done checking center is closest to orig panel")
-
         return found_panel_to_refine.get()[0] == 1
 
+    @log_process(logger)
     def check_sufficient_source_quadrature_resolution(
             self, lpot_source, tree, peer_lists, refine_flags, debug,
             wait_for=None):
@@ -360,8 +359,6 @@ class RefinerWrangler(TreeWranglerBase):
                 max_levels)
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
-
-        logger.info("refiner: checking sufficient quadrature resolution")
 
         found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
         found_panel_to_refine.finish()
@@ -396,15 +393,11 @@ class RefinerWrangler(TreeWranglerBase):
                 logger.debug("refiner: found {} panel(s) to refine".format(
                     npanels_to_refine - npanels_to_refine_prev))
 
-        logger.info("refiner: done checking sufficient quadrature resolution")
-
         return found_panel_to_refine.get()[0] == 1
 
     def check_element_prop_threshold(self, element_property, threshold, refine_flags,
             debug, wait_for=None):
         knl = self.code_container.element_prop_threshold_checker()
-
-        logger.info("refiner: checking kernel length scale to panel size ratio")
 
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
@@ -425,8 +418,6 @@ class RefinerWrangler(TreeWranglerBase):
                 logger.debug("refiner: found {} panel(s) to refine".format(
                     npanels_to_refine - npanels_to_refine_prev))
 
-        logger.info("refiner: done checking kernel length scale to panel size ratio")
-
         return (out["refine_flags_updated"].get() == 1).all()
 
     # }}}
@@ -439,13 +430,10 @@ class RefinerWrangler(TreeWranglerBase):
             refine_flags = refine_flags.get(self.queue)
         refine_flags = refine_flags.astype(np.bool)
 
-        logger.info("refiner: calling meshmode")
-
-        refiner.refine(refine_flags)
-        from meshmode.discretization.connection import make_refinement_connection
-        conn = make_refinement_connection(refiner, density_discr, factory)
-
-        logger.info("refiner: done calling meshmode")
+        with ProcessLogger(logger, "refine mesh"):
+            refiner.refine(refine_flags)
+            from meshmode.discretization.connection import make_refinement_connection
+            conn = make_refinement_connection(refiner, density_discr, factory)
 
         return conn
 
@@ -601,37 +589,43 @@ def refine_for_global_qbx(lpot_source, wrangler,
         refine_flags = make_empty_refine_flags(wrangler.queue, lpot_source)
 
         if kernel_length_scale is not None:
-            violates_kernel_length_scale = \
-                    wrangler.check_element_prop_threshold(
-                            element_property=lpot_source._coarsest_quad_resolution(
-                                "npanels"),
-                            threshold=kernel_length_scale,
-                            refine_flags=refine_flags, debug=debug)
+            with ProcessLogger(logger,
+                    "checking kernel length scale to panel size ratio"):
 
-            if violates_kernel_length_scale:
-                iter_violated_criteria.append("kernel length scale")
-                visualize_refinement(niter, "kernel-length-scale", refine_flags)
+                violates_kernel_length_scale = \
+                        wrangler.check_element_prop_threshold(
+                                element_property=(
+                                    lpot_source._coarsest_quad_resolution(
+                                        "npanels")),
+                                threshold=kernel_length_scale,
+                                refine_flags=refine_flags, debug=debug)
+
+                if violates_kernel_length_scale:
+                    iter_violated_criteria.append("kernel length scale")
+                    visualize_refinement(niter, "kernel-length-scale", refine_flags)
 
         if scaled_max_curvature_threshold is not None:
-            from pytential.qbx.utils import to_last_dim_length
-            from pytential import sym, bind
-            scaled_max_curv = to_last_dim_length(
-                    lpot_source.density_discr,
-                    bind(lpot_source,
-                        sym.ElementwiseMax(
-                            sym._scaled_max_curvature(
-                                lpot_source.density_discr.ambient_dim)))
-                        (wrangler.queue), "npanels")
+            with ProcessLogger(logger,
+                    "checking scaled max curvature threshold"):
+                from pytential.qbx.utils import to_last_dim_length
+                from pytential import sym, bind
+                scaled_max_curv = to_last_dim_length(
+                        lpot_source.density_discr,
+                        bind(lpot_source,
+                            sym.ElementwiseMax(
+                                sym._scaled_max_curvature(
+                                    lpot_source.density_discr.ambient_dim)))
+                            (wrangler.queue), "npanels")
 
-            violates_scaled_max_curv = \
-                    wrangler.check_element_prop_threshold(
-                            element_property=scaled_max_curv,
-                            threshold=scaled_max_curvature_threshold,
-                            refine_flags=refine_flags, debug=debug)
+                violates_scaled_max_curv = \
+                        wrangler.check_element_prop_threshold(
+                                element_property=scaled_max_curv,
+                                threshold=scaled_max_curvature_threshold,
+                                refine_flags=refine_flags, debug=debug)
 
-            if violates_scaled_max_curv:
-                iter_violated_criteria.append("curvature")
-                visualize_refinement(niter, "curvature", refine_flags)
+                if violates_scaled_max_curv:
+                    iter_violated_criteria.append("curvature")
+                    visualize_refinement(niter, "curvature", refine_flags)
 
         if not iter_violated_criteria:
             # Only start building trees once the simple length-based criteria
