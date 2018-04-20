@@ -1278,6 +1278,10 @@ def Dp(kernel, *args, **kwargs):  # noqa
 # {{{ conventional vector calculus
 
 def tangential_onb(ambient_dim, dim=None, where=None):
+    """Return a matrix of shape ``(ambient_dim, dim)`` with orthogonal columns
+    spanning the tangential space of the surface of *where*.
+    """
+
     if dim is None:
         dim = ambient_dim - 1
 
