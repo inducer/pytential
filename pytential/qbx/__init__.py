@@ -373,8 +373,17 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def with_refinement(self, target_order=None, kernel_length_scale=None,
-            maxiter=None, visualize=False, _expansion_disturbance_tolerance=None):
+            maxiter=None, visualize=False, refiner=None,
+            _expansion_disturbance_tolerance=None,
+            _force_stage2_uniform_refinement_rounds=None,
+            _scaled_max_curvature_threshold=None):
         """
+        :arg refiner: If the mesh underlying :attr:`density_discr`
+            is itself the result of refinement, then its
+            :class:`meshmode.refinement.Refiner` instance may need to
+            be reused for continued refinement. This argument
+            provides the opportunity to pass in an existing refiner
+            that should be used for continued refinement.
         :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
             :class:`QBXLayerPotentialSource` and ``cnx`` is a
             :class:`meshmode.discretization.connection.DiscretizationConnection`
@@ -395,7 +404,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     InterpolatoryQuadratureSimplexGroupFactory(target_order),
                     kernel_length_scale=kernel_length_scale,
                     maxiter=maxiter, visualize=visualize,
-                    expansion_disturbance_tolerance=_expansion_disturbance_tolerance)
+                    expansion_disturbance_tolerance=_expansion_disturbance_tolerance,
+                    force_stage2_uniform_refinement_rounds=(
+                        _force_stage2_uniform_refinement_rounds),
+                    scaled_max_curvature_threshold=(
+                        _scaled_max_curvature_threshold),
+                    refiner=refiner)
 
         return lpot, connection
 
@@ -403,8 +417,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @memoize_method
     def h_max(self):
         with cl.CommandQueue(self.cl_context) as queue:
-            panel_sizes = self._panel_sizes("npanels").with_queue(queue)
-            return np.asscalar(cl.array.max(panel_sizes).get())
+            quad_res = self._coarsest_quad_resolution("npanels").with_queue(queue)
+            return np.asscalar(cl.array.max(quad_res).get())
 
     # {{{ internal API
 
@@ -414,41 +428,98 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return utils.element_centers_of_mass(self.density_discr)
 
     @memoize_method
-    def _fine_panel_centers_of_mass(self):
+    def _stage2_panel_centers_of_mass(self):
         import pytential.qbx.utils as utils
         return utils.element_centers_of_mass(self.stage2_density_discr)
 
+    def _dim_fudge_factor(self):
+        if self.density_discr.dim == 2:
+            return 0.5
+        else:
+            return 1
+
     @memoize_method
     def _expansion_radii(self, last_dim_length):
-        if last_dim_length == "npanels":
-            raise ValueError(
-                    "Passing 'npanels' as last_dim_length to _expansion_radii is "
-                    "not allowed. Allowed values are 'nsources' and 'ncenters'.")
-
         with cl.CommandQueue(self.cl_context) as queue:
-                return (self._panel_sizes(last_dim_length).with_queue(queue) * 0.5
-                        ).with_queue(None)
+                return (self._coarsest_quad_resolution(last_dim_length)
+                        .with_queue(queue)
+                        * 0.5 * self._dim_fudge_factor()).with_queue(None)
 
     # _expansion_radii should not be needed for the fine discretization
 
     @memoize_method
+    def _source_danger_zone_radii(self, last_dim_length="npanels"):
+        # This should be the expression of the expansion radii, but
+        #
+        # - in reference to the stage 2 discretization
+        # - mutliplied by 0.75 because
+        #
+        #   - Setting this equal to the expansion radii ensures that *every*
+        #     stage 2 element will be refined, which is wasteful.
+        #     (so this needs to be smaller than that)
+        #
+
+        #   - Setting this equal to half the expansion radius will not provide
+        #     a refinement 'buffer layer' at a 2x coarsening fringe.
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            return (
+                    (self._stage2_coarsest_quad_resolution(last_dim_length)
+                        .with_queue(queue))
+                    * 0.5 * 0.75 * self._dim_fudge_factor()).with_queue(None)
+
+    @memoize_method
     def _close_target_tunnel_radius(self, last_dim_length):
         with cl.CommandQueue(self.cl_context) as queue:
-                return (self._panel_sizes(last_dim_length).with_queue(queue) * 0.5
+                return (
+                        self._expansion_radii(last_dim_length).with_queue(queue)
+                        * 0.5
                         ).with_queue(None)
 
     @memoize_method
-    def _panel_sizes(self, last_dim_length="npanels"):
+    def _coarsest_quad_resolution(self, last_dim_length="npanels"):
+        """This measures the quadrature resolution across the
+        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
+        should be the same as the panel length.
+        """
         import pytential.qbx.utils as utils
-        return utils.panel_sizes(self.density_discr, last_dim_length)
+        from pytential import sym, bind
+        with cl.CommandQueue(self.cl_context) as queue:
+            maxstretch = bind(
+                    self,
+                    sym._simplex_mapping_max_stretch_factor(
+                        self.ambient_dim)
+                    )(queue)
+
+            maxstretch = utils.to_last_dim_length(
+                    self.density_discr, maxstretch, last_dim_length)
+            maxstretch = maxstretch.with_queue(None)
+
+        return maxstretch
 
     @memoize_method
-    def _fine_panel_sizes(self, last_dim_length="npanels"):
+    def _stage2_coarsest_quad_resolution(self, last_dim_length="npanels"):
+        """This measures the quadrature resolution across the
+        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
+        should be the same as the panel length.
+        """
         if last_dim_length != "npanels":
+            # Not technically required below, but no need to loosen for now.
             raise NotImplementedError()
 
         import pytential.qbx.utils as utils
-        return utils.panel_sizes(self.stage2_density_discr, last_dim_length)
+        from pytential import sym, bind
+        with cl.CommandQueue(self.cl_context) as queue:
+            maxstretch = bind(
+                    self, sym._simplex_mapping_max_stretch_factor(
+                        self.ambient_dim,
+                        where=sym._QBXSourceStage2(sym.DEFAULT_SOURCE))
+                    )(queue)
+            maxstretch = utils.to_last_dim_length(
+                    self.stage2_density_discr, maxstretch, last_dim_length)
+            maxstretch = maxstretch.with_queue(None)
+
+        return maxstretch
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
@@ -593,6 +664,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
+
+        # geo_data.plot()
 
         # FIXME Exert more positive control over geo_data attribute lifetimes using
         # geo_data.<method>.clear_cache(geo_data).

@@ -121,6 +121,10 @@ Discretization properties
 .. autofunction:: area_element
 .. autofunction:: sqrt_jac_q_weight
 .. autofunction:: normal
+.. autofunction:: mean_curvature
+.. autofunction:: first_fundamental_form
+.. autofunction:: second_fundamental_form
+.. autofunction:: shape_operator
 
 Elementary numerics
 ^^^^^^^^^^^^^^^^^^^
@@ -128,6 +132,8 @@ Elementary numerics
 .. autoclass:: NumReferenceDerivative
 .. autoclass:: NodeSum
 .. autoclass:: NodeMax
+.. autoclass:: ElementwiseSum
+.. autoclass:: ElementwiseMax
 .. autofunction:: integral
 .. autoclass:: Ones
 .. autofunction:: ones_vec
@@ -185,12 +191,45 @@ Pretty-printing expressions
 """
 
 
+# {{{ 'where' specifiers
+
 class DEFAULT_SOURCE:  # noqa
     pass
 
 
 class DEFAULT_TARGET:  # noqa
     pass
+
+
+class _QBXSourceStage2(object):
+    """A symbolic 'where' specifier for the
+    :attr:`pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`
+    of the layer potential source identified by :attr:`where`.
+
+    .. attribute:: where
+
+        An identifier of a layer potential source, as used in
+        :func:`pytential.bind`.
+
+    .. note::
+
+        This is not documented functionality and only intended for
+        internal use.
+    """
+
+    def __init__(self, where):
+        self.where = where
+
+    def __hash__(self):
+        return hash((type(self), self.where))
+
+    def __eq__(self, other):
+        return type(self) is type(other) and self.where == other.where
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+# }}}
 
 
 class cse_scope(cse_scope_base):  # noqa
@@ -339,18 +378,46 @@ class NumReferenceDerivative(DiscretizationProperty):
     reference coordinates.
     """
 
+    def __new__(cls, ref_axes, operand, where=None):
+        # If the constructor is handed a multivector object, return an
+        # object array of the operator applied to each of the
+        # coefficients in the multivector.
+
+        if isinstance(operand, (np.ndarray)):
+            def make_op(operand_i):
+                return cls(ref_axes, operand_i, where=where)
+
+            return componentwise(make_op, operand)
+        else:
+            return DiscretizationProperty.__new__(cls)
+
     def __init__(self, ref_axes, operand, where=None):
         """
-        :arg ref_axes: a :class:`frozenset` of indices of
-            reference coordinates along which derivatives
-            will be taken.
+        :arg ref_axes: a :class:`tuple` of tuples indicating indices of
+            coordinate axes of the reference element to the number of derivatives
+            which will be taken.  For example, the value ``((0, 2), (1, 1))``
+            indicates that Each axis must occur at most once. The tuple must be
+            sorted by the axis index.
+
+            May also be a singile integer *i*, which is viewed as equivalent
+            to ``((i, 1),)``.
         :arg where: |where-blurb|
         """
 
-        if not isinstance(ref_axes, frozenset):
-            raise ValueError("ref_axes must be a frozenset")
+        if isinstance(ref_axes, int):
+            ref_axes = ((ref_axes, 1),)
+
+        if not isinstance(ref_axes, tuple):
+            raise ValueError("ref_axes must be a tuple")
+
+        if tuple(sorted(ref_axes)) != ref_axes:
+            raise ValueError("ref_axes must be sorted")
+
+        if len(dict(ref_axes)) != len(ref_axes):
+            raise ValueError("ref_axes must not contain an axis more than once")
 
         self.ref_axes = ref_axes
+
         self.operand = operand
         DiscretizationProperty.__init__(self, where)
 
@@ -369,10 +436,7 @@ def reference_jacobian(func, output_dim, dim, where=None):
     for i in range(output_dim):
         func_component = func[i]
         for j in range(dim):
-            jac[i, j] = NumReferenceDerivative(
-                frozenset([j]),
-                func_component,
-                where)
+            jac[i, j] = NumReferenceDerivative(j, func_component, where)
 
     return jac
 
@@ -382,9 +446,11 @@ def parametrization_derivative_matrix(ambient_dim, dim, where=None):
     reference-to-global parametrization.
     """
 
-    return reference_jacobian(
-            [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
-            ambient_dim, dim)
+    return cse(
+            reference_jacobian(
+                [NodeCoordinateComponent(i, where) for i in range(ambient_dim)],
+                ambient_dim, dim, where=where),
+            "pd_matrix", cse_scope.DISCRETIZATION)
 
 
 def parametrization_derivative(ambient_dim, dim, where=None):
@@ -451,9 +517,7 @@ def mean_curvature(ambient_dim, dim=None, where=None):
         raise NotImplementedError(
                 "only know how to calculate curvature for a curve in 2D")
 
-    xp, yp = cse(
-            parametrization_derivative_matrix(ambient_dim, dim, where),
-            "pd_matrix", cse_scope.DISCRETIZATION)
+    xp, yp = parametrization_derivative_matrix(ambient_dim, dim, where)
 
     xpp, ypp = cse(
             reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
@@ -461,23 +525,222 @@ def mean_curvature(ambient_dim, dim=None, where=None):
 
     return (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
 
-# FIXME: make sense of this in the context of GA
-# def xyz_to_local_matrix(dim, where=None):
-#     """First two rows are tangents."""
-#     result = np.zeros((dim, dim), dtype=np.object)
-#
-#     for i in range(dim-1):
-#         result[i] = make_tangent(i, dim, where)
-#     result[-1] = make_normal(dim, where)
-#
-#     return result
+
+def first_fundamental_form(ambient_dim, dim=None, where=None):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if ambient_dim != 3 and dim != 2:
+        raise NotImplementedError("only available for surfaces in 3D")
+
+    pd_mat = parametrization_derivative_matrix(ambient_dim, dim, where)
+
+    return cse(
+            np.dot(pd_mat.T, pd_mat),
+            "fundform1")
+
+
+def second_fundamental_form(ambient_dim, dim=None, where=None):
+    """Compute the second fundamental form of a surface. This is in reference
+    to the reference-to-global mapping in use for each element.
+
+    .. note::
+
+        Some references assume that the second fundamental form is computed
+        with respect to an orthonormal basis, which this is not.
+    """
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if ambient_dim != 3 and dim != 2:
+        raise NotImplementedError("only available for surfaces in 3D")
+
+    r = nodes(ambient_dim, where=where).as_vector()
+
+    # https://en.wikipedia.org/w/index.php?title=Second_fundamental_form&oldid=821047433#Classical_notation
+
+    from functools import partial
+    d = partial(NumReferenceDerivative, where=where)
+    ruu = d(((0, 2),), r)
+    ruv = d(((0, 1), (1, 1)), r)
+    rvv = d(((1, 2),), r)
+
+    nrml = normal(ambient_dim, dim, where).as_vector()
+
+    ff2_l = cse(np.dot(ruu, nrml), "fundform2_L")
+    ff2_m = cse(np.dot(ruv, nrml), "fundform2_M")
+    ff2_n = cse(np.dot(rvv, nrml), "fundform2_N")
+
+    result = np.zeros((2, 2), dtype=object)
+    result[0, 0] = ff2_l
+    result[0, 1] = result[1, 0] = ff2_m
+    result[1, 1] = ff2_n
+
+    return result
+
+
+def shape_operator(ambient_dim, dim=None, where=None):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if ambient_dim != 3 and dim != 2:
+        raise NotImplementedError("only available for surfaces in 3D")
+
+    # https://en.wikipedia.org/w/index.php?title=Differential_geometry_of_surfaces&oldid=833587563
+    (E, F), (F, G) = first_fundamental_form(ambient_dim, dim, where)
+    (e, f), (f, g) = second_fundamental_form(ambient_dim, dim, where)
+
+    result = np.zeros((2, 2), dtype=object)
+    result[0, 0] = e*G-f*F
+    result[0, 1] = f*G-g*F
+    result[1, 0] = f*E-e*F
+    result[1, 1] = g*E-f*F
+
+    return cse(
+            1/(E*G-F*F)*result,
+            "shape_operator")
+
+
+def _panel_size(ambient_dim, dim=None, where=None):
+    # A broken quasi-1D approximation of 1D element size. Do not use.
+
+    if dim is None:
+        dim = ambient_dim - 1
+
+    return ElementwiseSum(
+            area_element(ambient_dim=ambient_dim, dim=dim)
+            * QWeight())**(1/dim)
+
+
+def _small_mat_inverse(mat):
+    m, n = mat.shape
+    if m != n:
+        raise ValueError("inverses only make sense for square matrices")
+
+    if m == 1:
+        return make_obj_array([1/mat[0, 0]])
+    elif m == 2:
+        (a, b), (c, d) = mat
+        return 1/(a*d-b*c) * make_obj_array([
+            [d, -b],
+            [-c, a],
+            ])
+    else:
+        raise NotImplementedError(
+                "inverse formula for %dx%d matrices" % (m, n))
+
+
+def _small_mat_eigenvalues(mat):
+    m, n = mat.shape
+    if m != n:
+        raise ValueError("eigenvalues only make sense for square matrices")
+
+    if m == 1:
+        return make_obj_array([mat[0, 0]])
+    elif m == 2:
+        (a, b), (c, d) = mat
+        return make_obj_array([
+                -(sqrt(d**2-2*a*d+4*b*c+a**2)-d-a)/2,
+                 (sqrt(d**2-2*a*d+4*b*c+a**2)+d+a)/2
+                ])
+    else:
+        raise NotImplementedError(
+                "eigenvalue formula for %dx%d matrices" % (m, n))
+
+
+def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, where=None,
+        with_elementwise_max=True):
+    """Return the largest factor by which the reference-to-global
+    mapping stretches the bi-unit (i.e. :math:`[-1,1]`) reference
+    element along any axis.
+
+    Returns a DOF vector that is elementwise constant.
+    """
+
+    if dim is None:
+        dim = ambient_dim - 1
+
+    # The 'technique' here is ad-hoc, but I'm fairly confident it's better than
+    # what we had. The idea is that singular values of the mapping Jacobian
+    # yield "stretch factors" of the mapping Why? because it maps a right
+    # singular vector $`v_1`$ (of unit length) to $`\sigma_1 u_1`$, where
+    # $`u_1`$ is the corresponding left singular vector (also of unit length).
+    # And so the biggest one tells us about the direction with the 'biggest'
+    # stretching, where 'stretching' (*2 to remove bi-unit reference element)
+    # reflects available quadrature resolution in that direction.
+
+    pder_mat = parametrization_derivative_matrix(ambient_dim, dim, where)
+
+    # The above procedure works well only when the 'reference' end of the
+    # mapping is in equilateral coordinates.
+    from modepy.tools import EQUILATERAL_TO_UNIT_MAP
+    equi_to_unit = EQUILATERAL_TO_UNIT_MAP[dim].a
+
+    # This is the Jacobian of the (equilateral reference element) -> (global) map.
+    equi_pder_mat = cse(
+            np.dot(pder_mat, equi_to_unit),
+            "equilateral_pder_mat")
+
+    # Compute eigenvalues of J^T to compute SVD.
+    equi_pder_mat_jtj = cse(
+            np.dot(equi_pder_mat.T, equi_pder_mat),
+            "pd_mat_jtj")
+
+    stretch_factors = [
+            cse(sqrt(s), "mapping_singval_%d" % i)
+            for i, s in enumerate(
+                _small_mat_eigenvalues(
+                    # Multiply by 4 to compensate for equilateral reference
+                    # elements of side length 2. (J^T J contains two factors of
+                    # two.)
+                    4 * equi_pder_mat_jtj))]
+
+    from pymbolic.primitives import Max
+    result = Max(tuple(stretch_factors))
+
+    if with_elementwise_max:
+        result = ElementwiseMax(result, where=where)
+
+    return cse(result, "mapping_max_stretch", cse_scope.DISCRETIZATION)
+
+
+def _max_curvature(ambient_dim, dim=None, where=None):
+    # An attempt at a 'max curvature' criterion.
+
+    if dim is None:
+        dim = ambient_dim - 1
+
+    if ambient_dim == 2:
+        return abs(mean_curvature(ambient_dim, dim, where=where))
+    elif ambient_dim == 3:
+        shape_op = shape_operator(ambient_dim, dim, where=where)
+
+        abs_principal_curvatures = [
+                abs(x) for x in _small_mat_eigenvalues(shape_op)]
+        from pymbolic.primitives import Max
+        return cse(Max(tuple(abs_principal_curvatures)))
+    else:
+        raise NotImplementedError("curvature criterion not implemented in %d "
+                "dimensions" % ambient_dim)
+
+
+def _scaled_max_curvature(ambient_dim, dim=None, where=None):
+    """An attempt at a unit-less, scale-invariant quantity that characterizes
+    'how much curviness there is on an element'. Values seem to hover around 1
+    on typical meshes. Empirical evidence suggests that elements exceeding
+    a threshold of about 0.8-1 will have high QBX truncation error.
+    """
+
+    return _max_curvature(ambient_dim, dim, where=where) * \
+            _simplex_mapping_max_stretch_factor(ambient_dim, dim, where=where,
+                    with_elementwise_max=False)
 
 # }}}
 
 
 # {{{ operators
 
-class NodalOperation(Expression):
+class SingleScalarOperandExpression(Expression):
     def __new__(cls, operand):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
@@ -498,13 +761,13 @@ class NodalOperation(Expression):
         return (self.operand,)
 
 
-class NodeSum(NodalOperation):
+class NodeSum(SingleScalarOperandExpression):
     """Implements a global sum over all discretization nodes."""
 
     mapper_method = "map_node_sum"
 
 
-class NodeMax(NodalOperation):
+class NodeMax(SingleScalarOperandExpression):
     """Implements a global maximum over all discretization nodes."""
 
     mapper_method = "map_node_max"
@@ -517,6 +780,52 @@ def integral(ambient_dim, dim, operand, where=None):
             area_element(ambient_dim, dim, where)
             * QWeight(where)
             * operand)
+
+
+class SingleScalarOperandExpressionWithWhere(Expression):
+    def __new__(cls, operand, where=None):
+        # If the constructor is handed a multivector object, return an
+        # object array of the operator applied to each of the
+        # coefficients in the multivector.
+
+        if isinstance(operand, (np.ndarray, MultiVector)):
+            def make_op(operand_i):
+                return cls(operand_i, where)
+
+            return componentwise(make_op, operand)
+        else:
+            return Expression.__new__(cls)
+
+    def __init__(self, operand, where=None):
+        self.operand = operand
+        self.where = where
+
+    def __getinitargs__(self):
+        return (self.operand, self.where)
+
+
+class ElementwiseSum(SingleScalarOperandExpressionWithWhere):
+    """Returns a vector of DOFs with all entries on each element set
+    to the sum of DOFs on that element.
+    """
+
+    mapper_method = "map_elementwise_sum"
+
+
+class ElementwiseMin(SingleScalarOperandExpressionWithWhere):
+    """Returns a vector of DOFs with all entries on each element set
+    to the minimum of DOFs on that element.
+    """
+
+    mapper_method = "map_elementwise_min"
+
+
+class ElementwiseMax(SingleScalarOperandExpressionWithWhere):
+    """Returns a vector of DOFs with all entries on each element set
+    to the maximum of DOFs on that element.
+    """
+
+    mapper_method = "map_elementwise_max"
 
 
 class Ones(Expression):
@@ -1019,11 +1328,14 @@ def Dp(kernel, *args, **kwargs):  # noqa
 # {{{ conventional vector calculus
 
 def tangential_onb(ambient_dim, dim=None, where=None):
+    """Return a matrix of shape ``(ambient_dim, dim)`` with orthogonal columns
+    spanning the tangential space of the surface of *where*.
+    """
+
     if dim is None:
         dim = ambient_dim - 1
 
-    pd_mat = cse(parametrization_derivative_matrix(ambient_dim, dim, where),
-            "pd_matrix", cse_scope.DISCRETIZATION)
+    pd_mat = parametrization_derivative_matrix(ambient_dim, dim, where)
 
     # {{{ Gram-Schmidt
 

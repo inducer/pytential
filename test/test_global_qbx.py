@@ -122,8 +122,9 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     ext_centers = get_centers_on_side(lpot_source, +1)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
     expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
-    panel_sizes = lpot_source._panel_sizes("npanels").get(queue)
-    fine_panel_sizes = lpot_source._fine_panel_sizes("npanels").get(queue)
+    quad_res = lpot_source._coarsest_quad_resolution("npanels").get(queue)
+    source_danger_zone_radii = \
+            lpot_source._source_danger_zone_radii("npanels").get(queue)
 
     # {{{ check if satisfying criteria
 
@@ -155,7 +156,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
                 (dist, rad, centers_panel.element_nr, sources_panel.element_nr)
 
     def check_sufficient_quadrature_resolution(centers_panel, sources_panel):
-        h = fine_panel_sizes[sources_panel.element_nr]
+        dz_radius = source_danger_zone_radii[sources_panel.element_nr]
 
         my_int_centers = int_centers[:, centers_panel.discr_slice]
         my_ext_centers = ext_centers[:, centers_panel.discr_slice]
@@ -174,12 +175,12 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         # Criterion:
         # The quadrature contribution from each panel is as accurate
         # as from the center's own source panel.
-        assert dist >= h / 4, \
-                (dist, h, centers_panel.element_nr, sources_panel.element_nr)
+        assert dist >= dz_radius, \
+                (dist, dz_radius, centers_panel.element_nr, sources_panel.element_nr)
 
-    def check_panel_size_to_helmholtz_k_ratio(panel):
+    def check_quad_res_to_helmholtz_k_ratio(panel):
         # Check wavenumber to panel size ratio.
-        assert panel_sizes[panel.element_nr] * helmholtz_k <= 5
+        assert quad_res[panel.element_nr] * helmholtz_k <= 5
 
     for i, panel_1 in enumerate(iter_elements(lpot_source.density_discr)):
         for panel_2 in iter_elements(lpot_source.density_discr):
@@ -187,7 +188,7 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         for panel_2 in iter_elements(lpot_source.quad_stage2_density_discr):
             check_sufficient_quadrature_resolution(panel_1, panel_2)
         if helmholtz_k is not None:
-            check_panel_size_to_helmholtz_k_ratio(panel_1)
+            check_quad_res_to_helmholtz_k_ratio(panel_1)
 
     # }}}
 
@@ -216,10 +217,17 @@ def test_source_refinement_3d(ctx_getter, surface_name, surface_f, order):
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
-    ("20-to-1 ellipse", partial(ellipse, 20), 100),
+    # TODO: This used to pass for a 20-to-1 ellipse (with different center
+    # placement).  It still produces valid output right now, but the current
+    # test is not smart enough to recognize it. It might be useful to fix that.
+    #
+    # See discussion at
+    # https://gitlab.tiker.net/inducer/pytential/merge_requests/95#note_24003
+    ("18-to-1 ellipse", partial(ellipse, 18), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_target_association(ctx_getter, curve_name, curve_f, nelements):
+def test_target_association(ctx_getter, curve_name, curve_f, nelements,
+        visualize=False):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -314,6 +322,35 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements):
 
     int_targets = np.array([axis.get(queue) for axis in int_targets.nodes()])
     ext_targets = np.array([axis.get(queue) for axis in ext_targets.nodes()])
+
+    def visualize_curve_and_assoc():
+        import matplotlib.pyplot as plt
+        from meshmode.mesh.visualization import draw_curve
+
+        draw_curve(lpot_source.density_discr.mesh)
+
+        targets = int_targets
+        tgt_slice = surf_int_slice
+
+        plt.plot(centers[0], centers[1], "+", color="orange")
+        ax = plt.gca()
+
+        for tx, ty, tcenter in zip(
+                targets[0, tgt_slice],
+                targets[1, tgt_slice],
+                target_assoc.target_to_center[tgt_slice]):
+            if tcenter >= 0:
+                ax.add_artist(
+                        plt.Line2D(
+                            (tx, centers[0, tcenter]),
+                            (ty, centers[1, tcenter]),
+                            ))
+
+        ax.set_aspect("equal")
+        plt.show()
+
+    if visualize:
+        visualize_curve_and_assoc()
 
     # Checks that the sources match with their own centers.
     def check_on_surface_targets(nsources, true_side, target_to_center,

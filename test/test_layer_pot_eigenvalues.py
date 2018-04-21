@@ -100,7 +100,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-        fmm_order = 10
+        fmm_order = 12
         if force_direct:
             fmm_order = False
 

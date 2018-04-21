@@ -37,6 +37,8 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 import logging
 logger = logging.getLogger(__name__)
 
+from pytools import log_process
+
 
 # {{{ c and mako snippets
 
@@ -205,67 +207,50 @@ class TreeWranglerBase(object):
 # }}}
 
 
-# {{{ panel sizes
+# {{{ to_last_dim_length
 
-def panel_sizes(discr, last_dim_length):
-    if last_dim_length not in ("nsources", "ncenters", "npanels"):
-        raise ValueError(
-                "invalid value of last_dim_length: %s" % last_dim_length)
+def to_last_dim_length(discr, vec, last_dim_length, queue=None):
+    """Takes a :class:`pyopencl.array.Array` with a last axis that has the same
+    length as the number of discretization nodes in the discretization *discr*
+    and converts it so that the last axis has a length as specified by
+    *last_dim_length*.
+    """
 
-    # To get the panel size this does the equivalent of (∫ 1 ds)**(1/dim).
-    # FIXME: Kernel optimizations
+    queue = queue or vec.queue
 
-    if last_dim_length == "nsources" or last_dim_length == "ncenters":
-        knl = lp.make_kernel(
-            "{[i,j,k]: 0<=i<nelements and 0<=j,k<nunit_nodes}",
-            "panel_sizes[i,j] = sum(k, ds[i,k])**(1/dim)",
-            name="compute_size",
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
+    if last_dim_length == "nsources":
+        return vec
 
-        def panel_size_view(discr, group_nr):
-            return discr.groups[group_nr].view
+    elif last_dim_length == "ncenters":
+        knl = get_interleaver_kernel(vec.dtype)
+        _, (result,) = knl(queue, dstlen=2*discr.nnodes, src1=vec, src2=vec)
+        return result
 
     elif last_dim_length == "npanels":
         knl = lp.make_kernel(
-            "{[i,j]: 0<=i<nelements and 0<=j<nunit_nodes}",
-            "panel_sizes[i] = sum(j, ds[i,j])**(1/dim)",
-            name="compute_size",
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
-        from functools import partial
+            "{[i,k]: 0<=i<nelements}",
+            "result[i] = a[i,0]",
+            [
+                lp.GlobalArg("a", shape="nelements, nunit_nodes", dtype=lp.auto),
+                lp.ValueArg("nunit_nodes", dtype=np.int32),
+                "..."
+                ],
+            name="subsample_to_panels",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            )
 
-        def panel_size_view(discr, group_nr):
-            return partial(el_view, discr, group_nr)
+        knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
 
+        result = cl.array.empty(queue, discr.mesh.nelements, vec.dtype)
+        for group_nr, group in enumerate(discr.groups):
+            knl(queue,
+                nelements=group.nelements,
+                a=group.view(vec),
+                result=el_view(discr, group_nr, result))
+
+        return result
     else:
         raise ValueError("unknown dim length specified")
-
-    knl = lp.fix_parameters(knl, dim=discr.dim)
-
-    with cl.CommandQueue(discr.cl_context) as queue:
-        from pytential import bind, sym
-        ds = bind(
-                discr,
-                sym.area_element(ambient_dim=discr.ambient_dim, dim=discr.dim)
-                * sym.QWeight()
-                )(queue)
-        panel_sizes = cl.array.empty(
-            queue, discr.nnodes
-            if last_dim_length in ("nsources", "ncenters")
-            else discr.mesh.nelements, discr.real_dtype)
-        for group_nr, group in enumerate(discr.groups):
-            _, (result,) = knl(queue,
-                nelements=group.nelements,
-                nunit_nodes=group.nunit_nodes,
-                ds=group.view(ds),
-                panel_sizes=panel_size_view(
-                    discr, group_nr)(panel_sizes))
-        panel_sizes.finish()
-        if last_dim_length == "ncenters":
-            from pytential.qbx.utils import get_interleaver_kernel
-            knl = get_interleaver_kernel(discr.real_dtype)
-            _, (panel_sizes,) = knl(queue, dstlen=2*discr.nnodes,
-                                    src1=panel_sizes, src2=panel_sizes)
-        return panel_sizes.with_queue(None)
 
 # }}}
 
@@ -331,11 +316,10 @@ def el_view(discr, group_nr, global_array):
     where *nelements* is the global (per-discretization) node count.
     """
 
-    group = discr.groups[group_nr]
-    el_nr_base = sum(group.nelements for group in discr.groups[:group_nr])
+    group = discr.mesh.groups[group_nr]
 
     return global_array[
-        ..., el_nr_base:el_nr_base + group.nelements] \
+        ..., group.element_nr_base:group.element_nr_base + group.nelements] \
         .reshape(
             global_array.shape[:-1]
             + (group.nelements,))
@@ -461,6 +445,7 @@ class TreeWithQBXMetadata(Tree):
 MAX_REFINE_WEIGHT = 64
 
 
+@log_process(logger)
 def build_tree_with_qbx_metadata(
         queue, tree_builder, particle_list_filter, lpot_source, targets_list=(),
         use_stage2_discr=False):
@@ -490,8 +475,6 @@ def build_tree_with_qbx_metadata(
     # - then panels (=centers of mass)
     # - then targets
 
-    logger.info("start building tree with qbx metadata")
-
     sources = (
             lpot_source.density_discr.nodes()
             if not use_stage2_discr
@@ -502,7 +485,7 @@ def build_tree_with_qbx_metadata(
     centers_of_mass = (
             lpot_source._panel_centers_of_mass()
             if not use_stage2_discr
-            else lpot_source._fine_panel_centers_of_mass())
+            else lpot_source._stage2_panel_centers_of_mass())
 
     targets = (tgt.nodes() for tgt in targets_list)
 
@@ -602,8 +585,6 @@ def build_tree_with_qbx_metadata(
             pass
 
     tree_attrs.update(particle_classes)
-
-    logger.info("done building tree with qbx metadata")
 
     return TreeWithQBXMetadata(
         qbx_panel_to_source_starts=qbx_panel_to_source_starts,

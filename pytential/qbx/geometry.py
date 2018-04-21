@@ -32,11 +32,11 @@ from boxtree.tools import DeviceDataRecord
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from cgen import Enum
-from time import time
 
 
 from pytential.qbx.utils import TreeCodeContainerMixin
 
+from pytools import log_process
 
 import logging
 logger = logging.getLogger(__name__)
@@ -670,6 +670,7 @@ class QBXFMMGeometryData(object):
         return result.with_queue(None)
 
     @memoize_method
+    @log_process(logger)
     def global_qbx_centers(self):
         """Build a list of indices of QBX centers that use global QBX.  This
         indexes into the global list of targets, (see :meth:`target_info`) of
@@ -682,9 +683,6 @@ class QBXFMMGeometryData(object):
         user_target_to_center = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            logger.debug("find global qbx centers: start")
-            center_find_start_time = time()
-
             tgt_assoc_result = (
                     user_target_to_center.with_queue(queue)[self.ncenters:])
 
@@ -708,15 +706,6 @@ class QBXFMMGeometryData(object):
                         ("center_is_used", center_is_used)
                         ],
                     queue=queue)
-
-            center_find_elapsed = time() - center_find_start_time
-            if center_find_elapsed > 0.1:
-                done_logger = logger.info
-            else:
-                done_logger = logger.debug
-
-            done_logger("find global qbx centers: done after %g seconds",
-                    center_find_elapsed)
 
             if self.debug:
                 logger.debug(
@@ -767,6 +756,7 @@ class QBXFMMGeometryData(object):
         return result.with_queue(None)
 
     @memoize_method
+    @log_process(logger)
     def center_to_tree_targets(self):
         """Return a :class:`CenterToTargetList`. See :meth:`target_to_center`
         for the reverse look-up table with targets in user order.
@@ -777,9 +767,6 @@ class QBXFMMGeometryData(object):
         user_ttc = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            logger.debug("build center -> targets lookup table: start")
-            c2t_start_time = time()
-
             tree_ttc = cl.array.empty_like(user_ttc).with_queue(queue)
             tree_ttc[self.tree().sorted_target_ids] = user_ttc
 
@@ -802,14 +789,6 @@ class QBXFMMGeometryData(object):
                             filtered_tree_ttc, filtered_target_ids,
                             self.ncenters, tree_ttc.dtype)
 
-            c2t_elapsed = time() - c2t_start_time
-            if c2t_elapsed > 0.1:
-                done_logger = logger.info
-            else:
-                done_logger = logger.debug
-            done_logger("build center -> targets lookup table: "
-                    "done after %g seconds", c2t_elapsed)
-
             result = CenterToTargetList(
                     starts=center_target_starts,
                     lists=targets_sorted_by_center).with_queue(None)
@@ -817,6 +796,7 @@ class QBXFMMGeometryData(object):
             return result
 
     @memoize_method
+    @log_process(logger)
     def non_qbx_box_target_lists(self):
         """Build a list of targets per box that don't need to bother with QBX.
         Returns a :class:`boxtree.tree.FilteredTargetListsInTreeOrder`.
@@ -827,9 +807,6 @@ class QBXFMMGeometryData(object):
         """
 
         with cl.CommandQueue(self.cl_context) as queue:
-            logger.debug("find non-qbx box target lists: start")
-            nonqbx_start_time = time()
-
             flags = (self.user_target_to_center().with_queue(queue)
                     == target_state.NO_QBX_NEEDED)
 
@@ -844,14 +821,6 @@ class QBXFMMGeometryData(object):
             tree = self.tree()
             plfilt = self.code_getter.particle_list_filter()
             result = plfilt.filter_target_lists_in_tree_order(queue, tree, flags)
-
-            nonqbx_elapsed = time() - nonqbx_start_time
-            if nonqbx_elapsed > 0.1:
-                done_logger = logger.info
-            else:
-                done_logger = logger.debug
-            done_logger("find non-qbx box target lists: done after %g seconds",
-                    nonqbx_elapsed)
 
             return result.with_queue(None)
 
@@ -870,12 +839,14 @@ class QBXFMMGeometryData(object):
             This only works for two-dimensional geometries.
         """
 
+        import matplotlib.pyplot as pt
+        pt.clf()
+
         dims = self.tree().targets.shape[0]
         if dims != 2:
             raise ValueError("only 2-dimensional geometry info can be plotted")
 
         with cl.CommandQueue(self.cl_context) as queue:
-            import matplotlib.pyplot as pt
             from meshmode.discretization.visualization import draw_curve
             draw_curve(self.lpot_source.quad_stage2_density_discr)
 
@@ -960,8 +931,10 @@ class QBXFMMGeometryData(object):
             # }}}
 
             pt.gca().set_aspect("equal")
-            pt.legend()
-            pt.show()
+            #pt.legend()
+            pt.savefig(
+                    "geodata-stage2-nelem%d.pdf"
+                    % self.lpot_source.stage2_density_discr.mesh.nelements)
 
     # }}}
 

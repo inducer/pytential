@@ -82,7 +82,7 @@ class StarfishGeometry(object):
 
     dim = 2
 
-    resolutions = [30, 50, 70]
+    resolutions = [30, 50, 70, 90]
 
     def get_mesh(self, nelements, target_order):
         return make_curve_mesh(
