@@ -494,8 +494,6 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ reorder potentials
 
-    logger.info("reorder potentials")
-
     nqbtl = geo_data.non_qbx_box_target_lists()
 
     all_potentials_in_tree_order = wrangler.full_output_zeros()
