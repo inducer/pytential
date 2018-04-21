@@ -610,7 +610,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
                          .format(ntargets_associated))
 
         cl.wait_for_events([evt])
-        return
 
     @log_process(logger)
     def mark_panels_for_refinement(self, tree, peer_lists, lpot_source,

@@ -354,12 +354,15 @@ class QBXFMMGeometryData(object):
 
     def __init__(self, code_getter, lpot_source,
             target_discrs_and_qbx_sides,
-            target_association_tolerance, debug):
+            target_association_tolerance,
+            tree_kind, debug):
         """
         .. rubric:: Constructor arguments
 
         See the attributes of the same name for the meaning of most
         of the constructor arguments.
+
+        :arg tree_kind: The tree kind to pass to the tree builder
 
         :arg debug: a :class:`bool` flag for whether to enable
             potentially costly self-checks
@@ -370,6 +373,7 @@ class QBXFMMGeometryData(object):
         self.target_discrs_and_qbx_sides = \
                 target_discrs_and_qbx_sides
         self.target_association_tolerance = target_association_tolerance
+        self.tree_kind = tree_kind
         self.debug = debug
 
     @property
@@ -522,7 +526,7 @@ class QBXFMMGeometryData(object):
                     debug=self.debug,
                     stick_out_factor=lpot_src._expansion_stick_out_factor,
                     extent_norm=lpot_src._box_extent_norm,
-                    kind="adaptive")
+                    kind=self.tree_kind)
 
             if self.debug:
                 tgt_count_2 = cl.array.sum(
