@@ -190,7 +190,7 @@ class MatVecOp:
         else:
             out_host = False
 
-        do_split = len(self.starts_and_ends) > 1
+        do_split = len(self.starts_and_ends) >= 1
         from pytools.obj_array import make_obj_array
 
         if do_split:
