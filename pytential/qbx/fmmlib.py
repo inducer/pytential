@@ -599,7 +599,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     source_box_lists=trav.neighbor_source_boxes_lists,
                     box_source_starts=self.tree.box_source_starts,
                     box_source_counts_nonchild=self.tree.box_source_counts_nonchild,
-                    src_weights=src_weights,
+                    dipstr=src_weights,
+                    dipvec=self.dipole_vec,
                     pot=output)
 
         return pot

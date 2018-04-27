@@ -43,8 +43,6 @@ cdef void legvals(double x, int n, double[] vals, double[] derivs) nogil:
     for j in range(2, n + 1):
         pj = ( (2*j-1)*x*pjm1-(j-1)*pjm2 ) / j
         vals[j] = pj
-        pjm2 = pjm1
-        pjm1 = pj
 
         if derivs != NULL:
             derj = (2*j-1)*(pjm1+x*derjm1)-(j-1)*derjm2
@@ -52,6 +50,9 @@ cdef void legvals(double x, int n, double[] vals, double[] derivs) nogil:
             derivs[j] = derj
             derjm2 = derjm1
             derjm1 = derj
+
+        pjm2 = pjm1
+        pjm1 = pj
 
 
 cdef double dist(double[3] a, double[3] b) nogil:
@@ -61,20 +62,24 @@ cdef double dist(double[3] a, double[3] b) nogil:
             (a[2] - b[2]) * (a[2] - b[2]))
 
 
-"""
 cdef void tsqbx_grad_from_source(
         double[3] source,
         double[3] center,
         double[3] target,
-        double[3] grad,    
-        int order,
-        double[] tmp) nogil:
+        double[3] grad,
+        int order) nogil:
     cdef:
-        int i
-        double result, r, sc_d, tc_d, cos_angle, alpha
-        double *derivs
+        int i, j
+        double result, sc_d, tc_d, cos_angle, alpha, R
+        double[128] tmp
+        double[128] derivs
+        double[3] cms
+        double[3] tmc
 
-    derivs = &tmp[order + 1]
+    for j in range(3):
+        cms[j] = center[j] - source[j]
+        tmc[j] = target[j] - center[j]
+        grad[j] = 0
 
     tc_d = dist(target, center)
     sc_d = dist(source, center)
@@ -82,32 +87,37 @@ cdef void tsqbx_grad_from_source(
     alpha = (
             (target[0] - center[0]) * (source[0] - center[0]) +
             (target[1] - center[1]) * (source[1] - center[1]) +
-            (target[2] - center[2]) * (source[2] - center[2])
+            (target[2] - center[2]) * (source[2] - center[2]))
 
     cos_angle = alpha / (tc_d * sc_d)
 
     legvals(cos_angle, order, tmp, derivs)
 
-    result = 0
-    r = 1 / sc_d
+    R = 1 / sc_d
 
     for i in range(0, order + 1):
-        result = result + tmp[i] * r
-        r = r * (tc_d / sc_d)
+        # Invariant: R = (t_cd ** i / sc_d ** (i + 1))
+        for j in range(3):
+            grad[j] += (i + 1) * cms[j] / (sc_d ** 2) * R * tmp[i]
+        for j in range(3):
+            # Siegel and Tornberg has a sign flip here :(
+            grad[j] += (
+                    tmc[j] / (tc_d * sc_d) +
+                    alpha * cms[j] / (tc_d * sc_d ** 3)) * R * derivs[i]
+        R *= (tc_d / sc_d)
 
-    return result
-"""
+    return
 
 
 cdef double tsqbx_from_source(
         double[3] source,
         double[3] center,
         double[3] target,
-        int order,
-        double[] tmp) nogil:
+        int order) nogil:
     cdef:
         int i
         double result, r, sc_d, tc_d, cos_angle
+        double tmp[128]
 
     tc_d = dist(target, center)
     sc_d = dist(source, center)
@@ -124,8 +134,8 @@ cdef double tsqbx_from_source(
     r = 1 / sc_d
 
     for i in range(0, order + 1):
-        result = result + tmp[i] * r
-        r = r * (tc_d / sc_d)
+        result +=  tmp[i] * r
+        r *= (tc_d / sc_d)
 
     return result
 
@@ -140,7 +150,8 @@ def eval_target_specific_global_qbx_locals(
         int[:] center_to_target_starts, int[:] center_to_target_lists,
         int[:] source_box_starts, int[:] source_box_lists,
         int[:] box_source_starts, int[:] box_source_counts_nonchild,
-        double[:] src_weights,
+        double[:] dipstr,
+        double[:,:] dipvec,
         double complex[:] pot):
 
     cdef:
@@ -151,15 +162,22 @@ def eval_target_specific_global_qbx_locals(
         int isrc, isrc_start, isrc_end
         int i, tid
         double result
-        double[:,:] source, center, target, tmp
+        double[:,:] source, center, target, grad
+        int slp, dlp
 
-    # Yucky thread-local hack
+    slp = (dipstr is not None) and (dipvec is None)
+    dlp = (dipstr is not None) and (dipvec is not None)
+
+    if not (slp or dlp):
+        raise ValueError("should specify exactly one of src_weights or dipvec")
+
+    # Hack to obtain thread-local storage
     maxthreads = openmp.omp_get_max_threads()
 
-    source = np.zeros((1 + maxthreads, 3))
-    target = np.zeros((1 + maxthreads, 3))
-    center = np.zeros((1 + maxthreads, 3))
-    tmp = np.zeros((1 + maxthreads, 256))
+    source = np.zeros((maxthreads, 3))
+    target = np.zeros((maxthreads, 3))
+    center = np.zeros((maxthreads, 3))
+    grad = np.zeros((maxthreads, 3))
 
     # TODO: Check if order > 256
 
@@ -194,8 +212,18 @@ def eval_target_specific_global_qbx_locals(
                     for i in range(3):
                         source[tid, i] = sources[i, isrc]
 
-                    result = result + src_weights[isrc] * (
-                        tsqbx_from_source(&source[tid, 0], &center[tid, 0],
-                                          &target[tid, 0], order, &tmp[tid, 0]))
+                    if slp:
+                        # Don't replace with +=, since that makes Cython think
+                        # it is a reduction.
+                        result = result + dipstr[isrc] * (
+                                tsqbx_from_source(&source[tid, 0], &center[tid, 0],
+                                                  &target[tid, 0], order))
+                    elif dlp:
+                        tsqbx_grad_from_source(&source[tid, 0], &center[tid, 0],
+                                               &target[tid, 0], &grad[tid, 0], order)
+                        result = result + dipstr[isrc] * (
+                                grad[tid, 0] * dipvec[0, isrc] +
+                                grad[tid, 1] * dipvec[1, isrc] +
+                                grad[tid, 2] * dipvec[2, isrc])
 
             pot[tgt] = pot[tgt] + result
