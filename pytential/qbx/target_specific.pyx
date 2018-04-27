@@ -98,12 +98,12 @@ cdef void tsqbx_grad_from_source(
     for i in range(0, order + 1):
         # Invariant: R = (t_cd ** i / sc_d ** (i + 1))
         for j in range(3):
-            grad[j] += (i + 1) * cms[j] / (sc_d ** 2) * R * tmp[i]
+            grad[j] += (i + 1) * cms[j] / (sc_d * sc_d) * R * tmp[i]
         for j in range(3):
             # Siegel and Tornberg has a sign flip here :(
             grad[j] += (
                     tmc[j] / (tc_d * sc_d) +
-                    alpha * cms[j] / (tc_d * sc_d ** 3)) * R * derivs[i]
+                    alpha * cms[j] / (tc_d * sc_d * sc_d * sc_d)) * R * derivs[i]
         R *= (tc_d / sc_d)
 
     return
@@ -168,22 +168,25 @@ def eval_target_specific_global_qbx_locals(
     slp = (dipstr is not None) and (dipvec is None)
     dlp = (dipstr is not None) and (dipvec is not None)
 
+    print("Hi from Cython")
+
     if not (slp or dlp):
         raise ValueError("should specify exactly one of src_weights or dipvec")
 
     # Hack to obtain thread-local storage
     maxthreads = openmp.omp_get_max_threads()
 
-    source = np.zeros((maxthreads, 3))
-    target = np.zeros((maxthreads, 3))
-    center = np.zeros((maxthreads, 3))
-    grad = np.zeros((maxthreads, 3))
+    # Prevent false sharing by over-allocating the buffers
+    source = np.zeros((maxthreads, 65))
+    target = np.zeros((maxthreads, 65))
+    center = np.zeros((maxthreads, 65))
+    grad = np.zeros((maxthreads, 65))
 
     # TODO: Check if order > 256
 
     for ictr in cython.parallel.prange(0, global_qbx_centers.shape[0],
-                                       nogil=True, schedule="dynamic",
-                                       chunksize=10):
+                                       nogil=True, schedule="static",
+                                       chunksize=128):
         ctr = global_qbx_centers[ictr]
         itgt_start = center_to_target_starts[ctr]
         itgt_end = center_to_target_starts[ctr + 1]
