@@ -11,32 +11,47 @@ from libc.stdio cimport printf
 cimport openmp
 
 
-cdef double legendre(double x, int n, double[] coeffs) nogil:
-    """Evaluate the Legendre series of order n at x.
+cdef void legvals(double x, int n, double[] vals, double[] derivs) nogil:
+    """Compute the values of the Legendre polynomial up to order n at x.
+    Optionally, if derivs is non-NULL, compute the values of the derivative too.
 
-    Taken from SciPy.
+    Borrowed from fmmlib.
     """
     cdef:
-        double c0, c1, tmp
-        int nd, i
+        double pj, derj, pjm2, pjm1, derjm2, derjm1
+        int j
+
+    pjm2 = 1
+    pjm1 = x
+
+    vals[0] = 1
+    if derivs != NULL:
+        derivs[0] = 0
+        derjm2 = 0
+        derjm1 = 1
 
     if n == 0:
-        c0 = coeffs[0]
-        c1 = 0
-    elif n == 1:
-        c0 = coeffs[0]
-        c1 = coeffs[1]
-    else:
-        nd = n + 1
-        c0 = coeffs[n - 1]
-        c1 = coeffs[n]
+        return
 
-        for i in range(3, n + 2):
-            tmp = c0
-            nd = nd - 1
-            c0 = coeffs[1+n-i] - (c1*(nd - 1))/nd
-            c1 = tmp + (c1*x*(2*nd - 1))/nd
-    return c0 + c1*x
+    vals[1] = x
+    if derivs != NULL:
+        derivs[1] = 1
+
+    if n == 1:
+        return
+
+    for j in range(2, n + 1):
+        pj = ( (2*j-1)*x*pjm1-(j-1)*pjm2 ) / j
+        vals[j] = pj
+        pjm2 = pjm1
+        pjm1 = pj
+
+        if derivs != NULL:
+            derj = (2*j-1)*(pjm1+x*derjm1)-(j-1)*derjm2
+            derj = derj / j
+            derivs[j] = derj
+            derjm2 = derjm1
+            derjm1 = derj
 
 
 cdef double dist(double[3] a, double[3] b) nogil:
@@ -44,6 +59,44 @@ cdef double dist(double[3] a, double[3] b) nogil:
             (a[0] - b[0]) * (a[0] - b[0]) +
             (a[1] - b[1]) * (a[1] - b[1]) +
             (a[2] - b[2]) * (a[2] - b[2]))
+
+
+"""
+cdef void tsqbx_grad_from_source(
+        double[3] source,
+        double[3] center,
+        double[3] target,
+        double[3] grad,    
+        int order,
+        double[] tmp) nogil:
+    cdef:
+        int i
+        double result, r, sc_d, tc_d, cos_angle, alpha
+        double *derivs
+
+    derivs = &tmp[order + 1]
+
+    tc_d = dist(target, center)
+    sc_d = dist(source, center)
+
+    alpha = (
+            (target[0] - center[0]) * (source[0] - center[0]) +
+            (target[1] - center[1]) * (source[1] - center[1]) +
+            (target[2] - center[2]) * (source[2] - center[2])
+
+    cos_angle = alpha / (tc_d * sc_d)
+
+    legvals(cos_angle, order, tmp, derivs)
+
+    result = 0
+    r = 1 / sc_d
+
+    for i in range(0, order + 1):
+        result = result + tmp[i] * r
+        r = r * (tc_d / sc_d)
+
+    return result
+"""
 
 
 cdef double tsqbx_from_source(
@@ -54,16 +107,10 @@ cdef double tsqbx_from_source(
         double[] tmp) nogil:
     cdef:
         int i
-        double r, sc_d, tc_d
-        double cos_angle
+        double result, r, sc_d, tc_d, cos_angle
 
     tc_d = dist(target, center)
     sc_d = dist(source, center)
-    r = tc_d / sc_d
-    tmp[0] = 1 / sc_d
-
-    for i in range(1, order + 1):
-        tmp[i] = tmp[i - 1] * r
 
     cos_angle = ((
             (target[0] - center[0]) * (source[0] - center[0]) +
@@ -71,7 +118,16 @@ cdef double tsqbx_from_source(
             (target[2] - center[2]) * (source[2] - center[2]))
             / (tc_d * sc_d))
 
-    return legendre(cos_angle, order, tmp)
+    legvals(cos_angle, order, tmp, NULL)
+
+    result = 0
+    r = 1 / sc_d
+
+    for i in range(0, order + 1):
+        result = result + tmp[i] * r
+        r = r * (tc_d / sc_d)
+
+    return result
 
 
 def eval_target_specific_global_qbx_locals(

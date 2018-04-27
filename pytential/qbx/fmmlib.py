@@ -56,13 +56,13 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
             qbx_order, fmm_level_to_order,
             source_extra_kwargs={},
             kernel_extra_kwargs=None,
-            _use_tsqbx_list1=False):
+            _use_target_specific_list1=False):
 
         return QBXFMMLibExpansionWrangler(self, queue, geo_data, dtype,
                 qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
                 kernel_extra_kwargs,
-                _use_tsqbx_list1)
+                _use_target_specific_list1)
 
 # }}}
 
