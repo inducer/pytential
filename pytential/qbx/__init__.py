@@ -199,6 +199,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansion_stick_out_factor=_not_provided,
             _tree_kind=None,
             geometry_data_inspector=None,
+            fmm_backend=None,
 
             debug=_not_provided,
             _refined_for_global_qbx=_not_provided,
@@ -279,7 +280,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _tree_kind=_tree_kind or self._tree_kind,
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
-                fmm_backend=self.fmm_backend,
+                fmm_backend=fmm_backend or self.fmm_backend,
                 **kwargs)
 
     # }}}
