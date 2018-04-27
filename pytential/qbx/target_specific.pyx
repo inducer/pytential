@@ -6,6 +6,8 @@ import cython
 import cython.parallel
 
 from libc.math cimport sqrt
+from libc.stdio cimport printf
+
 cimport openmp
 
 
@@ -17,7 +19,7 @@ cdef double legendre(double x, int n, double[] coeffs) nogil:
     cdef:
         double c0, c1, tmp
         int nd, i
-        
+
     if n == 0:
         c0 = coeffs[0]
         c1 = 0
@@ -28,12 +30,12 @@ cdef double legendre(double x, int n, double[] coeffs) nogil:
         nd = n + 1
         c0 = coeffs[n - 1]
         c1 = coeffs[n]
-        
+
         for i in range(3, n + 2):
             tmp = c0
             nd = nd - 1
             c0 = coeffs[1+n-i] - (c1*(nd - 1))/nd
-            c1 = tmp + (c1*x*(2*nd - 1))/n
+            c1 = tmp + (c1*x*(2*nd - 1))/nd
     return c0 + c1*x
 
 
@@ -57,8 +59,8 @@ cdef double tsqbx_from_source(
 
     tc_d = dist(target, center)
     sc_d = dist(source, center)
-    r = sc_d / tc_d
-    tmp[0] = 1 / tc_d
+    r = tc_d / sc_d
+    tmp[0] = 1 / sc_d
 
     for i in range(1, order + 1):
         tmp[i] = tmp[i - 1] * r
@@ -72,67 +74,72 @@ cdef double tsqbx_from_source(
     return legendre(cos_angle, order, tmp)
 
 
-def form_target_specific_qbx_contributions(
+def eval_target_specific_global_qbx_locals(
+        int order,
         double[:,:] sources,
         double[:,:] targets,
-        double[:,:] global_qbx_centers,
-        int[:] target_to_center,
-        int order,
+        double[:,:] centers,
+        int[:] global_qbx_centers,
         int[:] qbx_center_to_target_box,
+        int[:] center_to_target_starts, int[:] center_to_target_lists,
         int[:] source_box_starts, int[:] source_box_lists,
         int[:] box_source_starts, int[:] box_source_counts_nonchild,
-        double[:] source_weights,
-        double[:] pot):
+        double[:] src_weights,
+        double complex[:] pot):
 
     cdef:
-        int itgt, icenter
+        int tgt, ictr, ctr
+        int itgt, itgt_start, itgt_end
         int tgt_box, src_ibox
         int isrc_box, isrc_box_start, isrc_box_end
         int isrc, isrc_start, isrc_end
         int i, tid
-        double result	
+        double result
         double[:,:] source, center, target, tmp
 
     # Yucky thread-local hack
     maxthreads = openmp.omp_get_max_threads()
 
-    source = np.zeros((maxthreads, 3))
-    target = np.zeros((maxthreads, 3))
-    center = np.zeros((maxthreads, 3))
-    tmp = np.zeros((maxthreads, 256))
+    source = np.zeros((1 + maxthreads, 3))
+    target = np.zeros((1 + maxthreads, 3))
+    center = np.zeros((1 + maxthreads, 3))
+    tmp = np.zeros((1 + maxthreads, 256))
 
     # TODO: Check if order > 256
 
-    for itgt in cython.parallel.prange(0, targets.shape[1], nogil=True,
-                                       schedule="dynamic", chunksize=10):
-        icenter = target_to_center[itgt]
-        if icenter == -1:
-            continue
-
-        result = 0
-
-        tgt_box = qbx_center_to_target_box[icenter]
-
+    for ictr in cython.parallel.prange(0, global_qbx_centers.shape[0],
+                                       nogil=True, schedule="dynamic",
+                                       chunksize=10):
+        ctr = global_qbx_centers[ictr]
+        itgt_start = center_to_target_starts[ctr]
+        itgt_end = center_to_target_starts[ctr + 1]
+        tgt_box = qbx_center_to_target_box[ctr]
         tid = cython.parallel.threadid()
 
         for i in range(3):
-            target[tid, i] = targets[itgt, i]
-            center[tid, i] = global_qbx_centers[icenter, i]
+            center[tid, i] = centers[i, ctr]
 
-        isrc_box_start = source_box_starts[tgt_box]
-        isrc_box_end = source_box_starts[tgt_box + 1]
+        for itgt in range(itgt_start, itgt_end):
+            result = 0
+            tgt = center_to_target_lists[itgt]
 
-        for isrc_box in range(isrc_box_start, isrc_box_end):
-            src_ibox = source_box_lists[isrc_box]
-            isrc_start = box_source_starts[src_ibox]
-            isrc_end = isrc_start + box_source_counts_nonchild[src_ibox]
+            for i in range(3):
+                target[tid, i] = targets[i, tgt]
 
-            for isrc in range(isrc_start, isrc_end):
-                for i in range(3):
-                    source[tid, i] = sources[i, isrc]
-                    
-                result = result + source_weights[isrc] * (
-                    tsqbx_from_source(&source[tid, 0], &center[tid, 0],
-                                      &target[tid, 0], order, &tmp[tid, 0]))
+            isrc_box_start = source_box_starts[tgt_box]
+            isrc_box_end = source_box_starts[tgt_box + 1]
 
-        pot[itgt] = pot[itgt] + result
+            for isrc_box in range(isrc_box_start, isrc_box_end):
+                src_ibox = source_box_lists[isrc_box]
+                isrc_start = box_source_starts[src_ibox]
+                isrc_end = isrc_start + box_source_counts_nonchild[src_ibox]
+
+                for isrc in range(isrc_start, isrc_end):
+                    for i in range(3):
+                        source[tid, i] = sources[i, isrc]
+
+                    result = result + src_weights[isrc] * (
+                        tsqbx_from_source(&source[tid, 0], &center[tid, 0],
+                                          &target[tid, 0], order, &tmp[tid, 0]))
+
+            pot[tgt] = pot[tgt] + result

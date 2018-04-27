@@ -90,12 +90,14 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
     def get_wrangler(self, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs={},
-            kernel_extra_kwargs=None):
+            kernel_extra_kwargs=None,
+            _use_target_specific_list1=False):
         return QBXExpansionWrangler(self, queue, geo_data,
                 dtype,
                 qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
-                kernel_extra_kwargs)
+                kernel_extra_kwargs,
+                _use_target_specific_list1)
 
 
 class QBXExpansionWrangler(SumpyExpansionWrangler):
@@ -119,7 +121,11 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     def __init__(self, code_container, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
-            source_extra_kwargs, kernel_extra_kwargs):
+            source_extra_kwargs, kernel_extra_kwargs,
+            _use_target_specific_list1=False):
+        if _use_target_specific_list1:
+            raise NotImplementedError("Cannot use TSQBX with sumpy yet")
+
         SumpyExpansionWrangler.__init__(self,
                 code_container, queue, geo_data.tree(),
                 dtype, fmm_level_to_order, source_extra_kwargs, kernel_extra_kwargs)
@@ -358,6 +364,11 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         return pot
 
+    @log_process(logger)
+    def eval_target_specific_global_qbx_locals(self, src_weights):
+        # Not implemented
+        pass
+
     # }}}
 
 # }}}
@@ -489,6 +500,9 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     qbx_potentials = wrangler.eval_qbx_expansions(
             qbx_expansions)
+
+    qbx_potentials = qbx_potentials + \
+            wrangler.eval_target_specific_global_qbx_locals(src_weights)
 
     # }}}
 

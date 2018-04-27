@@ -103,7 +103,7 @@ setup(name="pytential",
 
       packages=find_packages(),
 
-      ext_modules = cythonize(ext_modules),
+      ext_modules = cythonize(ext_modules)
 
       install_requires=[
           "pytest>=2.3",

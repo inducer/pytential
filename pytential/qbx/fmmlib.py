@@ -28,6 +28,7 @@ import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
 from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+import pytential.qbx.target_specific as target_specific
 
 
 from pytools import log_process
@@ -54,12 +55,14 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
     def get_wrangler(self, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs={},
-            kernel_extra_kwargs=None):
+            kernel_extra_kwargs=None,
+            _use_tsqbx_list1=False):
 
         return QBXFMMLibExpansionWrangler(self, queue, geo_data, dtype,
                 qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
-                kernel_extra_kwargs)
+                kernel_extra_kwargs,
+                _use_tsqbx_list1)
 
 # }}}
 
@@ -128,10 +131,12 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     def __init__(self, code, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs,
-            kernel_extra_kwargs):
+            kernel_extra_kwargs,
+            _use_target_specific_list1=False):
 
         self.code = code
         self.queue = queue
+        self._use_target_specific_list1 = _use_target_specific_list1
 
         # FMMLib is CPU-only. This wrapper gets the geometry out of
         # OpenCL-land.
@@ -275,6 +280,13 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 raise ValueError("element '%s' of outputs array not "
                         "understood" % out)
 
+    @memoize_method
+    def _get_single_centers_array(self):
+        return np.array([
+            self.geo_data.centers()[idim]
+            for idim in range(self.dim)
+            ], order="F")
+
     # }}}
 
     # {{{ override target lists to only hit non-QBX targets
@@ -302,6 +314,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
     @log_process(logger)
     def form_global_qbx_locals(self, src_weights):
+        if self._use_target_specific_list1:
+            return self.qbx_local_expansion_zeros()
+
         geo_data = self.geo_data
         trav = geo_data.traversal()
 
@@ -556,6 +571,38 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 self.add_potgrad_onto_output(output, center_itgt, pot, grad)
 
         return output
+
+    @log_process(logger)
+    def eval_target_specific_global_qbx_locals(self, src_weights):
+        if not self._use_target_specific_list1:
+            return self.full_output_zeros()
+
+        pot = self.full_output_zeros()
+        geo_data = self.geo_data
+        trav = geo_data.traversal()
+
+        ctt = geo_data.center_to_tree_targets()
+
+        # TODO: assert this is the Laplace single or double layer kernel
+
+        for output in pot:
+            target_specific.eval_target_specific_global_qbx_locals(
+                    order=self.qbx_order,
+                    sources=self._get_single_sources_array(),
+                    targets=geo_data.all_targets(),
+                    centers=self._get_single_centers_array(),
+                    global_qbx_centers=geo_data.global_qbx_centers(),
+                    qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+                    center_to_target_starts=ctt.starts,
+                    center_to_target_lists=ctt.lists,
+                    source_box_starts=trav.neighbor_source_boxes_starts,
+                    source_box_lists=trav.neighbor_source_boxes_lists,
+                    box_source_starts=self.tree.box_source_starts,
+                    box_source_counts_nonchild=self.tree.box_source_counts_nonchild,
+                    src_weights=src_weights,
+                    pot=output)
+
+        return pot
 
     def finalize_potentials(self, potential):
         potential = super(QBXFMMLibExpansionWrangler, self).finalize_potentials(
