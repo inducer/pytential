@@ -191,7 +191,7 @@ class ElliptiPlaneTestCase(MaxwellTestCase):
 
 tc_int = SphereTestCase(k=1.2, is_interior=True, resolutions=[0, 1],
         qbx_order=3, fmm_tolerance=1e-4)
-tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0, 1, 2],
+tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0, 1],
         qbx_order=3, fmm_tolerance=1e-4)
 
 tc_rc_ext = RoundedCubeTestCase(k=6.4, is_interior=False, resolutions=[0.1],
@@ -391,8 +391,8 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
             from pytential.solve import gmres
 
             subprob_result = gmres(
-                    test_sigma_op.scipy_op(queue, "tau_densities", np.complex128, domains=dpie0.get_subproblem_domain_list(), **knl_kwargs),
-                    test_sigma_rhs, **gmres_settings)
+                    test_tau_op.scipy_op(queue, "tau_densities", np.complex128, domains=dpie0.get_subproblem_domain_list(), **knl_kwargs),
+                    test_tau_rhs, **gmres_settings)
             dummy_tau    = subprob_result.solution
 
             sym_repr0 = dpie.scattered_volume_field(phi_densities,A_densities,tau_densities,target='tgt')

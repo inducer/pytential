@@ -28,6 +28,8 @@ Maxwell's equations
 
 .. automodule:: pytential.symbolic.pde.maxwell
 
+.. automodule:: pytential.symbolic.pde.maxwell.dpie
+
 Internal affairs
 ----------------
 

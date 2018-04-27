@@ -70,12 +70,6 @@ class DPIEOperator:
         self.geometry_list   = geometry_list
         self.nobjs           = len(geometry_list)
 
-        # create the characteristic functions that give a value of
-        # 1 when we are on some surface/valume and a value of 0 otherwise
-        self.char_funcs = sym.make_sym_vector("chi",len(self.geometry_list))
-        for idx in range(0,len(geometry_list)):
-            self.char_funcs[idx] = sym.D(self.kernel, 1, k=self.k,source=self.geometry_list[idx])
-
     def num_distinct_objects(self):
         return self.nobjs
 
@@ -99,7 +93,7 @@ class DPIEOperator:
         for n in range(0,self.nobjs):
 
             # grab nth location identifier
-            location                            = self.geometry_list[n] + "t"
+            location = self.geometry_list[n] + "t"
 
             # assign domain for nth vector density
             domain_list[2*n] = location
@@ -125,10 +119,10 @@ class DPIEOperator:
         for n in range(0,self.nobjs):
 
             # grab nth location identifier
-            location                            = self.geometry_list[n] + "t"
+            location = self.geometry_list[n] + "t"
 
             # assign domain for nth scalar density
-            domain_list[n]                      = location
+            domain_list[n] = location
 
         # return the domain list
         return domain_list
@@ -147,10 +141,10 @@ class DPIEOperator:
         for n in range(0,self.nobjs):
 
             # grab nth location identifier
-            location                            = self.geometry_list[n] + "t"
+            location = self.geometry_list[n] + "t"
 
             # assign domain for nth scalar density
-            domain_list[n]                      = location
+            domain_list[n] = location
 
         # return the domain list
         return domain_list
@@ -253,7 +247,7 @@ class DPIEOperator:
         else:
             return output
 
-    def n_cross_multi(self, density_vec, sources):
+    def n_cross(self, density_vec):
         r"""
         This method is such that an cross(n,a) can operate across vectors
         a and n that are local to a set of disjoint source surfaces. Essentially,
@@ -265,6 +259,9 @@ class DPIEOperator:
         .. math::
             \bar{n} \times \bar{a}) = [ \left(n_1 \times a_1\right), ..., \left(n_m \times a_m \right)]
         """
+
+        # specify the sources to be evaluated at
+        sources = self.geometry_list
 
         # get the shape of density_vec
         (ndim, nobj) = density_vec.shape
@@ -283,7 +280,7 @@ class DPIEOperator:
         # return result from element-wise cross product
         return output
 
-    def n_times_multi(self, density_vec, sources):
+    def n_times(self, density_vec):
         r"""
         This method is such that an :math:`\boldsymbol{n} \rho`, for some normal :math:`\boldsymbol{n}` and
         some scalar :math:`\rho` can be done across normals and scalars that exist on multiple surfaces. Essentially,
@@ -295,6 +292,9 @@ class DPIEOperator:
         .. math::
             \bar{n}\bar{\rho} = [ \left(\boldsymbol{n}_1 \rho_1\right), ..., \left(\boldsymbol{n}_m \rho_m \right)]
         """
+
+        # specify the sources to be evaluated at
+        sources = self.geometry_list
 
         # get the shape of density_vec
         (ndim, nobj) = density_vec.shape
@@ -313,33 +313,49 @@ class DPIEOperator:
         # return result from element-wise cross product
         return output
 
-    def n_cross(self, density_vec, where=None):
-        r"""
-        This method is so, given a single surface identifier, we can compute the cross product of a normal
-        on this surface for a set of vectors represented as columns of some matrix
-        :math:`\bar{a} = [a_1, a_2, \cdots, a_m]`. The goal, then, is to perform the following, given 
-        some normal :math:`\hat{n}`:
+    def _extract_phi_densities(self,phi_densities):
+        return (phi_densities[:self.nobjs],phi_densities[:self.nobjs].reshape((1,self.nobjs)),phi_densities[self.nobjs:])
 
-        .. math::
-            \hat{n} \times \bar{a}) = [ \left(\hat{n} \times a_1\right), ..., \left(\hat{n} \times a_m \right)]
-        """
+    def _extract_tau_densities(self,tau_densities):
+        return (tau_densities,tau_densities.reshape((1,self.nobjs)))
 
-        # get the shape of density_vec
-        (ndim, nobj) = density_vec.shape
+    def _extract_a_densities(self,A_densities):
+        a0 = A_densities[:(2*self.nobjs)]
+        a = np.zeros((3,self.nobjs),dtype=self.stype)
+        rho0 = A_densities[(2*self.nobjs):(3*self.nobjs)]
+        rho = rho0.reshape((1,self.nobjs))
+        v = A_densities[(3*self.nobjs):]
+        for n in range(0,self.nobjs):
+            a[:,n] = sym.tangential_to_xyz(a0[2*n:2*(n+1)],where=self.geometry_list[n])
+        return (a0, a, rho0, rho, v)
 
-        # assert that the ndim value is 1
-        assert ndim == 3
+    def _L(self, a, rho, where):
+        return sym.join_fields(
+            sym.n_cross(self.S(a,where),where=where) - self.k * sym.n_cross(self.S(self.n_times(rho),where),where=where),
+            self.D(rho,where))
 
-        # init output symbolic quantity with zeros
-        output = np.zeros(density_vec.shape, dtype=self.stype)
+    def _R(self, a, rho):
+        return sym.join_fields(
+            self.k* sym.n_cross(self.S(self.n_cross(a),where),where=where) + sym.n_cross(sym.grad(ambient_dim=3,operand=self.S(rho,where)),where=where),
+            sym.div(self.S(self.n_cross(a),where)) - self.k * self.S(rho,target=where)
+            )
 
-        # loop through the density and sources to construct the appropriate
-        # element-wise cross product operation
-        for k in range(0,nobj):
-            output[:,k] = sym.n_cross(density_vec[:,k],where=where)
+    def _scaledDPIEs_integral(self, sigma, sigma_n, where):
+        return sym.integral(
+            ambient_dim=3,
+            dim=2,
+            operand=(self.Dp(sigma,target=where)/self.k + 1j*0.5*sigma_n - 1j*self.Sp(sigma,target=where)),
+            where=obj_n)
 
-        # return result from element-wise cross product
-        return output
+    def _scaledDPIEv_integral(self, a, rho, rho_n, where):
+        return sym.integral(
+            ambient_dim=3,
+            dim=2,
+            operand=(
+                sym.n_dot(sym.curl(self.S(a,target=where)),where=where) - self.k*sym.n_dot(self.S(self.n_times(rho),target=where),where=where) \
+                + 1j*(self.k*sym.n_dot(self.S(self.n_cross(a),target=where),where=where) - 0.5*rho_n + self.Sp(rho,target=where))
+            ),
+            where=where)
 
 
     def phi_operator(self, phi_densities):
@@ -348,11 +364,7 @@ class DPIEOperator:
         """
 
         # extract the densities needed to solve the system of equations
-        sigma   = phi_densities[:self.nobjs]
-        sigma_m = sigma.reshape((1,self.nobjs))
-
-        # extract the scalar quantities, { V_j }, that remove the nullspace
-        V = phi_densities[self.nobjs:]
+        (sigma0,sigma,V) = self._extract_phi_densities(phi_densities)
 
         # init output matvec vector for the phi density IE
         output = np.zeros((2*self.nobjs,), dtype=self.stype)
@@ -364,12 +376,10 @@ class DPIEOperator:
             obj_n = self.geometry_list[n]
 
             # setup IE for evaluation over the nth disjoint object's surface
-            output[n] = 0.5*sigma[n] + self.D(sigma_m,obj_n) - 1j*self.k*self.S(sigma_m,obj_n) - V[n]
+            output[n] = 0.5*sigma0[n] + self.D(sigma,obj_n) - 1j*self.k*self.S(sigma,obj_n) - V[n]
 
             # setup equation that integrates some integral operators over the nth surface
-            output[self.nobjs + n] = sym.integral(ambient_dim=3,dim=2,
-                operand=(self.Dp(sigma_m,target=obj_n)/self.k + 1j*sigma[n]/2.0 - 1j*self.Sp(sigma_m,target=obj_n)),\
-                where=obj_n)
+            output[self.nobjs + n] = self._scaledDPIEs_integral(sigma,sigma[0,n],where=obj_n)
 
         # return the resulting system of IE
         return output
@@ -400,13 +410,7 @@ class DPIEOperator:
         """
 
         # extract the densities needed to solve the system of equations
-        a_loc   = A_densities[:(2*self.nobjs)]
-        a       = np.zeros((3,self.nobjs),dtype=self.stype)
-        rho     = A_densities[(2*self.nobjs):(3*self.nobjs)]
-        rho_m   = rho.reshape((1,self.nobjs))
-        v       = A_densities[(3*self.nobjs):]
-        for n in range(0,self.nobjs):
-            a[:,n] = sym.tangential_to_xyz(a_loc[2*n:2*(n+1)],where=self.geometry_list[n])
+        (a0, a, rho0, rho, v) = self._extract_a_densities(A_densities)
 
         # init output matvec vector for the phi density IE
         output = np.zeros((4*self.nobjs,), dtype=self.stype)
@@ -417,30 +421,20 @@ class DPIEOperator:
             # get the nth target geometry to have IE solved across
             obj_n = self.geometry_list[n]
 
+            # Compute two IE Operators on a and rho densities
+            L = self._L(a, rho, obj_n)
+            R = self._R(a, rho, obj_n)
+
             # generate the set of equations for the vector densities, a, coupled
             # across the various geometries involved
-            output[2*n:2*(n+1)] = xyz_to_tangential((0.5*a[:,n] + sym.n_cross(self.S(a,obj_n),where=obj_n) \
-                                             + -self.k * sym.n_cross(self.S(self.n_times_multi(rho_m,self.geometry_list),obj_n),where=obj_n) \
-                                             + 1j*( self.k* sym.n_cross(self.S(self.n_cross_multi(a,self.geometry_list),obj_n),where=obj_n) + \
-                                                    sym.n_cross(sym.grad(ambient_dim=3,operand=self.S(rho_m,obj_n)),where=obj_n)
-                                                )), where=obj_n)
+            output[2*n:2*(n+1)] = xyz_to_tangential(0.5*a[:,n] + L[:3] + 1j*R[:3], where=obj_n)
 
             # generate the set of equations for the scalar densities, rho, coupled
             # across the various geometries involved
-            output[(2*self.nobjs + n)] = 0.5*rho[n] + self.D(rho_m,obj_n) \
-                                            + 1j*(  sym.div(self.S(self.n_cross_multi(a,self.geometry_list),obj_n)) \
-                                                    -self.k*self.S(rho_m,target=obj_n)
-                                                )\
-                                            + v[n]
+            output[(2*self.nobjs + n)] = 0.5*rho[0,n] + L[-1] + 1j*R[-1] + v[n]
 
             # add the equation that integrates everything out into some constant
-            output[3*self.nobjs + n] = sym.integral(ambient_dim=3,dim=2,\
-                operand=(sym.n_dot(sym.curl(self.S(a,target=obj_n)),where=obj_n) - self.k*sym.n_dot(self.S(self.n_times_multi(rho_m,self.geometry_list),target=obj_n),where=obj_n) + \
-                    1j*(self.k*sym.n_dot(self.S(self.n_cross_multi(a,self.geometry_list),target=obj_n),where=obj_n) - 0.5*rho[n] + self.Sp(rho_m,target=obj_n))),\
-                where=obj_n)
-
-        # print something to help with debugging
-        #print(sym.pretty(output))
+            output[3*self.nobjs + n] = self._scaledDPIEv_integral(a, rho, rho[0,n], where=obj_n)
 
         # return output equations
         return output
@@ -455,12 +449,13 @@ class DPIEOperator:
         h = np.zeros((self.nobjs,), dtype=self.stype)
         f = np.zeros((2*self.nobjs,), dtype=self.stype)
         for i in range(0,self.nobjs):
-            q[i] = -sym.integral(3,2,sym.n_dot(A_inc[3*i:3*(i+1)],where=self.geometry_list[i]),where=self.geometry_list[i])
+            obj_n = self.geometry_list[n]
+            q[i] = -sym.integral(3,2,sym.n_dot(A_inc[3*i:3*(i+1)],where=obj_n),where=obj_n)
             h[i] = -divA_inc[i]/self.k
-            f[2*i:2*(i+1)] = xyz_to_tangential(-sym.n_cross(A_inc[3*i:3*(i+1)],where=self.geometry_list[i]),where=self.geometry_list[i])
+            f[2*i:2*(i+1)] = xyz_to_tangential(-sym.n_cross(A_inc[3*i:3*(i+1)],where=obj_n),where=obj_n)
 
         # define RHS for `A` integral equation system
-        return sym.join_fields( f, h, q)
+        return sym.join_fields( f, h, q )
 
     def subproblem_operator(self, tau_densities, alpha = 1j):
         """
@@ -468,8 +463,7 @@ class DPIEOperator:
         """
 
         # extract the densities from the sub problem solution
-        tau   = tau_densities[:self.nobjs]
-        tau_m = tau.reshape((1,self.nobjs))
+        (tau0, tau) = self._extract_tau_densities(tau_densities)
 
         # init output matvec vector for the phi density IE
         output = np.zeros((self.nobjs,), dtype=self.stype)
@@ -481,7 +475,7 @@ class DPIEOperator:
             obj_n = self.geometry_list[n]
 
             # setup IE for evaluation over the nth disjoint object's surface
-            output[n] = 0.5*tau[n] + self.D(tau_m,obj_n) - alpha*self.S(tau_m,obj_n)
+            output[n] = 0.5*tau0[n] + self.D(tau,obj_n) - alpha*self.S(tau,obj_n)
 
         # return the resulting system of IE
         return output
@@ -491,12 +485,7 @@ class DPIEOperator:
         Integral Equation RHS for obtaining sub problem solution
         """
         # extract the densities needed to solve the system of equations
-        a_loc   = A_densities[:(2*self.nobjs)]
-        a       = np.zeros((3,self.nobjs),dtype=self.stype)
-        rho     = A_densities[(2*self.nobjs):(3*self.nobjs)]
-        rho_m   = rho.reshape((1,self.nobjs))
-        for n in range(0,self.nobjs):
-            a[:,n] = sym.tangential_to_xyz(a_loc[2*n:2*(n+1)],where=self.geometry_list[n])
+        (a0, a, rho0, rho, v) = self._extract_a_densities(A_densities)
 
         # init output matvec vector for the phi density IE
         output = np.zeros((self.nobjs,), dtype=self.stype)
@@ -508,7 +497,7 @@ class DPIEOperator:
             obj_n = self.geometry_list[n]
 
             # setup IE for evaluation over the nth disjoint object's surface
-            output[n] = sym.div(self.S(a,target=obj_n))
+            output[n] = sym.div(self.S(a,target=obj_n,qfl=+1))
 
         # return the resulting system of IE
         return output
@@ -521,42 +510,35 @@ class DPIEOperator:
         """
 
         # extract the densities needed to solve the system of equations
-        sigma   = phi_densities[:self.nobjs]
-        sigma_m = sigma.reshape((1,self.nobjs))
+        (sigma0,sigma,V) = self._extract_phi_densities(phi_densities)
 
         # evaluate scalar potential representation
-        return self.D(sigma_m,target,qfl=None) - 1j*self.k*self.S(sigma_m,target,qfl=None)
+        return self.D(sigma,target,qfl=None) - 1j*self.k*self.S(sigma,target,qfl=None)
 
-    def vector_potential_rep(self, A_densities, target=None):
+    def vector_potential_rep(self, A_densities, target=None, qfl=None):
         """
         This method is a representation of the vector potential, phi,
         based on the vector density `a` and scalar density `rho`
         """
 
         # extract the densities from the main IE solution
-        a_loc   = A_densities[:(2*self.nobjs)]
-        a       = np.zeros((3,self.nobjs),dtype=self.stype)
-        rho     = A_densities[(2*self.nobjs):(3*self.nobjs)]
-        rho_m   = rho.reshape((1,self.nobjs))
-        for n in range(0,self.nobjs):
-            a[:,n] = sym.tangential_to_xyz(a_loc[2*n:2*(n+1)],where=self.geometry_list[n])
+        (a0, a, rho0, rho, v) = self._extract_a_densities(A_densities)
 
         # define the vector potential representation
-        return sym.curl(self.S(a,target,qfl=None)) - self.k*self.S(self.n_times_multi(rho_m,self.geometry_list),target,qfl=None) \
-                + 1j*(self.k*self.S(self.n_cross_multi(a,self.geometry_list),target,qfl=None) + sym.grad(3,self.S(rho_m,target,qfl=None)))
+        return sym.curl(self.S(a,target,qfl=qfl)) - self.k*self.S(self.n_times(rho),target,qfl=qfl) \
+        + 1j*(self.k*self.S(self.n_cross(a),target,qfl=qfl) + sym.grad(3,self.S(rho,target,qfl=qfl)))
 
-    def subproblem_rep(self, tau_densities, target=None, alpha = 1j):
+    def subproblem_rep(self, tau_densities, target=None, alpha = 1j, qfl=None):
         """
         This method is a representation of the scalar potential, phi,
         based on the density `sigma`.
         """
 
         # extract the densities needed to solve the system of equations
-        tau   = tau_densities[:self.nobjs]
-        tau_m = tau.reshape((1,self.nobjs))
+        (tau0, tau) = self._extract_tau_densities(tau_densities)
 
         # evaluate scalar potential representation
-        return self.D(tau_m,target,qfl=None) - alpha*self.S(tau_m,target,qfl=None)
+        return self.D(tau,target,qfl=qfl) - alpha*self.S(tau,target,qfl=qfl)
 
     def scattered_volume_field(self, phi_densities, A_densities, tau_densities, target=None, alpha=1j):
         """
@@ -569,32 +551,22 @@ class DPIEOperator:
         as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
         """
 
-        # extract the densities needed to solve the system of equations
-        sigma   = phi_densities[:self.nobjs]
-        sigma_m = sigma.reshape((1,self.nobjs))
-
-        # extract the densities needed to solve the system of equations
-        a_loc   = A_densities[:(2*self.nobjs)]
-        a       = np.zeros((3,self.nobjs),dtype=self.stype)
-        rho     = A_densities[(2*self.nobjs):(3*self.nobjs)]
-        rho_m   = rho.reshape((1,self.nobjs))
-        for n in range(0,self.nobjs):
-            a[:,n] = sym.tangential_to_xyz(a_loc[2*n:2*(n+1)],where=self.geometry_list[n])
-
-        # extract the densities from the sub problem solution
-        tau   = tau_densities[:self.nobjs]
-        tau_m = tau.reshape((1,self.nobjs))
+        # extract the densities needed
+        (a0, a, rho0, rho, v) = self._extract_a_densities(A_densities)
+        (sigma0,sigma, V) = self._extract_phi_densities(phi_densities)
+        (tau0, tau) = self._extract_tau_densities(tau_densities)
 
         # obtain expressions for scalar and vector potentials
         A   = self.vector_potential_rep(A_densities, target=target)
         phi = self.scalar_potential_rep(phi_densities, target=target)
 
         # evaluate the potential form for the electric and magnetic fields
-        E_scat = 1j*self.k*A - sym.grad(3, self.D(sigma_m,target,qfl=None)) + 1j*self.k*sym.grad(3, self.S(sigma_m,target,qfl=None))
-        H_scat = sym.grad(ambient_dim=3,operand=(self.D(tau_m,target,qfl=None) - alpha*self.S(tau_m,target,qfl=None))) \
-                 + self.k*self.k*self.S(a,target,qfl=None) \
-                 - self.k*sym.curl(self.S(self.n_times_multi(rho_m,self.geometry_list),target,qfl=None)) \
-                 + 1j*self.k*sym.curl(self.S(self.n_cross_multi(a,self.geometry_list),target,qfl=None))
+        E_scat = 1j*self.k*A - sym.grad(3, self.D(sigma,target,qfl=None)) + 1j*self.k*sym.grad(3, self.S(sigma,target,qfl=None))
+        H_scat = sym.grad(3,operand=(self.D(tau,target,qfl=None) - alpha*self.S(tau,target,qfl=None))) \
+            + (self.k**2) * self.S(a,target,qfl=None) \
+            - self.k * sym.curl(self.S(self.n_times(rho),target,qfl=None)) \
+            + 1j*self.k*sym.curl(self.S(self.n_cross(a),target,qfl=None))
+                
 
         # join the fields into a vector
         return sym.join_fields(E_scat, H_scat)
