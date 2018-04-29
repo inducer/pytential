@@ -525,6 +525,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
 def assemble_performance_data(geo_data, uses_pde_expansions,
         translation_source_power=None, translation_target_power=None,
+        translation_max_power=None,
         summarize_parallel=None, merge_close_lists=True):
     """
     :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
@@ -573,10 +574,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         if d == 2:
             default_translation_source_power = 1
             default_translation_target_power = 1
+            default_translation_max_power = 0
 
         elif d == 3:
-            default_translation_source_power = 2
-            default_translation_target_power = 1
+            # Based on a reading of FMMlib, i.e. a point-and-shoot FMM.
+            default_translation_source_power = 0
+            default_translation_target_power = 0
+            default_translation_max_power = 3
 
         else:
             raise ValueError("Don't know how to estimate expansion complexities "
@@ -592,11 +596,16 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         translation_source_power = default_translation_source_power
     if translation_target_power is None:
         translation_target_power = default_translation_target_power
+    if translation_max_power is None:
+        translation_max_power = default_translation_max_power
 
     def xlat_cost(p_source, p_target):
+        from pymbolic.primitives import Max
         return (
                 p_source ** translation_source_power
-                * p_target ** translation_target_power)
+                * p_target ** translation_target_power
+                * Max((p_source, p_target)) ** translation_max_power
+                )
 
     result.update(
             nlevels=tree.nlevels,
@@ -759,11 +768,15 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     # {{{ form global qbx locals
 
     global_qbx_centers = geo_data.global_qbx_centers()
+
+    # If merge_close_lists is False above, then this builds another traversal
+    # (which is OK).
     qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
     center_to_targets_starts = geo_data.center_to_tree_targets().starts
     qbx_center_to_target_box_source_level = np.empty(
         (tree.nlevels,), dtype=object
     )
+
     for src_level in range(tree.nlevels):
         qbx_center_to_target_box_source_level[src_level] = (
             geo_data.qbx_center_to_target_box_source_level(src_level)
