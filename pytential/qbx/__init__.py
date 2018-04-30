@@ -78,7 +78,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.5,
             _well_sep_is_n_away=2,
-            _max_leaf_refine_weight=32,
+            _max_leaf_refine_weight=None,
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
@@ -138,6 +138,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             else:
                 def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
+
+        if _max_leaf_refine_weight is None:
+            if density_discr.ambient_dim == 2:
+                _max_leaf_refine_weight = 64
+            elif density_discr.ambient_dim == 3:
+                _max_leaf_refine_weight = 128
+            else:
+                # Just guessing...
+                _max_leaf_refine_weight = 64
 
         if _from_sep_smaller_min_nsources_cumul is None:
             # See here for the comment thread that led to these defaults:
