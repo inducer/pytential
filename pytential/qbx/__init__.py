@@ -202,6 +202,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _tree_kind=None,
             _use_tsqbx_list1=_not_provided,
             geometry_data_inspector=None,
+            fmm_backend=None,
 
             debug=_not_provided,
             _refined_for_global_qbx=_not_provided,
@@ -284,7 +285,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     else self._use_tsqbx_list1,
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
-                fmm_backend=self.fmm_backend,
+                fmm_backend=fmm_backend or self.fmm_backend,
                 **kwargs)
 
     # }}}

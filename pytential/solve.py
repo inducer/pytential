@@ -169,7 +169,6 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
 
     norm_b = norm(b)
     last_resid_norm = None
-    stall_count = 0
     residual_norms = []
 
     for iteration in range(maxiter):
@@ -209,21 +208,20 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
                 else:
                     print("*** WARNING: non-monotonic residuals in GMRES")
 
-            if stall_iterations and \
-                    norm_r > last_resid_norm/no_progress_factor:
-                stall_count += 1
+            if (stall_iterations and
+                    len(residual_norms) > stall_iterations and
+                    norm_r > (
+                        residual_norms[-stall_iterations]
+                        / no_progress_factor)):
 
-                if stall_count >= stall_iterations:
-                    state = "stalled"
-                    if hard_failure:
-                        raise GMRESError(state)
-                    else:
-                        return GMRESResult(solution=x,
-                                residual_norms=residual_norms,
-                                iteration_count=iteration, success=False,
-                                state=state)
-            else:
-                stall_count = 0
+                state = "stalled"
+                if hard_failure:
+                    raise GMRESError(state)
+                else:
+                    return GMRESResult(solution=x,
+                            residual_norms=residual_norms,
+                            iteration_count=iteration, success=False,
+                            state=state)
 
         last_resid_norm = norm_r
 

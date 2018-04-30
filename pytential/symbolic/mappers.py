@@ -503,6 +503,9 @@ class StringifyMapper(BaseStringifyMapper):
     def map_node_max(self, expr, enclosing_prec):
         return "NodeMax(%s)" % self.rec(expr.operand, PREC_NONE)
 
+    def map_node_sum(self, expr, enclosing_prec):
+        return "NodeSum(%s)" % self.rec(expr.operand, PREC_NONE)
+
     def map_node_coordinate_component(self, expr, enclosing_prec):
         return "x%d.%s" % (expr.ambient_axis,
                 stringify_where(expr.where))
