@@ -207,6 +207,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
             _max_leaf_refine_weight=None,
+            _box_extent_norm=None,
+            _from_sep_smaller_crit=None,
             _tree_kind=None,
             geometry_data_inspector=None,
             fmm_backend=None,
@@ -284,8 +286,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _well_sep_is_n_away=self._well_sep_is_n_away,
                 _max_leaf_refine_weight=(
                     _max_leaf_refine_weight or self._max_leaf_refine_weight),
-                _box_extent_norm=self._box_extent_norm,
-                _from_sep_smaller_crit=self._from_sep_smaller_crit,
+                _box_extent_norm=(_box_extent_norm or self._box_extent_norm),
+                _from_sep_smaller_crit=(
+                    _from_sep_smaller_crit or self._from_sep_smaller_crit),
                 _from_sep_smaller_min_nsources_cumul=(
                     self._from_sep_smaller_min_nsources_cumul),
                 _tree_kind=_tree_kind or self._tree_kind,
