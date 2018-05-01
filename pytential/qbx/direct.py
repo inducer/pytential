@@ -27,11 +27,17 @@ import numpy as np
 
 from sumpy.qbx import LayerPotentialBase
 
+from pytential.version import PYTENTIAL_KERNEL_VERSION
+
 
 # {{{ qbx applier on a target/center subset
 
 class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
     default_name = "qbx_tgt_ctr_subset"
+
+    def get_cache_key(self):
+        return super(LayerPotentialOnTargetAndCenterSubset, self).get_cache_key() + (
+                PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         loopy_insns, result_names = self.get_loopy_insns_and_result_names()
