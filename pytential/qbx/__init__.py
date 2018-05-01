@@ -78,7 +78,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.5,
             _well_sep_is_n_away=2,
-            _max_leaf_refine_weight=32,
+            _max_leaf_refine_weight=None,
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
@@ -139,6 +139,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
 
+        if _max_leaf_refine_weight is None:
+            if density_discr.ambient_dim == 2:
+                _max_leaf_refine_weight = 64
+            elif density_discr.ambient_dim == 3:
+                _max_leaf_refine_weight = 128
+            else:
+                # Just guessing...
+                _max_leaf_refine_weight = 64
+
         if _from_sep_smaller_min_nsources_cumul is None:
             # See here for the comment thread that led to these defaults:
             # https://gitlab.tiker.net/inducer/boxtree/merge_requests/28#note_18661
@@ -197,6 +206,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
+            _max_leaf_refine_weight=None,
             _tree_kind=None,
             geometry_data_inspector=None,
             fmm_backend=None,
@@ -272,7 +282,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     if _expansion_stick_out_factor is not _not_provided
                     else self._expansion_stick_out_factor),
                 _well_sep_is_n_away=self._well_sep_is_n_away,
-                _max_leaf_refine_weight=self._max_leaf_refine_weight,
+                _max_leaf_refine_weight=(
+                    _max_leaf_refine_weight or self._max_leaf_refine_weight),
                 _box_extent_norm=self._box_extent_norm,
                 _from_sep_smaller_crit=self._from_sep_smaller_crit,
                 _from_sep_smaller_min_nsources_cumul=(
