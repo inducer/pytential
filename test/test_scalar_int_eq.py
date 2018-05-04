@@ -36,9 +36,11 @@ from functools import partial
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
+from meshmode.discretization.visualization import make_visualizer
 from sumpy.visualization import FieldPlotter
 from sumpy.symbolic import USE_SYMENGINE
 from pytential import bind, sym
+from pytential.qbx import QBXTargetAssociationFailedException
 
 import logging
 logger = logging.getLogger(__name__)
@@ -349,7 +351,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             pt.show()
 
         elif mesh.ambient_dim == 3:
-            from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
 
             bdry_normals = bind(density_discr, sym.normal(3))(queue)\
@@ -456,13 +457,22 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
 
-    from pytential.solve import gmres
-    gmres_result = gmres(
-            bound_op.scipy_op(queue, "u", dtype, **concrete_knl_kwargs),
-            rhs,
-            tol=case.gmres_tol,
-            progress=True,
-            hard_failure=True)
+    try:
+        from pytential.solve import gmres
+        gmres_result = gmres(
+                bound_op.scipy_op(queue, "u", dtype, **concrete_knl_kwargs),
+                rhs,
+                tol=case.gmres_tol,
+                progress=True,
+                hard_failure=True,
+                stall_iterations=50, no_progress_factor=1.05)
+    except QBXTargetAssociationFailedException as e:
+        bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
+
+        bdry_vis.write_vtk_file("failed-targets-%s.vtu" % resolution, [
+            ("failed_targets", e.failed_target_flags),
+            ])
+        raise
 
     print("gmres state:", gmres_result.state)
     u = gmres_result.solution
@@ -584,10 +594,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     # }}}
 
-    # {{{ 3D plotting
+    # {{{ any-D file plotting
 
-    if visualize and qbx.ambient_dim == 3:
-        from meshmode.discretization.visualization import make_visualizer
+    if visualize:
         bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
 
         bdry_normals = bind(density_discr, sym.normal(qbx.ambient_dim))(queue)\
@@ -607,7 +616,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
         qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
         from pytential.target import PointsTarget
-        from pytential.qbx import QBXTargetAssociationFailedException
 
         try:
             solved_pot = bind(
