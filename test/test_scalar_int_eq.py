@@ -36,9 +36,11 @@ from functools import partial
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
+from meshmode.discretization.visualization import make_visualizer
 from sumpy.visualization import FieldPlotter
 from sumpy.symbolic import USE_SYMENGINE
 from pytential import bind, sym
+from pytential.qbx import QBXTargetAssociationFailedException
 
 import logging
 logger = logging.getLogger(__name__)
@@ -284,7 +286,106 @@ class ElliptiplaneIntEqTestCase(IntEqTestCase):
         return perform_flips(mesh, np.ones(mesh.nelements))
 
     inner_radius = 0.2
-    outer_radius = 12
+    outer_radius = 12  # was '-13' in some large-scale run (?)
+
+
+class BetterplaneIntEqTestCase(IntEqTestCase):
+    name = "betterplane"
+
+    resolutions = [0.3]
+
+    fmm_backend = "fmmlib"
+    use_refinement = True
+
+    qbx_order = 3
+    fmm_tol = 1e-4
+    target_order = 6
+    check_gradient = False
+    check_tangential_deriv = False
+
+    visualize_geometry = True
+
+    #scaled_max_curvature_threshold = 1
+    expansion_disturbance_tolerance = 0.3
+
+    # We're only expecting three digits based on FMM settings. Who are we
+    # kidding?
+    gmres_tol = 1e-5
+
+    def get_mesh(self, resolution, target_order):
+        from pytools import download_from_web_if_not_present
+
+        download_from_web_if_not_present(
+                "https://raw.githubusercontent.com/inducer/geometries/a869fc3/"
+                "surface-3d/betterplane.brep")
+
+        from meshmode.mesh.io import generate_gmsh, ScriptWithFilesSource
+        mesh = generate_gmsh(
+                ScriptWithFilesSource("""
+                    Merge "betterplane.brep";
+
+                    Mesh.CharacteristicLengthMax = %(lcmax)f;
+                    Mesh.ElementOrder = 2;
+                    Mesh.CharacteristicLengthExtendFromBoundary = 0;
+
+                    // 2D mesh optimization
+                    // Mesh.Lloyd = 1;
+
+                    l_superfine() = Unique(Abs(Boundary{ Surface{
+                        27, 25, 17, 13, 18  }; }));
+                    l_fine() = Unique(Abs(Boundary{ Surface{ 2, 6, 7}; }));
+                    l_coarse() = Unique(Abs(Boundary{ Surface{ 14, 16  }; }));
+
+                    // p() = Unique(Abs(Boundary{ Line{l_fine()}; }));
+                    // Characteristic Length{p()} = 0.05;
+
+                    Field[1] = Attractor;
+                    Field[1].NNodesByEdge = 100;
+                    Field[1].EdgesList = {l_superfine()};
+
+                    Field[2] = Threshold;
+                    Field[2].IField = 1;
+                    Field[2].LcMin = 0.075;
+                    Field[2].LcMax = %(lcmax)f;
+                    Field[2].DistMin = 0.1;
+                    Field[2].DistMax = 0.4;
+
+                    Field[3] = Attractor;
+                    Field[3].NNodesByEdge = 100;
+                    Field[3].EdgesList = {l_fine()};
+
+                    Field[4] = Threshold;
+                    Field[4].IField = 3;
+                    Field[4].LcMin = 0.1;
+                    Field[4].LcMax = %(lcmax)f;
+                    Field[4].DistMin = 0.15;
+                    Field[4].DistMax = 0.4;
+
+                    Field[5] = Attractor;
+                    Field[5].NNodesByEdge = 100;
+                    Field[5].EdgesList = {l_coarse()};
+
+                    Field[6] = Threshold;
+                    Field[6].IField = 5;
+                    Field[6].LcMin = 0.15;
+                    Field[6].LcMax = %(lcmax)f;
+                    Field[6].DistMin = 0.2;
+                    Field[6].DistMax = 0.4;
+
+                    Field[7] = Min;
+                    Field[7].FieldsList = {2, 4, 6};
+
+                    Background Field = 7;
+                    """ % {
+                        "lcmax": resolution,
+                        }, ["betterplane.brep"]), 2)
+
+        # Flip elements--gmsh generates inside-out geometry.
+        from meshmode.mesh.processing import perform_flips
+        return perform_flips(mesh, np.ones(mesh.nelements))
+
+    inner_radius = 0.2
+    outer_radius = 15
 
 # }}}
 
@@ -322,18 +423,38 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             qbx_lpot_kwargs["fmm_order"] = case.qbx_order + 5
 
     qbx = QBXLayerPotentialSource(
-            pre_density_discr, fine_order=source_order, qbx_order=case.qbx_order,
+            pre_density_discr,
+            fine_order=source_order,
+            qbx_order=case.qbx_order,
+            _from_sep_smaller_min_nsources_cumul=30,
             fmm_backend=case.fmm_backend, **qbx_lpot_kwargs)
 
     if case.use_refinement:
         if case.k != 0:
             refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
 
+        if hasattr(case, "scaled_max_curvature_threshold"):
+            refiner_extra_kwargs["_scaled_max_curvature_threshold"] = \
+                    case.scaled_max_curvature_threshold
+
+        if hasattr(case, "expansion_disturbance_tolerance"):
+            refiner_extra_kwargs["_expansion_disturbance_tolerance"] = \
+                    case.expansion_disturbance_tolerance
+
+        if hasattr(case, "refinement_maxiter"):
+            refiner_extra_kwargs["maxiter"] = case.refinement_maxiter
+
+        #refiner_extra_kwargs["visualize"] = True
+
         print("%d elements before refinement" % pre_density_discr.mesh.nelements)
         qbx, _ = qbx.with_refinement(**refiner_extra_kwargs)
         print("%d elements after refinement" % qbx.density_discr.mesh.nelements)
 
     density_discr = qbx.density_discr
+
+    if hasattr(case, "visualize_geometry") and case.visualize_geometry:
+        bdry_vis = make_visualizer(queue, density_discr, case.target_order)
+        bdry_vis.write_vtk_file("geometry.vtu", [])
 
     # {{{ plot geometry
 
@@ -349,7 +470,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             pt.show()
 
         elif mesh.ambient_dim == 3:
-            from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
 
             bdry_normals = bind(density_discr, sym.normal(3))(queue)\
@@ -456,13 +576,22 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
 
-    from pytential.solve import gmres
-    gmres_result = gmres(
-            bound_op.scipy_op(queue, "u", dtype, **concrete_knl_kwargs),
-            rhs,
-            tol=case.gmres_tol,
-            progress=True,
-            hard_failure=True)
+    try:
+        from pytential.solve import gmres
+        gmres_result = gmres(
+                bound_op.scipy_op(queue, "u", dtype, **concrete_knl_kwargs),
+                rhs,
+                tol=case.gmres_tol,
+                progress=True,
+                hard_failure=True,
+                stall_iterations=50, no_progress_factor=1.05)
+    except QBXTargetAssociationFailedException as e:
+        bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
+
+        bdry_vis.write_vtk_file("failed-targets-%s.vtu" % resolution, [
+            ("failed_targets", e.failed_target_flags),
+            ])
+        raise
 
     print("gmres state:", gmres_result.state)
     u = gmres_result.solution
@@ -584,10 +713,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     # }}}
 
-    # {{{ 3D plotting
+    # {{{ any-D file plotting
 
-    if visualize and qbx.ambient_dim == 3:
-        from meshmode.discretization.visualization import make_visualizer
+    if visualize:
         bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
 
         bdry_normals = bind(density_discr, sym.normal(qbx.ambient_dim))(queue)\
@@ -607,7 +735,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
         qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
         from pytential.target import PointsTarget
-        from pytential.qbx import QBXTargetAssociationFailedException
 
         try:
             solved_pot = bind(
@@ -633,7 +760,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                 [
                     ("solved_pot", solved_pot),
                     ("true_pot", true_pot),
-                    ("pot_diff", solved_pot-true_pot),
                     ]
                 )
 
