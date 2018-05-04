@@ -641,7 +641,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                 [
                     ("solved_pot", solved_pot),
                     ("true_pot", true_pot),
-                    ("pot_diff", solved_pot-true_pot),
                     ]
                 )
 
