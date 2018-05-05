@@ -69,6 +69,9 @@ class IntEqTestCase:
         :arg prob_side: may be -1, +1, or ``'scat'`` for a scattering problem
         """
 
+        if helmholtz_k is None:
+            helmholtz_k = self.default_helmholtz_k
+
         self.helmholtz_k = helmholtz_k
         self.bc_type = bc_type
         self.prob_side = prob_side
@@ -145,6 +148,7 @@ class EllipsoidIntEqTestCase(Helmholtz3DIntEqTestCase):
         # Flip elements--gmsh generates inside-out geometry.
         return perform_flips(mesh, np.ones(mesh.nelements))
 
+    qbx_order = 5
     fmm_order = 13
 
     inner_radius = 0.4
@@ -253,7 +257,7 @@ class ManyEllipsoidIntEqTestCase(Helmholtz3DIntEqTestCase):
 class ElliptiplaneIntEqTestCase(IntEqTestCase):
     name = "elliptiplane"
 
-    resolutions = [0.2]
+    resolutions = [0.1]
 
     fmm_backend = "fmmlib"
     use_refinement = True
@@ -295,6 +299,7 @@ class ElliptiplaneIntEqTestCase(IntEqTestCase):
 class BetterplaneIntEqTestCase(IntEqTestCase):
     name = "betterplane"
 
+    default_helmholtz_k = 10
     resolutions = [0.3]
 
     fmm_backend = "fmmlib"
@@ -314,6 +319,9 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
     # We're only expecting three digits based on FMM settings. Who are we
     # kidding?
     gmres_tol = 1e-5
+
+    vis_grid_spacing = (0.03, 0.15, 0.03)
+    vis_extend_factor = 0.2
 
     def get_mesh(self, resolution, target_order):
         from pytools import download_from_web_if_not_present
@@ -451,7 +459,10 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
         print("%d elements before refinement" % pre_density_discr.mesh.nelements)
         qbx, _ = qbx.with_refinement(**refiner_extra_kwargs)
-        print("%d elements after refinement" % qbx.density_discr.mesh.nelements)
+        print("%d stage-1 elements after refinement"
+                % qbx.density_discr.mesh.nelements)
+        print("%d stage-2 elements after refinement"
+                % qbx.stage2_density_discr.mesh.nelements)
 
     density_discr = qbx.density_discr
 
@@ -785,7 +796,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         ones_density.fill(1)
         indicator = bind(
                 (qbx_tgt_tol, PointsTarget(fplot.points)),
-                -sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None))(
+                -sym.D(LaplaceKernel(density_discr.ambient_dim),
+                    sym.var("sigma"),
+                    qbx_forced_limit=None))(
                 queue, sigma=ones_density).get()
 
         solved_pot = solved_pot.get()
