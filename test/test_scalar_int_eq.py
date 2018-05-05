@@ -37,7 +37,6 @@ from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
 from meshmode.discretization.visualization import make_visualizer
-from sumpy.visualization import FieldPlotter
 from sumpy.symbolic import USE_SYMENGINE
 from pytential import bind, sym
 from pytential.qbx import QBXTargetAssociationFailedException
@@ -515,7 +514,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     else:
         dtype = np.float64
 
-    loc_sign = +1 if case.prob_side in [-1, "scat"] else +1
+    loc_sign = +1 if case.prob_side in [+1, "scat"] else -1
 
     if case.bc_type == "dirichlet":
         op = DirichletOperator(knl, loc_sign, use_l2_weighting=True,
@@ -763,7 +762,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         fplot = make_field_plotter_from_bbox(
                 find_bounding_box(mesh),
                 h=vis_grid_spacing,
-                extend_factor=3.3)
+                extend_factor=vis_extend_factor)
 
         qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
         from pytential.target import PointsTarget
