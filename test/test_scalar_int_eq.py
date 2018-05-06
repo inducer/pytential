@@ -299,7 +299,7 @@ class ElliptiplaneIntEqTestCase(IntEqTestCase):
 class BetterplaneIntEqTestCase(IntEqTestCase):
     name = "betterplane"
 
-    default_helmholtz_k = 10
+    default_helmholtz_k = 15
     resolutions = [0.3]
 
     fmm_backend = "fmmlib"
@@ -320,7 +320,7 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
     # kidding?
     gmres_tol = 1e-5
 
-    vis_grid_spacing = (0.03, 0.15, 0.03)
+    vis_grid_spacing = (0.04, 0.2, 0.04)
     vis_extend_factor = 0.2
 
     def get_mesh(self, resolution, target_order):
@@ -621,7 +621,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         raise
 
     print("gmres state:", gmres_result.state)
-    u = gmres_result.solution
+    weighted_u = gmres_result.solution
 
     # }}}
 
@@ -649,7 +649,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         bound_tgt_op = bind((qbx, points_target),
                 op.representation(sym.var("u")))
 
-        test_via_bdry = bound_tgt_op(queue, u=u, k=case.k)
+        test_via_bdry = bound_tgt_op(queue, u=weighted_u, k=case.k)
 
         err = test_via_bdry - test_direct
 
@@ -691,7 +691,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         #print(bound_t_deriv_op.code)
 
         grad_from_src = bound_grad_op(
-                queue, u=u, **concrete_knl_kwargs)
+                queue, u=weighted_u, **concrete_knl_kwargs)
 
         grad_ref = (bind(
                 (point_source, points_target),
@@ -722,7 +722,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         #print(bound_t_deriv_op.code)
 
         tang_deriv_from_src = bound_t_deriv_op(
-                queue, u=u, **concrete_knl_kwargs).as_scalar().get()
+                queue, u=weighted_u, **concrete_knl_kwargs).as_scalar().get()
 
         tang_deriv_ref = (bind(
                 (point_source, density_discr),
@@ -754,6 +754,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         bdry_normals = bind(density_discr, sym.normal(qbx.ambient_dim))(queue)\
                 .as_vector(dtype=object)
 
+        sym_sqrt_j = sym.sqrt_jac_q_weight(density_discr.ambient_dim)
+        u = bind(density_discr, sym.var("u")/sym_sqrt_j)(queue, u=weighted_u)
+
         bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
             ("u", u),
             ("bc", bc),
@@ -763,7 +766,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         from sumpy.visualization import make_field_plotter_from_bbox  # noqa
         from meshmode.mesh.processing import find_bounding_box
 
-        vis_grid_spacing = (0.025, 0.025, 0.15)[:qbx.ambient_dim]
+        vis_grid_spacing = (0.1, 0.1, 0.1)[:qbx.ambient_dim]
         if hasattr(case, "vis_grid_spacing"):
             vis_grid_spacing = case.vis_grid_spacing
         vis_extend_factor = 0.2
