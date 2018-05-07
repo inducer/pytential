@@ -133,7 +133,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _box_extent_norm = "l2"
 
         if _from_sep_smaller_crit is None:
-            _from_sep_smaller_crit = "static_l2"
+            # This seems to win no matter what the box extent norm is
+            # https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/10
+            _from_sep_smaller_crit = "precise_linf"
 
         if fmm_level_to_order is None:
             if fmm_order is False:
