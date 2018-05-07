@@ -272,6 +272,10 @@ class ElliptiplaneIntEqTestCase(IntEqTestCase):
     # kidding?
     gmres_tol = 1e-5
 
+    # to match the scheme given in the GIGAQBX3D paper
+    box_extent_norm = "l2"
+    from_sep_smaller_crit = "static_l2"
+
     def get_mesh(self, resolution, target_order):
         from pytools import download_from_web_if_not_present
 
@@ -299,8 +303,9 @@ class ElliptiplaneIntEqTestCase(IntEqTestCase):
 class BetterplaneIntEqTestCase(IntEqTestCase):
     name = "betterplane"
 
-    default_helmholtz_k = 15
+    default_helmholtz_k = 10
     resolutions = [0.3]
+    # refine_on_helmholtz_k = False
 
     fmm_backend = "fmmlib"
     use_refinement = True
@@ -437,11 +442,14 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             pre_density_discr,
             fine_order=source_order,
             qbx_order=case.qbx_order,
+
+            _box_extent_norm=getattr(case, "box_extent_norm", None),
+            _from_sep_smaller_crit=getattr(case, "from_sep_smaller_crit", None),
             _from_sep_smaller_min_nsources_cumul=30,
             fmm_backend=case.fmm_backend, **qbx_lpot_kwargs)
 
     if case.use_refinement:
-        if case.k != 0:
+        if case.k != 0 and getattr(case, "refine_on_helmholtz_k", True):
             refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
 
         if hasattr(case, "scaled_max_curvature_threshold"):
