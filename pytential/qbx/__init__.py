@@ -132,6 +132,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if _box_extent_norm is None:
             _box_extent_norm = "l2"
 
+        if _from_sep_smaller_crit is None:
+            _from_sep_smaller_crit = "static_l2"
+
         if fmm_level_to_order is None:
             if fmm_order is False:
                 fmm_level_to_order = False
@@ -141,9 +144,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         if _max_leaf_refine_weight is None:
             if density_discr.ambient_dim == 2:
+                # FIXME: This should be verified now that l^2 is the default.
                 _max_leaf_refine_weight = 64
             elif density_discr.ambient_dim == 3:
-                _max_leaf_refine_weight = 128
+                # For static_linf/linf: https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/8#note_25009  # noqa
+                # For static_l2/l2: https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/12  # noqa
+                _max_leaf_refine_weight = 512
             else:
                 # Just guessing...
                 _max_leaf_refine_weight = 64
