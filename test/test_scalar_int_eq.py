@@ -793,7 +793,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             solved_pot = bind(
                     (qbx_tgt_tol, PointsTarget(fplot.points)),
                     op.representation(sym.var("u"))
-                    )(queue, u=u, k=case.k)
+                    )(queue, u=weighted_u, k=case.k)
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
                     "failed-targets.vts",
