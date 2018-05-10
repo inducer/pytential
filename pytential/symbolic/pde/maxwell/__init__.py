@@ -47,7 +47,7 @@ __doc__ = """
 
 # {{{ point source
 
-def get_sym_maxwell_point_source(kernel, jxyz, k):
+def get_sym_maxwell_point_source_em(kernel, jxyz, k):
     r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
@@ -130,7 +130,7 @@ def get_sym_maxwell_point_source_potentials(kernel, jxyz, k):
     scalar potential and the last three being the components of the
     vector potential.
     """
-    field = get_sym_maxwell_point_source(kernel, jxyz, k)
+    field = get_sym_maxwell_point_source_em(kernel, jxyz, k)
     return sym.join_fields(
         0*1j,               # scalar potential
         field[:3]/(1j*k)    # vector potential
