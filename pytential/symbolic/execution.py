@@ -495,18 +495,15 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
     from pytools.obj_array import is_obj_array, make_obj_array
     if not is_obj_array(expr):
         expr = make_obj_array([expr])
-
-    from pytential.symbolic.primitives import DEFAULT_SOURCE
-    domains = _domains_default(len(input_exprs), places, domains,
-            DEFAULT_SOURCE)
-
     try:
-        iter(input_exprs)
+        input_exprs = list(input_exprs)
     except TypeError:
         # not iterable, wrap in a list
         input_exprs = [input_exprs]
 
-    input_exprs = list(input_exprs)
+    from pytential.symbolic.primitives import DEFAULT_SOURCE
+    domains = _domains_default(len(input_exprs), places, domains,
+            DEFAULT_SOURCE)
 
     nblock_rows = len(expr)
     nblock_columns = len(input_exprs)
