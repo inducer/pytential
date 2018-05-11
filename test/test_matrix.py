@@ -41,7 +41,8 @@ from pyopencl.tools import (  # noqa
 @pytest.mark.skipif(USE_SYMENGINE,
         reason="https://gitlab.tiker.net/inducer/sumpy/issues/25")
 @pytest.mark.parametrize(("k", "layer_pot_id"),
-                        [(0, 1), (0, 2), (0, 3)])
+                        [(0, 1), (0, 2),
+                         (42, 1), (42, 2)])
 def test_matrix_build(ctx_factory, k, layer_pot_id, plot=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
@@ -78,24 +79,6 @@ def test_matrix_build(ctx_factory, k, layer_pot_id, plot=False):
             sym.S(knl, 0.4 * u0_sym, **knl_kwargs) +
             0.3 * sym.D(knl, u0_sym, **knl_kwargs)
             ])
-    elif layer_pot_id == 3:
-        k0 = 3
-        k1 = 2.9
-        beta = 2.5
-
-        from pytential.symbolic.pde.scalar import (  # noqa
-                DielectricSRep2DBoundaryOperator as SRep,
-                DielectricSDRep2DBoundaryOperator as SDRep)
-        pde_op = SDRep(
-                mode="tem",
-                k_vacuum=1,
-                interfaces=((0, 1, sym.DEFAULT_SOURCE),),
-                domain_k_exprs=(k0, k1),
-                beta=beta,
-                use_l2_weighting=False)
-
-        u_sym = pde_op.make_unknown("u")
-        op = pde_op.operator(u_sym)
     else:
         raise ValueError("Unknown layer_pot_id: {}".format(layer_pot_id))
 
