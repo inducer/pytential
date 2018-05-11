@@ -43,7 +43,7 @@ from pyopencl.tools import (  # noqa
 @pytest.mark.parametrize(("k", "layer_pot_id"),
                         [(0, 1), (0, 2),
                          (42, 1), (42, 2)])
-def test_matrix_build(ctx_factory, k, layer_pot_id, plot=False):
+def test_matrix_build(ctx_factory, k, layer_pot_id, visualize=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -104,7 +104,7 @@ def test_matrix_build(ctx_factory, k, layer_pot_id, plot=False):
     from pytential.symbolic.execution import build_matrix
     mat = build_matrix(queue, qbx, op, u_sym).get()
 
-    if plot:
+    if visualize:
         from sumpy.tools import build_matrix as build_matrix_via_matvec
         mat2 = build_matrix_via_matvec(bound_op.scipy_op(queue, "u"))
         print(la.norm((mat - mat2).real, "fro") / la.norm(mat2.real, "fro"),
@@ -119,7 +119,7 @@ def test_matrix_build(ctx_factory, k, layer_pot_id, plot=False):
         pt.colorbar()
         pt.show()
 
-    if plot:
+    if visualize:
         import matplotlib.pyplot as pt
         pt.subplot(121)
         pt.imshow(mat.real)
