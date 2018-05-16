@@ -514,6 +514,67 @@ class DPIEOperator:
         # return output equations
         return output
 
+    def a_operator0(self, A_densities):
+        """
+        Integral Equation operator for obtaining vector potential, `A`
+        """
+
+        # get object this will be working on
+        obj = self.geometry_list[0]
+
+        # extract the densities needed to solve the system of equations
+        a = sym.tangential_to_xyz(A_densities[:(2*self.nobjs)],where=obj)
+        a_n = a.reshape((3,1))
+        rho = A_densities[(2*self.nobjs):(3*self.nobjs)][0]
+        #rho_n = rho.reshape((1,1))
+        v = A_densities[(3*self.nobjs):]
+
+        # init output matvec vector for the phi density IE
+        output = np.zeros((4,), dtype=self.stype)
+
+        # Compute useful sub-density expressions
+        n_times_rho = (sym.normal(3,where=obj).as_vector() * rho)
+        n_cross_a = sym.n_cross(a,where=obj)
+
+        # generate the set of equations for the vector densities, a, coupled
+        # across the various geometries involved
+        # a_lhs = 0.5*a \
+        # + sym.n_cross(self.S(a_n,obj) \
+        #     - self.k*self.S(n_times_rho,obj) \
+        #     + 1j*(
+        #         self.k*self.S(n_cross_a,obj) + sym.grad(3,self.S(rho_n,obj))
+        #         ),
+        #     where=obj)
+        a_lhs = 0.5*a \
+        + sym.n_cross(sym.S(self.kernel, a, k=self.k, qbx_forced_limit="avg",source=obj, target=obj) \
+            - self.k*sym.S(self.kernel, n_times_rho, k=self.k, qbx_forced_limit="avg",source=obj, target=obj) \
+            + 1j*(
+                self.k*sym.S(self.kernel, n_cross_a, k=self.k, qbx_forced_limit="avg",source=obj, target=obj) \
+                + sym.grad(3,sym.S(self.kernel, rho, k=self.k, qbx_forced_limit="avg",source=obj, target=obj))
+                ),
+            where=obj)
+        output[:2] = xyz_to_tangential(a_lhs, where=obj)
+
+        # generate the set of equations for the scalar densities, rho, coupled
+        # across the various geometries involved
+        # output[2] = 0.5*rho[0] \
+        # + self.D(rho_n,obj) \
+        # + 1j*(sym.div(self.S(n_cross_a,obj)) \
+        #     - self.k*self.S(rho_n,obj)) \
+        # - v[0]
+
+        output[2] = 0.5*rho \
+        + sym.D(self.kernel, rho,k=self.k, qbx_forced_limit="avg",source=obj,target=obj) \
+        + 1j*(sym.div(sym.S(self.kernel, n_cross_a, k=self.k, qbx_forced_limit="avg",source=obj, target=obj)) \
+            - self.k*sym.S(self.kernel, rho, k=self.k, qbx_forced_limit="avg",source=obj, target=obj)) \
+        - v[0]
+
+        # add the equation that integrates everything out into some constant
+        output[3] = 0
+
+        # return output equations
+        return output
+
     def a_rhs(self, A_inc, divA_inc):
         """
         The Right-Hand-Side for the Integral Equation for `A`
@@ -647,6 +708,60 @@ class DPIEOperator:
         # define the vector potential representation
         return self.k*(self.D(self.n_times(rho),target,qfl=qfl) \
             + 1j*(sym.div(self.S(self.n_cross(a),target,qfl=qfl)) - self.k * self.S(rho,target,qfl=qfl)))
+
+    def vector_potential_rep0(self, A_densities, target=None, qfl=None):
+        """
+        This method is a representation of the vector potential, phi,
+        based on the vector density `a` and scalar density `rho`
+        """
+
+        # get object this will be working on
+        obj = self.geometry_list[0]
+
+        # extract the densities needed to solve the system of equations
+        a = sym.tangential_to_xyz(A_densities[:(2*self.nobjs)],where=obj)
+        a_n = a.reshape((3,1))
+        rho = A_densities[(2*self.nobjs):(3*self.nobjs)][0]
+        #rho_n = rho.reshape((1,1))
+        v = A_densities[(3*self.nobjs):]
+
+        # Compute useful sub-density expressions
+        n_times_rho = (sym.normal(3,where=obj).as_vector() * rho)
+        n_cross_a = sym.n_cross(a,where=obj)
+
+        # define the vector potential representation
+        # return sym.curl(self.S(a_n,target,qfl=qfl)) - self.k*self.S(n_times_rho,target,qfl=qfl) \
+        # + 1j*(self.k*self.S(n_cross_a,target,qfl=qfl) + sym.grad(3,self.S(rho_n,target,qfl=qfl)))
+
+        return sym.curl(sym.S(self.kernel, a, k=self.k, qbx_forced_limit=qfl, source=obj, target=target)) \
+        - self.k*sym.S(self.kernel, n_times_rho, k=self.k, qbx_forced_limit=qfl, source=obj, target=target) \
+        + 1j*(self.k*sym.S(self.kernel, n_cross_a, k=self.k, qbx_forced_limit=qfl, source=obj, target=target) \
+            + sym.grad(3,sym.S(self.kernel, rho, k=self.k, qbx_forced_limit=qfl, source=obj, target=target)))
+
+    def div_vector_potential_rep0(self, A_densities, target=None, qfl=None):
+        """
+        This method is a representation of the vector potential, phi,
+        based on the vector density `a` and scalar density `rho`
+        """
+
+        # get object this will be working on
+        obj = self.geometry_list[0]
+
+        # extract the densities needed to solve the system of equations
+        a = sym.tangential_to_xyz(A_densities[:(2*self.nobjs)],where=obj)
+        a_n = a.reshape((3,1))
+        rho = A_densities[(2*self.nobjs):(3*self.nobjs)][0]
+        #rho_n = rho.reshape((1,1))
+        v = A_densities[(3*self.nobjs):]
+
+        # Compute useful sub-density expressions
+        n_times_rho = (sym.normal(3,where=obj).as_vector() * rho)
+        n_cross_a = sym.n_cross(a,where=obj)
+
+        # define the vector potential representation
+        return self.k*(sym.D(self.kernel, n_times_rho, k=self.k, qbx_forced_limit=qfl, source=obj, target=target) \
+            + 1j*(sym.div(sym.S(self.kernel, n_cross_a, k=self.k, qbx_forced_limit=qfl, source=obj, target=target)) \
+                - self.k * sym.S(self.kernel, rho, k=self.k, qbx_forced_limit=qfl, source=obj, target=target)))
 
     def vector_potential_rep2(self, A_densities, target=None, qfl=None):
         """

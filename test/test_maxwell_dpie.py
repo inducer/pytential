@@ -597,6 +597,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                 return sym.join_fields(a,vec_op_out[2:])
 
             scalar_op = dpie0.phi_operator(phi_densities=phi_densities)[:-1]
+            #vector_op = vector_op_transform(dpie0.a_operator0(A_densities=A_densities)[:-1])
             vector_op = vector_op_transform(dpie0.a_operator(A_densities=A_densities)[:-1])
             #vector_op = dpie0.a_operator2(A_densities=A_densities)[:-1]
             tau_op = dpie0.subproblem_operator(tau_densities=tau_densities)
@@ -607,6 +608,9 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
             tau_op_eval = vector_from_device(queue,bind(geom_map, tau_op)(queue, tau_densities=dummy_tau, **knl_kwargs))
 
             # define the vector operator equivalent representations
+            #def vec_op_repr(A_densities, target):
+            #    return sym.join_fields(sym.n_cross(dpie0.vector_potential_rep0(A_densities=A_densities, target=target),where='obj0'),
+            #        dpie0.div_vector_potential_rep0(A_densities=A_densities, target=target)/dpie0.k)
             def vec_op_repr(A_densities, target):
                 return sym.join_fields(sym.n_cross(dpie0.vector_potential_rep(A_densities=A_densities, target=target),where='obj0'),
                     dpie0.div_vector_potential_rep(A_densities=A_densities, target=target)/dpie0.k)
