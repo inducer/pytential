@@ -36,9 +36,10 @@ from functools import partial
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
-from sumpy.visualization import FieldPlotter
+from meshmode.discretization.visualization import make_visualizer
 from sumpy.symbolic import USE_SYMENGINE
 from pytential import bind, sym
+from pytential.qbx import QBXTargetAssociationFailedException
 
 import logging
 logger = logging.getLogger(__name__)
@@ -63,19 +64,26 @@ def make_circular_point_group(ambient_dim, npoints, radius,
 # {{{ test cases
 
 class IntEqTestCase:
-    def __init__(self, helmholtz_k, bc_type, loc_sign):
+    def __init__(self, helmholtz_k, bc_type, prob_side):
+        """
+        :arg prob_side: may be -1, +1, or ``'scat'`` for a scattering problem
+        """
+
+        if helmholtz_k is None:
+            helmholtz_k = self.default_helmholtz_k
+
         self.helmholtz_k = helmholtz_k
         self.bc_type = bc_type
-        self.loc_sign = loc_sign
+        self.prob_side = prob_side
 
     @property
     def k(self):
         return self.helmholtz_k
 
     def __str__(self):
-        return ("name: %s, bc_type: %s, loc_sign: %s, "
+        return ("name: %s, bc_type: %s, prob_side: %s, "
                 "helmholtz_k: %s, qbx_order: %d, target_order: %d"
-            % (self.name, self.bc_type, self.loc_sign, self.helmholtz_k,
+            % (self.name, self.bc_type, self.prob_side, self.helmholtz_k,
                 self.qbx_order, self.target_order))
 
     fmm_backend = "sumpy"
@@ -140,6 +148,7 @@ class EllipsoidIntEqTestCase(Helmholtz3DIntEqTestCase):
         # Flip elements--gmsh generates inside-out geometry.
         return perform_flips(mesh, np.ones(mesh.nelements))
 
+    qbx_order = 5
     fmm_order = 13
 
     inner_radius = 0.4
@@ -248,7 +257,7 @@ class ManyEllipsoidIntEqTestCase(Helmholtz3DIntEqTestCase):
 class ElliptiplaneIntEqTestCase(IntEqTestCase):
     name = "elliptiplane"
 
-    resolutions = [0.2]
+    resolutions = [0.1]
 
     fmm_backend = "fmmlib"
     use_refinement = True
@@ -262,6 +271,10 @@ class ElliptiplaneIntEqTestCase(IntEqTestCase):
     # We're only expecting three digits based on FMM settings. Who are we
     # kidding?
     gmres_tol = 1e-5
+
+    # to match the scheme given in the GIGAQBX3D paper
+    box_extent_norm = "l2"
+    from_sep_smaller_crit = "static_l2"
 
     def get_mesh(self, resolution, target_order):
         from pytools import download_from_web_if_not_present
@@ -284,7 +297,111 @@ class ElliptiplaneIntEqTestCase(IntEqTestCase):
         return perform_flips(mesh, np.ones(mesh.nelements))
 
     inner_radius = 0.2
-    outer_radius = 12
+    outer_radius = 12  # was '-13' in some large-scale run (?)
+
+
+class BetterplaneIntEqTestCase(IntEqTestCase):
+    name = "betterplane"
+
+    default_helmholtz_k = 10
+    resolutions = [0.3]
+    # refine_on_helmholtz_k = False
+
+    fmm_backend = "fmmlib"
+    use_refinement = True
+
+    qbx_order = 3
+    fmm_tol = 1e-4
+    target_order = 6
+    check_gradient = False
+    check_tangential_deriv = False
+
+    visualize_geometry = True
+
+    #scaled_max_curvature_threshold = 1
+    expansion_disturbance_tolerance = 0.3
+
+    # We're only expecting three digits based on FMM settings. Who are we
+    # kidding?
+    gmres_tol = 1e-5
+
+    vis_grid_spacing = (0.04, 0.2, 0.04)
+    vis_extend_factor = 0.2
+
+    def get_mesh(self, resolution, target_order):
+        from pytools import download_from_web_if_not_present
+
+        download_from_web_if_not_present(
+                "https://raw.githubusercontent.com/inducer/geometries/a869fc3/"
+                "surface-3d/betterplane.brep")
+
+        from meshmode.mesh.io import generate_gmsh, ScriptWithFilesSource
+        mesh = generate_gmsh(
+                ScriptWithFilesSource("""
+                    Merge "betterplane.brep";
+
+                    Mesh.CharacteristicLengthMax = %(lcmax)f;
+                    Mesh.ElementOrder = 2;
+                    Mesh.CharacteristicLengthExtendFromBoundary = 0;
+
+                    // 2D mesh optimization
+                    // Mesh.Lloyd = 1;
+
+                    l_superfine() = Unique(Abs(Boundary{ Surface{
+                        27, 25, 17, 13, 18  }; }));
+                    l_fine() = Unique(Abs(Boundary{ Surface{ 2, 6, 7}; }));
+                    l_coarse() = Unique(Abs(Boundary{ Surface{ 14, 16  }; }));
+
+                    // p() = Unique(Abs(Boundary{ Line{l_fine()}; }));
+                    // Characteristic Length{p()} = 0.05;
+
+                    Field[1] = Attractor;
+                    Field[1].NNodesByEdge = 100;
+                    Field[1].EdgesList = {l_superfine()};
+
+                    Field[2] = Threshold;
+                    Field[2].IField = 1;
+                    Field[2].LcMin = 0.075;
+                    Field[2].LcMax = %(lcmax)f;
+                    Field[2].DistMin = 0.1;
+                    Field[2].DistMax = 0.4;
+
+                    Field[3] = Attractor;
+                    Field[3].NNodesByEdge = 100;
+                    Field[3].EdgesList = {l_fine()};
+
+                    Field[4] = Threshold;
+                    Field[4].IField = 3;
+                    Field[4].LcMin = 0.1;
+                    Field[4].LcMax = %(lcmax)f;
+                    Field[4].DistMin = 0.15;
+                    Field[4].DistMax = 0.4;
+
+                    Field[5] = Attractor;
+                    Field[5].NNodesByEdge = 100;
+                    Field[5].EdgesList = {l_coarse()};
+
+                    Field[6] = Threshold;
+                    Field[6].IField = 5;
+                    Field[6].LcMin = 0.15;
+                    Field[6].LcMax = %(lcmax)f;
+                    Field[6].DistMin = 0.2;
+                    Field[6].DistMax = 0.4;
+
+                    Field[7] = Min;
+                    Field[7].FieldsList = {2, 4, 6};
+
+                    Background Field = 7;
+                    """ % {
+                        "lcmax": resolution,
+                        }, ["betterplane.brep"]), 2)
+
+        # Flip elements--gmsh generates inside-out geometry.
+        from meshmode.mesh.processing import perform_flips
+        return perform_flips(mesh, np.ones(mesh.nelements))
+
+    inner_radius = 0.2
+    outer_radius = 15
 
 # }}}
 
@@ -322,18 +439,50 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             qbx_lpot_kwargs["fmm_order"] = case.qbx_order + 5
 
     qbx = QBXLayerPotentialSource(
-            pre_density_discr, fine_order=source_order, qbx_order=case.qbx_order,
+            pre_density_discr,
+            fine_order=source_order,
+            qbx_order=case.qbx_order,
+
+            _box_extent_norm=getattr(case, "box_extent_norm", None),
+            _from_sep_smaller_crit=getattr(case, "from_sep_smaller_crit", None),
+            _from_sep_smaller_min_nsources_cumul=30,
             fmm_backend=case.fmm_backend, **qbx_lpot_kwargs)
 
     if case.use_refinement:
-        if case.k != 0:
+        if case.k != 0 and getattr(case, "refine_on_helmholtz_k", True):
             refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
+
+        if hasattr(case, "scaled_max_curvature_threshold"):
+            refiner_extra_kwargs["_scaled_max_curvature_threshold"] = \
+                    case.scaled_max_curvature_threshold
+
+        if hasattr(case, "expansion_disturbance_tolerance"):
+            refiner_extra_kwargs["_expansion_disturbance_tolerance"] = \
+                    case.expansion_disturbance_tolerance
+
+        if hasattr(case, "refinement_maxiter"):
+            refiner_extra_kwargs["maxiter"] = case.refinement_maxiter
+
+        #refiner_extra_kwargs["visualize"] = True
 
         print("%d elements before refinement" % pre_density_discr.mesh.nelements)
         qbx, _ = qbx.with_refinement(**refiner_extra_kwargs)
-        print("%d elements after refinement" % qbx.density_discr.mesh.nelements)
+        print("%d stage-1 elements after refinement"
+                % qbx.density_discr.mesh.nelements)
+        print("%d stage-2 elements after refinement"
+                % qbx.stage2_density_discr.mesh.nelements)
 
     density_discr = qbx.density_discr
+
+    if hasattr(case, "visualize_geometry") and case.visualize_geometry:
+        bdry_normals = bind(
+                density_discr, sym.normal(mesh.ambient_dim)
+                )(queue).as_vector(dtype=object)
+
+        bdry_vis = make_visualizer(queue, density_discr, case.target_order)
+        bdry_vis.write_vtk_file("geometry.vtu", [
+            ("normals", bdry_normals)
+            ])
 
     # {{{ plot geometry
 
@@ -349,7 +498,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             pt.show()
 
         elif mesh.ambient_dim == 3:
-            from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
 
             bdry_normals = bind(density_discr, sym.normal(3))(queue)\
@@ -385,11 +533,13 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     else:
         dtype = np.float64
 
+    loc_sign = +1 if case.prob_side in [+1, "scat"] else -1
+
     if case.bc_type == "dirichlet":
-        op = DirichletOperator(knl, case.loc_sign, use_l2_weighting=False,
+        op = DirichletOperator(knl, loc_sign, use_l2_weighting=True,
                 kernel_arguments=knl_kwargs)
     elif case.bc_type == "neumann":
-        op = NeumannOperator(knl, case.loc_sign, use_l2_weighting=False,
+        op = NeumannOperator(knl, loc_sign, use_l2_weighting=True,
                  use_improved_operator=False, kernel_arguments=knl_kwargs)
     else:
         assert False
@@ -400,12 +550,17 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     # {{{ set up test data
 
-    if case.loc_sign < 0:
+    if case.prob_side == -1:
         test_src_geo_radius = case.outer_radius
         test_tgt_geo_radius = case.inner_radius
-    else:
+    elif case.prob_side == +1:
         test_src_geo_radius = case.inner_radius
         test_tgt_geo_radius = case.outer_radius
+    elif case.prob_side == "scat":
+        test_src_geo_radius = case.outer_radius
+        test_tgt_geo_radius = case.outer_radius
+    else:
+        raise ValueError("unknown problem_side")
 
     point_sources = make_circular_point_group(
             mesh.ambient_dim, 10, test_src_geo_radius,
@@ -456,16 +611,25 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
 
-    from pytential.solve import gmres
-    gmres_result = gmres(
-            bound_op.scipy_op(queue, "u", dtype, **concrete_knl_kwargs),
-            rhs,
-            tol=case.gmres_tol,
-            progress=True,
-            hard_failure=True)
+    try:
+        from pytential.solve import gmres
+        gmres_result = gmres(
+                bound_op.scipy_op(queue, "u", dtype, **concrete_knl_kwargs),
+                rhs,
+                tol=case.gmres_tol,
+                progress=True,
+                hard_failure=True,
+                stall_iterations=50, no_progress_factor=1.05)
+    except QBXTargetAssociationFailedException as e:
+        bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
+
+        bdry_vis.write_vtk_file("failed-targets-%s.vtu" % resolution, [
+            ("failed_targets", e.failed_target_flags),
+            ])
+        raise
 
     print("gmres state:", gmres_result.state)
-    u = gmres_result.solution
+    weighted_u = gmres_result.solution
 
     # }}}
 
@@ -486,41 +650,46 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     # }}}
 
-    # {{{ error check
+    if case.prob_side != "scat":
+        # {{{ error check
 
-    points_target = PointsTarget(test_targets)
-    bound_tgt_op = bind((qbx, points_target),
-            op.representation(sym.var("u")))
+        points_target = PointsTarget(test_targets)
+        bound_tgt_op = bind((qbx, points_target),
+                op.representation(sym.var("u")))
 
-    test_via_bdry = bound_tgt_op(queue, u=u, k=case.k)
+        test_via_bdry = bound_tgt_op(queue, u=weighted_u, k=case.k)
 
-    err = test_direct-test_via_bdry
+        err = test_via_bdry - test_direct
 
-    err = err.get()
-    test_direct = test_direct.get()
-    test_via_bdry = test_via_bdry.get()
+        err = err.get()
+        test_direct = test_direct.get()
+        test_via_bdry = test_via_bdry.get()
 
-    # {{{ remove effect of net source charge
+        # {{{ remove effect of net source charge
 
-    if case.k == 0 and case.bc_type == "neumann" and case.loc_sign == -1:
+        if case.k == 0 and case.bc_type == "neumann" and loc_sign == -1:
 
-        # remove constant offset in interior Laplace Neumann error
-        tgt_ones = np.ones_like(test_direct)
-        tgt_ones = tgt_ones/la.norm(tgt_ones)
-        err = err - np.vdot(tgt_ones, err)*tgt_ones
+            # remove constant offset in interior Laplace Neumann error
+            tgt_ones = np.ones_like(test_direct)
+            tgt_ones = tgt_ones/la.norm(tgt_ones)
+            err = err - np.vdot(tgt_ones, err)*tgt_ones
 
-    # }}}
+        # }}}
 
-    rel_err_2 = la.norm(err)/la.norm(test_direct)
-    rel_err_inf = la.norm(err, np.inf)/la.norm(test_direct, np.inf)
+        rel_err_2 = la.norm(err)/la.norm(test_direct)
+        rel_err_inf = la.norm(err, np.inf)/la.norm(test_direct, np.inf)
 
-    # }}}
+        # }}}
 
-    print("rel_err_2: %g rel_err_inf: %g" % (rel_err_2, rel_err_inf))
+        print("rel_err_2: %g rel_err_inf: %g" % (rel_err_2, rel_err_inf))
+
+    else:
+        rel_err_2 = None
+        rel_err_inf = None
 
     # {{{ test gradient
 
-    if case.check_gradient:
+    if case.check_gradient and case.prob_side != "scat":
         bound_grad_op = bind((qbx, points_target),
                 op.representation(
                     sym.var("u"),
@@ -530,7 +699,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         #print(bound_t_deriv_op.code)
 
         grad_from_src = bound_grad_op(
-                queue, u=u, **concrete_knl_kwargs)
+                queue, u=weighted_u, **concrete_knl_kwargs)
 
         grad_ref = (bind(
                 (point_source, points_target),
@@ -548,19 +717,20 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         print("rel_grad_err_inf: %g" % rel_grad_err_inf)
 
     # }}}
+
     # {{{ test tangential derivative
 
-    if case.check_tangential_deriv:
+    if case.check_tangential_deriv and case.prob_side != "scat":
         bound_t_deriv_op = bind(qbx,
                 op.representation(
                     sym.var("u"),
                     map_potentials=lambda pot: sym.tangential_derivative(2, pot),
-                    qbx_forced_limit=case.loc_sign))
+                    qbx_forced_limit=loc_sign))
 
         #print(bound_t_deriv_op.code)
 
         tang_deriv_from_src = bound_t_deriv_op(
-                queue, u=u, **concrete_knl_kwargs).as_scalar().get()
+                queue, u=weighted_u, **concrete_knl_kwargs).as_scalar().get()
 
         tang_deriv_ref = (bind(
                 (point_source, density_discr),
@@ -584,36 +754,46 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     # }}}
 
-    # {{{ 3D plotting
+    # {{{ any-D file plotting
 
-    if visualize and qbx.ambient_dim == 3:
-        from meshmode.discretization.visualization import make_visualizer
+    if visualize:
         bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
 
         bdry_normals = bind(density_discr, sym.normal(qbx.ambient_dim))(queue)\
                 .as_vector(dtype=object)
 
+        sym_sqrt_j = sym.sqrt_jac_q_weight(density_discr.ambient_dim)
+        u = bind(density_discr, sym.var("u")/sym_sqrt_j)(queue, u=weighted_u)
+
         bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
             ("u", u),
             ("bc", bc),
-            ("bdry_normals", bdry_normals),
+            #("bdry_normals", bdry_normals),
             ])
 
         from sumpy.visualization import make_field_plotter_from_bbox  # noqa
         from meshmode.mesh.processing import find_bounding_box
 
+        vis_grid_spacing = (0.1, 0.1, 0.1)[:qbx.ambient_dim]
+        if hasattr(case, "vis_grid_spacing"):
+            vis_grid_spacing = case.vis_grid_spacing
+        vis_extend_factor = 0.2
+        if hasattr(case, "vis_extend_factor"):
+            vis_grid_spacing = case.vis_grid_spacing
+
         fplot = make_field_plotter_from_bbox(
-                find_bounding_box(mesh), h=(0.025, 0.025, 0.15)[:qbx.ambient_dim])
+                find_bounding_box(mesh),
+                h=vis_grid_spacing,
+                extend_factor=vis_extend_factor)
 
         qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
         from pytential.target import PointsTarget
-        from pytential.qbx import QBXTargetAssociationFailedException
 
         try:
             solved_pot = bind(
                     (qbx_tgt_tol, PointsTarget(fplot.points)),
                     op.representation(sym.var("u"))
-                    )(queue, u=u, k=case.k)
+                    )(queue, u=weighted_u, k=case.k)
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
                     "failed-targets.vts",
@@ -622,118 +802,42 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                         ])
             raise
 
+        from sumpy.kernel import LaplaceKernel
+        ones_density = density_discr.zeros(queue)
+        ones_density.fill(1)
+        indicator = bind(
+                (qbx_tgt_tol, PointsTarget(fplot.points)),
+                -sym.D(LaplaceKernel(density_discr.ambient_dim),
+                    sym.var("sigma"),
+                    qbx_forced_limit=None))(
+                queue, sigma=ones_density).get()
+
         solved_pot = solved_pot.get()
 
         true_pot = bind((point_source, PointsTarget(fplot.points)), pot_src)(
                 queue, charges=source_charges_dev, **concrete_knl_kwargs).get()
 
         #fplot.show_scalar_in_mayavi(solved_pot.real, max_val=5)
-        fplot.write_vtk_file(
-                "potential-%s.vts" % resolution,
-                [
-                    ("solved_pot", solved_pot),
-                    ("true_pot", true_pot),
-                    ("pot_diff", solved_pot-true_pot),
-                    ]
-                )
+        if case.prob_side == "scat":
+            fplot.write_vtk_file(
+                    "potential-%s.vts" % resolution,
+                    [
+                        ("pot_scattered", solved_pot),
+                        ("pot_incoming", -true_pot),
+                        ("indicator", indicator),
+                        ]
+                    )
+        else:
+            fplot.write_vtk_file(
+                    "potential-%s.vts" % resolution,
+                    [
+                        ("solved_pot", solved_pot),
+                        ("true_pot", true_pot),
+                        ("indicator", indicator),
+                        ]
+                    )
 
     # }}}
-
-    # {{{ 2D plotting
-
-    if 0:
-        fplot = FieldPlotter(np.zeros(2),
-                extent=1.25*2*max(test_src_geo_radius, test_tgt_geo_radius),
-                npoints=200)
-
-        #pt.plot(u)
-        #pt.show()
-
-        fld_from_src = bind((point_source, PointsTarget(fplot.points)),
-                pot_src)(queue, charges=source_charges_dev, **concrete_knl_kwargs)
-        fld_from_bdry = bind(
-                (qbx, PointsTarget(fplot.points)),
-                op.representation(sym.var("u"))
-                )(queue, u=u, k=case.k)
-        fld_from_src = fld_from_src.get()
-        fld_from_bdry = fld_from_bdry.get()
-
-        nodes = density_discr.nodes().get(queue=queue)
-
-        def prep():
-            pt.plot(point_sources[0], point_sources[1], "o",
-                    label="Monopole 'Point Charges'")
-            pt.plot(test_targets[0], test_targets[1], "v",
-                    label="Observation Points")
-            pt.plot(nodes[0], nodes[1], "k-",
-                    label=r"$\Gamma$")
-
-        from matplotlib.cm import get_cmap
-        cmap = get_cmap()
-        cmap._init()
-        if 0:
-            cmap._lut[(cmap.N*99)//100:, -1] = 0  # make last percent transparent?
-
-        prep()
-        if 1:
-            pt.subplot(131)
-            pt.title("Field error (loc_sign=%s)" % case.loc_sign)
-            log_err = np.log10(1e-20+np.abs(fld_from_src-fld_from_bdry))
-            log_err = np.minimum(-3, log_err)
-            fplot.show_scalar_in_matplotlib(log_err, cmap=cmap)
-
-            #from matplotlib.colors import Normalize
-            #im.set_norm(Normalize(vmin=-6, vmax=1))
-
-            cb = pt.colorbar(shrink=0.9)
-            cb.set_label(r"$\log_{10}(\mathdefault{Error})$")
-
-        if 1:
-            pt.subplot(132)
-            prep()
-            pt.title("Source Field")
-            fplot.show_scalar_in_matplotlib(
-                    fld_from_src.real, max_val=3)
-
-            pt.colorbar(shrink=0.9)
-        if 1:
-            pt.subplot(133)
-            prep()
-            pt.title("Solved Field")
-            fplot.show_scalar_in_matplotlib(
-                    fld_from_bdry.real, max_val=3)
-
-            pt.colorbar(shrink=0.9)
-
-        # total field
-        #fplot.show_scalar_in_matplotlib(
-        #fld_from_src.real+fld_from_bdry.real, max_val=0.1)
-
-        #pt.colorbar()
-
-        pt.legend(loc="best", prop=dict(size=15))
-        from matplotlib.ticker import NullFormatter
-        pt.gca().xaxis.set_major_formatter(NullFormatter())
-        pt.gca().yaxis.set_major_formatter(NullFormatter())
-
-        pt.gca().set_aspect("equal")
-
-        if 0:
-            border_factor_top = 0.9
-            border_factor = 0.3
-
-            xl, xh = pt.xlim()
-            xhsize = 0.5*(xh-xl)
-            pt.xlim(xl-border_factor*xhsize, xh+border_factor*xhsize)
-
-            yl, yh = pt.ylim()
-            yhsize = 0.5*(yh-yl)
-            pt.ylim(yl-border_factor_top*yhsize, yh+border_factor*yhsize)
-
-        #pt.savefig("helmholtz.pdf", dpi=600)
-        pt.show()
-
-        # }}}
 
     class Result(Record):
         pass
@@ -752,10 +856,10 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
 @pytest.mark.parametrize("case", [
     EllipseIntEqTestCase(helmholtz_k=helmholtz_k, bc_type=bc_type,
-        loc_sign=loc_sign)
+        prob_side=prob_side)
     for helmholtz_k in [0, 1.2]
     for bc_type in ["dirichlet", "neumann"]
-    for loc_sign in [-1, +1]
+    for prob_side in [-1, +1]
     ])
 # Sample test run:
 # 'test_integral_equation(cl._csc, EllipseIntEqTestCase(0, "dirichlet", +1), visualize=True)'  # noqa: E501
@@ -781,11 +885,14 @@ def test_integral_equation(ctx_getter, case, visualize=False):
     eoc_rec_target = EOCRecorder()
     eoc_rec_td = EOCRecorder()
 
+    have_error_data = False
     for resolution in case.resolutions:
         result = run_int_eq_test(cl_ctx, queue, case, resolution,
                 visualize=visualize)
 
-        eoc_rec_target.add_data_point(result.h_max, result.rel_err_2)
+        if result.rel_err_2 is not None:
+            have_error_data = True
+            eoc_rec_target.add_data_point(result.h_max, result.rel_err_2)
 
         if result.rel_td_err_inf is not None:
             eoc_rec_td.add_data_point(result.h_max, result.rel_td_err_inf)
@@ -797,14 +904,15 @@ def test_integral_equation(ctx_getter, case, visualize=False):
     else:
         assert False
 
-    print("TARGET ERROR:")
-    print(eoc_rec_target)
-    assert eoc_rec_target.order_estimate() > tgt_order - 1.3
+    if have_error_data:
+        print("TARGET ERROR:")
+        print(eoc_rec_target)
+        assert eoc_rec_target.order_estimate() > tgt_order - 1.3
 
-    if case.check_tangential_deriv:
-        print("TANGENTIAL DERIVATIVE ERROR:")
-        print(eoc_rec_td)
-        assert eoc_rec_td.order_estimate() > tgt_order - 2.3
+        if case.check_tangential_deriv:
+            print("TANGENTIAL DERIVATIVE ERROR:")
+            print(eoc_rec_td)
+            assert eoc_rec_td.order_estimate() > tgt_order - 2.3
 
 # }}}
 

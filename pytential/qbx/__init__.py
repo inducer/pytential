@@ -78,7 +78,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.5,
             _well_sep_is_n_away=2,
-            _max_leaf_refine_weight=32,
+            _max_leaf_refine_weight=None,
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
@@ -133,12 +133,29 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if _box_extent_norm is None:
             _box_extent_norm = "l2"
 
+        if _from_sep_smaller_crit is None:
+            # This seems to win no matter what the box extent norm is
+            # https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/10
+            _from_sep_smaller_crit = "precise_linf"
+
         if fmm_level_to_order is None:
             if fmm_order is False:
                 fmm_level_to_order = False
             else:
                 def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
+
+        if _max_leaf_refine_weight is None:
+            if density_discr.ambient_dim == 2:
+                # FIXME: This should be verified now that l^2 is the default.
+                _max_leaf_refine_weight = 64
+            elif density_discr.ambient_dim == 3:
+                # For static_linf/linf: https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/8#note_25009  # noqa
+                # For static_l2/l2: https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/12  # noqa
+                _max_leaf_refine_weight = 512
+            else:
+                # Just guessing...
+                _max_leaf_refine_weight = 64
 
         if _from_sep_smaller_min_nsources_cumul is None:
             # See here for the comment thread that led to these defaults:
@@ -199,6 +216,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
+            _max_leaf_refine_weight=None,
+            _box_extent_norm=None,
+            _from_sep_smaller_crit=None,
             _tree_kind=None,
             _use_tsqbx_list1=_not_provided,
             geometry_data_inspector=None,
@@ -275,9 +295,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     if _expansion_stick_out_factor is not _not_provided
                     else self._expansion_stick_out_factor),
                 _well_sep_is_n_away=self._well_sep_is_n_away,
-                _max_leaf_refine_weight=self._max_leaf_refine_weight,
-                _box_extent_norm=self._box_extent_norm,
-                _from_sep_smaller_crit=self._from_sep_smaller_crit,
+                _max_leaf_refine_weight=(
+                    _max_leaf_refine_weight or self._max_leaf_refine_weight),
+                _box_extent_norm=(_box_extent_norm or self._box_extent_norm),
+                _from_sep_smaller_crit=(
+                    _from_sep_smaller_crit or self._from_sep_smaller_crit),
                 _from_sep_smaller_min_nsources_cumul=(
                     self._from_sep_smaller_min_nsources_cumul),
                 _tree_kind=_tree_kind or self._tree_kind,

@@ -648,6 +648,24 @@ def _small_mat_eigenvalues(mat):
                 "eigenvalue formula for %dx%d matrices" % (m, n))
 
 
+def _equilateral_parametrization_derivative_matrix(ambient_dim, dim=None,
+        where=None):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    pder_mat = parametrization_derivative_matrix(ambient_dim, dim, where)
+
+    # The above procedure works well only when the 'reference' end of the
+    # mapping is in equilateral coordinates.
+    from modepy.tools import EQUILATERAL_TO_UNIT_MAP
+    equi_to_unit = EQUILATERAL_TO_UNIT_MAP[dim].a
+
+    # This is the Jacobian of the (equilateral reference element) -> (global) map.
+    return cse(
+            np.dot(pder_mat, equi_to_unit),
+            "equilateral_pder_mat")
+
+
 def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, where=None,
         with_elementwise_max=True):
     """Return the largest factor by which the reference-to-global
@@ -669,17 +687,8 @@ def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, where=None,
     # stretching, where 'stretching' (*2 to remove bi-unit reference element)
     # reflects available quadrature resolution in that direction.
 
-    pder_mat = parametrization_derivative_matrix(ambient_dim, dim, where)
-
-    # The above procedure works well only when the 'reference' end of the
-    # mapping is in equilateral coordinates.
-    from modepy.tools import EQUILATERAL_TO_UNIT_MAP
-    equi_to_unit = EQUILATERAL_TO_UNIT_MAP[dim].a
-
-    # This is the Jacobian of the (equilateral reference element) -> (global) map.
-    equi_pder_mat = cse(
-            np.dot(pder_mat, equi_to_unit),
-            "equilateral_pder_mat")
+    equi_pder_mat = _equilateral_parametrization_derivative_matrix(
+            ambient_dim, dim, where)
 
     # Compute eigenvalues of J^T to compute SVD.
     equi_pder_mat_jtj = cse(

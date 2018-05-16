@@ -523,15 +523,27 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
     # {{{ first stage refinement
 
-    def visualize_refinement(niter, stage, flags):
+    def visualize_refinement(niter, stage_nr, stage_name, flags):
         if not visualize:
             return
 
-        discr = lpot_source.density_discr
+        if stage_nr == 1:
+            discr = lpot_source.density_discr
+        elif stage_nr == 2:
+            discr = lpot_source.stage2_density_discr
+        else:
+            raise ValueError("unexpected stage number")
+
+        flags = flags.get()
+        logger.info("for stage %s: splitting %d/%d stage-%d elements",
+                stage_name, np.sum(flags), discr.mesh.nelements, stage_nr)
+
         from meshmode.discretization.visualization import make_visualizer
         vis = make_visualizer(wrangler.queue, discr, 3)
 
-        flags = flags.get().astype(np.bool)
+        assert len(flags) == discr.mesh.nelements
+
+        flags = flags.astype(np.bool)
         nodes_flags = np.zeros(discr.nnodes)
         for grp in discr.groups:
             meg = grp.mesh_el_group
@@ -549,7 +561,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
                     wrangler.queue).as_vector(dtype=object)
             vis_data.append(("bdry_normals", bdry_normals),)
 
-        vis.write_vtk_file("refinement-%03d-%s.vtu" % (niter, stage), vis_data)
+        vis.write_vtk_file("refinement-%s-%03d.vtu" % (stage_name, niter), vis_data)
 
     def warn_max_iterations():
         from warnings import warn
@@ -602,7 +614,8 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
                 if violates_kernel_length_scale:
                     iter_violated_criteria.append("kernel length scale")
-                    visualize_refinement(niter, "kernel-length-scale", refine_flags)
+                    visualize_refinement(
+                            niter, 1, "kernel-length-scale", refine_flags)
 
         if scaled_max_curvature_threshold is not None:
             with ProcessLogger(logger,
@@ -625,7 +638,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
                 if violates_scaled_max_curv:
                     iter_violated_criteria.append("curvature")
-                    visualize_refinement(niter, "curvature", refine_flags)
+                    visualize_refinement(niter, 1, "curvature", refine_flags)
 
         if not iter_violated_criteria:
             # Only start building trees once the simple length-based criteria
@@ -643,7 +656,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
                             refine_flags, debug)
             if has_disturbed_expansions:
                 iter_violated_criteria.append("disturbed expansions")
-                visualize_refinement(niter, "disturbed-expansions", refine_flags)
+                visualize_refinement(niter, 1, "disturbed-expansions", refine_flags)
 
             del tree
             del peer_lists
@@ -689,7 +702,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
                         lpot_source, tree, peer_lists, refine_flags, debug)
         if has_insufficient_quad_res:
             iter_violated_criteria.append("insufficient quadrature resolution")
-            visualize_refinement(niter, "quad-resolution", refine_flags)
+            visualize_refinement(niter, 2, "quad-resolution", refine_flags)
 
         if iter_violated_criteria:
             violated_criteria.append(" and ".join(iter_violated_criteria))

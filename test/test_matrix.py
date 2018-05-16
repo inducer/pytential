@@ -40,7 +40,10 @@ from pyopencl.tools import (  # noqa
 
 @pytest.mark.skipif(USE_SYMENGINE,
         reason="https://gitlab.tiker.net/inducer/sumpy/issues/25")
-def test_matrix_build(ctx_factory):
+@pytest.mark.parametrize(("k", "layer_pot_id"),
+                        [(0, 1), (0, 2),
+                         (42, 1), (42, 2)])
+def test_matrix_build(ctx_factory, k, layer_pot_id, visualize=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -53,8 +56,6 @@ def test_matrix_build(ctx_factory):
     nelements = 30
     curve_f = partial(ellipse, 3)
 
-    k = 1
-
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
     if k:
         knl = HelmholtzKernel(2)
@@ -64,42 +65,25 @@ def test_matrix_build(ctx_factory):
         knl_kwargs = {}
 
     from pytools.obj_array import make_obj_array, is_obj_array
-
-    if 1:
+    if layer_pot_id == 1:
+        u_sym = sym.var("u")
+        op = sym.Sp(knl, u_sym, **knl_kwargs)
+    elif layer_pot_id == 2:
         u_sym = sym.make_sym_vector("u", 2)
         u0_sym, u1_sym = u_sym
 
         op = make_obj_array([
-            sym.Sp(knl, u0_sym, **knl_kwargs)
-            + sym.D(knl, u1_sym, **knl_kwargs),
+            sym.Sp(knl, u0_sym, **knl_kwargs) +
+            sym.D(knl, u1_sym, **knl_kwargs),
 
-            sym.S(knl, 0.4*u0_sym, **knl_kwargs)
-            + 0.3*sym.D(knl, u0_sym, **knl_kwargs)
+            sym.S(knl, 0.4 * u0_sym, **knl_kwargs) +
+            0.3 * sym.D(knl, u0_sym, **knl_kwargs)
             ])
-    elif 0:
-        u_sym = sym.var("u")
-        op = sym.Sp(knl, u_sym, **knl_kwargs)
     else:
-        k0 = 3
-        k1 = 2.9
-        beta = 2.5
-
-        from pytential.symbolic.pde.scalar import (  # noqa
-                DielectricSRep2DBoundaryOperator as SRep,
-                DielectricSDRep2DBoundaryOperator as SDRep)
-        pde_op = SDRep(
-                mode="tem",
-                k_vacuum=1,
-                interfaces=((0, 1, sym.DEFAULT_SOURCE),),
-                domain_k_exprs=(k0, k1),
-                beta=beta,
-                use_l2_weighting=False)
-
-        u_sym = pde_op.make_unknown("u")
-        op = pde_op.operator(u_sym)
+        raise ValueError("Unknown layer_pot_id: {}".format(layer_pot_id))
 
     mesh = make_curve_mesh(curve_f,
-            np.linspace(0, 1, nelements+1),
+            np.linspace(0, 1, nelements + 1),
             target_order)
 
     from meshmode.discretization import Discretization
@@ -110,35 +94,32 @@ def test_matrix_build(ctx_factory):
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order,
+    qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4 * target_order,
             qbx_order,
             # Don't use FMM for now
             fmm_order=False).with_refinement()
-
     density_discr = qbx.density_discr
-
     bound_op = bind(qbx, op)
 
     from pytential.symbolic.execution import build_matrix
     mat = build_matrix(queue, qbx, op, u_sym).get()
 
-    if 0:
+    if visualize:
         from sumpy.tools import build_matrix as build_matrix_via_matvec
         mat2 = build_matrix_via_matvec(bound_op.scipy_op(queue, "u"))
+        print(la.norm((mat - mat2).real, "fro") / la.norm(mat2.real, "fro"),
+              la.norm((mat - mat2).imag, "fro") / la.norm(mat2.imag, "fro"))
 
-        print(
-                la.norm((mat-mat2).real, "fro")/la.norm(mat2.real, "fro"),
-                la.norm((mat-mat2).imag, "fro")/la.norm(mat2.imag, "fro"))
         import matplotlib.pyplot as pt
         pt.subplot(121)
-        pt.imshow(np.log10(np.abs(1e-20+(mat-mat2).real)))
+        pt.imshow(np.log10(np.abs(1.0e-20 + (mat - mat2).real)))
         pt.colorbar()
         pt.subplot(122)
-        pt.imshow(np.log10(np.abs(1e-20+(mat-mat2).imag)))
+        pt.imshow(np.log10(np.abs(1.0e-20 + (mat - mat2).imag)))
         pt.colorbar()
         pt.show()
 
-    if 0:
+    if visualize:
         import matplotlib.pyplot as pt
         pt.subplot(121)
         pt.imshow(mat.real)
