@@ -540,7 +540,8 @@ def drive_fmm(expansion_wrangler, src_weights):
 def assemble_performance_data(geo_data, uses_pde_expansions,
         translation_source_power=None, translation_target_power=None,
         translation_max_power=None,
-        summarize_parallel=None, merge_close_lists=True):
+        summarize_parallel=None, merge_close_lists=True,
+        use_tsqbx=False):
     """
     :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
         uses translation operators that make use of the knowledge that the
@@ -557,6 +558,9 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         * *_neighbor* (List 1)
         * *_sep_smaller* (List 3 close)
         * *_sep_bigger* (List 4 close).
+    :arg use_tsqbx: A :class:`bool` indicating whether to model
+        List 1/3close/4close interactions that involve QBX centers
+        using TSQBX. This affects the cost of the *p2qbxl* stage.
     """
 
     # FIXME: This should suport target filtering.
@@ -818,7 +822,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         np2qbxl_list3 = np.zeros(len(global_qbx_centers), dtype=np.intp)
         np2qbxl_list4 = np.zeros(len(global_qbx_centers), dtype=np.intp)
 
+        # center -> number of associated targets
+        ntgts = np.zeros(len(global_qbx_centers), dtype=np.intp)
+
         for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+            start, end = center_to_targets_starts[tgt_icenter:tgt_icenter+2]
+            ntgts[itgt_center] = end - start
+
             itgt_box = qbx_center_to_target_box[tgt_icenter]
 
             np2qbxl_list1_srcs = 0
@@ -859,15 +869,20 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
             np2qbxl_list4[itgt_center] = np2qbxl_list4_srcs
 
-        if merge_close_lists:
-            result["p2qbxl"] = summarize_parallel(np2qbxl_list1, ncoeffs_qbx)
+        if use_tsqbx:
+            mult = p_qbx
+            np2qbxl_list1 *= ntgts
+            np2qbxl_list3 *= ntgts
+            np2qbxl_list4 *= ntgts
         else:
-            result["p2qbxl_neighbor"] = (
-                    summarize_parallel(np2qbxl_list1, ncoeffs_qbx))
-            result["p2qbxl_sep_smaller"] = (
-                    summarize_parallel(np2qbxl_list3, ncoeffs_qbx))
-            result["p2qbxl_sep_bigger"] = (
-                    summarize_parallel(np2qbxl_list4, ncoeffs_qbx))
+            mult = ncoeffs_qbx
+
+        if merge_close_lists:
+            result["p2qbxl"] = summarize_parallel(np2qbxl_list1, mult)
+        else:
+            result["p2qbxl_neighbor"] = summarize_parallel(np2qbxl_list1, mult)
+            result["p2qbxl_sep_smaller"] = summarize_parallel(np2qbxl_list3, mult)
+            result["p2qbxl_sep_bigger"] = summarize_parallel(np2qbxl_list4, mult)
 
     process_form_qbxl()
 
