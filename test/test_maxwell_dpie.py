@@ -562,7 +562,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
             geom_map = {"obj0":qbx0, "obj0t":qbx0.density_discr, "scat":qbx0.density_discr}
 
             # compute off-boundary locations that the representation will need to be evaluated at
-            tgt_n = PointsTarget(bind(geom_map, epsilon_off_boundary(where='obj0',epsilon=1e-8))(queue))
+            tgt_n = PointsTarget(bind(geom_map, epsilon_off_boundary(where='obj0',epsilon=1e-4))(queue))
             geom_map['tgt'] = tgt_n
 
             # redefine a_densities

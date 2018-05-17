@@ -375,7 +375,7 @@ class DPIEOperator:
     def _R(self, a, rho, where):
         return sym.join_fields(
             sym.n_cross( self.k * self.S(self.n_cross(a),where) + sym.grad(ambient_dim=3,operand=self.S(rho,where)),where=where),
-            sym.div(self.S(self.n_cross(a),where)) - self.k * self.S(rho,where)
+            (sym.div(self.S(self.n_cross(a),where)) - self.k * self.S(rho,where))
             )
 
     def _scaledDPIEs_integral(self, sigma, sigma_n, where):
@@ -471,7 +471,7 @@ class DPIEOperator:
 
             # generate the set of equations for the scalar densities, rho, coupled
             # across the various geometries involved
-            output[(2*self.nobjs + n)] = 0.5*rho[0,n] + L[-1] + 1j*R[-1] - v[n]
+            output[(2*self.nobjs + n)] = 0*(0.5*rho[0,n] + L[-1]) + 1j*R[-1] - v[n]
 
             # add the equation that integrates everything out into some constant
             output[3*self.nobjs + n] = self._scaledDPIEv_integral(a, rho, rho[0,n], where=obj_n)
@@ -706,7 +706,7 @@ class DPIEOperator:
         (a0, a, rho0, rho, v) = self._extract_a_densities(A_densities)
 
         # define the vector potential representation
-        return self.k*(self.D(self.n_times(rho),target,qfl=qfl) \
+        return self.k*( self.D(rho,target,qfl=qfl) \
             + 1j*(sym.div(self.S(self.n_cross(a),target,qfl=qfl)) - self.k * self.S(rho,target,qfl=qfl)))
 
     def vector_potential_rep0(self, A_densities, target=None, qfl=None):
