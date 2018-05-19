@@ -909,6 +909,13 @@ def dd_axis(axis, ambient_dim, operand):
     """Return the derivative along (XYZ) axis *axis*
     (in *ambient_dim*-dimensional space) of *operand*.
     """
+    from pytools.obj_array import is_obj_array, with_object_array_or_scalar
+    if is_obj_array(operand):
+        def dd_axis_comp(operand_i):
+            return dd_axis(axis, ambient_dim, operand_i)
+
+        return with_object_array_or_scalar(dd_axis_comp, operand)
+
     d = Derivative()
 
     unit_vector = np.zeros(ambient_dim)
@@ -1409,7 +1416,9 @@ def n_cross(vec, where=None):
 
 def div(vec):
     ambient_dim = len(vec)
-    return sum(dd_axis(iaxis, ambient_dim, vec) for iaxis in range(ambient_dim))
+    return sum(
+            dd_axis(iaxis, ambient_dim, vec[iaxis])
+            for iaxis in range(ambient_dim))
 
 
 def curl(vec):
