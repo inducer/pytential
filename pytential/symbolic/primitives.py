@@ -1416,7 +1416,9 @@ def n_cross(vec, where=None):
 
 def div(vec):
     ambient_dim = len(vec)
-    return sum(dd_axis(iaxis, ambient_dim, vec) for iaxis in range(ambient_dim))
+    return sum(
+            dd_axis(iaxis, ambient_dim, vec[iaxis])
+            for iaxis in range(ambient_dim))
 
 
 def curl(vec):
