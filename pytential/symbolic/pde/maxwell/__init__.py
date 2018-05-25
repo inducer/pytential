@@ -165,7 +165,7 @@ class PECChargeCurrentMFIEOperator:
 
     def scattered_volume_field(self, Jt, rho, qbx_forced_limit=None):
         """
-        This will return an object of six entries, the first three of which
+        This will return an object array of six entries, the first three of which
         represent the electric, and the second three of which represent the
         magnetic field. This satisfies the time-domain Maxwell's equations
         as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
