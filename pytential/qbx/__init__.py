@@ -83,7 +83,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
             _tree_kind="adaptive",
-            _use_tsqbx_list1=False,
+            _tsqbx_kind="",
             geometry_data_inspector=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
@@ -197,7 +197,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._from_sep_smaller_min_nsources_cumul = \
                 _from_sep_smaller_min_nsources_cumul
         self._tree_kind = _tree_kind
-        self._use_tsqbx_list1 = _use_tsqbx_list1
+        self._tsqbx_kind = _tsqbx_kind
         self.geometry_data_inspector = geometry_data_inspector
 
         # /!\ *All* parameters set here must also be set by copy() below,
@@ -220,7 +220,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _tree_kind=None,
-            _use_tsqbx_list1=_not_provided,
+            _tsqbx_kind=_not_provided,
             geometry_data_inspector=None,
             fmm_backend=None,
 
@@ -303,8 +303,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _from_sep_smaller_min_nsources_cumul=(
                     self._from_sep_smaller_min_nsources_cumul),
                 _tree_kind=_tree_kind or self._tree_kind,
-                _use_tsqbx_list1=_use_tsqbx_list1 if _use_tsqbx_list1 is not _not_provided
-                    else self._use_tsqbx_list1,
+                _tsqbx_kind=_tsqbx_kind if _tsqbx_kind is not _not_provided
+                    else self._tsqbx_kind,
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
                 fmm_backend=fmm_backend or self.fmm_backend,
@@ -723,7 +723,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
                         kernel_extra_kwargs=kernel_extra_kwargs,
-                        _use_target_specific_list1=self._use_tsqbx_list1)
+                        _use_target_specific_list1="1" in self._tsqbx_kind)
 
         from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)

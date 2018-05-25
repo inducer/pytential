@@ -541,7 +541,7 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         translation_source_power=None, translation_target_power=None,
         translation_max_power=None,
         summarize_parallel=None, merge_close_lists=True,
-        use_tsqbx=False):
+        use_tsqbx_list1=False):
     """
     :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
         uses translation operators that make use of the knowledge that the
@@ -558,7 +558,7 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         * *_neighbor* (List 1)
         * *_sep_smaller* (List 3 close)
         * *_sep_bigger* (List 4 close).
-    :arg use_tsqbx: A :class:`bool` indicating whether to model
+    :arg use_tsqbx_list1: A :class:`bool` indicating whether to model
         List 1/3close/4close interactions that involve QBX centers
         using TSQBX. This affects the cost of the *p2qbxl* stage.
     """
@@ -869,7 +869,7 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
             np2qbxl_list4[itgt_center] = np2qbxl_list4_srcs
 
-        if use_tsqbx:
+        if use_tsqbx_list1:
             mult = p_qbx
             np2qbxl_list1 *= ntgts
             np2qbxl_list3 *= ntgts
