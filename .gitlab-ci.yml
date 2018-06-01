@@ -1,12 +1,13 @@
-Python 3.5 POCL:
+Python 2.7 POCL:
   script:
-  - export PY_EXE=python3.5
+  - export PY_EXE=python2.7
   - export PYOPENCL_TEST=portable
+  - export PYTEST_ADDOPTS=-k-slowtest
   - export EXTRA_INSTALL="numpy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
-  - python3.5
+  - python2.7
   - pocl
   - large-node
   except:
@@ -16,6 +17,7 @@ Python 3.6 POCL:
   script:
   - export PY_EXE=python3.6
   - export PYOPENCL_TEST=portable
+  - export PYTEST_ADDOPTS=-k-slowtest
   - export EXTRA_INSTALL="numpy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
@@ -25,6 +27,36 @@ Python 3.6 POCL:
   - large-node
   except:
   - tags
+
+Python 2.7 POCL Slow:
+  script:
+  - export PY_EXE=python2.7
+  - export PYOPENCL_TEST=portable
+  - export PYTEST_ADDOPTS=-kslowtest
+  - export EXTRA_INSTALL="numpy mako"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python2.7
+  - pocl
+  - large-node
+  only:
+  - schedules
+
+Python 3.6 POCL Slow:
+  script:
+  - export PY_EXE=python3.6
+  - export PYOPENCL_TEST=portable
+  - export PYTEST_ADDOPTS=-kslowtest
+  - export EXTRA_INSTALL="numpy mako"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3.6
+  - pocl
+  - large-node
+  only:
+  - schedules
 
 Python 3.6 POCL Examples:
   script:
@@ -44,25 +76,12 @@ Python 3.5 Conda:
   script:
   - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
   - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+  - export PYTEST_ADDOPTS=-k-slowtest
   - REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
   - linux
-  - large-node
-  except:
-  - tags
-
-Python 2.7 POCL:
-  script:
-  - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="numpy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python2.7
-  - pocl
   - large-node
   except:
   - tags
