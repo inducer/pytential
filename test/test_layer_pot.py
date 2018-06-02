@@ -139,8 +139,7 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
         pt.colorbar()
         pt.show()
 
-    # FIXME: Why does the FMM only meet this sloppy tolerance?
-    assert linf_err < 1e-2
+    assert linf_err < 1e-14
 
 # }}}
 
