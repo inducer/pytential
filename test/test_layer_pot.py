@@ -92,7 +92,7 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
     nelements = 30
     target_order = 8
     qbx_order = 3
-    if use_fmm is True:
+    if use_fmm:
         fmm_order = qbx_order
     else:
         fmm_order = False
@@ -139,7 +139,7 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
         pt.colorbar()
         pt.show()
 
-    assert linf_err < 1e-14
+    assert linf_err < 1e-3
 
 # }}}
 
