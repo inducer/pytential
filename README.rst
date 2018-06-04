@@ -17,7 +17,7 @@ It relies on
 * `boxtree <http://pypi.python.org/pypi/boxtree>`_ for FMM tree building
 * `sumpy <http://pypi.python.org/pypi/sumpy>`_ for expansions and analytical routines
 * `modepy <http://pypi.python.org/pypi/modepy>`_ for modes and nodes on simplices
-* `meshmode <http://pypi.python.org/pypi/meshmode>`_ for modes and nodes on simplices
+* `meshmode <http://pypi.python.org/pypi/meshmode>`_ for high order discretizations
 * `loopy <http://pypi.python.org/pypi/loo.py>`_ for fast array operations
 * `pytest <http://pypi.python.org/pypi/pytest>`_ for automated testing
 
