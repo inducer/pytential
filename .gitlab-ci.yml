@@ -1,8 +1,14 @@
+# Environment variables
+#
+# * PYTEST_ADDOPTS is used to filter test runs. The default value is "-k-slowtest",
+#   which skips the slow running tests.
+# * SKIP_EXAMPLES, if non-empty, can be used to skip the examples job.
+
 Python 2.7 POCL:
   script:
   - export PY_EXE=python2.7
   - export PYOPENCL_TEST=portable
-  - export PYTEST_ADDOPTS=-k-slowtest
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
   - export EXTRA_INSTALL="numpy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
@@ -17,7 +23,7 @@ Python 3.6 POCL:
   script:
   - export PY_EXE=python3.6
   - export PYOPENCL_TEST=portable
-  - export PYTEST_ADDOPTS=-k-slowtest
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
   - export EXTRA_INSTALL="numpy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
@@ -28,38 +34,9 @@ Python 3.6 POCL:
   except:
   - tags
 
-Python 2.7 POCL Slow:
-  script:
-  - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=portable
-  - export PYTEST_ADDOPTS=-kslowtest
-  - export EXTRA_INSTALL="numpy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python2.7
-  - pocl
-  - large-node
-  only:
-  - schedules
-
-Python 3.6 POCL Slow:
-  script:
-  - export PY_EXE=python3.6
-  - export PYOPENCL_TEST=portable
-  - export PYTEST_ADDOPTS=-kslowtest
-  - export EXTRA_INSTALL="numpy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python3.6
-  - pocl
-  - large-node
-  only:
-  - schedules
-
 Python 3.6 POCL Examples:
   script:
+  - test -n "$SKIP_EXAMPLES" && exit
   - export PY_EXE=python3.6
   - export PYOPENCL_TEST=portable
   - export EXTRA_INSTALL="numpy mako pyvisfile matplotlib"
@@ -75,9 +52,9 @@ Python 3.6 POCL Examples:
 Python 3.5 Conda:
   script:
   - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
-  - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-  - export PYTEST_ADDOPTS=-k-slowtest
-  - REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
+  - export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
@@ -90,9 +67,9 @@ Python 3.5 Conda Apple:
   script:
   - export LC_ALL=en_US.UTF-8
   - export LANG=en_US.UTF-8
-  - export PYTEST_ADDOPTS=-k-slowtest
-  - CONDA_ENVIRONMENT=.test-conda-env-py3-macos.yml
-  - REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
+  - export CONDA_ENVIRONMENT=.test-conda-env-py3-macos.yml
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
