@@ -78,13 +78,13 @@ def test_performance_model(ctx_getter, dim):
     lpot_kwargs = DEFAULT_LPOT_KWARGS.copy()
     lpot_kwargs.update(
             _expansion_stick_out_factor=TCF,
-            fmm_order=FMM_ORDER, qbx_order=QBX_ORDER,
+            fmm_order=FMM_ORDER, qbx_order=QBX_ORDER
             )
 
     from pytential.qbx import QBXLayerPotentialSource
     lpot_source = QBXLayerPotentialSource(
             pre_density_discr, OVSMP_FACTOR*target_order,
-            **lpot_kwargs,)
+            **lpot_kwargs)
 
     lpot_source, _ = lpot_source.with_refinement()
 
