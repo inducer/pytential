@@ -117,7 +117,7 @@ def test_performance_model(ctx_getter, dim):
 
 
 # You can test individual routines by typing
-# $ python test_layer_pot.py 'test_routine()'
+# $ python test_performance_model.py 'test_routine()'
 
 if __name__ == "__main__":
     import sys
