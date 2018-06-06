@@ -252,7 +252,7 @@ class DynamicTestCase(object):
         DynamicTestCase(SphereGeometry(), GreenExpr(), 0),
 ])
 def test_identity_convergence_slow(ctx_getter, case):
-    test_identity_convergence(case)
+    test_identity_convergence(ctx_getter, case)
 
 
 @pytest.mark.parametrize("case", [
