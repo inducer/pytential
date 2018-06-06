@@ -183,7 +183,7 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
             target_association_tolerance=0.05,
             ).with_refinement()
 
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
     from pytential.target import PointsTarget
     ptarget = PointsTarget(fplot.points)
     from sumpy.kernel import LaplaceKernel
