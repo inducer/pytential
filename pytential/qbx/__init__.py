@@ -84,6 +84,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _from_sep_smaller_min_nsources_cumul=None,
             _tree_kind="adaptive",
             geometry_data_inspector=None,
+            performance_model=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
         """
@@ -197,6 +198,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _from_sep_smaller_min_nsources_cumul
         self._tree_kind = _tree_kind
         self.geometry_data_inspector = geometry_data_inspector
+        self.performance_model = performance_model
 
         # /!\ *All* parameters set here must also be set by copy() below,
         # otherwise they will be reset to their default values behind your
@@ -219,6 +221,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _from_sep_smaller_crit=None,
             _tree_kind=None,
             geometry_data_inspector=None,
+            performance_model=_not_provided,
             fmm_backend=None,
 
             debug=_not_provided,
@@ -302,6 +305,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _tree_kind=_tree_kind or self._tree_kind,
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
+                performance_model=(
+                    # None is a valid value here
+                    performance_model
+                    if performance_model is not _not_provided
+                    else self.performance_model),
                 fmm_backend=fmm_backend or self.fmm_backend,
                 **kwargs)
 
@@ -589,7 +597,31 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ internal functionality for execution
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+        if self.fmm_level_to_order is False:
+            func = self.exec_compute_potential_insn
+        else:
+            func = self.exec_compute_potential_insn_fmm
+        return self._dispatch_compute_potential_insn(
+                queue, insn, bound_expr, evaluate, func)
+
+    def perf_model_compute_potential_insn(self, queue, insn, bound_expr,
+            evaluate, costs):
+        if self.fmm_level_to_order is False:
+            raise NotImplementedError("perf modeling direct evaluations")
+        return self._dispatch_compute_potential_insn(
+                queue, insn, bound_expr, evaluate,
+                self.perf_model_compute_potential_insn_fmm,
+                costs=costs)
+
+    def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
+            evaluate, func, **extra_args):
         from pytools.obj_array import with_object_array_or_scalar
+
+        if not self._refined_for_global_qbx:
+            from warnings import warn
+            warn(
+                "Executing global QBX without refinement. "
+                "This is unlikely to work.")
 
         def oversample_nonscalars(vec):
             from numbers import Number
@@ -598,22 +630,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             else:
                 return self.resampler(queue, vec)
 
-        if not self._refined_for_global_qbx:
-            from warnings import warn
-            warn(
-                "Executing global QBX without refinement. "
-                "This is unlikely to work.")
-
         def evaluate_wrapper(expr):
             value = evaluate(expr)
             return with_object_array_or_scalar(oversample_nonscalars, value)
 
-        if self.fmm_level_to_order is False:
-            func = self.exec_compute_potential_insn_direct
-        else:
-            func = self.exec_compute_potential_insn_fmm
-
-        return func(queue, insn, bound_expr, evaluate_wrapper)
+        return func(queue, insn, bound_expr, evaluate_wrapper, **extra_args)
 
     @property
     @memoize_method
@@ -657,18 +678,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             raise ValueError("invalid FMM backend: %s" % self.fmm_backend)
 
-    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
-        # {{{ build list of unique target discretizations used
-
+    def get_target_discrs_and_qbx_sides(self, insn, bound_expr):
+        """Build the list of unique target discretizations used by the
+        provided instruction.
+        """
         # map (name, qbx_side) to number in list
-        tgt_name_and_side_to_number = {}
+        target_name_and_side_to_number = {}
         # list of tuples (discr, qbx_side)
         target_discrs_and_qbx_sides = []
 
         for o in insn.outputs:
             key = (o.target_name, o.qbx_forced_limit)
-            if key not in tgt_name_and_side_to_number:
-                tgt_name_and_side_to_number[key] = \
+            if key not in target_name_and_side_to_number:
+                target_name_and_side_to_number[key] = \
                         len(target_discrs_and_qbx_sides)
 
                 target_discr = bound_expr.places[o.target_name]
@@ -682,13 +704,63 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_discrs_and_qbx_sides.append(
                         (target_discr, qbx_forced_limit))
 
-        target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
+        return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
-        # }}}
+    # {{{ execute fmm performance model
+
+    def perf_model_compute_potential_insn_fmm(self, queue, insn, bound_expr,
+                                              evaluate, costs):
+        target_name_and_side_to_number, target_discrs_and_qbx_sides = (
+                self.get_target_discrs_and_qbx_sides(insn, bound_expr))
 
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
 
-        # geo_data.plot()
+        if self.performance_model is None:
+            from pytential.qbx.performance import PerformanceModel
+            performance_model = PerformanceModel()
+        else:
+            performance_model = self.performance_model
+
+        costs.update(performance_model(geo_data))
+
+        # {{{ construct dummy outputs
+
+        strengths = (evaluate(insn.density).with_queue(queue)
+                * self.weights_and_area_elements())
+        out_kernels = tuple(knl for knl in insn.kernels)
+        fmm_kernel = self.get_fmm_kernel(out_kernels)
+        output_and_expansion_dtype = (
+                self.get_fmm_output_and_expansion_dtype(fmm_kernel, strengths))
+
+        result = []
+
+        for o in insn.outputs:
+            target_side_number = target_name_and_side_to_number[
+                    o.target_name, o.qbx_forced_limit]
+            start, end = geo_data.target_info().target_discr_starts[
+                    target_side_number:target_side_number+2]
+
+            output_array = cl.array.zeros(
+                    queue,
+                    end - start,
+                    dtype=output_and_expansion_dtype)
+
+            result.append((o.name, output_array))
+
+        new_futures = []
+        return result, new_futures
+
+        # }}}
+
+    # }}}
+
+    # {{{ execute fmm
+
+    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
+        target_name_and_side_to_number, target_discrs_and_qbx_sides = (
+                self.get_target_discrs_and_qbx_sides(insn, bound_expr))
+
+        geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
 
         # FIXME Exert more positive control over geo_data attribute lifetimes using
         # geo_data.<method>.clear_cache(geo_data).
@@ -701,7 +773,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
-
         out_kernels = tuple(knl for knl in insn.kernels)
         fmm_kernel = self.get_fmm_kernel(out_kernels)
         output_and_expansion_dtype = (
@@ -724,7 +795,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 == target_state.FAILED).any().get():
             raise RuntimeError("geometry has failed targets")
 
-        # {{{ performance data hook
+        # {{{ geometry data inspection hook
 
         if self.geometry_data_inspector is not None:
             perform_fmm = self.geometry_data_inspector(insn, bound_expr, geo_data)
@@ -736,23 +807,25 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # {{{ execute global QBX
 
         from pytential.qbx.fmm import drive_fmm
-        all_potentials_on_every_tgt = drive_fmm(wrangler, strengths)
+        all_potentials_on_every_target = drive_fmm(wrangler, strengths)
 
         # }}}
 
         result = []
 
         for o in insn.outputs:
-            tgt_side_number = tgt_name_and_side_to_number[
+            target_side_number = target_name_and_side_to_number[
                     o.target_name, o.qbx_forced_limit]
-            tgt_slice = slice(*geo_data.target_info().target_discr_starts[
-                    tgt_side_number:tgt_side_number+2])
+            target_slice = slice(*geo_data.target_info().target_discr_starts[
+                    target_side_number:target_side_number+2])
 
-            result.append(
-                    (o.name,
-                        all_potentials_on_every_tgt[o.kernel_index][tgt_slice]))
+            result.append((o.name,
+                    all_potentials_on_every_target[o.kernel_index][target_slice]))
 
-        return result, []
+        new_futures = []
+        return result, new_futures
+
+    # }}}
 
     # }}}
 
