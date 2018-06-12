@@ -598,7 +598,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         if self.fmm_level_to_order is False:
-            func = self.exec_compute_potential_insn
+            func = self.exec_compute_potential_insn_direct
         else:
             func = self.exec_compute_potential_insn_fmm
         return self._dispatch_compute_potential_insn(
