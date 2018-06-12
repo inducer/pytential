@@ -1,6 +1,9 @@
 from __future__ import division, absolute_import
 
-__copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
+__copyright__ = """
+Copyright (C) 2013 Andreas Kloeckner
+Copyright (C) 2018 Matt Wala
+"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -34,117 +37,107 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
+.. autoclass:: PerformanceModel
 .. autofunction:: assemble_performance_data
 """
 
 
-# {{{ assemble_performance_data
+# {{{ translation cost model
 
-def assemble_performance_data(geo_data, uses_pde_expansions,
-        translation_source_power=None, translation_target_power=None,
-        translation_max_power=None,
-        summarize_parallel=None, merge_close_lists=True):
-    """
-    :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
-        uses translation operators that make use of the knowledge that the
-        potential satisfies a PDE.
-    :arg summarize_parallel: a function of two arguments
-        *(parallel_array, sym_multipliers)* used to process an array of
-        workloads of 'parallelizable units'. By default, all workloads are
-        summed into one number encompassing the total workload.
-    :arg merge_close_lists: A :class:`bool` indicating whether or not all
-        boxes requiring direct evaluation should be merged into a single
-        interaction list. If *False*, *part_direct* and *p2qbxl* will be
-        suffixed with the originating list as follows:
+class TranslationCostModel(object):
+    """Provides modeled costs for individual translations or evaluations."""
 
-        * *_neighbor* (List 1)
-        * *_sep_smaller* (List 3 close)
-        * *_sep_bigger* (List 4 close).
-    """
+    def __init__(self, p_qbx, p_fmm, ncoeffs_qbx, ncoeffs_fmm,
+                 translation_source_power, translation_target_power,
+                 translation_max_power):
+        self.p_qbx = p_qbx
+        self.p_fmm = p_fmm
+        self.ncoeffs_qbx = ncoeffs_qbx
+        self.ncoeffs_fmm = ncoeffs_fmm
+        self.translation_source_power = translation_source_power
+        self.translation_target_power = translation_target_power
+        self.translation_max_power = translation_max_power
 
-    # FIXME: This should suport target filtering.
+    def direct(self):
+        return 1
 
-    if summarize_parallel is None:
-        def summarize_parallel(parallel_array, sym_multipliers):
-            return np.sum(parallel_array) * sym_multipliers
+    def p2qbxl(self):
+        return self.ncoeffs_qbx
 
-    from collections import OrderedDict
-    result = OrderedDict()
+    qbxl2p = p2qbxl
 
-    from pymbolic import var
-    p_fmm = var("p_fmm")
-    p_qbx = var("p_qbx")
+    def p2l(self):
+        return self.ncoeffs_fmm
 
-    nqbtl = geo_data.non_qbx_box_target_lists()
+    l2p = p2l
+    p2m = p2l
+    m2p = p2l
 
-    with cl.CommandQueue(geo_data.cl_context) as queue:
-        tree = geo_data.tree().get(queue=queue)
-        traversal = geo_data.traversal(merge_close_lists).get(queue=queue)
-        box_target_counts_nonchild = (
-                nqbtl.box_target_counts_nonchild.get(queue=queue))
+    def m2m(self):
+        return self.e2e_cost(self.p_fmm, self.p_fmm)
 
-    d = tree.dimensions
-    if uses_pde_expansions:
-        ncoeffs_fmm = p_fmm ** (d-1)
-        ncoeffs_qbx = p_qbx ** (d-1)
+    l2l = m2m
+    m2l = m2m
 
-        if d == 2:
-            default_translation_source_power = 1
-            default_translation_target_power = 1
-            default_translation_max_power = 0
+    def m2qbxl(self):
+        return self.e2e_cost(self.p_fmm, self.p_qbx)
 
-        elif d == 3:
-            # Based on a reading of FMMlib, i.e. a point-and-shoot FMM.
-            default_translation_source_power = 0
-            default_translation_target_power = 0
-            default_translation_max_power = 3
+    l2qbxl = m2qbxl
 
-        else:
-            raise ValueError("Don't know how to estimate expansion complexities "
-                    "for dimension %d" % d)
-
-    else:
-        ncoeffs_fmm = p_fmm ** d
-        ncoeffs_qbx = p_qbx ** d
-        default_translation_source_power = d
-        default_translation_target_power = d
-
-    if translation_source_power is None:
-        translation_source_power = default_translation_source_power
-    if translation_target_power is None:
-        translation_target_power = default_translation_target_power
-    if translation_max_power is None:
-        translation_max_power = default_translation_max_power
-
-    def xlat_cost(p_source, p_target):
+    def e2e_cost(self, p_source, p_target):
         from pymbolic.primitives import Max
         return (
-                p_source ** translation_source_power
-                * p_target ** translation_target_power
-                * Max((p_source, p_target)) ** translation_max_power
-                )
+                p_source ** self.translation_source_power
+                * p_target ** self.translation_target_power
+                * Max((p_source, p_target)) ** self.translation_max_power)
 
-    result.update(
-            nlevels=tree.nlevels,
-            nboxes=tree.nboxes,
-            nsources=tree.nsources,
-            ntargets=tree.ntargets)
+# }}}
 
-    # {{{ construct local multipoles
 
-    result["form_mp"] = tree.nsources*ncoeffs_fmm
+# {{{ performance model
 
-    # }}}
+class PerformanceModel(object):
 
-    # {{{ propagate multipoles upward
+    def __init__(self,
+            uses_pde_expansions=True,
+            translation_source_power=None,
+            translation_target_power=None,
+            translation_max_power=None,
+            summarize_parallel=None,
+            merge_close_lists=True):
+        """
+        :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
+            uses translation operators that make use of the knowledge that the
+            potential satisfies a PDE.
+        :arg summarize_parallel: a function of two arguments
+            *(parallel_array, sym_multipliers)* used to process an array of
+            workloads of 'parallelizable units'. By default, all workloads are
+            summed into one number encompassing the total workload.
+        :arg merge_close_lists: A :class:`bool` indicating whether or not all
+            boxes requiring direct evaluation should be merged into a single
+            interaction list. If *False*, *part_direct* and *p2qbxl* will be
+            suffixed with the originating list as follows:
 
-    result["prop_upward"] = tree.nboxes * xlat_cost(p_fmm, p_fmm)
+            * *_neighbor* (List 1)
+            * *_sep_smaller* (List 3 close)
+            * *_sep_bigger* (List 4 close).
+        """
+        self.uses_pde_expansions = uses_pde_expansions
+        self.translation_source_power = translation_source_power
+        self.translation_target_power = translation_target_power
+        self.translation_max_power = translation_max_power
+        if summarize_parallel is None:
+            summarize_parallel = self.summarize_parallel_default
+        self.summarize_parallel = summarize_parallel
+        self.merge_close_lists = merge_close_lists
 
-    # }}}
+    @staticmethod
+    def summarize_parallel_default(parallel_array, sym_multipliers):
+        return np.sum(parallel_array) * sym_multipliers
 
     # {{{ direct evaluation to point targets (lists 1, 3 close, 4 close)
 
-    def process_direct():
+    def process_direct(self, xlat_cost, traversal, tree, box_target_counts_nonchild):
         # box -> nsources * ntargets
         npart_direct_list1 = np.zeros(len(traversal.target_boxes), dtype=np.intp)
         npart_direct_list3 = np.zeros(len(traversal.target_boxes), dtype=np.intp)
@@ -162,7 +155,7 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
             npart_direct_list1[itgt_box] = ntargets * npart_direct_list1_srcs
 
-            if merge_close_lists:
+            if self.merge_close_lists:
                 continue
 
             npart_direct_list3_srcs = 0
@@ -191,23 +184,25 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
             npart_direct_list4[itgt_box] = ntargets * npart_direct_list4_srcs
 
-        if merge_close_lists:
-            result["part_direct"] = summarize_parallel(npart_direct_list1, 1)
+        result = {}
+        if self.merge_close_lists:
+            result["part_direct"] = (
+                    self.summarize_parallel(npart_direct_list1, xlat_cost.direct()))
         else:
             result["part_direct_neighbor"] = (
-                    summarize_parallel(npart_direct_list1, 1))
+                    self.summarize_parallel(npart_direct_list1, xlat_cost.direct()))
             result["part_direct_sep_smaller"] = (
-                    summarize_parallel(npart_direct_list3, 1))
+                    self.summarize_parallel(npart_direct_list3, xlat_cost.direct()))
             result["part_direct_sep_bigger"] = (
-                    summarize_parallel(npart_direct_list4, 1))
+                    self.summarize_parallel(npart_direct_list4, xlat_cost.direct()))
 
-    process_direct()
+        return result
 
     # }}}
 
     # {{{ translate separated siblings' ("list 2") mpoles to local
 
-    def process_list2():
+    def process_list2(self, xlat_cost, traversal):
         nm2l = np.zeros(len(traversal.target_or_target_parent_boxes), dtype=np.intp)
 
         for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
@@ -215,15 +210,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
             nm2l[itgt_box] += end-start
 
-        result["m2l"] = summarize_parallel(nm2l, xlat_cost(p_fmm, p_fmm))
-
-    process_list2()
+        return dict(m2l=self.summarize_parallel(nm2l, xlat_cost.m2l()))
 
     # }}}
 
     # {{{ evaluate sep. smaller mpoles ("list 3") at particles
 
-    def process_list3():
+    def process_list3(self, xlat_cost, traversal, tree, box_target_counts_nonchild):
         nmp_eval = np.zeros(
                 (tree.nlevels, len(traversal.target_boxes)),
                 dtype=np.intp)
@@ -240,15 +233,14 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
                         ntargets * (end-start)
                 )
 
-        result["mp_eval"] = summarize_parallel(nmp_eval, ncoeffs_fmm)
-
-    process_list3()
+        return dict(
+                mp_eval=self.summarize_parallel(nmp_eval, xlat_cost.m2p()))
 
     # }}}
 
     # {{{ form locals for separated bigger source boxes ("list 4")
 
-    def process_list4():
+    def process_list4(self, xlat_cost, traversal, tree):
         nform_local = np.zeros(
                 len(traversal.target_or_target_parent_boxes),
                 dtype=np.intp)
@@ -264,57 +256,15 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
             nform_local[itgt_box] = nform_local_box
 
-        result["form_local"] = summarize_parallel(nform_local, ncoeffs_fmm)
-
-    process_list4()
-
-    # }}}
-
-    # {{{ propagate local_exps downward
-
-    result["prop_downward"] = tree.nboxes * xlat_cost(p_fmm, p_fmm)
-
-    # }}}
-
-    # {{{ evaluate locals
-
-    result["eval_part"] = tree.ntargets * ncoeffs_fmm
+        return dict(form_local=(
+                self.summarize_parallel(nform_local, xlat_cost.p2l())))
 
     # }}}
 
     # {{{ form global qbx locals
 
-    global_qbx_centers = geo_data.global_qbx_centers()
-
-    # If merge_close_lists is False above, then this builds another traversal
-    # (which is OK).
-    qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
-    center_to_targets_starts = geo_data.center_to_tree_targets().starts
-    qbx_center_to_target_box_source_level = np.empty(
-        (tree.nlevels,), dtype=object
-    )
-
-    for src_level in range(tree.nlevels):
-        qbx_center_to_target_box_source_level[src_level] = (
-            geo_data.qbx_center_to_target_box_source_level(src_level)
-        )
-
-    with cl.CommandQueue(geo_data.cl_context) as queue:
-        global_qbx_centers = global_qbx_centers.get(
-                queue=queue)
-        qbx_center_to_target_box = qbx_center_to_target_box.get(
-                queue=queue)
-        center_to_targets_starts = center_to_targets_starts.get(
-                queue=queue)
-        for src_level in range(tree.nlevels):
-            qbx_center_to_target_box_source_level[src_level] = (
-                qbx_center_to_target_box_source_level[src_level].get(queue=queue)
-            )
-
-    def process_form_qbxl():
-        ncenters = geo_data.ncenters
-
-        result["ncenters"] = ncenters
+    def process_form_qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
+            qbx_center_to_target_box):
 
         # center -> nsources
         np2qbxl_list1 = np.zeros(len(global_qbx_centers), dtype=np.intp)
@@ -333,7 +283,7 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
             np2qbxl_list1[itgt_center] = np2qbxl_list1_srcs
 
-            if merge_close_lists:
+            if self.merge_close_lists:
                 continue
 
             np2qbxl_list3_srcs = 0
@@ -362,23 +312,26 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
             np2qbxl_list4[itgt_center] = np2qbxl_list4_srcs
 
-        if merge_close_lists:
-            result["p2qbxl"] = summarize_parallel(np2qbxl_list1, ncoeffs_qbx)
+        result = {}
+        if self.merge_close_lists:
+            result["p2qbxl"] = (
+                    self.summarize_parallel(np2qbxl_list1, xlat_cost.p2qbxl()))
         else:
             result["p2qbxl_neighbor"] = (
-                    summarize_parallel(np2qbxl_list1, ncoeffs_qbx))
+                    self.summarize_parallel(np2qbxl_list1, xlat_cost.p2qbxl()))
             result["p2qbxl_sep_smaller"] = (
-                    summarize_parallel(np2qbxl_list3, ncoeffs_qbx))
+                    self.summarize_parallel(np2qbxl_list3, xlat_cost.p2qbxl()))
             result["p2qbxl_sep_bigger"] = (
-                    summarize_parallel(np2qbxl_list4, ncoeffs_qbx))
+                    self.summarize_parallel(np2qbxl_list4, xlat_cost.p2qbxl()))
 
-    process_form_qbxl()
+        return result
 
     # }}}
 
     # {{{ translate from list 3 multipoles to qbx local expansions
 
-    def process_m2qbxl():
+    def process_m2qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
+            qbx_center_to_target_box_source_level):
         nm2qbxl = np.zeros(
                 (tree.nlevels, len(global_qbx_centers)),
                 dtype=np.intp)
@@ -400,34 +353,232 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
                 nm2qbxl[isrc_level, itgt_center] += stop-start
 
-        result["m2qbxl"] = summarize_parallel(nm2qbxl, xlat_cost(p_fmm, p_qbx))
-
-    process_m2qbxl()
-
-    # }}}
-
-    # {{{ translate from box local expansions to qbx local expansions
-
-    result["l2qbxl"] = geo_data.ncenters * xlat_cost(p_fmm, p_qbx)
+        return dict(m2qbxl=self.summarize_parallel(nm2qbxl, xlat_cost.m2qbxl()))
 
     # }}}
 
     # {{{ evaluate qbx local expansions
 
-    def process_eval_qbxl():
+    def process_eval_qbxl(self, xlat_cost, global_qbx_centers,
+            center_to_targets_starts):
         nqbx_eval = np.zeros(len(global_qbx_centers), dtype=np.intp)
 
         for isrc_center, src_icenter in enumerate(global_qbx_centers):
             start, end = center_to_targets_starts[src_icenter:src_icenter+2]
             nqbx_eval[isrc_center] += end-start
 
-        result["qbxl2p"] = summarize_parallel(nqbx_eval, ncoeffs_qbx)
-
-    process_eval_qbxl()
+        return dict(qbxl2p=self.summarize_parallel(nqbx_eval, xlat_cost.qbxl2p()))
 
     # }}}
 
-    return result
+    # {{{ set up translation cost model
+
+    def get_translation_cost_model(self, d):
+        from pymbolic import var
+        p_qbx = var("p_qbx")
+        p_fmm = var("p_fmm")
+
+        if self.uses_pde_expansions:
+            ncoeffs_fmm = p_fmm ** (d-1)
+            ncoeffs_qbx = p_qbx ** (d-1)
+
+            if d == 2:
+                default_translation_source_power = 1
+                default_translation_target_power = 1
+                default_translation_max_power = 0
+
+            elif d == 3:
+                # Based on a reading of FMMlib, i.e. a point-and-shoot FMM.
+                default_translation_source_power = 0
+                default_translation_target_power = 0
+                default_translation_max_power = 3
+
+            else:
+                raise ValueError("Don't know how to estimate expansion complexities "
+                        "for dimension %d" % d)
+
+        else:
+            ncoeffs_fmm = p_fmm ** d
+            ncoeffs_qbx = p_qbx ** d
+            default_translation_source_power = d
+            default_translation_target_power = d
+
+        translation_source_power = (
+                default_translation_source_power
+                if self.translation_source_power is None
+                else self.translation_source_power)
+
+        translation_target_power = (
+                default_translation_target_power
+                if self.translation_target_power is None
+                else self.translation_target_power)
+
+        translation_max_power = (
+                default_translation_max_power
+                if self.translation_max_power is None
+                else self.translation_max_power)
+
+        return TranslationCostModel(
+                p_qbx=p_qbx,
+                p_fmm=p_fmm,
+                ncoeffs_qbx=ncoeffs_qbx,
+                ncoeffs_fmm=ncoeffs_fmm,
+                translation_source_power=translation_source_power,
+                translation_target_power=translation_target_power,
+                translation_max_power=translation_max_power)
+
+    # }}}
+
+    def __call__(self, geo_data):
+        # FIXME: This should suport target filtering.
+
+        from collections import OrderedDict
+        result = OrderedDict()
+
+        nqbtl = geo_data.non_qbx_box_target_lists()
+
+        with cl.CommandQueue(geo_data.cl_context) as queue:
+            tree = geo_data.tree().get(queue=queue)
+            traversal = geo_data.traversal(self.merge_close_lists).get(queue=queue)
+            box_target_counts_nonchild = (
+                    nqbtl.box_target_counts_nonchild.get(queue=queue))
+
+        result.update(
+                nlevels=tree.nlevels,
+                nboxes=tree.nboxes,
+                nsources=tree.nsources,
+                ntargets=tree.ntargets,
+                ncenters=geo_data.ncenters)
+
+        xlat_cost = self.get_translation_cost_model(tree.dimensions)
+
+        # {{{ construct local multipoles
+
+        result["form_mp"] = tree.nsources * xlat_cost.p2m()
+
+        # }}}
+
+        # {{{ propagate multipoles upward
+
+        result["prop_upward"] = tree.nboxes * xlat_cost.m2m()
+
+        # }}}
+
+        # {{{ direct evaluation to point targets (lists 1, 3 close, 4 close)
+
+        result.update(self.process_direct(
+                xlat_cost, traversal, tree, box_target_counts_nonchild))
+
+        # }}}
+
+        # {{{ translate separated siblings' ("list 2") mpoles to local
+
+        result.update(self.process_list2(xlat_cost, traversal))
+
+        # }}}
+
+        # {{{ evaluate sep. smaller mpoles ("list 3") at particles
+
+        result.update(self.process_list3(
+                xlat_cost, traversal, tree, box_target_counts_nonchild))
+
+        # }}}
+
+        # {{{ form locals for separated bigger source boxes ("list 4")
+
+        result.update(self.process_list4(xlat_cost, traversal, tree))
+
+        # }}}
+
+        # {{{ propagate local_exps downward
+
+        result["prop_downward"] = tree.nboxes * xlat_cost.l2l()
+
+        # }}}
+
+        # {{{ evaluate locals
+
+        result["eval_part"] = tree.ntargets * xlat_cost.l2p()
+
+        # }}}
+
+        global_qbx_centers = geo_data.global_qbx_centers()
+
+        # If self.merge_close_lists is False, then this builds another traversal
+        # (which is OK).
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+        center_to_targets_starts = geo_data.center_to_tree_targets().starts
+        qbx_center_to_target_box_source_level = np.empty(
+                (tree.nlevels,), dtype=object)
+
+        for src_level in range(tree.nlevels):
+            qbx_center_to_target_box_source_level[src_level] = (
+                    geo_data.qbx_center_to_target_box_source_level(src_level))
+
+        with cl.CommandQueue(geo_data.cl_context) as queue:
+            global_qbx_centers = global_qbx_centers.get(
+                    queue=queue)
+            qbx_center_to_target_box = qbx_center_to_target_box.get(
+                    queue=queue)
+            center_to_targets_starts = center_to_targets_starts.get(
+                    queue=queue)
+            for src_level in range(tree.nlevels):
+                qbx_center_to_target_box_source_level[src_level] = (
+                        qbx_center_to_target_box_source_level[src_level]
+                        .get(queue=queue))
+
+        # {{{ form global qbx locals
+
+        result.update(self.process_form_qbxl(
+                xlat_cost, traversal, tree, global_qbx_centers,
+                qbx_center_to_target_box))
+
+        # }}}
+
+        # {{{ translate from list 3 multipoles to qbx local expansions
+
+        result.update(self.process_m2qbxl(
+                xlat_cost, traversal, tree, global_qbx_centers,
+                qbx_center_to_target_box_source_level))
+
+        # }}}
+
+        # {{{ translate from box local expansions to qbx local expansions
+
+        result["l2qbxl"] = geo_data.ncenters * xlat_cost.l2qbxl()
+
+        # }}}
+
+        # {{{ evaluate qbx local expansions
+
+        result.update(self.process_eval_qbxl(
+                xlat_cost, global_qbx_centers, center_to_targets_starts))
+
+        # }}}
+
+        return result
+
+# }}}
+
+
+# {{{ assemble_performance_data
+
+def assemble_performance_data(geo_data, uses_pde_expansions,
+        translation_source_power=None, translation_target_power=None,
+        translation_max_power=None,
+        summarize_parallel=None, merge_close_lists=True):
+    """Compute modeled performance using :class:`PerformanceModel`.
+
+    See :class:`PerformanceModel` for parameter documentation.
+    """
+
+    return PerformanceModel(
+            uses_pde_expansions,
+            translation_source_power,
+            translation_target_power,
+            translation_max_power,
+            summarize_parallel,
+            merge_close_lists)(geo_data)
 
 # }}}
 
