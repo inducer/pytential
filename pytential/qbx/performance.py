@@ -264,10 +264,7 @@ class PerformanceModel(object):
     # {{{ form global qbx locals
 
     def process_form_qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
-            qbx_center_to_target_box, ncenters):
-        result = {}
-
-        result["ncenters"] = ncenters
+            qbx_center_to_target_box):
 
         # center -> nsources
         np2qbxl_list1 = np.zeros(len(global_qbx_centers), dtype=np.intp)
@@ -315,6 +312,7 @@ class PerformanceModel(object):
 
             np2qbxl_list4[itgt_center] = np2qbxl_list4_srcs
 
+        result = {}
         if self.merge_close_lists:
             result["p2qbxl"] = (
                     self.summarize_parallel(np2qbxl_list1, xlat_cost.p2qbxl()))
@@ -449,7 +447,8 @@ class PerformanceModel(object):
                 nlevels=tree.nlevels,
                 nboxes=tree.nboxes,
                 nsources=tree.nsources,
-                ntargets=tree.ntargets)
+                ntargets=tree.ntargets,
+                ncenters=geo_data.ncenters)
 
         # {{{ construct local multipoles
 
@@ -503,18 +502,16 @@ class PerformanceModel(object):
 
         global_qbx_centers = geo_data.global_qbx_centers()
 
-        # If merge_close_lists is False above, then this builds another traversal
+        # If self.merge_close_lists is False, then this builds another traversal
         # (which is OK).
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         center_to_targets_starts = geo_data.center_to_tree_targets().starts
         qbx_center_to_target_box_source_level = np.empty(
-            (tree.nlevels,), dtype=object
-        )
+                (tree.nlevels,), dtype=object)
 
         for src_level in range(tree.nlevels):
             qbx_center_to_target_box_source_level[src_level] = (
-                geo_data.qbx_center_to_target_box_source_level(src_level)
-            )
+                    geo_data.qbx_center_to_target_box_source_level(src_level))
 
         with cl.CommandQueue(geo_data.cl_context) as queue:
             global_qbx_centers = global_qbx_centers.get(
@@ -525,14 +522,14 @@ class PerformanceModel(object):
                     queue=queue)
             for src_level in range(tree.nlevels):
                 qbx_center_to_target_box_source_level[src_level] = (
-                    qbx_center_to_target_box_source_level[src_level].get(queue=queue)
-                )
+                        qbx_center_to_target_box_source_level[src_level]
+                        .get(queue=queue))
 
         # {{{ form global qbx locals
 
         result.update(self.process_form_qbxl(
                 xlat_cost, traversal, tree, global_qbx_centers,
-                qbx_center_to_target_box, geo_data.ncenters))
+                qbx_center_to_target_box))
 
         # }}}
 
@@ -568,22 +565,9 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         translation_source_power=None, translation_target_power=None,
         translation_max_power=None,
         summarize_parallel=None, merge_close_lists=True):
-    """
-    :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
-        uses translation operators that make use of the knowledge that the
-        potential satisfies a PDE.
-    :arg summarize_parallel: a function of two arguments
-        *(parallel_array, sym_multipliers)* used to process an array of
-        workloads of 'parallelizable units'. By default, all workloads are
-        summed into one number encompassing the total workload.
-    :arg merge_close_lists: A :class:`bool` indicating whether or not all
-        boxes requiring direct evaluation should be merged into a single
-        interaction list. If *False*, *part_direct* and *p2qbxl* will be
-        suffixed with the originating list as follows:
+    """Compute modeled performance using :class:`PerformanceModel`.
 
-        * *_neighbor* (List 1)
-        * *_sep_smaller* (List 3 close)
-        * *_sep_bigger* (List 4 close).
+    See :class:`PerformanceModel` for parameter documentation.
     """
 
     return PerformanceModel(
