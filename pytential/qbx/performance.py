@@ -371,27 +371,13 @@ class PerformanceModel(object):
 
     # }}}
 
-    def __call__(self, geo_data):
-        # FIXME: This should suport target filtering.
+    # {{{ set up translation cost model
 
-        from collections import OrderedDict
-        result = OrderedDict()
-
-        nqbtl = geo_data.non_qbx_box_target_lists()
-
-        with cl.CommandQueue(geo_data.cl_context) as queue:
-            tree = geo_data.tree().get(queue=queue)
-            traversal = geo_data.traversal(self.merge_close_lists).get(queue=queue)
-            box_target_counts_nonchild = (
-                    nqbtl.box_target_counts_nonchild.get(queue=queue))
-
-        # {{{ set up translation cost model
-
+    def get_translation_cost_model(self, d):
         from pymbolic import var
         p_qbx = var("p_qbx")
         p_fmm = var("p_fmm")
 
-        d = tree.dimensions
         if self.uses_pde_expansions:
             ncoeffs_fmm = p_fmm ** (d-1)
             ncoeffs_qbx = p_qbx ** (d-1)
@@ -432,7 +418,7 @@ class PerformanceModel(object):
                 if self.translation_max_power is None
                 else self.translation_max_power)
 
-        xlat_cost = TranslationCostModel(
+        return TranslationCostModel(
                 p_qbx=p_qbx,
                 p_fmm=p_fmm,
                 ncoeffs_qbx=ncoeffs_qbx,
@@ -441,7 +427,21 @@ class PerformanceModel(object):
                 translation_target_power=translation_target_power,
                 translation_max_power=translation_max_power)
 
-        # }}}
+    # }}}
+
+    def __call__(self, geo_data):
+        # FIXME: This should suport target filtering.
+
+        from collections import OrderedDict
+        result = OrderedDict()
+
+        nqbtl = geo_data.non_qbx_box_target_lists()
+
+        with cl.CommandQueue(geo_data.cl_context) as queue:
+            tree = geo_data.tree().get(queue=queue)
+            traversal = geo_data.traversal(self.merge_close_lists).get(queue=queue)
+            box_target_counts_nonchild = (
+                    nqbtl.box_target_counts_nonchild.get(queue=queue))
 
         result.update(
                 nlevels=tree.nlevels,
@@ -449,6 +449,8 @@ class PerformanceModel(object):
                 nsources=tree.nsources,
                 ntargets=tree.ntargets,
                 ncenters=geo_data.ncenters)
+
+        xlat_cost = self.get_translation_cost_model(tree.dimensions)
 
         # {{{ construct local multipoles
 
