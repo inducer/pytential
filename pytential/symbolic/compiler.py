@@ -217,7 +217,6 @@ class ComputePotentialInstruction(Instruction):
         return "{ /* Pot(%s) */\n  %s\n}" % (
                 ", ".join(args), "\n  ".join(lines))
 
-
     def __hash__(self):
         return id(self)
 
