@@ -198,8 +198,7 @@ class MatrixBuilder(EvaluationMapperBase):
         waa = source.weights_and_area_elements().get(queue=self.queue)
         mat[:, :] *= waa
 
-        from meshmode.discretization.connection import flatten_chained_connection
-        resampler = flatten_chained_connection(self.queue, source.resampler)
+        resampler = source.direct_resampler
         resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
 
         mat = mat.dot(resample_mat)
