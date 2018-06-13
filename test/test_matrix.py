@@ -26,9 +26,8 @@ import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
 import pytest
-from meshmode.mesh.generation import (  # noqa
-        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
-        make_curve_mesh)
+from meshmode.mesh.generation import \
+        ellipse, NArmedStarfish, make_curve_mesh
 from pytential import bind, sym
 from functools import partial
 from sumpy.symbolic import USE_SYMENGINE
@@ -40,10 +39,12 @@ from pyopencl.tools import (  # noqa
 
 @pytest.mark.skipif(USE_SYMENGINE,
         reason="https://gitlab.tiker.net/inducer/sumpy/issues/25")
-@pytest.mark.parametrize(("k", "layer_pot_id"),
-                        [(0, 1), (0, 2),
-                         (42, 1), (42, 2)])
-def test_matrix_build(ctx_factory, k, layer_pot_id, visualize=False):
+@pytest.mark.parametrize("k", [0, 42])
+@pytest.mark.parametrize("curve_f", [
+    partial(ellipse, 3),
+    NArmedStarfish(5, 0.25)])
+@pytest.mark.parametrize("layer_pot_id", [1, 2])
+def test_matrix_build(ctx_factory, k, curve_f, layer_pot_id, visualize=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -54,7 +55,6 @@ def test_matrix_build(ctx_factory, k, layer_pot_id, visualize=False):
     target_order = 7
     qbx_order = 4
     nelements = 30
-    curve_f = partial(ellipse, 3)
 
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
     if k:
@@ -106,7 +106,8 @@ def test_matrix_build(ctx_factory, k, layer_pot_id, visualize=False):
 
     if visualize:
         from sumpy.tools import build_matrix as build_matrix_via_matvec
-        mat2 = build_matrix_via_matvec(bound_op.scipy_op(queue, "u"))
+        mat2 = bound_op.scipy_op(queue, "u", dtype=mat.dtype, **knl_kwargs)
+        mat2 = build_matrix_via_matvec(mat2)
         print(la.norm((mat - mat2).real, "fro") / la.norm(mat2.real, "fro"),
               la.norm((mat - mat2).imag, "fro") / la.norm(mat2.imag, "fro"))
 
@@ -135,7 +136,7 @@ def test_matrix_build(ctx_factory, k, layer_pot_id, visualize=False):
         if is_obj_array(u_sym):
             u = make_obj_array([
                 np.random.randn(density_discr.nnodes)
-                for i in range(len(u_sym))
+                for _ in range(len(u_sym))
                 ])
         else:
             u = np.random.randn(density_discr.nnodes)

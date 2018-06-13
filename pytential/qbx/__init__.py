@@ -377,6 +377,28 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @property
     @memoize_method
+    def direct_resampler(self):
+        """
+        .. warning::
+
+            This always returns a
+            :class:`~meshmode.discretization.connection.DirectDiscretizationConnect`.
+            In case the geometry has been refined multiple times, a direct
+            connection can have a large number of groups and/or
+            interpolation batches, making it scale significantly worse than
+            the one returned by :attr:`resampler`.
+        """
+        from meshmode.discretization.connection import \
+                flatten_chained_connection
+
+        conn = self.resampler
+        with cl.CommandQueue(self.cl_context) as queue:
+            conn = flatten_chained_connection(queue, conn)
+
+        return conn
+
+    @property
+    @memoize_method
     def tree_code_container(self):
         from pytential.qbx.utils import TreeCodeContainer
         return TreeCodeContainer(self.cl_context)
