@@ -385,9 +385,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             :class:`~meshmode.discretization.connection.DirectDiscretizationConnect`.
             In case the geometry has been refined multiple times, a direct
             connection can have a large number of groups and/or
-            interpolation batches, making the single connection scale
-            significantly worse than the one returned by :attr:`resampler`.
-
+            interpolation batches, making it scale significantly worse than
+            the one returned by :attr:`resampler`.
         """
         from meshmode.discretization.connection import \
                 flatten_chained_connection
