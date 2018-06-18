@@ -46,6 +46,21 @@ def _element_node_range(groups, igroup, ielement):
 
 
 def partition_by_nodes(discr, use_tree=True, max_particles_in_box=30):
+    """Generate clusters / ranges of nodes. The partition is created at the
+    lowest level of granularity, i.e. nodes. This results in balanced ranges
+    of points, but will split elements across different ranges.
+
+    :arg discr: a :class:`~meshmode.discretization.Discretization`.
+    :arg use_tree: if True, node partitions are generated using a
+        :class:`boxtree.TreeBuilder`, which leads to geometrically close
+        points to belong to the same partition. If False, a simple linear
+        partition is constructed.
+    :arg max_particles_in_box: passed to :class:`boxtree.TreeBuilder`.
+
+    :return: a tuple `(indices, ranges)` of integer arrays. The indices
+        in a range can be retrieved using `indices[ranges[i]:ranges[i + 1]]`.
+    """
+
     if use_tree:
         from boxtree import box_flags_enum
         from boxtree import TreeBuilder
@@ -78,6 +93,22 @@ def partition_by_nodes(discr, use_tree=True, max_particles_in_box=30):
 
 
 def partition_by_elements(discr, use_tree=True, max_particles_in_box=10):
+    """Generate clusters / ranges of points. The partiton is created at the
+    element level, so that all the nodes belonging to an element belong to
+    the same range. This can result in slightly larger difference in size
+    between the ranges, but can be very useful when the individual partitions
+    need to be resampled, integrated, etc.
+
+    :arg discr: a :class:`~meshmode.discretization.Discretization`.
+    :arg use_tree: if True, node partitions are generated using a
+        :class:`boxtree.TreeBuilder`, which leads to geometrically close
+        points to belong to the same partition. If False, a simple linear
+        partition is constructed.
+    :arg max_particles_in_box: passed to :class:`boxtree.TreeBuilder`.
+
+    :return: a tuple `(indices, ranges)` of integer arrays. The indices
+        in a range can be retrieved using `indices[ranges[i]:ranges[i + 1]]`.
+    """
     if use_tree:
         from boxtree import box_flags_enum
         from boxtree import TreeBuilder
@@ -131,6 +162,22 @@ def partition_by_elements(discr, use_tree=True, max_particles_in_box=10):
 
 
 def partition_from_coarse(queue, resampler, from_indices, from_ranges):
+    """Generate a partition of nodes from an existing partition on a
+    coarser discretization. The new partition is generated based on element
+    refinement relationships in :attr:`resampler`, so the existing partition
+    needs to be created using :func:`partition_by_element`.
+
+    :arg queue: a :class:`pyopencl.CommandQueue`.
+    :arg resampler: a
+        :class:`~meshmode.discretization.connection.DirectDiscretizationConnection`.
+    :arg from_indices: a set of indices into the nodes in 
+        :attr:`resampler.from_discr`.
+    :arg from_ranges: array used to index into :attr:`from_indices`.
+
+    :return: a tuple `(indices, ranges)` of integer arrays. The indices
+        in a range can be retrieved using `indices[ranges[i]:ranges[i + 1]]`.
+    """
+
     if not hasattr(resampler, "groups"):
         raise ValueError("resampler must be a DirectDiscretizationConnection.")
 
