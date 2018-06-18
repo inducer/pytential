@@ -23,10 +23,12 @@ THE SOFTWARE.
 """
 
 import numpy as np
+import numpy.linalg as la
 
 import pyopencl as cl
 import pyopencl.array # noqa
 
+from pytools.obj_array import make_obj_array
 from pytools import memoize_method, memoize_in
 
 import loopy as lp
@@ -182,43 +184,38 @@ def partition_from_coarse(queue, resampler, from_indices, from_ranges):
 # {{{ proxy point generator
 
 class ProxyGenerator(object):
-    def __init__(self, queue, places,
-                 ratio=1.5, nproxy=31, target_order=0):
+    def __init__(self, queue, source, ratio=1.5, nproxy=31):
         r"""
-        :arg queue: a :class:`pyopencl.CommandQueue` used to synchronize the
-            calculations.
-        :arg places: commonly a :class:`pytential.qbx.LayerPotentialSourceBase`.
-        :arg ratio: a ratio used to compute the proxy point radius. For proxy
-            points, we have two radii of interest for a set of points: the
-            radius :math:`r_{block}` of the smallest ball containing all the
-            points in a block and the radius :math:`r_{qbx}` of the smallest
-            ball containing all the QBX expansion balls in the block. If the 
-            ratio :math:`\theta \in [0, 1]`, then the radius of the proxy
-            ball is computed as:
+        :arg queue: a :class:`pyopencl.CommandQueue`.
+        :arg source: a :class:`pytential.qbx.LayerPotentialSourceBase`.
+        :arg ratio: a ratio used to compute the proxy point radius. The radius
+            is computed in the :math:`L_2` norm, resulting in a circle or
+            sphere of proxy points. For QBX, we have two radii of interest
+            for a set of points: the radius :math:`r_{block}` of the
+            smallest ball containing all the points and the radius
+            :math:`r_{qbx}` of the smallest ball containing all the QBX
+            expansion balls in the block. If the ratio :math:`\theta \in
+            [0, 1]`, then the radius of the proxy ball is
 
             .. math::
 
                 r = (1 - \theta) r_{block} + \theta r_{qbx}.
 
-            If the ratio :math:`\theta > 1`, the the radius is simply:
+            If the ratio :math:`\theta > 1`, the the radius is simply
 
             .. math::
 
                 r = \theta r_{qbx}.
 
-        :arg nproxy: number of proxy points for each block.
-        :arg target_order: order of the discretization of proxy points. Can
-            be quite small, since proxy points are evaluated point-to-point
-            at the moment.
+        :arg nproxy: number of proxy points.
         """
 
         self.queue = queue
-        self.places = places
+        self.source = source
         self.context = self.queue.context
         self.ratio = abs(ratio)
         self.nproxy = int(abs(nproxy))
-        self.target_order = target_order
-        self.dim = self.places.ambient_dim
+        self.dim = self.source.ambient_dim
 
         if self.dim == 2:
             from meshmode.mesh.generation import ellipse, make_curve_mesh
@@ -240,34 +237,34 @@ class ProxyGenerator(object):
         else:
             radius_expr = "ratio * rqbx"
 
+        # NOTE: centers of mass are computed using a second-order approximation
+        # that currently matches what's in `element_centers_of_mass`.
         knl = lp.make_kernel([
             "{[irange]: 0 <= irange < nranges}",
-            "{[iblk]: 0 <= iblk < nblock}",
+            "{[i]: 0 <= i < npoints}",
             "{[idim]: 0 <= idim < dim}"
             ],
             ["""
             for irange
-                <> blk_start = ranges[irange]
-                <> blk_end = ranges[irange + 1]
-                <> nblock = blk_end - blk_start
+                <> npoints = ranges[irange + 1] - ranges[irange]
+                proxy_center[idim, irange] = 1.0 / npoints * \
+                    reduce(sum, i, nodes[idim, indices[i + ranges[irange]]]) \
+                        {{dup=idim:i}}
 
-                proxy_center[idim, irange] = 1.0 / blk_length * \
-                    reduce(sum, iblk, nodes[idim, indices[blk_start + iblk]]) \
-                        {{dup=idim:iblk}}
+                <> rblk = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                        (proxy_center[idim, irange] -
+                         nodes[idim, indices[i + ranges[irange]]]) ** 2)))
 
-                <> rblk = simul_reduce(max, iblk, sqrt(simul_reduce(sum, idim, \
+                <> rqbx_int = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
                         (proxy_center[idim, irange] -
-                         nodes[idim, indices[blk_start + iblk]]) ** 2)))
-                <> rqbx_int = simul_reduce(max, iblk, sqrt(simul_reduce(sum, idim, \
+                         center_int[idim, indices[i + ranges[irange]]]) ** 2)) + \
+                         expansion_radii[indices[i + ranges[irange]]])
+                <> rqbx_ext = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
                         (proxy_center[idim, irange] -
-                         center_int[idim, indices[blk_start + iblk]]) ** 2)) + \
-                         expansion_radii[indices[blk_start + iblk]])
-                <> rqbx_ext = simul_reduce(max, iblk, sqrt(simul_reduce(sum, idim, \
-                        (proxy_center[idim, irange] -
-                         center_ext[idim, indices[blk_start + iblk]]) ** 2)) + \
-                        expansion_radii[indices[blk_start + iblk]])
-
+                         center_ext[idim, indices[i + ranges[irange]]]) ** 2)) + \
+                         expansion_radii[indices[i + ranges[irange]]])
                 <> rqbx = if(rqbx_ext < rqbx_int, rqbx_int, rqbx_ext)
+
                 proxy_radius[irange] = {radius_expr}
             end
             """.format(radius_expr=radius_expr)],
@@ -292,7 +289,7 @@ class ProxyGenerator(object):
                 lp.ValueArg("nranges", None),
                 lp.ValueArg("nindices", np.int64)
             ],
-            name="proxy_kernel",
+            name="proxy_generator_knl",
             assumptions="dim>=1 and nranges>=1",
             fixed_parameters=dict(
                 dim=self.dim,
@@ -311,27 +308,33 @@ class ProxyGenerator(object):
         return knl
 
     def get_proxies(self, indices, ranges, **kwargs):
-        """
-        :arg indices: a set of indices around which to construct proxy balls.
-        :arg ranges: an array of size `nranges + 1` used to index into the
-        set of indices. Each one of the `nranges` ranges will get a proxy
-        ball of a predefined size.
+        """Generate proxy points for each given range of source points in
+        the discretization :attr:`source`.
 
-        :returns: `centers` is a list of centers for each proxy ball.
-        :returns: `radii` is a list of radii for each proxy ball.
-        :returns: `proxies` is a set of proxy points.
-        :returns: `pxyranges` is an array used to index into the list of
-        proxy points.
+        :arg indices: a set of indices around which to construct proxy balls.
+        :arg ranges: an array of size `(nranges + 1,)` used to index into the
+            set of indices. Each one of the `nranges` ranges will get a proxy
+            ball.
+
+        :return: a tuple of `(centers, radii, proxies, pryranges)`, where
+            each value is a :class:`pyopencl.array.Array` of integers. The
+            sizes of the arrays are as follows: `centers` is of size
+            `(2, nranges)`, `radii` is of size `(nranges,)`, `pryranges` is 
+            of size `(nranges + 1,)` and `proxies` is of size 
+            `(2, nranges * nproxies)`. The proxy points in a range :math:`i` 
+            can be obtained by a slice `proxies[pryranges[i]:pryranges[i + 1]]` 
+            and are all at a distance `radii[i]` from the range center 
+            `centers[i]`.
         """
 
         from pytential.qbx.utils import get_centers_on_side
 
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(self.queue,
-            nodes=self.places.density_discr.nodes(),
-            center_int=get_centers_on_side(self.places, -1),
-            center_ext=get_centers_on_side(self.places, +1),
-            expansion_radii=self.places._expansion_radii("nsources"),
+            nodes=self.source.density_discr.nodes(),
+            center_int=get_centers_on_side(self.source, -1),
+            center_ext=get_centers_on_side(self.source, +1),
+            expansion_radii=self.source._expansion_radii("nsources"),
             indices=indices, ranges=ranges, **kwargs)
         centers = centers_dev.get()
         radii = radii_dev.get()
@@ -356,23 +359,26 @@ class ProxyGenerator(object):
         return centers_dev, radii_dev, proxies, pxyranges
 
     def get_neighbors(self, indices, ranges, centers, radii):
-        """
-        :arg indices: indices for a subset of discretization nodes.
+        """Generate a set of neighboring points for each range of source
+        points in :attr:`source`. Neighboring points are defined as all
+        the points inside a proxy ball :math:`i` that do not also belong to
+        the set of source points in the same range :math:`i`.
+
+        :arg indices: indices for a subset of the source points.
         :arg ranges: array used to index into the :attr:`indices` array.
         :arg centers: centers for each proxy ball.
         :arg radii: radii for each proxy ball.
 
-        :returns: `neighbors` is a set of indices into the full set of
-        discretization nodes (already mapped through the given set `indices`).
-        It contains all nodes that are inside a given proxy ball :math:`i`,
-        but not contained in the range :math:`i`, given by
-        `indices[ranges[i]:ranges[i + 1]]`.
-        :returns: `nbrranges` is an array used to index into the set of
-        neighbors and return the subset for a given proxy ball.
+        :return: a tuple `(neighbours, nbrranges)` where is value is a
+            :class:`pyopencl.array.Array` of integers. For a range :math:`i`
+            in `nbrranges`, the corresponding slice of the `neighbours` array
+            is a subset of :attr:`indices` such that all points are inside
+            the proxy ball centered at `centers[i]` of radius `radii[i]`
+            that is not included in `indices[ranges[i]:ranges[i + 1]]`.
         """
 
         nranges = radii.shape[0] + 1
-        sources = self.places.density_discr.nodes().get(self.queue)
+        sources = self.source.density_discr.nodes().get(self.queue)
         sources = make_obj_array([
             cl.array.to_device(self.queue, sources[idim, indices])
             for idim in range(self.dim)])
@@ -425,19 +431,19 @@ class ProxyGenerator(object):
 
     def __call__(self, indices, ranges, **kwargs):
         """
-        :arg indices: Set of indices for points in :attr:`places`.
-        :arg ranges: Set of ranges around which to build a set of proxy
-        points. For each range, this builds a ball of proxy points centered
-        at the center of mass of the points in the range with a radius
-        defined by :attr:`ratio`.
+        :arg indices: set of indices for points in :attr:`source`.
+        :arg ranges: set of ranges around which to build a set of proxy
+            points. For each range, this builds a ball of proxy points centered
+            at the center of mass of the points in the range with a radius
+            defined by :attr:`ratio`.
 
-        :returns: `skeletons` A set of skeleton points for each range,
-        which are supposed to contain all the necessary information about
-        the farfield interactions. This set of points contains a set of
-        proxy points constructed around each range and the closest neighbors
-        that are inside the proxy ball.
-        :returns: `sklranges` An array used to index into the skeleton
-        points.
+        :returns: a tuple `(skeletons, sklranges)` where each value is a
+            :class:`pyopencl.array.Array`. For a range :math:`i`, we can
+            get the slice using `skeletons[sklranges[i]:sklranges[i + 1]]`.
+            The skeleton points in a range represents the union of a set
+            of generated proxy points and all the source points inside the
+            proxy ball that do not also belong to the current range in
+            :attr:`indices`.
         """
 
         @memoize_in(self, "concat_skl_knl")
@@ -487,15 +493,17 @@ class ProxyGenerator(object):
                 ],
                 name="concat_skl",
                 default_offset=lp.auto,
+                silenced_warnings="write_race(write_*)",
                 fixed_parameters=dict(dim=self.dim),
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
             loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
-            # loopy_knl = lp.split_iname(loopy_knl, "irange", 16, inner_tag="l.0")
+            loopy_knl = lp.split_iname(loopy_knl, "irange", 128, outer_tag="g.0")
+
             return loopy_knl
 
         # construct point arrays
-        sources = self.places.density_discr.nodes()
+        sources = self.source.density_discr.nodes()
         centers, radii, proxies, pxyranges = \
             self.get_proxies(indices, ranges, **kwargs)
         neighbors, nbrranges = \
