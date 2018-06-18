@@ -72,7 +72,7 @@ def partition_by_nodes(discr, use_tree=True, max_particles_in_box=30):
                 max_particles_in_box=max_particles_in_box)
 
             tree = tree.get(queue)
-            leaf_boxes, = (tree.box_flags & 
+            leaf_boxes, = (tree.box_flags &
                            box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
             indices = np.empty(len(leaf_boxes), dtype=np.object)
@@ -126,11 +126,10 @@ def partition_by_elements(discr, use_tree=True, max_particles_in_box=10):
 
             groups = discr.groups
             tree = tree.get(queue)
-            leaf_boxes, = (tree.box_flags & 
+            leaf_boxes, = (tree.box_flags &
                            box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
             indices = np.empty(len(leaf_boxes), dtype=np.object)
-            elements = np.empty(len(leaf_boxes), dtype=np.object)
             for i, ibox in enumerate(leaf_boxes):
                 box_start = tree.box_source_starts[ibox]
                 box_end = box_start + tree.box_source_counts_cumul[ibox]
@@ -165,12 +164,19 @@ def partition_from_coarse(queue, resampler, from_indices, from_ranges):
     """Generate a partition of nodes from an existing partition on a
     coarser discretization. The new partition is generated based on element
     refinement relationships in :attr:`resampler`, so the existing partition
-    needs to be created using :func:`partition_by_element`.
+    needs to be created using :func:`partition_by_element`, since we assume
+    that each range contains all the nodes in an element.
+
+    The new partition will have the same number of ranges as the old partition.
+    The nodes inside each range in the new partition are all the nodes in
+    :attr:`resampler.to_discr` that belong to the same region as the nodes
+    in the same range from :attr:`resampler.from_discr`. These nodes are
+    obtained using :attr:`mesmode.discretization.connection.InterpolationBatch`.
 
     :arg queue: a :class:`pyopencl.CommandQueue`.
     :arg resampler: a
         :class:`~meshmode.discretization.connection.DirectDiscretizationConnection`.
-    :arg from_indices: a set of indices into the nodes in 
+    :arg from_indices: a set of indices into the nodes in
         :attr:`resampler.from_discr`.
     :arg from_ranges: array used to index into :attr:`from_indices`.
 
@@ -366,11 +372,11 @@ class ProxyGenerator(object):
         :return: a tuple of `(centers, radii, proxies, pryranges)`, where
             each value is a :class:`pyopencl.array.Array` of integers. The
             sizes of the arrays are as follows: `centers` is of size
-            `(2, nranges)`, `radii` is of size `(nranges,)`, `pryranges` is 
-            of size `(nranges + 1,)` and `proxies` is of size 
-            `(2, nranges * nproxies)`. The proxy points in a range :math:`i` 
-            can be obtained by a slice `proxies[pryranges[i]:pryranges[i + 1]]` 
-            and are all at a distance `radii[i]` from the range center 
+            `(2, nranges)`, `radii` is of size `(nranges,)`, `pryranges` is
+            of size `(nranges + 1,)` and `proxies` is of size
+            `(2, nranges * nproxies)`. The proxy points in a range :math:`i`
+            can be obtained by a slice `proxies[pryranges[i]:pryranges[i + 1]]`
+            and are all at a distance `radii[i]` from the range center
             `centers[i]`.
         """
 

@@ -25,15 +25,14 @@ THE SOFTWARE.
 import time
 
 import numpy as np
-import numpy.linalg as la
-
 import pyopencl as cl
-import pytest
 
+import loopy as lp
 from pytential import sym
 from meshmode.mesh.generation import ( # noqa
         ellipse, NArmedStarfish, generate_torus, make_curve_mesh)
 
+import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
@@ -144,12 +143,10 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, verbose=False):
     def plot_indices(pid, discr, indices, ranges):
         import matplotlib.pyplot as pt
 
-        rangefile = os.path.join(os.path.dirname(__file__),
-            "test_partition_{}_{}_ranges_{}.png".format(method,
-                "tree" if use_tree else "linear", pid))
-        pointfile = os.path.join(os.path.dirname(__file__),
-            "test_partition_{}_{}_{}d_{}.png".format(method,
-                "tree" if use_tree else "linear", ndim, pid))
+        rangefile = "test_partition_{}_{}_ranges_{}.png".format(method,
+                "tree" if use_tree else "linear", pid)
+        pointfile = "test_partition_{}_{}_{}d_{}.png".format(method,
+                "tree" if use_tree else "linear", ndim, pid)
 
         pt.figure(figsize=(10, 8))
         pt.plot(np.diff(ranges))
@@ -180,7 +177,6 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, verbose=False):
             vis.write_vtk_file(pointfile, [
                 ("marker", cl.array.to_device(queue, marker))
                 ])
-
 
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -298,17 +294,15 @@ def test_proxy_generator(ctx_factory, ndim, verbose=False):
                         'o', ms=2.0)
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
-                filename = os.path.join(os.path.dirname(__file__),
-                        "test_proxy_generator_{}d_{:04}.png".format(ndim, i))
+
+                filename = "test_proxy_generator_{}d_{:04}.png".format(ndim, i)
                 pt.savefig(filename, dpi=300)
                 pt.clf()
         else:
             from meshmode.discretization.visualization import make_visualizer
-            from meshmode.mesh.generation import make_group_from_vertices
             from meshmode.mesh.processing import ( # noqa
                     affine_map, merge_disjoint_meshes)
             from meshmode.discretization import Discretization
-            from meshmode.mesh import TensorProductElementGroup, Mesh
             from meshmode.discretization.poly_element import \
                 InterpolatoryQuadratureSimplexGroupFactory
 
@@ -325,8 +319,7 @@ def test_proxy_generator(ctx_factory, ndim, verbose=False):
                     InterpolatoryQuadratureSimplexGroupFactory(10))
 
                 vis = make_visualizer(queue, discr, 10)
-                filename = os.path.join(os.path.dirname(__file__),
-                    "test_proxy_generator_{}d_{:04}.vtu".format(ndim, i))
+                filename = "test_proxy_generator_{}d_{:04}.vtu".format(ndim, i)
                 vis.write_vtk_file(filename, [])
 
 
@@ -376,8 +369,7 @@ def test_area_query(ctx_factory, ndim, verbose=False):
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
 
-                filename = os.path.join(os.path.dirname(__file__),
-                    "test_area_query_{}d_{:04}.png".format(ndim, i))
+                filename = "test_area_query_{}d_{:04}.png".format(ndim, i)
                 pt.savefig(filename, dpi=300)
                 pt.clf()
         elif ndim == 3:
@@ -397,8 +389,7 @@ def test_area_query(ctx_factory, ndim, verbose=False):
                 marker_dev = cl.array.to_device(queue, marker)
 
                 vis = make_visualizer(queue, qbx.density_discr, 10)
-                filename = os.path.join(os.path.dirname(__file__),
-                    "test_area_query_{}d_{:04}.vtu".format(ndim, i))
+                filename = "test_area_query_{}d_{:04}.vtu".format(ndim, i)
                 vis.write_vtk_file(filename, [
                     ("marker", marker_dev),
                     ])
