@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import os
 import time
 
 import numpy as np
@@ -89,7 +90,7 @@ def create_data(queue,
 
 
 def create_indices(qbx, nblks,
-                   factor=0.6,
+                   factor=1.0,
                    random=True,
                    method='elements',
                    use_tree=True,
@@ -139,17 +140,15 @@ def create_indices(qbx, nblks,
 @pytest.mark.parametrize("method", ["nodes", "elements"])
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_points(ctx_factory, method, use_tree, ndim, verbose=False):
+def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
     def plot_indices(pid, discr, indices, ranges):
         import matplotlib.pyplot as pt
 
-        rangefile = "test_partition_{}_{}_ranges_{}.png".format(method,
-                "tree" if use_tree else "linear", pid)
-        pointfile = "test_partition_{}_{}_{}d_{}.png".format(method,
-                "tree" if use_tree else "linear", ndim, pid)
-
         pt.figure(figsize=(10, 8))
         pt.plot(np.diff(ranges))
+
+        rangefile = "test_partition_{}_{}_ranges_{}.png".format(method,
+                "tree" if use_tree else "linear", pid)
         pt.savefig(rangefile, dpi=300)
         pt.clf()
 
@@ -157,15 +156,24 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, verbose=False):
             sources = discr.nodes().get(queue)
 
             pt.figure(figsize=(10, 8))
+            pt.plot(sources[0], sources[1], 'ko', alpha=0.5)
             for i in range(nblks):
                 isrc = indices[np.s_[ranges[i]:ranges[i + 1]]]
                 pt.plot(sources[0][isrc], sources[1][isrc], 'o')
-
             pt.xlim([-1.5, 1.5])
             pt.ylim([-1.5, 1.5])
+
+            pointfile = "test_partition_{}_{}_{}d_{}.png".format(method,
+                "tree" if use_tree else "linear", ndim, pid)
             pt.savefig(pointfile, dpi=300)
             pt.clf()
         elif ndim == 3:
+            from meshmode.discretization import NoninterpolatoryElementGroupError
+            try:
+                discr.groups[0].basis()
+            except NoninterpolatoryElementGroupError:
+                return
+
             from meshmode.discretization.visualization import make_visualizer
             marker = -42.0 * np.ones(discr.nnodes)
 
@@ -174,6 +182,12 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, verbose=False):
                 marker[isrc] = 10.0 * (i + 1.0)
 
             vis = make_visualizer(queue, discr, 10)
+
+            pointfile = "test_partition_{}_{}_{}d_{}.vtu".format(method,
+                "tree" if use_tree else "linear", ndim, pid)
+            if os.path.isfile(pointfile):
+                os.remove(pointfile)
+
             vis.write_vtk_file(pointfile, [
                 ("marker", cl.array.to_device(queue, marker))
                 ])
@@ -188,13 +202,13 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, verbose=False):
     nblks = 10
     t_start = time.time()
     srcindices, srcranges = create_indices(qbx, nblks,
-            method=method, use_tree=use_tree, factor=0.6)
+            method=method, use_tree=use_tree, factor=1.0)
     nblks = srcranges.shape[0] - 1
     t_end = time.time()
-    if verbose:
+    if visualize:
         print('Time: {:.5f}s'.format(t_end - t_start))
 
-    if verbose:
+    if visualize:
         discr = qbx.resampler.from_discr
         plot_indices(0, discr, srcindices, srcranges)
 
@@ -207,7 +221,7 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, verbose=False):
         srcindices_, srcranges_ = \
             partition_from_coarse(queue, resampler, srcindices, srcranges)
         t_end = time.time()
-        if verbose:
+        if visualize:
             print('Time: {:.5f}s'.format(t_end - t_start))
 
         sources = resampler.from_discr.nodes().get(queue)
@@ -220,13 +234,13 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, verbose=False):
                 assert np.min(sources_[j][isrc_]) <= np.min(sources[j][isrc])
                 assert np.max(sources_[j][isrc_]) >= np.max(sources[j][isrc])
 
-        if verbose:
-            discr = qbx.resampler.to_discr
-            plot_indices(1, discr, srcindices, srcranges)
+        if visualize:
+            discr = resampler.to_discr
+            plot_indices(1, discr, srcindices_, srcranges_)
 
 
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_proxy_generator(ctx_factory, ndim, verbose=False):
+def test_proxy_generator(ctx_factory, ndim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -236,7 +250,8 @@ def test_proxy_generator(ctx_factory, ndim, verbose=False):
     qbx = create_data(queue, ndim=ndim)[0]
 
     nblks = 10
-    srcindices, srcranges = create_indices(qbx, nblks)
+    srcindices, srcranges = create_indices(qbx, nblks,
+                                           method='nodes', factor=0.6)
     nblks = srcranges.shape[0] - 1
 
     from pytential.direct_solver import ProxyGenerator
@@ -244,7 +259,7 @@ def test_proxy_generator(ctx_factory, ndim, verbose=False):
     centers, radii, proxies, pxyranges = \
         gen.get_proxies(srcindices, srcranges)
 
-    if verbose:
+    if visualize:
         knl = gen.get_kernel()
         knl = lp.add_dtypes(knl, {
             "nodes": np.float64,
@@ -260,7 +275,7 @@ def test_proxy_generator(ctx_factory, ndim, verbose=False):
         print(lp.generate_code_v2(knl).device_code())
 
     proxies = np.vstack([p.get(queue) for p in proxies])
-    if verbose:
+    if visualize:
         if qbx.ambient_dim == 2:
             import matplotlib.pyplot as pt
             from pytential.qbx.utils import get_centers_on_side
@@ -271,6 +286,7 @@ def test_proxy_generator(ctx_factory, ndim, verbose=False):
             ce = get_centers_on_side(qbx, +1)
             ce = np.vstack([c.get(queue) for c in ce])
             r = qbx._expansion_radii("nsources").get(queue)
+            pxyranges = pxyranges.get(queue)
 
             for i in range(nblks):
                 isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
@@ -320,11 +336,13 @@ def test_proxy_generator(ctx_factory, ndim, verbose=False):
 
                 vis = make_visualizer(queue, discr, 10)
                 filename = "test_proxy_generator_{}d_{:04}.vtu".format(ndim, i)
+                if os.path.isfile(filename):
+                    os.remove(filename)
                 vis.write_vtk_file(filename, [])
 
 
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_area_query(ctx_factory, ndim, verbose=False):
+def test_area_query(ctx_factory, ndim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -333,7 +351,8 @@ def test_area_query(ctx_factory, ndim, verbose=False):
     qbx = create_data(queue, ndim=ndim)[0]
 
     nblks = 10
-    srcindices, srcranges = create_indices(qbx, nblks)
+    srcindices, srcranges = create_indices(qbx, nblks,
+                                           method='nodes', factor=0.6)
     nblks = srcranges.shape[0] - 1
 
     # generate proxy points
@@ -344,7 +363,8 @@ def test_area_query(ctx_factory, ndim, verbose=False):
     skeleton_nodes, sklranges = gen(srcindices, srcranges)
 
     neighbors = neighbors.get(queue)
-    if verbose:
+    ngbranges = ngbranges.get(queue)
+    if visualize:
         if ndim == 2:
             import matplotlib.pyplot as pt
             density_nodes = qbx.density_discr.nodes().get(queue)
@@ -390,6 +410,9 @@ def test_area_query(ctx_factory, ndim, verbose=False):
 
                 vis = make_visualizer(queue, qbx.density_discr, 10)
                 filename = "test_area_query_{}d_{:04}.vtu".format(ndim, i)
+                if os.path.isfile(filename):
+                    os.remove(filename)
+
                 vis.write_vtk_file(filename, [
                     ("marker", marker_dev),
                     ])

@@ -402,6 +402,7 @@ class ProxyGenerator(object):
             proxies[i] = mesh.vertices
 
         pxyranges = np.cumsum([0] + [p.shape[-1] for p in proxies])
+        pxyranges = cl.array.to_device(self.queue, pxyranges)
         proxies = make_obj_array([
             cl.array.to_device(self.queue, np.hstack([p[idim] for p in proxies]))
             for idim in range(self.dim)])
@@ -566,10 +567,10 @@ class ProxyGenerator(object):
         _, (skeletons,) = knl()(self.queue,
                 sources=sources, proxies=proxies, neighbors=neighbors,
                 pxyranges=pxyranges, nbrranges=nbrranges)
-        sklranges = np.array([p + n for p, n in zip(pxyranges, nbrranges)])
+        sklranges = np.array([p + n for p, n in zip(pxyranges.get(self.queue),
+                                                    nbrranges.get(self.queue))])
 
         return skeletons, sklranges
-
 
 # }}}
 
