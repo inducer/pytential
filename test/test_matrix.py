@@ -22,16 +22,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import partial
+
 import numpy as np
 import numpy.linalg as la
+
 import pyopencl as cl
-import pytest
+
+from sumpy.symbolic import USE_SYMENGINE
 from meshmode.mesh.generation import \
         ellipse, NArmedStarfish, make_curve_mesh
-from pytential import bind, sym
-from functools import partial
-from sumpy.symbolic import USE_SYMENGINE
 
+from pytential import bind, sym
+from pytential.symbolic.primitives import DEFAULT_TARGET, DEFAULT_SOURCE
+
+import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
@@ -153,6 +158,175 @@ def test_matrix_build(ctx_factory, k, curve_f, layer_pot_id, visualize=False):
 
         print(abs_err, rel_err)
         assert rel_err < 1e-13
+
+
+@pytest.mark.parametrize("ndim", [2, 3])
+@pytest.mark.parametrize("factor", [1.0, 0.6])
+def test_p2p_block_builder(ctx_factory, factor, ndim, visualize=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    # prevent cache explosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
+
+    from test_direct_solver import _create_data, _create_indices
+    target_order = 2 if ndim == 3 else 7
+    qbx, op, u_sym = _create_data(queue, target_order=target_order, ndim=ndim)
+
+    nblks = 10
+    srcindices, srcranges = _create_indices(qbx, nblks,
+            method='nodes', factor=factor, random=True)
+    tgtindices, tgtranges = _create_indices(qbx, nblks,
+            method='nodes', factor=factor, random=True)
+    nblks = srcranges.shape[0] - 1
+    assert srcranges.shape[0] == tgtranges.shape[0]
+
+    from pytential.symbolic.execution import prepare_places, prepare_expr
+    places = prepare_places(qbx)
+    expr = prepare_expr(places, op)
+
+    from sumpy.tools import MatrixBlockIndex
+    index_set = MatrixBlockIndex(queue,
+        tgtindices, srcindices, tgtranges, srcranges)
+
+    from pytential.symbolic.matrix import P2PMatrixBlockBuilder
+    mbuilder = P2PMatrixBlockBuilder(queue,
+            dep_expr=u_sym,
+            other_dep_exprs=[],
+            dep_source=places[DEFAULT_SOURCE],
+            places=places,
+            context={},
+            index_set=index_set)
+    blk = mbuilder(expr)
+
+    from pytential.symbolic.matrix import P2PMatrixBuilder
+    mbuilder = P2PMatrixBuilder(queue,
+            dep_expr=u_sym,
+            other_dep_exprs=[],
+            dep_source=places[DEFAULT_SOURCE],
+            places=places,
+            context={})
+    mat = mbuilder(expr)
+
+    if visualize and ndim == 2:
+        blk_full = np.zeros_like(mat)
+        mat_full = np.zeros_like(mat)
+
+        blkranges = index_set.linear_ranges()
+        rowindices, colindices = index_set.linear_indices()
+        for i in range(srcranges.shape[0] - 1):
+            iblk = np.s_[blkranges[i]:blkranges[i + 1]]
+            itgt = rowindices[iblk]
+            isrc = colindices[iblk]
+
+            blk_full[itgt, isrc] = blk[iblk]
+            mat_full[itgt, isrc] = mat[itgt, isrc]
+
+        import matplotlib.pyplot as mp
+        _, (ax1, ax2) = mp.subplots(1, 2,
+                figsize=(10, 8), dpi=300, constrained_layout=True)
+        ax1.imshow(blk_full)
+        ax1.set_title('P2PMatrixBlockBuilder')
+        ax2.imshow(mat_full)
+        ax2.set_title('P2PMatrixBuilder')
+        mp.savefig("test_p2p_block_{}d_{:.1f}.png".format(ndim, factor))
+
+    blkranges = index_set.linear_ranges()
+    rowindices, colindices = index_set.linear_indices()
+    for i in range(nblks):
+        iblk = np.s_[blkranges[i]:blkranges[i + 1]]
+        itgt = rowindices[iblk]
+        isrc = colindices[iblk]
+
+        eps = 1.0e-14 * la.norm(mat[itgt, isrc])
+        if visualize:
+            print('block[{:04}]: {:.5e}'.format(i,
+                la.norm(blk[iblk] - mat[itgt, isrc].reshape(-1))))
+        assert la.norm(blk[iblk] - mat[itgt, isrc].reshape(-1)) < eps
+
+
+@pytest.mark.parametrize("ndim", [2, 3])
+def test_qbx_block_builder(ctx_factory, ndim, visualize=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    # prevent cache explosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
+
+    from test_direct_solver import _create_data, _create_indices
+    target_order = 2 if ndim == 3 else 7
+    qbx, op, u_sym = _create_data(queue, target_order=target_order, ndim=ndim)
+
+    nblks = 10
+    tgtindices, tgtranges = _create_indices(qbx, nblks)
+    srcindices, srcranges = _create_indices(qbx, nblks)
+    nblks = srcranges.shape[0] - 1
+    assert srcranges.shape[0] == tgtranges.shape[0]
+
+    from pytential.symbolic.execution import prepare_places, prepare_expr
+    places = prepare_places(qbx)
+    expr = prepare_expr(places, op)
+
+    from sumpy.tools import MatrixBlockIndex
+    index_set = MatrixBlockIndex(queue,
+        tgtindices, srcindices, tgtranges, srcranges)
+
+    from pytential.symbolic.matrix import MatrixBlockBuilder
+    mbuilder = MatrixBlockBuilder(queue,
+            dep_expr=u_sym,
+            other_dep_exprs=[],
+            dep_source=places[DEFAULT_SOURCE],
+            places=places,
+            context={},
+            index_set=index_set)
+    blk = mbuilder(expr)
+
+    from pytential.symbolic.matrix import MatrixBuilder
+    mbuilder = MatrixBuilder(queue,
+            dep_expr=u_sym,
+            other_dep_exprs=[],
+            dep_source=places[DEFAULT_SOURCE],
+            places=places,
+            context={})
+    mat = mbuilder(expr)
+
+    if visualize:
+        blk_full = np.zeros_like(mat)
+        mat_full = np.zeros_like(mat)
+
+        blkranges = index_set.linear_ranges()
+        rowindices, colindices = index_set.linear_indices()
+        for i in range(srcranges.shape[0] - 1):
+            iblk = np.s_[blkranges[i]:blkranges[i + 1]]
+            itgt = rowindices[iblk]
+            isrc = colindices[iblk]
+
+            blk_full[itgt, isrc] = blk[iblk]
+            mat_full[itgt, isrc] = mat[itgt, isrc]
+
+        import matplotlib.pyplot as mp
+        _, (ax1, ax2) = mp.subplots(1, 2,
+                figsize=(10, 8), constrained_layout=True)
+        ax1.imshow(mat_full)
+        ax1.set_title('MatrixBuilder')
+        ax2.imshow(blk_full)
+        ax2.set_title('MatrixBlockBuilder')
+        mp.savefig("test_qbx_block_builder.png", dpi=300)
+
+    blkranges = index_set.linear_ranges()
+    rowindices, colindices = index_set.linear_indices()
+    for i in range(nblks):
+        iblk = np.s_[blkranges[i]:blkranges[i + 1]]
+        itgt = rowindices[iblk]
+        isrc = colindices[iblk]
+
+        eps = 1.0e-14 * la.norm(mat[itgt, isrc])
+        if visualize:
+            print('block[{:04}]: {:.5e}'.format(i,
+                la.norm(blk[iblk] - mat[itgt, isrc].reshape(-1))))
+        assert la.norm(blk[iblk] - mat[itgt, isrc].reshape(-1)) < eps
 
 
 if __name__ == "__main__":

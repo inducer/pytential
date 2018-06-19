@@ -488,7 +488,7 @@ class MatrixBlockBuilder(MatrixBlockBuilderBase):
             resample_mat_blk = resample_mat[np.ix_(itgt, isrc)]
 
             rmat[i] = mat_blk.dot(resample_mat_blk).reshape(-1)
-            mat = np.hstack(rmat)
+        mat = np.hstack(rmat)
 
         # TODO: multiply with rec_density
 
@@ -545,7 +545,7 @@ class P2PMatrixBlockBuilder(MatrixBlockBuilderBase):
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
-                sources=source.nodes(),
+                sources=source.density_discr.nodes(),
                 index_set=self.index_set,
                 **kernel_args)
         mat = mat.get()

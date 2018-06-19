@@ -88,6 +88,7 @@ def _build_block_index(discr,
     if method == 'elements':
         factor = 1.0
 
+    density_discr = qbx.density_discr
     if method == 'nodes':
         nnodes = discr.nnodes
     else:
