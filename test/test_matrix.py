@@ -34,7 +34,7 @@ from meshmode.mesh.generation import \
         ellipse, NArmedStarfish, make_curve_mesh
 
 from pytential import bind, sym
-from pytential.symbolic.primitives import DEFAULT_TARGET, DEFAULT_SOURCE
+from pytential.symbolic.primitives import DEFAULT_SOURCE
 
 import pytest
 from pyopencl.tools import (  # noqa
