@@ -34,9 +34,53 @@ import pytential.symbolic.primitives as sym
 from pytential.symbolic.execution import bind
 
 
+# {{{ helpers
+
 def is_zero(x):
     return isinstance(x, (int, float, complex, np.number)) and x == 0
 
+
+def _resample_arg(queue, source, x):
+    if not isinstance(x, np.ndarray):
+        return x
+
+    if len(x.shape) >= 2:
+        raise RuntimeError("matrix variables in kernel arguments")
+
+    def resample(y):
+        return source.resampler(queue, cl.array.to_device(queue, y)).get(queue)
+
+    from pytools.obj_array import with_object_array_or_scalar
+    return with_object_array_or_scalar(resample, x)
+
+
+def _get_layer_potential_args(mapper, expr, source):
+    kernel_args = {}
+    for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
+        rec_arg = mapper.rec(arg_expr)
+        kernel_args[arg_name] = _resample_arg(mapper.queue, source, rec_arg)
+
+    return kernel_args
+
+
+def _get_kernel_args(mapper, kernel, expr, source):
+    # NOTE: copied from pytential.symbolic.primitives.IntG
+    inner_kernel_args = kernel.get_args() + kernel.get_source_args()
+    inner_kernel_args = set(arg.loopy_arg.name for arg in inner_kernel_args)
+
+    kernel_args = {}
+    for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
+        if arg_name not in inner_kernel_args:
+            continue
+
+        rec_arg = mapper.rec(arg_expr)
+        kernel_args[arg_name] = _resample_arg(mapper.queue, source, rec_arg)
+
+    return kernel_args
+
+# }}}
+
+# {{{ QBX layer potential matrix
 
 # FIXME: PyOpenCL doesn't do all the required matrix math yet.
 # We'll cheat and build the matrix on the host.
@@ -44,13 +88,14 @@ def is_zero(x):
 class MatrixBuilder(EvaluationMapperBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, places,
             context):
+        super(MatrixBuilder, self).__init__(context=context)
+
         self.queue = queue
         self.dep_expr = dep_expr
         self.other_dep_exprs = other_dep_exprs
         self.dep_source = dep_source
         self.dep_discr = dep_source.density_discr
         self.places = places
-        self.context = context
 
     def map_variable(self, expr):
         if expr == self.dep_expr:
@@ -152,27 +197,7 @@ class MatrixBuilder(EvaluationMapperBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-
-        kernel_args = {}
-        for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
-            rec_arg = self.rec(arg_expr)
-
-            if isinstance(rec_arg, np.ndarray):
-                if len(rec_arg.shape) == 2:
-                    raise RuntimeError("matrix variables in kernel arguments")
-                if len(rec_arg.shape) == 1:
-                    from pytools.obj_array import with_object_array_or_scalar
-
-                    def resample(x):
-                        return (
-                                source.resampler(
-                                    self.queue,
-                                    cl.array.to_device(self.queue, x))
-                                .get(queue=self.queue))
-
-                    rec_arg = with_object_array_or_scalar(resample, rec_arg)
-
-            kernel_args[arg_name] = rec_arg
+        kernel_args = _get_layer_potential_args(self, expr, source)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
@@ -180,8 +205,6 @@ class MatrixBuilder(EvaluationMapperBase):
         from sumpy.qbx import LayerPotentialMatrixGenerator
         mat_gen = LayerPotentialMatrixGenerator(
                 self.queue.context, (local_expn,))
-
-        assert target_discr is source.density_discr
 
         from pytential.qbx.utils import get_centers_on_side
 
@@ -244,3 +267,56 @@ class MatrixBuilder(EvaluationMapperBase):
             result = result.get()
 
         return result
+
+# }}}
+
+
+# {{{ p2p matrix
+
+class P2PMatrixBuilder(MatrixBuilder):
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, places,
+            context, exclude_self=True):
+        super(P2PMatrixBuilder, self).__init__(queue,
+                dep_expr, other_dep_exprs, dep_source, places, context)
+
+        self.exclude_self = exclude_self
+
+    def map_int_g(self, expr):
+        source = self.places[expr.source]
+        target_discr = self.places[expr.target]
+
+        if source.density_discr is not target_discr:
+            raise NotImplementedError()
+
+        rec_density = self.rec(expr.density)
+        if is_zero(rec_density):
+            return 0
+
+        assert isinstance(rec_density, np.ndarray)
+        if len(rec_density.shape) != 2:
+            raise NotImplementedError("layer potentials on non-variables")
+
+        try:
+            kernel = expr.kernel.inner_kernel
+        except AttributeError:
+            kernel = expr.kernel
+        kernel_args = _get_kernel_args(self, kernel, expr, source)
+        if self.exclude_self:
+            kernel_args["target_to_source"] = np.arange(0, target_discr.nnodes)
+
+        from sumpy.p2p import P2PMatrixGenerator
+        mat_gen = P2PMatrixGenerator(
+                self.queue.context, (kernel,), exclude_self=self.exclude_self)
+
+        _, (mat,) = mat_gen(self.queue,
+                targets=target_discr.nodes(),
+                sources=source.density_discr.nodes(),
+                **kernel_args)
+
+        mat = mat.get()
+        mat = mat.dot(rec_density)
+
+        return mat
+# }}}
+
+# vim: foldmethod=marker
