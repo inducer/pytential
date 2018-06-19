@@ -29,6 +29,8 @@ import pyopencl.array  # noqa
 import six
 from six.moves import intern
 
+from pytools import memoize_method
+
 from pytential.symbolic.mappers import EvaluationMapperBase
 import pytential.symbolic.primitives as sym
 from pytential.symbolic.execution import bind
@@ -41,6 +43,9 @@ def is_zero(x):
 
 
 def _resample_arg(queue, source, x):
+    if source is None:
+        return x
+
     if not isinstance(x, np.ndarray):
         return x
 
@@ -80,7 +85,8 @@ def _get_kernel_args(mapper, kernel, expr, source):
 
 # }}}
 
-# {{{ QBX layer potential matrix
+
+# {{{ QBX layer potential matrix builder
 
 # FIXME: PyOpenCL doesn't do all the required matrix math yet.
 # We'll cheat and build the matrix on the host.
@@ -207,15 +213,14 @@ class MatrixBuilder(EvaluationMapperBase):
                 self.queue.context, (local_expn,))
 
         from pytential.qbx.utils import get_centers_on_side
-
         assert abs(expr.qbx_forced_limit) > 0
+
         _, (mat,) = mat_gen(self.queue,
                 target_discr.nodes(),
                 source.quad_stage2_density_discr.nodes(),
                 get_centers_on_side(source, expr.qbx_forced_limit),
                 expansion_radii=self.dep_source._expansion_radii("nsources"),
                 **kernel_args)
-
         mat = mat.get()
 
         waa = source.weights_and_area_elements().get(queue=self.queue)
@@ -252,9 +257,7 @@ class MatrixBuilder(EvaluationMapperBase):
         arg, = expr.parameters
         rec_arg = self.rec(arg)
 
-        if (
-                isinstance(rec_arg, np.ndarray)
-                and len(rec_arg.shape) == 2):
+        if isinstance(rec_arg, np.ndarray) and len(rec_arg.shape) == 2:
             raise RuntimeError("expression is nonlinear in variable")
 
         if isinstance(rec_arg, np.ndarray):
@@ -271,7 +274,7 @@ class MatrixBuilder(EvaluationMapperBase):
 # }}}
 
 
-# {{{ p2p matrix
+# {{{ p2p matrix builder
 
 class P2PMatrixBuilder(MatrixBuilder):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, places,
@@ -302,7 +305,8 @@ class P2PMatrixBuilder(MatrixBuilder):
             kernel = expr.kernel
         kernel_args = _get_kernel_args(self, kernel, expr, source)
         if self.exclude_self:
-            kernel_args["target_to_source"] = np.arange(0, target_discr.nnodes)
+            kernel_args["target_to_source"] = \
+                cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
 
         from sumpy.p2p import P2PMatrixGenerator
         mat_gen = P2PMatrixGenerator(
@@ -317,6 +321,239 @@ class P2PMatrixBuilder(MatrixBuilder):
         mat = mat.dot(rec_density)
 
         return mat
+# }}}
+
+
+# {{{ block matrix builders
+
+class MatrixBlockBuilderBase(EvaluationMapperBase):
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source,
+            places, context, index_set):
+        super(MatrixBlockBuilderBase, self).__init__(context=context)
+
+        self.queue = queue
+        self.dep_expr = dep_expr
+        self.other_dep_exprs = other_dep_exprs
+        self.dep_source = dep_source
+        self.dep_discr = dep_source.density_discr
+        self.places = places
+
+        self.index_set = index_set
+
+    def _map_dep_variable(self):
+        return np.eye(self.index_set.srcindices.shape[0])
+
+    def map_variable(self, expr):
+        if expr == self.dep_expr:
+            return self._map_dep_variable()
+        elif expr in self.other_dep_exprs:
+            return 0
+        else:
+            return super(MatrixBlockBuilderBase, self).map_variable(expr)
+
+    def map_subscript(self, expr):
+        if expr == self.dep_expr:
+            return self.variable_identity()
+        elif expr in self.other_dep_exprs:
+            return 0
+        else:
+            return super(MatrixBlockBuilderBase, self).map_subscript(expr)
+
+    def map_num_reference_derivative(self, expr):
+        rec_operand = self.rec(expr.operand)
+
+        assert isinstance(rec_operand, np.ndarray)
+        if len(rec_operand.shape) == 2:
+            raise NotImplementedError("derivatives")
+
+        where_discr = self.places[expr.where]
+        op = sym.NumReferenceDerivative(expr.ref_axes, sym.var("u"))
+        return bind(where_discr, op)(
+                self.queue, u=cl.array.to_device(self.queue, rec_operand)).get()
+
+    def map_node_coordinate_component(self, expr):
+        where_discr = self.places[expr.where]
+        op = sym.NodeCoordinateComponent(expr.ambient_axis)
+        return bind(where_discr, op)(self.queue).get()
+
+    def map_call(self, expr):
+        arg, = expr.parameters
+        rec_arg = self.rec(arg)
+
+        if isinstance(rec_arg, np.ndarray) and len(rec_arg.shape) == 2:
+            raise RuntimeError("expression is nonlinear in variable")
+
+        if isinstance(rec_arg, np.ndarray):
+            rec_arg = cl.array.to_device(self.queue, rec_arg)
+
+        op = expr.function(sym.var("u"))
+        result = bind(self.dep_source, op)(self.queue, u=rec_arg)
+
+        if isinstance(result, cl.array.Array):
+            result = result.get()
+
+        return result
+
+
+class MatrixBlockBuilder(MatrixBlockBuilderBase):
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source,
+            places, context, index_set):
+        super(MatrixBlockBuilder, self).__init__(queue,
+            dep_expr, other_dep_exprs, dep_source, places, context, index_set)
+
+        self.dummy = MatrixBlockBuilderBase(queue,
+            dep_expr, other_dep_exprs, dep_source, places, context, index_set)
+
+    @memoize_method
+    def _oversampled_index_set(self, resampler):
+        from pytential.direct_solver import partition_from_coarse
+        srcindices, srcranges = partition_from_coarse(self.queue, resampler,
+                self.index_set.srcindices, self.index_set.srcranges)
+
+        from sumpy.tools import MatrixBlockIndex
+        ovsm_index_set = MatrixBlockIndex(self.queue,
+                self.index_set.tgtindices, srcindices,
+                self.index_set.tgtranges, srcranges)
+
+        return ovsm_index_set
+
+    def _map_dep_variable(self):
+        return np.equal(self.index_set.tgtindices.reshape(-1, 1),
+                        self.index_set.srcindices.reshape(1, -1)).astype(np.float64)
+
+    def map_int_g(self, expr):
+        source = self.places[expr.source]
+        target_discr = self.places[expr.target]
+
+        if source.density_discr is not target_discr:
+            raise NotImplementedError()
+
+        rec_density = self.dummy.rec(expr.density)
+        if is_zero(rec_density):
+            return 0
+
+        assert isinstance(rec_density, np.ndarray)
+        if len(rec_density.shape) != 2:
+            raise NotImplementedError("layer potentials on non-variables")
+
+        resampler = source.direct_resampler
+        ovsm_index_set = self._oversampled_index_set(resampler)
+
+        kernel = expr.kernel
+        kernel_args = _get_layer_potential_args(self, expr, source)
+
+        from sumpy.expansion.local import LineTaylorLocalExpansion
+        local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
+
+        from sumpy.qbx import LayerPotentialMatrixBlockGenerator
+        mat_gen = LayerPotentialMatrixBlockGenerator(
+                self.queue.context, (local_expn,))
+
+        from pytential.qbx.utils import get_centers_on_side
+        assert abs(expr.qbx_forced_limit) > 0
+
+        _, (mat,) = mat_gen(self.queue,
+                target_discr.nodes(),
+                source.quad_stage2_density_discr.nodes(),
+                get_centers_on_side(source, expr.qbx_forced_limit),
+                expansion_radii=self.dep_source._expansion_radii("nsources"),
+                index_set=ovsm_index_set,
+                **kernel_args)
+        mat = mat.get()
+
+        ovsm_blkranges = ovsm_index_set.linear_ranges()
+        ovsm_rowindices, ovsm_colindices = ovsm_index_set.linear_indices()
+
+        waa = source.weights_and_area_elements().get(queue=self.queue)
+        mat *= waa[ovsm_colindices]
+
+        # TODO: there should be a better way to do the matmat required for
+        # the resampling
+        resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
+
+        rmat = np.empty(ovsm_blkranges.shape[0] - 1, dtype=np.object)
+        for i in range(ovsm_blkranges.shape[0] - 1):
+            # TODO: would be nice to move some of this to sumpy.MatrixBlockIndex
+            ovsm_iblk = np.s_[ovsm_blkranges[i]:ovsm_blkranges[i + 1]]
+            ovsm_shape = (ovsm_index_set.tgtranges[i + 1] -
+                          ovsm_index_set.tgtranges[i],
+                          ovsm_index_set.srcranges[i + 1] -
+                          ovsm_index_set.srcranges[i])
+            mat_blk = mat[ovsm_iblk].reshape(*ovsm_shape)
+
+            itgt = np.s_[ovsm_index_set.srcranges[i]:ovsm_index_set.srcranges[i + 1]]
+            itgt = ovsm_index_set.srcindices[itgt]
+            isrc = np.s_[self.index_set.srcranges[i]:self.index_set.srcranges[i + 1]]
+            isrc = self.index_set.srcindices[isrc]
+            resample_mat_blk = resample_mat[np.ix_(itgt, isrc)]
+
+            rmat[i] = mat_blk.dot(resample_mat_blk).reshape(-1)
+            mat = np.hstack(rmat)
+
+        # TODO: multiply with rec_density
+
+        return mat
+
+
+class P2PMatrixBlockBuilder(MatrixBlockBuilderBase):
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source,
+            places, context, index_set, exclude_self=True):
+        super(P2PMatrixBlockBuilder, self).__init__(queue,
+            dep_expr, other_dep_exprs, dep_source, places, context, index_set)
+
+        self.dummy = MatrixBlockBuilderBase(queue,
+            dep_expr, other_dep_exprs, dep_source, places, context, index_set)
+        self.exclude_self = exclude_self
+
+    def _map_dep_variable(self):
+        return np.equal(self.index_set.tgtindices.reshape(-1, 1),
+                        self.index_set.srcindices.reshape(1, -1)).astype(np.float64)
+
+    def block(self, i):
+        itgt = np.s_[self.index_set.tgtranges[i]:self.index_set.tgtranges[i + 1]]
+        isrc = np.s_[self.index_set.srcranges[i]:self.index_set.srcranges[i + 1]]
+
+        return (itgt, isrc)
+
+    def map_int_g(self, expr):
+        source = self.places[expr.source]
+        target_discr = self.places[expr.target]
+
+        if source.density_discr is not target_discr:
+            raise NotImplementedError()
+
+        rec_density = self.dummy.rec(expr.density)
+        if is_zero(rec_density):
+            return 0
+
+        assert isinstance(rec_density, np.ndarray)
+        if len(rec_density.shape) != 2:
+            raise NotImplementedError("layer potentials on non-variables")
+
+        try:
+            kernel = expr.kernel.inner_kernel
+        except AttributeError:
+            kernel = expr.kernel
+        kernel_args = _get_kernel_args(self, kernel, expr, source)
+        if self.exclude_self:
+            kernel_args["target_to_source"] = \
+                cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
+
+        from sumpy.p2p import P2PMatrixBlockGenerator
+        mat_gen = P2PMatrixBlockGenerator(
+                self.queue.context, (kernel,), exclude_self=self.exclude_self)
+
+        _, (mat,) = mat_gen(self.queue,
+                targets=target_discr.nodes(),
+                sources=source.nodes(),
+                index_set=self.index_set,
+                **kernel_args)
+        mat = mat.get()
+
+        # TODO: need to multiply by rec_density
+
+        return mat
+
 # }}}
 
 # vim: foldmethod=marker
