@@ -22,11 +22,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+
 import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
 import pyopencl.array # noqa
+from pyopencl.array import to_device
 
 from pytools.obj_array import make_obj_array
 from pytools import memoize_method, memoize_in
@@ -35,70 +37,92 @@ import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 
+__doc__ = """
+Proxy Point Generation
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: partition_by_nodes
+
+.. autofunction:: partition_by_elements
+
+.. autofunction:: partition_from_coarse
+
+.. autoclass:: ProxyGenerator
+"""
+
+
 # {{{ point index partitioning
 
-def _element_node_range(groups, igroup, ielement):
-    istart = groups[igroup].node_nr_base + \
-             groups[igroup].nunit_nodes * ielement
-    iend = groups[igroup].node_nr_base + \
-           groups[igroup].nunit_nodes * (ielement + 1)
+def _element_node_range(group, ielement):
+    istart = group.node_nr_base + group.nunit_nodes * ielement
+    iend = group.node_nr_base + group.nunit_nodes * (ielement + 1)
+
     return np.arange(istart, iend)
 
 
-def partition_by_nodes(discr, use_tree=True, max_particles_in_box=30):
+def partition_by_nodes(queue, discr,
+                       use_tree=True,
+                       max_particles_in_box=30):
     """Generate clusters / ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
     of points, but will split elements across different ranges.
 
+    :arg queue: a :class:`pyopencl.CommandQueue`.
     :arg discr: a :class:`~meshmode.discretization.Discretization`.
-    :arg use_tree: if True, node partitions are generated using a
+    :arg use_tree: if `True`, node partitions are generated using a
         :class:`boxtree.TreeBuilder`, which leads to geometrically close
-        points to belong to the same partition. If False, a simple linear
+        points to belong to the same partition. If `False`, a simple linear
         partition is constructed.
     :arg max_particles_in_box: passed to :class:`boxtree.TreeBuilder`.
 
-    :return: a tuple `(indices, ranges)` of integer arrays. The indices
-        in a range can be retrieved using `indices[ranges[i]:ranges[i + 1]]`.
+    :return: a tuple `(indices, ranges)` of :class:`pyopencl.array.Array`
+        integer arrays. The indices in a range can be retrieved using
+        `indices[ranges[i]:ranges[i + 1]]`.
     """
 
     if use_tree:
         from boxtree import box_flags_enum
         from boxtree import TreeBuilder
 
-        with cl.CommandQueue(discr.cl_context) as queue:
-            builder = TreeBuilder(discr.cl_context)
+        builder = TreeBuilder(discr.cl_context)
 
-            tree, _ = builder(queue, discr.nodes(),
-                max_particles_in_box=max_particles_in_box)
+        tree, _ = builder(queue, discr.nodes(),
+            max_particles_in_box=max_particles_in_box)
 
-            tree = tree.get(queue)
-            leaf_boxes, = (tree.box_flags &
-                           box_flags_enum.HAS_CHILDREN == 0).nonzero()
+        tree = tree.get(queue)
+        leaf_boxes, = (tree.box_flags &
+                       box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
-            indices = np.empty(len(leaf_boxes), dtype=np.object)
-            for i, ibox in enumerate(leaf_boxes):
-                box_start = tree.box_source_starts[ibox]
-                box_end = box_start + tree.box_source_counts_cumul[ibox]
-                indices[i] = tree.user_source_ids[box_start:box_end]
+        indices = np.empty(len(leaf_boxes), dtype=np.object)
+        for i, ibox in enumerate(leaf_boxes):
+            box_start = tree.box_source_starts[ibox]
+            box_end = box_start + tree.box_source_counts_cumul[ibox]
+            indices[i] = tree.user_source_ids[box_start:box_end]
 
-            ranges = np.cumsum([0] + [box.shape[0] for box in indices])
-            indices = np.hstack(indices)
+        ranges = to_device(queue,
+            np.cumsum([0] + [box.shape[0] for box in indices]))
+        indices = to_device(queue, np.hstack(indices))
     else:
-        indices = np.arange(0, discr.nnodes)
-        ranges = np.arange(0, discr.nnodes + 1,
-                           discr.nnodes // max_particles_in_box)
+        indices = cl.array.arange(queue, 0, discr.nnodes,
+                                  dtype=np.int)
+        ranges = cl.array.arange(queue, 0, discr.nnodes + 1,
+                                 discr.nnodes // max_particles_in_box,
+                                 dtype=np.int)
 
     assert ranges[-1] == discr.nnodes
     return indices, ranges
 
 
-def partition_by_elements(discr, use_tree=True, max_particles_in_box=10):
-    """Generate clusters / ranges of points. The partiton is created at the
+def partition_by_elements(queue, discr,
+                          use_tree=True,
+                          max_particles_in_box=10):
+    """Generate clusters / ranges of points. The partition is created at the
     element level, so that all the nodes belonging to an element belong to
-    the same range. This can result in slightly larger difference in size
+    the same range. This can result in slightly larger differences in size
     between the ranges, but can be very useful when the individual partitions
     need to be resampled, integrated, etc.
 
+    :arg queue: a :class:`pyopencl.CommandQueue`.
     :arg discr: a :class:`~meshmode.discretization.Discretization`.
     :arg use_tree: if True, node partitions are generated using a
         :class:`boxtree.TreeBuilder`, which leads to geometrically close
@@ -106,57 +130,57 @@ def partition_by_elements(discr, use_tree=True, max_particles_in_box=10):
         partition is constructed.
     :arg max_particles_in_box: passed to :class:`boxtree.TreeBuilder`.
 
-    :return: a tuple `(indices, ranges)` of integer arrays. The indices
-        in a range can be retrieved using `indices[ranges[i]:ranges[i + 1]]`.
+    :return: a tuple `(indices, ranges)` of :class:`pyopencl.array.Array`
+        integer arrays. The indices in a range can be retrieved using
+        `indices[ranges[i]:ranges[i + 1]]`.
     """
     if use_tree:
         from boxtree import box_flags_enum
         from boxtree import TreeBuilder
 
-        with cl.CommandQueue(discr.cl_context) as queue:
-            builder = TreeBuilder(discr.cl_context)
+        builder = TreeBuilder(discr.cl_context)
 
-            from pytential.qbx.utils import element_centers_of_mass
-            elranges = np.cumsum([0] +
-                [group.nelements for group in discr.mesh.groups])
-            elcenters = element_centers_of_mass(discr)
+        from pytential.qbx.utils import element_centers_of_mass
+        elranges = np.cumsum([group.nelements for group in discr.mesh.groups])
+        elcenters = element_centers_of_mass(discr)
 
-            tree, _ = builder(queue, elcenters,
-                max_particles_in_box=max_particles_in_box)
+        tree, _ = builder(queue, elcenters,
+            max_particles_in_box=max_particles_in_box)
 
-            groups = discr.groups
-            tree = tree.get(queue)
-            leaf_boxes, = (tree.box_flags &
-                           box_flags_enum.HAS_CHILDREN == 0).nonzero()
-
-            indices = np.empty(len(leaf_boxes), dtype=np.object)
-            for i, ibox in enumerate(leaf_boxes):
-                box_start = tree.box_source_starts[ibox]
-                box_end = box_start + tree.box_source_counts_cumul[ibox]
-
-                ielement = tree.user_source_ids[box_start:box_end]
-                igroup = np.digitize(ielement, elranges) - 1
-
-                indices[i] = np.hstack([_element_node_range(groups, j, k)
-                                        for j, k in zip(igroup, ielement)])
-    else:
         groups = discr.groups
-        elranges = np.cumsum([0] +
-            [group.nelements for group in discr.mesh.groups])
+        tree = tree.get(queue)
+        leaf_boxes, = (tree.box_flags &
+                       box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
-        nelements = discr.mesh.nelements
-        indices = np.array_split(np.arange(0, nelements),
-                                 nelements // max_particles_in_box)
-        for i in range(len(indices)):
-            ielement = indices[i]
-            igroup = np.digitize(ielement, elranges) - 1
+        indices = np.empty(len(leaf_boxes), dtype=np.object)
+        for i, ibox in enumerate(leaf_boxes):
+            box_start = tree.box_source_starts[ibox]
+            box_end = box_start + tree.box_source_counts_cumul[ibox]
 
-            indices[i] = np.hstack([_element_node_range(groups, j, k)
+            ielement = tree.user_source_ids[box_start:box_end]
+            igroup = np.digitize(ielement, elranges)
+
+            indices[i] = np.hstack([_element_node_range(groups[j], k)
                                     for j, k in zip(igroup, ielement)])
+    else:
+        nelements = discr.mesh.nelements
+        elements = np.array_split(np.arange(0, nelements),
+                                  nelements // max_particles_in_box)
 
-    ranges = np.cumsum([0] + [box.shape[0] for box in indices])
-    indices = np.hstack(indices)
+        elranges = np.cumsum([g.nelements for g in discr.groups])
+        elgroups = [np.digitize(elements[i], elranges)
+                    for i in range(len(elements))]
 
+        indices = np.empty(len(elements), dtype=np.object)
+        for i in range(indices.shape[0]):
+            indices[i] = np.hstack([_element_node_range(discr.groups[j], k)
+                                    for j, k in zip(elgroups[i], elements[i])])
+
+    ranges = to_device(queue,
+            np.cumsum([0] + [box.shape[0] for box in indices]))
+    indices = to_device(queue, np.hstack(indices))
+
+    assert ranges[-1] == discr.nnodes
     return indices, ranges
 
 
@@ -180,12 +204,17 @@ def partition_from_coarse(queue, resampler, from_indices, from_ranges):
         :attr:`resampler.from_discr`.
     :arg from_ranges: array used to index into :attr:`from_indices`.
 
-    :return: a tuple `(indices, ranges)` of integer arrays. The indices
-        in a range can be retrieved using `indices[ranges[i]:ranges[i + 1]]`.
+    :return: a tuple `(indices, ranges)` of :class:`pyopencl.array.Array`
+        integer arrays. The indices in a range can be retrieved using
+        `indices[ranges[i]:ranges[i + 1]]`.
     """
 
     if not hasattr(resampler, "groups"):
         raise ValueError("resampler must be a DirectDiscretizationConnection.")
+
+    if isinstance(from_ranges, cl.array.Array):
+        from_indices = from_indices.get(queue)
+        from_ranges = from_ranges.get(queue)
 
     # construct ranges
     from_discr = resampler.from_discr
@@ -224,10 +253,11 @@ def partition_from_coarse(queue, resampler, from_indices, from_ranges):
         for i, j in zip(el_ranges[to_el_table[igrp][to_element_indices]],
                         to_element_indices):
             indices[i] = np.hstack([indices[i],
-                _element_node_range(resampler.to_discr.groups, igrp, j)])
+                _element_node_range(resampler.to_discr.groups[igrp], j)])
 
-    ranges = np.cumsum([0] + [box.shape[0] for box in indices])
-    indices = np.hstack(indices)
+    ranges = to_device(queue,
+            np.cumsum([0] + [box.shape[0] for box in indices]))
+    indices = to_device(queue, np.hstack(indices))
 
     return indices, ranges
 
@@ -364,13 +394,14 @@ class ProxyGenerator(object):
         """Generate proxy points for each given range of source points in
         the discretization :attr:`source`.
 
-        :arg indices: a set of indices around which to construct proxy balls.
-        :arg ranges: an array of size `(nranges + 1,)` used to index into the
-            set of indices. Each one of the `nranges` ranges will get a proxy
-            ball.
+        :arg indices: a :class:`pyopencl.array.Array` of indices around
+            which to construct proxy balls.
+        :arg ranges: an :class:`pyopencl.array.Array` of size `(nranges + 1,)`
+            used to index into :attr:`indices`. Each one of the `nranges`
+            ranges will get a proxy ball.
 
         :return: a tuple of `(centers, radii, proxies, pryranges)`, where
-            each value is a :class:`pyopencl.array.Array` of integers. The
+            each value is a :class:`pyopencl.array.Array`. The
             sizes of the arrays are as follows: `centers` is of size
             `(2, nranges)`, `radii` is of size `(nranges,)`, `pryranges` is
             of size `(nranges + 1,)` and `proxies` is of size
@@ -418,18 +449,26 @@ class ProxyGenerator(object):
         the points inside a proxy ball :math:`i` that do not also belong to
         the set of source points in the same range :math:`i`.
 
-        :arg indices: indices for a subset of the source points.
-        :arg ranges: array used to index into the :attr:`indices` array.
-        :arg centers: centers for each proxy ball.
-        :arg radii: radii for each proxy ball.
+        :arg indices: a :class:`pyopencl.array.Array` of indices for a subset
+            of the source points.
+        :arg ranges: a :class:`pyopencl.array.Array` used to index into
+            the :attr:`indices` array.
+        :arg centers: a :class:`pyopencl.array.Array` containing the center
+            of each proxy ball.
+        :arg radii: a :class:`pyopencl.array.Array` containing the radius
+            of each proxy ball.
 
-        :return: a tuple `(neighbours, nbrranges)` where is value is a
+        :return: a tuple `(neighbours, nbrranges)` where each value is a
             :class:`pyopencl.array.Array` of integers. For a range :math:`i`
             in `nbrranges`, the corresponding slice of the `neighbours` array
             is a subset of :attr:`indices` such that all points are inside
             the proxy ball centered at `centers[i]` of radius `radii[i]`
             that is not included in `indices[ranges[i]:ranges[i + 1]]`.
         """
+
+        if isinstance(indices, cl.array.Array):
+            indices = indices.get(self.queue)
+            ranges = ranges.get(self.queue)
 
         nranges = radii.shape[0] + 1
         sources = self.source.density_discr.nodes().get(self.queue)
@@ -480,14 +519,16 @@ class ProxyGenerator(object):
         nbrranges = np.cumsum([0] + [n.shape[0] for n in neighbors])
         neighbors = np.hstack(neighbors)
 
-        return (cl.array.to_device(self.queue, neighbors),
-                cl.array.to_device(self.queue, nbrranges))
+        return (to_device(self.queue, neighbors),
+                to_device(self.queue, nbrranges))
 
     def __call__(self, indices, ranges, **kwargs):
         """
-        :arg indices: set of indices for points in :attr:`source`.
-        :arg ranges: set of ranges around which to build a set of proxy
-            points. For each range, this builds a ball of proxy points centered
+        :arg indices: a :class:`pyopencl.array.Array` of indices for points
+            in :attr:`source`.
+        :arg ranges: a :class:`pyopencl.array.Array` describing the ranges
+            from :attr:`indices` around which to build proxy points. For each
+            range, this builds a ball of proxy points centered
             at the center of mass of the points in the range with a radius
             defined by :attr:`ratio`.
 
