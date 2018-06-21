@@ -98,10 +98,10 @@ def _build_block_index(queue, discr,
     # create index ranges
     if method == "nodes":
         indices, ranges = partition_by_nodes(queue, discr,
-            use_tree=use_tree, max_particles_in_box=max_particles_in_box)
+            use_tree=use_tree, max_nodes_in_box=max_particles_in_box)
     elif method == "elements":
         indices, ranges = partition_by_elements(queue, discr,
-            use_tree=use_tree, max_particles_in_box=max_particles_in_box)
+            use_tree=use_tree, max_elements_in_box=max_particles_in_box)
     else:
         raise ValueError("unknown method: {}".format(method))
 
@@ -187,7 +187,7 @@ def _plot_partition_indices(queue, discr, indices, ranges, **kwargs):
 @pytest.mark.parametrize("method", ["nodes", "elements"])
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=True):
+def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -198,7 +198,7 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=True):
 
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=True):
+def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -245,7 +245,7 @@ def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=True):
 
 @pytest.mark.parametrize("ndim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_proxy_generator(ctx_factory, ndim, factor, visualize=True):
+def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -337,7 +337,7 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=True):
 
 @pytest.mark.parametrize("ndim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_area_query(ctx_factory, ndim, factor, visualize=True):
+def test_area_query(ctx_factory, ndim, factor, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -347,25 +347,24 @@ def test_area_query(ctx_factory, ndim, factor, visualize=True):
 
     # generate proxy points
     from pytential.linalg.proxy import ProxyGenerator
-    generator = ProxyGenerator(qbx, ratio=1.1)
+    generator = ProxyGenerator(qbx)
     _, _, pxycenters, pxyradii = generator(queue, srcindices, srcranges)
 
     from pytential.linalg.proxy import build_neighbor_list, build_skeleton_list
-    neighbors, nbrranges = build_neighbor_list(qbx.density_discr,
+    nbrindices, nbrranges = build_neighbor_list(qbx.density_discr,
             srcindices, srcranges, pxycenters, pxyradii)
-    skeletons, sklranges = build_skeleton_list(qbx, srcindices, srcranges,
-                                               ratio=1.1)
+    skeletons, sklranges = build_skeleton_list(qbx, srcindices, srcranges)
 
     srcindices = srcindices.get()
     srcranges = srcranges.get()
-    neighbors = neighbors.get()
+    nbrindices = nbrindices.get()
     nbrranges = nbrranges.get()
 
     for i in range(srcranges.shape[0] - 1):
         isrc = np.s_[srcranges[i]:srcranges[i + 1]]
         inbr = np.s_[nbrranges[i]:nbrranges[i + 1]]
 
-        assert not np.any(np.isin(neighbors[inbr], srcindices[isrc]))
+        assert not np.any(np.isin(nbrindices[inbr], srcindices[isrc]))
 
     if visualize:
         if ndim == 2:
@@ -376,7 +375,7 @@ def test_area_query(ctx_factory, ndim, factor, visualize=True):
 
             for i in range(srcranges.shape[0] - 1):
                 isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
-                ingb = neighbors[nbrranges[i]:nbrranges[i + 1]]
+                ingb = nbrindices[nbrranges[i]:nbrranges[i + 1]]
                 iskl = np.s_[sklranges[i]:sklranges[i + 1]]
 
                 pt.figure(figsize=(10, 8))
@@ -402,7 +401,7 @@ def test_area_query(ctx_factory, ndim, factor, visualize=True):
 
             for i in range(srcranges.shape[0] - 1):
                 isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
-                ingb = neighbors[nbrranges[i]:nbrranges[i + 1]]
+                ingb = nbrindices[nbrranges[i]:nbrranges[i + 1]]
 
                 # TODO: some way to turn off some of the interpolations
                 # would help visualize this better.
