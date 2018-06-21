@@ -91,8 +91,6 @@ Return values
 
 .. autoclass:: QBXTargetAssociation
 
-.. autoclass:: QBXTargetAssociationFailedException
-
 Target association driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -727,7 +725,7 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
 
         The side request can take on the values in :ref:`qbx-side-request-table`.
 
-    :raises QBXTargetAssociationFailedException:
+    :raises pytential.qbx.QBXTargetAssociationFailedException:
         when target association failed to find a center for a target.
         The returned exception object contains suggested refine flags.
 
