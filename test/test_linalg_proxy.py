@@ -95,7 +95,7 @@ def create_indices(qbx, nblks,
                    method='elements',
                    use_tree=True,
                    use_stage2=False):
-    from pytential.direct_solver import (
+    from pytential.linalg.proxy import (
             partition_by_nodes, partition_by_elements)
 
     if use_stage2:
@@ -216,7 +216,7 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
         from meshmode.discretization.connection import flatten_chained_connection
         resampler = flatten_chained_connection(queue, qbx.resampler)
 
-        from pytential.direct_solver import partition_from_coarse
+        from pytential.linalg.proxy import partition_from_coarse
         t_start = time.time()
         srcindices_, srcranges_ = \
             partition_from_coarse(queue, resampler, srcindices, srcranges)
@@ -254,7 +254,7 @@ def test_proxy_generator(ctx_factory, ndim, visualize=False):
                                            method='nodes', factor=0.6)
     nblks = srcranges.shape[0] - 1
 
-    from pytential.direct_solver import ProxyGenerator
+    from pytential.linalg.proxy import ProxyGenerator
     gen = ProxyGenerator(queue, qbx, ratio=1.1)
     centers, radii, proxies, pxyranges = \
         gen.get_proxies(srcindices, srcranges)
@@ -356,7 +356,7 @@ def test_area_query(ctx_factory, ndim, visualize=False):
     nblks = srcranges.shape[0] - 1
 
     # generate proxy points
-    from pytential.direct_solver import ProxyGenerator
+    from pytential.linalg.proxy import ProxyGenerator
     gen = ProxyGenerator(queue, qbx, ratio=1.1)
     centers, radii, _, _ = gen.get_proxies(srcindices, srcranges)
     neighbors, ngbranges = gen.get_neighbors(srcindices, srcranges, centers, radii)
