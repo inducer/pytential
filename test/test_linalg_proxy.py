@@ -26,6 +26,8 @@ import os
 import time
 
 import numpy as np
+import numpy.linalg as la
+
 import pyopencl as cl
 from pyopencl.array import to_device
 
@@ -112,6 +114,7 @@ def _build_block_index(queue, discr,
         for i in range(ranges.shape[0] - 1):
             iidx = indices[np.s_[ranges[i]:ranges[i + 1]]]
             isize = int(factor * len(iidx))
+            isize = max(1, min(isize, len(iidx)))
 
             indices_[i] = np.sort(
                     np.random.choice(iidx, size=isize, replace=False))
@@ -184,7 +187,7 @@ def _plot_partition_indices(queue, discr, indices, ranges, **kwargs):
 @pytest.mark.parametrize("method", ["nodes", "elements"])
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
+def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=True):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -195,7 +198,7 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
 
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=False):
+def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=True):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -241,26 +244,34 @@ def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=False):
 
 
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_proxy_generator(ctx_factory, ndim, visualize=False):
+@pytest.mark.parametrize("factor", [1.0, 0.6])
+def test_proxy_generator(ctx_factory, ndim, factor, visualize=True):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     qbx = _build_qbx_discr(queue, ndim=ndim)
     srcindices, srcranges = _build_block_index(queue, qbx.density_discr,
-            method='nodes', factor=0.6)
+            method='nodes', factor=factor)
 
     from pytential.linalg.proxy import ProxyGenerator
-    gen = ProxyGenerator(queue, qbx, ratio=1.1)
-    centers, radii, proxies, pxyranges = gen.get_proxies(srcindices, srcranges)
+    generator = ProxyGenerator(qbx, ratio=1.1)
+    proxies, pxyranges, pxycenters, pxyradii = \
+        generator(queue, srcindices, srcranges)
+
+    proxies = np.vstack([p.get() for p in proxies])
+    pxyranges = pxyranges.get()
+    pxycenters = np.vstack([c.get() for c in pxycenters])
+    pxyradii = pxyradii.get()
+
+    for i in range(srcranges.shape[0] - 1):
+        ipxy = np.s_[pxyranges[i]:pxyranges[i + 1]]
+
+        r = la.norm(proxies[:, ipxy] - pxycenters[:, i].reshape(-1, 1), axis=0)
+        assert np.allclose(r - pxyradii[i], 0.0, atol=1.0e-14)
 
     if visualize:
         srcindices = srcindices.get()
         srcranges = srcranges.get()
-
-        centers = np.vstack([c.get() for c in centers])
-        radii = radii.get()
-        proxies = np.vstack([p.get() for p in proxies])
-        pxyranges = pxyranges.get()
 
     if visualize:
         if qbx.ambient_dim == 2:
@@ -309,9 +320,9 @@ def test_proxy_generator(ctx_factory, ndim, visualize=False):
                 InterpolatoryQuadratureSimplexGroupFactory
 
             for i in range(srcranges.shape[0] - 1):
-                mesh = affine_map(gen.mesh,
-                    A=(radii[i] * np.eye(ndim)),
-                    b=centers[:, i].reshape(-1))
+                mesh = affine_map(generator.ref_mesh,
+                    A=(pxyradii[i] * np.eye(ndim)),
+                    b=pxycenters[:, i].reshape(-1))
 
                 mesh = merge_disjoint_meshes([mesh, qbx.density_discr.mesh])
                 discr = Discretization(ctx, mesh,
@@ -325,27 +336,36 @@ def test_proxy_generator(ctx_factory, ndim, visualize=False):
 
 
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_area_query(ctx_factory, ndim, visualize=False):
+@pytest.mark.parametrize("factor", [1.0, 0.6])
+def test_area_query(ctx_factory, ndim, factor, visualize=True):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     qbx = _build_qbx_discr(queue, ndim=ndim)
     srcindices, srcranges = _build_block_index(queue, qbx.density_discr,
-            method='nodes', factor=0.6)
+            method='nodes', factor=factor)
 
     # generate proxy points
     from pytential.linalg.proxy import ProxyGenerator
-    gen = ProxyGenerator(queue, qbx, ratio=1.1)
-    centers, radii, _, _ = gen.get_proxies(srcindices, srcranges)
-    neighbors, ngbranges = gen.get_neighbors(srcindices, srcranges, centers, radii)
-    skeletons, sklranges = gen(srcindices, srcranges)
+    generator = ProxyGenerator(qbx, ratio=1.1)
+    _, _, pxycenters, pxyradii = generator(queue, srcindices, srcranges)
 
-    if visualize:
-        srcindices = srcindices.get()
-        srcranges = srcranges.get()
+    from pytential.linalg.proxy import build_neighbor_list, build_skeleton_list
+    neighbors, nbrranges = build_neighbor_list(qbx.density_discr,
+            srcindices, srcranges, pxycenters, pxyradii)
+    skeletons, sklranges = build_skeleton_list(qbx, srcindices, srcranges,
+                                               ratio=1.1)
 
-        neighbors = neighbors.get()
-        ngbranges = ngbranges.get()
+    srcindices = srcindices.get()
+    srcranges = srcranges.get()
+    neighbors = neighbors.get()
+    nbrranges = nbrranges.get()
+
+    for i in range(srcranges.shape[0] - 1):
+        isrc = np.s_[srcranges[i]:srcranges[i + 1]]
+        inbr = np.s_[nbrranges[i]:nbrranges[i + 1]]
+
+        assert not np.any(np.isin(neighbors[inbr], srcindices[isrc]))
 
     if visualize:
         if ndim == 2:
@@ -356,7 +376,7 @@ def test_area_query(ctx_factory, ndim, visualize=False):
 
             for i in range(srcranges.shape[0] - 1):
                 isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
-                ingb = neighbors[ngbranges[i]:ngbranges[i + 1]]
+                ingb = neighbors[nbrranges[i]:nbrranges[i + 1]]
                 iskl = np.s_[sklranges[i]:sklranges[i + 1]]
 
                 pt.figure(figsize=(10, 8))
@@ -382,7 +402,7 @@ def test_area_query(ctx_factory, ndim, visualize=False):
 
             for i in range(srcranges.shape[0] - 1):
                 isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
-                ingb = neighbors[ngbranges[i]:ngbranges[i + 1]]
+                ingb = neighbors[nbrranges[i]:nbrranges[i + 1]]
 
                 # TODO: some way to turn off some of the interpolations
                 # would help visualize this better.
