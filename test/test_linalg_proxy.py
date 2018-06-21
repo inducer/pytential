@@ -31,8 +31,6 @@ import numpy.linalg as la
 import pyopencl as cl
 from pyopencl.array import to_device
 
-import loopy as lp
-from pytential import sym
 from meshmode.mesh.generation import ( # noqa
         ellipse, NArmedStarfish, generate_torus, make_curve_mesh)
 
@@ -203,7 +201,7 @@ def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=False):
     queue = cl.CommandQueue(ctx)
 
     qbx = _build_qbx_discr(queue, ndim=ndim)
-    srcindices, srcranges = _build_block_index(queue, qbx.density_discr, 
+    srcindices, srcranges = _build_block_index(queue, qbx.density_discr,
             method="elements", use_tree=use_tree)
 
     if visualize:
