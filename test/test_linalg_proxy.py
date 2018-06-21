@@ -40,89 +40,70 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 
 
-def create_data(queue,
+def _build_qbx_discr(queue,
+        ndim=2,
+        nelements=30,
         target_order=7,
         qbx_order=4,
-        nelements=30,
-        curve_f=None,
-        ndim=2, k=0,
-        lpot_idx=2):
+        curve_f=None):
 
     if curve_f is None:
         curve_f = NArmedStarfish(5, 0.25)
-        # curve_f = partial(ellipse, 3)
-
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-    if k:
-        knl = HelmholtzKernel(ndim)
-        knl_kwargs = {"k": k}
-    else:
-        knl = LaplaceKernel(ndim)
-        knl_kwargs = {}
-
-    if lpot_idx == 1:
-        u_sym = sym.var("u")
-        op = sym.D(knl, u_sym, **knl_kwargs)
-    else:
-        u_sym = sym.var("u")
-        op = sym.S(knl, u_sym, **knl_kwargs)
 
     if ndim == 2:
         mesh = make_curve_mesh(curve_f,
                 np.linspace(0, 1, nelements + 1),
                 target_order)
-    else:
+    elif ndim == 3:
         mesh = generate_torus(10.0, 2.0, order=target_order)
+    else:
+        raise ValueError("unsupported ambient dimension")
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
     from pytential.qbx import QBXLayerPotentialSource
-    pre_density_discr = Discretization(
+    density_discr = Discretization(
             queue.context, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4 * target_order,
-            qbx_order,
-            # Don't use FMM for now
+    qbx, _ = QBXLayerPotentialSource(density_discr,
+            fine_order=4 * target_order,
+            qbx_order=qbx_order,
             fmm_order=False).with_refinement()
 
-    return qbx, op, u_sym
+    return qbx
 
 
-def create_indices(queue, qbx, nblks,
-                   factor=1.0,
-                   random=True,
-                   method='elements',
-                   use_tree=True,
-                   use_stage2=False):
+def _build_block_index(queue, discr,
+        nblks=10,
+        factor=1.0,
+        method='elements',
+        use_tree=True):
+
     from pytential.linalg.proxy import (
             partition_by_nodes, partition_by_elements)
 
     if method == 'elements':
         factor = 1.0
 
-    if use_stage2:
-        density_discr = qbx.quad_stage2_density_discr
-    else:
-        density_discr = qbx.density_discr
-
     if method == 'nodes':
-        nnodes = density_discr.nnodes
+        nnodes = discr.nnodes
     else:
-        nnodes = density_discr.mesh.nelements
+        nnodes = discr.mesh.nelements
     max_particles_in_box = nnodes // nblks
 
+    # create index ranges
     if method == "nodes":
-        indices, ranges = partition_by_nodes(queue, density_discr,
+        indices, ranges = partition_by_nodes(queue, discr,
             use_tree=use_tree, max_particles_in_box=max_particles_in_box)
     elif method == "elements":
-        indices, ranges = partition_by_elements(queue, density_discr,
+        indices, ranges = partition_by_elements(queue, discr,
             use_tree=use_tree, max_particles_in_box=max_particles_in_box)
     else:
         raise ValueError("unknown method: {}".format(method))
 
-    # take a subset of the points
+    # randomly pick a subset of points
     if abs(factor - 1.0) > 1.0e-14:
         indices = indices.get(queue)
         ranges = ranges.get(queue)
@@ -132,11 +113,8 @@ def create_indices(queue, qbx, nblks,
             iidx = indices[np.s_[ranges[i]:ranges[i + 1]]]
             isize = int(factor * len(iidx))
 
-            if random:
-                indices_[i] = np.sort(np.random.choice(iidx,
-                    size=isize, replace=False))
-            else:
-                indices_[i] = iidx[:isize]
+            indices_[i] = np.sort(
+                    np.random.choice(iidx, size=isize, replace=False))
 
         ranges = to_device(queue,
                 np.cumsum([0] + [r.shape[0] for r in indices_]))
@@ -145,110 +123,121 @@ def create_indices(queue, qbx, nblks,
     return indices, ranges
 
 
+def _plot_partition_indices(queue, discr, indices, ranges, **kwargs):
+    import matplotlib.pyplot as pt
+    args = [
+        kwargs.get("method", "unknown"),
+        "tree" if kwargs.get("use_tree", False) else "linear",
+        kwargs.get("pid", "stage1"),
+        discr.ambient_dim
+        ]
+
+    if isinstance(indices, cl.array.Array):
+        indices = indices.get()
+        ranges = ranges.get()
+
+    pt.figure(figsize=(10, 8), dpi=300)
+    pt.plot(np.diff(ranges))
+    pt.savefig("test_partition_{0}_{1}_{3}d_ranges_{2}.png".format(*args))
+    pt.clf()
+
+    if discr.ambient_dim == 2:
+        sources = discr.nodes().get(queue)
+
+        pt.figure(figsize=(10, 8), dpi=300)
+
+        if indices.shape[0] != discr.nnodes:
+            pt.plot(sources[0], sources[1], 'ko', alpha=0.5)
+        for i in range(ranges.shape[0] - 1):
+            isrc = indices[np.s_[ranges[i]:ranges[i + 1]]]
+            pt.plot(sources[0][isrc], sources[1][isrc], 'o')
+
+        pt.xlim([-1.5, 1.5])
+        pt.ylim([-1.5, 1.5])
+        pt.savefig("test_partition_{0}_{1}_{3}d_{2}.png".format(*args))
+        pt.clf()
+    elif discr.ambient_dim == 3:
+        from meshmode.discretization import NoninterpolatoryElementGroupError
+        try:
+            discr.groups[0].basis()
+        except NoninterpolatoryElementGroupError:
+            return
+
+        from meshmode.discretization.visualization import make_visualizer
+        marker = -42.0 * np.ones(discr.nnodes)
+
+        for i in range(ranges.shape[0] - 1):
+            isrc = indices[np.s_[ranges[i]:ranges[i + 1]]]
+            marker[isrc] = 10.0 * (i + 1.0)
+
+        vis = make_visualizer(queue, discr, 10)
+
+        filename = "test_partition_{0}_{1}_{3}d_{2}.png".format(*args)
+        if os.path.isfile(filename):
+            os.remove(filename)
+
+        vis.write_vtk_file(filename, [
+            ("marker", cl.array.to_device(queue, marker))
+            ])
+
+
 @pytest.mark.parametrize("method", ["nodes", "elements"])
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
 def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
-    def _plot_indices(pid, discr, indices, ranges):
-        import matplotlib.pyplot as pt
-
-        pt.figure(figsize=(10, 8))
-        pt.plot(np.diff(ranges))
-
-        rangefile = "test_partition_{}_{}_ranges_{}.png".format(method,
-                "tree" if use_tree else "linear", pid)
-        pt.savefig(rangefile, dpi=300)
-        pt.clf()
-
-        if ndim == 2:
-            sources = discr.nodes().get(queue)
-
-            pt.figure(figsize=(10, 8))
-            pt.plot(sources[0], sources[1], 'ko', alpha=0.5)
-            for i in range(nblks):
-                isrc = indices[np.s_[ranges[i]:ranges[i + 1]]]
-                pt.plot(sources[0][isrc], sources[1][isrc], 'o')
-            pt.xlim([-1.5, 1.5])
-            pt.ylim([-1.5, 1.5])
-
-            pointfile = "test_partition_{}_{}_{}d_{}.png".format(method,
-                "tree" if use_tree else "linear", ndim, pid)
-            pt.savefig(pointfile, dpi=300)
-            pt.clf()
-        elif ndim == 3:
-            from meshmode.discretization import NoninterpolatoryElementGroupError
-            try:
-                discr.groups[0].basis()
-            except NoninterpolatoryElementGroupError:
-                return
-
-            from meshmode.discretization.visualization import make_visualizer
-            marker = -42.0 * np.ones(discr.nnodes)
-
-            for i in range(nblks):
-                isrc = indices[np.s_[ranges[i]:ranges[i + 1]]]
-                marker[isrc] = 10.0 * (i + 1.0)
-
-            vis = make_visualizer(queue, discr, 10)
-
-            pointfile = "test_partition_{}_{}_{}d_{}.vtu".format(method,
-                "tree" if use_tree else "linear", ndim, pid)
-            if os.path.isfile(pointfile):
-                os.remove(pointfile)
-
-            vis.write_vtk_file(pointfile, [
-                ("marker", cl.array.to_device(queue, marker))
-                ])
-
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    from sympy.core.cache import clear_cache
-    clear_cache()
-    qbx = create_data(queue, ndim=ndim)[0]
+    qbx = _build_qbx_discr(queue, ndim=ndim)
+    srcindices, srcranges = _build_block_index(queue, qbx.density_discr,
+            method=method, use_tree=use_tree, factor=0.6)
 
-    nblks = 10
+
+@pytest.mark.parametrize("use_tree", [True, False])
+@pytest.mark.parametrize("ndim", [2, 3])
+def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    qbx = _build_qbx_discr(queue, ndim=ndim)
+    srcindices, srcranges = _build_block_index(queue, qbx.density_discr, 
+            method="elements", use_tree=use_tree)
+
+    if visualize:
+        discr = qbx.resampler.from_discr
+        _plot_partition_indices(queue, discr, srcindices, srcranges,
+                method="elements", use_tree=use_tree, pid="stage1")
+
+    from pytential.linalg.proxy import partition_from_coarse
+    resampler = qbx.direct_resampler
+
     t_start = time.time()
-    srcindices, srcranges = create_indices(queue, qbx, nblks,
-            method=method, use_tree=use_tree, factor=1.0)
-    nblks = srcranges.shape[0] - 1
+    srcindices_, srcranges_ = \
+        partition_from_coarse(queue, resampler, srcindices, srcranges)
     t_end = time.time()
     if visualize:
         print('Time: {:.5f}s'.format(t_end - t_start))
 
+    srcindices = srcindices.get()
+    srcranges = srcranges.get()
+    srcindices_ = srcindices_.get()
+    srcranges_ = srcranges_.get()
+
+    sources = resampler.from_discr.nodes().get(queue)
+    sources_ = resampler.to_discr.nodes().get(queue)
+
+    for i in range(srcranges.shape[0] - 1):
+        isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
+        isrc_ = srcindices_[np.s_[srcranges_[i]:srcranges_[i + 1]]]
+
+        for j in range(ndim):
+            assert np.min(sources_[j][isrc_]) <= np.min(sources[j][isrc])
+            assert np.max(sources_[j][isrc_]) >= np.max(sources[j][isrc])
+
     if visualize:
-        discr = qbx.resampler.from_discr
-        _plot_indices(0, discr, srcindices.get(queue), srcranges.get(queue))
-
-    if method == "elements":
-        from pytential.linalg.proxy import partition_from_coarse
-        resampler = qbx.direct_resampler
-
-        t_start = time.time()
-        srcindices_, srcranges_ = \
-            partition_from_coarse(queue, resampler, srcindices, srcranges)
-        t_end = time.time()
-        if visualize:
-            print('Time: {:.5f}s'.format(t_end - t_start))
-
-        srcindices = srcindices.get(queue)
-        srcranges = srcranges.get(queue)
-        srcindices_ = srcindices_.get(queue)
-        srcranges_ = srcranges_.get(queue)
-
-        sources = resampler.from_discr.nodes().get(queue)
-        sources_ = resampler.to_discr.nodes().get(queue)
-        for i in range(srcranges.shape[0] - 1):
-            isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
-            isrc_ = srcindices_[np.s_[srcranges_[i]:srcranges_[i + 1]]]
-
-            for j in range(ndim):
-                assert np.min(sources_[j][isrc_]) <= np.min(sources[j][isrc])
-                assert np.max(sources_[j][isrc_]) >= np.max(sources[j][isrc])
-
-        if visualize:
-            discr = resampler.to_discr
-            _plot_indices(1, discr, srcindices_, srcranges_)
+        discr = resampler.to_discr
+        _plot_partition_indices(queue, discr, srcindices_, srcranges_,
+                method="elements", use_tree=use_tree, pid="stage2")
 
 
 @pytest.mark.parametrize("ndim", [2, 3])
@@ -256,39 +245,22 @@ def test_proxy_generator(ctx_factory, ndim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    # prevent cache explosion
-    from sympy.core.cache import clear_cache
-    clear_cache()
-    qbx = create_data(queue, ndim=ndim)[0]
-
-    nblks = 10
-    srcindices, srcranges = create_indices(queue, qbx, nblks,
-                                           method='nodes', factor=0.6)
-    nblks = srcranges.shape[0] - 1
+    qbx = _build_qbx_discr(queue, ndim=ndim)
+    srcindices, srcranges = _build_block_index(queue, qbx.density_discr,
+            method='nodes', factor=0.6)
 
     from pytential.linalg.proxy import ProxyGenerator
     gen = ProxyGenerator(queue, qbx, ratio=1.1)
-    centers, radii, proxies, pxyranges = \
-        gen.get_proxies(srcindices, srcranges)
+    centers, radii, proxies, pxyranges = gen.get_proxies(srcindices, srcranges)
 
     if visualize:
-        knl = gen.get_kernel()
-        knl = lp.add_dtypes(knl, {
-            "nodes": np.float64,
-            "center_int": np.float64,
-            "center_ext": np.float64,
-            "expansion_radii": np.float64,
-            "ranges": np.int64,
-            "indices": np.int64,
-            "nnodes": np.int64,
-            "nranges": np.int64,
-            "nindices": np.int64})
-        print(knl)
-        print(lp.generate_code_v2(knl).device_code())
+        srcindices = srcindices.get()
+        srcranges = srcranges.get()
 
-    proxies = np.vstack([p.get(queue) for p in proxies])
-    srcindices = srcindices.get(queue)
-    srcranges = srcranges.get(queue)
+        centers = np.vstack([c.get() for c in centers])
+        radii = radii.get()
+        proxies = np.vstack([p.get() for p in proxies])
+        pxyranges = pxyranges.get()
 
     if visualize:
         if qbx.ambient_dim == 2:
@@ -301,9 +273,8 @@ def test_proxy_generator(ctx_factory, ndim, visualize=False):
             ce = get_centers_on_side(qbx, +1)
             ce = np.vstack([c.get(queue) for c in ce])
             r = qbx._expansion_radii("nsources").get(queue)
-            pxyranges = pxyranges.get(queue)
 
-            for i in range(nblks):
+            for i in range(srcranges.shape[0] - 1):
                 isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
                 ipxy = np.s_[pxyranges[i]:pxyranges[i + 1]]
 
@@ -337,10 +308,7 @@ def test_proxy_generator(ctx_factory, ndim, visualize=False):
             from meshmode.discretization.poly_element import \
                 InterpolatoryQuadratureSimplexGroupFactory
 
-            centers = np.vstack([c.get(queue) for c in centers])
-            radii = radii.get(queue)
-
-            for i in range(nblks):
+            for i in range(srcranges.shape[0] - 1):
                 mesh = affine_map(gen.mesh,
                     A=(radii[i] * np.eye(ndim)),
                     b=centers[:, i].reshape(-1))
@@ -361,34 +329,32 @@ def test_area_query(ctx_factory, ndim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    from sympy.core.cache import clear_cache
-    clear_cache()
-    qbx = create_data(queue, ndim=ndim)[0]
-
-    nblks = 10
-    srcindices, srcranges = create_indices(queue, qbx, nblks,
-                                           method='nodes', factor=0.6)
-    nblks = srcranges.shape[0] - 1
+    qbx = _build_qbx_discr(queue, ndim=ndim)
+    srcindices, srcranges = _build_block_index(queue, qbx.density_discr,
+            method='nodes', factor=0.6)
 
     # generate proxy points
     from pytential.linalg.proxy import ProxyGenerator
     gen = ProxyGenerator(queue, qbx, ratio=1.1)
     centers, radii, _, _ = gen.get_proxies(srcindices, srcranges)
     neighbors, ngbranges = gen.get_neighbors(srcindices, srcranges, centers, radii)
-    skeleton_nodes, sklranges = gen(srcindices, srcranges)
+    skeletons, sklranges = gen(srcindices, srcranges)
 
-    neighbors = neighbors.get(queue)
-    ngbranges = ngbranges.get(queue)
-    srcindices = srcindices.get(queue)
-    srcranges = srcranges.get(queue)
+    if visualize:
+        srcindices = srcindices.get()
+        srcranges = srcranges.get()
+
+        neighbors = neighbors.get()
+        ngbranges = ngbranges.get()
 
     if visualize:
         if ndim == 2:
             import matplotlib.pyplot as pt
             density_nodes = qbx.density_discr.nodes().get(queue)
-            skeleton_nodes = skeleton_nodes.get(queue)
+            skeletons = skeletons.get(queue)
+            sklranges = sklranges.get(queue)
 
-            for i in range(nblks):
+            for i in range(srcranges.shape[0] - 1):
                 isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
                 ingb = neighbors[ngbranges[i]:ngbranges[i + 1]]
                 iskl = np.s_[sklranges[i]:sklranges[i + 1]]
@@ -402,7 +368,7 @@ def test_area_query(ctx_factory, ndim, visualize=False):
                         'o', ms=2.0)
                 pt.plot(density_nodes[0, ingb], density_nodes[1, ingb],
                         'o', ms=2.0)
-                pt.plot(skeleton_nodes[0, iskl], skeleton_nodes[1, iskl],
+                pt.plot(skeletons[0, iskl], skeletons[1, iskl],
                         'x', ms=2.0)
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
@@ -414,7 +380,7 @@ def test_area_query(ctx_factory, ndim, visualize=False):
             from meshmode.discretization.visualization import make_visualizer
             marker = np.empty(qbx.density_discr.nnodes)
 
-            for i in range(nblks):
+            for i in range(srcranges.shape[0] - 1):
                 isrc = srcindices[np.s_[srcranges[i]:srcranges[i + 1]]]
                 ingb = neighbors[ngbranges[i]:ngbranges[i + 1]]
 

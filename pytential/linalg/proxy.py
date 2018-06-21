@@ -566,6 +566,8 @@ class ProxyGenerator(object):
                     skeletons[idim, sklstart + npxyblock + ingb] = \
                         sources[idim, neighbors[ngbstart + ingb]] \
                         {id_prefix=write_ngb,nosync=write_pxy}
+                    sklranges[irange + 1] = sklranges[irange] + \
+                            npxyblock + nngbblock
                 end
                 """,
                 [
@@ -581,6 +583,8 @@ class ProxyGenerator(object):
                         shape="nranges + 1"),
                     lp.GlobalArg("skeletons", None,
                         shape=(self.dim, "nproxies + nneighbors")),
+                    lp.GlobalArg("sklranges", None,
+                        shape="nranges + 1"),
                     lp.ValueArg("nsources", np.int32),
                     lp.ValueArg("nproxies", np.int32),
                     lp.ValueArg("nneighbors", np.int32),
@@ -605,11 +609,11 @@ class ProxyGenerator(object):
             self.get_neighbors(indices, ranges, centers, radii)
 
         # construct joint array
-        _, (skeletons,) = knl()(self.queue,
+        sklranges = cl.array.zeros(self.queue, ranges.shape, dtype=np.int)
+        _, (skeletons, sklranges) = knl()(self.queue,
                 sources=sources, proxies=proxies, neighbors=neighbors,
-                pxyranges=pxyranges, nbrranges=nbrranges)
-        sklranges = np.array([p + n for p, n in zip(pxyranges.get(self.queue),
-                                                    nbrranges.get(self.queue))])
+                pxyranges=pxyranges, nbrranges=nbrranges,
+                sklranges=sklranges)
 
         return skeletons, sklranges
 
