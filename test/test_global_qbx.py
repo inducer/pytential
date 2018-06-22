@@ -96,7 +96,9 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
 
     from pytential.qbx.utils import TreeCodeContainer
 
-    lpot_source = QBXLayerPotentialSource(discr, order)
+    lpot_source = QBXLayerPotentialSource(discr,
+            qbx_order=order,  # not used in refinement
+            fine_order=order)
     del discr
 
     expansion_disturbance_tolerance = 0.025
@@ -239,7 +241,9 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements,
 
     discr = Discretization(cl_ctx, mesh, factory)
 
-    lpot_source, conn = QBXLayerPotentialSource(discr, order).with_refinement()
+    lpot_source, conn = QBXLayerPotentialSource(discr,
+            qbx_order=order,  # not used in target association
+            fine_order=order).with_refinement()
     del discr
 
     from pytential.qbx.utils import get_interleaved_centers
@@ -417,7 +421,9 @@ def test_target_association_failure(ctx_getter):
             InterpolatoryQuadratureSimplexGroupFactory
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
     discr = Discretization(cl_ctx, mesh, factory)
-    lpot_source = QBXLayerPotentialSource(discr, order)
+    lpot_source = QBXLayerPotentialSource(discr,
+            qbx_order=order,  # not used in target association
+            fine_order=order)
 
     # }}}
 
