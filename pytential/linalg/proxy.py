@@ -66,7 +66,7 @@ def _element_node_range(group, ielement):
 
 def partition_by_nodes(queue, discr,
                        use_tree=True,
-                       max_nodes_in_box=30):
+                       max_nodes_in_box=None):
     """Generate clusters / ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
     of points, but will split elements across different ranges.
@@ -83,6 +83,10 @@ def partition_by_nodes(queue, discr,
         integer arrays. The indices in a range can be retrieved using
         `indices[ranges[i]:ranges[i + 1]]`.
     """
+
+    if max_nodes_in_box is None:
+        # FIXME: this is just an arbitrary value
+        max_nodes_in_box = 32
 
     if use_tree:
         from boxtree import box_flags_enum
@@ -119,7 +123,7 @@ def partition_by_nodes(queue, discr,
 
 def partition_by_elements(queue, discr,
                           use_tree=True,
-                          max_elements_in_box=10):
+                          max_elements_in_box=None):
     """Generate clusters / ranges of points. The partition is created at the
     element level, so that all the nodes belonging to an element belong to
     the same range. This can result in slightly larger differences in size
@@ -138,6 +142,14 @@ def partition_by_elements(queue, discr,
         integer arrays. The indices in a range can be retrieved using
         `indices[ranges[i]:ranges[i + 1]]`.
     """
+
+    if max_elements_in_box is None:
+        # NOTE: keep in sync with partition_by_nodes
+        max_nodes_in_box = 32
+
+        nunit_nodes = int(np.mean([g.nunit_nodes for g in discr.groups]))
+        max_elements_in_box = max_nodes_in_box // nunit_nodes
+
     if use_tree:
         from boxtree import box_flags_enum
         from boxtree import TreeBuilder
@@ -450,7 +462,7 @@ class ProxyGenerator(object):
 
 
 def build_neighbor_list(discr, srcindices, srcranges, pxycenters, pxyradii,
-                        max_nodes_in_box=30, **kwargs):
+                        max_nodes_in_box=None, **kwargs):
     """Generate a set of neighboring points for each range of points in
     :attr:`discr`. Neighboring points of a range :math:`i` are defined
     as all the points inside the proxy ball :math:`i` that do not also
@@ -467,6 +479,10 @@ def build_neighbor_list(discr, srcindices, srcranges, pxycenters, pxyradii,
         :class:`pyopencl.array.Array`. For a range :math:`i`, we can
         get the slice using `nbrindices[nbrranges[i]:nbrranges[i + 1]]`.
     """
+
+    if max_nodes_in_box is None:
+        # FIXME: this is a fairly arbitrary value
+        max_nodes_in_box = 32
 
     with cl.CommandQueue(discr.cl_context) as queue:
         if isinstance(srcindices, cl.array.Array):
