@@ -1,6 +1,9 @@
 from __future__ import division, absolute_import, print_function
 
-__copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
+__copyright__ = """
+Copyright (C) 2015 Andreas Kloeckner
+Copyright (C) 2018 Andreas Kloeckner
+"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -28,6 +31,7 @@ import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
+from pytools.obj_array import make_obj_array, is_obj_array
 
 from sumpy.symbolic import USE_SYMENGINE
 from meshmode.mesh.generation import \
@@ -74,7 +78,7 @@ def _build_op(lpot_id, k=0, ndim=2):
     else:
         raise ValueError("Unknown lpot_id: {}".format(lpot_id))
 
-    return op, u_sym
+    return op, u_sym, knl_kwargs
 
 
 @pytest.mark.skipif(USE_SYMENGINE,
@@ -113,7 +117,7 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
             fmm_order=False).with_refinement()
     density_discr = qbx.density_discr
 
-    op, u_sym = _build_op(lpot_id, k=k)
+    op, u_sym, knl_kwargs = _build_op(lpot_id, k=k)
     bound_op = bind(qbx, op)
 
     from pytential.symbolic.execution import build_matrix
@@ -185,7 +189,7 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     from test_linalg_proxy import _build_qbx_discr, _build_block_index
     target_order = 2 if ndim == 3 else 7
     qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
-    op, u_sym = _build_op(lpot_id, ndim=ndim)
+    op, u_sym, _ = _build_op(lpot_id, ndim=ndim)
 
     srcindices, srcranges = _build_block_index(queue, qbx.density_discr,
             method='nodes', factor=factor)
@@ -274,7 +278,7 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     from test_linalg_proxy import _build_qbx_discr, _build_block_index
     target_order = 2 if ndim == 3 else 7
     qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
-    op, u_sym = _build_op(lpot_id, ndim=ndim)
+    op, u_sym, _ = _build_op(lpot_id, ndim=ndim)
 
     tgtindices, tgtranges = _build_block_index(queue, qbx.density_discr)
     srcindices, srcranges = _build_block_index(queue, qbx.density_discr)
