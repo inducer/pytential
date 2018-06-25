@@ -42,38 +42,25 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 
 
-@pytest.mark.skipif(USE_SYMENGINE,
-        reason="https://gitlab.tiker.net/inducer/sumpy/issues/25")
-@pytest.mark.parametrize("k", [0, 42])
-@pytest.mark.parametrize("curve_f", [
-    partial(ellipse, 3),
-    NArmedStarfish(5, 0.25)])
-@pytest.mark.parametrize("layer_pot_id", [1, 2])
-def test_matrix_build(ctx_factory, k, curve_f, layer_pot_id, visualize=False):
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-
-    # prevent cache 'splosion
-    from sympy.core.cache import clear_cache
-    clear_cache()
-
-    target_order = 7
-    qbx_order = 4
-    nelements = 30
-
+def _build_op(lpot_id, k=0, ndim=2):
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+    knl_kwargs = {"qbx_forced_limit": "avg"}
     if k:
-        knl = HelmholtzKernel(2)
-        knl_kwargs = {"k": k}
+        knl = HelmholtzKernel(ndim)
+        knl_kwargs["k"] = k
     else:
-        knl = LaplaceKernel(2)
-        knl_kwargs = {}
+        knl = LaplaceKernel(ndim)
 
-    from pytools.obj_array import make_obj_array, is_obj_array
-    if layer_pot_id == 1:
+    if lpot_id == 1:
+        # scalar single-layer potential
         u_sym = sym.var("u")
-        op = sym.Sp(knl, u_sym, **knl_kwargs)
-    elif layer_pot_id == 2:
+        op = sym.S(knl, u_sym, **knl_kwargs)
+    elif lpot_id == 2:
+        # scalar double-layer potential
+        u_sym = sym.var("u")
+        op = sym.D(knl, u_sym, **knl_kwargs)
+    elif lpot_id == 3:
+        # vector potential
         u_sym = sym.make_sym_vector("u", 2)
         u0_sym, u1_sym = u_sym
 
@@ -85,8 +72,29 @@ def test_matrix_build(ctx_factory, k, curve_f, layer_pot_id, visualize=False):
             0.3 * sym.D(knl, u0_sym, **knl_kwargs)
             ])
     else:
-        raise ValueError("Unknown layer_pot_id: {}".format(layer_pot_id))
+        raise ValueError("Unknown lpot_id: {}".format(lpot_id))
 
+    return op, u_sym
+
+
+@pytest.mark.skipif(USE_SYMENGINE,
+        reason="https://gitlab.tiker.net/inducer/sumpy/issues/25")
+@pytest.mark.parametrize("k", [0, 42])
+@pytest.mark.parametrize("curve_f", [
+    partial(ellipse, 3),
+    NArmedStarfish(5, 0.25)])
+@pytest.mark.parametrize("lpot_id", [1, 3])
+def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
+    cl_ctx = ctx_factory()
+    queue = cl.CommandQueue(cl_ctx)
+
+    # prevent cache 'splosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
+
+    target_order = 7
+    qbx_order = 4
+    nelements = 30
     mesh = make_curve_mesh(curve_f,
             np.linspace(0, 1, nelements + 1),
             target_order)
@@ -94,16 +102,18 @@ def test_matrix_build(ctx_factory, k, curve_f, layer_pot_id, visualize=False):
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
-    from pytential.qbx import QBXLayerPotentialSource
     pre_density_discr = Discretization(
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
+    from pytential.qbx import QBXLayerPotentialSource
     qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4 * target_order,
             qbx_order,
             # Don't use FMM for now
             fmm_order=False).with_refinement()
     density_discr = qbx.density_discr
+
+    op, u_sym = _build_op(lpot_id, k=k)
     bound_op = bind(qbx, op)
 
     from pytential.symbolic.execution import build_matrix
@@ -162,7 +172,9 @@ def test_matrix_build(ctx_factory, k, curve_f, layer_pot_id, visualize=False):
 
 @pytest.mark.parametrize("ndim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_p2p_block_builder(ctx_factory, factor, ndim, visualize=False):
+@pytest.mark.parametrize("lpot_id", [1, 2])
+def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
+                           visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -170,16 +182,15 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, visualize=False):
     from sympy.core.cache import clear_cache
     clear_cache()
 
-    from test_direct_solver import _create_data, _create_indices
+    from test_linalg_proxy import _build_qbx_discr, _build_block_index
     target_order = 2 if ndim == 3 else 7
-    qbx, op, u_sym = _create_data(queue, target_order=target_order, ndim=ndim)
+    qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
+    op, u_sym = _build_op(lpot_id, ndim=ndim)
 
-    nblks = 10
-    srcindices, srcranges = _create_indices(qbx, nblks,
-            method='nodes', factor=factor, random=True)
-    tgtindices, tgtranges = _create_indices(qbx, nblks,
-            method='nodes', factor=factor, random=True)
-    nblks = srcranges.shape[0] - 1
+    srcindices, srcranges = _build_block_index(queue, qbx.density_discr,
+            method='nodes', factor=factor)
+    tgtindices, tgtranges = _build_block_index(queue, qbx.density_discr,
+            method='nodes', factor=factor)
     assert srcranges.shape[0] == tgtranges.shape[0]
 
     from pytential.symbolic.execution import prepare_places, prepare_expr
@@ -187,8 +198,12 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, visualize=False):
     expr = prepare_expr(places, op)
 
     from sumpy.tools import MatrixBlockIndex
+    # TODO: make MatrixBlockIndex work properly with CL arrays
     index_set = MatrixBlockIndex(queue,
-        tgtindices, srcindices, tgtranges, srcranges)
+                                 tgtindices.get(queue),
+                                 srcindices.get(queue),
+                                 tgtranges.get(queue),
+                                 srcranges.get(queue))
 
     from pytential.symbolic.matrix import P2PMatrixBlockBuilder
     mbuilder = P2PMatrixBlockBuilder(queue,
@@ -234,7 +249,7 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, visualize=False):
 
     blkranges = index_set.linear_ranges()
     rowindices, colindices = index_set.linear_indices()
-    for i in range(nblks):
+    for i in range(blkranges.shape[0] - 1):
         iblk = np.s_[blkranges[i]:blkranges[i + 1]]
         itgt = rowindices[iblk]
         isrc = colindices[iblk]
@@ -247,7 +262,8 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, visualize=False):
 
 
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_qbx_block_builder(ctx_factory, ndim, visualize=False):
+@pytest.mark.parametrize("lpot_id", [1])
+def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -255,14 +271,13 @@ def test_qbx_block_builder(ctx_factory, ndim, visualize=False):
     from sympy.core.cache import clear_cache
     clear_cache()
 
-    from test_direct_solver import _create_data, _create_indices
+    from test_linalg_proxy import _build_qbx_discr, _build_block_index
     target_order = 2 if ndim == 3 else 7
-    qbx, op, u_sym = _create_data(queue, target_order=target_order, ndim=ndim)
+    qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
+    op, u_sym = _build_op(lpot_id, ndim=ndim)
 
-    nblks = 10
-    tgtindices, tgtranges = _create_indices(qbx, nblks)
-    srcindices, srcranges = _create_indices(qbx, nblks)
-    nblks = srcranges.shape[0] - 1
+    tgtindices, tgtranges = _build_block_index(queue, qbx.density_discr)
+    srcindices, srcranges = _build_block_index(queue, qbx.density_discr)
     assert srcranges.shape[0] == tgtranges.shape[0]
 
     from pytential.symbolic.execution import prepare_places, prepare_expr
@@ -270,8 +285,12 @@ def test_qbx_block_builder(ctx_factory, ndim, visualize=False):
     expr = prepare_expr(places, op)
 
     from sumpy.tools import MatrixBlockIndex
+    # TODO: make MatrixBlockIndex work properly with CL arrays
     index_set = MatrixBlockIndex(queue,
-        tgtindices, srcindices, tgtranges, srcranges)
+                                 tgtindices.get(queue),
+                                 srcindices.get(queue),
+                                 tgtranges.get(queue),
+                                 srcranges.get(queue))
 
     from pytential.symbolic.matrix import MatrixBlockBuilder
     mbuilder = MatrixBlockBuilder(queue,
@@ -317,7 +336,7 @@ def test_qbx_block_builder(ctx_factory, ndim, visualize=False):
 
     blkranges = index_set.linear_ranges()
     rowindices, colindices = index_set.linear_indices()
-    for i in range(nblks):
+    for i in range(blkranges.shape[0] - 1):
         iblk = np.s_[blkranges[i]:blkranges[i + 1]]
         itgt = rowindices[iblk]
         isrc = colindices[iblk]

@@ -406,14 +406,17 @@ class MatrixBlockBuilder(MatrixBlockBuilderBase):
 
     @memoize_method
     def _oversampled_index_set(self, resampler):
-        from pytential.direct_solver import partition_from_coarse
+        from pytential.linalg.proxy import partition_from_coarse
         srcindices, srcranges = partition_from_coarse(self.queue, resampler,
                 self.index_set.srcindices, self.index_set.srcranges)
 
         from sumpy.tools import MatrixBlockIndex
+        # TODO: fix MatrixBlockIndex to work with CL arrays
         ovsm_index_set = MatrixBlockIndex(self.queue,
-                self.index_set.tgtindices, srcindices,
-                self.index_set.tgtranges, srcranges)
+                self.index_set.tgtindices,
+                srcindices.get(self.queue),
+                self.index_set.tgtranges,
+                srcranges.get(self.queue))
 
         return ovsm_index_set
 
