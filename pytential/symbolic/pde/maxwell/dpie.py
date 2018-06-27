@@ -35,11 +35,12 @@ cse = sym.cse
 
 __doc__ = """
 .. autoclass:: DPIEOperator
+.. autoclass:: DPIEOperatorEvanescent
 """
 
 
 
-# {{{ Decoupled Potential Integral Equation Operator
+# {{{ Decoupled Potential Integral Equation Operator - based on Arxiv paper
 class DPIEOperator:
     r"""
     Decoupled Potential Integral Equation operator with PEC boundary
@@ -108,33 +109,6 @@ class DPIEOperator:
         # return the domain list
         return domain_list
 
-    def get_vector_domain_list2(self):
-        """
-        Method to return domain list that will be used within the scipy_op method to
-        solve the system of discretized integral equations. What is returned should just
-        be a list with values that are strings or None.
-        """
-
-        # initialize domain list
-        domain_list = [None]*self.num_vector_potential_densities()
-
-        # get strings for the actual densities
-        for n in range(0,self.nobjs):
-
-            # grab nth location identifier
-            location = self.geometry_list[n] + "t"
-
-            # assign domain for nth vector density
-            domain_list[3*n] = location
-            domain_list[3*n+1] = location
-            domain_list[3*n+3] = location
-
-            # assign domain for nth scalar density
-            domain_list[3*self.nobjs + n] = location
-
-        # return the domain list
-        return domain_list
-
     def get_scalar_domain_list(self):
         """
         Method to return domain list that will be used within the scipy_op method to
@@ -180,10 +154,23 @@ class DPIEOperator:
         return domain_list
 
 
-    def D(self, density_vec, target=None, qfl="avg"):
+    def _layerpot_op(self,layerpot_op,density_vec, target=None, qfl="avg", k=None, kernel=None, use_laplace=False):
         """
-        Double layer potential operator across multiple disjoint objects
+        Generic layer potential operator method that works across all objects within the DPIE model
         """
+        if kernel is None:
+            kernel = self.kernel
+
+        if k is None:
+            k = self.k
+
+        kargs = dict()
+        if not use_laplace:
+            kargs['k'] = k
+
+        # define a convenient integral operator that functions across the multiple objects
+        def int_op(idx):
+                return layerpot_op(kernel, density_vec[:,idx],qbx_forced_limit=qfl,source=self.geometry_list[idx],target=target, **kargs)
 
         # get the shape of density_vec
         (ndim, nobj) = density_vec.shape
@@ -194,9 +181,7 @@ class DPIEOperator:
         # compute individual double layer potential evaluations at the given
         # density across all the disjoint objects
         for i in range(0,nobj):
-            output = output + sym.D(self.kernel, density_vec[:,i],
-                k=self.k,qbx_forced_limit=qfl,
-                source=self.geometry_list[i],target=target)
+            output = output + int_op(i)
 
         # return the output summation
         if ndim == 1:
@@ -204,78 +189,30 @@ class DPIEOperator:
         else:
             return output
 
-    def S(self, density_vec, target=None, qfl="avg"):
+    def D(self, density_vec, target=None, qfl="avg", k=None, kernel=None, use_laplace=False):
         """
         Double layer potential operator across multiple disjoint objects
         """
+        return self._layerpot_op(layerpot_op=sym.D, density_vec=density_vec, target=target, qfl=qfl, k=k, kernel=kernel, use_laplace=use_laplace)
 
-        # get the shape of density_vec
-        (ndim, nobj) = density_vec.shape
-
-        # init output symbolic quantity with zeros
-        output = np.zeros((ndim,), dtype=self.stype)
-
-        # compute individual double layer potential evaluations at the given
-        # density across all the disjoint objects
-        for i in range(0,nobj):
-            output = output + sym.S(self.kernel, density_vec[:,i],
-                k=self.k, qbx_forced_limit=qfl,
-                source=self.geometry_list[i], target=target)
-
-        # return the output summation
-        if ndim == 1:
-            return output[0]
-        else:
-            return output
+    def S(self, density_vec, target=None, qfl="avg", k=None, kernel=None, use_laplace=False):
+        """
+        Single layer potential operator across multiple disjoint objects
+        """
+        return self._layerpot_op(layerpot_op=sym.S, density_vec=density_vec, target=target, qfl=qfl, k=k, kernel=kernel, use_laplace=use_laplace)
 
 
-    def Dp(self, density_vec, target=None, qfl="avg"):
+    def Dp(self, density_vec, target=None, qfl="avg", k=None, kernel=None, use_laplace=False):
         """
         D' layer potential operator across multiple disjoint objects
         """
+        return self._layerpot_op(layerpot_op=sym.Dp, density_vec=density_vec, target=target, qfl=qfl, k=k, kernel=kernel, use_laplace=use_laplace)
 
-        # get the shape of density_vec
-        (ndim, nobj) = density_vec.shape
-
-        # init output symbolic quantity with zeros
-        output = np.zeros((ndim,), dtype=self.stype)
-
-        # compute individual double layer potential evaluations at the given
-        # density across all the disjoint objects
-        for i in range(0,nobj):
-            output = output + sym.Dp(self.kernel, density_vec[:,i],
-                k=self.k,qbx_forced_limit=qfl,
-                source=self.geometry_list[i],target=target)
-
-        # return the output summation
-        if ndim == 1:
-            return output[0]
-        else:
-            return output
-
-    def Sp(self, density_vec, target=None, qfl="avg"):
+    def Sp(self, density_vec, target=None, qfl="avg", k=None, kernel=None, use_laplace=False):
         """
         S' layer potential operator across multiple disjoint objects
         """
-
-        # get the shape of density_vec
-        (ndim, nobj) = density_vec.shape
-
-        # init output symbolic quantity with zeros
-        output = np.zeros((ndim,), dtype=self.stype)
-
-        # compute individual double layer potential evaluations at the given
-        # density across all the disjoint objects
-        for i in range(0,nobj):
-            output = output + sym.Sp(self.kernel, density_vec[:,i],
-                k=self.k, qbx_forced_limit=qfl,
-                source=self.geometry_list[i], target=target)
-
-        # return the output summation
-        if ndim == 1:
-            return output[0]
-        else:
-            return output
+        return self._layerpot_op(layerpot_op=sym.Sp, density_vec=density_vec, target=target, qfl=qfl, k=k, kernel=kernel, use_laplace=use_laplace)
 
     def n_cross(self, density_vec):
         r"""
@@ -356,44 +293,66 @@ class DPIEOperator:
         rho = rho0.reshape((1,self.nobjs))
         v = A_densities[(3*self.nobjs):]
         for n in range(0,self.nobjs):
-            a[:,n] = sym.tangential_to_xyz(a0[2*n:2*(n+1)],where=self.geometry_list[n])
-        return (a0, a, rho0, rho, v)
-
-    def _extract_a_densities2(self,A_densities):
-        a0 = A_densities[:(3*self.nobjs)]
-        a = a0.reshape((3,self.nobjs))
-        rho0 = A_densities[(3*self.nobjs):(4*self.nobjs)]
-        rho = rho0.reshape((1,self.nobjs))
-        v = A_densities[(4*self.nobjs):]
+            a[:,n] = cse(sym.tangential_to_xyz(a0[2*n:2*(n+1)],where=self.geometry_list[n]),"axyz_{0}".format(n))
         return (a0, a, rho0, rho, v)
 
     def _L(self, a, rho, where):
+
+        # define some useful common sub expressions
+        Sa = cse(self.S(a,where),"Sa_"+where)
+        Srho = cse(self.S(rho,where),"Srho_"+where)
+        Sn_times_rho = cse(self.S(self.n_times(rho),where),"Sn_times_rho_"+where)
+        Sn_cross_a = cse(self.S(self.n_cross(a),where),"Sn_cross_a_"+where)
+        Drho = cse(self.D(rho,where),"Drho_"+where)
+
         return sym.join_fields(
-            sym.n_cross(self.S(a,where) - self.k * self.S(self.n_times(rho),where),where=where),
-            self.D(rho,where))
+            sym.n_cross(sym.curl(self.S(a,where)) - self.k * Sn_times_rho,where=where),
+            Drho)
 
     def _R(self, a, rho, where):
+        # define some useful common sub expressions
+        Sa = cse(self.S(a,where),"Sa_"+where)
+        Srho = cse(self.S(rho,where),"Srho_"+where)
+        Sn_times_rho = cse(self.S(self.n_times(rho),where),"Sn_times_rho_"+where)
+        Sn_cross_a = cse(self.S(self.n_cross(a),where),"Sn_cross_a_"+where)
+        Drho = cse(self.D(rho,where),"Drho_"+where)
+
         return sym.join_fields(
-            sym.n_cross( self.k * self.S(self.n_cross(a),where) + sym.grad(ambient_dim=3,operand=self.S(rho,where)),where=where),
-            (sym.div(self.S(self.n_cross(a),where)) - self.k * self.S(rho,where))
+            sym.n_cross( self.k * Sn_cross_a + sym.grad(ambient_dim=3,operand=self.S(rho,where)),where=where),
+            sym.div(self.S(self.n_cross(a),where)) - self.k * Srho
             )
 
     def _scaledDPIEs_integral(self, sigma, sigma_n, where):
         qfl="avg"
+
         return sym.integral(
             ambient_dim=3,
             dim=2,
             operand=(self.Dp(sigma,target=where,qfl=qfl)/self.k + 1j*0.5*sigma_n - 1j*self.Sp(sigma,target=where,qfl=qfl)),
             where=where)
 
-    def _scaledDPIEv_integral(self, a, rho, rho_n, where):
+    def _scaledDPIEv_integral(self, **kwargs):
         qfl="avg"
+
+        # grab densities and domain to integrate over
+        a = kwargs['a']
+        rho = kwargs['rho']
+        rho_n = kwargs['rho_n']
+        where = kwargs['where']
+
+        # define some useful common sub expressions
+        Sa = cse(self.S(a,where),"Sa_"+where)
+        Srho = cse(self.S(rho,where),"Srho_"+where)
+        Sn_times_rho = cse(self.S(self.n_times(rho),where),"Sn_times_rho_"+where)
+        Sn_cross_a = cse(self.S(self.n_cross(a),where),"Sn_cross_a_"+where)
+        Drho = cse(self.D(rho,where),"Drho_"+where)
+
         return sym.integral(
             ambient_dim=3,
             dim=2,
             operand=(
-                sym.n_dot(sym.curl(self.S(a,target=where,qfl=qfl)),where=where) - self.k*sym.n_dot(self.S(self.n_times(rho),target=where,qfl=qfl),where=where) \
-                + 1j*(self.k*sym.n_dot(self.S(self.n_cross(a),target=where,qfl=qfl),where=where) - 0.5*rho_n + self.Sp(rho,target=where,qfl=qfl))
+                sym.n_dot( sym.curl(self.S(a,where)),where=where) - self.k*sym.n_dot(Sn_times_rho,where=where) \
+                + 1j*(self.k*sym.n_dot(Sn_cross_a,where=where) - 0.5*rho_n + self.Sp(rho,target=where,qfl=qfl))
             ),
             where=where)
 
@@ -471,106 +430,10 @@ class DPIEOperator:
 
             # generate the set of equations for the scalar densities, rho, coupled
             # across the various geometries involved
-            output[(2*self.nobjs + n)] = 0*(0.5*rho[0,n] + L[-1]) + 1j*R[-1] - v[n]
+            output[(2*self.nobjs + n)] = 0.5*rho[0,n] + L[-1] + 1j*R[-1] - v[n]
 
             # add the equation that integrates everything out into some constant
-            output[3*self.nobjs + n] = self._scaledDPIEv_integral(a, rho, rho[0,n], where=obj_n)
-
-        # return output equations
-        return output
-
-    def a_operator2(self, A_densities):
-        """
-        Integral Equation operator for obtaining vector potential, `A`
-        """
-
-        # extract the densities needed to solve the system of equations
-        (a0, a, rho0, rho, v) = self._extract_a_densities2(A_densities)
-
-        # init output matvec vector for the phi density IE
-        output = np.zeros((5*self.nobjs,), dtype=self.stype)
-
-        # produce integral equation system over each disjoint object
-        for n in range(0,self.nobjs):
-
-            # get the nth target geometry to have IE solved across
-            obj_n = self.geometry_list[n]
-
-            # Compute two IE Operators on a and rho densities
-            L = self._L(a, rho, obj_n)
-            R = self._R(a, rho, obj_n)
-
-            # generate the set of equations for the vector densities, a, coupled
-            # across the various geometries involved
-            output[3*n:3*(n+1)] = 0.5*a[:,n] + L[:3] + 1j*R[:3]
-
-            # generate the set of equations for the scalar densities, rho, coupled
-            # across the various geometries involved
-            output[(3*self.nobjs + n)] = 0.5*rho[0,n] + L[-1] + 1j*R[-1] - v[n]
-
-            # add the equation that integrates everything out into some constant
-            output[4*self.nobjs + n] = self._scaledDPIEv_integral(a, rho, rho[0,n], where=obj_n)
-
-        # return output equations
-        return output
-
-    def a_operator0(self, A_densities):
-        """
-        Integral Equation operator for obtaining vector potential, `A`
-        """
-
-        # get object this will be working on
-        obj = self.geometry_list[0]
-
-        # extract the densities needed to solve the system of equations
-        a = sym.tangential_to_xyz(A_densities[:(2*self.nobjs)],where=obj)
-        a_n = a.reshape((3,1))
-        rho = A_densities[(2*self.nobjs):(3*self.nobjs)][0]
-        #rho_n = rho.reshape((1,1))
-        v = A_densities[(3*self.nobjs):]
-
-        # init output matvec vector for the phi density IE
-        output = np.zeros((4,), dtype=self.stype)
-
-        # Compute useful sub-density expressions
-        n_times_rho = (sym.normal(3,where=obj).as_vector() * rho)
-        n_cross_a = sym.n_cross(a,where=obj)
-
-        # generate the set of equations for the vector densities, a, coupled
-        # across the various geometries involved
-        # a_lhs = 0.5*a \
-        # + sym.n_cross(self.S(a_n,obj) \
-        #     - self.k*self.S(n_times_rho,obj) \
-        #     + 1j*(
-        #         self.k*self.S(n_cross_a,obj) + sym.grad(3,self.S(rho_n,obj))
-        #         ),
-        #     where=obj)
-        a_lhs = 0.5*a \
-        + sym.n_cross(sym.S(self.kernel, a, k=self.k, qbx_forced_limit="avg",source=obj, target=obj) \
-            - self.k*sym.S(self.kernel, n_times_rho, k=self.k, qbx_forced_limit="avg",source=obj, target=obj) \
-            + 1j*(
-                self.k*sym.S(self.kernel, n_cross_a, k=self.k, qbx_forced_limit="avg",source=obj, target=obj) \
-                + sym.grad(3,sym.S(self.kernel, rho, k=self.k, qbx_forced_limit="avg",source=obj, target=obj))
-                ),
-            where=obj)
-        output[:2] = xyz_to_tangential(a_lhs, where=obj)
-
-        # generate the set of equations for the scalar densities, rho, coupled
-        # across the various geometries involved
-        # output[2] = 0.5*rho[0] \
-        # + self.D(rho_n,obj) \
-        # + 1j*(sym.div(self.S(n_cross_a,obj)) \
-        #     - self.k*self.S(rho_n,obj)) \
-        # - v[0]
-
-        output[2] = 0.5*rho \
-        + sym.D(self.kernel, rho,k=self.k, qbx_forced_limit="avg",source=obj,target=obj) \
-        + 1j*(sym.div(sym.S(self.kernel, n_cross_a, k=self.k, qbx_forced_limit="avg",source=obj, target=obj)) \
-            - self.k*sym.S(self.kernel, rho, k=self.k, qbx_forced_limit="avg",source=obj, target=obj)) \
-        - v[0]
-
-        # add the equation that integrates everything out into some constant
-        output[3] = 0
+            output[3*self.nobjs + n] = self._scaledDPIEv_integral(a=a, rho=rho, rho_n=rho[0,n], where=obj_n)
 
         # return output equations
         return output
@@ -638,7 +501,7 @@ class DPIEOperator:
         # return the resulting system of IE
         return output
 
-    def subproblem_rhs2(self, function):
+    def subproblem_rhs_func(self, function):
         """
         Integral Equation RHS for obtaining sub problem solution
         """
@@ -671,6 +534,18 @@ class DPIEOperator:
         # evaluate scalar potential representation
         return self.D(sigma,target,qfl=qfl) - (1j*self.k)*self.S(sigma,target,qfl=qfl)
 
+    def scalar_potential_constants(self, phi_densities):
+        """
+        This method is a representation of the scalar potential, phi,
+        based on the density `sigma`.
+        """
+
+        # extract the densities needed to solve the system of equations
+        (sigma0,sigma,V) = self._extract_phi_densities(phi_densities)
+
+        # evaluate scalar potential representation
+        return V
+
     def grad_scalar_potential_rep(self, phi_densities, target=None, qfl=None):
         """
         This method is a representation of the scalar potential, phi,
@@ -693,7 +568,7 @@ class DPIEOperator:
         (a0, a, rho0, rho, v) = self._extract_a_densities(A_densities)
 
         # define the vector potential representation
-        return sym.curl(self.S(a,target,qfl=qfl)) - self.k*self.S(self.n_times(rho),target,qfl=qfl) \
+        return (sym.curl(self.S(a,target,qfl=qfl)) - self.k*self.S(self.n_times(rho),target,qfl=qfl)) \
         + 1j*(self.k*self.S(self.n_cross(a),target,qfl=qfl) + sym.grad(3,self.S(rho,target,qfl=qfl)))
 
     def div_vector_potential_rep(self, A_densities, target=None, qfl=None):
@@ -707,86 +582,6 @@ class DPIEOperator:
 
         # define the vector potential representation
         return self.k*( self.D(rho,target,qfl=qfl) \
-            + 1j*(sym.div(self.S(self.n_cross(a),target,qfl=qfl)) - self.k * self.S(rho,target,qfl=qfl)))
-
-    def vector_potential_rep0(self, A_densities, target=None, qfl=None):
-        """
-        This method is a representation of the vector potential, phi,
-        based on the vector density `a` and scalar density `rho`
-        """
-
-        # get object this will be working on
-        obj = self.geometry_list[0]
-
-        # extract the densities needed to solve the system of equations
-        a = sym.tangential_to_xyz(A_densities[:(2*self.nobjs)],where=obj)
-        a_n = a.reshape((3,1))
-        rho = A_densities[(2*self.nobjs):(3*self.nobjs)][0]
-        #rho_n = rho.reshape((1,1))
-        v = A_densities[(3*self.nobjs):]
-
-        # Compute useful sub-density expressions
-        n_times_rho = (sym.normal(3,where=obj).as_vector() * rho)
-        n_cross_a = sym.n_cross(a,where=obj)
-
-        # define the vector potential representation
-        # return sym.curl(self.S(a_n,target,qfl=qfl)) - self.k*self.S(n_times_rho,target,qfl=qfl) \
-        # + 1j*(self.k*self.S(n_cross_a,target,qfl=qfl) + sym.grad(3,self.S(rho_n,target,qfl=qfl)))
-
-        return sym.curl(sym.S(self.kernel, a, k=self.k, qbx_forced_limit=qfl, source=obj, target=target)) \
-        - self.k*sym.S(self.kernel, n_times_rho, k=self.k, qbx_forced_limit=qfl, source=obj, target=target) \
-        + 1j*(self.k*sym.S(self.kernel, n_cross_a, k=self.k, qbx_forced_limit=qfl, source=obj, target=target) \
-            + sym.grad(3,sym.S(self.kernel, rho, k=self.k, qbx_forced_limit=qfl, source=obj, target=target)))
-
-    def div_vector_potential_rep0(self, A_densities, target=None, qfl=None):
-        """
-        This method is a representation of the vector potential, phi,
-        based on the vector density `a` and scalar density `rho`
-        """
-
-        # get object this will be working on
-        obj = self.geometry_list[0]
-
-        # extract the densities needed to solve the system of equations
-        a = sym.tangential_to_xyz(A_densities[:(2*self.nobjs)],where=obj)
-        a_n = a.reshape((3,1))
-        rho = A_densities[(2*self.nobjs):(3*self.nobjs)][0]
-        #rho_n = rho.reshape((1,1))
-        v = A_densities[(3*self.nobjs):]
-
-        # Compute useful sub-density expressions
-        n_times_rho = (sym.normal(3,where=obj).as_vector() * rho)
-        n_cross_a = sym.n_cross(a,where=obj)
-
-        # define the vector potential representation
-        return self.k*(sym.D(self.kernel, n_times_rho, k=self.k, qbx_forced_limit=qfl, source=obj, target=target) \
-            + 1j*(sym.div(sym.S(self.kernel, n_cross_a, k=self.k, qbx_forced_limit=qfl, source=obj, target=target)) \
-                - self.k * sym.S(self.kernel, rho, k=self.k, qbx_forced_limit=qfl, source=obj, target=target)))
-
-    def vector_potential_rep2(self, A_densities, target=None, qfl=None):
-        """
-        This method is a representation of the vector potential, phi,
-        based on the vector density `a` and scalar density `rho`
-        """
-
-        # extract the densities from the main IE solution
-        (a0, a, rho0, rho, v) = self._extract_a_densities2(A_densities)
-
-        # define the vector potential representation
-        return sym.curl(self.S(a,target,qfl=qfl)) - self.k*self.S(self.n_times(rho),target,qfl=qfl) \
-        + 1j*(self.k*self.S(self.n_cross(a),target,qfl=qfl) + sym.grad(3,self.S(rho,target,qfl=qfl)))
-
-    def div_vector_potential_rep2(self, A_densities, target=None, qfl=None):
-        """
-        This method is a representation of the vector potential, phi,
-        based on the vector density `a` and scalar density `rho`
-        """
-
-        # extract the densities from the main IE solution
-        (a0, a, rho0, rho, v) = self._extract_a_densities2(A_densities)
-
-        # define the vector potential representation
-        return self.k*(self.D(self.n_times(rho),target,qfl=qfl) \
             + 1j*(sym.div(self.S(self.n_cross(a),target,qfl=qfl)) - self.k * self.S(rho,target,qfl=qfl)))
 
     def subproblem_rep(self, tau_densities, target=None, alpha = 1j, qfl=None):
@@ -807,7 +602,6 @@ class DPIEOperator:
         represent the electric, and the second three of which represent the
         magnetic field. 
 
-        <NOT TRUE YET>
         This satisfies the time-domain Maxwell's equations
         as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
         """
@@ -827,6 +621,177 @@ class DPIEOperator:
             + (self.k**2) * self.S(a,target,qfl=qfl) \
             - self.k * sym.curl(self.S(self.n_times(rho),target,qfl=qfl)) \
             + 1j*self.k*sym.curl(self.S(self.n_cross(a),target,qfl=qfl))
+                
+
+        # join the fields into a vector
+        return sym.join_fields(E_scat, H_scat)
+
+# }}}
+
+
+
+# {{{ Decoupled Potential Integral Equation Operator - Based on Journal Paper
+class DPIEOperatorEvanescent(DPIEOperator):
+    r"""
+    Decoupled Potential Integral Equation operator with PEC boundary
+    conditions, defaults as scaled DPIE.
+
+    See https://onlinelibrary.wiley.com/doi/abs/10.1002/cpa.21585 for journal paper.
+
+    Uses :math:`E(x,t) = Re \lbrace E(x) \exp(-i \omega t) \rbrace` and 
+    :math:`H(x,t) = Re \lbrace H(x) \exp(-i \omega t) \rbrace` and solves for 
+    the :math:`E(x)`, :math:`H(x)` fields using vector and scalar potentials via
+    the Lorenz Gauage. The DPIE formulates the problem purely in terms of the 
+    vector and scalar potentials, :math:`\boldsymbol{A}` and :math:`\phi`, 
+    and then backs out :math:`E(x)` and :math:`H(x)` via relationships to 
+    the vector and scalar potentials.
+    """
+
+    def __init__(self, geometry_list, k=sym.var("k")):
+        from sumpy.kernel import HelmholtzKernel
+        from sumpy.kernel import LaplaceKernel
+
+        # specify the frequency variable that will be tuned
+        self.k          = k
+        self.ik         = 1j*k
+        self.stype      = type(self.k)
+
+        # specify the 3-D Helmholtz kernel 
+        self.kernel     = HelmholtzKernel(3)
+        self.kernel_ik  = HelmholtzKernel(3, allow_evanescent=True)
+        self.kernel_laplace = LaplaceKernel(3)
+
+        # specify a list of strings representing geometry objects
+        self.geometry_list   = geometry_list
+        self.nobjs           = len(geometry_list)
+
+    def _eval_all_objects(self, density_vec, int_op, qfl="avg", k=None, kernel=None):
+        """
+        This private method is so some input integral operator and input density can be used to
+        evaluate the set of locations defined by the geometry list
+        """
+        output = np.zeros(density_vec.shape, dtype=self.stype)
+        (ndim, nobj) = density_vec.shape
+        for i in range(0,nobj):
+            output[:,i] = int_op(density_vec=density_vec, target=self.geometry_list[i], qfl=qfl, k=k, kernel=kernel)
+        return output
+
+    def _L(self, a, rho, where):
+
+        # define some useful common sub expressions
+        Sn_times_rho = cse(self.S(self.n_times(rho),where),"Sn_times_rho_"+where)
+        Drho = cse(self.D(rho,where),"Drho_"+where)
+
+        return sym.join_fields(
+            sym.n_cross(sym.curl(self.S(a,where)) - self.k * Sn_times_rho,where=where),
+            Drho)
+
+    def _R(self, a, rho, where):
+        # define some useful common sub expressions
+        Sa_ik_nest = cse(self._eval_all_objects(a, self.S, k=self.ik, kernel=self.kernel_ik), "Sa_ik_nest")
+        Srho_ik_nest = cse(self._eval_all_objects(rho,self.S, k=self.ik, kernel=self.kernel_ik),"Srho_ik_nest")
+        Srho = cse(self.S(Srho_ik_nest,where),"Srho_"+where)
+        Sn_cross_a = cse(self.S(self.n_cross(Sa_ik_nest),where),"Sn_cross_a_"+where)
+
+        return self.k*sym.join_fields(
+            sym.n_cross( self.k * Sn_cross_a + sym.grad(ambient_dim=3,operand=self.S(Srho_ik_nest,where)),where=where),
+            sym.div(self.S(self.n_cross(Sa_ik_nest),where)) - self.k * Srho
+            )
+
+    def _scaledDPIEs_integral(self, sigma, sigma_n, where):
+        qfl="avg"
+
+        return sym.integral(
+            ambient_dim=3,
+            dim=2,
+            operand=( (self.Dp(sigma,target=where,qfl=qfl) - self.Dp(sigma,target=where,qfl=qfl,kernel=self.kernel_laplace,use_laplace=True))/self.k + 1j*0.5*sigma_n - 1j*self.Sp(sigma,target=where,qfl=qfl)),
+            where=where)
+
+    def _scaledDPIEv_integral(self, **kwargs):
+        qfl="avg"
+
+        # grab densities and domain to integrate over
+        a = kwargs['a']
+        rho = kwargs['rho']
+        rho_n = kwargs['rho_n']
+        where = kwargs['where']
+
+        # define some useful common sub expressions
+        Sa_ik_nest = cse(self._eval_all_objects(a, self.S, k=self.ik, kernel=self.kernel_ik), "Sa_ik_nest")
+        Srho_ik = cse(self.S(rho,where,k=self.ik,kernel=self.kernel_ik),"Srho_ik"+where)
+        Srho_ik_nest = cse(self._eval_all_objects(rho,self.S, k=self.ik, kernel=self.kernel_ik),"Srho_ik_nest")
+        Sn_cross_a = cse(self.S(self.n_cross(Sa_ik_nest),where),"Sn_cross_a_nest_"+where)
+        Sn_times_rho = cse(self.S(self.n_times(rho),where),"Sn_times_rho_"+where)
+
+        return sym.integral(
+            ambient_dim=3,
+            dim=2,
+            operand=(
+                -self.k*sym.n_dot(Sn_times_rho,where=where) \
+                + 1j*self.k*(self.k*sym.n_dot(Sn_cross_a,where=where) - 0.5*Srho_ik + self.Sp(Srho_ik_nest,target=where,qfl=qfl))
+            ),
+            where=where)
+
+    def vector_potential_rep(self, A_densities, target=None, qfl=None):
+        """
+        This method is a representation of the vector potential, phi,
+        based on the vector density `a` and scalar density `rho`
+        """
+
+        # extract the densities from the main IE solution
+        (a0, a, rho0, rho, v) = self._extract_a_densities(A_densities)
+
+        # define some useful quantities
+        Sa_ik_nest = cse(self._eval_all_objects(a, self.S, k=self.ik, kernel=self.kernel_ik), "Sa_ik_nest")
+        Srho_ik_nest = cse(self._eval_all_objects(rho,self.S, k=self.ik, kernel=self.kernel_ik),"Srho_ik_nest")
+
+        # define the vector potential representation
+        return (sym.curl(self.S(a,target,qfl=qfl)) - self.k*self.S(self.n_times(rho),target,qfl=qfl)) \
+        + 1j*self.k*(self.k*self.S(self.n_cross(Sa_ik_nest),target,qfl=qfl) + sym.grad(3,self.S(Srho_ik_nest,target,qfl=qfl)))
+
+    def div_vector_potential_rep(self, A_densities, target=None, qfl=None):
+        """
+        This method is a representation of the vector potential, phi,
+        based on the vector density `a` and scalar density `rho`
+        """
+
+        # extract the densities from the main IE solution
+        (a0, a, rho0, rho, v) = self._extract_a_densities(A_densities)
+
+        # define some useful quantities
+        Sa_ik_nest = cse(self._eval_all_objects(a, self.S, k=self.ik, kernel=self.kernel_ik), "Sa_ik_nest")
+        Srho_ik_nest = cse(self._eval_all_objects(rho,self.S, k=self.ik, kernel=self.kernel_ik),"Srho_ik_nest")
+
+        # define the vector potential representation
+        return self.k*( self.D(rho,target,qfl=qfl) \
+            + 1j*self.k*(sym.div(self.S(self.n_cross(Sa_ik_nest),target,qfl=qfl)) - self.k * self.S(Srho_ik_nest,target,qfl=qfl)))
+
+    def scattered_volume_field(self, phi_densities, A_densities, tau_densities, target=None, alpha=1j,qfl=None):
+        """
+        This will return an object of six entries, the first three of which
+        represent the electric, and the second three of which represent the
+        magnetic field. 
+
+        This satisfies the time-domain Maxwell's equations
+        as verified by :func:`sumpy.point_calculus.frequency_domain_maxwell`.
+        """
+
+        # extract the densities needed
+        (a0, a, rho0, rho, v) = self._extract_a_densities(A_densities)
+        (sigma0,sigma, V) = self._extract_phi_densities(phi_densities)
+        (tau0, tau) = self._extract_tau_densities(tau_densities)
+
+        # obtain expressions for scalar and vector potentials
+        Sa_ik_nest = self._eval_all_objects(a, self.S, k=self.ik, kernel=self.kernel_ik)
+        A   = self.vector_potential_rep(A_densities, target=target)
+        phi = self.scalar_potential_rep(phi_densities, target=target)
+
+        # evaluate the potential form for the electric and magnetic fields
+        E_scat = 1j*self.k*A - sym.grad(3, self.D(sigma,target,qfl=qfl)) + 1j*self.k*sym.grad(3, self.S(sigma,target,qfl=qfl))
+        H_scat = sym.grad(3,operand=(self.D(tau,target,qfl=qfl) - alpha*self.S(tau,target,qfl=qfl))) \
+            + (self.k**2) * self.S(a,target,qfl=qfl) \
+            - self.k * sym.curl(self.S(self.n_times(rho),target,qfl=qfl)) \
+            + 1j*(self.k**2)*sym.curl(self.S(self.n_cross(Sa_ik_nest),target,qfl=qfl))
                 
 
         # join the fields into a vector

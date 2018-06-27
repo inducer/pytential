@@ -192,8 +192,8 @@ class ElliptiPlaneTestCase(MaxwellTestCase):
 tc_int = SphereTestCase(k=1.2, is_interior=True, resolutions=[0, 1],
         qbx_order=3, fmm_tolerance=1e-4)
 
-tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0, 1],
-        qbx_order=3, fmm_tolerance=1e-4)
+tc_ext = SphereTestCase(k=1.2, is_interior=False, resolutions=[0],
+        qbx_order=7, fmm_tolerance=1e-4)
 
 tc_rc_ext = RoundedCubeTestCase(k=6.4, is_interior=False, resolutions=[0.1],
         qbx_order=3, fmm_tolerance=1e-4)
@@ -242,7 +242,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     np.random.seed(12)
 
     # specify a dictionary with some useful arguments
-    knl_kwargs = {"k": case.k}
+    knl_kwargs = {"k": case.k, "ik": 1j*case.k}
 
     # specify the list of geometry objects being used
     geom_list = ["obj0"]
@@ -255,7 +255,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     import pytential.symbolic.pde.maxwell.dpie  as mw_dpie
     
     # initialize the DPIE operator based on the geometry list
-    dpie = mw_dpie.DPIEOperator(geometry_list=geom_list)
+    dpie = mw_dpie.DPIEOperatorEvanescent(geometry_list=geom_list)
 
     # specify some symbolic variables that will be used
     # in the process to solve integral equations for the DPIE
@@ -287,20 +287,20 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
     # define functions that can be used to generate incident fields for an input discretization
     # define potentials based on incident plane wave
     def get_incident_plane_wave_EHField(tgt):
-        return bind((test_source,tgt),mw.get_sym_maxwell_plane_wave(amplitude_vec=Evar, v=uvar, omega=dpie.k))(queue,k=case.k,u=u_dir,Ep=Ep)
+        return bind((test_source,tgt),mw.get_sym_maxwell_plane_wave(amplitude_vec=Evar, v=uvar, omega=dpie.k))(queue,u=u_dir,Ep=Ep,**knl_kwargs)
 
     # get the gradphi_inc field evaluated at some source locations
     def get_incident_gradphi(objects, target=None):
-        return bind(objects,mw.get_sym_maxwell_planewave_gradphi(u=uvar, Ep=Evar, k=dpie.k,where=target))(queue,k=case.k,u=u_dir,Ep=Ep)
+        return bind(objects,mw.get_sym_maxwell_planewave_gradphi(u=uvar, Ep=Evar, k=dpie.k,where=target))(queue,u=u_dir,Ep=Ep,**knl_kwargs)
 
     # get the incident plane wave div(A)
     def get_incident_divA(objects, target=None):
-        return bind(objects,mw.get_sym_maxwell_planewave_divA(u=uvar, Ep=Evar, k=dpie.k,where=target))(queue,k=case.k,u=u_dir,Ep=Ep)
+        return bind(objects,mw.get_sym_maxwell_planewave_divA(u=uvar, Ep=Evar, k=dpie.k,where=target))(queue,u=u_dir,Ep=Ep,**knl_kwargs)
 
     # method to get vector potential and scalar potential for incident 
     # E-M fields
     def get_incident_potentials(objects, target=None):
-        return bind(objects,mw.get_sym_maxwell_planewave_potentials(u=uvar, Ep=Evar, k=dpie.k,where=target))(queue, k=case.k,u=u_dir,Ep=Ep)
+        return bind(objects,mw.get_sym_maxwell_planewave_potentials(u=uvar, Ep=Evar, k=dpie.k,where=target))(queue,u=u_dir,Ep=Ep,**knl_kwargs)
 
     # define a smooth function to represent the density
     def dummy_density(omega = 1.0, where=None):
@@ -392,7 +392,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
             # define the problem that will be solved
             test_tau_op= bind(geom_map,dpie0.subproblem_operator(tau_densities=tau_densities))
-            test_tau_rhs= bind(geom_map,dpie0.subproblem_rhs2(function=getTestFunction))(queue,**knl_kwargs)
+            test_tau_rhs= bind(geom_map,dpie0.subproblem_rhs_func(function=getTestFunction))(queue,**knl_kwargs)
 
             # set GMRES settings for solving
             gmres_settings = dict(
@@ -515,7 +515,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
 
     # # {{{ Test the operators
-    test_operators = True
+    test_operators = False
     if test_operators:
 
         # define error array
@@ -549,7 +549,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
             # use OpenCL random number generator to create a set of random
             # source locations for various variables being solved for
-            dpie0 = mw_dpie.DPIEOperator(geometry_list=geom_list)
+            dpie0 = mw_dpie.DPIEOperatorEvanescent(geometry_list=geom_list)
             qbx0, _ = QBXLayerPotentialSource(
                         pre_scat_discr, fine_order=4*case.target_order,
                         #fmm_order=False,
@@ -564,6 +564,26 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
             # compute off-boundary locations that the representation will need to be evaluated at
             tgt_n = PointsTarget(bind(geom_map, epsilon_off_boundary(where='obj0',epsilon=1e-4))(queue))
             geom_map['tgt'] = tgt_n
+
+            # define a dummy density, specifically to be used for the vector potential A densities
+            x, y, z = qbx0.density_discr.nodes().with_queue(queue)
+            m = cl.clmath
+
+            density_sym = sym.make_sym_vector("density", 2)
+
+            # The tangential coordinate system is element-local, so we can't just
+            # conjure up some globally smooth functions, interpret their values
+            # in the tangential coordinate system, and be done. Instead, generate
+            # an XYZ function and project it.
+            density = bind(
+                    qbx0,
+                    sym.xyz_to_tangential(sym.make_sym_vector("jxyz", 3)))(
+                            queue,
+                            jxyz=sym.make_obj_array([
+                                m.cos(0.5*x) * m.cos(0.5*y) * m.cos(0.5*z),
+                                m.sin(0.5*x) * m.cos(0.5*y) * m.sin(0.5*z),
+                                m.sin(0.5*x) * m.cos(0.5*y) * m.cos(0.5*z),
+                                ]))
 
             # redefine a_densities
             #A_densities = sym.make_sym_vector("A_densities", dpie.num_vector_potential_densities2())
@@ -584,7 +604,9 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                 else:
                     dummy_phi[i] = 0.0
             for i in range(0,n2):
-                if i < (n2-1):
+                if i < 2:
+                    dummy_A[i] = density[i]
+                elif i < (n2-1):
                     dummy_A[i] = bind(geom_map,dummy_density(where='obj0'))(queue)
                 else:
                     dummy_A[i] = 0.0
@@ -596,9 +618,9 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                 a = sym.tangential_to_xyz(vec_op_out[:2], where='obj0')
                 return sym.join_fields(a,vec_op_out[2:])
 
-            scalar_op = dpie0.phi_operator(phi_densities=phi_densities)[:-1]
+            scalar_op = dpie0.phi_operator(phi_densities=phi_densities)
             #vector_op = vector_op_transform(dpie0.a_operator0(A_densities=A_densities)[:-1])
-            vector_op = vector_op_transform(dpie0.a_operator(A_densities=A_densities)[:-1])
+            vector_op = vector_op_transform(dpie0.a_operator(A_densities=A_densities))
             #vector_op = dpie0.a_operator2(A_densities=A_densities)[:-1]
             tau_op = dpie0.subproblem_operator(tau_densities=tau_densities)
 
@@ -619,6 +641,36 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
             vector_rep_eval = vector_from_device(queue,bind(geom_map, vec_op_repr(A_densities=A_densities,target='tgt'))(queue, A_densities=dummy_A, **knl_kwargs))
             tau_rep_eval = vector_from_device(queue,bind(geom_map, dpie0.subproblem_rep(tau_densities=tau_densities,target='tgt'))(queue, tau_densities=dummy_tau, **knl_kwargs))
 
+
+            axyz = sym.tangential_to_xyz(density_sym,where='obj0')
+            def nxcurlS0(qbx_forced_limit):
+                return sym.n_cross(sym.curl(dpie0.S(axyz.reshape(3,1),target='obj0t',qfl=qbx_forced_limit)),where='obj0')
+            test_op_err = vector_from_device(queue,bind(geom_map, 0.5*axyz + nxcurlS0("avg") - nxcurlS0(+1))(queue,density=density,**knl_kwargs))
+
+            from sumpy.kernel import LaplaceKernel
+            knl = LaplaceKernel(3)
+
+            from sumpy.kernel import HelmholtzKernel
+            knl = HelmholtzKernel(3)
+
+            def nxcurlS(qbx_forced_limit):
+
+                return sym.n_cross(sym.curl(sym.S(
+                    knl,
+                    sym.cse(sym.tangential_to_xyz(density_sym, where='obj0'), "jxyz"),
+                    k=dpie0.k,
+                    qbx_forced_limit=qbx_forced_limit,source='obj0', target='obj0t')),where='obj0')
+
+            jump_identity_sym = (
+                    nxcurlS(+1)
+                    - (nxcurlS("avg") + 0.5*sym.tangential_to_xyz(density_sym,where='obj0')))
+
+            bound_jump_identity = bind(geom_map, jump_identity_sym)
+            jump_identity = bound_jump_identity(queue, density=density, **knl_kwargs)
+
+            err = (norm(qbx0, queue, jump_identity, np.inf))
+            print("ERROR", qbx0.h_max, err)
+
             # compute the error between the operator values and the representation values
             def error_diff(u,v):
                 return np.linalg.norm(u-v,np.inf)
@@ -627,7 +679,10 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
                         error_diff(vector_op_eval[1],vector_rep_eval[1]),
                         error_diff(vector_op_eval[2],vector_rep_eval[2]),
                         error_diff(vector_op_eval[3],vector_rep_eval[3]),
-                        error_diff(tau_op_eval[0],tau_rep_eval)]
+                        error_diff(tau_op_eval[0],tau_rep_eval),
+                        np.linalg.norm(test_op_err[0],np.inf),
+                        np.linalg.norm(test_op_err[1],np.inf),
+                        np.linalg.norm(test_op_err[2],np.inf)]
             op_error.append(error_v)
 
         # print the resulting error results
@@ -639,7 +694,7 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
 
     # {{{ Solve for the scattered field
-    solve_scattered_field = False
+    solve_scattered_field = True
     if solve_scattered_field:
         loc_sign = -1 if case.is_interior else +1
 
@@ -715,17 +770,18 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
             #inc_vec_field_scat  = get_inc_potentials(scat_discr)
             #inc_vec_field_obs   = get_inc_potentials(obs_discr)
 
-            # get the incident fields used for boundary conditions
-            (phi_inc, A_inc) = get_incident_potentials(geom_map,'scat')
-            inc_divA_scat = get_incident_divA(geom_map,'scat')
-            inc_gradPhi_scat = get_incident_gradphi(geom_map,'scat')
-
             # {{{ solve the system of integral equations
             inc_A = sym.make_sym_vector("inc_A", 3)
             inc_phi = sym.make_sym_vector("inc_phi",1)
             inc_divA = sym.make_sym_vector("inc_divA",1)
             inc_gradPhi = sym.make_sym_vector("inc_gradPhi", 3)
 
+            # get the incident fields used for boundary conditions
+            (phi_inc, A_inc) = get_incident_potentials(geom_map,'scat')
+            inc_divA_scat = get_incident_divA(geom_map,'scat')
+            inc_gradPhi_scat = get_incident_gradphi(geom_map,'scat')
+
+            # check that the boundary conditions satisfy gauge condition
             resid = bind(geom_map,gauge_check(inc_divA, inc_phi, dpie.k))(queue,inc_divA=inc_divA_scat,inc_phi=phi_inc,**knl_kwargs)
 
             # setup operators that will be solved
@@ -805,31 +861,35 @@ def test_pec_dpie_extinction(ctx_getter, case, visualize=False):
 
             # {{{ check potential PEC BC on total field
 
-            def scalar_pot_PEC_residual(phi, gradPhi, where=None):
-                return sym.n_cross(
-                    dpie.grad_scalar_potential_rep(phi_densities=phi,target=where,qfl="avg") + gradPhi,
-                    where=where)
+            def scalar_pot_PEC_residual(phi, inc_phi, where=None):
+                V = dpie.scalar_potential_constants(phi_densities=phi)
+                return dpie.scalar_potential_rep(phi_densities=phi,target=where, qfl=loc_sign) + inc_phi - V[0]
 
             def vector_pot_PEC_residual(a_densities, inc_a, where=None):
-                return sym.n_cross( dpie.vector_potential_rep(A_densities=a_densities, target=where, qfl="avg") + inc_a, where=where)
+                return sym.n_cross( dpie.vector_potential_rep(A_densities=a_densities, target=where, qfl=loc_sign) + inc_a, where=where)
 
-            phi_pec_bc_resid = scalar_pot_PEC_residual(phi_densities, inc_gradPhi, where="obj0")
+            phi_pec_bc_resid = scalar_pot_PEC_residual(phi_densities, inc_phi, where="obj0")
             A_pec_bc_resid = vector_pot_PEC_residual(A_densities, inc_A, where="obj0")
 
-            scalar_bc_values = bind(geom_map, phi_pec_bc_resid)(queue, phi_densities=phi_dens, inc_gradPhi=inc_gradPhi_scat,**knl_kwargs)
+            scalar_bc_values = bind(geom_map, phi_pec_bc_resid)(queue, phi_densities=phi_dens, inc_phi=phi_inc,**knl_kwargs)
             vector_bc_values = bind(geom_map, A_pec_bc_resid)(queue, A_densities=A_dens, inc_A=A_inc,**knl_kwargs)
 
             def scat_norm(f):
                return norm(qbx, queue, f, p=np.inf)
 
-            scalar_bc_residual = scat_norm(scalar_bc_values) # / scat_norm(inc_gradPhi_scat)
-            vector_bc_residual = scat_norm(vector_bc_values) # / scat_norm(A_inc)
+            scalar_bc_residual = scat_norm(scalar_bc_values) #/ scat_norm(phi_inc)
+            vector_bc_residual = scat_norm(vector_bc_values) #/ scat_norm(A_inc)
 
             print("Potential PEC BC residuals:", h_max, scalar_bc_residual, vector_bc_residual)
 
             eoc_pec_bc.add_data_point(h_max, max(scalar_bc_residual, vector_bc_residual))
 
             # }}}
+
+            # {{{ check if DPIE helmholtz BCs are satisfied
+
+
+            #}}}
 
             # {{{ visualization
 
