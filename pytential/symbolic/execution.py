@@ -170,7 +170,7 @@ class MatVecOp:
 
     def __init__(self,
             bound_expr, queue, arg_name, dtype, total_dofs,
-            starts_and_ends, extra_args):
+            starts_and_ends, extra_args, isScalar=False):
         self.bound_expr = bound_expr
         self.queue = queue
         self.arg_name = arg_name
@@ -178,6 +178,7 @@ class MatVecOp:
         self.total_dofs = total_dofs
         self.starts_and_ends = starts_and_ends
         self.extra_args = extra_args
+        self.isScalar = isScalar
 
     @property
     def shape(self):
@@ -190,7 +191,7 @@ class MatVecOp:
         else:
             out_host = False
 
-        do_split = len(self.starts_and_ends) >= 1
+        do_split = not self.isScalar
         from pytools.obj_array import make_obj_array
 
         if do_split:
@@ -277,10 +278,12 @@ class BoundExpression:
         """
 
         from pytools.obj_array import is_obj_array
+        isScalar = False
         if is_obj_array(self.code.result):
             nresults = len(self.code.result)
         else:
             nresults = 1
+            isScalar = True
 
         from pytential.symbolic.primitives import DEFAULT_TARGET
         domains = _domains_default(nresults, self.places, domains,
@@ -303,7 +306,7 @@ class BoundExpression:
         # for linear system solving, in which case the assumption
         # has to be true.
         return MatVecOp(self, queue,
-                arg_name, dtype, total_dofs, starts_and_ends, extra_args)
+                arg_name, dtype, total_dofs, starts_and_ends, extra_args, isScalar=isScalar)
 
     def __call__(self, queue, **args):
         exec_mapper = EvaluationMapper(self, queue, args)

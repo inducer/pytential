@@ -380,24 +380,24 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
 
         # {{{ check PEC BC on total field
 
-        # bc_repr = EHField(mfie.scattered_volume_field(
-        #     jt_sym, rho_sym, qbx_forced_limit=loc_sign))
-        # pec_bc_e = sym.n_cross(bc_repr.e + inc_xyz_sym.e)
-        # pec_bc_h = sym.normal(3).as_vector().dot(bc_repr.h + inc_xyz_sym.h)
+        bc_repr = EHField(mfie.scattered_volume_field(
+            jt_sym, rho_sym, qbx_forced_limit=loc_sign))
+        pec_bc_e = sym.n_cross(bc_repr.e + inc_xyz_sym.e)
+        pec_bc_h = sym.normal(3).as_vector().dot(bc_repr.h + inc_xyz_sym.h)
 
-        # eh_bc_values = bind(qbx, sym.join_fields(pec_bc_e, pec_bc_h))(
-        #             queue, jt=jt, rho=rho, inc_fld=inc_field_scat.field,
-        #             **knl_kwargs)
+        eh_bc_values = bind(qbx, sym.join_fields(pec_bc_e, pec_bc_h))(
+                    queue, jt=jt, rho=rho, inc_fld=inc_field_scat.field,
+                    **knl_kwargs)
 
-        # def scat_norm(f):
-        #     return norm(qbx, queue, f, p=np.inf)
+        def scat_norm(f):
+            return norm(qbx, queue, f, p=np.inf)
 
-        # e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
-        # h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
+        e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
+        h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
 
-        # print("E/H PEC BC residuals:", h_max, e_bc_residual, h_bc_residual)
+        print("E/H PEC BC residuals:", h_max, e_bc_residual, h_bc_residual)
 
-        # eoc_pec_bc.add_data_point(h_max, max(e_bc_residual, h_bc_residual))
+        eoc_pec_bc.add_data_point(h_max, max(e_bc_residual, h_bc_residual))
 
         # }}}
 
@@ -458,22 +458,22 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
 
         # {{{ error in E, H
 
-        # obs_repr = EHField(eval_repr_at(obs_discr))
+        obs_repr = EHField(eval_repr_at(obs_discr))
 
-        # def obs_norm(f):
-        #     return norm(obs_discr, queue, f, p=np.inf)
+        def obs_norm(f):
+            return norm(obs_discr, queue, f, p=np.inf)
 
-        # rel_err_e = (obs_norm(inc_field_obs.e + obs_repr.e)
-        #         / obs_norm(inc_field_obs.e))
-        # rel_err_h = (obs_norm(inc_field_obs.h + obs_repr.h)
-        #         / obs_norm(inc_field_obs.h))
+        rel_err_e = (obs_norm(inc_field_obs.e + obs_repr.e)
+                / obs_norm(inc_field_obs.e))
+        rel_err_h = (obs_norm(inc_field_obs.h + obs_repr.h)
+                / obs_norm(inc_field_obs.h))
 
         # # }}}
 
-        # print("ERR", h_max, rel_err_h, rel_err_e)
+        print("ERR", h_max, rel_err_h, rel_err_e)
 
-        # eoc_rec_h.add_data_point(h_max, rel_err_h)
-        # eoc_rec_e.add_data_point(h_max, rel_err_e)
+        eoc_rec_h.add_data_point(h_max, rel_err_h)
+        eoc_rec_e.add_data_point(h_max, rel_err_e)
 
     print("--------------------------------------------------------")
     print("is_interior=%s" % case.is_interior)
@@ -481,10 +481,10 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
 
     good = True
     for which_eoc, eoc_rec, order_tol in [
-            ("maxwell", eoc_rec_repr_maxwell, 1.5)
-            #("PEC BC", eoc_pec_bc, 1.5),
-            #("H", eoc_rec_h, 1.5),
-            #("E", eoc_rec_e, 1.5)
+            ("maxwell", eoc_rec_repr_maxwell, 1.5),
+            ("PEC BC", eoc_pec_bc, 1.5),
+            ("H", eoc_rec_h, 1.5),
+            ("E", eoc_rec_e, 1.5)
             ]:
         print(which_eoc)
         print(eoc_rec.pretty_print())
