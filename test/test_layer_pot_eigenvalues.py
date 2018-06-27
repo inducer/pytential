@@ -100,7 +100,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
-        fmm_order = 10
+        fmm_order = 12
         if force_direct:
             fmm_order = False
 
@@ -382,7 +382,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: fdm=marker

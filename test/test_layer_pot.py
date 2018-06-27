@@ -404,7 +404,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
 
-    for nel_factor in [6, 8, 12]:
+    for nel_factor in [6, 10, 14]:
         from meshmode.mesh.generation import generate_torus
         mesh = generate_torus(
                 5, 2, order=target_order,
@@ -540,7 +540,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: fdm=marker

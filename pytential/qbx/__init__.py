@@ -78,10 +78,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.5,
             _well_sep_is_n_away=2,
-            _max_leaf_refine_weight=32,
+            _max_leaf_refine_weight=None,
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
+            _tree_kind="adaptive",
             geometry_data_inspector=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
@@ -131,12 +132,29 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if _box_extent_norm is None:
             _box_extent_norm = "l2"
 
+        if _from_sep_smaller_crit is None:
+            # This seems to win no matter what the box extent norm is
+            # https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/10
+            _from_sep_smaller_crit = "precise_linf"
+
         if fmm_level_to_order is None:
             if fmm_order is False:
                 fmm_level_to_order = False
             else:
                 def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
+
+        if _max_leaf_refine_weight is None:
+            if density_discr.ambient_dim == 2:
+                # FIXME: This should be verified now that l^2 is the default.
+                _max_leaf_refine_weight = 64
+            elif density_discr.ambient_dim == 3:
+                # For static_linf/linf: https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/8#note_25009  # noqa
+                # For static_l2/l2: https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/12  # noqa
+                _max_leaf_refine_weight = 512
+            else:
+                # Just guessing...
+                _max_leaf_refine_weight = 64
 
         if _from_sep_smaller_min_nsources_cumul is None:
             # See here for the comment thread that led to these defaults:
@@ -177,6 +195,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._from_sep_smaller_crit = _from_sep_smaller_crit
         self._from_sep_smaller_min_nsources_cumul = \
                 _from_sep_smaller_min_nsources_cumul
+        self._tree_kind = _tree_kind
         self.geometry_data_inspector = geometry_data_inspector
 
         # /!\ *All* parameters set here must also be set by copy() below,
@@ -189,12 +208,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             density_discr=None,
             fine_order=None,
             qbx_order=None,
+            fmm_order=_not_provided,
             fmm_level_to_order=_not_provided,
             to_refined_connection=None,
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
+            _max_leaf_refine_weight=None,
+            _box_extent_norm=None,
+            _from_sep_smaller_crit=None,
+            _tree_kind=None,
             geometry_data_inspector=None,
+            fmm_backend=None,
 
             debug=_not_provided,
             _refined_for_global_qbx=_not_provided,
@@ -224,6 +249,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
+        kwargs = {}
+
+        if (fmm_order is not _not_provided
+                and fmm_level_to_order is not _not_provided):
+            raise TypeError("may not specify both fmm_order and fmm_level_to_order")
+        elif fmm_order is not _not_provided:
+            kwargs["fmm_order"] = fmm_order
+        elif fmm_level_to_order is not _not_provided:
+            kwargs["fmm_level_to_order"] = fmm_level_to_order
+        else:
+            kwargs["fmm_level_to_order"] = self.fmm_level_to_order
+
         # FIXME Could/should share wrangler and geometry kernels
         # if no relevant changes have been made.
         return QBXLayerPotentialSource(
@@ -231,11 +268,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 fine_order=(
                     fine_order if fine_order is not None else self.fine_order),
                 qbx_order=qbx_order if qbx_order is not None else self.qbx_order,
-                fmm_level_to_order=(
-                    # False is a valid value here
-                    fmm_level_to_order
-                    if fmm_level_to_order is not _not_provided
-                    else self.fmm_level_to_order),
 
                 target_association_tolerance=target_association_tolerance,
                 to_refined_connection=(
@@ -260,15 +292,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     if _expansion_stick_out_factor is not _not_provided
                     else self._expansion_stick_out_factor),
                 _well_sep_is_n_away=self._well_sep_is_n_away,
-                _max_leaf_refine_weight=self._max_leaf_refine_weight,
-                _box_extent_norm=self._box_extent_norm,
-                _from_sep_smaller_crit=self._from_sep_smaller_crit,
+                _max_leaf_refine_weight=(
+                    _max_leaf_refine_weight or self._max_leaf_refine_weight),
+                _box_extent_norm=(_box_extent_norm or self._box_extent_norm),
+                _from_sep_smaller_crit=(
+                    _from_sep_smaller_crit or self._from_sep_smaller_crit),
                 _from_sep_smaller_min_nsources_cumul=(
                     self._from_sep_smaller_min_nsources_cumul),
+                _tree_kind=_tree_kind or self._tree_kind,
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
-                fmm_backend=self.fmm_backend,
-                )
+                fmm_backend=fmm_backend or self.fmm_backend,
+                **kwargs)
 
     # }}}
 
@@ -361,8 +396,17 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def with_refinement(self, target_order=None, kernel_length_scale=None,
-            maxiter=None, visualize=False, _expansion_disturbance_tolerance=None):
+            maxiter=None, visualize=False, refiner=None,
+            _expansion_disturbance_tolerance=None,
+            _force_stage2_uniform_refinement_rounds=None,
+            _scaled_max_curvature_threshold=None):
         """
+        :arg refiner: If the mesh underlying :attr:`density_discr`
+            is itself the result of refinement, then its
+            :class:`meshmode.refinement.Refiner` instance may need to
+            be reused for continued refinement. This argument
+            provides the opportunity to pass in an existing refiner
+            that should be used for continued refinement.
         :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
             :class:`QBXLayerPotentialSource` and ``cnx`` is a
             :class:`meshmode.discretization.connection.DiscretizationConnection`
@@ -383,7 +427,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     InterpolatoryQuadratureSimplexGroupFactory(target_order),
                     kernel_length_scale=kernel_length_scale,
                     maxiter=maxiter, visualize=visualize,
-                    expansion_disturbance_tolerance=_expansion_disturbance_tolerance)
+                    expansion_disturbance_tolerance=_expansion_disturbance_tolerance,
+                    force_stage2_uniform_refinement_rounds=(
+                        _force_stage2_uniform_refinement_rounds),
+                    scaled_max_curvature_threshold=(
+                        _scaled_max_curvature_threshold),
+                    refiner=refiner)
 
         return lpot, connection
 
@@ -391,8 +440,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @memoize_method
     def h_max(self):
         with cl.CommandQueue(self.cl_context) as queue:
-            panel_sizes = self._panel_sizes("npanels").with_queue(queue)
-            return np.asscalar(cl.array.max(panel_sizes).get())
+            quad_res = self._coarsest_quad_resolution("npanels").with_queue(queue)
+            return np.asscalar(cl.array.max(quad_res).get())
 
     # {{{ internal API
 
@@ -402,44 +451,98 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return utils.element_centers_of_mass(self.density_discr)
 
     @memoize_method
-    def _fine_panel_centers_of_mass(self):
+    def _stage2_panel_centers_of_mass(self):
         import pytential.qbx.utils as utils
         return utils.element_centers_of_mass(self.stage2_density_discr)
 
+    def _dim_fudge_factor(self):
+        if self.density_discr.dim == 2:
+            return 0.5
+        else:
+            return 1
+
     @memoize_method
     def _expansion_radii(self, last_dim_length):
-        if last_dim_length == "npanels":
-            # FIXME: Make this an error
-
-            from warnings import warn
-            warn("Passing 'npanels' as last_dim_length to _expansion_radii is "
-                    "deprecated. Expansion radii should be allowed to vary "
-                    "within a panel.", stacklevel=3)
-
         with cl.CommandQueue(self.cl_context) as queue:
-                return (self._panel_sizes(last_dim_length).with_queue(queue) * 0.5
-                        ).with_queue(None)
+                return (self._coarsest_quad_resolution(last_dim_length)
+                        .with_queue(queue)
+                        * 0.5 * self._dim_fudge_factor()).with_queue(None)
 
     # _expansion_radii should not be needed for the fine discretization
 
     @memoize_method
+    def _source_danger_zone_radii(self, last_dim_length="npanels"):
+        # This should be the expression of the expansion radii, but
+        #
+        # - in reference to the stage 2 discretization
+        # - mutliplied by 0.75 because
+        #
+        #   - Setting this equal to the expansion radii ensures that *every*
+        #     stage 2 element will be refined, which is wasteful.
+        #     (so this needs to be smaller than that)
+        #
+
+        #   - Setting this equal to half the expansion radius will not provide
+        #     a refinement 'buffer layer' at a 2x coarsening fringe.
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            return (
+                    (self._stage2_coarsest_quad_resolution(last_dim_length)
+                        .with_queue(queue))
+                    * 0.5 * 0.75 * self._dim_fudge_factor()).with_queue(None)
+
+    @memoize_method
     def _close_target_tunnel_radius(self, last_dim_length):
         with cl.CommandQueue(self.cl_context) as queue:
-                return (self._panel_sizes(last_dim_length).with_queue(queue) * 0.5
+                return (
+                        self._expansion_radii(last_dim_length).with_queue(queue)
+                        * 0.5
                         ).with_queue(None)
 
     @memoize_method
-    def _panel_sizes(self, last_dim_length="npanels"):
+    def _coarsest_quad_resolution(self, last_dim_length="npanels"):
+        """This measures the quadrature resolution across the
+        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
+        should be the same as the panel length.
+        """
         import pytential.qbx.utils as utils
-        return utils.panel_sizes(self.density_discr, last_dim_length)
+        from pytential import sym, bind
+        with cl.CommandQueue(self.cl_context) as queue:
+            maxstretch = bind(
+                    self,
+                    sym._simplex_mapping_max_stretch_factor(
+                        self.ambient_dim)
+                    )(queue)
+
+            maxstretch = utils.to_last_dim_length(
+                    self.density_discr, maxstretch, last_dim_length)
+            maxstretch = maxstretch.with_queue(None)
+
+        return maxstretch
 
     @memoize_method
-    def _fine_panel_sizes(self, last_dim_length="npanels"):
+    def _stage2_coarsest_quad_resolution(self, last_dim_length="npanels"):
+        """This measures the quadrature resolution across the
+        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
+        should be the same as the panel length.
+        """
         if last_dim_length != "npanels":
+            # Not technically required below, but no need to loosen for now.
             raise NotImplementedError()
 
         import pytential.qbx.utils as utils
-        return utils.panel_sizes(self.stage2_density_discr, last_dim_length)
+        from pytential import sym, bind
+        with cl.CommandQueue(self.cl_context) as queue:
+            maxstretch = bind(
+                    self, sym._simplex_mapping_max_stretch_factor(
+                        self.ambient_dim,
+                        where=sym._QBXSourceStage2(sym.DEFAULT_SOURCE))
+                    )(queue)
+            maxstretch = utils.to_last_dim_length(
+                    self.stage2_density_discr, maxstretch, last_dim_length)
+            maxstretch = maxstretch.with_queue(None)
+
+        return maxstretch
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
@@ -457,6 +560,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return QBXFMMGeometryData(self.qbx_fmm_code_getter,
                 self, target_discrs_and_qbx_sides,
                 target_association_tolerance=self.target_association_tolerance,
+                tree_kind=self._tree_kind,
                 debug=self.debug)
 
     # }}}
@@ -486,8 +590,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         from pytools.obj_array import with_object_array_or_scalar
-        from functools import partial
-        oversample = partial(self.resampler, queue)
+
+        def oversample_nonscalars(vec):
+            from numbers import Number
+            if isinstance(vec, Number):
+                return vec
+            else:
+                return self.resampler(queue, vec)
 
         if not self._refined_for_global_qbx:
             from warnings import warn
@@ -497,7 +606,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         def evaluate_wrapper(expr):
             value = evaluate(expr)
-            return with_object_array_or_scalar(oversample, value)
+            return with_object_array_or_scalar(oversample_nonscalars, value)
 
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
@@ -578,6 +687,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
+
+        # geo_data.plot()
 
         # FIXME Exert more positive control over geo_data attribute lifetimes using
         # geo_data.<method>.clear_cache(geo_data).

@@ -16,8 +16,8 @@ bdry_quad_order = 4
 mesh_order = bdry_quad_order
 qbx_order = bdry_quad_order
 bdry_ovsmp_quad_order = 4*bdry_quad_order
-fmm_order = 25
-k = 25
+fmm_order = 10
+k = 0
 
 # }}}
 
@@ -54,7 +54,7 @@ def make_mesh(nx, ny):
 
 def timing_run(nx, ny):
     import logging
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
@@ -154,6 +154,7 @@ def timing_run(nx, ny):
                 sym_op)(
                 queue, sigma=ones_density).get()
 
+        qbx_stick_out = qbx.copy(target_stick_out_factor=0.1)
         try:
             fld_in_vol = bind(
                     (qbx_stick_out, PointsTarget(targets)),
@@ -169,7 +170,7 @@ def timing_run(nx, ny):
 
         #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         fplot.write_vtk_file(
-                "potential.vts",
+                "potential-scaling.vts",
                 [
                     ("potential", fld_in_vol),
                     ("indicator", indicator)

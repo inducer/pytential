@@ -62,6 +62,12 @@ class IdentityMapper(IdentityMapperBase):
 
     map_node_max = map_node_sum
 
+    def map_elementwise_sum(self, expr):
+        return type(expr)(self.rec(expr.operand), expr.where)
+
+    map_elementwise_min = map_elementwise_sum
+    map_elementwise_max = map_elementwise_sum
+
     def map_num_reference_derivative(self, expr):
         return type(expr)(expr.ref_axes, self.rec(expr.operand),
                 expr.where)
@@ -104,6 +110,9 @@ class CombineMapper(CombineMapperBase):
 
     map_node_max = map_node_sum
     map_num_reference_derivative = map_node_sum
+    map_elementwise_sum = map_node_sum
+    map_elementwise_min = map_node_sum
+    map_elementwise_max = map_node_sum
 
     def map_int_g(self, expr):
         return self.combine(
@@ -228,6 +237,14 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     expr.ref_axes, self.rec(expr.operand), self.default_where)
         else:
             return expr
+
+    def map_elementwise_sum(self, expr):
+        return type(expr)(
+                self.rec(expr.operand),
+                expr.where if expr.where is not None else self.default_where)
+
+    map_elementwise_min = map_elementwise_sum
+    map_elementwise_max = map_elementwise_sum
 
     def map_int_g(self, expr):
         source = expr.source
@@ -436,6 +453,9 @@ class QBXPreprocessor(IdentityMapper):
 # {{{ stringifier
 
 def stringify_where(where):
+    if isinstance(where, prim._QBXSourceStage2):
+        return "stage2(%s)" % stringify_where(where.where)
+
     if where is None:
         return "?"
     elif where is prim.DEFAULT_SOURCE:
@@ -465,19 +485,40 @@ class StringifyMapper(BaseStringifyMapper):
                 for name_expr in six.itervalues(expr.extra_vars)),
                 set())
 
-    def map_node_sum(self, expr, enclosing_prec):
-        return "NodeSum(%s)" % self.rec(expr.operand, PREC_NONE)
+    def map_elementwise_sum(self, expr, enclosing_prec):
+        return "ElwiseSum.%s(%s)" % (
+                stringify_where(expr.where),
+                self.rec(expr.operand, PREC_NONE))
+
+    def map_elementwise_min(self, expr, enclosing_prec):
+        return "ElwiseMin.%s(%s)" % (
+                stringify_where(expr.where),
+                self.rec(expr.operand, PREC_NONE))
+
+    def map_elementwise_max(self, expr, enclosing_prec):
+        return "ElwiseMax.%s(%s)" % (
+                stringify_where(expr.where),
+                self.rec(expr.operand, PREC_NONE))
 
     def map_node_max(self, expr, enclosing_prec):
         return "NodeMax(%s)" % self.rec(expr.operand, PREC_NONE)
+
+    def map_node_sum(self, expr, enclosing_prec):
+        return "NodeSum(%s)" % self.rec(expr.operand, PREC_NONE)
 
     def map_node_coordinate_component(self, expr, enclosing_prec):
         return "x%d.%s" % (expr.ambient_axis,
                 stringify_where(expr.where))
 
     def map_num_reference_derivative(self, expr, enclosing_prec):
-        result = "d/dr%s.%s %s" % (
-                ",".join(str(ax) for ax in expr.ref_axes),
+        diff_op = " ".join(
+                "d/dr%d" % axis
+                if mult == 1 else
+                "d/dr%d^%d" % (axis, mult)
+                for axis, mult in expr.ref_axes)
+
+        result = "%s.%s %s" % (
+                diff_op,
                 stringify_where(expr.where),
                 self.rec(expr.operand, PREC_PRODUCT),
                 )

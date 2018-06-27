@@ -213,6 +213,7 @@ class EHField(object):
 
 # {{{ driver
 
+@pytest.mark.slowtest
 @pytest.mark.parametrize("case", [
     #tc_int,
     tc_ext,
@@ -506,7 +507,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: fdm=marker

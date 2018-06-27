@@ -26,6 +26,7 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 import pyopencl.clmath  # noqa
+import pytest
 
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -270,6 +271,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     return qbx.h_max, l2_err
 
 
+@pytest.mark.slowtest
 def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
@@ -290,7 +292,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: fdm=marker

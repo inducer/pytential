@@ -4,13 +4,14 @@ Installation and Usage
 Installing :mod:`pytential`
 ---------------------------
 
-This set of instructions is intended for 64-bit Linux computers.
-MacOS support is in the works.
+This set of instructions is intended for 64-bit Linux and macOS computers.
 
 #.  Make sure your system has the basics to build software.
 
     On Debian derivatives (Ubuntu and many more),
     installing ``build-essential`` should do the trick.
+
+    On macOS, run ``xcode-select --install`` to install build tools.
 
     Everywhere else, just making sure you have the ``g++`` package should be
     enough.
@@ -30,7 +31,9 @@ MacOS support is in the works.
 
 #.  ``conda config --add channels conda-forge``
 
-#.  ``conda install git pip pocl=0.13 islpy pyopencl sympy pyfmmlib pytest``
+#.  (*macOS only*) ``conda install osx-pocl-opencl``
+
+#.  ``conda install git pip pocl islpy pyopencl sympy pyfmmlib pytest``
 
 #.  Type the following command::
 
@@ -44,14 +47,6 @@ You may also like to add this to a startup file (like :file:`$HOME/.bashrc`) or 
 
 After this, you should be able to run the `tests <https://github.com/inducer/pytential/tree/master/test>`_
 or `examples <https://github.com/inducer/pytential/tree/master/examples>`_.
-
-.. note::
-
-    You may have noticed that we prescribed pocl version 0.13 above. That's
-    because newer versions have a `bug
-    <https://gitlab.tiker.net/inducer/pytential/issues/64>`_ that we haven't
-    tracked down just yet. Until this bug is found, we discourage the use of
-    pocl 0.14 as results may be silently inaccurate.
 
 Troubleshooting the Installation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

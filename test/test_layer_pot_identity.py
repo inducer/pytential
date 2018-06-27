@@ -82,7 +82,7 @@ class StarfishGeometry(object):
 
     dim = 2
 
-    resolutions = [30, 50, 70]
+    resolutions = [30, 50, 70, 90]
 
     def get_mesh(self, nelements, target_order):
         return make_curve_mesh(
@@ -410,7 +410,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: fdm=marker

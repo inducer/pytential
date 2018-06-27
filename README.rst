@@ -1,5 +1,10 @@
-pytential
-=========
+pytential: 2D/3D Layer Potential Evaluation
+===========================================
+
+.. image:: https://gitlab.tiker.net/inducer/pytential/badges/master/pipeline.svg
+   :target: https://gitlab.tiker.net/inducer/pytential/commits/master
+.. image:: https://badge.fury.io/py/pytential.png
+    :target: http://pypi.python.org/pypi/pytential
 
 pytential helps you accurately evaluate layer
 potentials (and, sooner or later, volume potentials).
@@ -22,9 +27,6 @@ and, indirectly,
 
 PyOpenCL is likely the only package you'll have to install
 by hand, all the others will be installed automatically.
-
-.. image:: https://badge.fury.io/py/pytential.png
-    :target: http://pypi.python.org/pypi/pytential
 
 Resources:
 

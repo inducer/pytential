@@ -173,7 +173,7 @@ class LayerPotentialSourceBase(PotentialSource):
 
     .. rubric:: Execution
 
-    .. automethod:: weights_and_area_elements
+    .. method:: weights_and_area_elements
     .. method:: exec_compute_potential_insn
     """
 
@@ -266,6 +266,5 @@ class LayerPotentialSourceBase(PotentialSource):
         return kernel_extra_kwargs, source_extra_kwargs
 
     # }}}
-
 
 # }}}

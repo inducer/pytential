@@ -30,11 +30,13 @@ import pyopencl.array  # noqa
 from pytools import memoize_method
 from boxtree.tools import DeviceDataRecord
 import loopy as lp
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from cgen import Enum
 
 
 from pytential.qbx.utils import TreeCodeContainerMixin
 
+from pytools import log_process
 
 import logging
 logger = logging.getLogger(__name__)
@@ -125,7 +127,8 @@ class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
             """
                 targets[dim, i] = points[dim, i]
                 """,
-            default_offset=lp.auto, name="copy_targets")
+            default_offset=lp.auto, name="copy_targets",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.fix_parameters(knl, ndims=self.ambient_dim)
 
@@ -182,7 +185,8 @@ class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
                 "..."
                 ],
             name="qbx_center_to_target_box_lookup",
-            silenced_warnings="write_race(tgt_write)")
+            silenced_warnings="write_race(tgt_write)",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "ibox", 128,
                 inner_tag="l.0", outer_tag="g.0")
@@ -244,7 +248,8 @@ class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
                 lp.ValueArg("ntargets", np.int32),
             ],
             name="pick_used_centers",
-            silenced_warnings="write_race(center_is_used_write)")
+            silenced_warnings="write_race(center_is_used_write)",
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
@@ -349,12 +354,15 @@ class QBXFMMGeometryData(object):
 
     def __init__(self, code_getter, lpot_source,
             target_discrs_and_qbx_sides,
-            target_association_tolerance, debug):
+            target_association_tolerance,
+            tree_kind, debug):
         """
         .. rubric:: Constructor arguments
 
         See the attributes of the same name for the meaning of most
         of the constructor arguments.
+
+        :arg tree_kind: The tree kind to pass to the tree builder
 
         :arg debug: a :class:`bool` flag for whether to enable
             potentially costly self-checks
@@ -365,6 +373,7 @@ class QBXFMMGeometryData(object):
         self.target_discrs_and_qbx_sides = \
                 target_discrs_and_qbx_sides
         self.target_association_tolerance = target_association_tolerance
+        self.tree_kind = tree_kind
         self.debug = debug
 
     @property
@@ -494,11 +503,17 @@ class QBXFMMGeometryData(object):
                         self.coord_dtype)
                 target_radii[:self.ncenters] = self.expansion_radii()
 
-            # FIXME: https://gitlab.tiker.net/inducer/pytential/issues/72
-            # refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
-            # refine_weights[:nsources] = 1
             refine_weights = cl.array.empty(queue, nparticles, dtype=np.int32)
-            refine_weights.fill(1)
+
+            # Assign a weight of 1 to all sources, QBX centers, and conventional
+            # (non-QBX) targets. Assign a weight of 0 to all targets that need
+            # QBX centers. The potential at the latter targets is mediated
+            # entirely by the QBX center, so as a matter of evaluation cost,
+            # their location in the tree is irrelevant.
+            refine_weights[:-target_info.ntargets] = 1
+            user_ttc = self.user_target_to_center().with_queue(queue)
+            refine_weights[-target_info.ntargets:] = (
+                    user_ttc == target_state.NO_QBX_NEEDED).astype(np.int32)
 
             refine_weights.finish()
 
@@ -511,7 +526,7 @@ class QBXFMMGeometryData(object):
                     debug=self.debug,
                     stick_out_factor=lpot_src._expansion_stick_out_factor,
                     extent_norm=lpot_src._box_extent_norm,
-                    kind="adaptive")
+                    kind=self.tree_kind)
 
             if self.debug:
                 tgt_count_2 = cl.array.sum(
@@ -605,6 +620,36 @@ class QBXFMMGeometryData(object):
             return qbx_center_to_target_box.with_queue(None)
 
     @memoize_method
+    def qbx_center_to_target_box_source_level(self, source_level):
+        """Return an array for mapping qbx centers to indices into
+        interaction lists as found in
+        ``traversal.from_sep_smaller_by_level[source_level].``
+        -1 if no such interaction list exist on *source_level*.
+        """
+        traversal = self.traversal()
+        sep_smaller = traversal.from_sep_smaller_by_level[source_level]
+        qbx_center_to_target_box = self.qbx_center_to_target_box()
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            target_box_to_target_box_source_level = cl.array.empty(
+                queue, len(traversal.target_boxes),
+                dtype=traversal.tree.box_id_dtype
+            )
+            target_box_to_target_box_source_level.fill(-1)
+            target_box_to_target_box_source_level[sep_smaller.nonempty_indices] = (
+                cl.array.arange(queue, sep_smaller.num_nonempty_lists,
+                                dtype=traversal.tree.box_id_dtype)
+            )
+
+            qbx_center_to_target_box_source_level = (
+                target_box_to_target_box_source_level[
+                    qbx_center_to_target_box
+                ]
+            )
+
+            return qbx_center_to_target_box_source_level.with_queue(None)
+
+    @memoize_method
     def global_qbx_flags(self):
         """Return an array of :class:`numpy.int8` of length
         :attr:`ncenters` indicating whether each center can use gloal QBX, i.e.
@@ -625,6 +670,7 @@ class QBXFMMGeometryData(object):
         return result.with_queue(None)
 
     @memoize_method
+    @log_process(logger)
     def global_qbx_centers(self):
         """Build a list of indices of QBX centers that use global QBX.  This
         indexes into the global list of targets, (see :meth:`target_info`) of
@@ -637,8 +683,6 @@ class QBXFMMGeometryData(object):
         user_target_to_center = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            logger.info("find global qbx centers: start")
-
             tgt_assoc_result = (
                     user_target_to_center.with_queue(queue)[self.ncenters:])
 
@@ -662,8 +706,6 @@ class QBXFMMGeometryData(object):
                         ("center_is_used", center_is_used)
                         ],
                     queue=queue)
-
-            logger.info("find global qbx centers: done")
 
             if self.debug:
                 logger.debug(
@@ -689,7 +731,7 @@ class QBXFMMGeometryData(object):
 
         with cl.CommandQueue(self.cl_context) as queue:
             target_side_prefs = (self
-                .target_side_preferences()[self.ncenters:].get(queue=queue))
+                    .target_side_preferences()[self.ncenters:].get(queue=queue))
 
             target_discrs_and_qbx_sides = [(
                     PointsTarget(tgt_info.targets[:, self.ncenters:]),
@@ -706,15 +748,15 @@ class QBXFMMGeometryData(object):
                     target_association_tolerance=(
                         self.target_association_tolerance))
 
-            tree = self.tree()
-
-            result = cl.array.empty(queue, tgt_info.ntargets, tree.particle_id_dtype)
+            result = cl.array.empty(queue, tgt_info.ntargets,
+                    tgt_assoc_result.target_to_center.dtype)
             result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
             result[self.ncenters:] = tgt_assoc_result.target_to_center
 
         return result.with_queue(None)
 
     @memoize_method
+    @log_process(logger)
     def center_to_tree_targets(self):
         """Return a :class:`CenterToTargetList`. See :meth:`target_to_center`
         for the reverse look-up table with targets in user order.
@@ -725,8 +767,6 @@ class QBXFMMGeometryData(object):
         user_ttc = self.user_target_to_center()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            logger.info("build center -> targets lookup table: start")
-
             tree_ttc = cl.array.empty_like(user_ttc).with_queue(queue)
             tree_ttc[self.tree().sorted_target_ids] = user_ttc
 
@@ -749,8 +789,6 @@ class QBXFMMGeometryData(object):
                             filtered_tree_ttc, filtered_target_ids,
                             self.ncenters, tree_ttc.dtype)
 
-            logger.info("build center -> targets lookup table: done")
-
             result = CenterToTargetList(
                     starts=center_target_starts,
                     lists=targets_sorted_by_center).with_queue(None)
@@ -758,6 +796,7 @@ class QBXFMMGeometryData(object):
             return result
 
     @memoize_method
+    @log_process(logger)
     def non_qbx_box_target_lists(self):
         """Build a list of targets per box that don't need to bother with QBX.
         Returns a :class:`boxtree.tree.FilteredTargetListsInTreeOrder`.
@@ -768,8 +807,6 @@ class QBXFMMGeometryData(object):
         """
 
         with cl.CommandQueue(self.cl_context) as queue:
-            logger.info("find non-qbx box target lists: start")
-
             flags = (self.user_target_to_center().with_queue(queue)
                     == target_state.NO_QBX_NEEDED)
 
@@ -781,10 +818,9 @@ class QBXFMMGeometryData(object):
             nqbx_centers = self.ncenters
             flags[:nqbx_centers] = 0
 
-            from boxtree.tree import filter_target_lists_in_tree_order
-            result = filter_target_lists_in_tree_order(queue, self.tree(), flags)
-
-            logger.info("find non-qbx box target lists: done")
+            tree = self.tree()
+            plfilt = self.code_getter.particle_list_filter()
+            result = plfilt.filter_target_lists_in_tree_order(queue, tree, flags)
 
             return result.with_queue(None)
 
@@ -803,12 +839,14 @@ class QBXFMMGeometryData(object):
             This only works for two-dimensional geometries.
         """
 
+        import matplotlib.pyplot as pt
+        pt.clf()
+
         dims = self.tree().targets.shape[0]
         if dims != 2:
             raise ValueError("only 2-dimensional geometry info can be plotted")
 
         with cl.CommandQueue(self.cl_context) as queue:
-            import matplotlib.pyplot as pt
             from meshmode.discretization.visualization import draw_curve
             draw_curve(self.lpot_source.quad_stage2_density_discr)
 
@@ -893,8 +931,10 @@ class QBXFMMGeometryData(object):
             # }}}
 
             pt.gca().set_aspect("equal")
-            pt.legend()
-            pt.show()
+            #pt.legend()
+            pt.savefig(
+                    "geodata-stage2-nelem%d.pdf"
+                    % self.lpot_source.stage2_density_discr.mesh.nelements)
 
     # }}}
 

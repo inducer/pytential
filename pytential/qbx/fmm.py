@@ -33,6 +33,8 @@ from sumpy.fmm import (SumpyExpansionWranglerCodeContainer,
 from pytools import memoize_method
 from pytential.qbx.interactions import P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P
 
+from pytools import log_process, ProcessLogger
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -192,6 +194,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     # {{{ qbx-related
 
+    @log_process(logger)
     def form_global_qbx_locals(self, src_weights):
         local_exps = self.qbx_local_expansion_zeros()
 
@@ -228,6 +231,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         return result
 
+    @log_process(logger)
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
@@ -248,7 +252,9 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     self.multipole_expansions_view(multipole_exps, isrc_level)
 
             evt, (qbx_expansions_res,) = m2qbxl(self.queue,
-                    qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+                    qbx_center_to_target_box_source_level=(
+                        geo_data.qbx_center_to_target_box_source_level(isrc_level)
+                    ),
 
                     centers=self.tree.box_centers,
                     qbx_centers=geo_data.centers(),
@@ -274,6 +280,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         return qbx_expansions
 
+    @log_process(logger)
     def translate_box_local_to_qbx_local(self, local_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
@@ -318,6 +325,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         return qbx_expansions
 
+    @log_process(logger)
     def eval_qbx_expansions(self, qbx_expansions):
         pot = self.full_output_zeros()
 
@@ -379,16 +387,12 @@ def drive_fmm(expansion_wrangler, src_weights):
     # Interface guidelines: Attributes of the tree are assumed to be known
     # to the expansion wrangler and should not be passed.
 
-    from time import time
-    start_time = time()
-    logger.info("start qbx fmm")
+    fmm_proc = ProcessLogger(logger, "qbx fmm")
 
-    logger.info("reorder source weights")
     src_weights = wrangler.reorder_sources(src_weights)
 
     # {{{ construct local multipoles
 
-    logger.info("construct local multipoles")
     mpole_exps = wrangler.form_multipoles(
             traversal.level_start_source_box_nrs,
             traversal.source_boxes,
@@ -398,7 +402,6 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ propagate multipoles upward
 
-    logger.info("propagate multipoles upward")
     wrangler.coarsen_multipoles(
             traversal.level_start_source_parent_box_nrs,
             traversal.source_parent_boxes,
@@ -408,7 +411,6 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ direct evaluation from neighbor source boxes ("list 1")
 
-    logger.info("direct evaluation from neighbor source boxes ('list 1')")
     non_qbx_potentials = wrangler.eval_direct(
             traversal.target_boxes,
             traversal.neighbor_source_boxes_starts,
@@ -419,7 +421,6 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ translate separated siblings' ("list 2") mpoles to local
 
-    logger.info("translate separated siblings' ('list 2') mpoles to local")
     local_exps = wrangler.multipole_to_local(
             traversal.level_start_target_or_target_parent_box_nrs,
             traversal.target_or_target_parent_boxes,
@@ -431,14 +432,11 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ evaluate sep. smaller mpoles ("list 3") at particles
 
-    logger.info("evaluate sep. smaller mpoles at particles ('list 3 far')")
-
     # (the point of aiming this stage at particles is specifically to keep its
     # contribution *out* of the downward-propagating local expansions)
 
     non_qbx_potentials = non_qbx_potentials + wrangler.eval_multipoles(
-            traversal.level_start_target_box_nrs,
-            traversal.target_boxes,
+            traversal.target_boxes_sep_smaller_by_source_level,
             traversal.from_sep_smaller_by_level,
             mpole_exps)
 
@@ -448,8 +446,6 @@ def drive_fmm(expansion_wrangler, src_weights):
     # }}}
 
     # {{{ form locals for separated bigger source boxes ("list 4")
-
-    logger.info("form locals for separated bigger source boxes ('list 4 far')")
 
     local_exps = local_exps + wrangler.form_locals(
             traversal.level_start_target_or_target_parent_box_nrs,
@@ -465,7 +461,6 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ propagate local_exps downward
 
-    logger.info("propagate local_exps downward")
     wrangler.refine_locals(
             traversal.level_start_target_or_target_parent_box_nrs,
             traversal.target_or_target_parent_boxes,
@@ -475,7 +470,6 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ evaluate locals
 
-    logger.info("evaluate locals")
     non_qbx_potentials = non_qbx_potentials + wrangler.eval_locals(
             traversal.level_start_target_box_nrs,
             traversal.target_boxes,
@@ -485,27 +479,20 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # {{{ wrangle qbx expansions
 
-    logger.info("form global qbx expansions from list 1")
     qbx_expansions = wrangler.form_global_qbx_locals(src_weights)
 
-    logger.info("translate from list 3 multipoles to qbx local expansions")
     qbx_expansions = qbx_expansions + \
             wrangler.translate_box_multipoles_to_qbx_local(mpole_exps)
 
-    logger.info("translate from box local expansions to contained "
-            "qbx local expansions")
     qbx_expansions = qbx_expansions + \
             wrangler.translate_box_local_to_qbx_local(local_exps)
 
-    logger.info("evaluate qbx local expansions")
     qbx_potentials = wrangler.eval_qbx_expansions(
             qbx_expansions)
 
     # }}}
 
     # {{{ reorder potentials
-
-    logger.info("reorder potentials")
 
     nqbtl = geo_data.non_qbx_box_target_lists()
 
@@ -527,7 +514,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
     # }}}
 
-    logger.info("qbx fmm complete in %.2f s" % (time() - start_time))
+    fmm_proc.done()
 
     return result
 
@@ -538,6 +525,7 @@ def drive_fmm(expansion_wrangler, src_weights):
 
 def assemble_performance_data(geo_data, uses_pde_expansions,
         translation_source_power=None, translation_target_power=None,
+        translation_max_power=None,
         summarize_parallel=None, merge_close_lists=True):
     """
     :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
@@ -586,10 +574,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         if d == 2:
             default_translation_source_power = 1
             default_translation_target_power = 1
+            default_translation_max_power = 0
 
         elif d == 3:
-            default_translation_source_power = 2
-            default_translation_target_power = 1
+            # Based on a reading of FMMlib, i.e. a point-and-shoot FMM.
+            default_translation_source_power = 0
+            default_translation_target_power = 0
+            default_translation_max_power = 3
 
         else:
             raise ValueError("Don't know how to estimate expansion complexities "
@@ -605,11 +596,16 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         translation_source_power = default_translation_source_power
     if translation_target_power is None:
         translation_target_power = default_translation_target_power
+    if translation_max_power is None:
+        translation_max_power = default_translation_max_power
 
     def xlat_cost(p_source, p_target):
+        from pymbolic.primitives import Max
         return (
                 p_source ** translation_source_power
-                * p_target ** translation_target_power)
+                * p_target ** translation_target_power
+                * Max((p_source, p_target)) ** translation_max_power
+                )
 
     result.update(
             nlevels=tree.nlevels,
@@ -717,13 +713,15 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
         assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
-        for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
-            ntargets = box_target_counts_nonchild[tgt_ibox]
-
-            for ilevel, sep_smaller_list in enumerate(
-                    traversal.from_sep_smaller_by_level):
+        for ilevel, sep_smaller_list in enumerate(
+                traversal.from_sep_smaller_by_level):
+            for itgt_box, tgt_ibox in enumerate(
+                        traversal.target_boxes_sep_smaller_by_source_level[ilevel]):
+                ntargets = box_target_counts_nonchild[tgt_ibox]
                 start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
-                nmp_eval[ilevel, itgt_box] += ntargets * (end-start)
+                nmp_eval[ilevel, sep_smaller_list.nonempty_indices[itgt_box]] = (
+                        ntargets * (end-start)
+                )
 
         result["mp_eval"] = summarize_parallel(nmp_eval, ncoeffs_fmm)
 
@@ -770,8 +768,19 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     # {{{ form global qbx locals
 
     global_qbx_centers = geo_data.global_qbx_centers()
+
+    # If merge_close_lists is False above, then this builds another traversal
+    # (which is OK).
     qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
     center_to_targets_starts = geo_data.center_to_tree_targets().starts
+    qbx_center_to_target_box_source_level = np.empty(
+        (tree.nlevels,), dtype=object
+    )
+
+    for src_level in range(tree.nlevels):
+        qbx_center_to_target_box_source_level[src_level] = (
+            geo_data.qbx_center_to_target_box_source_level(src_level)
+        )
 
     with cl.CommandQueue(geo_data.cl_context) as queue:
         global_qbx_centers = global_qbx_centers.get(
@@ -780,6 +789,10 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
                 queue=queue)
         center_to_targets_starts = center_to_targets_starts.get(
                 queue=queue)
+        for src_level in range(tree.nlevels):
+            qbx_center_to_target_box_source_level[src_level] = (
+                qbx_center_to_target_box_source_level[src_level].get(queue=queue)
+            )
 
     def process_form_qbxl():
         ncenters = geo_data.ncenters
@@ -856,8 +869,13 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
         assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
+
             for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
-                icontaining_tgt_box = qbx_center_to_target_box[tgt_icenter]
+                icontaining_tgt_box = qbx_center_to_target_box_source_level[
+                    isrc_level][tgt_icenter]
+
+                if icontaining_tgt_box == -1:
+                    continue
 
                 start, stop = (
                         ssn.starts[icontaining_tgt_box],

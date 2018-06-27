@@ -43,6 +43,7 @@ from pytential.qbx.utils import (
 
 unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
+from pytools import log_process
 
 import logging
 logger = logging.getLogger(__name__)
@@ -438,6 +439,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         self.code_container = code_container
         self.queue = queue
 
+    @log_process(logger)
     def mark_targets(self, tree, peer_lists, lpot_source, target_status,
                      debug, wait_for=None):
         # Round up level count--this gets included in the kernel as
@@ -497,8 +499,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        logger.info("target association: marking targets close to panels")
-
         tunnel_radius_by_source = lpot_source._close_target_tunnel_radius("nsources")
 
         evt = knl(
@@ -527,10 +527,9 @@ class TargetAssociationWrangler(TreeWranglerBase):
 
         cl.wait_for_events([evt])
 
-        logger.info("target association: done marking targets close to panels")
-
         return (found_target_close_to_panel == 1).all().get()
 
+    @log_process(logger)
     def try_find_centers(self, tree, peer_lists, lpot_source,
                          target_status, target_flags, target_assoc,
                          target_association_tolerance, debug, wait_for=None):
@@ -582,8 +581,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
 
         wait_for.extend(min_dist_to_center.events)
 
-        logger.info("target association: finding centers for targets")
-
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
@@ -613,9 +610,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                          .format(ntargets_associated))
 
         cl.wait_for_events([evt])
-        logger.info("target association: done finding centers for targets")
-        return
 
+    @log_process(logger)
     def mark_panels_for_refinement(self, tree, peer_lists, lpot_source,
                                    target_status, refine_flags, debug,
                                    wait_for=None):
@@ -653,8 +649,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        logger.info("target association: marking panels for refinement")
-
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
@@ -683,8 +677,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
                          .format(marked_panel_count))
 
         cl.wait_for_events([evt])
-
-        logger.info("target association: done marking panels for refinement")
 
         return (found_panel_to_refine == 1).all().get()
 

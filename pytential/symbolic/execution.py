@@ -33,6 +33,10 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+
+from pytools import memoize_in
+
 
 # FIXME caches: fix up queues
 
@@ -49,11 +53,66 @@ class EvaluationMapper(EvaluationMapperBase):
 
     # {{{ map_XXX
 
+    def _map_minmax(self, func, inherited, expr):
+        ev_children = [self.rec(ch) for ch in expr.children]
+        from functools import reduce, partial
+        if any(isinstance(ch, cl.array.Array) for ch in ev_children):
+            return reduce(partial(func, queue=self.queue), ev_children)
+        else:
+            return inherited(expr)
+
+    def map_max(self, expr):
+        return self._map_minmax(
+                cl.array.maximum,
+                super(EvaluationMapper, self).map_max,
+                expr)
+
+    def map_min(self, expr):
+        return self._map_minmax(
+                cl.array.minimum,
+                super(EvaluationMapper, self).map_min,
+                expr)
+
     def map_node_sum(self, expr):
         return cl.array.sum(self.rec(expr.operand)).get()[()]
 
     def map_node_max(self, expr):
         return cl.array.max(self.rec(expr.operand)).get()[()]
+
+    def _map_elementwise_reduction(self, reduction_name, expr):
+        @memoize_in(self.bound_expr, "elementwise_"+reduction_name)
+        def knl():
+            import loopy as lp
+            knl = lp.make_kernel(
+                "{[el, idof, jdof]: 0<=el<nelements and 0<=idof,jdof<ndofs}",
+                "result[el, idof] = %s(jdof, input[el, jdof])" % reduction_name,
+                default_offset=lp.auto,
+                lang_version=MOST_RECENT_LANGUAGE_VERSION)
+            knl = lp.tag_inames(knl, "el:g.0,idof:l.0")
+            return knl
+
+        discr = self.bound_expr.get_discretization(expr.where)
+
+        operand = self.rec(expr.operand)
+
+        assert operand.shape == (discr.nnodes,)
+
+        result = cl.array.empty(self.queue, discr.nnodes, operand.dtype)
+        for group in discr.groups:
+            knl()(self.queue,
+                    input=group.view(operand),
+                    result=group.view(result))
+
+        return result
+
+    def map_elementwise_sum(self, expr):
+        return self._map_elementwise_reduction("sum", expr)
+
+    def map_elementwise_min(self, expr):
+        return self._map_elementwise_reduction("min", expr)
+
+    def map_elementwise_max(self, expr):
+        return self._map_elementwise_reduction("max", expr)
 
     def map_ones(self, expr):
         discr = self.bound_expr.get_discretization(expr.where)
@@ -73,9 +132,11 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_num_reference_derivative(self, expr):
         discr = self.bound_expr.get_discretization(expr.where)
 
+        from pytools import flatten
+        ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
         return discr.num_reference_derivative(
                 self.queue,
-                expr.ref_axes, self.rec(expr.operand)) \
+                ref_axes, self.rec(expr.operand)) \
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):
@@ -258,6 +319,11 @@ class BoundExpression:
         return self.caches.setdefault(name, {})
 
     def get_discretization(self, where):
+        from pytential.symbolic.primitives import _QBXSourceStage2
+        if isinstance(where, _QBXSourceStage2):
+            lpot_source = self.places[where.where]
+            return lpot_source.stage2_density_discr
+
         discr = self.places[where]
 
         from pytential.source import LayerPotentialSourceBase
@@ -271,7 +337,7 @@ class BoundExpression:
         :arg domains: a list of discretization identifiers or
             *None* values indicating the domains on which each component of the
             solution vector lives.  *None* values indicate that the component
-            is a scalar.  If *None*,
+            is a scalar.  If *domains* is *None*,
             :class:`pytential.symbolic.primitives.DEFAULT_TARGET`, is required
             to be a key in :attr:`places`.
         """
@@ -411,8 +477,10 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
     :arg places: a mapping of symbolic names to
         :class:`pytential.discretization.Discretization` objects or a subclass
         of :class:`pytential.discretization.target.TargetBase`.
-    :arg input_exprs: A sequence of expressions corresponding to the
+    :arg input_exprs: An object array of expressions corresponding to the
         input block columns of the matrix.
+
+        May also be a single expression.
     :arg domains: a list of discretization identifiers (see 'places') or
         *None* values indicating the domains on which each component of the
         solution vector lives.  *None* values indicate that the component
@@ -432,12 +500,15 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
     from pytools.obj_array import is_obj_array, make_obj_array
     if not is_obj_array(expr):
         expr = make_obj_array([expr])
+    try:
+        input_exprs = list(input_exprs)
+    except TypeError:
+        # not iterable, wrap in a list
+        input_exprs = [input_exprs]
 
     from pytential.symbolic.primitives import DEFAULT_SOURCE
     domains = _domains_default(len(input_exprs), places, domains,
             DEFAULT_SOURCE)
-
-    input_exprs = list(input_exprs)
 
     nblock_rows = len(expr)
     nblock_columns = len(input_exprs)
