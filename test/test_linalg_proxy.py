@@ -190,7 +190,7 @@ def _plot_partition_indices(queue, discr, indices, **kwargs):
 @pytest.mark.parametrize("method", ["nodes", "elements"])
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
+def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=True):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -201,7 +201,7 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
 
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=False):
+def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=True):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -245,7 +245,7 @@ def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=False):
 
 @pytest.mark.parametrize("ndim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
+def test_proxy_generator(ctx_factory, ndim, factor, visualize=True):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -334,7 +334,7 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
 
 @pytest.mark.parametrize("ndim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
+def test_interaction_points(ctx_factory, ndim, factor, visualize=True):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -404,7 +404,7 @@ def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
                 # TODO: some way to turn off some of the interpolations
                 # would help visualize this better.
                 marker.fill(0.0)
-                marker[srcindices] = 0.0
+                marker[srcindices.indices] = 0.0
                 marker[isrc] = -42.0
                 marker[inbr] = +42.0
                 marker_dev = cl.array.to_device(queue, marker)
