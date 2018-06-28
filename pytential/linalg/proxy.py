@@ -316,7 +316,7 @@ class ProxyGenerator(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, source, nproxy=None, ratio=None, **kwargs):
+    def __init__(self, source, nproxy=None, ratio=None):
         self.source = source
         self.ambient_dim = source.density_discr.ambient_dim
         self.ratio = 1.1 if ratio is None else ratio
@@ -461,7 +461,7 @@ class ProxyGenerator(object):
 
 
 def gather_block_neighbor_points(discr, indices, pxycenters, pxyradii,
-                                 max_nodes_in_box=None, **kwargs):
+                                 max_nodes_in_box=None):
     """Generate a set of neighboring points for each range of points in
     :attr:`discr`. Neighboring points of a range :math:`i` are defined
     as all the points inside the proxy ball :math:`i` that do not also

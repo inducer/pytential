@@ -195,8 +195,10 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=True):
     queue = cl.CommandQueue(ctx)
 
     qbx = _build_qbx_discr(queue, ndim=ndim)
-    srcindices = _build_block_index(qbx.density_discr,
-            method=method, use_tree=use_tree, factor=0.6)
+    _build_block_index(qbx.density_discr,
+                       method=method,
+                       use_tree=use_tree,
+                       factor=0.6)
 
 
 @pytest.mark.parametrize("use_tree", [True, False])
