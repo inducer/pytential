@@ -7,5 +7,5 @@ git+https://github.com/inducer/islpy
 git+https://github.com/inducer/loopy
 git+https://gitlab.tiker.net/inducer/boxtree
 git+https://github.com/inducer/meshmode
-git+https://gitlab.tiker.net/inducer/sumpy
+git+https://gitlab.tiker.net/fik2/sumpy@block-index-additions
 git+https://github.com/inducer/pyfmmlib
