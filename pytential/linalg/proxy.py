@@ -68,7 +68,7 @@ def _element_node_range(group, ielement):
 def partition_by_nodes(discr,
                        use_tree=True,
                        max_nodes_in_box=None):
-    """Generate clusters / ranges of nodes. The partition is created at the
+    """Generate equally sized ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
     of points, but will split elements across different ranges.
 
@@ -125,7 +125,7 @@ def partition_by_nodes(discr,
 def partition_by_elements(discr,
                           use_tree=True,
                           max_elements_in_box=None):
-    """Generate clusters / ranges of points. The partition is created at the
+    """Generate equally sized ranges of points. The partition is created at the
     element level, so that all the nodes belonging to an element belong to
     the same range. This can result in slightly larger differences in size
     between the ranges, but can be very useful when the individual partitions
@@ -210,8 +210,8 @@ def partition_from_coarse(resampler, from_indices):
 
     The new partition will have the same number of ranges as the old partition.
     The nodes inside each range in the new partition are all the nodes in
-    :attr:`resampler.to_discr` that belong to the same region as the nodes
-    in the same range from :attr:`resampler.from_discr`.
+    :attr:`resampler.to_discr` that were refined from elements in the same
+    range from :attr:`resampler.from_discr`.
 
     :arg resampler: a
         :class:`meshmode.discretization.connection.DirectDiscretizationConnection`.

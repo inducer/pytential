@@ -190,7 +190,7 @@ def _plot_partition_indices(queue, discr, indices, **kwargs):
 @pytest.mark.parametrize("method", ["nodes", "elements"])
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=True):
+def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -203,7 +203,7 @@ def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=True):
 
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=True):
+def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -247,7 +247,7 @@ def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=True):
 
 @pytest.mark.parametrize("ndim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_proxy_generator(ctx_factory, ndim, factor, visualize=True):
+def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -336,7 +336,7 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=True):
 
 @pytest.mark.parametrize("ndim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_interaction_points(ctx_factory, ndim, factor, visualize=True):
+def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
