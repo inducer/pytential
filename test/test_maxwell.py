@@ -394,7 +394,7 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
             return norm(qbx, queue, f, p=np.inf)
 
         e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
-        h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
+        h_bc_residual = scat_norm(eh_bc_values[3:]) / scat_norm(inc_field_scat.h)
 
         print("E/H PEC BC residuals:", h_max, e_bc_residual, h_bc_residual)
 
@@ -418,7 +418,7 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
                 ("Hinc", inc_field_scat.h),
                 ("bdry_normals", bdry_normals),
                 ("e_bc_residual", eh_bc_values[:3]),
-                ("h_bc_residual", eh_bc_values[3]),
+                ("h_bc_residual", eh_bc_values[3:]),
                 ])
 
             fplot = make_field_plotter_from_bbox(
