@@ -74,10 +74,20 @@ class EvaluationMapper(EvaluationMapperBase):
                 expr)
 
     def map_node_sum(self, expr):
-        return cl.array.sum(self.rec(expr.operand)).get()[()]
+        expr_val = self.rec(expr.operand)
+        from numbers import Number
+        if isinstance(expr_val, Number) and expr_val == 0:
+            return expr_val
+
+        return cl.array.sum(expr_val).get()[()]
 
     def map_node_max(self, expr):
-        return cl.array.max(self.rec(expr.operand)).get()[()]
+        expr_val = self.rec(expr.operand)
+        from numbers import Number
+        if isinstance(expr_val, Number) and expr_val == 0:
+            return expr_val
+
+        return cl.array.max(expr_val).get()[()]
 
     def _map_elementwise_reduction(self, reduction_name, expr):
         @memoize_in(self.bound_expr, "elementwise_"+reduction_name)
