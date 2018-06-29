@@ -81,6 +81,10 @@ class VectorChopper(object):
         if not self.is_structured:
             return vec
 
+        if self.queue is None:
+            raise ValueError("a CL queue must be supplied if support of systems "
+                    "of equations is desired")
+
         for n in range(0, len(self.slices)):
             if self.slices[n][0]:
                 vec[n] = cl.array.to_device(self.queue, np.array([vec[n]]))
@@ -90,6 +94,10 @@ class VectorChopper(object):
     def chop(self, vec):
         if not self.is_structured:
             return vec
+
+        if self.queue is None:
+            raise ValueError("a CL queue must be supplied if support of systems "
+                    "of equations is desired")
 
         from pytools.obj_array import make_obj_array
         result = make_obj_array([vec[slc] for (is_scalar, slc) in self.slices])
@@ -320,7 +328,7 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
         inner_product=None,
         maxiter=None, hard_failure=None,
         no_progress_factor=None, stall_iterations=None,
-        callback=None, progress=False):
+        callback=None, progress=False, cl_queue=None):
     """Solve a linear system Ax=b by means of GMRES
     with restarts.
 
@@ -336,11 +344,17 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     :arg stall_iterations: Number of iterations with residual decrease
         below *no_progress_factor* indicates stall. Set to 0 to disable
         stall detection.
+    :arg cl_queue: a :class:`pyopencl.CommandQueue` instance, to support
+        automatic vector splitting/assembly for systems of equations
 
     :return: a :class:`GMRESResult`
     """
     amod = get_array_module(rhs)
-    chopper = VectorChopper(rhs, op.queue)
+
+    if cl_queue is None:
+        cl_queue = getattr(op, "queue", None)
+    chopper = VectorChopper(rhs, cl_queue)
+
     stacked_rhs = chopper.stack(rhs)
 
     if inner_product is None:
