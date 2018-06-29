@@ -268,7 +268,7 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
             # point source
             return bind(
                     (test_source, tgt),
-                    get_sym_maxwell_point_source(mfie.kernel, j_sym, mfie.k)
+                    get_sym_maxwell_point_source_em(mfie.kernel, j_sym, mfie.k)
                     )(queue, j=src_j, k=case.k)
 
     pde_test_inc = EHField(

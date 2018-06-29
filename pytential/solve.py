@@ -55,7 +55,7 @@ def get_array_module(vec):
 # {{{ block system support
 
 class VectorChopper(object):
-    def __init__(self, structured_vec, queue = None):
+    def __init__(self, structured_vec, queue=None):
         from pytools.obj_array import is_obj_array
         self.is_structured = is_obj_array(structured_vec)
         self.array_module = get_array_module(structured_vec)
@@ -72,7 +72,7 @@ class VectorChopper(object):
                     length = 1
                     is_scalar = True
 
-                self.slices.append((is_scalar,slice(num_dofs, num_dofs+length)))
+                self.slices.append((is_scalar, slice(num_dofs, num_dofs+length)))
                 num_dofs += length
 
     def stack(self, vec):
@@ -81,7 +81,7 @@ class VectorChopper(object):
         if not self.is_structured:
             return vec
 
-        for n in range(0,len(self.slices)):
+        for n in range(0, len(self.slices)):
             if self.slices[n][0]:
                 vec[n] = cl.array.to_device(self.queue, np.array([vec[n]]))
 
@@ -92,13 +92,13 @@ class VectorChopper(object):
             return vec
 
         from pytools.obj_array import make_obj_array
-        result = make_obj_array([vec[slc] for (is_scalar,slc) in self.slices])
+        result = make_obj_array([vec[slc] for (is_scalar, slc) in self.slices])
 
         if self.queue is not None:
-            for n in range(0,len(self.slices)):
+            for n in range(0, len(self.slices)):
                 if self.slices[n][0]:
                     result[n] = result[n].get(self.queue)[0]
-                    
+
         return result
 
 # }}}
@@ -340,7 +340,7 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     :return: a :class:`GMRESResult`
     """
     amod = get_array_module(rhs)
-    chopper = VectorChopper(rhs,op.queue)
+    chopper = VectorChopper(rhs, op.queue)
     stacked_rhs = chopper.stack(rhs)
 
     if inner_product is None:

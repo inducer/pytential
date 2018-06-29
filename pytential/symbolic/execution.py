@@ -231,7 +231,7 @@ class MatVecOp:
 
     def __init__(self,
             bound_expr, queue, arg_name, dtype, total_dofs,
-            starts_and_ends, extra_args, isScalar=False):
+            starts_and_ends, extra_args, is_scalar=False):
         self.bound_expr = bound_expr
         self.queue = queue
         self.arg_name = arg_name
@@ -239,7 +239,7 @@ class MatVecOp:
         self.total_dofs = total_dofs
         self.starts_and_ends = starts_and_ends
         self.extra_args = extra_args
-        self.isScalar = isScalar
+        self.is_scalar = is_scalar
 
     @property
     def shape(self):
@@ -252,7 +252,7 @@ class MatVecOp:
         else:
             out_host = False
 
-        do_split = not self.isScalar
+        do_split = not self.is_scalar
         from pytools.obj_array import make_obj_array
 
         if do_split:
@@ -260,7 +260,7 @@ class MatVecOp:
                     [x[start:end] for start, end in self.starts_and_ends])
 
         # make any scalar terms actually scalars
-        for n in range(0,len(x)):
+        for n in range(0, len(x)):
             if x[n].shape == (1,):
                 x[n] = x[n].get(self.queue)[0]
 
@@ -344,12 +344,12 @@ class BoundExpression:
         """
 
         from pytools.obj_array import is_obj_array
-        isScalar = False
+        is_scalar = False
         if is_obj_array(self.code.result):
             nresults = len(self.code.result)
         else:
             nresults = 1
-            isScalar = True
+            is_scalar = True
 
         from pytential.symbolic.primitives import DEFAULT_TARGET
         domains = _domains_default(nresults, self.places, domains,
@@ -372,7 +372,8 @@ class BoundExpression:
         # for linear system solving, in which case the assumption
         # has to be true.
         return MatVecOp(self, queue,
-                arg_name, dtype, total_dofs, starts_and_ends, extra_args, isScalar=isScalar)
+                arg_name, dtype, total_dofs, starts_and_ends, extra_args,
+                is_scalar=is_scalar)
 
     def __call__(self, queue, **args):
         exec_mapper = EvaluationMapper(self, queue, args)

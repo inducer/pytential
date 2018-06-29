@@ -791,9 +791,10 @@ def integral(ambient_dim, dim, operand, where=None):
     `ambient_dim` is the number of dimensions used to represent space while `dim`
     is the dimensionality of the surface being integrated over.
 
-    Example|
-    We wish to integrate over the 2-D surface of a sphere that resides in 
-    in 3-dimensions, so `ambient_dim` = 3 and `dim` = 2.
+    .. note::
+
+        If, for example, we wish to integrate over the 2-D surface of a sphere
+        that resides in in 3-dimensions, then *ambient_dim* = 3 and *dim* = 2.
     """
 
     return NodeSum(
@@ -1259,14 +1260,15 @@ def normal_derivative(ambient_dim, operand, dim=None, where=None):
         def make_op(operand_i):
             d = Derivative()
             return d.resolve(
-                (normal(ambient_dim, dim, where).scalar_product(d.dnabla(ambient_dim))) 
+                (normal(ambient_dim, dim, where)
+                    .scalar_product(d.dnabla(ambient_dim)))
                 * d(operand_i))
 
         return componentwise(make_op, operand)
     else:
         d = Derivative()
         return d.resolve(
-            (normal(ambient_dim, dim, where).scalar_product(d.dnabla(ambient_dim))) 
+            (normal(ambient_dim, dim, where).scalar_product(d.dnabla(ambient_dim)))
             * d(operand))
 
 
@@ -1433,7 +1435,10 @@ def n_cross(vec, where=None):
 
 def div(vec):
     ambient_dim = len(vec)
-    return sum(dd_axis(iaxis, ambient_dim, vec[iaxis]) for iaxis in range(ambient_dim))
+    return sum(
+            dd_axis(iaxis, ambient_dim, vec[iaxis])
+            for iaxis in range(ambient_dim))
+
 
 def curl(vec):
     from pytools import levi_civita
