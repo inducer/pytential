@@ -341,7 +341,7 @@ class MatrixBlockBuilderBase(EvaluationMapperBase):
         self.index_set = index_set
 
     def _map_dep_variable(self):
-        return np.eye(self.index_set.srcindices.shape[0])
+        return np.eye(self.index_set.col.indices.shape[0])
 
     def map_variable(self, expr):
         if expr == self.dep_expr:
@@ -407,22 +407,19 @@ class MatrixBlockBuilder(MatrixBlockBuilderBase):
     @memoize_method
     def _oversampled_index_set(self, resampler):
         from pytential.linalg.proxy import partition_from_coarse
-        srcindices, srcranges = partition_from_coarse(self.queue, resampler,
-                self.index_set.srcindices, self.index_set.srcranges)
+        srcindices = partition_from_coarse(resampler, self.index_set)
 
-        from sumpy.tools import MatrixBlockIndex
-        # TODO: fix MatrixBlockIndex to work with CL arrays
-        ovsm_index_set = MatrixBlockIndex(self.queue,
-                self.index_set.tgtindices,
-                srcindices.get(self.queue),
-                self.index_set.tgtranges,
-                srcranges.get(self.queue))
+        from sumpy.tools import MatrixBlockIndexRanges
+        ovsm_index_set = MatrixBlockIndexRanges(self.queue.context,
+                self.index_set.row, srcindices)
 
         return ovsm_index_set
 
     def _map_dep_variable(self):
-        return np.equal(self.index_set.tgtindices.reshape(-1, 1),
-                        self.index_set.srcindices.reshape(1, -1)).astype(np.float64)
+        tgtindices = self.index_set.row.indices.get(self.queue).reshape(-1, 1)
+        srcindices = self.index_set.col.indices.get(self.queue).reshape(1, -1)
+
+        return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
         source = self.places[expr.source]
@@ -462,38 +459,27 @@ class MatrixBlockBuilder(MatrixBlockBuilderBase):
                 expansion_radii=self.dep_source._expansion_radii("nsources"),
                 index_set=ovsm_index_set,
                 **kernel_args)
-        mat = mat.get()
 
-        ovsm_blkranges = ovsm_index_set.linear_ranges()
-        ovsm_rowindices, ovsm_colindices = ovsm_index_set.linear_indices()
+        waa = source.weights_and_area_elements().with_queue(self.queue)
+        mat *= waa[ovsm_index_set.linear_col_indices]
 
-        waa = source.weights_and_area_elements().get(queue=self.queue)
-        mat *= waa[ovsm_colindices]
+        from sumpy.tools import MatrixBlockIndexRanges
+        ovsm_col_index = ovsm_index_set.get(self.queue)
+        ovsm_row_index = MatrixBlockIndexRanges(ovsm_col_index.cl_context,
+                ovsm_col_index.col, ovsm_col_index.row)
 
-        # TODO: there should be a better way to do the matmat required for
-        # the resampling
+        mat = mat.get(self.queue)
         resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
 
-        rmat = np.empty(ovsm_blkranges.shape[0] - 1, dtype=np.object)
-        for i in range(ovsm_blkranges.shape[0] - 1):
-            # TODO: would be nice to move some of this to sumpy.MatrixBlockIndex
-            ovsm_iblk = np.s_[ovsm_blkranges[i]:ovsm_blkranges[i + 1]]
-            ovsm_shape = (ovsm_index_set.tgtranges[i + 1] -
-                          ovsm_index_set.tgtranges[i],
-                          ovsm_index_set.srcranges[i + 1] -
-                          ovsm_index_set.srcranges[i])
-            mat_blk = mat[ovsm_iblk].reshape(*ovsm_shape)
+        rmat = np.empty(ovsm_index_set.nblocks, dtype=np.object)
+        for i in range(ovsm_index_set.nblocks):
+            mat_blk = ovsm_col_index.block_take(mat, i)
+            resample_blk = ovsm_row_index.take(resample_mat, i)
 
-            itgt = np.s_[ovsm_index_set.srcranges[i]:ovsm_index_set.srcranges[i + 1]]
-            itgt = ovsm_index_set.srcindices[itgt]
-            isrc = np.s_[self.index_set.srcranges[i]:self.index_set.srcranges[i + 1]]
-            isrc = self.index_set.srcindices[isrc]
-            resample_mat_blk = resample_mat[np.ix_(itgt, isrc)]
-
-            rmat[i] = mat_blk.dot(resample_mat_blk).reshape(-1)
+            rmat[i] = mat_blk.dot(resample_blk).reshape(-1)
         mat = np.hstack(rmat)
 
-        # TODO: multiply with rec_density
+        # TODO:: multiply with rec_density
 
         return mat
 
@@ -509,14 +495,10 @@ class P2PMatrixBlockBuilder(MatrixBlockBuilderBase):
         self.exclude_self = exclude_self
 
     def _map_dep_variable(self):
-        return np.equal(self.index_set.tgtindices.reshape(-1, 1),
-                        self.index_set.srcindices.reshape(1, -1)).astype(np.float64)
+        tgtindices = self.index_set.row.indices.get(self.queue).reshape(-1, 1)
+        srcindices = self.index_set.col.indices.get(self.queue).reshape(1, -1)
 
-    def block(self, i):
-        itgt = np.s_[self.index_set.tgtranges[i]:self.index_set.tgtranges[i + 1]]
-        isrc = np.s_[self.index_set.srcranges[i]:self.index_set.srcranges[i + 1]]
-
-        return (itgt, isrc)
+        return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
         source = self.places[expr.source]

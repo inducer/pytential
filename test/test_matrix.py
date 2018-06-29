@@ -2,7 +2,7 @@ from __future__ import division, absolute_import, print_function
 
 __copyright__ = """
 Copyright (C) 2015 Andreas Kloeckner
-Copyright (C) 2018 Andreas Kloeckner
+Copyright (C) 2018 Alexandru Fikl
 """
 
 __license__ = """
@@ -191,23 +191,17 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
     op, u_sym, _ = _build_op(lpot_id, ndim=ndim)
 
-    srcindices, srcranges = _build_block_index(queue, qbx.density_discr,
+    srcindices = _build_block_index(qbx.density_discr,
             method='nodes', factor=factor)
-    tgtindices, tgtranges = _build_block_index(queue, qbx.density_discr,
+    tgtindices = _build_block_index(qbx.density_discr,
             method='nodes', factor=factor)
-    assert srcranges.shape[0] == tgtranges.shape[0]
 
     from pytential.symbolic.execution import prepare_places, prepare_expr
     places = prepare_places(qbx)
     expr = prepare_expr(places, op)
 
-    from sumpy.tools import MatrixBlockIndex
-    # TODO: make MatrixBlockIndex work properly with CL arrays
-    index_set = MatrixBlockIndex(queue,
-                                 tgtindices.get(queue),
-                                 srcindices.get(queue),
-                                 tgtranges.get(queue),
-                                 srcranges.get(queue))
+    from sumpy.tools import MatrixBlockIndexRanges
+    index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
 
     from pytential.symbolic.matrix import P2PMatrixBlockBuilder
     mbuilder = P2PMatrixBlockBuilder(queue,
@@ -228,19 +222,16 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
             context={})
     mat = mbuilder(expr)
 
+    index_set = index_set.get(queue)
     if visualize and ndim == 2:
         blk_full = np.zeros_like(mat)
         mat_full = np.zeros_like(mat)
 
-        blkranges = index_set.linear_ranges()
-        rowindices, colindices = index_set.linear_indices()
-        for i in range(srcranges.shape[0] - 1):
-            iblk = np.s_[blkranges[i]:blkranges[i + 1]]
-            itgt = rowindices[iblk]
-            isrc = colindices[iblk]
+        for i in range(index_set.nblocks):
+            itgt, isrc = index_set.block_indices(i)
 
-            blk_full[itgt, isrc] = blk[iblk]
-            mat_full[itgt, isrc] = mat[itgt, isrc]
+            blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i)
+            mat_full[np.ix_(itgt, isrc)] = index_set.take(mat, i)
 
         import matplotlib.pyplot as mp
         _, (ax1, ax2) = mp.subplots(1, 2,
@@ -251,18 +242,14 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
         ax2.set_title('P2PMatrixBuilder')
         mp.savefig("test_p2p_block_{}d_{:.1f}.png".format(ndim, factor))
 
-    blkranges = index_set.linear_ranges()
-    rowindices, colindices = index_set.linear_indices()
-    for i in range(blkranges.shape[0] - 1):
-        iblk = np.s_[blkranges[i]:blkranges[i + 1]]
-        itgt = rowindices[iblk]
-        isrc = colindices[iblk]
+    for i in range(index_set.nblocks):
+        eps = 1.0e-14 * la.norm(index_set.take(mat, i))
+        error = la.norm(index_set.block_take(blk, i) -
+                        index_set.take(mat, i))
 
-        eps = 1.0e-14 * la.norm(mat[itgt, isrc])
         if visualize:
-            print('block[{:04}]: {:.5e}'.format(i,
-                la.norm(blk[iblk] - mat[itgt, isrc].reshape(-1))))
-        assert la.norm(blk[iblk] - mat[itgt, isrc].reshape(-1)) < eps
+            print('block[{:04}]: {:.5e}'.format(i, error))
+        assert error < eps
 
 
 @pytest.mark.parametrize("ndim", [2, 3])
@@ -280,21 +267,15 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
     op, u_sym, _ = _build_op(lpot_id, ndim=ndim)
 
-    tgtindices, tgtranges = _build_block_index(queue, qbx.density_discr)
-    srcindices, srcranges = _build_block_index(queue, qbx.density_discr)
-    assert srcranges.shape[0] == tgtranges.shape[0]
+    tgtindices = _build_block_index(qbx.density_discr)
+    srcindices = _build_block_index(qbx.density_discr)
 
     from pytential.symbolic.execution import prepare_places, prepare_expr
     places = prepare_places(qbx)
     expr = prepare_expr(places, op)
 
-    from sumpy.tools import MatrixBlockIndex
-    # TODO: make MatrixBlockIndex work properly with CL arrays
-    index_set = MatrixBlockIndex(queue,
-                                 tgtindices.get(queue),
-                                 srcindices.get(queue),
-                                 tgtranges.get(queue),
-                                 srcranges.get(queue))
+    from sumpy.tools import MatrixBlockIndexRanges
+    index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
 
     from pytential.symbolic.matrix import MatrixBlockBuilder
     mbuilder = MatrixBlockBuilder(queue,
@@ -315,19 +296,16 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
             context={})
     mat = mbuilder(expr)
 
+    index_set = index_set.get(queue)
     if visualize:
         blk_full = np.zeros_like(mat)
         mat_full = np.zeros_like(mat)
 
-        blkranges = index_set.linear_ranges()
-        rowindices, colindices = index_set.linear_indices()
-        for i in range(srcranges.shape[0] - 1):
-            iblk = np.s_[blkranges[i]:blkranges[i + 1]]
-            itgt = rowindices[iblk]
-            isrc = colindices[iblk]
+        for i in range(index_set.nblocks):
+            itgt, isrc = index_set.block_indices(i)
 
-            blk_full[itgt, isrc] = blk[iblk]
-            mat_full[itgt, isrc] = mat[itgt, isrc]
+            blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i)
+            mat_full[np.ix_(itgt, isrc)] = index_set.take(mat, i)
 
         import matplotlib.pyplot as mp
         _, (ax1, ax2) = mp.subplots(1, 2,
@@ -338,18 +316,14 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
         ax2.set_title('MatrixBlockBuilder')
         mp.savefig("test_qbx_block_builder.png", dpi=300)
 
-    blkranges = index_set.linear_ranges()
-    rowindices, colindices = index_set.linear_indices()
-    for i in range(blkranges.shape[0] - 1):
-        iblk = np.s_[blkranges[i]:blkranges[i + 1]]
-        itgt = rowindices[iblk]
-        isrc = colindices[iblk]
+    for i in range(index_set.nblocks):
+        eps = 1.0e-14 * la.norm(index_set.take(mat, i))
+        error = la.norm(index_set.block_take(blk, i) -
+                        index_set.take(mat, i))
 
-        eps = 1.0e-14 * la.norm(mat[itgt, isrc])
         if visualize:
-            print('block[{:04}]: {:.5e}'.format(i,
-                la.norm(blk[iblk] - mat[itgt, isrc].reshape(-1))))
-        assert la.norm(blk[iblk] - mat[itgt, isrc].reshape(-1)) < eps
+            print('block[{:04}]: {:.5e}'.format(i, error))
+        assert error < eps
 
 
 if __name__ == "__main__":
