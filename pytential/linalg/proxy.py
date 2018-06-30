@@ -45,13 +45,10 @@ Proxy Point Generation
 .. autoclass:: ProxyGenerator
 
 .. autofunction:: partition_by_nodes
-
 .. autofunction:: partition_by_elements
-
 .. autofunction:: partition_from_coarse
 
 .. autofunction:: gather_block_neighbor_points
-
 .. autofunction:: gather_block_interaction_points
 """
 
@@ -73,9 +70,9 @@ def partition_by_nodes(discr,
     of points, but will split elements across different ranges.
 
     :arg discr: a :class:`meshmode.discretization.Discretization`.
-    :arg use_tree: if `True`, node partitions are generated using a
+    :arg use_tree: if ``True``, node partitions are generated using a
         :class:`boxtree.TreeBuilder`, which leads to geometrically close
-        points to belong to the same partition. If `False`, a simple linear
+        points to belong to the same partition. If ``False``, a simple linear
         partition is constructed.
     :arg max_nodes_in_box: passed to :class:`boxtree.TreeBuilder`.
 
@@ -132,9 +129,9 @@ def partition_by_elements(discr,
     need to be resampled, integrated, etc.
 
     :arg discr: a :class:`meshmode.discretization.Discretization`.
-    :arg use_tree: if True, node partitions are generated using a
+    :arg use_tree: if ``True``, node partitions are generated using a
         :class:`boxtree.TreeBuilder`, which leads to geometrically close
-        points to belong to the same partition. If False, a simple linear
+        points to belong to the same partition. If ``False``, a simple linear
         partition is constructed.
     :arg max_elements_in_box: passed to :class:`boxtree.TreeBuilder`.
 
@@ -204,20 +201,20 @@ def partition_by_elements(discr,
 def partition_from_coarse(resampler, from_indices):
     """Generate a partition of nodes from an existing partition on a
     coarser discretization. The new partition is generated based on element
-    refinement relationships in :attr:`resampler`, so the existing partition
-    needs to be created using :func:`partition_by_element`, since we assume
-    that each range contains all the nodes in an element.
+    refinement relationships in *resampler*, so the existing partition
+    needs to be created using :func:`partition_by_elements`,
+    since we assume that each range contains all the nodes in an element.
 
     The new partition will have the same number of ranges as the old partition.
     The nodes inside each range in the new partition are all the nodes in
-    :attr:`resampler.to_discr` that were refined from elements in the same
-    range from :attr:`resampler.from_discr`.
+    *resampler.to_discr* that were refined from elements in the same
+    range from *resampler.from_discr*.
 
     :arg resampler: a
         :class:`meshmode.discretization.connection.DirectDiscretizationConnection`.
     :arg from_indices: a :class:`sumpy.tools.BlockIndexRanges`.
 
-    :return: a tuple :class:`sumpy.tools.BlockIndexRanges`.
+    :return: a :class:`sumpy.tools.BlockIndexRanges`.
     """
 
     if not hasattr(resampler, "groups"):
@@ -284,7 +281,7 @@ def _generate_unit_sphere(ambient_dim, approx_npoints):
     :arg approx_npoints: approximate number of points to generate. If the
         ambient space is 3D, this will not generate the exact number of points.
     :return: array of shape ``(ambient_dim, npoints)``, where ``npoints``
-        will not generally be the same as `approx_npoints`.
+        will not generally be the same as ``approx_npoints``.
     """
 
     if ambient_dim == 2:
@@ -326,8 +323,8 @@ class ProxyGenerator(object):
     .. attribute:: ambient_dim
     .. attribute:: nproxy
 
-        Approximate number of proxy points. In 2D, this is the exact
-        number of proxy points, but in 3D
+        Number of proxy points.
+
     .. attribute:: source
 
         A :class:`pytential.qbx.QBXLayerPotentialSource`.
@@ -356,20 +353,21 @@ class ProxyGenerator(object):
     .. attribute:: ref_points
 
         Reference points on a unit ball. Can be used to construct the points
-        around a proxy ball :math:`i` by translating them to `center[i]` and
-        scaling by `radii[i]`, as obtained by :meth:`__call__`.
+        around a proxy ball :math:`i` by translating them to ``center[i]`` and
+        scaling by ``radii[i]``, as obtained by :meth:`__call__`.
 
     .. automethod:: __call__
     """
 
-    def __init__(self, source, nproxy=None, ratio=None):
+    def __init__(self, source, approx_nproxy=None, ratio=None):
         self.source = source
         self.ambient_dim = source.density_discr.ambient_dim
         self.ratio = 1.1 if ratio is None else ratio
-        self.nproxy = 32 if nproxy is None else nproxy
 
+        approx_nproxy = 32 if approx_nproxy is None else approx_nproxy
         self.ref_points = \
-                _generate_unit_sphere(self.ambient_dim, self.nproxy)
+                _generate_unit_sphere(self.ambient_dim, approx_nproxy)
+        self.nproxy = self.ref_points.shape[1]
 
     @memoize_method
     def get_kernel(self):
@@ -426,7 +424,7 @@ class ProxyGenerator(object):
                 lp.ValueArg("nsources", np.int),
                 "..."
             ],
-            name="proxy_generator_knl",
+            name="find_proxy_radii_knl",
             assumptions="dim>=1 and nranges>=1",
             fixed_parameters=dict(dim=self.ambient_dim),
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
@@ -449,15 +447,15 @@ class ProxyGenerator(object):
         :arg queue: a :class:`pyopencl.CommandQueue`.
         :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
 
-        :return: a tuple of `(proxies, pxyranges, pxycenters, pxyranges)`, where
-            each element is a :class:`pyopencl.array.Array`. The
-            sizes of the arrays are as follows: `pxycenters` is of size
-            `(2, nranges)`, `pxyradii` is of size `(nranges,)`, `pxyranges` is
-            of size `(nranges + 1,)` and `proxies` is of size
-            `(2, nranges * nproxy)`. The proxy points in a range :math:`i`
-            can be obtained by a slice `proxies[pxyranges[i]:pxyranges[i + 1]]`
-            and are all at a distance `pxyradii[i]` from the range center
-            `pxycenters[i]`.
+        :return: a tuple of ``(proxies, pxyranges, pxycenters, pxyranges)``,
+            where each element is a :class:`pyopencl.array.Array`. The
+            sizes of the arrays are as follows: ``pxycenters`` is of size
+            ``(2, nranges)``, ``pxyradii`` is of size ``(nranges,)``,
+            ``pxyranges`` is of size ``(nranges + 1,)`` and ``proxies`` is
+            of size ``(2, nranges * nproxy)``. The proxy points in a range
+            :math:`i` can be obtained by a slice
+            ``proxies[pxyranges[i]:pxyranges[i + 1]]`` and are all at a
+            distance ``pxyradii[i]`` from the range center ``pxycenters[i]``.
         """
 
         def _affine_map(v, A, b):
@@ -501,7 +499,7 @@ class ProxyGenerator(object):
 def gather_block_neighbor_points(discr, indices, pxycenters, pxyradii,
                                  max_nodes_in_box=None):
     """Generate a set of neighboring points for each range of points in
-    :attr:`discr`. Neighboring points of a range :math:`i` are defined
+    *discr*. Neighboring points of a range :math:`i` are defined
     as all the points inside the proxy ball :math:`i` that do not also
     belong to the range itself.
 
@@ -510,7 +508,7 @@ def gather_block_neighbor_points(discr, indices, pxycenters, pxyradii,
     :arg pxycenters: an array containing the center of each proxy ball.
     :arg pxyradii: an array containing the radius of each proxy ball.
 
-    :return: a tuple :class:`sumpy.tools.BlockIndexRanges`.
+    :return: a :class:`sumpy.tools.BlockIndexRanges`.
     """
 
     if max_nodes_in_box is None:
@@ -588,10 +586,10 @@ def gather_block_neighbor_points(discr, indices, pxycenters, pxyradii,
 
 def gather_block_interaction_points(source, indices,
                                     ratio=None,
-                                    nproxy=None,
+                                    approx_nproxy=None,
                                     max_nodes_in_box=None):
     """Generate sets of interaction points for each given range of indices
-    in the :attr:`source` discretization. For each input range of indices,
+    in the *source* discretization. For each input range of indices,
     the corresponding output range of points is consists of:
 
     - a set of proxy points (or balls) around the range, which
@@ -600,14 +598,14 @@ def gather_block_interaction_points(source, indices,
 
     - a set of neighboring points that are inside the proxy balls, but
       do not belong to the given range, which model nearby interactions.
-      These are constructed with :meth:`gather_block_neighbor_points`.
+      These are constructed with :func:`gather_block_neighbor_points`.
 
     :arg source: a :class:`pytential.qbx.QBXLayerPotentialSource`.
     :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
 
-    :return: a tuple `(nodes, ranges)`, where each value is a
+    :return: a tuple ``(nodes, ranges)``, where each value is a
         :class:`pyopencl.array.Array`. For a range :math:`i`, we can
-        get the slice using `nodes[ranges[i]:ranges[i + 1]]`.
+        get the slice using ``nodes[ranges[i]:ranges[i + 1]]``.
     """
 
     @memoize
@@ -664,7 +662,9 @@ def gather_block_interaction_points(source, indices,
         return loopy_knl
 
     with cl.CommandQueue(source.cl_context) as queue:
-        generator = ProxyGenerator(source, ratio=ratio, nproxy=nproxy)
+        generator = ProxyGenerator(source,
+                                   ratio=ratio,
+                                   approx_nproxy=approx_nproxy)
         proxies, pxyranges, pxycenters, pxyradii = generator(queue, indices)
 
         neighbors = gather_block_neighbor_points(source.density_discr,
