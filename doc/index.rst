@@ -17,6 +17,7 @@ Contents
 
     discretization
     symbolic
+    linalg
     tools
     misc
 
