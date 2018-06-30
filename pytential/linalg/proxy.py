@@ -277,10 +277,57 @@ def partition_from_coarse(resampler, from_indices):
 
 # {{{ proxy point generator
 
+def _generate_unit_sphere(ambient_dim, approx_npoints):
+    """Generate uniform points on a unit sphere.
+
+    :arg ambient_dim: dimension of the ambient space.
+    :arg approx_npoints: approximate number of points to generate. If the
+        ambient space is 3D, this will not generate the exact number of points.
+    :return: array of shape ``(ambient_dim, npoints)``, where ``npoints``
+        will not generally be the same as `approx_npoints`.
+    """
+
+    if ambient_dim == 2:
+        t = np.linspace(0.0, 2.0 * np.pi, approx_npoints)
+        points = np.vstack([np.cos(t), np.sin(t)])
+    elif ambient_dim == 3:
+        # https://www.cmu.edu/biolphys/deserno/pdf/sphere_equi.pdf
+        a = 4.0 * np.pi / approx_npoints
+        m_theta = int(np.round(np.pi / np.sqrt(a)))
+        d_theta = np.pi / m_theta
+        d_phi = a / d_theta
+
+        points = []
+        for m in range(m_theta):
+            theta = np.pi * (m + 0.5) / m_theta
+            m_phi = int(np.round(2.0 * np.pi * np.sin(theta) / d_phi))
+
+            for n in range(m_phi):
+                phi = 2.0 * np.pi * n / m_phi
+                points.append(np.array([np.sin(theta) * np.cos(phi),
+                                        np.sin(theta) * np.sin(phi),
+                                        np.cos(theta)]))
+
+        for i in range(ambient_dim):
+            for sign in [-1, 1]:
+                pole = np.zeros(ambient_dim)
+                pole[i] = sign
+                points.append(pole)
+
+        points = np.array(points).T
+    else:
+        raise ValueError("ambient_dim > 3 not supported.")
+
+    return points
+
+
 class ProxyGenerator(object):
     r"""
-    .. attribute:: nproxy
     .. attribute:: ambient_dim
+    .. attribute:: nproxy
+
+        Approximate number of proxy points. In 2D, this is the exact
+        number of proxy points, but in 3D
     .. attribute:: source
 
         A :class:`pytential.qbx.QBXLayerPotentialSource`.
@@ -306,12 +353,11 @@ class ProxyGenerator(object):
 
             r = \theta r_{qbx}.
 
-    .. attribute:: ref_mesh
+    .. attribute:: ref_points
 
-        Reference mesh. Can be used to construct a mesh for a proxy
-        ball :math:`i` by translating it to `center[i]` and scaling by
-        `radii[i]`, as obtained by :meth:`__call__` (see
-        :meth:`meshmode.mesh.processing.affine_map`).
+        Reference points on a unit ball. Can be used to construct the points
+        around a proxy ball :math:`i` by translating them to `center[i]` and
+        scaling by `radii[i]`, as obtained by :meth:`__call__`.
 
     .. automethod:: __call__
     """
@@ -322,18 +368,8 @@ class ProxyGenerator(object):
         self.ratio = 1.1 if ratio is None else ratio
         self.nproxy = 32 if nproxy is None else nproxy
 
-        if self.ambient_dim == 2:
-            from meshmode.mesh.generation import ellipse, make_curve_mesh
-
-            self.ref_mesh = make_curve_mesh(lambda t: ellipse(1.0, t),
-                    np.linspace(0.0, 1.0, self.nproxy + 1),
-                    self.nproxy)
-        elif self.ambient_dim == 3:
-            from meshmode.mesh.generation import generate_icosphere
-
-            self.ref_mesh = generate_icosphere(1, self.nproxy)
-        else:
-            raise ValueError("unsupported ambient dimension")
+        self.ref_points = \
+                _generate_unit_sphere(self.ambient_dim, self.nproxy)
 
     @memoize_method
     def get_kernel(self):
@@ -424,6 +460,9 @@ class ProxyGenerator(object):
             `pxycenters[i]`.
         """
 
+        def _affine_map(v, A, b):
+            return np.dot(A, v) + b
+
         from pytential.qbx.utils import get_centers_on_side
 
         knl = self.get_kernel()
@@ -437,17 +476,16 @@ class ProxyGenerator(object):
         centers = centers_dev.get()
         radii = radii_dev.get()
 
-        from meshmode.mesh.processing import affine_map
         proxies = np.empty(indices.nblocks, dtype=np.object)
-
         for i in range(indices.nblocks):
-            mesh = affine_map(self.ref_mesh,
-                A=(radii[i] * np.eye(self.ambient_dim)),
-                b=centers[:, i].reshape(-1))
-            proxies[i] = mesh.vertices
+            proxies[i] = _affine_map(self.ref_points,
+                    A=(radii[i] * np.eye(self.ambient_dim)),
+                    b=centers[:, i].reshape(-1, 1))
 
-        pxyranges = cl.array.arange(queue, 0,
-                proxies.shape[0] * proxies[0].shape[-1] + 1, proxies[0].shape[-1],
+        pxyranges = cl.array.arange(queue,
+                0,
+                proxies.shape[0] * proxies[0].shape[1] + 1,
+                proxies[0].shape[1],
                 dtype=indices.ranges.dtype)
         proxies = make_obj_array([
             cl.array.to_device(queue, np.hstack([p[idim] for p in proxies]))

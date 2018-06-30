@@ -318,8 +318,12 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
             from meshmode.discretization.poly_element import \
                 InterpolatoryQuadratureSimplexGroupFactory
 
+            from meshmode.mesh.generation import generate_icosphere
+            ref_mesh = generate_icosphere(1, generator.nproxy)
+
+            # NOTE: this does not plot the actual proxy points
             for i in range(srcindices.nblocks):
-                mesh = affine_map(generator.ref_mesh,
+                mesh = affine_map(ref_mesh,
                     A=(pxyradii[i] * np.eye(ndim)),
                     b=pxycenters[:, i].reshape(-1))
 
