@@ -367,7 +367,10 @@ class ProxyGenerator(object):
         approx_nproxy = 32 if approx_nproxy is None else approx_nproxy
         self.ref_points = \
                 _generate_unit_sphere(self.ambient_dim, approx_nproxy)
-        self.nproxy = self.ref_points.shape[1]
+
+    @property
+    def nproxy(self):
+        return self.ref_points.shape[1]
 
     @memoize_method
     def get_kernel(self):
