@@ -289,6 +289,8 @@ def _generate_unit_sphere(ambient_dim, approx_npoints):
         points = np.vstack([np.cos(t), np.sin(t)])
     elif ambient_dim == 3:
         # https://www.cmu.edu/biolphys/deserno/pdf/sphere_equi.pdf
+        # code by Matt Wala from
+        # https://github.com/mattwala/gigaqbx-accuracy-experiments/blob/d56ed063ffd7843186f4fe05d2a5b5bfe6ef420c/translation_accuracy.py#L23
         a = 4.0 * np.pi / approx_npoints
         m_theta = int(np.round(np.pi / np.sqrt(a)))
         d_theta = np.pi / m_theta
