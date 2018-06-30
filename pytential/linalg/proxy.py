@@ -323,7 +323,7 @@ class ProxyGenerator(object):
     .. attribute:: ambient_dim
     .. attribute:: nproxy
 
-        Number of proxy points.
+        Number of proxy points in a single proxy ball.
 
     .. attribute:: source
 
@@ -331,7 +331,7 @@ class ProxyGenerator(object):
 
     .. attribute:: ratio
 
-        A ratio used to compute the proxy point radius. The radius
+        A ratio used to compute the proxy ball radius. The radius
         is computed in the :math:`\ell^2` norm, resulting in a circle or
         sphere of proxy points. For QBX, we have two radii of interest
         for a set of points: the radius :math:`r_{block}` of the
@@ -353,7 +353,7 @@ class ProxyGenerator(object):
     .. attribute:: ref_points
 
         Reference points on a unit ball. Can be used to construct the points
-        around a proxy ball :math:`i` by translating them to ``center[i]`` and
+        of a proxy ball :math:`i` by translating them to ``center[i]`` and
         scaling by ``radii[i]``, as obtained by :meth:`__call__`.
 
     .. automethod:: __call__
