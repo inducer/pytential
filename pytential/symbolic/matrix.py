@@ -198,8 +198,9 @@ class MatrixBuilder(EvaluationMapperBase):
         waa = source.weights_and_area_elements().get(queue=self.queue)
         mat[:, :] *= waa
 
-        resample_mat = (
-                source.resampler.full_resample_matrix(self.queue).get(self.queue))
+        resampler = source.direct_resampler
+        resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
+
         mat = mat.dot(resample_mat)
         mat = mat.dot(rec_density)
 

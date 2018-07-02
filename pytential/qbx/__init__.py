@@ -106,6 +106,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # {{{ argument processing
 
+        if fine_order is None:
+            raise ValueError("fine_order must be provided.")
+
+        if qbx_order is None:
+            raise ValueError("qbx_order must be provided.")
+
         if target_stick_out_factor is not _not_provided:
             from warnings import warn
             warn("target_stick_out_factor has been renamed to "
@@ -372,6 +378,28 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if self._to_refined_connection is not None:
             return ChainedDiscretizationConnection(
                     [self._to_refined_connection, conn])
+
+        return conn
+
+    @property
+    @memoize_method
+    def direct_resampler(self):
+        """
+        .. warning::
+
+            This always returns a
+            :class:`~meshmode.discretization.connection.DirectDiscretizationConnect`.
+            In case the geometry has been refined multiple times, a direct
+            connection can have a large number of groups and/or
+            interpolation batches, making it scale significantly worse than
+            the one returned by :attr:`resampler`.
+        """
+        from meshmode.discretization.connection import \
+                flatten_chained_connection
+
+        conn = self.resampler
+        with cl.CommandQueue(self.cl_context) as queue:
+            conn = flatten_chained_connection(queue, conn)
 
         return conn
 

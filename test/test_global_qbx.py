@@ -96,7 +96,9 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
 
     from pytential.qbx.utils import TreeCodeContainer
 
-    lpot_source = QBXLayerPotentialSource(discr, order)
+    lpot_source = QBXLayerPotentialSource(discr,
+            qbx_order=order,  # not used in refinement
+            fine_order=order)
     del discr
 
     expansion_disturbance_tolerance = 0.025
@@ -217,13 +219,7 @@ def test_source_refinement_3d(ctx_getter, surface_name, surface_f, order):
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
-    # TODO: This used to pass for a 20-to-1 ellipse (with different center
-    # placement).  It still produces valid output right now, but the current
-    # test is not smart enough to recognize it. It might be useful to fix that.
-    #
-    # See discussion at
-    # https://gitlab.tiker.net/inducer/pytential/merge_requests/95#note_24003
-    ("18-to-1 ellipse", partial(ellipse, 18), 100),
+    ("20-to-1 ellipse", partial(ellipse, 20), 100),
     ("horseshoe", horseshoe, 64),
     ])
 def test_target_association(ctx_getter, curve_name, curve_f, nelements,
@@ -245,7 +241,9 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements,
 
     discr = Discretization(cl_ctx, mesh, factory)
 
-    lpot_source, conn = QBXLayerPotentialSource(discr, order).with_refinement()
+    lpot_source, conn = QBXLayerPotentialSource(discr,
+            qbx_order=order,  # not used in target association
+            fine_order=order).with_refinement()
     del discr
 
     from pytential.qbx.utils import get_interleaved_centers
@@ -320,6 +318,8 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements,
 
     expansion_radii = lpot_source._expansion_radii("ncenters").get(queue)
 
+    surf_targets = np.array(
+            [axis.get(queue) for axis in lpot_source.density_discr.nodes()])
     int_targets = np.array([axis.get(queue) for axis in int_targets.nodes()])
     ext_targets = np.array([axis.get(queue) for axis in ext_targets.nodes()])
 
@@ -352,48 +352,45 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements,
     if visualize:
         visualize_curve_and_assoc()
 
-    # Checks that the sources match with their own centers.
-    def check_on_surface_targets(nsources, true_side, target_to_center,
-                                 target_to_side_result):
-        assert (target_to_center >= 0).all()
-
-        sources = np.arange(0, nsources)
-
-        # Centers are on alternating sides of the geometry. Dividing by
-        # two yields the number of the source that spawned the center.
-        assert (target_to_center//2 == sources).all()
-
-        assert (target_to_side_result == true_side).all()
-
     # Checks that the targets match with centers on the appropriate side and
     # within the allowable distance.
     def check_close_targets(centers, targets, true_side,
                             target_to_center, target_to_side_result,
                             tgt_slice):
-        assert (target_to_center >= 0).all()
+        targets_have_centers = (target_to_center >= 0).all()
+        assert targets_have_centers
+
         assert (target_to_side_result == true_side).all()
+
+        TOL = 1e-3
         dists = la.norm((targets.T - centers.T[target_to_center]), axis=1)
-        assert (dists <= expansion_radii[target_to_center]).all()
+        assert (dists <= (1 + TOL) * expansion_radii[target_to_center]).all()
 
     # Center side order = -1, 1, -1, 1, ...
     target_to_center_side = 2 * (target_assoc.target_to_center % 2) - 1
 
-    check_on_surface_targets(
-        nsources, -1,
+    # interior surface
+    check_close_targets(
+        centers, surf_targets, -1,
         target_assoc.target_to_center[surf_int_slice],
-        target_to_center_side[surf_int_slice])
+        target_to_center_side[surf_int_slice],
+        surf_int_slice)
 
-    check_on_surface_targets(
-        nsources, +1,
+    # exterior surface
+    check_close_targets(
+        centers, surf_targets, +1,
         target_assoc.target_to_center[surf_ext_slice],
-        target_to_center_side[surf_ext_slice])
+        target_to_center_side[surf_ext_slice],
+        surf_ext_slice)
 
+    # interior volume
     check_close_targets(
         centers, int_targets, -1,
         target_assoc.target_to_center[vol_int_slice],
         target_to_center_side[vol_int_slice],
         vol_int_slice)
 
+    # exterior volume
     check_close_targets(
         centers, ext_targets, +1,
         target_assoc.target_to_center[vol_ext_slice],
@@ -424,7 +421,9 @@ def test_target_association_failure(ctx_getter):
             InterpolatoryQuadratureSimplexGroupFactory
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
     discr = Discretization(cl_ctx, mesh, factory)
-    lpot_source = QBXLayerPotentialSource(discr, order)
+    lpot_source = QBXLayerPotentialSource(discr,
+            qbx_order=order,  # not used in target association
+            fine_order=order)
 
     # }}}
 
