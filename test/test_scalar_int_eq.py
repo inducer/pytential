@@ -303,8 +303,8 @@ class ElliptiplaneIntEqTestCase(IntEqTestCase):
 class BetterplaneIntEqTestCase(IntEqTestCase):
     name = "betterplane"
 
-    default_helmholtz_k = 10
-    resolutions = [0.3]
+    default_helmholtz_k = 20
+    resolutions = [0.2]
     # refine_on_helmholtz_k = False
 
     fmm_backend = "fmmlib"
@@ -325,7 +325,7 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
     # kidding?
     gmres_tol = 1e-5
 
-    vis_grid_spacing = (0.04, 0.2, 0.04)
+    vis_grid_spacing = (0.025, 0.2, 0.025)
     vis_extend_factor = 0.2
 
     def get_mesh(self, resolution, target_order):
@@ -471,6 +471,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                 % qbx.density_discr.mesh.nelements)
         print("%d stage-2 elements after refinement"
                 % qbx.stage2_density_discr.mesh.nelements)
+        print("quad stage-2 elements have %d nodes"
+                % qbx.quad_stage2_density_discr.groups[0].nunit_nodes)
 
     density_discr = qbx.density_discr
 
