@@ -92,7 +92,7 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
     nelements = 30
     target_order = 8
     qbx_order = 3
-    if use_fmm is True:
+    if use_fmm:
         fmm_order = qbx_order
     else:
         fmm_order = False
@@ -139,8 +139,7 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
         pt.colorbar()
         pt.show()
 
-    # FIXME: Why does the FMM only meet this sloppy tolerance?
-    assert linf_err < 1e-2
+    assert linf_err < 1e-3
 
 # }}}
 
@@ -389,16 +388,20 @@ def test_perf_data_gathering(ctx_getter, n_arms=5):
 
 # {{{ test 3D jump relations
 
-@pytest.mark.parametrize("relation", ["sp", "nxcurls"])
+@pytest.mark.parametrize("relation", ["sp", "nxcurls", "div_s"])
 def test_3d_jump_relations(ctx_factory, relation, visualize=False):
-    #logging.basicConfig(level=logging.INFO)
+    # logging.basicConfig(level=logging.INFO)
 
     pytest.importorskip("pyfmmlib")
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
-    target_order = 4
+    if relation == "div_s":
+        target_order = 3
+    else:
+        target_order = 4
+
     qbx_order = target_order
 
     from pytools.convergence import EOCRecorder
@@ -468,6 +471,16 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                     sym.Sp(knl, density_sym, qbx_forced_limit=+1)
                     - (sym.Sp(knl, density_sym, qbx_forced_limit="avg")
                         - 0.5*density_sym))
+
+        elif relation == "div_s":
+
+            density = m.cos(2*x) * m.cos(2*y) * m.cos(z)
+            density_sym = sym.var("density")
+
+            jump_identity_sym = (
+                    sym.div(sym.S(knl, sym.normal(3).as_vector()*density_sym,
+                        qbx_forced_limit="avg"))
+                    + sym.D(knl, density_sym, qbx_forced_limit="avg"))
 
         else:
             raise ValueError("unexpected value of 'relation': %s" % relation)

@@ -16,7 +16,7 @@ and you can start computing.
 .. automodule:: pytential.qbx
 
 Unregularized discretization
--------
+----------------------------
 
 .. automodule:: pytential.unregularized
 
