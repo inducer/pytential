@@ -203,8 +203,8 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     from sumpy.tools import MatrixBlockIndexRanges
     index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
 
-    from pytential.symbolic.matrix import P2PMatrixBlockBuilder
-    mbuilder = P2PMatrixBlockBuilder(queue,
+    from pytential.symbolic.matrix import FarFieldBlockBuilder
+    mbuilder = FarFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places[DEFAULT_SOURCE],
@@ -237,7 +237,7 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
         _, (ax1, ax2) = mp.subplots(1, 2,
                 figsize=(10, 8), dpi=300, constrained_layout=True)
         ax1.imshow(blk_full)
-        ax1.set_title('P2PMatrixBlockBuilder')
+        ax1.set_title('FarFieldBlockBuilder')
         ax2.imshow(mat_full)
         ax2.set_title('P2PMatrixBuilder')
         mp.savefig("test_p2p_block_{}d_{:.1f}.png".format(ndim, factor))
@@ -277,8 +277,8 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     from sumpy.tools import MatrixBlockIndexRanges
     index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
 
-    from pytential.symbolic.matrix import MatrixBlockBuilder
-    mbuilder = MatrixBlockBuilder(queue,
+    from pytential.symbolic.matrix import NearFieldBlockBuilder
+    mbuilder = NearFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places[DEFAULT_SOURCE],
@@ -313,7 +313,7 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
         ax1.imshow(mat_full)
         ax1.set_title('MatrixBuilder')
         ax2.imshow(blk_full)
-        ax2.set_title('MatrixBlockBuilder')
+        ax2.set_title('NearFieldBlockBuilder')
         mp.savefig("test_qbx_block_builder.png", dpi=300)
 
     for i in range(index_set.nblocks):

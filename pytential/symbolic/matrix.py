@@ -395,10 +395,10 @@ class MatrixBlockBuilderBase(EvaluationMapperBase):
         return result
 
 
-class MatrixBlockBuilder(MatrixBlockBuilderBase):
+class NearFieldBlockBuilder(MatrixBlockBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source,
             places, context, index_set):
-        super(MatrixBlockBuilder, self).__init__(queue,
+        super(NearFieldBlockBuilder, self).__init__(queue,
             dep_expr, other_dep_exprs, dep_source, places, context, index_set)
 
         self.dummy = MatrixBlockBuilderBase(queue,
@@ -484,10 +484,10 @@ class MatrixBlockBuilder(MatrixBlockBuilderBase):
         return mat
 
 
-class P2PMatrixBlockBuilder(MatrixBlockBuilderBase):
+class FarFieldBlockBuilder(MatrixBlockBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source,
             places, context, index_set, exclude_self=True):
-        super(P2PMatrixBlockBuilder, self).__init__(queue,
+        super(FarFieldBlockBuilder, self).__init__(queue,
             dep_expr, other_dep_exprs, dep_source, places, context, index_set)
 
         self.dummy = MatrixBlockBuilderBase(queue,
