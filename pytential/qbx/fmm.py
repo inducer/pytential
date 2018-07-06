@@ -33,6 +33,7 @@ from sumpy.fmm import (SumpyExpansionWranglerCodeContainer,
 from pytools import memoize_method
 from pytential.qbx.interactions import P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P
 
+from boxtree.fmm import TimingRecorder
 from pytools import log_process, ProcessLogger
 
 import logging
@@ -195,7 +196,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     # {{{ qbx-related
 
     @log_process(logger)
-    def form_global_qbx_locals(self, src_weights):
+    def form_global_qbx_locals(self, src_weights, timing_data=None):
         local_exps = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
@@ -229,10 +230,13 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         assert local_exps is result
         result.add_event(evt)
 
+        self.update_timing_data("form_global_qbx_locals", timing_data, [evt])
+
         return result
 
     @log_process(logger)
-    def translate_box_multipoles_to_qbx_local(self, multipole_exps):
+    def translate_box_multipoles_to_qbx_local(self, multipole_exps,
+            timing_data=None):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
@@ -240,6 +244,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
             return qbx_expansions
 
         traversal = geo_data.traversal()
+
+        events = []
 
         wait_for = multipole_exps.events
 
@@ -273,15 +279,21 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                     **self.kernel_extra_kwargs)
 
+            events.append(evt)
+
             wait_for = [evt]
             assert qbx_expansions_res is qbx_expansions
 
         qbx_expansions.add_event(evt)
 
+        self.update_timing_data(
+                "translate_box_multipoles_to_qbx_local",
+                timing_data, events)
+
         return qbx_expansions
 
     @log_process(logger)
-    def translate_box_local_to_qbx_local(self, local_exps):
+    def translate_box_local_to_qbx_local(self, local_exps, timing_data=None):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
@@ -290,6 +302,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         trav = geo_data.traversal()
 
         wait_for = local_exps.events
+        events = []
 
         for isrc_level in range(geo_data.tree().nlevels):
             l2qbxl = self.code.l2qbxl(
@@ -318,15 +331,21 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                     **self.kernel_extra_kwargs)
 
+            events.append(evt)
+
             wait_for = [evt]
             assert qbx_expansions_res is qbx_expansions
 
         qbx_expansions.add_event(evt)
 
+        self.update_timing_data(
+                "translate_box_local_to_qbx_local",
+                timing_data, events)
+
         return qbx_expansions
 
     @log_process(logger)
-    def eval_qbx_expansions(self, qbx_expansions):
+    def eval_qbx_expansions(self, qbx_expansions, timing_data=None):
         pot = self.full_output_zeros()
 
         geo_data = self.geo_data
@@ -356,6 +375,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         for pot_i, pot_res_i in zip(pot, pot_res):
             assert pot_i is pot_res_i
 
+        self.update_timing_data("eval_qbx_expansions", timing_data, [evt])
+
         return pot
 
     # }}}
@@ -365,7 +386,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
 # {{{ FMM top-level
 
-def drive_fmm(expansion_wrangler, src_weights):
+def drive_fmm(expansion_wrangler, src_weights, timing_data=None):
     """Top-level driver routine for the QBX fast multipole calculation.
 
     :arg geo_data: A :class:`QBXFMMGeometryData` instance.
@@ -373,6 +394,8 @@ def drive_fmm(expansion_wrangler, src_weights):
         :class:`ExpansionWranglerInterface`.
     :arg src_weights: Source 'density/weights/charges'.
         Passed unmodified to *expansion_wrangler*.
+    :arg timing_data: Either *None* or a dictionary that collects
+        timing data.
 
     Returns the potentials computed by *expansion_wrangler*.
 
@@ -383,6 +406,7 @@ def drive_fmm(expansion_wrangler, src_weights):
     geo_data = wrangler.geo_data
     traversal = geo_data.traversal()
     tree = traversal.tree
+    recorder = TimingRecorder()
 
     # Interface guidelines: Attributes of the tree are assumed to be known
     # to the expansion wrangler and should not be passed.
@@ -396,7 +420,8 @@ def drive_fmm(expansion_wrangler, src_weights):
     mpole_exps = wrangler.form_multipoles(
             traversal.level_start_source_box_nrs,
             traversal.source_boxes,
-            src_weights)
+            src_weights,
+            timing_data=recorder.next())
 
     # }}}
 
@@ -405,7 +430,8 @@ def drive_fmm(expansion_wrangler, src_weights):
     wrangler.coarsen_multipoles(
             traversal.level_start_source_parent_box_nrs,
             traversal.source_parent_boxes,
-            mpole_exps)
+            mpole_exps,
+            timing_data=recorder.next())
 
     # }}}
 
@@ -415,7 +441,8 @@ def drive_fmm(expansion_wrangler, src_weights):
             traversal.target_boxes,
             traversal.neighbor_source_boxes_starts,
             traversal.neighbor_source_boxes_lists,
-            src_weights)
+            src_weights,
+            timing_data=recorder.next())
 
     # }}}
 
@@ -426,7 +453,8 @@ def drive_fmm(expansion_wrangler, src_weights):
             traversal.target_or_target_parent_boxes,
             traversal.from_sep_siblings_starts,
             traversal.from_sep_siblings_lists,
-            mpole_exps)
+            mpole_exps,
+            timing_data=recorder.next())
 
     # }}}
 
@@ -438,7 +466,8 @@ def drive_fmm(expansion_wrangler, src_weights):
     non_qbx_potentials = non_qbx_potentials + wrangler.eval_multipoles(
             traversal.target_boxes_sep_smaller_by_source_level,
             traversal.from_sep_smaller_by_level,
-            mpole_exps)
+            mpole_exps,
+            timing_data=recorder.next())
 
     # assert that list 3 close has been merged into list 1
     assert traversal.from_sep_close_smaller_starts is None
@@ -452,7 +481,8 @@ def drive_fmm(expansion_wrangler, src_weights):
             traversal.target_or_target_parent_boxes,
             traversal.from_sep_bigger_starts,
             traversal.from_sep_bigger_lists,
-            src_weights)
+            src_weights,
+            timing_data=recorder.next())
 
     # assert that list 4 close has been merged into list 1
     assert traversal.from_sep_close_bigger_starts is None
@@ -464,7 +494,8 @@ def drive_fmm(expansion_wrangler, src_weights):
     wrangler.refine_locals(
             traversal.level_start_target_or_target_parent_box_nrs,
             traversal.target_or_target_parent_boxes,
-            local_exps)
+            local_exps,
+            timing_data=recorder.next())
 
     # }}}
 
@@ -473,22 +504,30 @@ def drive_fmm(expansion_wrangler, src_weights):
     non_qbx_potentials = non_qbx_potentials + wrangler.eval_locals(
             traversal.level_start_target_box_nrs,
             traversal.target_boxes,
-            local_exps)
+            local_exps,
+            timing_data=recorder.next())
 
     # }}}
 
     # {{{ wrangle qbx expansions
 
-    qbx_expansions = wrangler.form_global_qbx_locals(src_weights)
+    qbx_expansions = wrangler.form_global_qbx_locals(
+            src_weights,
+            timing_data=recorder.next())
 
     qbx_expansions = qbx_expansions + \
-            wrangler.translate_box_multipoles_to_qbx_local(mpole_exps)
+            wrangler.translate_box_multipoles_to_qbx_local(
+                mpole_exps,
+                timing_data=recorder.next())
 
     qbx_expansions = qbx_expansions + \
-            wrangler.translate_box_local_to_qbx_local(local_exps)
+            wrangler.translate_box_local_to_qbx_local(
+                local_exps,
+                timing_data=recorder.next())
 
     qbx_potentials = wrangler.eval_qbx_expansions(
-            qbx_expansions)
+            qbx_expansions,
+            timing_data=recorder.next())
 
     # }}}
 
@@ -515,6 +554,9 @@ def drive_fmm(expansion_wrangler, src_weights):
     # }}}
 
     fmm_proc.done()
+
+    if timing_data is not None:
+        timing_data.update(recorder.summarize())
 
     return result
 
