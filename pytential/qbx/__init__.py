@@ -497,6 +497,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         def evaluate_wrapper(expr):
             value = evaluate(expr)
+            from numbers import Number
+            if isinstance(value, Number):
+                # no need to upsample scalars
+                return value
+
             return with_object_array_or_scalar(oversample, value)
 
         if self.fmm_level_to_order is False:
