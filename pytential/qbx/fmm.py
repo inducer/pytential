@@ -242,9 +242,9 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         traversal = geo_data.traversal()
 
-        events = []
-
         wait_for = multipole_exps.events
+
+        events = []
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
             m2qbxl = self.code.m2qbxl(
@@ -295,6 +295,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         trav = geo_data.traversal()
 
         wait_for = local_exps.events
+
         events = []
 
         for isrc_level in range(geo_data.tree().nlevels):
@@ -512,8 +513,7 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None):
 
     # {{{ wrangle qbx expansions
 
-    qbx_expansions, timing_future = wrangler.form_global_qbx_locals(
-            src_weights)
+    qbx_expansions, timing_future = wrangler.form_global_qbx_locals(src_weights)
 
     recorder.add("form_global_qbx_locals", timing_future)
 
@@ -525,14 +525,13 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None):
     qbx_expansions = qbx_expansions + local_result
 
     local_result, timing_future = (
-            wrangler.translate_box_local_to_qbx_local(mpole_exps))
+            wrangler.translate_box_local_to_qbx_local(local_exps))
 
     recorder.add("translate_box_local_to_qbx_local", timing_future)
 
     qbx_expansions = qbx_expansions + local_result
 
-    qbx_potentials, timing_future = wrangler.eval_qbx_expansions(
-            qbx_expansions)
+    qbx_potentials, timing_future = wrangler.eval_qbx_expansions(qbx_expansions)
 
     recorder.add("eval_qbx_expansions", timing_future)
 
