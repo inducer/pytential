@@ -30,6 +30,7 @@ from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 
+from boxtree.tools import return_timing_data
 from pytools import log_process
 
 import logging
@@ -301,6 +302,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     # {{{ p2qbxl
 
     @log_process(logger)
+    @return_timing_data
     def form_global_qbx_locals(self, src_weights):
         geo_data = self.geo_data
         trav = geo_data.traversal()
@@ -352,6 +354,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     # {{{ m2qbxl
 
     @log_process(logger)
+    @return_timing_data
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
         qbx_exps = self.qbx_local_expansion_zeros()
 
@@ -463,6 +466,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     # }}}
 
     @log_process(logger)
+    @return_timing_data
     def translate_box_local_to_qbx_local(self, local_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
@@ -524,6 +528,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return qbx_expansions
 
     @log_process(logger)
+    @return_timing_data
     def eval_qbx_expansions(self, qbx_expansions):
         output = self.full_output_zeros()
 
