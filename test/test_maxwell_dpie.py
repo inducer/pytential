@@ -468,7 +468,7 @@ def test_pec_dpie_extinction(
     # make sure Maxwell residuals are small so we know the incident field
     # properly satisfies the maxwell equations
     print("Source Maxwell residuals:", source_maxwell_resids)
-    assert max(source_maxwell_resids) < 1e-6
+    assert max(source_maxwell_resids) < 1e-4
 
     # }}}
 
@@ -553,7 +553,7 @@ def test_pec_dpie_extinction(
                     tau_densities, target='tgt')
 
             def eval_test_repr_at(tgt):
-                map = geom_map
+                map = geom_map.copy()
                 map['tgt'] = tgt
                 return bind(map, sym_repr0)(queue, phi_densities=dummy_phi,
                         A_densities=dummy_A, tau_densities=dummy_tau,
@@ -979,9 +979,13 @@ def test_pec_dpie_extinction(
             sym_repr = dpie.scattered_volume_field(
                     phi_densities, A_densities, tau_densities, target='tgt')
 
-            def eval_repr_at(tgt):
-                map = geom_map
+            def eval_repr_at(tgt, source=None):
+                map = geom_map.copy()
+                if source:
+                    map['obj0'] = source
+                    map['obj0t'] = source.density_discr
                 map['tgt'] = tgt
+
                 return bind(map, sym_repr)(queue, phi_densities=phi_dens,
                         A_densities=A_dens, tau_densities=tau_dens,
                         **knl_kwargs)
@@ -1052,17 +1056,16 @@ def test_pec_dpie_extinction(
                 from meshmode.discretization.visualization import make_visualizer
                 bdry_vis = make_visualizer(queue, scat_discr, case.target_order+3)
 
-                bdry_normals = bind(scat_discr, sym.normal(3))(queue)\
-                        .as_vector(dtype=object)
-
                 bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
-                    ("phi", phi),
-                    # ("Axyz", Axyz),
-                    # ("Einc", inc_EM_field_scat.e),
-                    # ("Hinc", inc_EM_field_scat.h),
-                    ("bdry_normals", bdry_normals),
-                    # ("e_bc_residual", eh_bc_values[:3]),
-                    # ("h_bc_residual", eh_bc_values[3]),
+                    ("phi", phi_dens),
+                    ("A_dens", A_dens),
+                    ("tau_dens", tau_dens),
+
+                    ("A_inc", A_inc),
+                    ("phi_inc", phi_inc),
+
+                    ("scalar_bc_residual", scalar_bc_residual),
+                    ("vector_bc_residual", vector_bc_residual),
                     ])
 
                 fplot = make_field_plotter_from_bbox(
@@ -1089,13 +1092,16 @@ def test_pec_dpie_extinction(
                 # fplot_inc = EHField(
                 #         vector_from_device(queue, eval_inc_field_at(fplot_tgt)))
 
+                fplot_inc = EHField(vector_from_device(queue,
+                    get_incident_plane_wave_EHField(fplot_tgt)))
+
                 fplot.write_vtk_file(
                         "potential-%s.vts" % resolution,
                         [
                             ("E", fplot_repr.e),
                             ("H", fplot_repr.h),
-                            # ("Einc", fplot_inc.e),
-                            # ("Hinc", fplot_inc.h),
+                            ("E_inc", fplot_inc.e),
+                            ("H_inc", fplot_inc.h),
                             ]
                         )
 
