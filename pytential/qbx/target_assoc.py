@@ -91,8 +91,6 @@ Return values
 
 .. autoclass:: QBXTargetAssociation
 
-.. autoclass:: QBXTargetAssociationFailedException
-
 Target association driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -530,9 +528,9 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return (found_target_close_to_panel == 1).all().get()
 
     @log_process(logger)
-    def try_find_centers(self, tree, peer_lists, lpot_source,
-                         target_status, target_flags, target_assoc,
-                         target_association_tolerance, debug, wait_for=None):
+    def find_centers(self, tree, peer_lists, lpot_source,
+                     target_status, target_flags, target_assoc,
+                     target_association_tolerance, debug, wait_for=None):
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
@@ -727,7 +725,7 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
 
         The side request can take on the values in :ref:`qbx-side-request-table`.
 
-    :raises QBXTargetAssociationFailedException:
+    :raises pytential.qbx.QBXTargetAssociationFailedException:
         when target association failed to find a center for a target.
         The returned exception object contains suggested refine flags.
 
@@ -752,7 +750,7 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
 
     target_flags = wrangler.make_target_flags(target_discrs_and_qbx_sides)
 
-    wrangler.try_find_centers(tree, peer_lists, lpot_source, target_status,
+    wrangler.find_centers(tree, peer_lists, lpot_source, target_status,
             target_flags, target_assoc, target_association_tolerance, debug)
 
     center_not_found = (

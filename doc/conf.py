@@ -271,6 +271,7 @@ intersphinx_mapping = {
     'http://docs.python.org/': None,
     'http://documen.tician.de/boxtree/': None,
     'http://docs.scipy.org/doc/numpy/': None,
+    'http://documen.tician.de/meshmode/': None,
     'http://documen.tician.de/modepy/': None,
     'http://documen.tician.de/pyopencl/': None,
     'http://documen.tician.de/pytools/': None,

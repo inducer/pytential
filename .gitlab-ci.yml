@@ -49,7 +49,7 @@ Python 3.6 POCL Examples:
   except:
   - tags
 
-Python 3.5 Conda:
+Python 3.6 Conda:
   script:
   - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
   - export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
