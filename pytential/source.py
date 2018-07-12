@@ -140,7 +140,7 @@ class PointPotentialSource(PotentialSource):
 
         timing_data = {}
         new_futures = []
-        return result, timing_data, []
+        return result, new_futures, timing_data
 
     @memoize_method
     def weights_and_area_elements(self):
