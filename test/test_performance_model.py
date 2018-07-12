@@ -95,7 +95,7 @@ def test_timing_data_gathering(ctx_getter):
     op_S = bind(lpot_source, sym_op_S)
 
     timing_data = {}
-    op_S.exec(queue, dict(sigma=sigma), timing_data=timing_data)
+    op_S.eval(queue, dict(sigma=sigma), timing_data=timing_data)
     assert timing_data
     print(timing_data)
 

@@ -437,7 +437,7 @@ class BoundExpression:
         return MatVecOp(self, queue,
                 arg_name, dtype, total_dofs, starts_and_ends, extra_args)
 
-    def exec(self, queue, context=None, timing_data=None):
+    def eval(self, queue, context=None, timing_data=None):
         if context is None:
             context = {}
         exec_mapper = EvaluationMapper(
@@ -445,7 +445,7 @@ class BoundExpression:
         return self.code.execute(exec_mapper)
 
     def __call__(self, queue, **args):
-        return self.exec(queue, args)
+        return self.eval(queue, args)
 
 # }}}
 
