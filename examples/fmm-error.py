@@ -78,7 +78,7 @@ def main():
 
     import matplotlib
     matplotlib.use('Agg')
-    im = fplot.show_scalar_in_matplotlib(np.log10(np.abs(err)))
+    im = fplot.show_scalar_in_matplotlib(np.log10(np.abs(err) + 1e-17))
 
     from matplotlib.colors import Normalize
     im.set_norm(Normalize(vmin=-12, vmax=0))
