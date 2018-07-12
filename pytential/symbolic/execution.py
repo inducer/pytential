@@ -230,9 +230,22 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
 class EvaluationMapper(EvaluationMapperBase):
 
+    def __init__(self, bound_expr, queue, context=None,
+            timing_data=None):
+        EvaluationMapperBase.__init__(self, bound_expr, queue, context)
+        self.timing_data = timing_data
+
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         source = bound_expr.places[insn.source]
-        return source.exec_compute_potential_insn(queue, insn, bound_expr, evaluate)
+
+        result, futures, timing_data = (
+                source.exec_compute_potential_insn(
+                    queue, insn, bound_expr, evaluate))
+
+        if self.timing_data is not None:
+            self.timing_data[insn] = timing_data
+
+        return (result, futures)
 
 # }}}
 
@@ -424,9 +437,15 @@ class BoundExpression:
         return MatVecOp(self, queue,
                 arg_name, dtype, total_dofs, starts_and_ends, extra_args)
 
-    def __call__(self, queue, **args):
-        exec_mapper = EvaluationMapper(self, queue, args)
+    def exec(self, queue, context=None, timing_data=None):
+        if context is None:
+            context = {}
+        exec_mapper = EvaluationMapper(
+                self, queue, context, timing_data=timing_data)
         return self.code.execute(exec_mapper)
+
+    def __call__(self, queue, **args):
+        return self.exec(queue, args)
 
 # }}}
 

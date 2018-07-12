@@ -187,7 +187,9 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
-        return result, []
+        timing_data = {}
+        new_futures = []
+        return result, new_futures, timing_data
 
     # {{{ fmm-based execution
 
@@ -270,8 +272,9 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         from boxtree.fmm import drive_fmm
+        timing_data = {}
         all_potentials_on_every_tgt = drive_fmm(
-                geo_data.traversal(), wrangler, strengths)
+                geo_data.traversal(), wrangler, strengths, timing_data)
 
         # {{{ postprocess fmm
 
@@ -288,7 +291,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        return result, []
+        new_futures = []
+        return result, new_futures, timing_data
 
     # }}}
 

@@ -835,7 +835,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # {{{ execute global QBX
 
         from pytential.qbx.fmm import drive_fmm
-        all_potentials_on_every_target = drive_fmm(wrangler, strengths)
+        timing_data = {}
+        all_potentials_on_every_target = drive_fmm(wrangler, strengths, timing_data)
 
         # }}}
 
@@ -851,7 +852,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     all_potentials_on_every_target[o.kernel_index][target_slice]))
 
         new_futures = []
-        return result, new_futures
+        return result, new_futures, timing_data
 
     # }}}
 
@@ -1014,7 +1015,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
-        return result, []
+        timing_data = {}
+        new_futures = []
+        return result, new_futures, timing_data
 
     # }}}
 
