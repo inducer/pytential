@@ -52,6 +52,8 @@ DEFAULT_LPOT_KWARGS = {
 # {{{ test_timing_data_gathering
 
 def test_timing_data_gathering(ctx_getter):
+    pytest.importorskip("pyfmmlib")
+
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
