@@ -392,8 +392,6 @@ def test_perf_data_gathering(ctx_getter, n_arms=5):
 def test_3d_jump_relations(ctx_factory, relation, visualize=False):
     # logging.basicConfig(level=logging.INFO)
 
-    pytest.importorskip("pyfmmlib")
-
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 

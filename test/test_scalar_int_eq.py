@@ -871,10 +871,7 @@ def test_integral_equation(ctx_getter, case, visualize=False):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    if case.fmm_backend == "fmmlib":
-        pytest.importorskip("pyfmmlib")
-
-    if USE_SYMENGINE and case.fmm_backend is None:
+    if USE_SYMENGINE and case.fmm_backend == "sumpy":
         pytest.skip("https://gitlab.tiker.net/inducer/sumpy/issues/25")
 
     # prevent cache 'splosion

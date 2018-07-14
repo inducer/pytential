@@ -258,9 +258,6 @@ def no_test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
 
     special = pytest.importorskip("scipy.special")
 
-    if fmm_backend == "fmmlib":
-        pytest.importorskip("pyfmmlib")
-
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
