@@ -32,10 +32,14 @@ import pyopencl as cl  # noqa
 import pyopencl.array  # noqa
 import sympy as sp
 
-from collections import OrderedDict
-from collections.abc import MutableMapping
-from pymbolic import var
 
+from pymbolic import var
+from collections import OrderedDict
+try:
+    from collections.abc import MutableMapping
+except ModuleNotFoundError:
+    # Py 2.7
+    from collections import MutableMapping
 
 import logging
 logger = logging.getLogger(__name__)
