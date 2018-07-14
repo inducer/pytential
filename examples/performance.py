@@ -4,6 +4,8 @@ import pyopencl as cl
 import numpy as np
 
 from pytential import sym, bind
+from pytools import one
+
 
 # {{{ global params
 
@@ -112,8 +114,8 @@ def train_performance_model(ctx):
             timing_data = {}
             bound_op.eval(queue, {"sigma": sigma}, timing_data=timing_data)
 
-            model_results.append(next(iter(perf_S.values())))
-            timing_results.append(next(iter(timing_data.values())))
+            model_results.append(one(perf_S.values()))
+            timing_results.append(one(timing_data.values()))
 
     calibration_params = (
             estimate_calibration_params(model_results, timing_results))
@@ -131,7 +133,7 @@ def test_performance_model(ctx, perf_model):
 
         perf_S = bound_op.get_modeled_performance(queue, sigma=sigma)
         model_result = (
-                next(iter(perf_S.values()))
+                one(perf_S.values())
                 .get_predicted_times(merge_close_lists=True))
 
         # Warm-up run.
@@ -141,7 +143,7 @@ def test_performance_model(ctx, perf_model):
         for _ in range(RUNS):
             timing_data = {}
             bound_op.eval(queue, {"sigma": sigma}, timing_data=timing_data)
-            temp_timing_results.append(next(iter(timing_data.values())))
+            temp_timing_results.append(one(timing_data.values()))
 
         timing_result = {}
         for param in model_result:
