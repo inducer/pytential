@@ -153,7 +153,7 @@ def test_performance_model(ctx, perf_model):
         for stage in model_result:
             print("stage: ", stage)
             print("actual: ", timing_result[stage])
-            print("predicated: ", model_result[stage])
+            print("predicted: ", model_result[stage])
         print("=" * 20)
 
 
