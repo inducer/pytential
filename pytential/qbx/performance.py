@@ -37,7 +37,7 @@ from pymbolic import var
 from collections import OrderedDict
 try:
     from collections.abc import MutableMapping
-except ModuleNotFoundError:
+except ImportError:
     # Py 2.7
     from collections import MutableMapping
 
