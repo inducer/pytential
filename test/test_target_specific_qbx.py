@@ -102,7 +102,7 @@ def test_target_specific_qbx(ctx_getter, op):
     bound_op = bind(qbx, expr)
     slp_ref = bound_op(queue, u=u_dev)
 
-    qbx = qbx.copy(_tsqbx_kind="1")
+    qbx = qbx.copy(_use_tsqbx_list1=True)
     bound_op = bind(qbx, expr)
     slp_tsqbx = bound_op(queue, u=u_dev)
 
