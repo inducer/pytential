@@ -385,7 +385,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
 # {{{ FMM top-level
 
-def drive_fmm(expansion_wrangler, src_weights, timing_data=None):
+def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
+        use_tsqbx=False):
     """Top-level driver routine for the QBX fast multipole calculation.
 
     :arg geo_data: A :class:`QBXFMMGeometryData` instance.
@@ -524,9 +525,12 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None):
 
     # {{{ wrangle qbx expansions
 
-    qbx_expansions, timing_future = wrangler.form_global_qbx_locals(src_weights)
+    if not use_tsqbx:
+        qbx_expansions, timing_future = wrangler.form_global_qbx_locals(src_weights)
 
-    recorder.add("form_global_qbx_locals", timing_future)
+        recorder.add("form_global_qbx_locals", timing_future)
+    else:
+        qbx_expansions = wrangler.qbx_local_expansion_zeros()
 
     local_result, timing_future = (
             wrangler.translate_box_multipoles_to_qbx_local(mpole_exps))
@@ -546,8 +550,13 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None):
 
     recorder.add("eval_qbx_expansions", timing_future)
 
-    qbx_potentials = qbx_potentials + \
-            wrangler.eval_target_specific_global_qbx_locals(src_weights)
+    if use_tsqbx:
+        tsqbx_result, timing_future = (
+                wrangler.eval_target_specific_qbx_locals(src_weights))
+
+        recorder.add("eval_target_specific_qbx_locals", timing_future)
+
+        qbx_potentials = qbx_potentials + tsqbx_result
 
     # }}}
 

@@ -75,6 +75,9 @@ class TranslationCostModel(object):
     def p2qbxl(self):
         return var("c_p2qbxl") * self.ncoeffs_qbx
 
+    def p2p_tsqbx(self):
+        return var("c_p2p_tsqbx") * self.ncoeffs_qbx
+
     def qbxl2p(self):
         return var("c_qbxl2p") * self.ncoeffs_qbx
 
@@ -342,17 +345,23 @@ class PerformanceModel(object):
 
     # }}}
 
-    # {{{ form global qbx locals
+    # {{{ collect data about direct interactions with qbx centers
 
-    def process_form_qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
-            qbx_center_to_target_box):
+    def _collect_qbxl_direct_interaction_data(self, xlat_cost, traversal, tree,
+            global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
 
         # center -> nsources
         np2qbxl_list1 = np.zeros(len(global_qbx_centers), dtype=np.intp)
         np2qbxl_list3 = np.zeros(len(global_qbx_centers), dtype=np.intp)
         np2qbxl_list4 = np.zeros(len(global_qbx_centers), dtype=np.intp)
 
+        # center -> number of associated targets
+        nqbxl2p = np.zeros(len(global_qbx_centers), dtype=np.intp)
+
         for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+            start, end = center_to_targets_starts[tgt_icenter:tgt_icenter+2]
+            nqbxl2p[itgt_center] = end - start
+
             itgt_box = qbx_center_to_target_box[tgt_icenter]
 
             np2qbxl_list1_srcs = 0
@@ -391,12 +400,58 @@ class PerformanceModel(object):
             np2qbxl_list4[itgt_center] = np2qbxl_list4_srcs
 
         result = {}
+        result["np2qbxl_list1"] = np2qbxl_list1
+        result["np2qbxl_list3"] = np2qbxl_list3
+        result["np2qbxl_list4"] = np2qbxl_list4
+        result["nqbxl2p"] = nqbxl2p
+
+        return result
+
+    # }}}
+
+    # {{{ eval target specific qbx expansions
+
+    def process_eval_target_specific_qbxl(self, xlat_cost, traversal, tree,
+            global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
+
+        counts = self._collect_qbxl_direct_interaction_data(
+                xlat_cost, traversal, tree, global_qbx_centers,
+                qbx_center_to_target_box)
+
+        result = {}
+        result["eval_target_specific_qbx_locals_list1"] = (
+                self.summarize_parallel(
+                        counts["np2qbxl_list1"] * counts["nqbxl2p"],
+                        xlat_cost.p2p_tsqbx()))
+        result["eval_target_specific_qbx_locals_list3"] = (
+                self.summarize_parallel(
+                        counts["np2qbxl_list3"] * counts["nqbxl2p"],
+                        xlat_cost.p2p_tsqbx()))
+        result["eval_target_specific_qbx_locals_list4"] = (
+                self.summarize_parallel(
+                        counts["np2qbxl_list4"] * counts["nqbxl2p"],
+                        xlat_cost.p2p_tsqbx()))
+
+        return result
+
+    # }}}
+
+    # {{{ form global qbx locals
+
+    def process_form_qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
+            qbx_center_to_target_box, center_to_targets_starts):
+
+        counts = self._collect_qbxl_direct_interaction_data(
+                xlat_cost, traversal, tree, global_qbx_centers,
+                qbx_center_to_target_box, center_to_targets_starts)
+
+        result = {}
         result["form_global_qbx_locals_list1"] = (
-                self.summarize_parallel(np2qbxl_list1, xlat_cost.p2qbxl()))
+                self.summarize_parallel(counts["np2qbxl_list1"], xlat_cost.p2qbxl()))
         result["form_global_qbx_locals_list3"] = (
-                self.summarize_parallel(np2qbxl_list3, xlat_cost.p2qbxl()))
+                self.summarize_parallel(counts["np2qbxl_list3"], xlat_cost.p2qbxl()))
         result["form_global_qbx_locals_list4"] = (
-                self.summarize_parallel(np2qbxl_list4, xlat_cost.p2qbxl()))
+                self.summarize_parallel(counts["np2qbxl_list4"], xlat_cost.p2qbxl()))
 
         return result
 
@@ -511,6 +566,7 @@ class PerformanceModel(object):
         result = OrderedDict()
 
         nqbtl = geo_data.non_qbx_box_target_lists()
+        use_tsqbx = lpot_source._use_tsqbx
 
         with cl.CommandQueue(geo_data.cl_context) as queue:
             tree = geo_data.tree().get(queue=queue)
@@ -606,11 +662,16 @@ class PerformanceModel(object):
                         qbx_center_to_target_box_source_level[src_level]
                         .get(queue=queue))
 
-        # {{{ form global qbx locals
+        # {{{ form global qbx locals or evaluate target specific qbx expansions
 
-        result.update(self.process_form_qbxl(
-                xlat_cost, traversal, tree, global_qbx_centers,
-                qbx_center_to_target_box))
+        if use_tsqbx:
+            result.update(self.process_eval_target_specific_qbxl(
+                    xlat_cost, traversal, tree, global_qbx_centers,
+                    qbx_center_to_target_box, center_to_targets_starts))
+        else:
+            result.update(self.process_form_qbxl(
+                    xlat_cost, traversal, tree, global_qbx_centers,
+                    qbx_center_to_target_box, center_to_targets_starts))
 
         # }}}
 
@@ -675,6 +736,7 @@ _FMM_STAGE_TO_CALIBRATION_PARAMETER = {
         "translate_box_multipoles_to_qbx_local": "c_m2qbxl",
         "translate_box_local_to_qbx_local": "c_l2qbxl",
         "eval_qbx_expansions": "c_qbxl2p",
+        "eval_target_specific_qbx_locals": "c_p2p_tsqbx",
         }
 
 

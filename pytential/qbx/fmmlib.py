@@ -578,7 +578,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return output
 
     @log_process(logger)
-    def eval_target_specific_global_qbx_locals(self, src_weights):
+    @return_timing_data
+    def eval_target_specific_qbx_locals(self, src_weights):
         if not self._use_target_specific_list1:
             return self.full_output_zeros()
 
