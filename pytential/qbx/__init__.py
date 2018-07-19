@@ -841,7 +841,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential.qbx.fmm import drive_fmm
         timing_data = {}
-        all_potentials_on_every_target = drive_fmm(wrangler, strengths, timing_data)
+        all_potentials_on_every_target = drive_fmm(
+                wrangler, strengths, timing_data, use_tsqbx=self._use_tsqbx)
 
         # }}}
 
