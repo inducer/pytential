@@ -416,7 +416,7 @@ class PerformanceModel(object):
 
         counts = self._collect_qbxl_direct_interaction_data(
                 xlat_cost, traversal, tree, global_qbx_centers,
-                qbx_center_to_target_box)
+                qbx_center_to_target_box, center_to_targets_starts)
 
         result = {}
         result["eval_target_specific_qbx_locals_list1"] = (
