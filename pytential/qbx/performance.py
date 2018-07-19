@@ -34,6 +34,7 @@ import sympy as sp
 
 
 from pymbolic import var
+from pytools import log_process
 from collections import OrderedDict
 try:
     from collections.abc import MutableMapping
@@ -560,6 +561,7 @@ class PerformanceModel(object):
 
     # }}}
 
+    @log_process(logger, "gather performance model data")
     def __call__(self, lpot_source, geo_data):
         # FIXME: This should suport target filtering.
 
