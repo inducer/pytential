@@ -228,8 +228,6 @@ def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    pytest.importorskip("pyfmmlib")
-
     np.random.seed(12)
 
     knl_kwargs = {"k": case.k}
