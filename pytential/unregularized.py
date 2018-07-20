@@ -447,7 +447,7 @@ class _FMMGeometryData(object):
 
 
 __all__ = (
-        UnregularizedLayerPotentialSource,
+        "UnregularizedLayerPotentialSource",
         )
 
 # vim: fdm=marker
