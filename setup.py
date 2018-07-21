@@ -106,6 +106,7 @@ setup(name="pytential",
       ext_modules = cythonize(ext_modules),
 
       install_requires=[
+          "Cython",
           "pytest>=2.3",
           # FIXME leave out for now
           # https://code.google.com/p/sympy/issues/detail?id=3874
