@@ -24,29 +24,24 @@ THE SOFTWARE.
 
 
 import numpy as np
-import numpy.linalg as la
+import numpy.linalg as la  # noqa
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
-from functools import partial
+from functools import partial  # noqa
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         NArmedStarfish,
         make_curve_mesh)
 # from sumpy.visualization import FieldPlotter
-from pytential import bind, sym, norm
-from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+from pytential import bind, sym, norm  # noqa
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel  # noqa
 
 import logging
 logger = logging.getLogger(__name__)
-
-try:
-    import matplotlib.pyplot as pt
-except ImportError:
-    pass
 
 
 @pytest.mark.parametrize("op", ["S", "D"])
@@ -83,16 +78,16 @@ def test_target_specific_qbx(ctx_getter, op):
     nodes_host = density_discr.nodes().get(queue)
     center = np.array([3, 1, 2])
     diff = nodes_host - center[:, np.newaxis]
-    
+
     dist_squared = np.sum(diff**2, axis=0)
     dist = np.sqrt(dist_squared)
     u = 1/dist
-    
+
     u_dev = cl.array.to_device(queue, u)
 
     kernel = LaplaceKernel(3)
     u_sym = sym.var("u")
-    
+
     if op == "S":
         op = sym.S
     elif op == "D":

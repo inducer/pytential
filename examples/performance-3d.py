@@ -1,7 +1,7 @@
 """Trains a performance model and reports on the accuracy."""
 
 import pyopencl as cl
-import numpy as np
+import numpy as np  # noqa
 
 from pytential import sym, bind
 from pytools import one
@@ -184,4 +184,6 @@ def predict_performance(ctx):
 
 
 if __name__ == "__main__":
-    predict_performance(cl.create_some_context(0))
+    if 0:
+        # Disabled - this is slow.
+        predict_performance(cl.create_some_context(0))
