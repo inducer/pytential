@@ -14,6 +14,6 @@ dependencies:
 - python-symengine=0.3.0
 - osx-pocl-opencl
 - gcc
-- gfortran-osx_64
+- gfortran_osx-64
 - cython
 # things not in here: loopy boxtree pymbolic meshmode sumpy pyfmmlib
