@@ -240,9 +240,6 @@ class DynamicTestCase(object):
                 and self.expr.zero_op_name == "green_grad"):
             raise ValueError("does not achieve sufficient precision")
 
-        if self.fmm_backend == "fmmlib":
-            pytest.importorskip("pyfmmlib")
-
 
 # {{{ integral identity tester
 

@@ -321,8 +321,6 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_getter):
 def test_3d_jump_relations(ctx_factory, relation, visualize=False):
     # logging.basicConfig(level=logging.INFO)
 
-    pytest.importorskip("pyfmmlib")
-
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 

@@ -126,7 +126,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
             centers_h = [centers[0].get(), centers[1].get()]
             pt.plot(nodes_h[0], nodes_h[1], "x-")
             pt.plot(centers_h[0], centers_h[1], "o")
-            normal = bind(qbx, sym.normal())(queue).as_vector(np.object)
+            normal = bind(qbx, sym.normal(ambient_dim=2))(queue).as_vector(np.object)
             pt.quiver(nodes_h[0], nodes_h[1],
                     normal[0].get(), normal[1].get())
             pt.gca().set_aspect("equal")
@@ -257,9 +257,6 @@ def no_test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
     logging.basicConfig(level=logging.INFO)
 
     special = pytest.importorskip("scipy.special")
-
-    if fmm_backend == "fmmlib":
-        pytest.importorskip("pyfmmlib")
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
