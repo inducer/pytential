@@ -1,4 +1,3 @@
-git+https://gitlab.tiker.net/inducer/pyfmmlib
 git+https://gitlab.tiker.net/inducer/boxtree
 git+https://github.com/inducer/pymbolic
 git+https://github.com/inducer/loopy
