@@ -105,7 +105,7 @@ def test_target_specific_qbx(ctx_getter, op):
 
 
 # You can test individual routines by typing
-# $ python test_layer_pot_identity.py 'test_routine()'
+# $ python test_target_specific_qbx.py 'test_routine()'
 
 if __name__ == "__main__":
     import sys
