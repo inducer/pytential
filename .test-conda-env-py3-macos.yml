@@ -16,4 +16,4 @@ dependencies:
 - pyfmmlib
 - gcc
 - cython
-# things not in here: loopy boxtree pymbolic meshmode sumpy pyfmmlib
+# things not in here: loopy boxtree pymbolic meshmode sumpy

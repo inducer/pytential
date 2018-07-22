@@ -1033,8 +1033,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
 
 __all__ = (
-        QBXLayerPotentialSource,
-        QBXTargetAssociationFailedException,
+        "QBXLayerPotentialSource",
+        "QBXTargetAssociationFailedException",
         )
 
 # vim: fdm=marker
