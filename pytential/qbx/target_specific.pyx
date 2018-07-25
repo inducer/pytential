@@ -115,9 +115,10 @@ cdef double tsqbx_from_source(
         double[3] target,
         int order) nogil:
     cdef:
-        int i
+        int j
         double result, r, sc_d, tc_d, cos_angle
-        double tmp[128]
+        # Legendre recurrence values
+        double pj, pjm1, pjm2
 
     tc_d = dist(target, center)
     sc_d = dist(source, center)
@@ -128,14 +129,23 @@ cdef double tsqbx_from_source(
             (target[2] - center[2]) * (source[2] - center[2]))
             / (tc_d * sc_d))
 
-    legvals(cos_angle, order, tmp, NULL)
+    if order == 0:
+        return 1 / sc_d
 
-    result = 0
-    r = 1 / sc_d
+    pjm2 = 1
+    pjm1 = cos_angle
 
-    for i in range(0, order + 1):
-        result +=  tmp[i] * r
+    result = 1 / sc_d + (cos_angle * tc_d) / (sc_d * sc_d)
+
+    r = (tc_d * tc_d) / (sc_d * sc_d * sc_d)
+
+    for j in range(2, order + 1):
+        pj = ( (2*j-1)*cos_angle*pjm1-(j-1)*pjm2 ) / j
+        result += pj * r
+
         r *= (tc_d / sc_d)
+        pjm2 = pjm1
+        pjm1 = pj
 
     return result
 
