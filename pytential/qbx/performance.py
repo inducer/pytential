@@ -59,16 +59,10 @@ __doc__ = """
 class TranslationCostModel(object):
     """Provides modeled costs for individual translations or evaluations."""
 
-    def __init__(self, p_qbx, p_fmm, ncoeffs_qbx, ncoeffs_fmm,
-                 translation_source_power, translation_target_power,
-                 translation_max_power):
-        self.p_qbx = p_qbx
-        self.p_fmm = p_fmm
+    def __init__(self, ncoeffs_qbx, ncoeffs_fmm, uses_point_and_shoot):
         self.ncoeffs_qbx = ncoeffs_qbx
         self.ncoeffs_fmm = ncoeffs_fmm
-        self.translation_source_power = translation_source_power
-        self.translation_target_power = translation_target_power
-        self.translation_max_power = translation_max_power
+        self.uses_point_and_shoot = uses_point_and_shoot
 
     def direct(self):
         return var("c_p2p")
@@ -95,26 +89,28 @@ class TranslationCostModel(object):
         return var("c_m2p") * self.ncoeffs_fmm
 
     def m2m(self):
-        return var("c_m2m") * self.e2e_cost(self.p_fmm, self.p_fmm)
+        return var("c_m2m") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_fmm)
 
     def l2l(self):
-        return var("c_l2l") * self.e2e_cost(self.p_fmm, self.p_fmm)
+        return var("c_l2l") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_fmm)
 
     def m2l(self):
-        return var("c_m2l") * self.e2e_cost(self.p_fmm, self.p_fmm)
+        return var("c_m2l") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_fmm)
 
     def m2qbxl(self):
-        return var("c_m2qbxl") * self.e2e_cost(self.p_fmm, self.p_qbx)
+        return var("c_m2qbxl") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_qbx)
 
     def l2qbxl(self):
-        return var("c_l2qbxl") * self.e2e_cost(self.p_fmm, self.p_qbx)
+        return var("c_l2qbxl") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_qbx)
 
-    def e2e_cost(self, p_source, p_target):
-        from pymbolic.primitives import Max
-        return (
-                p_source ** self.translation_source_power
-                * p_target ** self.translation_target_power
-                * Max((p_source, p_target)) ** self.translation_max_power)
+    def e2e_cost(self, nsource_coeffs, ntarget_coeffs):
+        if self.uses_point_and_shoot:
+            return (
+                    nsource_coeffs ** (3 / 2) +
+                    nsource_coeffs ** (1 / 2) * ntarget_coeffs +
+                    ntarget_coeffs ** (3 / 2))
+
+        return nsource_coeffs * ntarget_coeffs
 
 # }}}
 
@@ -188,9 +184,6 @@ class PerformanceModel(object):
 
     def __init__(self,
             uses_pde_expansions=True,
-            translation_source_power=None,
-            translation_target_power=None,
-            translation_max_power=None,
             summarize_parallel=None,
             calibration_params=None):
         """
@@ -203,9 +196,6 @@ class PerformanceModel(object):
             summed into one number encompassing the total workload.
         """
         self.uses_pde_expansions = uses_pde_expansions
-        self.translation_source_power = translation_source_power
-        self.translation_target_power = translation_target_power
-        self.translation_max_power = translation_max_power
         if summarize_parallel is None:
             summarize_parallel = self.summarize_parallel_default
         self.summarize_parallel = summarize_parallel
@@ -216,9 +206,6 @@ class PerformanceModel(object):
     def with_calibration_params(self, calibration_params):
         return type(self)(
                 uses_pde_expansions=self.uses_pde_expansions,
-                translation_source_power=self.translation_source_power,
-                translation_target_power=self.translation_target_power,
-                translation_max_power=self.translation_max_power,
                 summarize_parallel=self.summarize_parallel,
                 calibration_params=calibration_params)
 
@@ -510,54 +497,23 @@ class PerformanceModel(object):
         p_qbx = var("p_qbx")
         p_fmm = var("p_fmm")
 
+        uses_point_and_shoot = False
+
         if self.uses_pde_expansions:
             ncoeffs_fmm = p_fmm ** (d-1)
             ncoeffs_qbx = p_qbx ** (d-1)
 
-            if d == 2:
-                default_translation_source_power = 1
-                default_translation_target_power = 1
-                default_translation_max_power = 0
-
-            elif d == 3:
-                # Based on a reading of FMMlib, i.e. a point-and-shoot FMM.
-                default_translation_source_power = 0
-                default_translation_target_power = 0
-                default_translation_max_power = 3
-
-            else:
-                raise ValueError("Don't know how to estimate expansion complexities "
-                        "for dimension %d" % d)
+            if d == 3:
+                uses_point_and_shoot = True
 
         else:
             ncoeffs_fmm = p_fmm ** d
             ncoeffs_qbx = p_qbx ** d
-            default_translation_source_power = d
-            default_translation_target_power = d
-
-        translation_source_power = (
-                default_translation_source_power
-                if self.translation_source_power is None
-                else self.translation_source_power)
-
-        translation_target_power = (
-                default_translation_target_power
-                if self.translation_target_power is None
-                else self.translation_target_power)
-
-        translation_max_power = (
-                default_translation_max_power
-                if self.translation_max_power is None
-                else self.translation_max_power)
 
         return TranslationCostModel(
-                p_qbx=p_qbx,
-                p_fmm=p_fmm,
                 ncoeffs_qbx=ncoeffs_qbx,
                 ncoeffs_fmm=ncoeffs_fmm,
-                translation_source_power=translation_source_power,
-                translation_target_power=translation_target_power,
-                translation_max_power=translation_max_power)
+                uses_point_and_shoot=uses_point_and_shoot)
 
     # }}}
 
