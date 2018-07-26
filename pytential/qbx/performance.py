@@ -106,8 +106,11 @@ class TranslationCostModel(object):
     def e2e_cost(self, nsource_coeffs, ntarget_coeffs):
         if self.uses_point_and_shoot:
             return (
+                    # Rotate the coordinate system to be z axis aligned.
                     nsource_coeffs ** (3 / 2) +
+                    # Translate the expansion along the z axis.
                     nsource_coeffs ** (1 / 2) * ntarget_coeffs +
+                    # Rotate the coordinate system back.
                     ntarget_coeffs ** (3 / 2))
 
         return nsource_coeffs * ntarget_coeffs
