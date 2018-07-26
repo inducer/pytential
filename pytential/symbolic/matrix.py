@@ -92,15 +92,15 @@ def _get_kernel_args(mapper, kernel, expr, source):
 # We'll cheat and build the matrix on the host.
 
 class MatrixBuilder(EvaluationMapperBase):
-    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, places,
-            context):
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
+            places, context):
         super(MatrixBuilder, self).__init__(context=context)
 
         self.queue = queue
         self.dep_expr = dep_expr
         self.other_dep_exprs = other_dep_exprs
         self.dep_source = dep_source
-        self.dep_discr = dep_source.density_discr
+        self.dep_discr = dep_discr
         self.places = places
 
     def map_variable(self, expr):
@@ -188,11 +188,10 @@ class MatrixBuilder(EvaluationMapperBase):
             return vecs_and_scalars
 
     def map_int_g(self, expr):
-        source = self.places[expr.source]
-        target_discr = self.places[expr.target]
-
-        if source.density_discr is not target_discr:
-            raise NotImplementedError()
+        from pytential.symbolic.execution import _get_discretization
+        source, source_discr = _get_discretization(self.places, expr.source,
+                default_discr="quad_stage2_density_discr")
+        _, target_discr = _get_discretization(self.places, expr.target)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -217,7 +216,7 @@ class MatrixBuilder(EvaluationMapperBase):
 
         _, (mat,) = mat_gen(self.queue,
                 target_discr.nodes(),
-                source.quad_stage2_density_discr.nodes(),
+                source_discr.nodes(),
                 get_centers_on_side(source, expr.qbx_forced_limit),
                 expansion_radii=self.dep_source._expansion_radii("nsources"),
                 **kernel_args)
@@ -277,10 +276,10 @@ class MatrixBuilder(EvaluationMapperBase):
 # {{{ p2p matrix builder
 
 class P2PMatrixBuilder(MatrixBuilder):
-    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, places,
-            context, exclude_self=True):
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
+            places, context, exclude_self=True):
         super(P2PMatrixBuilder, self).__init__(queue,
-                dep_expr, other_dep_exprs, dep_source, places, context)
+                dep_expr, other_dep_exprs, dep_source, dep_discr, places, context)
 
         self.exclude_self = exclude_self
 

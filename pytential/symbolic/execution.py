@@ -36,6 +36,7 @@ import pyopencl.clmath  # noqa
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_in
+from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
 
 
 # FIXME caches: fix up queues
@@ -286,11 +287,11 @@ def _domains_default(nresults, places, domains, default_val):
             raise RuntimeError("'domains is None' requires "
                     "default domain to be defined")
         dom_name = default_val
-        return nresults*[dom_name]
+        return nresults * [dom_name]
 
     elif not isinstance(domains, (list, tuple)):
         dom_name = domains
-        return nresults*[dom_name]
+        return nresults * [dom_name]
 
     else:
         return domains
@@ -300,31 +301,43 @@ def _domains_default(nresults, places, domains, default_val):
 
 # {{{ bound expression
 
+def _get_discretization(places, where, default_discr="density_discr"):
+    from pytential.source import LayerPotentialSourceBase
+    from pytential.symbolic.primitives import (
+            _QBXSource, _QBXSourceStage2, _QBXSourceQuadStage2)
+
+    if isinstance(where, _QBXSourceStage2):
+        name = "stage2_density_discr"
+    elif isinstance(where, _QBXSourceQuadStage2):
+        name = "quad_stage2_density_discr"
+    else:
+        name = default_discr
+
+    if isinstance(where, _QBXSource):
+        where = where.where
+    discr = places[where]
+
+    if isinstance(discr, LayerPotentialSourceBase):
+        return discr, getattr(discr, name)
+    return discr, discr
+
+
 class BoundExpression:
-    def __init__(self, optemplate, places):
-        self.optemplate = optemplate
+    def __init__(self, places, sym_op_expr, sym_op_args=None):
         self.places = places
+        self.sym_op_expr = sym_op_expr
+        self.sym_op_args = sym_op_args
 
         self.caches = {}
 
         from pytential.symbolic.compiler import OperatorCompiler
-        self.code = OperatorCompiler(self.places)(optemplate)
+        self.code = OperatorCompiler(self.places)(sym_op_expr)
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
 
     def get_discretization(self, where):
-        from pytential.symbolic.primitives import _QBXSourceStage2
-        if isinstance(where, _QBXSourceStage2):
-            lpot_source = self.places[where.where]
-            return lpot_source.stage2_density_discr
-
-        discr = self.places[where]
-
-        from pytential.source import LayerPotentialSourceBase
-        if isinstance(discr, LayerPotentialSourceBase):
-            discr = discr.density_discr
-
+        _, discr = _get_discretization(self.places, where)
         return discr
 
     def scipy_op(self, queue, arg_name, dtype, domains=None, **extra_args):
@@ -343,7 +356,6 @@ class BoundExpression:
         else:
             nresults = 1
 
-        from pytential.symbolic.primitives import DEFAULT_TARGET
         domains = _domains_default(nresults, self.places, domains,
                 DEFAULT_TARGET)
 
@@ -375,16 +387,32 @@ class BoundExpression:
 
 # {{{ expression prep
 
-def prepare_places(places):
-    from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
+def _where_default(places, auto_where=None):
+    if auto_where is None:
+        if isinstance(places, dict) and DEFAULT_TARGET not in places:
+            return (DEFAULT_SOURCE, DEFAULT_SOURCE)
+        else:
+            return (DEFAULT_SOURCE, DEFAULT_TARGET)
+
+    return auto_where
+
+
+def prepare_places(places, auto_where=None):
     from meshmode.discretization import Discretization
     from pytential.source import LayerPotentialSourceBase
     from pytential.target import TargetBase
 
+    where_source, where_target = _where_default(places, auto_where)
     if isinstance(places, LayerPotentialSourceBase):
+        from pytential.symbolic.primitives import _QBXSourceQuadStage2
+        if isinstance(where_target, _QBXSourceQuadStage2):
+            target_discr = places.quad_stage2_density_discr
+        else:
+            target_discr = places.density_discr
+
         places = {
                 DEFAULT_SOURCE: places,
-                DEFAULT_TARGET: places.density_discr,
+                DEFAULT_TARGET: target_discr,
                 }
     elif isinstance(places, (Discretization, TargetBase)):
         places = {
@@ -420,13 +448,9 @@ def prepare_expr(places, expr, auto_where=None):
         evaluations, find 'where' attributes automatically.
     """
 
-    from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
     from pytential.source import LayerPotentialSourceBase
-
     from pytential.symbolic.mappers import (
-            ToTargetTagger,
-            DerivativeBinder,
-            )
+            ToTargetTagger, DerivativeBinder)
 
     if auto_where is None:
         if DEFAULT_TARGET in places:
@@ -459,12 +483,33 @@ def bind(places, expr, auto_where=None):
 
     places = prepare_places(places)
     expr = prepare_expr(places, expr, auto_where=auto_where)
-    return BoundExpression(expr, places)
+    return BoundExpression(places, expr)
 
 
 # {{{ matrix building
 
-def build_matrix(queue, places, expr, input_exprs, domains=None,
+def prepare_expression(places, exprs, input_exprs,
+                       domains=None, auto_where=None):
+    auto_where = _where_default(places, auto_where)
+    places = prepare_places(places, auto_where=auto_where)
+    exprs = prepare_expr(places, exprs, auto_where=auto_where)
+
+    from pytools.obj_array import is_obj_array, make_obj_array
+    if not is_obj_array(exprs):
+        exprs = make_obj_array([exprs])
+    try:
+        input_exprs = list(input_exprs)
+    except TypeError:
+        # not iterable, wrap in a list
+        input_exprs = [input_exprs]
+
+    domains = _domains_default(len(input_exprs), places, domains,
+            DEFAULT_SOURCE)
+
+    return places, exprs, input_exprs, domains
+
+
+def build_matrix(queue, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
     :arg queue: a :class:`pyopencl.CommandQueue` used to synchronize
@@ -486,61 +531,48 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
         evaluations, find 'where' attributes automatically.
     """
 
+    from pytools import single_valued
+    from pytential.symbolic.matrix import MatrixBuilder, is_zero
+
     if context is None:
         context = {}
 
-    places = prepare_places(places)
-    expr = prepare_expr(places, expr, auto_where=auto_where)
+    auto_where = _where_default(places, auto_where)
+    places, exprs, input_exprs, domains = \
+            prepare_expression(places, exprs, input_exprs,
+                               domains=domains,
+                               auto_where=auto_where)
+    auto_where = {
+            DEFAULT_SOURCE: auto_where[0],
+            DEFAULT_TARGET: auto_where[1]
+            }
 
-    from pytools.obj_array import is_obj_array, make_obj_array
-    if not is_obj_array(expr):
-        expr = make_obj_array([expr])
-    try:
-        input_exprs = list(input_exprs)
-    except TypeError:
-        # not iterable, wrap in a list
-        input_exprs = [input_exprs]
-
-    from pytential.symbolic.primitives import DEFAULT_SOURCE
-    domains = _domains_default(len(input_exprs), places, domains,
-            DEFAULT_SOURCE)
-
-    nblock_rows = len(expr)
+    nblock_rows = len(exprs)
     nblock_columns = len(input_exprs)
-
     blocks = np.zeros((nblock_rows, nblock_columns), dtype=np.object)
 
-    from pytential.symbolic.matrix import MatrixBuilder, is_zero
-
     dtypes = []
-
     for ibcol in range(nblock_columns):
+        dep_source, dep_discr = \
+                _get_discretization(places, auto_where[domains[ibcol]])
+
         mbuilder = MatrixBuilder(
                 queue,
                 dep_expr=input_exprs[ibcol],
-                other_dep_exprs=(
-                    input_exprs[:ibcol]
-                    +
-                    input_exprs[ibcol+1:]),
-                dep_source=places[domains[ibcol]],
+                other_dep_exprs=(input_exprs[:ibcol] +
+                                 input_exprs[ibcol + 1:]),
+                dep_source=dep_source,
+                dep_discr=dep_discr,
                 places=places,
                 context=context)
 
         for ibrow in range(nblock_rows):
-            block = mbuilder(expr[ibrow])
-
-            assert (
-                    is_zero(block)
-                    or isinstance(block, np.ndarray))
-            if isinstance(block, np.ndarray):
-                dtypes.append(block.dtype)
+            block = mbuilder(exprs[ibrow])
+            assert is_zero(block) or isinstance(block, np.ndarray)
 
             blocks[ibrow, ibcol] = block
-
-            if isinstance(block, cl.array.Array):
+            if isinstance(block, np.ndarray):
                 dtypes.append(block.dtype)
-
-    from pytools import single_valued
 
     block_row_counts = [
             single_valued(
@@ -550,20 +582,20 @@ def build_matrix(queue, places, expr, input_exprs, domains=None,
             for ibrow in range(nblock_rows)]
 
     block_col_counts = [
-            places[domains[ibcol]].density_discr.nnodes
+            single_valued(
+                blocks[ibrow, ibcol].shape[1]
+                for ibrow in range(nblock_rows)
+                if not is_zero(blocks[ibrow, ibcol]))
             for ibcol in range(nblock_columns)]
 
     # "block row starts"/"block column starts"
     brs = np.cumsum([0] + block_row_counts)
     bcs = np.cumsum([0] + block_col_counts)
 
-    result = np.zeros(
-            (sum(block_row_counts), sum(block_col_counts)),
-            dtype=np.find_common_type(dtypes, []))
-
+    result = np.zeros((brs[-1], bcs[-1]), dtype=np.find_common_type(dtypes, []))
     for ibcol in range(nblock_columns):
         for ibrow in range(nblock_rows):
-            result[brs[ibrow]:brs[ibrow+1], bcs[ibcol]:bcs[ibcol+1]] = \
+            result[brs[ibrow]:brs[ibrow + 1], bcs[ibcol]:bcs[ibcol + 1]] = \
                     blocks[ibrow, ibcol]
 
     return cl.array.to_device(queue, result)

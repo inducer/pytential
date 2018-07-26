@@ -201,10 +201,10 @@ class DEFAULT_TARGET:  # noqa
     pass
 
 
-class _QBXSourceStage2(object):
-    """A symbolic 'where' specifier for the
-    :attr:`pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`
-    of the layer potential source identified by :attr:`where`.
+class _QBXSource(object):
+    """A symbolic 'where' specifier for the a density of a
+    :attr:`pytential.qbx.QBXLayerPotentialSource`
+    layer potential source identified by :attr:`where`.
 
     .. attribute:: where
 
@@ -228,6 +228,27 @@ class _QBXSourceStage2(object):
 
     def __ne__(self, other):
         return not self.__eq__(other)
+
+
+class _QBXSourceStage1(_QBXSource):
+    """An explicit symbolic 'where' specifier for the
+    :attr:`pytential.qbx.QBXLayerPotentialSource.density_discr`
+    of the layer potential source identified by :attr:`where`.
+    """
+
+
+class _QBXSourceStage2(_QBXSource):
+    """A symbolic 'where' specifier for the
+    :attr:`pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`
+    of the layer potential source identified by :attr:`where`.
+    """
+
+
+class _QBXSourceQuadStage2(_QBXSource):
+    """A symbolic 'where' specifier for the
+    :attr:`pytential.qbx.QBXLayerPotentialSource.quad_stage2_density_discr`
+    of the layer potential source identified by :attr:`where`.
+    """
 
 # }}}
 

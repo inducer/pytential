@@ -453,8 +453,12 @@ class QBXPreprocessor(IdentityMapper):
 # {{{ stringifier
 
 def stringify_where(where):
+    if isinstance(where, prim._QBXSourceStage1):
+        return "stage1(%s)" % stringify_where(where.where)
     if isinstance(where, prim._QBXSourceStage2):
         return "stage2(%s)" % stringify_where(where.where)
+    if isinstance(where, prim._QBXSourceQuadStage2):
+        return "quad_stage2(%s)" % stringify_where(where.where)
 
     if where is None:
         return "?"

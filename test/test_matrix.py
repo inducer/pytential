@@ -38,7 +38,8 @@ from meshmode.mesh.generation import \
         ellipse, NArmedStarfish, make_curve_mesh
 
 from pytential import bind, sym
-from pytential.symbolic.primitives import DEFAULT_SOURCE
+from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
+from pytential.symbolic.primitives import _QBXSourceStage1, _QBXSourceQuadStage2
 
 import pytest
 from pyopencl.tools import (  # noqa
@@ -218,6 +219,7 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places[DEFAULT_SOURCE],
+            dep_discr=places[DEFAULT_SOURCE].density_discr,
             places=places,
             context={})
     mat = mbuilder(expr)
@@ -292,6 +294,7 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places[DEFAULT_SOURCE],
+            dep_discr=places[DEFAULT_SOURCE].density_discr,
             places=places,
             context={})
     mat = mbuilder(expr)
@@ -324,6 +327,47 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
         if visualize:
             print('block[{:04}]: {:.5e}'.format(i, error))
         assert error < eps
+
+
+@pytest.mark.parametrize('where',
+        [None,
+         (DEFAULT_SOURCE, DEFAULT_TARGET),
+         (_QBXSourceStage1(DEFAULT_SOURCE),
+          _QBXSourceStage1(DEFAULT_TARGET)),
+         (_QBXSourceQuadStage2(DEFAULT_SOURCE),
+          _QBXSourceQuadStage2(DEFAULT_TARGET))])
+def test_build_matrix_where(ctx_factory, where):
+    pytest.skip("wip")
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    # prevent cache explosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
+
+    from test_linalg_proxy import _build_qbx_discr
+    qbx = _build_qbx_discr(queue, target_order=7, ndim=2)
+    op, u_sym, _ = _build_op(lpot_id=1, ndim=2)
+
+    from pytential.symbolic.execution import build_matrix
+    mat = build_matrix(queue, qbx, op, u_sym, auto_where=where)
+
+    if where is None:
+        source_where, target_where = DEFAULT_SOURCE, DEFAULT_TARGET
+    else:
+        source_where, target_where = where
+
+    if isinstance(source_where, _QBXSourceQuadStage2):
+        n = qbx.quad_stage2_density_discr.nnodes
+    else:
+        n = qbx.density_discr.nnodes
+
+    if isinstance(target_where, _QBXSourceQuadStage2):
+        m = qbx.quad_stage2_density_discr.nnodes
+    else:
+        m = qbx.density_discr.nnodes
+
+    assert mat.shape == (m, n)
 
 
 if __name__ == "__main__":
