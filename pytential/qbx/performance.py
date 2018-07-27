@@ -596,7 +596,7 @@ class PerformanceModel(object):
 
         # {{{ evaluate locals
 
-        result["eval_locals"] = tree.ntargets * xlat_cost.l2p()
+        result["eval_locals"] = (tree.ntargets - geo_data.ncenters) * xlat_cost.l2p()
 
         # }}}
 
