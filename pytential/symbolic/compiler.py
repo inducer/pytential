@@ -47,9 +47,6 @@ class Instruction(Record):
     def __str__(self):
         raise NotImplementedError
 
-    def get_exec_function(self, exec_mapper):
-        raise NotImplementedError
-
 
 class Assign(Instruction):
     # attributes: names, exprs, do_not_return, priority
@@ -110,9 +107,6 @@ class Assign(Instruction):
                 lines.append("  %s <%s- %s" % (n, dnr_indicator, e))
             lines.append("}")
             return "\n".join(lines)
-
-    def get_exec_function(self, exec_mapper):
-        return exec_mapper.exec_assign
 
     def __hash__(self):
         return id(self)
@@ -222,10 +216,6 @@ class ComputePotentialInstruction(Instruction):
 
         return "{ /* Pot(%s) */\n  %s\n}" % (
                 ", ".join(args), "\n  ".join(lines))
-
-    def get_exec_function(self, exec_mapper):
-        source = exec_mapper.bound_expr.places[self.source]
-        return source.exec_compute_potential_insn
 
     def __hash__(self):
         return id(self)
@@ -362,6 +352,14 @@ class Code(object):
 
         return argmax2(available_insns), discardable_vars
 
+    @staticmethod
+    def get_exec_function(insn, exec_mapper):
+        if isinstance(insn, Assign):
+            return exec_mapper.exec_assign
+        if isinstance(insn, ComputePotentialInstruction):
+            return exec_mapper.exec_compute_potential_insn
+        raise ValueError("unknown instruction class: %s" % type(insn))
+
     def execute(self, exec_mapper, pre_assign_check=None):
         """Execute the instruction stream, make all scheduling decisions
         dynamically.
@@ -391,7 +389,7 @@ class Code(object):
 
                     done_insns.add(insn)
                     assignments, new_futures = (
-                            insn.get_exec_function(exec_mapper)
+                            self.get_exec_function(insn, exec_mapper)
                             (exec_mapper.queue, insn, exec_mapper.bound_expr,
                                 exec_mapper))
 

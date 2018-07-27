@@ -92,15 +92,6 @@ def test_performance_model(ctx_getter, dim):
 
     # {{{ run performance model
 
-    costs = {}
-
-    def inspect_geo_data(insn, bound_expr, geo_data):
-        from pytential.qbx.performance import assemble_performance_data
-        costs["costs"] = assemble_performance_data(
-                geo_data, uses_pde_expansions=True, merge_close_lists=False)
-        return False
-
-    lpot_source = lpot_source.copy(geometry_data_inspector=inspect_geo_data)
     density_discr = lpot_source.density_discr
     nodes = density_discr.nodes().with_queue(queue)
     sigma = cl.clmath.sin(10 * nodes[0])
@@ -108,10 +99,18 @@ def test_performance_model(ctx_getter, dim):
     from sumpy.kernel import LaplaceKernel
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
-    sym_op = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
 
-    bound_op = bind(lpot_source, sym_op)
-    bound_op(queue, sigma=sigma)
+    sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
+    op_S = bind(lpot_source, sym_op_S)
+    perf_S = op_S.get_modeled_performance(queue, sigma=sigma)
+    assert len(perf_S) == 1
+
+    sym_op_S_plus_D = (
+            sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
+            + sym.D(k_sym, sigma_sym))
+    op_S_plus_D = bind(lpot_source, sym_op_S_plus_D)
+    perf_S_plus_D = op_S_plus_D.get_modeled_performance(queue, sigma=sigma)
+    assert len(perf_S_plus_D) == 2
 
     # }}}
 
