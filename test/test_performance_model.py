@@ -49,6 +49,63 @@ DEFAULT_LPOT_KWARGS = {
 # }}}
 
 
+# {{{ test_timing_data_gathering
+
+def test_timing_data_gathering(ctx_getter):
+    pytest.importorskip("pyfmmlib")
+
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import (
+            InterpolatoryQuadratureSimplexGroupFactory)
+
+    target_order = TARGET_ORDER
+
+    from meshmode.mesh.generation import starfish, make_curve_mesh
+    mesh = make_curve_mesh(starfish, np.linspace(0, 1, 1000), order=target_order)
+
+    pre_density_discr = Discretization(
+            queue.context, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+
+    lpot_kwargs = DEFAULT_LPOT_KWARGS.copy()
+    lpot_kwargs.update(
+            _expansion_stick_out_factor=TCF,
+            fmm_order=FMM_ORDER, qbx_order=QBX_ORDER,
+            fmm_backend="fmmlib",
+            )
+
+    from pytential.qbx import QBXLayerPotentialSource
+    lpot_source = QBXLayerPotentialSource(
+            pre_density_discr, OVSMP_FACTOR*target_order,
+            **lpot_kwargs)
+
+    lpot_source, _ = lpot_source.with_refinement()
+
+    density_discr = lpot_source.density_discr
+    nodes = density_discr.nodes().with_queue(queue)
+    sigma = cl.clmath.sin(10 * nodes[0])
+
+    from sumpy.kernel import LaplaceKernel
+    sigma_sym = sym.var("sigma")
+    k_sym = LaplaceKernel(lpot_source.ambient_dim)
+
+    sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
+    op_S = bind(lpot_source, sym_op_S)
+
+    timing_data = {}
+    op_S.eval(queue, dict(sigma=sigma), timing_data=timing_data)
+    assert timing_data
+    print(timing_data)
+
+# }}}
+
+
+# {{{ test_performance_model
+
 @pytest.mark.parametrize("dim", (2, 3))
 def test_performance_model(ctx_getter, dim):
     cl_ctx = ctx_getter()
@@ -113,6 +170,8 @@ def test_performance_model(ctx_getter, dim):
     assert len(perf_S_plus_D) == 2
 
     # }}}
+
+# }}}
 
 
 # You can test individual routines by typing
