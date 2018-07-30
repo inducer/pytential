@@ -25,17 +25,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from six.moves import range
-import numpy as np  # noqa
-import pyopencl as cl  # noqa
-import pyopencl.array  # noqa
-import sympy as sp
-
-
-from pymbolic import var
-from pytools import log_process
 from collections import OrderedDict
+
 try:
     from collections.abc import MutableMapping
 except ImportError:
@@ -43,6 +34,15 @@ except ImportError:
     from collections import MutableMapping
 
 import logging
+
+import numpy as np
+import pyopencl as cl
+from six.moves import range
+import sympy as sp
+
+from pytools import log_process
+from pymbolic import var
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,7 +64,8 @@ class TranslationCostModel(object):
         self.ncoeffs_fmm = ncoeffs_fmm
         self.uses_point_and_shoot = uses_point_and_shoot
 
-    def direct(self):
+    @staticmethod
+    def direct():
         return var("c_p2p")
 
     def p2qbxl(self):
@@ -320,7 +321,7 @@ class PerformanceModel(object):
                 len(traversal.target_or_target_parent_boxes),
                 dtype=np.intp)
 
-        for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
+        for itgt_box in range(len(traversal.target_or_target_parent_boxes)):
             start, end = traversal.from_sep_bigger_starts[itgt_box:itgt_box+2]
 
             nform_local_box = 0
@@ -338,7 +339,8 @@ class PerformanceModel(object):
 
     # {{{ collect data about direct interactions with qbx centers
 
-    def _collect_qbxl_direct_interaction_data(self, xlat_cost, traversal, tree,
+    @staticmethod
+    def _collect_qbxl_direct_interaction_data(traversal, tree,
             global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
 
         # center -> nsources
@@ -406,8 +408,8 @@ class PerformanceModel(object):
             global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
 
         counts = self._collect_qbxl_direct_interaction_data(
-                xlat_cost, traversal, tree, global_qbx_centers,
-                qbx_center_to_target_box, center_to_targets_starts)
+                traversal, tree, global_qbx_centers, qbx_center_to_target_box,
+                center_to_targets_starts)
 
         result = {}
         result["eval_target_specific_qbx_locals_list1"] = (
@@ -433,8 +435,8 @@ class PerformanceModel(object):
             qbx_center_to_target_box, center_to_targets_starts):
 
         counts = self._collect_qbxl_direct_interaction_data(
-                xlat_cost, traversal, tree, global_qbx_centers,
-                qbx_center_to_target_box, center_to_targets_starts)
+                traversal, tree, global_qbx_centers, qbx_center_to_target_box,
+                center_to_targets_starts)
 
         result = {}
         result["form_global_qbx_locals_list1"] = (
@@ -496,7 +498,6 @@ class PerformanceModel(object):
     # {{{ set up translation cost model
 
     def get_translation_cost_model(self, d):
-        from pymbolic import var
         p_qbx = var("p_qbx")
         p_fmm = var("p_fmm")
 
