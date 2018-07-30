@@ -39,7 +39,7 @@ from meshmode.mesh.generation import \
 
 from pytential import bind, sym
 from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-from pytential.symbolic.primitives import _QBXSourceStage1, _QBXSourceQuadStage2
+from pytential.symbolic.primitives import QBXSourceStage1, QBXSourceQuadStage2
 
 import pytest
 from pyopencl.tools import (  # noqa
@@ -332,12 +332,11 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
 @pytest.mark.parametrize('where',
         [None,
          (DEFAULT_SOURCE, DEFAULT_TARGET),
-         (_QBXSourceStage1(DEFAULT_SOURCE),
-          _QBXSourceStage1(DEFAULT_TARGET)),
-         (_QBXSourceQuadStage2(DEFAULT_SOURCE),
-          _QBXSourceQuadStage2(DEFAULT_TARGET))])
+         (QBXSourceStage1(DEFAULT_SOURCE),
+          QBXSourceStage1(DEFAULT_TARGET)),
+         (QBXSourceQuadStage2(DEFAULT_SOURCE),
+          QBXSourceQuadStage2(DEFAULT_TARGET))])
 def test_build_matrix_where(ctx_factory, where):
-    pytest.skip("wip")
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -357,12 +356,12 @@ def test_build_matrix_where(ctx_factory, where):
     else:
         source_where, target_where = where
 
-    if isinstance(source_where, _QBXSourceQuadStage2):
+    if isinstance(source_where, QBXSourceQuadStage2):
         n = qbx.quad_stage2_density_discr.nnodes
     else:
         n = qbx.density_discr.nnodes
 
-    if isinstance(target_where, _QBXSourceQuadStage2):
+    if isinstance(target_where, QBXSourceQuadStage2):
         m = qbx.quad_stage2_density_discr.nnodes
     else:
         m = qbx.density_discr.nnodes

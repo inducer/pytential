@@ -37,6 +37,8 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_in
 from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
+from pytential.symbolic.primitives import (
+    QBXSourceStage1, QBXSourceStage2, QBXSourceQuadStage2)
 
 
 # FIXME caches: fix up queues
@@ -279,7 +281,7 @@ class MatVecOp:
 # }}}
 
 
-# {{{ default for 'domains' parameter
+# {{{ expression prep
 
 def _domains_default(nresults, places, domains, default_val):
     if domains is None:
@@ -296,30 +298,130 @@ def _domains_default(nresults, places, domains, default_val):
     else:
         return domains
 
+
+def _where_default(places, auto_where=None):
+    if auto_where is None:
+        if not isinstance(places, dict):
+            return DEFAULT_SOURCE, DEFAULT_TARGET
+        if DEFAULT_TARGET in places:
+            return DEFAULT_SOURCE, DEFAULT_TARGET
+        return tuple(places.keys())
+
+    return auto_where
+
+
+def prepare_places(places, auto_where=None):
+    from meshmode.discretization import Discretization
+    from pytential.source import LayerPotentialSourceBase
+    from pytential.target import TargetBase
+
+    where_source, where_target = _where_default(places, auto_where=auto_where)
+    if isinstance(places, LayerPotentialSourceBase):
+        _, target_discr = _get_discretization(places, where_target)
+        places = {
+                where_source: places,
+                where_target: target_discr,
+                }
+    elif isinstance(places, (Discretization, TargetBase)):
+        places = {
+                where_target: places,
+                }
+
+    elif isinstance(places, tuple):
+        source_discr, target_discr = places
+        places = {
+                where_source: source_discr,
+                where_target: target_discr,
+                }
+        del source_discr
+        del target_discr
+
+    def cast_to_place(discr):
+        from pytential.target import TargetBase
+        from pytential.source import PotentialSource
+        if not isinstance(discr, (Discretization, TargetBase, PotentialSource)):
+            raise TypeError("must pass discretizations, "
+                    "layer potential sources or targets as 'places'")
+        return discr
+
+    return dict(
+            (key, cast_to_place(value))
+            for key, value in six.iteritems(places))
+
+
+def prepare_expr(places, expr, auto_where=None):
+    """
+    :arg places: result of :func:`prepare_places`
+    :arg auto_where: For simple source-to-self or source-to-target
+        evaluations, find 'where' attributes automatically.
+    """
+
+    from pytential.source import LayerPotentialSourceBase
+    from pytential.symbolic.mappers import (
+            ToTargetTagger, DerivativeBinder)
+
+    auto_where = _where_default(places, auto_where=auto_where)
+    if auto_where:
+        expr = ToTargetTagger(*auto_where)(expr)
+
+    expr = DerivativeBinder()(expr)
+
+    for name, place in six.iteritems(places):
+        if isinstance(place, LayerPotentialSourceBase):
+            expr = place.preprocess_optemplate(name, places, expr)
+
+    return expr
+
+
+def prepare_expression(places, exprs, input_exprs,
+                       domains=None, auto_where=None):
+    auto_where = _where_default(places, auto_where)
+    places = prepare_places(places, auto_where=auto_where)
+    exprs = prepare_expr(places, exprs, auto_where=auto_where)
+
+    from pytools.obj_array import is_obj_array, make_obj_array
+    if not is_obj_array(exprs):
+        exprs = make_obj_array([exprs])
+    try:
+        input_exprs = list(input_exprs)
+    except TypeError:
+        # not iterable, wrap in a list
+        input_exprs = [input_exprs]
+
+    domains = _domains_default(len(input_exprs), places, domains, auto_where[0])
+
+    return places, exprs, input_exprs, domains
+
 # }}}
 
 
 # {{{ bound expression
 
-def _get_discretization(places, where, default_discr="density_discr"):
+def _get_discretization(places, where, default_source=QBXSourceStage1):
     from pytential.source import LayerPotentialSourceBase
-    from pytential.symbolic.primitives import (
-            _QBXSource, _QBXSourceStage2, _QBXSourceQuadStage2)
 
-    if isinstance(where, _QBXSourceStage2):
-        name = "stage2_density_discr"
-    elif isinstance(where, _QBXSourceQuadStage2):
-        name = "quad_stage2_density_discr"
+    if where is DEFAULT_SOURCE or where is DEFAULT_TARGET:
+        where = default_source(where)
+
+    if isinstance(places, LayerPotentialSourceBase):
+        lpot = places
     else:
-        name = default_discr
+        try:
+            lpot = places[where.where]
+        except KeyError:
+            lpot = places[where]
+    is_lpot = isinstance(lpot, LayerPotentialSourceBase)
 
-    if isinstance(where, _QBXSource):
-        where = where.where
-    discr = places[where]
+    if isinstance(where, QBXSourceStage1):
+        discr = lpot.density_discr if is_lpot else lpot
+    elif isinstance(where, QBXSourceStage2):
+        discr = lpot.stage2_density_discr if is_lpot else lpot
+    elif isinstance(where, QBXSourceQuadStage2):
+        discr = lpot.quad_stage2_density_discr if is_lpot else lpot
+    else:
+        raise ValueError("Unknown 'where': {}".format(type(where)))
 
-    if isinstance(discr, LayerPotentialSourceBase):
-        return discr, getattr(discr, name)
-    return discr, discr
+    return lpot, discr
 
 
 class BoundExpression:
@@ -382,95 +484,6 @@ class BoundExpression:
         exec_mapper = EvaluationMapper(self, queue, args)
         return self.code.execute(exec_mapper)
 
-# }}}
-
-
-# {{{ expression prep
-
-def _where_default(places, auto_where=None):
-    if auto_where is None:
-        if isinstance(places, dict) and DEFAULT_TARGET not in places:
-            return (DEFAULT_SOURCE, DEFAULT_SOURCE)
-        else:
-            return (DEFAULT_SOURCE, DEFAULT_TARGET)
-
-    return auto_where
-
-
-def prepare_places(places, auto_where=None):
-    from meshmode.discretization import Discretization
-    from pytential.source import LayerPotentialSourceBase
-    from pytential.target import TargetBase
-
-    where_source, where_target = _where_default(places, auto_where)
-    if isinstance(places, LayerPotentialSourceBase):
-        from pytential.symbolic.primitives import _QBXSourceQuadStage2
-        if isinstance(where_target, _QBXSourceQuadStage2):
-            target_discr = places.quad_stage2_density_discr
-        else:
-            target_discr = places.density_discr
-
-        places = {
-                DEFAULT_SOURCE: places,
-                DEFAULT_TARGET: target_discr,
-                }
-    elif isinstance(places, (Discretization, TargetBase)):
-        places = {
-                DEFAULT_TARGET: places,
-                }
-
-    elif isinstance(places, tuple):
-        source_discr, target_discr = places
-        places = {
-                DEFAULT_SOURCE: source_discr,
-                DEFAULT_TARGET: target_discr,
-                }
-        del source_discr
-        del target_discr
-
-    def cast_to_place(discr):
-        from pytential.target import TargetBase
-        from pytential.source import PotentialSource
-        if not isinstance(discr, (Discretization, TargetBase, PotentialSource)):
-            raise TypeError("must pass discretizations, "
-                    "layer potential sources or targets as 'places'")
-        return discr
-
-    return dict(
-            (key, cast_to_place(value))
-            for key, value in six.iteritems(places))
-
-
-def prepare_expr(places, expr, auto_where=None):
-    """
-    :arg places: result of :func:`prepare_places`
-    :arg auto_where: For simple source-to-self or source-to-target
-        evaluations, find 'where' attributes automatically.
-    """
-
-    from pytential.source import LayerPotentialSourceBase
-    from pytential.symbolic.mappers import (
-            ToTargetTagger, DerivativeBinder)
-
-    if auto_where is None:
-        if DEFAULT_TARGET in places:
-            auto_where = DEFAULT_SOURCE, DEFAULT_TARGET
-        else:
-            auto_where = DEFAULT_SOURCE, DEFAULT_SOURCE
-
-    if auto_where:
-        expr = ToTargetTagger(*auto_where)(expr)
-
-    expr = DerivativeBinder()(expr)
-
-    for name, place in six.iteritems(places):
-        if isinstance(place, LayerPotentialSourceBase):
-            expr = place.preprocess_optemplate(name, places, expr)
-
-    return expr
-
-# }}}
-
 
 def bind(places, expr, auto_where=None):
     """
@@ -485,29 +498,10 @@ def bind(places, expr, auto_where=None):
     expr = prepare_expr(places, expr, auto_where=auto_where)
     return BoundExpression(places, expr)
 
+# }}}
+
 
 # {{{ matrix building
-
-def prepare_expression(places, exprs, input_exprs,
-                       domains=None, auto_where=None):
-    auto_where = _where_default(places, auto_where)
-    places = prepare_places(places, auto_where=auto_where)
-    exprs = prepare_expr(places, exprs, auto_where=auto_where)
-
-    from pytools.obj_array import is_obj_array, make_obj_array
-    if not is_obj_array(exprs):
-        exprs = make_obj_array([exprs])
-    try:
-        input_exprs = list(input_exprs)
-    except TypeError:
-        # not iterable, wrap in a list
-        input_exprs = [input_exprs]
-
-    domains = _domains_default(len(input_exprs), places, domains,
-            DEFAULT_SOURCE)
-
-    return places, exprs, input_exprs, domains
-
 
 def build_matrix(queue, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
@@ -537,15 +531,11 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
     if context is None:
         context = {}
 
-    auto_where = _where_default(places, auto_where)
+    auto_where = _where_default(places, auto_where=auto_where)
     places, exprs, input_exprs, domains = \
             prepare_expression(places, exprs, input_exprs,
                                domains=domains,
                                auto_where=auto_where)
-    auto_where = {
-            DEFAULT_SOURCE: auto_where[0],
-            DEFAULT_TARGET: auto_where[1]
-            }
 
     nblock_rows = len(exprs)
     nblock_columns = len(input_exprs)
@@ -554,7 +544,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
     dtypes = []
     for ibcol in range(nblock_columns):
         dep_source, dep_discr = \
-                _get_discretization(places, auto_where[domains[ibcol]])
+                _get_discretization(places, domains[ibcol])
 
         mbuilder = MatrixBuilder(
                 queue,

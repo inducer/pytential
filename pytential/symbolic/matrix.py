@@ -83,6 +83,30 @@ def _get_kernel_args(mapper, kernel, expr, source):
 
     return kernel_args
 
+
+def _weights_and_area_elements(queue, source, where):
+    if isinstance(where, sym.QBXSourceQuadStage2):
+        return source.weights_and_area_elements()
+
+    # NOTE: copied from `weights_and_area_elements`, but using the
+    # discretization given by `where` and no interpolation
+    from pytential.symbolic.execution import _get_discretization
+    discr = _get_discretization(source, where)
+
+    area = bind(discr, sym.area_element(source.ambient_dim, source.dim))(queue)
+    qweight = bind(discr, sym.QWeight())(queue)
+
+    return area * qweight
+
+
+def _get_centers_on_side(queue, source, qbx_forced_limit):
+    pass
+
+
+def _get_expansion_radii(queue, source):
+    pass
+
+
 # }}}
 
 
@@ -189,8 +213,12 @@ class MatrixBuilder(EvaluationMapperBase):
 
     def map_int_g(self, expr):
         from pytential.symbolic.execution import _get_discretization
-        source, source_discr = _get_discretization(self.places, expr.source,
-                default_discr="quad_stage2_density_discr")
+        if expr.source is sym.DEFAULT_SOURCE:
+            where_source = sym.QBXSourceQuadStage2(expr.source)
+        else:
+            where_source = expr.source
+
+        source, source_discr = _get_discretization(self.places, where_source)
         _, target_discr = _get_discretization(self.places, expr.target)
 
         rec_density = self.rec(expr.density)
@@ -222,13 +250,14 @@ class MatrixBuilder(EvaluationMapperBase):
                 **kernel_args)
         mat = mat.get()
 
-        waa = source.weights_and_area_elements().get(queue=self.queue)
-        mat[:, :] *= waa
+        waa = _weights_and_area_elements(self.queue, source, where_source)
+        mat[:, :] *= waa.get(self.queue)
 
-        resampler = source.direct_resampler
-        resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
+        if target_discr.nnodes != source_discr.nnodes:
+            resampler = source.direct_resampler
+            resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
+            mat = mat.dot(resample_mat)
 
-        mat = mat.dot(resample_mat)
         mat = mat.dot(rec_density)
 
         return mat

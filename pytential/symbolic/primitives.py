@@ -230,21 +230,21 @@ class _QBXSource(object):
         return not self.__eq__(other)
 
 
-class _QBXSourceStage1(_QBXSource):
+class QBXSourceStage1(_QBXSource):
     """An explicit symbolic 'where' specifier for the
     :attr:`pytential.qbx.QBXLayerPotentialSource.density_discr`
     of the layer potential source identified by :attr:`where`.
     """
 
 
-class _QBXSourceStage2(_QBXSource):
+class QBXSourceStage2(_QBXSource):
     """A symbolic 'where' specifier for the
     :attr:`pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`
     of the layer potential source identified by :attr:`where`.
     """
 
 
-class _QBXSourceQuadStage2(_QBXSource):
+class QBXSourceQuadStage2(_QBXSource):
     """A symbolic 'where' specifier for the
     :attr:`pytential.qbx.QBXLayerPotentialSource.quad_stage2_density_discr`
     of the layer potential source identified by :attr:`where`.

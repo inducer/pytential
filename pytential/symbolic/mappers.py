@@ -292,8 +292,10 @@ class ToTargetTagger(LocationTagger):
     """
 
     def __init__(self, default_source, default_target):
-        LocationTagger.__init__(self, default_target)
-        self.operand_rec = LocationTagger(default_source)
+        LocationTagger.__init__(self, default_target,
+                                default_source=default_source)
+        self.operand_rec = LocationTagger(default_source,
+                                          default_source=default_source)
 
 # }}}
 
@@ -453,11 +455,11 @@ class QBXPreprocessor(IdentityMapper):
 # {{{ stringifier
 
 def stringify_where(where):
-    if isinstance(where, prim._QBXSourceStage1):
+    if isinstance(where, prim.QBXSourceStage1):
         return "stage1(%s)" % stringify_where(where.where)
-    if isinstance(where, prim._QBXSourceStage2):
+    if isinstance(where, prim.QBXSourceStage2):
         return "stage2(%s)" % stringify_where(where.where)
-    if isinstance(where, prim._QBXSourceQuadStage2):
+    if isinstance(where, prim.QBXSourceQuadStage2):
         return "quad_stage2(%s)" % stringify_where(where.where)
 
     if where is None:
