@@ -84,7 +84,7 @@ def _get_kernel_args(mapper, kernel, expr, source):
     return kernel_args
 
 
-def _weights_and_area_elements(queue, source, where):
+def _get_weights_and_area_elements(queue, source, where):
     if isinstance(where, sym.QBXSourceQuadStage2):
         return source.weights_and_area_elements().with_queue(queue)
 
@@ -105,12 +105,17 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
     radii = source._expansion_radii('nsources')
 
     from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
+    if source.density_discr is target_discr:
+        target_association_tolerance = 1.0e-10
+    else:
+        target_association_tolerance = 1.0e-1
+
     code_container = source.target_association_code_container
     assoc = associate_targets_to_qbx_centers(
             source,
             code_container.get_wrangler(queue),
             [(target_discr, qbx_forced_limit)],
-            target_association_tolerance=1.0e-1)
+            target_association_tolerance=target_association_tolerance)
 
     centers = [cl.array.take(c, assoc.target_to_center, queue=queue)
                for c in centers]
@@ -226,11 +231,11 @@ class MatrixBuilder(EvaluationMapperBase):
 
     def map_int_g(self, expr):
         where_source = expr.source
-        if where_source is DEFAULT_SOURCE:
+        if where_source is sym.DEFAULT_SOURCE:
             where_source = sym.QBXSourceQuadStage2(where_source)
 
         where_target = expr.target
-        if where_target is DEFAULT_TARGET
+        if where_target is sym.DEFAULT_TARGET:
             where_target = sym.QBXSourceStage1(expr.target)
 
         from pytential.symbolic.execution import _get_discretization
@@ -268,7 +273,7 @@ class MatrixBuilder(EvaluationMapperBase):
                 **kernel_args)
         mat = mat.get()
 
-        waa = _weights_and_area_elements(self.queue, source, where_source)
+        waa = _get_weights_and_area_elements(self.queue, source, where_source)
         mat[:, :] *= waa.get(self.queue)
 
         if target_discr.nnodes != source_discr.nnodes:
@@ -332,11 +337,11 @@ class P2PMatrixBuilder(MatrixBuilder):
 
     def map_int_g(self, expr):
         where_source = expr.source
-        if where_source is DEFAULT_SOURCE:
-            where_source = sym.QBXSourceQuadStage2(where_source)
+        if where_source is sym.DEFAULT_SOURCE:
+            where_source = sym.QBXSourceStage1(where_source)
 
         where_target = expr.target
-        if where_target is DEFAULT_TARGET
+        if where_target is sym.DEFAULT_TARGET:
             where_target = sym.QBXSourceStage1(expr.target)
 
         from pytential.symbolic.execution import _get_discretization
@@ -352,8 +357,8 @@ class P2PMatrixBuilder(MatrixBuilder):
         if len(rec_density.shape) != 2:
             raise NotImplementedError("layer potentials on non-variables")
 
-        kernel_args = _get_kernel_args(self,
-                kernel.get_base_kernel(), expr, source)
+        kernel = expr.kernel.get_base_kernel()
+        kernel_args = _get_kernel_args(self, kernel, expr, source)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
@@ -462,12 +467,12 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
     def map_int_g(self, expr):
         where_source = expr.source
-        if where_source is DEFAULT_SOURCE:
-            where_source = sym.QBXSourceQuadStage2(where_source)
+        if where_source is sym.DEFAULT_SOURCE:
+            where_source = sym.QBXSourceStage1(where_source)
 
         where_target = expr.target
-        if where_target is DEFAULT_TARGET
-            where_target = sym.QBXSourceQuadStage2(expr.target)
+        if where_target is sym.DEFAULT_TARGET:
+            where_target = sym.QBXSourceStage1(expr.target)
 
         from pytential.symbolic.execution import _get_discretization
         source, source_discr = _get_discretization(self.places, where_source)
@@ -496,7 +501,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
         from pytential.qbx.utils import get_centers_on_side
         assert abs(expr.qbx_forced_limit) > 0
-        centers, radii = _get_centers_and_expansion_radii(queue,
+        centers, radii = _get_centers_and_expansion_radii(self.queue,
                 source, target_discr, expr.qbx_forced_limit)
 
         _, (mat,) = mat_gen(self.queue,
@@ -504,11 +509,12 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 sources=source_discr.nodes(),
                 centers=centers,
                 expansion_radii=radii,
-                index_set=index_set,
+                index_set=self.index_set,
                 **kernel_args)
 
-        waa = _get_weights_and_area_elements(queue, source, source_where)
-        mat *= waa[index_set.linear_col_indices]
+        waa = _get_weights_and_area_elements(self.queue, source, where_source)
+        mat *= waa[self.index_set.linear_col_indices]
+        mat = mat.get(self.queue)
 
         # TODO: multiply with rec_density
 
@@ -533,12 +539,12 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
 
     def map_int_g(self, expr):
         where_source = expr.source
-        if where_source is DEFAULT_SOURCE:
-            where_source = sym.QBXSourceQuadStage2(where_source)
+        if where_source is sym.DEFAULT_SOURCE:
+            where_source = sym.QBXSourceStage1(where_source)
 
         where_target = expr.target
-        if where_target is DEFAULT_TARGET
-            where_target = sym.QBXSourceQuadStage2(expr.target)
+        if where_target is sym.DEFAULT_TARGET:
+            where_target = sym.QBXSourceStage1(expr.target)
 
         from pytential.symbolic.execution import _get_discretization
         source, source_discr = _get_discretization(self.places, where_source)
@@ -555,8 +561,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         if len(rec_density.shape) != 2:
             raise NotImplementedError("layer potentials on non-variables")
 
-        kernel_args = _get_kernel_args(self,
-                kernel.get_base_kernel(), expr, source)
+        kernel = expr.kernel.get_base_kernel()
+        kernel_args = _get_kernel_args(self, kernel, expr, source)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)

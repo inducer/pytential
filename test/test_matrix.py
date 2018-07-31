@@ -273,8 +273,10 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     srcindices = _build_block_index(qbx.density_discr)
 
     from pytential.symbolic.execution import prepare_places, prepare_expr
-    places = prepare_places(qbx)
-    expr = prepare_expr(places, op)
+    where = (QBXSourceStage1(DEFAULT_SOURCE),
+             QBXSourceStage1(DEFAULT_TARGET))
+    places = prepare_places(qbx, auto_where=where)
+    expr = prepare_expr(places, op, auto_where=where)
 
     from sumpy.tools import MatrixBlockIndexRanges
     index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
@@ -283,18 +285,19 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     mbuilder = NearFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[DEFAULT_SOURCE],
+            dep_source=places[where[0]],
             places=places,
             context={},
             index_set=index_set)
     blk = mbuilder(expr)
 
+    from pytential.symbolic.execution import _get_discretization
     from pytential.symbolic.matrix import MatrixBuilder
     mbuilder = MatrixBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[DEFAULT_SOURCE],
-            dep_discr=places[DEFAULT_SOURCE].density_discr,
+            dep_source=places[where[0]],
+            dep_discr=_get_discretization(places, where[0])[1],
             places=places,
             context={})
     mat = mbuilder(expr)
