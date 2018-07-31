@@ -99,13 +99,26 @@ def _weights_and_area_elements(queue, source, where):
     return area * qweight
 
 
-def _get_centers_on_side(queue, source, qbx_forced_limit):
-    pass
+def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_limit):
+    from pytential.qbx.utils import get_interleaved_centers
+    centers = get_interleaved_centers(queue, source)
+    radii = source._expansion_radii('nsources')
 
+    from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
+    code_container = source.target_association_code_container
+    assoc = associate_targets_to_qbx_centers(
+            source,
+            code_container.get_wrangler(queue),
+            [(target_discr, qbx_forced_limit)],
+            target_association_tolerance=1.0e-1)
 
-def _get_expansion_radii(queue, source):
-    pass
+    centers = [cl.array.take(c, assoc.target_to_center, queue=queue)
+               for c in centers]
+    radii = cl.array.take(radii,
+            (assoc.target_to_center.with_queue(queue) / 2.0).astype(np.int),
+            queue=queue)
 
+    return centers, radii
 
 # }}}
 
@@ -212,14 +225,19 @@ class MatrixBuilder(EvaluationMapperBase):
             return vecs_and_scalars
 
     def map_int_g(self, expr):
-        from pytential.symbolic.execution import _get_discretization
         if expr.source is sym.DEFAULT_SOURCE:
             where_source = sym.QBXSourceQuadStage2(expr.source)
         else:
             where_source = expr.source
 
+        if expr.target is sym.DEFAULT_TARGET:
+            where_target = sym.QBXSourceStage1(expr.target)
+        else:
+            where_target = expr.target
+
+        from pytential.symbolic.execution import _get_discretization
         source, source_discr = _get_discretization(self.places, where_source)
-        _, target_discr = _get_discretization(self.places, expr.target)
+        _, target_discr = _get_discretization(self.places, where_target)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -239,14 +257,15 @@ class MatrixBuilder(EvaluationMapperBase):
         mat_gen = LayerPotentialMatrixGenerator(
                 self.queue.context, (local_expn,))
 
-        from pytential.qbx.utils import get_centers_on_side
         assert abs(expr.qbx_forced_limit) > 0
+        centers, radii = _get_centers_and_expansion_radii(self.queue,
+                source, target_discr, expr.qbx_forced_limit)
 
         _, (mat,) = mat_gen(self.queue,
-                target_discr.nodes(),
-                source_discr.nodes(),
-                get_centers_on_side(source, expr.qbx_forced_limit),
-                expansion_radii=self.dep_source._expansion_radii("nsources"),
+                targets=target_discr.nodes(),
+                sources=source_discr.nodes(),
+                centers=centers,
+                expansion_radii=radii,
                 **kernel_args)
         mat = mat.get()
 

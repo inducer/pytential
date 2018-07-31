@@ -336,7 +336,7 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
           QBXSourceStage1(DEFAULT_TARGET)),
          (QBXSourceQuadStage2(DEFAULT_SOURCE),
           QBXSourceQuadStage2(DEFAULT_TARGET))])
-def test_build_matrix_where(ctx_factory, where):
+def test_build_matrix_where(ctx_factory, where, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -345,8 +345,48 @@ def test_build_matrix_where(ctx_factory, where):
     clear_cache()
 
     from test_linalg_proxy import _build_qbx_discr
-    qbx = _build_qbx_discr(queue, target_order=7, ndim=2)
+    qbx = _build_qbx_discr(queue, nelements=8, target_order=2, ndim=2,
+                           curve_f=partial(ellipse, 1.0))
     op, u_sym, _ = _build_op(lpot_id=1, ndim=2)
+    qbx_forced_limit = -1
+
+    # associate quad_stage2 targets to centers
+    from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
+
+    code_container = qbx.target_association_code_container
+    target_discr = qbx.quad_stage2_density_discr
+    target_assoc = associate_targets_to_qbx_centers(
+            qbx,
+            code_container.get_wrangler(queue),
+            [(target_discr, qbx_forced_limit)],
+            target_association_tolerance=1.0e-1).get(queue)
+    target_assoc = target_assoc.target_to_center
+
+    if qbx.ambient_dim == 2 and visualize:
+        import matplotlib.pyplot as pt
+        from pytential.qbx.utils import get_interleaved_centers
+        sources = qbx.density_discr.nodes().get(queue)
+        targets = target_discr.nodes().get(queue)
+        centers = get_interleaved_centers(queue, qbx)
+        centers = np.vstack(c.get(queue) for c in centers)
+        radii = qbx._expansion_radii('nsources').get(queue)
+
+        for i in range(centers[0].size):
+            itgt = np.where(target_assoc == i)[0]
+            if not len(itgt):
+                continue
+
+            pt.figure(figsize=(10, 8), dpi=300)
+            pt.plot(sources[0], sources[1], 'k');
+            pt.plot(targets[0], targets[1], 'ko');
+
+            line = pt.plot(targets[0, itgt], targets[1, itgt], 'o')
+            c = pt.Circle([centers[0][i], centers[1][i]], radii[i // 2],
+                           color=line[0].get_color(), alpha=0.5)
+            pt.gca().add_artist(c)
+
+            pt.savefig('test_assoc_quad_targets_to_centers_{:05}.png'.format(i // 2))
+            pt.close()
 
     from pytential.symbolic.execution import build_matrix
     mat = build_matrix(queue, qbx, op, u_sym, auto_where=where)
