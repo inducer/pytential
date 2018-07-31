@@ -86,7 +86,7 @@ def _get_kernel_args(mapper, kernel, expr, source):
 
 def _weights_and_area_elements(queue, source, where):
     if isinstance(where, sym.QBXSourceQuadStage2):
-        return source.weights_and_area_elements()
+        return source.weights_and_area_elements().with_queue(queue)
 
     # NOTE: copied from `weights_and_area_elements`, but using the
     # discretization given by `where` and no interpolation
@@ -225,19 +225,18 @@ class MatrixBuilder(EvaluationMapperBase):
             return vecs_and_scalars
 
     def map_int_g(self, expr):
-        if expr.source is sym.DEFAULT_SOURCE:
-            where_source = sym.QBXSourceQuadStage2(expr.source)
-        else:
-            where_source = expr.source
+        where_source = expr.source
+        if where_source is DEFAULT_SOURCE:
+            where_source = sym.QBXSourceQuadStage2(where_source)
 
-        if expr.target is sym.DEFAULT_TARGET:
+        where_target = expr.target
+        if where_target is DEFAULT_TARGET
             where_target = sym.QBXSourceStage1(expr.target)
-        else:
-            where_target = expr.target
 
         from pytential.symbolic.execution import _get_discretization
         source, source_discr = _get_discretization(self.places, where_source)
         _, target_discr = _get_discretization(self.places, where_target)
+        assert source_discr.nnodes >= target_discr.nnodes
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -332,11 +331,18 @@ class P2PMatrixBuilder(MatrixBuilder):
         self.exclude_self = exclude_self
 
     def map_int_g(self, expr):
-        source = self.places[expr.source]
-        target_discr = self.places[expr.target]
+        where_source = expr.source
+        if where_source is DEFAULT_SOURCE:
+            where_source = sym.QBXSourceQuadStage2(where_source)
 
-        if source.density_discr is not target_discr:
-            raise NotImplementedError()
+        where_target = expr.target
+        if where_target is DEFAULT_TARGET
+            where_target = sym.QBXSourceStage1(expr.target)
+
+        from pytential.symbolic.execution import _get_discretization
+        source, source_discr = _get_discretization(self.places, where_source)
+        _, target_discr = _get_discretization(self.places, where_target)
+        assert source_discr.nnodes >= target_discr.nnodes
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -346,11 +352,8 @@ class P2PMatrixBuilder(MatrixBuilder):
         if len(rec_density.shape) != 2:
             raise NotImplementedError("layer potentials on non-variables")
 
-        try:
-            kernel = expr.kernel.inner_kernel
-        except AttributeError:
-            kernel = expr.kernel
-        kernel_args = _get_kernel_args(self, kernel, expr, source)
+        kernel_args = _get_kernel_args(self,
+                kernel.get_base_kernel(), expr, source)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
@@ -361,7 +364,7 @@ class P2PMatrixBuilder(MatrixBuilder):
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
-                sources=source.density_discr.nodes(),
+                sources=source_discr.nodes(),
                 **kernel_args)
 
         mat = mat.get()
@@ -451,17 +454,6 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         self.dummy = MatrixBlockBuilderBase(queue,
             dep_expr, other_dep_exprs, dep_source, places, context, index_set)
 
-    @memoize_method
-    def _oversampled_index_set(self, resampler):
-        from pytential.linalg.proxy import partition_from_coarse
-        srcindices = partition_from_coarse(resampler, self.index_set)
-
-        from sumpy.tools import MatrixBlockIndexRanges
-        ovsm_index_set = MatrixBlockIndexRanges(self.queue.context,
-                self.index_set.row, srcindices)
-
-        return ovsm_index_set
-
     def _map_dep_variable(self):
         tgtindices = self.index_set.row.indices.get(self.queue).reshape(-1, 1)
         srcindices = self.index_set.col.indices.get(self.queue).reshape(1, -1)
@@ -469,10 +461,19 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        source = self.places[expr.source]
-        target_discr = self.places[expr.target]
+        where_source = expr.source
+        if where_source is DEFAULT_SOURCE:
+            where_source = sym.QBXSourceQuadStage2(where_source)
 
-        if source.density_discr is not target_discr:
+        where_target = expr.target
+        if where_target is DEFAULT_TARGET
+            where_target = sym.QBXSourceQuadStage2(expr.target)
+
+        from pytential.symbolic.execution import _get_discretization
+        source, source_discr = _get_discretization(self.places, where_source)
+        _, target_discr = _get_discretization(self.places, where_target)
+
+        if source_discr is not target_discr:
             raise NotImplementedError()
 
         rec_density = self.dummy.rec(expr.density)
@@ -482,9 +483,6 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         assert isinstance(rec_density, np.ndarray)
         if len(rec_density.shape) != 2:
             raise NotImplementedError("layer potentials on non-variables")
-
-        resampler = source.direct_resampler
-        ovsm_index_set = self._oversampled_index_set(resampler)
 
         kernel = expr.kernel
         kernel_args = _get_layer_potential_args(self, expr, source)
@@ -498,35 +496,21 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
         from pytential.qbx.utils import get_centers_on_side
         assert abs(expr.qbx_forced_limit) > 0
+        centers, radii = _get_centers_and_expansion_radii(queue,
+                source, target_discr, expr.qbx_forced_limit)
 
         _, (mat,) = mat_gen(self.queue,
-                target_discr.nodes(),
-                source.quad_stage2_density_discr.nodes(),
-                get_centers_on_side(source, expr.qbx_forced_limit),
-                expansion_radii=self.dep_source._expansion_radii("nsources"),
-                index_set=ovsm_index_set,
+                targets=target_discr.nodes(),
+                sources=source_discr.nodes(),
+                centers=centers,
+                expansion_radii=radii,
+                index_set=index_set,
                 **kernel_args)
 
-        waa = source.weights_and_area_elements().with_queue(self.queue)
-        mat *= waa[ovsm_index_set.linear_col_indices]
+        waa = _get_weights_and_area_elements(queue, source, source_where)
+        mat *= waa[index_set.linear_col_indices]
 
-        from sumpy.tools import MatrixBlockIndexRanges
-        ovsm_col_index = ovsm_index_set.get(self.queue)
-        ovsm_row_index = MatrixBlockIndexRanges(ovsm_col_index.cl_context,
-                ovsm_col_index.col, ovsm_col_index.row)
-
-        mat = mat.get(self.queue)
-        resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
-
-        rmat = np.empty(ovsm_index_set.nblocks, dtype=np.object)
-        for i in range(ovsm_index_set.nblocks):
-            mat_blk = ovsm_col_index.block_take(mat, i)
-            resample_blk = ovsm_row_index.take(resample_mat, i)
-
-            rmat[i] = mat_blk.dot(resample_blk).reshape(-1)
-        mat = np.hstack(rmat)
-
-        # TODO:: multiply with rec_density
+        # TODO: multiply with rec_density
 
         return mat
 
@@ -548,10 +532,19 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        source = self.places[expr.source]
-        target_discr = self.places[expr.target]
+        where_source = expr.source
+        if where_source is DEFAULT_SOURCE:
+            where_source = sym.QBXSourceQuadStage2(where_source)
 
-        if source.density_discr is not target_discr:
+        where_target = expr.target
+        if where_target is DEFAULT_TARGET
+            where_target = sym.QBXSourceQuadStage2(expr.target)
+
+        from pytential.symbolic.execution import _get_discretization
+        source, source_discr = _get_discretization(self.places, where_source)
+        _, target_discr = _get_discretization(self.places, where_target)
+
+        if source_discr is not target_discr:
             raise NotImplementedError()
 
         rec_density = self.dummy.rec(expr.density)
@@ -562,11 +555,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         if len(rec_density.shape) != 2:
             raise NotImplementedError("layer potentials on non-variables")
 
-        try:
-            kernel = expr.kernel.inner_kernel
-        except AttributeError:
-            kernel = expr.kernel
-        kernel_args = _get_kernel_args(self, kernel, expr, source)
+        kernel_args = _get_kernel_args(self,
+                kernel.get_base_kernel(), expr, source)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
@@ -577,7 +567,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
-                sources=source.density_discr.nodes(),
+                sources=source_discr.nodes(),
                 index_set=self.index_set,
                 **kernel_args)
         mat = mat.get()

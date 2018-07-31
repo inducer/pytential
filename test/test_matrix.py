@@ -330,8 +330,7 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
 
 
 @pytest.mark.parametrize('where',
-        [None,
-         (DEFAULT_SOURCE, DEFAULT_TARGET),
+        [(DEFAULT_SOURCE, DEFAULT_TARGET),
          (QBXSourceStage1(DEFAULT_SOURCE),
           QBXSourceStage1(DEFAULT_TARGET)),
          (QBXSourceQuadStage2(DEFAULT_SOURCE),
@@ -391,22 +390,12 @@ def test_build_matrix_where(ctx_factory, where, visualize=False):
     from pytential.symbolic.execution import build_matrix
     mat = build_matrix(queue, qbx, op, u_sym, auto_where=where)
 
-    if where is None:
-        source_where, target_where = DEFAULT_SOURCE, DEFAULT_TARGET
-    else:
-        source_where, target_where = where
+    from pytential.symbolic.execution import _get_discretization
+    source_where, target_where = where
+    _, source_discr = _get_discretization(qbx, source_where)
+    _, target_discr = _get_discretization(qbx, target_where)
 
-    if isinstance(source_where, QBXSourceQuadStage2):
-        n = qbx.quad_stage2_density_discr.nnodes
-    else:
-        n = qbx.density_discr.nnodes
-
-    if isinstance(target_where, QBXSourceQuadStage2):
-        m = qbx.quad_stage2_density_discr.nnodes
-    else:
-        m = qbx.density_discr.nnodes
-
-    assert mat.shape == (m, n)
+    assert mat.shape == (target_discr.nnodes, source_discr.nnodes)
 
 
 if __name__ == "__main__":
