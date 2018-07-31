@@ -379,8 +379,8 @@ def test_build_matrix_where(ctx_factory, where, visualize=False):
                 continue
 
             pt.figure(figsize=(10, 8), dpi=300)
-            pt.plot(sources[0], sources[1], 'k');
-            pt.plot(targets[0], targets[1], 'ko');
+            pt.plot(sources[0], sources[1], 'k')
+            pt.plot(targets[0], targets[1], 'ko')
 
             line = pt.plot(targets[0, itgt], targets[1, itgt], 'o')
             c = pt.Circle([centers[0][i], centers[1][i]], radii[i // 2],

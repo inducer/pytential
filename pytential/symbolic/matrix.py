@@ -29,8 +29,6 @@ import pyopencl.array  # noqa
 import six
 from six.moves import intern
 
-from pytools import memoize_method
-
 from pytential.symbolic.mappers import EvaluationMapperBase
 import pytential.symbolic.primitives as sym
 from pytential.symbolic.execution import bind
@@ -499,7 +497,6 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         mat_gen = LayerPotentialMatrixBlockGenerator(
                 self.queue.context, (local_expn,))
 
-        from pytential.qbx.utils import get_centers_on_side
         assert abs(expr.qbx_forced_limit) > 0
         centers, radii = _get_centers_and_expansion_radii(self.queue,
                 source, target_discr, expr.qbx_forced_limit)
