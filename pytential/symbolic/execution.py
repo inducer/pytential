@@ -284,22 +284,42 @@ class MatVecOp:
 # {{{ expression prep
 
 def _domains_default(nresults, places, domains, default_val):
+    """
+    :arg nresults: number of results.
+    :arg places: result of :func:`prepare_places`.
+    :arg domains: recommended domains.
+    :arg default_val: default value for domains which are not provided.
+
+    :return: a list of domains for each result. If domains is `None`, each
+        element in the list is *default_val*. If *domains* is not a list
+        of domains, each element in the resulting list is *domains*. Otherwise,
+        *domains* is returned as is.
+    """
     if domains is None:
         if default_val not in places:
             raise RuntimeError("'domains is None' requires "
                     "default domain to be defined")
         dom_name = default_val
         return nresults * [dom_name]
-
     elif not isinstance(domains, (list, tuple)):
         dom_name = domains
         return nresults * [dom_name]
-
     else:
+        assert len(domains) == nresults
         return domains
 
 
 def _where_default(places, auto_where=None):
+    """
+    :arg places: result of :func:`prepare_places`.
+    :arg auto_where: identifiers for source and/or target locations. If `None`,
+        `where` attributes are automatically found.
+
+    :return: if *auto_where* is provided, it is returned as is. If *places*
+        was obtained from :func:`prepare_places`, the default is given by its
+        keys. Otherwise, a tuple of `(DEFAULT_SOURCE, DEFAULT_TARGET)` is
+        returned.
+    """
     if auto_where is None:
         if not isinstance(places, dict):
             return DEFAULT_SOURCE, DEFAULT_TARGET
@@ -311,6 +331,18 @@ def _where_default(places, auto_where=None):
 
 
 def prepare_places(places, auto_where=None):
+    """
+    :arg places: a mapping of symbolic names to
+        :class:`~meshmode.discretization.Discretization` objects or a subclass
+        of :class:`~pytential.target.TargetBase`.
+    :arg auto_where: identifiers for source and/or target locations. If `None`,
+        `where` attributes are automatically found.
+
+    :return: a mapping of symbolic names, same as the input if it was already
+        such a mapping. If not, a mapping is constructed using the values
+        of *auto_where*, if provided, as keys and appropriate discretization
+        objects as values.
+    """
     from meshmode.discretization import Discretization
     from pytential.source import LayerPotentialSourceBase
     from pytential.target import TargetBase
@@ -351,9 +383,13 @@ def prepare_places(places, auto_where=None):
 
 def prepare_expr(places, expr, auto_where=None):
     """
-    :arg places: result of :func:`prepare_places`
-    :arg auto_where: For simple source-to-self or source-to-target
-        evaluations, find 'where' attributes automatically.
+    :arg places: result of :func:`prepare_places`.
+    :arg expr: an array of symbolic expressions.
+    :arg auto_where: identifiers for source and/or target locations. If `None`,
+        `where` attributes are automatically found.
+
+    :return: processed symbolic expressions, tagger with the given `where`
+        identifiers.
     """
 
     from pytential.source import LayerPotentialSourceBase
@@ -375,6 +411,25 @@ def prepare_expr(places, expr, auto_where=None):
 
 def prepare_expression(places, exprs, input_exprs,
                        domains=None, auto_where=None):
+    """
+    :arg places: a mapping of symbolic names to
+        :class:`~meshmode.discretization.Discretization` objects or a subclass
+        of :class:`~pytential.target.TargetBase`.
+    :arg exprs: an array or a single symbolic expression.
+    :arg input_exprs: an array or a single symbolic expression that is taken
+        as input by *exprs*.
+    :arg domains: a list of discretization identifiers, indicating the domains
+        on which the inputs live. If given, each element of the list must be
+        a key in mapping *places* and correspond to an *auto_where*
+        identifier.
+    :arg auto_where: identifiers for source and/or target locations. If `None`,
+        `where` attributes are automatically found.
+
+    :return: a tuple of `(places, exprs, input_exprs, domains)`, where each
+        element was appropriately processed so that it can be used by
+        :class:`BoundExpression`, :func:`build_matrix`, etc.
+    """
+
     auto_where = _where_default(places, auto_where)
     places = prepare_places(places, auto_where=auto_where)
     exprs = prepare_expr(places, exprs, auto_where=auto_where)
@@ -398,6 +453,18 @@ def prepare_expression(places, exprs, input_exprs,
 # {{{ bound expression
 
 def _get_discretization(places, where, default_source=QBXSourceStage1):
+    """
+    :arg places: a mapping of symbolic names to
+        :class:`~meshmode.discretization.Discretization` objects or a subclass
+        of :class:`~pytential.target.TargetBase`.
+    :arg where: identifier for source or target locations.
+    :arg default_source: specific source location in case `where` is
+        :class:`pytential.symbolic.primitives.DEFAULT_SOURCE` or
+        :class:`pytential.symbolic.primitives.DEFAULT_TARGET`.
+
+    :return: a :class:`~meshmode.discretization.Discretization`, from
+        *places* corresponding to *where*.
+    """
     from pytential.source import LayerPotentialSourceBase
 
     if where is DEFAULT_SOURCE or where is DEFAULT_TARGET:
