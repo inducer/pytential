@@ -162,8 +162,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         ifgrad = False
         outputs = []
         for out_knl in self.code.out_kernels:
-            if isinstance(knl, DirectionalSourceDerivative):
-                source_deriv_names.append(knl.dir_vec_name)
+            if isinstance(out_knl, DirectionalSourceDerivative):
+                source_deriv_names.append(out_knl.dir_vec_name)
             if self.is_supported_helmknl(out_knl):
                 outputs.append(())
             elif (isinstance(out_knl, AxisTargetDerivative)
@@ -235,7 +235,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return (
                 isinstance(knl, HelmholtzKernel) and knl.dim in [2, 3]
                 or isinstance(knl, LaplaceKernel) and knl.dim in [2, 3])
-
 
     # {{{ data vector helpers
 
