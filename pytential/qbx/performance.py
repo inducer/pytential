@@ -158,7 +158,13 @@ class PerformanceModelResult(MutableMapping):
         return self.perf_model_result.__str__()
 
     def __repr__(self):
-        return self.perf_model_result.__repr__()
+        return "".join([
+                type(self).__name__,
+                "(",
+                repr(self.perf_model_result),
+                ",",
+                repr(self.params),
+                ")"])
 
     def get_predicted_times(self, merge_close_lists=False):
         from pymbolic import evaluate
