@@ -174,8 +174,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             source_deriv_names.append(out_knl.dir_vec_name
                     if isinstance(out_knl, DirectionalSourceDerivative)
                     else None)
-            k_names.append(out_knl.helmholtz_k_name
-                    if isinstance(out_knl, HelmholtzKernel)
+
+            base_knl = out_knl.get_base_kernel()
+            k_names.append(base_knl.helmholtz_k_name
+                    if isinstance(base_knl, HelmholtzKernel)
                     else None)
 
         self.outputs = outputs
