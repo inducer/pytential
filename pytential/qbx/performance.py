@@ -124,8 +124,9 @@ class ParametrizedCosts(object):
 
     .. attribute:: params
 
-        A dictionary mapping names of symbolic parameters (such as FMM or QBX
-        order) to values.
+        A dictionary mapping names of symbolic parameters to values.  Parameters
+        appear in *raw_costs* and may include values such as QBX or FMM order
+        as well as calibration constants.
 
     .. automethod:: copy
     .. automethod:: with_params
