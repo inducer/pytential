@@ -28,7 +28,7 @@ Fast multipole driver
 
 .. automodule:: pytential.qbx.fmm
 
-Performance Model
+Performance model
 -----------------
 
 .. automodule:: pytential.qbx.performance
