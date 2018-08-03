@@ -149,21 +149,17 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         # {{{ digest out_kernels
 
-        may_use_tsqbx = all(
-                self.is_supported_helmknl_for_tsqbx(out_knl)
-                for out_knl in self.code.out_kernels)
-
-        if _use_target_specific_qbx and not may_use_tsqbx:
-            raise ValueError("TSQBX not supported for supplied kernels")
-
-        k_names = []
-        source_deriv_names = []
-
         ifgrad = False
         outputs = []
+        source_deriv_names = []
+        k_names = []
+
         for out_knl in self.code.out_kernels:
-            if isinstance(out_knl, DirectionalSourceDerivative):
-                source_deriv_names.append(out_knl.dir_vec_name)
+            if (
+                    _use_target_specific_qbx
+                    and not self.is_supported_helmknl_for_tsqbx(out_knl)):
+                raise ValueError("not all kernels passed support TSQBX")
+
             if self.is_supported_helmknl(out_knl):
                 outputs.append(())
             elif (isinstance(out_knl, AxisTargetDerivative)
@@ -171,26 +167,39 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 outputs.append((out_knl.axis,))
                 ifgrad = True
             else:
-                raise NotImplementedError(
+                raise ValueError(
                         "only the 2/3D Laplace and Helmholtz kernel "
                         "and their derivatives are supported")
 
+            source_deriv_names.append(out_knl.dir_vec_name
+                    if isinstance(out_knl, DirectionalSourceDerivative)
+                    else None)
+            k_names.append(out_knl.helmholtz_k_name
+                    if isinstance(out_knl, HelmholtzKernel)
+                    else None)
+
+        self.outputs = outputs
+
         from pytools import is_single_valued
+
         if not is_single_valued(source_deriv_names):
             raise ValueError("not all kernels passed are the same in "
                     "whether they represent a source derivative")
 
         source_deriv_name = source_deriv_names[0]
-        self.outputs = outputs
 
-        # }}}
+        if not is_single_valued(k_names):
+            raise ValueError("not all kernels passed have the same "
+                    "Helmholtz parameter")
 
-        from pytools import single_valued
-        k_name = single_valued(k_names)
+        k_name = k_names[0]
+
         if k_name is None:
             helmholtz_k = 0
         else:
             helmholtz_k = kernel_extra_kwargs[k_name]
+
+        # }}}
 
         dipole_vec = None
         if source_deriv_name is not None:
