@@ -753,7 +753,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             performance_model = self.performance_model
 
-        performance_model_result = performance_model(self, geo_data)
+        performance_model_result = performance_model(geo_data)
 
         # {{{ construct dummy outputs
 

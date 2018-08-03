@@ -27,12 +27,6 @@ THE SOFTWARE.
 
 from collections import OrderedDict
 
-try:
-    from collections.abc import MutableMapping
-except ImportError:
-    # Py 2.7
-    from collections import MutableMapping
-
 import logging
 
 import numpy as np
@@ -48,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 __doc__ = """
 .. autoclass:: PerformanceModel
-.. autoclass:: PerformanceModelResult
+.. autoclass:: ParametrizedCosts
 
 .. autofunction:: estimate_calibration_params
 """
@@ -119,54 +113,69 @@ class TranslationCostModel(object):
 # }}}
 
 
-# {{{ performance model result
+# {{{ parameterized costs returned by performance model
 
-class PerformanceModelResult(MutableMapping):
-    """A container for holding performance model results.
+class ParametrizedCosts(object):
+    """A container for data returned by the performance model.
+
+    This holds both symbolic costs as well as parameter values. To obtain a
+    prediction of the running time, use :meth:`get_predicted_times`.
+
+    .. attribute:: raw_costs
+
+        A dictionary mapping algorithmic stage names to symbolic costs.
+
+    .. attribute:: params
+
+        A dictionary mapping names of symbolic parameters to values.  Parameters
+        appear in *raw_costs* and may include values such as QBX or FMM order
+        as well as calibration constants.
+
+    .. automethod:: copy
+    .. automethod:: with_params
+    .. automethod:: get_predicted_times
     """
 
-    def __init__(self, perf_model_result, params):
-        self.perf_model_result = OrderedDict(perf_model_result)
+    def __init__(self, raw_costs, params):
+        self.raw_costs = OrderedDict(raw_costs)
         self.params = params
 
     def with_params(self, params):
+        """Return a copy of *self* with parameters updated to include *params*."""
         new_params = self.params.copy()
         new_params.update(params)
         return type(self)(
-                perf_model_result=self.perf_model_result.copy(),
+                raw_costs=self.raw_costs.copy(),
                 params=new_params)
 
     def copy(self):
         return self.with_params({})
 
-    def __getitem__(self, val):
-        return self.perf_model_result.__getitem__(val)
-
-    def __setitem__(self, key, val):
-        return self.perf_model_result.__setitem__(key, val)
-
-    def __delitem__(self, key):
-        return self.perf_model_result.__delitem__(key)
-
-    def __iter__(self):
-        return self.perf_model_result.__iter__()
-
-    def __len__(self):
-        return self.perf_model_result.__len__()
-
     def __str__(self):
-        return self.perf_model_result.__str__()
+        return "".join([
+                type(self).__name__,
+                "(raw_costs=",
+                str(self.raw_costs),
+                ", params=",
+                str(self.params),
+                ")"])
 
     def __repr__(self):
         return "".join([
                 type(self).__name__,
-                "(",
-                repr(self.perf_model_result),
-                ",",
+                "(raw_costs=",
+                repr(self.raw_costs),
+                ", params=",
                 repr(self.params),
                 ")"])
 
     def get_predicted_times(self, merge_close_lists=False):
+        """Return a dictionary mapping stage names to predicted time in seconds.
+
+        :arg merge_close_lists: If *True*, the returned estimate combines
+            the cost of "close" lists (Lists 1, 3 close, and 4 close). If
+            *False*, the time of each "close" list is reported separately.
+        """
         from pymbolic import evaluate
         from functools import partial
 
@@ -174,7 +183,7 @@ class PerformanceModelResult(MutableMapping):
 
         result = OrderedDict()
 
-        for name, val in self.perf_model_result.items():
+        for name, val in self.raw_costs.items():
             if merge_close_lists:
                 for suffix in ("_list1", "_list3", "_list4"):
                     if name.endswith(suffix):
@@ -191,6 +200,10 @@ class PerformanceModelResult(MutableMapping):
 # {{{ performance model
 
 class PerformanceModel(object):
+    """
+    .. automethod:: with_calibration_params
+    .. automethod:: __call__
+    """
 
     def __init__(self,
             uses_pde_expansions=True,
@@ -200,10 +213,14 @@ class PerformanceModel(object):
         :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
             uses translation operators that make use of the knowledge that the
             potential satisfies a PDE.
+
         :arg summarize_parallel: a function of two arguments
-            *(parallel_array, sym_multipliers)* used to process an array of
-            workloads of 'parallelizable units'. By default, all workloads are
-            summed into one number encompassing the total workload.
+            *(parallel_array, sym_multipliers)* used to model the cost after
+            taking into account parallelization. *parallel_array* represents a
+            partitioning of the work into elementary (typically box-based) tasks,
+            each with a given number of operations. *sym_multipliers* is a symbolic
+            value representing time per modeled operation. By default, all tasks
+            are summed into one number encompassing the total cost.
         """
         self.uses_pde_expansions = uses_pde_expansions
         if summarize_parallel is None:
@@ -214,6 +231,7 @@ class PerformanceModel(object):
         self.calibration_params = calibration_params
 
     def with_calibration_params(self, calibration_params):
+        """Return a copy of *self* with a new set of calibration parameters."""
         return type(self)(
                 uses_pde_expansions=self.uses_pde_expansions,
                 summarize_parallel=self.summarize_parallel,
@@ -528,10 +546,16 @@ class PerformanceModel(object):
     # }}}
 
     @log_process(logger, "gather performance model data")
-    def __call__(self, lpot_source, geo_data):
+    def __call__(self, geo_data):
+        """Analyze the given geometry and return performance data.
+
+        :returns: An instance of :class:`ParametrizedCosts`.
+        """
         # FIXME: This should suport target filtering.
 
         result = OrderedDict()
+
+        lpot_source = geo_data.lpot_source
 
         nqbtl = geo_data.non_qbx_box_target_lists()
         use_tsqbx = lpot_source._use_tsqbx
@@ -665,7 +689,7 @@ class PerformanceModel(object):
 
         # }}}
 
-        return PerformanceModelResult(result, params)
+        return ParametrizedCosts(result, params)
 
 # }}}
 
@@ -673,6 +697,13 @@ class PerformanceModel(object):
 # {{{ calibrate performance model
 
 def _collect(expr, variables):
+    """Collect terms with respect to a list of variables.
+
+    This applies :func:`sympy.simplify.collect` to the a :mod:`pymbolic` expression
+    with respect to the iterable of names in *variables*.
+
+    Returns a dictionary mapping variable names to terms.
+    """
     from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
     p2s = PymbolicToSympyMapper()
     s2p = SympyToPymbolicMapper()
@@ -734,7 +765,12 @@ def estimate_calibration_params(model_results, timing_results):
         for param in params:
             context[param] = var(param)
 
-        total_modeled_cost = evaluate(sum(model_result.values()), context=context)
+        # Represents the total modeled cost, but leaves the calibration
+        # parameters symbolic.
+        total_modeled_cost = evaluate(
+                sum(model_result.raw_costs.values()),
+                context=context)
+
         collected_times = _collect(total_modeled_cost, params)
 
         for param, time in collected_times.items():
