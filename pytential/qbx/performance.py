@@ -742,7 +742,12 @@ def estimate_calibration_params(model_results, timing_results):
         for param in params:
             context[param] = var(param)
 
-        total_modeled_cost = evaluate(sum(model_result.values()), context=context)
+        # Represents the total modeled cost, but leaves the calibration
+        # parameters symbolic.
+        total_modeled_cost = evaluate(
+                sum(model_result.raw_costs.values()),
+                context=context)
+
         collected_times = _collect(total_modeled_cost, params)
 
         for param, time in collected_times.items():
