@@ -30,7 +30,11 @@ from six.moves import range
 import numpy as np  # noqa
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa
+import sympy as sp
 
+
+from pymbolic import var
+from collections import OrderedDict
 
 import logging
 logger = logging.getLogger(__name__)
@@ -38,7 +42,9 @@ logger = logging.getLogger(__name__)
 
 __doc__ = """
 .. autoclass:: PerformanceModel
-.. autofunction:: assemble_performance_data
+.. autoclass:: ParametrizedCosts
+
+.. autofunction:: estimate_calibration_params
 """
 
 
@@ -59,30 +65,40 @@ class TranslationCostModel(object):
         self.translation_max_power = translation_max_power
 
     def direct(self):
-        return 1
+        return var("c_p2p")
 
     def p2qbxl(self):
-        return self.ncoeffs_qbx
+        return var("c_p2qbxl") * self.ncoeffs_qbx
 
-    qbxl2p = p2qbxl
+    def qbxl2p(self):
+        return var("c_qbxl2p") * self.ncoeffs_qbx
 
     def p2l(self):
-        return self.ncoeffs_fmm
+        return var("c_p2l") * self.ncoeffs_fmm
 
-    l2p = p2l
-    p2m = p2l
-    m2p = p2l
+    def l2p(self):
+        return var("c_l2p") * self.ncoeffs_fmm
+
+    def p2m(self):
+        return var("c_p2m") * self.ncoeffs_fmm
+
+    def m2p(self):
+        return var("c_m2p") * self.ncoeffs_fmm
 
     def m2m(self):
-        return self.e2e_cost(self.p_fmm, self.p_fmm)
+        return var("c_m2m") * self.e2e_cost(self.p_fmm, self.p_fmm)
 
-    l2l = m2m
-    m2l = m2m
+    def l2l(self):
+        return var("c_l2l") * self.e2e_cost(self.p_fmm, self.p_fmm)
+
+    def m2l(self):
+        return var("c_m2l") * self.e2e_cost(self.p_fmm, self.p_fmm)
 
     def m2qbxl(self):
-        return self.e2e_cost(self.p_fmm, self.p_qbx)
+        return var("c_m2qbxl") * self.e2e_cost(self.p_fmm, self.p_qbx)
 
-    l2qbxl = m2qbxl
+    def l2qbxl(self):
+        return var("c_l2qbxl") * self.e2e_cost(self.p_fmm, self.p_qbx)
 
     def e2e_cost(self, p_source, p_target):
         from pymbolic.primitives import Max
@@ -94,9 +110,97 @@ class TranslationCostModel(object):
 # }}}
 
 
+# {{{ parameterized costs returned by performance model
+
+class ParametrizedCosts(object):
+    """A container for data returned by the performance model.
+
+    This holds both symbolic costs as well as parameter values. To obtain a
+    prediction of the running time, use :meth:`get_predicted_times`.
+
+    .. attribute:: raw_costs
+
+        A dictionary mapping algorithmic stage names to symbolic costs.
+
+    .. attribute:: params
+
+        A dictionary mapping names of symbolic parameters to values.  Parameters
+        appear in *raw_costs* and may include values such as QBX or FMM order
+        as well as calibration constants.
+
+    .. automethod:: copy
+    .. automethod:: with_params
+    .. automethod:: get_predicted_times
+    """
+
+    def __init__(self, raw_costs, params):
+        self.raw_costs = OrderedDict(raw_costs)
+        self.params = params
+
+    def with_params(self, params):
+        """Return a copy of *self* with parameters updated to include *params*."""
+        new_params = self.params.copy()
+        new_params.update(params)
+        return type(self)(
+                raw_costs=self.raw_costs.copy(),
+                params=new_params)
+
+    def copy(self):
+        return self.with_params({})
+
+    def __str__(self):
+        return "".join([
+                type(self).__name__,
+                "(raw_costs=",
+                str(self.raw_costs),
+                ", params=",
+                str(self.params),
+                ")"])
+
+    def __repr__(self):
+        return "".join([
+                type(self).__name__,
+                "(raw_costs=",
+                repr(self.raw_costs),
+                ", params=",
+                repr(self.params),
+                ")"])
+
+    def get_predicted_times(self, merge_close_lists=False):
+        """Return a dictionary mapping stage names to predicted time in seconds.
+
+        :arg merge_close_lists: If *True*, the returned estimate combines
+            the cost of "close" lists (Lists 1, 3 close, and 4 close). If
+            *False*, the time of each "close" list is reported separately.
+        """
+        from pymbolic import evaluate
+        from functools import partial
+
+        get_time = partial(evaluate, context=self.params)
+
+        result = OrderedDict()
+
+        for name, val in self.raw_costs.items():
+            if merge_close_lists:
+                for suffix in ("_list1", "_list3", "_list4"):
+                    if name.endswith(suffix):
+                        name = name[:-len(suffix)]
+                        break
+
+            result[name] = get_time(val) + result.get(name, 0)
+
+        return result
+
+# }}}
+
+
 # {{{ performance model
 
 class PerformanceModel(object):
+    """
+    .. automethod:: with_calibration_params
+    .. automethod:: __call__
+    """
 
     def __init__(self,
             uses_pde_expansions=True,
@@ -104,23 +208,19 @@ class PerformanceModel(object):
             translation_target_power=None,
             translation_max_power=None,
             summarize_parallel=None,
-            merge_close_lists=True):
+            calibration_params=None):
         """
         :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
             uses translation operators that make use of the knowledge that the
             potential satisfies a PDE.
-        :arg summarize_parallel: a function of two arguments
-            *(parallel_array, sym_multipliers)* used to process an array of
-            workloads of 'parallelizable units'. By default, all workloads are
-            summed into one number encompassing the total workload.
-        :arg merge_close_lists: A :class:`bool` indicating whether or not all
-            boxes requiring direct evaluation should be merged into a single
-            interaction list. If *False*, *part_direct* and *p2qbxl* will be
-            suffixed with the originating list as follows:
 
-            * *_neighbor* (List 1)
-            * *_sep_smaller* (List 3 close)
-            * *_sep_bigger* (List 4 close).
+        :arg summarize_parallel: a function of two arguments
+            *(parallel_array, sym_multipliers)* used to model the cost after
+            taking into account parallelization. *parallel_array* represents a
+            partitioning of the work into elementary (typically box-based) tasks,
+            each with a given number of operations. *sym_multipliers* is a symbolic
+            value representing time per modeled operation. By default, all tasks
+            are summed into one number encompassing the total cost.
         """
         self.uses_pde_expansions = uses_pde_expansions
         self.translation_source_power = translation_source_power
@@ -129,7 +229,19 @@ class PerformanceModel(object):
         if summarize_parallel is None:
             summarize_parallel = self.summarize_parallel_default
         self.summarize_parallel = summarize_parallel
-        self.merge_close_lists = merge_close_lists
+        if calibration_params is None:
+            calibration_params = dict()
+        self.calibration_params = calibration_params
+
+    def with_calibration_params(self, calibration_params):
+        """Return a copy of *self* with a new set of calibration parameters."""
+        return type(self)(
+                uses_pde_expansions=self.uses_pde_expansions,
+                translation_source_power=self.translation_source_power,
+                translation_target_power=self.translation_target_power,
+                translation_max_power=self.translation_max_power,
+                summarize_parallel=self.summarize_parallel,
+                calibration_params=calibration_params)
 
     @staticmethod
     def summarize_parallel_default(parallel_array, sym_multipliers):
@@ -154,9 +266,6 @@ class PerformanceModel(object):
                 npart_direct_list1_srcs += nsources
 
             npart_direct_list1[itgt_box] = ntargets * npart_direct_list1_srcs
-
-            if self.merge_close_lists:
-                continue
 
             npart_direct_list3_srcs = 0
 
@@ -185,16 +294,12 @@ class PerformanceModel(object):
             npart_direct_list4[itgt_box] = ntargets * npart_direct_list4_srcs
 
         result = {}
-        if self.merge_close_lists:
-            result["part_direct"] = (
-                    self.summarize_parallel(npart_direct_list1, xlat_cost.direct()))
-        else:
-            result["part_direct_neighbor"] = (
-                    self.summarize_parallel(npart_direct_list1, xlat_cost.direct()))
-            result["part_direct_sep_smaller"] = (
-                    self.summarize_parallel(npart_direct_list3, xlat_cost.direct()))
-            result["part_direct_sep_bigger"] = (
-                    self.summarize_parallel(npart_direct_list4, xlat_cost.direct()))
+        result["eval_direct_list1"] = (
+                self.summarize_parallel(npart_direct_list1, xlat_cost.direct()))
+        result["eval_direct_list3"] = (
+                self.summarize_parallel(npart_direct_list3, xlat_cost.direct()))
+        result["eval_direct_list4"] = (
+                self.summarize_parallel(npart_direct_list4, xlat_cost.direct()))
 
         return result
 
@@ -205,12 +310,13 @@ class PerformanceModel(object):
     def process_list2(self, xlat_cost, traversal):
         nm2l = np.zeros(len(traversal.target_or_target_parent_boxes), dtype=np.intp)
 
-        for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
+        for itgt_box in range(len(traversal.target_or_target_parent_boxes)):
             start, end = traversal.from_sep_siblings_starts[itgt_box:itgt_box+2]
 
             nm2l[itgt_box] += end-start
 
-        return dict(m2l=self.summarize_parallel(nm2l, xlat_cost.m2l()))
+        return dict(multipole_to_local=(
+                self.summarize_parallel(nm2l, xlat_cost.m2l())))
 
     # }}}
 
@@ -233,8 +339,8 @@ class PerformanceModel(object):
                         ntargets * (end-start)
                 )
 
-        return dict(
-                mp_eval=self.summarize_parallel(nmp_eval, xlat_cost.m2p()))
+        return dict(eval_multipoles=(
+                self.summarize_parallel(nmp_eval, xlat_cost.m2p())))
 
     # }}}
 
@@ -256,7 +362,7 @@ class PerformanceModel(object):
 
             nform_local[itgt_box] = nform_local_box
 
-        return dict(form_local=(
+        return dict(form_locals=(
                 self.summarize_parallel(nform_local, xlat_cost.p2l())))
 
     # }}}
@@ -282,9 +388,6 @@ class PerformanceModel(object):
                 np2qbxl_list1_srcs += nsources
 
             np2qbxl_list1[itgt_center] = np2qbxl_list1_srcs
-
-            if self.merge_close_lists:
-                continue
 
             np2qbxl_list3_srcs = 0
 
@@ -313,16 +416,12 @@ class PerformanceModel(object):
             np2qbxl_list4[itgt_center] = np2qbxl_list4_srcs
 
         result = {}
-        if self.merge_close_lists:
-            result["p2qbxl"] = (
-                    self.summarize_parallel(np2qbxl_list1, xlat_cost.p2qbxl()))
-        else:
-            result["p2qbxl_neighbor"] = (
-                    self.summarize_parallel(np2qbxl_list1, xlat_cost.p2qbxl()))
-            result["p2qbxl_sep_smaller"] = (
-                    self.summarize_parallel(np2qbxl_list3, xlat_cost.p2qbxl()))
-            result["p2qbxl_sep_bigger"] = (
-                    self.summarize_parallel(np2qbxl_list4, xlat_cost.p2qbxl()))
+        result["form_global_qbx_locals_list1"] = (
+                self.summarize_parallel(np2qbxl_list1, xlat_cost.p2qbxl()))
+        result["form_global_qbx_locals_list3"] = (
+                self.summarize_parallel(np2qbxl_list3, xlat_cost.p2qbxl()))
+        result["form_global_qbx_locals_list4"] = (
+                self.summarize_parallel(np2qbxl_list4, xlat_cost.p2qbxl()))
 
         return result
 
@@ -353,7 +452,8 @@ class PerformanceModel(object):
 
                 nm2qbxl[isrc_level, itgt_center] += stop-start
 
-        return dict(m2qbxl=self.summarize_parallel(nm2qbxl, xlat_cost.m2qbxl()))
+        return dict(translate_box_multipoles_to_qbx_local=(
+                self.summarize_parallel(nm2qbxl, xlat_cost.m2qbxl())))
 
     # }}}
 
@@ -367,7 +467,8 @@ class PerformanceModel(object):
             start, end = center_to_targets_starts[src_icenter:src_icenter+2]
             nqbx_eval[isrc_center] += end-start
 
-        return dict(qbxl2p=self.summarize_parallel(nqbx_eval, xlat_cost.qbxl2p()))
+        return dict(eval_qbx_expansions=(
+                self.summarize_parallel(nqbx_eval, xlat_cost.qbxl2p())))
 
     # }}}
 
@@ -430,37 +531,48 @@ class PerformanceModel(object):
     # }}}
 
     def __call__(self, geo_data):
+        """Analyze the given geometry and return performance data.
+
+        :returns: An instance of :class:`ParametrizedCosts`.
+        """
         # FIXME: This should suport target filtering.
 
-        from collections import OrderedDict
         result = OrderedDict()
+
+        lpot_source = geo_data.lpot_source
 
         nqbtl = geo_data.non_qbx_box_target_lists()
 
         with cl.CommandQueue(geo_data.cl_context) as queue:
             tree = geo_data.tree().get(queue=queue)
-            traversal = geo_data.traversal(self.merge_close_lists).get(queue=queue)
+            traversal = geo_data.traversal(merge_close_lists=False).get(queue=queue)
             box_target_counts_nonchild = (
                     nqbtl.box_target_counts_nonchild.get(queue=queue))
 
-        result.update(
+        params = dict(
                 nlevels=tree.nlevels,
                 nboxes=tree.nboxes,
                 nsources=tree.nsources,
                 ntargets=tree.ntargets,
-                ncenters=geo_data.ncenters)
+                ncenters=geo_data.ncenters,
+                p_qbx=lpot_source.qbx_order,
+                # FIXME: Assumes this is a constant
+                p_fmm=lpot_source.fmm_level_to_order(None, None, None, None),
+                )
+
+        params.update(self.calibration_params)
 
         xlat_cost = self.get_translation_cost_model(tree.dimensions)
 
         # {{{ construct local multipoles
 
-        result["form_mp"] = tree.nsources * xlat_cost.p2m()
+        result["form_multipoles"] = tree.nsources * xlat_cost.p2m()
 
         # }}}
 
         # {{{ propagate multipoles upward
 
-        result["prop_upward"] = tree.nboxes * xlat_cost.m2m()
+        result["coarsen_multipoles"] = tree.nboxes * xlat_cost.m2m()
 
         # }}}
 
@@ -492,20 +604,18 @@ class PerformanceModel(object):
 
         # {{{ propagate local_exps downward
 
-        result["prop_downward"] = tree.nboxes * xlat_cost.l2l()
+        result["refine_locals"] = tree.nboxes * xlat_cost.l2l()
 
         # }}}
 
         # {{{ evaluate locals
 
-        result["eval_part"] = tree.ntargets * xlat_cost.l2p()
+        result["eval_locals"] = tree.ntargets * xlat_cost.l2p()
 
         # }}}
 
         global_qbx_centers = geo_data.global_qbx_centers()
 
-        # If self.merge_close_lists is False, then this builds another traversal
-        # (which is OK).
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         center_to_targets_starts = geo_data.center_to_tree_targets().starts
         qbx_center_to_target_box_source_level = np.empty(
@@ -545,7 +655,8 @@ class PerformanceModel(object):
 
         # {{{ translate from box local expansions to qbx local expansions
 
-        result["l2qbxl"] = geo_data.ncenters * xlat_cost.l2qbxl()
+        result["translate_box_local_to_qbx_local"] = (
+                geo_data.ncenters * xlat_cost.l2qbxl())
 
         # }}}
 
@@ -556,29 +667,112 @@ class PerformanceModel(object):
 
         # }}}
 
-        return result
+        return ParametrizedCosts(result, params)
 
 # }}}
 
 
-# {{{ assemble_performance_data
+# {{{ calibrate performance model
 
-def assemble_performance_data(geo_data, uses_pde_expansions,
-        translation_source_power=None, translation_target_power=None,
-        translation_max_power=None,
-        summarize_parallel=None, merge_close_lists=True):
-    """Compute modeled performance using :class:`PerformanceModel`.
+def _collect(expr, variables):
+    """Collect terms with respect to a list of variables.
 
-    See :class:`PerformanceModel` for parameter documentation.
+    This applies :func:`sympy.simplify.collect` to the a :mod:`pymbolic` expression
+    with respect to the iterable of names in *variables*.
+
+    Returns a dictionary mapping variable names to terms.
+    """
+    from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
+    p2s = PymbolicToSympyMapper()
+    s2p = SympyToPymbolicMapper()
+
+    from sympy.simplify import collect
+    sympy_variables = [sp.var(v) for v in variables]
+    collect_result = collect(p2s(expr), sympy_variables, evaluate=False)
+
+    result = {}
+    for v in variables:
+        try:
+            result[v] = s2p(collect_result[sp.var(v)])
+        except KeyError:
+            continue
+
+    return result
+
+
+_FMM_STAGE_TO_CALIBRATION_PARAMETER = {
+        "form_multipoles": "c_p2m",
+        "coarsen_multipoles": "c_m2m",
+        "eval_direct": "c_p2p",
+        "multipole_to_local": "c_m2l",
+        "eval_multipoles": "c_m2p",
+        "form_locals": "c_p2l",
+        "refine_locals": "c_l2l",
+        "eval_locals": "c_l2p",
+        "form_global_qbx_locals": "c_p2qbxl",
+        "translate_box_multipoles_to_qbx_local": "c_m2qbxl",
+        "translate_box_local_to_qbx_local": "c_l2qbxl",
+        "eval_qbx_expansions": "c_qbxl2p",
+        }
+
+
+def estimate_calibration_params(model_results, timing_results):
+    """Given a set of model results and matching timing results, estimate the best
+    calibration parameters for the model.
     """
 
-    return PerformanceModel(
-            uses_pde_expansions,
-            translation_source_power,
-            translation_target_power,
-            translation_max_power,
-            summarize_parallel,
-            merge_close_lists)(geo_data)
+    params = set(_FMM_STAGE_TO_CALIBRATION_PARAMETER.values())
+
+    nresults = len(model_results)
+
+    if nresults != len(timing_results):
+        raise ValueError("must have same number of model and timing results")
+
+    uncalibrated_times = {}
+    actual_times = {}
+
+    for param in params:
+        uncalibrated_times[param] = np.zeros(nresults)
+        actual_times[param] = np.zeros(nresults)
+
+    from pymbolic import evaluate
+
+    for i, model_result in enumerate(model_results):
+        context = model_result.params.copy()
+        for param in params:
+            context[param] = var(param)
+
+        # Represents the total modeled cost, but leaves the calibration
+        # parameters symbolic.
+        total_modeled_cost = evaluate(
+                sum(model_result.raw_costs.values()),
+                context=context)
+
+        collected_times = _collect(total_modeled_cost, params)
+
+        for param, time in collected_times.items():
+            uncalibrated_times[param][i] = time
+
+    for i, timing_result in enumerate(timing_results):
+        for param, time in timing_result.items():
+            calibration_param = (
+                    _FMM_STAGE_TO_CALIBRATION_PARAMETER[param])
+            actual_times[calibration_param][i] = time.process_elapsed
+
+    result = {}
+
+    for param in params:
+        uncalibrated = uncalibrated_times[param]
+        actual = actual_times[param]
+
+        if np.allclose(uncalibrated, 0):
+            result[param] = float("NaN")
+            continue
+
+        result[param] = (
+                actual.dot(uncalibrated) / uncalibrated.dot(uncalibrated))
+
+    return result
 
 # }}}
 

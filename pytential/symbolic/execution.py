@@ -275,11 +275,11 @@ class PerformanceModelMapper(EvaluationMapperBase):
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         source = bound_expr.places[insn.source]
-        costs = {}
-        result = source.perf_model_compute_potential_insn(
-                queue, insn, bound_expr, evaluate, costs)
-        self.modeled_performance[insn] = costs
-        return result
+        result, futures, perf_model_result = (
+                source.perf_model_compute_potential_insn(
+                    queue, insn, bound_expr, evaluate))
+        self.modeled_performance[insn] = perf_model_result
+        return result, futures
 
     def get_modeled_performance(self):
         return self.modeled_performance

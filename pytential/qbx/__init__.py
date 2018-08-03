@@ -633,16 +633,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 queue, insn, bound_expr, evaluate, func)
 
     def perf_model_compute_potential_insn(self, queue, insn, bound_expr,
-            evaluate, costs):
+            evaluate):
         if self.fmm_level_to_order is False:
             raise NotImplementedError("perf modeling direct evaluations")
         return self._dispatch_compute_potential_insn(
                 queue, insn, bound_expr, evaluate,
-                self.perf_model_compute_potential_insn_fmm,
-                costs=costs)
+                self.perf_model_compute_potential_insn_fmm)
 
     def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
-            evaluate, func, **extra_args):
+            evaluate, func):
         from pytools.obj_array import with_object_array_or_scalar
 
         if not self._refined_for_global_qbx:
@@ -662,7 +661,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             value = evaluate(expr)
             return with_object_array_or_scalar(oversample_nonscalars, value)
 
-        return func(queue, insn, bound_expr, evaluate_wrapper, **extra_args)
+        return func(queue, insn, bound_expr, evaluate_wrapper)
 
     @property
     @memoize_method
@@ -737,7 +736,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ execute fmm performance model
 
     def perf_model_compute_potential_insn_fmm(self, queue, insn, bound_expr,
-                                              evaluate, costs):
+                                              evaluate):
         target_name_and_side_to_number, target_discrs_and_qbx_sides = (
                 self.get_target_discrs_and_qbx_sides(insn, bound_expr))
 
@@ -749,7 +748,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             performance_model = self.performance_model
 
-        costs.update(performance_model(geo_data))
+        performance_model_result = performance_model(geo_data)
 
         # {{{ construct dummy outputs
 
@@ -776,7 +775,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             result.append((o.name, output_array))
 
         new_futures = []
-        return result, new_futures
+        return result, new_futures, performance_model_result
 
         # }}}
 
