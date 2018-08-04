@@ -84,42 +84,50 @@ def _get_kernel_args(mapper, kernel, expr, source):
 
 def _get_weights_and_area_elements(queue, source, where):
     if isinstance(where, sym.QBXSourceQuadStage2):
-        return source.weights_and_area_elements().with_queue(queue)
+        waa = source.weights_and_area_elements().with_queue(queue)
+    else:
+        # NOTE: copied from `weights_and_area_elements`, but using the
+        # discretization given by `where` and no interpolation
+        from pytential.symbolic.execution import _get_discretization
+        discr = _get_discretization(source, where)
 
-    # NOTE: copied from `weights_and_area_elements`, but using the
-    # discretization given by `where` and no interpolation
-    from pytential.symbolic.execution import _get_discretization
-    discr = _get_discretization(source, where)
+        area = bind(discr, sym.area_element(source.ambient_dim, source.dim))(queue)
+        qweight = bind(discr, sym.QWeight())(queue)
+        waa = area * qweight
 
-    area = bind(discr, sym.area_element(source.ambient_dim, source.dim))(queue)
-    qweight = bind(discr, sym.QWeight())(queue)
-
-    return area * qweight
+    return waa
 
 
 def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_limit):
-    from pytential.qbx.utils import get_interleaved_centers
-    centers = get_interleaved_centers(queue, source)
-    radii = source._expansion_radii('nsources')
-
-    from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
+    # NOTE: skip expensive target association
     if source.density_discr is target_discr:
-        target_association_tolerance = 1.0e-10
+        from pytential.qbx.utils import get_centers_on_side
+        centers = get_centers_on_side(source, qbx_forced_limit)
+        radii = source._expansion_radii('nsources')
     else:
+        from pytential.qbx.utils import get_interleaved_centers
+        centers = get_interleaved_centers(queue, source)
+        radii = source._expansion_radii('nsources')
+
+        # NOTE: using a very small tolerance to make sure all the stage2
+        # targets are associated to a center. We can't use the user provided
+        # source.target_association_tolerance here because it will likely be
+        # way too small.
         target_association_tolerance = 1.0e-1
 
-    code_container = source.target_association_code_container
-    assoc = associate_targets_to_qbx_centers(
-            source,
-            code_container.get_wrangler(queue),
-            [(target_discr, qbx_forced_limit)],
-            target_association_tolerance=target_association_tolerance)
+        from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
+        code_container = source.target_association_code_container
+        assoc = associate_targets_to_qbx_centers(
+                source,
+                code_container.get_wrangler(queue),
+                [(target_discr, qbx_forced_limit)],
+                target_association_tolerance=target_association_tolerance)
 
-    centers = [cl.array.take(c, assoc.target_to_center, queue=queue)
-               for c in centers]
-    radii = cl.array.take(radii,
-            (assoc.target_to_center.with_queue(queue) / 2.0).astype(np.int),
-            queue=queue)
+        centers = [cl.array.take(c, assoc.target_to_center, queue=queue)
+                   for c in centers]
+        radii = cl.array.take(radii,
+                (assoc.target_to_center.with_queue(queue) / 2.0).astype(np.int),
+                queue=queue)
 
     return centers, radii
 
