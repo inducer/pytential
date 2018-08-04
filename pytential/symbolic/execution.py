@@ -452,6 +452,64 @@ def prepare_expression(places, exprs, input_exprs,
 
 # {{{ bound expression
 
+class BindingLocation(object):
+    def __init__(self, places, auto_where=None):
+        from meshmode.discretization import Discretization
+        from pytential.source import LayerPotentialSourceBase, PotentialSource
+        from pytential.target import TargetBase
+
+        if auto_where is None:
+            auto_where = DEFAULT_SOURCE, DEFAULT_TARGET
+        where_source, where_target = auto_where
+
+        def get_lpot_discr(where):
+            if where is DEFAULT_SOURCE or where is DEFAULT_TARGET:
+                where = QBXSourceStage1(where)
+
+            if isinstance(where, QBXSourceStage1):
+                return places.density_discr
+            if isinstance(where, QBXSourceStage2):
+                return places.stage2_density_discr
+            if isinstance(where, QBXSourceQuadStage2):
+                return places.quad_stage2_density_discr
+
+            return None
+
+        self.places = {}
+        if isinstance(places, LayerPotentialSourceBase):
+            self[where_source] = get_lpot_discr(places, where_source)
+            self[where_target] = get_lpot_discr(places, where_target)
+        elif isinstance(places, (Discretization, TargetBase)):
+            self[where_target] = places
+        elif isinstance(places, tuple):
+            source_discr, target_discr = places
+            self[where_source] = source_discr
+            self[where_target] = target_discr
+        else:
+            for key, value in six.iteritems(places):
+                self[key] = value
+
+        for p in six.itervalues(self.places):
+            if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
+                raise TypeError("Must pass discretization, targets or "
+                        "layer potential sources as 'places'")
+
+        self.source = None
+        if isinstance(places, LayerPotentialSourceBase):
+            self.source = places
+
+        self.caches = {}
+
+    def __getitem__(self, where):
+        return self.places[where]
+
+    def __setitem__(self, where, discr):
+        self.places[where] = discr
+
+    def get_cache(self, name):
+        return self.caches.setdefault(name, {})
+
+
 def _get_discretization(places, where, default_source=QBXSourceStage1):
     """
     :arg places: a mapping of symbolic names to
@@ -491,12 +549,10 @@ def _get_discretization(places, where, default_source=QBXSourceStage1):
     return lpot, discr
 
 
-class BoundExpression:
-    def __init__(self, places, sym_op_expr, sym_op_args=None):
+class BoundExpression(object):
+    def __init__(self, places, sym_op_expr):
         self.places = places
         self.sym_op_expr = sym_op_expr
-        self.sym_op_args = sym_op_args
-
         self.caches = {}
 
         from pytential.symbolic.compiler import OperatorCompiler
