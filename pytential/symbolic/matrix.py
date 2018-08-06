@@ -82,25 +82,23 @@ def _get_kernel_args(mapper, kernel, expr, source):
     return kernel_args
 
 
-def _get_weights_and_area_elements(queue, source, where):
-    if isinstance(where, sym.QBXSourceQuadStage2):
+def _get_weights_and_area_elements(queue, source, source_discr):
+    if source.quad_stage2_density_discr is source_discr:
         waa = source.weights_and_area_elements().with_queue(queue)
     else:
         # NOTE: copied from `weights_and_area_elements`, but using the
         # discretization given by `where` and no interpolation
-        from pytential.symbolic.execution import _get_discretization
-        discr = _get_discretization(source, where)
-
-        area = bind(discr, sym.area_element(source.ambient_dim, source.dim))(queue)
-        qweight = bind(discr, sym.QWeight())(queue)
+        area = bind(source_discr,
+                sym.area_element(source.ambient_dim, source.dim))(queue)
+        qweight = bind(source_discr, sym.QWeight())(queue)
         waa = area * qweight
 
     return waa
 
 
 def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_limit):
-    # NOTE: skip expensive target association
     if source.density_discr is target_discr:
+        # NOTE: skip expensive target association
         from pytential.qbx.utils import get_centers_on_side
         centers = get_centers_on_side(source, qbx_forced_limit)
         radii = source._expansion_radii('nsources')
@@ -140,14 +138,13 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
 # We'll cheat and build the matrix on the host.
 
 class MatrixBuilder(EvaluationMapperBase):
-    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_discr,
             places, context):
         super(MatrixBuilder, self).__init__(context=context)
 
         self.queue = queue
         self.dep_expr = dep_expr
         self.other_dep_exprs = other_dep_exprs
-        self.dep_source = dep_source
         self.dep_discr = dep_discr
         self.places = places
 
@@ -236,18 +233,13 @@ class MatrixBuilder(EvaluationMapperBase):
             return vecs_and_scalars
 
     def map_int_g(self, expr):
+        # TODO: should this go into QBXPreprocessor / LocationTagger
         where_source = expr.source
         if where_source is sym.DEFAULT_SOURCE:
-            where_source = sym.QBXSourceQuadStage2(where_source)
+            where_source = sym.QBXSourceQuadStage2(expr.source)
 
-        where_target = expr.target
-        if where_target is sym.DEFAULT_TARGET:
-            where_target = sym.QBXSourceStage1(expr.target)
-
-        from pytential.symbolic.execution import _get_discretization
-        source, source_discr = _get_discretization(self.places, where_source)
-        _, target_discr = _get_discretization(self.places, where_target)
-        assert source_discr.nnodes >= target_discr.nnodes
+        source_discr = self.places[where_source]
+        target_discr = self.places[expr.target]
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -258,10 +250,10 @@ class MatrixBuilder(EvaluationMapperBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self, expr, source)
+        kernel_args = _get_layer_potential_args(self, expr, self.places.lpot)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
-        local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
+        local_expn = LineTaylorLocalExpansion(kernel, self.places.lpot.qbx_order)
 
         from sumpy.qbx import LayerPotentialMatrixGenerator
         mat_gen = LayerPotentialMatrixGenerator(
@@ -269,7 +261,7 @@ class MatrixBuilder(EvaluationMapperBase):
 
         assert abs(expr.qbx_forced_limit) > 0
         centers, radii = _get_centers_and_expansion_radii(self.queue,
-                source, target_discr, expr.qbx_forced_limit)
+                self.places.lpot, target_discr, expr.qbx_forced_limit)
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
@@ -279,11 +271,13 @@ class MatrixBuilder(EvaluationMapperBase):
                 **kernel_args)
         mat = mat.get()
 
-        waa = _get_weights_and_area_elements(self.queue, source, where_source)
+        waa = _get_weights_and_area_elements(self.queue, self.places.lpot, source_discr)
         mat[:, :] *= waa.get(self.queue)
 
         if target_discr.nnodes != source_discr.nnodes:
-            resampler = source.direct_resampler
+            assert target_discr.nnodes < source_discr.nnodes
+
+            resampler = self.places.lpot.direct_resampler
             resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
             mat = mat.dot(resample_mat)
 
@@ -321,7 +315,7 @@ class MatrixBuilder(EvaluationMapperBase):
             rec_arg = cl.array.to_device(self.queue, rec_arg)
 
         op = expr.function(sym.var("u"))
-        result = bind(self.dep_source, op)(self.queue, u=rec_arg)
+        result = bind(self.places.lpot, op)(self.queue, u=rec_arg)
 
         if isinstance(result, cl.array.Array):
             result = result.get()
@@ -334,26 +328,16 @@ class MatrixBuilder(EvaluationMapperBase):
 # {{{ p2p matrix builder
 
 class P2PMatrixBuilder(MatrixBuilder):
-    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_discr,
             places, context, exclude_self=True):
         super(P2PMatrixBuilder, self).__init__(queue,
-                dep_expr, other_dep_exprs, dep_source, dep_discr, places, context)
+                dep_expr, other_dep_exprs, dep_discr, places, context)
 
         self.exclude_self = exclude_self
 
     def map_int_g(self, expr):
-        where_source = expr.source
-        if where_source is sym.DEFAULT_SOURCE:
-            where_source = sym.QBXSourceStage1(where_source)
-
-        where_target = expr.target
-        if where_target is sym.DEFAULT_TARGET:
-            where_target = sym.QBXSourceStage1(expr.target)
-
-        from pytential.symbolic.execution import _get_discretization
-        source, source_discr = _get_discretization(self.places, where_source)
-        _, target_discr = _get_discretization(self.places, where_target)
-        assert source_discr.nnodes >= target_discr.nnodes
+        source_discr = self.places[expr.source]
+        target_discr = self.places[expr.target]
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -364,7 +348,7 @@ class P2PMatrixBuilder(MatrixBuilder):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel.get_base_kernel()
-        kernel_args = _get_kernel_args(self, kernel, expr, source)
+        kernel_args = _get_kernel_args(self, kernel, expr, self.places.lpot)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
@@ -388,17 +372,15 @@ class P2PMatrixBuilder(MatrixBuilder):
 # {{{ block matrix builders
 
 class MatrixBlockBuilderBase(EvaluationMapperBase):
-    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source,
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_discr,
             places, context, index_set):
         super(MatrixBlockBuilderBase, self).__init__(context=context)
 
         self.queue = queue
         self.dep_expr = dep_expr
         self.other_dep_exprs = other_dep_exprs
-        self.dep_source = dep_source
-        self.dep_discr = dep_source.density_discr
+        self.dep_discr = dep_discr
         self.places = places
-
         self.index_set = index_set
 
     def _map_dep_variable(self):
@@ -448,7 +430,7 @@ class MatrixBlockBuilderBase(EvaluationMapperBase):
             rec_arg = cl.array.to_device(self.queue, rec_arg)
 
         op = expr.function(sym.var("u"))
-        result = bind(self.dep_source, op)(self.queue, u=rec_arg)
+        result = bind(self.place.lpot, op)(self.queue, u=rec_arg)
 
         if isinstance(result, cl.array.Array):
             result = result.get()
@@ -457,13 +439,13 @@ class MatrixBlockBuilderBase(EvaluationMapperBase):
 
 
 class NearFieldBlockBuilder(MatrixBlockBuilderBase):
-    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source,
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_discr,
             places, context, index_set):
         super(NearFieldBlockBuilder, self).__init__(queue,
-            dep_expr, other_dep_exprs, dep_source, places, context, index_set)
+            dep_expr, other_dep_exprs, dep_discr, places, context, index_set)
 
         self.dummy = MatrixBlockBuilderBase(queue,
-            dep_expr, other_dep_exprs, dep_source, places, context, index_set)
+            dep_expr, other_dep_exprs, dep_discr, places, context, index_set)
 
     def _map_dep_variable(self):
         tgtindices = self.index_set.row.indices.get(self.queue).reshape(-1, 1)
@@ -472,17 +454,8 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        where_source = expr.source
-        if where_source is sym.DEFAULT_SOURCE:
-            where_source = sym.QBXSourceStage1(where_source)
-
-        where_target = expr.target
-        if where_target is sym.DEFAULT_TARGET:
-            where_target = sym.QBXSourceStage1(expr.target)
-
-        from pytential.symbolic.execution import _get_discretization
-        source, source_discr = _get_discretization(self.places, where_source)
-        _, target_discr = _get_discretization(self.places, where_target)
+        source_discr = self.places[expr.source]
+        target_discr = self.places[expr.target]
 
         if source_discr is not target_discr:
             raise NotImplementedError()
@@ -496,10 +469,10 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self, expr, source)
+        kernel_args = _get_layer_potential_args(self, expr, self.places.lpot)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
-        local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
+        local_expn = LineTaylorLocalExpansion(kernel, self.places.lpot.qbx_order)
 
         from sumpy.qbx import LayerPotentialMatrixBlockGenerator
         mat_gen = LayerPotentialMatrixBlockGenerator(
@@ -507,7 +480,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
         assert abs(expr.qbx_forced_limit) > 0
         centers, radii = _get_centers_and_expansion_radii(self.queue,
-                source, target_discr, expr.qbx_forced_limit)
+                self.places.lpot, target_discr, expr.qbx_forced_limit)
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
@@ -517,7 +490,8 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 index_set=self.index_set,
                 **kernel_args)
 
-        waa = _get_weights_and_area_elements(self.queue, source, where_source)
+        waa = _get_weights_and_area_elements(self.queue,
+                self.places.lpot, source_discr)
         mat *= waa[self.index_set.linear_col_indices]
         mat = mat.get(self.queue)
 
@@ -527,13 +501,13 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
 
 class FarFieldBlockBuilder(MatrixBlockBuilderBase):
-    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source,
+    def __init__(self, queue, dep_expr, other_dep_exprs, dep_discr,
             places, context, index_set, exclude_self=True):
         super(FarFieldBlockBuilder, self).__init__(queue,
-            dep_expr, other_dep_exprs, dep_source, places, context, index_set)
+            dep_expr, other_dep_exprs, dep_discr, places, context, index_set)
 
         self.dummy = MatrixBlockBuilderBase(queue,
-            dep_expr, other_dep_exprs, dep_source, places, context, index_set)
+            dep_expr, other_dep_exprs, dep_discr, places, context, index_set)
         self.exclude_self = exclude_self
 
     def _map_dep_variable(self):
@@ -543,20 +517,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        where_source = expr.source
-        if where_source is sym.DEFAULT_SOURCE:
-            where_source = sym.QBXSourceStage1(where_source)
-
-        where_target = expr.target
-        if where_target is sym.DEFAULT_TARGET:
-            where_target = sym.QBXSourceStage1(expr.target)
-
-        from pytential.symbolic.execution import _get_discretization
-        source, source_discr = _get_discretization(self.places, where_source)
-        _, target_discr = _get_discretization(self.places, where_target)
-
-        if source_discr is not target_discr:
-            raise NotImplementedError()
+        source_discr = self.places[expr.source]
+        target_discr = self.places[expr.target]
 
         rec_density = self.dummy.rec(expr.density)
         if is_zero(rec_density):
@@ -567,7 +529,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel.get_base_kernel()
-        kernel_args = _get_kernel_args(self, kernel, expr, source)
+        kernel_args = _get_kernel_args(self, kernel, expr, self.places.lpot)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)

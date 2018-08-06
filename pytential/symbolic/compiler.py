@@ -224,7 +224,7 @@ class ComputePotentialInstruction(Instruction):
                 ", ".join(args), "\n  ".join(lines))
 
     def get_exec_function(self, exec_mapper):
-        source = exec_mapper.bound_expr.places[self.source]
+        source = exec_mapper.bound_expr.places.lpot
         return source.exec_compute_potential_insn
 
     def __hash__(self):
@@ -444,7 +444,7 @@ class OperatorCompiler(IdentityMapper):
     def op_group_features(self, expr):
         from pytential.symbolic.primitives import hashable_kernel_args
         return (
-                self.places[expr.source].op_group_features(expr)
+                self.places.lpot.op_group_features(expr)
                 + hashable_kernel_args(expr.kernel_arguments))
 
     @memoize_method

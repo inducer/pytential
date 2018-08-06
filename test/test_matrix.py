@@ -47,9 +47,23 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 
 
-def _build_op(lpot_id, k=0, ndim=2):
+def _build_op(lpot_id,
+              k=0,
+              ndim=2,
+              qbx_forced_limit=-1,
+              source=None,
+              target=None):
+    if source is DEFAULT_SOURCE:
+        source = QBXSourceQuadStage2(source)
+    if target is DEFAULT_TARGET:
+        target = QBXSourceStage1(target)
+    knl_kwargs = {
+            "qbx_forced_limit": qbx_forced_limit,
+            "source": source,
+            "target": target
+            }
+
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-    knl_kwargs = {"qbx_forced_limit": "avg"}
     if k:
         knl = HelmholtzKernel(ndim)
         knl_kwargs["k"] = k
@@ -171,7 +185,7 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
         abs_err = la.norm(res_mat - res_matvec, np.inf)
         rel_err = abs_err / la.norm(res_matvec, np.inf)
 
-        print(abs_err, rel_err)
+        print("AbsErr {:.5e} RelErr {:.5e}".format(abs_err, rel_err))
         assert rel_err < 1e-13
 
 
@@ -197,9 +211,9 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     tgtindices = _build_block_index(qbx.density_discr,
             method='nodes', factor=factor)
 
-    from pytential.symbolic.execution import prepare_places, prepare_expr
-    places = prepare_places(qbx)
-    expr = prepare_expr(places, op)
+    from pytential.symbolic.execution import BindingLocation, _prepare_expr
+    places = BindingLocation(qbx)
+    expr = _prepare_expr(places, op)
 
     from sumpy.tools import MatrixBlockIndexRanges
     index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
@@ -208,7 +222,7 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     mbuilder = FarFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[DEFAULT_SOURCE],
+            dep_discr=places[DEFAULT_SOURCE],
             places=places,
             context={},
             index_set=index_set)
@@ -218,8 +232,7 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     mbuilder = P2PMatrixBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[DEFAULT_SOURCE],
-            dep_discr=places[DEFAULT_SOURCE].density_discr,
+            dep_discr=places[DEFAULT_SOURCE],
             places=places,
             context={})
     mat = mbuilder(expr)
@@ -272,11 +285,14 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     tgtindices = _build_block_index(qbx.density_discr)
     srcindices = _build_block_index(qbx.density_discr)
 
-    from pytential.symbolic.execution import prepare_places, prepare_expr
-    where = (QBXSourceStage1(DEFAULT_SOURCE),
-             QBXSourceStage1(DEFAULT_TARGET))
-    places = prepare_places(qbx, auto_where=where)
-    expr = prepare_expr(places, op, auto_where=where)
+    # NOTE: NearFieldBlockBuilder only does stage1/stage1 or stage2/stage2,
+    # so we need to hardcode the discr for MatrixBuilder too, since the
+    # defaults are different
+    where = (QBXSourceStage1(DEFAULT_SOURCE), QBXSourceStage1(DEFAULT_TARGET))
+
+    from pytential.symbolic.execution import BindingLocation, _prepare_expr
+    places = BindingLocation(qbx, auto_where=where)
+    expr = _prepare_expr(places, op)
 
     from sumpy.tools import MatrixBlockIndexRanges
     index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
@@ -285,19 +301,17 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     mbuilder = NearFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[where[0]],
+            dep_discr=places[where[0]],
             places=places,
             context={},
             index_set=index_set)
     blk = mbuilder(expr)
 
-    from pytential.symbolic.execution import _get_discretization
     from pytential.symbolic.matrix import MatrixBuilder
     mbuilder = MatrixBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[where[0]],
-            dep_discr=_get_discretization(places, where[0])[1],
+            dep_discr=places[where[0]],
             places=places,
             context={})
     mat = mbuilder(expr)
@@ -349,8 +363,11 @@ def test_build_matrix_where(ctx_factory, where, visualize=False):
     from test_linalg_proxy import _build_qbx_discr
     qbx = _build_qbx_discr(queue, nelements=8, target_order=2, ndim=2,
                            curve_f=partial(ellipse, 1.0))
-    op, u_sym, _ = _build_op(lpot_id=1, ndim=2)
+
     qbx_forced_limit = -1
+    op, u_sym, _ = _build_op(lpot_id=1, ndim=2,
+            source=where[0], target=where[1],
+            qbx_forced_limit=qbx_forced_limit)
 
     # associate quad_stage2 targets to centers
     from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
@@ -393,10 +410,10 @@ def test_build_matrix_where(ctx_factory, where, visualize=False):
     from pytential.symbolic.execution import build_matrix
     mat = build_matrix(queue, qbx, op, u_sym, auto_where=where)
 
-    from pytential.symbolic.execution import _get_discretization
-    source_where, target_where = where
-    _, source_discr = _get_discretization(qbx, source_where)
-    _, target_discr = _get_discretization(qbx, target_where)
+    from pytential.symbolic.execution import BindingLocation
+    places = BindingLocation(qbx, auto_where=where)
+    source_discr = places[where[0]]
+    target_discr = places[where[1]]
 
     assert mat.shape == (target_discr.nnodes, source_discr.nnodes)
 
