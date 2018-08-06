@@ -286,7 +286,7 @@ class MatVecOp:
 def _prepare_domains(nresults, places, domains, default_val):
     """
     :arg nresults: number of results.
-    :arg places: result of :func:`prepare_places`.
+    :arg places: :class:`pytential.symbolic.execution.BindingLocation`.
     :arg domains: recommended domains.
     :arg default_val: default value for domains which are not provided.
 
@@ -311,13 +311,10 @@ def _prepare_domains(nresults, places, domains, default_val):
 
 def _prepare_expr(places, expr):
     """
-    :arg places: result of :func:`prepare_places`.
-    :arg expr: an array of symbolic expressions.
-    :arg auto_where: identifiers for source and/or target locations. If `None`,
-        `where` attributes are automatically found.
-
-    :return: processed symbolic expressions, tagger with the given `where`
-        identifiers.
+    :arg places: :class:`pytential.symbolic.execution.BindingLocation`.
+    :arg expr: a symbolic expression.
+    :return: processed symbolic expressions, tagged with the appropriate
+        `where` identifier from places, etc.
     """
 
     from pytential.source import LayerPotentialSourceBase

@@ -271,7 +271,8 @@ class MatrixBuilder(EvaluationMapperBase):
                 **kernel_args)
         mat = mat.get()
 
-        waa = _get_weights_and_area_elements(self.queue, self.places.lpot, source_discr)
+        waa = _get_weights_and_area_elements(self.queue,
+                self.places.lpot, source_discr)
         mat[:, :] *= waa.get(self.queue)
 
         if target_discr.nnodes != source_discr.nnodes:
