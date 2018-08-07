@@ -24,6 +24,8 @@ THE SOFTWARE.
 
 import numpy as np
 import numpy.linalg as la  # noqa
+
+from boxtree.tools import ConstantOneExpansionWrangler
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pytest
@@ -46,73 +48,8 @@ DEFAULT_LPOT_KWARGS = {
         "_from_sep_smaller_crit": "static_l2",
         }
 
-# }}}
 
-
-# {{{ test_timing_data_gathering
-
-def test_timing_data_gathering(ctx_getter):
-    pytest.importorskip("pyfmmlib")
-
-    cl_ctx = ctx_getter()
-    queue = cl.CommandQueue(cl_ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
-
-    from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import (
-            InterpolatoryQuadratureSimplexGroupFactory)
-
-    target_order = TARGET_ORDER
-
-    from meshmode.mesh.generation import starfish, make_curve_mesh
-    mesh = make_curve_mesh(starfish, np.linspace(0, 1, 1000), order=target_order)
-
-    pre_density_discr = Discretization(
-            queue.context, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(target_order))
-
-    lpot_kwargs = DEFAULT_LPOT_KWARGS.copy()
-    lpot_kwargs.update(
-            _expansion_stick_out_factor=TCF,
-            fmm_order=FMM_ORDER, qbx_order=QBX_ORDER,
-            fmm_backend="fmmlib",
-            )
-
-    from pytential.qbx import QBXLayerPotentialSource
-    lpot_source = QBXLayerPotentialSource(
-            pre_density_discr, OVSMP_FACTOR*target_order,
-            **lpot_kwargs)
-
-    lpot_source, _ = lpot_source.with_refinement()
-
-    density_discr = lpot_source.density_discr
-    nodes = density_discr.nodes().with_queue(queue)
-    sigma = cl.clmath.sin(10 * nodes[0])
-
-    from sumpy.kernel import LaplaceKernel
-    sigma_sym = sym.var("sigma")
-    k_sym = LaplaceKernel(lpot_source.ambient_dim)
-
-    sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
-    op_S = bind(lpot_source, sym_op_S)
-
-    timing_data = {}
-    op_S.eval(queue, dict(sigma=sigma), timing_data=timing_data)
-    assert timing_data
-    print(timing_data)
-
-# }}}
-
-
-# {{{ test_performance_model
-
-@pytest.mark.parametrize("dim", (2, 3))
-def test_performance_model(ctx_getter, dim):
-    cl_ctx = ctx_getter()
-    queue = cl.CommandQueue(cl_ctx)
-
-    # {{{ get lpot source
-
+def get_lpot_source(queue, dim):
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
             InterpolatoryQuadratureSimplexGroupFactory)
@@ -145,13 +82,56 @@ def test_performance_model(ctx_getter, dim):
 
     lpot_source, _ = lpot_source.with_refinement()
 
-    # }}}
+    return lpot_source
 
-    # {{{ run performance model
 
+def get_density(queue, lpot_source):
     density_discr = lpot_source.density_discr
     nodes = density_discr.nodes().with_queue(queue)
-    sigma = cl.clmath.sin(10 * nodes[0])
+    return cl.clmath.sin(10 * nodes[0])
+
+
+def get_bound_slp_op(lpot_source):
+    from sumpy.kernel import LaplaceKernel
+    sigma_sym = sym.var("sigma")
+    k_sym = LaplaceKernel(lpot_source.ambient_dim)
+
+    sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
+    return bind(lpot_source, sym_op_S)
+
+# }}}
+
+
+# {{{ test timing data gathering
+
+def test_timing_data_gathering(ctx_getter):
+    pytest.importorskip("pyfmmlib")
+
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    lpot_source = get_lpot_source(queue, 2)
+    sigma = get_density(queue, lpot_source)
+    op_S = get_bound_slp_op(lpot_source)
+
+    timing_data = {}
+    op_S.eval(queue, dict(sigma=sigma), timing_data=timing_data)
+    assert timing_data
+    print(timing_data)
+
+# }}}
+
+
+# {{{ test performance model
+
+@pytest.mark.parametrize("dim", (2, 3))
+def test_performance_model(ctx_getter, dim):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    lpot_source = get_lpot_source(queue, dim)
+    sigma = get_density(queue, lpot_source)
 
     from sumpy.kernel import LaplaceKernel
     sigma_sym = sym.var("sigma")
@@ -169,7 +149,159 @@ def test_performance_model(ctx_getter, dim):
     perf_S_plus_D = op_S_plus_D.get_modeled_performance(queue, sigma=sigma)
     assert len(perf_S_plus_D) == 2
 
-    # }}}
+# }}}
+
+
+# {{{ constant one wrangler
+
+class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
+
+    def __init__(self, queue, geo_data):
+        host_tree = geo_data.tree().get(queue)
+        ConstantOneExpansionWrangler.__init__(self, host_tree)
+
+        self.geo_data = geo_data
+
+        self.qbx_center_to_target_box = (
+                geo_data.qbx_center_to_target_box().get(queue))
+        self.qbx_center_to_target_box_source_level = [
+                geo_data.qbx_center_to_target_box_source_level(lev).get(queue)
+                for lev in range(host_tree.nlevels)]
+        self.global_qbx_centers = geo_data.global_qbx_centers().get(queue)
+        self.trav = geo_data.traversal().get(queue)
+        self.center_to_tree_targets = geo_data.center_to_tree_targets().get(queue)
+
+    def output_zeros(self):
+        non_qbx_box_target_lists = self.geo_data.non_qbx_box_target_lists()
+        return np.zeros(non_qbx_box_target_lists.nfiltered_targets)
+
+    def full_output_zeros(self):
+        from pytools.obj_array import make_obj_array
+        return make_obj_array([np.zeros(self.tree.ntargets)])
+
+    def qbx_local_expansion_zeros(self):
+        return np.zeros(self.geo_data.ncenters)
+
+    def reorder_potentials(self, potentials):
+        raise NotImplementedError("reorder_potentials should not "
+                "be called on a QBXExpansionWrangler")
+
+    def form_global_qbx_locals(self, src_weights):
+        local_exps = self.qbx_local_expansion_zeros()
+        ops = 0
+
+        for itgt_center, tgt_icenter in enumerate(self.global_qbx_centers):
+            itgt_box = self.qbx_center_to_target_box[tgt_icenter]
+
+            start, end = (
+                    self.trav.neighbor_source_boxes_starts[itgt_box:itgt_box + 2])
+
+            src_sum = 0
+            for src_ibox in self.trav.neighbor_source_boxes_lists[start:end]:
+                src_pslice = self._get_source_slice(src_ibox)
+                ops += src_pslice.stop - src_pslice.start
+                src_sum += np.sum(src_weights[src_pslice])
+
+            local_exps[tgt_icenter] = src_sum
+
+        return local_exps, self.timing_future(ops)
+
+    def translate_box_multipoles_to_qbx_local(self, multipole_exps):
+        local_exps = self.qbx_local_expansion_zeros()
+        ops = 0
+        for isrc_level, ssn in enumerate(self.trav.from_sep_smaller_by_level):
+            for tgt_icenter in self.global_qbx_centers:
+                icontaining_tgt_box = self.qbx_center_to_target_box_source_level[
+                    isrc_level][tgt_icenter]
+
+                if icontaining_tgt_box == -1:
+                    continue
+
+                start, stop = (
+                        ssn.starts[icontaining_tgt_box],
+                        ssn.starts[icontaining_tgt_box+1])
+
+                for src_ibox in ssn.lists[start:stop]:
+                    local_exps[tgt_icenter] += multipole_exps[src_ibox]
+                    ops += 1
+
+        return local_exps, self.timing_future(ops)
+
+    def translate_box_local_to_qbx_local(self, local_exps):
+        qbx_expansions = self.qbx_local_expansion_zeros()
+        ops = 0
+
+        for tgt_icenter in self.global_qbx_centers:
+            isrc_box = self.qbx_center_to_target_box[tgt_icenter]
+            src_ibox = self.trav.target_boxes[isrc_box]
+            qbx_expansions[tgt_icenter] += local_exps[src_ibox]
+            ops += 1
+
+        return qbx_expansions, self.timing_future(ops)
+
+    def eval_qbx_expansions(self, qbx_expansions):
+        output = self.full_output_zeros()
+        ops = 0
+        for src_icenter in self.global_qbx_centers:
+            start, end = (
+                    self.center_to_tree_targets.starts[src_icenter:src_icenter+2])
+            for icenter_tgt in range(start, end):
+                center_itgt = self.center_to_tree_targets.lists[icenter_tgt]
+                output[0][center_itgt] += qbx_expansions[src_icenter]
+                ops += 1
+
+        return output, self.timing_future(ops)
+
+# }}}
+
+
+# {{{ verify performance model
+
+@pytest.mark.parametrize("dim", (2, 3))
+def test_performance_model_correctness(ctx_getter, dim):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    from pytential.qbx.performance import PerformanceModel
+
+    # We set uses_pde_expansions=False, so that a translation is modeled as
+    # simply costing nsrc_coeffs * ntgt_coeffs. By adjusting the symbolic
+    # parameters to equal 1 (done below), this provides a straightforward way
+    # to obtain the raw operation count for each FMM stage.
+    lpot_source = get_lpot_source(queue, dim).copy(
+            performance_model=PerformanceModel(uses_pde_expansions=False))
+
+    sigma = get_density(queue, lpot_source)
+    op_S = get_bound_slp_op(lpot_source)
+
+    from pytools import one
+    perf_S = one(op_S.get_modeled_performance(queue, sigma=sigma).values())
+    # Set all parameters equal to 1, to obtain raw op counts.
+    perf_S = perf_S.with_params(dict((param, 1) for param in perf_S.params))
+
+    from pytential.qbx.fmm import drive_fmm
+    geo_data = lpot_source.qbx_fmm_geometry_data(
+            target_discrs_and_qbx_sides=((lpot_source.density_discr, +1),))
+
+    wrangler = ConstantOneQBXExpansionWrangler(queue, geo_data)
+
+    nnodes = lpot_source.quad_stage2_density_discr.nnodes
+
+    src_weights = np.ones(nnodes)
+
+    timing_data = {}
+    potential = drive_fmm(wrangler, src_weights, timing_data,
+            traversal=wrangler.trav)[0][geo_data.ncenters:]
+
+    print("potential is", potential)
+
+    # Check constant one wrangler for correctness.
+    assert (potential == nnodes).all()
+
+    # Check that the performance model matches the timing data returned by the
+    # constant one wrangler.
+    print("timing_data", timing_data)
+    print("perf model", perf_S.raw_costs)
 
 # }}}
 

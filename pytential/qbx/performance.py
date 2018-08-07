@@ -503,6 +503,7 @@ class PerformanceModel(object):
             ncoeffs_qbx = p_qbx ** d
             default_translation_source_power = d
             default_translation_target_power = d
+            default_translation_max_power = 0
 
         translation_source_power = (
                 default_translation_source_power
