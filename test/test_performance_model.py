@@ -257,6 +257,24 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
 # {{{ verify performance model
 
+CONSTANT_ONE_PARAMS = dict(
+        p_qbx=1,
+        p_fmm=1,
+        c_l2l=1,
+        c_l2p=1,
+        c_l2qbxl=1,
+        c_m2l=1,
+        c_m2m=1,
+        c_m2p=1,
+        c_m2qbxl=1,
+        c_p2l=1,
+        c_p2m=1,
+        c_p2p=1,
+        c_p2qbxl=1,
+        c_qbxl2p=1,
+        )
+
+
 @pytest.mark.parametrize("dim", (2, 3))
 def test_performance_model_correctness(ctx_getter, dim):
     cl_ctx = ctx_getter()
@@ -277,7 +295,7 @@ def test_performance_model_correctness(ctx_getter, dim):
     from pytools import one
     perf_S = one(op_S.get_modeled_performance(queue, sigma=sigma).values())
     # Set all parameters equal to 1, to obtain raw op counts.
-    perf_S = perf_S.with_params(dict((param, 1) for param in perf_S.params))
+    perf_S = perf_S.with_params(CONSTANT_ONE_PARAMS)
 
     from pytential.qbx.fmm import drive_fmm
     geo_data = lpot_source.qbx_fmm_geometry_data(
@@ -293,15 +311,20 @@ def test_performance_model_correctness(ctx_getter, dim):
     potential = drive_fmm(wrangler, src_weights, timing_data,
             traversal=wrangler.trav)[0][geo_data.ncenters:]
 
-    print("potential is", potential)
-
     # Check constant one wrangler for correctness.
     assert (potential == nnodes).all()
 
+    modeled_time = perf_S.get_predicted_times(merge_close_lists=True)
+
     # Check that the performance model matches the timing data returned by the
     # constant one wrangler.
-    print("timing_data", timing_data)
-    print("perf model", perf_S.raw_costs)
+    mismatches = []
+    for stage in timing_data:
+        if timing_data[stage].process_elapsed != modeled_time[stage]:
+            mismatches.append(
+                    (stage, timing_data[stage].process_elapsed, modeled_time[stage]))
+
+    assert not mismatches, str("\n".join(str(s) for s in mismatches))
 
 # }}}
 
