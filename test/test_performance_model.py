@@ -170,6 +170,14 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         self.global_qbx_centers = geo_data.global_qbx_centers().get(queue)
         self.trav = geo_data.traversal().get(queue)
         self.center_to_tree_targets = geo_data.center_to_tree_targets().get(queue)
+        self.non_qbx_box_target_lists = (
+                geo_data.non_qbx_box_target_lists().get(queue))
+
+    def _get_target_slice(self, ibox):
+        pstart = self.non_qbx_box_target_lists.box_target_starts[ibox]
+        return slice(
+                pstart, pstart
+                + self.non_qbx_box_target_lists.box_target_counts_nonchild[ibox])
 
     def output_zeros(self):
         non_qbx_box_target_lists = self.geo_data.non_qbx_box_target_lists()
@@ -324,7 +332,7 @@ def test_performance_model_correctness(ctx_getter, dim):
             mismatches.append(
                     (stage, timing_data[stage].process_elapsed, modeled_time[stage]))
 
-    assert not mismatches, str("\n".join(str(s) for s in mismatches))
+    assert not mismatches, "\n".join(str(s) for s in mismatches)
 
 # }}}
 
