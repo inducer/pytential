@@ -60,8 +60,8 @@ def get_lpot_source(queue, dim):
         from meshmode.mesh.generation import starfish, make_curve_mesh
         mesh = make_curve_mesh(starfish, np.linspace(0, 1, 50), order=target_order)
     elif dim == 3:
-        from meshmode.mesh.generation import generate_icosphere
-        mesh = generate_icosphere(r=1, order=target_order)
+        from meshmode.mesh.generation import generate_torus
+        mesh = generate_torus(2, 1, order=target_order)
     else:
         raise ValueError("unknown dimension: %d" % dim)
 
