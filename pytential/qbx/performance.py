@@ -247,6 +247,31 @@ class PerformanceModel(object):
     def summarize_parallel_default(parallel_array, sym_multipliers):
         return np.sum(parallel_array) * sym_multipliers
 
+    # {{{ propagate multipoles upward
+
+    def process_coarsen_multipoles(self, xlat_cost, tree, traversal):
+        nmultipoles = 0
+
+        # nlevels-1 is the last valid level index
+        # nlevels-2 is the last valid level that could have children
+        #
+        # 3 is the last relevant source_level.
+        # 2 is the last relevant target_level.
+        # (because no level 1 box will be well-separated from another)
+        for source_level in range(tree.nlevels-1, 2, -1):
+            target_level = source_level - 1
+            start, stop = traversal.level_start_source_parent_box_nrs[
+                            target_level:target_level+2]
+            for ibox in traversal.source_parent_boxes[start:stop]:
+                for child in tree.box_child_ids[:, ibox]:
+                    if child:
+                        nmultipoles += 1
+
+        return dict(coarsen_multipoles=(
+                self.summarize_parallel(nmultipoles, xlat_cost.m2m())))
+
+    # }}}
+
     # {{{ direct evaluation to point targets (lists 1, 3 close, 4 close)
 
     def process_direct(self, xlat_cost, traversal, tree, box_target_counts_nonchild):
@@ -573,7 +598,7 @@ class PerformanceModel(object):
 
         # {{{ propagate multipoles upward
 
-        result["coarsen_multipoles"] = tree.nboxes * xlat_cost.m2m()
+        result.update(self.process_coarsen_multipoles(xlat_cost, tree, traversal))
 
         # }}}
 
@@ -605,13 +630,14 @@ class PerformanceModel(object):
 
         # {{{ propagate local_exps downward
 
-        result["refine_locals"] = tree.nboxes * xlat_cost.l2l()
+        result["refine_locals"] = (
+                traversal.ntarget_or_target_parent_boxes * xlat_cost.l2l())
 
         # }}}
 
         # {{{ evaluate locals
 
-        result["eval_locals"] = tree.ntargets * xlat_cost.l2p()
+        result["eval_locals"] = nqbtl.nfiltered_targets * xlat_cost.l2p()
 
         # }}}
 
@@ -657,7 +683,7 @@ class PerformanceModel(object):
         # {{{ translate from box local expansions to qbx local expansions
 
         result["translate_box_local_to_qbx_local"] = (
-                geo_data.ncenters * xlat_cost.l2qbxl())
+                len(global_qbx_centers) * xlat_cost.l2qbxl())
 
         # }}}
 
