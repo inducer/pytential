@@ -809,7 +809,8 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
 
     # {{{ evaluate locals
 
-    result["eval_part"] = tree.ntargets * ncoeffs_fmm
+    non_qbx_box_targets = geo_data.non_qbx_box_target_lists()
+    result["eval_part"] = non_qbx_box_targets.nfiltered_targets * ncoeffs_fmm
 
     # }}}
 
