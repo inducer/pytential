@@ -92,13 +92,13 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
             qbx_order, fmm_level_to_order,
             source_extra_kwargs={},
             kernel_extra_kwargs=None,
-            _use_target_specific_list1=False):
+            _use_target_specific_qbx=False):
         return QBXExpansionWrangler(self, queue, geo_data,
                 dtype,
                 qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
                 kernel_extra_kwargs,
-                _use_target_specific_list1)
+                _use_target_specific_qbx)
 
 
 class QBXExpansionWrangler(SumpyExpansionWrangler):
@@ -123,8 +123,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     def __init__(self, code_container, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs, kernel_extra_kwargs,
-            _use_target_specific_list1=False):
-        if _use_target_specific_list1:
+            _use_target_specific_qbx=False):
+        if _use_target_specific_qbx:
             raise NotImplementedError("Cannot use TSQBX with sumpy yet")
 
         SumpyExpansionWrangler.__init__(self,

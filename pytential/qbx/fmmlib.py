@@ -27,7 +27,9 @@ from pytools import memoize_method, Record
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
 from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
-from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+from sumpy.kernel import (
+        LaplaceKernel, HelmholtzKernel, AxisTargetDerivative,
+        DirectionalSourceDerivative)
 import pytential.qbx.target_specific as target_specific
 
 
@@ -57,13 +59,13 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
             qbx_order, fmm_level_to_order,
             source_extra_kwargs={},
             kernel_extra_kwargs=None,
-            _use_target_specific_list1=False):
+            _use_target_specific_qbx=False):
 
         return QBXFMMLibExpansionWrangler(self, queue, geo_data, dtype,
                 qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
                 kernel_extra_kwargs,
-                _use_target_specific_list1)
+                _use_target_specific_qbx)
 
 # }}}
 
@@ -133,11 +135,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             qbx_order, fmm_level_to_order,
             source_extra_kwargs,
             kernel_extra_kwargs,
-            _use_target_specific_list1=False):
+            _use_target_specific_qbx=False):
 
         self.code = code
         self.queue = queue
-        self._use_target_specific_list1 = _use_target_specific_list1
+        self._use_target_specific_qbx = _use_target_specific_qbx
 
         # FMMLib is CPU-only. This wrapper gets the geometry out of
         # OpenCL-land.
@@ -147,59 +149,59 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         # {{{ digest out_kernels
 
-        from sumpy.kernel import AxisTargetDerivative, DirectionalSourceDerivative
-
-        k_names = []
-        source_deriv_names = []
-
-        def is_supported_helmknl(knl):
-            if isinstance(knl, DirectionalSourceDerivative):
-                source_deriv_name = knl.dir_vec_name
-                knl = knl.inner_kernel
-            else:
-                source_deriv_name = None
-
-            if isinstance(knl, HelmholtzKernel) and knl.dim in [2, 3]:
-                k_names.append(knl.helmholtz_k_name)
-                source_deriv_names.append(source_deriv_name)
-                return True
-            elif isinstance(knl, LaplaceKernel) and knl.dim in [2, 3]:
-                k_names.append(None)
-                source_deriv_names.append(source_deriv_name)
-                return True
-
-            return False
-
         ifgrad = False
         outputs = []
+        source_deriv_names = []
+        k_names = []
+
         for out_knl in self.code.out_kernels:
-            if is_supported_helmknl(out_knl):
+            if (
+                    _use_target_specific_qbx
+                    and not self.is_supported_helmknl_for_tsqbx(out_knl)):
+                raise ValueError("not all kernels passed support TSQBX")
+
+            if self.is_supported_helmknl(out_knl):
                 outputs.append(())
             elif (isinstance(out_knl, AxisTargetDerivative)
-                    and is_supported_helmknl(out_knl.inner_kernel)):
+                    and self.is_supported_helmknl(out_knl.inner_kernel)):
                 outputs.append((out_knl.axis,))
                 ifgrad = True
             else:
-                raise NotImplementedError(
+                raise ValueError(
                         "only the 2/3D Laplace and Helmholtz kernel "
                         "and their derivatives are supported")
 
+            source_deriv_names.append(out_knl.dir_vec_name
+                    if isinstance(out_knl, DirectionalSourceDerivative)
+                    else None)
+
+            base_knl = out_knl.get_base_kernel()
+            k_names.append(base_knl.helmholtz_k_name
+                    if isinstance(base_knl, HelmholtzKernel)
+                    else None)
+
+        self.outputs = outputs
+
         from pytools import is_single_valued
+
         if not is_single_valued(source_deriv_names):
             raise ValueError("not all kernels passed are the same in "
                     "whether they represent a source derivative")
 
         source_deriv_name = source_deriv_names[0]
-        self.outputs = outputs
 
-        # }}}
+        if not is_single_valued(k_names):
+            raise ValueError("not all kernels passed have the same "
+                    "Helmholtz parameter")
 
-        from pytools import single_valued
-        k_name = single_valued(k_names)
+        k_name = k_names[0]
+
         if k_name is None:
             helmholtz_k = 0
         else:
             helmholtz_k = kernel_extra_kwargs[k_name]
+
+        # }}}
 
         dipole_vec = None
         if source_deriv_name is not None:
@@ -209,7 +211,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     order="F")
 
         def inner_fmm_level_to_nterms(tree, level):
-            from sumpy.kernel import LaplaceKernel, HelmholtzKernel
             if helmholtz_k == 0:
                 return fmm_level_to_order(
                         LaplaceKernel(tree.dimensions),
@@ -229,6 +230,22 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 fmm_level_to_nterms=inner_fmm_level_to_nterms,
 
                 ifgrad=ifgrad)
+
+    @staticmethod
+    def is_supported_helmknl_for_tsqbx(knl):
+        if isinstance(knl, DirectionalSourceDerivative):
+            knl = knl.inner_kernel
+
+        return isinstance(knl, LaplaceKernel) and knl.dim == 3
+
+    @staticmethod
+    def is_supported_helmknl(knl):
+        if isinstance(knl, DirectionalSourceDerivative):
+            knl = knl.inner_kernel
+
+        return (
+                isinstance(knl, HelmholtzKernel) and knl.dim in [2, 3]
+                or isinstance(knl, LaplaceKernel) and knl.dim in [2, 3])
 
     # {{{ data vector helpers
 
@@ -316,7 +333,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     @log_process(logger)
     @return_timing_data
     def form_global_qbx_locals(self, src_weights):
-        if self._use_target_specific_list1:
+        if self._use_target_specific_qbx:
             return self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
@@ -580,7 +597,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     @log_process(logger)
     @return_timing_data
     def eval_target_specific_qbx_locals(self, src_weights):
-        if not self._use_target_specific_list1:
+        if not self._use_target_specific_qbx:
             return self.full_output_zeros()
 
         pot = self.full_output_zeros()
@@ -588,8 +605,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         trav = geo_data.traversal()
 
         ctt = geo_data.center_to_tree_targets()
-
-        # TODO: assert this is the Laplace single or double layer kernel
 
         for output in pot:
             target_specific.eval_target_specific_global_qbx_locals(

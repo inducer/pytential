@@ -753,7 +753,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             performance_model = self.performance_model
 
-        performance_model_result = performance_model(self, geo_data)
+        performance_model_result = performance_model(geo_data)
 
         # {{{ construct dummy outputs
 
@@ -821,7 +821,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
                         kernel_extra_kwargs=kernel_extra_kwargs,
-                        _use_target_specific_list1=self._use_tsqbx)
+                        _use_target_specific_qbx=self._use_tsqbx)
 
         from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)
