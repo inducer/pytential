@@ -60,7 +60,7 @@ ext_modules = [
         Extension(
             "pytential.qbx.target_specific",
             ["pytential/qbx/target_specific.pyx"],
-            extra_compile_args=["-fopenmp", "-ffast-math"],
+            extra_compile_args=["-fopenmp", "-Ofast", "-march=native"],
             extra_link_args=["-fopenmp"]
         )
 ]

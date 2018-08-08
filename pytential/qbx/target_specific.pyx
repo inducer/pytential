@@ -118,7 +118,7 @@ cdef double tsqbx_from_source(
         int j
         double result, r, sc_d, tc_d, cos_angle
         # Legendre recurrence values
-        double pj, pjm1, pjm2
+        double pj, pjm1, pjm2, jj
 
     tc_d = dist(target, center)
     sc_d = dist(source, center)
@@ -139,11 +139,16 @@ cdef double tsqbx_from_source(
 
     r = (tc_d * tc_d) / (sc_d * sc_d * sc_d)
 
+    # Invariant: jj == j. Using a double-precision copy of j avoids an
+    # int-to-double conversion inside the loop.
+    jj = 2
+
     for j in range(2, order + 1):
-        pj = ( (2*j-1)*cos_angle*pjm1-(j-1)*pjm2 ) / j
+        pj = ( (2.*jj-1.)*cos_angle*pjm1-(jj-1.)*pjm2 ) / jj
         result += pj * r
 
         r *= (tc_d / sc_d)
+        jj += 1
         pjm2 = pjm1
         pjm1 = pj
 
