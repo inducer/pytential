@@ -26,7 +26,7 @@ THE SOFTWARE.
 import numpy as np
 import numpy.linalg as la  # noqa
 import pyopencl as cl
-import pyopencl.clmath  # noqa
+import pyopencl.clmath as clmath
 import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
@@ -36,22 +36,24 @@ from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         NArmedStarfish,
         make_curve_mesh)
-# from sumpy.visualization import FieldPlotter
+
 from pytential import bind, sym, norm  # noqa
-from sumpy.kernel import LaplaceKernel, HelmholtzKernel  # noqa
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 import logging
 logger = logging.getLogger(__name__)
 
 
 @pytest.mark.parametrize("op", ["S", "D"])
-def test_target_specific_qbx(ctx_getter, op):
+@pytest.mark.parametriz("helmholtz_k", [0, 1.2])
+def test_target_specific_qbx(ctx_getter, op, helmholtz_k):
     logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    target_order = 4
+    target_order = 8
+    fmm_tol = 1e-5
 
     from meshmode.mesh.generation import generate_icosphere
     mesh = generate_icosphere(1, target_order)
@@ -61,47 +63,54 @@ def test_target_specific_qbx(ctx_getter, op):
         InterpolatoryQuadratureSimplexGroupFactory
     from pytential.qbx import QBXLayerPotentialSource
     pre_density_discr = Discretization(
-        cl_ctx, mesh,
-        InterpolatoryQuadratureSimplexGroupFactory(target_order))
+            cl_ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+
+    from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
+
+    refiner_extra_kwargs = {}
+
+    if helmholtz_k != 0:
+        refiner_extra_kwargs["kernel_length_scale"] = 5 / helmholtz_k
 
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
             qbx_order=5,
-            fmm_order=10,
+            fmm_level_to_order=SimpleExpansionOrderFinder(fmm_tol),
             fmm_backend="fmmlib",
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.9,
-            ).with_refinement()
+            ).with_refinement(**refiner_extra_kwargs)
 
     density_discr = qbx.density_discr
 
-    nodes_host = density_discr.nodes().get(queue)
-    center = np.array([3, 1, 2])
-    diff = nodes_host - center[:, np.newaxis]
+    nodes = density_discr.nodes().with_queue(queue)
+    u_dev = clmath.sin(nodes[0])
 
-    dist_squared = np.sum(diff**2, axis=0)
-    dist = np.sqrt(dist_squared)
-    u = 1/dist
+    if helmholtz_k == 0:
+        kernel = LaplaceKernel(3)
+        kernel_kwargs = {}
+    else:
+        kernel = HelmholtzKernel(3)
+        kernel_kwargs = {"k": sym.var("k")}
 
-    u_dev = cl.array.to_device(queue, u)
-
-    kernel = LaplaceKernel(3)
     u_sym = sym.var("u")
 
     if op == "S":
         op = sym.S
     elif op == "D":
         op = sym.D
-    expr = op(kernel, u_sym, qbx_forced_limit=-1)
+
+    expr = op(kernel, u_sym, qbx_forced_limit=-1, **kernel_kwargs)
 
     bound_op = bind(qbx, expr)
-    slp_ref = bound_op(queue, u=u_dev)
+    pot_ref = bound_op(queue, u=u_dev, k=helmholtz_k)
 
     qbx = qbx.copy(_use_tsqbx=True)
     bound_op = bind(qbx, expr)
-    slp_tsqbx = bound_op(queue, u=u_dev)
+    pot_tsqbx = bound_op(queue, u=u_dev, k=helmholtz_k)
 
-    assert (np.max(np.abs(slp_ref.get() - slp_tsqbx.get()))) < 1e-13
+    assert (np.max(np.abs(pot_ref.get() - pot_tsqbx.get()))) < 1e-13
 
 
 # You can test individual routines by typing
