@@ -11,6 +11,48 @@ from libc.stdio cimport printf
 cimport openmp
 
 
+cdef extern from "_internal.h" nogil:
+    int jfuns3d_(int *ier, int *nterms, double complex * z, double *scale,
+                 double complex *fjs, int *ifder, double complex *fjder,
+                 int *lwfjs, int *iscale, int *ntop);
+
+
+def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
+    """Evaluate spherical Bessel functions.
+
+    Arguments:
+        nterms: Number of terms to evaluate
+        z: Argument
+        scale: Output scaling factor (recommended: min(abs(z), 1))
+        fjs: Output array of complex doubles
+        fjder: *None*, or output array of complex double derivatives
+    """
+    cdef:
+        double complex[1024] fjstemp
+        double complex[1024] fjdertmp
+        int[1024] iscale
+        int ier, ifder, lwfjs, ntop, i, nterms_
+        double scale_
+        double complex z_
+
+    nterms_ = nterms
+    z_ = z
+    scale_ = scale
+    ifder = fjder is not None
+    lwfjs = 1024
+
+    jfuns3d_(&ier, &nterms_, &z_, &scale_, fjstemp, &ifder, fjdertmp, &lwfjs,
+             iscale, &ntop)
+
+    if ier:
+        raise ValueError("jfuns3d_ returned error code %d" % ier)
+
+    for i in range(nterms):
+        fjs[i] = fjstemp[i]
+        if ifder:
+            fjder[i] = fjdertmp[i]
+
+
 cdef void legvals(double x, int n, double[] vals, double[] derivs) nogil:
     """Compute the values of the Legendre polynomial up to order n at x.
     Optionally, if derivs is non-NULL, compute the values of the derivative too.

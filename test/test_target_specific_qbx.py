@@ -44,10 +44,56 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def test_spherical_bessel_functions():
+    import pytential.qbx.target_specific as ts
+    
+    nterms = 10
+    z = 3j
+    scale = 1
+    j = np.zeros(nterms, dtype=np.complex)
+    jder = np.zeros(nterms, dtype=np.complex)
+    ts.jfuns3d_wrapper(nterms, z, scale, j, jder)
+
+    # Reference solution from scipy.special.spherical_jn
+    
+    j_expected = np.array([
+            +3.33929164246994992e+00 + +0.00000000000000000e+00j,
+            +0.00000000000000000e+00 + +2.24279011776926884e+00j,
+            -1.09650152470070195e+00 + +0.00000000000000000e+00j,
+            +2.77555756156289135e-17 + -4.15287576601431119e-01j,
+            +1.27497179297362317e-01 + +0.00000000000000000e+00j,
+            -3.46944695195361419e-18 + +3.27960387093445271e-02j,
+            -7.24503736309898075e-03 + -4.33680868994201774e-19j,
+            +0.00000000000000000e+00 + -1.40087680258226812e-03j,
+            +2.40653350187633002e-04 + +0.00000000000000000e+00j,
+            +0.00000000000000000e+00 + +3.71744848523478122e-05j,
+        ])
+    
+    assert np.allclose(j, j_expected, rtol=1e-13, atol=0)
+
+    jder_expected = np.array([
+            -0.00000000000000000e+00 + -2.24279011776926884e+00j,
+            +1.84409823062377076e+00 + +0.00000000000000000e+00j,
+            +0.00000000000000000e+00 + +1.14628859306856690e+00j,
+            -5.42784755898793825e-01 + +3.70074341541718826e-17j,
+            +2.77555756156289135e-17 + -2.02792277772493951e-01j,
+            +6.19051018786732632e-02 + -6.93889390390722838e-18j,
+            -2.45752492430047685e-18 + +1.58909515287802387e-02j,
+            -3.50936588954626604e-03 + -4.33680868994201774e-19j,
+            +0.00000000000000000e+00 + -6.78916752019369197e-04j,
+            +1.16738400679806980e-04 + +0.00000000000000000e+00j,
+        ])
+
+    assert np.allclose(jder, jder_expected, rtol=1e-13, atol=0)
+    
+
 @pytest.mark.parametrize("op", ["S", "D"])
-@pytest.mark.parametriz("helmholtz_k", [0, 1.2])
+@pytest.mark.parametrize("helmholtz_k", [0, 1.2])
 def test_target_specific_qbx(ctx_getter, op, helmholtz_k):
     logging.basicConfig(level=logging.INFO)
+
+    if helmholtz_k != 0:
+        pytest.xfail("not implemented yet")
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)

@@ -58,11 +58,12 @@ write_git_revision("pytential")
 
 ext_modules = [
         Extension(
-            "pytential.qbx.target_specific",
-            ["pytential/qbx/target_specific.pyx"],
+            "pytential.qbx.target_specific._internal",
+            ["pytential/qbx/target_specific/_internal.pyx",
+             "pytential/qbx/target_specific/cdjseval3d.c"],
             extra_compile_args=["-fopenmp", "-ffast-math"],
             extra_link_args=["-fopenmp"]
-        )
+        ),
 ]
 
 
