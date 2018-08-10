@@ -18,6 +18,10 @@ static inline double z_abs(doublecomplex *z) {
   return cabs(*z);
 }
 
+static inline void z_exp(doublecomplex *out, doublecomplex *z) {
+  *out = cexp(*z);
+}
+
 static inline void z_sin(doublecomplex *out, doublecomplex *z) {
   *out = csin(*z);
 }

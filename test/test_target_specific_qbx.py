@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 def test_spherical_bessel_functions():
     import pytential.qbx.target_specific as ts
-    
+
     nterms = 10
     z = 3j
     scale = 1
@@ -54,8 +54,8 @@ def test_spherical_bessel_functions():
     jder = np.zeros(nterms, dtype=np.complex)
     ts.jfuns3d_wrapper(nterms, z, scale, j, jder)
 
-    # Reference solution from scipy.special.spherical_jn
-    
+    # Reference solution computed using scipy.special.spherical_jn
+
     j_expected = np.array([
             +3.33929164246994992e+00 + +0.00000000000000000e+00j,
             +0.00000000000000000e+00 + +2.24279011776926884e+00j,
@@ -67,9 +67,9 @@ def test_spherical_bessel_functions():
             +0.00000000000000000e+00 + -1.40087680258226812e-03j,
             +2.40653350187633002e-04 + +0.00000000000000000e+00j,
             +0.00000000000000000e+00 + +3.71744848523478122e-05j,
-        ])
-    
-    assert np.allclose(j, j_expected, rtol=1e-13, atol=0)
+    ])
+
+    assert np.allclose(j, j_expected)
 
     jder_expected = np.array([
             -0.00000000000000000e+00 + -2.24279011776926884e+00j,
@@ -82,10 +82,53 @@ def test_spherical_bessel_functions():
             -3.50936588954626604e-03 + -4.33680868994201774e-19j,
             +0.00000000000000000e+00 + -6.78916752019369197e-04j,
             +1.16738400679806980e-04 + +0.00000000000000000e+00j,
-        ])
+    ])
 
-    assert np.allclose(jder, jder_expected, rtol=1e-13, atol=0)
-    
+    assert np.allclose(jder, jder_expected)
+
+
+def test_spherical_hankel_functions():
+    import pytential.qbx.target_specific as ts
+
+    nterms = 10
+    z = 2 + 3j
+    scale = 1
+    h = np.zeros(nterms, dtype=np.complex)
+    hder = np.zeros(nterms, dtype=np.complex)
+    ts.h3dall_wrapper(nterms, z, scale, h, hder)
+
+    # Reference solution computed using
+    # scipy.special.spherical_jn + 1j * scipy.special.spherical_yn
+    h_expected = np.array([
+            +1.17460537937623677e-02 + -7.25971518952217565e-03j,
+            -7.12794888037171503e-03 + -1.55735608522498126e-02j,
+            -2.58175723285687941e-02 + +5.00665171335734627e-03j,
+            -6.95481631849959037e-03 + +4.92143379339500253e-02j,
+            +9.78278544942576822e-02 + +5.92281078069348405e-02j,
+            +2.65420992601874961e-01 + -1.70387117227806167e-01j,
+            -8.11750107462848453e-02 + -1.02133651818182791e+00j,
+            -3.49178056863992792e+00 + -1.62876088689699405e+00j,
+            -1.36147986022969878e+01 + +9.34959028601928743e+00j,
+            +4.56300765393887087e+00 + +7.94934376901125432e+01j,
+    ])
+
+    assert np.allclose(h, h_expected)
+
+    hder_expected = np.array([
+            +7.12794888037171503e-03 + +1.55735608522498126e-02j,
+            +2.11270661502996893e-02 + -5.75767287207851197e-03j,
+            +1.32171023895111261e-03 + -3.57580271012700734e-02j,
+            -6.69663049946767064e-02 + -3.16989251553807527e-02j,
+            -1.50547136475930293e-01 + +1.16532548652759055e-01j,
+            +8.87444851771816839e-02 + +5.84014513465967444e-01j,
+            +2.00269153354544205e+00 + +7.98384884993240895e-01j,
+            +7.22334424954346144e+00 + -5.46307186102847187e+00j,
+            -4.05890079026877615e+00 + -4.28512368415405192e+01j,
+            -2.04081205047078043e+02 + -1.02417988497371837e+02j,
+    ])
+
+    assert np.allclose(hder, hder_expected)
+
 
 @pytest.mark.parametrize("op", ["S", "D"])
 @pytest.mark.parametrize("helmholtz_k", [0, 1.2])

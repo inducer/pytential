@@ -8,4 +8,7 @@ extern int jfuns3d_(int *ier, int *nterms, double complex *z,
                     double complex *fjder, int *lwfjs, int *iscale,
                     int *ntop);
 
+extern int h3dall_(int *nterms, double complex *z, double *scale,
+		   double complex *hvec, int *ifder, double complex *hder);
+
 #endif  // UTILS_H
