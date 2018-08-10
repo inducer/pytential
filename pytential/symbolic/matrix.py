@@ -106,7 +106,7 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
     else:
         from pytential.qbx.utils import get_interleaved_centers
         centers = get_interleaved_centers(queue, source)
-        radii = source._expansion_radii('nsources')
+        radii = source._expansion_radii('ncenters')
 
         # NOTE: using a very small tolerance to make sure all the stage2
         # targets are associated to a center. We can't use the user provided
@@ -124,9 +124,7 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
 
         centers = [cl.array.take(c, assoc.target_to_center, queue=queue)
                    for c in centers]
-        radii = cl.array.take(radii,
-                (assoc.target_to_center.with_queue(queue) / 2.0).astype(np.int),
-                queue=queue)
+        radii = cl.array.take(radii, assoc.target_to_center, queue=queue)
 
     return centers, radii
 

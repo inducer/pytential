@@ -403,8 +403,8 @@ class GeometryCollection(object):
     def __contains__(self, where):
         return where in self.places
 
-    def items(self):
-        return self.places.items()
+    def copy(self):
+        return GeometryCollection(self.places, auto_where=self.where)
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
@@ -478,7 +478,8 @@ def bind(places, expr, auto_where=None):
         evaluations, find 'where' attributes automatically.
     """
 
-    places = GeometryCollection(places, auto_where=auto_where)
+    if not isinstance(places, GeometryCollection):
+        places = GeometryCollection(places, auto_where=auto_where)
     expr = _prepare_expr(places, expr)
 
     return BoundExpression(places, expr)
@@ -544,7 +545,8 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         context = {}
 
     from pytools.obj_array import is_obj_array, make_obj_array
-    places = GeometryCollection(places, auto_where=auto_where)
+    if not isinstance(places, GeometryCollection):
+        places = GeometryCollection(places, auto_where=auto_where)
     exprs = _prepare_expr(places, exprs)
 
     if not is_obj_array(exprs):
