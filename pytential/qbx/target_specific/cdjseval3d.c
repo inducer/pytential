@@ -1,15 +1,16 @@
-/* cdjseval3d.f -- translated by f2c (version 20160102).
-New version
-*/
+/* Based on cdjseval3d.f from fmmlib3d, translated with modified f2c */
 
 #include "f2c.h"
 
-/* c Copyright (C) 2009-2012: Leslie Greengard and Zydrunas Gimbutas */
-/* c Contact: greengard@cims.nyu.edu */
-/* c */
-/* c This software is being released under a modified FreeBSD license */
-/* c (see COPYING in home directory). */
-/* cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc */
+/* Original copyright notice: */
+
+/* ********************************************************************** */
+/* Copyright (C) 2009-2012: Leslie Greengard and Zydrunas Gimbutas */
+/* Contact: greengard@cims.nyu.edu */
+/*
+/* This software is being released under a modified FreeBSD license */
+/* (see COPYING in home directory). */
+/* ********************************************************************** */
 
 /*    $Date: 2011-07-15 16:28:31 -0400 (Fri, 15 Jul 2011) $ */
 /*    $Revision: 2253 $ */
