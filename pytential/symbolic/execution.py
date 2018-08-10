@@ -295,6 +295,7 @@ def _prepare_domains(nresults, places, domains, default_domain):
         (i.e., not a *list* or *tuple*), each element in the list is
         *domains*. Otherwise, *domains* is returned as is.
     """
+
     if domains is None:
         if default_domain not in places:
             raise RuntimeError("'domains is None' requires "
@@ -522,15 +523,16 @@ def _bmat(blocks, dtypes):
 def build_matrix(queue, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
-    :arg queue: a :class:`pyopencl.CommandQueue` used to synchronize
-        the calculation.
-    :arg places: a collection or mapping of symbolic names to
+    :arg queue: a :class:`pyopencl.CommandQueue`.
+    :arg places: a collection or mapping of symbolic names (see also
+        :class:`pytential.symbolic.execution.GeometryCollection`) to
         :class:`meshmode.discretization.Discretization` objects, subclasses
         of :class:`pytential.source.PotentialSource` or subclasses of
-    :arg input_exprs: An object array of expressions corresponding to the
-        input block columns of the matrix.
-
-        May also be a single expression.
+        :class:`pytential.target.TargetBase`.
+    :arg exprs: an array of expressions corresponding to the output block
+        rows of the matrix. May also be a single expression.
+    :arg input_exprs: an array of expressions corresponding to the
+        input block columns of the matrix. May also be a single expression.
     :arg domains: a list of discretization identifiers (see 'places') or
         *None* values indicating the domains on which each component of the
         solution vector lives.  *None* values indicate that the component

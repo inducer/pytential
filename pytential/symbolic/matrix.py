@@ -41,6 +41,16 @@ def is_zero(x):
 
 
 def _resample_arg(queue, source, x):
+    """
+    :arg queue: a :class:`pyopencl.CommandQueue`.
+    :arg source: a :class:`pytential.source.LayerPotentialSourceBase` subclass.
+        If it is not a layer potential source, no resampling is done.
+    :arg x: a :class:`numpy.ndarray`.
+
+    :return: a resampled :class:`numpy.ndarray` (see
+        :method:`pytential.source.LayerPotentialSourceBase.resampler`).
+    """
+
     from pytential.source import LayerPotentialSourceBase
     if not isinstance(source, LayerPotentialSourceBase):
         return x
@@ -59,6 +69,14 @@ def _resample_arg(queue, source, x):
 
 
 def _get_layer_potential_args(mapper, expr, source):
+    """
+    :arg mapper: a :class:`pytential.symbolic.primitives.EvaluationMapperBase`.
+    :arg expr: symbolic layer potential expression.
+    :arg source: a :class:`pytential.source.LayerPotentialSourceBase`.
+
+    :return: a mapping of kernel arguments *expr.kernel_arguments*.
+    """
+
     kernel_args = {}
     for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
         rec_arg = mapper.rec(arg_expr)
@@ -68,6 +86,15 @@ def _get_layer_potential_args(mapper, expr, source):
 
 
 def _get_kernel_args(mapper, kernel, expr, source):
+    """
+    :arg mapper: a :class:`pytential.symbolic.primitives.EvaluationMapperBase`.
+    :arg kernel: a :class:`sumpy.kernel.Kernel`.
+    :arg expr: symbolic layer potential expression.
+    :arg source: a :class:`pytential.source.LayerPotentialSourceBase`.
+
+    :return: a mapping of kernel parameters included in *expr*.
+    """
+
     # NOTE: copied from pytential.symbolic.primitives.IntG
     inner_kernel_args = kernel.get_args() + kernel.get_source_args()
     inner_kernel_args = set(arg.loopy_arg.name for arg in inner_kernel_args)
@@ -84,6 +111,14 @@ def _get_kernel_args(mapper, kernel, expr, source):
 
 
 def _get_weights_and_area_elements(queue, source, source_discr):
+    """
+    :arg queue: a :class:`pyopencl.CommandQueue`.
+    :arg source: a :class:`pytential.source.LayerPotentialSourceBase` subclass.
+    :arg source_discr: a :class:`meshmode.discretization.Discretization`.
+
+    :return: quadrature weights for each node in *source_discr*
+    """
+
     if source.quad_stage2_density_discr is source_discr:
         waa = source.weights_and_area_elements().with_queue(queue)
     else:
@@ -98,6 +133,15 @@ def _get_weights_and_area_elements(queue, source, source_discr):
 
 
 def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_limit):
+    """
+    :arg queue: a :class:`pyopencl.CommandQueue`.
+    :arg source: a :class:`pytential.source.LayerPotentialSourceBase` subclass.
+    :arg target_discr: a :class:`meshmode.discretization.Discretization`.
+    :arg qbx_forced_limit: an integer (*+1* or *-1*).
+
+    :return: a tuple of `(centers, radii)` for each node in *target_discr*.
+    """
+
     if source.density_discr is target_discr:
         # NOTE: skip expensive target association
         from pytential.qbx.utils import get_centers_on_side
