@@ -317,15 +317,16 @@ def _prepare_expr(places, expr):
         `where` identifier from places, etc.
     """
 
-    from pytential.source import PotentialSource
+    from pytential.source import LayerPotentialSourceBase
     from pytential.symbolic.mappers import (
             ToTargetTagger, DerivativeBinder)
 
     expr = ToTargetTagger(*places.where)(expr)
     expr = DerivativeBinder()(expr)
+
     for name, place in six.iteritems(places.places):
-        if isinstance(places, PotentialSource):
-            expr = p.preprocess_optemplate(name, places, expr)
+        if isinstance(place, LayerPotentialSourceBase):
+            expr = place.preprocess_optemplate(name, places, expr)
 
     return expr
 

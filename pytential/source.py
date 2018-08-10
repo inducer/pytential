@@ -49,7 +49,7 @@ class PotentialSource(object):
         :class:`pytential.symbolic.primitives.IntG`.
     """
 
-    def preprocess_optemplate(name, discretizations, expr):
+    def preprocess_optemplate(self, name, discretizations, expr):
         return expr
 
 
