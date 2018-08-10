@@ -399,8 +399,8 @@ class QBXPreprocessor(IdentityMapper):
         self.places = places
 
     def map_int_g(self, expr):
-        source_discr = self.places[self.source_name]
-        target_discr = self.places[expr.target]
+        source_discr = self.places.get_discretization(self.source_name)
+        target_discr = self.places.get_discretization(expr.target)
 
         if expr.qbx_forced_limit == 0:
             raise ValueError("qbx_forced_limit == 0 was a bad idea and "

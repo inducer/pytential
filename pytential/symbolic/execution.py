@@ -283,48 +283,49 @@ class MatVecOp:
 
 # {{{ expression prep
 
-def _prepare_domains(nresults, places, domains, default_val):
+def _prepare_domains(nresults, places, domains, default_domain):
     """
     :arg nresults: number of results.
-    :arg places: :class:`pytential.symbolic.execution.BindingLocation`.
+    :arg places: :class:`pytential.symbolic.execution.GeometryCollection`.
     :arg domains: recommended domains.
-    :arg default_val: default value for domains which are not provided.
+    :arg default_domain: default value for domains which are not provided.
 
     :return: a list of domains for each result. If domains is `None`, each
-        element in the list is *default_val*. If *domains* is not a list
-        of domains, each element in the resulting list is *domains*. Otherwise,
-        *domains* is returned as is.
+        element in the list is *default_domain*. If *domains* is a scalar
+        (i.e., not a *list* or *tuple*), each element in the list is
+        *domains*. Otherwise, *domains* is returned as is.
     """
     if domains is None:
-        if default_val not in places:
+        if default_domain not in places:
             raise RuntimeError("'domains is None' requires "
-                    "default domain to be defined")
-        dom_name = default_val
+                               "default domain to be defined in places")
+        dom_name = default_domain
         return nresults * [dom_name]
-    elif not isinstance(domains, (list, tuple)):
+    if not isinstance(domains, (list, tuple)):
         dom_name = domains
         return nresults * [dom_name]
-    else:
-        assert len(domains) == nresults
-        return domains
+
+    assert len(domains) == nresults
+    return domains
 
 
 def _prepare_expr(places, expr):
     """
-    :arg places: :class:`pytential.symbolic.execution.BindingLocation`.
+    :arg places: :class:`pytential.symbolic.execution.GeometryCollection`.
     :arg expr: a symbolic expression.
     :return: processed symbolic expressions, tagged with the appropriate
         `where` identifier from places, etc.
     """
 
-    from pytential.source import LayerPotentialSourceBase
+    from pytential.source import PotentialSource
     from pytential.symbolic.mappers import (
             ToTargetTagger, DerivativeBinder)
 
     expr = ToTargetTagger(*places.where)(expr)
     expr = DerivativeBinder()(expr)
-    if isinstance(places.lpot, LayerPotentialSourceBase):
-        expr = places.lpot.preprocess_optemplate(places.source, places, expr)
+    for name, place in six.iteritems(places.places):
+        if isinstance(places, PotentialSource):
+            expr = p.preprocess_optemplate(name, places, expr)
 
     return expr
 
@@ -333,7 +334,7 @@ def _prepare_expr(places, expr):
 
 # {{{ bound expression
 
-class BindingLocation(object):
+class GeometryCollection(object):
     def __init__(self, places, auto_where=None):
         from meshmode.discretization import Discretization
         from pytential.source import LayerPotentialSourceBase, PotentialSource
@@ -343,31 +344,24 @@ class BindingLocation(object):
             auto_where = DEFAULT_SOURCE, DEFAULT_TARGET
         self.where = auto_where
 
-        self.lpot = None
         self.places = {}
         if isinstance(places, LayerPotentialSourceBase):
-            self.lpot = places
-            self.places[self.source] = self[self.source]
-            self.places[self.target] = self[self.target]
+            self.places[self.source] = places
+            self.places[self.target] = \
+                    self.get_discretization(self.target, lpot=places)
         elif isinstance(places, (Discretization, TargetBase)):
             self.places[self.target] = places
         elif isinstance(places, tuple):
             source_discr, target_discr = places
-            if isinstance(source_discr, PotentialSource):
-                self.lpot = source_discr
-            if isinstance(source_discr, LayerPotentialSourceBase):
-                source_discr = self[self.source]
-
             self.places[self.source] = source_discr
             self.places[self.target] = target_discr
         else:
-            for key, value in six.iteritems(places):
-                self.places[key] = value
+            self.places = places.copy()
 
         for p in six.itervalues(self.places):
             if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
                 raise TypeError("Must pass discretization, targets or "
-                        "layer potential sources as 'places'")
+                        "layer potential sources as 'places'.")
 
         self.caches = {}
 
@@ -379,50 +373,37 @@ class BindingLocation(object):
     def target(self):
         return self.where[1]
 
-    def _get_lpot_discretization(self, where):
-        from pytential.source import LayerPotentialSourceBase
-        if not isinstance(self.lpot, LayerPotentialSourceBase):
-            return None
-
+    def get_discretization(self, where, lpot=None):
         if where is DEFAULT_SOURCE or where is DEFAULT_TARGET:
             where = QBXSourceStage1(where)
 
-        if isinstance(where, QBXSourceStage1):
-            return self.lpot.density_discr
-        if isinstance(where, QBXSourceStage2):
-            return self.lpot.stage2_density_discr
-        if isinstance(where, QBXSourceQuadStage2):
-            return self.lpot.quad_stage2_density_discr
+        if lpot is None:
+            if where in self.places:
+                lpot = self.places[where]
+            else:
+                lpot = self.places.get(where.where, None)
 
-        return None
+        from pytential.source import LayerPotentialSourceBase
+        if not isinstance(lpot, LayerPotentialSourceBase):
+            return lpot
+
+        if isinstance(where, QBXSourceStage1):
+            return lpot.density_discr
+        if isinstance(where, QBXSourceStage2):
+            return lpot.stage2_density_discr
+        if isinstance(where, QBXSourceQuadStage2):
+            return lpot.quad_stage2_density_discr
+
+        raise ValueError('Unknown `where` identifier: {}'.format(type(where)))
 
     def __getitem__(self, where):
-        if where in self.places:
-            discr = self.places[where]
-        else:
-            discr = self._get_lpot_discretization(where)
+        return self.places[where]
 
-        if discr is None:
-            from pytential.symbolic.mappers import stringify_where
-            raise KeyError("Identifier '{}' not in places".format(
-                stringify_where(where)))
-
-        return discr
-
-    def __iter__(self):
-        return iter(self.places.keys())
-
-    def keys(self):
-        return self.places.keys()
-
-    def values(self):
-        return self.places.values()
+    def __contains__(self, where):
+        return where in self.places
 
     def items(self):
         return self.places.items()
-
-    def __hash__(self):
-        return hash(tuple(self.values()))
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
@@ -441,7 +422,7 @@ class BoundExpression(object):
         return self.places.get_cache(name)
 
     def get_discretization(self, where):
-        return self.places[where]
+        return self.places.get_discretization(where)
 
     def scipy_op(self, queue, arg_name, dtype, domains=None, **extra_args):
         """
@@ -488,14 +469,15 @@ class BoundExpression(object):
 
 def bind(places, expr, auto_where=None):
     """
-    :arg places: a mapping of symbolic names to
-        :class:`pytential.discretization.Discretization` objects or a subclass
-        of :class:`pytential.discretization.target.TargetBase`.
-    :arg auto_where: For simple source-to-self or source-to-target
+    :arg places: a collection or mapping of symbolic names to
+        :class:`meshmode.discretization.Discretization` objects, subclasses
+        of :class:`pytential.source.PotentialSource` or subclasses of
+        :class:`pytential.target.TargetBase`.
+    :arg auto_where: for simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.
     """
 
-    places = BindingLocation(places, auto_where=auto_where)
+    places = GeometryCollection(places, auto_where=auto_where)
     expr = _prepare_expr(places, expr)
 
     return BoundExpression(places, expr)
@@ -505,14 +487,44 @@ def bind(places, expr, auto_where=None):
 
 # {{{ matrix building
 
+def _bmat(blocks, dtypes):
+    from pytools import single_valued
+    from pytential.symbolic.matrix import is_zero
+
+    nrows = blocks.shape[0]
+    ncolumns = blocks.shape[1]
+
+    # "block row starts"/"block column starts"
+    brs = np.cumsum([0] +
+            [single_valued(blocks[ibrow, ibcol].shape[0]
+                           for ibcol in range(ncolumns)
+                           if not is_zero(blocks[ibrow, ibcol]))
+             for ibrow in range(nrows)])
+
+    bcs = np.cumsum([0] +
+            [single_valued(blocks[ibrow, ibcol].shape[1]
+                           for ibrow in range(nrows)
+                           if not is_zero(blocks[ibrow, ibcol]))
+             for ibcol in range(ncolumns)])
+
+    result = np.zeros((brs[-1], bcs[-1]),
+                      dtype=np.find_common_type(dtypes, []))
+    for ibcol in range(ncolumns):
+        for ibrow in range(nrows):
+            result[brs[ibrow]:brs[ibrow + 1], bcs[ibcol]:bcs[ibcol + 1]] = \
+                    blocks[ibrow, ibcol]
+
+    return result
+
+
 def build_matrix(queue, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
     :arg queue: a :class:`pyopencl.CommandQueue` used to synchronize
         the calculation.
-    :arg places: a mapping of symbolic names to
-        :class:`pytential.discretization.Discretization` objects or a subclass
-        of :class:`pytential.discretization.target.TargetBase`.
+    :arg places: a collection or mapping of symbolic names to
+        :class:`meshmode.discretization.Discretization` objects, subclasses
+        of :class:`pytential.source.PotentialSource` or subclasses of
     :arg input_exprs: An object array of expressions corresponding to the
         input block columns of the matrix.
 
@@ -521,7 +533,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         *None* values indicating the domains on which each component of the
         solution vector lives.  *None* values indicate that the component
         is a scalar.  If *None*,
-        :class:`pytential.symbolic.primitives.DEFAULT_TARGET`, is required
+        :class:`pytential.symbolic.primitives.DEFAULT_SOURCE`, is required
         to be a key in :attr:`places`.
     :arg auto_where: For simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.
@@ -531,7 +543,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         context = {}
 
     from pytools.obj_array import is_obj_array, make_obj_array
-    places = BindingLocation(places, auto_where=auto_where)
+    places = GeometryCollection(places, auto_where=auto_where)
     exprs = _prepare_expr(places, exprs)
 
     if not is_obj_array(exprs):
@@ -556,7 +568,8 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
                 dep_expr=input_exprs[ibcol],
                 other_dep_exprs=(input_exprs[:ibcol] +
                                  input_exprs[ibcol + 1:]),
-                dep_discr=places[domains[ibcol]],
+                dep_source=places[domains[ibcol]],
+                dep_discr=places.get_discretization(domains[ibcol]),
                 places=places,
                 context=context)
 
@@ -568,32 +581,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
             if isinstance(block, np.ndarray):
                 dtypes.append(block.dtype)
 
-    from pytools import single_valued
-    block_row_counts = [
-            single_valued(
-                blocks[ibrow, ibcol].shape[0]
-                for ibcol in range(nblock_columns)
-                if not is_zero(blocks[ibrow, ibcol]))
-            for ibrow in range(nblock_rows)]
-
-    block_col_counts = [
-            single_valued(
-                blocks[ibrow, ibcol].shape[1]
-                for ibrow in range(nblock_rows)
-                if not is_zero(blocks[ibrow, ibcol]))
-            for ibcol in range(nblock_columns)]
-
-    # "block row starts"/"block column starts"
-    brs = np.cumsum([0] + block_row_counts)
-    bcs = np.cumsum([0] + block_col_counts)
-
-    result = np.zeros((brs[-1], bcs[-1]), dtype=np.find_common_type(dtypes, []))
-    for ibcol in range(nblock_columns):
-        for ibrow in range(nblock_rows):
-            result[brs[ibrow]:brs[ibrow + 1], bcs[ibcol]:bcs[ibcol + 1]] = \
-                    blocks[ibrow, ibcol]
-
-    return cl.array.to_device(queue, result)
+    return cl.array.to_device(queue, _bmat(blocks, dtypes))
 
 # }}}
 
