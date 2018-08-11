@@ -6,7 +6,8 @@ import cython
 import cython.parallel
 
 from libc.math cimport sqrt
-from libc.stdio cimport printf
+from libc.stdio cimport printf, fprintf, stderr
+from libc.stdlib cimport abort
 
 cimport openmp
 
@@ -17,6 +18,9 @@ cdef extern from "_internal.h" nogil:
                  int *lwfjs, int *iscale, int *ntop);
     int h3dall_(int *nterms, double complex *z, double *scale,
 		double complex *hvec, int *ifder, double complex *hder);
+
+cdef extern from "complex.h" nogil:
+    double cabs(double complex)
 
 
 def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
@@ -30,9 +34,9 @@ def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
         fjder: *None*, or output array of complex double derivatives
     """
     cdef:
-        double complex[1024] fjstemp
-        double complex[1024] fjdertmp
-        int[1024] iscale
+        double complex[128] fjstemp
+        double complex[128] fjdertmp
+        int[128] iscale
         int ier, ifder, lwfjs, ntop, i, nterms_
         double scale_
         double complex z_
@@ -139,7 +143,7 @@ cdef double dist(double[3] a, double[3] b) nogil:
             (a[2] - b[2]) * (a[2] - b[2]))
 
 
-cdef void tsqbx_grad_from_source(
+cdef void tsqbx_laplace_dlp(
         double[3] source,
         double[3] center,
         double[3] target,
@@ -186,7 +190,7 @@ cdef void tsqbx_grad_from_source(
     return
 
 
-cdef double tsqbx_from_source(
+cdef double tsqbx_laplace_slp(
         double[3] source,
         double[3] center,
         double[3] target,
@@ -227,17 +231,20 @@ cdef double tsqbx_from_source(
     return result
 
 
-cdef double tsqbx_helmholtz_from_source(
+cdef double complex tsqbx_helmholtz_slp(
         double[3] source,
         double[3] center,
         double[3] target,
-        double k,
-        int order) nogil:
+        int order,
+        double complex k) nogil:
     cdef:
-        int j
-        double result, r, sc_d, tc_d, cos_angle
-        # Legendre recurrence values
-        double pj, pjm1, pjm2
+        int j, ntop, ier, ifder, lwfjs
+        double r, sc_d, tc_d, cos_angle
+        double[128] lvals
+        double complex[128] jvals, hvals
+        int[128] iscale
+        double jscale, hscale, unscale
+        double complex z, result
 
     tc_d = dist(target, center)
     sc_d = dist(source, center)
@@ -248,40 +255,74 @@ cdef double tsqbx_helmholtz_from_source(
             (target[2] - center[2]) * (source[2] - center[2]))
             / (tc_d * sc_d))
 
-    if order == 0:
-        return 1 / sc_d
+    # Evaluate the Legendre terms.
+    legvals(cos_angle, order, lvals, NULL)
 
-    pjm2 = 1
-    pjm1 = cos_angle
+    # Scaling magic for Bessel and Hankel terms.
+    # These values are taken from the fmmlib documentation.
+    jscale = cabs(k * tc_d) if (cabs(k * tc_d) < 1) else 1
+    hscale = cabs(k * sc_d) if (cabs(k * sc_d) < 1) else 1
+    # Multiply against unscale to remove the scaling.
+    unscale = jscale / hscale
 
-    result = 1 / sc_d + (cos_angle * tc_d) / (sc_d * sc_d)
+    # Evaluate the spherical Bessel terms.
+    z = k * tc_d
+    ifder = 0
+    lwfjs = 128
+    jfuns3d_(&ier, &order, &z, &jscale, jvals, &ifder, NULL, &lwfjs, iscale,
+             &ntop)
+    if ier:
+        # This could in theory fail.
+        fprintf(stderr, "array passed to jfuns3d was too small\n")
+        abort()
 
-    r = (tc_d * tc_d) / (sc_d * sc_d * sc_d)
+    # Evaluate the spherical Hankel terms.
+    z = k * sc_d
+    h3dall_(&order, &z, &hscale, hvals, &ifder, NULL)
 
-    for j in range(2, order + 1):
-        pj = ( (2*j-1)*cos_angle*pjm1-(j-1)*pjm2 ) / j
-        result += pj * r
+    result = jvals[0] * hvals[0] * lvals[0]
 
-        r *= (tc_d / sc_d)
-        pjm2 = pjm1
-        pjm1 = pj
+    for j in range(1, 1 + order):
+        result += (2 * j + 1) * unscale * (jvals[j] * hvals[j] * lvals[j])
+        unscale *= jscale / hscale
 
-    return result
+    return result * 1j * k
 
 
-def eval_target_specific_global_qbx_locals(
+def eval_target_specific_qbx_locals(
         int order,
         double[:,:] sources,
         double[:,:] targets,
         double[:,:] centers,
-        int[:] global_qbx_centers,
+        int[:] qbx_centers,
         int[:] qbx_center_to_target_box,
         int[:] center_to_target_starts, int[:] center_to_target_lists,
         int[:] source_box_starts, int[:] source_box_lists,
         int[:] box_source_starts, int[:] box_source_counts_nonchild,
+        double complex helmholtz_k,
         double[:] dipstr,
         double[:,:] dipvec,
         double complex[:] pot):
+    """TSQBX entry point.
+
+    Arguments:
+        order: Expansion order
+        sources: Array of sources of shape (3, *nsrcs*)
+        targets: Array of targets of shape (3, *ntgts*)
+        centers: Array of centers of shape (3, *nctrs*)
+        qbx_centers: Array of subset of indices into *centers* which are QBX centers
+        qbx_center_to_target_box: Array mapping centers to target box numbers
+        center_to_target_starts: "Start" indices for center-to-target CSR list
+        center_to_target_lists: Center-to-target CSR list
+        source_box_starts: "Start" indices for target-box-to-source-box CSR list
+        source_box_lists: Target-box-to-source-box CSR list
+        box_source_starts: "Start" indices for sources for each box
+        box_source_counts_nonchild: Number of sources per box
+        helmholtz_k: Helmholtz parameter (Pass 0 for Laplace)
+        dipstr: Source weights, shape (*nsrcs*,)
+        dipvec: Source gradient weights, shape (3, *nsrcs*), or *None*
+        pot: Output potential, shape (*ngts*,)
+    """
 
     cdef:
         int tgt, ictr, ctr
@@ -290,17 +331,16 @@ def eval_target_specific_global_qbx_locals(
         int isrc_box, isrc_box_start, isrc_box_end
         int isrc, isrc_start, isrc_end
         int i, tid
-        double result
+        double complex result
         double[:,:] source, center, target, grad
-        int slp, dlp
+        int laplace_slp, helmholtz_slp, laplace_dlp
 
-    slp = (dipstr is not None) and (dipvec is None)
-    dlp = (dipstr is not None) and (dipvec is not None)
+    laplace_slp = (helmholtz_k == 0) and (dipstr is not None) and (dipvec is None)
+    laplace_dlp = (helmholtz_k == 0) and (dipstr is not None) and (dipvec is not None)
+    helmholtz_slp = (helmholtz_k != 0) and (dipstr is not None) and (dipvec is None)
 
-    print("Hi from Cython")
-
-    if not (slp or dlp):
-        raise ValueError("should specify exactly one of src_weights or dipvec")
+    if not (laplace_slp or laplace_dlp or helmholtz_slp):
+        raise ValueError("unknown kernel")
 
     # Hack to obtain thread-local storage
     maxthreads = openmp.omp_get_max_threads()
@@ -311,12 +351,13 @@ def eval_target_specific_global_qbx_locals(
     center = np.zeros((maxthreads, 65))
     grad = np.zeros((maxthreads, 65))
 
-    # TODO: Check if order > 256
+    # TODO: Check that the order is not too high, since some temporary arrays
+    # used above might overflow if that is the case.
 
-    for ictr in cython.parallel.prange(0, global_qbx_centers.shape[0],
+    for ictr in cython.parallel.prange(0, qbx_centers.shape[0],
                                        nogil=True, schedule="static",
                                        chunksize=128):
-        ctr = global_qbx_centers[ictr]
+        ctr = qbx_centers[ictr]
         itgt_start = center_to_target_starts[ctr]
         itgt_end = center_to_target_starts[ctr + 1]
         tgt_box = qbx_center_to_target_box[ctr]
@@ -344,15 +385,24 @@ def eval_target_specific_global_qbx_locals(
                     for i in range(3):
                         source[tid, i] = sources[i, isrc]
 
-                    if slp:
-                        # Don't replace with +=, since that makes Cython think
-                        # it is a reduction.
+                    # NOTE: Don't replace with +=, since that makes Cython think
+                    # we are doing an OpenMP reduction.
+
+                    if laplace_slp:
                         result = result + dipstr[isrc] * (
-                                tsqbx_from_source(&source[tid, 0], &center[tid, 0],
+                                tsqbx_laplace_slp(&source[tid, 0], &center[tid, 0],
                                                   &target[tid, 0], order))
-                    elif dlp:
-                        tsqbx_grad_from_source(&source[tid, 0], &center[tid, 0],
-                                               &target[tid, 0], &grad[tid, 0], order)
+
+                    elif helmholtz_slp:
+                        result = result + dipstr[isrc] * (
+                                tsqbx_helmholtz_slp(&source[tid, 0], &center[tid, 0],
+                                                    &target[tid, 0], order,
+                                                    helmholtz_k))
+
+                    elif laplace_dlp:
+                        tsqbx_laplace_dlp(&source[tid, 0], &center[tid, 0],
+                                          &target[tid, 0], &grad[tid, 0], order)
+
                         result = result + dipstr[isrc] * (
                                 grad[tid, 0] * dipvec[0, isrc] +
                                 grad[tid, 1] * dipvec[1, isrc] +

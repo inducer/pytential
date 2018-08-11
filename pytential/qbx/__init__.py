@@ -585,7 +585,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         return maxstretch
 
-    @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
         """
         :arg target_discrs_and_qbx_sides:

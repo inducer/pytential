@@ -132,17 +132,18 @@ def test_spherical_hankel_functions():
 
 @pytest.mark.parametrize("op", ["S", "D"])
 @pytest.mark.parametrize("helmholtz_k", [0, 1.2])
-def test_target_specific_qbx(ctx_getter, op, helmholtz_k):
+@pytest.mark.parametrize("qbx_order", [0, 1, 5])
+def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
     logging.basicConfig(level=logging.INFO)
 
-    if helmholtz_k != 0:
+    if helmholtz_k != 0 and op == "D":
         pytest.xfail("not implemented yet")
 
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    target_order = 8
-    fmm_tol = 1e-5
+    target_order = 4
+    fmm_tol = 1e-3
 
     from meshmode.mesh.generation import generate_icosphere
     mesh = generate_icosphere(1, target_order)
@@ -164,7 +165,7 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k):
 
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
-            qbx_order=5,
+            qbx_order=qbx_order,
             fmm_level_to_order=SimpleExpansionOrderFinder(fmm_tol),
             fmm_backend="fmmlib",
             _expansions_in_tree_have_extent=True,
