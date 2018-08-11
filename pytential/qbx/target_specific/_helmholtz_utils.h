@@ -1,5 +1,5 @@
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef HELMHOLTZ_UTILS_H
+#define HELMHOLTZ_UTILS_H
 
 #include <complex.h>
 
@@ -11,4 +11,4 @@ extern int jfuns3d_(int *ier, int *nterms, double complex *z,
 extern int h3dall_(int *nterms, double complex *z, double *scale,
 		   double complex *hvec, int *ifder, double complex *hder);
 
-#endif  // UTILS_H
+#endif  /* HELMHOLTZ_UTILS_H */

@@ -60,8 +60,7 @@ ext_modules = [
         Extension(
             "pytential.qbx.target_specific._internal",
             ["pytential/qbx/target_specific/_internal.pyx",
-             "pytential/qbx/target_specific/cdjseval3d.c",
-             "pytential/qbx/target_specific/helmrouts3d.c"],
+             "pytential/qbx/target_specific/_helmholtz_utils.c"],
             extra_compile_args=["-fopenmp", "-ffast-math"],
             extra_link_args=["-fopenmp"]
         ),
