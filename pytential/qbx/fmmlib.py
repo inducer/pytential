@@ -231,16 +231,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
                 ifgrad=ifgrad)
 
-    @staticmethod
-    def is_supported_helmknl_for_tsqbx(knl):
-        if isinstance(knl, DirectionalSourceDerivative):
-            knl = knl.inner_kernel
-
-        else:
-            if isinstance(knl, HelmholtzKernel) and knl.dim == 3:
-                return True
-
-        return isinstance(knl, LaplaceKernel) and knl.dim == 3
+    def is_supported_helmknl_for_tsqbx(self, knl):
+        return self.is_supported_helmknl(knl)
 
     @staticmethod
     def is_supported_helmknl(knl):

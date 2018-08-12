@@ -195,6 +195,56 @@ cdef void tsqbx_laplace_dlp(
     return
 
 
+cdef void tsqbx_helmholtz_dlp(
+        double[3] source,
+        double[3] center,
+        double[3] target,
+        double[3] grad,
+        int order,
+        double complex k) nogil:
+    cdef:
+        int i, j
+        double result, sc_d, tc_d, cos_angle, alpha, R
+        double[128] tmp
+        double[128] derivs
+        double[3] cms
+        double[3] tmc
+
+    """
+    for j in range(3):
+        cms[j] = center[j] - source[j]
+        tmc[j] = target[j] - center[j]
+        grad[j] = 0
+
+    tc_d = dist(target, center)
+    sc_d = dist(source, center)
+
+    alpha = (
+            (target[0] - center[0]) * (source[0] - center[0]) +
+            (target[1] - center[1]) * (source[1] - center[1]) +
+            (target[2] - center[2]) * (source[2] - center[2]))
+
+    cos_angle = alpha / (tc_d * sc_d)
+
+    legvals(cos_angle, order, tmp, derivs)
+
+    R = 1 / sc_d
+
+    for i in range(0, order + 1):
+        # Invariant: R = (t_cd ** i / sc_d ** (i + 1))
+        for j in range(3):
+            grad[j] += (i + 1) * cms[j] / (sc_d * sc_d) * R * tmp[i]
+        for j in range(3):
+            # Siegel and Tornberg has a sign flip here :(
+            grad[j] += (
+                    tmc[j] / (tc_d * sc_d) +
+                    alpha * cms[j] / (tc_d * sc_d * sc_d * sc_d)) * R * derivs[i]
+        R *= (tc_d / sc_d)
+    """
+
+    return
+
+
 cdef double tsqbx_laplace_slp(
         double[3] source,
         double[3] center,
@@ -338,14 +388,17 @@ def eval_target_specific_qbx_locals(
         int i, tid
         double complex result
         double[:,:] source, center, target, grad
-        int laplace_slp, helmholtz_slp, laplace_dlp
+        int laplace_slp, helmholtz_slp, laplace_dlp, helmholtz_dlp
 
-    laplace_slp = (helmholtz_k == 0) and (dipstr is not None) and (dipvec is None)
-    laplace_dlp = (helmholtz_k == 0) and (dipstr is not None) and (dipvec is not None)
-    helmholtz_slp = (helmholtz_k != 0) and (dipstr is not None) and (dipvec is None)
+    if dipstr is None:
+        raise ValueError("must specify dipvec")
 
-    if not (laplace_slp or laplace_dlp or helmholtz_slp):
-        raise ValueError("unknown kernel")
+    laplace_slp = (helmholtz_k == 0) and (dipvec is None)
+    laplace_dlp = (helmholtz_k == 0) and (dipvec is not None)
+    helmholtz_slp = (helmholtz_k != 0) and (dipvec is None)
+    helmholtz_dlp = (helmholtz_k != 0) and (dipvec is not None)
+
+    assert laplace_slp or laplace_dlp or helmholtz_slp or helmholtz_dlp
 
     if qbx_centers.shape[0] == 0:
         return
@@ -393,8 +446,8 @@ def eval_target_specific_qbx_locals(
                     for i in range(3):
                         source[tid, i] = sources[i, isrc]
 
-                    # NOTE: Don't replace with +=, since that makes Cython think
-                    # we are doing an OpenMP reduction.
+                    # NOTE: Don't use +=, since that makes Cython think we are
+                    # doing an OpenMP reduction.
 
                     if laplace_slp:
                         result = result + dipstr[isrc] * (
@@ -410,6 +463,16 @@ def eval_target_specific_qbx_locals(
                     elif laplace_dlp:
                         tsqbx_laplace_dlp(&source[tid, 0], &center[tid, 0],
                                           &target[tid, 0], &grad[tid, 0], order)
+
+                        result = result + dipstr[isrc] * (
+                                grad[tid, 0] * dipvec[0, isrc] +
+                                grad[tid, 1] * dipvec[1, isrc] +
+                                grad[tid, 2] * dipvec[2, isrc])
+
+                    elif helmholtz_dlp:
+                        tsqbx_helmholtz_dlp(&source[tid, 0], &center[tid, 0],
+                                            &target[tid, 0], &grad[tid, 0], order,
+                                            helmholtz_k)
 
                         result = result + dipstr[isrc] * (
                                 grad[tid, 0] * dipvec[0, isrc] +
