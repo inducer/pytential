@@ -204,7 +204,7 @@ cdef void tsqbx_helmholtz_dlp(
         int order,
         double complex k) nogil:
     cdef:
-        int j, m
+        int n, m
         int ier, ntop, ifder, lwfjs
         double sc_d, tc_d, cos_angle, alpha
         double[3] cms, tmc
@@ -257,16 +257,24 @@ cdef void tsqbx_helmholtz_dlp(
     ifder = 1
     h3dall_(&order, &z, &hscale, hvals, &ifder, hderivs)
 
-    for j in range(0, order + 1):
+    #
+    # This is a mess, but amounts to the s-gradient of:
+    #
+    #      __ order
+    #  ik \         (2n  +  1) j (k |t - c|) h (k |s - c|) P (cos θ)
+    #     /__ n = 0             n             n             n
+    #
+    #
+    for n in range(0, order + 1):
         for m in range(3):
-            grad_tmp[m] = -hderivs[j] * k * cms[m] * lvals[j] / sc_d
+            grad_tmp[m] = -hderivs[n] * k * cms[m] * lvals[n] / sc_d
         for m in range(3):
-            grad_tmp[m] += hvals[j] * (
+            grad_tmp[m] += hvals[n] * (
                     tmc[m] / (tc_d * sc_d) +
-                    alpha * cms[m] / (tc_d * sc_d * sc_d * sc_d)) * lderivs[j]
+                    alpha * cms[m] / (tc_d * sc_d * sc_d * sc_d)) * lderivs[n]
         for m in range(3):
-            grad[m] += (2 * j + 1) * unscale * (grad_tmp[m] * jvals[j])
-        unscale *= jscale / hscale
+            grad[m] += (2 * n + 1) * unscale * (grad_tmp[m] * jvals[n])
+        unscale *= nscale / hscale
 
     for m in range(3):
         grad[m] *= 1j * k
@@ -327,7 +335,7 @@ cdef double complex tsqbx_helmholtz_slp(
         int order,
         double complex k) nogil:
     cdef:
-        int j, ntop, ier, ifder, lwfjs
+        int n, ntop, ier, ifder, lwfjs
         double sc_d, tc_d, cos_angle
         double[BUFSIZE] lvals
         double complex[BUFSIZE] jvals, hvals
@@ -351,7 +359,7 @@ cdef double complex tsqbx_helmholtz_slp(
     # These values are taken from the fmmlib documentation.
     jscale = cabs(k * tc_d) if (cabs(k * tc_d) < 1) else 1
     hscale = cabs(k * sc_d) if (cabs(k * sc_d) < 1) else 1
-    # unscale = (jscale / hscale) ^ n
+    # unscale = (jscale / hscale) ** n
     # Multiply against unscale to remove the scaling.
     unscale = 1
 
@@ -371,9 +379,9 @@ cdef double complex tsqbx_helmholtz_slp(
     h3dall_(&order, &z, &hscale, hvals, &ifder, NULL)
 
     result = 0
-    
-    for j in range(1 + order):
-        result += (2 * j + 1) * unscale * (jvals[j] * hvals[j] * lvals[j])
+
+    for n in range(1 + order):
+        result += (2 * n + 1) * unscale * (jvals[n] * hvals[n] * lvals[n])
         unscale *= jscale / hscale
 
     return result * 1j * k
