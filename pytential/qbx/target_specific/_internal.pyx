@@ -274,7 +274,7 @@ cdef void tsqbx_helmholtz_dlp(
                     alpha * cms[m] / (tc_d * sc_d * sc_d * sc_d)) * lderivs[n]
         for m in range(3):
             grad[m] += (2 * n + 1) * unscale * (grad_tmp[m] * jvals[n])
-        unscale *= nscale / hscale
+        unscale *= jscale / hscale
 
     for m in range(3):
         grad[m] *= 1j * k
