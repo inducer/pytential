@@ -30,7 +30,7 @@ from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
 from sumpy.kernel import (
         LaplaceKernel, HelmholtzKernel, AxisTargetDerivative,
         DirectionalSourceDerivative)
-import pytential.qbx.target_specific as target_specific
+import pytential.qbx.target_specific as ts
 
 
 from boxtree.tools import return_timing_data
@@ -231,12 +231,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
                 ifgrad=ifgrad)
 
-    @staticmethod
-    def is_supported_helmknl_for_tsqbx(knl):
-        if isinstance(knl, DirectionalSourceDerivative):
-            knl = knl.inner_kernel
-
-        return isinstance(knl, LaplaceKernel) and knl.dim == 3
+    def is_supported_helmknl_for_tsqbx(self, knl):
+        return self.is_supported_helmknl(knl)
 
     @staticmethod
     def is_supported_helmknl(knl):
@@ -607,12 +603,12 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         ctt = geo_data.center_to_tree_targets()
 
         for output in pot:
-            target_specific.eval_target_specific_global_qbx_locals(
+            ts.eval_target_specific_qbx_locals(
                     order=self.qbx_order,
                     sources=self._get_single_sources_array(),
                     targets=geo_data.all_targets(),
                     centers=self._get_single_centers_array(),
-                    global_qbx_centers=geo_data.global_qbx_centers(),
+                    qbx_centers=geo_data.global_qbx_centers(),
                     qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
                     center_to_target_starts=ctt.starts,
                     center_to_target_lists=ctt.lists,
@@ -620,6 +616,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     source_box_lists=trav.neighbor_source_boxes_lists,
                     box_source_starts=self.tree.box_source_starts,
                     box_source_counts_nonchild=self.tree.box_source_counts_nonchild,
+                    helmholtz_k=self.kernel_kwargs.get("zk", 0),
                     dipstr=src_weights,
                     dipvec=self.dipole_vec,
                     pot=output)
