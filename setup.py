@@ -65,7 +65,7 @@ ext_modules = [
             depends=[
                 "pytential/qbx/target_specific/_internal.h",
                 "pytential/qbx/target_specific/_helmholtz_utils.h"],
-            extra_compile_args=["-Wall", "-fopenmp", "-ffast-math"],
+            extra_compile_args=["-Wall", "-fopenmp", "-ffast-math", "-march=native"],
             extra_link_args=["-fopenmp"]
         ),
 ]

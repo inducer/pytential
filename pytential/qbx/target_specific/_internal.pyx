@@ -280,7 +280,7 @@ cdef double tsqbx_laplace_slp(
         double[3] target,
         int order) nogil:
     cdef:
-        int j
+        double j
         double result, r, sc_d, tc_d, cos_angle
         # Legendre recurrence values
         double pj, pjm1, pjm2
@@ -304,11 +304,16 @@ cdef double tsqbx_laplace_slp(
 
     r = (tc_d * tc_d) / (sc_d * sc_d * sc_d)
 
-    for j in range(2, order + 1):
-        pj = ( (2*j-1)*cos_angle*pjm1-(j-1)*pjm2 ) / j
+    # Invariant: j matches loop counter. Using a double-precision version of the
+    # loop counter avoids an int-to-double conversion inside the loop.
+    j = 2.
+
+    for _ in range(2, order + 1):
+        pj = ( (2.*j-1.)*cos_angle*pjm1-(j-1.)*pjm2 ) / j
         result += pj * r
 
         r *= (tc_d / sc_d)
+        j += 1
         pjm2 = pjm1
         pjm1 = pj
 
