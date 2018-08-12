@@ -136,9 +136,6 @@ def test_spherical_hankel_functions():
 def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
     logging.basicConfig(level=logging.INFO)
 
-    if helmholtz_k != 0 and op == "D":
-        pytest.xfail("not implemented yet")
-
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 

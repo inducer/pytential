@@ -1,5 +1,5 @@
 #!python
-#cython: boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True, embedsignature=True
+#cython: warn.unused=True, warn.unused_arg=True, warn.unreachable=True, boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True, embedsignature=True
 
 import numpy as np
 import cython
@@ -12,6 +12,10 @@ from libc.stdlib cimport abort
 cimport openmp
 
 
+cdef extern from "complex.h" nogil:
+    double cabs(double complex)
+
+
 cdef extern from "_helmholtz_utils.h" nogil:
     int jfuns3d_(int *ier, int *nterms, double complex * z, double *scale,
                  double complex *fjs, int *ifder, double complex *fjder,
@@ -20,12 +24,8 @@ cdef extern from "_helmholtz_utils.h" nogil:
 		double complex *hvec, int *ifder, double complex *hder);
 
 
-cdef extern from "complex.h" nogil:
-    double cabs(double complex)
-
-
 cdef extern from "_internal.h" nogil:
-    pass
+    const int BUFSIZE
 
 
 def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
@@ -39,9 +39,9 @@ def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
         fjder: *None*, or output array of complex double derivatives
     """
     cdef:
-        double complex[128] fjstemp
-        double complex[128] fjdertmp
-        int[128] iscale
+        double complex[BUFSIZE] fjstemp
+        double complex[BUFSIZE] fjdertmp
+        int[BUFSIZE] iscale
         int ier, ifder, lwfjs, ntop, i, nterms_
         double scale_
         double complex z_
@@ -50,7 +50,7 @@ def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
     z_ = z
     scale_ = scale
     ifder = fjder is not None
-    lwfjs = 1024
+    lwfjs = BUFSIZE
 
     jfuns3d_(&ier, &nterms_, &z_, &scale_, fjstemp, &ifder, fjdertmp, &lwfjs,
              iscale, &ntop)
@@ -156,9 +156,9 @@ cdef void tsqbx_laplace_dlp(
         int order) nogil:
     cdef:
         int i, j
-        double result, sc_d, tc_d, cos_angle, alpha, R
-        double[128] tmp
-        double[128] derivs
+        double sc_d, tc_d, cos_angle, alpha, R
+        double[BUFSIZE] tmp
+        double[BUFSIZE] derivs
         double[3] cms
         double[3] tmc
 
@@ -177,6 +177,7 @@ cdef void tsqbx_laplace_dlp(
 
     cos_angle = alpha / (tc_d * sc_d)
 
+    # Evaluate the Legendre terms.
     legvals(cos_angle, order, tmp, derivs)
 
     R = 1 / sc_d
@@ -199,22 +200,25 @@ cdef void tsqbx_helmholtz_dlp(
         double[3] source,
         double[3] center,
         double[3] target,
-        double[3] grad,
+        double complex[3] grad,
         int order,
         double complex k) nogil:
     cdef:
-        int i, j
-        double result, sc_d, tc_d, cos_angle, alpha, R
-        double[128] tmp
-        double[128] derivs
-        double[3] cms
-        double[3] tmc
+        int m, n
+        int ier, ntop, ifder, lwfjs
+        double sc_d, tc_d, cos_angle, alpha
+        double[3] cms, tmc
+        double complex[3] grad_tmp
+        double[BUFSIZE] lvals, lderivs
+        double complex z
+        double complex[BUFSIZE] jvals, hvals, hderivs
+        int[BUFSIZE] iscale
+        double jscale, hscale, unscale
 
-    """
-    for j in range(3):
-        cms[j] = center[j] - source[j]
-        tmc[j] = target[j] - center[j]
-        grad[j] = 0
+    for m in range(3):
+        cms[m] = center[m] - source[m]
+        tmc[m] = target[m] - center[m]
+        grad[m] = 0
 
     tc_d = dist(target, center)
     sc_d = dist(source, center)
@@ -226,21 +230,46 @@ cdef void tsqbx_helmholtz_dlp(
 
     cos_angle = alpha / (tc_d * sc_d)
 
-    legvals(cos_angle, order, tmp, derivs)
+    # Evaluate the Legendre terms.
+    legvals(cos_angle, order, lvals, lderivs)
 
-    R = 1 / sc_d
+    # Scaling magic for Bessel and Hankel terms.
+    # These values are taken from the fmmlib documentation.
+    jscale = cabs(k * tc_d) if (cabs(k * tc_d) < 1) else 1
+    hscale = cabs(k * sc_d) if (cabs(k * sc_d) < 1) else 1
+    # unscale = (jscale / hscale) ** n
+    # Multiply against unscale to remove the scaling.
+    unscale = 1
 
-    for i in range(0, order + 1):
-        # Invariant: R = (t_cd ** i / sc_d ** (i + 1))
-        for j in range(3):
-            grad[j] += (i + 1) * cms[j] / (sc_d * sc_d) * R * tmp[i]
-        for j in range(3):
-            # Siegel and Tornberg has a sign flip here :(
-            grad[j] += (
-                    tmc[j] / (tc_d * sc_d) +
-                    alpha * cms[j] / (tc_d * sc_d * sc_d * sc_d)) * R * derivs[i]
-        R *= (tc_d / sc_d)
-    """
+    # Evaluate the spherical Bessel terms.
+    z = k * tc_d
+    ifder = 0
+    lwfjs = BUFSIZE
+    jfuns3d_(&ier, &order, &z, &jscale, jvals, &ifder, NULL, &lwfjs, iscale,
+             &ntop)
+    if ier:
+        # This could in theory fail.
+        fprintf(stderr, "array passed to jfuns3d was too small\n")
+        abort()
+
+    # Evaluate the spherical Hankel terms.
+    z = k * sc_d
+    ifder = 1
+    h3dall_(&order, &z, &hscale, hvals, &ifder, hderivs)
+
+    for n in range(0, order + 1):
+        for m in range(3):
+            grad_tmp[m] = -hderivs[n] * k * cms[m] * lvals[n] / sc_d
+        for m in range(3):
+            grad_tmp[m] += hvals[n] * (
+                    tmc[m] / (tc_d * sc_d) +
+                    alpha * cms[m] / (tc_d * sc_d * sc_d * sc_d)) * lderivs[n]
+        for m in range(3):
+            grad[m] += (2 * n + 1) * unscale * (grad_tmp[m] * jvals[n])
+        unscale *= jscale / hscale
+
+    for m in range(3):
+        grad[m] *= 1j * k
 
     return
 
@@ -294,10 +323,10 @@ cdef double complex tsqbx_helmholtz_slp(
         double complex k) nogil:
     cdef:
         int j, ntop, ier, ifder, lwfjs
-        double r, sc_d, tc_d, cos_angle
-        double[128] lvals
-        double complex[128] jvals, hvals
-        int[128] iscale
+        double sc_d, tc_d, cos_angle
+        double[BUFSIZE] lvals
+        double complex[BUFSIZE] jvals, hvals
+        int[BUFSIZE] iscale
         double jscale, hscale, unscale
         double complex z, result
 
@@ -317,13 +346,14 @@ cdef double complex tsqbx_helmholtz_slp(
     # These values are taken from the fmmlib documentation.
     jscale = cabs(k * tc_d) if (cabs(k * tc_d) < 1) else 1
     hscale = cabs(k * sc_d) if (cabs(k * sc_d) < 1) else 1
+    # unscale = (jscale / hscale) ^ n
     # Multiply against unscale to remove the scaling.
-    unscale = jscale / hscale
+    unscale = 1
 
     # Evaluate the spherical Bessel terms.
     z = k * tc_d
     ifder = 0
-    lwfjs = 128
+    lwfjs = BUFSIZE
     jfuns3d_(&ier, &order, &z, &jscale, jvals, &ifder, NULL, &lwfjs, iscale,
              &ntop)
     if ier:
@@ -335,9 +365,9 @@ cdef double complex tsqbx_helmholtz_slp(
     z = k * sc_d
     h3dall_(&order, &z, &hscale, hvals, &ifder, NULL)
 
-    result = jvals[0] * hvals[0] * lvals[0]
-
-    for j in range(1, 1 + order):
+    result = 0
+    
+    for j in range(1 + order):
         result += (2 * j + 1) * unscale * (jvals[j] * hvals[j] * lvals[j])
         unscale *= jscale / hscale
 
@@ -388,6 +418,7 @@ def eval_target_specific_qbx_locals(
         int i, tid
         double complex result
         double[:,:] source, center, target, grad
+        double complex[:,:] grad_complex
         int laplace_slp, helmholtz_slp, laplace_dlp, helmholtz_dlp
 
     if dipstr is None:
@@ -411,6 +442,7 @@ def eval_target_specific_qbx_locals(
     target = np.zeros((maxthreads, 65))
     center = np.zeros((maxthreads, 65))
     grad = np.zeros((maxthreads, 65))
+    grad_complex = np.zeros((maxthreads, 65), dtype=np.complex)
 
     # TODO: Check that the order is not too high, since some temporary arrays
     # used above might overflow if that is the case.
@@ -471,12 +503,22 @@ def eval_target_specific_qbx_locals(
 
                     elif helmholtz_dlp:
                         tsqbx_helmholtz_dlp(&source[tid, 0], &center[tid, 0],
-                                            &target[tid, 0], &grad[tid, 0], order,
-                                            helmholtz_k)
+                                            &target[tid, 0], &grad_complex[tid, 0],
+                                            order, helmholtz_k)
 
                         result = result + dipstr[isrc] * (
-                                grad[tid, 0] * dipvec[0, isrc] +
-                                grad[tid, 1] * dipvec[1, isrc] +
-                                grad[tid, 2] * dipvec[2, isrc])
+                                grad_complex[tid, 0] * dipvec[0, isrc] +
+                                grad_complex[tid, 1] * dipvec[1, isrc] +
+                                grad_complex[tid, 2] * dipvec[2, isrc])
 
             pot[tgt] = pot[tgt] + result
+
+        # The Cython-generated OpenMP loop marks these variables as lastprivate.
+        # Due to this GCC warns that these could be used without being initialized.
+        # Initialize them here to suppress the warning.
+        result = 0
+        tid = 0
+        ctr = 0
+        src_ibox = tgt_box = 0
+        tgt = itgt = itgt_start = itgt_end = 0
+        isrc = isrc_box = isrc_start = isrc_end = isrc_box_start = isrc_box_end = 0
