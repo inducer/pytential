@@ -59,9 +59,13 @@ write_git_revision("pytential")
 ext_modules = [
         Extension(
             "pytential.qbx.target_specific._internal",
-            ["pytential/qbx/target_specific/_internal.pyx",
-             "pytential/qbx/target_specific/_helmholtz_utils.c"],
-            extra_compile_args=["-fopenmp", "-ffast-math"],
+            sources=[
+                "pytential/qbx/target_specific/_internal.pyx",
+                "pytential/qbx/target_specific/_helmholtz_utils.c"],
+            depends=[
+                "pytential/qbx/target_specific/_internal.h",
+                "pytential/qbx/target_specific/_helmholtz_utils.h"],
+            extra_compile_args=["-Wall", "-fopenmp", "-ffast-math"],
             extra_link_args=["-fopenmp"]
         ),
 ]
@@ -104,7 +108,7 @@ setup(name="pytential",
 
       packages=find_packages(),
 
-      ext_modules = cythonize(ext_modules),
+      ext_modules=cythonize(ext_modules),
 
       install_requires=[
           "pytest>=2.3",

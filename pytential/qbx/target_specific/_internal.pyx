@@ -1,5 +1,5 @@
 #!python
-#cython: boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True
+#cython: boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True, embedsignature=True
 
 import numpy as np
 import cython
@@ -22,6 +22,10 @@ cdef extern from "_helmholtz_utils.h" nogil:
 
 cdef extern from "complex.h" nogil:
     double cabs(double complex)
+
+
+cdef extern from "_internal.h" nogil:
+    pass
 
 
 def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
@@ -342,6 +346,9 @@ def eval_target_specific_qbx_locals(
 
     if not (laplace_slp or laplace_dlp or helmholtz_slp):
         raise ValueError("unknown kernel")
+
+    if qbx_centers.shape[0] == 0:
+        return
 
     # Hack to obtain thread-local storage
     maxthreads = openmp.omp_get_max_threads()
