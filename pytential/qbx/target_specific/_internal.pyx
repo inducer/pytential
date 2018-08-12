@@ -155,17 +155,17 @@ cdef void tsqbx_laplace_dlp(
         double[3] grad,
         int order) nogil:
     cdef:
-        int i, j
+        int j, m
         double sc_d, tc_d, cos_angle, alpha, R
         double[BUFSIZE] tmp
         double[BUFSIZE] derivs
         double[3] cms
         double[3] tmc
 
-    for j in range(3):
-        cms[j] = center[j] - source[j]
-        tmc[j] = target[j] - center[j]
-        grad[j] = 0
+    for m in range(3):
+        cms[m] = center[m] - source[m]
+        tmc[m] = target[m] - center[m]
+        grad[m] = 0
 
     tc_d = dist(target, center)
     sc_d = dist(source, center)
@@ -182,15 +182,15 @@ cdef void tsqbx_laplace_dlp(
 
     R = 1 / sc_d
 
-    for i in range(0, order + 1):
-        # Invariant: R = (t_cd ** i / sc_d ** (i + 1))
-        for j in range(3):
-            grad[j] += (i + 1) * cms[j] / (sc_d * sc_d) * R * tmp[i]
-        for j in range(3):
+    for j in range(0, order + 1):
+        # Invariant: R = (t_cd ** j / sc_d ** (j + 1))
+        for m in range(3):
+            grad[m] += (j + 1) * cms[m] / (sc_d * sc_d) * R * tmp[j]
+        for m in range(3):
             # Siegel and Tornberg has a sign flip here :(
-            grad[j] += (
-                    tmc[j] / (tc_d * sc_d) +
-                    alpha * cms[j] / (tc_d * sc_d * sc_d * sc_d)) * R * derivs[i]
+            grad[m] += (
+                    tmc[m] / (tc_d * sc_d) +
+                    alpha * cms[m] / (tc_d * sc_d * sc_d * sc_d)) * R * derivs[j]
         R *= (tc_d / sc_d)
 
     return
@@ -204,7 +204,7 @@ cdef void tsqbx_helmholtz_dlp(
         int order,
         double complex k) nogil:
     cdef:
-        int m, n
+        int j, m
         int ier, ntop, ifder, lwfjs
         double sc_d, tc_d, cos_angle, alpha
         double[3] cms, tmc
@@ -257,15 +257,15 @@ cdef void tsqbx_helmholtz_dlp(
     ifder = 1
     h3dall_(&order, &z, &hscale, hvals, &ifder, hderivs)
 
-    for n in range(0, order + 1):
+    for j in range(0, order + 1):
         for m in range(3):
-            grad_tmp[m] = -hderivs[n] * k * cms[m] * lvals[n] / sc_d
+            grad_tmp[m] = -hderivs[j] * k * cms[m] * lvals[j] / sc_d
         for m in range(3):
-            grad_tmp[m] += hvals[n] * (
+            grad_tmp[m] += hvals[j] * (
                     tmc[m] / (tc_d * sc_d) +
-                    alpha * cms[m] / (tc_d * sc_d * sc_d * sc_d)) * lderivs[n]
+                    alpha * cms[m] / (tc_d * sc_d * sc_d * sc_d)) * lderivs[j]
         for m in range(3):
-            grad[m] += (2 * n + 1) * unscale * (grad_tmp[m] * jvals[n])
+            grad[m] += (2 * j + 1) * unscale * (grad_tmp[m] * jvals[j])
         unscale *= jscale / hscale
 
     for m in range(3):
@@ -415,7 +415,7 @@ def eval_target_specific_qbx_locals(
         int tgt_box, src_ibox
         int isrc_box, isrc_box_start, isrc_box_end
         int isrc, isrc_start, isrc_end
-        int i, tid
+        int m, tid
         double complex result
         double[:,:] source, center, target, grad
         double complex[:,:] grad_complex
@@ -456,15 +456,15 @@ def eval_target_specific_qbx_locals(
         tgt_box = qbx_center_to_target_box[ctr]
         tid = cython.parallel.threadid()
 
-        for i in range(3):
-            center[tid, i] = centers[i, ctr]
+        for m in range(3):
+            center[tid, m] = centers[m, ctr]
 
         for itgt in range(itgt_start, itgt_end):
             result = 0
             tgt = center_to_target_lists[itgt]
 
-            for i in range(3):
-                target[tid, i] = targets[i, tgt]
+            for m in range(3):
+                target[tid, m] = targets[m, tgt]
 
             isrc_box_start = source_box_starts[tgt_box]
             isrc_box_end = source_box_starts[tgt_box + 1]
@@ -475,8 +475,8 @@ def eval_target_specific_qbx_locals(
                 isrc_end = isrc_start + box_source_counts_nonchild[src_ibox]
 
                 for isrc in range(isrc_start, isrc_end):
-                    for i in range(3):
-                        source[tid, i] = sources[i, isrc]
+                    for m in range(3):
+                        source[tid, m] = sources[m, isrc]
 
                     # NOTE: Don't use +=, since that makes Cython think we are
                     # doing an OpenMP reduction.
