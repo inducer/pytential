@@ -77,6 +77,13 @@ def _get_layer_potential_args(mapper, expr, source):
     :return: a mapping of kernel arguments *expr.kernel_arguments*.
     """
 
+    # skip resampling if source and target are the same
+    from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
+    if ((expr.source is not DEFAULT_SOURCE) and
+            (expr.target is not DEFAULT_TARGET) and
+            (type(expr.source) is type(expr.target))):
+        source = None
+
     kernel_args = {}
     for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
         rec_arg = mapper.rec(arg_expr)
@@ -174,16 +181,12 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
 
 # }}}
 
+# {{{ base class for matrix builders
 
-# {{{ QBX layer potential matrix builder
-
-# FIXME: PyOpenCL doesn't do all the required matrix math yet.
-# We'll cheat and build the matrix on the host.
-
-class MatrixBuilder(EvaluationMapperBase):
+class MatrixBuilderBase(EvaluationMapperBase):
     def __init__(self, queue, dep_expr, other_dep_exprs,
             dep_source, dep_discr, places, context):
-        super(MatrixBuilder, self).__init__(context=context)
+        super(MatrixBuilderBase, self).__init__(context=context)
 
         self.queue = queue
         self.dep_expr = dep_expr
@@ -192,21 +195,38 @@ class MatrixBuilder(EvaluationMapperBase):
         self.dep_discr = dep_discr
         self.places = places
 
+        self.dep_nnodes = dep_discr.nnodes
+
+    # {{{
+
+    def get_dep_variable(self):
+        return np.eye(self.dep_nnodes, dtype=np.float64)
+
+    def is_kind_vector(self, x):
+        return len(x.shape) == 1
+
+    def is_kind_matrix(self, x):
+        return len(x.shape) == 2
+
+    # }}}
+
+    # {{{ map_xxx implementation
+
     def map_variable(self, expr):
         if expr == self.dep_expr:
-            return np.eye(self.dep_discr.nnodes, dtype=np.float64)
+            return self.get_dep_variable()
         elif expr in self.other_dep_exprs:
             return 0
         else:
-            return super(MatrixBuilder, self).map_variable(expr)
+            return super(MatrixBuilderBase, self).map_variable(expr)
 
     def map_subscript(self, expr):
         if expr == self.dep_expr:
-            return np.eye(self.dep_discr.nnodes, dtype=np.float64)
+            return self.get_dep_variable()
         elif expr in self.other_dep_exprs:
             return 0
         else:
-            return super(MatrixBuilder, self).map_subscript(expr)
+            return super(MatrixBuilderBase, self).map_subscript(expr)
 
     def map_sum(self, expr):
         sum_kind = None
@@ -223,13 +243,12 @@ class MatrixBuilder(EvaluationMapperBase):
                 continue
 
             if isinstance(rec_child, np.ndarray):
-                if len(rec_child.shape) == 2:
+                if self.is_kind_matrix(rec_child):
                     term_kind = term_kind_matrix
-                elif len(rec_child.shape) == 1:
+                elif self.is_kind_vector(rec_child):
                     term_kind = term_kind_vector
                 else:
                     raise RuntimeError("unexpected array rank")
-
             else:
                 term_kind = term_kind_scalar
 
@@ -248,33 +267,83 @@ class MatrixBuilder(EvaluationMapperBase):
         mat_result = None
         vecs_and_scalars = 1
 
-        for term in expr.children:
-            rec_term = self.rec(term)
+        for child in expr.children:
+            rec_child = self.rec(child)
 
-            if is_zero(rec_term):
+            if is_zero(rec_child):
                 return 0
 
-            if isinstance(rec_term, (np.number, int, float, complex)):
-                vecs_and_scalars = vecs_and_scalars * rec_term
-            elif isinstance(rec_term, np.ndarray):
-                if len(rec_term.shape) == 2:
+            if isinstance(rec_child, (np.number, int, float, complex)):
+                vecs_and_scalars = vecs_and_scalars * rec_child
+            elif isinstance(rec_child, np.ndarray):
+                if self.is_kind_matrix(rec_child):
                     if mat_result is not None:
                         raise RuntimeError("expression is nonlinear in %s"
                                 % self.dep_expr)
                     else:
-                        mat_result = rec_term
+                        mat_result = rec_child
                 else:
-                    vecs_and_scalars = vecs_and_scalars * rec_term
+                    vecs_and_scalars = vecs_and_scalars * rec_child
 
         if mat_result is not None:
-            if (
-                    isinstance(vecs_and_scalars, np.ndarray)
-                    and len(vecs_and_scalars.shape) == 1):
+            if (isinstance(vecs_and_scalars, np.ndarray)
+                    and self.is_kind_vector(vecs_and_scalars)):
                 vecs_and_scalars = vecs_and_scalars[:, np.newaxis]
 
             return mat_result * vecs_and_scalars
         else:
             return vecs_and_scalars
+
+    def map_num_reference_derivative(self, expr):
+        rec_operand = self.rec(expr.operand)
+
+        assert isinstance(rec_operand, np.ndarray)
+        if self.is_kind_matrix(rec_operand):
+            raise NotImplementedError("derivatives")
+
+        where_discr = self.places[expr.where]
+        op = sym.NumReferenceDerivative(expr.ref_axes, sym.var("u"))
+        return bind(where_discr, op)(
+                self.queue, u=cl.array.to_device(self.queue, rec_operand)).get()
+
+    def map_node_coordinate_component(self, expr):
+        where_discr = self.places[expr.where]
+        op = sym.NodeCoordinateComponent(expr.ambient_axis)
+        return bind(where_discr, op)(self.queue).get()
+
+    def map_call(self, expr):
+        arg, = expr.parameters
+        rec_arg = self.rec(arg)
+
+        if isinstance(rec_arg, np.ndarray) and self.is_kind_matrix(rec_arg):
+            raise RuntimeError("expression is nonlinear in variable")
+
+        if isinstance(rec_arg, np.ndarray):
+            rec_arg = cl.array.to_device(self.queue, rec_arg)
+
+        op = expr.function(sym.var("u"))
+        result = bind(self.dep_source, op)(self.queue, u=rec_arg)
+
+        if isinstance(result, cl.array.Array):
+            result = result.get()
+
+        return result
+
+    # }}}
+
+# }}}
+
+
+# {{{ QBX layer potential matrix builder
+
+# FIXME: PyOpenCL doesn't do all the required matrix math yet.
+# We'll cheat and build the matrix on the host.
+
+class MatrixBuilder(MatrixBuilderBase):
+    def __init__(self, queue, dep_expr, other_dep_exprs,
+            dep_source, dep_discr, places, context):
+        super(MatrixBuilder, self).__init__(queue, dep_expr, other_dep_exprs,
+                dep_source, dep_discr, places, context)
 
     def map_int_g(self, expr):
         # TODO: should this go into QBXPreprocessor / LocationTagger?
@@ -291,7 +360,7 @@ class MatrixBuilder(EvaluationMapperBase):
             return 0
 
         assert isinstance(rec_density, np.ndarray)
-        if len(rec_density.shape) != 2:
+        if not self.is_kind_matrix(rec_density):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
@@ -320,6 +389,7 @@ class MatrixBuilder(EvaluationMapperBase):
         mat[:, :] *= waa.get(self.queue)
 
         if target_discr.nnodes != source_discr.nnodes:
+            # NOTE: we only resample sources
             assert target_discr.nnodes < source_discr.nnodes
 
             resampler = source.direct_resampler
@@ -330,49 +400,12 @@ class MatrixBuilder(EvaluationMapperBase):
 
         return mat
 
-    # IntGdSource should have been removed by a preprocessor
-
-    def map_num_reference_derivative(self, expr):
-        rec_operand = self.rec(expr.operand)
-
-        assert isinstance(rec_operand, np.ndarray)
-        if len(rec_operand.shape) == 2:
-            raise NotImplementedError("derivatives")
-
-        where_discr = self.places[expr.where]
-        op = sym.NumReferenceDerivative(expr.ref_axes, sym.var("u"))
-        return bind(where_discr, op)(
-                self.queue, u=cl.array.to_device(self.queue, rec_operand)).get()
-
-    def map_node_coordinate_component(self, expr):
-        where_discr = self.places[expr.where]
-        op = sym.NodeCoordinateComponent(expr.ambient_axis)
-        return bind(where_discr, op)(self.queue).get()
-
-    def map_call(self, expr):
-        arg, = expr.parameters
-        rec_arg = self.rec(arg)
-
-        if isinstance(rec_arg, np.ndarray) and len(rec_arg.shape) == 2:
-            raise RuntimeError("expression is nonlinear in variable")
-
-        if isinstance(rec_arg, np.ndarray):
-            rec_arg = cl.array.to_device(self.queue, rec_arg)
-
-        op = expr.function(sym.var("u"))
-        result = bind(self.dep_source, op)(self.queue, u=rec_arg)
-
-        if isinstance(result, cl.array.Array):
-            result = result.get()
-
-        return result
-
 # }}}
 
 
 # {{{ p2p matrix builder
 
-class P2PMatrixBuilder(MatrixBuilder):
+class P2PMatrixBuilder(MatrixBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs,
             dep_source, dep_discr, places, context, exclude_self=True):
         super(P2PMatrixBuilder, self).__init__(queue,
@@ -391,7 +424,7 @@ class P2PMatrixBuilder(MatrixBuilder):
             return 0
 
         assert isinstance(rec_density, np.ndarray)
-        if len(rec_density.shape) != 2:
+        if not self.is_kind_matrix(rec_density):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel.get_base_kernel()
@@ -418,72 +451,33 @@ class P2PMatrixBuilder(MatrixBuilder):
 
 # {{{ block matrix builders
 
-class MatrixBlockBuilderBase(EvaluationMapperBase):
+class MatrixBlockBuilderBase(MatrixBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs,
             dep_source, dep_discr, places, index_set, context):
-        super(MatrixBlockBuilderBase, self).__init__(context=context)
+        super(MatrixBlockBuilderBase, self).__init__(queue,
+                dep_expr, other_dep_exprs, dep_source, dep_discr,
+                places, context)
 
-        self.queue = queue
-        self.dep_expr = dep_expr
-        self.other_dep_exprs = other_dep_exprs
-        self.dep_source = dep_source
-        self.dep_discr = dep_discr
-        self.places = places
         self.index_set = index_set
+        self.dep_nnodes = index_set.col.indices.size
 
-    def _map_dep_variable(self):
-        return np.eye(self.index_set.col.indices.shape[0])
+    def get_dep_variable(self):
+        # NOTE: blocks are stored linearly, so the identity matrix for the
+        # variables themselves also needs to be flattened
+        tgtindices = self.index_set.linear_row_indices.get(self.queue)
+        srcindices = self.index_set.linear_col_indices.get(self.queue)
 
-    def map_variable(self, expr):
-        if expr == self.dep_expr:
-            return self._map_dep_variable()
-        elif expr in self.other_dep_exprs:
-            return 0
-        else:
-            return super(MatrixBlockBuilderBase, self).map_variable(expr)
+        return np.equal(tgtindices, srcindices).astype(np.float64)
 
-    def map_subscript(self, expr):
-        if expr == self.dep_expr:
-            return self.variable_identity()
-        elif expr in self.other_dep_exprs:
-            return 0
-        else:
-            return super(MatrixBlockBuilderBase, self).map_subscript(expr)
+    def is_kind_vector(self, x):
+        # NOTE: since matrices are flattened, the only way to differentiate
+        # them from a vector is by size
+        return x.size == self.index_set.row.indices.size
 
-    def map_num_reference_derivative(self, expr):
-        rec_operand = self.rec(expr.operand)
-
-        assert isinstance(rec_operand, np.ndarray)
-        if len(rec_operand.shape) == 2:
-            raise NotImplementedError("derivatives")
-
-        where_discr = self.places[expr.where]
-        op = sym.NumReferenceDerivative(expr.ref_axes, sym.var("u"))
-        return bind(where_discr, op)(
-                self.queue, u=cl.array.to_device(self.queue, rec_operand)).get()
-
-    def map_node_coordinate_component(self, expr):
-        where_discr = self.places[expr.where]
-        op = sym.NodeCoordinateComponent(expr.ambient_axis)
-        return bind(where_discr, op)(self.queue).get()
-
-    def map_call(self, expr):
-        arg, = expr.parameters
-        rec_arg = self.rec(arg)
-
-        if isinstance(rec_arg, np.ndarray) and len(rec_arg.shape) == 2:
-            raise RuntimeError("expression is nonlinear in variable")
-
-        if isinstance(rec_arg, np.ndarray):
-            rec_arg = cl.array.to_device(self.queue, rec_arg)
-
-        op = expr.function(sym.var("u"))
-        result = bind(self.dep_source, op)(self.queue, u=rec_arg)
-
-        if isinstance(result, cl.array.Array):
-            result = result.get()
-
-        return result
+    def is_kind_matrix(self, x):
+        # NOTE: since matrices are flattened, we recognize them by checking
+        # if they have the right size
+        return x.size == self.index_set.linear_row_indices.size
 
 
 class NearFieldBlockBuilder(MatrixBlockBuilderBase):
@@ -493,15 +487,9 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             dep_expr, other_dep_exprs, dep_source, dep_discr,
             places, index_set, context)
 
-        self.dummy = MatrixBlockBuilderBase(queue,
+        self.dummy = MatrixBuilderBase(queue,
             dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, index_set, context)
-
-    def _map_dep_variable(self):
-        tgtindices = self.index_set.row.indices.get(self.queue).reshape(-1, 1)
-        srcindices = self.index_set.col.indices.get(self.queue).reshape(1, -1)
-
-        return np.equal(tgtindices, srcindices).astype(np.float64)
+            places, context)
 
     def map_int_g(self, expr):
         source = self.places[expr.source]
@@ -511,16 +499,16 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         if source_discr is not target_discr:
             raise NotImplementedError()
 
-        rec_density = self.dummy.rec(expr.density)
+        rec_density = self.rec(expr.density)
         if is_zero(rec_density):
             return 0
 
         assert isinstance(rec_density, np.ndarray)
-        if len(rec_density.shape) != 2:
+        if not self.is_kind_matrix(rec_density):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self, expr, source)
+        kernel_args = _get_layer_potential_args(self.dummy, expr, source)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
@@ -557,32 +545,26 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
             dep_expr, other_dep_exprs, dep_source, dep_discr,
             places, index_set, context)
 
-        self.dummy = MatrixBlockBuilderBase(queue,
-            dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, index_set, context)
         self.exclude_self = exclude_self
-
-    def _map_dep_variable(self):
-        tgtindices = self.index_set.row.indices.get(self.queue).reshape(-1, 1)
-        srcindices = self.index_set.col.indices.get(self.queue).reshape(1, -1)
-
-        return np.equal(tgtindices, srcindices).astype(np.float64)
+        self.dummy = MatrixBuilderBase(queue,
+            dep_expr, other_dep_exprs, dep_source, dep_discr,
+            places, context)
 
     def map_int_g(self, expr):
         source = self.places[expr.source]
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
-        rec_density = self.dummy.rec(expr.density)
+        rec_density = self.rec(expr.density)
         if is_zero(rec_density):
             return 0
 
         assert isinstance(rec_density, np.ndarray)
-        if len(rec_density.shape) != 2:
+        if not self.is_kind_matrix(rec_density):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel.get_base_kernel()
-        kernel_args = _get_kernel_args(self, kernel, expr, source)
+        kernel_args = _get_kernel_args(self.dummy, kernel, expr, source)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)

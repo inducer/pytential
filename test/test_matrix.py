@@ -50,7 +50,7 @@ from pyopencl.tools import (  # noqa
 def _build_op(lpot_id,
               k=0,
               ndim=2,
-              qbx_forced_limit=-1):
+              qbx_forced_limit="avg"):
 
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
     if k:
@@ -76,14 +76,15 @@ def _build_op(lpot_id,
         u0_sym, u1_sym = u_sym
 
         op = make_obj_array([
-            sym.Sp(knl, u0_sym, **lpot_kwargs) +
-            sym.D(knl, u1_sym, **lpot_kwargs),
-
-            sym.S(knl, 0.4 * u0_sym, **lpot_kwargs) +
-            0.3 * sym.D(knl, u0_sym, **lpot_kwargs)
+            sym.Sp(knl, u0_sym, **lpot_kwargs)
+            + sym.D(knl, u1_sym, **lpot_kwargs),
+            sym.S(knl, 0.4 * u0_sym, **lpot_kwargs)
+            + 0.3 * sym.D(knl, u0_sym, **lpot_kwargs)
             ])
     else:
         raise ValueError("Unknown lpot_id: {}".format(lpot_id))
+
+    op = 0.5 * u_sym + op
 
     return op, u_sym, knl_kwargs
 
@@ -94,7 +95,7 @@ def _build_op(lpot_id,
 @pytest.mark.parametrize("curve_f", [
     partial(ellipse, 3),
     NArmedStarfish(5, 0.25)])
-@pytest.mark.parametrize("lpot_id", [1, 3])
+@pytest.mark.parametrize("lpot_id", [2, 3])
 def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
@@ -212,6 +213,16 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     from sumpy.tools import MatrixBlockIndexRanges
     index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
 
+    from pytential.symbolic.matrix import P2PMatrixBuilder
+    mbuilder = P2PMatrixBuilder(queue,
+            dep_expr=u_sym,
+            other_dep_exprs=[],
+            dep_source=places[domains[0]],
+            dep_discr=places.get_discretization(domains[0]),
+            places=places,
+            context={})
+    mat = mbuilder(expr)
+
     from pytential.symbolic.matrix import FarFieldBlockBuilder
     mbuilder = FarFieldBlockBuilder(queue,
             dep_expr=u_sym,
@@ -222,16 +233,6 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
             index_set=index_set,
             context={})
     blk = mbuilder(expr)
-
-    from pytential.symbolic.matrix import P2PMatrixBuilder
-    mbuilder = P2PMatrixBuilder(queue,
-            dep_expr=u_sym,
-            other_dep_exprs=[],
-            dep_source=places[domains[0]],
-            dep_discr=places.get_discretization(domains[0]),
-            places=places,
-            context={})
-    mat = mbuilder(expr)
 
     index_set = index_set.get(queue)
     if visualize and ndim == 2:
@@ -263,9 +264,11 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
         assert error < eps
 
 
+@pytest.mark.parametrize("factor", [1.0, 0.6])
 @pytest.mark.parametrize("ndim", [2, 3])
-@pytest.mark.parametrize("lpot_id", [1])
-def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
+@pytest.mark.parametrize("lpot_id", [1, 2])
+def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
+                           visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -278,9 +281,6 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
     op, u_sym, _ = _build_op(lpot_id, ndim=ndim)
 
-    tgtindices = _build_block_index(qbx.density_discr)
-    srcindices = _build_block_index(qbx.density_discr)
-
     # NOTE: NearFieldBlockBuilder only does stage1/stage1 or stage2/stage2,
     # so we need to hardcode the discr for MatrixBuilder too, since the
     # defaults are different
@@ -289,8 +289,13 @@ def test_qbx_block_builder(ctx_factory, ndim, lpot_id, visualize=False):
     from pytential.symbolic.execution import GeometryCollection, _prepare_expr
     places = GeometryCollection(qbx, auto_where=where)
     expr = _prepare_expr(places, op)
+    density_discr = places.get_discretization(where[0])
 
     from sumpy.tools import MatrixBlockIndexRanges
+    srcindices = _build_block_index(density_discr,
+            method='nodes', factor=factor)
+    tgtindices = _build_block_index(density_discr,
+            method='nodes', factor=factor)
     index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
 
     from pytential.symbolic.matrix import NearFieldBlockBuilder
