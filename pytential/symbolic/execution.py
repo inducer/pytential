@@ -498,16 +498,16 @@ def _bmat(blocks, dtypes):
     ncolumns = blocks.shape[1]
 
     # "block row starts"/"block column starts"
-    brs = np.cumsum([0] +
-            [single_valued(blocks[ibrow, ibcol].shape[0]
-                           for ibcol in range(ncolumns)
-                           if not is_zero(blocks[ibrow, ibcol]))
+    brs = np.cumsum([0]
+            + [single_valued(blocks[ibrow, ibcol].shape[0]
+                             for ibcol in range(ncolumns)
+                             if not is_zero(blocks[ibrow, ibcol]))
              for ibrow in range(nrows)])
 
-    bcs = np.cumsum([0] +
-            [single_valued(blocks[ibrow, ibcol].shape[1]
-                           for ibrow in range(nrows)
-                           if not is_zero(blocks[ibrow, ibcol]))
+    bcs = np.cumsum([0]
+            + [single_valued(blocks[ibrow, ibcol].shape[1]
+                             for ibrow in range(nrows)
+                             if not is_zero(blocks[ibrow, ibcol]))
              for ibcol in range(ncolumns)])
 
     result = np.zeros((brs[-1], bcs[-1]),
@@ -571,8 +571,8 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         mbuilder = MatrixBuilder(
                 queue,
                 dep_expr=input_exprs[ibcol],
-                other_dep_exprs=(input_exprs[:ibcol] +
-                                 input_exprs[ibcol + 1:]),
+                other_dep_exprs=(input_exprs[:ibcol]
+                                 + input_exprs[ibcol + 1:]),
                 dep_source=places[domains[ibcol]],
                 dep_discr=places.get_discretization(domains[ibcol]),
                 places=places,

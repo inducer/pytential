@@ -256,8 +256,8 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
 
     for i in range(index_set.nblocks):
         eps = 1.0e-14 * la.norm(index_set.take(mat, i))
-        error = la.norm(index_set.block_take(blk, i) -
-                        index_set.take(mat, i))
+        error = la.norm(index_set.block_take(blk, i)
+                        - index_set.take(mat, i))
 
         if visualize:
             print('block[{:04}]: {:.5e}'.format(i, error))
@@ -341,8 +341,8 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
 
     for i in range(index_set.nblocks):
         eps = 1.0e-14 * la.norm(index_set.take(mat, i))
-        error = la.norm(index_set.block_take(blk, i) -
-                        index_set.take(mat, i))
+        error = la.norm(index_set.block_take(blk, i)
+                        - index_set.take(mat, i))
 
         if visualize:
             print('block[{:04}]: {:.5e}'.format(i, error))

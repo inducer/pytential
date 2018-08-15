@@ -79,9 +79,9 @@ def _get_layer_potential_args(mapper, expr, source):
 
     # skip resampling if source and target are the same
     from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-    if ((expr.source is not DEFAULT_SOURCE) and
-            (expr.target is not DEFAULT_TARGET) and
-            (type(expr.source) is type(expr.target))):
+    if ((expr.source is not DEFAULT_SOURCE)
+            and (expr.target is not DEFAULT_TARGET)
+            and (isinstance(expr.source, type(expr.target)))):
         source = None
 
     kernel_args = {}
@@ -180,6 +180,7 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
     return centers, radii
 
 # }}}
+
 
 # {{{ base class for matrix builders
 
