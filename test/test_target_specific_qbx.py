@@ -131,7 +131,7 @@ def test_spherical_hankel_functions():
 
 
 @pytest.mark.parametrize("op", ["S", "D"])
-@pytest.mark.parametrize("helmholtz_k", [0, 1.2])
+@pytest.mark.parametrize("helmholtz_k", [0, 1.2, 1.2j])
 @pytest.mark.parametrize("qbx_order", [0, 1, 5])
 def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
     logging.basicConfig(level=logging.INFO)
@@ -158,7 +158,7 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
     refiner_extra_kwargs = {}
 
     if helmholtz_k != 0:
-        refiner_extra_kwargs["kernel_length_scale"] = 5 / helmholtz_k
+        refiner_extra_kwargs["kernel_length_scale"] = 5 / abs(helmholtz_k)
 
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
@@ -178,7 +178,7 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
         kernel = LaplaceKernel(3)
         kernel_kwargs = {}
     else:
-        kernel = HelmholtzKernel(3)
+        kernel = HelmholtzKernel(3, allow_evanescent=True)
         kernel_kwargs = {"k": sym.var("k")}
 
     u_sym = sym.var("u")
