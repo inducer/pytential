@@ -65,11 +65,11 @@ def _build_op(lpot_id,
     if lpot_id == 1:
         # scalar single-layer potential
         u_sym = sym.var("u")
-        op = sym.S(knl, u_sym, **lpot_kwargs)
+        op = sym.S(knl, 0.3 * u_sym, **lpot_kwargs)
     elif lpot_id == 2:
         # scalar double-layer potential
         u_sym = sym.var("u")
-        op = sym.D(knl, u_sym, **lpot_kwargs)
+        op = sym.D(knl, 0.3 * u_sym, **lpot_kwargs)
     elif lpot_id == 3:
         # vector potential
         u_sym = sym.make_sym_vector("u", 2)
@@ -84,7 +84,7 @@ def _build_op(lpot_id,
     else:
         raise ValueError("Unknown lpot_id: {}".format(lpot_id))
 
-    op = 0.5 * u_sym + op
+    # op = 0.5 * u_sym + op
 
     return op, u_sym, knl_kwargs
 
@@ -220,7 +220,8 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
             dep_source=places[domains[0]],
             dep_discr=places.get_discretization(domains[0]),
             places=places,
-            context={})
+            context={},
+            exclude_self=True)
     mat = mbuilder(expr)
 
     from pytential.symbolic.matrix import FarFieldBlockBuilder
@@ -231,7 +232,8 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
             dep_discr=places.get_discretization(domains[0]),
             places=places,
             index_set=index_set,
-            context={})
+            context={},
+            exclude_self=True)
     blk = mbuilder(expr)
 
     index_set = index_set.get(queue)

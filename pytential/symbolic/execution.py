@@ -286,7 +286,7 @@ class MatVecOp:
 def _prepare_domains(nresults, places, domains, default_domain):
     """
     :arg nresults: number of results.
-    :arg places: :class:`pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`.
     :arg domains: recommended domains.
     :arg default_domain: default value for domains which are not provided.
 
@@ -302,7 +302,7 @@ def _prepare_domains(nresults, places, domains, default_domain):
                                "default domain to be defined in places")
         dom_name = default_domain
         return nresults * [dom_name]
-    if not isinstance(domains, (list, tuple)):
+    elif not isinstance(domains, (list, tuple)):
         dom_name = domains
         return nresults * [dom_name]
 
@@ -337,10 +337,34 @@ def _prepare_expr(places, expr):
 # {{{ bound expression
 
 class GeometryCollection(object):
+    """A collection of geometry-related objects. This class is meant to hold
+    a specific combination of sources and targets and cache any common
+    expressions specific to it, e.g. metric terms, etc.
+
+    .. method:: __getitem__
+    .. method:: get_discretization
+    .. method:: get_cache
+    """
+
     def __init__(self, places, auto_where=None):
+        """
+        :arg places: a scalar, tuple of or mapping of symbolic names to
+            geometry objects. Supported objects are
+            :class:`~pytential.source.PotentialSource`,
+            :class:`~potential.target.TargetBase` and
+            :class:`~meshmode.discretization.Discretization`.
+        :arg auto_where: location identifier for each geometry object, used
+            to denote specific discretizations, e.g. in the case where
+            *places* is a :class:`~pytential.source.LayerPotentialSourceBase`.
+            By default, we assume
+            :class:`~pytential.symbolic.primitives.DEFAULT_SOURCE` and
+            :class:`~pytential.symbolic.primitives.DEFAULT_TARGET` for
+            sources and targets, respectively.
+        """
+
+        from pytential.target import TargetBase
         from meshmode.discretization import Discretization
         from pytential.source import LayerPotentialSourceBase, PotentialSource
-        from pytential.target import TargetBase
 
         if auto_where is None:
             auto_where = DEFAULT_SOURCE, DEFAULT_TARGET
@@ -350,7 +374,7 @@ class GeometryCollection(object):
         if isinstance(places, LayerPotentialSourceBase):
             self.places[self.source] = places
             self.places[self.target] = \
-                    self.get_discretization(self.target, lpot=places)
+                    self._get_lpot_discretization(self.target, places)
         elif isinstance(places, (Discretization, TargetBase)):
             self.places[self.target] = places
         elif isinstance(places, tuple):
@@ -375,19 +399,13 @@ class GeometryCollection(object):
     def target(self):
         return self.where[1]
 
-    def get_discretization(self, where, lpot=None):
-        if where is DEFAULT_SOURCE or where is DEFAULT_TARGET:
-            where = QBXSourceStage1(where)
-
-        if lpot is None:
-            if where in self.places:
-                lpot = self.places[where]
-            else:
-                lpot = self.places.get(where.where, None)
-
+    def _get_lpot_discretization(self, where, lpot):
         from pytential.source import LayerPotentialSourceBase
         if not isinstance(lpot, LayerPotentialSourceBase):
             return lpot
+
+        if where is DEFAULT_SOURCE or where is DEFAULT_TARGET:
+            where = QBXSourceStage1(where)
 
         if isinstance(where, QBXSourceStage1):
             return lpot.density_discr
@@ -396,7 +414,28 @@ class GeometryCollection(object):
         if isinstance(where, QBXSourceQuadStage2):
             return lpot.quad_stage2_density_discr
 
-        raise ValueError('Unknown `where` identifier: {}'.format(type(where)))
+        raise ValueError('unknown `where` identifier: {}'.format(type(where)))
+
+    def get_discretization(self, where):
+        """
+        :arg where: location identifier.
+
+        :return: a geometry object in the collection corresponding to the
+            key *where*. If it is a
+            :class:`~pytential.source.LayerPotentialSourceBase`, we look for
+            the corresponding :class:`~meshmode.discretization.Discretization`
+            in its attributes instead.
+        """
+
+        if where in self.places:
+            lpot = self.places[where]
+        else:
+            lpot = self.places.get(getattr(where, 'where', None), None)
+
+        if lpot is None:
+            raise KeyError('`where` not in the collection: {}'.format(where))
+
+        return self._get_lpot_discretization(where, lpot)
 
     def __getitem__(self, where):
         return self.places[where]
@@ -471,10 +510,9 @@ class BoundExpression(object):
 
 def bind(places, expr, auto_where=None):
     """
-    :arg places: a collection or mapping of symbolic names to
-        :class:`meshmode.discretization.Discretization` objects, subclasses
-        of :class:`pytential.source.PotentialSource` or subclasses of
-        :class:`pytential.target.TargetBase`.
+    :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`.
+        Alternatively, any list or mapping that is a valid argument for its
+        constructor can also be used.
     :arg auto_where: for simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.
     """

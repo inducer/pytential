@@ -70,11 +70,11 @@ def _resample_arg(queue, source, x):
 
 def _get_layer_potential_args(mapper, expr, source):
     """
-    :arg mapper: a :class:`pytential.symbolic.primitives.EvaluationMapperBase`.
+    :arg mapper: a :class:`pytential.symbolic.matrix.MatrixBuilderBase`.
     :arg expr: symbolic layer potential expression.
     :arg source: a :class:`pytential.source.LayerPotentialSourceBase`.
 
-    :return: a mapping of kernel arguments *expr.kernel_arguments*.
+    :return: a mapping of kernel arguments evaluated by the *mapper*.
     """
 
     # skip resampling if source and target are the same
@@ -94,12 +94,12 @@ def _get_layer_potential_args(mapper, expr, source):
 
 def _get_kernel_args(mapper, kernel, expr, source):
     """
-    :arg mapper: a :class:`pytential.symbolic.primitives.EvaluationMapperBase`.
+    :arg mapper: a :class:`pytential.symbolic.matrix.MatrixBuilderBase`.
     :arg kernel: a :class:`sumpy.kernel.Kernel`.
     :arg expr: symbolic layer potential expression.
     :arg source: a :class:`pytential.source.LayerPotentialSourceBase`.
 
-    :return: a mapping of kernel parameters included in *expr*.
+    :return: a mapping of kernel arguments evaluated by the *mapper*.
     """
 
     # NOTE: copied from pytential.symbolic.primitives.IntG
@@ -120,10 +120,10 @@ def _get_kernel_args(mapper, kernel, expr, source):
 def _get_weights_and_area_elements(queue, source, source_discr):
     """
     :arg queue: a :class:`pyopencl.CommandQueue`.
-    :arg source: a :class:`pytential.source.LayerPotentialSourceBase` subclass.
+    :arg source: a :class:`pytential.source.LayerPotentialSourceBase`.
     :arg source_discr: a :class:`meshmode.discretization.Discretization`.
 
-    :return: quadrature weights for each node in *source_discr*
+    :return: quadrature weights for each node in *source_discr*.
     """
 
     if source.quad_stage2_density_discr is source_discr:
@@ -142,7 +142,7 @@ def _get_weights_and_area_elements(queue, source, source_discr):
 def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_limit):
     """
     :arg queue: a :class:`pyopencl.CommandQueue`.
-    :arg source: a :class:`pytential.source.LayerPotentialSourceBase` subclass.
+    :arg source: a :class:`pytential.source.LayerPotentialSourceBase`.
     :arg target_discr: a :class:`meshmode.discretization.Discretization`.
     :arg qbx_forced_limit: an integer (*+1* or *-1*).
 
@@ -187,6 +187,20 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
 class MatrixBuilderBase(EvaluationMapperBase):
     def __init__(self, queue, dep_expr, other_dep_exprs,
             dep_source, dep_discr, places, context):
+        """
+        :arg queue: a :class:`pyopencl.CommandQueue`.
+        :arg dep_expr: symbolic expression for the input block column
+            that the builder is evaluating.
+        :arg other_dep_exprs: symbolic expressions for the remaining input
+            block columns.
+        :arg dep_source: a :class:`pytential.source.LayerPotentialSourceBase`
+            for the given *dep_expr*.
+        :arg dep_discr: a concerete :class:`meshmode.discretization.Discretization`
+            for the given *dep_expr*.
+        :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`
+            for all the sources and targets the builder is expected to
+            encounter.
+        """
         super(MatrixBuilderBase, self).__init__(context=context)
 
         self.queue = queue
@@ -347,7 +361,6 @@ class MatrixBuilder(MatrixBuilderBase):
                 dep_source, dep_discr, places, context)
 
     def map_int_g(self, expr):
-        # TODO: should this go into QBXPreprocessor / LocationTagger?
         where_source = expr.source
         if where_source is sym.DEFAULT_SOURCE:
             where_source = sym.QBXSourceQuadStage2(expr.source)
@@ -463,12 +476,10 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
         self.dep_nnodes = index_set.col.indices.size
 
     def get_dep_variable(self):
-        # NOTE: blocks are stored linearly, so the identity matrix for the
-        # variables themselves also needs to be flattened
-        tgtindices = self.index_set.linear_row_indices.get(self.queue)
-        srcindices = self.index_set.linear_col_indices.get(self.queue)
-
-        return np.equal(tgtindices, srcindices).astype(np.float64)
+        # NOTE: block builders only support identity operators acting on
+        # the density. If other operators are needed, the user is meant to
+        # do the required matrix-matrix products
+        return 1.0
 
     def is_kind_vector(self, x):
         # NOTE: since matrices are flattened, the only way to differentiate
@@ -504,9 +515,8 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         if is_zero(rec_density):
             return 0
 
-        assert isinstance(rec_density, np.ndarray)
-        if not self.is_kind_matrix(rec_density):
-            raise NotImplementedError("layer potentials on non-variables")
+        if not np.isscalar(rec_density):
+            raise NotImplementedError()
 
         kernel = expr.kernel
         kernel_args = _get_layer_potential_args(self.dummy, expr, source)
@@ -532,16 +542,14 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
         waa = _get_weights_and_area_elements(self.queue, source, source_discr)
         mat *= waa[self.index_set.linear_col_indices]
-        mat = mat.get(self.queue)
-
-        # TODO: multiply with rec_density
+        mat = rec_density * mat.get(self.queue)
 
         return mat
 
 
 class FarFieldBlockBuilder(MatrixBlockBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, index_set, context, exclude_self=True):
+            places, index_set, context, exclude_self=False):
         super(FarFieldBlockBuilder, self).__init__(queue,
             dep_expr, other_dep_exprs, dep_source, dep_discr,
             places, index_set, context)
@@ -560,9 +568,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         if is_zero(rec_density):
             return 0
 
-        assert isinstance(rec_density, np.ndarray)
-        if not self.is_kind_matrix(rec_density):
-            raise NotImplementedError("layer potentials on non-variables")
+        if not np.isscalar(rec_density):
+            raise NotImplementedError()
 
         kernel = expr.kernel.get_base_kernel()
         kernel_args = _get_kernel_args(self.dummy, kernel, expr, source)
@@ -579,9 +586,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                 sources=source_discr.nodes(),
                 index_set=self.index_set,
                 **kernel_args)
-        mat = mat.get()
-
-        # TODO: need to multiply by rec_density
+        mat = rec_density * mat.get(self.queue)
 
         return mat
 
