@@ -346,6 +346,44 @@ class MatrixBuilderBase(EvaluationMapperBase):
 
     # }}}
 
+
+class MatrixBlockBuilderBase(MatrixBuilderBase):
+    """Evaluate individual blocks of a matrix operator.
+
+    Unlike, e.g. :class:`MatrixBuilder`, matrix block builders are
+    significantly reduced in scope. They are basically just meant
+    to evaluate linear combinations of layer potential operators.
+    For example, they do not support composition of operators because we
+    assume that each operator acts directly on the density.
+    """
+
+    def __init__(self, queue, dep_expr, other_dep_exprs,
+            dep_source, dep_discr, places, index_set, context):
+        """
+        :arg index_set: a :class:`sumpy.tools.MatrixBlockIndexRanges` class
+            describing which blocks are going to be evaluated.
+        """
+
+        super(MatrixBlockBuilderBase, self).__init__(queue,
+                dep_expr, other_dep_exprs, dep_source, dep_discr,
+                places, context)
+
+        self.index_set = index_set
+        self.dep_nnodes = index_set.col.indices.size
+
+    def get_dep_variable(self):
+        return 1.0
+
+    def is_kind_vector(self, x):
+        # NOTE: since matrices are flattened, the only way to differentiate
+        # them from a vector is by size
+        return x.size == self.index_set.row.indices.size
+
+    def is_kind_matrix(self, x):
+        # NOTE: since matrices are flattened, we recognize them by checking
+        # if they have the right size
+        return x.size == self.index_set.linear_row_indices.size
+
 # }}}
 
 
@@ -465,43 +503,31 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 
 # {{{ block matrix builders
 
-class MatrixBlockBuilderBase(MatrixBuilderBase):
-    def __init__(self, queue, dep_expr, other_dep_exprs,
-            dep_source, dep_discr, places, index_set, context):
-        super(MatrixBlockBuilderBase, self).__init__(queue,
-                dep_expr, other_dep_exprs, dep_source, dep_discr,
-                places, context)
-
-        self.index_set = index_set
-        self.dep_nnodes = index_set.col.indices.size
-
-    def get_dep_variable(self):
-        # NOTE: block builders only support identity operators acting on
-        # the density. If other operators are needed, the user is meant to
-        # do the required matrix-matrix products
-        return 1.0
-
-    def is_kind_vector(self, x):
-        # NOTE: since matrices are flattened, the only way to differentiate
-        # them from a vector is by size
-        return x.size == self.index_set.row.indices.size
-
-    def is_kind_matrix(self, x):
-        # NOTE: since matrices are flattened, we recognize them by checking
-        # if they have the right size
-        return x.size == self.index_set.linear_row_indices.size
-
-
 class NearFieldBlockBuilder(MatrixBlockBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
             places, index_set, context):
         super(NearFieldBlockBuilder, self).__init__(queue,
-            dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, index_set, context)
+                dep_expr, other_dep_exprs, dep_source, dep_discr,
+                places, index_set, context)
 
-        self.dummy = MatrixBuilderBase(queue,
-            dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, context)
+        # NOTE: we need additional mappers to redirect some operations:
+        #   * mat_mapper is used to compute any kernel arguments that need to
+        #   be computed on the full discretization, ignoring our index_set,
+        #   e.g the normal in a double layer potential
+        #   * blk_mapper is used to recursively compute the density to
+        #   a layer potential operator to ensure there is no composition
+        self.mat_mapper = MatrixBuilderBase(queue,
+                dep_expr, other_dep_exprs, dep_source, dep_discr,
+                places, context)
+        self.blk_mapper = MatrixBlockBuilderBase(queue,
+                dep_expr, other_dep_exprs, dep_source, dep_discr,
+                places, index_set, context)
+
+    def get_dep_variable(self):
+        tgtindices = self.index_set.linear_row_indices.get(self.queue)
+        srcindices = self.index_set.linear_col_indices.get(self.queue)
+
+        return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
         source = self.places[expr.source]
@@ -511,7 +537,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         if source_discr is not target_discr:
             raise NotImplementedError()
 
-        rec_density = self.rec(expr.density)
+        rec_density = self.blk_mapper.rec(expr.density)
         if is_zero(rec_density):
             return 0
 
@@ -519,7 +545,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             raise NotImplementedError()
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self.dummy, expr, source)
+        kernel_args = _get_layer_potential_args(self.mat_mapper, expr, source)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
@@ -551,20 +577,33 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
             places, index_set, context, exclude_self=False):
         super(FarFieldBlockBuilder, self).__init__(queue,
-            dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, index_set, context)
+                dep_expr, other_dep_exprs, dep_source, dep_discr,
+                places, index_set, context)
 
+        # NOTE: same mapper issues as in the NearFieldBlockBuilder
         self.exclude_self = exclude_self
-        self.dummy = MatrixBuilderBase(queue,
-            dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, context)
+        self.mat_mapper = MatrixBuilderBase(queue,
+                dep_expr, other_dep_exprs, dep_source, dep_discr,
+                places, context)
+        self.blk_mapper = MatrixBlockBuilderBase(queue,
+                dep_expr, other_dep_exprs, dep_source, dep_discr,
+                places, index_set, context)
+
+    def get_dep_variable(self):
+        tgtindices = self.index_set.linear_row_indices.get(self.queue)
+        srcindices = self.index_set.linear_col_indices.get(self.queue)
+
+        return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
         source = self.places[expr.source]
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
-        rec_density = self.rec(expr.density)
+        if source_discr is not target_discr:
+            raise NotImplementedError()
+
+        rec_density = self.blk_mapper.rec(expr.density)
         if is_zero(rec_density):
             return 0
 
@@ -572,7 +611,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
             raise NotImplementedError()
 
         kernel = expr.kernel.get_base_kernel()
-        kernel_args = _get_kernel_args(self.dummy, kernel, expr, source)
+        kernel_args = _get_kernel_args(self.mat_mapper, kernel, expr, source)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
