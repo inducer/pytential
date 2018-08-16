@@ -209,7 +209,7 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     from pytential.symbolic.execution import _prepare_expr, _prepare_domains
     places = GeometryCollection(qbx)
     expr = _prepare_expr(places, op)
-    domains = _prepare_domains(1, places, None, places.source)
+    domains = _prepare_domains(1, places, None, DEFAULT_SOURCE)
 
     from sumpy.tools import MatrixBlockIndexRanges
     index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
@@ -376,7 +376,8 @@ def test_build_matrix_where(ctx_factory, where, visualize=False):
 
     # build full QBX matrix
     from pytential.symbolic.execution import build_matrix
-    mat = build_matrix(queue, qbx, op, u_sym, auto_where=where)
+    mat = build_matrix(queue, qbx, op, u_sym,
+                       auto_where=where, domains=where[0])
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx, auto_where=where)

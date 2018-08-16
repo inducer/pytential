@@ -367,20 +367,22 @@ class GeometryCollection(object):
         from pytential.source import LayerPotentialSourceBase, PotentialSource
 
         if auto_where is None:
-            auto_where = DEFAULT_SOURCE, DEFAULT_TARGET
-        self.where = auto_where
+            source_where, target_where = DEFAULT_SOURCE, DEFAULT_TARGET
+        else:
+            source_where, target_where = auto_where
+        self.where = (source_where, target_where)
 
         self.places = {}
         if isinstance(places, LayerPotentialSourceBase):
-            self.places[self.source] = places
-            self.places[self.target] = \
-                    self._get_lpot_discretization(self.target, places)
+            self.places[source_where] = places
+            self.places[target_where] = \
+                    self._get_lpot_discretization(target_where, places)
         elif isinstance(places, (Discretization, TargetBase)):
-            self.places[self.target] = places
+            self.places[target_where] = places
         elif isinstance(places, tuple):
             source_discr, target_discr = places
-            self.places[self.source] = source_discr
-            self.places[self.target] = target_discr
+            self.places[source_where] = source_discr
+            self.places[target_where] = target_discr
         else:
             self.places = places.copy()
 
@@ -390,14 +392,6 @@ class GeometryCollection(object):
                         "layer potential sources as 'places'.")
 
         self.caches = {}
-
-    @property
-    def source(self):
-        return self.where[0]
-
-    @property
-    def target(self):
-        return self.where[1]
 
     def _get_lpot_discretization(self, where, lpot):
         from pytential.source import LayerPotentialSourceBase
@@ -562,11 +556,9 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
     :arg queue: a :class:`pyopencl.CommandQueue`.
-    :arg places: a collection or mapping of symbolic names (see also
-        :class:`pytential.symbolic.execution.GeometryCollection`) to
-        :class:`meshmode.discretization.Discretization` objects, subclasses
-        of :class:`pytential.source.PotentialSource` or subclasses of
-        :class:`pytential.target.TargetBase`.
+    :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`.
+        Alternatively, any list or mapping that is a valid argument for its
+        constructor can also be used.
     :arg exprs: an array of expressions corresponding to the output block
         rows of the matrix. May also be a single expression.
     :arg input_exprs: an array of expressions corresponding to the
@@ -597,7 +589,8 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         # not iterable, wrap in a list
         input_exprs = [input_exprs]
 
-    domains = _prepare_domains(len(input_exprs), places, domains, places.source)
+    domains = _prepare_domains(len(input_exprs), places, domains,
+                               DEFAULT_SOURCE)
 
     from pytential.symbolic.matrix import MatrixBuilder, is_zero
     nblock_rows = len(exprs)
