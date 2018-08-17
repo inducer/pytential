@@ -328,9 +328,9 @@ def test_performance_model_correctness(ctx_getter, dim):
     # constant one wrangler.
     mismatches = []
     for stage in timing_data:
-        if timing_data[stage].process_elapsed != modeled_time[stage]:
+        if timing_data[stage]["ops_elapsed"] != modeled_time[stage]:
             mismatches.append(
-                    (stage, timing_data[stage].process_elapsed, modeled_time[stage]))
+                    (stage, timing_data[stage]["ops_elapsed"], modeled_time[stage]))
 
     assert not mismatches, "\n".join(str(s) for s in mismatches)
 

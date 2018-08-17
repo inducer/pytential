@@ -148,7 +148,7 @@ def test_performance_model(ctx, perf_model):
         timing_result = {}
         for param in model_result:
             timing_result[param] = (
-                    sum(temp_timing_result[param].process_elapsed
+                    sum(temp_timing_result[param]["process_elapsed"]
                         for temp_timing_result in temp_timing_results)) / RUNS
 
         print("=" * 20)
