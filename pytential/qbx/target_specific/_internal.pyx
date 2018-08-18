@@ -398,6 +398,7 @@ def eval_target_specific_qbx_locals(
         int[:] source_box_starts, int[:] source_box_lists,
         int[:] box_source_starts, int[:] box_source_counts_nonchild,
         double complex helmholtz_k,
+        double[:] charge,
         double[:] dipstr,
         double[:,:] dipvec,
         double complex[:] pot):
@@ -417,8 +418,9 @@ def eval_target_specific_qbx_locals(
         box_source_starts: "Start" indices for sources for each box
         box_source_counts_nonchild: Number of sources per box
         helmholtz_k: Helmholtz parameter (Pass 0 for Laplace)
-        dipstr: Source weights, shape (*nsrcs*,)
-        dipvec: Source gradient weights, shape (3, *nsrcs*), or *None*
+        charge: Source strengths, shape (*nsrcs*,) or *None*
+        dipstr: Dipole source strengths, shape (*nsrcs*,) or *None*
+        dipvec: Dipole source orientations, shape (3, *nsrcs*), or *None*
         pot: Output potential, shape (*ngts*,)
     """
 
@@ -434,8 +436,11 @@ def eval_target_specific_qbx_locals(
         double complex[:,:] grad_complex
         int laplace_slp, helmholtz_slp, laplace_dlp, helmholtz_dlp
 
-    if dipstr is None:
-        raise ValueError("must specify dipvec")
+    if charge is None and (dipstr is None or dipvec is None):
+        raise ValueError("must specify either charge, or both dipstr and dipvec")
+
+    if charge is not None and (dipstr is not None or dipvec is not None):
+        raise ValueError("does not support simultaneous monopoles and dipoles")
 
     laplace_slp = (helmholtz_k == 0) and (dipvec is None)
     laplace_dlp = (helmholtz_k == 0) and (dipvec is not None)
@@ -495,12 +500,12 @@ def eval_target_specific_qbx_locals(
                     # doing an OpenMP reduction.
 
                     if laplace_slp:
-                        result = result + dipstr[isrc] * (
+                        result = result + charge[isrc] * (
                                 tsqbx_laplace_slp(&source[tid, 0], &center[tid, 0],
                                                   &target[tid, 0], order))
 
                     elif helmholtz_slp:
-                        result = result + dipstr[isrc] * (
+                        result = result + charge[isrc] * (
                                 tsqbx_helmholtz_slp(&source[tid, 0], &center[tid, 0],
                                                     &target[tid, 0], order,
                                                     helmholtz_k))

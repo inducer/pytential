@@ -617,7 +617,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     box_source_starts=self.tree.box_source_starts,
                     box_source_counts_nonchild=self.tree.box_source_counts_nonchild,
                     helmholtz_k=self.kernel_kwargs.get("zk", 0),
-                    dipstr=src_weights,
+                    charge=src_weights if self.dipole_vec is None else None,
+                    dipstr=src_weights if self.dipole_vec is not None else None,
                     dipvec=self.dipole_vec,
                     pot=output)
 
