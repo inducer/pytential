@@ -131,7 +131,7 @@ def test_spherical_hankel_functions():
 
 
 @pytest.mark.parametrize("op", ["S", "D"])
-@pytest.mark.parametrize("helmholtz_k", [0, 1.2, 1.2j])
+@pytest.mark.parametrize("helmholtz_k", [0, 1.2, 12 + 1.2j])
 @pytest.mark.parametrize("qbx_order", [0, 1, 5])
 def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
     logging.basicConfig(level=logging.INFO)
@@ -191,13 +191,13 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
     expr = op(kernel, u_sym, qbx_forced_limit=-1, **kernel_kwargs)
 
     bound_op = bind(qbx, expr)
-    pot_ref = bound_op(queue, u=u_dev, k=helmholtz_k)
+    pot_ref = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 
     qbx = qbx.copy(_use_tsqbx=True)
     bound_op = bind(qbx, expr)
-    pot_tsqbx = bound_op(queue, u=u_dev, k=helmholtz_k)
+    pot_tsqbx = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 
-    assert (np.max(np.abs(pot_ref.get() - pot_tsqbx.get()))) < 1e-13
+    assert np.allclose(pot_tsqbx, pot_ref, atol=1e-13, rtol=1e-13)
 
 
 # You can test individual routines by typing
