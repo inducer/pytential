@@ -757,7 +757,7 @@ def estimate_calibration_params(model_results, timing_results):
         for param, time in timing_result.items():
             calibration_param = (
                     _FMM_STAGE_TO_CALIBRATION_PARAMETER[param])
-            actual_times[calibration_param][i] = time.process_elapsed
+            actual_times[calibration_param][i] = time["process_elapsed"]
 
     result = {}
 
