@@ -5,7 +5,7 @@ git+https://github.com/inducer/modepy
 git+https://github.com/inducer/pyopencl
 git+https://github.com/inducer/islpy
 git+https://github.com/inducer/loopy
-git+https://gitlab.tiker.net/inducer/boxtree@move-constant-one-wrangler-to-tools
+git+https://gitlab.tiker.net/inducer/boxtree
 git+https://github.com/inducer/meshmode
 git+https://gitlab.tiker.net/inducer/sumpy
 git+https://github.com/inducer/pyfmmlib
