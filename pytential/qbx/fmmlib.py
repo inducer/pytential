@@ -232,7 +232,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 ifgrad=ifgrad)
 
     @staticmethod
-    def is_supported_helmknl_for_tsqbx(self, knl):
+    def is_supported_helmknl_for_tsqbx(knl):
         if isinstance(knl, DirectionalSourceDerivative):
             knl = knl.inner_kernel
 
