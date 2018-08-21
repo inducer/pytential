@@ -23,7 +23,7 @@ THE SOFTWARE.
 """
 
 import numpy as np
-from pytools import memoize_method, Record
+from pytools import Record
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
 from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
@@ -70,64 +70,6 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
 # }}}
 
 
-# {{{ host geo data wrapper
-
-class ToHostTransferredGeoDataWrapper(object):
-    def __init__(self, queue, geo_data):
-        self.queue = queue
-        self.geo_data = geo_data
-
-    @memoize_method
-    def tree(self):
-        return self.traversal().tree
-
-    @memoize_method
-    def traversal(self):
-        return self.geo_data.traversal().get(queue=self.queue)
-
-    @property
-    def ncenters(self):
-        return self.geo_data.ncenters
-
-    @memoize_method
-    def centers(self):
-        return np.array([
-            ci.get(queue=self.queue)
-            for ci in self.geo_data.centers()])
-
-    @memoize_method
-    def expansion_radii(self):
-        return self.geo_data.expansion_radii().get(queue=self.queue)
-
-    @memoize_method
-    def global_qbx_centers(self):
-        return self.geo_data.global_qbx_centers().get(queue=self.queue)
-
-    @memoize_method
-    def qbx_center_to_target_box(self):
-        return self.geo_data.qbx_center_to_target_box().get(queue=self.queue)
-
-    @memoize_method
-    def qbx_center_to_target_box_source_level(self, source_level):
-        return self.geo_data.qbx_center_to_target_box_source_level(
-            source_level).get(queue=self.queue)
-
-    @memoize_method
-    def non_qbx_box_target_lists(self):
-        return self.geo_data.non_qbx_box_target_lists().get(queue=self.queue)
-
-    @memoize_method
-    def center_to_tree_targets(self):
-        return self.geo_data.center_to_tree_targets().get(queue=self.queue)
-
-    @memoize_method
-    def all_targets(self):
-        """All (not just non-QBX) targets packaged into a single array."""
-        return np.array(list(self.tree().targets))
-
-# }}}
-
-
 # {{{ fmmlib expansion wrangler
 
 class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
@@ -143,6 +85,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         # FMMLib is CPU-only. This wrapper gets the geometry out of
         # OpenCL-land.
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
         self.geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
 
         self.qbx_order = qbx_order
