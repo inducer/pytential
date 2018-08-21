@@ -153,12 +153,13 @@ def test_performance_model(ctx_getter, dim):
 
 class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
-    def __init__(self, queue, geo_data):
+    def __init__(self, queue, geo_data, use_target_specific_qbx):
         from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
         geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
 
         self.geo_data = geo_data
         self.trav = geo_data.traversal()
+        self.use_target_specific_qbx = use_target_specific_qbx
 
         ConstantOneExpansionWrangler.__init__(self, geo_data.tree())
 
@@ -187,6 +188,9 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
     def form_global_qbx_locals(self, src_weights):
         local_exps = self.qbx_local_expansion_zeros()
         ops = 0
+
+        if self.use_target_specific_qbx:
+            return local_exps, self.timing_future(ops)
 
         global_qbx_centers = self.geo_data.global_qbx_centers()
         qbx_center_to_target_box = self.geo_data.qbx_center_to_target_box()
@@ -265,6 +269,40 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
         return output, self.timing_future(ops)
 
+    def eval_target_specific_qbx_locals(self, src_weights):
+        pot = self.full_output_zeros()
+        ops = 0
+
+        if not self.use_target_specific_qbx:
+            return pot, self.timing_future(ops)
+
+        global_qbx_centers = self.geo_data.global_qbx_centers()
+        center_to_tree_targets = self.geo_data.center_to_tree_targets()
+        qbx_center_to_target_box = self.geo_data.qbx_center_to_target_box()
+
+        for ictr in global_qbx_centers:
+            tgt_ibox = qbx_center_to_target_box[ictr]
+
+            ictr_tgt_start, ictr_tgt_end = center_to_tree_targets.starts[ictr:ictr+2]
+
+            for ictr_tgt in range(ictr_tgt_start, ictr_tgt_end):
+                ctr_itgt = center_to_tree_targets.lists[ictr_tgt]
+
+                isrc_box_start, isrc_box_end = (
+                        self.trav.neighbor_source_boxes_starts[tgt_ibox:tgt_ibox+2])
+
+                for isrc_box in range(isrc_box_start, isrc_box_end):
+                    src_ibox = self.trav.neighbor_source_boxes_lists[isrc_box]
+
+                    isrc_start = self.tree.box_source_starts[src_ibox]
+                    isrc_end = (isrc_start
+                            + self.tree.box_source_counts_nonchild[src_ibox])
+
+                    pot[0][ctr_itgt] += sum(src_weights[isrc_start:isrc_end])
+                    ops += isrc_end - isrc_start
+
+        return pot, self.timing_future(ops)
+
 # }}}
 
 
@@ -285,12 +323,19 @@ CONSTANT_ONE_PARAMS = dict(
         c_p2p=1,
         c_p2qbxl=1,
         c_qbxl2p=1,
+        c_p2p_tsqbx=1,
         )
 
 
-@pytest.mark.parametrize("dim", (2, 3))
-@pytest.mark.parametrize("off_surface", (True, False))
-def test_performance_model_correctness(ctx_getter, dim, off_surface):
+@pytest.mark.parametrize("dim, off_surface, use_target_specific_qbx", (
+        (2, False, False),
+        (2, True,  False),
+        (3, False, False),
+        (3, False, True),
+        (3, True,  False),
+        (3, True,  True)))
+def test_performance_model_correctness(ctx_getter, dim, off_surface,
+        use_target_specific_qbx):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -301,7 +346,8 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface):
     # parameters to equal 1 (done below), this provides a straightforward way
     # to obtain the raw operation count for each FMM stage.
     lpot_source = get_lpot_source(queue, dim).copy(
-            performance_model=PerformanceModel(uses_pde_expansions=False))
+            performance_model=PerformanceModel(uses_pde_expansions=False),
+            _use_tsqbx=use_target_specific_qbx)
 
     # Construct targets.
     if off_surface:
@@ -337,13 +383,15 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface):
     geo_data = lpot_source.qbx_fmm_geometry_data(
             target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
 
-    wrangler = ConstantOneQBXExpansionWrangler(queue, geo_data)
+    wrangler = ConstantOneQBXExpansionWrangler(
+            queue, geo_data, use_target_specific_qbx)
     nnodes = lpot_source.quad_stage2_density_discr.nnodes
     src_weights = np.ones(nnodes)
 
     timing_data = {}
-    potential = drive_fmm(wrangler, src_weights, timing_data,
-            traversal=wrangler.trav)[0][geo_data.ncenters:]
+    potential = drive_fmm(
+            wrangler, src_weights, timing_data, traversal=wrangler.trav,
+            use_tsqbx=use_target_specific_qbx)[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
     assert (potential == nnodes).all()
