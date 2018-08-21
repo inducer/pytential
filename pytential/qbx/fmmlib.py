@@ -23,7 +23,7 @@ THE SOFTWARE.
 """
 
 import numpy as np
-from pytools import Record
+from pytools import Record, memoize_method
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
 from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
