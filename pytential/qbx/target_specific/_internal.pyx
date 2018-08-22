@@ -266,13 +266,13 @@ cdef void tsqbx_helmholtz_dlp(
     #
     for n in range(0, order + 1):
         for m in range(3):
-            grad_tmp[m] = -hderivs[n] * k * cms[m] * lvals[n] / sc_d
+            grad_tmp[m] = -k * cms[m] * hderivs[n] * lvals[n]
         for m in range(3):
-            grad_tmp[m] += hvals[n] * (
-                    tmc[m] / (tc_d * sc_d) +
-                    alpha * cms[m] / (tc_d * sc_d * sc_d * sc_d)) * lderivs[n]
+            grad_tmp[m] += (
+                    (tmc[m] / tc_d) +
+                    cos_angle * (cms[m] / sc_d)) * hvals[n] * lderivs[n]
         for m in range(3):
-            grad[m] += (2 * n + 1) * unscale * (grad_tmp[m] * jvals[n])
+            grad[m] += (2 * n + 1) * unscale * (grad_tmp[m] * jvals[n] / sc_d)
         unscale *= jscale / hscale
 
     for m in range(3):
