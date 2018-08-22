@@ -156,11 +156,9 @@ cdef void tsqbx_laplace_dlp(
         int order) nogil:
     cdef:
         int j, m
-        double sc_d, tc_d, cos_angle, alpha, R
-        double[BUFSIZE] tmp
-        double[BUFSIZE] derivs
-        double[3] cms
-        double[3] tmc
+        double sc_d, tc_d, cos_angle, alpha, Rj
+        double[BUFSIZE] lvals, lderivs
+        double[3] cms, tmc, grad_tmp
 
     for m in range(3):
         cms[m] = center[m] - source[m]
@@ -178,20 +176,21 @@ cdef void tsqbx_laplace_dlp(
     cos_angle = alpha / (tc_d * sc_d)
 
     # Evaluate the Legendre terms.
-    legvals(cos_angle, order, tmp, derivs)
+    legvals(cos_angle, order, lvals, lderivs)
 
-    R = 1 / sc_d
+    # Invariant: Rj = (t_cd ** j / sc_d ** (j + 2))    
+    Rj = 1 / (sc_d * sc_d)
 
     for j in range(0, order + 1):
-        # Invariant: R = (t_cd ** j / sc_d ** (j + 1))
         for m in range(3):
-            grad[m] += (j + 1) * cms[m] / (sc_d * sc_d) * R * tmp[j]
+            grad_tmp[m] = (j + 1) * (cms[m] / sc_d) * lvals[j]
         for m in range(3):
             # Siegel and Tornberg has a sign flip here :(
-            grad[m] += (
-                    tmc[m] / (tc_d * sc_d) +
-                    alpha * cms[m] / (tc_d * sc_d * sc_d * sc_d)) * R * derivs[j]
-        R *= (tc_d / sc_d)
+            grad_tmp[m] += (tmc[m] / tc_d + cos_angle * cms[m] / sc_d) * lderivs[j]
+        for m in range(3):
+            grad[m] += Rj * grad_tmp[m]
+
+        Rj *= (tc_d / sc_d)
 
     return
 
