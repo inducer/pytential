@@ -178,7 +178,7 @@ cdef void tsqbx_laplace_dlp(
     # Evaluate the Legendre terms.
     legvals(cos_angle, order, lvals, lderivs)
 
-    # Invariant: Rj = (t_cd ** j / sc_d ** (j + 2))    
+    # Invariant: Rj = (t_cd ** j / sc_d ** (j + 2))
     Rj = 1 / (sc_d * sc_d)
 
     for j in range(0, order + 1):
