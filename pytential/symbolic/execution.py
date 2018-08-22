@@ -325,7 +325,7 @@ def _prepare_expr(places, expr):
     from pytential.symbolic.mappers import (
             ToTargetTagger, DerivativeBinder)
 
-    expr = ToTargetTagger(*places.where)(expr)
+    expr = ToTargetTagger(*places._default_place_ids)(expr)
     expr = DerivativeBinder()(expr)
 
     for name, place in six.iteritems(places.places):
@@ -372,8 +372,13 @@ class GeometryCollection(object):
         if auto_where is None:
             source_where, target_where = DEFAULT_SOURCE, DEFAULT_TARGET
         else:
+            # NOTE: keeping this here to make sure auto_where unpacks into
+            # just the two elements
             source_where, target_where = auto_where
-        self.where = (source_where, target_where)
+
+        self._default_source_place = source_where
+        self._default_target_place = target_where
+        self._auto_place_ids = (source_where, target_where)
 
         self.places = {}
         if isinstance(places, LayerPotentialSourceBase):
