@@ -583,7 +583,7 @@ class PerformanceModel(object):
         lpot_source = geo_data.lpot_source
 
         nqbtl = geo_data.non_qbx_box_target_lists()
-        use_tsqbx = lpot_source._use_tsqbx
+        use_tsqbx = lpot_source._use_target_specific_qbx
 
         with cl.CommandQueue(geo_data.cl_context) as queue:
             tree = geo_data.tree().get(queue=queue)

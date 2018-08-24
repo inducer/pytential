@@ -167,6 +167,7 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
             fmm_backend="fmmlib",
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.9,
+            _use_target_specific_qbx=False,
             ).with_refinement(**refiner_extra_kwargs)
 
     density_discr = qbx.density_discr
@@ -193,7 +194,7 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
     bound_op = bind(qbx, expr)
     pot_ref = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 
-    qbx = qbx.copy(_use_tsqbx=True)
+    qbx = qbx.copy(_use_target_specific_qbx=True)
     bound_op = bind(qbx, expr)
     pot_tsqbx = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 

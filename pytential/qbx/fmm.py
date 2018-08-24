@@ -386,7 +386,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 # {{{ FMM top-level
 
 def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
-        traversal=None, use_tsqbx=False):
+        traversal=None):
     """Top-level driver routine for the QBX fast multipole calculation.
 
     :arg geo_data: A :class:`QBXFMMGeometryData` instance.
@@ -404,6 +404,8 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
     wrangler = expansion_wrangler
 
     geo_data = wrangler.geo_data
+
+    use_tsqbx = geo_data.lpot_source._use_target_specific_qbx
 
     if traversal is None:
         traversal = geo_data.traversal()

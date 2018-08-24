@@ -83,7 +83,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
             _tree_kind="adaptive",
-            _use_tsqbx=False,
+            _use_target_specific_qbx=False,
             geometry_data_inspector=None,
             performance_model=None,
             fmm_backend="sumpy",
@@ -204,7 +204,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._from_sep_smaller_min_nsources_cumul = \
                 _from_sep_smaller_min_nsources_cumul
         self._tree_kind = _tree_kind
-        self._use_tsqbx = _use_tsqbx
+        self._use_target_specific_qbx = _use_target_specific_qbx
         self.geometry_data_inspector = geometry_data_inspector
         self.performance_model = performance_model
 
@@ -228,7 +228,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _tree_kind=None,
-            _use_tsqbx=_not_provided,
+            _use_target_specific_qbx=_not_provided,
             geometry_data_inspector=None,
             performance_model=_not_provided,
             fmm_backend=None,
@@ -312,8 +312,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _from_sep_smaller_min_nsources_cumul=(
                     self._from_sep_smaller_min_nsources_cumul),
                 _tree_kind=_tree_kind or self._tree_kind,
-                _use_tsqbx=(_use_tsqbx
-                    if _use_tsqbx is not _not_provided else self._use_tsqbx),
+                _use_target_specific_qbx=(_use_target_specific_qbx
+                    if _use_target_specific_qbx is not _not_provided
+                    else self._use_target_specific_qbx),
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
                 performance_model=(
@@ -821,7 +822,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
                         kernel_extra_kwargs=kernel_extra_kwargs,
-                        _use_target_specific_qbx=self._use_tsqbx)
+                        _use_target_specific_qbx=self._use_target_specific_qbx)
 
         from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)
@@ -841,8 +842,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential.qbx.fmm import drive_fmm
         timing_data = {}
-        all_potentials_on_every_target = drive_fmm(
-                wrangler, strengths, timing_data, use_tsqbx=self._use_tsqbx)
+        all_potentials_on_every_target = drive_fmm(wrangler, strengths, timing_data)
 
         # }}}
 

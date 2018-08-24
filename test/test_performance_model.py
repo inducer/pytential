@@ -347,7 +347,7 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
     # to obtain the raw operation count for each FMM stage.
     lpot_source = get_lpot_source(queue, dim).copy(
             performance_model=PerformanceModel(uses_pde_expansions=False),
-            _use_tsqbx=use_target_specific_qbx)
+            _use_target_specific_qbx=use_target_specific_qbx)
 
     # Construct targets.
     if off_surface:
@@ -391,7 +391,7 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
     timing_data = {}
     potential = drive_fmm(
             wrangler, src_weights, timing_data, traversal=wrangler.trav,
-            use_tsqbx=use_target_specific_qbx)[0][geo_data.ncenters:]
+            _use_target_specific_qbx=use_target_specific_qbx)[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
     assert (potential == nnodes).all()
