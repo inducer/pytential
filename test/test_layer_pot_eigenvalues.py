@@ -252,7 +252,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
     "sumpy",
     "fmmlib",
     ])
-def no_test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
+def test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
         fmm_backend):
     logging.basicConfig(level=logging.INFO)
 
