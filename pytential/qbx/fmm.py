@@ -374,9 +374,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         return (pot, SumpyTimingFuture(self.queue, [evt]))
 
     @log_process(logger)
-    def eval_target_specific_global_qbx_locals(self, src_weights):
-        # Not implemented
-        pass
+    def eval_target_specific_qbx_locals(self, src_weights):
+        raise NotImplementedError()
 
     # }}}
 
