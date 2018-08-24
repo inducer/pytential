@@ -622,6 +622,10 @@ class ToHostTransferredGeoDataWrapper(object):
         return self.geo_data.traversal().get(queue=self.queue)
 
     @property
+    def lpot_source(self):
+        return self.geo_data.lpot_source
+
+    @property
     def ncenters(self):
         return self.geo_data.ncenters
 
