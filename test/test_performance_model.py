@@ -389,9 +389,8 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
     src_weights = np.ones(nnodes)
 
     timing_data = {}
-    potential = drive_fmm(
-            wrangler, src_weights, timing_data, traversal=wrangler.trav,
-            _use_target_specific_qbx=use_target_specific_qbx)[0][geo_data.ncenters:]
+    potential = drive_fmm(wrangler, src_weights, timing_data,
+            traversal=wrangler.trav)[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
     assert (potential == nnodes).all()
