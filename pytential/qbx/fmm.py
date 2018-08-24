@@ -125,7 +125,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
             source_extra_kwargs, kernel_extra_kwargs,
             _use_target_specific_qbx=False):
         if _use_target_specific_qbx:
-            raise NotImplementedError("Cannot use TSQBX with sumpy yet")
+            raise ValueError("TSQBX is not implemented in sumpy")
 
         SumpyExpansionWrangler.__init__(self,
                 code_container, queue, geo_data.tree(),
