@@ -105,17 +105,21 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
             if self.is_supported_helmknl(out_knl):
                 outputs.append(())
+                no_target_deriv_knl = out_knl
+
             elif (isinstance(out_knl, AxisTargetDerivative)
                     and self.is_supported_helmknl(out_knl.inner_kernel)):
                 outputs.append((out_knl.axis,))
                 ifgrad = True
+                no_target_deriv_knl = out_knl.inner_kernel
+
             else:
                 raise ValueError(
                         "only the 2/3D Laplace and Helmholtz kernel "
                         "and their derivatives are supported")
 
-            source_deriv_names.append(out_knl.dir_vec_name
-                    if isinstance(out_knl, DirectionalSourceDerivative)
+            source_deriv_names.append(no_target_deriv_knl.dir_vec_name
+                    if isinstance(no_target_deriv_knl, DirectionalSourceDerivative)
                     else None)
 
             base_knl = out_knl.get_base_kernel()
