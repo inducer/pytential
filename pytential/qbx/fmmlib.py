@@ -553,6 +553,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         ctt = geo_data.center_to_tree_targets()
 
+        src_weights = src_weights.astype(np.complex128)
+
         for output in pot:
             ts.eval_target_specific_qbx_locals(
                     order=self.qbx_order,

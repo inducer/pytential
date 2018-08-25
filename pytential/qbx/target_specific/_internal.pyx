@@ -397,8 +397,8 @@ def eval_target_specific_qbx_locals(
         int[:] source_box_starts, int[:] source_box_lists,
         int[:] box_source_starts, int[:] box_source_counts_nonchild,
         double complex helmholtz_k,
-        double[:] charge,
-        double[:] dipstr,
+        double complex[:] charge,
+        double complex[:] dipstr,
         double[:,:] dipvec,
         double complex[:] pot):
     """TSQBX entry point.
@@ -417,10 +417,10 @@ def eval_target_specific_qbx_locals(
         box_source_starts: "Start" indices for sources for each box
         box_source_counts_nonchild: Number of sources per box
         helmholtz_k: Helmholtz parameter (Pass 0 for Laplace)
-        charge: Source strengths, shape (*nsrcs*,) or *None*
-        dipstr: Dipole source strengths, shape (*nsrcs*,) or *None*
-        dipvec: Dipole source orientations, shape (3, *nsrcs*), or *None*
-        pot: Output potential, shape (*ngts*,)
+        charge: (Complex) Source strengths, shape (*nsrcs*,), or *None*
+        dipstr: (Complex) Dipole source strengths, shape (*nsrcs*,) or *None*
+        dipvec: (Real) Dipole source orientations, shape (3, *nsrcs*), or *None*
+        pot: (Complex) Output potential, shape (*ngts*,)
     """
 
     cdef:
