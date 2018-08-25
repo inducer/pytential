@@ -4,6 +4,7 @@ channels:
 - defaults
 dependencies:
 - git
+- scipy
 - conda-forge::numpy
 - conda-forge::sympy
 - pocl=1.0

@@ -6,6 +6,7 @@ dependencies:
 - git
 - conda-forge::numpy
 - conda-forge::sympy
+- scipy
 - pocl=1.0
 - islpy
 - pyopencl
