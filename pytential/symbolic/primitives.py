@@ -378,12 +378,12 @@ class NumReferenceDerivative(DiscretizationProperty):
     reference coordinates.
     """
 
-    def __new__(cls, ref_axes, operand, where=None):
+    def __new__(cls, ref_axes=None, operand=None, where=None):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
         # coefficients in the multivector.
 
-        if isinstance(operand, (np.ndarray)):
+        if isinstance(operand, np.ndarray):
             def make_op(operand_i):
                 return cls(ref_axes, operand_i, where=where)
 
@@ -750,7 +750,7 @@ def _scaled_max_curvature(ambient_dim, dim=None, where=None):
 # {{{ operators
 
 class SingleScalarOperandExpression(Expression):
-    def __new__(cls, operand):
+    def __new__(cls, operand=None):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
         # coefficients in the multivector.
@@ -792,7 +792,7 @@ def integral(ambient_dim, dim, operand, where=None):
 
 
 class SingleScalarOperandExpressionWithWhere(Expression):
-    def __new__(cls, operand, where=None):
+    def __new__(cls, operand=None, where=None):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
         # coefficients in the multivector.
@@ -982,7 +982,7 @@ class IntG(Expression):
     where :math:`\sigma` is *density*.
     """
 
-    def __new__(cls, kernel, density, *args, **kwargs):
+    def __new__(cls, kernel=None, density=None, *args, **kwargs):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
         # coefficients in the multivector.
