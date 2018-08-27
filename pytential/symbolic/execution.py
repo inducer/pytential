@@ -340,7 +340,8 @@ def _prepare_expr(places, expr):
 # {{{ bound expression
 
 class GeometryCollection(object):
-    """A collection of geometry-related objects. This class is meant to hold
+    """A mapping from symbolic identifiers ("place IDs", typically strings)
+    of layer potential. This class is meant to hold
     a specific combination of sources and targets and cache any common
     expressions specific to it, e.g. metric terms, etc.
 
