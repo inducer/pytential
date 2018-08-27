@@ -1045,8 +1045,8 @@ class IntG(Expression):
         :arg kernel_arguments: A dictionary mapping named
             :class:`sumpy.kernel.Kernel` arguments
             (see :meth:`sumpy.kernel.Kernel.get_args`
-            and :meth:`sumpy.kernel.Kernel.get_source_args`
-            to expressions that determine them)
+            and :meth:`sumpy.kernel.Kernel.get_source_args`)
+            to expressions that determine them
 
         :arg source: The symbolic name of the source discretization. This name
             is bound to a concrete :class:`pytential.source.LayerPotentialSourceBase`
@@ -1134,6 +1134,17 @@ class IntG(Expression):
         return (self.kernel, self.density, self.qbx_forced_limit,
                 self.source, self.target,
                 hashable_kernel_args(self.kernel_arguments))
+
+    def __setstate__(self, state):
+        # Overwrite pymbolic.Expression.__setstate__
+        assert len(self.init_arg_names) == len(state), type(self)
+        for name, value in zip(self.init_arg_names, state):
+            if name == 'kernel_arguments':
+                value = dict(value)
+                for dict_name in value:
+                    value[dict_name] = np.array(value[dict_name], dtype=object)
+
+            setattr(self, name, value)
 
     mapper_method = intern("map_int_g")
 
