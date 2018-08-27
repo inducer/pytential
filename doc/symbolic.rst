@@ -13,6 +13,8 @@ Binding an operator to a discretization
 
 .. currentmodule:: pytential
 
+.. autoclass:: GeometryCollection
+
 .. autofunction:: bind
 
 PDE operators
