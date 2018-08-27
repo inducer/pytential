@@ -328,6 +328,8 @@ class DiscretizationProperty(Expression):
     further arguments.
     """
 
+    init_arg_names = ("where",)
+
     def __init__(self, where=None):
         """
         :arg where: |where-blurb|
@@ -348,6 +350,9 @@ class QWeight(DiscretizationProperty):
 
 
 class NodeCoordinateComponent(DiscretizationProperty):
+
+    init_arg_names = ("ambient_axis", "where")
+
     def __init__(self, ambient_axis, where=None):
         """
         :arg where: |where-blurb|
@@ -377,6 +382,8 @@ class NumReferenceDerivative(DiscretizationProperty):
     of *operand* with respect to the the element
     reference coordinates.
     """
+
+    init_arg_names = ("ref_axes", "operand", "where")
 
     def __new__(cls, ref_axes=None, operand=None, where=None):
         # If the constructor is handed a multivector object, return an
@@ -750,6 +757,9 @@ def _scaled_max_curvature(ambient_dim, dim=None, where=None):
 # {{{ operators
 
 class SingleScalarOperandExpression(Expression):
+
+    init_arg_names = ("operand",)
+
     def __new__(cls, operand=None):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
@@ -792,6 +802,9 @@ def integral(ambient_dim, dim, operand, where=None):
 
 
 class SingleScalarOperandExpressionWithWhere(Expression):
+
+    init_arg_names = ("operand", "where")
+
     def __new__(cls, operand=None, where=None):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
@@ -842,6 +855,8 @@ class Ones(Expression):
     discretization.
     """
 
+    init_arg_names = ("where",)
+
     def __init__(self, where=None):
         self.where = where
 
@@ -870,6 +885,9 @@ def mean(ambient_dim, dim, operand, where=None):
 
 
 class IterativeInverse(Expression):
+
+    init_arg_names = ("expression", "rhs", "variable_name", "extra_vars", "where")
+
     def __init__(self, expression, rhs, variable_name, extra_vars={},
             where=None):
         self.expression = expression
@@ -981,6 +999,9 @@ class IntG(Expression):
 
     where :math:`\sigma` is *density*.
     """
+
+    init_arg_names = ("kernel", "density", "qbx_forced_limit", "source", "target",
+                      "kernel_arguments")
 
     def __new__(cls, kernel=None, density=None, *args, **kwargs):
         # If the constructor is handed a multivector object, return an
