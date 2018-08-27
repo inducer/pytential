@@ -53,9 +53,9 @@ __doc__ = """
 class TranslationCostModel(object):
     """Provides modeled costs for individual translations or evaluations."""
 
-    def __init__(self, ncoeffs_qbx, ncoeffs_fmm, uses_point_and_shoot):
+    def __init__(self, ncoeffs_qbx, ncoeffs_fmm_by_level, uses_point_and_shoot):
         self.ncoeffs_qbx = ncoeffs_qbx
-        self.ncoeffs_fmm = ncoeffs_fmm
+        self.ncoeffs_fmm_by_level = ncoeffs_fmm_by_level
         self.uses_point_and_shoot = uses_point_and_shoot
 
     @staticmethod
@@ -71,32 +71,42 @@ class TranslationCostModel(object):
     def qbxl2p(self):
         return var("c_qbxl2p") * self.ncoeffs_qbx
 
-    def p2l(self):
-        return var("c_p2l") * self.ncoeffs_fmm
+    def p2l(self, level):
+        return var("c_p2l") * self.ncoeffs_fmm_by_level[level]
 
-    def l2p(self):
-        return var("c_l2p") * self.ncoeffs_fmm
+    def l2p(self, level):
+        return var("c_l2p") * self.ncoeffs_fmm_by_level[level]
 
-    def p2m(self):
-        return var("c_p2m") * self.ncoeffs_fmm
+    def p2m(self, level):
+        return var("c_p2m") * self.ncoeffs_fmm_by_level[level]
 
-    def m2p(self):
-        return var("c_m2p") * self.ncoeffs_fmm
+    def m2p(self, level):
+        return var("c_m2p") * self.ncoeffs_fmm_by_level[level]
 
-    def m2m(self):
-        return var("c_m2m") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_fmm)
+    def m2m(self, src_level, tgt_level):
+        return var("c_m2m") * self.e2e_cost(
+                self.ncoeffs_fmm_by_level[src_level],
+                self.ncoeffs_fmm_by_level[tgt_level])
 
-    def l2l(self):
-        return var("c_l2l") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_fmm)
+    def l2l(self, src_level, tgt_level):
+        return var("c_l2l") * self.e2e_cost(
+                self.ncoeffs_fmm_by_level[src_level],
+                self.ncoeffs_fmm_by_level[tgt_level])
 
-    def m2l(self):
-        return var("c_m2l") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_fmm)
+    def m2l(self, src_level, tgt_level):
+        return var("c_m2l") * self.e2e_cost(
+                self.ncoeffs_fmm_by_level[src_level],
+                self.ncoeffs_fmm_by_level[tgt_level])
 
-    def m2qbxl(self):
-        return var("c_m2qbxl") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_qbx)
+    def m2qbxl(self, level):
+        return var("c_m2qbxl") * self.e2e_cost(
+                self.ncoeffs_fmm_by_level[level],
+                self.ncoeffs_qbx)
 
-    def l2qbxl(self):
-        return var("c_l2qbxl") * self.e2e_cost(self.ncoeffs_fmm, self.ncoeffs_qbx)
+    def l2qbxl(self, level):
+        return var("c_l2qbxl") * self.e2e_cost(
+                self.ncoeffs_fmm_by_level[level],
+                self.ncoeffs_qbx)
 
     def e2e_cost(self, nsource_coeffs, ntarget_coeffs):
         if self.uses_point_and_shoot:
@@ -205,27 +215,13 @@ class PerformanceModel(object):
     .. automethod:: __call__
     """
 
-    def __init__(self,
-            uses_pde_expansions=True,
-            summarize_parallel=None,
-            calibration_params=None):
+    def __init__(self, uses_pde_expansions=True, calibration_params=None):
         """
         :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
             uses translation operators that make use of the knowledge that the
             potential satisfies a PDE.
-
-        :arg summarize_parallel: a function of two arguments
-            *(parallel_array, sym_multipliers)* used to model the cost after
-            taking into account parallelization. *parallel_array* represents a
-            partitioning of the work into elementary (typically box-based) tasks,
-            each with a given number of operations. *sym_multipliers* is a symbolic
-            value representing time per modeled operation. By default, all tasks
-            are summed into one number encompassing the total cost.
         """
         self.uses_pde_expansions = uses_pde_expansions
-        if summarize_parallel is None:
-            summarize_parallel = self.summarize_parallel_default
-        self.summarize_parallel = summarize_parallel
         if calibration_params is None:
             calibration_params = dict()
         self.calibration_params = calibration_params
@@ -234,17 +230,29 @@ class PerformanceModel(object):
         """Return a copy of *self* with a new set of calibration parameters."""
         return type(self)(
                 uses_pde_expansions=self.uses_pde_expansions,
-                summarize_parallel=self.summarize_parallel,
                 calibration_params=calibration_params)
 
-    @staticmethod
-    def summarize_parallel_default(parallel_array, sym_multipliers):
-        return np.sum(parallel_array) * sym_multipliers
+    # {{{ form multipoles
+
+    def process_form_multipoles(self, xlat_cost, traversal, tree):
+        result = 0
+
+        for level in range(tree.nlevels):
+            src_count = 0
+            start, stop = traversal.level_start_source_box_nrs[level:level + 2]
+            for src_ibox in traversal.source_boxes[start:stop]:
+                nsrcs = tree.box_source_counts_nonchild[src_ibox]
+                src_count += nsrcs
+            result += src_count * xlat_cost.p2m(level)
+
+        return dict(form_multipoles=result)
+
+    # }}}
 
     # {{{ propagate multipoles upward
 
-    def process_coarsen_multipoles(self, xlat_cost, tree, traversal):
-        nmultipoles = 0
+    def process_coarsen_multipoles(self, xlat_cost, traversal, tree):
+        result = 0
 
         # nlevels-1 is the last valid level index
         # nlevels-2 is the last valid level that could have children
@@ -254,6 +262,9 @@ class PerformanceModel(object):
         # (because no level 1 box will be well-separated from another)
         for source_level in range(tree.nlevels-1, 2, -1):
             target_level = source_level - 1
+            cost = xlat_cost.m2m(source_level, target_level)
+
+            nmultipoles = 0
             start, stop = traversal.level_start_source_parent_box_nrs[
                             target_level:target_level+2]
             for ibox in traversal.source_parent_boxes[start:stop]:
@@ -261,18 +272,19 @@ class PerformanceModel(object):
                     if child:
                         nmultipoles += 1
 
-        return dict(coarsen_multipoles=(
-                self.summarize_parallel(nmultipoles, xlat_cost.m2m())))
+            result += cost * nmultipoles
+
+        return dict(coarsen_multipoles=result)
 
     # }}}
 
     # {{{ direct evaluation to point targets (lists 1, 3 close, 4 close)
 
     def process_direct(self, xlat_cost, traversal, tree, box_target_counts_nonchild):
-        # box -> nsources * ntargets
-        npart_direct_list1 = np.zeros(len(traversal.target_boxes), dtype=np.intp)
-        npart_direct_list3 = np.zeros(len(traversal.target_boxes), dtype=np.intp)
-        npart_direct_list4 = np.zeros(len(traversal.target_boxes), dtype=np.intp)
+        # list -> number of source-target interactions
+        npart_direct_list1 = 0
+        npart_direct_list3 = 0
+        npart_direct_list4 = 0
 
         for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
             ntargets = box_target_counts_nonchild[tgt_ibox]
@@ -284,7 +296,7 @@ class PerformanceModel(object):
 
                 npart_direct_list1_srcs += nsources
 
-            npart_direct_list1[itgt_box] = ntargets * npart_direct_list1_srcs
+            npart_direct_list1 += ntargets * npart_direct_list1_srcs
 
             npart_direct_list3_srcs = 0
 
@@ -297,7 +309,7 @@ class PerformanceModel(object):
 
                     npart_direct_list3_srcs += nsources
 
-            npart_direct_list3[itgt_box] = ntargets * npart_direct_list3_srcs
+            npart_direct_list3 += ntargets * npart_direct_list3_srcs
 
             npart_direct_list4_srcs = 0
 
@@ -310,15 +322,12 @@ class PerformanceModel(object):
 
                     npart_direct_list4_srcs += nsources
 
-            npart_direct_list4[itgt_box] = ntargets * npart_direct_list4_srcs
+            npart_direct_list4 += ntargets * npart_direct_list4_srcs
 
         result = {}
-        result["eval_direct_list1"] = (
-                self.summarize_parallel(npart_direct_list1, xlat_cost.direct()))
-        result["eval_direct_list3"] = (
-                self.summarize_parallel(npart_direct_list3, xlat_cost.direct()))
-        result["eval_direct_list4"] = (
-                self.summarize_parallel(npart_direct_list4, xlat_cost.direct()))
+        result["eval_direct_list1"] = npart_direct_list1 * xlat_cost.direct()
+        result["eval_direct_list3"] = npart_direct_list3 * xlat_cost.direct()
+        result["eval_direct_list4"] = npart_direct_list4 * xlat_cost.direct()
 
         return result
 
@@ -326,25 +335,27 @@ class PerformanceModel(object):
 
     # {{{ translate separated siblings' ("list 2") mpoles to local
 
-    def process_list2(self, xlat_cost, traversal):
-        nm2l = np.zeros(len(traversal.target_or_target_parent_boxes), dtype=np.intp)
+    def process_list2(self, xlat_cost, traversal, tree):
+        nm2l_by_level = np.zeros(tree.nlevels, dtype=np.intp)
 
-        for itgt_box in range(len(traversal.target_or_target_parent_boxes)):
+        for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
             start, end = traversal.from_sep_siblings_starts[itgt_box:itgt_box+2]
 
-            nm2l[itgt_box] += end-start
+            level = tree.box_levels[tgt_ibox]
+            nm2l_by_level[level] += end-start
 
-        return dict(multipole_to_local=(
-                self.summarize_parallel(nm2l, xlat_cost.m2l())))
+        result = sum(
+                cost * xlat_cost.m2l(ilevel, ilevel)
+                for ilevel, cost in enumerate(nm2l_by_level))
+
+        return dict(multipole_to_local=result)
 
     # }}}
 
     # {{{ evaluate sep. smaller mpoles ("list 3") at particles
 
     def process_list3(self, xlat_cost, traversal, tree, box_target_counts_nonchild):
-        nmp_eval = np.zeros(
-                (tree.nlevels, len(traversal.target_boxes)),
-                dtype=np.intp)
+        nmp_eval_by_source_level = np.zeros(tree.nlevels, dtype=np.intp)
 
         assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
@@ -354,35 +365,68 @@ class PerformanceModel(object):
                         traversal.target_boxes_sep_smaller_by_source_level[ilevel]):
                 ntargets = box_target_counts_nonchild[tgt_ibox]
                 start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
-                nmp_eval[ilevel, sep_smaller_list.nonempty_indices[itgt_box]] = (
-                        ntargets * (end-start)
-                )
+                nmp_eval_by_source_level[ilevel] += ntargets * (end-start)
 
-        return dict(eval_multipoles=(
-                self.summarize_parallel(nmp_eval, xlat_cost.m2p())))
+        result = sum(
+                cost * xlat_cost.m2p(ilevel)
+                for ilevel, cost in enumerate(nmp_eval_by_source_level))
+
+        return dict(eval_multipoles=result)
 
     # }}}
 
     # {{{ form locals for separated bigger source boxes ("list 4")
 
     def process_list4(self, xlat_cost, traversal, tree):
-        nform_local = np.zeros(
-                len(traversal.target_or_target_parent_boxes),
-                dtype=np.intp)
+        nform_local_by_source_level = np.zeros(tree.nlevels, dtype=np.intp)
 
         for itgt_box in range(len(traversal.target_or_target_parent_boxes)):
             start, end = traversal.from_sep_bigger_starts[itgt_box:itgt_box+2]
-
-            nform_local_box = 0
             for src_ibox in traversal.from_sep_bigger_lists[start:end]:
                 nsources = tree.box_source_counts_nonchild[src_ibox]
+                level = tree.box_levels[src_ibox]
+                nform_local_by_source_level[level] += nsources
 
-                nform_local_box += nsources
+        result = sum(
+                cost * xlat_cost.p2l(ilevel)
+                for ilevel, cost in enumerate(nform_local_by_source_level))
 
-            nform_local[itgt_box] = nform_local_box
+        return dict(form_locals=result)
 
-        return dict(form_locals=(
-                self.summarize_parallel(nform_local, xlat_cost.p2l())))
+    # }}}
+
+    # {{{ propogate locals downward
+
+    def process_refine_locals(self, xlat_cost, traversal, tree):
+        result = 0
+
+        for target_lev in range(1, tree.nlevels):
+            start, stop = traversal.level_start_target_or_target_parent_box_nrs[
+                    target_lev:target_lev+2]
+            source_lev = target_lev - 1
+            result += (stop-start) * xlat_cost.l2l(source_lev, target_lev)
+
+        return dict(refine_locals=result)
+
+    # }}}
+
+    # {{{ evaluate local expansions at non-qbx targets
+
+    def process_eval_locals(self, xlat_cost, traversal, tree, nqbtl):
+        ntargets_by_level = np.zeros(tree.nlevels, dtype=np.intp)
+
+        for target_lev in range(tree.nlevels):
+            start, stop = traversal.level_start_target_box_nrs[
+                    target_lev:target_lev+2]
+            for tgt_ibox in traversal.target_boxes[start:stop]:
+                ntargets_by_level[target_lev] += (
+                        nqbtl.box_target_counts_nonchild[tgt_ibox])
+
+        result = sum(
+                cost * xlat_cost.l2p(ilevel)
+                for ilevel, cost in enumerate(ntargets_by_level))
+
+        return dict(eval_locals=result)
 
     # }}}
 
@@ -393,16 +437,16 @@ class PerformanceModel(object):
             global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
 
         # center -> nsources
-        np2qbxl_list1 = np.zeros(len(global_qbx_centers), dtype=np.intp)
-        np2qbxl_list3 = np.zeros(len(global_qbx_centers), dtype=np.intp)
-        np2qbxl_list4 = np.zeros(len(global_qbx_centers), dtype=np.intp)
+        np2qbxl_list1_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
+        np2qbxl_list3_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
+        np2qbxl_list4_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
 
         # center -> number of associated targets
-        nqbxl2p = np.zeros(len(global_qbx_centers), dtype=np.intp)
+        nqbxl2p_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
 
         for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
             start, end = center_to_targets_starts[tgt_icenter:tgt_icenter+2]
-            nqbxl2p[itgt_center] = end - start
+            nqbxl2p_by_center[itgt_center] = end - start
 
             itgt_box = qbx_center_to_target_box[tgt_icenter]
 
@@ -413,7 +457,7 @@ class PerformanceModel(object):
 
                 np2qbxl_list1_srcs += nsources
 
-            np2qbxl_list1[itgt_center] = np2qbxl_list1_srcs
+            np2qbxl_list1_by_center[itgt_center] = np2qbxl_list1_srcs
 
             np2qbxl_list3_srcs = 0
 
@@ -426,7 +470,7 @@ class PerformanceModel(object):
 
                     np2qbxl_list3_srcs += nsources
 
-            np2qbxl_list3[itgt_center] = np2qbxl_list3_srcs
+            np2qbxl_list3_by_center[itgt_center] = np2qbxl_list3_srcs
 
             np2qbxl_list4_srcs = 0
 
@@ -439,13 +483,13 @@ class PerformanceModel(object):
 
                     np2qbxl_list4_srcs += nsources
 
-            np2qbxl_list4[itgt_center] = np2qbxl_list4_srcs
+            np2qbxl_list4_by_center[itgt_center] = np2qbxl_list4_srcs
 
         result = {}
-        result["np2qbxl_list1"] = np2qbxl_list1
-        result["np2qbxl_list3"] = np2qbxl_list3
-        result["np2qbxl_list4"] = np2qbxl_list4
-        result["nqbxl2p"] = nqbxl2p
+        result["np2qbxl_list1_by_center"] = np2qbxl_list1_by_center
+        result["np2qbxl_list3_by_center"] = np2qbxl_list3_by_center
+        result["np2qbxl_list4_by_center"] = np2qbxl_list4_by_center
+        result["nqbxl2p_by_center"] = nqbxl2p_by_center
 
         return result
 
@@ -462,17 +506,14 @@ class PerformanceModel(object):
 
         result = {}
         result["eval_target_specific_qbx_locals_list1"] = (
-                self.summarize_parallel(
-                        counts["np2qbxl_list1"] * counts["nqbxl2p"],
-                        xlat_cost.p2p_tsqbx()))
+                sum(counts["np2qbxl_list1_by_center"] * counts["nqbxl2p_by_center"])
+                * xlat_cost.p2p_tsqbx())
         result["eval_target_specific_qbx_locals_list3"] = (
-                self.summarize_parallel(
-                        counts["np2qbxl_list3"] * counts["nqbxl2p"],
-                        xlat_cost.p2p_tsqbx()))
+                sum(counts["np2qbxl_list3_by_center"] * counts["nqbxl2p_by_center"])
+                * xlat_cost.p2p_tsqbx())
         result["eval_target_specific_qbx_locals_list4"] = (
-                self.summarize_parallel(
-                        counts["np2qbxl_list4"] * counts["nqbxl2p"],
-                        xlat_cost.p2p_tsqbx()))
+                sum(counts["np2qbxl_list4_by_center"] * counts["nqbxl2p_by_center"])
+                * xlat_cost.p2p_tsqbx())
 
         return result
 
@@ -489,11 +530,11 @@ class PerformanceModel(object):
 
         result = {}
         result["form_global_qbx_locals_list1"] = (
-                self.summarize_parallel(counts["np2qbxl_list1"], xlat_cost.p2qbxl()))
+                sum(counts["np2qbxl_list1_by_center"]) * xlat_cost.p2qbxl())
         result["form_global_qbx_locals_list3"] = (
-                self.summarize_parallel(counts["np2qbxl_list3"], xlat_cost.p2qbxl()))
+                sum(counts["np2qbxl_list3_by_center"]) * xlat_cost.p2qbxl())
         result["form_global_qbx_locals_list4"] = (
-                self.summarize_parallel(counts["np2qbxl_list4"], xlat_cost.p2qbxl()))
+                sum(counts["np2qbxl_list4_by_center"]) * xlat_cost.p2qbxl())
 
         return result
 
@@ -503,9 +544,7 @@ class PerformanceModel(object):
 
     def process_m2qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
             qbx_center_to_target_box_source_level):
-        nm2qbxl = np.zeros(
-                (tree.nlevels, len(global_qbx_centers)),
-                dtype=np.intp)
+        nm2qbxl_by_source_level = np.zeros(tree.nlevels, dtype=np.intp)
 
         assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
@@ -522,10 +561,33 @@ class PerformanceModel(object):
                         ssn.starts[icontaining_tgt_box],
                         ssn.starts[icontaining_tgt_box+1])
 
-                nm2qbxl[isrc_level, itgt_center] += stop-start
+                nm2qbxl_by_source_level[isrc_level] += stop-start
 
-        return dict(translate_box_multipoles_to_qbx_local=(
-                self.summarize_parallel(nm2qbxl, xlat_cost.m2qbxl())))
+        result = sum(
+                cost * xlat_cost.m2qbxl(ilevel)
+                for ilevel, cost in enumerate(nm2qbxl_by_source_level))
+
+        return dict(translate_box_multipoles_to_qbx_local=result)
+
+    # }}}
+
+    # {{{ translate from box locals to qbx local expansions
+
+    def process_l2qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
+            qbx_center_to_target_box):
+        nl2qbxl_by_level = np.zeros(tree.nlevels, dtype=np.intp)
+
+        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+            tgt_ibox = traversal.target_boxes[itgt_box]
+            level = tree.box_levels[tgt_ibox]
+            nl2qbxl_by_level[level] += 1
+
+        result = sum(
+                cost * xlat_cost.l2qbxl(ilevel)
+                for ilevel, cost in enumerate(nl2qbxl_by_level))
+
+        return dict(translate_box_local_to_qbx_local=result)
 
     # }}}
 
@@ -533,45 +595,46 @@ class PerformanceModel(object):
 
     def process_eval_qbxl(self, xlat_cost, global_qbx_centers,
             center_to_targets_starts):
-        nqbx_eval = np.zeros(len(global_qbx_centers), dtype=np.intp)
+        result = 0
 
         for isrc_center, src_icenter in enumerate(global_qbx_centers):
             start, end = center_to_targets_starts[src_icenter:src_icenter+2]
-            nqbx_eval[isrc_center] += end-start
+            result += (end - start)
 
-        return dict(eval_qbx_expansions=(
-                self.summarize_parallel(nqbx_eval, xlat_cost.qbxl2p())))
+        result *= xlat_cost.qbxl2p()
+
+        return dict(eval_qbx_expansions=result)
 
     # }}}
 
     # {{{ set up translation cost model
 
-    def get_translation_cost_model(self, d):
+    def get_translation_cost_model(self, dim, nlevels):
         p_qbx = var("p_qbx")
-        p_fmm = var("p_fmm")
+        p_fmm = np.array([var("p_fmm_lev%d" % i) for i in range(nlevels)])
 
         uses_point_and_shoot = False
 
         if self.uses_pde_expansions:
-            ncoeffs_fmm = p_fmm ** (d-1)
-            ncoeffs_qbx = p_qbx ** (d-1)
+            ncoeffs_fmm = p_fmm ** (dim-1)
+            ncoeffs_qbx = p_qbx ** (dim-1)
 
-            if d == 3:
+            if dim == 3:
                 uses_point_and_shoot = True
 
         else:
-            ncoeffs_fmm = p_fmm ** d
-            ncoeffs_qbx = p_qbx ** d
+            ncoeffs_fmm = p_fmm ** dim
+            ncoeffs_qbx = p_qbx ** dim
 
         return TranslationCostModel(
                 ncoeffs_qbx=ncoeffs_qbx,
-                ncoeffs_fmm=ncoeffs_fmm,
+                ncoeffs_fmm_by_level=ncoeffs_fmm,
                 uses_point_and_shoot=uses_point_and_shoot)
 
     # }}}
 
     @log_process(logger, "gather performance model data")
-    def __call__(self, geo_data):
+    def __call__(self, geo_data, kernel, kernel_arguments):
         """Analyze the given geometry and return performance data.
 
         :returns: An instance of :class:`ParametrizedCosts`.
@@ -582,14 +645,14 @@ class PerformanceModel(object):
 
         lpot_source = geo_data.lpot_source
 
-        nqbtl = geo_data.non_qbx_box_target_lists()
         use_tsqbx = lpot_source._use_target_specific_qbx
 
         with cl.CommandQueue(geo_data.cl_context) as queue:
-            tree = geo_data.tree().get(queue=queue)
-            traversal = geo_data.traversal(merge_close_lists=False).get(queue=queue)
-            box_target_counts_nonchild = (
-                    nqbtl.box_target_counts_nonchild.get(queue=queue))
+            tree = geo_data.tree().get(queue)
+            traversal = geo_data.traversal(merge_close_lists=False).get(queue)
+            nqbtl = geo_data.non_qbx_box_target_lists().get(queue)
+
+        box_target_counts_nonchild = nqbtl.box_target_counts_nonchild
 
         params = dict(
                 nlevels=tree.nlevels,
@@ -598,23 +661,26 @@ class PerformanceModel(object):
                 ntargets=tree.ntargets,
                 ncenters=geo_data.ncenters,
                 p_qbx=lpot_source.qbx_order,
-                # FIXME: Assumes this is a constant
-                p_fmm=lpot_source.fmm_level_to_order(None, None, None, None),
                 )
+
+        for ilevel in range(tree.nlevels):
+            params["p_fmm_lev%d" % ilevel] = (
+                    lpot_source.fmm_level_to_order(
+                        kernel, kernel_arguments, tree, ilevel))
 
         params.update(self.calibration_params)
 
-        xlat_cost = self.get_translation_cost_model(tree.dimensions)
+        xlat_cost = self.get_translation_cost_model(tree.dimensions, tree.nlevels)
 
         # {{{ construct local multipoles
 
-        result["form_multipoles"] = tree.nsources * xlat_cost.p2m()
+        result.update(self.process_form_multipoles(xlat_cost, traversal, tree))
 
         # }}}
 
         # {{{ propagate multipoles upward
 
-        result.update(self.process_coarsen_multipoles(xlat_cost, tree, traversal))
+        result.update(self.process_coarsen_multipoles(xlat_cost, traversal, tree))
 
         # }}}
 
@@ -627,7 +693,7 @@ class PerformanceModel(object):
 
         # {{{ translate separated siblings' ("list 2") mpoles to local
 
-        result.update(self.process_list2(xlat_cost, traversal))
+        result.update(self.process_list2(xlat_cost, traversal, tree))
 
         # }}}
 
@@ -646,14 +712,13 @@ class PerformanceModel(object):
 
         # {{{ propagate local_exps downward
 
-        result["refine_locals"] = (
-                traversal.ntarget_or_target_parent_boxes * xlat_cost.l2l())
+        result.update(self.process_refine_locals(xlat_cost, traversal, tree))
 
         # }}}
 
         # {{{ evaluate locals
 
-        result["eval_locals"] = nqbtl.nfiltered_targets * xlat_cost.l2p()
+        result.update(self.process_eval_locals(xlat_cost, traversal, tree, nqbtl))
 
         # }}}
 
@@ -703,8 +768,9 @@ class PerformanceModel(object):
 
         # {{{ translate from box local expansions to qbx local expansions
 
-        result["translate_box_local_to_qbx_local"] = (
-                len(global_qbx_centers) * xlat_cost.l2qbxl())
+        result.update(self.process_l2qbxl(
+                xlat_cost, traversal, tree, global_qbx_centers,
+                qbx_center_to_target_box))
 
         # }}}
 

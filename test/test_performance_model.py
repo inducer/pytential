@@ -32,7 +32,11 @@ import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
+from pytools import one
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+
 from pytential import bind, sym, norm  # noqa
+from pytential.qbx.performance import PerformanceModel
 
 
 # {{{ global params
@@ -105,7 +109,6 @@ def test_timing_data_gathering(ctx_getter):
     lpot_source = get_lpot_source(queue, 2)
     sigma = get_density(queue, lpot_source)
 
-    from sumpy.kernel import LaplaceKernel
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
@@ -130,7 +133,6 @@ def test_performance_model(ctx_getter, dim):
     lpot_source = get_lpot_source(queue, dim)
     sigma = get_density(queue, lpot_source)
 
-    from sumpy.kernel import LaplaceKernel
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
 
@@ -310,7 +312,6 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
 CONSTANT_ONE_PARAMS = dict(
         p_qbx=1,
-        p_fmm=1,
         c_l2l=1,
         c_l2p=1,
         c_l2qbxl=1,
@@ -327,6 +328,20 @@ CONSTANT_ONE_PARAMS = dict(
         )
 
 
+def _get_params_for_raw_op_counts(perf_result):
+    """Return a set of parameters suitable for obtaining raw
+    operation counts from the model."""
+
+    # Sets model / calibration parameters equal to 1, to obtain raw op counts.
+    constant_one_params = CONSTANT_ONE_PARAMS.copy()
+
+    # Set p_fmm_lev* equal to 1.
+    for level in perf_result.params["nlevels"]:
+        constant_one_params["p_fmm_lev%d" % level] = 1
+
+    return constant_one_params
+
+
 @pytest.mark.parametrize("dim, off_surface, use_target_specific_qbx", (
         (2, False, False),
         (2, True,  False),
@@ -338,8 +353,6 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
         use_target_specific_qbx):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
-
-    from pytential.qbx.performance import PerformanceModel
 
     # We set uses_pde_expansions=False, so that a translation is modeled as
     # simply costing nsrc_coeffs * ntgt_coeffs. By adjusting the symbolic
@@ -364,7 +377,6 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
         qbx_forced_limit = 1
 
     # Construct bound op, run performance model.
-    from sumpy.kernel import LaplaceKernel
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=qbx_forced_limit)
@@ -374,8 +386,7 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
 
     from pytools import one
     perf_S = one(op_S.get_modeled_performance(queue, sigma=sigma).values())
-    # Set all parameters equal to 1, to obtain raw op counts.
-    perf_S = perf_S.with_params(CONSTANT_ONE_PARAMS)
+    perf_S = perf_S.with_params(_get_params_for_raw_op_counts(perf_S))
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
     # high-level interface, so call the FMM driver directly.
@@ -406,6 +417,62 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
                     (stage, timing_data[stage]["ops_elapsed"], modeled_time[stage]))
 
     assert not mismatches, "\n".join(str(s) for s in mismatches)
+
+# }}}
+
+
+# {{{ test order varying by level
+
+def test_performance_model_order_varying_by_level(ctx_getter):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    # {{{ constant level to order
+
+    def level_to_order_constant(kernel, kernel_args, tree, level):
+        return 1
+
+    lpot_source = get_lpot_source(queue, 2).copy(
+            performance_model=PerformanceModel(uses_pde_expansions=False),
+            fmm_level_to_order=level_to_order_constant)
+
+    sigma_sym = sym.var("sigma")
+
+    k_sym = LaplaceKernel(2)
+    sym_op = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
+
+    sigma = get_density(queue, lpot_source)
+
+    perf_constant = one(
+            bind(lpot_source, sym_op)
+            .get_modeled_performance(queue, sigma=sigma).values())
+
+    perf_constant = perf_constant.with_params(CONSTANT_ONE_PARAMS)
+
+    # }}}
+
+    # {{{ varying level to order
+
+    def level_to_order_varying(kernel, kernel_args, tree, level):
+        return tree.nlevels - level
+
+    lpot_source = lpot_source.copy(fmm_level_to_order=level_to_order_varying)
+
+    perf_varying = one(
+            bind(lpot_source, sym_op)
+            .get_modeled_performance(queue, sigma=sigma).values())
+
+    perf_varying = perf_varying.with_params(CONSTANT_ONE_PARAMS)
+
+    # }}}
+
+    # This only checks to ensure that the costs are different. The varying-level
+    # case should have larger cost.
+
+    assert (
+            sum(perf_varying.get_predicted_times().values()) >
+            sum(perf_constant.get_predicted_times().values()))
+
 
 # }}}
 
