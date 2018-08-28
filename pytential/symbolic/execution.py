@@ -379,7 +379,7 @@ class GeometryCollection(object):
 
         self._default_source_place = source_where
         self._default_target_place = target_where
-        self._auto_place_ids = (source_where, target_where)
+        self._default_place_ids = (source_where, target_where)
 
         self.places = {}
         if isinstance(places, LayerPotentialSourceBase):
@@ -407,7 +407,8 @@ class GeometryCollection(object):
         if not isinstance(lpot, LayerPotentialSourceBase):
             return lpot
 
-        if where is DEFAULT_SOURCE or where is DEFAULT_TARGET:
+        from pytential.symbolic.primitives import _QBXSource
+        if not isinstance(where, _QBXSource):
             where = QBXSourceStage1(where)
 
         if isinstance(where, QBXSourceStage1):
@@ -575,8 +576,8 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
     :arg domains: a list of discretization identifiers (see 'places') or
         *None* values indicating the domains on which each component of the
         solution vector lives.  *None* values indicate that the component
-        is a scalar.  If *None*,
-        :class:`pytential.symbolic.primitives.DEFAULT_SOURCE`, is required
+        is a scalar.  If *None*, *auto_where* or, if it is not provided,
+        :class:`~pytential.symbolic.primitives.DEFAULT_SOURCE` is required
         to be a key in :attr:`places`.
     :arg auto_where: For simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.
@@ -599,7 +600,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         input_exprs = [input_exprs]
 
     domains = _prepare_domains(len(input_exprs), places, domains,
-                               DEFAULT_SOURCE)
+                               places._default_source_place)
 
     from pytential.symbolic.matrix import MatrixBuilder, is_zero
     nblock_rows = len(exprs)

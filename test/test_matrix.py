@@ -31,11 +31,13 @@ import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
+import pyopencl.array   # noqa
+
 from pytools.obj_array import make_obj_array, is_obj_array
 
 from sumpy.symbolic import USE_SYMENGINE
-from meshmode.mesh.generation import \
-        ellipse, NArmedStarfish, make_curve_mesh
+from meshmode.mesh.generation import (  # noqa
+        ellipse, NArmedStarfish, make_curve_mesh, generate_torus)
 
 from pytential import bind, sym
 from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
@@ -45,6 +47,77 @@ import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
+
+def _build_qbx_discr(queue,
+        ndim=2,
+        nelements=30,
+        target_order=7,
+        qbx_order=4,
+        curve_f=None):
+
+    if curve_f is None:
+        curve_f = NArmedStarfish(5, 0.25)
+
+    if ndim == 2:
+        mesh = make_curve_mesh(curve_f,
+                np.linspace(0, 1, nelements + 1),
+                target_order)
+    elif ndim == 3:
+        mesh = generate_torus(10.0, 2.0, order=target_order)
+    else:
+        raise ValueError("unsupported ambient dimension")
+
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+    from pytential.qbx import QBXLayerPotentialSource
+    density_discr = Discretization(
+            queue.context, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+
+    qbx, _ = QBXLayerPotentialSource(density_discr,
+            fine_order=4 * target_order,
+            qbx_order=qbx_order,
+            fmm_order=False).with_refinement()
+
+    return qbx
+
+
+def _build_block_index(discr, nblks=10, factor=1.0):
+    nnodes = discr.nnodes
+    max_particles_in_box = nnodes // nblks
+
+    from pytential.linalg.proxy import partition_by_nodes
+    indices = partition_by_nodes(discr, use_tree=True,
+                                 max_nodes_in_box=max_particles_in_box)
+
+    # randomly pick a subset of points
+    from sumpy.tools import MatrixBlockIndexRanges, BlockIndexRanges
+    if abs(factor - 1.0) > 1.0e-14:
+        with cl.CommandQueue(discr.cl_context) as queue:
+            indices = indices.get(queue)
+
+            indices_ = np.empty(indices.nblocks, dtype=np.object)
+            for i in range(indices.nblocks):
+                iidx = indices.block_indices(i)
+                isize = int(factor * len(iidx))
+                isize = max(1, min(isize, len(iidx)))
+
+                indices_[i] = np.sort(
+                        np.random.choice(iidx, size=isize, replace=False))
+
+            ranges_ = cl.array.to_device(queue,
+                    np.cumsum([0] + [r.shape[0] for r in indices_]))
+            indices_ = cl.array.to_device(queue, np.hstack(indices_))
+
+            indices = BlockIndexRanges(discr.cl_context,
+                                       indices_.with_queue(None),
+                                       ranges_.with_queue(None))
+
+    indices = MatrixBlockIndexRanges(indices.cl_context,
+                                     indices, indices)
+
+    return indices
 
 
 def _build_op(lpot_id,
@@ -88,6 +161,17 @@ def _build_op(lpot_id,
     op = 0.5 * u_sym + op
 
     return op, u_sym, knl_kwargs
+
+
+def _max_block_error(mat, blk, index_set):
+    error = -np.inf
+    for i in range(index_set.nblocks):
+        mat_i = index_set.take(mat, i)
+        blk_i = index_set.block_take(blk, i)
+
+        error = max(error, la.norm(mat_i - blk_i) / la.norm(mat_i))
+
+    return error
 
 
 @pytest.mark.skipif(USE_SYMENGINE,
@@ -195,24 +279,16 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     from sympy.core.cache import clear_cache
     clear_cache()
 
-    from test_linalg_proxy import _build_qbx_discr, _build_block_index
     target_order = 2 if ndim == 3 else 7
     qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
     op, u_sym, _ = _build_op(lpot_id, ndim=ndim)
-
-    srcindices = _build_block_index(qbx.density_discr,
-            method='nodes', factor=factor)
-    tgtindices = _build_block_index(qbx.density_discr,
-            method='nodes', factor=factor)
+    index_set = _build_block_index(qbx.density_discr, factor=factor)
 
     from pytential.symbolic.execution import GeometryCollection
     from pytential.symbolic.execution import _prepare_expr, _prepare_domains
     places = GeometryCollection(qbx)
     expr = _prepare_expr(places, op)
     domains = _prepare_domains(1, places, None, DEFAULT_SOURCE)
-
-    from sumpy.tools import MatrixBlockIndexRanges
-    index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
 
     from pytential.symbolic.matrix import P2PMatrixBuilder
     mbuilder = P2PMatrixBuilder(queue,
@@ -257,14 +333,7 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
         ax2.set_title('P2PMatrixBuilder')
         mp.savefig("test_p2p_block_{}d_{:.1f}.png".format(ndim, factor))
 
-    for i in range(index_set.nblocks):
-        eps = 1.0e-14 * la.norm(index_set.take(mat, i))
-        error = la.norm(index_set.block_take(blk, i)
-                        - index_set.take(mat, i))
-
-        if visualize:
-            print('block[{:04}]: {:.5e}'.format(i, error))
-        assert error < eps
+    assert _max_block_error(mat, blk, index_set) < 1.0e-14
 
 
 @pytest.mark.parametrize("factor", [1.0, 0.6])
@@ -279,7 +348,6 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
     from sympy.core.cache import clear_cache
     clear_cache()
 
-    from test_linalg_proxy import _build_qbx_discr, _build_block_index
     target_order = 2 if ndim == 3 else 7
     qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
     op, u_sym, _ = _build_op(lpot_id, ndim=ndim)
@@ -295,11 +363,7 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
     density_discr = places.get_discretization(where[0])
 
     from sumpy.tools import MatrixBlockIndexRanges
-    srcindices = _build_block_index(density_discr,
-            method='nodes', factor=factor)
-    tgtindices = _build_block_index(density_discr,
-            method='nodes', factor=factor)
-    index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
+    index_set = _build_block_index(density_discr, factor=factor)
 
     from pytential.symbolic.matrix import NearFieldBlockBuilder
     mbuilder = NearFieldBlockBuilder(queue,
@@ -342,23 +406,16 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
         ax2.set_title('NearFieldBlockBuilder')
         mp.savefig("test_qbx_block_builder.png", dpi=300)
 
-    for i in range(index_set.nblocks):
-        eps = 1.0e-14 * la.norm(index_set.take(mat, i))
-        error = la.norm(index_set.block_take(blk, i)
-                        - index_set.take(mat, i))
-
-        if visualize:
-            print('block[{:04}]: {:.5e}'.format(i, error))
-        assert error < eps
+    assert _max_block_error(mat, blk, index_set) < 1.0e-14
 
 
-@pytest.mark.parametrize('where',
+@pytest.mark.parametrize('place_id',
         [(DEFAULT_SOURCE, DEFAULT_TARGET),
          (QBXSourceStage1(DEFAULT_SOURCE),
           QBXSourceStage1(DEFAULT_TARGET)),
          (QBXSourceQuadStage2(DEFAULT_SOURCE),
           QBXSourceQuadStage2(DEFAULT_TARGET))])
-def test_build_matrix_where(ctx_factory, where, visualize=False):
+def test_build_matrix_places(ctx_factory, place_id, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -366,7 +423,6 @@ def test_build_matrix_where(ctx_factory, where, visualize=False):
     from sympy.core.cache import clear_cache
     clear_cache()
 
-    from test_linalg_proxy import _build_qbx_discr
     qbx = _build_qbx_discr(queue, nelements=8, target_order=2, ndim=2,
                            curve_f=partial(ellipse, 1.0))
 
@@ -374,17 +430,20 @@ def test_build_matrix_where(ctx_factory, where, visualize=False):
     op, u_sym, _ = _build_op(lpot_id=1, ndim=2,
             qbx_forced_limit=qbx_forced_limit)
 
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(qbx, auto_where=place_id)
+    source_discr = places.get_discretization(place_id[0])
+    target_discr = places.get_discretization(place_id[1])
+
+    index_set = _build_block_index(source_discr, factor=0.6)
+
     # build full QBX matrix
     from pytential.symbolic.execution import build_matrix
-    mat = build_matrix(queue, qbx, op, u_sym,
-                       auto_where=where, domains=where[0])
+    qbx_mat = build_matrix(queue, qbx, op, u_sym,
+                           auto_where=place_id, domains=place_id[0])
+    qbx_mat = qbx_mat.get(queue)
 
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(qbx, auto_where=where)
-    source_discr = places.get_discretization(where[0])
-    target_discr = places.get_discretization(where[1])
-
-    assert mat.shape == (target_discr.nnodes, source_discr.nnodes)
+    assert qbx_mat.shape == (target_discr.nnodes, source_discr.nnodes)
 
     # build full p2p matrix
     from pytential.symbolic.execution import _prepare_expr
@@ -394,43 +453,40 @@ def test_build_matrix_where(ctx_factory, where, visualize=False):
     mbuilder = P2PMatrixBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[where[0]],
-            dep_discr=places.get_discretization(where[0]),
+            dep_source=places[place_id[0]],
+            dep_discr=places.get_discretization(place_id[0]),
             places=places,
             context={})
-    mat = mbuilder(op)
+    p2p_mat = mbuilder(op)
 
-    assert mat.shape == (target_discr.nnodes, source_discr.nnodes)
+    assert p2p_mat.shape == (target_discr.nnodes, source_discr.nnodes)
 
     # build block qbx and p2p matrices
-    from test_linalg_proxy import _build_block_index
-    srcindices = _build_block_index(source_discr, method='nodes', factor=0.6)
-    tgtindices = _build_block_index(target_discr, method='nodes', factor=0.6)
-
-    from sumpy.tools import MatrixBlockIndexRanges
-    index_set = MatrixBlockIndexRanges(ctx, tgtindices, srcindices)
-
     from pytential.symbolic.matrix import NearFieldBlockBuilder
     mbuilder = NearFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[where[0]],
-            dep_discr=places.get_discretization(where[0]),
+            dep_source=places[place_id[0]],
+            dep_discr=places.get_discretization(place_id[0]),
             places=places,
             index_set=index_set,
             context={})
     mat = mbuilder(op)
+    if place_id[0] is not DEFAULT_SOURCE:
+        assert _max_block_error(qbx_mat, mat, index_set.get(queue)) < 1.0e-14
 
     from pytential.symbolic.matrix import FarFieldBlockBuilder
     mbuilder = FarFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[where[0]],
-            dep_discr=places.get_discretization(where[0]),
+            dep_source=places[place_id[0]],
+            dep_discr=places.get_discretization(place_id[0]),
             places=places,
             index_set=index_set,
-            context={})
+            context={},
+            exclude_self=True)
     mat = mbuilder(op)
+    assert _max_block_error(p2p_mat, mat, index_set.get(queue)) < 1.0e-14
 
 
 if __name__ == "__main__":
