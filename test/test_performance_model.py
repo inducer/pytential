@@ -516,58 +516,6 @@ def test_performance_model_order_varying_by_level(ctx_getter):
             sum(perf_varying.get_predicted_times().values()) >
             sum(perf_constant.get_predicted_times().values()))
 
-
-def test_performance_model_order_varying_by_level(ctx_getter):
-    cl_ctx = ctx_getter()
-    queue = cl.CommandQueue(cl_ctx)
-
-    # {{{ constant level to order
-
-    def level_to_order_constant(kernel, kernel_args, tree, level):
-        return 1
-
-    lpot_source = get_lpot_source(queue, 2).copy(
-            performance_model=PerformanceModel(uses_pde_expansions=False),
-            fmm_level_to_order=level_to_order_constant)
-
-    sigma_sym = sym.var("sigma")
-
-    k_sym = LaplaceKernel(2)
-    sym_op = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
-
-    sigma = get_density(queue, lpot_source)
-
-    perf_constant = one(
-            bind(lpot_source, sym_op)
-            .get_modeled_performance(queue, sigma=sigma).values())
-
-    perf_constant = perf_constant.with_params(CONSTANT_ONE_PARAMS)
-
-    # }}}
-
-    # {{{ varying level to order
-
-    def level_to_order_varying(kernel, kernel_args, tree, level):
-        return tree.nlevels - level
-
-    lpot_source = lpot_source.copy(fmm_level_to_order=level_to_order_varying)
-
-    perf_varying = one(
-            bind(lpot_source, sym_op)
-            .get_modeled_performance(queue, sigma=sigma).values())
-
-    perf_varying = perf_varying.with_params(CONSTANT_ONE_PARAMS)
-
-    # }}}
-
-    # This only checks to ensure that the costs are different. The varying-level
-    # case should have larger cost.
-
-    assert (
-            sum(perf_varying.get_predicted_times().values()) >
-            sum(perf_constant.get_predicted_times().values()))
-
-
 # }}}
 
 
