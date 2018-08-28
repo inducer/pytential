@@ -757,7 +757,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if self.geometry_data_inspector is not None:
             perform_fmm = self.geometry_data_inspector(insn, bound_expr, geo_data)
             if not perform_fmm:
-                return [(o.name, 0) for o in insn.outputs], []
+                return [(o.name, 0) for o in insn.outputs]
 
         # }}}
 
