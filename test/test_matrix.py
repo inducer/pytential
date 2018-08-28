@@ -48,6 +48,7 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 
+
 def _build_qbx_discr(queue,
         ndim=2,
         nelements=30,
@@ -361,8 +362,6 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
     places = GeometryCollection(qbx, auto_where=where)
     expr = _prepare_expr(places, op)
     density_discr = places.get_discretization(where[0])
-
-    from sumpy.tools import MatrixBlockIndexRanges
     index_set = _build_block_index(density_discr, factor=factor)
 
     from pytential.symbolic.matrix import NearFieldBlockBuilder
