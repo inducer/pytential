@@ -496,16 +496,13 @@ def test_performance_model_order_varying_by_level(ctx_getter):
 
     # {{{ varying level to order
 
-    def level_to_order_varying(kernel, kernel_args, tree, level):
-        return tree.nlevels - level
+    varying_order_params = CONSTANT_ONE_PARAMS.copy()
 
-    lpot_source = lpot_source.copy(fmm_level_to_order=level_to_order_varying)
+    nlevels = perf_constant.params["nlevels"]
+    for level in range(nlevels):
+        varying_order_params["p_fmm_lev%d" % level] = nlevels - level
 
-    perf_varying = one(
-            bind(lpot_source, sym_op)
-            .get_modeled_performance(queue, sigma=sigma).values())
-
-    perf_varying = perf_varying.with_params(CONSTANT_ONE_PARAMS)
+    perf_varying = perf_constant.with_params(varying_order_params)
 
     # }}}
 
