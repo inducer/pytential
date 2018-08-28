@@ -151,6 +151,49 @@ def test_performance_model(ctx_getter, dim):
 # }}}
 
 
+# {{{ test performance model parameter gathering
+
+def test_performance_model_parameter_gathering(ctx_getter):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
+
+    fmm_level_to_order = SimpleExpansionOrderFinder(tol=1e-5)
+
+    lpot_source = get_lpot_source(queue, 2).copy(
+            fmm_level_to_order=fmm_level_to_order)
+
+    sigma = get_density(queue, lpot_source)
+
+    sigma_sym = sym.var("sigma")
+    k_sym = HelmholtzKernel(2, "k")
+    k = 2
+
+    sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1, k=sym.var("k"))
+    op_S = bind(lpot_source, sym_op_S)
+
+    perf_S = one(op_S.get_modeled_performance(queue, sigma=sigma, k=k).values())
+
+    geo_data = lpot_source.qbx_fmm_geometry_data(
+            target_discrs_and_qbx_sides=((lpot_source.density_discr, 1),))
+
+    tree = geo_data.tree()
+
+    assert perf_S.params["p_qbx"] == QBX_ORDER
+    assert perf_S.params["nlevels"] == tree.nlevels
+    assert perf_S.params["nsources"] == tree.nsources
+    assert perf_S.params["ntargets"] == tree.ntargets
+    assert perf_S.params["ncenters"] == geo_data.ncenters
+
+    for level in range(tree.nlevels):
+        assert (
+                perf_S.params["p_fmm_lev%d" % level] ==
+                fmm_level_to_order(k_sym, {"k": 2}, tree, level))
+
+# }}}
+
+
 # {{{ constant one wrangler
 
 class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
@@ -422,6 +465,57 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
 
 
 # {{{ test order varying by level
+
+def test_performance_model_order_varying_by_level(ctx_getter):
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    # {{{ constant level to order
+
+    def level_to_order_constant(kernel, kernel_args, tree, level):
+        return 1
+
+    lpot_source = get_lpot_source(queue, 2).copy(
+            performance_model=PerformanceModel(uses_pde_expansions=False),
+            fmm_level_to_order=level_to_order_constant)
+
+    sigma_sym = sym.var("sigma")
+
+    k_sym = LaplaceKernel(2)
+    sym_op = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
+
+    sigma = get_density(queue, lpot_source)
+
+    perf_constant = one(
+            bind(lpot_source, sym_op)
+            .get_modeled_performance(queue, sigma=sigma).values())
+
+    perf_constant = perf_constant.with_params(CONSTANT_ONE_PARAMS)
+
+    # }}}
+
+    # {{{ varying level to order
+
+    def level_to_order_varying(kernel, kernel_args, tree, level):
+        return tree.nlevels - level
+
+    lpot_source = lpot_source.copy(fmm_level_to_order=level_to_order_varying)
+
+    perf_varying = one(
+            bind(lpot_source, sym_op)
+            .get_modeled_performance(queue, sigma=sigma).values())
+
+    perf_varying = perf_varying.with_params(CONSTANT_ONE_PARAMS)
+
+    # }}}
+
+    # This only checks to ensure that the costs are different. The varying-level
+    # case should have larger cost.
+
+    assert (
+            sum(perf_varying.get_predicted_times().values()) >
+            sum(perf_constant.get_predicted_times().values()))
+
 
 def test_performance_model_order_varying_by_level(ctx_getter):
     cl_ctx = ctx_getter()

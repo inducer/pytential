@@ -754,8 +754,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             performance_model = self.performance_model
 
-        performance_model_result = performance_model(
-                geo_data, insn.base_kernel, insn.kernel_arguments)
+        kernel_args = {}
+        for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
+            kernel_args[arg_name] = evaluate(arg_expr)
+
+        performance_model_result = (
+                performance_model(geo_data, insn.base_kernel, kernel_args))
 
         # {{{ construct dummy outputs
 
