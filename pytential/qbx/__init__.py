@@ -780,7 +780,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     (o.name,
                         all_potentials_on_every_tgt[o.kernel_index][tgt_slice]))
 
-        return result, []
+        return result
 
     # }}}
 
@@ -941,7 +941,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
-        return result, []
+        return result
 
     # }}}
 
