@@ -336,7 +336,7 @@ def _get_params_for_raw_op_counts(perf_result):
     constant_one_params = CONSTANT_ONE_PARAMS.copy()
 
     # Set p_fmm_lev* equal to 1.
-    for level in perf_result.params["nlevels"]:
+    for level in range(perf_result.params["nlevels"]):
         constant_one_params["p_fmm_lev%d" % level] = 1
 
     return constant_one_params
