@@ -639,7 +639,7 @@ class PerformanceModel(object):
 
     # }}}
 
-    @log_process(logger, "gather performance model data")
+    @log_process(logger, "model performance")
     def __call__(self, geo_data, kernel, kernel_arguments):
         """Analyze the given geometry and return performance data.
 
