@@ -484,9 +484,12 @@ class PerformanceModel(object):
             nqbxl2p_by_center[itgt_center] = end - start
 
             itgt_box = qbx_center_to_target_box[tgt_icenter]
-            np2qbxl_list1_by_center[itgt_center] = np2qbxl_list1_by_itgt_box[itgt_box]
-            np2qbxl_list3_by_center[itgt_center] = np2qbxl_list3_by_itgt_box[itgt_box]
-            np2qbxl_list4_by_center[itgt_center] = np2qbxl_list4_by_itgt_box[itgt_box]
+            np2qbxl_list1_by_center[itgt_center] = (
+                    np2qbxl_list1_by_itgt_box[itgt_box])
+            np2qbxl_list3_by_center[itgt_center] = (
+                    np2qbxl_list3_by_itgt_box[itgt_box])
+            np2qbxl_list4_by_center[itgt_center] = (
+                    np2qbxl_list4_by_itgt_box[itgt_box])
 
         result = {}
         result["np2qbxl_list1_by_center"] = np2qbxl_list1_by_center
