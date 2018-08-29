@@ -436,6 +436,41 @@ class PerformanceModel(object):
     def _collect_qbxl_direct_interaction_data(traversal, tree,
             global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
 
+        ntarget_boxes = len(traversal.target_boxes)
+
+        # target box index -> nsources
+        np2qbxl_list1_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
+        np2qbxl_list3_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
+        np2qbxl_list4_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
+
+        for itgt_box in range(ntarget_boxes):
+            np2qbxl_list1_srcs = 0
+            start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
+            for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
+                np2qbxl_list1_srcs += tree.box_source_counts_nonchild[src_ibox]
+
+            np2qbxl_list1_by_itgt_box[itgt_box] = np2qbxl_list1_srcs
+
+            np2qbxl_list3_srcs = 0
+            # Could be None, if not using targets with extent.
+            if traversal.from_sep_close_smaller_starts is not None:
+                start, end = (
+                        traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2])
+                for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
+                    np2qbxl_list3_srcs += tree.box_source_counts_nonchild[src_ibox]
+
+            np2qbxl_list3_by_itgt_box[itgt_box] = np2qbxl_list3_srcs
+
+            np2qbxl_list4_srcs = 0
+            # Could be None, if not using targets with extent.
+            if traversal.from_sep_close_bigger_starts is not None:
+                start, end = (
+                        traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2])
+                for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
+                    np2qbxl_list4_srcs += tree.box_source_counts_nonchild[src_ibox]
+
+            np2qbxl_list4_by_itgt_box[itgt_box] = np2qbxl_list4_srcs
+
         # center -> nsources
         np2qbxl_list1_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
         np2qbxl_list3_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
@@ -449,41 +484,9 @@ class PerformanceModel(object):
             nqbxl2p_by_center[itgt_center] = end - start
 
             itgt_box = qbx_center_to_target_box[tgt_icenter]
-
-            np2qbxl_list1_srcs = 0
-            start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
-            for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
-                nsources = tree.box_source_counts_nonchild[src_ibox]
-
-                np2qbxl_list1_srcs += nsources
-
-            np2qbxl_list1_by_center[itgt_center] = np2qbxl_list1_srcs
-
-            np2qbxl_list3_srcs = 0
-
-            # Could be None, if not using targets with extent.
-            if traversal.from_sep_close_smaller_starts is not None:
-                start, end = (
-                        traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2])
-                for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
-                    nsources = tree.box_source_counts_nonchild[src_ibox]
-
-                    np2qbxl_list3_srcs += nsources
-
-            np2qbxl_list3_by_center[itgt_center] = np2qbxl_list3_srcs
-
-            np2qbxl_list4_srcs = 0
-
-            # Could be None, if not using targets with extent.
-            if traversal.from_sep_close_bigger_starts is not None:
-                start, end = (
-                        traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2])
-                for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
-                    nsources = tree.box_source_counts_nonchild[src_ibox]
-
-                    np2qbxl_list4_srcs += nsources
-
-            np2qbxl_list4_by_center[itgt_center] = np2qbxl_list4_srcs
+            np2qbxl_list1_by_center[itgt_center] = np2qbxl_list1_by_itgt_box[itgt_box]
+            np2qbxl_list3_by_center[itgt_center] = np2qbxl_list3_by_itgt_box[itgt_box]
+            np2qbxl_list4_by_center[itgt_center] = np2qbxl_list4_by_itgt_box[itgt_box]
 
         result = {}
         result["np2qbxl_list1_by_center"] = np2qbxl_list1_by_center
