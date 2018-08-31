@@ -280,9 +280,65 @@ class PerformanceModel(object):
 
     # }}}
 
+    # {{{ collect direct interaction data
+
+    @staticmethod
+    def _collect_direction_interaction_data(traversal, tree):
+        ntarget_boxes = len(traversal.target_boxes)
+
+        # target box index -> nsources
+        nlist1_srcs_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
+        nlist3close_srcs_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
+        nlist4close_srcs_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
+
+        for itgt_box in range(ntarget_boxes):
+            nlist1_srcs = 0
+            start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
+            for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
+                nlist1_srcs += tree.box_source_counts_nonchild[src_ibox]
+
+            nlist1_srcs_by_itgt_box[itgt_box] = nlist1_srcs
+
+            nlist3close_srcs = 0
+            # Could be None, if not using targets with extent.
+            if traversal.from_sep_close_smaller_starts is not None:
+                start, end = (
+                        traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2])
+                for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
+                    nlist3close_srcs += tree.box_source_counts_nonchild[src_ibox]
+
+            nlist3close_srcs_by_itgt_box[itgt_box] = nlist3close_srcs
+
+            nlist4close_srcs = 0
+            # Could be None, if not using targets with extent.
+            if traversal.from_sep_close_bigger_starts is not None:
+                start, end = (
+                        traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2])
+                for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
+                    nlist4close_srcs += tree.box_source_counts_nonchild[src_ibox]
+
+            nlist4close_srcs_by_itgt_box[itgt_box] = nlist4close_srcs
+
+        result = {}
+        result["nlist1_srcs_by_itgt_box"] = nlist1_srcs_by_itgt_box
+        result["nlist3close_srcs_by_itgt_box"] = nlist3close_srcs_by_itgt_box
+        result["nlist4close_srcs_by_itgt_box"] = nlist4close_srcs_by_itgt_box
+
+        return result
+
+    # }}}
+
     # {{{ direct evaluation to point targets (lists 1, 3 close, 4 close)
 
-    def process_direct(self, xlat_cost, traversal, tree, box_target_counts_nonchild):
+    def process_direct(self, xlat_cost, traversal, direct_interaction_data,
+            box_target_counts_nonchild):
+        nlist1_srcs_by_itgt_box = (
+                direct_interaction_data["nlist1_srcs_by_itgt_box"])
+        nlist3close_srcs_by_itgt_box = (
+                direct_interaction_data["nlist3close_srcs_by_itgt_box"])
+        nlist4close_srcs_by_itgt_box = (
+                direct_interaction_data["nlist4close_srcs_by_itgt_box"])
+
         # list -> number of source-target interactions
         npart_direct_list1 = 0
         npart_direct_list3 = 0
@@ -291,40 +347,9 @@ class PerformanceModel(object):
         for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
             ntargets = box_target_counts_nonchild[tgt_ibox]
 
-            npart_direct_list1_srcs = 0
-            start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
-            for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
-                nsources = tree.box_source_counts_nonchild[src_ibox]
-
-                npart_direct_list1_srcs += nsources
-
-            npart_direct_list1 += ntargets * npart_direct_list1_srcs
-
-            npart_direct_list3_srcs = 0
-
-            # Could be None, if not using targets with extent.
-            if traversal.from_sep_close_smaller_starts is not None:
-                start, end = (
-                        traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2])
-                for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
-                    nsources = tree.box_source_counts_nonchild[src_ibox]
-
-                    npart_direct_list3_srcs += nsources
-
-            npart_direct_list3 += ntargets * npart_direct_list3_srcs
-
-            npart_direct_list4_srcs = 0
-
-            # Could be None, if not using targets with extent.
-            if traversal.from_sep_close_bigger_starts is not None:
-                start, end = (
-                        traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2])
-                for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
-                    nsources = tree.box_source_counts_nonchild[src_ibox]
-
-                    npart_direct_list4_srcs += nsources
-
-            npart_direct_list4 += ntargets * npart_direct_list4_srcs
+            npart_direct_list1 += ntargets * nlist1_srcs_by_itgt_box[itgt_box]
+            npart_direct_list3 += ntargets * nlist3close_srcs_by_itgt_box[itgt_box]
+            npart_direct_list4 += ntargets * nlist4close_srcs_by_itgt_box[itgt_box]
 
         result = {}
         result["eval_direct_list1"] = npart_direct_list1 * xlat_cost.direct()
@@ -435,43 +460,14 @@ class PerformanceModel(object):
     # {{{ collect data about direct interactions with qbx centers
 
     @staticmethod
-    def _collect_qbxl_direct_interaction_data(traversal, tree,
+    def _collect_qbxl_direct_interaction_data(direct_interaction_data,
             global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
-
-        ntarget_boxes = len(traversal.target_boxes)
-
-        # target box index -> nsources
-        np2qbxl_list1_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
-        np2qbxl_list3_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
-        np2qbxl_list4_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
-
-        for itgt_box in range(ntarget_boxes):
-            np2qbxl_list1_srcs = 0
-            start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
-            for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
-                np2qbxl_list1_srcs += tree.box_source_counts_nonchild[src_ibox]
-
-            np2qbxl_list1_by_itgt_box[itgt_box] = np2qbxl_list1_srcs
-
-            np2qbxl_list3_srcs = 0
-            # Could be None, if not using targets with extent.
-            if traversal.from_sep_close_smaller_starts is not None:
-                start, end = (
-                        traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2])
-                for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
-                    np2qbxl_list3_srcs += tree.box_source_counts_nonchild[src_ibox]
-
-            np2qbxl_list3_by_itgt_box[itgt_box] = np2qbxl_list3_srcs
-
-            np2qbxl_list4_srcs = 0
-            # Could be None, if not using targets with extent.
-            if traversal.from_sep_close_bigger_starts is not None:
-                start, end = (
-                        traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2])
-                for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
-                    np2qbxl_list4_srcs += tree.box_source_counts_nonchild[src_ibox]
-
-            np2qbxl_list4_by_itgt_box[itgt_box] = np2qbxl_list4_srcs
+        nlist1_srcs_by_itgt_box = (
+                direct_interaction_data["nlist1_srcs_by_itgt_box"])
+        nlist3close_srcs_by_itgt_box = (
+                direct_interaction_data["nlist3close_srcs_by_itgt_box"])
+        nlist4close_srcs_by_itgt_box = (
+                direct_interaction_data["nlist4close_srcs_by_itgt_box"])
 
         # center -> nsources
         np2qbxl_list1_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
@@ -487,11 +483,11 @@ class PerformanceModel(object):
 
             itgt_box = qbx_center_to_target_box[tgt_icenter]
             np2qbxl_list1_by_center[itgt_center] = (
-                    np2qbxl_list1_by_itgt_box[itgt_box])
+                    nlist1_srcs_by_itgt_box[itgt_box])
             np2qbxl_list3_by_center[itgt_center] = (
-                    np2qbxl_list3_by_itgt_box[itgt_box])
+                    nlist3close_srcs_by_itgt_box[itgt_box])
             np2qbxl_list4_by_center[itgt_center] = (
-                    np2qbxl_list4_by_itgt_box[itgt_box])
+                    nlist4close_srcs_by_itgt_box[itgt_box])
 
         result = {}
         result["np2qbxl_list1_by_center"] = np2qbxl_list1_by_center
@@ -505,12 +501,12 @@ class PerformanceModel(object):
 
     # {{{ eval target specific qbx expansions
 
-    def process_eval_target_specific_qbxl(self, xlat_cost, traversal, tree,
+    def process_eval_target_specific_qbxl(self, xlat_cost, direct_interaction_data,
             global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
 
         counts = self._collect_qbxl_direct_interaction_data(
-                traversal, tree, global_qbx_centers, qbx_center_to_target_box,
-                center_to_targets_starts)
+                direct_interaction_data, global_qbx_centers,
+                qbx_center_to_target_box, center_to_targets_starts)
 
         result = {}
         result["eval_target_specific_qbx_locals_list1"] = (
@@ -529,12 +525,12 @@ class PerformanceModel(object):
 
     # {{{ form global qbx locals
 
-    def process_form_qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
-            qbx_center_to_target_box, center_to_targets_starts):
+    def process_form_qbxl(self, xlat_cost, direct_interaction_data,
+            global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
 
         counts = self._collect_qbxl_direct_interaction_data(
-                traversal, tree, global_qbx_centers, qbx_center_to_target_box,
-                center_to_targets_starts)
+                direct_interaction_data, global_qbx_centers,
+                qbx_center_to_target_box, center_to_targets_starts)
 
         result = {}
         result["form_global_qbx_locals_list1"] = (
@@ -692,10 +688,14 @@ class PerformanceModel(object):
 
         # }}}
 
+        direct_interaction_data = (
+                self._collect_direction_interaction_data(traversal, tree))
+
         # {{{ direct evaluation to point targets (lists 1, 3 close, 4 close)
 
         result.update(self.process_direct(
-                xlat_cost, traversal, tree, box_target_counts_nonchild))
+                xlat_cost, traversal, direct_interaction_data,
+                box_target_counts_nonchild))
 
         # }}}
 
@@ -757,11 +757,11 @@ class PerformanceModel(object):
 
         if use_tsqbx:
             result.update(self.process_eval_target_specific_qbxl(
-                    xlat_cost, traversal, tree, global_qbx_centers,
+                    xlat_cost, direct_interaction_data, global_qbx_centers,
                     qbx_center_to_target_box, center_to_targets_starts))
         else:
             result.update(self.process_form_qbxl(
-                    xlat_cost, traversal, tree, global_qbx_centers,
+                    xlat_cost, direct_interaction_data, global_qbx_centers,
                     qbx_center_to_target_box, center_to_targets_starts))
 
         # }}}
