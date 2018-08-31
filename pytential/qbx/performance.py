@@ -66,7 +66,9 @@ class TranslationCostModel(object):
         return var("c_p2qbxl") * self.ncoeffs_qbx
 
     def p2p_tsqbx(self):
-        return var("c_p2p_tsqbx") * self.ncoeffs_qbx
+        # This term should be linear in the QBX order, which is the
+        # square root of the number of QBX coefficients.
+        return var("c_p2p_tsqbx") * self.ncoeffs_qbx ** (1/2)
 
     def qbxl2p(self):
         return var("c_qbxl2p") * self.ncoeffs_qbx
