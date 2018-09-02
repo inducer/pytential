@@ -1138,13 +1138,7 @@ class IntG(Expression):
     def __setstate__(self, state):
         # Overwrite pymbolic.Expression.__setstate__
         assert len(self.init_arg_names) == len(state), type(self)
-        for name, value in zip(self.init_arg_names, state):
-            if name == 'kernel_arguments':
-                value = dict(value)
-                for dict_name in value:
-                    value[dict_name] = np.array(value[dict_name], dtype=object)
-
-            setattr(self, name, value)
+        self.__init__(*state)
 
     mapper_method = intern("map_int_g")
 

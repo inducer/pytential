@@ -169,9 +169,9 @@ def test_tangential_onb(ctx_factory):
 # }}}
 
 
-# {{{ test_expr_picking
+# {{{ test_expr_pickling
 
-def test_expr_picking():
+def test_expr_pickling():
     from sumpy.kernel import LaplaceKernel
     import pickle
     import pytential
