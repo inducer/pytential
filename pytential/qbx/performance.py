@@ -620,15 +620,15 @@ class PerformanceModel(object):
         uses_point_and_shoot = False
 
         if self.uses_pde_expansions:
-            ncoeffs_fmm = p_fmm ** (dim-1)
-            ncoeffs_qbx = p_qbx ** (dim-1)
+            ncoeffs_fmm = (p_fmm + 1) ** (dim-1)
+            ncoeffs_qbx = (p_qbx + 1) ** (dim-1)
 
             if dim == 3:
                 uses_point_and_shoot = True
 
         else:
-            ncoeffs_fmm = p_fmm ** dim
-            ncoeffs_qbx = p_qbx ** dim
+            ncoeffs_fmm = (p_fmm + 1) ** dim
+            ncoeffs_qbx = (p_qbx + 1) ** dim
 
         return TranslationCostModel(
                 ncoeffs_qbx=ncoeffs_qbx,
