@@ -354,7 +354,8 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 # {{{ verify performance model
 
 CONSTANT_ONE_PARAMS = dict(
-        p_qbx=1,
+        # Number of QBX coefficients: 1
+        p_qbx=0,
         c_l2l=1,
         c_l2p=1,
         c_l2qbxl=1,
@@ -378,9 +379,9 @@ def _get_params_for_raw_op_counts(perf_result):
     # Sets model / calibration parameters equal to 1, to obtain raw op counts.
     constant_one_params = CONSTANT_ONE_PARAMS.copy()
 
-    # Set p_fmm_lev* equal to 1.
+    # Set p_fmm_lev* equal to 0 (sets number of coeffs to 1).
     for level in range(perf_result.params["nlevels"]):
-        constant_one_params["p_fmm_lev%d" % level] = 1
+        constant_one_params["p_fmm_lev%d" % level] = 0
 
     return constant_one_params
 
