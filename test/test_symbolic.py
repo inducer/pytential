@@ -172,18 +172,29 @@ def test_tangential_onb(ctx_factory):
 # {{{ test_expr_pickling
 
 def test_expr_pickling():
-    from sumpy.kernel import LaplaceKernel
+    from sumpy.kernel import LaplaceKernel, AxisTargetDerivative
     import pickle
     import pytential
 
-    op = pytential.sym.D(
-        LaplaceKernel(2), pytential.sym.var("sigma"), qbx_forced_limit=-2
-    )
+    ops_for_testing = [
+        pytential.sym.d_dx(
+            2,
+            pytential.sym.D(
+                LaplaceKernel(2), pytential.sym.var("sigma"), qbx_forced_limit=-2
+            )
+        ),
+        pytential.sym.D(
+            AxisTargetDerivative(0, LaplaceKernel(2)),
+            pytential.sym.var("sigma"),
+            qbx_forced_limit=-2
+        )
+    ]
 
-    pickled_op = pickle.dumps(op)
-    after_pickle_op = pickle.loads(pickled_op)
+    for op in ops_for_testing:
+        pickled_op = pickle.dumps(op)
+        after_pickle_op = pickle.loads(pickled_op)
 
-    assert op == after_pickle_op
+        assert op == after_pickle_op
 
 # }}}
 
