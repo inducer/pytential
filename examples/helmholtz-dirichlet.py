@@ -96,8 +96,10 @@ def main():
 
     bdry_op_sym = (-loc_sign*0.5*sigma_sym
             + sqrt_w*(
-                alpha*sym.S(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
-                - sym.D(kernel, inv_sqrt_w_sigma, k=sym.var("k"))
+                alpha*sym.S(kernel, inv_sqrt_w_sigma, k=sym.var("k"),
+                    qbx_forced_limit=+1)
+                - sym.D(kernel, inv_sqrt_w_sigma, k=sym.var("k"),
+                    qbx_forced_limit="avg")
                 ))
 
     # }}}
