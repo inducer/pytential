@@ -486,7 +486,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
                 # Is the box number on the level currently under
                 # consideration?
-                in_range = (lev_box_start <= src_ibox and src_ibox < lev_box_stop)
+                in_range = (lev_box_start <= src_ibox < lev_box_stop)
 
                 if in_range:
                     src_center = self.tree.box_centers[:, src_ibox]
@@ -521,7 +521,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         taeval = self.get_expn_eval_routine("ta")
 
-        for isrc_center, src_icenter in enumerate(global_qbx_centers):
+        for src_icenter in global_qbx_centers:
             for icenter_tgt in range(
                     ctt.starts[src_icenter],
                     ctt.starts[src_icenter+1]):
