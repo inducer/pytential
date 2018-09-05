@@ -387,7 +387,7 @@ class Code(object):
 
                 done_insns.add(insn)
                 assignments = (
-                        insn.get_exec_function(exec_mapper)
+                        self.get_exec_function(insn, exec_mapper)
                         (exec_mapper.queue, insn, exec_mapper.bound_expr,
                             exec_mapper))
 
