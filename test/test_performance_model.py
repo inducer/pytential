@@ -240,7 +240,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         global_qbx_centers = self.geo_data.global_qbx_centers()
         qbx_center_to_target_box = self.geo_data.qbx_center_to_target_box()
 
-        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+        for tgt_icenter in global_qbx_centers:
             itgt_box = qbx_center_to_target_box[tgt_icenter]
 
             start, end = (
