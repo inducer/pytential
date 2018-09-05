@@ -175,7 +175,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     def exec_assign(self, queue, insn, bound_expr, evaluate):
         return [(name, evaluate(expr))
-                for name, expr in zip(insn.names, insn.exprs)], []
+                for name, expr in zip(insn.names, insn.exprs)]
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         raise NotImplementedError
@@ -238,14 +238,14 @@ class EvaluationMapper(EvaluationMapperBase):
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         source = bound_expr.places[insn.source]
 
-        result, futures, timing_data = (
+        result, timing_data = (
                 source.exec_compute_potential_insn(
                     queue, insn, bound_expr, evaluate))
 
         if self.timing_data is not None:
             self.timing_data[insn] = timing_data
 
-        return (result, futures)
+        return result
 
 # }}}
 
@@ -275,11 +275,11 @@ class PerformanceModelMapper(EvaluationMapperBase):
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         source = bound_expr.places[insn.source]
-        result, futures, perf_model_result = (
+        result, perf_model_result = (
                 source.perf_model_compute_potential_insn(
                     queue, insn, bound_expr, evaluate))
         self.modeled_performance[insn] = perf_model_result
-        return result, futures
+        return result
 
     def get_modeled_performance(self):
         return self.modeled_performance

@@ -139,8 +139,7 @@ class PointPotentialSource(PotentialSource):
             result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
         timing_data = {}
-        new_futures = []
-        return result, new_futures, timing_data
+        return result, timing_data
 
     @memoize_method
     def weights_and_area_elements(self):
@@ -275,3 +274,5 @@ class LayerPotentialSourceBase(PotentialSource):
     # }}}
 
 # }}}
+
+# vim: foldmethod=marker
