@@ -1156,7 +1156,7 @@ def _insert_source_derivative_into_kernel(kernel):
                 kernel, dir_vec_name=_DIR_VEC_NAME)
     else:
         return kernel.replace_inner_kernel(
-                _insert_source_derivative_into_kernel(kernel.kernel))
+                _insert_source_derivative_into_kernel(kernel.inner_kernel))
 
 
 def _get_dir_vec(dsource, ambient_dim):
