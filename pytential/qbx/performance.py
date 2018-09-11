@@ -670,7 +670,7 @@ class PerformanceModel(object):
         for ilevel in range(tree.nlevels):
             params["p_fmm_lev%d" % ilevel] = (
                     lpot_source.fmm_level_to_order(
-                        kernel, kernel_arguments, tree, ilevel))
+                        kernel.get_base_kernel(), kernel_arguments, tree, ilevel))
 
         params.update(self.calibration_params)
 
