@@ -556,13 +556,3 @@ def eval_target_specific_qbx_locals(
                                 grad_complex[tid, 2] * dipvec[2, isrc])
 
             pot[tgt] = pot[tgt] + result
-
-        # The Cython-generated OpenMP loop marks these variables as lastprivate.
-        # Due to this GCC warns that these could be used without being initialized.
-        # Initialize them here to suppress the warning.
-        result = 0
-        tid = 0
-        ctr = 0
-        src_ibox = tgt_box = 0
-        tgt = itgt = itgt_start = itgt_end = 0
-        isrc = isrc_box = isrc_start = isrc_end = isrc_box_start = isrc_box_end = 0
