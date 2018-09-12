@@ -198,24 +198,58 @@ cdef void tsqbx_laplace_dlp(
     return
 
 
+cdef void tsqbx_helmholtz_precompute(
+        double[3] center,
+        double[3] target,
+        int order,
+        double complex k,
+        double complex *jvals,
+        double *jscale) nogil:
+    """Evaluate the source-invariant Bessel terms for the Helmholtz TSQBX
+    kernel."""
+
+    cdef:
+        double complex z
+        double tc_d
+        int ier, ntop, ifder, lwfjs
+        int[BUFSIZE] iscale
+
+    tc_d = dist(target, center)
+    jscale[0] = cabs(k * tc_d) if (cabs(k * tc_d) < 1) else 1
+
+    # Evaluate the spherical Bessel terms.
+    z = k * tc_d
+    ifder = 0
+    lwfjs = BUFSIZE
+    # jfuns3d_ only supports order > 0 (goes out of bounds if order = 0)
+    order = max(1, order)
+    jfuns3d_(&ier, &order, &z, jscale, jvals, &ifder, NULL, &lwfjs, iscale,
+             &ntop)
+    if ier:
+        # This could in theory fail.
+        fprintf(stderr, "array passed to jfuns3d was too small\n")
+        abort()
+
+
 cdef void tsqbx_helmholtz_dlp(
         double[3] source,
         double[3] center,
         double[3] target,
         double complex[3] grad,
         int order,
-        double complex k) nogil:
+        double complex k,
+        double complex *jvals,
+        double jscale) nogil:
     cdef:
         int n, m
-        int ier, ntop, ifder, lwfjs
+        int ifder
         double sc_d, tc_d, cos_angle, alpha
         double[3] cms, tmc
         double complex[3] grad_tmp
         double[BUFSIZE] lvals, lderivs
         double complex z
-        double complex[BUFSIZE] jvals, hvals, hderivs
-        int[BUFSIZE] iscale
-        double jscale, hscale, unscale
+        double complex [BUFSIZE] hvals, hderivs
+        double hscale, unscale
 
     for m in range(3):
         cms[m] = center[m] - source[m]
@@ -235,24 +269,12 @@ cdef void tsqbx_helmholtz_dlp(
     # Evaluate the Legendre terms.
     legvals(cos_angle, order, lvals, lderivs)
 
-    # Scaling magic for Bessel and Hankel terms.
+    # Scaling magic for Hankel terms.
     # These values are taken from the fmmlib documentation.
-    jscale = cabs(k * tc_d) if (cabs(k * tc_d) < 1) else 1
     hscale = cabs(k * sc_d) if (cabs(k * sc_d) < 1) else 1
     # unscale = (jscale / hscale) ** n
     # Multiply against unscale to remove the scaling.
     unscale = 1
-
-    # Evaluate the spherical Bessel terms.
-    z = k * tc_d
-    ifder = 0
-    lwfjs = BUFSIZE
-    jfuns3d_(&ier, &order, &z, &jscale, jvals, &ifder, NULL, &lwfjs, iscale,
-             &ntop)
-    if ier:
-        # This could in theory fail.
-        fprintf(stderr, "array passed to jfuns3d was too small\n")
-        abort()
 
     # Evaluate the spherical Hankel terms.
     z = k * sc_d
@@ -335,14 +357,15 @@ cdef double complex tsqbx_helmholtz_slp(
         double[3] center,
         double[3] target,
         int order,
-        double complex k) nogil:
+        double complex k,
+        double complex *jvals,
+        double jscale) nogil:
     cdef:
-        int n, ntop, ier, ifder, lwfjs
+        int n, ifder
         double sc_d, tc_d, cos_angle
         double[BUFSIZE] lvals
-        double complex[BUFSIZE] jvals, hvals
-        int[BUFSIZE] iscale
-        double jscale, hscale, unscale
+        double complex[BUFSIZE] hvals
+        double hscale, unscale
         double complex z, result
 
     tc_d = dist(target, center)
@@ -357,27 +380,16 @@ cdef double complex tsqbx_helmholtz_slp(
     # Evaluate the Legendre terms.
     legvals(cos_angle, order, lvals, NULL)
 
-    # Scaling magic for Bessel and Hankel terms.
+    # Scaling magic for Hankel terms.
     # These values are taken from the fmmlib documentation.
-    jscale = cabs(k * tc_d) if (cabs(k * tc_d) < 1) else 1
     hscale = cabs(k * sc_d) if (cabs(k * sc_d) < 1) else 1
     # unscale = (jscale / hscale) ** n
     # Multiply against unscale to remove the scaling.
     unscale = 1
 
-    # Evaluate the spherical Bessel terms.
-    z = k * tc_d
-    ifder = 0
-    lwfjs = BUFSIZE
-    jfuns3d_(&ier, &order, &z, &jscale, jvals, &ifder, NULL, &lwfjs, iscale,
-             &ntop)
-    if ier:
-        # This could in theory fail.
-        fprintf(stderr, "array passed to jfuns3d was too small\n")
-        abort()
-
     # Evaluate the spherical Hankel terms.
     z = k * sc_d
+    ifder = 0
     h3dall_(&order, &z, &hscale, hvals, &ifder, NULL)
 
     result = 0
@@ -433,9 +445,10 @@ def eval_target_specific_qbx_locals(
         int isrc_box, isrc_box_start, isrc_box_end
         int isrc, isrc_start, isrc_end
         int m, tid
+        double jscale
         double complex result
         double[:,:] source, center, target, grad
-        double complex[:,:] grad_complex
+        double complex[:,:] grad_complex, jvals
         int laplace_slp, helmholtz_slp, laplace_dlp, helmholtz_dlp
 
     if charge is None and (dipstr is None or dipvec is None):
@@ -463,13 +476,17 @@ def eval_target_specific_qbx_locals(
     center = np.zeros((maxthreads, 65))
     grad = np.zeros((maxthreads, 65))
     grad_complex = np.zeros((maxthreads, 65), dtype=np.complex)
+    jvals = np.zeros((maxthreads, BUFSIZE + 65), dtype=np.complex)
 
-    # TODO: Check that the order is not too high, since some temporary arrays
-    # used above might overflow if that is the case.
+    # TODO: Check that the order is not too high, since temporary
+    # arrays in this module that are limited by BUFSIZE may overflow
+    # if that is the case
 
     for ictr in cython.parallel.prange(0, qbx_centers.shape[0],
                                        nogil=True, schedule="static",
                                        chunksize=128):
+        # Assign to jscale so Cython marks it as private
+        jscale = 0
         ctr = qbx_centers[ictr]
         itgt_start = center_to_target_starts[ctr]
         itgt_end = center_to_target_starts[ctr + 1]
@@ -485,6 +502,11 @@ def eval_target_specific_qbx_locals(
 
             for m in range(3):
                 target[tid, m] = targets[m, tgt]
+
+            if helmholtz_slp or helmholtz_dlp:
+                tsqbx_helmholtz_precompute(&center[tid, 0], &target[tid, 0],
+                                           order, helmholtz_k, &jvals[tid, 0],
+                                           &jscale)
 
             isrc_box_start = source_box_starts[tgt_box]
             isrc_box_end = source_box_starts[tgt_box + 1]
@@ -510,7 +532,8 @@ def eval_target_specific_qbx_locals(
                         result = result + charge[isrc] * (
                                 tsqbx_helmholtz_slp(&source[tid, 0], &center[tid, 0],
                                                     &target[tid, 0], order,
-                                                    helmholtz_k))
+                                                    helmholtz_k, &jvals[tid, 0],
+                                                    jscale))
 
                     elif laplace_dlp:
                         tsqbx_laplace_dlp(&source[tid, 0], &center[tid, 0],
@@ -524,7 +547,8 @@ def eval_target_specific_qbx_locals(
                     elif helmholtz_dlp:
                         tsqbx_helmholtz_dlp(&source[tid, 0], &center[tid, 0],
                                             &target[tid, 0], &grad_complex[tid, 0],
-                                            order, helmholtz_k)
+                                            order, helmholtz_k, &jvals[tid, 0],
+                                            jscale)
 
                         result = result + dipstr[isrc] * (
                                 grad_complex[tid, 0] * dipvec[0, isrc] +
