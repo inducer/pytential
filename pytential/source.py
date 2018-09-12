@@ -38,7 +38,7 @@ __doc__ = """
 
 class PotentialSource(object):
     """
-    .. method:: preprocess_optemplate(name, expr)
+    .. automethod:: preprocess_optemplate
 
     .. method:: op_group_features(expr)
 
@@ -49,29 +49,43 @@ class PotentialSource(object):
         :class:`pytential.symbolic.primitives.IntG`.
     """
 
+    def preprocess_optemplate(self, name, discretizations, expr):
+        return expr
+
 
 # {{{ point potential source
 
 class PointPotentialSource(PotentialSource):
     """
-    .. attribute:: points
+    .. attribute:: nodes
 
-        An :class:`pyopencl.array.Array` of shape ``[ambient_dim, npoints]``.
+        An :class:`pyopencl.array.Array` of shape ``[ambient_dim, nnodes]``.
 
     .. attribute:: nnodes
     """
 
-    def __init__(self, cl_context, points):
+    def __init__(self, cl_context, nodes):
         self.cl_context = cl_context
-        self.points = points
+        self._nodes = nodes
+
+    @property
+    def points(self):
+        from warnings import warn
+        warn("'points' has been renamed to nodes().",
+             DeprecationWarning, stacklevel=2)
+
+        return self._nodes
+
+    def nodes(self):
+        return self._nodes
 
     @property
     def real_dtype(self):
-        return self.points.dtype
+        return self._nodes.dtype
 
     @property
     def nnodes(self):
-        return self.points.shape[-1]
+        return self._nodes.shape[-1]
 
     @property
     def complex_dtype(self):
@@ -82,7 +96,7 @@ class PointPotentialSource(PotentialSource):
 
     @property
     def ambient_dim(self):
-        return self.points.shape[0]
+        return self._nodes.shape[0]
 
     def op_group_features(self, expr):
         from sumpy.kernel import AxisTargetDerivativeRemover
@@ -129,7 +143,7 @@ class PointPotentialSource(PotentialSource):
                 p2p = self.get_p2p(insn.kernels)
 
             evt, output_for_each_kernel = p2p(queue,
-                    target_discr.nodes(), self.points,
+                    target_discr.nodes(), self._nodes,
                     [strengths], **kernel_args)
 
             result.append((o.name, output_for_each_kernel[o.kernel_index]))
@@ -139,7 +153,7 @@ class PointPotentialSource(PotentialSource):
     @memoize_method
     def weights_and_area_elements(self):
         with cl.CommandQueue(self.cl_context) as queue:
-            result = cl.array.empty(queue, self.points.shape[-1],
+            result = cl.array.empty(queue, self._nodes.shape[-1],
                     dtype=self.real_dtype)
             result.fill(1)
 
