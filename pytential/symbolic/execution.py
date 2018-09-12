@@ -341,9 +341,13 @@ def _prepare_expr(places, expr):
 
 class GeometryCollection(object):
     """A mapping from symbolic identifiers ("place IDs", typically strings)
-    of layer potential. This class is meant to hold
-    a specific combination of sources and targets and cache any common
-    expressions specific to it, e.g. metric terms, etc.
+    to 'geometries', where a geometry can be a
+    :class:`pytential.source.PotentialSource`
+    or a :class:`pytential.target.TargetBase`.
+    This class is meant to hold a specific combination of sources and targets
+    serve to host caches of information derived from them, e.g. FMM trees
+    of subsets of them, as well as related common subexpressions such as
+    metric terms.
 
     .. method:: __getitem__
     .. method:: get_discretization
@@ -523,6 +527,7 @@ def bind(places, expr, auto_where=None):
 
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
+
     expr = _prepare_expr(places, expr)
 
     return BoundExpression(places, expr)

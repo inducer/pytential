@@ -38,7 +38,7 @@ __doc__ = """
 
 class PotentialSource(object):
     """
-    .. method:: preprocess_optemplate(name, discretizations, expr)
+    .. automethod:: preprocess_optemplate
 
     .. method:: op_group_features(expr)
 
