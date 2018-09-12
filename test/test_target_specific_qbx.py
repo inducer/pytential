@@ -47,11 +47,11 @@ logger = logging.getLogger(__name__)
 def test_spherical_bessel_functions():
     import pytential.qbx.target_specific as ts
 
-    nterms = 10
+    nterms = 9
     z = 3j
     scale = 1
-    j = np.zeros(nterms, dtype=np.complex)
-    jder = np.zeros(nterms, dtype=np.complex)
+    j = np.zeros(1 + nterms, dtype=np.complex)
+    jder = np.zeros(1 + nterms, dtype=np.complex)
     ts.jfuns3d_wrapper(nterms, z, scale, j, jder)
 
     # Reference solution computed using scipy.special.spherical_jn
@@ -90,11 +90,11 @@ def test_spherical_bessel_functions():
 def test_spherical_hankel_functions():
     import pytential.qbx.target_specific as ts
 
-    nterms = 10
+    nterms = 9
     z = 2 + 3j
     scale = 1
-    h = np.zeros(nterms, dtype=np.complex)
-    hder = np.zeros(nterms, dtype=np.complex)
+    h = np.zeros(1 + nterms, dtype=np.complex)
+    hder = np.zeros(1 + nterms, dtype=np.complex)
     ts.h3dall_wrapper(nterms, z, scale, h, hder)
 
     # Reference solution computed using

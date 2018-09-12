@@ -32,7 +32,7 @@ def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
     """Evaluate spherical Bessel functions.
 
     Arguments:
-        nterms: Number of terms to evaluate
+        nterms: Highest order to be computed
         z: Argument
         scale: Output scaling factor (recommended: min(abs(z), 1))
         fjs: Output array of complex doubles
@@ -46,6 +46,9 @@ def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
         double scale_
         double complex z_
 
+    if nterms <= 0:
+        raise ValueError("nterms should be positive")
+
     nterms_ = nterms
     z_ = z
     scale_ = scale
@@ -58,7 +61,7 @@ def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
     if ier:
         raise ValueError("jfuns3d_ returned error code %d" % ier)
 
-    for i in range(nterms):
+    for i in range(1 + nterms):
         fjs[i] = fjstemp[i]
         if ifder:
             fjder[i] = fjdertmp[i]
@@ -68,7 +71,7 @@ def h3dall_wrapper(nterms, z, scale, hs, hders):
     """Evaluate spherical Hankel functions.
 
     Arguments:
-        nterms: Number of terms to evaluate
+        nterms: Highest order to be computed
         z: Argument
         scale: Output scaling factor (recommended: min(abs(z), 1))
         hs: Output array of complex doubles
@@ -78,23 +81,23 @@ def h3dall_wrapper(nterms, z, scale, hs, hders):
         int nterms_, ifder
         double scale_
         double complex z_
-        double complex[:] hvec = np.empty(nterms, np.complex)
-        double complex[:] hdervec = np.empty(nterms, np.complex)
+        double complex[:] hvec = np.empty(1 + nterms, np.complex)
+        double complex[:] hdervec = np.empty(1 + nterms, np.complex)
 
     ifder = hders is not None
 
-    if nterms == 0:
-        return
+    if nterms <= 0:
+        raise ValueError("nterms should be positive")
 
-    nterms_ = nterms - 1
     z_ = z
     scale_ = scale
+    nterms_ = nterms
 
     h3dall_(&nterms_, &z_, &scale_, &hvec[0], &ifder, &hdervec[0])
 
-    hs[:nterms] = hvec[:]
+    hs[:1 + nterms] = hvec[:]
     if ifder:
-        hders[:nterms] = hdervec[:]
+        hders[:1 + nterms] = hdervec[:]
 
 
 cdef void legvals(double x, int n, double[] vals, double[] derivs) nogil:
