@@ -553,10 +553,9 @@ class PerformanceModel(object):
         assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
-
-            for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+            for tgt_icenter in global_qbx_centers:
                 icontaining_tgt_box = qbx_center_to_target_box_source_level[
-                    isrc_level][tgt_icenter]
+                        isrc_level][tgt_icenter]
 
                 if icontaining_tgt_box == -1:
                     continue
@@ -581,7 +580,7 @@ class PerformanceModel(object):
             qbx_center_to_target_box):
         nl2qbxl_by_level = np.zeros(tree.nlevels, dtype=np.intp)
 
-        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+        for tgt_icenter in global_qbx_centers:
             itgt_box = qbx_center_to_target_box[tgt_icenter]
             tgt_ibox = traversal.target_boxes[itgt_box]
             level = tree.box_levels[tgt_ibox]
@@ -601,7 +600,7 @@ class PerformanceModel(object):
             center_to_targets_starts):
         result = 0
 
-        for isrc_center, src_icenter in enumerate(global_qbx_centers):
+        for src_icenter in global_qbx_centers:
             start, end = center_to_targets_starts[src_icenter:src_icenter+2]
             result += (end - start)
 
