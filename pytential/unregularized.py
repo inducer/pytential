@@ -187,7 +187,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
-        return result, []
+        return result
 
     # {{{ fmm-based execution
 
@@ -288,7 +288,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        return result, []
+        return result
 
     # }}}
 

@@ -179,7 +179,7 @@ class EvaluationMapper(EvaluationMapperBase):
 
     def exec_assign(self, queue, insn, bound_expr, evaluate):
         return [(name, evaluate(expr))
-                for name, expr in zip(insn.names, insn.exprs)], []
+                for name, expr in zip(insn.names, insn.exprs)]
 
     # {{{ functions
 

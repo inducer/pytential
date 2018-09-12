@@ -757,7 +757,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if self.geometry_data_inspector is not None:
             perform_fmm = self.geometry_data_inspector(insn, bound_expr, geo_data)
             if not perform_fmm:
-                return [(o.name, 0) for o in insn.outputs], []
+                return [(o.name, 0) for o in insn.outputs]
 
         # }}}
 
@@ -780,7 +780,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     (o.name,
                         all_potentials_on_every_tgt[o.kernel_index][tgt_slice]))
 
-        return result, []
+        return result
 
     # }}}
 
@@ -941,7 +941,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
-        return result, []
+        return result
 
     # }}}
 
