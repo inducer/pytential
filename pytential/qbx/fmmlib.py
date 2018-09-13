@@ -492,7 +492,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         for isrc_level in range(nlevels):
             lev_box_start, lev_box_stop = self.tree.level_start_box_nrs[
                     isrc_level:isrc_level+2]
-            box_to_rscale[lev_box_start:lev_box_stop] = self.level_to_rscale(isrc_level)
+            box_to_rscale[lev_box_start:lev_box_stop] = (
+                    self.level_to_rscale(isrc_level))
 
         box_centers = self._get_single_box_centers_array()
 
