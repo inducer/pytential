@@ -292,8 +292,10 @@ class ToTargetTagger(LocationTagger):
     """
 
     def __init__(self, default_source, default_target):
-        LocationTagger.__init__(self, default_target)
-        self.operand_rec = LocationTagger(default_source)
+        LocationTagger.__init__(self, default_target,
+                                default_source=default_source)
+        self.operand_rec = LocationTagger(default_source,
+                                          default_source=default_source)
 
 # }}}
 
@@ -397,19 +399,15 @@ class QBXPreprocessor(IdentityMapper):
         self.places = places
 
     def map_int_g(self, expr):
-        source = self.places[self.source_name]
-        target_discr = self.places[expr.target]
-
-        from pytential.source import LayerPotentialSourceBase
-        if isinstance(target_discr, LayerPotentialSourceBase):
-            target_discr = target_discr.density_discr
+        source_discr = self.places.get_discretization(self.source_name)
+        target_discr = self.places.get_discretization(expr.target)
 
         if expr.qbx_forced_limit == 0:
             raise ValueError("qbx_forced_limit == 0 was a bad idea and "
                     "is no longer supported. Use qbx_forced_limit == 'avg' "
                     "to request two-sided averaging explicitly if needed.")
 
-        is_self = source.density_discr is target_discr
+        is_self = source_discr is target_discr
 
         expr = expr.copy(
                 kernel=expr.kernel,
@@ -453,8 +451,12 @@ class QBXPreprocessor(IdentityMapper):
 # {{{ stringifier
 
 def stringify_where(where):
-    if isinstance(where, prim._QBXSourceStage2):
+    if isinstance(where, prim.QBXSourceStage1):
+        return "stage1(%s)" % stringify_where(where.where)
+    if isinstance(where, prim.QBXSourceStage2):
         return "stage2(%s)" % stringify_where(where.where)
+    if isinstance(where, prim.QBXSourceQuadStage2):
+        return "quad_stage2(%s)" % stringify_where(where.where)
 
     if where is None:
         return "?"

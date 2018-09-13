@@ -169,8 +169,38 @@ def test_tangential_onb(ctx_factory):
 # }}}
 
 
+# {{{ test_expr_pickling
+
+def test_expr_pickling():
+    from sumpy.kernel import LaplaceKernel, AxisTargetDerivative
+    import pickle
+    import pytential
+
+    ops_for_testing = [
+        pytential.sym.d_dx(
+            2,
+            pytential.sym.D(
+                LaplaceKernel(2), pytential.sym.var("sigma"), qbx_forced_limit=-2
+            )
+        ),
+        pytential.sym.D(
+            AxisTargetDerivative(0, LaplaceKernel(2)),
+            pytential.sym.var("sigma"),
+            qbx_forced_limit=-2
+        )
+    ]
+
+    for op in ops_for_testing:
+        pickled_op = pickle.dumps(op)
+        after_pickle_op = pickle.loads(pickled_op)
+
+        assert op == after_pickle_op
+
+# }}}
+
+
 # You can test individual routines by typing
-# $ python test_tools.py 'test_routine()'
+# $ python test_symbolic.py 'test_routine()'
 
 if __name__ == "__main__":
     import sys

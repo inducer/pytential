@@ -572,7 +572,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             maxstretch = bind(
                     self, sym._simplex_mapping_max_stretch_factor(
                         self.ambient_dim,
-                        where=sym._QBXSourceStage2(sym.DEFAULT_SOURCE))
+                        where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE))
                     )(queue)
             maxstretch = utils.to_last_dim_length(
                     self.stage2_density_discr, maxstretch, last_dim_length)
