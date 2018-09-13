@@ -471,7 +471,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
-        if geo_data.ncenters == 0:
+        global_qbx_centers = geo_data.global_qbx_centers()
+
+        if global_qbx_centers.size == 0:
             return qbx_expansions
 
         trav = geo_data.traversal()
@@ -479,7 +481,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         qbx_centers = geo_data.centers()
         qbx_radii = geo_data.expansion_radii()
 
-        global_qbx_centers = geo_data.global_qbx_centers()
         is_global_qbx_center = np.zeros(geo_data.ncenters, dtype=int)
         is_global_qbx_center[global_qbx_centers] = 1
 
