@@ -578,7 +578,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             maxstretch = bind(
                     self, sym._simplex_mapping_max_stretch_factor(
                         self.ambient_dim,
-                        where=sym._QBXSourceStage2(sym.DEFAULT_SOURCE))
+                        where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE))
                     )(queue)
             maxstretch = utils.to_last_dim_length(
                     self.stage2_density_discr, maxstretch, last_dim_length)
@@ -839,7 +839,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if self.geometry_data_inspector is not None:
             perform_fmm = self.geometry_data_inspector(insn, bound_expr, geo_data)
             if not perform_fmm:
-                return [(o.name, 0) for o in insn.outputs], []
+                return [(o.name, 0) for o in insn.outputs]
 
         # }}}
 
@@ -862,10 +862,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             result.append((o.name,
                     all_potentials_on_every_target[o.kernel_index][target_slice]))
 
-        new_futures = []
-        return result, new_futures, timing_data
-
-    # }}}
+        return result, timing_data
 
     # }}}
 
@@ -1027,8 +1024,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
         timing_data = {}
-        new_futures = []
-        return result, new_futures, timing_data
+        return result, timing_data
 
     # }}}
 

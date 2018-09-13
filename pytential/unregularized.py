@@ -188,8 +188,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
         timing_data = {}
-        new_futures = []
-        return result, new_futures, timing_data
+        return result, timing_data
 
     # {{{ fmm-based execution
 
@@ -291,8 +290,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        new_futures = []
-        return result, new_futures, timing_data
+        return result, timing_data
 
     # }}}
 

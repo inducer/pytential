@@ -305,7 +305,7 @@ class Code(object):
 
         return "\n".join(lines)
 
-    # {{{ dynamic scheduler (generates static schedules by self-observation)
+    # {{{ dynamic scheduler
 
     class NoInstructionAvailable(Exception):
         pass
@@ -370,37 +370,34 @@ class Code(object):
         done_insns = set()
 
         while True:
-            insn = None
             discardable_vars = []
+            insn = None
 
-            # pick the next insn
-            if insn is None:
-                try:
-                    insn, discardable_vars = self.get_next_step(
-                            frozenset(list(context.keys())),
-                            frozenset(done_insns))
+            try:
+                insn, discardable_vars = self.get_next_step(
+                        frozenset(list(context.keys())),
+                        frozenset(done_insns))
 
-                except self.NoInstructionAvailable:
-                    # no available instructions: we're done
-                    break
-                else:
-                    for name in discardable_vars:
-                        del context[name]
+            except self.NoInstructionAvailable:
+                # no available instructions: we're done
+                break
+            else:
+                for name in discardable_vars:
+                    del context[name]
 
-                    done_insns.add(insn)
-                    assignments, new_futures = (
-                            self.get_exec_function(insn, exec_mapper)
-                            (exec_mapper.queue, insn, exec_mapper.bound_expr,
-                                exec_mapper))
+                done_insns.add(insn)
+                assignments = (
+                        self.get_exec_function(insn, exec_mapper)
+                        (exec_mapper.queue, insn, exec_mapper.bound_expr,
+                            exec_mapper))
 
-            if insn is not None:
+                assignees = insn.get_assignees()
                 for target, value in assignments:
                     if pre_assign_check is not None:
                         pre_assign_check(target, value)
 
+                    assert target in assignees
                     context[target] = value
-
-                assert not new_futures
 
         if len(done_insns) < len(self.instructions):
             print("Unreachable instructions:")
