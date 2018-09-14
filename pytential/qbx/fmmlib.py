@@ -471,59 +471,89 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
-        if geo_data.ncenters == 0:
+        global_qbx_centers = geo_data.global_qbx_centers()
+
+        if global_qbx_centers.size == 0:
             return qbx_expansions
+
         trav = geo_data.traversal()
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
         qbx_centers = geo_data.centers()
         qbx_radii = geo_data.expansion_radii()
 
-        locloc = self.get_translation_routine("%ddlocloc")
+        is_global_qbx_center = np.zeros(geo_data.ncenters, dtype=int)
+        is_global_qbx_center[global_qbx_centers] = 1
 
-        for isrc_level in range(geo_data.tree().nlevels):
+        locloc = self.get_translation_routine("%ddlocloc", vec_suffix="_qbx")
+
+        nlevels = geo_data.tree().nlevels
+
+        box_to_rscale = np.empty(geo_data.tree().nboxes, dtype=np.float)
+        for isrc_level in range(nlevels):
             lev_box_start, lev_box_stop = self.tree.level_start_box_nrs[
                     isrc_level:isrc_level+2]
+            box_to_rscale[lev_box_start:lev_box_stop] = (
+                    self.level_to_rscale(isrc_level))
+
+        box_centers = self._get_single_box_centers_array()
+
+        # This translates from target box to global box numbers.
+        qbx_center_to_box = trav.target_boxes[qbx_center_to_target_box]
+
+        kwargs = {}
+        kwargs.update(self.kernel_kwargs)
+
+        for isrc_level in range(nlevels):
+            lev_box_start, lev_box_stop = self.tree.level_start_box_nrs[
+                    isrc_level:isrc_level+2]
+
             locals_level_start_ibox, locals_view = \
                     self.local_expansions_view(local_exps, isrc_level)
+
             assert locals_level_start_ibox == lev_box_start
 
-            kwargs = {}
-            kwargs.update(self.kernel_kwargs)
+            # Find used QBX centers that are on this level. (This is not ideal,
+            # but we're supplied a mapping of QBX centers to boxes and we have
+            # to invert that in some way.)
+            curr_level_qbx_centers = np.flatnonzero(
+                    is_global_qbx_center
+                    & (lev_box_start <= qbx_center_to_box)
+                    & (qbx_center_to_box < lev_box_stop))
 
-            for tgt_icenter in range(geo_data.ncenters):
-                if self.dim == 3 and self.eqn_letter == "h":
-                    # Yuck: This keeps overwriting 'radius' in the dict.
-                    kwargs["radius"] = 0.5 * (
-                            geo_data.expansion_radii()[tgt_icenter])
+            if curr_level_qbx_centers.size == 0:
+                continue
 
-                isrc_box = qbx_center_to_target_box[tgt_icenter]
+            icurr_level_qbx_center_to_box = (
+                    qbx_center_to_box[curr_level_qbx_centers])
 
-                tgt_center = qbx_centers[:, tgt_icenter]
+            if self.dim == 3 and self.eqn_letter == "h":
+                kwargs["radius"] = 0.5 * (
+                        geo_data.expansion_radii()[curr_level_qbx_centers])
 
-                # The box's expansions which we're translating here
-                # (our source) is, globally speaking, a target box.
+            # This returns either the expansion or a tuple (ier, expn).
+            rvals = locloc(
+                    rscale1=box_to_rscale,
+                    rscale1_offsets=icurr_level_qbx_center_to_box,
+                    center1=box_centers,
+                    center1_offsets=icurr_level_qbx_center_to_box,
+                    expn1=locals_view.T,
+                    expn1_offsets=icurr_level_qbx_center_to_box - lev_box_start,
+                    nterms1=self.level_nterms[isrc_level],
+                    nterms2=self.qbx_order,
+                    rscale2=qbx_radii,
+                    rscale2_offsets=curr_level_qbx_centers,
+                    center2=qbx_centers,
+                    center2_offsets=curr_level_qbx_centers,
+                    **kwargs)
 
-                src_ibox = trav.target_boxes[isrc_box]
+            if isinstance(rvals, tuple):
+                ier, expn2 = rvals
+                if ier.any():
+                    raise RuntimeError("locloc failed")
+            else:
+                expn2 = rvals
 
-                # Is the box number on the level currently under
-                # consideration?
-                in_range = (lev_box_start <= src_ibox and src_ibox < lev_box_stop)
-
-                if in_range:
-                    src_center = self.tree.box_centers[:, src_ibox]
-                    tmp_loc_exp = locloc(
-                                rscale1=self.level_to_rscale(isrc_level),
-                                center1=src_center,
-                                expn1=locals_view[
-                                    src_ibox - locals_level_start_ibox].T,
-
-                                rscale2=qbx_radii[tgt_icenter],
-                                center2=tgt_center,
-                                nterms2=self.qbx_order,
-
-                                **kwargs)[..., 0].T
-
-                    qbx_expansions[tgt_icenter] += tmp_loc_exp
+            qbx_expansions[curr_level_qbx_centers] += expn2.T
 
         return qbx_expansions
 
