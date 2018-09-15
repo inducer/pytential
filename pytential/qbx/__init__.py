@@ -785,8 +785,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             result.append((o.name, output_array))
 
-        new_futures = []
-        return result, new_futures, performance_model_result
+        return result, performance_model_result
 
         # }}}
 
