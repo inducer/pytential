@@ -631,7 +631,9 @@ class PerformanceModel(object):
         # {{{ propagate local_exps downward
 
         result["refine_locals"] = (
-                traversal.ntarget_or_target_parent_boxes * xlat_cost.l2l())
+                # Don't count the root box.
+                max(traversal.ntarget_or_target_parent_boxes - 1, 0)
+                * xlat_cost.l2l())
 
         # }}}
 
