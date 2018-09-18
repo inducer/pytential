@@ -11,6 +11,9 @@ potentials (and, sooner or later, volume potentials).
 It also knows how to set up meshes and solve integral
 equations.
 
+See `here <https://documen.tician.de/pytential/misc.html#installing-pytential>`_
+for easy, self-contained installation instructions for Linux and macOS.
+
 It relies on
 
 * `numpy <http://pypi.python.org/pypi/numpy>`_ for arrays
@@ -25,11 +28,12 @@ and, indirectly,
 
 * `PyOpenCL <http://pypi.python.org/pypi/pyopencl>`_ as computational infrastructure
 
-PyOpenCL is likely the only package you'll have to install
-by hand, all the others will be installed automatically.
+.. image:: https://badge.fury.io/py/pytential.png
+    :target: http://pypi.python.org/pypi/pytential
 
 Resources:
 
+* `installation instructions <https://documen.tician.de/pytential/misc.html#installing-pytential>`_
 * `documentation <http://documen.tician.de/pytential>`_
 * `wiki home page <http://wiki.tiker.net/Pytential>`_
 * `source code via git <http://github.com/inducer/pytential>`_
