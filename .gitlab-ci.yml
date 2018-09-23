@@ -62,9 +62,6 @@ Python 3.6 Conda:
   except:
   - tags
 
-  # https://gitlab.tiker.net/inducer/pytential/issues/112
-  allow_failure: true
-
   artifacts:
     reports:
       junit: test/pytest.xml
@@ -100,6 +97,10 @@ Python 3.6 Conda Apple:
   except:
   - tags
   retry: 2
+
+  # https://gitlab.tiker.net/inducer/pytential/issues/112
+  allow_failure: true
+
   artifacts:
     reports:
       junit: test/pytest.xml
