@@ -44,6 +44,11 @@ __doc__ = """
 .. autoclass:: PerformanceModel
 .. autoclass:: ParametrizedCosts
 
+.. autoclass:: TranslationCostModel
+
+.. autofunction:: pde_aware_translation_cost_model
+.. autofunction:: taylor_translation_cost_model
+
 .. autofunction:: estimate_calibration_params
 """
 
@@ -121,6 +126,47 @@ class TranslationCostModel(object):
                     ntarget_coeffs ** (3 / 2))
 
         return nsource_coeffs * ntarget_coeffs
+
+# }}}
+
+
+# {{{ translation cost model factories
+
+def pde_aware_translation_cost_model(dim, nlevels):
+    """Create a cost model for FMM translation operators that make use of the
+    knowledge that the potential satisfies a PDE.
+    """
+    p_qbx = var("p_qbx")
+    p_fmm = np.array([var("p_fmm_lev%d" % i) for i in range(nlevels)])
+
+    uses_point_and_shoot = False
+
+    ncoeffs_fmm = (p_fmm + 1) ** (dim - 1)
+    ncoeffs_qbx = (p_qbx + 1) ** (dim - 1)
+
+    if dim == 3:
+        uses_point_and_shoot = True
+
+    return TranslationCostModel(
+            ncoeffs_qbx=ncoeffs_qbx,
+            ncoeffs_fmm_by_level=ncoeffs_fmm,
+            uses_point_and_shoot=uses_point_and_shoot)
+
+
+def taylor_translation_cost_model(dim, nlevels):
+    """Create a cost model for FMM translation based on Taylor expansions
+    in Cartesian coordinates.
+    """
+    p_qbx = var("p_qbx")
+    p_fmm = np.array([var("p_fmm_lev%d" % i) for i in range(nlevels)])
+
+    ncoeffs_fmm = (p_fmm + 1) ** dim
+    ncoeffs_qbx = (p_qbx + 1) ** dim
+
+    return TranslationCostModel(
+            ncoeffs_qbx=ncoeffs_qbx,
+            ncoeffs_fmm_by_level=ncoeffs_fmm,
+            uses_point_and_shoot=False)
 
 # }}}
 
@@ -215,15 +261,19 @@ class PerformanceModel(object):
     """
     .. automethod:: with_calibration_params
     .. automethod:: __call__
+
+    The performance model relies on a translation cost model. See
+    :class:`TranslationCostModel` for the translation cost model interface.
     """
 
-    def __init__(self, uses_pde_expansions=True, calibration_params=None):
+    def __init__(self,
+            translation_cost_model_factory=pde_aware_translation_cost_model,
+            calibration_params=None):
         """
-        :arg uses_pde_expansions: A :class:`bool` indicating whether the FMM
-            uses translation operators that make use of the knowledge that the
-            potential satisfies a PDE.
+        :arg translation_cost_model_factory: A callable which, given arguments
+            (*dim*, *nlevels*), returns a translation cost model.
         """
-        self.uses_pde_expansions = uses_pde_expansions
+        self.translation_cost_model_factory = translation_cost_model_factory
         if calibration_params is None:
             calibration_params = dict()
         self.calibration_params = calibration_params
@@ -231,7 +281,7 @@ class PerformanceModel(object):
     def with_calibration_params(self, calibration_params):
         """Return a copy of *self* with a new set of calibration parameters."""
         return type(self)(
-                uses_pde_expansions=self.uses_pde_expansions,
+                translation_cost_model_factory=self.translation_cost_model_factory,
                 calibration_params=calibration_params)
 
     # {{{ form multipoles
@@ -610,32 +660,6 @@ class PerformanceModel(object):
 
     # }}}
 
-    # {{{ set up translation cost model
-
-    def get_translation_cost_model(self, dim, nlevels):
-        p_qbx = var("p_qbx")
-        p_fmm = np.array([var("p_fmm_lev%d" % i) for i in range(nlevels)])
-
-        uses_point_and_shoot = False
-
-        if self.uses_pde_expansions:
-            ncoeffs_fmm = (p_fmm + 1) ** (dim-1)
-            ncoeffs_qbx = (p_qbx + 1) ** (dim-1)
-
-            if dim == 3:
-                uses_point_and_shoot = True
-
-        else:
-            ncoeffs_fmm = (p_fmm + 1) ** dim
-            ncoeffs_qbx = (p_qbx + 1) ** dim
-
-        return TranslationCostModel(
-                ncoeffs_qbx=ncoeffs_qbx,
-                ncoeffs_fmm_by_level=ncoeffs_fmm,
-                uses_point_and_shoot=uses_point_and_shoot)
-
-    # }}}
-
     @log_process(logger, "model performance")
     def __call__(self, geo_data, kernel, kernel_arguments):
         """Analyze the given geometry and return performance data.
@@ -673,7 +697,8 @@ class PerformanceModel(object):
 
         params.update(self.calibration_params)
 
-        xlat_cost = self.get_translation_cost_model(tree.dimensions, tree.nlevels)
+        xlat_cost = (
+                self.translation_cost_model_factory(tree.dimensions, tree.nlevels))
 
         # {{{ construct local multipoles
 

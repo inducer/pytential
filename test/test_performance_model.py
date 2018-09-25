@@ -353,37 +353,36 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
 # {{{ verify performance model
 
-CONSTANT_ONE_PARAMS = dict(
-        # Number of QBX coefficients: 1
-        p_qbx=0,
-        c_l2l=1,
-        c_l2p=1,
-        c_l2qbxl=1,
-        c_m2l=1,
-        c_m2m=1,
-        c_m2p=1,
-        c_m2qbxl=1,
-        c_p2l=1,
-        c_p2m=1,
-        c_p2p=1,
-        c_p2qbxl=1,
-        c_qbxl2p=1,
-        c_p2p_tsqbx=1,
-        )
+class OpCountingTranslationCostModel(object):
+    """A translation cost model which assigns at cost of 1 to each operation."""
 
+    def __init__(self, dim, nlevels):
+        pass
 
-def _get_params_for_raw_op_counts(perf_result):
-    """Return a set of parameters suitable for obtaining raw
-    operation counts from the model."""
+    @staticmethod
+    def direct():
+        return 1
 
-    # Sets model / calibration parameters equal to 1, to obtain raw op counts.
-    constant_one_params = CONSTANT_ONE_PARAMS.copy()
+    p2qbxl = direct
+    p2p_tsqbx = direct
+    qbxl2p = direct
 
-    # Set p_fmm_lev* equal to 0 (sets number of coeffs to 1).
-    for level in range(perf_result.params["nlevels"]):
-        constant_one_params["p_fmm_lev%d" % level] = 0
+    @staticmethod
+    def p2l(level):
+        return 1
 
-    return constant_one_params
+    l2p = p2l
+    p2m = p2l
+    m2p = p2l
+    m2qbxl = p2l
+    l2qbxl = p2l
+
+    @staticmethod
+    def m2m(src_level, tgt_level):
+        return 1
+
+    l2l = m2m
+    m2l = m2m
 
 
 @pytest.mark.parametrize("dim, off_surface, use_target_specific_qbx", (
@@ -398,12 +397,12 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    # We set uses_pde_expansions=False, so that a translation is modeled as
-    # simply costing nsrc_coeffs * ntgt_coeffs. By adjusting the symbolic
-    # parameters to equal 1 (done below), this provides a straightforward way
-    # to obtain the raw operation count for each FMM stage.
+    perf_model = (
+            PerformanceModel(
+                translation_cost_model_factory=OpCountingTranslationCostModel))
+
     lpot_source = get_lpot_source(queue, dim).copy(
-            performance_model=PerformanceModel(uses_pde_expansions=False),
+            performance_model=perf_model,
             _use_target_specific_qbx=use_target_specific_qbx)
 
     # Construct targets.
@@ -430,7 +429,6 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
 
     from pytools import one
     perf_S = one(op_S.get_modeled_performance(queue, sigma=sigma).values())
-    perf_S = perf_S.with_params(_get_params_for_raw_op_counts(perf_S))
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
     # high-level interface, so call the FMM driver directly.
@@ -467,6 +465,23 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
 
 # {{{ test order varying by level
 
+CONSTANT_ONE_PARAMS = dict(
+        c_l2l=1,
+        c_l2p=1,
+        c_l2qbxl=1,
+        c_m2l=1,
+        c_m2m=1,
+        c_m2p=1,
+        c_m2qbxl=1,
+        c_p2l=1,
+        c_p2m=1,
+        c_p2p=1,
+        c_p2qbxl=1,
+        c_qbxl2p=1,
+        c_p2p_tsqbx=1,
+        )
+
+
 def test_performance_model_order_varying_by_level(ctx_getter):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
@@ -477,7 +492,8 @@ def test_performance_model_order_varying_by_level(ctx_getter):
         return 1
 
     lpot_source = get_lpot_source(queue, 2).copy(
-            performance_model=PerformanceModel(uses_pde_expansions=False),
+            performance_model=PerformanceModel(
+                calibration_params=CONSTANT_ONE_PARAMS),
             fmm_level_to_order=level_to_order_constant)
 
     sigma_sym = sym.var("sigma")
@@ -491,13 +507,11 @@ def test_performance_model_order_varying_by_level(ctx_getter):
             bind(lpot_source, sym_op)
             .get_modeled_performance(queue, sigma=sigma).values())
 
-    perf_constant = perf_constant.with_params(CONSTANT_ONE_PARAMS)
-
     # }}}
 
     # {{{ varying level to order
 
-    varying_order_params = CONSTANT_ONE_PARAMS.copy()
+    varying_order_params = perf_constant.params.copy()
 
     nlevels = perf_constant.params["nlevels"]
     for level in range(nlevels):
