@@ -624,16 +624,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ internal functionality for execution
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
         else:
             func = self.exec_compute_potential_insn_fmm
-        return self._dispatch_compute_potential_insn(
-                queue, insn, bound_expr, evaluate, func)
 
-    def perf_model_compute_potential_insn(self, queue, insn, bound_expr,
-            evaluate):
+        extra_args = {"return_timing_data": return_timing_data}
+
+        return self._dispatch_compute_potential_insn(
+                queue, insn, bound_expr, evaluate, func, extra_args)
+
+    def perf_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         if self.fmm_level_to_order is False:
             raise NotImplementedError("perf modeling direct evaluations")
         return self._dispatch_compute_potential_insn(
@@ -641,14 +644,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 self.perf_model_compute_potential_insn_fmm)
 
     def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
-            evaluate, func):
+            evaluate, func, extra_args=None):
         from pytools.obj_array import with_object_array_or_scalar
 
         if not self._refined_for_global_qbx:
             from warnings import warn
             warn(
-                "Executing global QBX without refinement. "
-                "This is unlikely to work.")
+                    "Executing global QBX without refinement. "
+                    "This is unlikely to work.")
 
         def oversample_nonscalars(vec):
             from numbers import Number
@@ -661,7 +664,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             value = evaluate(expr)
             return with_object_array_or_scalar(oversample_nonscalars, value)
 
-        return func(queue, insn, bound_expr, evaluate_wrapper)
+        if extra_args is None:
+            extra_args = {}
+
+        return func(queue, insn, bound_expr, evaluate_wrapper, **extra_args)
 
     @property
     @memoize_method
@@ -736,7 +742,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ execute fmm performance model
 
     def perf_model_compute_potential_insn_fmm(self, queue, insn, bound_expr,
-                                              evaluate):
+            evaluate):
         target_name_and_side_to_number, target_discrs_and_qbx_sides = (
                 self.get_target_discrs_and_qbx_sides(insn, bound_expr))
 
@@ -782,7 +788,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ execute fmm
 
-    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
         target_name_and_side_to_number, target_discrs_and_qbx_sides = (
                 self.get_target_discrs_and_qbx_sides(insn, bound_expr))
 
@@ -833,7 +840,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # {{{ execute global QBX
 
         from pytential.qbx.fmm import drive_fmm
-        timing_data = {}
+        timing_data = {} if return_timing_data else None
         all_potentials_on_every_target = drive_fmm(wrangler, strengths, timing_data)
 
         # }}}
@@ -907,7 +914,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         *count = item;
                     """)
 
-    def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
+        if return_timing_data:
+            from pytential.source import UnableToCollectTimingData
+            from warnings import warn
+            warn(
+                    "Timing data collection not supported.",
+                    category=UnableToCollectTimingData)
+
         lpot_applier = self.get_lpot_applier(insn.kernels)
         p2p = None
         lpot_applier_on_tgt_subset = None
