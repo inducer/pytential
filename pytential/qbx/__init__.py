@@ -630,8 +630,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             func = self.exec_compute_potential_insn_direct
         else:
             func = self.exec_compute_potential_insn_fmm
+
+        extra_args = {"return_timing_data": return_timing_data}
+
         return self._dispatch_compute_potential_insn(
-                queue, insn, bound_expr, evaluate, func, return_timing_data)
+                queue, insn, bound_expr, evaluate, func, extra_args)
 
     def perf_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         if self.fmm_level_to_order is False:
@@ -641,7 +644,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 self.perf_model_compute_potential_insn_fmm)
 
     def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
-            evaluate, func, return_timing_data):
+            evaluate, func, extra_args=None):
         from pytools.obj_array import with_object_array_or_scalar
 
         if not self._refined_for_global_qbx:
@@ -661,7 +664,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             value = evaluate(expr)
             return with_object_array_or_scalar(oversample_nonscalars, value)
 
-        return func(queue, insn, bound_expr, evaluate_wrapper, return_timing_data)
+        if extra_args is None:
+            extra_args = {}
+
+        return func(queue, insn, bound_expr, evaluate_wrapper, **extra_args)
 
     @property
     @memoize_method
