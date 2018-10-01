@@ -131,7 +131,15 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 density_discr=density_discr or self.density_discr,
                 debug=debug if debug is not None else self.debug)
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
+        if return_timing_data:
+            from warnings import warn
+            from pytential.source import UnableToCollectTimingData
+            warn(
+                   "Timing data collection not supported.",
+                   category=UnableToCollectTimingData)
+
         from pytools.obj_array import with_object_array_or_scalar
 
         def evaluate_wrapper(expr):

@@ -244,11 +244,13 @@ class EvaluationMapper(EvaluationMapperBase):
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         source = bound_expr.places[insn.source]
 
+        return_timing_data = self.timing_data is not None
+
         result, timing_data = (
                 source.exec_compute_potential_insn(
-                    queue, insn, bound_expr, evaluate))
+                    queue, insn, bound_expr, evaluate, return_timing_data))
 
-        if self.timing_data is not None:
+        if return_timing_data:
             self.timing_data[insn] = timing_data
 
         return result

@@ -27,6 +27,7 @@ import numpy as np  # noqa: F401
 import pyopencl as cl  # noqa: F401
 import six
 from pytools import memoize_method
+from sumpy.fmm import UnableToCollectTimingData
 
 
 __doc__ = """
@@ -127,7 +128,14 @@ class PointPotentialSource(PotentialSource):
                                           evaluate, costs):
         raise NotImplementedError
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
+        if return_timing_data:
+            from warnings import warn
+            warn(
+                   "Timing data collection not supported.",
+                   category=UnableToCollectTimingData)
+
         p2p = None
 
         kernel_args = {}
