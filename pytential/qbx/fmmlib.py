@@ -180,7 +180,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
     @staticmethod
     def is_supported_helmknl_for_tsqbx(knl):
-        if isinstance(knl, DirectionalSourceDerivative):
+        # Supports at most one derivative.
+        if isinstance(knl, (DirectionalSourceDerivative, AxisTargetDerivative)):
             knl = knl.inner_kernel
 
         return (isinstance(knl, (LaplaceKernel, HelmholtzKernel))
@@ -577,7 +578,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         if not self._use_target_specific_qbx:
             return self.full_output_zeros()
 
-        pot = self.full_output_zeros()
         geo_data = self.geo_data
         trav = geo_data.traversal()
 
@@ -585,27 +585,46 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         src_weights = src_weights.astype(np.complex128)
 
-        for output in pot:
-            ts.eval_target_specific_qbx_locals(
-                    order=self.qbx_order,
-                    sources=self._get_single_sources_array(),
-                    targets=geo_data.all_targets(),
-                    centers=self._get_single_centers_array(),
-                    qbx_centers=geo_data.global_qbx_centers(),
-                    qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
-                    center_to_target_starts=ctt.starts,
-                    center_to_target_lists=ctt.lists,
-                    source_box_starts=trav.neighbor_source_boxes_starts,
-                    source_box_lists=trav.neighbor_source_boxes_lists,
-                    box_source_starts=self.tree.box_source_starts,
-                    box_source_counts_nonchild=self.tree.box_source_counts_nonchild,
-                    helmholtz_k=self.kernel_kwargs.get("zk", 0),
-                    charge=src_weights if self.dipole_vec is None else None,
-                    dipstr=src_weights if self.dipole_vec is not None else None,
-                    dipvec=self.dipole_vec,
-                    pot=output)
+        ifcharge = self.dipole_vec is None
+        ifdipole = self.dipole_vec is not None
 
-        return pot
+        ifpot = any(not output for output in self.outputs)
+        ifgrad = self.ifgrad
+
+        # Create temporary output arrays for potential / gradient.
+        pot = np.zeros(self.tree.ntargets, np.complex) if ifpot else None
+        grad = (
+                np.zeros((self.dim, self.tree.ntargets), np.complex)
+                if ifgrad else None)
+
+        ts.eval_target_specific_qbx_locals(
+                ifpot=ifpot,
+                ifgrad=ifgrad,
+                ifcharge=ifcharge,
+                ifdipole=ifdipole,
+                order=self.qbx_order,
+                sources=self._get_single_sources_array(),
+                targets=geo_data.all_targets(),
+                centers=self._get_single_centers_array(),
+                qbx_centers=geo_data.global_qbx_centers(),
+                qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
+                center_to_target_starts=ctt.starts,
+                center_to_target_lists=ctt.lists,
+                source_box_starts=trav.neighbor_source_boxes_starts,
+                source_box_lists=trav.neighbor_source_boxes_lists,
+                box_source_starts=self.tree.box_source_starts,
+                box_source_counts_nonchild=self.tree.box_source_counts_nonchild,
+                helmholtz_k=self.kernel_kwargs.get("zk", 0),
+                charge=src_weights,
+                dipstr=src_weights,
+                dipvec=self.dipole_vec,
+                pot=pot,
+                grad=grad)
+
+        output = self.full_output_zeros()
+        self.add_potgrad_onto_output(output, slice(None), pot, grad)
+
+        return output
 
     def finalize_potentials(self, potential):
         potential = super(QBXFMMLibExpansionWrangler, self).finalize_potentials(
