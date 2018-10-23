@@ -26,7 +26,10 @@ cdef extern from "_helmholtz_utils.h" nogil:
 
 cdef extern from "_internal.h" nogil:
     const int BUFSIZE
+    const int PADDING
 
+
+# {{{ (externally visible) wrappers for bessel / hankel functions
 
 def jfuns3d_wrapper(nterms, z, scale, fjs, fjder):
     """Evaluate spherical Bessel functions.
@@ -99,6 +102,10 @@ def h3dall_wrapper(nterms, z, scale, hs, hders):
     if ifder:
         hders[:1 + nterms] = hdervec[:]
 
+# }}}
+
+
+# {{{ helpers
 
 cdef void legvals(double x, int n, double[] vals, double[] derivs) nogil:
     """Compute the values of the Legendre polynomial up to order n at x.
@@ -145,73 +152,29 @@ cdef void legvals(double x, int n, double[] vals, double[] derivs) nogil:
 
 
 cdef double dist(double[3] a, double[3] b) nogil:
+    """Calculate the Euclidean distance between a and b."""
     return sqrt(
             (a[0] - b[0]) * (a[0] - b[0]) +
             (a[1] - b[1]) * (a[1] - b[1]) +
             (a[2] - b[2]) * (a[2] - b[2]))
 
 
-cdef void tsqbx_laplace_dlp(
-        double[3] source,
-        double[3] center,
-        double[3] target,
-        double[3] grad,
-        int order) nogil:
-    cdef:
-        int j, m
-        double sc_d, tc_d, cos_angle, alpha, Rj
-        double[BUFSIZE] lvals, lderivs
-        double[3] cms, tmc, grad_tmp
-
-    for m in range(3):
-        cms[m] = center[m] - source[m]
-        tmc[m] = target[m] - center[m]
-        grad[m] = 0
-
-    tc_d = dist(target, center)
-    sc_d = dist(source, center)
-
-    alpha = (
-            (target[0] - center[0]) * (source[0] - center[0]) +
-            (target[1] - center[1]) * (source[1] - center[1]) +
-            (target[2] - center[2]) * (source[2] - center[2]))
-
-    cos_angle = alpha / (tc_d * sc_d)
-
-    # Evaluate the Legendre terms.
-    legvals(cos_angle, order, lvals, lderivs)
-
-    # Invariant: Rj = (t_cd ** j / sc_d ** (j + 2))
-    Rj = 1 / (sc_d * sc_d)
-
-    for j in range(0, order + 1):
-        for m in range(3):
-            grad_tmp[m] = (j + 1) * (cms[m] / sc_d) * lvals[j]
-        for m in range(3):
-            # Siegel and Tornberg has a sign flip here :(
-            grad_tmp[m] += (tmc[m] / tc_d + cos_angle * cms[m] / sc_d) * lderivs[j]
-        for m in range(3):
-            grad[m] += Rj * grad_tmp[m]
-
-        Rj *= (tc_d / sc_d)
-
-    return
-
-
-cdef void tsqbx_helmholtz_precompute(
+cdef void ts_helmholtz_precompute(
         double[3] center,
         double[3] target,
         int order,
+        int ifder,
         double complex k,
-        double complex *jvals,
+        double complex[] jvals,
+        double complex[] jderivs,
         double *jscale) nogil:
-    """Evaluate the source-invariant Bessel terms for the Helmholtz TSQBX
-    kernel."""
+    """Evaluate the source-invariant Bessel terms of the Helmholtz target-specific
+    expansion."""
 
     cdef:
         double complex z
         double tc_d
-        int ier, ntop, ifder, lwfjs
+        int ier, ntop, lwfjs
         int[BUFSIZE] iscale
 
     tc_d = dist(target, center)
@@ -219,98 +182,29 @@ cdef void tsqbx_helmholtz_precompute(
 
     # Evaluate the spherical Bessel terms.
     z = k * tc_d
-    ifder = 0
     lwfjs = BUFSIZE
     # jfuns3d_ only supports order > 0 (goes out of bounds if order = 0)
     order = max(1, order)
-    jfuns3d_(&ier, &order, &z, jscale, jvals, &ifder, NULL, &lwfjs, iscale,
+    jfuns3d_(&ier, &order, &z, jscale, jvals, &ifder, jderivs, &lwfjs, iscale,
              &ntop)
     if ier:
         # This could in theory fail.
-        fprintf(stderr, "array passed to jfuns3d was too small\n")
+        fprintf(stderr, "array passed to jfuns3d_ was too small\n")
         abort()
 
+# }}}
 
-cdef void tsqbx_helmholtz_dlp(
+
+# {{{ Laplace S
+
+cdef double complex ts_laplace_s(
         double[3] source,
         double[3] center,
         double[3] target,
-        double complex[3] grad,
-        int order,
-        double complex k,
-        double complex *jvals,
-        double jscale) nogil:
-    cdef:
-        int n, m
-        int ifder
-        double sc_d, tc_d, cos_angle, alpha
-        double[3] cms, tmc
-        double complex[3] grad_tmp
-        double[BUFSIZE] lvals, lderivs
-        double complex z
-        double complex [BUFSIZE] hvals, hderivs
-        double hscale, unscale
-
-    for m in range(3):
-        cms[m] = center[m] - source[m]
-        tmc[m] = target[m] - center[m]
-        grad[m] = 0
-
-    tc_d = dist(target, center)
-    sc_d = dist(source, center)
-
-    alpha = (
-            (target[0] - center[0]) * (source[0] - center[0]) +
-            (target[1] - center[1]) * (source[1] - center[1]) +
-            (target[2] - center[2]) * (source[2] - center[2]))
-
-    cos_angle = alpha / (tc_d * sc_d)
-
-    # Evaluate the Legendre terms.
-    legvals(cos_angle, order, lvals, lderivs)
-
-    # Scaling magic for Hankel terms.
-    # These values are taken from the fmmlib documentation.
-    hscale = cabs(k * sc_d) if (cabs(k * sc_d) < 1) else 1
-    # unscale = (jscale / hscale) ** n
-    # Multiply against unscale to remove the scaling.
-    unscale = 1
-
-    # Evaluate the spherical Hankel terms.
-    z = k * sc_d
-    ifder = 1
-    h3dall_(&order, &z, &hscale, hvals, &ifder, hderivs)
-
-    #
-    # This is a mess, but amounts to the s-gradient of:
-    #
-    #      __ order
-    #  ik \         (2n  +  1) j (k |t - c|) h (k |s - c|) P (cos θ)
-    #     /__ n = 0             n             n             n
-    #
-    #
-    for n in range(0, order + 1):
-        for m in range(3):
-            grad_tmp[m] = -k * cms[m] * hderivs[n] * lvals[n]
-        for m in range(3):
-            grad_tmp[m] += (
-                    (tmc[m] / tc_d) +
-                    cos_angle * (cms[m] / sc_d)) * hvals[n] * lderivs[n]
-        for m in range(3):
-            grad[m] += (2 * n + 1) * unscale * (grad_tmp[m] * jvals[n] / sc_d)
-        unscale *= jscale / hscale
-
-    for m in range(3):
-        grad[m] *= 1j * k
-
-    return
-
-
-cdef double tsqbx_laplace_slp(
-        double[3] source,
-        double[3] center,
-        double[3] target,
+        double complex charge,
         int order) nogil:
+    """Evaluate the target-specific expansion of the Laplace single-layer kernel."""
+
     cdef:
         double j
         double result, r, sc_d, tc_d, cos_angle
@@ -327,7 +221,7 @@ cdef double tsqbx_laplace_slp(
             / (tc_d * sc_d))
 
     if order == 0:
-        return 1 / sc_d
+        return charge / sc_d
 
     pjm2 = 1
     pjm1 = cos_angle
@@ -349,17 +243,115 @@ cdef double tsqbx_laplace_slp(
         pjm2 = pjm1
         pjm1 = pj
 
-    return result
+    return charge * result
+
+# }}}
 
 
-cdef double complex tsqbx_helmholtz_slp(
+# {{{ Laplace grad(S)
+
+cdef void ts_laplace_sp(
+        double complex[3] grad,
         double[3] source,
         double[3] center,
         double[3] target,
+        double complex charge,
+        int order) nogil:
+    """Evaluate the target-specific expansion of the gradient of the Laplace
+    single-layer kernel."""
+
+    cdef:
+        double[3] grad_tmp
+        double sc_d, tc_d, cos_angle, Rn
+        double[BUFSIZE] lvals, lderivs
+        double[3] smc, tmc
+        int n
+
+    for m in range(3):
+        smc[m] = source[m] - center[m]
+        tmc[m] = target[m] - center[m]
+        grad_tmp[m] = 0
+
+    tc_d = dist(target, center)
+    sc_d = dist(source, center)
+
+    cos_angle = (tmc[0] * smc[0] + tmc[1] * smc[1] + tmc[2] * smc[2]) / (tc_d * sc_d)
+    legvals(cos_angle, order, lvals, lderivs)
+
+    # Invariant: Rn = tc_d ** (n - 1) / sc_d ** (n + 1)
+    Rn = 1 / (sc_d * sc_d)
+
+    for n in range(1, 1 + order):
+        for m in range(3):
+            grad_tmp[m] += Rn * (
+                n * (tmc[m] / tc_d) * lvals[n]
+                + (smc[m] / sc_d - cos_angle * tmc[m] / tc_d) * lderivs[n])
+        Rn *= tc_d / sc_d
+
+    for m in range(3):
+        grad[m] += charge * grad_tmp[m]
+
+# }}}
+
+
+# {{{ Laplace D
+
+cdef double complex ts_laplace_d(
+        double[3] source,
+        double[3] center,
+        double[3] target,
+        double[3] dipole,
+        double complex dipstr,
+        int order) nogil:
+    """Evaluate the target-specific expansion of the Laplace double-layer kernel."""
+
+    cdef:
+        int n, m
+        double sc_d, tc_d, cos_angle, Rn
+        double[BUFSIZE] lvals, lderivs
+        double[3] smc, tmc, grad
+
+    for m in range(3):
+        smc[m] = source[m] - center[m]
+        tmc[m] = target[m] - center[m]
+        grad[m] = 0
+
+    tc_d = dist(target, center)
+    sc_d = dist(source, center)
+
+    cos_angle = (tmc[0] * smc[0] + tmc[1] * smc[1] + tmc[2] * smc[2]) / (tc_d * sc_d)
+    legvals(cos_angle, order, lvals, lderivs)
+
+    # Invariant: Rn = (tc_d ** n / sc_d ** (n + 2))
+    Rn = 1 / (sc_d * sc_d)
+
+    for n in range(0, order + 1):
+        for m in range(3):
+            grad[m] += Rn * (
+                    -(n + 1) * (smc[m] / sc_d) * lvals[n]
+                    + (tmc[m] / tc_d - cos_angle * smc[m] / sc_d) * lderivs[n])
+        Rn *= (tc_d / sc_d)
+
+    return dipstr * (
+            dipole[0] * grad[0] + dipole[1] * grad[1] + dipole[2] * grad[2])
+
+# }}}
+
+
+# {{{ Helmholtz S
+
+cdef double complex ts_helmholtz_s(
+        double[3] source,
+        double[3] center,
+        double[3] target,
+        double complex charge,
         int order,
         double complex k,
-        double complex *jvals,
+        double complex[] jvals,
         double jscale) nogil:
+    """Evaluate the target-specific expansion of the Helmholtz single-layer
+    kernel."""
+
     cdef:
         int n, ifder
         double sc_d, tc_d, cos_angle
@@ -398,10 +390,162 @@ cdef double complex tsqbx_helmholtz_slp(
         result += (2 * n + 1) * unscale * (jvals[n] * hvals[n] * lvals[n])
         unscale *= jscale / hscale
 
-    return result * 1j * k
+    return 1j * k * charge * result
+
+# }}}
+
+
+# {{{ Helmholtz grad(S)
+
+cdef void ts_helmholtz_sp(
+        double complex[3] grad,
+        double[3] source,
+        double[3] center,
+        double[3] target,
+        double complex charge,
+        int order,
+        double complex k,
+        double complex[] jvals,
+        double complex[] jderivs,
+        double jscale) nogil:
+    """Evaluate the target-specific expansion of the gradient of the Helmholtz
+    single-layer kernel."""
+
+    cdef:
+        int n, m
+        int ifder
+        double sc_d, tc_d, cos_angle
+        double[3] smc, tmc
+        double complex[3] grad_tmp
+        double[BUFSIZE] lvals, lderivs
+        double complex z
+        double complex [BUFSIZE] hvals
+        double hscale, unscale
+
+    for m in range(3):
+        smc[m] = source[m] - center[m]
+        tmc[m] = target[m] - center[m]
+        grad_tmp[m] = 0
+
+    tc_d = dist(target, center)
+    sc_d = dist(source, center)
+
+    # Evaluate the Legendre terms.
+    cos_angle = (tmc[0] * smc[0] + tmc[1] * smc[1] + tmc[2] * smc[2]) / (tc_d * sc_d)
+    legvals(cos_angle, order, lvals, lderivs)
+
+    # Scaling magic for Hankel terms.
+    # These values are taken from the fmmlib documentation.
+    hscale = cabs(k * sc_d) if (cabs(k * sc_d) < 1) else 1
+    # unscale = (jscale / hscale) ** n
+    # Multiply against unscale to remove the scaling.
+    unscale = 1
+
+    # Evaluate the spherical Hankel terms.
+    z = k * sc_d
+    ifder = 0
+    h3dall_(&order, &z, &hscale, hvals, &ifder, NULL)
+
+    #
+    # This is a mess, but amounts to the t-gradient of:
+    #
+    #      __ order
+    #  ik \         (2n  +  1) j (k |t - c|) h (k |s - c|) P (cos θ)
+    #     /__ n = 0             n             n             n
+    #
+    #
+    for n in range(0, order + 1):
+        for m in range(3):
+            grad_tmp[m] += (2 * n + 1) * unscale * hvals[n] / tc_d * (
+                    k * jderivs[n] * lvals[n] * tmc[m]
+                    + (smc[m] / sc_d - cos_angle * tmc[m] / tc_d)
+                    * jvals[n] * lderivs[n])
+        unscale *= jscale / hscale
+
+    for m in range(3):
+        grad[m] += 1j * k * charge * grad_tmp[m]
+
+# }}}
+
+
+# {{{ Helmholtz D
+
+cdef double complex ts_helmholtz_d(
+        double[3] source,
+        double[3] center,
+        double[3] target,
+        double[3] dipole,
+        double complex dipstr,
+        int order,
+        double complex k,
+        double complex[] jvals,
+        double jscale) nogil:
+    """Evaluate the target-specific expansion of the Helmholtz double-layer
+    kernel."""
+
+    cdef:
+        int n, m
+        int ifder
+        double sc_d, tc_d, cos_angle
+        double[3] smc, tmc
+        double complex[3] grad
+        double[BUFSIZE] lvals, lderivs
+        double complex z
+        double complex [BUFSIZE] hvals, hderivs
+        double hscale, unscale
+
+    for m in range(3):
+        smc[m] = source[m] - center[m]
+        tmc[m] = target[m] - center[m]
+        grad[m] = 0
+
+    tc_d = dist(target, center)
+    sc_d = dist(source, center)
+
+    cos_angle = (tmc[0] * smc[0] + tmc[1] * smc[1] + tmc[2] * smc[2]) / (tc_d * sc_d)
+
+    # Evaluate the Legendre terms.
+    legvals(cos_angle, order, lvals, lderivs)
+
+    # Scaling magic for Hankel terms.
+    # These values are taken from the fmmlib documentation.
+    hscale = cabs(k * sc_d) if (cabs(k * sc_d) < 1) else 1
+    # unscale = (jscale / hscale) ** n
+    # Multiply against unscale to remove the scaling.
+    unscale = 1
+
+    # Evaluate the spherical Hankel terms.
+    z = k * sc_d
+    ifder = 1
+    h3dall_(&order, &z, &hscale, hvals, &ifder, hderivs)
+
+    #
+    # This is a mess, but amounts to the s-gradient of:
+    #
+    #      __ order
+    #  ik \         (2n  +  1) j (k |t - c|) h (k |s - c|) P (cos θ)
+    #     /__ n = 0             n             n             n
+    #
+    #
+    for n in range(0, order + 1):
+        for m in range(3):
+            grad[m] += (2 * n + 1) * unscale * jvals[n] / sc_d * (
+                    k * smc[m] * hderivs[n] * lvals[n]
+                    + (tmc[m] / tc_d - cos_angle * smc[m] / sc_d)
+                    * hvals[n] * lderivs[n])
+        unscale *= jscale / hscale
+
+    return 1j * k * dipstr * (
+            grad[0] * dipole[0] + grad[1] * dipole[1] + grad[2] * dipole[2])
+
+# }}}
 
 
 def eval_target_specific_qbx_locals(
+        int ifpot,
+        int ifgrad,
+        int ifcharge,
+        int ifdipole,
         int order,
         double[:,:] sources,
         double[:,:] targets,
@@ -415,10 +559,15 @@ def eval_target_specific_qbx_locals(
         double complex[:] charge,
         double complex[:] dipstr,
         double[:,:] dipvec,
-        double complex[:] pot):
+        double complex[:] pot,
+        double complex[:,:] grad):
     """TSQBX entry point.
 
     Arguments:
+        ifpot: Flag indicating whether to evaluate the potential
+        ifgrad: Flag indicating whether to evaluate the gradient of the potential
+        ifcharge: Flag indicating whether to include monopole sources
+        ifdipole: Flag indicating whether to include dipole sources
         order: Expansion order
         sources: Array of sources of shape (3, *nsrcs*)
         targets: Array of targets of shape (3, *ntgts*)
@@ -435,7 +584,8 @@ def eval_target_specific_qbx_locals(
         charge: (Complex) Source strengths, shape (*nsrcs*,), or *None*
         dipstr: (Complex) Dipole source strengths, shape (*nsrcs*,) or *None*
         dipvec: (Real) Dipole source orientations, shape (3, *nsrcs*), or *None*
-        pot: (Complex) Output potential, shape (*ngts*,)
+        pot: (Complex) Output potential, shape (*ngts*,), or *None*
+        grad: (Complex) Output gradient, shape (3, *ntgts*), or *None*
     """
 
     cdef:
@@ -444,43 +594,77 @@ def eval_target_specific_qbx_locals(
         int tgt_box, src_ibox
         int isrc_box, isrc_box_start, isrc_box_end
         int isrc, isrc_start, isrc_end
-        int m, tid
+        int tid
         double jscale
         double complex result
-        double[:,:] source, center, target, grad
-        double complex[:,:] grad_complex, jvals
-        int laplace_slp, helmholtz_slp, laplace_dlp, helmholtz_dlp
+        double[:,:] source, center, target, dipole
+        double complex[:,:] result_grad, jvals, jderivs
+        int laplace_s, helmholtz_s, laplace_sp, helmholtz_sp, laplace_d, helmholtz_d
 
-    if charge is None and (dipstr is None or dipvec is None):
-        raise ValueError("must specify either charge, or both dipstr and dipvec")
+    # {{{ process arguments
 
-    if charge is not None and (dipstr is not None or dipvec is not None):
-        raise ValueError("does not support simultaneous monopoles and dipoles")
+    if ifcharge:
+        if charge is None:
+            raise ValueError("Missing charge")
 
-    laplace_slp = (helmholtz_k == 0) and (dipvec is None)
-    laplace_dlp = (helmholtz_k == 0) and (dipvec is not None)
-    helmholtz_slp = (helmholtz_k != 0) and (dipvec is None)
-    helmholtz_dlp = (helmholtz_k != 0) and (dipvec is not None)
+    if ifdipole:
+        if dipstr is None:
+            raise ValueError("Missing dipstr")
+        if dipvec is None:
+            raise ValueError("Missing dipvec")
 
-    assert laplace_slp or laplace_dlp or helmholtz_slp or helmholtz_dlp
+    if ifdipole and ifgrad:
+        raise ValueError("Does not support computing gradient of dipole sources")
+
+    if helmholtz_k == 0:
+        helmholtz_s = helmholtz_sp = helmholtz_d = 0
+
+        if ifpot:
+            laplace_s = ifcharge
+            laplace_d = ifdipole
+
+        if ifgrad:
+            laplace_sp = ifcharge
+
+    else:
+        laplace_s = laplace_sp = laplace_d = 0
+
+        if ifpot:
+            helmholtz_s = ifcharge
+            helmholtz_d = ifdipole
+
+        if ifgrad:
+            helmholtz_sp = ifcharge
+
+    # }}}
+
+    if not any([
+            laplace_s, laplace_sp, laplace_d, helmholtz_s, helmholtz_sp,
+            helmholtz_d]):
+        return
 
     if qbx_centers.shape[0] == 0:
         return
 
+    # {{{ set up thread-local storage
+
     # Hack to obtain thread-local storage
     maxthreads = openmp.omp_get_max_threads()
 
-    # Prevent false sharing by over-allocating the buffers
-    source = np.zeros((maxthreads, 65))
-    target = np.zeros((maxthreads, 65))
-    center = np.zeros((maxthreads, 65))
-    grad = np.zeros((maxthreads, 65))
-    grad_complex = np.zeros((maxthreads, 65), dtype=np.complex)
-    jvals = np.zeros((maxthreads, BUFSIZE + 65), dtype=np.complex)
+    # Prevent false sharing by padding the thread-local buffers
+    source = np.zeros((maxthreads, PADDING))
+    target = np.zeros((maxthreads, PADDING))
+    center = np.zeros((maxthreads, PADDING))
+    dipole = np.zeros((maxthreads, PADDING))
+    result_grad = np.zeros((maxthreads, PADDING), dtype=np.complex)
+    jvals = np.zeros((maxthreads, BUFSIZE + PADDING), dtype=np.complex)
+    jderivs = np.zeros((maxthreads, BUFSIZE + PADDING), dtype=np.complex)
 
     # TODO: Check that the order is not too high, since temporary
     # arrays in this module that are limited by BUFSIZE may overflow
     # if that is the case
+
+    # }}}
 
     for ictr in cython.parallel.prange(0, qbx_centers.shape[0],
                                        nogil=True, schedule="static",
@@ -493,20 +677,22 @@ def eval_target_specific_qbx_locals(
         tgt_box = qbx_center_to_target_box[ctr]
         tid = cython.parallel.threadid()
 
-        for m in range(3):
-            center[tid, m] = centers[m, ctr]
+        center[tid, :3] = centers[:, ctr]
 
         for itgt in range(itgt_start, itgt_end):
             result = 0
             tgt = center_to_target_lists[itgt]
 
-            for m in range(3):
-                target[tid, m] = targets[m, tgt]
+            target[tid, :3] = targets[:, tgt]
+            if ifgrad:
+                result_grad[tid, :3] = 0
 
-            if helmholtz_slp or helmholtz_dlp:
-                tsqbx_helmholtz_precompute(&center[tid, 0], &target[tid, 0],
-                                           order, helmholtz_k, &jvals[tid, 0],
-                                           &jscale)
+            if helmholtz_s or helmholtz_sp or helmholtz_d:
+                # Precompute source-invariant Helmholtz terms.
+                ts_helmholtz_precompute(
+                        &center[tid, 0], &target[tid, 0],
+                        order, ifgrad, helmholtz_k, &jvals[tid, 0],
+                        &jderivs[tid, 0], &jscale)
 
             isrc_box_start = source_box_starts[tgt_box]
             isrc_box_end = source_box_starts[tgt_box + 1]
@@ -517,42 +703,58 @@ def eval_target_specific_qbx_locals(
                 isrc_end = isrc_start + box_source_counts_nonchild[src_ibox]
 
                 for isrc in range(isrc_start, isrc_end):
-                    for m in range(3):
-                        source[tid, m] = sources[m, isrc]
+                    source[tid, :3] = sources[:, isrc]
+
+                    if ifdipole:
+                        dipole[tid, :3] = dipvec[:, isrc]
 
                     # NOTE: Don't use +=, since that makes Cython think we are
                     # doing an OpenMP reduction.
 
-                    if laplace_slp:
-                        result = result + charge[isrc] * (
-                                tsqbx_laplace_slp(&source[tid, 0], &center[tid, 0],
-                                                  &target[tid, 0], order))
+                    # {{{ evaluate potentials
 
-                    elif helmholtz_slp:
-                        result = result + charge[isrc] * (
-                                tsqbx_helmholtz_slp(&source[tid, 0], &center[tid, 0],
-                                                    &target[tid, 0], order,
-                                                    helmholtz_k, &jvals[tid, 0],
-                                                    jscale))
+                    if laplace_s:
+                        result = result + (
+                                ts_laplace_s(
+                                    &source[tid, 0], &center[tid, 0], &target[tid, 0],
+                                    charge[isrc], order))
 
-                    elif laplace_dlp:
-                        tsqbx_laplace_dlp(&source[tid, 0], &center[tid, 0],
-                                          &target[tid, 0], &grad[tid, 0], order)
+                    if laplace_sp:
+                        ts_laplace_sp(
+                                &result_grad[tid, 0],
+                                &source[tid, 0], &center[tid, 0], &target[tid, 0],
+                                charge[isrc], order)
 
-                        result = result + dipstr[isrc] * (
-                                grad[tid, 0] * dipvec[0, isrc] +
-                                grad[tid, 1] * dipvec[1, isrc] +
-                                grad[tid, 2] * dipvec[2, isrc])
+                    if laplace_d:
+                        result = result + (
+                                ts_laplace_d(
+                                    &source[tid, 0], &center[tid, 0], &target[tid, 0],
+                                    &dipole[tid, 0], dipstr[isrc], order))
 
-                    elif helmholtz_dlp:
-                        tsqbx_helmholtz_dlp(&source[tid, 0], &center[tid, 0],
-                                            &target[tid, 0], &grad_complex[tid, 0],
-                                            order, helmholtz_k, &jvals[tid, 0],
-                                            jscale)
+                    if helmholtz_s:
+                        result = result + (
+                                ts_helmholtz_s(&source[tid, 0], &center[tid, 0],
+                                    &target[tid, 0], charge[isrc], order, helmholtz_k,
+                                    &jvals[tid, 0], jscale))
 
-                        result = result + dipstr[isrc] * (
-                                grad_complex[tid, 0] * dipvec[0, isrc] +
-                                grad_complex[tid, 1] * dipvec[1, isrc] +
-                                grad_complex[tid, 2] * dipvec[2, isrc])
+                    if helmholtz_sp:
+                        ts_helmholtz_sp(
+                                &result_grad[tid, 0],
+                                &source[tid, 0], &center[tid, 0], &target[tid, 0],
+                                charge[isrc], order, helmholtz_k,
+                                &jvals[tid, 0], &jderivs[tid, 0], jscale)
 
-            pot[tgt] = pot[tgt] + result
+                    if helmholtz_d:
+                        result = result + (
+                                ts_helmholtz_d(
+                                    &source[tid, 0], &center[tid, 0], &target[tid, 0],
+                                    &dipole[tid, 0], dipstr[isrc], order, helmholtz_k,
+                                    &jvals[tid, 0], jscale))
+
+                    # }}}
+
+            if ifpot:
+                pot[tgt] = result
+
+            if ifgrad:
+                grad[:, tgt] = result_grad[tid, :3]
