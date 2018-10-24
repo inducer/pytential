@@ -594,7 +594,7 @@ def eval_target_specific_qbx_locals(
         int tgt_box, src_ibox
         int isrc_box, isrc_box_start, isrc_box_end
         int isrc, isrc_start, isrc_end
-        int tid
+        int tid, m
         double jscale
         double complex result
         double[:,:] source, center, target, dipole
@@ -677,15 +677,17 @@ def eval_target_specific_qbx_locals(
         tgt_box = qbx_center_to_target_box[ctr]
         tid = cython.parallel.threadid()
 
-        center[tid, :3] = centers[:, ctr]
+        for m in range(3):
+            center[tid, m] = centers[m, ctr]
 
         for itgt in range(itgt_start, itgt_end):
             result = 0
             tgt = center_to_target_lists[itgt]
 
-            target[tid, :3] = targets[:, tgt]
-            if ifgrad:
-                result_grad[tid, :3] = 0
+            for m in range(3):
+                target[tid, m] = targets[m, tgt]
+                if ifgrad:
+                    result_grad[tid, m] = 0
 
             if helmholtz_s or helmholtz_sp or helmholtz_d:
                 # Precompute source-invariant Helmholtz terms.
@@ -703,10 +705,11 @@ def eval_target_specific_qbx_locals(
                 isrc_end = isrc_start + box_source_counts_nonchild[src_ibox]
 
                 for isrc in range(isrc_start, isrc_end):
-                    source[tid, :3] = sources[:, isrc]
 
-                    if ifdipole:
-                        dipole[tid, :3] = dipvec[:, isrc]
+                    for m in range(3):
+                        source[tid, m] = sources[m, isrc]
+                        if ifdipole:
+                            dipole[tid, m] = dipvec[m, isrc]
 
                     # NOTE: Don't use +=, since that makes Cython think we are
                     # doing an OpenMP reduction.
@@ -757,4 +760,5 @@ def eval_target_specific_qbx_locals(
                 pot[tgt] = result
 
             if ifgrad:
-                grad[:, tgt] = result_grad[tid, :3]
+                for m in range(3):
+                    grad[m, tgt] = result_grad[tid, m]
