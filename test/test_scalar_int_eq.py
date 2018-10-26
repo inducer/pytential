@@ -713,8 +713,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
         rel_grad_err_inf = (
                 la.norm(grad_err[0].get(), np.inf)
-                /
-                la.norm(grad_ref[0].get(), np.inf))
+                / la.norm(grad_ref[0].get(), np.inf))
 
         print("rel_grad_err_inf: %g" % rel_grad_err_inf)
 

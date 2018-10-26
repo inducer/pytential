@@ -208,9 +208,9 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
                 else:
                     print("*** WARNING: non-monotonic residuals in GMRES")
 
-            if (stall_iterations and
-                    len(residual_norms) > stall_iterations and
-                    norm_r > (
+            if (stall_iterations
+                    and len(residual_norms) > stall_iterations
+                    and norm_r > (
                         residual_norms[-stall_iterations]
                         / no_progress_factor)):
 

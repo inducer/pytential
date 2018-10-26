@@ -561,8 +561,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                     for term in bc)
             is_necessary = (
                     (self.ez_enabled and any_significant_e)
-                    or
-                    (self.hz_enabled and any_significant_h))
+                    or (self.hz_enabled and any_significant_h))
 
             # Only keep tangential modes for TEM. Otherwise,
             # no jump in H already implies jump condition on
@@ -588,8 +587,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
     def is_field_present(self, field_kind):
         return (
                 (field_kind == self.field_kind_e and self.ez_enabled)
-                or
-                (field_kind == self.field_kind_h and self.hz_enabled))
+                or (field_kind == self.field_kind_h and self.hz_enabled))
 
     def make_unknown(self, name):
         num_densities = (

@@ -144,8 +144,8 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         # =distance(centers of panel 1, panel 2)
         dist = (
             la.norm((
-                    all_centers[..., np.newaxis] -
-                    nodes[:, np.newaxis, ...]).T,
+                    all_centers[..., np.newaxis]
+                    - nodes[:, np.newaxis, ...]).T,
                 axis=-1)
             .min())
 
@@ -169,8 +169,8 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
         # =distance(centers of panel 1, panel 2)
         dist = (
             la.norm((
-                    all_centers[..., np.newaxis] -
-                    nodes[:, np.newaxis, ...]).T,
+                    all_centers[..., np.newaxis]
+                    - nodes[:, np.newaxis, ...]).T,
                 axis=-1)
             .min())
 
