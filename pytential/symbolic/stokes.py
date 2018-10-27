@@ -476,8 +476,8 @@ class StressletWrapper(object):
             for j in range(self.dim):
                 sym_expr[comp] = sym_expr[comp] + (
                                     dir_vec_sym[j] * mu_sym * (
-                                        sym_grad_matrix[comp][j] +
-                                        sym_grad_matrix[j][comp])
+                                        sym_grad_matrix[comp][j]
+                                        + sym_grad_matrix[j][comp])
                                         )
 
         return sym_expr

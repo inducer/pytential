@@ -417,8 +417,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
 
         err = (
                 norm(qbx, queue, jump_identity, np.inf)
-                /
-                norm(qbx, queue, density, np.inf))
+                / norm(qbx, queue, density, np.inf))
         print("ERROR", qbx.h_max, err)
 
         eoc_rec.add_data_point(qbx.h_max, err)

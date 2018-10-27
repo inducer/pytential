@@ -365,15 +365,15 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
             kwargs = {}
             if self.dim == 3 and self.eqn_letter == "h":
-                kwargs["radius"] = (0.5 *
-                        geo_data.expansion_radii()[geo_data.global_qbx_centers()])
+                kwargs["radius"] = (0.5
+                        * geo_data.expansion_radii()[geo_data.global_qbx_centers()])
 
             nsrc_boxes_per_gqbx_center = np.zeros(icontaining_tgt_box_vec.shape,
                                                   dtype=traversal.tree.box_id_dtype)
             mask = (icontaining_tgt_box_vec != -1)
             nsrc_boxes_per_gqbx_center[mask] = (
-                ssn.starts[icontaining_tgt_box_vec[mask] + 1] -
-                ssn.starts[icontaining_tgt_box_vec[mask]]
+                ssn.starts[icontaining_tgt_box_vec[mask] + 1]
+                - ssn.starts[icontaining_tgt_box_vec[mask]]
             )
             nsrc_boxes = np.sum(nsrc_boxes_per_gqbx_center)
 

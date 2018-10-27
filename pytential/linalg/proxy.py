@@ -94,8 +94,8 @@ def partition_by_nodes(discr,
                 max_particles_in_box=max_nodes_in_box)
 
             tree = tree.get(queue)
-            leaf_boxes, = (tree.box_flags &
-                           box_flags_enum.HAS_CHILDREN == 0).nonzero()
+            leaf_boxes, = (tree.box_flags
+                           & box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
             indices = np.empty(len(leaf_boxes), dtype=np.object)
             for i, ibox in enumerate(leaf_boxes):
@@ -161,8 +161,8 @@ def partition_by_elements(discr,
 
             groups = discr.groups
             tree = tree.get(queue)
-            leaf_boxes, = (tree.box_flags &
-                           box_flags_enum.HAS_CHILDREN == 0).nonzero()
+            leaf_boxes, = (tree.box_flags
+                           & box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
             indices = np.empty(len(leaf_boxes), dtype=np.object)
             for i, ibox in enumerate(leaf_boxes):
@@ -225,8 +225,8 @@ def partition_from_coarse(resampler, from_indices):
 
         # construct ranges
         from_discr = resampler.from_discr
-        from_grp_ranges = np.cumsum([0] +
-                [grp.nelements for grp in from_discr.mesh.groups])
+        from_grp_ranges = np.cumsum(
+            [0] + [grp.nelements for grp in from_discr.mesh.groups])
         from_el_ranges = np.hstack([
             np.arange(grp.node_nr_base, grp.nnodes + 1, grp.nunit_nodes)
             for grp in from_discr.groups])
@@ -574,9 +574,9 @@ def gather_block_neighbor_points(discr, indices, pxycenters, pxyradii,
             # get nodes inside the ball but outside the current range
             center = pxycenters[:, iproxy].reshape(-1, 1)
             radius = pxyradii[iproxy]
-            mask = (la.norm(nodes - center, axis=0) < radius) & \
-                   ((isources < indices.ranges[iproxy]) |
-                    (indices.ranges[iproxy + 1] <= isources))
+            mask = ((la.norm(nodes - center, axis=0) < radius)
+                    & ((isources < indices.ranges[iproxy])
+                        | (indices.ranges[iproxy + 1] <= isources)))
 
             nbrindices[iproxy] = indices.indices[isources[mask]]
 
