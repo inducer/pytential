@@ -84,8 +84,8 @@ class Segment(Curve):
 
     def __call__(self, ts):
         return (
-            self.start[:, np.newaxis] +
-            ts * (self.end - self.start)[:, np.newaxis])
+            self.start[:, np.newaxis]
+            + ts * (self.end - self.start)[:, np.newaxis])
 
 
 class Arc(Curve):
@@ -134,12 +134,12 @@ class Arc(Curve):
     def __call__(self, t):
         if self.theta_increasing:
             thetas = (
-                self.theta_range[0] +
-                t * (self.theta_range[1] - self.theta_range[0]))
+                self.theta_range[0]
+                + t * (self.theta_range[1] - self.theta_range[0]))
         else:
             thetas = (
-                self.theta_range[1] -
-                t * (self.theta_range[1] - self.theta_range[0]))
+                self.theta_range[1]
+                - t * (self.theta_range[1] - self.theta_range[0]))
         val = (self.r * np.exp(1j * thetas)) + self.center
         return np.array([val.real, val.imag])
 
@@ -149,19 +149,19 @@ class Arc(Curve):
 # To avoid issues with crossing non-smooth regions, make sure the number of
 # panels given to this function (for make_curve_mesh) is a multiple of 8.
 horseshoe = (
-    Segment((0, 0), (-5, 0)) +
-    Arc((-5, 0), (-5.5, -0.5), (-5, -1)) +
-    Segment((-5, -1), (0, -1)) +
-    Arc((0, -1), (1.5, 0.5), (0, 2)) +
-    Segment((0, 2), (-5, 2)) +
-    Arc((-5, 2), (-5.5, 1.5), (-5, 1)) +
-    Segment((-5, 1), (0, 1)) +
-    Arc((0, 1), (0.5, 0.5), (0, 0))
+    Segment((0, 0), (-5, 0))
+    + Arc((-5, 0), (-5.5, -0.5), (-5, -1))
+    + Segment((-5, -1), (0, -1))
+    + Arc((0, -1), (1.5, 0.5), (0, 2))
+    + Segment((0, 2), (-5, 2))
+    + Arc((-5, 2), (-5.5, 1.5), (-5, 1))
+    + Segment((-5, 1), (0, 1))
+    + Arc((0, 1), (0.5, 0.5), (0, 0))
     )
 
 # unit square
 unit_square = (
-    Segment((1, -1), (1, 1)) +
-    Segment((1, 1), (-1, 1)) +
-    Segment((-1, 1), (-1, -1)) +
-    Segment((-1, -1), (1, -1)))
+    Segment((1, -1), (1, 1))
+    + Segment((1, 1), (-1, 1))
+    + Segment((-1, 1), (-1, -1))
+    + Segment((-1, -1), (1, -1)))
