@@ -287,8 +287,7 @@ def make_sym_surface_mv(name, ambient_dim, dim, where=None):
 
     return sum(
             var("%s%d" % (name, i))
-            *
-            cse(MultiVector(vec), "tangent%d" % i, cse_scope.DISCRETIZATION)
+            * cse(MultiVector(vec), "tangent%d" % i, cse_scope.DISCRETIZATION)
             for i, vec in enumerate(par_grad.T))
 
 
@@ -901,8 +900,7 @@ def area(ambient_dim, dim, where=None):
 def mean(ambient_dim, dim, operand, where=None):
     return (
             integral(ambient_dim, dim, operand, where)
-            /
-            area(ambient_dim, dim, where))
+            / area(ambient_dim, dim, where))
 
 
 class IterativeInverse(Expression):
@@ -1105,8 +1103,7 @@ class IntG(Expression):
                 karg.loopy_arg.name
                 for karg in (
                     kernel.get_args()
-                    +
-                    kernel.get_source_args()))
+                    + kernel.get_source_args()))
 
         kernel_arguments = kernel_arguments.copy()
         if kwargs:

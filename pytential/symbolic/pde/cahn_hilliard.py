@@ -54,12 +54,10 @@ class CahnHilliardOperator(L2WeightedPDEOperator):
             return (
                     # FIXME: Verify scaling
                     -1/(2*np.pi*(lam1**2-lam2**2)) / hhk_scaling
-                    *
-                    (
+                    * (
                         op_map(sym.S(hhk, density, k=1j*lam1,
                             qbx_forced_limit=qbx_forced_limit))
-                        -
-                        op_map(sym.S(hhk, density, k=1j*lam2,
+                        - op_map(sym.S(hhk, density, k=1j*lam2,
                             qbx_forced_limit=qbx_forced_limit))))
         else:
             return (

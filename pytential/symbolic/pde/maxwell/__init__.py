@@ -42,7 +42,7 @@ __doc__ = """
 # {{{ point source
 
 def get_sym_maxwell_point_source(kernel, jxyz, k):
-    """Return a symbolic expression that, when bound to a
+    r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
 
@@ -71,7 +71,7 @@ def get_sym_maxwell_point_source(kernel, jxyz, k):
 # {{{ plane wave
 
 def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=None):
-    """Return a symbolic expression that, when bound to a
+    r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
 
@@ -230,14 +230,14 @@ class MuellerAugmentedMFIEOperator(object):
 
         grad = partial(sym.grad, 3)
 
-        E0 = sym.cse(1j*omega*mu0*eps0*S(Jxyz, k=k0) +
-            mu0*curl_S(Mxyz, k=k0) - grad(S(u.rho_e, k=k0)), "E0")
-        H0 = sym.cse(-1j*omega*mu0*eps0*S(Mxyz, k=k0) +
-            eps0*curl_S(Jxyz, k=k0) + grad(S(u.rho_m, k=k0)), "H0")
-        E1 = sym.cse(1j*omega*mu1*eps1*S(Jxyz, k=k1) +
-            mu1*curl_S(Mxyz, k=k1) - grad(S(u.rho_e, k=k1)), "E1")
-        H1 = sym.cse(-1j*omega*mu1*eps1*S(Mxyz, k=k1) +
-            eps1*curl_S(Jxyz, k=k1) + grad(S(u.rho_m, k=k1)), "H1")
+        E0 = sym.cse(1j*omega*mu0*eps0*S(Jxyz, k=k0)
+            + mu0*curl_S(Mxyz, k=k0) - grad(S(u.rho_e, k=k0)), "E0")
+        H0 = sym.cse(-1j*omega*mu0*eps0*S(Mxyz, k=k0)
+            + eps0*curl_S(Jxyz, k=k0) + grad(S(u.rho_m, k=k0)), "H0")
+        E1 = sym.cse(1j*omega*mu1*eps1*S(Jxyz, k=k1)
+            + mu1*curl_S(Mxyz, k=k1) - grad(S(u.rho_e, k=k1)), "E1")
+        H1 = sym.cse(-1j*omega*mu1*eps1*S(Mxyz, k=k1)
+            + eps1*curl_S(Jxyz, k=k1) + grad(S(u.rho_m, k=k1)), "H1")
 
         F1 = (xyz_to_tangential(sym.n_cross(H1-H0) + 0.5*(eps0+eps1)*Jxyz))
         F2 = (sym.n_dot(eps1*E1-eps0*E0) + 0.5*(eps1+eps0)*u.rho_e)
