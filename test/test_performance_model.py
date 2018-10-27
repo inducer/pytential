@@ -188,8 +188,8 @@ def test_performance_model_parameter_gathering(ctx_getter):
 
     for level in range(tree.nlevels):
         assert (
-                perf_S.params["p_fmm_lev%d" % level] ==
-                fmm_level_to_order(k_sym, {"k": 2}, tree, level))
+                perf_S.params["p_fmm_lev%d" % level]
+                == fmm_level_to_order(k_sym, {"k": 2}, tree, level))
 
 # }}}
 
@@ -525,8 +525,8 @@ def test_performance_model_order_varying_by_level(ctx_getter):
     # case should have larger cost.
 
     assert (
-            sum(perf_varying.get_predicted_times().values()) >
-            sum(perf_constant.get_predicted_times().values()))
+            sum(perf_varying.get_predicted_times().values())
+            > sum(perf_constant.get_predicted_times().values()))
 
 # }}}
 
