@@ -6,6 +6,16 @@ Installing :mod:`pytential` (TSQBX support)
 
 This set of instructions is intended for 64-bit Linux and macOS computers.
 
+#.  Make sure your system has the basics to build software.
+
+    On Debian derivatives (Ubuntu and many more),
+    installing ``build-essential`` should do the trick.
+
+    On macOS, run ``xcode-select --install`` to install build tools.
+
+    Everywhere else, just making sure you have the ``g++`` package should be
+    enough.
+
 #.  Install your favorite variant of `miniconda <https://conda.io/miniconda.html>`_.
     (Both Python 2 and 3 should work. In the absence of other constraints, prefer Python 3.)
 
