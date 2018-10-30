@@ -1,20 +1,10 @@
 Installation and Usage
 ======================
 
-Installing :mod:`pytential`
----------------------------
+Installing :mod:`pytential` (TSQBX support)
+-------------------------------------------
 
 This set of instructions is intended for 64-bit Linux and macOS computers.
-
-#.  Make sure your system has the basics to build software.
-
-    On Debian derivatives (Ubuntu and many more),
-    installing ``build-essential`` should do the trick.
-
-    On macOS, run ``xcode-select --install`` to install build tools.
-
-    Everywhere else, just making sure you have the ``g++`` package should be
-    enough.
 
 #.  Install your favorite variant of `miniconda <https://conda.io/miniconda.html>`_.
     (Both Python 2 and 3 should work. In the absence of other constraints, prefer Python 3.)
@@ -33,11 +23,12 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
 
 #.  (*macOS only*) ``conda install osx-pocl-opencl pocl pyopencl``
 
-#.  ``conda install git pip pocl islpy pyopencl sympy pyfmmlib pytest``
+#.  ``conda install gcc cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
 
-#.  Type the following command::
+#.  Type the following commands::
 
-        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode; do python -m pip install git+https://github.com/inducer/$i; done
+        CC=gcc python -m pip install git+https://gitlab.tiker.net/inducer/pytential@tsqbx
 
 Next time you want to use :mod:`pytential`, just run the following command::
 
