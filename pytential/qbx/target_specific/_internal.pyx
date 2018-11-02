@@ -1,5 +1,5 @@
 #!python
-#cython: warn.unused=True, warn.unused_arg=True, warn.unreachable=True, boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True, embedsignature=True
+#cython: warn.unused=True, warn.unused_arg=True, warn.unreachable=True, boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True, embedsignature=True, language_level=3
 
 import numpy as np
 import cython
