@@ -1,8 +1,8 @@
 Installation and Usage
 ======================
 
-Installing :mod:`pytential` (TSQBX support)
--------------------------------------------
+Installing :mod:`pytential`
+---------------------------
 
 This set of instructions is intended for 64-bit Linux and macOS computers.
 
