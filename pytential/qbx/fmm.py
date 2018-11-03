@@ -229,7 +229,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 **kwargs)
 
         events.append(evt)
-
         assert local_exps is result
         result.add_event(evt)
 
@@ -238,7 +237,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     @log_process(logger)
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
-
         events = []
 
         geo_data = self.geo_data
@@ -280,7 +278,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     **self.kernel_extra_kwargs)
 
             events.append(evt)
-
             wait_for = [evt]
             assert qbx_expansions_res is qbx_expansions
 
@@ -294,6 +291,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         geo_data = self.geo_data
         events = []
+
         if geo_data.ncenters == 0:
             return (qbx_expansions, SumpyTimingFuture(self.queue, events))
 
@@ -329,7 +327,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     **self.kernel_extra_kwargs)
 
             events.append(evt)
-
             wait_for = [evt]
             assert qbx_expansions_res is qbx_expansions
 
