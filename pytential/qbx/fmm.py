@@ -204,10 +204,11 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     @log_process(logger)
     def form_global_qbx_locals(self, src_weights):
         local_exps = self.qbx_local_expansion_zeros()
+        events = []
 
         geo_data = self.geo_data
         if len(geo_data.global_qbx_centers()) == 0:
-            return local_exps
+            return (local_exps, SumpyTimingFuture(self.queue, events))
 
         traversal = geo_data.traversal()
 
@@ -233,24 +234,24 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
                 **kwargs)
 
+        events.append(evt)
         assert local_exps is result
         result.add_event(evt)
 
-        return (result, SumpyTimingFuture(self.queue, [evt]))
+        return (result, SumpyTimingFuture(self.queue, events))
 
     @log_process(logger)
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
+        events = []
 
         geo_data = self.geo_data
         if geo_data.ncenters == 0:
-            return qbx_expansions
+            return (qbx_expansions, SumpyTimingFuture(self.queue, events))
 
         traversal = geo_data.traversal()
 
         wait_for = multipole_exps.events
-
-        events = []
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
             m2qbxl = self.code.m2qbxl(
@@ -283,7 +284,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     **self.kernel_extra_kwargs)
 
             events.append(evt)
-
             wait_for = [evt]
             assert qbx_expansions_res is qbx_expansions
 
@@ -296,13 +296,14 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         qbx_expansions = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
+        events = []
+
         if geo_data.ncenters == 0:
-            return qbx_expansions
+            return (qbx_expansions, SumpyTimingFuture(self.queue, events))
+
         trav = geo_data.traversal()
 
         wait_for = local_exps.events
-
-        events = []
 
         for isrc_level in range(geo_data.tree().nlevels):
             l2qbxl = self.code.l2qbxl(
@@ -332,7 +333,6 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     **self.kernel_extra_kwargs)
 
             events.append(evt)
-
             wait_for = [evt]
             assert qbx_expansions_res is qbx_expansions
 
@@ -345,8 +345,10 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         pot = self.full_output_zeros()
 
         geo_data = self.geo_data
+        events = []
+
         if len(geo_data.global_qbx_centers()) == 0:
-            return pot
+            return (pot, SumpyTimingFuture(self.queue, events))
 
         ctt = geo_data.center_to_tree_targets()
 
@@ -371,7 +373,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         for pot_i, pot_res_i in zip(pot, pot_res):
             assert pot_i is pot_res_i
 
-        return (pot, SumpyTimingFuture(self.queue, [evt]))
+        return (pot, SumpyTimingFuture(self.queue, events))
 
     @log_process(logger)
     def eval_target_specific_qbx_locals(self, src_weights):
