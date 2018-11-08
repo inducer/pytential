@@ -85,7 +85,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _tree_kind="adaptive",
             _use_target_specific_qbx=False,
             geometry_data_inspector=None,
-            performance_model=None,
+            cost_model=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
         """
@@ -206,7 +206,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._tree_kind = _tree_kind
         self._use_target_specific_qbx = _use_target_specific_qbx
         self.geometry_data_inspector = geometry_data_inspector
-        self.performance_model = performance_model
+        self.cost_model = cost_model
 
         # /!\ *All* parameters set here must also be set by copy() below,
         # otherwise they will be reset to their default values behind your
@@ -230,7 +230,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _tree_kind=None,
             _use_target_specific_qbx=_not_provided,
             geometry_data_inspector=None,
-            performance_model=_not_provided,
+            cost_model=_not_provided,
             fmm_backend=None,
 
             debug=_not_provided,
@@ -317,11 +317,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     else self._use_target_specific_qbx),
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
-                performance_model=(
+                cost_model=(
                     # None is a valid value here
-                    performance_model
-                    if performance_model is not _not_provided
-                    else self.performance_model),
+                    cost_model
+                    if cost_model is not _not_provided
+                    else self.cost_model),
                 fmm_backend=fmm_backend or self.fmm_backend,
                 **kwargs)
 
@@ -745,7 +745,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
-    # {{{ execute fmm performance model
+    # {{{ execute fmm cost model
 
     def perf_model_compute_potential_insn_fmm(self, queue, insn, bound_expr,
             evaluate):
@@ -754,18 +754,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
 
-        if self.performance_model is None:
-            from pytential.qbx.performance import PerformanceModel
-            performance_model = PerformanceModel()
+        if self.cost_model is None:
+            from pytential.qbx.cost import CostModel
+            cost_model = CostModel()
         else:
-            performance_model = self.performance_model
+            cost_model = self.cost_model
 
         kernel_args = {}
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        performance_model_result = (
-                performance_model(geo_data, insn.base_kernel, kernel_args))
+        cost_model_result = (
+                cost_model(geo_data, insn.base_kernel, kernel_args))
 
         # {{{ construct dummy outputs
 
@@ -791,7 +791,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             result.append((o.name, output_array))
 
-        return result, performance_model_result
+        return result, cost_model_result
 
         # }}}
 

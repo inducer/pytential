@@ -1,4 +1,4 @@
-"""Trains a performance model and reports on the accuracy."""
+"""Calibrates a cost model and reports on the accuracy."""
 
 import pyopencl as cl
 import numpy as np
@@ -89,23 +89,22 @@ def get_test_density(queue, lpot_source):
     return sigma
 
 
-def train_performance_model(ctx):
+def calibrate_cost_model(ctx):
     queue = cl.CommandQueue(ctx)
 
-    from pytential.qbx.performance import (
-            PerformanceModel, estimate_calibration_params)
+    from pytential.qbx.cost import CostModel, estimate_calibration_params
 
-    perf_model = PerformanceModel()
+    perf_model = CostModel()
 
     model_results = []
     timing_results = []
 
     for lpot_source in training_geometries(queue):
-        lpot_source = lpot_source.copy(performance_model=perf_model)
+        lpot_source = lpot_source.copy(cost_model=perf_model)
         bound_op = get_bound_op(lpot_source)
         sigma = get_test_density(queue, lpot_source)
 
-        perf_S = bound_op.get_modeled_performance(queue, sigma=sigma)
+        perf_S = bound_op.get_modeled_cost(queue, sigma=sigma)
 
         # Warm-up run.
         bound_op.eval(queue, {"sigma": sigma})
@@ -123,15 +122,15 @@ def train_performance_model(ctx):
     return perf_model.with_calibration_params(calibration_params)
 
 
-def test_performance_model(ctx, perf_model):
+def test_cost_model(ctx, perf_model):
     queue = cl.CommandQueue(ctx)
 
     for lpot_source in test_geometries(queue):
-        lpot_source = lpot_source.copy(performance_model=perf_model)
+        lpot_source = lpot_source.copy(cost_model=perf_model)
         bound_op = get_bound_op(lpot_source)
         sigma = get_test_density(queue, lpot_source)
 
-        perf_S = bound_op.get_modeled_performance(queue, sigma=sigma)
+        perf_S = bound_op.get_modeled_cost(queue, sigma=sigma)
         model_result = (
                 one(perf_S.values())
                 .get_predicted_times(merge_close_lists=True))
@@ -159,10 +158,10 @@ def test_performance_model(ctx, perf_model):
         print("=" * 20)
 
 
-def predict_performance(ctx):
-    model = train_performance_model(ctx)
-    test_performance_model(ctx, model)
+def predict_cost(ctx):
+    model = calibrate_cost_model(ctx)
+    test_cost_model(ctx, model)
 
 
 if __name__ == "__main__":
-    predict_performance(cl.create_some_context(0))
+    predict_cost(cl.create_some_context(0))

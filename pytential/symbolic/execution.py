@@ -258,13 +258,13 @@ class EvaluationMapper(EvaluationMapperBase):
 # }}}
 
 
-# {{{ performance model mapper
+# {{{ cost model mapper
 
-class PerformanceModelMapper(EvaluationMapperBase):
-    """Mapper for evaluating performance models.
+class CostModelMapper(EvaluationMapperBase):
+    """Mapper for evaluating cost models.
 
     This executes everything *except* the layer potential operator. Instead of
-    executing the operator, the performance model gets run and the performance
+    executing the operator, the cost model gets run and the cost
     data is collected.
     """
 
@@ -279,18 +279,18 @@ class PerformanceModelMapper(EvaluationMapperBase):
                 target_points,
                 target_normals,
                 target_tangents)
-        self.modeled_performance = {}
+        self.modeled_cost = {}
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         source = bound_expr.places[insn.source]
         result, perf_model_result = (
                 source.perf_model_compute_potential_insn(
                     queue, insn, bound_expr, evaluate))
-        self.modeled_performance[insn] = perf_model_result
+        self.modeled_cost[insn] = perf_model_result
         return result
 
-    def get_modeled_performance(self):
-        return self.modeled_performance
+    def get_modeled_cost(self):
+        return self.modeled_cost
 
 # }}}
 
@@ -541,10 +541,10 @@ class BoundExpression(object):
     def get_discretization(self, where):
         return self.places.get_discretization(where)
 
-    def get_modeled_performance(self, queue, **args):
-        perf_model_mapper = PerformanceModelMapper(self, queue, args)
+    def get_modeled_cost(self, queue, **args):
+        perf_model_mapper = CostModelMapper(self, queue, args)
         self.code.execute(perf_model_mapper)
-        return perf_model_mapper.get_modeled_performance()
+        return perf_model_mapper.get_modeled_cost()
 
     def scipy_op(self, queue, arg_name, dtype, domains=None, **extra_args):
         """

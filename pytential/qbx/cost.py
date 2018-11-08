@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
-.. autoclass:: PerformanceModel
+.. autoclass:: CostModel
 .. autoclass:: ParametrizedCosts
 
 .. autoclass:: TranslationCostModel
@@ -171,10 +171,10 @@ def taylor_translation_cost_model(dim, nlevels):
 # }}}
 
 
-# {{{ parameterized costs returned by performance model
+# {{{ parameterized costs returned by cost model
 
 class ParametrizedCosts(object):
-    """A container for data returned by the performance model.
+    """A container for data returned by the cost model.
 
     This holds both symbolic costs as well as parameter values. To obtain a
     prediction of the running time, use :meth:`get_predicted_times`.
@@ -255,14 +255,14 @@ class ParametrizedCosts(object):
 # }}}
 
 
-# {{{ performance model
+# {{{ cost model
 
-class PerformanceModel(object):
+class CostModel(object):
     """
     .. automethod:: with_calibration_params
     .. automethod:: __call__
 
-    The performance model relies on a translation cost model. See
+    The cost model relies on a translation cost model. See
     :class:`TranslationCostModel` for the translation cost model interface.
     """
 
@@ -660,9 +660,9 @@ class PerformanceModel(object):
 
     # }}}
 
-    @log_process(logger, "model performance")
+    @log_process(logger, "model cost")
     def __call__(self, geo_data, kernel, kernel_arguments):
-        """Analyze the given geometry and return performance data.
+        """Analyze the given geometry and return cost data.
 
         :returns: An instance of :class:`ParametrizedCosts`.
         """
@@ -818,7 +818,7 @@ class PerformanceModel(object):
 # }}}
 
 
-# {{{ calibrate performance model
+# {{{ calibrate cost model
 
 def _collect(expr, variables):
     """Collect terms with respect to a list of variables.

@@ -36,7 +36,7 @@ from pytools import one
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 from pytential import bind, sym, norm  # noqa
-from pytential.qbx.performance import PerformanceModel
+from pytential.qbx.cost import CostModel
 
 
 # {{{ global params
@@ -123,10 +123,10 @@ def test_timing_data_gathering(ctx_getter):
 # }}}
 
 
-# {{{ test performance model
+# {{{ test cost model
 
 @pytest.mark.parametrize("dim", (2, 3))
-def test_performance_model(ctx_getter, dim):
+def test_cost_model(ctx_getter, dim):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -138,22 +138,22 @@ def test_performance_model(ctx_getter, dim):
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
     op_S = bind(lpot_source, sym_op_S)
-    perf_S = op_S.get_modeled_performance(queue, sigma=sigma)
+    perf_S = op_S.get_modeled_cost(queue, sigma=sigma)
     assert len(perf_S) == 1
 
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
             + sym.D(k_sym, sigma_sym))
     op_S_plus_D = bind(lpot_source, sym_op_S_plus_D)
-    perf_S_plus_D = op_S_plus_D.get_modeled_performance(queue, sigma=sigma)
+    perf_S_plus_D = op_S_plus_D.get_modeled_cost(queue, sigma=sigma)
     assert len(perf_S_plus_D) == 2
 
 # }}}
 
 
-# {{{ test performance model parameter gathering
+# {{{ test cost model parameter gathering
 
-def test_performance_model_parameter_gathering(ctx_getter):
+def test_cost_model_parameter_gathering(ctx_getter):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -173,7 +173,7 @@ def test_performance_model_parameter_gathering(ctx_getter):
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1, k=sym.var("k"))
     op_S = bind(lpot_source, sym_op_S)
 
-    perf_S = one(op_S.get_modeled_performance(queue, sigma=sigma, k=k).values())
+    perf_S = one(op_S.get_modeled_cost(queue, sigma=sigma, k=k).values())
 
     geo_data = lpot_source.qbx_fmm_geometry_data(
             target_discrs_and_qbx_sides=((lpot_source.density_discr, 1),))
@@ -351,7 +351,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 # }}}
 
 
-# {{{ verify performance model
+# {{{ verify cost model
 
 class OpCountingTranslationCostModel(object):
     """A translation cost model which assigns at cost of 1 to each operation."""
@@ -392,17 +392,17 @@ class OpCountingTranslationCostModel(object):
         (3, False, True),
         (3, True,  False),
         (3, True,  True)))
-def test_performance_model_correctness(ctx_getter, dim, off_surface,
+def test_cost_model_correctness(ctx_getter, dim, off_surface,
         use_target_specific_qbx):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
     perf_model = (
-            PerformanceModel(
+            CostModel(
                 translation_cost_model_factory=OpCountingTranslationCostModel))
 
     lpot_source = get_lpot_source(queue, dim).copy(
-            performance_model=perf_model,
+            cost_model=perf_model,
             _use_target_specific_qbx=use_target_specific_qbx)
 
     # Construct targets.
@@ -419,7 +419,7 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
         target_discrs_and_qbx_sides = ((targets, 1),)
         qbx_forced_limit = 1
 
-    # Construct bound op, run performance model.
+    # Construct bound op, run cost model.
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=qbx_forced_limit)
@@ -428,7 +428,7 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
     sigma = get_density(queue, lpot_source)
 
     from pytools import one
-    perf_S = one(op_S.get_modeled_performance(queue, sigma=sigma).values())
+    perf_S = one(op_S.get_modeled_cost(queue, sigma=sigma).values())
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
     # high-level interface, so call the FMM driver directly.
@@ -450,7 +450,7 @@ def test_performance_model_correctness(ctx_getter, dim, off_surface,
 
     modeled_time = perf_S.get_predicted_times(merge_close_lists=True)
 
-    # Check that the performance model matches the timing data returned by the
+    # Check that the cost model matches the timing data returned by the
     # constant one wrangler.
     mismatches = []
     for stage in timing_data:
@@ -482,7 +482,7 @@ CONSTANT_ONE_PARAMS = dict(
         )
 
 
-def test_performance_model_order_varying_by_level(ctx_getter):
+def test_cost_model_order_varying_by_level(ctx_getter):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -492,7 +492,7 @@ def test_performance_model_order_varying_by_level(ctx_getter):
         return 1
 
     lpot_source = get_lpot_source(queue, 2).copy(
-            performance_model=PerformanceModel(
+            cost_model=CostModel(
                 calibration_params=CONSTANT_ONE_PARAMS),
             fmm_level_to_order=level_to_order_constant)
 
@@ -505,7 +505,7 @@ def test_performance_model_order_varying_by_level(ctx_getter):
 
     perf_constant = one(
             bind(lpot_source, sym_op)
-            .get_modeled_performance(queue, sigma=sigma).values())
+            .get_modeled_cost(queue, sigma=sigma).values())
 
     # }}}
 
@@ -532,7 +532,7 @@ def test_performance_model_order_varying_by_level(ctx_getter):
 
 
 # You can test individual routines by typing
-# $ python test_performance_model.py 'test_routine()'
+# $ python test_cost_model.py 'test_routine()'
 
 if __name__ == "__main__":
     import sys
