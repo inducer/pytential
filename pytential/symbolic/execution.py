@@ -175,6 +175,27 @@ class EvaluationMapper(EvaluationMapperBase):
         source = self.bound_expr.places[expr.source]
         return source.map_quad_kernel_op(expr, self.bound_expr, self.rec)
 
+    def map_interpolation(self, expr):
+        assert isinstance(expr.target, sym.QBXSourceQuadStage2)
+
+        where = expr.source
+        if isinstance(where, sym.DEFAULT_SOURCE):
+            where = sym.QBXSourceStage1(where)
+
+        source = self.bound_expr.places[expr.source]
+        density = self.rec(expr.density)
+
+        if isinstance(where, sym.QBXSourceStage1):
+            density = source.resampler(density)
+        elif isinstance(where, sym.QBXSourceStage2):
+            density = source.refined_interp_to_ovsmp_quad_connection(density)
+        elif isinstance(where, sym.QBXSourceQuadStage2):
+            pass
+        else:
+            raise ValueError('unknown `where` identifier: {}'.format(type(where)))
+
+        return density
+
     # }}}
 
     def exec_assign(self, queue, insn, bound_expr, evaluate):

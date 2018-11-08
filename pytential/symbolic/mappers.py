@@ -393,6 +393,15 @@ class UnregularizedPreprocessor(IdentityMapper):
 
 # {{{ QBX preprocessor
 
+class InterpolationPreprocessor(IdentityMapper):
+    def mat_int_g(self, expr):
+        if isinstance(expr.source, prim.QBXSourceQuadStage2):
+            return expr
+
+        density = prim.Interpolation(self.rec(expr.density), expr.source)
+        return expr.copy(density=density)
+
+
 class QBXPreprocessor(IdentityMapper):
     def __init__(self, source_name, places):
         self.source_name = source_name

@@ -1017,6 +1017,21 @@ class _NoArgSentinel(object):
     pass
 
 
+class Interpolation(Expression):
+    """Interpolate density from *source* to *target* discretization."""
+
+    init_arg_names = ("density", "source", "target")
+
+    def __init__(self, density, source, target=None):
+        self.density = density
+        self.source = source
+        self.target = target
+        if self.target is None:
+            self.target = QBXSourceQuadStage2(DEFAULT_SOURCE)
+
+    mapper_method = intern("map_interpolation")
+
+
 class IntG(Expression):
     r"""
     .. math::
