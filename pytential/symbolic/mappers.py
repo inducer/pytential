@@ -81,6 +81,7 @@ class IdentityMapper(IdentityMapperBase):
     map_node_coordinate_component = map_ones
     map_parametrization_gradient = map_ones
     map_parametrization_derivative = map_ones
+    map_interpolation = map_ones
 
     # }}}
 
@@ -107,6 +108,9 @@ class IdentityMapper(IdentityMapperBase):
 class CombineMapper(CombineMapperBase):
     def map_node_sum(self, expr):
         return self.rec(expr.operand)
+
+    def map_interpolation(self, expr):
+        return self.rec(expr.density)
 
     map_node_max = map_node_sum
     map_num_reference_derivative = map_node_sum
@@ -279,6 +283,17 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     (name, self.rec(name_expr))
                     for name, name_expr in six.iteritems(expr.extra_vars)]),
                 where)
+
+    def map_interpolation(self, expr):
+        source = expr.source
+        target = expr.target
+
+        if source is None:
+            source = self.default_source
+        if target is None:
+            target = self.default_where
+
+        return type(expr)(expr.density, source, target)
 
     def operand_rec(self, expr):
         return self.rec(expr)

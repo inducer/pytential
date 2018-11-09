@@ -26,6 +26,7 @@ import pytest
 
 import numpy as np
 import numpy.linalg as la
+
 import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
@@ -176,15 +177,13 @@ def test_tangential_onb(ctx_factory):
 # {{{ test_expr_pickling
 
 def test_expr_pickling():
-    from sumpy.kernel import LaplaceKernel, AxisTargetDerivative
     import pickle
+    from sumpy.kernel import LaplaceKernel, AxisTargetDerivative
 
     ops_for_testing = [
         sym.d_dx(
             2,
-            sym.D(
-                LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2
-            )
+            sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2)
         ),
         sym.D(
             AxisTargetDerivative(0, LaplaceKernel(2)),
@@ -200,6 +199,53 @@ def test_expr_pickling():
         assert op == after_pickle_op
 
 # }}}
+
+
+@pytest.mark.parametrize("where", [
+    sym.DEFAULT_SOURCE,
+    sym.QBXSourceStage1(sym.DEFAULT_SOURCE),
+    sym.QBXSourceStage2(sym.DEFAULT_SOURCE),
+    sym.QBXSourceQuadStage2(sym.DEFAULT_SOURCE)
+    ])
+def test_interpolation(ctx_factory, where):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    ndim = 2
+    nelements = 32
+    target_order = 5
+    qbx_order = 4
+
+    mesh = make_curve_mesh(starfish,
+            np.linspace(0.0, 1.0, nelements + 1),
+            target_order)
+    discr = Discretization(ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+
+    from pytential.qbx import QBXLayerPotentialSource
+    qbx, _ = QBXLayerPotentialSource(discr,
+            fine_order=4 * target_order,
+            qbx_order=qbx_order,
+            fmm_order=False).with_refinement()
+
+    sigma_sym = sym.var("sigma")
+    op_sym = sym.sin(sym.Interpolation(sigma_sym, where))
+    bound_op = bind(qbx, op_sym, auto_where=(where, sym.DEFAULT_TARGET))
+
+    quad2_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
+    if isinstance(where, sym.QBXSourceStage2):
+        nodes = qbx.stage2_density_discr.nodes().get(queue)
+    elif isinstance(where, sym.QBXSourceQuadStage2):
+        nodes = quad2_nodes
+    else:
+        nodes = qbx.density_discr.nodes().get(queue)
+
+    sigma_dev = cl.array.to_device(queue, la.norm(nodes, axis=0))
+    sigma_quad2 = np.sin(la.norm(quad2_nodes, axis = 0))
+    sigma_quad2_interp = bound_op(queue, sigma=sigma_dev).get(queue)
+
+    error = la.norm(sigma_quad2_interp - sigma_quad2) / la.norm(sigma_quad2)
+    print(error)
 
 
 # You can test individual routines by typing

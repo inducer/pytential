@@ -39,9 +39,7 @@ import pyopencl.clmath  # noqa
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_in
-from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-from pytential.symbolic.primitives import (
-    QBXSourceStage1, QBXSourceStage2, QBXSourceQuadStage2)
+from pytential import sym
 
 
 # FIXME caches: fix up queues
@@ -179,22 +177,23 @@ class EvaluationMapper(EvaluationMapperBase):
         assert isinstance(expr.target, sym.QBXSourceQuadStage2)
 
         where = expr.source
-        if isinstance(where, sym.DEFAULT_SOURCE):
+        if not isinstance(where, sym._QBXSource):
             where = sym.QBXSourceStage1(where)
 
         source = self.bound_expr.places[expr.source]
-        density = self.rec(expr.density)
-
         if isinstance(where, sym.QBXSourceStage1):
-            density = source.resampler(density)
+            resampler = source.resampler
         elif isinstance(where, sym.QBXSourceStage2):
-            density = source.refined_interp_to_ovsmp_quad_connection(density)
+            resampler = source.refined_interp_to_ovsmp_quad_connection
         elif isinstance(where, sym.QBXSourceQuadStage2):
-            pass
+            resampler = lambda x, y: y
         else:
-            raise ValueError('unknown `where` identifier: {}'.format(type(where)))
+            from pytential.symbolic.mappers import stringify_where
+            raise ValueError('unknown `where` identifier: {}'.format(
+                stringify_where(where)))
 
-        return density
+        density = self.rec(expr.density)
+        return resampler(self.queue, density)
 
     # }}}
 
@@ -396,7 +395,7 @@ class GeometryCollection(object):
         from pytential.source import LayerPotentialSourceBase, PotentialSource
 
         if auto_where is None:
-            source_where, target_where = DEFAULT_SOURCE, DEFAULT_TARGET
+            source_where, target_where = sym.DEFAULT_SOURCE, sym.DEFAULT_TARGET
         else:
             # NOTE: keeping this here to make sure auto_where unpacks into
             # just the two elements
@@ -432,18 +431,19 @@ class GeometryCollection(object):
         if not isinstance(lpot, LayerPotentialSourceBase):
             return lpot
 
-        from pytential.symbolic.primitives import _QBXSource
-        if not isinstance(where, _QBXSource):
-            where = QBXSourceStage1(where)
+        if not isinstance(where, sym._QBXSource):
+            where = sym.QBXSourceStage1(where)
 
-        if isinstance(where, QBXSourceStage1):
+        if isinstance(where, sym.QBXSourceStage1):
             return lpot.density_discr
-        if isinstance(where, QBXSourceStage2):
+        if isinstance(where, sym.QBXSourceStage2):
             return lpot.stage2_density_discr
-        if isinstance(where, QBXSourceQuadStage2):
+        if isinstance(where, sym.QBXSourceQuadStage2):
             return lpot.quad_stage2_density_discr
 
-        raise ValueError('unknown `where` identifier: {}'.format(type(where)))
+        from pytential.symbolic.mappers import stringify_where
+        raise ValueError('unknown `where` identifier: {}'.format(
+            sym.stringify_where(where)))
 
     def get_discretization(self, where):
         """
@@ -513,7 +513,7 @@ class BoundExpression(object):
             nresults = 1
 
         domains = _prepare_domains(nresults, self.places, domains,
-                DEFAULT_TARGET)
+                sym.DEFAULT_TARGET)
 
         total_dofs = 0
         starts_and_ends = []

@@ -1029,6 +1029,9 @@ class Interpolation(Expression):
         if self.target is None:
             self.target = QBXSourceQuadStage2(DEFAULT_SOURCE)
 
+    def __getinitargs__(self):
+        return (self.density, self.source, self.target)
+
     mapper_method = intern("map_interpolation")
 
 
