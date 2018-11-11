@@ -1018,19 +1018,28 @@ class _NoArgSentinel(object):
 
 
 class Interpolation(Expression):
-    """Interpolate density from *source* to *target* discretization."""
+    """Interpolate quantity from *source* to *target* discretization."""
 
-    init_arg_names = ("density", "source", "target")
+    init_arg_names = ("operand", "source", "target")
 
-    def __init__(self, density, source, target=None):
-        self.density = density
+    def __new__(cls, operand, source, target=None):
+        if isinstance(operand, np.ndarray):
+            def make_op(operand_i):
+                return cls(operand_i, source, target)
+
+            return componentwise(make_op, operand)
+        else:
+            return Expression.__new__(cls)
+
+    def __init__(self, operand, source, target=None):
+        self.operand = operand
         self.source = source
         self.target = target
         if self.target is None:
             self.target = QBXSourceQuadStage2(DEFAULT_SOURCE)
 
     def __getinitargs__(self):
-        return (self.density, self.source, self.target)
+        return (self.operand, self.source, self.target)
 
     mapper_method = intern("map_interpolation")
 

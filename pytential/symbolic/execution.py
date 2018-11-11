@@ -176,24 +176,32 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_interpolation(self, expr):
         assert isinstance(expr.target, sym.QBXSourceQuadStage2)
 
+        source = self.bound_expr.places[expr.source]
+        operand = self.rec(expr.operand)
+
+        from pytential.source import LayerPotentialSourceBase
+        if not isinstance(source, LayerPotentialSourceBase):
+            return operand
+
+        if not isinstance(operand, cl.array.Array):
+            return operand
+
         where = expr.source
         if not isinstance(where, sym._QBXSource):
             where = sym.QBXSourceStage1(where)
 
-        source = self.bound_expr.places[expr.source]
         if isinstance(where, sym.QBXSourceStage1):
             resampler = source.resampler
         elif isinstance(where, sym.QBXSourceStage2):
             resampler = source.refined_interp_to_ovsmp_quad_connection
         elif isinstance(where, sym.QBXSourceQuadStage2):
-            resampler = lambda x, y: y
+            resampler = lambda x, y: y  # noqa
         else:
             from pytential.symbolic.mappers import stringify_where
             raise ValueError('unknown `where` identifier: {}'.format(
                 stringify_where(where)))
 
-        density = self.rec(expr.density)
-        return resampler(self.queue, density)
+        return resampler(self.queue, operand)
 
     # }}}
 
@@ -441,7 +449,6 @@ class GeometryCollection(object):
         if isinstance(where, sym.QBXSourceQuadStage2):
             return lpot.quad_stage2_density_discr
 
-        from pytential.symbolic.mappers import stringify_where
         raise ValueError('unknown `where` identifier: {}'.format(
             sym.stringify_where(where)))
 
@@ -551,7 +558,9 @@ def bind(places, expr, auto_where=None):
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
 
+    from pytential.symbolic.mappers import InterpolationPreprocessor
     expr = _prepare_expr(places, expr)
+    expr = InterpolationPreprocessor()(expr)
 
     return BoundExpression(places, expr)
 

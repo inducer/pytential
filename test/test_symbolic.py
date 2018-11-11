@@ -211,7 +211,6 @@ def test_interpolation(ctx_factory, where):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    ndim = 2
     nelements = 32
     target_order = 5
     qbx_order = 4
@@ -241,7 +240,7 @@ def test_interpolation(ctx_factory, where):
         nodes = qbx.density_discr.nodes().get(queue)
 
     sigma_dev = cl.array.to_device(queue, la.norm(nodes, axis=0))
-    sigma_quad2 = np.sin(la.norm(quad2_nodes, axis = 0))
+    sigma_quad2 = np.sin(la.norm(quad2_nodes, axis=0))
     sigma_quad2_interp = bound_op(queue, sigma=sigma_dev).get(queue)
 
     error = la.norm(sigma_quad2_interp - sigma_quad2) / la.norm(sigma_quad2)
