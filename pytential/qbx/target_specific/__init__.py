@@ -21,4 +21,4 @@ THE SOFTWARE.
 """
 
 
-from ._internal import *  # noqa
+from .impl import *  # noqa

@@ -58,13 +58,13 @@ write_git_revision("pytential")
 
 ext_modules = [
         Extension(
-            "pytential.qbx.target_specific._internal",
+            "pytential.qbx.target_specific.impl",
             sources=[
-                "pytential/qbx/target_specific/_internal.pyx",
-                "pytential/qbx/target_specific/_helmholtz_utils.c"],
+                "pytential/qbx/target_specific/impl.pyx",
+                "pytential/qbx/target_specific/helmholtz_utils.c"],
             depends=[
-                "pytential/qbx/target_specific/_internal.h",
-                "pytential/qbx/target_specific/_helmholtz_utils.h"],
+                "pytential/qbx/target_specific/impl.h",
+                "pytential/qbx/target_specific/helmholtz_utils.h"],
             extra_compile_args=["-Wall", "-fopenmp", "-Ofast"],
             extra_link_args=["-fopenmp"]
         ),
