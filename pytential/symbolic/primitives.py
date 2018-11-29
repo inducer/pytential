@@ -114,6 +114,7 @@ Discretization properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: QWeight
+.. autoclass:: Interpolation
 .. autofunction:: nodes
 .. autofunction:: parametrization_derivative
 .. autofunction:: parametrization_derivative_matrix

@@ -409,20 +409,28 @@ class UnregularizedPreprocessor(IdentityMapper):
 # {{{ QBX preprocessor
 
 class InterpolationPreprocessor(IdentityMapper):
+    def __init__(self, places):
+        self.places = places
+
     def map_int_g(self, expr):
         if isinstance(expr.source, prim.QBXSourceQuadStage2):
             return expr
 
-        density = prim.Interpolation(self.rec(expr.density), expr.source)
-        kernel_arguments = dict(
-                (name, prim.Interpolation(self.rec(arg_expr), expr.source))
-                for name, arg_expr in expr.kernel_arguments.items())
+        from pytential.source import LayerPotentialSourceBase
+        source = self.places[expr.source]
 
-        return expr.copy(
-                kernel=expr.kernel,
-                density=density,
-                kernel_arguments=kernel_arguments)
+        if isinstance(source, LayerPotentialSourceBase):
+            density = prim.Interpolation(self.rec(expr.density), expr.source)
+            kernel_arguments = dict(
+                    (name, prim.Interpolation(self.rec(arg_expr), expr.source))
+                     for name, arg_expr in expr.kernel_arguments.items())
 
+            expr = expr.copy(
+                    kernel=expr.kernel,
+                    density=density,
+                    kernel_arguments=kernel_arguments)
+
+        return expr
 
 class QBXPreprocessor(IdentityMapper):
     def __init__(self, source_name, places):
