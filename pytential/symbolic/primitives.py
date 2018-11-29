@@ -114,7 +114,6 @@ Discretization properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: QWeight
-.. autoclass:: Interpolation
 .. autofunction:: nodes
 .. autofunction:: parametrization_derivative
 .. autofunction:: parametrization_derivative_matrix
@@ -141,6 +140,11 @@ Elementary numerics
 .. autofunction:: area
 .. autofunction:: mean
 .. autoclass:: IterativeInverse
+
+Operators
+^^^^^^^^^
+
+.. autoclass:: Interpolation
 
 Geometric Calculus (based on Geometric/Clifford Algebra)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
