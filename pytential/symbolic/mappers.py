@@ -423,7 +423,7 @@ class InterpolationPreprocessor(IdentityMapper):
             density = prim.Interpolation(self.rec(expr.density), expr.source)
             kernel_arguments = dict(
                     (name, prim.Interpolation(self.rec(arg_expr), expr.source))
-                     for name, arg_expr in expr.kernel_arguments.items())
+                    for name, arg_expr in expr.kernel_arguments.items())
 
             expr = expr.copy(
                     kernel=expr.kernel,
@@ -431,6 +431,7 @@ class InterpolationPreprocessor(IdentityMapper):
                     kernel_arguments=kernel_arguments)
 
         return expr
+
 
 class QBXPreprocessor(IdentityMapper):
     def __init__(self, source_name, places):
