@@ -201,18 +201,18 @@ def test_expr_pickling():
 # }}}
 
 
-@pytest.mark.parametrize("where", [
+@pytest.mark.parametrize("source", [
     sym.DEFAULT_SOURCE,
     sym.QBXSourceStage1(sym.DEFAULT_SOURCE),
     sym.QBXSourceStage2(sym.DEFAULT_SOURCE),
     sym.QBXSourceQuadStage2(sym.DEFAULT_SOURCE)
     ])
-def test_interpolation(ctx_factory, where):
+def test_interpolation(ctx_factory, source):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     nelements = 32
-    target_order = 5
+    target_order = 7
     qbx_order = 4
 
     mesh = make_curve_mesh(starfish,
@@ -227,14 +227,15 @@ def test_interpolation(ctx_factory, where):
             qbx_order=qbx_order,
             fmm_order=False).with_refinement()
 
+    target = sym.QBXSourceQuadStage2(sym.DEFAULT_SOURCE)
     sigma_sym = sym.var("sigma")
-    op_sym = sym.sin(sym.Interpolation(sigma_sym, where))
-    bound_op = bind(qbx, op_sym, auto_where=(where, sym.DEFAULT_TARGET))
+    op_sym = sym.sin(sym.Interpolation(source, target, sigma_sym))
+    bound_op = bind(qbx, op_sym, auto_where=(source, sym.DEFAULT_TARGET))
 
     quad2_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
-    if isinstance(where, sym.QBXSourceStage2):
+    if isinstance(source, sym.QBXSourceStage2):
         nodes = qbx.stage2_density_discr.nodes().get(queue)
-    elif isinstance(where, sym.QBXSourceQuadStage2):
+    elif isinstance(source, sym.QBXSourceQuadStage2):
         nodes = quad2_nodes
     else:
         nodes = qbx.density_discr.nodes().get(queue)
@@ -244,7 +245,7 @@ def test_interpolation(ctx_factory, where):
     sigma_quad2_interp = bound_op(queue, sigma=sigma_dev).get(queue)
 
     error = la.norm(sigma_quad2_interp - sigma_quad2) / la.norm(sigma_quad2)
-    print(error)
+    assert error < 1.0e-10
 
 
 # You can test individual routines by typing

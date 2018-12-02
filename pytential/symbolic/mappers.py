@@ -104,7 +104,7 @@ class IdentityMapper(IdentityMapperBase):
                     ))
 
     def map_interpolation(self, expr):
-        return type(expr)(self.rec(expr.operand), expr.source, expr.target)
+        return type(expr)(expr.source, expr.target, self.rec(expr.operand))
 
 
 class CombineMapper(CombineMapperBase):
@@ -293,7 +293,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         if target is None:
             target = self.default_where
 
-        return type(expr)(expr.operand, source, target)
+        return type(expr)(source, target, expr.operand)
 
     def operand_rec(self, expr):
         return self.rec(expr)
@@ -408,7 +408,7 @@ class UnregularizedPreprocessor(IdentityMapper):
 
 # {{{ QBX preprocessor
 
-class InterpolationPreprocessor(IdentityMapper):
+class QBXInterpolationPreprocessor(IdentityMapper):
     def __init__(self, places):
         self.places = places
 
@@ -420,9 +420,13 @@ class InterpolationPreprocessor(IdentityMapper):
         source = self.places[expr.source]
 
         if isinstance(source, LayerPotentialSourceBase):
-            density = prim.Interpolation(self.rec(expr.density), expr.source)
+            target = prim.QBXSourceQuadStage2(prim.DEFAULT_SOURCE)
+
+            density = prim.Interpolation(
+                    expr.source, target, self.rec(expr.density))
             kernel_arguments = dict(
-                    (name, prim.Interpolation(self.rec(arg_expr), expr.source))
+                    (name, prim.Interpolation(
+                        expr.source, target, self.rec(arg_expr)))
                     for name, arg_expr in expr.kernel_arguments.items())
 
             expr = expr.copy(

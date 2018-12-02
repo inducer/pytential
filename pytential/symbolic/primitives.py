@@ -1025,26 +1025,24 @@ class _NoArgSentinel(object):
 class Interpolation(Expression):
     """Interpolate quantity from *source* to *target* discretization."""
 
-    init_arg_names = ("operand", "source", "target")
+    init_arg_names = ("source", "target", "operand")
 
-    def __new__(cls, operand, source, target=None):
+    def __new__(cls, source, target, operand):
         if isinstance(operand, np.ndarray):
             def make_op(operand_i):
-                return cls(operand_i, source, target)
+                return cls(source, target, operand_i)
 
             return componentwise(make_op, operand)
         else:
             return Expression.__new__(cls)
 
-    def __init__(self, operand, source, target=None):
-        self.operand = operand
+    def __init__(self, source, target, operand):
         self.source = source
         self.target = target
-        if self.target is None:
-            self.target = QBXSourceQuadStage2(DEFAULT_SOURCE)
+        self.operand = operand
 
     def __getinitargs__(self):
-        return (self.operand, self.source, self.target)
+        return (self.source, self.target, self.operand)
 
     mapper_method = intern("map_interpolation")
 

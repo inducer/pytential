@@ -561,9 +561,9 @@ def bind(places, expr, auto_where=None):
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
 
-    from pytential.symbolic.mappers import InterpolationPreprocessor
+    from pytential.symbolic.mappers import QBXInterpolationPreprocessor
     expr = _prepare_expr(places, expr)
-    expr = InterpolationPreprocessor(places)(expr)
+    expr = QBXInterpolationPreprocessor(places)(expr)
 
     return BoundExpression(places, expr)
 
