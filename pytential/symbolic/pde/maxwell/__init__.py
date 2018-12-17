@@ -46,7 +46,7 @@ def get_sym_maxwell_point_source(kernel, jxyz, k):
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
 
-    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
+    Uses the sign convention :math:`\exp(-i \omega t)` for the time dependency.
 
     This will return an object of six entries, the first three of which
     represent the electric, and the second three of which represent the
