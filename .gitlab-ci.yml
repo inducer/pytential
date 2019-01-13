@@ -1,12 +1,12 @@
-Python 3.5 POCL:
+Python 2.7 POCL:
   script:
-  - export PY_EXE=python3.5
+  - export PY_EXE=python2.7
   - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy scipy mako"
+  - export EXTRA_INSTALL="pybind11 scipy numpy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
-  - python3.5
+  - python2.7
   - pocl
   - large-node
   except:
@@ -21,6 +21,20 @@ Python 3.6 POCL:
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3.6
+  - pocl
+  - large-node
+  except:
+  - tags
+
+Python 3.7 POCL:
+  script:
+  - export PY_EXE=python3.7
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="pybind11 numpy scipy mako"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3.7
   - pocl
   - large-node
   except:
@@ -49,20 +63,6 @@ Python 3.6 Conda:
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
   - linux
-  - large-node
-  except:
-  - tags
-
-Python 2.7 POCL:
-  script:
-  - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 scipy numpy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python2.7
-  - pocl
   - large-node
   except:
   - tags
