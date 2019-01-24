@@ -26,3 +26,4 @@ examples/*.pdf
 tags
 
 pytential/_git_rev.py
+.pytest_cache
