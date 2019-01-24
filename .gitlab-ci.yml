@@ -45,6 +45,9 @@ Python 3.7 POCL:
   - large-node
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
 Python 3.6 POCL Examples:
   script:
