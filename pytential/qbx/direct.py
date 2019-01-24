@@ -45,8 +45,8 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
 
         from sumpy.tools import gather_loopy_source_arguments
         arguments = (
-            gather_loopy_source_arguments(self.kernels) +
-            [
+            gather_loopy_source_arguments(self.kernels)
+            + [
                 lp.GlobalArg("src", None,
                     shape=(self.dim, "nsources"), order="C"),
                 lp.GlobalArg("tgt", None,
@@ -62,11 +62,11 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                 lp.ValueArg("nsources", np.int32),
                 lp.ValueArg("ntargets", np.int32),
                 lp.ValueArg("ntargets_total", np.int32),
-                lp.ValueArg("ncenters_total", np.int32)] +
-            [lp.GlobalArg("strength_%d" % i, None,
+                lp.ValueArg("ncenters_total", np.int32)]
+            + [lp.GlobalArg("strength_%d" % i, None,
                 shape="nsources", order="C")
-            for i in range(self.strength_count)] +
-            [lp.GlobalArg("result_%d" % i, self.value_dtypes[i],
+            for i in range(self.strength_count)]
+            + [lp.GlobalArg("result_%d" % i, self.value_dtypes[i],
                 shape="ntargets_total", order="C")
             for i in range(len(self.kernels))])
 
