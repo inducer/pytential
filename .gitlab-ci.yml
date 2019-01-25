@@ -11,6 +11,9 @@ Python 2.7 POCL:
   - large-node
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
 Python 3.6 POCL:
   script:
@@ -25,6 +28,9 @@ Python 3.6 POCL:
   - large-node
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
 Python 3.7 POCL:
   script:
@@ -39,6 +45,9 @@ Python 3.7 POCL:
   - large-node
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
 Python 3.6 POCL Examples:
   script:
@@ -53,6 +62,9 @@ Python 3.6 POCL Examples:
   - large-node
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
 Python 3.6 Conda:
   script:
@@ -66,6 +78,10 @@ Python 3.6 Conda:
   - large-node
   except:
   - tags
+
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
 Python 3.6 Conda Apple:
   script:
@@ -85,6 +101,13 @@ Python 3.6 Conda Apple:
   except:
   - tags
   retry: 2
+
+  # https://gitlab.tiker.net/inducer/pytential/issues/112
+  allow_failure: true
+
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
 Documentation:
   script:
