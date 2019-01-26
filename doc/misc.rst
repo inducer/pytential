@@ -11,7 +11,9 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
     On Debian derivatives (Ubuntu and many more),
     installing ``build-essential`` should do the trick.
 
-    On macOS, run ``xcode-select --install`` to install build tools.
+    On macOS, run ``xcode-select --install`` to install build tools. On Mojave (10.14),
+    you may need to follow `these steps <https://stackoverflow.com/a/52530212>`_
+    as well.
 
     Everywhere else, just making sure you have the ``g++`` package should be
     enough.
