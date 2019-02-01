@@ -32,23 +32,6 @@ Python 3 POCL:
     reports:
       junit: test/pytest.xml
 
-Python 3.7 POCL:
-  script:
-  - export PY_EXE=python3.7
-  - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy scipy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python3.7
-  - pocl
-  - large-node
-  except:
-  - tags
-  artifacts:
-    reports:
-      junit: test/pytest.xml
-
 Python 3 POCL Examples:
   script:
   - test -n "$SKIP_EXAMPLES" && exit
