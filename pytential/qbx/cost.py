@@ -27,11 +27,13 @@ THE SOFTWARE.
 """
 
 import numpy as np
+import pyopencl as cl
+import pyopencl.array  # noqa: F401
 from six.moves import range
 from pymbolic import var
 
 from boxtree.cost import (
-    FMMTranslationCostModel, AbstractFMMCostModel
+    FMMTranslationCostModel, AbstractFMMCostModel, PythonFMMCostModel, CLFMMCostModel
 )
 from abc import abstractmethod
 
@@ -127,15 +129,6 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
     """
     @abstractmethod
-    def process_eval_target_specific_qbxl(self):
-        pass
-    """
-
-    @abstractmethod
-    def process_form_qbxl(self):
-        pass
-
-    @abstractmethod
     def process_m2qbxl(self):
         pass
 
@@ -146,6 +139,89 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
     @abstractmethod
     def process_eval_qbxl(self):
         pass
+
+    """
+
+    @abstractmethod
+    def process_form_qbxl(self, p2qbxl_cost, geo_data,
+                          ndirect_sources_per_target_box):
+        pass
+
+    @abstractmethod
+    def process_eval_target_specific_qbxl(self, p2p_tsqbx_cost, geo_data,
+                                          ndirect_sources_per_target_box):
+        pass
+
+
+class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
+    def __init__(self, queue,
+                 translation_cost_model_factory=pde_aware_translation_cost_model):
+        self.queue = queue
+        AbstractQBXCostModel.__init__(self, translation_cost_model_factory)
+
+    def process_form_qbxl(self, p2qbxl_cost, geo_data,
+                          ndirect_sources_per_target_box):
+        # TODO: convert this implementation to OpenCL
+        # TODO: probably need an OpenCL histogram implementation
+        traversal = geo_data.traversal()
+        ntarget_boxes = traversal.target_boxes.shape[0]
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box().get(
+            self.queue
+        )
+        global_qbx_centers = geo_data.global_qbx_centers().get(self.queue)
+
+        ncenters_per_tgt_box = np.zeros(
+            ntarget_boxes, dtype=traversal.tree.particle_id_dtype
+        )
+
+        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+            ncenters_per_tgt_box[itgt_box] += 1
+
+        ncenters_per_tgt_box_dev = cl.array.to_device(
+            self.queue, ncenters_per_tgt_box
+        )
+
+        return (ncenters_per_tgt_box_dev
+                * ndirect_sources_per_target_box
+                * p2qbxl_cost)
+
+    def process_eval_target_specific_qbxl(self, p2p_tsqbx_cost, geo_data,
+                                          ndirect_sources_per_target_box):
+        pass
+
+
+class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
+    def process_form_qbxl(self, p2qbxl_cost, geo_data,
+                          ndirect_sources_per_target_box):
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+        traversal = geo_data.traversal()
+
+        np2qbxl = np.zeros(len(traversal.target_boxes), dtype=np.float64)
+
+        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+            np2qbxl[itgt_box] += ndirect_sources_per_target_box[itgt_box]
+
+        return np2qbxl * p2qbxl_cost
+
+    def process_eval_target_specific_qbxl(self, p2p_tsqbx_cost, geo_data,
+                                          ndirect_sources_per_target_box):
+        center_to_targets_starts = geo_data.center_to_tree_targets().starts
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+        traversal = geo_data.traversal()
+
+        neval_tsqbx = np.zeros(len(traversal.target_boxes), dtype=np.float64)
+        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+            start, end = center_to_targets_starts[tgt_icenter:tgt_icenter + 2]
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+            neval_tsqbx[itgt_box] += (
+                ndirect_sources_per_target_box[itgt_box] * (end - start)
+            )
+
+        return neval_tsqbx * p2p_tsqbx_cost
 
 # }}}
 
