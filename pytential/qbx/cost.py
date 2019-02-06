@@ -128,9 +128,6 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         )
 
     """
-    @abstractmethod
-    def process_m2qbxl(self):
-        pass
 
     @abstractmethod
     def process_l2qbxl(self):
@@ -150,6 +147,17 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
     @abstractmethod
     def process_eval_target_specific_qbxl(self, p2p_tsqbx_cost, geo_data,
                                           ndirect_sources_per_target_box):
+        pass
+
+    @abstractmethod
+    def process_m2qbxl(self, geo_data, m2qbxl_cost):
+        """
+        :arg geo_data: TODO
+        :arg m2qbxl_cost: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array`
+            of shape (nlevels,) where the ith entry represents the evaluation cost
+            from multipole expansion at level i to a QBX center.
+        :return:
+        """
         pass
 
 
@@ -222,6 +230,36 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
             )
 
         return neval_tsqbx * p2p_tsqbx_cost
+
+    def process_m2qbxl(self, geo_data, m2qbxl_cost):
+        traversal = geo_data.traversal()
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_center_to_target_box_source_level = \
+            geo_data.qbx_center_to_target_box_source_level()
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+
+        ntarget_boxes = len(traversal.target_boxes)
+        nm2qbxl = np.zeros(ntarget_boxes, dtype=np.float64)
+
+        for isrc_level, sep_smaller_list in enumerate(
+                traversal.from_sep_smaller_by_level):
+            for tgt_icenter in global_qbx_centers:
+                icontaining_tgt_box = qbx_center_to_target_box_source_level[
+                    isrc_level][tgt_icenter]
+
+                if icontaining_tgt_box == -1:
+                    continue
+
+                start = sep_smaller_list.starts[icontaining_tgt_box]
+                stop = sep_smaller_list.starts[icontaining_tgt_box+1]
+
+                containing_tgt_box = qbx_center_to_target_box(tgt_icenter)
+
+                nm2qbxl[containing_tgt_box] += (
+                    (stop - start) * m2qbxl_cost[isrc_level])
+
+        return nm2qbxl
+
 
 # }}}
 
