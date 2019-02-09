@@ -45,7 +45,7 @@ logger.setLevel(logging.INFO)
 
 @pytest.mark.opencl
 def test_compare_cl_and_py_cost_model(ctx_factory):
-    nelements = 120
+    nelements = 1280
     target_order = 16
     fmm_order = 5
     qbx_order = fmm_order

@@ -26,11 +26,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from six.moves import range
 import numpy as np
 import pyopencl as cl
 import pyopencl.array  # noqa: F401
-from six.moves import range
+from pyopencl.array import take
+from pyopencl.elementwise import ElementwiseKernel
+from pyopencl.tools import dtype_to_ctype
+from mako.template import Template
 from pymbolic import var
+from pytools import memoize_method
 
 from boxtree.cost import (
     FMMTranslationCostModel, AbstractFMMCostModel, PythonFMMCostModel, CLFMMCostModel
@@ -58,20 +63,20 @@ class QBXTranslationCostModel(FMMTranslationCostModel):
     def p2p_tsqbx(self):
         # This term should be linear in the QBX order, which is the
         # square root of the number of QBX coefficients.
-        return var("c_p2p_tsqbx") * self.ncoeffs_qbx ** (1/2)
+        return var("c_p2p_tsqbx") * self.ncoeffs_qbx ** (1 / 2)
 
     def qbxl2p(self):
         return var("c_qbxl2p") * self.ncoeffs_qbx
 
     def m2qbxl(self, level):
         return var("c_m2qbxl") * self.e2e_cost(
-                self.ncoeffs_fmm_by_level[level],
-                self.ncoeffs_qbx)
+            self.ncoeffs_fmm_by_level[level],
+            self.ncoeffs_qbx)
 
     def l2qbxl(self, level):
         return var("c_l2qbxl") * self.e2e_cost(
-                self.ncoeffs_fmm_by_level[level],
-                self.ncoeffs_qbx)
+            self.ncoeffs_fmm_by_level[level],
+            self.ncoeffs_qbx)
 
 # }}}
 
@@ -94,9 +99,9 @@ def pde_aware_translation_cost_model(dim, nlevels):
         uses_point_and_shoot = True
 
     return QBXTranslationCostModel(
-            ncoeffs_qbx=ncoeffs_qbx,
-            ncoeffs_fmm_by_level=ncoeffs_fmm,
-            uses_point_and_shoot=uses_point_and_shoot)
+        ncoeffs_qbx=ncoeffs_qbx,
+        ncoeffs_fmm_by_level=ncoeffs_fmm,
+        uses_point_and_shoot=uses_point_and_shoot)
 
 
 def taylor_translation_cost_model(dim, nlevels):
@@ -110,9 +115,9 @@ def taylor_translation_cost_model(dim, nlevels):
     ncoeffs_qbx = (p_qbx + 1) ** dim
 
     return QBXTranslationCostModel(
-            ncoeffs_qbx=ncoeffs_qbx,
-            ncoeffs_fmm_by_level=ncoeffs_fmm,
-            uses_point_and_shoot=False)
+        ncoeffs_qbx=ncoeffs_qbx,
+        ncoeffs_fmm_by_level=ncoeffs_fmm,
+        uses_point_and_shoot=False)
 
 # }}}
 
@@ -167,35 +172,119 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
         self.queue = queue
         AbstractQBXCostModel.__init__(self, translation_cost_model_factory)
 
+    @memoize_method
+    def _fill_array_with_index_knl(self, idx_dtype, array_dtype):
+        return ElementwiseKernel(
+            self.queue.context,
+            Template(r"""
+                ${idx_t} *index,
+                ${array_t} *array,
+                ${array_t} val
+            """).render(
+                idx_t=dtype_to_ctype(idx_dtype),
+                array_t=dtype_to_ctype(array_dtype)
+            ),
+            Template(r"""
+                array[index[i]] = val;
+            """).render(),
+            name="fill_array_with_index"
+        )
+
+    def _fill_array_with_index(self, array, index, value):
+        idx_dtype = index.dtype
+        array_dtype = array.dtype
+        knl = self._fill_array_with_index_knl(idx_dtype, array_dtype)
+        knl(index, array, value, queue=self.queue)
+
+    @memoize_method
+    def count_global_qbx_centers_knl(self, box_id_dtype, particle_id_dtype):
+        return ElementwiseKernel(
+            self.queue.context,
+            Template(r"""
+                ${particle_id_t} *nqbx_centers_itgt_box,
+                char *global_qbx_center_mask,
+                ${box_id_t} *target_boxes,
+                ${particle_id_t} *box_target_starts,
+                ${particle_id_t} *box_target_counts_nonchild
+            """).render(
+                box_id_t=dtype_to_ctype(box_id_dtype),
+                particle_id_t=dtype_to_ctype(particle_id_dtype)
+            ),
+            Template(r"""
+                ${box_id_t} global_box_id = target_boxes[i];
+                ${particle_id_t} start = box_target_starts[global_box_id];
+                ${particle_id_t} end = start + box_target_counts_nonchild[
+                    global_box_id
+                ];
+
+                ${particle_id_t} nqbx_centers = 0;
+                for(${particle_id_t} iparticle = start; iparticle < end; iparticle++)
+                    if(global_qbx_center_mask[iparticle])
+                        nqbx_centers++;
+
+                nqbx_centers_itgt_box[i] = nqbx_centers;
+            """).render(
+                box_id_t=dtype_to_ctype(box_id_dtype),
+                particle_id_t=dtype_to_ctype(particle_id_dtype)
+            ),
+            name="count_global_qbx_centers"
+        )
+
+    def get_nqbx_centers_per_tgt_box(self, geo_data):
+        """
+        :arg geo_data: TODO
+        :return: a :class:`pyopencl.array.Array` of shape (ntarget_boxes,) where the
+            ith entry represents the number of `geo_data.global_qbx_centers` in
+            target_boxes[i].
+        """
+        traversal = geo_data.traversal()
+        tree = geo_data.tree()
+        global_qbx_centers = geo_data.global_qbx_centers()
+
+        # Build a mask of whether a target is a global qbx center
+        global_qbx_centers_tree_order = take(
+            tree.sorted_target_ids, global_qbx_centers, queue=self.queue
+        )
+        global_qbx_center_mask = cl.array.zeros(
+            self.queue, tree.ntargets, dtype=np.int8
+        )
+        self._fill_array_with_index(
+            global_qbx_center_mask, global_qbx_centers_tree_order, 1
+        )
+
+        # Each target box enumerate its target list and count the number of global
+        # qbx centers
+        ntarget_boxes = len(traversal.target_boxes)
+        nqbx_centers_itgt_box = cl.array.empty(
+            self.queue, ntarget_boxes, dtype=tree.particle_id_dtype
+        )
+
+        count_global_qbx_centers_knl = self.count_global_qbx_centers_knl(
+            tree.box_id_dtype, tree.particle_id_dtype
+        )
+        count_global_qbx_centers_knl(
+            nqbx_centers_itgt_box,
+            global_qbx_center_mask,
+            traversal.target_boxes,
+            tree.box_target_starts,
+            tree.box_target_counts_nonchild
+        )
+
+        return nqbx_centers_itgt_box
+
     def process_form_qbxl(self, p2qbxl_cost, geo_data,
                           ndirect_sources_per_target_box):
-        # TODO: convert this implementation to OpenCL
-        # TODO: probably need an OpenCL histogram implementation
-        traversal = geo_data.traversal()
-        ntarget_boxes = traversal.target_boxes.shape[0]
-        qbx_center_to_target_box = geo_data.qbx_center_to_target_box().get(
-            self.queue
-        )
-        global_qbx_centers = geo_data.global_qbx_centers().get(self.queue)
+        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(geo_data)
 
-        ncenters_per_tgt_box = np.zeros(
-            ntarget_boxes, dtype=traversal.tree.particle_id_dtype
-        )
-
-        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
-            itgt_box = qbx_center_to_target_box[tgt_icenter]
-            ncenters_per_tgt_box[itgt_box] += 1
-
-        ncenters_per_tgt_box_dev = cl.array.to_device(
-            self.queue, ncenters_per_tgt_box
-        )
-
-        return (ncenters_per_tgt_box_dev
+        return (nqbx_centers_itgt_box
                 * ndirect_sources_per_target_box
                 * p2qbxl_cost)
 
     def process_eval_target_specific_qbxl(self, p2p_tsqbx_cost, geo_data,
                                           ndirect_sources_per_target_box):
+        pass
+
+    def process_m2qbxl(self, geo_data, m2qbxl_cost):
         pass
 
 
@@ -208,7 +297,7 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
 
         np2qbxl = np.zeros(len(traversal.target_boxes), dtype=np.float64)
 
-        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+        for tgt_icenter in global_qbx_centers:
             itgt_box = qbx_center_to_target_box[tgt_icenter]
             np2qbxl[itgt_box] += ndirect_sources_per_target_box[itgt_box]
 
@@ -226,7 +315,7 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
             start, end = center_to_targets_starts[tgt_icenter:tgt_icenter + 2]
             itgt_box = qbx_center_to_target_box[tgt_icenter]
             neval_tsqbx[itgt_box] += (
-                ndirect_sources_per_target_box[itgt_box] * (end - start)
+                    ndirect_sources_per_target_box[itgt_box] * (end - start)
             )
 
         return neval_tsqbx * p2p_tsqbx_cost
@@ -251,15 +340,14 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
                     continue
 
                 start = sep_smaller_list.starts[icontaining_tgt_box]
-                stop = sep_smaller_list.starts[icontaining_tgt_box+1]
+                stop = sep_smaller_list.starts[icontaining_tgt_box + 1]
 
                 containing_tgt_box = qbx_center_to_target_box(tgt_icenter)
 
                 nm2qbxl[containing_tgt_box] += (
-                    (stop - start) * m2qbxl_cost[isrc_level])
+                        (stop - start) * m2qbxl_cost[isrc_level])
 
         return nm2qbxl
-
 
 # }}}
 
