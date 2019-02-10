@@ -33,7 +33,10 @@ import numpy as np
 import pyopencl as cl
 from pytential.qbx import QBXLayerPotentialSource
 from pytential.target import PointsTarget
-from pytential.qbx.cost import CLQBXCostModel, PythonQBXCostModel
+from pytential.qbx.cost import (
+    CLQBXCostModel, PythonQBXCostModel, pde_aware_translation_cost_model
+)
+from pymbolic import evaluate
 import time
 
 import logging
@@ -52,6 +55,8 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
 
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+
+    # {{{ Construct geometry
 
     from meshmode.mesh.generation import make_curve_mesh, starfish
     mesh = make_curve_mesh(starfish, np.linspace(0, 1, nelements), target_order)
@@ -82,8 +87,36 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
     geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data_dev)
 
+    # }}}
+
+    # {{{ Construct cost models
+
     cl_cost_model = CLQBXCostModel(queue)
     python_cost_model = PythonQBXCostModel()
+
+    tree = geo_data.tree()
+    xlat_cost = pde_aware_translation_cost_model(tree.targets.shape[0], tree.nlevels)
+
+    constant_one_params = dict(
+        c_l2l=1,
+        c_l2p=1,
+        c_m2l=1,
+        c_m2m=1,
+        c_m2p=1,
+        c_p2l=1,
+        c_p2m=1,
+        c_p2p=1,
+        c_p2qbxl=1,
+        c_p2p_tsqbx=1,
+        c_qbxl2p=1,
+        c_m2qbxl=1,
+        c_l2qbxl=1,
+        p_qbx=5
+    )
+    for ilevel in range(tree.nlevels):
+        constant_one_params["p_fmm_lev%d" % ilevel] = 10
+
+    # }}}
 
     # {{{ Test process_form_qbxl
 
@@ -116,6 +149,39 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     ))
 
     assert np.array_equal(cl_p2qbxl.get(), python_p2qbxl)
+
+    # }}}
+
+    # {{{ Test process_m2qbxl
+
+    nlevels = geo_data.tree().nlevels
+    m2qbxl_cost = np.zeros(nlevels, dtype=np.float64)
+    for ilevel in range(nlevels):
+        m2qbxl_cost[ilevel] = evaluate(
+            xlat_cost.m2qbxl(ilevel),
+            context=constant_one_params
+        )
+    m2qbxl_cost_dev = cl.array.to_device(queue, m2qbxl_cost)
+
+    queue.finish()
+    start_time = time.time()
+
+    cl_m2qbxl = cl_cost_model.process_m2qbxl(geo_data_dev, m2qbxl_cost_dev)
+
+    queue.finish()
+    logger.info("OpenCL time for process_m2qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    start_time = time.time()
+
+    python_m2qbxl = python_cost_model.process_m2qbxl(geo_data, m2qbxl_cost)
+
+    logger.info("Python time for process_m2qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    assert np.array_equal(cl_m2qbxl.get(), python_m2qbxl)
 
     # }}}
 
