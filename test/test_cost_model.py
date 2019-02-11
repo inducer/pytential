@@ -32,7 +32,6 @@ from pyopencl.tools import (  # noqa
 import numpy as np
 import pyopencl as cl
 from pytential.qbx import QBXLayerPotentialSource
-from pytential.target import PointsTarget
 from pytential.qbx.cost import (
     CLQBXCostModel, PythonQBXCostModel, pde_aware_translation_cost_model
 )
@@ -48,7 +47,7 @@ logger.setLevel(logging.INFO)
 
 @pytest.mark.opencl
 def test_compare_cl_and_py_cost_model(ctx_factory):
-    nelements = 1280
+    nelements = 3600
     target_order = 16
     fmm_order = 5
     qbx_order = fmm_order
@@ -75,13 +74,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
         fmm_order=fmm_order
     ).with_refinement()
 
-    coords = np.linspace(-1.5, 1.5, num=50)
-    x_coords, y_coords = np.meshgrid(coords, coords)
-    target_discr = PointsTarget(np.vstack(
-        (x_coords.reshape(-1), y_coords.reshape(-1))
-    ))
-    target_discrs_and_qbx_sides = tuple([(target_discr, 0)])
-
+    target_discrs_and_qbx_sides = tuple([(qbx.density_discr, 0)])
     geo_data_dev = qbx.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
 
     from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
@@ -184,6 +177,36 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     assert np.array_equal(cl_m2qbxl.get(), python_m2qbxl)
 
     # }}}
+
+    # {{{ Test process_l2qbxl
+
+    l2qbxl_cost = np.zeros(nlevels, dtype=np.float64)
+    for ilevel in range(nlevels):
+        l2qbxl_cost[ilevel] = evaluate(
+            xlat_cost.l2qbxl(ilevel),
+            context=constant_one_params
+        )
+    l2qbxl_cost_dev = cl.array.to_device(queue, l2qbxl_cost)
+
+    queue.finish()
+    start_time = time.time()
+
+    cl_l2qbxl = cl_cost_model.process_l2qbxl(geo_data_dev, l2qbxl_cost_dev)
+
+    queue.finish()
+    logger.info("OpenCL time for process_l2qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    start_time = time.time()
+
+    python_l2qbxl = python_cost_model.process_l2qbxl(geo_data, l2qbxl_cost)
+
+    logger.info("Python time for process_l2qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    assert np.array_equal(cl_l2qbxl.get(), python_l2qbxl)
 
 
 if __name__ == "__main__":

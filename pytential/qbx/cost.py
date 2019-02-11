@@ -135,10 +135,6 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
     """
 
     @abstractmethod
-    def process_l2qbxl(self):
-        pass
-
-    @abstractmethod
     def process_eval_qbxl(self):
         pass
 
@@ -166,6 +162,20 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             (ntarget_boxes,), with the ith entry representing the cost of translating
             multipole expansions of list 3 boxes at all source levels to all QBX
             centers in target_boxes[i].
+        """
+        pass
+
+    @abstractmethod
+    def process_l2qbxl(self, geo_data, l2qbxl_cost):
+        """
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object or
+            similar object in the host memory.
+        :arg l2qbxl_cost: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array`
+            of shape (nlevels,) where the ith entry represents the translation cost
+            from a box local expansion to a QBX local expansion.
+        :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
+            (ntarget_boxes,), with the ith entry representing the cost of translating
+            box local expansions to all QBX local expansions.
         """
         pass
 
@@ -344,6 +354,20 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
 
         return nm2qbxl
 
+    def process_l2qbxl(self, geo_data, l2qbxl_cost):
+        tree = geo_data.tree()
+        traversal = geo_data.traversal()
+        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(geo_data)
+
+        # l2qbxl_cost_itgt_box = l2qbxl_cost[tree.box_levels[traversal.target_boxes]]
+        l2qbxl_cost_itgt_box = take(
+            l2qbxl_cost,
+            take(tree.box_levels, traversal.target_boxes, queue=self.queue),
+            queue=self.queue
+        )
+
+        return nqbx_centers_itgt_box * l2qbxl_cost_itgt_box
+
 
 class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
     def process_form_qbxl(self, p2qbxl_cost, geo_data,
@@ -408,6 +432,22 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
                         (stop - start) * m2qbxl_cost[isrc_level])
 
         return nm2qbxl
+
+    def process_l2qbxl(self, geo_data, l2qbxl_cost):
+        tree = geo_data.tree()
+        traversal = geo_data.traversal()
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+
+        ntarget_boxes = len(traversal.target_boxes)
+        nl2qbxl = np.zeros(ntarget_boxes, dtype=np.float64)
+
+        for tgt_icenter in global_qbx_centers:
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+            tgt_ibox = traversal.target_boxes[itgt_box]
+            nl2qbxl[itgt_box] += l2qbxl_cost[tree.box_levels[tgt_ibox]]
+
+        return nl2qbxl
 
 # }}}
 
