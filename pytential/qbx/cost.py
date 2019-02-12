@@ -132,14 +132,6 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             self, translation_cost_model_factory
         )
 
-    """
-
-    @abstractmethod
-    def process_eval_qbxl(self):
-        pass
-
-    """
-
     @abstractmethod
     def process_form_qbxl(self, p2qbxl_cost, geo_data,
                           ndirect_sources_per_target_box):
@@ -176,6 +168,20 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
             (ntarget_boxes,), with the ith entry representing the cost of translating
             box local expansions to all QBX local expansions.
+        """
+        pass
+
+    @abstractmethod
+    def process_eval_qbxl(self, geo_data, qbxl2p_cost):
+        """
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object or
+            similar object in the host memory.
+        :arg qbxl2p_cost: a :class:`numpy.float64` constant, representing the
+            evaluation cost of a target from its QBX local expansion.
+        :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
+            (ntarget_boxes,), with the ith entry representing the cost of evaluating
+            all targets associated with QBX centers in target_boxes[i] from QBX local
+            expansions.
         """
         pass
 
@@ -216,7 +222,7 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
             self.queue.context,
             Template(r"""
                 ${particle_id_t} *nqbx_centers_itgt_box,
-                char *global_qbx_center_mask,
+                ${particle_id_t} *global_qbx_center_weight,
                 ${box_id_t} *target_boxes,
                 ${particle_id_t} *box_target_starts,
                 ${particle_id_t} *box_target_counts_nonchild
@@ -233,8 +239,7 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
 
                 ${particle_id_t} nqbx_centers = 0;
                 for(${particle_id_t} iparticle = start; iparticle < end; iparticle++)
-                    if(global_qbx_center_mask[iparticle])
-                        nqbx_centers++;
+                    nqbx_centers += global_qbx_center_weight[iparticle];
 
                 nqbx_centers_itgt_box[i] = nqbx_centers;
             """).render(
@@ -244,30 +249,38 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
             name="count_global_qbx_centers"
         )
 
-    @memoize_method
-    def get_nqbx_centers_per_tgt_box(self, geo_data):
+    def get_nqbx_centers_per_tgt_box(self, geo_data, weights=None):
         """
-        :arg geo_data: TODO
-        :return: a :class:`pyopencl.array.Array` of shape (ntarget_boxes,) where the
-            ith entry represents the number of `geo_data.global_qbx_centers` in
-            target_boxes[i]. The type of this array is *particle_id_dtype*.
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
+        :arg weights: a :class:`pyopencl.array.Array` of shape (ncenters,) with
+            particle_id_dtype, the weight of each center in user order.
+        :return: a :class:`pyopencl.array.Array` of shape (ntarget_boxes,) with type
+            *particle_id_dtype* where the ith entry represents the number of
+            `geo_data.global_qbx_centers` in target_boxes[i], optionally weighted by
+            *weights*.
         """
         traversal = geo_data.traversal()
         tree = geo_data.tree()
         global_qbx_centers = geo_data.global_qbx_centers()
+        ncenters = geo_data.ncenters
 
-        # Build a mask of whether a target is a global qbx center
+        # Build a mask (weight) of whether a target is a global qbx center
         global_qbx_centers_tree_order = take(
             tree.sorted_target_ids, global_qbx_centers, queue=self.queue
         )
-        global_qbx_center_mask = cl.array.zeros(
-            self.queue, tree.ntargets, dtype=np.int8
-        )
-        self._fill_array_with_index(
-            global_qbx_center_mask, global_qbx_centers_tree_order, 1
+        global_qbx_center_weight = cl.array.zeros(
+            self.queue, tree.ntargets, dtype=tree.particle_id_dtype
         )
 
-        # Each target box enumerate its target list and count the number of global
+        self._fill_array_with_index(
+            global_qbx_center_weight, global_qbx_centers_tree_order, 1
+        )
+
+        if weights is not None:
+            assert weights.dtype == tree.particle_id_dtype
+            global_qbx_center_weight[tree.sorted_target_ids[:ncenters]] *= weights
+
+        # Each target box enumerate its target list and add the weight of global
         # qbx centers
         ntarget_boxes = len(traversal.target_boxes)
         nqbx_centers_itgt_box = cl.array.empty(
@@ -279,7 +292,7 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
         )
         count_global_qbx_centers_knl(
             nqbx_centers_itgt_box,
-            global_qbx_center_mask,
+            global_qbx_center_weight,
             traversal.target_boxes,
             tree.box_target_starts,
             tree.box_target_counts_nonchild
@@ -368,6 +381,17 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
 
         return nqbx_centers_itgt_box * l2qbxl_cost_itgt_box
 
+    def process_eval_qbxl(self, geo_data, qbxl2p_cost):
+        center_to_targets_starts = geo_data.center_to_tree_targets().starts
+        center_to_targets_starts = center_to_targets_starts.with_queue(self.queue)
+        weights = center_to_targets_starts[1:] - center_to_targets_starts[:-1]
+
+        nqbx_targets_itgt_box = self.get_nqbx_centers_per_tgt_box(
+            geo_data, weights=weights
+        )
+
+        return nqbx_targets_itgt_box * qbxl2p_cost
+
 
 class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
     def process_form_qbxl(self, p2qbxl_cost, geo_data,
@@ -448,6 +472,22 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
             nl2qbxl[itgt_box] += l2qbxl_cost[tree.box_levels[tgt_ibox]]
 
         return nl2qbxl
+
+    def process_eval_qbxl(self, geo_data, qbxl2p_cost):
+        traversal = geo_data.traversal()
+        global_qbx_centers = geo_data.global_qbx_centers()
+        center_to_targets_starts = geo_data.center_to_tree_targets().starts
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+
+        ntarget_boxes = len(traversal.target_boxes)
+        neval_qbxl = np.zeros(ntarget_boxes, dtype=np.float64)
+
+        for src_icenter in global_qbx_centers:
+            start, end = center_to_targets_starts[src_icenter:src_icenter+2]
+            icontaining_tgt_box = qbx_center_to_target_box[src_icenter]
+            neval_qbxl[icontaining_tgt_box] += (end - start)
+
+        return neval_qbxl * qbxl2p_cost
 
 # }}}
 

@@ -208,6 +208,32 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
 
     assert np.array_equal(cl_l2qbxl.get(), python_l2qbxl)
 
+    # }}}
+
+    # {{{ Test process_eval_qbxl
+
+    queue.finish()
+    start_time = time.time()
+
+    cl_eval_qbxl = cl_cost_model.process_eval_qbxl(geo_data_dev, 5.0)
+
+    queue.finish()
+    logger.info("OpenCL time for process_eval_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    start_time = time.time()
+
+    python_eval_qbxl = python_cost_model.process_eval_qbxl(geo_data, 5.0)
+
+    logger.info("Python time for process_eval_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    assert np.array_equal(cl_eval_qbxl.get(), python_eval_qbxl)
+
+    # }}}
+
 
 if __name__ == "__main__":
     ctx_factory = cl.create_some_context
