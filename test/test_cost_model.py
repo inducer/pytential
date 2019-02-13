@@ -120,7 +120,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     start_time = time.time()
 
     cl_p2qbxl = cl_cost_model.process_form_qbxl(
-        5.0, geo_data_dev, cl_ndirect_sources_per_target_box
+        geo_data_dev, 5.0, cl_ndirect_sources_per_target_box
     )
 
     queue.finish()
@@ -134,7 +134,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     start_time = time.time()
 
     python_p2qbxl = python_cost_model.process_form_qbxl(
-        5.0, geo_data, python_ndirect_sources_per_target_box
+        geo_data, 5.0, python_ndirect_sources_per_target_box
     )
 
     logger.info("Python time for process_form_qbxl: {0}".format(
@@ -231,6 +231,37 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     ))
 
     assert np.array_equal(cl_eval_qbxl.get(), python_eval_qbxl)
+
+    # }}}
+
+    # {{{ Test eval_target_specific_qbxl
+
+    queue.finish()
+    start_time = time.time()
+
+    cl_eval_target_specific_qbxl = cl_cost_model.process_eval_target_specific_qbxl(
+        geo_data_dev, 5.0, cl_ndirect_sources_per_target_box
+    )
+
+    queue.finish()
+    logger.info("OpenCL time for eval_target_specific_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    start_time = time.time()
+
+    python_eval_target_specific_qbxl = \
+        python_cost_model.process_eval_target_specific_qbxl(
+            geo_data, 5.0, python_ndirect_sources_per_target_box
+        )
+
+    logger.info("Python time for eval_target_specific_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    assert np.array_equal(
+        cl_eval_target_specific_qbxl.get(), python_eval_target_specific_qbxl
+    )
 
     # }}}
 

@@ -133,13 +133,22 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         )
 
     @abstractmethod
-    def process_form_qbxl(self, p2qbxl_cost, geo_data,
+    def process_form_qbxl(self, geo_data, p2qbxl_cost,
                           ndirect_sources_per_target_box):
-        pass
-
-    @abstractmethod
-    def process_eval_target_specific_qbxl(self, p2p_tsqbx_cost, geo_data,
-                                          ndirect_sources_per_target_box):
+        """
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object or
+            similar object in the host memory.
+        :arg p2qbxl_cost: a :class:`numpy.float64` constant representing the cost of
+            adding a source to a QBX local expansion.
+        :arg ndirect_sources_per_target_box: a :class:`numpy.ndarray` or
+            :class:`pyopencl.array.Array` of shape (ntarget_boxes,), with the ith
+            entry representing the number of direct evaluation sources (list 1,
+            list 3 close and list 4 close) for target_boxes[i].
+        :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
+            (ntarget_boxes,), with the ith entry representing the cost of adding all
+            direct evaluation sources to QBX local expansions of centers in
+            target_boxes[i].
+        """
         pass
 
     @abstractmethod
@@ -182,6 +191,26 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             (ntarget_boxes,), with the ith entry representing the cost of evaluating
             all targets associated with QBX centers in target_boxes[i] from QBX local
             expansions.
+        """
+        pass
+
+    @abstractmethod
+    def process_eval_target_specific_qbxl(self, geo_data, p2p_tsqbx_cost,
+                                          ndirect_sources_per_target_box):
+        """
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object or
+            similar object in the host memory.
+        :arg p2p_tsqbx_cost: a :class:`numpy.float64` constant representing the
+            evaluation cost of a target from a direct evaluation source of the target
+            box containing the expansion center.
+        :arg ndirect_sources_per_target_box: a :class:`numpy.ndarray` or
+            :class:`pyopencl.array.Array` of shape (ntarget_boxes,), with the ith
+            entry representing the number of direct evaluation sources (list 1,
+            list 3 close and list 4 close) for target_boxes[i].
+        :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
+            (ntarget_boxes,), with the ith entry representing the evaluation cost of
+            all targets associated with centers in target_boxes[i] from the direct
+            evaluation sources of target_boxes[i].
         """
         pass
 
@@ -300,17 +329,13 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
 
         return nqbx_centers_itgt_box
 
-    def process_form_qbxl(self, p2qbxl_cost, geo_data,
+    def process_form_qbxl(self, geo_data, p2qbxl_cost,
                           ndirect_sources_per_target_box):
         nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(geo_data)
 
         return (nqbx_centers_itgt_box
                 * ndirect_sources_per_target_box
                 * p2qbxl_cost)
-
-    def process_eval_target_specific_qbxl(self, p2p_tsqbx_cost, geo_data,
-                                          ndirect_sources_per_target_box):
-        pass
 
     @memoize_method
     def process_m2qbxl_knl(self, box_id_dtype, particle_id_dtype):
@@ -392,9 +417,23 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
 
         return nqbx_targets_itgt_box * qbxl2p_cost
 
+    def process_eval_target_specific_qbxl(self, geo_data, p2p_tsqbx_cost,
+                                          ndirect_sources_per_target_box):
+        center_to_targets_starts = geo_data.center_to_tree_targets().starts
+        center_to_targets_starts = center_to_targets_starts.with_queue(self.queue)
+        weights = center_to_targets_starts[1:] - center_to_targets_starts[:-1]
+
+        nqbx_targets_itgt_box = self.get_nqbx_centers_per_tgt_box(
+            geo_data, weights=weights
+        )
+
+        return (nqbx_targets_itgt_box
+                * ndirect_sources_per_target_box
+                * p2p_tsqbx_cost)
+
 
 class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
-    def process_form_qbxl(self, p2qbxl_cost, geo_data,
+    def process_form_qbxl(self, geo_data, p2qbxl_cost,
                           ndirect_sources_per_target_box):
         global_qbx_centers = geo_data.global_qbx_centers()
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
@@ -408,7 +447,7 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
 
         return np2qbxl * p2qbxl_cost
 
-    def process_eval_target_specific_qbxl(self, p2p_tsqbx_cost, geo_data,
+    def process_eval_target_specific_qbxl(self, geo_data, p2p_tsqbx_cost,
                                           ndirect_sources_per_target_box):
         center_to_targets_starts = geo_data.center_to_tree_targets().starts
         global_qbx_centers = geo_data.global_qbx_centers()
