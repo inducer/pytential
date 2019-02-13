@@ -14,7 +14,6 @@ dependencies:
 - symengine=0.3.0
 - python-symengine=0.3.0
 - pyfmmlib
-- osx-pocl-opencl
 # for OpenMP support in pyfmmlib
 - libgfortran>=3.0.1
 # things not in here: loopy boxtree pymbolic meshmode sumpy
