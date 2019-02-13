@@ -31,8 +31,6 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
 
 #.  ``conda config --add channels conda-forge``
 
-#.  (*macOS only*) ``conda install osx-pocl-opencl pocl pyopencl``
-
 #.  ``conda install git pip pocl islpy pyopencl sympy pyfmmlib pytest``
 
 #.  Type the following command::
@@ -59,19 +57,6 @@ Try::
     sudo apt-get install libstdc++-6-dev
 
 to install the missing C++ development package.
-
-No CL platforms found/unknown error -1001
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you get::
-
-    pyopencl.cffi_cl.LogicError: clGetPlatformIDs failed: <unknown error -1001>
-
-try::
-
-    conda update ocl-icd pocl
-
-(This indicates that the OpenCL driver loader didn't find any drivers, or the
-drivers were themselves missing dependencies.)
 
 Assertion 'error == 0'
 ~~~~~~~~~~~~~~~~~~~~~~~
