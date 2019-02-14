@@ -34,7 +34,7 @@ from pyopencl.array import take
 from pyopencl.elementwise import ElementwiseKernel
 from pyopencl.tools import dtype_to_ctype
 from mako.template import Template
-from pymbolic import var
+from pymbolic import var, evaluate
 from pytools import memoize_method
 
 from boxtree.cost import (
@@ -213,6 +213,40 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             evaluation sources of target_boxes[i].
         """
         pass
+
+    def cost_factors_for_kernels_from_model(self, nlevels, xlat_cost, context):
+        """Evaluate translation cost factors from symbolic model. The result of this
+        function can be used for process_* methods in this class.
+
+        This method overwrite the method in parent
+        :class:`boxtree.cost.AbstractFMMCostModel` to support operations specific to
+        QBX.
+
+        :arg nlevels: the number of tree levels.
+        :arg xlat_cost: a :class:`QBXTranslationCostModel`.
+        :arg context: a :class:`dict` of parameters passed as context when
+            evaluating symbolic expressions in *xlat_cost*.
+        :return: a :class:`dict`, the translation cost of each step in FMM and QBX.
+        """
+        cost_factors = AbstractFMMCostModel.cost_factors_for_kernels_from_model(
+            self, nlevels, xlat_cost, context
+        )
+
+        cost_factors.update({
+            "p2qbxl_cost": evaluate(xlat_cost.p2qbxl(), context=context),
+            "m2qbxl_cost": np.array([
+                evaluate(xlat_cost.m2qbxl(ilevel), context=context)
+                for ilevel in range(nlevels)
+            ]),
+            "l2qbxl_cost": np.array([
+                evaluate(xlat_cost.l2qbxl(ilevel), context=context)
+                for ilevel in range(nlevels)
+            ]),
+            "qbxl2p_cost": evaluate(xlat_cost.qbxl2p(), context=context),
+            "p2p_tsqbx_cost": evaluate(xlat_cost.p2p_tsqbx(), context=context)
+        })
+
+        return cost_factors
 
 
 class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
@@ -430,6 +464,13 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
         return (nqbx_targets_itgt_box
                 * ndirect_sources_per_target_box
                 * p2p_tsqbx_cost)
+
+    def cost_factors_for_kernels_from_model(self, nlevels, xlat_cost, context):
+        translation_costs = AbstractQBXCostModel.cost_factors_for_kernels_from_model(
+            self, nlevels, xlat_cost, context
+        )
+
+        return self.translation_costs_to_dev(translation_costs)
 
 
 class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
