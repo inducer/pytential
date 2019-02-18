@@ -248,6 +248,93 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         return cost_factors
 
+    def __call__(self, *args, **kwargs):
+        return self.get_modeled_cost(*args, **kwargs)
+
+    def get_modeled_cost(self, geo_data, kernel, kernel_arguments):
+        # FIXME: This should support target filtering.
+        lpot_source = geo_data.lpot_source
+        use_tsqbx = lpot_source._use_target_specific_qbx
+        tree = geo_data.tree()
+        traversal = geo_data.traversal()
+        nqbtl = geo_data.non_qbx_box_target_lists()
+        box_target_counts_nonchild = nqbtl.box_target_counts_nonchild
+
+        fmm_level_to_order = [
+            lpot_source.fmm_level_to_order(
+                kernel.get_base_kernel(), kernel_arguments, tree, ilevel
+            ) for ilevel in range(tree.nlevels)
+        ]
+
+        # {{{ Construct parameters
+
+        params = dict(p_qbx=lpot_source.qbx_order)
+
+        for ilevel in range(tree.nlevels):
+            params["p_fmm_lev%d" % ilevel] = fmm_level_to_order[ilevel]
+
+        # TODO: cost model with parameters
+        params.update(dict(
+            c_l2l=1.0,
+            c_l2p=1.0,
+            c_m2l=1.0,
+            c_m2m=1.0,
+            c_m2p=1.0,
+            c_p2l=1.0,
+            c_p2m=1.0,
+            c_p2p=1.0,
+            c_p2qbxl=1.0,
+            c_p2p_tsqbx=1.0,
+            c_qbxl2p=1.0,
+            c_m2qbxl=1.0,
+            c_l2qbxl=1.0,
+        ))
+
+        # }}}
+
+        xlat_cost = self.translation_cost_model_factory(
+            tree.dimensions, tree.nlevels
+        )
+
+        translation_cost = self.cost_factors_for_kernels_from_model(
+            tree.nlevels, xlat_cost, params
+        )
+
+        ndirect_sources_per_target_box = \
+            self.get_ndirect_sources_per_target_box(traversal)
+
+        result = AbstractFMMCostModel.__call__(
+            self, traversal, fmm_level_to_order, params,
+            ndirect_sources_per_target_box,
+            box_target_counts_nonchild=box_target_counts_nonchild
+        )
+
+        if use_tsqbx:
+            result["eval_target_specific_qbx_locals"] = \
+                self.process_eval_target_specific_qbxl(
+                    geo_data, translation_cost["p2p_tsqbx_cost"],
+                    ndirect_sources_per_target_box=ndirect_sources_per_target_box
+                )
+        else:
+            result["form_global_qbx_locals"] = self.process_form_qbxl(
+                geo_data, translation_cost["p2qbxl_cost"],
+                ndirect_sources_per_target_box
+            )
+
+        result["translate_box_multipoles_to_qbx_local"] = self.process_m2qbxl(
+            geo_data, translation_cost["m2qbxl_cost"]
+        )
+
+        result["translate_box_local_to_qbx_local"] = self.process_l2qbxl(
+            geo_data, translation_cost["l2qbxl_cost"]
+        )
+
+        result["eval_qbx_expansions"] = self.process_eval_qbxl(
+            geo_data, translation_cost["qbxl2p_cost"]
+        )
+
+        return result
+
 
 class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
     def __init__(self, queue,
