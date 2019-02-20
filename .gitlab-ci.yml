@@ -1,8 +1,15 @@
+# Environment variables
+#
+# * PYTEST_ADDOPTS is used to filter test runs. The default value is "-k-slowtest",
+#   which skips the slow running tests.
+# * SKIP_EXAMPLES, if non-empty, can be used to skip the examples job.
+
 Python 2.7 POCL:
   script:
   - export PY_EXE=python2.7
   - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 scipy numpy mako"
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
@@ -15,15 +22,16 @@ Python 2.7 POCL:
     reports:
       junit: test/pytest.xml
 
-Python 3 POCL:
+Python 3.6 POCL:
   script:
-  - export PY_EXE=python3
+  - export PY_EXE=python3.6
   - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy scipy mako"
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
-  - python3
+  - python3.6
   - pocl
   - large-node
   except:
@@ -32,16 +40,33 @@ Python 3 POCL:
     reports:
       junit: test/pytest.xml
 
-Python 3 POCL Examples:
+Python 3.7 POCL:
+  script:
+  - export PY_EXE=python3.7
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3.7
+  - pocl
+  - large-node
+  except:
+  - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
+Python 3.6 POCL Examples:
   script:
   - test -n "$SKIP_EXAMPLES" && exit
-  - export PY_EXE=python3
+  - export PY_EXE=python3.6
   - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib"
+  - export EXTRA_INSTALL="Cython pybind11 numpy mako pyvisfile matplotlib"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-py-project-and-run-examples.sh
   - ". ./build-py-project-and-run-examples.sh"
   tags:
-  - python3
+  - python3.6
   - pocl
   - large-node
   except:
@@ -50,11 +75,12 @@ Python 3 POCL Examples:
     reports:
       junit: test/pytest.xml
 
-Python 3 Conda:
+Python 3.6 Conda:
   script:
   - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
-  - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-  - REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
+  - export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
@@ -67,13 +93,15 @@ Python 3 Conda:
     reports:
       junit: test/pytest.xml
 
-Python 3 Conda Apple:
+Python 3.6 Conda Apple:
   script:
   - export LC_ALL=en_US.UTF-8
   - export LANG=en_US.UTF-8
-  - export PYTEST_ADDOPTS=-k-slowtest
-  - CONDA_ENVIRONMENT=.test-conda-env-py3-macos.yml
-  - REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
+  - export CONDA_ENVIRONMENT=.test-conda-env-py3-macos.yml
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
+  - export CC=gcc
+  - set -o xtrace
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
 
@@ -95,11 +123,11 @@ Python 3 Conda Apple:
 
 Documentation:
   script:
-  - EXTRA_INSTALL="pybind11 numpy mako"
+  - EXTRA_INSTALL="Cython pybind11 numpy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-docs.sh
   - ". ./build-docs.sh"
   tags:
-  - python3
+  - python3.5
   only:
   - master
 
@@ -108,6 +136,6 @@ Flake8:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
   - ". ./prepare-and-run-flake8.sh pytential test examples"
   tags:
-  - python3
+  - python3.5
   except:
   - tags
