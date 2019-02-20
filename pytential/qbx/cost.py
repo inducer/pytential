@@ -125,11 +125,27 @@ def taylor_translation_cost_model(dim, nlevels):
 # {{{ cost model
 
 class AbstractQBXCostModel(AbstractFMMCostModel):
-    def __init__(
-            self,
-            translation_cost_model_factory=pde_aware_translation_cost_model):
+    def __init__(self,
+                 calibration_params,
+                 translation_cost_model_factory=pde_aware_translation_cost_model):
+        """
+        :arg calibration_params: the calibration parameters. For evaluation, use
+            parameters returned by :func:`estimate_calibration_params`. For training,
+            use :func:`get_constantone_calibration_params` to make all cost modifiers
+            1.
+        :arg translation_cost_model_factory: a function, which takes tree dimension
+            and the number of tree levels as arguments, returns an object of
+            :class:`TranslationCostModel`.
+        """
         AbstractFMMCostModel.__init__(
-            self, translation_cost_model_factory
+            self, calibration_params, translation_cost_model_factory
+        )
+
+    def with_calibration_params(self, calibration_params):
+        """Return a copy of *self* with a new set of calibration parameters."""
+        return type(self)(
+            calibration_params,
+            translation_cost_model_factory=self.translation_cost_model_factory
         )
 
     @abstractmethod
@@ -214,7 +230,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         """
         pass
 
-    def cost_factors_for_kernels_from_model(self, nlevels, xlat_cost, context):
+    def qbx_cost_factors_for_kernels_from_model(self, nlevels, xlat_cost, context):
         """Evaluate translation cost factors from symbolic model. The result of this
         function can be used for process_* methods in this class.
 
@@ -228,8 +244,8 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             evaluating symbolic expressions in *xlat_cost*.
         :return: a :class:`dict`, the translation cost of each step in FMM and QBX.
         """
-        cost_factors = AbstractFMMCostModel.cost_factors_for_kernels_from_model(
-            self, nlevels, xlat_cost, context
+        cost_factors = self.fmm_cost_factors_for_kernels_from_model(
+            nlevels, xlat_cost, context
         )
 
         cost_factors.update({
@@ -248,10 +264,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         return cost_factors
 
-    def __call__(self, *args, **kwargs):
-        return self.get_modeled_cost(*args, **kwargs)
-
-    def get_modeled_cost(self, geo_data, kernel, kernel_arguments):
+    def get_qbx_modeled_cost(self, geo_data, kernel, kernel_arguments):
         # FIXME: This should support target filtering.
         lpot_source = geo_data.lpot_source
         use_tsqbx = lpot_source._use_target_specific_qbx
@@ -268,27 +281,11 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         # {{{ Construct parameters
 
-        params = dict(p_qbx=lpot_source.qbx_order)
+        params = self.calibration_params.copy()
+        params.update(dict(p_qbx=lpot_source.qbx_order))
 
         for ilevel in range(tree.nlevels):
             params["p_fmm_lev%d" % ilevel] = fmm_level_to_order[ilevel]
-
-        # TODO: cost model with parameters
-        params.update(dict(
-            c_l2l=1.0,
-            c_l2p=1.0,
-            c_m2l=1.0,
-            c_m2m=1.0,
-            c_m2p=1.0,
-            c_p2l=1.0,
-            c_p2m=1.0,
-            c_p2p=1.0,
-            c_p2qbxl=1.0,
-            c_p2p_tsqbx=1.0,
-            c_qbxl2p=1.0,
-            c_m2qbxl=1.0,
-            c_l2qbxl=1.0,
-        ))
 
         # }}}
 
@@ -296,15 +293,15 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             tree.dimensions, tree.nlevels
         )
 
-        translation_cost = self.cost_factors_for_kernels_from_model(
+        translation_cost = self.qbx_cost_factors_for_kernels_from_model(
             tree.nlevels, xlat_cost, params
         )
 
         ndirect_sources_per_target_box = \
             self.get_ndirect_sources_per_target_box(traversal)
 
-        result = AbstractFMMCostModel.__call__(
-            self, traversal, fmm_level_to_order, params,
+        result = self.get_fmm_modeled_cost(
+            traversal, fmm_level_to_order,
             ndirect_sources_per_target_box,
             box_target_counts_nonchild=box_target_counts_nonchild
         )
@@ -335,12 +332,62 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         return result
 
+    def __call__(self, *args, **kwargs):
+        return self.get_qbx_modeled_cost(*args, **kwargs)
+
+    @staticmethod
+    def get_constantone_calibration_params():
+        return dict(
+            c_l2l=1.0,
+            c_l2p=1.0,
+            c_m2l=1.0,
+            c_m2m=1.0,
+            c_m2p=1.0,
+            c_p2l=1.0,
+            c_p2m=1.0,
+            c_p2p=1.0,
+            c_p2qbxl=1.0,
+            c_p2p_tsqbx=1.0,
+            c_qbxl2p=1.0,
+            c_m2qbxl=1.0,
+            c_l2qbxl=1.0
+        )
+
+    def estimate_calibration_params(self, model_results, timing_results,
+                                    wall_time=False,
+                                    additional_stage_to_param_names=()):
+        _QBX_STAGE_TO_CALIBRATION_PARAMETER = {
+            "form_global_qbx_locals": "c_p2qbxl",
+            "translate_box_multipoles_to_qbx_local": "c_m2qbxl",
+            "translate_box_local_to_qbx_local": "c_l2qbxl",
+            "eval_qbx_expansions": "c_qbxl2p",
+            "eval_target_specific_qbx_locals": "c_p2p_tsqbx"
+        }
+
+        stage_to_param_names = _QBX_STAGE_TO_CALIBRATION_PARAMETER.copy()
+        stage_to_param_names.update(additional_stage_to_param_names)
+
+        return AbstractFMMCostModel.estimate_calibration_params(
+            self, model_results, timing_results, wall_time=wall_time,
+            additional_stage_to_param_names=stage_to_param_names
+        )
+
 
 class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
     def __init__(self, queue,
+                 calibration_params,
                  translation_cost_model_factory=pde_aware_translation_cost_model):
         self.queue = queue
-        AbstractQBXCostModel.__init__(self, translation_cost_model_factory)
+        AbstractQBXCostModel.__init__(
+            self, calibration_params, translation_cost_model_factory
+        )
+
+    def with_calibration_params(self, calibration_params):
+        """Return a copy of *self* with a new set of calibration parameters."""
+        return type(self)(
+            self.queue, calibration_params,
+            translation_cost_model_factory=self.translation_cost_model_factory
+        )
 
     @memoize_method
     def _fill_array_with_index_knl(self, idx_dtype, array_dtype):
@@ -552,9 +599,11 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
                 * ndirect_sources_per_target_box
                 * p2p_tsqbx_cost)
 
-    def cost_factors_for_kernels_from_model(self, nlevels, xlat_cost, context):
-        translation_costs = AbstractQBXCostModel.cost_factors_for_kernels_from_model(
-            self, nlevels, xlat_cost, context
+    def qbx_cost_factors_for_kernels_from_model(self, nlevels, xlat_cost, context):
+        translation_costs = (
+            AbstractQBXCostModel.qbx_cost_factors_for_kernels_from_model(
+                self, nlevels, xlat_cost, context
+            )
         )
 
         return self.translation_costs_to_dev(translation_costs)

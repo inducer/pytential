@@ -92,9 +92,11 @@ def get_test_density(queue, lpot_source):
 def calibrate_cost_model(ctx):
     queue = cl.CommandQueue(ctx)
 
-    from pytential.qbx.cost import CostModel, estimate_calibration_params
+    from pytential.qbx.cost import CLQBXCostModel
 
-    perf_model = CostModel()
+    perf_model = CLQBXCostModel(
+        queue, CLQBXCostModel.get_constantone_calibration_params()
+    )
 
     model_results = []
     timing_results = []
@@ -116,8 +118,9 @@ def calibrate_cost_model(ctx):
             model_results.append(one(perf_S.values()))
             timing_results.append(one(timing_data.values()))
 
-    calibration_params = (
-            estimate_calibration_params(model_results, timing_results))
+    calibration_params = perf_model.estimate_calibration_params(
+        model_results, timing_results
+    )
 
     return perf_model.with_calibration_params(calibration_params)
 
@@ -131,9 +134,7 @@ def test_cost_model(ctx, perf_model):
         sigma = get_test_density(queue, lpot_source)
 
         perf_S = bound_op.get_modeled_cost(queue, sigma=sigma)
-        model_result = (
-                one(perf_S.values())
-                .get_predicted_times(merge_close_lists=True))
+        model_result = one(perf_S.values())
 
         # Warm-up run.
         bound_op.eval(queue, {"sigma": sigma})
@@ -154,7 +155,7 @@ def test_cost_model(ctx, perf_model):
         for stage in model_result:
             print("stage: ", stage)
             print("actual: ", timing_result[stage])
-            print("predicted: ", model_result[stage])
+            print("predicted: ", perf_model.aggregate(model_result[stage]))
         print("=" * 20)
 
 

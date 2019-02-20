@@ -83,36 +83,22 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
 
     # {{{ Construct cost models
 
-    cl_cost_model = CLQBXCostModel(queue)
-    python_cost_model = PythonQBXCostModel()
+    cl_cost_model = CLQBXCostModel(queue, None)
+    python_cost_model = PythonQBXCostModel(None)
 
     tree = geo_data.tree()
     xlat_cost = pde_aware_translation_cost_model(tree.targets.shape[0], tree.nlevels)
 
-    constant_one_params = dict(
-        c_l2l=1,
-        c_l2p=1,
-        c_m2l=1,
-        c_m2m=1,
-        c_m2p=1,
-        c_p2l=1,
-        c_p2m=1,
-        c_p2p=1,
-        c_p2qbxl=1,
-        c_p2p_tsqbx=1,
-        c_qbxl2p=1,
-        c_m2qbxl=1,
-        c_l2qbxl=1,
-        p_qbx=5
-    )
+    constant_one_params = CLQBXCostModel.get_constantone_calibration_params()
+    constant_one_params["p_qbx"] = 5
     for ilevel in range(tree.nlevels):
         constant_one_params["p_fmm_lev%d" % ilevel] = 10
 
-    cl_cost_factors = cl_cost_model.cost_factors_for_kernels_from_model(
+    cl_cost_factors = cl_cost_model.qbx_cost_factors_for_kernels_from_model(
         tree.nlevels, xlat_cost, constant_one_params
     )
 
-    python_cost_factors = python_cost_model.cost_factors_for_kernels_from_model(
+    python_cost_factors = python_cost_model.qbx_cost_factors_for_kernels_from_model(
         tree.nlevels, xlat_cost, constant_one_params
     )
 
