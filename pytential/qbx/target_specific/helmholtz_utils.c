@@ -47,19 +47,19 @@ typedef double doublereal;
 typedef double complex doublecomplex;
 
 static inline double z_abs(doublecomplex *z) {
-  return cabs(*z);
+    return cabs(*z);
 }
 
 static inline void z_exp(doublecomplex *out, doublecomplex *z) {
-  *out = cexp(*z);
+    *out = cexp(*z);
 }
 
 static inline void z_sin(doublecomplex *out, doublecomplex *z) {
-  *out = csin(*z);
+    *out = csin(*z);
 }
 
 static inline void z_cos(doublecomplex *out, doublecomplex *z) {
-  *out = ccos(*z);
+    *out = ccos(*z);
 }
 
 /* Start of functions borrowed from cdjseval3d.f */
@@ -341,7 +341,7 @@ static inline void z_cos(doublecomplex *out, doublecomplex *z) {
 /*      h3d01: computes h0, h1 (first two spherical Hankel fns.) */
 /*      h3dall: computes Hankel functions of all orders and scales them */
 /* ********************************************************************** */
-/* Subroutine */ int h3d01_(doublecomplex *z__, doublecomplex *h0, 
+/* Subroutine */ static int h3d01_(doublecomplex *z__, doublecomplex *h0, 
 	doublecomplex *h1)
 {
     /* Initialized data */
