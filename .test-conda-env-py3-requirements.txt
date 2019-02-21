@@ -1,4 +1,4 @@
-git+https://gitlab.tiker.net/inducer/boxtree
+git+https://gitlab.tiker.net/inducer/boxtree@opencl-counter
 git+https://github.com/inducer/pymbolic
 git+https://github.com/inducer/loopy
 git+https://gitlab.tiker.net/inducer/sumpy
