@@ -61,19 +61,6 @@ Try::
 
 to install the missing C++ development package.
 
-No CL platforms found/unknown error -1001
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you get::
-
-    pyopencl.cffi_cl.LogicError: clGetPlatformIDs failed: <unknown error -1001>
-
-try::
-
-    conda update ocl-icd pocl
-
-(This indicates that the OpenCL driver loader didn't find any drivers, or the
-drivers were themselves missing dependencies.)
-
 Assertion 'error == 0'
 ~~~~~~~~~~~~~~~~~~~~~~~
 

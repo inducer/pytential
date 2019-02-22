@@ -18,38 +18,47 @@ Python 2.7 POCL:
   - large-node
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
-Python 3.6 POCL:
+Python 3 POCL:
   script:
-  - export PY_EXE=python3.6
+  - export PY_EXE=python3
   - export PYOPENCL_TEST=portable
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
   - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
-  - python3.6
+  - python3
   - pocl
   - large-node
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
-Python 3.6 POCL Examples:
+Python 3 POCL Examples:
   script:
   - test -n "$SKIP_EXAMPLES" && exit
-  - export PY_EXE=python3.6
+  - export PY_EXE=python3
   - export PYOPENCL_TEST=portable
   - export EXTRA_INSTALL="Cython pybind11 numpy mako pyvisfile matplotlib"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-py-project-and-run-examples.sh
   - ". ./build-py-project-and-run-examples.sh"
   tags:
-  - python3.6
+  - python3
   - pocl
   - large-node
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
 
-Python 3.6 Conda:
+Python 3 Conda:
   script:
   - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
   - export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
@@ -63,7 +72,11 @@ Python 3.6 Conda:
   except:
   - tags
 
-Python 3.6 Conda Apple:
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
+Python 3 Conda Apple:
   script:
   - export LC_ALL=en_US.UTF-8
   - export LANG=en_US.UTF-8
@@ -84,13 +97,20 @@ Python 3.6 Conda Apple:
   - tags
   retry: 2
 
+  # https://gitlab.tiker.net/inducer/pytential/issues/112
+  allow_failure: true
+
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
 Documentation:
   script:
   - EXTRA_INSTALL="Cython pybind11 numpy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-docs.sh
   - ". ./build-docs.sh"
   tags:
-  - python3.5
+  - python3
   only:
   - master
 
@@ -99,6 +119,6 @@ Flake8:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
   - ". ./prepare-and-run-flake8.sh pytential test examples"
   tags:
-  - python3.5
+  - python3
   except:
   - tags
