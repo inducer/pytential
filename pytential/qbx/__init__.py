@@ -755,8 +755,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
 
         if self.cost_model is None:
-            from pytential.qbx.cost import CLQBXCostModel
-            cost_model = CLQBXCostModel(cl.CommandQueue(self.cl_context))
+            # should supply default parameters
+            raise NotImplementedError("Please supply cost model explicitly")
         else:
             cost_model = self.cost_model
 
