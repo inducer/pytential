@@ -379,7 +379,6 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
             and the number of tree levels as arguments, returns an object of
             :class:`TranslationCostModel`.
         """
-        self.queue = queue
         CLFMMCostModel.__init__(
             self, queue, calibration_params, translation_cost_model_factory
         )
