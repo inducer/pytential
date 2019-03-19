@@ -103,6 +103,17 @@
 #   only:
 #   - master
 
+Pylint:
+  script:
+  - export PY_EXE=python3
+  - EXTRA_INSTALL="pybind11 numpy mako"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
+  - ". ./prepare-and-run-pylint.sh loopy test/test_*.py"
+  tags:
+  - python3
+  except:
+  - tags
+
 Flake8:
   script:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
