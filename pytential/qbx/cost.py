@@ -345,7 +345,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         )
 
     def estimate_calibration_params(self, model_results, timing_results,
-                                    wall_time=False,
+                                    time_field_name="wall_elapsed",
                                     additional_stage_to_param_names=()):
         _QBX_STAGE_TO_CALIBRATION_PARAMETER = {
             "form_global_qbx_locals": "c_p2qbxl",
@@ -359,7 +359,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         stage_to_param_names.update(additional_stage_to_param_names)
 
         return AbstractFMMCostModel.estimate_calibration_params(
-            self, model_results, timing_results, wall_time=wall_time,
+            self, model_results, timing_results, time_field_name=time_field_name,
             additional_stage_to_param_names=stage_to_param_names
         )
 
