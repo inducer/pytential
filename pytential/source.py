@@ -192,6 +192,10 @@ class LayerPotentialSourceBase(PotentialSource):
     """
 
     @property
+    def density_discr(self):
+        raise NotImplementedError
+
+    @property
     def ambient_dim(self):
         return self.density_discr.ambient_dim
 
