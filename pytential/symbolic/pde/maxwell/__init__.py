@@ -225,8 +225,8 @@ class MuellerAugmentedMFIEOperator(object):
 
         S = partial(sym.S, self.kernel, qbx_forced_limit="avg")
 
-        def curl_S(dens):
-            return sym.curl(sym.S(self.kernel, dens, qbx_forced_limit="avg"))
+        def curl_S(dens, k):
+            return sym.curl(sym.S(self.kernel, dens, qbx_forced_limit="avg", k=k))
 
         grad = partial(sym.grad, 3)
 

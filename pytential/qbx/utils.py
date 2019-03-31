@@ -189,6 +189,14 @@ class TreeCodeContainerMixin(object):
 
 class TreeWranglerBase(object):
 
+    @property
+    def code_container(self):
+        raise NotImplementedError
+
+    @property
+    def queue(self):
+        raise NotImplementedError
+
     def build_tree(self, lpot_source, targets_list=(),
                    use_stage2_discr=False):
         tb = self.code_container.build_tree()
@@ -323,38 +331,6 @@ def el_view(discr, group_nr, global_array):
         .reshape(
             global_array.shape[:-1]
             + (group.nelements,))
-
-# }}}
-
-
-# {{{ discr plotter
-
-def plot_discr(lpot_source, outfilename="discr.pdf"):
-    with cl.CommandQueue(lpot_source.cl_context) as queue:
-        from boxtree.tree_builder import TreeBuilder
-        tree_builder = TreeBuilder(lpot_source.cl_context)
-        tree = tree_builder(queue, lpot_source).get(queue=queue)
-        from boxtree.visualization import TreePlotter
-
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        tp = TreePlotter(tree)
-        tp.draw_tree()
-        sources = (tree.sources[0], tree.sources[1])
-        sti = tree.sorted_target_ids
-        plt.plot(sources[0][sti[tree.qbx_user_source_slice]],
-                 sources[1][sti[tree.qbx_user_source_slice]],
-                 lw=0, marker=".", markersize=1, label="sources")
-        plt.plot(sources[0][sti[tree.qbx_user_center_slice]],
-                 sources[1][sti[tree.qbx_user_center_slice]],
-                 lw=0, marker=".", markersize=1, label="centers")
-        plt.plot(sources[0][sti[tree.qbx_user_target_slice]],
-                 sources[1][sti[tree.qbx_user_target_slice]],
-                 lw=0, marker=".", markersize=1, label="targets")
-        plt.axis("equal")
-        plt.legend()
-        plt.savefig(outfilename)
 
 # }}}
 

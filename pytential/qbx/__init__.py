@@ -147,7 +147,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             if fmm_order is False:
                 fmm_level_to_order = False
             else:
-                def fmm_level_to_order(kernel, kernel_args, tree, level):
+                def fmm_level_to_order(kernel, kernel_args, tree, level):  # noqa pylint:disable=function-redefined
                     return fmm_order
 
         if _max_leaf_refine_weight is None:
