@@ -1,3 +1,4 @@
 - arg: ignore
   val:
-    - old_diffop_primitives
+    - old_diffop_primitives.py
+    - generalized_debye.py
