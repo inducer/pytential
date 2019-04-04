@@ -470,7 +470,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def h_max(self):
         with cl.CommandQueue(self.cl_context) as queue:
             quad_res = self._coarsest_quad_resolution("npanels").with_queue(queue)
-            return np.asscalar(cl.array.max(quad_res).get())
+            return cl.array.max(quad_res).get().item()
 
     # {{{ internal API
 
