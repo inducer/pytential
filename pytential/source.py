@@ -191,6 +191,21 @@ class LayerPotentialSourceBase(PotentialSource):
     .. method:: exec_compute_potential_insn
     """
 
+    def __init__(self, density_discr):
+        self.density_discr = density_discr
+
+    @property
+    def stage2_density_discr(self):
+        raise NotImplementedError
+
+    @property
+    def quad_stage2_density_discr(self):
+        raise NotImplementedError
+
+    @property
+    def resampler(self):
+        raise NotImplementedError
+
     @property
     def ambient_dim(self):
         return self.density_discr.ambient_dim

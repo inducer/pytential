@@ -64,6 +64,23 @@ def make_circular_point_group(ambient_dim, npoints, radius,
 # {{{ test cases
 
 class IntEqTestCase:
+
+    @property
+    def default_helmholtz_k(self):
+        raise NotImplementedError
+
+    @property
+    def name(self):
+        raise NotImplementedError
+
+    @property
+    def qbx_order(self):
+        raise NotImplementedError
+
+    @property
+    def target_order(self):
+        raise NotImplementedError
+
     def __init__(self, helmholtz_k, bc_type, prob_side):
         """
         :arg prob_side: may be -1, +1, or ``'scat'`` for a scattering problem
@@ -92,6 +109,9 @@ class IntEqTestCase:
 
 class CurveIntEqTestCase(IntEqTestCase):
     resolutions = [40, 50, 60]
+
+    def curve_func(self, *args, **kwargs):
+        raise NotImplementedError
 
     def get_mesh(self, resolution, target_order):
         return make_curve_mesh(
@@ -639,7 +659,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     if 0:
         from sumpy.tools import build_matrix
-        mat = build_matrix(bound_op.scipy_op("u", dtype=dtype, k=case.k))
+        mat = build_matrix(
+                bound_op.scipy_op(
+                    queue, arg_name="u", dtype=dtype, k=case.k))
         w, v = la.eig(mat)
         if 0:
             pt.imshow(np.log10(1e-20+np.abs(mat)))

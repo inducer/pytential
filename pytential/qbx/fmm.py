@@ -598,7 +598,7 @@ def assemble_performance_data(geo_data, uses_pde_expansions,
     # FIXME: This should suport target filtering.
 
     if summarize_parallel is None:
-        def summarize_parallel(parallel_array, sym_multipliers):
+        def summarize_parallel(parallel_array, sym_multipliers):  # noqa pylint:disable=function-redefined
             return np.sum(parallel_array) * sym_multipliers
 
     from collections import OrderedDict
