@@ -172,9 +172,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
+        LayerPotentialSourceBase.__init__(self, density_discr)
+
         self.fine_order = fine_order
         self.qbx_order = qbx_order
-        self.density_discr = density_discr
         self.fmm_level_to_order = fmm_level_to_order
 
         assert target_association_tolerance is not None

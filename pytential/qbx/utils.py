@@ -189,13 +189,9 @@ class TreeCodeContainerMixin(object):
 
 class TreeWranglerBase(object):
 
-    @property
-    def code_container(self):
-        raise NotImplementedError
-
-    @property
-    def queue(self):
-        raise NotImplementedError
+    def __init__(self, queue, code_container):
+        self.queue = queue
+        self.code_container = code_container
 
     def build_tree(self, lpot_source, targets_list=(),
                    use_stage2_discr=False):

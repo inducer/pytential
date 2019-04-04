@@ -66,7 +66,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         """
         :arg fmm_order: `False` for direct calculation.
         """
-        self.density_discr = density_discr
+        LayerPotentialSourceBase.__init__(self, density_discr)
         self.debug = debug
 
         if fmm_order is not False and fmm_level_to_order is not None:

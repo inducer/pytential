@@ -276,11 +276,6 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
 # {{{ wrangler
 
 class RefinerWrangler(TreeWranglerBase):
-
-    def __init__(self, code_container, queue):
-        self.code_container = code_container
-        self.queue = queue
-
     # {{{ check subroutines for conditions 1-3
 
     @log_process(logger)
