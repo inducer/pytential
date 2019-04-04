@@ -189,9 +189,9 @@ class TreeCodeContainerMixin(object):
 
 class TreeWranglerBase(object):
 
-    def __init__(self, queue, code_container):
-        self.queue = queue
+    def __init__(self, code_container, queue):
         self.code_container = code_container
+        self.queue = queue
 
     def build_tree(self, lpot_source, targets_list=(),
                    use_stage2_discr=False):
