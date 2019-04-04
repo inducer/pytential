@@ -244,7 +244,7 @@ class MuellerAugmentedMFIEOperator(object):
         F3 = (xyz_to_tangential(sym.n_cross(E1-E0) + 0.5*(mu0+mu1)*Mxyz))
 
         # sign flip included
-        F4 = -sym.n_dot(mu1*H1-mu0*H0) + 0.5*(mu1+mu0)*u.rho_m
+        F4 = -sym.n_dot(mu1*H1-mu0*H0) + 0.5*(mu1+mu0)*u.rho_m  # noqa pylint:disable=invalid-unary-operand-type
 
         return sym.join_fields(F1, F2, F3, F4)
 
