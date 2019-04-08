@@ -170,7 +170,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         from pytential.solve import gmres
         rhs = self.rec(expr.rhs)
-        result = gmres(scipy_op, rhs, debug=False)
+        result = gmres(scipy_op, rhs)
         return result
 
     def map_quad_kernel_op(self, expr):
@@ -520,7 +520,9 @@ class GeometryCollection(object):
         return where in self.places
 
     def copy(self):
-        return GeometryCollection(self.places, auto_where=self.where)
+        return GeometryCollection(
+                self.places,
+                auto_where=self._default_place_ids)
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})

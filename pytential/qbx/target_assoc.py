@@ -433,10 +433,6 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
 
 class TargetAssociationWrangler(TreeWranglerBase):
 
-    def __init__(self, code_container, queue):
-        self.code_container = code_container
-        self.queue = queue
-
     @log_process(logger)
     def mark_targets(self, tree, peer_lists, lpot_source, target_status,
                      debug, wait_for=None):
