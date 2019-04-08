@@ -119,7 +119,9 @@ Pylint:
   # Needed to avoid name shadowing issues when running from source directory.
   - PROJECT_INSTALL_FLAGS="--editable"
   - export PY_EXE=python3
-  - EXTRA_INSTALL="Cython pybind11 numpy mako matplotlib"
+  # Pin to numpy 1.15
+  # See https://github.com/PyCQA/pylint/issues/2721
+  - EXTRA_INSTALL="Cython pybind11 numpy=1.15 mako matplotlib"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
   - ". ./prepare-and-run-pylint.sh pytential test/test_*.py"
   tags:
