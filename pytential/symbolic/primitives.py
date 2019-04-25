@@ -540,17 +540,24 @@ def mean_curvature(ambient_dim, dim=None, where=None):
     if dim is None:
         dim = ambient_dim - 1
 
-    if not (dim == 1 and ambient_dim == 2):
-        raise NotImplementedError(
-                "only know how to calculate curvature for a curve in 2D")
+    if ambient_dim == 2 and dim == 1:
+        # https://en.wikipedia.org/wiki/Curvature#Local_expressions
+        xp, yp = parametrization_derivative_matrix(ambient_dim, dim, where)
 
-    xp, yp = parametrization_derivative_matrix(ambient_dim, dim, where)
+        xpp, ypp = cse(
+                reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
+                "p2d_matrix", cse_scope.DISCRETIZATION)
 
-    xpp, ypp = cse(
-            reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
-            "p2d_matrix", cse_scope.DISCRETIZATION)
+        kappa = (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
+    elif ambient_dim == 3 and dim == 2:
+        # https://en.wikipedia.org/wiki/Mean_curvature#Surfaces_in_3D_space
+        s_op = shape_operator(ambient_dim, dim=dim, where=where)
+        kappa = -0.5 * sum(s_op[i, i] for i in range(s_op.shape[0]))
+    else:
+        raise NotImplementedError('not available in {}D for {}D surfaces'
+                .format(ambient_dim, dim))
 
-    return (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
+    return kappa
 
 
 def first_fundamental_form(ambient_dim, dim=None, where=None):

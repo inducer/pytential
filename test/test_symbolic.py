@@ -90,7 +90,7 @@ def get_square_with_ref_mean_curvature(cl_ctx):
 
 
 def get_unit_sphere_with_ref_mean_curvature(cl_ctx):
-    order = 8
+    order = 16
 
     from meshmode.mesh.generation import generate_icosphere
     mesh = generate_icosphere(1, order)
@@ -113,21 +113,20 @@ def get_unit_sphere_with_ref_mean_curvature(cl_ctx):
     ])
 def test_mean_curvature(ctx_factory, discr_name,
         discr_and_ref_mean_curvature_getter):
-    if discr_name == "unit sphere":
-        pytest.skip("not implemented in 3D yet")
-
-    import pytential.symbolic.primitives as prim
     ctx = ctx_factory()
-
     discr, ref_mean_curvature = discr_and_ref_mean_curvature_getter(ctx)
 
+    import pytential.symbolic.primitives as prim
     with cl.CommandQueue(ctx) as queue:
         from pytential import bind
         mean_curvature = bind(
             discr,
             prim.mean_curvature(discr.ambient_dim))(queue)
 
-    assert np.allclose(mean_curvature.get(), ref_mean_curvature)
+    if discr_name == 'unit sphere':
+        assert np.allclose(mean_curvature.get(), ref_mean_curvature, rtol=1.0e-4)
+    else:
+        assert np.allclose(mean_curvature.get(), ref_mean_curvature)
 
 # }}}
 
