@@ -124,7 +124,7 @@ class DirichletOperator(L2WeightedPDEOperator):
         inv_sqrt_w_u = cse(u/sqrt_w)
 
         if map_potentials is None:
-            def map_potentials(x):
+            def map_potentials(x):  # pylint:disable=function-redefined
                 return x
 
         def S(density):  # noqa
@@ -236,7 +236,7 @@ class NeumannOperator(L2WeightedPDEOperator):
         inv_sqrt_w_u = cse(u/sqrt_w)
 
         if map_potentials is None:
-            def map_potentials(x):
+            def map_potentials(x):  # pylint:disable=function-redefined
                 return x
 
         kwargs["qbx_forced_limit"] = qbx_forced_limit

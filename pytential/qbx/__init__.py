@@ -147,7 +147,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             if fmm_order is False:
                 fmm_level_to_order = False
             else:
-                def fmm_level_to_order(kernel, kernel_args, tree, level):
+                def fmm_level_to_order(kernel, kernel_args, tree, level):  # noqa pylint:disable=function-redefined
                     return fmm_order
 
         if _max_leaf_refine_weight is None:
@@ -172,9 +172,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
+        LayerPotentialSourceBase.__init__(self, density_discr)
+
         self.fine_order = fine_order
         self.qbx_order = qbx_order
-        self.density_discr = density_discr
         self.fmm_level_to_order = fmm_level_to_order
 
         assert target_association_tolerance is not None
@@ -469,7 +470,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def h_max(self):
         with cl.CommandQueue(self.cl_context) as queue:
             quad_res = self._coarsest_quad_resolution("npanels").with_queue(queue)
-            return np.asscalar(cl.array.max(quad_res).get())
+            return cl.array.max(quad_res).get().item()
 
     # {{{ internal API
 

@@ -1,0 +1,5 @@
+- arg: ignore
+  val:
+    - old_diffop_primitives.py
+    - generalized_debye.py
+    - waveguide.py  # See issue #116 on gitlab

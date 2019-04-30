@@ -211,7 +211,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
             if (stall_iterations
                     and len(residual_norms) > stall_iterations
                     and norm_r > (
-                        residual_norms[-stall_iterations]
+                        residual_norms[-stall_iterations]  # noqa pylint:disable=invalid-unary-operand-type
                         / no_progress_factor)):
 
                 state = "stalled"
