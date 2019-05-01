@@ -90,15 +90,16 @@ def get_square_with_ref_mean_curvature(cl_ctx):
 
 
 def get_unit_sphere_with_ref_mean_curvature(cl_ctx):
-    order = 16
+    order = 18
+    radius = 4.0
 
     from meshmode.mesh.generation import generate_icosphere
-    mesh = generate_icosphere(1, order)
 
+    mesh = generate_icosphere(radius, order)
     discr = Discretization(cl_ctx, mesh,
-           InterpolatoryQuadratureSimplexGroupFactory(order))
+            InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    return discr, 1
+    return discr, 1.0 / radius
 
 # }}}
 
@@ -123,10 +124,7 @@ def test_mean_curvature(ctx_factory, discr_name,
             discr,
             prim.mean_curvature(discr.ambient_dim))(queue)
 
-    if discr_name == 'unit sphere':
-        assert np.allclose(mean_curvature.get(), ref_mean_curvature, rtol=1.0e-4)
-    else:
-        assert np.allclose(mean_curvature.get(), ref_mean_curvature)
+    assert np.allclose(mean_curvature.get(), ref_mean_curvature)
 
 # }}}
 
