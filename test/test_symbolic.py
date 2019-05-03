@@ -50,90 +50,88 @@ from meshmode.discretization.poly_element import \
 
 # {{{ discretization getters
 
-def get_ellipse_with_ref_mean_curvature(cl_ctx, aspect=1):
-    nelements = 16
+def get_ellipse_with_ref_mean_curvature(cl_ctx, nelements, aspect=1):
     order = 4
-
     mesh = make_curve_mesh(
             partial(ellipse, aspect),
             np.linspace(0, 1, nelements+1),
             order)
 
-    def ref_mean_curvature(queue, discr):
-        a = 1
-        b = 1/aspect
+    discr = Discretization(cl_ctx, mesh,
+        InterpolatoryQuadratureSimplexGroupFactory(order))
 
+    with cl.CommandQueue(cl_ctx) as queue:
         nodes = discr.nodes().get(queue=queue)
-        t = np.arctan2(nodes[1] * aspect, nodes[0])
 
-        return a*b / ((a*np.sin(t))**2 + (b*np.cos(t))**2)**(3/2)
+    a = 1
+    b = 1/aspect
+    t = np.arctan2(nodes[1] * aspect, nodes[0])
 
-    return mesh, order, ref_mean_curvature
+    return discr, a*b / ((a*np.sin(t))**2 + (b*np.cos(t))**2)**(3/2)
 
 
-def get_square_with_ref_mean_curvature(cl_ctx):
-    nelements = 4
+def get_torus_with_ref_mean_curvature(cl_ctx, h):
     order = 4
+    r_inner = 1.0
+    r_outer = 3.0
 
-    from extra_curve_data import unit_square
+    from meshmode.mesh.generation import generate_torus
+    mesh = generate_torus(r_outer, r_inner,
+            n_outer=h, n_inner=h, order=order)
+    discr = Discretization(cl_ctx, mesh,
+        InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    mesh = make_curve_mesh(
-            unit_square,
-            np.linspace(0, 1, nelements+1),
-            order)
+    with cl.CommandQueue(cl_ctx) as queue:
+        nodes = discr.nodes().get(queue=queue)
 
-    return mesh, order, lambda queue, discr: 0
+    # copied from meshmode.mesh.generation.generate_torus
+    a = r_outer
+    b = r_inner
 
+    u = np.arctan2(nodes[1], nodes[0])
+    rvec = np.array([np.cos(u), np.sin(u), np.zeros_like(u)])
+    rvec = np.sum(nodes * rvec, axis=0) - a
+    cosv = np.cos(np.arctan2(nodes[2], rvec))
 
-def get_unit_sphere_with_ref_mean_curvature(cl_ctx):
-    order = 8
-    radius = 4.0
-
-    from meshmode.mesh.generation import generate_icosphere
-
-    mesh = generate_icosphere(radius, order)
-
-    return mesh, order, lambda queue, discr: 1.0 / radius
+    return discr, (a + 2.0 * b * cosv) / (2 * b * (a + b * cosv))
 
 # }}}
 
 
 # {{{ test_mean_curvature
 
-@pytest.mark.parametrize(("discr_name", "mesh_and_ref_mean_curvature_getter"), [
-    ("unit_circle", get_ellipse_with_ref_mean_curvature),
-    ("2-to-1 ellipse", partial(get_ellipse_with_ref_mean_curvature, aspect=2)),
-    ("square", get_square_with_ref_mean_curvature),
-    ("unit sphere", get_unit_sphere_with_ref_mean_curvature),
+@pytest.mark.parametrize(("discr_name",
+        "resolutions",
+        "discr_and_ref_mean_curvature_getter"), [
+    ("unit_circle", [16, 32, 64],
+        get_ellipse_with_ref_mean_curvature),
+    ("2-to-1 ellipse", [16, 32, 64],
+        partial(get_ellipse_with_ref_mean_curvature, aspect=2)),
+    ("torus", [8, 10, 12, 16],
+        get_torus_with_ref_mean_curvature),
     ])
-def test_mean_curvature(ctx_factory, discr_name,
-        mesh_and_ref_mean_curvature_getter):
+def test_mean_curvature(ctx_factory, discr_name, resolutions,
+        discr_and_ref_mean_curvature_getter, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-
-    from meshmode.mesh.refinement import RefinerWithoutAdjacency
-    mesh, order, ref_mean_curvature_fn = mesh_and_ref_mean_curvature_getter(ctx)
-    refiner = RefinerWithoutAdjacency(mesh)
 
     from pytools.convergence import EOCRecorder
     eoc = EOCRecorder()
 
-    for _ in range(4):
-        discr = Discretization(ctx, refiner._current_mesh,
-                InterpolatoryQuadratureSimplexGroupFactory(order))
-        refiner.refine_uniformly()
-
+    for r in resolutions:
+        discr, ref_mean_curvature = \
+                discr_and_ref_mean_curvature_getter(ctx, r)
         mean_curvature = bind(
             discr,
             sym.mean_curvature(discr.ambient_dim))(queue).get(queue)
-        ref_mean_curvature = ref_mean_curvature_fn(queue, discr)
 
-        h = 1.0 / discr.nnodes
+        h = 1.0 / r
         h_error = la.norm(mean_curvature - ref_mean_curvature, np.inf)
-
         eoc.add_data_point(h, h_error)
-
     print(eoc)
+
+    order = min([g.order for g in discr.groups])
+    assert eoc.order_estimate() > order - 0.75
 
 # }}}
 
