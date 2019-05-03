@@ -131,7 +131,7 @@ def test_mean_curvature(ctx_factory, discr_name, resolutions,
     print(eoc)
 
     order = min([g.order for g in discr.groups])
-    assert eoc.order_estimate() > order - 0.75
+    assert eoc.order_estimate() > order - 1.1
 
 # }}}
 
