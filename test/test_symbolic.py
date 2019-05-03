@@ -25,6 +25,7 @@ THE SOFTWARE.
 import pytest
 
 import numpy as np
+import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
@@ -50,31 +51,29 @@ from meshmode.discretization.poly_element import \
 # {{{ discretization getters
 
 def get_ellipse_with_ref_mean_curvature(cl_ctx, aspect=1):
-    nelements = 20
-    order = 16
+    nelements = 16
+    order = 4
 
     mesh = make_curve_mesh(
             partial(ellipse, aspect),
             np.linspace(0, 1, nelements+1),
             order)
 
-    a = 1
-    b = 1/aspect
+    def ref_mean_curvature(queue, discr):
+        a = 1
+        b = 1/aspect
 
-    discr = Discretization(cl_ctx, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(order))
-
-    with cl.CommandQueue(cl_ctx) as queue:
         nodes = discr.nodes().get(queue=queue)
+        t = np.arctan2(nodes[1] * aspect, nodes[0])
 
-    t = np.arctan2(nodes[1] * aspect, nodes[0])
+        return a*b / ((a*np.sin(t))**2 + (b*np.cos(t))**2)**(3/2)
 
-    return discr, a*b / ((a*np.sin(t))**2 + (b*np.cos(t))**2)**(3/2)
+    return mesh, order, ref_mean_curvature
 
 
 def get_square_with_ref_mean_curvature(cl_ctx):
-    nelements = 8
-    order = 8
+    nelements = 4
+    order = 4
 
     from extra_curve_data import unit_square
 
@@ -83,48 +82,58 @@ def get_square_with_ref_mean_curvature(cl_ctx):
             np.linspace(0, 1, nelements+1),
             order)
 
-    discr = Discretization(cl_ctx, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(order))
-
-    return discr, 0
+    return mesh, order, lambda queue, discr: 0
 
 
 def get_unit_sphere_with_ref_mean_curvature(cl_ctx):
-    order = 18
+    order = 8
     radius = 4.0
 
     from meshmode.mesh.generation import generate_icosphere
 
     mesh = generate_icosphere(radius, order)
-    discr = Discretization(cl_ctx, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    return discr, 1.0 / radius
+    return mesh, order, lambda queue, discr: 1.0 / radius
 
 # }}}
 
 
 # {{{ test_mean_curvature
 
-@pytest.mark.parametrize(("discr_name", "discr_and_ref_mean_curvature_getter"), [
+@pytest.mark.parametrize(("discr_name", "mesh_and_ref_mean_curvature_getter"), [
     ("unit_circle", get_ellipse_with_ref_mean_curvature),
     ("2-to-1 ellipse", partial(get_ellipse_with_ref_mean_curvature, aspect=2)),
     ("square", get_square_with_ref_mean_curvature),
     ("unit sphere", get_unit_sphere_with_ref_mean_curvature),
     ])
 def test_mean_curvature(ctx_factory, discr_name,
-        discr_and_ref_mean_curvature_getter):
+        mesh_and_ref_mean_curvature_getter):
     ctx = ctx_factory()
-    discr, ref_mean_curvature = discr_and_ref_mean_curvature_getter(ctx)
+    queue = cl.CommandQueue(ctx)
 
-    import pytential.symbolic.primitives as prim
-    with cl.CommandQueue(ctx) as queue:
-        from pytential import bind
+    from meshmode.mesh.refinement import RefinerWithoutAdjacency
+    mesh, order, ref_mean_curvature_fn = mesh_and_ref_mean_curvature_getter(ctx)
+    refiner = RefinerWithoutAdjacency(mesh)
+
+    from pytools.convergence import EOCRecorder
+    eoc = EOCRecorder()
+
+    for _ in range(4):
+        discr = Discretization(ctx, refiner._current_mesh,
+                InterpolatoryQuadratureSimplexGroupFactory(order))
+        refiner.refine_uniformly()
+
         mean_curvature = bind(
             discr,
-            prim.mean_curvature(discr.ambient_dim))(queue)
+            sym.mean_curvature(discr.ambient_dim))(queue).get(queue)
+        ref_mean_curvature = ref_mean_curvature_fn(queue, discr)
 
-    assert np.allclose(mean_curvature.get(), ref_mean_curvature)
+        h = 1.0 / discr.nnodes
+        h_error = la.norm(mean_curvature - ref_mean_curvature, np.inf)
+
+        eoc.add_data_point(h, h_error)
+
+    print(eoc)
 
 # }}}
 
@@ -171,18 +180,17 @@ def test_tangential_onb(ctx_factory):
 def test_expr_pickling():
     from sumpy.kernel import LaplaceKernel, AxisTargetDerivative
     import pickle
-    import pytential
 
     ops_for_testing = [
-        pytential.sym.d_dx(
+        sym.d_dx(
             2,
-            pytential.sym.D(
-                LaplaceKernel(2), pytential.sym.var("sigma"), qbx_forced_limit=-2
+            sym.D(
+                LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2
             )
         ),
-        pytential.sym.D(
+        sym.D(
             AxisTargetDerivative(0, LaplaceKernel(2)),
-            pytential.sym.var("sigma"),
+            sym.var("sigma"),
             qbx_forced_limit=-2
         )
     ]
