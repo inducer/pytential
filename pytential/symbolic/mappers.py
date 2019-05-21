@@ -420,13 +420,13 @@ class QBXInterpolationPreprocessor(IdentityMapper):
         source = self.places[expr.source]
 
         if isinstance(source, LayerPotentialSourceBase):
-            target = prim.QBXSourceQuadStage2(prim.DEFAULT_SOURCE)
+            stage2_source = prim.QBXSourceQuadStage2(prim.DEFAULT_SOURCE)
 
             density = prim.Interpolation(
-                    expr.source, target, self.rec(expr.density))
+                    expr.source, stage2_source, self.rec(expr.density))
             kernel_arguments = dict(
                     (name, prim.Interpolation(
-                        expr.source, target, self.rec(arg_expr)))
+                        expr.source, stage2_source, self.rec(arg_expr)))
                     for name, arg_expr in expr.kernel_arguments.items())
 
             expr = expr.copy(
