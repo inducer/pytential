@@ -182,20 +182,22 @@ class EvaluationMapper(EvaluationMapperBase):
 
         from pytential.source import LayerPotentialSourceBase
         if isinstance(source, LayerPotentialSourceBase):
-            where = expr.source
-            if not isinstance(where, sym._QBXSource):
-                where = sym.QBXSourceStage1(where)
+            sym_source = expr.source
+            if not isinstance(sym_source, sym._QBXSource):
+                sym_source = sym.QBXSourceStage1(sym_source)
 
-            if isinstance(where, sym.QBXSourceStage1):
+            if isinstance(sym_source, sym.QBXSourceStage1):
                 resampler = source.resampler
-            elif isinstance(where, sym.QBXSourceStage2):
+            elif isinstance(sym_source, sym.QBXSourceStage2):
                 resampler = source.refined_interp_to_ovsmp_quad_connection
-            elif isinstance(where, sym.QBXSourceQuadStage2):
+            elif isinstance(sym_source, sym.QBXSourceQuadStage2):
                 resampler = lambda x, y: y  # noqa
             else:
                 from pytential.symbolic.mappers import stringify_where
-                raise ValueError('unknown `where` identifier: {}'.format(
-                    stringify_where(where)))
+                raise ValueError(
+                    "unknown `where` identifier in "
+                    "interpolation source: {}".format(
+                    stringify_where(sym_source)))
         else:
             raise TypeError("source must be a `LayerPotentialSourceBase`")
 
