@@ -197,7 +197,7 @@ class EvaluationMapper(EvaluationMapperBase):
                 raise ValueError(
                     "unknown `where` identifier in "
                     "interpolation source: {}".format(
-                    stringify_where(sym_source)))
+                        stringify_where(sym_source)))
         else:
             raise TypeError("source must be a `LayerPotentialSourceBase`")
 
