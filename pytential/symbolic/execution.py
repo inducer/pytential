@@ -448,8 +448,9 @@ class GeometryCollection(object):
         if isinstance(where, sym.QBXSourceQuadStage2):
             return lpot.quad_stage2_density_discr
 
+        from pytential.symbolic.mappers import stringify_where
         raise ValueError('unknown `where` identifier: {}'.format(
-            sym.stringify_where(where)))
+            stringify_where(where)))
 
     def get_discretization(self, where):
         """
