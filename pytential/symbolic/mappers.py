@@ -103,6 +103,9 @@ class IdentityMapper(IdentityMapperBase):
                     for name, arg_expr in expr.kernel_arguments.items()
                     ))
 
+    def map_interpolation(self, expr):
+        return type(expr)(expr.source, expr.target, self.rec(expr.operand))
+
 
 class CombineMapper(CombineMapperBase):
     def map_node_sum(self, expr):
@@ -113,6 +116,7 @@ class CombineMapper(CombineMapperBase):
     map_elementwise_sum = map_node_sum
     map_elementwise_min = map_node_sum
     map_elementwise_max = map_node_sum
+    map_interpolation = map_node_sum
 
     def map_int_g(self, expr):
         return self.combine(
@@ -280,6 +284,17 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     for name, name_expr in six.iteritems(expr.extra_vars)]),
                 where)
 
+    def map_interpolation(self, expr):
+        source = expr.source
+        target = expr.target
+
+        if source is None:
+            source = self.default_source
+        if target is None:
+            target = self.default_where
+
+        return type(expr)(source, target, expr.operand)
+
     def operand_rec(self, expr):
         return self.rec(expr)
 
@@ -392,6 +407,35 @@ class UnregularizedPreprocessor(IdentityMapper):
 
 
 # {{{ QBX preprocessor
+
+class QBXInterpolationPreprocessor(IdentityMapper):
+    def __init__(self, places):
+        self.places = places
+
+    def map_int_g(self, expr):
+        if isinstance(expr.source, prim.QBXSourceQuadStage2):
+            return expr
+
+        from pytential.source import LayerPotentialSourceBase
+        source = self.places[expr.source]
+
+        if isinstance(source, LayerPotentialSourceBase):
+            stage2_source = prim.QBXSourceQuadStage2(prim.DEFAULT_SOURCE)
+
+            density = prim.Interpolation(
+                    expr.source, stage2_source, self.rec(expr.density))
+            kernel_arguments = dict(
+                    (name, prim.Interpolation(
+                        expr.source, stage2_source, self.rec(arg_expr)))
+                    for name, arg_expr in expr.kernel_arguments.items())
+
+            expr = expr.copy(
+                    kernel=expr.kernel,
+                    density=density,
+                    kernel_arguments=kernel_arguments)
+
+        return expr
+
 
 class QBXPreprocessor(IdentityMapper):
     def __init__(self, source_name, places):
@@ -553,6 +597,12 @@ class StringifyMapper(BaseStringifyMapper):
                     expr.kernel_arguments),
                 expr.kernel,
                 self.rec(expr.density, PREC_PRODUCT))
+
+    def map_interpolation(self, expr, enclosing_prec):
+        return "Interp[%s->%s](%s)" % (
+                stringify_where(expr.source),
+                stringify_where(expr.target),
+                self.rec(expr.operand, PREC_PRODUCT))
 
 # }}}
 

@@ -141,6 +141,11 @@ Elementary numerics
 .. autofunction:: mean
 .. autoclass:: IterativeInverse
 
+Operators
+^^^^^^^^^
+
+.. autoclass:: Interpolation
+
 Geometric Calculus (based on Geometric/Clifford Algebra)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1015,6 +1020,31 @@ def hashable_kernel_args(kernel_arguments):
 
 class _NoArgSentinel(object):
     pass
+
+
+class Interpolation(Expression):
+    """Interpolate quantity from *source* to *target* discretization."""
+
+    init_arg_names = ("source", "target", "operand")
+
+    def __new__(cls, source, target, operand):
+        if isinstance(operand, np.ndarray):
+            def make_op(operand_i):
+                return cls(source, target, operand_i)
+
+            return componentwise(make_op, operand)
+        else:
+            return Expression.__new__(cls)
+
+    def __init__(self, source, target, operand):
+        self.source = source
+        self.target = target
+        self.operand = operand
+
+    def __getinitargs__(self):
+        return (self.source, self.target, self.operand)
+
+    mapper_method = intern("map_interpolation")
 
 
 class IntG(Expression):

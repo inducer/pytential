@@ -39,9 +39,7 @@ import pyopencl.clmath  # noqa
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_in
-from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-from pytential.symbolic.primitives import (
-    QBXSourceStage1, QBXSourceStage2, QBXSourceQuadStage2)
+from pytential import sym
 
 
 # FIXME caches: fix up queues
@@ -174,6 +172,41 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_quad_kernel_op(self, expr):
         source = self.bound_expr.places[expr.source]
         return source.map_quad_kernel_op(expr, self.bound_expr, self.rec)
+
+    def map_interpolation(self, expr):
+        if not isinstance(expr.target, sym.QBXSourceQuadStage2):
+            raise RuntimeError("can only interpolate to quad_stage2 mesh")
+
+        source = self.bound_expr.places[expr.source]
+        operand = self.rec(expr.operand)
+
+        from pytential.source import LayerPotentialSourceBase
+        if isinstance(source, LayerPotentialSourceBase):
+            sym_source = expr.source
+            if not isinstance(sym_source, sym._QBXSource):
+                sym_source = sym.QBXSourceStage1(sym_source)
+
+            if isinstance(sym_source, sym.QBXSourceStage1):
+                resampler = source.resampler
+            elif isinstance(sym_source, sym.QBXSourceStage2):
+                resampler = source.refined_interp_to_ovsmp_quad_connection
+            elif isinstance(sym_source, sym.QBXSourceQuadStage2):
+                resampler = lambda x, y: y  # noqa
+            else:
+                from pytential.symbolic.mappers import stringify_where
+                raise ValueError(
+                    "unknown `where` identifier in "
+                    "interpolation source: {}".format(
+                        stringify_where(sym_source)))
+        else:
+            raise TypeError("source must be a `LayerPotentialSourceBase`")
+
+        if isinstance(operand, cl.array.Array):
+            return resampler(self.queue, operand)
+        elif isinstance(operand, (int, float, complex, np.number)):
+            return operand
+        else:
+            raise TypeError("cannot interpolate `{}`".format(type(operand)))
 
     # }}}
 
@@ -375,7 +408,7 @@ class GeometryCollection(object):
         from pytential.source import LayerPotentialSourceBase, PotentialSource
 
         if auto_where is None:
-            source_where, target_where = DEFAULT_SOURCE, DEFAULT_TARGET
+            source_where, target_where = sym.DEFAULT_SOURCE, sym.DEFAULT_TARGET
         else:
             # NOTE: keeping this here to make sure auto_where unpacks into
             # just the two elements
@@ -389,7 +422,7 @@ class GeometryCollection(object):
         if isinstance(places, LayerPotentialSourceBase):
             self.places[source_where] = places
             self.places[target_where] = \
-                    self._get_lpot_discretization(target_where, places)
+                    self._get_lpot_discretization(places, target_where)
         elif isinstance(places, (Discretization, TargetBase)):
             self.places[target_where] = places
         elif isinstance(places, tuple):
@@ -406,23 +439,20 @@ class GeometryCollection(object):
 
         self.caches = {}
 
-    def _get_lpot_discretization(self, where, lpot):
-        from pytential.source import LayerPotentialSourceBase
-        if not isinstance(lpot, LayerPotentialSourceBase):
-            return lpot
+    def _get_lpot_discretization(self, lpot, where):
+        if not isinstance(where, sym._QBXSource):
+            where = sym.QBXSourceStage1(where)
 
-        from pytential.symbolic.primitives import _QBXSource
-        if not isinstance(where, _QBXSource):
-            where = QBXSourceStage1(where)
-
-        if isinstance(where, QBXSourceStage1):
+        if isinstance(where, sym.QBXSourceStage1):
             return lpot.density_discr
-        if isinstance(where, QBXSourceStage2):
+        if isinstance(where, sym.QBXSourceStage2):
             return lpot.stage2_density_discr
-        if isinstance(where, QBXSourceQuadStage2):
+        if isinstance(where, sym.QBXSourceQuadStage2):
             return lpot.quad_stage2_density_discr
 
-        raise ValueError('unknown `where` identifier: {}'.format(type(where)))
+        from pytential.symbolic.mappers import stringify_where
+        raise ValueError('unknown `where` identifier: {}'.format(
+            stringify_where(where)))
 
     def get_discretization(self, where):
         """
@@ -436,14 +466,18 @@ class GeometryCollection(object):
         """
 
         if where in self.places:
-            lpot = self.places[where]
+            discr = self.places[where]
         else:
-            lpot = self.places.get(getattr(where, 'where', None), None)
+            discr = self.places.get(getattr(where, 'where', None), None)
 
-        if lpot is None:
+        if discr is None:
             raise KeyError('`where` not in the collection: {}'.format(where))
 
-        return self._get_lpot_discretization(where, lpot)
+        from pytential.source import LayerPotentialSourceBase
+        if isinstance(discr, LayerPotentialSourceBase):
+            return self._get_lpot_discretization(discr, where)
+        else:
+            return discr
 
     def __getitem__(self, where):
         return self.places[where]
@@ -492,7 +526,7 @@ class BoundExpression(object):
             nresults = 1
 
         domains = _prepare_domains(nresults, self.places, domains,
-                DEFAULT_TARGET)
+                sym.DEFAULT_TARGET)
 
         total_dofs = 0
         starts_and_ends = []
@@ -530,7 +564,9 @@ def bind(places, expr, auto_where=None):
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
 
+    from pytential.symbolic.mappers import QBXInterpolationPreprocessor
     expr = _prepare_expr(places, expr)
+    expr = QBXInterpolationPreprocessor(places)(expr)
 
     return BoundExpression(places, expr)
 

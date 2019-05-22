@@ -630,7 +630,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # {{{ solve
 
     bound_op = bind(qbx, op_u)
-
     rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
 
     try:
