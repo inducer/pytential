@@ -120,6 +120,16 @@ class ToHostTransferredGeoDataWrapper(object):
         """All (not just non-QBX) targets packaged into a single array."""
         return np.array(list(self.tree().targets))
 
+    @memoize_method
+    def m2l_rotation_angles(self):
+        # Already on host
+        return self.geo_data.m2l_rotation_angles()
+
+    @memoize_method
+    def m2l_rotation_lists(self):
+        # Already on host
+        return self.geo_data.m2l_rotation_lists()
+
 # }}}
 
 
@@ -136,7 +146,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         # FMMLib is CPU-only. This wrapper gets the geometry out of
         # OpenCL-land.
-        self.geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+        geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
 
         self.qbx_order = qbx_order
 
@@ -215,13 +225,14 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                         frozenset([("k", helmholtz_k)]), tree, level)
 
         super(QBXFMMLibExpansionWrangler, self).__init__(
-                self.geo_data.tree(),
+                geo_data.tree(),
 
                 helmholtz_k=helmholtz_k,
                 dipole_vec=dipole_vec,
                 dipoles_already_reordered=True,
 
                 fmm_level_to_nterms=inner_fmm_level_to_nterms,
+                geo_data=geo_data,
 
                 ifgrad=ifgrad)
 
