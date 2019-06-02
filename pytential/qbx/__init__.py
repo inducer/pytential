@@ -492,10 +492,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def _expansion_radii(self, last_dim_length):
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (self._coarsest_quad_resolution(last_dim_length)
-                    .with_queue(queue)
-                    * 0.5 * self._dim_fudge_factor()).with_queue(None)
+        import pytential.qbx.utils as utils
+        return utils.get_expansion_radii(self,
+                last_dim_length=last_dim_length,
+                factor=0.5 * self._dim_fudge_factor())
 
     # _expansion_radii should not be needed for the fine discretization
 
@@ -514,11 +514,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         #   - Setting this equal to half the expansion radius will not provide
         #     a refinement 'buffer layer' at a 2x coarsening fringe.
 
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (
-                    (self._stage2_coarsest_quad_resolution(last_dim_length)
-                        .with_queue(queue))
-                    * 0.5 * 0.75 * self._dim_fudge_factor()).with_queue(None)
+        from pytential import sym
+        import pytential.qbx.utils as utils
+        return utils.get_expansion_radii(self,
+            last_dim_length=last_dim_length,
+            factor=0.5 * 0.75 * self._dim_fudge_factor(),
+            where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE))
 
     @memoize_method
     def _close_target_tunnel_radius(self, last_dim_length):
@@ -535,19 +536,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         should be the same as the panel length.
         """
         import pytential.qbx.utils as utils
-        from pytential import sym, bind
-        with cl.CommandQueue(self.cl_context) as queue:
-            maxstretch = bind(
-                    self,
-                    sym._simplex_mapping_max_stretch_factor(
-                        self.ambient_dim)
-                    )(queue)
-
-            maxstretch = utils.to_last_dim_length(
-                    self.density_discr, maxstretch, last_dim_length)
-            maxstretch = maxstretch.with_queue(None)
-
-        return maxstretch
+        return utils.get_coarsest_resolution(self.density_discr,
+                last_dim_length)
 
     @memoize_method
     def _stage2_coarsest_quad_resolution(self, last_dim_length="npanels"):
@@ -560,18 +550,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             raise NotImplementedError()
 
         import pytential.qbx.utils as utils
-        from pytential import sym, bind
-        with cl.CommandQueue(self.cl_context) as queue:
-            maxstretch = bind(
-                    self, sym._simplex_mapping_max_stretch_factor(
-                        self.ambient_dim,
-                        where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE))
-                    )(queue)
-            maxstretch = utils.to_last_dim_length(
-                    self.stage2_density_discr, maxstretch, last_dim_length)
-            maxstretch = maxstretch.with_queue(None)
-
-        return maxstretch
+        return utils.get_coarsest_resolution(self.stage2_density_discr,
+                last_dim_length)
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):

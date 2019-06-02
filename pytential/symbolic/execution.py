@@ -487,7 +487,7 @@ class GeometryCollection(object):
 
     def copy(self):
         return GeometryCollection(
-                self.places,
+                self.places.copy(),
                 auto_where=self._default_place_ids)
 
     def get_cache(self, name):

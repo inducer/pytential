@@ -295,6 +295,40 @@ def element_centers_of_mass(discr):
 # }}}
 
 
+# {{{ compute expansion radii
+
+def get_coarsest_resolution(discr, last_dim_length="npanels"):
+    from pytential import sym, bind
+
+    with cl.CommandQueue(discr.cl_context) as queue:
+        sym_stretch_factor = \
+                sym._simplex_mapping_max_stretch_factor(discr.ambient_dim)
+        stretch_factor = bind(discr, sym_stretch_factor)(queue)
+        stretch_factor = to_last_dim_length(discr,
+                stretch_factor, last_dim_length)
+
+        return stretch_factor.with_queue(None)
+
+
+def get_expansion_radii(lpot_src,
+        last_dim_length="npanels", factor=0.5, where=None):
+    from pytential import sym
+    if where is None or isinstance(where, sym.QBXSourceStage1):
+        discr = lpot_src.density_discr
+    elif isinstance(where, sym.QBXSourceStage2):
+        discr = lpot_src.stage2_density_discr
+    else:
+        from pytential.symbolic.mappers import stringify_where
+        raise ValueError('unsupported `where`: {}'.format(
+            stringify_where(where)))
+
+    radii = get_coarsest_resolution(discr, last_dim_length)
+    with cl.CommandQueue(lpot_src.cl_context) as queue:
+        return (factor * radii.with_queue(queue)).with_queue(None)
+
+# }}}
+
+
 # {{{ compute center array
 
 def get_centers_on_side(lpot_src, sign):
