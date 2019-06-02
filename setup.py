@@ -105,7 +105,7 @@ setup(name="pytential",
           "loo.py>=2017.2",
           "sumpy>=2013.1",
           "cgen>=2013.1.2",
-          "pyfmmlib>=2019.1",
+          "pyfmmlib>=2019.1.1",
 
           "six",
           ])
