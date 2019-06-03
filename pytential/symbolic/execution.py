@@ -208,6 +208,22 @@ class EvaluationMapper(EvaluationMapperBase):
         else:
             raise TypeError("cannot interpolate `{}`".format(type(operand)))
 
+    def map_common_subexpression(self, expr):
+        if expr.scope != sym.cse_scope.DISCRETIZATION:
+            # print('Ignoring: {}'.format(expr.child))
+            return self.rec(expr.child)
+
+        cse_cache = self.bound_expr.get_cache('discretization')
+        try:
+            rec = cse_cache[expr.child]
+            # print('Cache hit: {}'.format(expr.child))
+        except KeyError:
+            # print('Cache miss: {}'.format(expr.child))
+            rec = self.rec(expr.child)
+            cse_cache[expr.child] = rec
+
+        return rec
+
     # }}}
 
     def exec_assign(self, queue, insn, bound_expr, evaluate):

@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 import numpy as np  # noqa
 from pytools import Record, memoize_method
-from pymbolic.primitives import cse_scope
+from pytential.symbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper
 import six
 from six.moves import zip
@@ -535,31 +535,35 @@ class OperatorCompiler(IdentityMapper):
 
     # {{{ map_xxx routines
 
-    def map_common_subexpression(self, expr):
-        if expr.scope != cse_scope.EXPRESSION:
-            from warnings import warn
-            warn("mishandling CSE scope")
-        try:
-            return self.expr_to_var[expr.child]
-        except KeyError:
-            priority = getattr(expr, "priority", 0)
+    # def map_common_subexpression(self, expr):
+    #     if expr.scope == cse_scope.DISCRETIZATION:
+    #         return self.rec(expr.child)
 
-            from pytential.symbolic.primitives import IntG
-            if isinstance(expr.child, IntG):
-                # We need to catch operators here and
-                # treat them specially. They get assigned to their
-                # own variable by default, which would mean the
-                # CSE prefix would be omitted.
+    #     if expr.scope != cse_scope.EXPRESSION:
+    #         from warnings import warn
+    #         warn("mishandling CSE scope")
 
-                rec_child = self.rec(expr.child, name_hint=expr.prefix)
-            else:
-                rec_child = self.rec(expr.child)
+    #     try:
+    #         return self.expr_to_var[expr.child]
+    #     except KeyError:
+    #         priority = getattr(expr, "priority", 0)
 
-            cse_var = self.assign_to_new_var(rec_child,
-                    priority=priority, prefix=expr.prefix)
+    #         from pytential.symbolic.primitives import IntG
+    #         if isinstance(expr.child, IntG):
+    #             # We need to catch operators here and
+    #             # treat them specially. They get assigned to their
+    #             # own variable by default, which would mean the
+    #             # CSE prefix would be omitted.
 
-            self.expr_to_var[expr.child] = cse_var
-            return cse_var
+    #             rec_child = self.rec(expr.child, name_hint=expr.prefix)
+    #         else:
+    #             rec_child = self.rec(expr.child)
+
+    #         cse_var = self.assign_to_new_var(rec_child,
+    #                 priority=priority, prefix=expr.prefix)
+
+    #         self.expr_to_var[expr.child] = cse_var
+    #         return cse_var
 
     def make_assign(self, name, expr, priority):
         return Assign(names=[name], exprs=[expr],
