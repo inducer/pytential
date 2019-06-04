@@ -25,7 +25,6 @@ THE SOFTWARE.
 
 import numpy as np  # noqa
 from pytools import Record, memoize_method
-from pytential.symbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper
 import six
 from six.moves import zip
