@@ -298,15 +298,12 @@ def element_centers_of_mass(discr):
 # {{{ compute center array
 
 def get_centers_on_side(lpot_src, sign):
-    adim = lpot_src.density_discr.ambient_dim
-    dim = lpot_src.density_discr.dim
-
     from pytential import sym, bind
     with cl.CommandQueue(lpot_src.cl_context) as queue:
-        nodes = bind(lpot_src.density_discr, sym.nodes(adim))(queue)
-        normals = bind(lpot_src.density_discr, sym.normal(adim, dim=dim))(queue)
-        expansion_radii = lpot_src._expansion_radii("nsources").with_queue(queue)
-        return (nodes + normals * sign * expansion_radii).as_vector(np.object)
+        return bind(lpot_src, sym.qbx_expansion_centers(
+            lpot_src._expansion_radii_factor(),
+            sign,
+            lpot_src.ambient_dim))(queue)
 
 # }}}
 
