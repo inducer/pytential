@@ -652,29 +652,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
             evaluate, func, extra_args=None):
-        from pytools.obj_array import with_object_array_or_scalar
-
         if not self._refined_for_global_qbx:
             from warnings import warn
             warn(
                     "Executing global QBX without refinement. "
                     "This is unlikely to work.")
 
-        def oversample_nonscalars(vec):
-            from numbers import Number
-            if isinstance(vec, Number):
-                return vec
-            else:
-                return self.resampler(queue, vec)
-
-        def evaluate_wrapper(expr):
-            value = evaluate(expr)
-            return with_object_array_or_scalar(oversample_nonscalars, value)
-
         if extra_args is None:
             extra_args = {}
 
-        return func(queue, insn, bound_expr, evaluate_wrapper, **extra_args)
+        return func(queue, insn, bound_expr, evaluate, **extra_args)
 
     @property
     @memoize_method
