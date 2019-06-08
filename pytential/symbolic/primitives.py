@@ -141,6 +141,11 @@ Elementary numerics
 .. autofunction:: mean
 .. autoclass:: IterativeInverse
 
+Operators
+^^^^^^^^^
+
+.. autoclass:: Interpolation
+
 Geometric Calculus (based on Geometric/Clifford Algebra)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -540,17 +545,24 @@ def mean_curvature(ambient_dim, dim=None, where=None):
     if dim is None:
         dim = ambient_dim - 1
 
-    if not (dim == 1 and ambient_dim == 2):
-        raise NotImplementedError(
-                "only know how to calculate curvature for a curve in 2D")
+    if ambient_dim == 2 and dim == 1:
+        # https://en.wikipedia.org/wiki/Curvature#Local_expressions
+        xp, yp = parametrization_derivative_matrix(ambient_dim, dim, where)
 
-    xp, yp = parametrization_derivative_matrix(ambient_dim, dim, where)
+        xpp, ypp = cse(
+                reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
+                "p2d_matrix", cse_scope.DISCRETIZATION)
 
-    xpp, ypp = cse(
-            reference_jacobian([xp[0], yp[0]], ambient_dim, dim, where),
-            "p2d_matrix", cse_scope.DISCRETIZATION)
+        kappa = (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
+    elif ambient_dim == 3 and dim == 2:
+        # https://en.wikipedia.org/wiki/Mean_curvature#Surfaces_in_3D_space
+        s_op = shape_operator(ambient_dim, dim=dim, where=where)
+        kappa = -0.5 * sum(s_op[i, i] for i in range(s_op.shape[0]))
+    else:
+        raise NotImplementedError('not available in {}D for {}D surfaces'
+                .format(ambient_dim, dim))
 
-    return (xp[0]*ypp[0] - yp[0]*xpp[0]) / (xp[0]**2 + yp[0]**2)**(3/2)
+    return kappa
 
 
 def first_fundamental_form(ambient_dim, dim=None, where=None):
@@ -1008,6 +1020,31 @@ def hashable_kernel_args(kernel_arguments):
 
 class _NoArgSentinel(object):
     pass
+
+
+class Interpolation(Expression):
+    """Interpolate quantity from *source* to *target* discretization."""
+
+    init_arg_names = ("source", "target", "operand")
+
+    def __new__(cls, source, target, operand):
+        if isinstance(operand, np.ndarray):
+            def make_op(operand_i):
+                return cls(source, target, operand_i)
+
+            return componentwise(make_op, operand)
+        else:
+            return Expression.__new__(cls)
+
+    def __init__(self, source, target, operand):
+        self.source = source
+        self.target = target
+        self.operand = operand
+
+    def __getinitargs__(self):
+        return (self.source, self.target, self.operand)
+
+    mapper_method = intern("map_interpolation")
 
 
 class IntG(Expression):
