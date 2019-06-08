@@ -786,6 +786,69 @@ def _scaled_max_curvature(ambient_dim, dim=None, where=None):
 # }}}
 
 
+# {{{ qbx-specific geometry
+
+class LastDimLength(Expression):
+    init_arg_names = ("last_dim_length", "operand", "where")
+
+    def __new__(cls, last_dim_length, operand, where=None):
+        if isinstance(operand, np.ndarray):
+            def make_op(operand_i):
+                return cls(last_dim_length, operand_i, where=where)
+
+            return componentwise(make_op, operand)
+        else:
+            return Expression.__new__(cls)
+
+    def __init__(self, last_dim_length, operand, where=None):
+        self.last_dim_length = last_dim_length
+        self.operand = operand
+        self.where = where
+
+    def __getinitargs__(self):
+        return (self.last_dim_length, self.operand, self.where)
+
+    mapper_method = intern("map_last_dim_length")
+
+
+def qbx_quad_resolution(ambient_dim, last_dim_length="npanels", where=None):
+    stretch = _simplex_mapping_max_stretch_factor(ambient_dim, where=where)
+    return LastDimLength(last_dim_length, stretch, where=where)
+
+
+def qbx_expansion_radii(factor, ambient_dim,
+        last_dim_length="nsources", where=None):
+    """Expansion radii.
+
+    :arg factor: stick out factor for expansion radii.
+    """
+
+    stretch = _simplex_mapping_max_stretch_factor(ambient_dim, where=where)
+    radii = LastDimLength(last_dim_length, factor * stretch, where=where)
+
+    return cse(radii, cse_scope.DISCRETIZATION)
+
+
+def qbx_expansion_centers(factor, side, ambient_dim, dim=None, where=None):
+    """One-sided expansion centers.
+
+    :arg factor: stick out factor for expansion radii.
+    :arg side: `+1` or `-1` expansion side, relative to the direction of
+        the normal vector.
+    """
+
+    x = nodes(ambient_dim, where=where)
+    normals = normal(ambient_dim, dim=dim, where=where)
+    radii = qbx_expansion_radii(factor, ambient_dim,
+            last_dim_length="nsources", where=where)
+
+    centers = x + side * radii * normals
+
+    return cse(centers.as_vector(), cse_scope.DISCRETIZATION)
+
+# }}}
+
+
 # {{{ operators
 
 class SingleScalarOperandExpression(Expression):

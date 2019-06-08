@@ -348,7 +348,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def weights_and_area_elements(self):
-        import pytential.symbolic.primitives as p
+        import pytential.symbolic.primitives as sym
         from pytential.symbolic.execution import bind
         with cl.CommandQueue(self.cl_context) as queue:
             # quad_stage2_density_discr is not guaranteed to be usable for
@@ -359,10 +359,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     queue,
                     bind(
                         self.stage2_density_discr,
-                        p.area_element(self.ambient_dim, self.dim)
+                        sym.area_element(self.ambient_dim, self.dim)
                         )(queue))
 
-            qweight = bind(self.quad_stage2_density_discr, p.QWeight())(queue)
+            qweight = bind(self.quad_stage2_density_discr, sym.QWeight())(queue)
 
             return (area_element.with_queue(queue)*qweight).with_queue(None)
 
@@ -490,12 +490,21 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             return 1
 
+    def _expansion_radii_factor(self):
+        return 0.5 * self._dim_fudge_factor()
+
     @memoize_method
     def _expansion_radii(self, last_dim_length):
-        import pytential.qbx.utils as utils
-        return utils.get_expansion_radii(self,
-                last_dim_length=last_dim_length,
-                factor=0.5 * self._dim_fudge_factor())
+        import pytential.symbolic.primitives as sym
+        from pytential.symbolic.execution import bind
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            radii = bind(self, sym.qbx_expansion_radii(
+                self._expansion_radii_factor(),
+                self.ambient_dim,
+                last_dim_length=last_dim_length))(queue)
+
+            return radii.with_queue(None)
 
     # _expansion_radii should not be needed for the fine discretization
 
@@ -514,12 +523,17 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         #   - Setting this equal to half the expansion radius will not provide
         #     a refinement 'buffer layer' at a 2x coarsening fringe.
 
-        from pytential import sym
-        import pytential.qbx.utils as utils
-        return utils.get_expansion_radii(self,
-            last_dim_length=last_dim_length,
-            factor=0.5 * 0.75 * self._dim_fudge_factor(),
-            where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE))
+        import pytential.symbolic.primitives as sym
+        from pytential.symbolic.execution import bind
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            radii = bind(self, sym.qbx_expansion_radii(
+                0.75 * self._expansion_radii_factor(),
+                self.ambient_dim,
+                last_dim_length=last_dim_length,
+                where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(queue)
+
+            return radii.with_queue(None)
 
     @memoize_method
     def _close_target_tunnel_radius(self, last_dim_length):
@@ -535,9 +549,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
         should be the same as the panel length.
         """
-        import pytential.qbx.utils as utils
-        return utils.get_coarsest_resolution(self.density_discr,
-                last_dim_length)
+
+        import pytential.symbolic.primitives as sym
+        from pytential.symbolic.execution import bind
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            stretch = sym._simplex_mapping_max_stretch_factor(self.ambient_dim)
+            r = bind(self, sym.LastDimLength(last_dim_length, stretch))(queue)
+
+            return r.with_queue(None)
 
     @memoize_method
     def _stage2_coarsest_quad_resolution(self, last_dim_length="npanels"):
@@ -549,9 +569,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # Not technically required below, but no need to loosen for now.
             raise NotImplementedError()
 
-        import pytential.qbx.utils as utils
-        return utils.get_coarsest_resolution(self.stage2_density_discr,
-                last_dim_length)
+        import pytential.symbolic.primitives as sym
+        from pytential.symbolic.execution import bind
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            r = bind(self, sym.qbx_quad_resolution(
+                    self.ambient_dim,
+                    last_dim_length,
+                    where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(queue)
+
+            return r.with_queue(None)
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
