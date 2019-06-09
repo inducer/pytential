@@ -250,7 +250,7 @@ def to_last_dim_length(discr, vec, last_dim_length, queue=None):
             knl(queue,
                 nelements=group.nelements,
                 a=group.view(vec),
-                result=el_view(discr, group_nr, result))
+                result=mesh_el_view(discr.mesh, group_nr, result))
 
         return result
     else:
@@ -287,7 +287,7 @@ def element_centers_of_mass(discr):
                 nelements=group.nelements,
                 nunit_nodes=group.nunit_nodes,
                 nodes=group.view(discr.nodes()),
-                panels=el_view(discr, group_nr, panels))
+                panels=mesh_el_view(discr.mesh, group_nr, panels))
         panels.finish()
         panels = panels.with_queue(None)
         return tuple(panels[d, :] for d in range(mesh.ambient_dim))
@@ -310,14 +310,14 @@ def get_centers_on_side(lpot_src, sign):
 
 # {{{ el_view
 
-def el_view(discr, group_nr, global_array):
+def mesh_el_view(mesh, group_nr, global_array):
     """Return a view of *global_array* of shape
-    ``(..., discr.groups[group_nr].nelements)``
+    ``(..., mesh.groups[group_nr].nelements)``
     where *global_array* is of shape ``(..., nelements)``,
-    where *nelements* is the global (per-discretization) node count.
+    where *nelements* is the global (per-mesh) element count.
     """
 
-    group = discr.mesh.groups[group_nr]
+    group = mesh.groups[group_nr]
 
     return global_array[
         ..., group.element_nr_base:group.element_nr_base + group.nelements] \
