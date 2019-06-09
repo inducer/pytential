@@ -348,8 +348,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def weights_and_area_elements(self):
-        import pytential.symbolic.primitives as sym
-        from pytential.symbolic.execution import bind
+        from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
             # quad_stage2_density_discr is not guaranteed to be usable for
             # interpolation/differentiation. Use density_discr to find
@@ -495,9 +494,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def _expansion_radii(self, last_dim_length):
-        import pytential.symbolic.primitives as sym
-        from pytential.symbolic.execution import bind
-
+        from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
             radii = bind(self, sym.qbx_expansion_radii(
                 self._expansion_radii_factor(),
@@ -523,9 +520,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         #   - Setting this equal to half the expansion radius will not provide
         #     a refinement 'buffer layer' at a 2x coarsening fringe.
 
-        import pytential.symbolic.primitives as sym
-        from pytential.symbolic.execution import bind
-
+        from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
             radii = bind(self, sym.qbx_expansion_radii(
                 0.75 * self._expansion_radii_factor(),
@@ -550,9 +545,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         should be the same as the panel length.
         """
 
-        import pytential.symbolic.primitives as sym
-        from pytential.symbolic.execution import bind
-
+        from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
             stretch = sym._simplex_mapping_max_stretch_factor(self.ambient_dim)
             r = bind(self, sym.LastDimLength(last_dim_length, stretch))(queue)
@@ -569,9 +562,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # Not technically required below, but no need to loosen for now.
             raise NotImplementedError()
 
-        import pytential.symbolic.primitives as sym
-        from pytential.symbolic.execution import bind
-
+        from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
             r = bind(self, sym.qbx_quad_resolution(
                     self.ambient_dim,
