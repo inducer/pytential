@@ -499,7 +499,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             radii = bind(self, sym.qbx_expansion_radii(
                 self._expansion_radii_factor(),
                 self.ambient_dim,
-                last_dim_length=last_dim_length))(queue)
+                granularity=last_dim_length))(queue)
 
             return radii.with_queue(None)
 
@@ -525,7 +525,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             radii = bind(self, sym.qbx_expansion_radii(
                 0.75 * self._expansion_radii_factor(),
                 self.ambient_dim,
-                last_dim_length=last_dim_length,
+                granularity=last_dim_length,
                 where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(queue)
 
             return radii.with_queue(None)
@@ -547,8 +547,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
-            stretch = sym._simplex_mapping_max_stretch_factor(self.ambient_dim)
-            r = bind(self, sym.LastDimLength(last_dim_length, stretch))(queue)
+            r = bind(self, sym.qbx_quad_resolution(
+                    self.ambient_dim,
+                    last_dim_length))(queue)
 
             return r.with_queue(None)
 

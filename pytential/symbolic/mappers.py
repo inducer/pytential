@@ -106,8 +106,8 @@ class IdentityMapper(IdentityMapperBase):
     def map_interpolation(self, expr):
         return type(expr)(expr.source, expr.target, self.rec(expr.operand))
 
-    def map_last_dim_length(self, expr):
-        return type(expr)(expr.last_dim_length,
+    def map_dof_granularity_converter(self, expr):
+        return type(expr)(expr.granularity,
                 self.rec(expr.operand),
                 where=expr.where)
 
@@ -122,7 +122,7 @@ class CombineMapper(CombineMapperBase):
     map_elementwise_min = map_node_sum
     map_elementwise_max = map_node_sum
     map_interpolation = map_node_sum
-    map_last_dim_length = map_node_sum
+    map_dof_granularity_converter = map_node_sum
 
     def map_int_g(self, expr):
         return self.combine(
@@ -301,12 +301,12 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
 
         return type(expr)(source, target, expr.operand)
 
-    def map_last_dim_length(self, expr):
+    def map_dof_granularity_converter(self, expr):
         where = expr.where
         if where is None:
             where = self.default_source
 
-        return type(expr)(expr.last_dim_length,
+        return type(expr)(expr.granularity,
                 self.rec(expr.operand), where=where)
 
     def operand_rec(self, expr):
@@ -618,8 +618,8 @@ class StringifyMapper(BaseStringifyMapper):
                 stringify_where(expr.target),
                 self.rec(expr.operand, PREC_PRODUCT))
 
-    def map_last_dim_length(self, expr, enclosing_prec):
-        return "Sample[%s](%s)" % (expr.last_dim_length,
+    def map_dof_granularity_converter(self, expr, enclosing_prec):
+        return "DOF[%s](%s)" % (expr.granularity,
                 self.rec(expr.operand, PREC_PRODUCT))
 
 # }}}
