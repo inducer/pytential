@@ -77,9 +77,6 @@ Python 3 Conda Apple:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
 
-  # https://gitlab.tiker.net/inducer/pytential/issues/112
-  allow_failure: true
-
   tags:
   - apple
   except:
