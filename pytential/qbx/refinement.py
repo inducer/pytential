@@ -616,9 +616,10 @@ def refine_for_global_qbx(lpot_source, wrangler,
             with ProcessLogger(logger,
                     "checking scaled max curvature threshold"):
                 from pytential import sym, bind
-                scaled_max_curv = bind(lpot_source,
-                        sym.DOFGranularityConverter("npanels", sym._scaled_max_curvature(
-                            lpot_source.ambient_dim)))(wrangler.queue)
+                scaled_max_curv = bind(lpot_source, sym.DOFGranularityConverter(
+                    "npanels",
+                    sym._scaled_max_curvature(
+                        lpot_source.ambient_dim)))(wrangler.queue)
 
                 violates_scaled_max_curv = \
                         wrangler.check_element_prop_threshold(
