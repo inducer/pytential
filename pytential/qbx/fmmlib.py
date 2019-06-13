@@ -148,6 +148,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         # OpenCL-land.
         geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
 
+        self.geo_data = geo_data
         self.qbx_order = qbx_order
 
         # {{{ digest out_kernels
@@ -232,7 +233,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 dipoles_already_reordered=True,
 
                 fmm_level_to_nterms=inner_fmm_level_to_nterms,
-                geo_data=geo_data,
+                optional_geo_data=geo_data,
 
                 ifgrad=ifgrad)
 
