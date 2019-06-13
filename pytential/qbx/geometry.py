@@ -29,7 +29,7 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 from pytools import memoize_method
 from boxtree.tools import DeviceDataRecord
-from boxtree.pyfmmlib_integration import FMMLibGeometryDataInterface
+from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from cgen import Enum
@@ -307,7 +307,7 @@ class CenterToTargetList(DeviceDataRecord):
     """
 
 
-class QBXFMMGeometryData(FMMLibGeometryDataInterface):
+class QBXFMMGeometryData(FMMLibRotationDataInterface):
     """
 
     .. rubric :: Attributes

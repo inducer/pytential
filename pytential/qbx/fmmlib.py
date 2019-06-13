@@ -233,7 +233,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 dipoles_already_reordered=True,
 
                 fmm_level_to_nterms=inner_fmm_level_to_nterms,
-                optional_geo_data=geo_data,
+                rotation_data=geo_data,
 
                 ifgrad=ifgrad)
 
