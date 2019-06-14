@@ -319,7 +319,8 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         # {{{ double layer
 
-        d_sigma_op = bind(qbx, sym.D(lap_knl, sym.var("sigma")))
+        d_sigma_op = bind(qbx,
+                sym.D(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         d_sigma = d_sigma_op(queue=queue, sigma=ymn)
         d_eigval = -1/(2*(2*mode_n + 1))
         d_eoc_rec.add_data_point(qbx.h_max, rel_err(d_sigma, d_eigval*ymn))
@@ -328,7 +329,8 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         # {{{ S'
 
-        sp_sigma_op = bind(qbx, sym.Sp(lap_knl, sym.var("sigma")))
+        sp_sigma_op = bind(qbx,
+                 sym.Sp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         sp_sigma = sp_sigma_op(queue=queue, sigma=ymn)
         sp_eigval = -1/(2*(2*mode_n + 1))
         sp_eoc_rec.add_data_point(qbx.h_max, rel_err(sp_sigma, sp_eigval*ymn))
@@ -337,7 +339,8 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         # {{{ D'
 
-        dp_sigma_op = bind(qbx, sym.Dp(lap_knl, sym.var("sigma")))
+        dp_sigma_op = bind(qbx,
+                sym.Dp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         dp_sigma = dp_sigma_op(queue=queue, sigma=ymn)
         dp_eigval = -(mode_n*(mode_n+1))/(2*mode_n + 1)
         dp_eoc_rec.add_data_point(qbx.h_max, rel_err(dp_sigma, dp_eigval*ymn))
