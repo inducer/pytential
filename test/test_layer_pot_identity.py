@@ -159,9 +159,14 @@ class ZeroCalderonExpr(object):
 
         u_sym = sym.var("u")
 
+        from functools import partial
+        S = partial(sym.S, qbx_forced_limit=+1)
+        Dp = partial(sym.Dp, qbx_forced_limit="avg")
+        Sp = partial(sym.Sp, qbx_forced_limit="avg")
+
         return (
-                    -sym.Dp(kernel, sym.S(kernel, u_sym))
-                    - 0.25*u_sym + sym.Sp(kernel, sym.Sp(kernel, u_sym))
+                    -Dp(kernel, S(kernel, u_sym))
+                    - 0.25*u_sym + Sp(kernel, sym.Sp(kernel, u_sym))
                     )
 
     order_drop = 1
