@@ -885,10 +885,10 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     ])
 # Sample test run:
 # 'test_integral_equation(cl._csc, EllipseIntEqTestCase(0, "dirichlet", +1), visualize=True)'  # noqa: E501
-def test_integral_equation(ctx_getter, case, visualize=False):
+def test_integral_equation(ctx_factory, case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     if USE_SYMENGINE and case.fmm_backend is None:

@@ -259,12 +259,12 @@ class DynamicTestCase(object):
         DynamicTestCase(geom, GreenExpr(), 0, fmm_backend="fmmlib"),
         DynamicTestCase(geom, GreenExpr(), 1.2, fmm_backend="fmmlib"),
         ]])
-def test_identity_convergence(ctx_getter,  case, visualize=False):
+def test_identity_convergence(ctx_factory,  case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     case.check()
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # prevent cache 'splosion

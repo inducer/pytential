@@ -61,14 +61,14 @@ except ImportError:
 
             (2, 7, 5, True),
             ])
-def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
+def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         force_direct):
     logging.basicConfig(level=logging.INFO)
 
     print("ellipse_aspect: %s, mode_nr: %d, qbx_order: %d" % (
             ellipse_aspect, mode_nr, qbx_order))
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     target_order = 8
@@ -249,13 +249,13 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
     "sumpy",
     "fmmlib",
     ])
-def test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
+def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
         fmm_backend):
     logging.basicConfig(level=logging.INFO)
 
     special = pytest.importorskip("scipy.special")
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     target_order = 8

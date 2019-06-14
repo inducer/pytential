@@ -46,8 +46,8 @@ circle = partial(ellipse, 1)
 
 # {{{ geometry test
 
-def test_geometry(ctx_getter):
-    cl_ctx = ctx_getter()
+def test_geometry(ctx_factory):
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     nelements = 30
@@ -79,10 +79,10 @@ def test_geometry(ctx_getter):
 # {{{ test off-surface eval
 
 @pytest.mark.parametrize("use_fmm", [True, False])
-def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
+def test_off_surface_eval(ctx_factory, use_fmm, do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # prevent cache 'splosion
@@ -146,10 +146,10 @@ def test_off_surface_eval(ctx_getter, use_fmm, do_plot=False):
 
 # {{{ test off-surface eval vs direct
 
-def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
+def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # prevent cache 'splosion
@@ -227,8 +227,8 @@ def test_off_surface_eval_vs_direct(ctx_getter,  do_plot=False):
 # {{{ unregularized tests
 
 
-def test_unregularized_with_ones_kernel(ctx_getter):
-    cl_ctx = ctx_getter()
+def test_unregularized_with_ones_kernel(ctx_factory):
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     nelements = 10
@@ -268,8 +268,8 @@ def test_unregularized_with_ones_kernel(ctx_getter):
     assert np.allclose(result_nonself.get(), 2 * np.pi)
 
 
-def test_unregularized_off_surface_fmm_vs_direct(ctx_getter):
-    cl_ctx = ctx_getter()
+def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     nelements = 300
@@ -317,8 +317,8 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_getter):
 
 # {{{ test performance data gathering
 
-def test_perf_data_gathering(ctx_getter, n_arms=5):
-    cl_ctx = ctx_getter()
+def test_perf_data_gathering(ctx_factory, n_arms=5):
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # prevent cache 'splosion
