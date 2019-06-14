@@ -79,8 +79,8 @@ def iter_elements(discr):
             discr_nodes_idx += discr_group.nunit_nodes
 
 
-def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
-    cl_ctx = ctx_getter()
+def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     from meshmode.discretization import Discretization
@@ -201,30 +201,30 @@ def run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k=None):
     ("20-to-1 ellipse", partial(ellipse, 20), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_source_refinement_2d(ctx_getter, curve_name, curve_f, nelements):
+def test_source_refinement_2d(ctx_factory, curve_name, curve_f, nelements):
     helmholtz_k = 10
     order = 8
 
     mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
-    run_source_refinement_test(ctx_getter, mesh, order, helmholtz_k)
+    run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k)
 
 
 @pytest.mark.parametrize(("surface_name", "surface_f", "order"), [
     ("sphere", partial(generate_icosphere, 1), 4),
     ("torus", partial(generate_torus, 3, 1, n_inner=10, n_outer=7), 6),
     ])
-def test_source_refinement_3d(ctx_getter, surface_name, surface_f, order):
+def test_source_refinement_3d(ctx_factory, surface_name, surface_f, order):
     mesh = surface_f(order=order)
-    run_source_refinement_test(ctx_getter, mesh, order)
+    run_source_refinement_test(ctx_factory, mesh, order)
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
     ("20-to-1 ellipse", partial(ellipse, 20), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_target_association(ctx_getter, curve_name, curve_f, nelements,
+def test_target_association(ctx_factory, curve_name, curve_f, nelements,
         visualize=False):
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # {{{ generate lpot source
@@ -403,8 +403,8 @@ def test_target_association(ctx_getter, curve_name, curve_f, nelements,
     # }}}
 
 
-def test_target_association_failure(ctx_getter):
-    cl_ctx = ctx_getter()
+def test_target_association_failure(ctx_factory):
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # {{{ generate circle
