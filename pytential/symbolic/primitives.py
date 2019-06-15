@@ -260,6 +260,145 @@ class QBXSourceQuadStage2(_QBXSource):
     of the layer potential source identified by :attr:`where`.
     """
 
+
+class DOMAIN_TAG(object):   # noqa
+    """General domain specifier
+
+    .. attribute:: tag
+    """
+    init_arg_names = ("tag",)
+
+    def __init__(self, tag):
+        self.tag = tag
+
+    def __hash__(self):
+        return hash((type(self), self.tag))
+
+    def __eq__(self, other):
+        return type(self) is type(other) and self.tag == other.tag
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __getinitargs__(self):
+        return (self.tag,)
+
+    def __repr__(self):
+        if isinstance(self.tag, str):
+            tag = self.tag
+        else:
+            tag = tag.__name__ if isinstance(tag, type) else type(tag).__name__
+
+        return "{}({})".format(type(self).__name__, tag)
+
+
+class QBX_DOMAIN_STAGE1(DOMAIN_TAG):    # noqa
+    """Specifier for
+    :attr:~pytential.qbx.QBXLayerPotentialSource.density_discr`."""
+    pass
+
+
+class QBX_DOMAIN_STAGE2(DOMAIN_TAG):    # noqa
+    """Specifier for
+    :attr:~pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`."""
+    pass
+
+
+class QBX_DOMAIN_QUAD_STAGE2(DOMAIN_TAG):   # noqa
+    """Specifier for
+    :attr:~pytential.qbx.QBXLayerPotentialSource.quad_stage2_density_discr`."""
+    pass
+
+
+class QBX_DOF_NODE: # noqa
+    """DOFs are per-source node."""
+    pass
+
+
+class QBX_DOF_CENTER:   # noqa
+    """DOFs interleaved per expansion center."""
+    pass
+
+
+class QBX_DOF_ELEMENT:  # noqa
+    """DOFs per discretization element."""
+    pass
+
+
+class DOFDescriptor(object):
+    """Descriptor for degrees of freedom on a domain.
+
+    .. attribute:: domain
+
+        Describes the domain on which a DOF is defined. The domain contains
+        an internal tag for which exact
+        :class:`~pytential.source.PotentialSource`,
+        :class:`~pytential.target.TargetBase` or
+        :class:`~meshmode.discretization.Discretization` it refers to.
+        Can be a generic :class:`QBX_DOMAIN` or one of
+        :class:`QBX_DOMAIN_STAGE1`, :class:`QBX_DOMAIN_STAGE2` or
+        :class:`QBX_DOMAIN_QUAD_STAGE2`.
+
+    .. attribute:: granularity
+
+        Describes the level of granularity of the DOF.
+        Can be one of :class:`QBX_DOF_NODE`, :class:`QBX_DOF_CENTER` or
+        :class:`QBX_DOF_ELEMENT`.
+
+    """
+
+    init_arg_names = ("domain", "granularity")
+
+    def __init__(self, domain, granularity=None):
+        if (domain == DEFAULT_SOURCE
+                or domain == DEFAULT_TARGET
+                or isinstance(domain, str)):
+            domain = DOMAIN_TAG(domain)
+
+        if granularity is None:
+            granularity = QBX_DOF_NODE
+
+        if not (isinstance(domain, DOMAIN_TAG)
+                or isinstance(domain, QBX_DOMAIN_STAGE1)
+                or isinstance(domain, QBX_DOMAIN_STAGE2)
+                or isinstance(domain, QBX_DOMAIN_QUAD_STAGE2)):
+            raise ValueError('unknown domain tag: {}'.format(domain))
+
+        if not (granularity == QBX_DOF_NODE
+                or granularity == QBX_DOF_CENTER
+                or granularity == QBX_DOF_ELEMENT):
+            raise ValueError('unknown granularity: {}'.format(granularity))
+
+        self.domain = domain
+        self.granularity = granularity
+
+    def __hash__(self):
+        return hash((type(self), self.domain, self.granularity))
+
+    def __eq__(self, other):
+        return (type(self) is type(other)
+                and self.domain == other.domain
+                and self.granularity == other.granularity)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __getinitargs__(self):
+        return (self.domain, self.granularity)
+
+    def __repr__(self):
+        return '{}({}, {})'.format(
+                type(self).__name__,
+                repr(self.domain),
+                self.granularity.__name__)
+
+
+def as_dofdesc(desc):
+    if isinstance(desc, DOFDescriptor):
+        return desc
+    return DOFDescriptor(desc)
+
+
 # }}}
 
 
