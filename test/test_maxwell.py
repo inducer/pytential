@@ -218,14 +218,14 @@ class EHField(object):
     #tc_int,
     tc_ext,
     ])
-def test_pec_mfie_extinction(ctx_getter, case, visualize=False):
+def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
     """For (say) is_interior=False (the 'exterior' MFIE), this test verifies
     extinction of the combined (incoming + scattered) field on the interior
     of the scatterer.
     """
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     np.random.seed(12)

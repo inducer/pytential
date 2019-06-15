@@ -235,7 +235,7 @@ def to_last_dim_length(discr, vec, last_dim_length, queue=None):
             "{[i,k]: 0<=i<nelements}",
             "result[i] = a[i,0]",
             [
-                lp.GlobalArg("a", shape="nelements, nunit_nodes", dtype=lp.auto),
+                lp.GlobalArg("a", shape="nelements, nunit_nodes", dtype=None),
                 lp.ValueArg("nunit_nodes", dtype=np.int32),
                 "..."
                 ],
