@@ -22,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import partial
+
 import pytest
 
 import numpy as np
@@ -91,6 +93,57 @@ def test_interpolatory_error_reporting(ctx_factory):
     one.fill(1)
     with pytest.raises(TypeError):
         print("AREA", integral(vol_discr, queue, one), 0.25**2*np.pi)
+
+
+def test_geometry_collection_caching(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    ndim = 2
+    nelements = 42
+    target_order = 7
+    qbx_order = 4
+
+
+    # construct discretizations
+    from meshmode.mesh.generation import ellipse, make_curve_mesh
+    from meshmode.mesh.processing import affine_map
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+
+    discrs = []
+    radius = 1.0
+    for k in range(3):
+        mesh = make_curve_mesh(partial(ellipse, radius),
+                np.linspace(0.0, 1.0, nelements + 1),
+                target_order)
+        if k > 0:
+            center = np.array([3 * k * radius, 0])
+            mesh = affine_map(discrs[0].mesh,
+                    b=np.array([3 * k * radius, 0]))
+
+        discr = Discretization(ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+        discrs.append(discr)
+
+    # construct qbx layer potentials
+    from pytential.qbx import QBXLayerPotentialSource
+
+    places = {}
+    for k in range(len(discrs)):
+        qbx, _ = QBXLayerPotentialSource(discrs[k],
+            fine_order = 2 * target_order,
+            qbx_order=qbx_order,
+            fmm_order=False).with_refinement()
+
+        places["qbx_source_{}".format(k)] = qbx
+
+    # construct a geometry collection
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(places)
+
+    print(places.places)
 
 
 # You can test individual routines by typing
