@@ -42,6 +42,7 @@ from meshmode.mesh.generation import (  # noqa
         make_curve_mesh, generate_icosphere, generate_torus)
 from extra_curve_data import horseshoe
 
+from pytential import bind, sym
 
 import logging
 logger = logging.getLogger(__name__)
@@ -125,9 +126,11 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
     expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
     quad_res = lpot_source._coarsest_quad_resolution("npanels").get(queue)
-    source_danger_zone_radii = \
-            lpot_source._source_danger_zone_radii("npanels").get(queue)
-
+    source_danger_zone_radii = bind(lpot_source, sym.qbx_expansion_radii(
+        lpot_source._source_danger_zone_radii_factor(),
+        lpot_source.ambient_dim,
+        granularity="npanels",
+        where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(queue).get()
     # {{{ check if satisfying criteria
 
     def check_disk_undisturbed_by_sources(centers_panel, sources_panel):

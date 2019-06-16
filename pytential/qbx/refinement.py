@@ -358,8 +358,13 @@ class RefinerWrangler(TreeWranglerBase):
         found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
         found_panel_to_refine.finish()
 
-        source_danger_zone_radii_by_panel = \
-                lpot_source._source_danger_zone_radii("npanels")
+        from pytential import bind, sym
+        source_danger_zone_radii_by_panel = bind(lpot_source,
+                sym.qbx_expansion_radii(
+                    lpot_source._source_danger_zone_radii_factor(),
+                    lpot_source.ambient_dim,
+                    granularity="npanels",
+                    where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(self.queue)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(

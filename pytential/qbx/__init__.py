@@ -492,6 +492,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def _expansion_radii_factor(self):
         return 0.5 * self._dim_fudge_factor()
 
+    def _source_danger_zone_radii_factor(self):
+        return 0.75 * self._expansion_radii_factor()
+
     @memoize_method
     def _expansion_radii(self, last_dim_length):
         from pytential import bind, sym
