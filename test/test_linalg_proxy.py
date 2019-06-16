@@ -275,12 +275,15 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
     if visualize:
         if qbx.ambient_dim == 2:
             import matplotlib.pyplot as pt
-            from pytential.qbx.utils import get_centers_on_side
 
             density_nodes = qbx.density_discr.nodes().get(queue)
-            ci = get_centers_on_side(qbx, -1)
+            ci = bind(qbx, sym.qbx_expansion_centers(
+                qbx._expansion_radii_factor(), -1,
+                qbx.ambient_dim))(queue)
             ci = np.vstack([c.get(queue) for c in ci])
-            ce = get_centers_on_side(qbx, +1)
+            ce = bind(qbx, sym.qbx_expansion_centers(
+                qbx._expansion_radii_factor(), +1,
+                qbx.ambient_dim))(queue)
             ce = np.vstack([c.get(queue) for c in ce])
             r = bind(qbx, sym.qbx_expansion_radii(
                 qbx._expansion_radii_factor(),

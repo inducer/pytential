@@ -102,9 +102,15 @@ def get_interleaved_centers(queue, lpot_source):
     Return an array of shape (dim, ncenters) in which interior centers are placed
     next to corresponding exterior centers.
     """
+    from pytential import bind, sym
     knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
-    int_centers = get_centers_on_side(lpot_source, -1)
-    ext_centers = get_centers_on_side(lpot_source, +1)
+
+    int_centers = bind(lpot_source, sym.qbx_expansion_centers(
+        lpot_source._expansion_radii_factor(), -1,
+        lpot_source.ambient_dim))(queue)
+    ext_centers = bind(lpot_source, sym.qbx_expansion_centers(
+        lpot_source._expansion_radii_factor(), +1,
+        lpot_source.ambient_dim))(queue)
 
     result = []
     wait_for = []
@@ -303,6 +309,8 @@ def element_centers_of_mass(discr):
 # {{{ compute center array
 
 def get_centers_on_side(lpot_src, sign):
+    raise RuntimeError('bind `qbx_expansion_radii` directly')
+
     from pytential import sym, bind
     with cl.CommandQueue(lpot_src.cl_context) as queue:
         return bind(lpot_src, sym.qbx_expansion_centers(

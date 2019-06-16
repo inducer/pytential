@@ -466,19 +466,23 @@ class ProxyGenerator(object):
         def _affine_map(v, A, b):
             return np.dot(A, v) + b
 
-        from pytential.qbx.utils import get_centers_on_side
-
         from pytential import bind, sym
         radii = bind(self.source, sym.qbx_expansion_radii(
             self.source._expansion_radii_factor(),
             self.source.ambient_dim,
             granularity="nsources"))(queue)
+        center_int = bind(self.source, sym.qbx_expansion_centers(
+            self.source._expansion_radii_factor(), -1,
+            self.source.ambient_dim))(queue)
+        center_ext = bind(self.source, sym.qbx_expansion_centers(
+            self.source._expansion_radii_factor(), +1,
+            self.source.ambient_dim))(queue)
 
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(queue,
             sources=self.source.density_discr.nodes(),
-            center_int=get_centers_on_side(self.source, -1),
-            center_ext=get_centers_on_side(self.source, +1),
+            center_int=center_int,
+            center_ext=center_ext,
             expansion_radii=radii,
             srcindices=indices.indices,
             srcranges=indices.ranges, **kwargs)

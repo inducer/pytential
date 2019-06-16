@@ -119,8 +119,9 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         if 0:
             # plot geometry, centers, normals
 
-            from pytential.qbx.utils import get_centers_on_side
-            centers = get_centers_on_side(qbx, 1)
+            centers = bind(qbx, sym.qbx_expansion_centers(
+                qbx._expansion_radii_factor(), +1,
+                qbx.ambient_dim))(queue)
 
             nodes_h = nodes.get()
             centers_h = [centers[0].get(), centers[1].get()]

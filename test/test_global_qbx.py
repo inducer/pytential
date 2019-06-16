@@ -115,27 +115,33 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
                 cl_ctx, TreeCodeContainer(cl_ctx)).get_wrangler(queue),
             factory, **refiner_extra_kwargs)
 
-    from pytential.qbx.utils import get_centers_on_side
-
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
     fine_discr_nodes = \
             lpot_source.quad_stage2_density_discr.nodes().get(queue)
-    int_centers = get_centers_on_side(lpot_source, -1)
+
+    int_centers = bind(lpot_source, sym.qbx_expansion_centers(
+                lpot_source._expansion_radii_factor(), -1,
+                lpot_source.ambient_dim))(queue)
     int_centers = np.array([axis.get(queue) for axis in int_centers])
-    ext_centers = get_centers_on_side(lpot_source, +1)
+    ext_centers = bind(lpot_source, sym.qbx_expansion_centers(
+                lpot_source._expansion_radii_factor(), +1,
+                lpot_source.ambient_dim))(queue)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
+
     expansion_radii = bind(lpot_source, sym.qbx_expansion_radii(
         lpot_source._expansion_radii_factor(),
         lpot_source.ambient_dim,
         granularity="nsources"))(queue).get()
-    quad_res = bind(lpot_source, sym.qbx_quad_resolution(
-        lpot_source.ambient_dim,
-        granularity="npanels"))(queue)
     source_danger_zone_radii = bind(lpot_source, sym.qbx_expansion_radii(
         lpot_source._source_danger_zone_radii_factor(),
         lpot_source.ambient_dim,
         granularity="npanels",
         where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(queue).get()
+
+    quad_res = bind(lpot_source, sym.qbx_quad_resolution(
+        lpot_source.ambient_dim,
+        granularity="npanels"))(queue)
+
     # {{{ check if satisfying criteria
 
     def check_disk_undisturbed_by_sources(centers_panel, sources_panel):
