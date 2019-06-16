@@ -467,8 +467,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @property
     @memoize_method
     def h_max(self):
+        from pytential import bind, sym
+
         with cl.CommandQueue(self.cl_context) as queue:
-            quad_res = self._coarsest_quad_resolution("npanels").with_queue(queue)
+            quad_res = bind(self, sym.qbx_quad_resolution(
+                    self.ambient_dim,
+                    granularity="npanels"))(queue)
             return cl.array.max(quad_res).get().item()
 
     # {{{ internal API
@@ -508,6 +512,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         return 0.75 * self._expansion_radii_factor()
 
+    def _close_target_tunnel_radius_factor(self):
+        return 0.5 * self._expansion_radii_factor()
+
     @memoize_method
     def _expansion_radii(self, last_dim_length):
         from pytential import bind, sym
@@ -537,6 +544,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def _close_target_tunnel_radius(self, last_dim_length):
+        raise RuntimeError("bind `qbx_expansion_radii` directly")
+
         with cl.CommandQueue(self.cl_context) as queue:
             return (
                     self._expansion_radii(last_dim_length).with_queue(queue)

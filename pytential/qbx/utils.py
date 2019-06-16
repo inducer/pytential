@@ -129,8 +129,13 @@ def get_interleaved_radii(queue, lpot_source):
     Return an array of shape (dim, ncenters) in which interior centers are placed
     next to corresponding exterior centers.
     """
+    from pytential import bind, sym
+
     knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
-    radii = lpot_source._expansion_radii("nsources")
+    radii = bind(lpot_source, sym.qbx_expansion_radii(
+        lpot_source._expansion_radii_factor(),
+        lpot_source.ambient_dim,
+        granularity="nsources"))(queue)
 
     result = cl.array.empty(queue, len(radii) * 2, radii.dtype)
     evt, _ = knl(queue, src1=radii, src2=radii, dst=result)

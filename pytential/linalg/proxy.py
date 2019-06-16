@@ -468,12 +468,18 @@ class ProxyGenerator(object):
 
         from pytential.qbx.utils import get_centers_on_side
 
+        from pytential import bind, sym
+        radii = bind(self.source, sym.qbx_expansion_radii(
+            self.source._expansion_radii_factor(),
+            self.source.ambient_dim,
+            granularity="nsources"))(queue)
+
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(queue,
             sources=self.source.density_discr.nodes(),
             center_int=get_centers_on_side(self.source, -1),
             center_ext=get_centers_on_side(self.source, +1),
-            expansion_radii=self.source._expansion_radii("nsources"),
+            expansion_radii=radii,
             srcindices=indices.indices,
             srcranges=indices.ranges, **kwargs)
         centers = centers_dev.get()

@@ -31,6 +31,7 @@ import numpy.linalg as la
 import pyopencl as cl
 from pyopencl.array import to_device
 
+from pytential import bind, sym
 from sumpy.tools import BlockIndexRanges
 from meshmode.mesh.generation import ( # noqa
         ellipse, NArmedStarfish, generate_torus, make_curve_mesh)
@@ -281,7 +282,10 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
             ci = np.vstack([c.get(queue) for c in ci])
             ce = get_centers_on_side(qbx, +1)
             ce = np.vstack([c.get(queue) for c in ce])
-            r = qbx._expansion_radii("nsources").get(queue)
+            r = bind(qbx, sym.qbx_expansion_radii(
+                qbx._expansion_radii_factor(),
+                qbx.ambient_dim,
+                granularity="nsources"))(queue).get()
 
             for i in range(srcindices.nblocks):
                 isrc = srcindices.block_indices(i)

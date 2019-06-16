@@ -124,10 +124,13 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
     int_centers = np.array([axis.get(queue) for axis in int_centers])
     ext_centers = get_centers_on_side(lpot_source, +1)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
-    expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
+    expansion_radii = bind(lpot_source, sym.qbx_expansion_radii(
+        lpot_source._expansion_radii_factor(),
+        lpot_source.ambient_dim,
+        granularity="nsources"))(queue).get()
     quad_res = bind(lpot_source, sym.qbx_quad_resolution(
-                    lpot_source.ambient_dim,
-                    granularity="npanels"))(queue)
+        lpot_source.ambient_dim,
+        granularity="npanels"))(queue)
     source_danger_zone_radii = bind(lpot_source, sym.qbx_expansion_radii(
         lpot_source._source_danger_zone_radii_factor(),
         lpot_source.ambient_dim,
@@ -263,8 +266,10 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
     nsources = lpot_source.density_discr.nnodes
     noise = rng.uniform(queue, nsources, dtype=np.float, a=0.01, b=1.0)
-    tunnel_radius = \
-            lpot_source._close_target_tunnel_radius("nsources").with_queue(queue)
+    tunnel_radius = bind(lpot_source, sym.qbx_expansion_radii(
+        lpot_source._close_target_tunnel_radius_factor(),
+        lpot_source.ambient_dim,
+        granularity="nsources"))(queue)
 
     def targets_from_sources(sign, dist):
         from pytential import sym, bind
@@ -321,8 +326,10 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
             target_association_tolerance=1e-10)
         .get(queue=queue))
 
-    expansion_radii = lpot_source._expansion_radii("ncenters").get(queue)
-
+    expansion_radii = bind(lpot_source, sym.qbx_expansion_radii(
+        lpot_source._expansion_radii_factor(),
+        lpot_source.ambient_dim,
+        granularity="ncenters"))(queue).get()
     surf_targets = np.array(
             [axis.get(queue) for axis in lpot_source.density_discr.nodes()])
     int_targets = np.array([axis.get(queue) for axis in int_targets.nodes()])

@@ -304,7 +304,11 @@ class RefinerWrangler(TreeWranglerBase):
         found_panel_to_refine.finish()
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
-        center_danger_zone_radii = lpot_source._expansion_radii("ncenters")
+        from pytential import bind, sym
+        center_danger_zone_radii = bind(lpot_source, sym.qbx_expansion_radii(
+            lpot_source._expansion_radii_factor(),
+            lpot_source.ambient_dim,
+            granularity="ncenters"))(self.queue)
 
         evt = knl(
             *unwrap_args(
