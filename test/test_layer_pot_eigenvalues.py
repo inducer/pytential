@@ -120,7 +120,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
             # plot geometry, centers, normals
 
             centers = bind(qbx, sym.qbx_expansion_centers(
-                qbx._expansion_radii_factor(), +1,
+                qbx._expansion_radii_factor, +1,
                 qbx.ambient_dim))(queue)
 
             nodes_h = nodes.get()

@@ -155,18 +155,18 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
     if source.density_discr is target_discr:
         # NOTE: skip expensive target association
         centers = bind(source, sym.qbx_expansion_centers(
-            source._expansion_radii_factor(),
+            source._expansion_radii_factor,
             qbx_forced_limit,
             source.ambient_dim))(queue)
         radii = bind(source, sym.qbx_expansion_radii(
-            source._expansion_radii_factor(),
+            source._expansion_radii_factor,
             source.ambient_dim,
             granularity="nsources"))(queue)
     else:
         from pytential.qbx.utils import get_interleaved_centers
         centers = get_interleaved_centers(queue, source)
         radii = bind(source, sym.qbx_expansion_radii(
-            source._expansion_radii_factor(),
+            source._expansion_radii_factor,
             source.ambient_dim,
             granularity="ncenters"))(queue)
 

@@ -306,7 +306,7 @@ class RefinerWrangler(TreeWranglerBase):
 
         from pytential import bind, sym
         center_danger_zone_radii = bind(lpot_source, sym.qbx_expansion_radii(
-            lpot_source._expansion_radii_factor(),
+            lpot_source._expansion_radii_factor,
             lpot_source.ambient_dim,
             granularity="ncenters"))(self.queue)
 
@@ -365,7 +365,7 @@ class RefinerWrangler(TreeWranglerBase):
         from pytential import bind, sym
         source_danger_zone_radii_by_panel = bind(lpot_source,
                 sym.qbx_expansion_radii(
-                    lpot_source._source_danger_zone_radii_factor(),
+                    lpot_source._source_danger_zone_radii_factor,
                     lpot_source.ambient_dim,
                     granularity="npanels",
                     where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(self.queue)

@@ -487,15 +487,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         import pytential.qbx.utils as utils
         return utils.element_centers_of_mass(self.stage2_density_discr)
 
+    @property
     def _dim_fudge_factor(self):
         if self.density_discr.dim == 2:
             return 0.5
         else:
             return 1
 
+    @property
     def _expansion_radii_factor(self):
-        return 0.5 * self._dim_fudge_factor()
+        return 0.5 * self._dim_fudge_factor
 
+    @property
     def _source_danger_zone_radii_factor(self):
         # This should be the expression of the expansion radii, but
         #
@@ -510,17 +513,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         #   - Setting this equal to half the expansion radius will not provide
         #     a refinement 'buffer layer' at a 2x coarsening fringe.
 
-        return 0.75 * self._expansion_radii_factor()
+        return 0.75 * self._expansion_radii_factor
 
+    @property
     def _close_target_tunnel_radius_factor(self):
-        return 0.5 * self._expansion_radii_factor()
+        return 0.5 * self._expansion_radii_factor
 
     @memoize_method
     def _expansion_radii(self, last_dim_length):
+        raise RuntimeError("bind `qbx_expansion_radii` directly")
+
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
             radii = bind(self, sym.qbx_expansion_radii(
-                self._expansion_radii_factor(),
+                self._expansion_radii_factor,
                 self.ambient_dim,
                 granularity=last_dim_length))(queue)
 
@@ -535,7 +541,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
             radii = bind(self, sym.qbx_expansion_radii(
-                0.75 * self._expansion_radii_factor(),
+                0.75 * self._expansion_radii_factor,
                 self.ambient_dim,
                 granularity=last_dim_length,
                 where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(queue)
@@ -847,11 +853,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 * self.weights_and_area_elements())
 
         from pytential import bind, sym
+        expansion_radii = bind(self, sym.qbx_expansion_radii(
+            self._expansion_radii_factor,
+            self.ambient_dim,
+            granularity="nsources"))(queue)
         int_centers = bind(self, sym.qbx_expansion_centers(
-            self._expansion_radii_factor(), -1,
+            self._expansion_radii_factor, -1,
             self.ambient_dim))(queue)
         ext_centers = bind(self, sym.qbx_expansion_centers(
-            self._expansion_radii_factor(), +1,
+            self._expansion_radii_factor, +1,
             self.ambient_dim))(queue)
         centers = {-1: int_centers, 1: ext_centers}
 
@@ -872,7 +882,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         self.quad_stage2_density_discr.nodes(),
                         centers[o.qbx_forced_limit],
                         [strengths],
-                        expansion_radii=self._expansion_radii("nsources"),
+                        expansion_radii=expansion_radii,
                         **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
             else:

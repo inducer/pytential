@@ -457,7 +457,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
         tunnel_radius_by_source = bind(lpot_source, sym.qbx_expansion_radii(
-                lpot_source._close_target_tunnel_radius_factor(),
+                lpot_source._close_target_tunnel_radius_factor,
                 lpot_source.ambient_dim,
                 granularity="nsources"))(self.queue)
 
@@ -496,7 +496,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         wait_for = [evt]
 
         tunnel_radius_by_source = bind(lpot_source, sym.qbx_expansion_radii(
-                lpot_source._close_target_tunnel_radius_factor(),
+                lpot_source._close_target_tunnel_radius_factor,
                 lpot_source.ambient_dim,
                 granularity="nsources"))(self.queue)
 
@@ -556,7 +556,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         centers = [
                 axis.with_queue(self.queue)[center_slice] for axis in tree.sources]
         expansion_radii_by_center = bind(lpot_source, sym.qbx_expansion_radii(
-            lpot_source._expansion_radii_factor(),
+            lpot_source._expansion_radii_factor,
             lpot_source.ambient_dim,
             granularity="ncenters"))(self.queue)
         expansion_radii_by_center_with_tolerance = \
@@ -638,7 +638,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
         tunnel_radius_by_source = bind(lpot_source, sym.qbx_expansion_radii(
-                lpot_source._close_target_tunnel_radius_factor(),
+                lpot_source._close_target_tunnel_radius_factor,
                 lpot_source.ambient_dim,
                 granularity="nsources"))(self.queue)
 
@@ -654,7 +654,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         wait_for = [evt]
 
         tunnel_radius_by_source = bind(lpot_source, sym.qbx_expansion_radii(
-                lpot_source._close_target_tunnel_radius_factor(),
+                lpot_source._close_target_tunnel_radius_factor,
                 lpot_source.ambient_dim,
                 granularity="nsources"))(self.queue)
 

@@ -106,10 +106,10 @@ def get_interleaved_centers(queue, lpot_source):
     knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
 
     int_centers = bind(lpot_source, sym.qbx_expansion_centers(
-        lpot_source._expansion_radii_factor(), -1,
+        lpot_source._expansion_radii_factor, -1,
         lpot_source.ambient_dim))(queue)
     ext_centers = bind(lpot_source, sym.qbx_expansion_centers(
-        lpot_source._expansion_radii_factor(), +1,
+        lpot_source._expansion_radii_factor, +1,
         lpot_source.ambient_dim))(queue)
 
     result = []
@@ -139,7 +139,7 @@ def get_interleaved_radii(queue, lpot_source):
 
     knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
     radii = bind(lpot_source, sym.qbx_expansion_radii(
-        lpot_source._expansion_radii_factor(),
+        lpot_source._expansion_radii_factor,
         lpot_source.ambient_dim,
         granularity="nsources"))(queue)
 
@@ -314,7 +314,7 @@ def get_centers_on_side(lpot_src, sign):
     from pytential import sym, bind
     with cl.CommandQueue(lpot_src.cl_context) as queue:
         return bind(lpot_src, sym.qbx_expansion_centers(
-            lpot_src._expansion_radii_factor(),
+            lpot_src._expansion_radii_factor,
             sign,
             lpot_src.ambient_dim))(queue)
 

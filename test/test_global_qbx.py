@@ -120,20 +120,20 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
             lpot_source.quad_stage2_density_discr.nodes().get(queue)
 
     int_centers = bind(lpot_source, sym.qbx_expansion_centers(
-                lpot_source._expansion_radii_factor(), -1,
+                lpot_source._expansion_radii_factor, -1,
                 lpot_source.ambient_dim))(queue)
     int_centers = np.array([axis.get(queue) for axis in int_centers])
     ext_centers = bind(lpot_source, sym.qbx_expansion_centers(
-                lpot_source._expansion_radii_factor(), +1,
+                lpot_source._expansion_radii_factor, +1,
                 lpot_source.ambient_dim))(queue)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
 
     expansion_radii = bind(lpot_source, sym.qbx_expansion_radii(
-        lpot_source._expansion_radii_factor(),
+        lpot_source._expansion_radii_factor,
         lpot_source.ambient_dim,
         granularity="nsources"))(queue).get()
     source_danger_zone_radii = bind(lpot_source, sym.qbx_expansion_radii(
-        lpot_source._source_danger_zone_radii_factor(),
+        lpot_source._source_danger_zone_radii_factor,
         lpot_source.ambient_dim,
         granularity="npanels",
         where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(queue).get()
@@ -273,7 +273,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     nsources = lpot_source.density_discr.nnodes
     noise = rng.uniform(queue, nsources, dtype=np.float, a=0.01, b=1.0)
     tunnel_radius = bind(lpot_source, sym.qbx_expansion_radii(
-        lpot_source._close_target_tunnel_radius_factor(),
+        lpot_source._close_target_tunnel_radius_factor,
         lpot_source.ambient_dim,
         granularity="nsources"))(queue)
 
@@ -333,7 +333,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
         .get(queue=queue))
 
     expansion_radii = bind(lpot_source, sym.qbx_expansion_radii(
-        lpot_source._expansion_radii_factor(),
+        lpot_source._expansion_radii_factor,
         lpot_source.ambient_dim,
         granularity="ncenters"))(queue).get()
     surf_targets = np.array(
