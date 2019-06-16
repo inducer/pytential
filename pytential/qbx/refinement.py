@@ -404,7 +404,6 @@ class RefinerWrangler(TreeWranglerBase):
 
         evt, out = knl(self.queue,
                        element_property=element_property,
-                       # lpot_source._coarsest_quad_resolution("npanels")),
                        refine_flags=refine_flags,
                        refine_flags_updated=np.array(0),
                        threshold=np.array(threshold),
@@ -604,11 +603,14 @@ def refine_for_global_qbx(lpot_source, wrangler,
             with ProcessLogger(logger,
                     "checking kernel length scale to panel size ratio"):
 
+                from pytential import bind, sym
+                quad_resolution = bind(lpot_source, sym.qbx_quad_resolution(
+                    lpot_source.ambient_dim,
+                    granularity="npanels"))(wrangler.queue)
+
                 violates_kernel_length_scale = \
                         wrangler.check_element_prop_threshold(
-                                element_property=(
-                                    lpot_source._coarsest_quad_resolution(
-                                        "npanels")),
+                                element_property=quad_resolution,
                                 threshold=kernel_length_scale,
                                 refine_flags=refine_flags, debug=debug)
 

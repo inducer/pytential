@@ -125,7 +125,9 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
     ext_centers = get_centers_on_side(lpot_source, +1)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
     expansion_radii = lpot_source._expansion_radii("nsources").get(queue)
-    quad_res = lpot_source._coarsest_quad_resolution("npanels").get(queue)
+    quad_res = bind(lpot_source, sym.qbx_quad_resolution(
+                    lpot_source.ambient_dim,
+                    granularity="npanels"))(queue)
     source_danger_zone_radii = bind(lpot_source, sym.qbx_expansion_radii(
         lpot_source._source_danger_zone_radii_factor(),
         lpot_source.ambient_dim,

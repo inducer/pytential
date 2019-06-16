@@ -493,6 +493,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return 0.5 * self._dim_fudge_factor()
 
     def _source_danger_zone_radii_factor(self):
+        # This should be the expression of the expansion radii, but
+        #
+        # - in reference to the stage 2 discretization
+        # - mutliplied by 0.75 because
+        #
+        #   - Setting this equal to the expansion radii ensures that *every*
+        #     stage 2 element will be refined, which is wasteful.
+        #     (so this needs to be smaller than that)
+        #
+
+        #   - Setting this equal to half the expansion radius will not provide
+        #     a refinement 'buffer layer' at a 2x coarsening fringe.
+
         return 0.75 * self._expansion_radii_factor()
 
     @memoize_method
@@ -510,18 +523,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def _source_danger_zone_radii(self, last_dim_length="npanels"):
-        # This should be the expression of the expansion radii, but
-        #
-        # - in reference to the stage 2 discretization
-        # - mutliplied by 0.75 because
-        #
-        #   - Setting this equal to the expansion radii ensures that *every*
-        #     stage 2 element will be refined, which is wasteful.
-        #     (so this needs to be smaller than that)
-        #
-
-        #   - Setting this equal to half the expansion radius will not provide
-        #     a refinement 'buffer layer' at a 2x coarsening fringe.
+        raise RuntimeError("bind `qbx_expansion_radii` directly")
 
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
@@ -543,10 +545,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def _coarsest_quad_resolution(self, last_dim_length="npanels"):
-        """This measures the quadrature resolution across the
-        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
-        should be the same as the panel length.
-        """
+        raise RuntimeError("bind `qbx_quad_resolution` directly")
 
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
@@ -558,10 +557,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def _stage2_coarsest_quad_resolution(self, last_dim_length="npanels"):
-        """This measures the quadrature resolution across the
-        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
-        should be the same as the panel length.
-        """
+        raise RuntimeError("bind `qbx_quad_resolution` directly")
+
         if last_dim_length != "npanels":
             # Not technically required below, but no need to loosen for now.
             raise NotImplementedError()
