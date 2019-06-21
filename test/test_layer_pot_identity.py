@@ -248,15 +248,6 @@ class DynamicTestCase(object):
 
 # {{{ integral identity tester
 
-
-@pytest.mark.slowtest
-@pytest.mark.parametrize("case", [
-        DynamicTestCase(SphereGeometry(), GreenExpr(), 0),
-])
-def test_identity_convergence_slow(ctx_getter, case):
-    test_identity_convergence(ctx_getter, case)
-
-
 @pytest.mark.parametrize("case", [
     tc
     for geom in [
