@@ -94,9 +94,6 @@ Python 3 Conda Apple:
   - tags
   retry: 2
 
-  # https://gitlab.tiker.net/inducer/pytential/issues/112
-  allow_failure: true
-
   artifacts:
     reports:
       junit: test/pytest.xml

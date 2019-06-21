@@ -159,9 +159,14 @@ class ZeroCalderonExpr(object):
 
         u_sym = sym.var("u")
 
+        from functools import partial
+        S = partial(sym.S, qbx_forced_limit=+1)
+        Dp = partial(sym.Dp, qbx_forced_limit="avg")
+        Sp = partial(sym.Sp, qbx_forced_limit="avg")
+
         return (
-                    -sym.Dp(kernel, sym.S(kernel, u_sym))
-                    - 0.25*u_sym + sym.Sp(kernel, sym.Sp(kernel, u_sym))
+                    -Dp(kernel, S(kernel, u_sym))
+                    - 0.25*u_sym + Sp(kernel, sym.Sp(kernel, u_sym))
                     )
 
     order_drop = 1
@@ -253,24 +258,27 @@ def test_identity_convergence_slow(ctx_getter, case):
 
 
 @pytest.mark.parametrize("case", [
-        # 2d
-        DynamicTestCase(StarfishGeometry(), GreenExpr(), 0),
-        DynamicTestCase(StarfishGeometry(), GreenExpr(), 1.2),
-        DynamicTestCase(StarfishGeometry(), GradGreenExpr(), 0),
-        DynamicTestCase(StarfishGeometry(), GradGreenExpr(), 1.2),
-        DynamicTestCase(StarfishGeometry(), ZeroCalderonExpr(), 0),
-        DynamicTestCase(StarfishGeometry(), GreenExpr(), 0, fmm_backend="fmmlib"),
-        DynamicTestCase(StarfishGeometry(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
-        # 3d
-        DynamicTestCase(SphereGeometry(), GreenExpr(), 0, fmm_backend="fmmlib"),
-        DynamicTestCase(SphereGeometry(), GreenExpr(), 1.2, fmm_backend="fmmlib")
-])
-def test_identity_convergence(ctx_getter,  case, visualize=False):
+    tc
+    for geom in [
+        StarfishGeometry(),
+        SphereGeometry(),
+        ]
+    for tc in [
+        DynamicTestCase(geom, GreenExpr(), 0),
+        DynamicTestCase(geom, GreenExpr(), 1.2),
+        DynamicTestCase(geom, GradGreenExpr(), 0),
+        DynamicTestCase(geom, GradGreenExpr(), 1.2),
+        DynamicTestCase(geom, ZeroCalderonExpr(), 0),
+
+        DynamicTestCase(geom, GreenExpr(), 0, fmm_backend="fmmlib"),
+        DynamicTestCase(geom, GreenExpr(), 1.2, fmm_backend="fmmlib"),
+        ]])
+def test_identity_convergence(ctx_factory,  case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     case.check()
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # prevent cache 'splosion

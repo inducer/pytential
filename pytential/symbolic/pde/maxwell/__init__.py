@@ -152,7 +152,8 @@ class PECChargeCurrentMFIEOperator:
         return xyz_to_tangential(sym.n_cross(Hinc_xyz))
 
     def rho_operator(self, loc, rho):
-        return loc*0.5*rho+sym.Sp(self.kernel, rho, k=self.k)
+        return loc*0.5*rho+sym.Sp(
+                self.kernel, rho, k=self.k, qbx_forced_limit="avg")
 
     def rho_rhs(self, Jt, Einc_xyz):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
