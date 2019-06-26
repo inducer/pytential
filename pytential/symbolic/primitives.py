@@ -322,7 +322,12 @@ class QBX_DOF_ELEMENT:  # noqa: N801
 
 
 class DOFDescriptor(object):
-    """Descriptor for degrees of freedom on a domain.
+    """A data structure specifying the meaning of a vector of degrees of freedom
+    that is handled by :mod:`pytential` (a "DOF vector"). In particular, using
+    :attr:`domain`, this data structure describes the geometric object on which
+    the (scalar) function described by the DOF vector exists. Using
+    :attr:`granularity`, the data structure describes how the geometric object
+    is discretized (e.g. conventional nodal data, per-element scalars, etc.)
 
     .. attribute:: domain
 
@@ -982,7 +987,7 @@ def qbx_expansion_radii(factor, ambient_dim,
 
 def qbx_expansion_centers(factor, side, ambient_dim, dim=None, where=None):
     """
-    :arg factor: stick out factor for expansion radii.
+    :arg factor: target confinement factor for expansion radii.
     :arg side: `+1` or `-1` expansion side, relative to the direction of
         the normal vector.
     """
