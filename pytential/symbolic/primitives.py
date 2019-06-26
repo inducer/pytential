@@ -326,7 +326,12 @@ class QBX_DOF_ELEMENT:  # noqa
 
 
 class DOFDescriptor(object):
-    """Descriptor for degrees of freedom on a domain.
+    """A data structure specifying the meaning of a vector of degrees of freedom
+    that is handled by :mod:`pytential` (a "DOF vector"). In particular, using
+    :attr:`domain`, this data structure describes the geometric object on which
+    the (scalar) function described by the DOF vector exists. Using
+    :attr:`granularity`, the data structure describes how the geometric object
+    is discretized (e.g. conventional nodal data, per-element scalars, etc.)
 
     .. attribute:: domain
 
