@@ -991,7 +991,7 @@ def qbx_expansion_radii(factor, ambient_dim,
 
 def qbx_expansion_centers(factor, side, ambient_dim, dim=None, where=None):
     """
-    :arg factor: stick out factor for expansion radii.
+    :arg factor: target confinement factor for expansion radii.
     :arg side: `+1` or `-1` expansion side, relative to the direction of
         the normal vector.
     """
