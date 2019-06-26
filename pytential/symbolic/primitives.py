@@ -266,7 +266,6 @@ class DOMAIN_TAG(object):   # noqa
 
     .. attribute:: tag
     """
-    init_arg_names = ("tag",)
 
     def __init__(self, tag):
         self.tag = tag
@@ -279,9 +278,6 @@ class DOMAIN_TAG(object):   # noqa
 
     def __ne__(self, other):
         return not self.__eq__(other)
-
-    def __getinitargs__(self):
-        return (self.tag,)
 
     def __repr__(self):
         if isinstance(self.tag, str):
