@@ -203,11 +203,11 @@ Pretty-printing expressions
 
 # {{{ 'where' specifiers
 
-class DEFAULT_SOURCE:  # noqa
+class DEFAULT_SOURCE:  # noqa: N801
     pass
 
 
-class DEFAULT_TARGET:  # noqa
+class DEFAULT_TARGET:  # noqa: N801
     pass
 
 
@@ -261,7 +261,7 @@ class QBXSourceQuadStage2(_QBXSource):
     """
 
 
-class DOMAIN_TAG(object):   # noqa
+class DOMAIN_TAG(object):   # noqa: N801
     """General domain specifier
 
     .. attribute:: tag
@@ -288,35 +288,35 @@ class DOMAIN_TAG(object):   # noqa
         return "{}({})".format(type(self).__name__, tag)
 
 
-class QBX_DOMAIN_STAGE1(DOMAIN_TAG):    # noqa
+class QBX_DOMAIN_STAGE1(DOMAIN_TAG):        # noqa: N801
     """Specifier for
-    :attr:~pytential.qbx.QBXLayerPotentialSource.density_discr`."""
+    :attr:`pytential.qbx.QBXLayerPotentialSource.density_discr`."""
     pass
 
 
-class QBX_DOMAIN_STAGE2(DOMAIN_TAG):    # noqa
+class QBX_DOMAIN_STAGE2(DOMAIN_TAG):        # noqa: N801
     """Specifier for
-    :attr:~pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`."""
+    :attr:`pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`."""
     pass
 
 
-class QBX_DOMAIN_QUAD_STAGE2(DOMAIN_TAG):   # noqa
+class QBX_DOMAIN_QUAD_STAGE2(DOMAIN_TAG):   # noqa: N801
     """Specifier for
-    :attr:~pytential.qbx.QBXLayerPotentialSource.quad_stage2_density_discr`."""
+    :attr:`pytential.qbx.QBXLayerPotentialSource.quad_stage2_density_discr`."""
     pass
 
 
-class QBX_DOF_NODE: # noqa
+class QBX_DOF_NODE:     # noqa: N801
     """DOFs are per-source node."""
     pass
 
 
-class QBX_DOF_CENTER:   # noqa
+class QBX_DOF_CENTER:   # noqa: N801
     """DOFs interleaved per expansion center."""
     pass
 
 
-class QBX_DOF_ELEMENT:  # noqa
+class QBX_DOF_ELEMENT:  # noqa: N801
     """DOFs per discretization element."""
     pass
 
@@ -398,7 +398,7 @@ def as_dofdesc(desc):
 # }}}
 
 
-class cse_scope(cse_scope_base):  # noqa
+class cse_scope(cse_scope_base):  # noqa: N801
     DISCRETIZATION = "pytential_discretization"
 
 
@@ -1512,11 +1512,11 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
 # {{{ geometric calculus
 
 
-class _unspecified:  # noqa
+class _unspecified:  # noqa: N801
     pass
 
 
-def S(kernel, density,  # noqa
+def S(kernel, density,
         qbx_forced_limit=_unspecified, source=None, target=None,
         kernel_arguments=None, **kwargs):
 
@@ -1547,7 +1547,7 @@ def normal_derivative(ambient_dim, operand, dim=None, where=None):
             * d(operand))
 
 
-def Sp(kernel, *args, **kwargs):  # noqa
+def Sp(kernel, *args, **kwargs):
     where = kwargs.get("target")
     if "qbx_forced_limit" not in kwargs:
         warn("not specifying qbx_forced_limit on call to 'Sp' is deprecated, "
@@ -1569,7 +1569,7 @@ def Sp(kernel, *args, **kwargs):  # noqa
             dim=dim, where=where)
 
 
-def Spp(kernel, *args, **kwargs):  # noqa
+def Spp(kernel, *args, **kwargs):
     ambient_dim = kwargs.get("ambient_dim")
     from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
@@ -1586,7 +1586,7 @@ def Spp(kernel, *args, **kwargs):  # noqa
             dim=dim, where=where)
 
 
-def D(kernel, *args, **kwargs):  # noqa
+def D(kernel, *args, **kwargs):
     ambient_dim = kwargs.get("ambient_dim")
     from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
@@ -1609,7 +1609,7 @@ def D(kernel, *args, **kwargs):  # noqa
             kernel, *args, **kwargs).xproject(0)
 
 
-def Dp(kernel, *args, **kwargs):  # noqa
+def Dp(kernel, *args, **kwargs):
     ambient_dim = kwargs.get("ambient_dim")
     from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
