@@ -41,8 +41,10 @@ from functools import partial
 
 
 __doc__ = """
-.. |where-blurb| replace:: A symbolic name for a
-    :class:`pytential.discretization.Discretization`
+.. |where-blurb| replace:: A symbolic name for a geometric object (such
+    as a :class:`~meshmode.discretization.Discretization`) or a
+    :class:`DOFDescriptor`.
+
 
 Object types
 ^^^^^^^^^^^^
@@ -261,62 +263,35 @@ class QBXSourceQuadStage2(_QBXSource):
     """
 
 
-class DOMAIN_TAG(object):   # noqa: N801
-    """General domain specifier
-
-    .. attribute:: tag
+class QBX_SOURCE_STAGE1:   # noqa: N801
+    """Symbolic identifier for the base `stage1` discretization
+    :attr:`pytential.source.LayerPotentialSourceBase.density_discr`.
     """
 
-    def __init__(self, tag):
-        self.tag = tag
-
-    def __hash__(self):
-        return hash((type(self), self.tag))
-
-    def __eq__(self, other):
-        return type(self) is type(other) and self.tag == other.tag
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __repr__(self):
-        if isinstance(self.tag, str):
-            tag = self.tag
-        else:
-            tag = tag.__name__ if isinstance(tag, type) else type(tag).__name__
-
-        return "{}({})".format(type(self).__name__, tag)
+class QBX_SOURCE_STAGE2:   # noqa: N801
+    """Symbolic identifier for the `stage2` discretization
+    :attr:`pytential.source.LayerPotentialSourceBase.stage2_density_discr`.
+    """
 
 
-class QBX_DOMAIN_STAGE1(DOMAIN_TAG):        # noqa: N801
-    """Specifier for
-    :attr:`pytential.qbx.QBXLayerPotentialSource.density_discr`."""
+class QBX_SOURCE_QUAD_STAGE2: # noqa: N801
+    """Symbolic identifier for the `stage2` discretization
+    :attr:`pytential.source.LayerPotentialSourceBase.quad_stage2_density_discr`.
+    """
     pass
 
 
-class QBX_DOMAIN_STAGE2(DOMAIN_TAG):        # noqa: N801
-    """Specifier for
-    :attr:`pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`."""
-    pass
-
-
-class QBX_DOMAIN_QUAD_STAGE2(DOMAIN_TAG):   # noqa: N801
-    """Specifier for
-    :attr:`pytential.qbx.QBXLayerPotentialSource.quad_stage2_density_discr`."""
-    pass
-
-
-class QBX_DOF_NODE:     # noqa: N801
+class GRANULARITY_NODE:     # noqa: N801
     """DOFs are per-source node."""
     pass
 
 
-class QBX_DOF_CENTER:   # noqa: N801
+class GRANULARITY_CENTER:   # noqa: N801
     """DOFs interleaved per expansion center."""
     pass
 
 
-class QBX_DOF_ELEMENT:  # noqa: N801
+class GRANULARITY_ELEMENT:  # noqa: N801
     """DOFs per discretization element."""
     pass
 
@@ -324,73 +299,80 @@ class QBX_DOF_ELEMENT:  # noqa: N801
 class DOFDescriptor(object):
     """A data structure specifying the meaning of a vector of degrees of freedom
     that is handled by :mod:`pytential` (a "DOF vector"). In particular, using
-    :attr:`domain`, this data structure describes the geometric object on which
+    :attr:`where`, this data structure describes the geometric object on which
     the (scalar) function described by the DOF vector exists. Using
     :attr:`granularity`, the data structure describes how the geometric object
     is discretized (e.g. conventional nodal data, per-element scalars, etc.)
 
-    .. attribute:: domain
+    .. attribute:: where
 
-        Describes the domain on which a DOF is defined. The domain contains
-        an internal tag for which exact
+        An identifier for the domain on which the DOFs exist. This can be a
+        simple string or another hashable identifier for the geometric object.
+        The geometric objects are generally subclasses of
         :class:`~pytential.source.PotentialSource`,
         :class:`~pytential.target.TargetBase` or
-        :class:`~meshmode.discretization.Discretization` it refers to.
-        Can be a generic :class:`QBX_DOMAIN` or one of
-        :class:`QBX_DOMAIN_STAGE1`, :class:`QBX_DOMAIN_STAGE2` or
-        :class:`QBX_DOMAIN_QUAD_STAGE2`.
+        :class:`~meshmode.discretization.Discretization`.
+
+    .. attribute:: discr
+
+        Specific to a :class:`pytential.source.LayerPotentialSourceBase`,
+        this discribes on which of the discretizations the
+        DOFs are defined. Can be one of :class:`QBX_SOURCE_STAGE1`,
+        :class:`QBX_SOURCE_STAGE2` or :class:`QBX_SOURCE_QUAD_STAGE2`.
 
     .. attribute:: granularity
 
         Describes the level of granularity of the DOF.
-        Can be one of :class:`QBX_DOF_NODE`, :class:`QBX_DOF_CENTER` or
-        :class:`QBX_DOF_ELEMENT`.
+        Can be one of :class:`GRANULARITY_NODE`, :class:`GRANULARITY_CENTER` or
+        :class:`GRANULARITY_ELEMENT`.
 
     """
 
-    init_arg_names = ("domain", "granularity")
-
-    def __init__(self, domain, granularity=None):
-        if (domain == DEFAULT_SOURCE
-                or domain == DEFAULT_TARGET
-                or isinstance(domain, str)):
-            domain = DOMAIN_TAG(domain)
-
+    def __init__(self, where, discr=None, granularity=None):
         if granularity is None:
-            granularity = QBX_DOF_NODE
+            granularity = GRANULARITY_NODE
 
-        if not (isinstance(domain, DOMAIN_TAG)
-                or isinstance(domain, QBX_DOMAIN_STAGE1)
-                or isinstance(domain, QBX_DOMAIN_STAGE2)
-                or isinstance(domain, QBX_DOMAIN_QUAD_STAGE2)):
-            raise ValueError('unknown domain tag: {}'.format(domain))
+        if discr is not None:
+            if not (discr is QBX_SOURCE_STAGE1
+                    or discr is QBX_SOURCE_STAGE2
+                    or discr is QBX_SOURCE_QUAD_STAGE2):
+                raise ValueError('unknown discr tag: "{}"'.format(discr))
 
-        if not (granularity == QBX_DOF_NODE
-                or granularity == QBX_DOF_CENTER
-                or granularity == QBX_DOF_ELEMENT):
-            raise ValueError('unknown granularity: {}'.format(granularity))
+        if not (granularity is GRANULARITY_NODE
+                or granularity is GRANULARITY_CENTER
+                or granularity is GRANULARITY_ELEMENT):
+            raise ValueError('unknown granularity: "{}"'.format(granularity))
 
-        self.domain = domain
+        self.where = where
+        self.discr = discr
         self.granularity = granularity
 
+    def copy(self, where=None, discr=None, granularity=None):
+        return type(self)(
+                where=(self.where
+                    if where is None else where),
+                granularity=(self.granularity
+                    if granularity is None else granularity),
+                discr=(self.discr
+                    if discr is None else discr))
+
     def __hash__(self):
-        return hash((type(self), self.domain, self.granularity))
+        return hash((type(self), self.where, self.discr, self.granularity))
 
     def __eq__(self, other):
         return (type(self) is type(other)
-                and self.domain == other.domain
+                and self.where == other.where
+                and self.discr == other.discr
                 and self.granularity == other.granularity)
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    def __getinitargs__(self):
-        return (self.domain, self.granularity)
-
     def __repr__(self):
-        return '{}({}, {})'.format(
+        return '{}(where={}, discr={}, granularity={})'.format(
                 type(self).__name__,
-                repr(self.domain),
+                self.where,
+                self.discr if self.discr is None else self.discr.__name__,
                 self.granularity.__name__)
 
 
