@@ -220,50 +220,61 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
             IdentityMapper.map_common_subexpression
 
     def map_ones(self, expr):
-        if expr.where is None:
-            return type(expr)(where=self.default_where)
+        dd = prim.as_dofdesc(expr.where)
+        if dd.where is None:
+            return type(expr)(where=dd.copy(where=self.default_where))
         else:
             return expr
 
     map_q_weight = map_ones
 
     def map_parametrization_derivative_component(self, expr):
-        if expr.where is None:
+        dd = prim.as_dofdesc(expr.where)
+        if dd.where is None:
             return type(expr)(
-                    expr.ambient_axis, expr.ref_axis, self.default_where)
+                    expr.ambient_axis, expr.ref_axis,
+                    dd.copy(where=self.default_where))
         else:
             return expr
 
     def map_node_coordinate_component(self, expr):
-        if expr.where is None:
+        dd = prim.as_dofdesc(expr.where)
+        if dd.where is None:
             return type(expr)(
-                    expr.ambient_axis, self.default_where)
+                    expr.ambient_axis,
+                    dd.copy(where=self.default_where))
         else:
             return expr
 
     def map_num_reference_derivative(self, expr):
-        if expr.where is None:
+        dd = prim.as_dofdesc(expr.where)
+        if dd.where is None:
             return type(expr)(
-                    expr.ref_axes, self.rec(expr.operand), self.default_where)
+                    expr.ref_axes, self.rec(expr.operand),
+                    dd.copy(where=self.default_where))
         else:
             return expr
 
     def map_elementwise_sum(self, expr):
-        return type(expr)(
-                self.rec(expr.operand),
-                expr.where if expr.where is not None else self.default_where)
+        operand = self.rec(expr.operand)
+        dd = prim.as_dofdesc(expr.where)
+
+        if dd.where is None:
+            return type(expr)(operand, dd.copy(where=self.default_where))
+        else:
+            return type(expr)(operand, dd)
 
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum
 
     def map_int_g(self, expr):
-        source = expr.source
-        target = expr.target
+        source = prim.as_dofdesc(expr.source)
+        target = prim.as_dofdesc(expr.target)
 
-        if source is None:
-            source = self.default_source
-        if target is None:
-            target = self.default_where
+        if source.where is None:
+            source = source.copy(where=self.default_source)
+        if target.where is None:
+            target = target.copy(where=self.default_where)
 
         return type(expr)(
                 expr.kernel,
@@ -275,10 +286,10 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     ))
 
     def map_inverse(self, expr):
-        where = expr.where
+        dd = prim.as_dofdesc(expr.where)
 
-        if where is None:
-            where = self.default_where
+        if dd.where is None:
+            dd = dd.copy(where=self.default_where)
 
         return type(expr)(
                 # don't recurse into expression--it is a separate world that
@@ -288,20 +299,21 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 dict([
                     (name, self.rec(name_expr))
                     for name, name_expr in six.iteritems(expr.extra_vars)]),
-                where)
+                dd)
 
     def map_interpolation(self, expr):
-        source = expr.source
-        target = expr.target
+        source = prim.as_dofdesc(expr.source)
+        target = prim.as_dofdesc(expr.target)
 
-        if source is None:
-            source = self.default_source
-        if target is None:
-            target = self.default_where
+        if source.where is None:
+            source = source.copy(where=self.default_source)
+        if target.where is None:
+            target = target.copy(where=self.default_where)
 
         return type(expr)(source, target, expr.operand)
 
     def map_dof_granularity_converter(self, expr):
+        # FIXME: this needs to be deleted
         where = expr.where
         if where is None:
             where = self.default_source

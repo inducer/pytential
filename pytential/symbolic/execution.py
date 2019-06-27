@@ -473,25 +473,28 @@ class GeometryCollection(object):
             in its attributes instead.
         """
 
-        if where in self.places:
-            discr = self.places[where]
+        dd = sym.as_dofdesc(where)
+        if dd.where in self.places:
+            discr = self.places[dd.where]
         else:
-            discr = self.places.get(getattr(where, 'where', None), None)
+            discr = None
 
         if discr is None:
-            raise KeyError('`where` not in the collection: {}'.format(where))
+            raise KeyError('`where` not in the collection: {}'.format(dd.where))
 
         from pytential.source import LayerPotentialSourceBase
         if isinstance(discr, LayerPotentialSourceBase):
-            return self._get_lpot_discretization(discr, where)
+            return self._get_lpot_discretization(discr, dd.where)
         else:
             return discr
 
     def __getitem__(self, where):
-        return self.places[where]
+        dd = sym.as_dofdesc(where)
+        return self.places[dd.where]
 
     def __contains__(self, where):
-        return where in self.places
+        dd = sym.as_dofdesc(where)
+        return dd.where in self.places
 
     def copy(self):
         return GeometryCollection(

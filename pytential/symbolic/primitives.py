@@ -379,6 +379,21 @@ class DOFDescriptor(object):
 def as_dofdesc(desc):
     if isinstance(desc, DOFDescriptor):
         return desc
+
+    # TODO: should be deleted once _QBXSource and friends are gone
+    if isinstance(desc, _QBXSource):
+        from warnings import warn
+        warn('using _QBXSource is deprecated, use DOFDescriptor instead.',
+                DeprecationWarning, stacklevel=2)
+
+        if isinstance(desc, QBXSourceStage2):
+            discr = QBX_SOURCE_STAGE2
+        elif isinstance(desc, QBXSourceQuadStage2):
+            discr = QBX_SOURCE_QUAD_STAGE2
+        else:
+            discr = QBX_SOURCE_STAGE1
+        return DOFDescriptor(desc.where, discr=discr)
+
     return DOFDescriptor(desc)
 
 
@@ -487,7 +502,7 @@ class DiscretizationProperty(Expression):
         :arg where: |where-blurb|
         """
 
-        self.where = where
+        self.where = as_dofdesc(where)
 
     def __getinitargs__(self):
         return (self.where,)
