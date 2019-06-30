@@ -103,27 +103,13 @@ def get_interleaved_centers(queue, lpot_source):
     next to corresponding exterior centers.
     """
     from pytential import bind, sym
-    knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
+    int_centers = bind(lpot_source,
+            sym.expansion_centers(lpot_source.ambient_dim, -1))(queue)
+    ext_centers = bind(lpot_source,
+            sym.expansion_centers(lpot_source.ambient_dim, +1))(queue)
 
-    int_centers = bind(lpot_source, sym.qbx_expansion_centers(
-        lpot_source._expansion_radii_factor, -1,
-        lpot_source.ambient_dim))(queue)
-    ext_centers = bind(lpot_source, sym.qbx_expansion_centers(
-        lpot_source._expansion_radii_factor, +1,
-        lpot_source.ambient_dim))(queue)
-
-    result = []
-    wait_for = []
-
-    for int_axis, ext_axis in zip(int_centers, ext_centers):
-        axis = cl.array.empty(queue, len(int_axis) * 2, int_axis.dtype)
-        evt, _ = knl(queue, src1=int_axis, src2=ext_axis, dst=axis)
-        result.append(axis)
-        wait_for.append(evt)
-
-    cl.wait_for_events(wait_for)
-
-    return result
+    interleaver = InterleaverConnection(lpot_source.density_discr)
+    return interleaver(queue, [int_centers, ext_centers])
 
 # }}}
 
@@ -137,17 +123,11 @@ def get_interleaved_radii(queue, lpot_source):
     """
     from pytential import bind, sym
 
-    knl = get_interleaver_kernel(lpot_source.density_discr.real_dtype)
-    radii = bind(lpot_source, sym.qbx_expansion_radii(
-        lpot_source._expansion_radii_factor,
-        lpot_source.ambient_dim,
-        granularity="nsources"))(queue)
+    radii = bind(lpot_source,
+            sym.expansion_radii(lpot_source.ambient_dim))(queue)
 
-    result = cl.array.empty(queue, len(radii) * 2, radii.dtype)
-    evt, _ = knl(queue, src1=radii, src2=radii, dst=result)
-    evt.wait()
-
-    return result
+    interleaver = InterleaverConnection(lpot_source.density_discr)
+    return interleaver(queue, radii)
 
 # }}}
 
@@ -224,49 +204,6 @@ class TreeWranglerBase(object):
 
 # {{{ to_last_dim_length
 
-def to_last_dim_length(discr, vec, last_dim_length, queue=None):
-    """Takes a :class:`pyopencl.array.Array` with a last axis that has the same
-    length as the number of discretization nodes in the discretization *discr*
-    and converts it so that the last axis has a length as specified by
-    *last_dim_length*.
-    """
-
-    queue = queue or vec.queue
-
-    if last_dim_length == "nsources":
-        return vec
-
-    elif last_dim_length == "ncenters":
-        knl = get_interleaver_kernel(vec.dtype)
-        _, (result,) = knl(queue, dstlen=2*discr.nnodes, src1=vec, src2=vec)
-        return result
-
-    elif last_dim_length == "npanels":
-        knl = lp.make_kernel(
-            "{[i,k]: 0<=i<nelements}",
-            "result[i] = a[i,0]",
-            [
-                lp.GlobalArg("a", shape="nelements, nunit_nodes", dtype=None),
-                lp.ValueArg("nunit_nodes", dtype=np.int32),
-                "..."
-                ],
-            name="subsample_to_panels",
-            lang_version=MOST_RECENT_LANGUAGE_VERSION,
-            )
-
-        knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
-
-        result = cl.array.empty(queue, discr.mesh.nelements, vec.dtype)
-        for group_nr, group in enumerate(discr.groups):
-            knl(queue,
-                nelements=group.nelements,
-                a=group.view(vec),
-                result=mesh_el_view(discr.mesh, group_nr, result))
-
-        return result
-    else:
-        raise ValueError("unknown dim length specified")
-
 # }}}
 
 
@@ -309,34 +246,7 @@ def element_centers_of_mass(discr):
 # {{{ compute center array
 
 def get_centers_on_side(lpot_src, sign):
-    raise RuntimeError('bind `qbx_expansion_radii` directly')
-
-    from pytential import sym, bind
-    with cl.CommandQueue(lpot_src.cl_context) as queue:
-        return bind(lpot_src, sym.qbx_expansion_centers(
-            lpot_src._expansion_radii_factor,
-            sign,
-            lpot_src.ambient_dim))(queue)
-
-# }}}
-
-
-# {{{ el_view
-
-def mesh_el_view(mesh, group_nr, global_array):
-    """Return a view of *global_array* of shape
-    ``(..., mesh.groups[group_nr].nelements)``
-    where *global_array* is of shape ``(..., nelements)``,
-    where *nelements* is the global (per-mesh) element count.
-    """
-
-    group = mesh.groups[group_nr]
-
-    return global_array[
-        ..., group.element_nr_base:group.element_nr_base + group.nelements] \
-        .reshape(
-            global_array.shape[:-1]
-            + (group.nelements,))
+    raise RuntimeError('bind `expansion_centers` directly')
 
 # }}}
 

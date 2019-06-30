@@ -277,18 +277,11 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
             import matplotlib.pyplot as pt
 
             density_nodes = qbx.density_discr.nodes().get(queue)
-            ci = bind(qbx, sym.qbx_expansion_centers(
-                qbx._expansion_radii_factor, -1,
-                qbx.ambient_dim))(queue)
+            ci = bind(qbx, sym.expansion_centers(qbx.ambient_dim, -1))(queue)
             ci = np.vstack([c.get(queue) for c in ci])
-            ce = bind(qbx, sym.qbx_expansion_centers(
-                qbx._expansion_radii_factor, +1,
-                qbx.ambient_dim))(queue)
+            ce = bind(qbx, sym.expansion_centers(qbx.ambient_dim, +1))(queue)
             ce = np.vstack([c.get(queue) for c in ce])
-            r = bind(qbx, sym.qbx_expansion_radii(
-                qbx._expansion_radii_factor,
-                qbx.ambient_dim,
-                granularity="nsources"))(queue).get()
+            r = bind(qbx, sym.expansion_radii(qbx.ambient_dim))(queue).get()
 
             for i in range(srcindices.nblocks):
                 isrc = srcindices.block_indices(i)

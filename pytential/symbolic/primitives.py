@@ -128,10 +128,8 @@ Discretization properties
 .. autofunction:: second_fundamental_form
 .. autofunction:: shape_operator
 
-.. autoclass:: DOFGranularityConverter
-.. autofunction:: qbx_quad_resolution
-.. autofunction:: qbx_expansion_radii
-.. autofunction:: qbx_expansion_centers
+.. autofunction:: expansion_radii
+.. autofunction:: expansion_centers
 
 Elementary numerics
 ^^^^^^^^^^^^^^^^^^^
@@ -393,6 +391,11 @@ def as_dofdesc(desc):
         else:
             discr = QBX_SOURCE_STAGE1
         return DOFDescriptor(desc.where, discr=discr)
+
+    if desc == QBX_SOURCE_STAGE1 \
+            or desc == QBX_SOURCE_STAGE2 \
+            or desc == QBX_SOURCE_QUAD_STAGE2:
+        return DOFDescriptor(None, discr=discr)
 
     return DOFDescriptor(desc)
 
@@ -1278,8 +1281,8 @@ class Interpolation(Expression):
             return Expression.__new__(cls)
 
     def __init__(self, source, target, operand):
-        self.source = source
-        self.target = target
+        self.source = as_dofdesc(source)
+        self.target = as_dofdesc(target)
         self.operand = operand
 
     def __getinitargs__(self):

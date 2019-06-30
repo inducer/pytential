@@ -305,10 +305,9 @@ class RefinerWrangler(TreeWranglerBase):
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         from pytential import bind, sym
-        center_danger_zone_radii = bind(lpot_source, sym.qbx_expansion_radii(
-            lpot_source._expansion_radii_factor,
+        center_danger_zone_radii = bind(lpot_source, sym.expansion_radii(
             lpot_source.ambient_dim,
-            granularity="ncenters"))(self.queue)
+            granularity=sym.GRANULARITY_CENTER))(self.queue)
 
         evt = knl(
             *unwrap_args(
@@ -364,11 +363,9 @@ class RefinerWrangler(TreeWranglerBase):
 
         from pytential import bind, sym
         source_danger_zone_radii_by_panel = bind(lpot_source,
-                sym.qbx_expansion_radii(
-                    lpot_source._source_danger_zone_radii_factor,
+                sym._source_danger_zone_radii(
                     lpot_source.ambient_dim,
-                    granularity="npanels",
-                    where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(self.queue)
+                    granularity=sym.GRANULARITY_ELEMENT))(self.queue)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(

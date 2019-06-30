@@ -456,10 +456,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
         source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = bind(lpot_source, sym.qbx_expansion_radii(
-                lpot_source._close_target_tunnel_radius_factor,
-                lpot_source.ambient_dim,
-                granularity="nsources"))(self.queue)
+        tunnel_radius_by_source = bind(lpot_source,
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim)(self.queue)
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -495,10 +493,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        tunnel_radius_by_source = bind(lpot_source, sym.qbx_expansion_radii(
-                lpot_source._close_target_tunnel_radius_factor,
-                lpot_source.ambient_dim,
-                granularity="nsources"))(self.queue)
+        tunnel_radius_by_source = bind(lpot_source,
+            sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         evt = knl(
             *unwrap_args(
@@ -556,9 +552,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
         centers = [
                 axis.with_queue(self.queue)[center_slice] for axis in tree.sources]
         expansion_radii_by_center = bind(lpot_source, sym.qbx_expansion_radii(
-            lpot_source._expansion_radii_factor,
             lpot_source.ambient_dim,
-            granularity="ncenters"))(self.queue)
+            granularity=sym.GRANULARITY_CENTER))(self.queue)
         expansion_radii_by_center_with_tolerance = \
                 expansion_radii_by_center * (1 + target_association_tolerance)
 
@@ -637,10 +632,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = bind(lpot_source, sym.qbx_expansion_radii(
-                lpot_source._close_target_tunnel_radius_factor,
-                lpot_source.ambient_dim,
-                granularity="nsources"))(self.queue)
+        tunnel_radius_by_source = bind(lpot_source,
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         # See (TGTMARK) above for algorithm.
 
@@ -653,10 +646,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        tunnel_radius_by_source = bind(lpot_source, sym.qbx_expansion_radii(
-                lpot_source._close_target_tunnel_radius_factor,
-                lpot_source.ambient_dim,
-                granularity="nsources"))(self.queue)
+        tunnel_radius_by_source = bind(lpot_source,
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         evt = knl(
             *unwrap_args(

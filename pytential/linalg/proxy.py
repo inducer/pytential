@@ -467,16 +467,12 @@ class ProxyGenerator(object):
             return np.dot(A, v) + b
 
         from pytential import bind, sym
-        radii = bind(self.source, sym.qbx_expansion_radii(
-            self.source._expansion_radii_factor,
-            self.source.ambient_dim,
-            granularity="nsources"))(queue)
-        center_int = bind(self.source, sym.qbx_expansion_centers(
-            self.source._expansion_radii_factor, -1,
-            self.source.ambient_dim))(queue)
-        center_ext = bind(self.source, sym.qbx_expansion_centers(
-            self.source._expansion_radii_factor, +1,
-            self.source.ambient_dim))(queue)
+        radii = bind(self.source,
+                sym.expansion_radii(self.source.ambient_dim))(queue)
+        center_int = bind(self.source,
+                sym.expansion_centers(self.source.ambient_dim, -1))(queue)
+        center_ext = bind(self.source,
+                sym.expansion_centers(self.source.ambient_dim, +1))(queue)
 
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(queue,

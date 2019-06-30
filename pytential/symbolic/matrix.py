@@ -154,21 +154,16 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
 
     if source.density_discr is target_discr:
         # NOTE: skip expensive target association
-        centers = bind(source, sym.qbx_expansion_centers(
-            source._expansion_radii_factor,
-            qbx_forced_limit,
-            source.ambient_dim))(queue)
-        radii = bind(source, sym.qbx_expansion_radii(
-            source._expansion_radii_factor,
-            source.ambient_dim,
-            granularity="nsources"))(queue)
+        centers = bind(source,
+            sym.expansion_centers(source.ambient_dim, qbx_forced_limit))(queue)
+        radii = bind(source,
+            sym.expansion_radii(source.ambient_dim))(queue)
     else:
         from pytential.qbx.utils import get_interleaved_centers
         centers = get_interleaved_centers(queue, source)
-        radii = bind(source, sym.qbx_expansion_radii(
-            source._expansion_radii_factor,
+        radii = bind(source, sym.expansion_radii(
             source.ambient_dim,
-            granularity="ncenters"))(queue)
+            granularity=sym.GRANULARITY_CENTER))(queue)
 
         # NOTE: using a very small tolerance to make sure all the stage2
         # targets are associated to a center. We can't use the user provided
