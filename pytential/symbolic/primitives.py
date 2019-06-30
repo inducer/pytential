@@ -203,7 +203,7 @@ Pretty-printing expressions
 """
 
 
-# {{{ 'where' specifiers
+# {{{ dof descriptors
 
 class DEFAULT_SOURCE:  # noqa: N801
     pass
@@ -965,37 +965,63 @@ class DOFGranularityConverter(Expression):
     mapper_method = intern("map_dof_granularity_converter")
 
 
-def qbx_quad_resolution(ambient_dim, granularity="npanels", where=None):
-    stretch = _simplex_mapping_max_stretch_factor(ambient_dim, where=where)
-    return DOFGranularityConverter(granularity, stretch, where=where)
+def _expansion_radii_factor(ambient_dim):
+    dim_fudge_factor = 0.5 if ambient_dim == 2 else 1.0
+    return 0.5 * dim_fudge_factor
 
 
-def qbx_expansion_radii(factor, ambient_dim,
-        granularity="nsources", where=None):
-    """
-    :arg factor: stick out factor for expansion radii.
-    """
+def _quad_resolution(ambient_dim, granularity=None, where=None):
+    source = as_dofdesc(where)
+    target = source.copy(granularity=granularity)
 
-    stretch = _simplex_mapping_max_stretch_factor(ambient_dim, where=where)
-    radii = DOFGranularityConverter(granularity, factor * stretch, where=where)
-
-    return cse(radii, cse_scope.DISCRETIZATION)
+    stretch = _simplex_mapping_max_stretch_factor(ambient_dim, where=source)
+    return Interpolation(source, target, operand)
 
 
-def qbx_expansion_centers(factor, side, ambient_dim, dim=None, where=None):
-    """
-    :arg factor: target confinement factor for expansion radii.
-    :arg side: `+1` or `-1` expansion side, relative to the direction of
-        the normal vector.
-    """
+def _source_danger_zone_radii(ambient_dim, granularity=None, where=None):
+    where = as_dofdesc(where)
+    if where.discr is None:
+        where = where.copy(discr=QBX_SOURCE_STAGE2)
+
+    # This should be the expression of the expansion radii, but
+    #
+    # - in reference to the stage 2 discretization
+    # - mutliplied by 0.75 because
+    #
+    #   - Setting this equal to the expansion radii ensures that *every*
+    #     stage 2 element will be refined, which is wasteful.
+    #     (so this needs to be smaller than that)
+    #   - Setting this equal to half the expansion radius will not provide
+    #     a refinement 'buffer layer' at a 2x coarsening fringe.
+
+    factor = 0.75 * _expansion_radii_factor(ambient_dim)
+    return factor * _quad_resolution(ambient_dim,
+            granularity=granularity, where=where)
+
+
+def _close_target_tunnel_radii(ambient_dim, granularity=None, where=None):
+    factor = 0.5 * _expansion_radii_factor(ambient_dim)
+
+    return factor * _quad_resolution(ambient_dim,
+            granularity=granularity, where=where)
+
+
+def expansion_radii(ambient_dim, granularity=None, where=None):
+    factor = _expansion_radii_factor(ambient_dim)
+
+    return cse(factor * _quad_resolution(ambient_dim,
+        granularity=granularity, where=where), cse_scope.DISCRETIZATION)
+
+
+def expansion_centers(ambient_dim, side, dim=None, where=None):
+    where = as_dofdesc(where).with_granularity(granularity=GRANULARITY_NODE)
 
     x = nodes(ambient_dim, where=where)
     normals = normal(ambient_dim, dim=dim, where=where)
-    radii = qbx_expansion_radii(factor, ambient_dim,
-            granularity="nsources", where=where)
+    radii = expansion_radii(ambient_dim,
+            granularity=GRANULARITY_NODE, where=where)
 
     centers = x + side * radii * normals
-
     return cse(centers.as_vector(), cse_scope.DISCRETIZATION)
 
 # }}}
