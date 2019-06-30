@@ -487,105 +487,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         import pytential.qbx.utils as utils
         return utils.element_centers_of_mass(self.stage2_density_discr)
 
-    @property
-    def _dim_fudge_factor(self):
-        if self.density_discr.dim == 2:
-            return 0.5
-        else:
-            return 1
-
-    @property
-    def _expansion_radii_factor(self):
-        return 0.5 * self._dim_fudge_factor
-
-    @property
-    def _source_danger_zone_radii_factor(self):
-        # This should be the expression of the expansion radii, but
-        #
-        # - in reference to the stage 2 discretization
-        # - mutliplied by 0.75 because
-        #
-        #   - Setting this equal to the expansion radii ensures that *every*
-        #     stage 2 element will be refined, which is wasteful.
-        #     (so this needs to be smaller than that)
-        #
-
-        #   - Setting this equal to half the expansion radius will not provide
-        #     a refinement 'buffer layer' at a 2x coarsening fringe.
-
-        return 0.75 * self._expansion_radii_factor
-
-    @property
-    def _close_target_tunnel_radius_factor(self):
-        return 0.5 * self._expansion_radii_factor
-
-    @memoize_method
     def _expansion_radii(self, last_dim_length):
-        raise RuntimeError("bind `qbx_expansion_radii` directly")
+        raise RuntimeError("bind `expansion_radii` directly")
 
-        from pytential import bind, sym
-        with cl.CommandQueue(self.cl_context) as queue:
-            radii = bind(self, sym.qbx_expansion_radii(
-                self._expansion_radii_factor,
-                self.ambient_dim,
-                granularity=last_dim_length))(queue)
-
-            return radii.with_queue(None)
-
-    # _expansion_radii should not be needed for the fine discretization
-
-    @memoize_method
     def _source_danger_zone_radii(self, last_dim_length="npanels"):
-        raise RuntimeError("bind `qbx_expansion_radii` directly")
+        raise RuntimeError("bind `_source_danger_zone_radii` directly")
 
-        from pytential import bind, sym
-        with cl.CommandQueue(self.cl_context) as queue:
-            radii = bind(self, sym.qbx_expansion_radii(
-                0.75 * self._expansion_radii_factor,
-                self.ambient_dim,
-                granularity=last_dim_length,
-                where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(queue)
-
-            return radii.with_queue(None)
-
-    @memoize_method
     def _close_target_tunnel_radius(self, last_dim_length):
-        raise RuntimeError("bind `qbx_expansion_radii` directly")
+        raise RuntimeError("bind `_close_target_tunnel_radii` directly")
 
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (
-                    self._expansion_radii(last_dim_length).with_queue(queue)
-                    * 0.5
-                    ).with_queue(None)
-
-    @memoize_method
     def _coarsest_quad_resolution(self, last_dim_length="npanels"):
-        raise RuntimeError("bind `qbx_quad_resolution` directly")
+        raise RuntimeError("bind `_quad_resolution` directly")
 
-        from pytential import bind, sym
-        with cl.CommandQueue(self.cl_context) as queue:
-            r = bind(self, sym.qbx_quad_resolution(
-                    self.ambient_dim,
-                    last_dim_length))(queue)
-
-            return r.with_queue(None)
-
-    @memoize_method
     def _stage2_coarsest_quad_resolution(self, last_dim_length="npanels"):
-        raise RuntimeError("bind `qbx_quad_resolution` directly")
-
-        if last_dim_length != "npanels":
-            # Not technically required below, but no need to loosen for now.
-            raise NotImplementedError()
-
-        from pytential import bind, sym
-        with cl.CommandQueue(self.cl_context) as queue:
-            r = bind(self, sym.qbx_quad_resolution(
-                    self.ambient_dim,
-                    last_dim_length,
-                    where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE)))(queue)
-
-            return r.with_queue(None)
+        raise RuntimeError("bind `_quad_resolution` directly")
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
