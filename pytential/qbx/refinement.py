@@ -605,9 +605,9 @@ def refine_for_global_qbx(lpot_source, wrangler,
                     "checking kernel length scale to panel size ratio"):
 
                 from pytential import bind, sym
-                quad_resolution = bind(lpot_source, sym.qbx_quad_resolution(
+                quad_resolution = bind(lpot_source, sym._quad_resolution(
                     lpot_source.ambient_dim,
-                    granularity="npanels"))(wrangler.queue)
+                    granularity=sym.GRANULARITY_ELEMENT))(wrangler.queue)
 
                 violates_kernel_length_scale = \
                         wrangler.check_element_prop_threshold(

@@ -51,7 +51,6 @@ from pymbolic.geometric_algebra.mapper import (
         DerivativeSourceFinder
         as DerivativeSourceFinderBase,
 
-
         GraphvizMapper as GraphvizMapperBase)
 import pytential.symbolic.primitives as prim
 
@@ -256,7 +255,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
             return expr
 
     def map_elementwise_sum(self, expr):
-        operand = self.rec(expr.operand)
+        operand = self.operand_rec(expr.operand)
         dd = prim.as_dofdesc(expr.where)
 
         if dd.where is None:
@@ -310,7 +309,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         if target.where is None:
             target = target.copy(where=self.default_where)
 
-        return type(expr)(source, target, expr.operand)
+        return type(expr)(source, target, self.operand_rec(expr.operand))
 
     def map_dof_granularity_converter(self, expr):
         # FIXME: this needs to be deleted
@@ -439,20 +438,21 @@ class QBXInterpolationPreprocessor(IdentityMapper):
         self.places = places
 
     def map_int_g(self, expr):
-        if isinstance(expr.source, prim.QBXSourceQuadStage2):
+        dd = prim.as_dofdesc(expr.source)
+        if dd.discr == prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
 
         from pytential.source import LayerPotentialSourceBase
         source = self.places[expr.source]
 
         if isinstance(source, LayerPotentialSourceBase):
-            stage2_source = prim.QBXSourceQuadStage2(prim.DEFAULT_SOURCE)
+            target_dd = dd.copy(discr=prim.QBX_SOURCE_QUAD_STAGE2)
 
             density = prim.Interpolation(
-                    expr.source, stage2_source, self.rec(expr.density))
+                    dd, target_dd, self.rec(expr.density))
             kernel_arguments = dict(
                     (name, prim.Interpolation(
-                        expr.source, stage2_source, self.rec(arg_expr)))
+                        dd, target_dd, self.rec(arg_expr)))
                     for name, arg_expr in expr.kernel_arguments.items())
 
             expr = expr.copy(

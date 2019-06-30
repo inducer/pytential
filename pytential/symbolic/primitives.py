@@ -395,7 +395,7 @@ def as_dofdesc(desc):
     if desc == QBX_SOURCE_STAGE1 \
             or desc == QBX_SOURCE_STAGE2 \
             or desc == QBX_SOURCE_QUAD_STAGE2:
-        return DOFDescriptor(None, discr=discr)
+        return DOFDescriptor(None, discr=desc)
 
     return DOFDescriptor(desc)
 
@@ -978,7 +978,7 @@ def _quad_resolution(ambient_dim, granularity=None, where=None):
     target = source.copy(granularity=granularity)
 
     stretch = _simplex_mapping_max_stretch_factor(ambient_dim, where=source)
-    return Interpolation(source, target, operand)
+    return Interpolation(source, target, stretch)
 
 
 def _source_danger_zone_radii(ambient_dim, granularity=None, where=None):
@@ -1017,7 +1017,7 @@ def expansion_radii(ambient_dim, granularity=None, where=None):
 
 
 def expansion_centers(ambient_dim, side, dim=None, where=None):
-    where = as_dofdesc(where).with_granularity(granularity=GRANULARITY_NODE)
+    where = as_dofdesc(where)
 
     x = nodes(ambient_dim, where=where)
     normals = normal(ambient_dim, dim=dim, where=where)

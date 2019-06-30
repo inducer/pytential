@@ -457,7 +457,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
         tunnel_radius_by_source = bind(lpot_source,
-                sym._close_target_tunnel_radii(lpot_source.ambient_dim)(self.queue)
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -551,7 +551,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 .with_queue(self.queue))
         centers = [
                 axis.with_queue(self.queue)[center_slice] for axis in tree.sources]
-        expansion_radii_by_center = bind(lpot_source, sym.qbx_expansion_radii(
+        expansion_radii_by_center = bind(lpot_source, sym.expansion_radii(
             lpot_source.ambient_dim,
             granularity=sym.GRANULARITY_CENTER))(self.queue)
         expansion_radii_by_center_with_tolerance = \

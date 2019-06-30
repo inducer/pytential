@@ -127,15 +127,15 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
 
     expansion_radii = bind(lpot_source,
-        sym.expansion_radii(lpot_source.ambient_dim)(queue).get()
+        sym.expansion_radii(lpot_source.ambient_dim))(queue).get()
     source_danger_zone_radii = bind(lpot_source, sym._source_danger_zone_radii(
         lpot_source.ambient_dim,
         granularity=sym.GRANULARITY_ELEMENT,
         where=sym.QBX_SOURCE_STAGE2))(queue).get()
 
-    quad_res = bind(lpot_source, sym.qbx_quad_resolution(
+    quad_res = bind(lpot_source, sym._quad_resolution(
         lpot_source.ambient_dim,
-        granularity="npanels"))(queue)
+        granularity=sym.GRANULARITY_ELEMENT))(queue)
 
     # {{{ check if satisfying criteria
 
@@ -268,7 +268,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     nsources = lpot_source.density_discr.nnodes
     noise = rng.uniform(queue, nsources, dtype=np.float, a=0.01, b=1.0)
     tunnel_radius = bind(lpot_source,
-        sym._close_target_tunnel_radii(lpot_source.ambient_dim)(queue)
+        sym._close_target_tunnel_radii(lpot_source.ambient_dim))(queue)
 
     def targets_from_sources(sign, dist):
         from pytential import sym, bind

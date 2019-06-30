@@ -470,9 +470,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential import bind, sym
 
         with cl.CommandQueue(self.cl_context) as queue:
-            quad_res = bind(self, sym.qbx_quad_resolution(
+            quad_res = bind(self, sym._quad_resolution(
                     self.ambient_dim,
-                    granularity="npanels"))(queue)
+                    granularity=sym.GRANULARITY_ELEMENT))(queue)
             return cl.array.max(quad_res).get().item()
 
     # {{{ internal API
