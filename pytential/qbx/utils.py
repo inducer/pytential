@@ -229,31 +229,6 @@ def connection_from_dds(lpot_source, source, target):
 # }}}
 
 
-# {{{ interleaver kernel
-
-@memoize
-def get_interleaver_kernel(dtype):
-    # NOTE: Returned kernel needs dstlen or dst parameter
-    from pymbolic import var
-    knl = lp.make_kernel(
-        "[srclen,dstlen] -> {[i]: 0<=i<srclen}",
-        """
-        dst[2*i] = src1[i]
-        dst[2*i+1] = src2[i]
-        """, [
-            lp.GlobalArg("src1", shape=(var("srclen"),), dtype=dtype),
-            lp.GlobalArg("src2", shape=(var("srclen"),), dtype=dtype),
-            lp.GlobalArg("dst", shape=(var("dstlen"),), dtype=dtype),
-            "..."
-        ],
-        assumptions="2*srclen = dstlen",
-        lang_version=MOST_RECENT_LANGUAGE_VERSION)
-    knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
-    return knl
-
-# }}}
-
-
 # {{{ make interleaved centers
 
 def get_interleaved_centers(queue, lpot_source):
@@ -357,11 +332,6 @@ class TreeWranglerBase(object):
         peer_lists, evt = plf(self.queue, tree)
         cl.wait_for_events([evt])
         return peer_lists
-
-# }}}
-
-
-# {{{ to_last_dim_length
 
 # }}}
 

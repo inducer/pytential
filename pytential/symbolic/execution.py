@@ -190,14 +190,6 @@ class EvaluationMapper(EvaluationMapperBase):
         else:
             raise TypeError("cannot interpolate `{}`".format(type(operand)))
 
-    def map_dof_granularity_converter(self, expr):
-        discr = self.bound_expr.get_discretization(expr.where)
-        vec = self.rec(expr.operand)
-
-        from pytential.qbx.utils import to_last_dim_length
-        return to_last_dim_length(discr, vec, expr.granularity,
-                queue=self.queue)
-
     # }}}
 
     def exec_assign(self, queue, insn, bound_expr, evaluate):

@@ -933,41 +933,6 @@ def _scaled_max_curvature(ambient_dim, dim=None, where=None):
 
 # {{{ qbx-specific geometry
 
-class DOFGranularityConverter(Expression):
-    """Converts a vector of DOFs to a vector of a desired granularity.
-
-    .. attribute:: granularity
-
-        New granularity of the DOF vector. Can be one of the following
-        strings:
-
-        - 'nsources': keeps the granularity of the DOF vector.
-        - 'ncenters': for interleaved expansion centers.
-        - 'npanels': per-element.
-    """
-
-    init_arg_names = ("granularity", "operand", "where")
-
-    def __new__(cls, granularity, operand, where=None):
-        if isinstance(operand, np.ndarray):
-            def make_op(operand_i):
-                return cls(granularity, operand_i, where=where)
-
-            return componentwise(make_op, operand)
-        else:
-            return Expression.__new__(cls)
-
-    def __init__(self, granularity, operand, where=None):
-        self.granularity = granularity
-        self.operand = operand
-        self.where = where
-
-    def __getinitargs__(self):
-        return (self.granularity, self.operand, self.where)
-
-    mapper_method = intern("map_dof_granularity_converter")
-
-
 def _expansion_radii_factor(ambient_dim):
     dim_fudge_factor = 0.5 if ambient_dim == 2 else 1.0
     return 0.5 * dim_fudge_factor
