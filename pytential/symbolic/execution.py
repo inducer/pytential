@@ -174,16 +174,12 @@ class EvaluationMapper(EvaluationMapperBase):
         return source.map_quad_kernel_op(expr, self.bound_expr, self.rec)
 
     def map_interpolation(self, expr):
-        from pytential.source import LayerPotentialSourceBase
-        from pytential.qbx.utils import connection_from_dds
-
-        source = self.bound_expr.places[expr.source]
-        if not isinstance(source, LayerPotentialSourceBase):
-            raise TypeError("source must be a `LayerPotentialSourceBase`")
-
         operand = self.rec(expr.operand)
+
         if isinstance(operand, cl.array.Array):
-            conn = connection_from_dds(source, expr.source, expr.target)
+            from pytential.qbx.utils import connection_from_dds
+
+            conn = connection_from_dds(self.bound_expr.places, expr.source, expr.target)
             return conn(self.queue, operand)
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand
@@ -395,8 +391,6 @@ class GeometryCollection(object):
             # NOTE: keeping this here to make sure auto_where unpacks into
             # just the two elements
             source_where, target_where = auto_where
-        # source_where = sym.as_dofdesc(source_where)
-        # target_where = sym.as_dofdesc(target_where)
 
         self._default_source_place = source_where
         self._default_target_place = target_where

@@ -113,8 +113,15 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     def quad_stage2_density_discr(self):
         return self.density_discr
 
-    def resampler(self, queue, f):
-        return f
+    @property
+    def resampler(self):
+        # NOTE: this is a no-op, but it returns a chained connection
+        # anyway to match the return type of QBXLayerPotentialSource.resampler
+        from meshmode.discretization.connection import \
+                ChainedDiscretizationConnection
+
+        return ChainedDiscretizationConnection([],
+                from_discr=self.density_discr)
 
     def with_refinement(self):
         raise NotImplementedError

@@ -179,7 +179,7 @@ class ElementSampleConnection(DiscretizationConnection):
         return result
 
 
-def connection_from_dds(lpot_source, source, target):
+def connection_from_dds(places, source, target):
     from pytential import sym
     source = sym.as_dofdesc(source)
     target = sym.as_dofdesc(target)
@@ -191,36 +191,30 @@ def connection_from_dds(lpot_source, source, target):
     if source.granularity != sym.GRANULARITY_NODE:
         raise ValueError('can only interpolate from `GRANULARITY_NODE`')
 
+    lpot_source = places[source]
     connections = []
-    from_discr = lpot_source.density_discr
     if target.discr != source.discr:
         if target.discr != sym.QBX_SOURCE_QUAD_STAGE2:
             raise RuntimeError('can only interpolate to `QBX_SOURCE_QUAD_STAGE2`')
 
         if source.discr == sym.QBX_SOURCE_STAGE2:
-            from_discr = lpot_source.stage2_density_discr
             connections.append(lpot_source.refined_interp_to_ovsmp_quad_connection)
         elif source.discr == sym.QBX_SOURCE_QUAD_STAGE2:
-            from_discr = lpot_source.quad_stage2_density_discrd
+            pass
         else:
-            from_discr = lpot_source.density_discr
             connections.append(lpot_source.resampler)
 
     if target.granularity != source.granularity:
-        if target.discr == sym.QBX_SOURCE_STAGE2:
-            discr = lpot_source.stage2_density_discr
-        elif target.discr == sym.QBX_SOURCE_QUAD_STAGE2:
-            discr = lpot_source.quad_stage2_density_discr
-        else:
-            discr = lpot_source.density_discr
-
-        if not connections:
-            from_discr = discr
-
+        discr = places.get_discretization(target)
         if target.granularity == sym.GRANULARITY_CENTER:
             connections.append(InterleaverConnection(discr))
         elif target.granularity == sym.GRANULARITY_ELEMENT:
             connections.append(ElementSampleConnection(discr))
+
+    if not connections:
+        from_discr = places.get_discretization(source)
+    else:
+        from_discr = None
 
     from meshmode.discretization.connection import ChainedDiscretizationConnection
     return ChainedDiscretizationConnection(connections, from_discr=from_discr)
