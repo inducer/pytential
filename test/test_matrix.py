@@ -354,7 +354,11 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
     # NOTE: NearFieldBlockBuilder only does stage1/stage1 or stage2/stage2,
     # so we need to hardcode the discr for MatrixBuilder too, since the
     # defaults are different
-    place_ids = (sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE1)
+    source_dd = sym.DOFDescriptor(sym.DEFAULT_SOURCE,
+            discr=sym.QBX_SOURCE_STAGE1)
+    target_dd = sym.DOFDescriptor(sym.DEFAULT_TARGET,
+            discr=sym.QBX_SOURCE_STAGE1)
+    place_ids = (source_dd, target_dd)
 
     from pytential.symbolic.execution import GeometryCollection, _prepare_expr
     places = GeometryCollection(qbx, auto_where=place_ids)
@@ -425,8 +429,13 @@ def test_build_matrix_places(ctx_factory, place_ids, visualize=False):
     op, u_sym, _ = _build_op(lpot_id=1, ndim=2,
             qbx_forced_limit=qbx_forced_limit)
 
+    place_ids = (
+            sym.as_dofdesc(place_ids[0]).copy(where=sym.DEFAULT_SOURCE),
+            sym.as_dofdesc(place_ids[1]).copy(where=sym.DEFAULT_TARGET)
+            )
+
     from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(qbx)
+    places = GeometryCollection(qbx, auto_where=place_ids)
     source_discr = places.get_discretization(place_ids[0])
     target_discr = places.get_discretization(place_ids[1])
 
@@ -466,7 +475,7 @@ def test_build_matrix_places(ctx_factory, place_ids, visualize=False):
             index_set=index_set,
             context={})
     mat = mbuilder(op)
-    if place_ids[0] is not DEFAULT_SOURCE:
+    if place_ids[0].discr is not None:
         assert _max_block_error(qbx_mat, mat, index_set.get(queue)) < 1.0e-14
 
     from pytential.symbolic.matrix import FarFieldBlockBuilder

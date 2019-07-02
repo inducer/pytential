@@ -392,21 +392,24 @@ class GeometryCollection(object):
             # just the two elements
             source_where, target_where = auto_where
 
+        source_where = sym.as_dofdesc(source_where)
+        target_where = sym.as_dofdesc(target_where)
+
         self._default_source_place = source_where
         self._default_target_place = target_where
         self._default_place_ids = (source_where, target_where)
 
         self.places = {}
         if isinstance(places, LayerPotentialSourceBase):
-            self.places[source_where] = places
-            self.places[target_where] = \
+            self.places[source_where.where] = places
+            self.places[target_where.where] = \
                     self._get_lpot_discretization(places, target_where)
         elif isinstance(places, (Discretization, TargetBase)):
-            self.places[target_where] = places
+            self.places[target_where.where] = places
         elif isinstance(places, tuple):
             source_discr, target_discr = places
-            self.places[source_where] = source_discr
-            self.places[target_where] = target_discr
+            self.places[source_where.where] = source_discr
+            self.places[target_where.where] = target_discr
         else:
             self.places = places.copy()
 

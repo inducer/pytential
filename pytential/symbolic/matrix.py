@@ -80,12 +80,6 @@ def _get_layer_potential_args(mapper, expr, source):
     :return: a mapping of kernel arguments evaluated by the *mapper*.
     """
 
-    # skip resampling if source and target are the same
-    source_dd = sym.as_dofdesc(expr.source)
-    target_dd = sym.as_dofdesc(expr.target)
-    if source_dd.discr == target_dd.discr:
-        source = None
-
     kernel_args = {}
     for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
         rec_arg = mapper.rec(arg_expr)
@@ -168,7 +162,7 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
         # targets are associated to a center. We can't use the user provided
         # source.target_association_tolerance here because it will likely be
         # way too small.
-        target_association_tolerance = 1.0e-1
+        target_association_tolerance = 5.0e-1
 
         from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
         code_container = source.target_association_code_container
@@ -422,7 +416,11 @@ class MatrixBuilder(MatrixBuilderBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self, expr, lpot_source)
+        if source_dd.discr == target_dd.discr:
+            # NOTE: passing None to avoid any resampling
+            kernel_args = _get_layer_potential_args(self, expr, None)
+        else:
+            kernel_args = _get_layer_potential_args(self, expr, lpot_source)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, lpot_source.qbx_order)
@@ -446,7 +444,7 @@ class MatrixBuilder(MatrixBuilderBase):
         waa = _get_weights_and_area_elements(self.queue, lpot_source, source_discr)
         mat[:, :] *= waa.get(self.queue)
 
-        if target_discr.nnodes != source_discr.nnodes:
+        if source_dd.discr != target_dd.discr:
             # NOTE: we only resample sources
             assert target_discr.nnodes < source_discr.nnodes
 
