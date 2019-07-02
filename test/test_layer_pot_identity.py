@@ -166,7 +166,7 @@ class ZeroCalderonExpr(object):
 
         return (
                     -Dp(kernel, S(kernel, u_sym))
-                    - 0.25*u_sym + Sp(kernel, sym.Sp(kernel, u_sym))
+                    - 0.25*u_sym + Sp(kernel, Sp(kernel, u_sym))
                     )
 
     order_drop = 1
