@@ -245,6 +245,7 @@ class QBXSourceStage1(_QBXSource):
     :attr:`pytential.qbx.QBXLayerPotentialSource.density_discr`
     of the layer potential source identified by :attr:`where`.
     """
+    pass
 
 
 class QBXSourceStage2(_QBXSource):
@@ -252,6 +253,7 @@ class QBXSourceStage2(_QBXSource):
     :attr:`pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`
     of the layer potential source identified by :attr:`where`.
     """
+    pass
 
 
 class QBXSourceQuadStage2(_QBXSource):
@@ -259,20 +261,24 @@ class QBXSourceQuadStage2(_QBXSource):
     :attr:`pytential.qbx.QBXLayerPotentialSource.quad_stage2_density_discr`
     of the layer potential source identified by :attr:`where`.
     """
+    pass
 
 
 class QBX_SOURCE_STAGE1:   # noqa: N801
     """Symbolic identifier for the base `stage1` discretization
     :attr:`pytential.source.LayerPotentialSourceBase.density_discr`.
     """
+    pass
+
 
 class QBX_SOURCE_STAGE2:   # noqa: N801
     """Symbolic identifier for the `stage2` discretization
     :attr:`pytential.source.LayerPotentialSourceBase.stage2_density_discr`.
     """
+    pass
 
 
-class QBX_SOURCE_QUAD_STAGE2: # noqa: N801
+class QBX_SOURCE_QUAD_STAGE2:   # noqa: N801
     """Symbolic identifier for the `stage2` discretization
     :attr:`pytential.source.LayerPotentialSourceBase.quad_stage2_density_discr`.
     """

@@ -184,8 +184,8 @@ def connection_from_dds(places, source, target):
     source = sym.as_dofdesc(source)
     target = sym.as_dofdesc(target)
 
-    if not ((source.where == sym.DEFAULT_SOURCE \
-                and target.where == sym.DEFAULT_TARGET) \
+    if not ((source.where == sym.DEFAULT_SOURCE
+                and target.where == sym.DEFAULT_TARGET)
             or source.where == target.where):
         raise ValueError('cannot interpolate between different domains')
     if source.granularity != sym.GRANULARITY_NODE:
