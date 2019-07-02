@@ -402,6 +402,11 @@ def as_dofdesc(desc):
             or desc == QBX_SOURCE_QUAD_STAGE2:
         return DOFDescriptor(None, discr=desc)
 
+    if desc == GRANULARITY_NODE \
+            or desc == GRANULARITY_CENTER \
+            or desc == GRANULARITY_ELEMENT:
+        return DOFDescriptor(None, granularity=desc)
+
     return DOFDescriptor(desc)
 
 
