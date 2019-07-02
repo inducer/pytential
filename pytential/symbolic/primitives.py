@@ -938,20 +938,24 @@ def _scaled_max_curvature(ambient_dim, dim=None, where=None):
 
 # {{{ qbx-specific geometry
 
-def _expansion_radii_factor(ambient_dim):
-    dim_fudge_factor = 0.5 if ambient_dim == 2 else 1.0
+def _expansion_radii_factor(ambient_dim, dim):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    dim_fudge_factor = 0.5 if dim == 2 else 1.0
     return 0.5 * dim_fudge_factor
 
 
-def _quad_resolution(ambient_dim, granularity=None, where=None):
+def _quad_resolution(ambient_dim, dim=None, granularity=None, where=None):
     source = as_dofdesc(where)
     target = source.copy(granularity=granularity)
 
-    stretch = _simplex_mapping_max_stretch_factor(ambient_dim, where=source)
+    stretch = _simplex_mapping_max_stretch_factor(ambient_dim,
+            dim=dim, where=source)
     return Interpolation(source, target, stretch)
 
 
-def _source_danger_zone_radii(ambient_dim, granularity=None, where=None):
+def _source_danger_zone_radii(ambient_dim, dim=None, granularity=None, where=None):
     where = as_dofdesc(where)
     if where.discr is None:
         where = where.copy(discr=QBX_SOURCE_STAGE2)
@@ -967,22 +971,22 @@ def _source_danger_zone_radii(ambient_dim, granularity=None, where=None):
     #   - Setting this equal to half the expansion radius will not provide
     #     a refinement 'buffer layer' at a 2x coarsening fringe.
 
-    factor = 0.75 * _expansion_radii_factor(ambient_dim)
-    return factor * _quad_resolution(ambient_dim,
+    factor = 0.75 * _expansion_radii_factor(ambient_dim, dim)
+    return factor * _quad_resolution(ambient_dim, dim=dim,
             granularity=granularity, where=where)
 
 
-def _close_target_tunnel_radii(ambient_dim, granularity=None, where=None):
-    factor = 0.5 * _expansion_radii_factor(ambient_dim)
+def _close_target_tunnel_radii(ambient_dim, dim=None, granularity=None, where=None):
+    factor = 0.5 * _expansion_radii_factor(ambient_dim, dim)
 
-    return factor * _quad_resolution(ambient_dim,
+    return factor * _quad_resolution(ambient_dim, dim=dim,
             granularity=granularity, where=where)
 
 
-def expansion_radii(ambient_dim, granularity=None, where=None):
-    factor = _expansion_radii_factor(ambient_dim)
+def expansion_radii(ambient_dim, dim=None, granularity=None, where=None):
+    factor = _expansion_radii_factor(ambient_dim, dim)
 
-    return cse(factor * _quad_resolution(ambient_dim,
+    return cse(factor * _quad_resolution(ambient_dim, dim=dim,
         granularity=granularity, where=where), cse_scope.DISCRETIZATION)
 
 
@@ -991,7 +995,7 @@ def expansion_centers(ambient_dim, side, dim=None, where=None):
 
     x = nodes(ambient_dim, where=where)
     normals = normal(ambient_dim, dim=dim, where=where)
-    radii = expansion_radii(ambient_dim,
+    radii = expansion_radii(ambient_dim, dim=dim,
             granularity=GRANULARITY_NODE, where=where)
 
     centers = x + side * radii * normals
