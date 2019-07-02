@@ -81,10 +81,9 @@ def _get_layer_potential_args(mapper, expr, source):
     """
 
     # skip resampling if source and target are the same
-    from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-    if ((expr.source is not DEFAULT_SOURCE)
-            and (expr.target is not DEFAULT_TARGET)
-            and (isinstance(expr.source, type(expr.target)))):
+    source_dd = sym.as_dofdesc(expr.source)
+    target_dd = sym.as_dofdesc(expr.target)
+    if source_dd.discr == target_dd.discr:
         source = None
 
     kernel_args = {}
@@ -405,13 +404,14 @@ class MatrixBuilder(MatrixBuilderBase):
                 dep_source, dep_discr, places, context)
 
     def map_int_g(self, expr):
-        where_source = expr.source
-        if where_source is sym.DEFAULT_SOURCE:
-            where_source = sym.QBXSourceQuadStage2(expr.source)
+        source_dd = sym.as_dofdesc(expr.source)
+        target_dd = sym.as_dofdesc(expr.target)
+        if source_dd.discr is None:
+            source_dd = source_dd.copy(discr=sym.QBX_SOURCE_QUAD_STAGE2)
 
-        source = self.places[expr.source]
-        source_discr = self.places.get_discretization(where_source)
-        target_discr = self.places.get_discretization(expr.target)
+        lpot_source = self.places[source_dd]
+        source_discr = self.places.get_discretization(source_dd)
+        target_discr = self.places.get_discretization(target_dd)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -422,10 +422,10 @@ class MatrixBuilder(MatrixBuilderBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self, expr, source)
+        kernel_args = _get_layer_potential_args(self, expr, lpot_source)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
-        local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
+        local_expn = LineTaylorLocalExpansion(kernel, lpot_source.qbx_order)
 
         from sumpy.qbx import LayerPotentialMatrixGenerator
         mat_gen = LayerPotentialMatrixGenerator(
@@ -433,7 +433,7 @@ class MatrixBuilder(MatrixBuilderBase):
 
         assert abs(expr.qbx_forced_limit) > 0
         centers, radii = _get_centers_and_expansion_radii(self.queue,
-                source, target_discr, expr.qbx_forced_limit)
+                lpot_source, target_discr, expr.qbx_forced_limit)
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
@@ -443,14 +443,14 @@ class MatrixBuilder(MatrixBuilderBase):
                 **kernel_args)
         mat = mat.get()
 
-        waa = _get_weights_and_area_elements(self.queue, source, source_discr)
+        waa = _get_weights_and_area_elements(self.queue, lpot_source, source_discr)
         mat[:, :] *= waa.get(self.queue)
 
         if target_discr.nnodes != source_discr.nnodes:
             # NOTE: we only resample sources
             assert target_discr.nnodes < source_discr.nnodes
 
-            resampler = source.direct_resampler
+            resampler = lpot_source.direct_resampler
             resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
             mat = mat.dot(resample_mat)
 
