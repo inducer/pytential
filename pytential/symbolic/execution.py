@@ -445,9 +445,6 @@ class GeometryCollection(object):
         if dd.where in self.places:
             discr = self.places[dd.where]
         else:
-            discr = None
-
-        if discr is None:
             raise KeyError('`where` not in the collection: {}'.format(dd.where))
 
         from pytential.source import LayerPotentialSourceBase
