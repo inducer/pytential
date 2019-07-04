@@ -627,8 +627,8 @@ def refine_for_global_qbx(lpot_source, wrangler,
                 scaled_max_curv = bind(lpot_source, sym.Interpolate(
                     sym.as_dofdesc(None),
                     sym.as_dofdesc(sym.GRANULARITY_ELEMENT),
-                    sym._scaled_max_curvature(
-                        lpot_source.ambient_dim)))(wrangler.queue)
+                    sym.ElementwiseMax(sym._scaled_max_curvature(
+                        lpot_source.ambient_dim))))(wrangler.queue)
 
                 violates_scaled_max_curv = \
                         wrangler.check_element_prop_threshold(

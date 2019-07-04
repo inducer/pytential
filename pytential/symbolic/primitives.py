@@ -354,7 +354,6 @@ class DOFDescriptor(object):
     def copy(self, where=None, discr=None, granularity=None):
         if isinstance(where, DOFDescriptor):
             discr = where.discr if discr is None else discr
-            granularity = where.granularity if granularity is None else granularity
             where = where.where
 
         return type(self)(

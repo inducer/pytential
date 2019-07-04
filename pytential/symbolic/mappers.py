@@ -249,7 +249,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
             return expr
 
     def map_elementwise_sum(self, expr):
-        operand = self.operand_rec(expr.operand)
+        operand = self.rec(expr.operand)
         dd = prim.as_dofdesc(expr.where)
 
         if dd.where is None:

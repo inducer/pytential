@@ -770,11 +770,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential import bind, sym
         expansion_radii = bind(self,
                 sym.expansion_radii(self.ambient_dim))(queue)
-        int_centers = bind(self,
-                sym.expansion_centers(self.ambient_dim, -1))(queue)
-        ext_centers = bind(self,
-                sym.expansion_centers(self.ambient_dim, +1))(queue)
-        centers = {-1: int_centers, 1: ext_centers}
+        centers = {
+                -1: bind(self,
+                    sym.expansion_centers(self.ambient_dim, -1))(queue),
+                +1: bind(self,
+                    sym.expansion_centers(self.ambient_dim, +1))(queue)
+                }
 
         # FIXME: Do this all at once
         result = []

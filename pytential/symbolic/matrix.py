@@ -162,7 +162,7 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
         # targets are associated to a center. We can't use the user provided
         # source.target_association_tolerance here because it will likely be
         # way too small.
-        target_association_tolerance = 5.0e-1
+        target_association_tolerance = 1.0e-1
 
         from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
         code_container = source.target_association_code_container
