@@ -301,7 +301,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         if source.where is None:
             source = source.copy(where=self.default_source)
         if target.where is None:
-            target = target.copy(where=self.default_where)
+            target = target.copy(where=self.default_source)
 
         return type(expr)(source, target, self.operand_rec(expr.operand))
 
