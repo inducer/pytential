@@ -232,7 +232,7 @@ def test_interpolation(ctx_factory, source_discr, target_granularity):
     source = sym.DOFDescriptor(sym.DEFAULT_SOURCE,
             discr=source_discr,
             granularity=sym.GRANULARITY_NODE)
-    target = sym.DOFDescriptor(sym.DEFAULT_TARGET,
+    target = sym.DOFDescriptor(sym.DEFAULT_SOURCE,
             discr=sym.QBX_SOURCE_QUAD_STAGE2,
             granularity=target_granularity)
 

@@ -315,15 +315,16 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if self.is_kind_matrix(rec_operand):
             raise NotImplementedError("derivatives")
 
-        where_discr = self.places[expr.where]
-        op = sym.NumReferenceDerivative(expr.ref_axes, sym.var("u"))
-        return bind(where_discr, op)(
-                self.queue, u=cl.array.to_device(self.queue, rec_operand)).get()
+        rec_operand = cl.array.to_device(self.queue, rec_operand)
+        op = sym.NumReferenceDerivative(
+                ref_axes=expr.ref_axes,
+                operand=sym.var("u"),
+                where=expr.where)
+        return bind(self.places, op)(self.queue, u=rec_operand).get()
 
     def map_node_coordinate_component(self, expr):
-        where_discr = self.places[expr.where]
-        op = sym.NodeCoordinateComponent(expr.ambient_axis)
-        return bind(where_discr, op)(self.queue).get()
+        op = sym.NodeCoordinateComponent(expr.ambient_axis, where=expr.where)
+        return bind(self.places, op)(self.queue).get()
 
     def map_call(self, expr):
         arg, = expr.parameters
@@ -549,7 +550,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             raise NotImplementedError()
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self.mat_mapper, expr, source)
+        kernel_args = _get_layer_potential_args(self.mat_mapper, expr, None)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)

@@ -355,9 +355,9 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
     # so we need to hardcode the discr for MatrixBuilder too, since the
     # defaults are different
     source_dd = sym.DOFDescriptor(sym.DEFAULT_SOURCE,
-            discr=sym.QBX_SOURCE_STAGE1)
+            discr=sym.QBX_SOURCE_STAGE2)
     target_dd = sym.DOFDescriptor(sym.DEFAULT_TARGET,
-            discr=sym.QBX_SOURCE_STAGE1)
+            discr=sym.QBX_SOURCE_STAGE2)
     place_ids = (source_dd, target_dd)
 
     from pytential.symbolic.execution import GeometryCollection, _prepare_expr
