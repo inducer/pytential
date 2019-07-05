@@ -211,59 +211,6 @@ class DEFAULT_TARGET:  # noqa: N801
     pass
 
 
-class _QBXSource(object):
-    """A symbolic 'where' specifier for the a density of a
-    :attr:`pytential.qbx.QBXLayerPotentialSource`
-    layer potential source identified by :attr:`where`.
-
-    .. attribute:: where
-
-        An identifier of a layer potential source, as used in
-        :func:`pytential.bind`.
-
-    .. note::
-
-        This is not documented functionality and only intended for
-        internal use.
-    """
-
-    def __init__(self, where):
-        self.where = where
-
-    def __hash__(self):
-        return hash((type(self), self.where))
-
-    def __eq__(self, other):
-        return type(self) is type(other) and self.where == other.where
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-
-class QBXSourceStage1(_QBXSource):
-    """An explicit symbolic 'where' specifier for the
-    :attr:`pytential.qbx.QBXLayerPotentialSource.density_discr`
-    of the layer potential source identified by :attr:`where`.
-    """
-    pass
-
-
-class QBXSourceStage2(_QBXSource):
-    """A symbolic 'where' specifier for the
-    :attr:`pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`
-    of the layer potential source identified by :attr:`where`.
-    """
-    pass
-
-
-class QBXSourceQuadStage2(_QBXSource):
-    """A symbolic 'where' specifier for the
-    :attr:`pytential.qbx.QBXLayerPotentialSource.quad_stage2_density_discr`
-    of the layer potential source identified by :attr:`where`.
-    """
-    pass
-
-
 class QBX_SOURCE_STAGE1:   # noqa: N801
     """Symbolic identifier for the base `stage1` discretization
     :attr:`pytential.source.LayerPotentialSourceBase.density_discr`.
@@ -387,20 +334,6 @@ class DOFDescriptor(object):
 def as_dofdesc(desc):
     if isinstance(desc, DOFDescriptor):
         return desc
-
-    # TODO: should be deleted once _QBXSource and friends are gone
-    if isinstance(desc, _QBXSource):
-        from warnings import warn
-        warn('using _QBXSource is deprecated, use DOFDescriptor instead.',
-                DeprecationWarning, stacklevel=2)
-
-        if isinstance(desc, QBXSourceStage2):
-            discr = QBX_SOURCE_STAGE2
-        elif isinstance(desc, QBXSourceQuadStage2):
-            discr = QBX_SOURCE_QUAD_STAGE2
-        else:
-            discr = QBX_SOURCE_STAGE1
-        return DOFDescriptor(desc.where, discr=discr)
 
     if desc == QBX_SOURCE_STAGE1 \
             or desc == QBX_SOURCE_STAGE2 \
