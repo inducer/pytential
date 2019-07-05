@@ -330,6 +330,10 @@ class DOFDescriptor(object):
                 self.discr if self.discr is None else self.discr.__name__,
                 self.granularity.__name__)
 
+    def __str__(self):
+        from pytential.symbolic.mappers import stringify_where
+        return stringify_where(self)
+
 
 def as_dofdesc(desc):
     if isinstance(desc, DOFDescriptor):

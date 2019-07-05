@@ -512,27 +512,35 @@ class QBXPreprocessor(IdentityMapper):
 # {{{ stringifier
 
 def stringify_where(where):
-    if isinstance(where, prim.QBXSourceStage1):
-        return "stage1(%s)" % stringify_where(where.where)
-    if isinstance(where, prim.QBXSourceStage2):
-        return "stage2(%s)" % stringify_where(where.where)
-    if isinstance(where, prim.QBXSourceQuadStage2):
-        return "quad_stage2(%s)" % stringify_where(where.where)
+    dd = prim.as_dofdesc(where)
 
-    if where is None:
-        return "?"
-    elif where is prim.DEFAULT_SOURCE:
-        return "s"
-    elif where is prim.DEFAULT_TARGET:
-        return "t"
+    name = []
+    if dd.where is None:
+        name.append("?")
+    elif dd.where is prim.DEFAULT_SOURCE:
+        name.append("s")
+    elif dd.where is prim.DEFAULT_TARGET:
+        name.append("t")
     else:
-        return str(where)
+        name.append(str(dd.where))
+
+    if dd.discr == prim.QBX_SOURCE_STAGE2:
+        name.append("stage2")
+    elif dd.discr == prim.QBX_SOURCE_QUAD_STAGE2:
+        name.append("quads2")
+
+    if dd.granularity == prim.GRANULARITY_CENTER:
+        name.append("center")
+    elif dd.granularity == prim.GRANULARITY_ELEMENT:
+        name.append("panel")
+
+    return "/".join(name)
 
 
 class StringifyMapper(BaseStringifyMapper):
 
     def map_ones(self, expr, enclosing_prec):
-        return "Ones.%s" % stringify_where(expr.where)
+        return "Ones[%s]" % stringify_where(expr.where)
 
     def map_inverse(self, expr, enclosing_prec):
         return "Solve(%s = %s {%s})" % (
@@ -549,17 +557,17 @@ class StringifyMapper(BaseStringifyMapper):
                 set())
 
     def map_elementwise_sum(self, expr, enclosing_prec):
-        return "ElwiseSum.%s(%s)" % (
+        return "ElwiseSum[%s](%s)" % (
                 stringify_where(expr.where),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_elementwise_min(self, expr, enclosing_prec):
-        return "ElwiseMin.%s(%s)" % (
+        return "ElwiseMin[%s](%s)" % (
                 stringify_where(expr.where),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_elementwise_max(self, expr, enclosing_prec):
-        return "ElwiseMax.%s(%s)" % (
+        return "ElwiseMax[%s](%s)" % (
                 stringify_where(expr.where),
                 self.rec(expr.operand, PREC_NONE))
 
@@ -570,7 +578,7 @@ class StringifyMapper(BaseStringifyMapper):
         return "NodeSum(%s)" % self.rec(expr.operand, PREC_NONE)
 
     def map_node_coordinate_component(self, expr, enclosing_prec):
-        return "x%d.%s" % (expr.ambient_axis,
+        return "x%d[%s]" % (expr.ambient_axis,
                 stringify_where(expr.where))
 
     def map_num_reference_derivative(self, expr, enclosing_prec):
@@ -580,7 +588,7 @@ class StringifyMapper(BaseStringifyMapper):
                 "d/dr%d^%d" % (axis, mult)
                 for axis, mult in expr.ref_axes)
 
-        result = "%s.%s %s" % (
+        result = "%s[%s] %s" % (
                 diff_op,
                 stringify_where(expr.where),
                 self.rec(expr.operand, PREC_PRODUCT),
@@ -592,10 +600,10 @@ class StringifyMapper(BaseStringifyMapper):
             return result
 
     def map_parametrization_derivative(self, expr, enclosing_prec):
-        return "dx/dr.%s" % (stringify_where(expr.where))
+        return "dx/dr[%s]" % (stringify_where(expr.where))
 
     def map_q_weight(self, expr, enclosing_prec):
-        return "w_quad.%s" % stringify_where(expr.where)
+        return "w_quad[%s]" % stringify_where(expr.where)
 
     def _stringify_kernel_args(self, kernel_arguments):
         if not kernel_arguments:
