@@ -357,6 +357,10 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
     .. automethod:: center_to_tree_targets()
     .. automethod:: non_qbx_box_target_lists()
     .. automethod:: plot()
+
+    The following methods implement the
+    :class:`boxtree.pyfmmlib_integration.FMMLibRotationDataInterface`.
+
     .. method:: m2l_rotation_lists()
     .. method:: m2l_rotation_angles()
     """
