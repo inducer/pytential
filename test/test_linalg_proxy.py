@@ -22,9 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import os
-import time
-
 import numpy as np
 import numpy.linalg as la
 
@@ -165,9 +162,6 @@ def _plot_partition_indices(queue, discr, indices, **kwargs):
         vis = make_visualizer(queue, discr, 10)
 
         filename = "test_partition_{0}_{1}_{3}d_{2}.png".format(*args)
-        if os.path.isfile(filename):
-            os.remove(filename)
-
         vis.write_vtk_file(filename, [
             ("marker", cl.array.to_device(queue, marker))
             ])
@@ -272,8 +266,6 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
 
                 vis = make_visualizer(queue, discr, 10)
                 filename = "test_proxy_generator_{}d_{:04}.vtu".format(ndim, i)
-                if os.path.isfile(filename):
-                    os.remove(filename)
                 vis.write_vtk_file(filename, [])
 
 
@@ -356,9 +348,6 @@ def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
 
                 vis = make_visualizer(queue, qbx.density_discr, 10)
                 filename = "test_area_query_{}d_{:04}.vtu".format(ndim, i)
-                if os.path.isfile(filename):
-                    os.remove(filename)
-
                 vis.write_vtk_file(filename, [
                     ("marker", marker_dev),
                     ])
