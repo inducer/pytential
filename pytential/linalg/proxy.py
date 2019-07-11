@@ -45,7 +45,6 @@ Proxy Point Generation
 .. autoclass:: ProxyGenerator
 
 .. autofunction:: partition_by_nodes
-.. autofunction:: partition_by_elements
 .. autofunction:: partition_from_coarse
 
 .. autofunction:: gather_block_neighbor_points
@@ -330,7 +329,7 @@ class ProxyGenerator(object):
                         (proxy_center[idim, irange] -
                          center_ext[idim, srcindices[i + ioffset]]) ** 2)) + \
                          expansion_radii[srcindices[i + ioffset]])
-                <> rqbx = if(rqbx_ext < rqbx_int, rqbx_int, rqbx_ext)
+                <> rqbx = rqbx_int if rqbx_ext < rqbx_int else rqbx_ext
 
                 proxy_radius[irange] = {radius_expr}
             end
@@ -355,6 +354,7 @@ class ProxyGenerator(object):
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.tag_inames(knl, "idim*:unr")
+        print(knl)
 
         return knl
 
