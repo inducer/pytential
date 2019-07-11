@@ -177,10 +177,10 @@ class EvaluationMapper(EvaluationMapperBase):
         operand = self.rec(expr.operand)
 
         if isinstance(operand, cl.array.Array):
-            from pytential.qbx.utils import connection_from_dds
+            from pytential.symbolic.dofconnection import DOFConnection
 
-            conn = connection_from_dds(
-                    self.bound_expr.places, expr.source, expr.target)
+            conn = DOFConnection(self.bound_expr.places,
+                    expr.source, expr.target)
             return conn(self.queue, operand)
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand

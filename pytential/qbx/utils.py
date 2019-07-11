@@ -31,9 +31,8 @@ import numpy as np
 from boxtree.tree import Tree
 import pyopencl as cl
 import pyopencl.array # noqa
-from pytools import memoize, memoize_in, memoize_method
+from pytools import memoize_method
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-from meshmode.discretization.connection import DiscretizationConnection
 
 import logging
 logger = logging.getLogger(__name__)
@@ -71,160 +70,6 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 # }}}
 
 
-# {{{ connections
-
-
-def mesh_el_view(mesh, group_nr, global_array):
-    """Return a view of *global_array* of shape
-    ``(..., mesh.groups[group_nr].nelements)``
-    where *global_array* is of shape ``(..., nelements)``,
-    where *nelements* is the global (per-mesh) element count.
-    """
-
-    group = mesh.groups[group_nr]
-
-    return global_array[
-        ..., group.element_nr_base:group.element_nr_base + group.nelements] \
-        .reshape(
-            global_array.shape[:-1]
-            + (group.nelements,))
-
-
-class InterleaverConnection(DiscretizationConnection):
-    def __init__(self, discr):
-        super(InterleaverConnection, self).__init__(discr, discr,
-                is_surjective=True)
-
-    @memoize
-    def kernel(self, dtype):
-        knl = lp.make_kernel(
-            "[srclen, dstlen] -> {[i]: 0 <= i < srclen}",
-            """
-            dst[2*i] = src1[i]
-            dst[2*i + 1] = src2[i]
-            """,
-            [
-                lp.GlobalArg("src1", shape="srclen", dtype=dtype),
-                lp.GlobalArg("src2", shape="srclen", dtype=dtype),
-                lp.GlobalArg("dst", shape="dstlen", dtype=dtype),
-                "..."
-            ],
-            assumptions="2*srclen = dstlen",
-            lang_version=MOST_RECENT_LANGUAGE_VERSION,
-            )
-
-        knl = lp.split_iname(knl, "i", 128,
-                inner_tag="l.0", outer_tag="g.0")
-        return knl
-
-    def __call__(self, queue, vecs):
-        if isinstance(vecs, cl.array.Array):
-            vecs = [[vecs], [vecs]]
-        elif isinstance(vecs, (list, tuple)):
-            assert len(vecs) == 2
-        else:
-            raise ValueError('cannot interleave arrays')
-
-        result = []
-        for src1, src2 in zip(vecs[0], vecs[1]):
-            if not isinstance(src1, cl.array.Array) \
-                    or not isinstance(src2, cl.array.Array):
-                raise TypeError('non-array passed to connection')
-
-            if src1.shape != (self.to_discr.nnodes,) \
-                    or src2.shape != (self.to_discr.nnodes,):
-                raise ValueError('invalid shape of incoming array')
-
-            axis = cl.array.empty(queue, 2 * len(src1), src1.dtype)
-            self.kernel(src1.dtype)(queue,
-                    src1=src1, src2=src2, dst=axis)
-            result.append(axis)
-
-        # TODO: why is get_interleaved_something have an evt.wait?
-
-        return result[0] if len(result) == 1 else result
-
-
-class ElementSampleConnection(DiscretizationConnection):
-    def __init__(self, discr):
-        super(ElementSampleConnection, self).__init__(discr, discr,
-                is_surjective=True)
-
-    def __call__(self, queue, vec):
-        @memoize_in(self, "subsample_to_elements_kernel")
-        def kernel():
-            knl = lp.make_kernel(
-                "{[i, k]: 0 <= i < nelements}",
-                "result[i] = a[i, 0]",
-                [
-                    lp.GlobalArg("a",
-                        shape=("nelements", "nunit_nodes"), dtype=None),
-                    lp.ValueArg("nunit_nodes", dtype=np.int32),
-                    "..."
-                ],
-                name="subsample_to_elements",
-                lang_version=MOST_RECENT_LANGUAGE_VERSION,
-                )
-
-            knl = lp.split_iname(knl, "i", 128,
-                    inner_tag="l.0", outer_tag="g.0")
-            return knl
-
-        result = cl.array.empty(queue, self.to_discr.mesh.nelements, vec.dtype)
-        for igrp, group in enumerate(self.to_discr.groups):
-            kernel()(queue,
-                a=group.view(vec),
-                result=mesh_el_view(self.to_discr.mesh, igrp, result))
-
-        return result
-
-
-def connection_from_dds(places, source, target):
-    from pytential import sym
-    source = sym.as_dofdesc(source)
-    target = sym.as_dofdesc(target)
-
-    if not ((source.where == sym.DEFAULT_SOURCE
-                and target.where == sym.DEFAULT_TARGET)
-            or source.where == target.where):
-        raise ValueError('cannot interpolate between different domains')
-    if source.granularity != sym.GRANULARITY_NODE:
-        raise ValueError('can only interpolate from `GRANULARITY_NODE`')
-
-    lpot_source = places[source]
-    connections = []
-    if target.discr != source.discr:
-        if target.discr != sym.QBX_SOURCE_QUAD_STAGE2:
-            # TODO: can probably extend this to project from a QUAD_STAGE2
-            # using L2ProjectionInverseDiscretizationConnection
-            raise RuntimeError('can only interpolate to `QBX_SOURCE_QUAD_STAGE2`')
-
-        if source.discr == sym.QBX_SOURCE_STAGE2:
-            connections.append(lpot_source.refined_interp_to_ovsmp_quad_connection)
-        elif source.discr == sym.QBX_SOURCE_QUAD_STAGE2:
-            pass
-        else:
-            connections.append(lpot_source.resampler)
-
-    if target.granularity != source.granularity:
-        discr = places.get_discretization(target)
-        if target.granularity == sym.GRANULARITY_CENTER:
-            connections.append(InterleaverConnection(discr))
-        elif target.granularity == sym.GRANULARITY_ELEMENT:
-            connections.append(ElementSampleConnection(discr))
-
-    if not connections:
-        from_discr = places.get_discretization(source)
-    else:
-        from_discr = None
-
-    from meshmode.discretization.connection import ChainedDiscretizationConnection
-    return ChainedDiscretizationConnection(connections, from_discr=from_discr)
-
-
-# }}}
-
-
 # {{{ make interleaved centers
 
 def get_interleaved_centers(queue, lpot_source):
@@ -238,7 +83,8 @@ def get_interleaved_centers(queue, lpot_source):
     ext_centers = bind(lpot_source,
             sym.expansion_centers(lpot_source.ambient_dim, +1))(queue)
 
-    interleaver = InterleaverConnection(lpot_source.density_discr)
+    from pytential.symbolic.dofconnection import CenterGranularityConnection
+    interleaver = CenterGranularityConnection(lpot_source.density_discr)
     return interleaver(queue, [int_centers, ext_centers])
 
 # }}}
@@ -256,7 +102,8 @@ def get_interleaved_radii(queue, lpot_source):
     radii = bind(lpot_source,
             sym.expansion_radii(lpot_source.ambient_dim))(queue)
 
-    interleaver = InterleaverConnection(lpot_source.density_discr)
+    from pytential.symbolic.dofconnection import CenterGranularityConnection
+    interleaver = CenterGranularityConnection(lpot_source.density_discr)
     return interleaver(queue, radii)
 
 # }}}
@@ -333,6 +180,22 @@ class TreeWranglerBase(object):
 
 
 # {{{ element centers of mass
+
+def mesh_el_view(mesh, group_nr, global_array):
+    """Return a view of *global_array* of shape
+    ``(..., mesh.groups[group_nr].nelements)``
+    where *global_array* is of shape ``(..., nelements)``,
+    where *nelements* is the global (per-mesh) element count.
+    """
+
+    group = mesh.groups[group_nr]
+
+    return global_array[
+        ..., group.element_nr_base:group.element_nr_base + group.nelements] \
+        .reshape(
+            global_array.shape[:-1]
+            + (group.nelements,))
+
 
 def element_centers_of_mass(discr):
     knl = lp.make_kernel(
