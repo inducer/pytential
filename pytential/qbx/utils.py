@@ -26,13 +26,11 @@ THE SOFTWARE.
 """
 
 
-import loopy as lp
 import numpy as np
 from boxtree.tree import Tree
 import pyopencl as cl
 import pyopencl.array # noqa
 from pytools import memoize_method
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 import logging
 logger = logging.getLogger(__name__)
@@ -47,7 +45,6 @@ QBX_TREE_C_PREAMBLE = r"""//CL:mako//
 // have their own numbering starting at 0. These macros convert
 // the per-class numbering into the internal tree particle number.
 #define INDEX_FOR_CENTER_PARTICLE(i) (sorted_target_ids[center_offset + i])
-#define INDEX_FOR_PANEL_PARTICLE(i) (sorted_target_ids[panel_offset + i])
 #define INDEX_FOR_SOURCE_PARTICLE(i) (sorted_target_ids[source_offset + i])
 #define INDEX_FOR_TARGET_PARTICLE(i) (sorted_target_ids[target_offset + i])
 
@@ -179,66 +176,6 @@ class TreeWranglerBase(object):
 # }}}
 
 
-# {{{ element centers of mass
-
-def mesh_el_view(mesh, group_nr, global_array):
-    """Return a view of *global_array* of shape
-    ``(..., mesh.groups[group_nr].nelements)``
-    where *global_array* is of shape ``(..., nelements)``,
-    where *nelements* is the global (per-mesh) element count.
-    """
-
-    group = mesh.groups[group_nr]
-
-    return global_array[
-        ..., group.element_nr_base:group.element_nr_base + group.nelements] \
-        .reshape(
-            global_array.shape[:-1]
-            + (group.nelements,))
-
-
-def element_centers_of_mass(discr):
-    knl = lp.make_kernel(
-        """{[dim,k,i]:
-            0<=dim<ndims and
-            0<=k<nelements and
-            0<=i<nunit_nodes}""",
-        """
-            panels[dim, k] = sum(i, nodes[dim, k, i])/nunit_nodes
-            """,
-        default_offset=lp.auto, name="find_panel_centers_of_mass",
-        lang_version=MOST_RECENT_LANGUAGE_VERSION)
-
-    knl = lp.fix_parameters(knl, ndims=discr.ambient_dim)
-
-    knl = lp.split_iname(knl, "k", 128, inner_tag="l.0", outer_tag="g.0")
-    knl = lp.tag_inames(knl, dict(dim="ilp"))
-
-    with cl.CommandQueue(discr.cl_context) as queue:
-        mesh = discr.mesh
-        panels = cl.array.empty(queue, (mesh.ambient_dim, mesh.nelements),
-                                dtype=discr.real_dtype)
-        for group_nr, group in enumerate(discr.groups):
-            _, (result,) = knl(queue,
-                nelements=group.nelements,
-                nunit_nodes=group.nunit_nodes,
-                nodes=group.view(discr.nodes()),
-                panels=mesh_el_view(discr.mesh, group_nr, panels))
-        panels.finish()
-        panels = panels.with_queue(None)
-        return tuple(panels[d, :] for d in range(mesh.ambient_dim))
-
-# }}}
-
-
-# {{{ compute center array
-
-def get_centers_on_side(lpot_src, sign):
-    raise RuntimeError('bind `expansion_centers` directly')
-
-# }}}
-
-
 # {{{ tree-with-metadata: data structure
 
 class TreeWithQBXMetadata(Tree):
@@ -312,7 +249,6 @@ class TreeWithQBXMetadata(Tree):
 
     .. attribute:: qbx_user_source_slice
     .. attribute:: qbx_user_center_slice
-    .. attribute:: qbx_user_panel_slice
     .. attribute:: qbx_user_target_slice
     """
     pass
@@ -332,7 +268,7 @@ def build_tree_with_qbx_metadata(
     """Return a :class:`TreeWithQBXMetadata` built from the given layer
     potential source. This contains particles of four different types:
 
-       * source particles and panel centers of mass either from
+       * source particles either from
          ``lpot_source.density_discr`` or
          ``lpot_source.stage2_density_discr``
        * centers from ``lpot_source.centers()``
@@ -345,37 +281,32 @@ def build_tree_with_qbx_metadata(
 
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
 
-    :arg use_stage2_discr: If *True*, builds a tree with sources/centers of
-        mass from ``lpot_source.stage2_density_discr``. If *False* (default),
+    :arg use_stage2_discr: If *True*, builds a tree with sources
+        from ``lpot_source.stage2_density_discr``. If *False* (default),
         they are from ``lpot_source.density_discr``.
     """
     # The ordering of particles is as follows:
     # - sources go first
     # - then centers
-    # - then panels (=centers of mass)
     # - then targets
 
-    sources = (
-            lpot_source.density_discr.nodes()
-            if not use_stage2_discr
-            else lpot_source.quad_stage2_density_discr.nodes())
+    if use_stage2_discr:
+        density_discr = lpot_source.quad_stage2_density_discr
+        npanels = lpot_source.stage2_density_discr.mesh.nelements
+    else:
+        density_discr = lpot_source.density_discr
+        npanels = lpot_source.density_discr.mesh.nelements
 
+    sources = density_discr.nodes()
     centers = get_interleaved_centers(queue, lpot_source)
-
-    centers_of_mass = (
-            lpot_source._panel_centers_of_mass()
-            if not use_stage2_discr
-            else lpot_source._stage2_panel_centers_of_mass())
-
     targets = (tgt.nodes() for tgt in targets_list)
 
     particles = tuple(
             cl.array.concatenate(dim_coords, queue=queue)
-            for dim_coords in zip(sources, centers, centers_of_mass, *targets))
+            for dim_coords in zip(sources, centers, *targets))
 
     # Counts
     nparticles = len(particles[0])
-    npanels = len(centers_of_mass[0])
     nsources = len(sources[0])
     ncenters = len(centers[0])
     # Each source gets an interior / exterior center.
@@ -389,12 +320,10 @@ def build_tree_with_qbx_metadata(
     qbx_user_center_slice = slice(center_slice_start, center_slice_start + ncenters)
 
     panel_slice_start = center_slice_start + ncenters
-    qbx_user_panel_slice = slice(panel_slice_start, panel_slice_start + npanels)
-
-    target_slice_start = panel_slice_start + npanels
+    target_slice_start = panel_slice_start
     qbx_user_target_slice = slice(target_slice_start, target_slice_start + ntargets)
 
-    # Build tree with sources, centers, and centers of mass. Split boxes
+    # Build tree with sources and centers. Split boxes
     # only because of sources.
     refine_weights = cl.array.zeros(queue, nparticles, np.int32)
     refine_weights[:nsources].fill(1)
@@ -413,8 +342,7 @@ def build_tree_with_qbx_metadata(
     for class_name, particle_slice, fixup in (
             ("box_to_qbx_source", qbx_user_source_slice, 0),
             ("box_to_qbx_target", qbx_user_target_slice, -target_slice_start),
-            ("box_to_qbx_center", qbx_user_center_slice, -center_slice_start),
-            ("box_to_qbx_panel", qbx_user_panel_slice, -panel_slice_start)):
+            ("box_to_qbx_center", qbx_user_center_slice, -center_slice_start)):
         flags.fill(0)
         flags[particle_slice].fill(1)
         flags.finish()
@@ -433,11 +361,6 @@ def build_tree_with_qbx_metadata(
     del box_to_class
 
     # Compute panel => source relation
-    if use_stage2_discr:
-        density_discr = lpot_source.quad_stage2_density_discr
-    else:
-        density_discr = lpot_source.density_discr
-
     qbx_panel_to_source_starts = cl.array.empty(
             queue, npanels + 1, dtype=tree.particle_id_dtype)
     el_offset = 0
@@ -470,7 +393,6 @@ def build_tree_with_qbx_metadata(
         qbx_panel_to_source_starts=qbx_panel_to_source_starts,
         qbx_panel_to_center_starts=qbx_panel_to_center_starts,
         qbx_user_source_slice=qbx_user_source_slice,
-        qbx_user_panel_slice=qbx_user_panel_slice,
         qbx_user_center_slice=qbx_user_center_slice,
         qbx_user_target_slice=qbx_user_target_slice,
         nqbxpanels=npanels,

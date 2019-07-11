@@ -119,85 +119,6 @@ def partition_by_nodes(discr,
                                 ranges.with_queue(None))
 
 
-def partition_by_elements(discr,
-                          use_tree=True,
-                          max_elements_in_box=None):
-    """Generate equally sized ranges of points. The partition is created at the
-    element level, so that all the nodes belonging to an element belong to
-    the same range. This can result in slightly larger differences in size
-    between the ranges, but can be very useful when the individual partitions
-    need to be resampled, integrated, etc.
-
-    :arg discr: a :class:`meshmode.discretization.Discretization`.
-    :arg use_tree: if ``True``, node partitions are generated using a
-        :class:`boxtree.TreeBuilder`, which leads to geometrically close
-        points to belong to the same partition. If ``False``, a simple linear
-        partition is constructed.
-    :arg max_elements_in_box: passed to :class:`boxtree.TreeBuilder`.
-
-    :return: a :class:`sumpy.tools.BlockIndexRanges`.
-    """
-
-    if max_elements_in_box is None:
-        # NOTE: keep in sync with partition_by_nodes
-        max_nodes_in_box = 32
-
-        nunit_nodes = int(np.mean([g.nunit_nodes for g in discr.groups]))
-        max_elements_in_box = max_nodes_in_box // nunit_nodes
-
-    with cl.CommandQueue(discr.cl_context) as queue:
-        if use_tree:
-            from boxtree import box_flags_enum
-            from boxtree import TreeBuilder
-
-            builder = TreeBuilder(discr.cl_context)
-
-            from pytential.qbx.utils import element_centers_of_mass
-            elranges = np.cumsum([group.nelements for group in discr.mesh.groups])
-            elcenters = element_centers_of_mass(discr)
-
-            tree, _ = builder(queue, elcenters,
-                max_particles_in_box=max_elements_in_box)
-
-            groups = discr.groups
-            tree = tree.get(queue)
-            leaf_boxes, = (tree.box_flags
-                           & box_flags_enum.HAS_CHILDREN == 0).nonzero()
-
-            indices = np.empty(len(leaf_boxes), dtype=np.object)
-            for i, ibox in enumerate(leaf_boxes):
-                box_start = tree.box_source_starts[ibox]
-                box_end = box_start + tree.box_source_counts_cumul[ibox]
-
-                ielement = tree.user_source_ids[box_start:box_end]
-                igroup = np.digitize(ielement, elranges)
-
-                indices[i] = np.hstack([_element_node_range(groups[j], k)
-                                        for j, k in zip(igroup, ielement)])
-        else:
-            nelements = discr.mesh.nelements
-            elements = np.array_split(np.arange(0, nelements),
-                                      nelements // max_elements_in_box)
-
-            elranges = np.cumsum([g.nelements for g in discr.groups])
-            elgroups = [np.digitize(elements[i], elranges)
-                        for i in range(len(elements))]
-
-            indices = np.empty(len(elements), dtype=np.object)
-            for i in range(indices.shape[0]):
-                indices[i] = np.hstack([_element_node_range(discr.groups[j], k)
-                                        for j, k in zip(elgroups[i], elements[i])])
-
-        ranges = to_device(queue,
-                np.cumsum([0] + [b.shape[0] for b in indices]))
-        indices = to_device(queue, np.hstack(indices))
-        assert ranges[-1] == discr.nnodes
-
-        return BlockIndexRanges(discr.cl_context,
-                                indices.with_queue(None),
-                                ranges.with_queue(None))
-
-
 def partition_from_coarse(resampler, from_indices):
     """Generate a partition of nodes from an existing partition on a
     coarser discretization. The new partition is generated based on element
@@ -383,7 +304,6 @@ class ProxyGenerator(object):
         radius_expr = radius_expr.format(ratio=self.ratio)
 
         # NOTE: centers of mass are computed using a second-order approximation
-        # that currently matches what is in `element_centers_of_mass`.
         knl = lp.make_kernel([
             "{[irange]: 0 <= irange < nranges}",
             "{[i]: 0 <= i < npoints}",

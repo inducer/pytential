@@ -37,6 +37,22 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 # {{{ granularity connections
 
+def mesh_el_view(mesh, group_nr, global_array):
+    """Return a view of *global_array* of shape
+    ``(..., mesh.groups[group_nr].nelements)``
+    where *global_array* is of shape ``(..., nelements)``,
+    where *nelements* is the global (per-mesh) element count.
+    """
+
+    group = mesh.groups[group_nr]
+
+    return global_array[
+        ..., group.element_nr_base:group.element_nr_base + group.nelements] \
+        .reshape(
+            global_array.shape[:-1]
+            + (group.nelements,))
+
+
 class GranularityConnection(object):
     """Abstract interface for transporting a DOF between different levels
     of granularity.
@@ -151,8 +167,6 @@ class ElementGranularityConnection(GranularityConnection):
         return knl
 
     def __call__(self, queue, vec):
-        from pytential.qbx.utils import mesh_el_view
-
         result = cl.array.empty(queue, self.discr.mesh.nelements, vec.dtype)
         for igrp, group in enumerate(self.discr.groups):
             self.kernel()(queue,

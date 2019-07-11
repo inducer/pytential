@@ -478,16 +478,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ internal API
 
     @memoize_method
-    def _panel_centers_of_mass(self):
-        import pytential.qbx.utils as utils
-        return utils.element_centers_of_mass(self.density_discr)
-
-    @memoize_method
-    def _stage2_panel_centers_of_mass(self):
-        import pytential.qbx.utils as utils
-        return utils.element_centers_of_mass(self.stage2_density_discr)
-
-    @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
         """
         :arg target_discrs_and_qbx_sides:
