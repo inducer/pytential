@@ -487,21 +487,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         import pytential.qbx.utils as utils
         return utils.element_centers_of_mass(self.stage2_density_discr)
 
-    def _expansion_radii(self, last_dim_length):
-        raise RuntimeError("bind `expansion_radii` directly")
-
-    def _source_danger_zone_radii(self, last_dim_length="npanels"):
-        raise RuntimeError("bind `_source_danger_zone_radii` directly")
-
-    def _close_target_tunnel_radius(self, last_dim_length):
-        raise RuntimeError("bind `_close_target_tunnel_radii` directly")
-
-    def _coarsest_quad_resolution(self, last_dim_length="npanels"):
-        raise RuntimeError("bind `_quad_resolution` directly")
-
-    def _stage2_coarsest_quad_resolution(self, last_dim_length="npanels"):
-        raise RuntimeError("bind `_quad_resolution` directly")
-
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
         """
