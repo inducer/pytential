@@ -145,7 +145,8 @@ class StokesletWrapper(object):
         if idx[0] != idx[1]:
             return func(self.kernel_dict[idx])
 
-        return -sum(func(self.kernel_dict[(i, i)]) for i in range(self.dim) if i != idx[0])
+        return -sum(func(self.kernel_dict[(i, i)]) for i
+                    in range(self.dim) if i != idx[0])
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """ Symbolic expressions for integrating Stokeslet kernel
@@ -166,9 +167,9 @@ class StokesletWrapper(object):
 
         for comp in range(self.dim):
             for i in range(self.dim):
-                func = lambda knl: sym.IntG(
-                                     knl, density_vec_sym[i],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
+                def func(knl):
+                    return sym.IntG(knl, density_vec_sym[i],
+                                    qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
                 sym_expr[comp] += self.map_func_to_expr((comp, i), func)
 
         return sym_expr
@@ -211,11 +212,12 @@ class StokesletWrapper(object):
 
         for comp in range(self.dim):
             for i in range(self.dim):
-                func = lambda knl: DerivativeTaker(deriv_dir).map_int_g(
-                                         sym.IntG(knl,
-                                             density_vec_sym[i],
-                                             qbx_forced_limit=qbx_forced_limit,
-                                             mu=mu_sym))
+                def func(knl):
+                    return DerivativeTaker(deriv_dir).map_int_g(
+                                sym.IntG(knl,
+                                density_vec_sym[i],
+                                qbx_forced_limit=qbx_forced_limit,
+                                mu=mu_sym))
                 sym_expr[comp] += self.map_func_to_expr((comp, i), func)
 
         return sym_expr
