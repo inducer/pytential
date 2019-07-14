@@ -80,13 +80,6 @@ def _get_layer_potential_args(mapper, expr, source):
     :return: a mapping of kernel arguments evaluated by the *mapper*.
     """
 
-    # skip resampling if source and target are the same
-    from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-    if ((expr.source is not DEFAULT_SOURCE)
-            and (expr.target is not DEFAULT_TARGET)
-            and (isinstance(expr.source, type(expr.target)))):
-        source = None
-
     kernel_args = {}
     for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
         rec_arg = mapper.rec(arg_expr)
@@ -154,13 +147,16 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
 
     if source.density_discr is target_discr:
         # NOTE: skip expensive target association
-        from pytential.qbx.utils import get_centers_on_side
-        centers = get_centers_on_side(source, qbx_forced_limit)
-        radii = source._expansion_radii('nsources')
+        centers = bind(source,
+            sym.expansion_centers(source.ambient_dim, qbx_forced_limit))(queue)
+        radii = bind(source,
+            sym.expansion_radii(source.ambient_dim))(queue)
     else:
         from pytential.qbx.utils import get_interleaved_centers
         centers = get_interleaved_centers(queue, source)
-        radii = source._expansion_radii('ncenters')
+        radii = bind(source, sym.expansion_radii(
+            source.ambient_dim,
+            granularity=sym.GRANULARITY_CENTER))(queue)
 
         # NOTE: using a very small tolerance to make sure all the stage2
         # targets are associated to a center. We can't use the user provided
@@ -319,15 +315,16 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if self.is_kind_matrix(rec_operand):
             raise NotImplementedError("derivatives")
 
-        where_discr = self.places[expr.where]
-        op = sym.NumReferenceDerivative(expr.ref_axes, sym.var("u"))
-        return bind(where_discr, op)(
-                self.queue, u=cl.array.to_device(self.queue, rec_operand)).get()
+        rec_operand = cl.array.to_device(self.queue, rec_operand)
+        op = sym.NumReferenceDerivative(
+                ref_axes=expr.ref_axes,
+                operand=sym.var("u"),
+                where=expr.where)
+        return bind(self.places, op)(self.queue, u=rec_operand).get()
 
     def map_node_coordinate_component(self, expr):
-        where_discr = self.places[expr.where]
-        op = sym.NodeCoordinateComponent(expr.ambient_axis)
-        return bind(where_discr, op)(self.queue).get()
+        op = sym.NodeCoordinateComponent(expr.ambient_axis, where=expr.where)
+        return bind(self.places, op)(self.queue).get()
 
     def map_call(self, expr):
         arg, = expr.parameters
@@ -402,13 +399,14 @@ class MatrixBuilder(MatrixBuilderBase):
                 dep_source, dep_discr, places, context)
 
     def map_int_g(self, expr):
-        where_source = expr.source
-        if where_source is sym.DEFAULT_SOURCE:
-            where_source = sym.QBXSourceQuadStage2(expr.source)
+        source_dd = sym.as_dofdesc(expr.source)
+        target_dd = sym.as_dofdesc(expr.target)
+        if source_dd.discr is None:
+            source_dd = source_dd.copy(discr=sym.QBX_SOURCE_QUAD_STAGE2)
 
-        source = self.places[expr.source]
-        source_discr = self.places.get_discretization(where_source)
-        target_discr = self.places.get_discretization(expr.target)
+        lpot_source = self.places[source_dd]
+        source_discr = self.places.get_discretization(source_dd)
+        target_discr = self.places.get_discretization(target_dd)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -419,10 +417,14 @@ class MatrixBuilder(MatrixBuilderBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self, expr, source)
+        if source_dd.discr == target_dd.discr:
+            # NOTE: passing None to avoid any resampling
+            kernel_args = _get_layer_potential_args(self, expr, None)
+        else:
+            kernel_args = _get_layer_potential_args(self, expr, lpot_source)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
-        local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
+        local_expn = LineTaylorLocalExpansion(kernel, lpot_source.qbx_order)
 
         from sumpy.qbx import LayerPotentialMatrixGenerator
         mat_gen = LayerPotentialMatrixGenerator(
@@ -430,7 +432,7 @@ class MatrixBuilder(MatrixBuilderBase):
 
         assert abs(expr.qbx_forced_limit) > 0
         centers, radii = _get_centers_and_expansion_radii(self.queue,
-                source, target_discr, expr.qbx_forced_limit)
+                lpot_source, target_discr, expr.qbx_forced_limit)
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
@@ -440,14 +442,14 @@ class MatrixBuilder(MatrixBuilderBase):
                 **kernel_args)
         mat = mat.get()
 
-        waa = _get_weights_and_area_elements(self.queue, source, source_discr)
+        waa = _get_weights_and_area_elements(self.queue, lpot_source, source_discr)
         mat[:, :] *= waa.get(self.queue)
 
-        if target_discr.nnodes != source_discr.nnodes:
+        if source_dd.discr != target_dd.discr:
             # NOTE: we only resample sources
             assert target_discr.nnodes < source_discr.nnodes
 
-            resampler = source.direct_resampler
+            resampler = lpot_source.direct_resampler
             resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
             mat = mat.dot(resample_mat)
 
@@ -548,7 +550,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             raise NotImplementedError()
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self.mat_mapper, expr, source)
+        kernel_args = _get_layer_potential_args(self.mat_mapper, expr, None)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)

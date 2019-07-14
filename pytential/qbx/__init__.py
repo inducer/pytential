@@ -348,8 +348,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def weights_and_area_elements(self):
-        import pytential.symbolic.primitives as p
-        from pytential.symbolic.execution import bind
+        from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
             # quad_stage2_density_discr is not guaranteed to be usable for
             # interpolation/differentiation. Use density_discr to find
@@ -359,10 +358,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     queue,
                     bind(
                         self.stage2_density_discr,
-                        p.area_element(self.ambient_dim, self.dim)
+                        sym.area_element(self.ambient_dim, self.dim)
                         )(queue))
 
-            qweight = bind(self.quad_stage2_density_discr, p.QWeight())(queue)
+            qweight = bind(self.quad_stage2_density_discr, sym.QWeight())(queue)
 
             return (area_element.with_queue(queue)*qweight).with_queue(None)
 
@@ -468,110 +467,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @property
     @memoize_method
     def h_max(self):
+        from pytential import bind, sym
+
         with cl.CommandQueue(self.cl_context) as queue:
-            quad_res = self._coarsest_quad_resolution("npanels").with_queue(queue)
+            quad_res = bind(self, sym._quad_resolution(
+                    self.ambient_dim,
+                    granularity=sym.GRANULARITY_ELEMENT))(queue)
             return cl.array.max(quad_res).get().item()
 
     # {{{ internal API
-
-    @memoize_method
-    def _panel_centers_of_mass(self):
-        import pytential.qbx.utils as utils
-        return utils.element_centers_of_mass(self.density_discr)
-
-    @memoize_method
-    def _stage2_panel_centers_of_mass(self):
-        import pytential.qbx.utils as utils
-        return utils.element_centers_of_mass(self.stage2_density_discr)
-
-    def _dim_fudge_factor(self):
-        if self.density_discr.dim == 2:
-            return 0.5
-        else:
-            return 1
-
-    @memoize_method
-    def _expansion_radii(self, last_dim_length):
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (self._coarsest_quad_resolution(last_dim_length)
-                    .with_queue(queue)
-                    * 0.5 * self._dim_fudge_factor()).with_queue(None)
-
-    # _expansion_radii should not be needed for the fine discretization
-
-    @memoize_method
-    def _source_danger_zone_radii(self, last_dim_length="npanels"):
-        # This should be the expression of the expansion radii, but
-        #
-        # - in reference to the stage 2 discretization
-        # - mutliplied by 0.75 because
-        #
-        #   - Setting this equal to the expansion radii ensures that *every*
-        #     stage 2 element will be refined, which is wasteful.
-        #     (so this needs to be smaller than that)
-        #
-
-        #   - Setting this equal to half the expansion radius will not provide
-        #     a refinement 'buffer layer' at a 2x coarsening fringe.
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (
-                    (self._stage2_coarsest_quad_resolution(last_dim_length)
-                        .with_queue(queue))
-                    * 0.5 * 0.75 * self._dim_fudge_factor()).with_queue(None)
-
-    @memoize_method
-    def _close_target_tunnel_radius(self, last_dim_length):
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (
-                    self._expansion_radii(last_dim_length).with_queue(queue)
-                    * 0.5
-                    ).with_queue(None)
-
-    @memoize_method
-    def _coarsest_quad_resolution(self, last_dim_length="npanels"):
-        """This measures the quadrature resolution across the
-        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
-        should be the same as the panel length.
-        """
-        import pytential.qbx.utils as utils
-        from pytential import sym, bind
-        with cl.CommandQueue(self.cl_context) as queue:
-            maxstretch = bind(
-                    self,
-                    sym._simplex_mapping_max_stretch_factor(
-                        self.ambient_dim)
-                    )(queue)
-
-            maxstretch = utils.to_last_dim_length(
-                    self.density_discr, maxstretch, last_dim_length)
-            maxstretch = maxstretch.with_queue(None)
-
-        return maxstretch
-
-    @memoize_method
-    def _stage2_coarsest_quad_resolution(self, last_dim_length="npanels"):
-        """This measures the quadrature resolution across the
-        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
-        should be the same as the panel length.
-        """
-        if last_dim_length != "npanels":
-            # Not technically required below, but no need to loosen for now.
-            raise NotImplementedError()
-
-        import pytential.qbx.utils as utils
-        from pytential import sym, bind
-        with cl.CommandQueue(self.cl_context) as queue:
-            maxstretch = bind(
-                    self, sym._simplex_mapping_max_stretch_factor(
-                        self.ambient_dim,
-                        where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE))
-                    )(queue)
-            maxstretch = utils.to_last_dim_length(
-                    self.stage2_density_discr, maxstretch, last_dim_length)
-            maxstretch = maxstretch.with_queue(None)
-
-        return maxstretch
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
@@ -838,7 +742,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
 
-        import pytential.qbx.utils as utils
+        from pytential import bind, sym
+        expansion_radii = bind(self,
+                sym.expansion_radii(self.ambient_dim))(queue)
+        centers = {
+                -1: bind(self,
+                    sym.expansion_centers(self.ambient_dim, -1))(queue),
+                +1: bind(self,
+                    sym.expansion_centers(self.ambient_dim, +1))(queue)
+                }
 
         # FIXME: Do this all at once
         result = []
@@ -855,9 +767,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
                         self.quad_stage2_density_discr.nodes(),
-                        utils.get_centers_on_side(self, o.qbx_forced_limit),
+                        centers[o.qbx_forced_limit],
                         [strengths],
-                        expansion_radii=self._expansion_radii("nsources"),
+                        expansion_radii=expansion_radii,
                         **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
             else:

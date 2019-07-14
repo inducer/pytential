@@ -61,14 +61,14 @@ except ImportError:
 
             (2, 7, 5, True),
             ])
-def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
+def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         force_direct):
     logging.basicConfig(level=logging.INFO)
 
     print("ellipse_aspect: %s, mode_nr: %d, qbx_order: %d" % (
             ellipse_aspect, mode_nr, qbx_order))
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     target_order = 8
@@ -119,8 +119,8 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
         if 0:
             # plot geometry, centers, normals
 
-            from pytential.qbx.utils import get_centers_on_side
-            centers = get_centers_on_side(qbx, 1)
+            centers = bind(qbx,
+                    sym.expansion_centers(qbx.ambient_dim, +1))(queue)
 
             nodes_h = nodes.get()
             centers_h = [centers[0].get(), centers[1].get()]
@@ -148,7 +148,7 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
 
         sigma = cl.clmath.cos(mode_nr*angle)/J
 
-        s_sigma_op = bind(qbx, sym.S(lap_knl, sym.var("sigma")))
+        s_sigma_op = bind(qbx, sym.S(lap_knl, sym.var("sigma"), qbx_forced_limit=+1))
         s_sigma = s_sigma_op(queue=queue, sigma=sigma)
 
         # SIGN BINGO! :)
@@ -249,13 +249,13 @@ def test_ellipse_eigenvalues(ctx_getter, ellipse_aspect, mode_nr, qbx_order,
     "sumpy",
     "fmmlib",
     ])
-def test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
+def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
         fmm_backend):
     logging.basicConfig(level=logging.INFO)
 
     special = pytest.importorskip("scipy.special")
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     target_order = 8
@@ -310,7 +310,7 @@ def test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
 
         # {{{ single layer
 
-        s_sigma_op = bind(qbx, sym.S(lap_knl, sym.var("sigma")))
+        s_sigma_op = bind(qbx, sym.S(lap_knl, sym.var("sigma"), qbx_forced_limit=+1))
         s_sigma = s_sigma_op(queue=queue, sigma=ymn)
         s_eigval = 1/(2*mode_n + 1)
         s_eoc_rec.add_data_point(qbx.h_max, rel_err(s_sigma, s_eigval*ymn))
@@ -319,7 +319,8 @@ def test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
 
         # {{{ double layer
 
-        d_sigma_op = bind(qbx, sym.D(lap_knl, sym.var("sigma")))
+        d_sigma_op = bind(qbx,
+                sym.D(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         d_sigma = d_sigma_op(queue=queue, sigma=ymn)
         d_eigval = -1/(2*(2*mode_n + 1))
         d_eoc_rec.add_data_point(qbx.h_max, rel_err(d_sigma, d_eigval*ymn))
@@ -328,7 +329,8 @@ def test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
 
         # {{{ S'
 
-        sp_sigma_op = bind(qbx, sym.Sp(lap_knl, sym.var("sigma")))
+        sp_sigma_op = bind(qbx,
+                 sym.Sp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         sp_sigma = sp_sigma_op(queue=queue, sigma=ymn)
         sp_eigval = -1/(2*(2*mode_n + 1))
         sp_eoc_rec.add_data_point(qbx.h_max, rel_err(sp_sigma, sp_eigval*ymn))
@@ -337,7 +339,8 @@ def test_sphere_eigenvalues(ctx_getter, mode_m, mode_n, qbx_order,
 
         # {{{ D'
 
-        dp_sigma_op = bind(qbx, sym.Dp(lap_knl, sym.var("sigma")))
+        dp_sigma_op = bind(qbx,
+                sym.Dp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         dp_sigma = dp_sigma_op(queue=queue, sigma=ymn)
         dp_eigval = -(mode_n*(mode_n+1))/(2*mode_n + 1)
         dp_eoc_rec.add_data_point(qbx.h_max, rel_err(dp_sigma, dp_eigval*ymn))

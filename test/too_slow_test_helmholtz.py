@@ -386,8 +386,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     "tm",
     "tem",
     ])
-def test_dielectric(ctx_getter, qbx_order, op_class, mode, visualize=False):
-    cl_ctx = ctx_getter()
+def test_dielectric(ctx_factory, qbx_order, op_class, mode, visualize=False):
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     import logging

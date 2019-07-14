@@ -41,8 +41,10 @@ from functools import partial
 
 
 __doc__ = """
-.. |where-blurb| replace:: A symbolic name for a
-    :class:`pytential.discretization.Discretization`
+.. |where-blurb| replace:: A symbolic name for a geometric object (such
+    as a :class:`~meshmode.discretization.Discretization`) or a
+    :class:`DOFDescriptor`.
+
 
 Object types
 ^^^^^^^^^^^^
@@ -126,6 +128,9 @@ Discretization properties
 .. autofunction:: second_fundamental_form
 .. autofunction:: shape_operator
 
+.. autofunction:: expansion_radii
+.. autofunction:: expansion_centers
+
 Elementary numerics
 ^^^^^^^^^^^^^^^^^^^
 
@@ -196,69 +201,161 @@ Pretty-printing expressions
 """
 
 
-# {{{ 'where' specifiers
+# {{{ dof descriptors
 
-class DEFAULT_SOURCE:  # noqa
+class DEFAULT_SOURCE:  # noqa: N801
     pass
 
 
-class DEFAULT_TARGET:  # noqa
+class DEFAULT_TARGET:  # noqa: N801
     pass
 
 
-class _QBXSource(object):
-    """A symbolic 'where' specifier for the a density of a
-    :attr:`pytential.qbx.QBXLayerPotentialSource`
-    layer potential source identified by :attr:`where`.
+class QBX_SOURCE_STAGE1:   # noqa: N801
+    """Symbolic identifier for the base `stage1` discretization
+    :attr:`pytential.source.LayerPotentialSourceBase.density_discr`.
+    """
+    pass
+
+
+class QBX_SOURCE_STAGE2:   # noqa: N801
+    """Symbolic identifier for the `stage2` discretization
+    :attr:`pytential.source.LayerPotentialSourceBase.stage2_density_discr`.
+    """
+    pass
+
+
+class QBX_SOURCE_QUAD_STAGE2:   # noqa: N801
+    """Symbolic identifier for the `stage2` discretization
+    :attr:`pytential.source.LayerPotentialSourceBase.quad_stage2_density_discr`.
+    """
+    pass
+
+
+class GRANULARITY_NODE:     # noqa: N801
+    """DOFs are per-source node."""
+    pass
+
+
+class GRANULARITY_CENTER:   # noqa: N801
+    """DOFs interleaved per expansion center."""
+    pass
+
+
+class GRANULARITY_ELEMENT:  # noqa: N801
+    """DOFs per discretization element."""
+    pass
+
+
+class DOFDescriptor(object):
+    """A data structure specifying the meaning of a vector of degrees of freedom
+    that is handled by :mod:`pytential` (a "DOF vector"). In particular, using
+    :attr:`where`, this data structure describes the geometric object on which
+    the (scalar) function described by the DOF vector exists. Using
+    :attr:`granularity`, the data structure describes how the geometric object
+    is discretized (e.g. conventional nodal data, per-element scalars, etc.)
 
     .. attribute:: where
 
-        An identifier of a layer potential source, as used in
-        :func:`pytential.bind`.
+        An identifier for the domain on which the DOFs exist. This can be a
+        simple string or another hashable identifier for the geometric object.
+        The geometric objects are generally subclasses of
+        :class:`~pytential.source.PotentialSource`,
+        :class:`~pytential.target.TargetBase` or
+        :class:`~meshmode.discretization.Discretization`.
 
-    .. note::
+    .. attribute:: discr
 
-        This is not documented functionality and only intended for
-        internal use.
+        Specific to a :class:`pytential.source.LayerPotentialSourceBase`,
+        this discribes on which of the discretizations the
+        DOFs are defined. Can be one of :class:`QBX_SOURCE_STAGE1`,
+        :class:`QBX_SOURCE_STAGE2` or :class:`QBX_SOURCE_QUAD_STAGE2`.
+
+    .. attribute:: granularity
+
+        Describes the level of granularity of the DOF.
+        Can be one of :class:`GRANULARITY_NODE`, :class:`GRANULARITY_CENTER` or
+        :class:`GRANULARITY_ELEMENT`.
+
     """
 
-    def __init__(self, where):
+    def __init__(self, where, discr=None, granularity=None):
+        if granularity is None:
+            granularity = GRANULARITY_NODE
+
+        if discr is not None:
+            if not (discr is QBX_SOURCE_STAGE1
+                    or discr is QBX_SOURCE_STAGE2
+                    or discr is QBX_SOURCE_QUAD_STAGE2):
+                raise ValueError('unknown discr tag: "{}"'.format(discr))
+
+        if not (granularity is GRANULARITY_NODE
+                or granularity is GRANULARITY_CENTER
+                or granularity is GRANULARITY_ELEMENT):
+            raise ValueError('unknown granularity: "{}"'.format(granularity))
+
         self.where = where
+        self.discr = discr
+        self.granularity = granularity
+
+    def copy(self, where=None, discr=None, granularity=None):
+        if isinstance(where, DOFDescriptor):
+            discr = where.discr if discr is None else discr
+            where = where.where
+
+        return type(self)(
+                where=(self.where
+                    if where is None else where),
+                granularity=(self.granularity
+                    if granularity is None else granularity),
+                discr=(self.discr
+                    if discr is None else discr))
 
     def __hash__(self):
-        return hash((type(self), self.where))
+        return hash((type(self), self.where, self.discr, self.granularity))
 
     def __eq__(self, other):
-        return type(self) is type(other) and self.where == other.where
+        return (type(self) is type(other)
+                and self.where == other.where
+                and self.discr == other.discr
+                and self.granularity == other.granularity)
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def __repr__(self):
+        return '{}(where={}, discr={}, granularity={})'.format(
+                type(self).__name__,
+                self.where,
+                self.discr if self.discr is None else self.discr.__name__,
+                self.granularity.__name__)
 
-class QBXSourceStage1(_QBXSource):
-    """An explicit symbolic 'where' specifier for the
-    :attr:`pytential.qbx.QBXLayerPotentialSource.density_discr`
-    of the layer potential source identified by :attr:`where`.
-    """
-
-
-class QBXSourceStage2(_QBXSource):
-    """A symbolic 'where' specifier for the
-    :attr:`pytential.qbx.QBXLayerPotentialSource.stage2_density_discr`
-    of the layer potential source identified by :attr:`where`.
-    """
+    def __str__(self):
+        from pytential.symbolic.mappers import stringify_where
+        return stringify_where(self)
 
 
-class QBXSourceQuadStage2(_QBXSource):
-    """A symbolic 'where' specifier for the
-    :attr:`pytential.qbx.QBXLayerPotentialSource.quad_stage2_density_discr`
-    of the layer potential source identified by :attr:`where`.
-    """
+def as_dofdesc(desc):
+    if isinstance(desc, DOFDescriptor):
+        return desc
+
+    if desc == QBX_SOURCE_STAGE1 \
+            or desc == QBX_SOURCE_STAGE2 \
+            or desc == QBX_SOURCE_QUAD_STAGE2:
+        return DOFDescriptor(None, discr=desc)
+
+    if desc == GRANULARITY_NODE \
+            or desc == GRANULARITY_CENTER \
+            or desc == GRANULARITY_ELEMENT:
+        return DOFDescriptor(None, granularity=desc)
+
+    return DOFDescriptor(desc)
+
 
 # }}}
 
 
-class cse_scope(cse_scope_base):  # noqa
+class cse_scope(cse_scope_base):  # noqa: N801
     DISCRETIZATION = "pytential_discretization"
 
 
@@ -360,7 +457,7 @@ class DiscretizationProperty(Expression):
         :arg where: |where-blurb|
         """
 
-        self.where = where
+        self.where = as_dofdesc(where)
 
     def __getinitargs__(self):
         return (self.where,)
@@ -786,6 +883,74 @@ def _scaled_max_curvature(ambient_dim, dim=None, where=None):
 # }}}
 
 
+# {{{ qbx-specific geometry
+
+def _expansion_radii_factor(ambient_dim, dim):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    dim_fudge_factor = 0.5 if dim == 2 else 1.0
+    return 0.5 * dim_fudge_factor
+
+
+def _quad_resolution(ambient_dim, dim=None, granularity=None, where=None):
+    source = as_dofdesc(where)
+    target = source.copy(granularity=granularity)
+
+    stretch = _simplex_mapping_max_stretch_factor(ambient_dim,
+            dim=dim, where=source)
+    return Interpolation(source, target, stretch)
+
+
+def _source_danger_zone_radii(ambient_dim, dim=None, granularity=None, where=None):
+    where = as_dofdesc(where)
+    if where.discr is None:
+        where = where.copy(discr=QBX_SOURCE_STAGE2)
+
+    # This should be the expression of the expansion radii, but
+    #
+    # - in reference to the stage 2 discretization
+    # - mutliplied by 0.75 because
+    #
+    #   - Setting this equal to the expansion radii ensures that *every*
+    #     stage 2 element will be refined, which is wasteful.
+    #     (so this needs to be smaller than that)
+    #   - Setting this equal to half the expansion radius will not provide
+    #     a refinement 'buffer layer' at a 2x coarsening fringe.
+
+    factor = 0.75 * _expansion_radii_factor(ambient_dim, dim)
+    return factor * _quad_resolution(ambient_dim, dim=dim,
+            granularity=granularity, where=where)
+
+
+def _close_target_tunnel_radii(ambient_dim, dim=None, granularity=None, where=None):
+    factor = 0.5 * _expansion_radii_factor(ambient_dim, dim)
+
+    return factor * _quad_resolution(ambient_dim, dim=dim,
+            granularity=granularity, where=where)
+
+
+def expansion_radii(ambient_dim, dim=None, granularity=None, where=None):
+    factor = _expansion_radii_factor(ambient_dim, dim)
+
+    return cse(factor * _quad_resolution(ambient_dim, dim=dim,
+        granularity=granularity, where=where), cse_scope.DISCRETIZATION)
+
+
+def expansion_centers(ambient_dim, side, dim=None, where=None):
+    where = as_dofdesc(where)
+
+    x = nodes(ambient_dim, where=where)
+    normals = normal(ambient_dim, dim=dim, where=where)
+    radii = expansion_radii(ambient_dim, dim=dim,
+            granularity=GRANULARITY_NODE, where=where)
+
+    centers = x + side * radii * normals
+    return cse(centers.as_vector(), cse_scope.DISCRETIZATION)
+
+# }}}
+
+
 # {{{ operators
 
 class SingleScalarOperandExpression(Expression):
@@ -1037,8 +1202,8 @@ class Interpolation(Expression):
             return Expression.__new__(cls)
 
     def __init__(self, source, target, operand):
-        self.source = source
-        self.target = target
+        self.source = as_dofdesc(source)
+        self.target = as_dofdesc(target)
         self.operand = operand
 
     def __getinitargs__(self):
@@ -1299,11 +1464,11 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
 # {{{ geometric calculus
 
 
-class _unspecified:  # noqa
+class _unspecified:  # noqa: N801
     pass
 
 
-def S(kernel, density,  # noqa
+def S(kernel, density,
         qbx_forced_limit=_unspecified, source=None, target=None,
         kernel_arguments=None, **kwargs):
 
@@ -1334,7 +1499,7 @@ def normal_derivative(ambient_dim, operand, dim=None, where=None):
             * d(operand))
 
 
-def Sp(kernel, *args, **kwargs):  # noqa
+def Sp(kernel, *args, **kwargs):
     where = kwargs.get("target")
     if "qbx_forced_limit" not in kwargs:
         warn("not specifying qbx_forced_limit on call to 'Sp' is deprecated, "
@@ -1356,7 +1521,7 @@ def Sp(kernel, *args, **kwargs):  # noqa
             dim=dim, where=where)
 
 
-def Spp(kernel, *args, **kwargs):  # noqa
+def Spp(kernel, *args, **kwargs):
     ambient_dim = kwargs.get("ambient_dim")
     from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
@@ -1373,7 +1538,7 @@ def Spp(kernel, *args, **kwargs):  # noqa
             dim=dim, where=where)
 
 
-def D(kernel, *args, **kwargs):  # noqa
+def D(kernel, *args, **kwargs):
     ambient_dim = kwargs.get("ambient_dim")
     from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
@@ -1396,7 +1561,7 @@ def D(kernel, *args, **kwargs):  # noqa
             kernel, *args, **kwargs).xproject(0)
 
 
-def Dp(kernel, *args, **kwargs):  # noqa
+def Dp(kernel, *args, **kwargs):
     ambient_dim = kwargs.get("ambient_dim")
     from sumpy.kernel import Kernel
     if ambient_dim is None and isinstance(kernel, Kernel):
