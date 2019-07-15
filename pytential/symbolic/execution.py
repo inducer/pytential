@@ -188,16 +188,18 @@ class EvaluationMapper(EvaluationMapperBase):
             raise TypeError("cannot interpolate `{}`".format(type(operand)))
 
     def map_common_subexpression(self, expr):
-        if expr.scope != sym.cse_scope.DISCRETIZATION:
+        where = getattr(expr.child, 'where',
+                getattr(expr.child, 'source', None))
+        if expr.scope != sym.cse_scope.DISCRETIZATION or where is None:
             # print('Ignoring: {}'.format(expr.child))
             return self.rec(expr.child)
 
-        cse_cache = self.bound_expr.get_cache('discretization')
+        cse_cache = self.bound_expr.get_cache(where)
         try:
             rec = cse_cache[expr.child]
-            # print('Cache hit: {}'.format(expr.child))
+            print('Cache hit: {}'.format(expr.child))
         except KeyError:
-            # print('Cache miss: {}'.format(expr.child))
+            print('Cache miss: {}'.format(expr.child))
             rec = self.rec(expr.child)
             cse_cache[expr.child] = rec
 
@@ -479,7 +481,7 @@ class GeometryCollection(object):
 
     def copy(self):
         return GeometryCollection(
-                self.places.copy(),
+                self.places,
                 auto_where=self._default_place_ids)
 
     def get_cache(self, name):
@@ -490,7 +492,6 @@ class BoundExpression(object):
     def __init__(self, places, sym_op_expr):
         self.places = places
         self.sym_op_expr = sym_op_expr
-        self.caches = {}
 
         from pytential.symbolic.compiler import OperatorCompiler
         self.code = OperatorCompiler(self.places)(sym_op_expr)

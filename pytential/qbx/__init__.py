@@ -743,13 +743,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 * self.weights_and_area_elements())
 
         from pytential import bind, sym
-        expansion_radii = bind(self,
-                sym.expansion_radii(self.ambient_dim))(queue)
+        expansion_radii = bind(bound_expr.places,
+                sym.expansion_radii(self.ambient_dim,
+                    where=insn.source))(queue)
         centers = {
-                -1: bind(self,
-                    sym.expansion_centers(self.ambient_dim, -1))(queue),
-                +1: bind(self,
-                    sym.expansion_centers(self.ambient_dim, +1))(queue)
+                -1: bind(bound_expr.places,
+                    sym.expansion_centers(self.ambient_dim, -1,
+                        where=insn.source))(queue),
+                +1: bind(bound_expr.places,
+                    sym.expansion_centers(self.ambient_dim, +1,
+                        where=insn.source))(queue)
                 }
 
         # FIXME: Do this all at once

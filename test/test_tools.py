@@ -101,10 +101,10 @@ def test_geometry_collection_caching(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     ndim = 2
-    nelements = 42
+    nelements = 1024
     target_order = 7
     qbx_order = 4
-
+    ngeometry = 3
 
     # construct discretizations
     from meshmode.mesh.generation import ellipse, make_curve_mesh
@@ -115,7 +115,7 @@ def test_geometry_collection_caching(ctx_factory):
 
     discrs = []
     radius = 1.0
-    for k in range(3):
+    for k in range(ngeometry):
         mesh = make_curve_mesh(partial(ellipse, radius),
                 np.linspace(0.0, 1.0, nelements + 1),
                 target_order)
@@ -128,23 +128,58 @@ def test_geometry_collection_caching(ctx_factory):
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
         discrs.append(discr)
 
-    # construct qbx layer potentials
+    # construct qbx source
     from pytential.qbx import QBXLayerPotentialSource
 
     places = {}
-    for k in range(len(discrs)):
+    for k in range(ngeometry):
         qbx, _ = QBXLayerPotentialSource(discrs[k],
-            fine_order = 2 * target_order,
+            fine_order=2 * target_order,
             qbx_order=qbx_order,
             fmm_order=False).with_refinement()
 
-        places["qbx_source_{}".format(k)] = qbx
+        places["source_{}".format(k)] = qbx
+
+    # construct some target points
+    for k in range(ngeometry):
+        places["target_{}".format(k)] = \
+                places["source_{}".format(k)].density_discr
 
     # construct a geometry collection
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(places)
-
     print(places.places)
+
+    # construct a layer potential on each qbx geometry
+    from pytential import sym
+    from sumpy.kernel import LaplaceKernel
+    ops = []
+    for k in range(ngeometry):
+        op = sym.D(LaplaceKernel(ndim),
+                sym.var("sigma"),
+                qbx_forced_limit="avg",
+                source="source_{}".format(k),
+                target="target_{}".format(k))
+        print(op)
+        print()
+        ops.append(op)
+
+    # evaluate layer potentials
+    import time
+    from pytential import bind
+    lpot_eval = []
+    for k in range(ngeometry):
+        density_discr = places.get_discretization("source_{}".format(k))
+        sigma = 1.0 + density_discr.zeros(queue)
+
+        print()
+        print("=" * 32)
+        print()
+
+        t_start = time.time()
+        lpot_eval.append(bind(places, ops[k])(queue, sigma=sigma))
+        t_end = time.time()
+        print("Elapsed: {:.3}s".format(t_end - t_start))
 
 
 # You can test individual routines by typing
