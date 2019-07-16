@@ -948,6 +948,28 @@ def expansion_centers(ambient_dim, side, dim=None, where=None):
     centers = x + side * radii * normals
     return cse(centers.as_vector(), cse_scope.DISCRETIZATION)
 
+
+def h_max(ambient_dim, dim=None, where=None):
+    r = _quad_resolution(ambient_dim, dim=None,
+            granularity=GRANULARITY_ELEMENT, where=where)
+
+    return cse(NodeMax(r), cse_scope.DISCRETIZATION)
+
+
+def weights_and_area_elements(ambient_dim, dim=None, where=None):
+    where = as_dofdesc(where)
+    if where.discr == QBX_SOURCE_QUAD_STAGE2:
+        # quad_stage2_density_discr is not guaranteed to be usable for
+        # interpolation/differentiation. Use stage2_density_discr to find
+        # area elements instead, then upsample that.
+        source = where.copy(discr=QBX_SOURCE_STAGE2)
+        area = Interpolation(source, where,
+            area_element(ambient_dim, dim=dim, where=source))
+    else:
+        area = area_element(ambient_dim, dim=dim, where=where)
+
+    return cse(area * QWeight(where=where), cse_scope.DISCRETIZATION)
+
 # }}}
 
 
