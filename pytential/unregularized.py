@@ -104,6 +104,9 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             return waa.with_queue(None)
 
+    @property
+    def stage2_density_discr(self):
+        return self.density_discr
 
     @property
     def quad_stage2_density_discr(self):
