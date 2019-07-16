@@ -181,7 +181,7 @@ class EvaluationMapper(EvaluationMapperBase):
 
             conn = DOFConnection(self.bound_expr.places,
                     expr.source, expr.target)
-            return conn(self.queue, operand)
+            return conn(self.queue, operand).with_queue(self.queue)
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand
         else:
