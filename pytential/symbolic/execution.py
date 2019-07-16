@@ -405,7 +405,10 @@ class GeometryCollection(object):
             self.places[source_where.where] = places
             self.places[target_where.where] = \
                     self._get_lpot_discretization(places, target_where)
-        elif isinstance(places, (Discretization, TargetBase)):
+        elif isinstance(places, Discretization):
+            self.places[source_where.where] = places
+            self.places[target_where.where] = places
+        elif isinstance(places, TargetBase):
             self.places[target_where.where] = places
         elif isinstance(places, tuple):
             source_discr, target_discr = places

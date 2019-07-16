@@ -219,7 +219,12 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         else:
             return expr
 
-    map_q_weight = map_ones
+    def map_q_weight(self, expr):
+        dd = prim.as_dofdesc(expr.where)
+        if dd.where is None:
+            return type(expr)(where=dd.copy(where=self.default_source))
+        else:
+            return expr
 
     def map_parametrization_derivative_component(self, expr):
         dd = prim.as_dofdesc(expr.where)
