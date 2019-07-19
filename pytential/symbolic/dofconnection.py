@@ -94,6 +94,7 @@ class CenterGranularityConnection(GranularityConnection):
                 lp.GlobalArg("dst", shape="dstlen"),
                 "..."
             ],
+            name="node_interleaver_knl",
             assumptions="2*srclen = dstlen",
             lang_version=MOST_RECENT_LANGUAGE_VERSION,
             )
@@ -159,7 +160,7 @@ class ElementGranularityConnection(GranularityConnection):
                 lp.ValueArg("nunit_nodes", dtype=np.int32),
                 "..."
             ],
-            name="subsample_to_elements",
+            name="node_element_subsample",
             lang_version=MOST_RECENT_LANGUAGE_VERSION,
             )
 

@@ -428,29 +428,27 @@ class QBXInterpolationPreprocessor(IdentityMapper):
         self.places = places
 
     def map_int_g(self, expr):
-        dd = prim.as_dofdesc(expr.source)
-        if dd.discr == prim.QBX_SOURCE_QUAD_STAGE2:
+        source_dd = prim.as_dofdesc(expr.source)
+        if source_dd.discr == prim.QBX_SOURCE_QUAD_STAGE2:
+            return expr
+        lpot_source = self.places[expr.source]
+
+        from pytential.qbx import QBXLayerPotentialSource
+        if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        from pytential.source import LayerPotentialSourceBase
-        source = self.places[expr.source]
+        target_dd = source_dd.copy(discr=prim.QBX_SOURCE_QUAD_STAGE2)
+        density = prim.Interpolation(
+                source_dd, target_dd, self.rec(expr.density))
+        kernel_arguments = dict(
+                (name, prim.Interpolation(
+                    source_dd, target_dd, self.rec(arg_expr)))
+                for name, arg_expr in expr.kernel_arguments.items())
 
-        if isinstance(source, LayerPotentialSourceBase):
-            target_dd = dd.copy(discr=prim.QBX_SOURCE_QUAD_STAGE2)
-
-            density = prim.Interpolation(
-                    dd, target_dd, self.rec(expr.density))
-            kernel_arguments = dict(
-                    (name, prim.Interpolation(
-                        dd, target_dd, self.rec(arg_expr)))
-                    for name, arg_expr in expr.kernel_arguments.items())
-
-            expr = expr.copy(
-                    kernel=expr.kernel,
-                    density=density,
-                    kernel_arguments=kernel_arguments)
-
-        return expr
+        return expr.copy(
+                kernel=expr.kernel,
+                density=density,
+                kernel_arguments=kernel_arguments)
 
 
 class QBXPreprocessor(IdentityMapper):

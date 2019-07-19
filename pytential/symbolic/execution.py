@@ -384,8 +384,9 @@ class GeometryCollection(object):
         """
 
         from pytential.target import TargetBase
+        from pytential.source import PotentialSource
+        from pytential.qbx import QBXLayerPotentialSource
         from meshmode.discretization import Discretization
-        from pytential.source import LayerPotentialSourceBase, PotentialSource
 
         # {{{ define default source and target descriptors
 
@@ -408,11 +409,11 @@ class GeometryCollection(object):
         # {{{ construct dict
 
         self.places = {}
-        if isinstance(places, LayerPotentialSourceBase):
+        if isinstance(places, QBXLayerPotentialSource):
             self.places[auto_source.where] = places
             self.places[auto_target.where] = \
                     self._get_lpot_discretization(places, auto_target)
-        elif isinstance(places, Discretization):
+        elif isinstance(places, (Discretization, PotentialSource)):
             self.places[auto_source.where] = places
             self.places[auto_target.where] = places
         elif isinstance(places, TargetBase):
@@ -467,9 +468,13 @@ class GeometryCollection(object):
         else:
             raise KeyError('`where` not in the collection: {}'.format(dd.where))
 
+        from pytential.qbx import QBXLayerPotentialSource
         from pytential.source import LayerPotentialSourceBase
-        if isinstance(discr, LayerPotentialSourceBase):
+
+        if isinstance(discr, QBXLayerPotentialSource):
             return self._get_lpot_discretization(discr, dd)
+        elif isinstance(discr, LayerPotentialSourceBase):
+            return discr.density_discr
         else:
             return discr
 
