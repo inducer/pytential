@@ -90,12 +90,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         self.debug = debug
 
     @memoize_method
-    def h_max(self):
-        from pytential import bind, sym
-        with cl.CommandQueue(self.cl_context) as queue:
-            return bind(self, sym.h_max(self.ambient_dim))(queue)
-
-    @memoize_method
     def weights_and_area_elements(self):
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:

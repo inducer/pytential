@@ -183,7 +183,6 @@ class LayerPotentialSourceBase(PotentialSource):
     .. attribute:: dim
     .. attribute:: real_dtype
     .. attribute:: complex_dtype
-    .. attribute:: h_max
 
     .. rubric:: Execution
 
