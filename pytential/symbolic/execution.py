@@ -53,6 +53,7 @@ class EvaluationMapper(EvaluationMapperBase):
         EvaluationMapperBase.__init__(self, context)
 
         self.bound_expr = bound_expr
+        self.places = bound_expr.places
         self.queue = queue
 
     # {{{ map_XXX
@@ -156,7 +157,7 @@ class EvaluationMapper(EvaluationMapperBase):
         except KeyError:
             bound_op = bind(
                     expr.expression,
-                    self.bound_expr.places[expr.where],
+                    self.places[expr.where],
                     self.bound_expr.iprec)
             bound_op_cache[expr] = bound_op
 
@@ -170,16 +171,16 @@ class EvaluationMapper(EvaluationMapperBase):
         return result
 
     def map_quad_kernel_op(self, expr):
-        source = self.bound_expr.places[expr.source]
+        source = self.places[expr.source]
         return source.map_quad_kernel_op(expr, self.bound_expr, self.rec)
 
     def map_interpolation(self, expr):
         operand = self.rec(expr.operand)
 
         if isinstance(operand, cl.array.Array):
-            from pytential.symbolic.dofconnection import DOFConnection
+            from pytential.symbolic.dofconnection import connection_from_dds
 
-            conn = DOFConnection(self.bound_expr.places,
+            conn = connection_from_dds(self.places,
                     expr.source, expr.target)
             return conn(self.queue, operand).with_queue(self.queue)
         elif isinstance(operand, (int, float, complex, np.number)):
