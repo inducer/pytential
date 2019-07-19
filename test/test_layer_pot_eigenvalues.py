@@ -164,10 +164,11 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
             pt.legend()
             pt.show()
 
+        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
         s_err = (
                 norm(density_discr, queue, s_sigma - s_sigma_ref)
                 / norm(density_discr, queue, s_sigma_ref))
-        s_eoc_rec.add_data_point(qbx.h_max, s_err)
+        s_eoc_rec.add_data_point(h_max, s_err)
 
         # }}}
 
@@ -198,7 +199,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         d_err = (
                 norm(density_discr, queue, d_sigma - d_sigma_ref)
                 / d_ref_norm)
-        d_eoc_rec.add_data_point(qbx.h_max, d_err)
+        d_eoc_rec.add_data_point(h_max, d_err)
 
         # }}}
 
@@ -217,7 +218,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
             sp_err = (
                     norm(density_discr, queue, sp_sigma - sp_sigma_ref)
                     / norm(density_discr, queue, sigma))
-            sp_eoc_rec.add_data_point(qbx.h_max, sp_err)
+            sp_eoc_rec.add_data_point(h_max, sp_err)
 
             # }}}
 
@@ -313,7 +314,9 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
         s_sigma_op = bind(qbx, sym.S(lap_knl, sym.var("sigma"), qbx_forced_limit=+1))
         s_sigma = s_sigma_op(queue=queue, sigma=ymn)
         s_eigval = 1/(2*mode_n + 1)
-        s_eoc_rec.add_data_point(qbx.h_max, rel_err(s_sigma, s_eigval*ymn))
+
+        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+        s_eoc_rec.add_data_point(h_max, rel_err(s_sigma, s_eigval*ymn))
 
         # }}}
 
@@ -323,7 +326,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
                 sym.D(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         d_sigma = d_sigma_op(queue=queue, sigma=ymn)
         d_eigval = -1/(2*(2*mode_n + 1))
-        d_eoc_rec.add_data_point(qbx.h_max, rel_err(d_sigma, d_eigval*ymn))
+        d_eoc_rec.add_data_point(h_max, rel_err(d_sigma, d_eigval*ymn))
 
         # }}}
 
@@ -333,7 +336,8 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
                  sym.Sp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         sp_sigma = sp_sigma_op(queue=queue, sigma=ymn)
         sp_eigval = -1/(2*(2*mode_n + 1))
-        sp_eoc_rec.add_data_point(qbx.h_max, rel_err(sp_sigma, sp_eigval*ymn))
+
+        sp_eoc_rec.add_data_point(h_max, rel_err(sp_sigma, sp_eigval*ymn))
 
         # }}}
 
@@ -343,7 +347,8 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
                 sym.Dp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         dp_sigma = dp_sigma_op(queue=queue, sigma=ymn)
         dp_eigval = -(mode_n*(mode_n+1))/(2*mode_n + 1)
-        dp_eoc_rec.add_data_point(qbx.h_max, rel_err(dp_sigma, dp_eigval*ymn))
+
+        dp_eoc_rec.add_data_point(h_max, rel_err(dp_sigma, dp_eigval*ymn))
 
         # }}}
 

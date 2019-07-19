@@ -458,6 +458,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @property
     @memoize_method
     def h_max(self):
+        raise RuntimeError('bind `h_max` directly')
+
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
             return bind(self, sym.h_max(self.ambient_dim))(queue)

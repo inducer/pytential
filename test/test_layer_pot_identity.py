@@ -382,7 +382,8 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
         linf_error_norm = norm(density_discr, queue, error, p=np.inf)
         print("--->", key, linf_error_norm)
 
-        eoc_rec.add_data_point(qbx.h_max, linf_error_norm)
+        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+        eoc_rec.add_data_point(h_max, linf_error_norm)
 
         if visualize:
             from meshmode.discretization.visualization import make_visualizer

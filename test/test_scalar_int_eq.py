@@ -864,8 +864,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     class Result(Record):
         pass
 
+    h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
     return Result(
-            h_max=qbx.h_max,
+            h_max=h_max,
             rel_err_2=rel_err_2,
             rel_err_inf=rel_err_inf,
             rel_td_err_inf=rel_td_err_inf,
