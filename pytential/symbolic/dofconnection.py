@@ -104,8 +104,9 @@ class CenterGranularityConnection(GranularityConnection):
 
     def __call__(self, queue, vecs):
         r"""
-        :arg vecs: a single :class:`pyopencl.array.Array` or a pair of
-            arrays. Given a pair of arrays :math:`x` and :math:`y`, they are
+        :arg vecs: a single :class:`pyopencl.array.Array` or a pair of arrays.
+        :return: an interleaved array or list of :class:`pyopencl.array.Array`s.
+            If *vecs* was a pair of arrays :math:`(x, y)`, they are
             interleaved as :math:`[x_1, y_1, x_2, y_2, \ddots, x_n, y_n]`.
             A single array is simply interleaved with itself.
         """
@@ -167,6 +168,21 @@ class ElementGranularityConnection(GranularityConnection):
         return knl
 
     def __call__(self, queue, vec):
+        """
+        :arg vec: a vector with degrees of freedom corresponding to
+            nodes in :attr:`discr`.
+        :return: an :class:`pyopencl.array.Array` of size
+            ``(discr.mesh.nelements,)``. The reduction is performed by
+            picking the first node in each element according to its
+            group numbering.
+        """
+
+        if not isinstance(vec, cl.array.Array):
+            raise TypeError('non-array passed to connection')
+
+        if vec.shape != (self.discr.nnodes,):
+            raise ValueError('invalid shape of incoming array')
+
         result = cl.array.empty(queue, self.discr.mesh.nelements, vec.dtype)
         for igrp, group in enumerate(self.discr.groups):
             self.kernel()(queue,
