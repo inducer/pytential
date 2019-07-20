@@ -120,7 +120,6 @@ def test_geometry_collection_caching(ctx_factory):
                 np.linspace(0.0, 1.0, nelements + 1),
                 target_order)
         if k > 0:
-            center = np.array([3 * k * radius, 0])
             mesh = affine_map(discrs[0].mesh,
                     b=np.array([3 * k * radius, 0]))
 

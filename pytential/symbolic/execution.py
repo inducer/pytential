@@ -41,6 +41,9 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from pytools import memoize_in
 from pytential import sym
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # FIXME caches: fix up queues
 
@@ -96,7 +99,7 @@ class EvaluationMapper(EvaluationMapperBase):
             knl = lp.tag_inames(knl, "el:g.0,idof:l.0")
             return knl
 
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.places.get_discretization(expr.where)
 
         operand = self.rec(expr.operand)
 
@@ -120,7 +123,7 @@ class EvaluationMapper(EvaluationMapperBase):
         return self._map_elementwise_reduction("max", expr)
 
     def map_ones(self, expr):
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.places.get_discretization(expr.where)
 
         result = (discr
                 .empty(queue=self.queue, dtype=discr.real_dtype)
@@ -130,12 +133,12 @@ class EvaluationMapper(EvaluationMapperBase):
         return result
 
     def map_node_coordinate_component(self, expr):
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.places.get_discretization(expr.where)
         return discr.nodes()[expr.ambient_axis] \
                 .with_queue(self.queue)
 
     def map_num_reference_derivative(self, expr):
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.places.get_discretization(expr.where)
 
         from pytools import flatten
         ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
@@ -145,7 +148,7 @@ class EvaluationMapper(EvaluationMapperBase):
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.places.get_discretization(expr.where)
         return discr.quad_weights(self.queue) \
                 .with_queue(self.queue)
 
@@ -189,20 +192,21 @@ class EvaluationMapper(EvaluationMapperBase):
             raise TypeError("cannot interpolate `{}`".format(type(operand)))
 
     def map_common_subexpression(self, expr):
-        where = getattr(expr.child, 'where',
-                getattr(expr.child, 'source', None))
-        if expr.scope != sym.cse_scope.DISCRETIZATION or where is None:
-            # print('Ignoring: {}'.format(expr.child))
+        if expr.scope == sym.cse_scope.EXPRESSION:
+            cache = self.bound_expr.get_cache("cse")
+        elif expr.scope == sym.cse_scope.DISCRETIZATION:
+            cache = self.places.get_cache("cse")
+        else:
+            logger.debug("Cache ignore: %s", expr.child)
             return self.rec(expr.child)
 
-        cse_cache = self.bound_expr.get_cache(where)
         try:
-            rec = cse_cache[expr.child]
-            print('Cache hit: {}'.format(expr.child))
+            rec = cache[expr.child]
+            logger.debug("Cache hit: {}".format(expr.child))
         except KeyError:
-            print('Cache miss: {}'.format(expr.child))
+            logger.debug("Cache miss: {}".format(expr.child))
             rec = self.rec(expr.child)
-            cse_cache[expr.child] = rec
+            cache[expr.child] = rec
 
         return rec
 
@@ -523,12 +527,13 @@ class BoundExpression(object):
     def __init__(self, places, sym_op_expr):
         self.places = places
         self.sym_op_expr = sym_op_expr
+        self.caches = {}
 
         from pytential.symbolic.compiler import OperatorCompiler
         self.code = OperatorCompiler(self.places)(sym_op_expr)
 
     def get_cache(self, name):
-        return self.places.get_cache(name)
+        return self.caches.setdefault(name, {})
 
     def get_discretization(self, where):
         return self.places.get_discretization(where)
