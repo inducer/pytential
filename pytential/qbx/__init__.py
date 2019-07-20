@@ -350,20 +350,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def weights_and_area_elements(self):
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
-            # quad_stage2_density_discr is not guaranteed to be usable for
-            # interpolation/differentiation. Use density_discr to find
-            # area element instead, then upsample that.
+            waa = bind(self, sym.weights_and_area_elements(
+                self.ambient_dim,
+                where=sym.QBX_SOURCE_QUAD_STAGE2))(queue)
 
-            area_element = self.refined_interp_to_ovsmp_quad_connection(
-                    queue,
-                    bind(
-                        self.stage2_density_discr,
-                        sym.area_element(self.ambient_dim, self.dim)
-                        )(queue))
-
-            qweight = bind(self.quad_stage2_density_discr, sym.QWeight())(queue)
-
-            return (area_element.with_queue(queue)*qweight).with_queue(None)
+            return waa.with_queue(None)
 
     # }}}
 
@@ -463,17 +454,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     refiner=refiner)
 
         return lpot, connection
-
-    @property
-    @memoize_method
-    def h_max(self):
-        from pytential import bind, sym
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            quad_res = bind(self, sym._quad_resolution(
-                    self.ambient_dim,
-                    granularity=sym.GRANULARITY_ELEMENT))(queue)
-            return cl.array.max(quad_res).get().item()
 
     # {{{ internal API
 

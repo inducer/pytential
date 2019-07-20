@@ -201,15 +201,15 @@ def test_expr_pickling():
 # }}}
 
 
-@pytest.mark.parametrize(("source_discr", "target_granularity"), [
-    (None, None),
-    (sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
-    (sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_NODE),
-    (sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
-    (sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_ELEMENT),
-    (sym.QBX_SOURCE_QUAD_STAGE2, sym.GRANULARITY_NODE)
+@pytest.mark.parametrize(("name", "source_discr", "target_granularity"), [
+    ("default", None, None),
+    ("default-explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
+    ("stage2", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_NODE),
+    ("stage2-center", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
+    ("stage2-element", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_ELEMENT),
+    ("quad", sym.QBX_SOURCE_QUAD_STAGE2, sym.GRANULARITY_NODE)
     ])
-def test_interpolation(ctx_factory, source_discr, target_granularity):
+def test_interpolation(ctx_factory, name, source_discr, target_granularity):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -229,16 +229,17 @@ def test_interpolation(ctx_factory, source_discr, target_granularity):
             qbx_order=qbx_order,
             fmm_order=False).with_refinement()
 
-    source = sym.DOFDescriptor(sym.DEFAULT_SOURCE,
+    where = 'test-interpolation'
+    source = sym.DOFDescriptor(where,
             discr=source_discr,
             granularity=sym.GRANULARITY_NODE)
-    target = sym.DOFDescriptor(sym.DEFAULT_SOURCE,
+    target = sym.DOFDescriptor(where,
             discr=sym.QBX_SOURCE_QUAD_STAGE2,
             granularity=target_granularity)
 
     sigma_sym = sym.var("sigma")
     op_sym = sym.sin(sym.Interpolation(source, target, sigma_sym))
-    bound_op = bind(qbx, op_sym)
+    bound_op = bind(qbx, op_sym, auto_where=where)
 
     target_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
     if source_discr == sym.QBX_SOURCE_STAGE2:
@@ -252,14 +253,16 @@ def test_interpolation(ctx_factory, source_discr, target_granularity):
     sigma_target = np.sin(la.norm(target_nodes, axis=0))
     sigma_target_interp = bound_op(queue, sigma=sigma_dev).get(queue)
 
-    if target.granularity == sym.GRANULARITY_NODE:
+    if name in ('default', 'default-explicit', 'stage2', 'quad'):
         error = la.norm(sigma_target_interp - sigma_target) / la.norm(sigma_target)
         assert error < 1.0e-10
-    elif target.granularity == sym.GRANULARITY_CENTER:
+    elif name in ('stage2-center',):
         assert len(sigma_target_interp) == 2 * len(sigma_target)
-    elif target.granularity == sym.GRANULARITY_ELEMENT:
+    elif name in ('stage2-element',):
         nelements = qbx.quad_stage2_density_discr.mesh.nelements
         assert len(sigma_target_interp) == nelements
+    else:
+        raise ValueError('unknown test case name: {}'.format(name))
 
 
 # You can test individual routines by typing

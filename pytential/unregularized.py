@@ -91,23 +91,16 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def weights_and_area_elements(self):
-        import pytential.symbolic.primitives as p
-        from pytential.symbolic.execution import bind
+        from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
-            # quad_stage2_density_discr is not guaranteed to be usable for
-            # interpolation/differentiation. Use density_discr to find
-            # area element instead, then upsample that.
+            waa = bind(self,
+                    sym.weights_and_area_elements(self.ambient_dim))(queue)
 
-            area_element = self.resampler(
-                    queue,
-                    bind(
-                        self.density_discr,
-                        p.area_element(self.ambient_dim, self.dim)
-                        )(queue))
+            return waa.with_queue(None)
 
-            qweight = bind(self.quad_stage2_density_discr, p.QWeight())(queue)
-
-            return (area_element.with_queue(queue)*qweight).with_queue(None)
+    @property
+    def stage2_density_discr(self):
+        return self.density_discr
 
     @property
     def quad_stage2_density_discr(self):
