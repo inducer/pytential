@@ -934,7 +934,9 @@ def expansion_radii(ambient_dim, dim=None, granularity=None, where=None):
     factor = _expansion_radii_factor(ambient_dim, dim)
 
     return cse(factor * _quad_resolution(ambient_dim, dim=dim,
-        granularity=granularity, where=where), cse_scope.DISCRETIZATION)
+        granularity=granularity, where=where),
+        "expansion_radii",
+        cse_scope.DISCRETIZATION)
 
 
 def expansion_centers(ambient_dim, side, dim=None, where=None):
@@ -946,14 +948,18 @@ def expansion_centers(ambient_dim, side, dim=None, where=None):
             granularity=GRANULARITY_NODE, where=where)
 
     centers = x + side * radii * normals
-    return cse(centers.as_vector(), cse_scope.DISCRETIZATION)
+    return cse(centers.as_vector(),
+            "expansion_centers",
+            cse_scope.DISCRETIZATION)
 
 
 def h_max(ambient_dim, dim=None, where=None):
     r = _quad_resolution(ambient_dim, dim=None,
             granularity=GRANULARITY_ELEMENT, where=where)
 
-    return cse(NodeMax(r), cse_scope.DISCRETIZATION)
+    return cse(NodeMax(r),
+            "h_max",
+            cse_scope.DISCRETIZATION)
 
 
 def weights_and_area_elements(ambient_dim, dim=None, where=None):
@@ -968,7 +974,9 @@ def weights_and_area_elements(ambient_dim, dim=None, where=None):
     else:
         area = area_element(ambient_dim, dim=dim, where=where)
 
-    return cse(area * QWeight(where=where), cse_scope.DISCRETIZATION)
+    return cse(area * QWeight(where=where),
+            "weights_area_elements",
+            cse_scope.DISCRETIZATION)
 
 # }}}
 
