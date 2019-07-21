@@ -130,8 +130,7 @@ class PointPotentialSource(PotentialSource):
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        strengths = evaluate(insn.density).with_queue(queue).copy()
 
         # FIXME: Do this all at once
         result = []
@@ -153,8 +152,7 @@ class PointPotentialSource(PotentialSource):
     @memoize_method
     def weights_and_area_elements(self):
         with cl.CommandQueue(self.cl_context) as queue:
-            result = cl.array.empty(queue, self._nodes.shape[-1],
-                    dtype=self.real_dtype)
+            result = cl.array.empty(queue, self.nnodes, dtype=self.real_dtype)
             result.fill(1)
 
         return result.with_queue(None)
@@ -203,6 +201,9 @@ class LayerPotentialSourceBase(PotentialSource):
 
     @property
     def resampler(self):
+        raise NotImplementedError
+
+    def with_refinement(self):
         raise NotImplementedError
 
     @property
