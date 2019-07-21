@@ -86,8 +86,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             expansion_factory = DefaultExpansionFactory()
         self.expansion_factory = expansion_factory
 
-        self.debug = debug
-
     @memoize_method
     def weights_and_area_elements(self):
         from pytential import bind, sym
@@ -201,7 +199,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 self.debug)
 
     def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
-
         # {{{ gather unique target discretizations used
 
         target_name_to_index = {}

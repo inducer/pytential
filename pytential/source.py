@@ -152,8 +152,7 @@ class PointPotentialSource(PotentialSource):
     @memoize_method
     def weights_and_area_elements(self):
         with cl.CommandQueue(self.cl_context) as queue:
-            result = cl.array.empty(queue, self._nodes.shape[-1],
-                    dtype=self.real_dtype)
+            result = cl.array.empty(queue, self.nnodes, dtype=self.real_dtype)
             result.fill(1)
 
         return result.with_queue(None)
