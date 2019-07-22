@@ -66,7 +66,7 @@ def main():
             QBXLayerPotentialSource, QBXTargetAssociationFailedException)
     qbx, _ = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
-            fmm_order=fmm_order
+            fmm_order=fmm_order,
             ).with_refinement()
     density_discr = qbx.density_discr
 
