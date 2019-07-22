@@ -640,9 +640,11 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
         return np.array(list(self.tree().targets))
 
     def m2l_rotation_lists(self):
+        # Already on host
         return self.geo_data.m2l_rotation_lists()
 
     def m2l_rotation_angles(self):
+        # Already on host
         return self.geo_data.m2l_rotation_angles()
 
 # }}}

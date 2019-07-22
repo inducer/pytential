@@ -67,16 +67,6 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
                 kernel_extra_kwargs,
                 _use_target_specific_qbx)
 
-    @memoize_method
-    def m2l_rotation_angles(self):
-        # Already on host
-        return self.geo_data.m2l_rotation_angles()
-
-    @memoize_method
-    def m2l_rotation_lists(self):
-        # Already on host
-        return self.geo_data.m2l_rotation_lists()
-
 # }}}
 
 
