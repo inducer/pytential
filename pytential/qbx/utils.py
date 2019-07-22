@@ -33,6 +33,8 @@ import pyopencl as cl
 import pyopencl.array # noqa
 from pytools import memoize, memoize_method
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
+
 
 import logging
 logger = logging.getLogger(__name__)
@@ -576,7 +578,7 @@ def build_tree_with_qbx_metadata(
 
 # {{{ host geo data wrapper
 
-class ToHostTransferredGeoDataWrapper(object):
+class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
     """Wraps an instance of :class:`pytential.qbx.geometry.QBXFMMGeometryData`,
     automatically converting returned OpenCL arrays to host data.
     """
@@ -636,6 +638,12 @@ class ToHostTransferredGeoDataWrapper(object):
     def all_targets(self):
         """All (not just non-QBX) targets packaged into a single array."""
         return np.array(list(self.tree().targets))
+
+    def m2l_rotation_lists(self):
+        return self.geo_data.m2l_rotation_lists()
+
+    def m2l_rotation_angles(self):
+        return self.geo_data.m2l_rotation_angles()
 
 # }}}
 

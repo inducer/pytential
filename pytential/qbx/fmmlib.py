@@ -67,6 +67,16 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
                 kernel_extra_kwargs,
                 _use_target_specific_qbx)
 
+    @memoize_method
+    def m2l_rotation_angles(self):
+        # Already on host
+        return self.geo_data.m2l_rotation_angles()
+
+    @memoize_method
+    def m2l_rotation_lists(self):
+        # Already on host
+        return self.geo_data.m2l_rotation_lists()
+
 # }}}
 
 
@@ -85,9 +95,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         # FMMLib is CPU-only. This wrapper gets the geometry out of
         # OpenCL-land.
-        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
-        self.geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
 
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
+        geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+
+        self.geo_data = geo_data
         self.qbx_order = qbx_order
 
         # {{{ digest out_kernels
@@ -168,13 +180,14 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                         frozenset([("k", helmholtz_k)]), tree, level)
 
         super(QBXFMMLibExpansionWrangler, self).__init__(
-                self.geo_data.tree(),
+                geo_data.tree(),
 
                 helmholtz_k=helmholtz_k,
                 dipole_vec=dipole_vec,
                 dipoles_already_reordered=True,
 
                 fmm_level_to_nterms=inner_fmm_level_to_nterms,
+                rotation_data=geo_data,
 
                 ifgrad=ifgrad)
 
