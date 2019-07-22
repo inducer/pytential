@@ -80,7 +80,7 @@ def get_interleaved_centers(queue, lpot_source):
     ext_centers = bind(lpot_source,
             sym.expansion_centers(lpot_source.ambient_dim, +1))(queue)
 
-    from pytential.symbolic.dofconnection import CenterGranularityConnection
+    from pytential.symbolic.dof_connection import CenterGranularityConnection
     interleaver = CenterGranularityConnection(lpot_source.density_discr)
     return interleaver(queue, [int_centers, ext_centers])
 
@@ -99,7 +99,7 @@ def get_interleaved_radii(queue, lpot_source):
     radii = bind(lpot_source,
             sym.expansion_radii(lpot_source.ambient_dim))(queue)
 
-    from pytential.symbolic.dofconnection import CenterGranularityConnection
+    from pytential.symbolic.dof_connection import CenterGranularityConnection
     interleaver = CenterGranularityConnection(lpot_source.density_discr)
     return interleaver(queue, radii)
 

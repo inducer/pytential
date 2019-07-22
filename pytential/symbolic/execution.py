@@ -178,7 +178,7 @@ class EvaluationMapper(EvaluationMapperBase):
         operand = self.rec(expr.operand)
 
         if isinstance(operand, cl.array.Array):
-            from pytential.symbolic.dofconnection import connection_from_dds
+            from pytential.symbolic.dof_connection import connection_from_dds
 
             conn = connection_from_dds(self.places,
                     expr.source, expr.target)
