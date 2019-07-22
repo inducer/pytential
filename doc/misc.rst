@@ -33,8 +33,6 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
 
 #.  ``conda config --add channels conda-forge``
 
-#.  (*macOS only*) ``conda install osx-pocl-opencl pocl pyopencl``
-
 #.  ``conda install gcc cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
 
 #.  Type the following commands::
