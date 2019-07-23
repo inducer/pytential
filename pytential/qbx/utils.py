@@ -69,19 +69,27 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 
 # {{{ make interleaved centers
 
-def get_interleaved_centers(queue, lpot_source):
+def get_interleaved_centers(queue, places, where=None):
     """
     Return an array of shape (dim, ncenters) in which interior centers are placed
     next to corresponding exterior centers.
     """
+    from pytential.symbolic.execution import GeometryCollection
+    if not isinstance(places, GeometryCollection):
+        places = GeometryCollection(places, auto_where=where)
+    where = where or places.auto_source
+    discr = places.get_discretization(where)
+
     from pytential import bind, sym
-    int_centers = bind(lpot_source,
-            sym.expansion_centers(lpot_source.ambient_dim, -1))(queue)
-    ext_centers = bind(lpot_source,
-            sym.expansion_centers(lpot_source.ambient_dim, +1))(queue)
+    int_centers = bind(places, sym.expansion_centers(
+        discr.ambient_dim, -1,
+        where=where))(queue)
+    ext_centers = bind(places, sym.expansion_centers(
+        discr.ambient_dim, +1,
+        where=where))(queue)
 
     from pytential.symbolic.dof_connection import CenterGranularityConnection
-    interleaver = CenterGranularityConnection(lpot_source.density_discr)
+    interleaver = CenterGranularityConnection(discr)
     return interleaver(queue, [int_centers, ext_centers])
 
 # }}}
@@ -89,18 +97,24 @@ def get_interleaved_centers(queue, lpot_source):
 
 # {{{ make interleaved radii
 
-def get_interleaved_radii(queue, lpot_source):
+def get_interleaved_radii(queue, places, where=None):
     """
     Return an array of shape (dim, ncenters) in which interior centers are placed
     next to corresponding exterior centers.
     """
-    from pytential import bind, sym
+    from pytential.symbolic.execution import GeometryCollection
+    if not isinstance(places, GeometryCollection):
+        places = GeometryCollection(places, auto_where=where)
+    where = where or places.auto_source
+    discr = places.get_discretization(where)
 
-    radii = bind(lpot_source,
-            sym.expansion_radii(lpot_source.ambient_dim))(queue)
+    from pytential import bind, sym
+    radii = bind(places, sym.expansion_radii(
+        discr.ambient_dim,
+        where=where))(queue)
 
     from pytential.symbolic.dof_connection import CenterGranularityConnection
-    interleaver = CenterGranularityConnection(lpot_source.density_discr)
+    interleaver = CenterGranularityConnection(discr)
     return interleaver(queue, radii)
 
 # }}}
