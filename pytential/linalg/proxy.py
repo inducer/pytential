@@ -354,8 +354,6 @@ class ProxyGenerator(object):
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.tag_inames(knl, "idim*:unr")
-        print(knl)
-
         return knl
 
     @memoize_method
