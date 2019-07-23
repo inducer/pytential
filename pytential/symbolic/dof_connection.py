@@ -2,6 +2,7 @@
 from __future__ import division, absolute_import, print_function
 
 __copyright__ = """
+Copyright (C) 2016 Matt Wala
 Copyright (C) 2019 Alexandru Fikl
 """
 
@@ -63,6 +64,14 @@ class GranularityConnection(object):
 
     def __init__(self, discr):
         self.discr = discr
+
+    @property
+    def from_discr(self):
+        return self.discr
+
+    @property
+    def to_discr(self):
+        return self.discr
 
     def __call__(self, queue, vec):
         raise NotImplementedError()
@@ -236,17 +245,8 @@ class DOFConnection(object):
                         .format(type(conn)))
 
         if self.connections:
-            conn = self.connections[0]
-            if isinstance(conn, DiscretizationConnection):
-                self.from_discr = conn.from_discr
-            elif isinstance(conn, GranularityConnection):
-                self.from_discr = conn.discr
-
-            conn = self.connections[-1]
-            if isinstance(conn, DiscretizationConnection):
-                self.to_discr = conn.to_discr
-            elif isinstance(conn, GranularityConnection):
-                self.to_discr = conn.discr
+            self.from_discr = self.connections[0].from_discr
+            self.to_discr = self.connections[-1].to_discr
 
     def __call__(self, queue, vec):
         for conn in self.connections:
