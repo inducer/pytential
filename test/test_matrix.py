@@ -413,7 +413,7 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
 @pytest.mark.parametrize('place_ids',
         [(None, None),
          (sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE1),
-         (sym.QBX_SOURCE_QUAD_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)])
+         (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE2)])
 def test_build_matrix_places(ctx_factory, place_ids, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
