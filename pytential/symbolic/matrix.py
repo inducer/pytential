@@ -72,7 +72,7 @@ def _resample_arg(queue, lpot_source, x):
     return with_object_array_or_scalar(resample, x)
 
 
-def _get_layer_potential_args(mapper, expr, lpot_source):
+def _get_layer_potential_args(mapper, expr, lpot_source, include_args=None):
     """
     :arg mapper: a :class:`pytential.symbolic.matrix.MatrixBuilderBase`.
     :arg expr: symbolic layer potential expression.
@@ -83,29 +83,8 @@ def _get_layer_potential_args(mapper, expr, lpot_source):
 
     kernel_args = {}
     for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
-        rec_arg = mapper.rec(arg_expr)
-        kernel_args[arg_name] = _resample_arg(mapper.queue, lpot_source, rec_arg)
-
-    return kernel_args
-
-
-def _get_kernel_args(mapper, kernel, expr, lpot_source):
-    """
-    :arg mapper: a :class:`pytential.symbolic.matrix.MatrixBuilderBase`.
-    :arg kernel: a :class:`sumpy.kernel.Kernel`.
-    :arg expr: symbolic layer potential expression.
-    :arg lpot_source: a :class:`pytential.source.LayerPotentialSourceBase`.
-
-    :return: a mapping of kernel arguments evaluated by the *mapper*.
-    """
-
-    # NOTE: copied from pytential.symbolic.primitives.IntG
-    inner_kernel_args = kernel.get_args() + kernel.get_source_args()
-    inner_kernel_args = set(arg.loopy_arg.name for arg in inner_kernel_args)
-
-    kernel_args = {}
-    for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
-        if arg_name not in inner_kernel_args:
+        if (include_args is not None
+                and arg_name not in include_args):
             continue
 
         rec_arg = mapper.rec(arg_expr)
@@ -383,11 +362,9 @@ class MatrixBuilder(MatrixBuilderBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        if source_dd.discr == target_dd.discr:
-            # NOTE: passing None to avoid any resampling
-            kernel_args = _get_layer_potential_args(self, expr, None)
-        else:
-            kernel_args = _get_layer_potential_args(self, expr, lpot_source)
+        # NOTE: setting to None to avoid resampling
+        resampler = None if source_dd.discr == target_dd.discr else lpot_source
+        kernel_args = _get_layer_potential_args(self, expr, resampler)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, lpot_source.qbx_order)
@@ -458,8 +435,15 @@ class P2PMatrixBuilder(MatrixBuilderBase):
         if not self.is_kind_matrix(rec_density):
             raise NotImplementedError("layer potentials on non-variables")
 
+        # NOTE: copied from pytential.symbolic.primitives.IntG
+        # NOTE: P2P evaluation only uses the inner kernel, so it should not
+        # get other kernel_args, e.g. normal vectors in a double layer
         kernel = expr.kernel.get_base_kernel()
-        kernel_args = _get_kernel_args(self, kernel, expr, lpot_source)
+        kernel_args = kernel.get_args() + kernel.get_source_args()
+        kernel_args = set(arg.loopy_arg.name for arg in kernel_args)
+
+        kernel_args = _get_layer_potential_args(self,
+                expr, lpot_source, include_args=kernel_args)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
@@ -584,8 +568,15 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         if not np.isscalar(rec_density):
             raise NotImplementedError
 
+        # NOTE: copied from pytential.symbolic.primitives.IntG
+        # NOTE: P2P evaluation only uses the inner kernel, so it should not
+        # get other kernel_args, e.g. normal vectors in a double layer
         kernel = expr.kernel.get_base_kernel()
-        kernel_args = _get_kernel_args(self._mat_mapper, kernel, expr, lpot_source)
+        kernel_args = kernel.get_args() + kernel.get_source_args()
+        kernel_args = set(arg.loopy_arg.name for arg in kernel_args)
+
+        kernel_args = _get_layer_potential_args(self._mat_mapper,
+                expr, lpot_source, include_args=kernel_args)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
