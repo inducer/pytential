@@ -247,9 +247,10 @@ class ProxyGenerator(object):
 
         Number of proxy points in a single proxy ball.
 
-    .. attribute:: source
+    .. attribute:: discr
 
-        A :class:`pytential.qbx.QBXLayerPotentialSource`.
+        The :class:`~meshmode.discretization.Discretization` on which the
+        proxy balls are generated.
 
     .. attribute:: ratio
 
@@ -281,9 +282,17 @@ class ProxyGenerator(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, source, approx_nproxy=None, ratio=None):
-        self.source = source
-        self.ambient_dim = source.density_discr.ambient_dim
+    def __init__(self, places, where=None, approx_nproxy=None, ratio=None):
+        from pytential.symbolic.execution import GeometryCollection
+        if not isinstance(places, GeometryCollection):
+            places = GeometryCollection(places, auto_where=where)
+
+        from pytential import sym
+        self.places = places
+        self.where = sym.as_dofdesc(where or places.auto_source)
+        self.discr = places.get_discretization(self.where)
+
+        self.ambient_dim = self.discr.ambient_dim
         self.ratio = 1.1 if ratio is None else ratio
 
         approx_nproxy = 32 if approx_nproxy is None else approx_nproxy
@@ -385,16 +394,19 @@ class ProxyGenerator(object):
             return np.dot(A, v) + b
 
         from pytential import bind, sym
-        radii = bind(self.source,
-                sym.expansion_radii(self.source.ambient_dim))(queue)
-        center_int = bind(self.source,
-                sym.expansion_centers(self.source.ambient_dim, -1))(queue)
-        center_ext = bind(self.source,
-                sym.expansion_centers(self.source.ambient_dim, +1))(queue)
+        radii = bind(self.places, sym.expansion_radii(
+            self.discr.ambient_dim,
+            where=self.where))(queue)
+        center_int = bind(self.places, sym.expansion_centers(
+            self.discr.ambient_dim, -1,
+            where=self.where))(queue)
+        center_ext = bind(self.places, sym.expansion_centers(
+            self.discr.ambient_dim, +1,
+            where=self.where))(queue)
 
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(queue,
-            sources=self.source.density_discr.nodes(),
+            sources=self.discr.nodes(),
             center_int=center_int,
             center_ext=center_ext,
             expansion_radii=radii,
@@ -592,17 +604,16 @@ def gather_block_interaction_points(source, indices,
 
     with cl.CommandQueue(source.cl_context) as queue:
         generator = ProxyGenerator(source,
-                                   ratio=ratio,
-                                   approx_nproxy=approx_nproxy)
+                ratio=ratio, approx_nproxy=approx_nproxy)
         proxies, pxyranges, pxycenters, pxyradii = generator(queue, indices)
 
-        neighbors = gather_block_neighbor_points(source.density_discr,
+        neighbors = gather_block_neighbor_points(generator.discr,
                 indices, pxycenters, pxyradii,
                 max_nodes_in_box=max_nodes_in_box)
 
         ranges = cl.array.zeros(queue, indices.nblocks + 1, dtype=np.int)
         _, (nodes, ranges) = knl()(queue,
-                sources=source.density_discr.nodes(),
+                sources=generator.discr.nodes(),
                 proxies=proxies,
                 pxyranges=pxyranges,
                 nbrindices=neighbors.indices,
