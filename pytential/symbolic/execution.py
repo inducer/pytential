@@ -170,10 +170,6 @@ class EvaluationMapper(EvaluationMapperBase):
         result = gmres(scipy_op, rhs)
         return result
 
-    def map_quad_kernel_op(self, expr):
-        source = self.places[expr.source]
-        return source.map_quad_kernel_op(expr, self.bound_expr, self.rec)
-
     def map_interpolation(self, expr):
         operand = self.rec(expr.operand)
 
