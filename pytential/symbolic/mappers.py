@@ -219,12 +219,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         else:
             return expr
 
-    def map_q_weight(self, expr):
-        dd = prim.as_dofdesc(expr.where)
-        if dd.where is None:
-            return type(expr)(where=dd.copy(where=self.default_source))
-        else:
-            return expr
+    map_q_weight = map_ones
 
     def map_parametrization_derivative_component(self, expr):
         dd = prim.as_dofdesc(expr.where)
@@ -423,17 +418,59 @@ class UnregularizedPreprocessor(IdentityMapper):
 
 # {{{ QBX preprocessor
 
-class QBXInterpolationPreprocessor(IdentityMapper):
-    def __init__(self, places):
+class InterpolationDiscretizationTagger(IdentityMapper):
+    def __init__(self, discr):
+        self.discr = discr
+
+    def map_node_coordinate_component(self, expr):
+        dd = prim.as_dofdesc(expr.where)
+        if dd.discr == self.discr:
+            return expr
+        else:
+            return type(expr)(
+                    expr.ambient_axis,
+                    dd.copy(discr=self.discr))
+
+    def map_num_reference_derivative(self, expr):
+        dd = prim.as_dofdesc(expr.where)
+        if dd.discr == self.discr:
+            return expr
+        else:
+            return type(expr)(
+                    expr.ref_axes,
+                    self.rec(expr.operand),
+                    dd.copy(discr=self.discr))
+
+
+class InterpolationPreprocessor(IdentityMapper):
+    def __init__(self, places, discr=None):
         self.places = places
+        self.discr = discr or prim.QBX_SOURCE_STAGE2
+        self.tagger = InterpolationDiscretizationTagger(self.discr)
+
+    def map_num_reference_derivative(self, expr):
+        target_dd = prim.as_dofdesc(expr.where)
+        if target_dd.discr != prim.QBX_SOURCE_QUAD_STAGE2:
+            return expr
+
+        from pytential.qbx import QBXLayerPotentialSource
+        lpot_source = self.places[target_dd]
+        if not isinstance(lpot_source, QBXLayerPotentialSource):
+            return expr
+
+        source_dd = target_dd.copy(discr=self.discr)
+        return prim.Interpolation(
+                source_dd,
+                target_dd,
+                self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
         source_dd = prim.as_dofdesc(expr.source)
         if source_dd.discr == prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
-        lpot_source = self.places[expr.source]
 
         from pytential.qbx import QBXLayerPotentialSource
+        lpot_source = self.places[source_dd]
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
@@ -448,7 +485,9 @@ class QBXInterpolationPreprocessor(IdentityMapper):
         return expr.copy(
                 kernel=expr.kernel,
                 density=density,
-                kernel_arguments=kernel_arguments)
+                kernel_arguments=kernel_arguments,
+                source=target_dd,
+                target=expr.target)
 
 
 class QBXPreprocessor(IdentityMapper):

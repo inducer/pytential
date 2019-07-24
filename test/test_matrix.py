@@ -286,7 +286,7 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     from pytential.symbolic.execution import GeometryCollection
     from pytential.symbolic.execution import _prepare_expr, _prepare_domains
     places = GeometryCollection(qbx)
-    expr = _prepare_expr(places, op)
+    expr = _prepare_expr(places, op, interpolate=False)
     domains = _prepare_domains(1, places, None, sym.DEFAULT_SOURCE)
 
     from pytential.symbolic.matrix import P2PMatrixBuilder
@@ -362,7 +362,7 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
 
     from pytential.symbolic.execution import GeometryCollection, _prepare_expr
     places = GeometryCollection(qbx, auto_where=place_ids)
-    expr = _prepare_expr(places, op)
+    expr = _prepare_expr(places, op, interpolate=False)
     density_discr = places.get_discretization(place_ids[0])
     index_set = _build_block_index(density_discr, factor=factor)
 
@@ -441,17 +441,21 @@ def test_build_matrix_places(ctx_factory, place_ids, visualize=False):
 
     index_set = _build_block_index(source_discr, factor=0.6)
 
-    # build full QBX matrix
-    from pytential.symbolic.execution import build_matrix
-    qbx_mat = build_matrix(queue, qbx, op, u_sym, auto_where=place_ids)
-    qbx_mat = qbx_mat.get(queue)
+    from pytential.symbolic.execution import _prepare_expr
+    op = _prepare_expr(places, op, interpolate=False)
 
-    assert qbx_mat.shape == (target_discr.nnodes, source_discr.nnodes)
+    # build full QBX matrix
+    from pytential.symbolic.matrix import MatrixBuilder
+    mbuilder = MatrixBuilder(queue,
+            dep_expr=u_sym,
+            other_dep_exprs=[],
+            dep_source=places[place_ids[0]],
+            dep_discr=places.get_discretization(place_ids[0]),
+            places=places,
+            context={})
+    qbx_mat = mbuilder(op)
 
     # build full p2p matrix
-    from pytential.symbolic.execution import _prepare_expr
-    op = _prepare_expr(places, op)
-
     from pytential.symbolic.matrix import P2PMatrixBuilder
     mbuilder = P2PMatrixBuilder(queue,
             dep_expr=u_sym,

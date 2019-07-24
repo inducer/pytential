@@ -322,7 +322,7 @@ def _prepare_domains(nresults, places, domains, default_domain):
     return domains
 
 
-def _prepare_expr(places, expr):
+def _prepare_expr(places, expr, interpolate=True):
     """
     :arg places: :class:`pytential.symbolic.execution.GeometryCollection`.
     :arg expr: a symbolic expression.
@@ -332,7 +332,9 @@ def _prepare_expr(places, expr):
 
     from pytential.source import LayerPotentialSourceBase
     from pytential.symbolic.mappers import (
-            ToTargetTagger, DerivativeBinder)
+            ToTargetTagger,
+            DerivativeBinder,
+            InterpolationPreprocessor)
 
     expr = ToTargetTagger(*places.auto_where)(expr)
     expr = DerivativeBinder()(expr)
@@ -341,6 +343,8 @@ def _prepare_expr(places, expr):
         if isinstance(place, LayerPotentialSourceBase):
             expr = place.preprocess_optemplate(name, places, expr)
 
+    if interpolate:
+        expr = InterpolationPreprocessor(places)(expr)
     return expr
 
 # }}}
@@ -566,10 +570,7 @@ def bind(places, expr, auto_where=None):
 
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
-
-    from pytential.symbolic.mappers import QBXInterpolationPreprocessor
     expr = _prepare_expr(places, expr)
-    expr = QBXInterpolationPreprocessor(places)(expr)
 
     return BoundExpression(places, expr)
 
