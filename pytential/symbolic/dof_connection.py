@@ -240,7 +240,7 @@ def connection_from_dds(places, from_dd, to_dd):
         if to_dd.discr != sym.QBX_SOURCE_QUAD_STAGE2:
             # TODO: can probably extend this to project from a QUAD_STAGE2
             # using L2ProjectionInverseDiscretizationConnection
-            raise RuntimeError("can only interpolate to "
+            raise ValueError("can only interpolate to "
                 "`QBX_SOURCE_QUAD_STAGE2`")
 
         if from_dd.discr == sym.QBX_SOURCE_QUAD_STAGE2:
