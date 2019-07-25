@@ -232,7 +232,7 @@ def connection_from_dds(places, from_dd, to_dd):
 
     from pytential.qbx import QBXLayerPotentialSource
     if (not isinstance(from_discr, QBXLayerPotentialSource)
-            and from_dd.discr != to_dd.discr):
+            and from_dd.discr is not to_dd.discr):
         raise ValueError("can only interpolate on a `QBXLayerPotentialSource`")
 
     connections = []
