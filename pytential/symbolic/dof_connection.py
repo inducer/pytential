@@ -26,8 +26,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-
 import pyopencl as cl
 import pyopencl.array # noqa
 from pytools import memoize
@@ -145,62 +143,6 @@ class CenterGranularityConnection(GranularityConnection):
 
         return result[0] if len(result) == 1 else result
 
-
-class ElementGranularityConnection(GranularityConnection):
-    """A :class:`GranularityConnection` used to transport from node data
-    (:class:`~pytential.symbolic.primitives.GRANULARITY_NODE`) to per-element
-    data (:class:`~pytential.symbolic.primitives.GRANULARITY_ELEMENT`).
-
-    .. attribute:: discr
-    .. automethod:: __call__
-    """
-
-    def __init__(self, discr):
-        super(ElementGranularityConnection, self).__init__(discr)
-
-    @memoize
-    def kernel(self):
-        knl = lp.make_kernel(
-            "{[i, k]: 0 <= i < nelements}",
-            "result[i] = a[i, 0]",
-            [
-                lp.GlobalArg("a",
-                    shape=("nelements", "nunit_nodes"), dtype=None),
-                lp.ValueArg("nunit_nodes", dtype=np.int32),
-                "..."
-            ],
-            name="node_element_subsample",
-            lang_version=MOST_RECENT_LANGUAGE_VERSION,
-            )
-
-        knl = lp.split_iname(knl, "i", 128,
-                inner_tag="l.0", outer_tag="g.0")
-        return knl
-
-    def __call__(self, queue, vec):
-        """
-        :arg vec: a vector with degrees of freedom corresponding to
-            nodes in :attr:`discr`.
-        :return: an :class:`pyopencl.array.Array` of size
-            ``(discr.mesh.nelements,)``. The reduction is performed by
-            picking the first node in each element according to its
-            group numbering.
-        """
-
-        if not isinstance(vec, cl.array.Array):
-            raise TypeError('non-array passed to connection')
-
-        if vec.shape != (self.discr.nnodes,):
-            raise ValueError('invalid shape of incoming array')
-
-        result = cl.array.empty(queue, self.discr.mesh.nelements, vec.dtype)
-        for igrp, group in enumerate(self.discr.groups):
-            self.kernel()(queue,
-                a=group.view(vec),
-                result=mesh_el_view(self.discr.mesh, igrp, result))
-
-        return result
-
 # }}}
 
 
@@ -317,7 +259,11 @@ def connection_from_dds(places, from_dd, to_dd):
         elif to_dd.granularity == sym.GRANULARITY_CENTER:
             connections.append(CenterGranularityConnection(to_discr))
         elif to_dd.granularity == sym.GRANULARITY_ELEMENT:
-            connections.append(ElementGranularityConnection(to_discr))
+            raise ValueError("Creating a connection to element granularity "
+                    "is not allowed. Use Elementwise{Max,Min,Sum}.")
+        else:
+            raise ValueError("invalid to_dd granularity: %s"
+                    % to_dd.granularity)
 
     return DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)
 
