@@ -258,7 +258,7 @@ class DOFDescriptor(object):
     .. attribute:: where
 
         An identifier for the domain on which the DOFs exist. This can be a
-        simple string or another hashable identifier for the geometric object.
+        simple string or any other hashable identifier for the geometric object.
         The geometric objects are generally subclasses of
         :class:`~pytential.source.PotentialSource`,
         :class:`~pytential.target.TargetBase` or
