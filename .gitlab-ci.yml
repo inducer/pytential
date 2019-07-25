@@ -83,7 +83,7 @@ Python 3 Conda Apple:
   - export CONDA_ENVIRONMENT=.test-conda-env-py3-macos.yml
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
   - export REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
-  - export CC=gcc
+  - export CC=clang
   - set -o xtrace
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
