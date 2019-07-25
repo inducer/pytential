@@ -475,7 +475,7 @@ class GeometryCollection(object):
             return discr
 
     def __getitem__(self, where):
-        dd = sym.as_dofdesc(where)
+        where = sym.as_dofdesc(where)
         return self.places[dd.where]
 
     def __contains__(self, where):
