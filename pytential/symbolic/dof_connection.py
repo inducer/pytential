@@ -207,7 +207,9 @@ class ElementGranularityConnection(GranularityConnection):
 # {{{ dof connection
 
 class DOFConnection(object):
-    """A class used to transport between DOF types.
+    """An interpolation operation for converting a DOF vector between
+    different DOF types, as described by
+    :class:`~pytential.symbolic.primitives.DOFDescriptor`.
 
     .. attribute:: connections
 

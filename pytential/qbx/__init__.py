@@ -56,6 +56,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     .. attribute :: qbx_order
     .. attribute :: fmm_order
 
+    .. automethod :: __init__
+    .. automethod :: with_refinement
+    .. automethod :: copy
+
+    .. attribute :: stage2_density_discr
+    .. attribute :: quad_stage2_density_discr
+
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
 
@@ -379,7 +386,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         .. warning::
 
             This always returns a
-            :class:`~meshmode.discretization.connection.DirectDiscretizationConnect`.
+            :class:`~meshmode.discretization.connection.DirectDiscretizationConnection`.
             In case the geometry has been refined multiple times, a direct
             connection can have a large number of groups and/or
             interpolation batches, making it scale significantly worse than

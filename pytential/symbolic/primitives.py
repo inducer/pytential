@@ -273,10 +273,10 @@ class DOFDescriptor(object):
 
     .. attribute:: granularity
 
-        Describes the level of granularity of the DOF.
-        Can be one of :class:`GRANULARITY_NODE`, :class:`GRANULARITY_CENTER` or
-        :class:`GRANULARITY_ELEMENT`.
-
+        Describes the level of granularity of the DOF vector.
+        Can be one of :class:`GRANULARITY_NODE` (one DOF per node),
+        :class:`GRANULARITY_CENTER` (two DOFs per node, one per side) or
+        :class:`GRANULARITY_ELEMENT` (one DOF per element).
     """
 
     def __init__(self, where, discr=None, granularity=None):
@@ -894,6 +894,11 @@ def _expansion_radii_factor(ambient_dim, dim):
 
 
 def _quad_resolution(ambient_dim, dim=None, granularity=None, where=None):
+    """This measures the quadrature resolution across the
+    mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
+    should be the same as the panel length.
+    """
+
     source = as_dofdesc(where)
     target = source.copy(granularity=granularity)
 
