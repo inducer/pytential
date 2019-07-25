@@ -1228,6 +1228,12 @@ class Interpolation(Expression):
     init_arg_names = ("source", "target", "operand")
 
     def __new__(cls, source, target, operand):
+        source = as_dofdesc(source)
+        target = as_dofdesc(target)
+
+        if source == target:
+            return operand
+
         if isinstance(operand, np.ndarray):
             def make_op(operand_i):
                 return cls(source, target, operand_i)
