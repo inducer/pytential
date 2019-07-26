@@ -94,17 +94,17 @@ def calibrate_cost_model(ctx):
 
     from pytential.qbx.cost import CostModel, estimate_calibration_params
 
-    perf_model = CostModel()
+    cost_model = CostModel()
 
     model_results = []
     timing_results = []
 
     for lpot_source in training_geometries(queue):
-        lpot_source = lpot_source.copy(cost_model=perf_model)
+        lpot_source = lpot_source.copy(cost_model=cost_model)
         bound_op = get_bound_op(lpot_source)
         sigma = get_test_density(queue, lpot_source)
 
-        perf_S = bound_op.get_modeled_cost(queue, sigma=sigma)
+        cost_S = bound_op.get_modeled_cost(queue, sigma=sigma)
 
         # Warm-up run.
         bound_op.eval(queue, {"sigma": sigma})
@@ -113,26 +113,26 @@ def calibrate_cost_model(ctx):
             timing_data = {}
             bound_op.eval(queue, {"sigma": sigma}, timing_data=timing_data)
 
-            model_results.append(one(perf_S.values()))
+            model_results.append(one(cost_S.values()))
             timing_results.append(one(timing_data.values()))
 
     calibration_params = (
             estimate_calibration_params(model_results, timing_results))
 
-    return perf_model.with_calibration_params(calibration_params)
+    return cost_model.with_calibration_params(calibration_params)
 
 
-def test_cost_model(ctx, perf_model):
+def test_cost_model(ctx, cost_model):
     queue = cl.CommandQueue(ctx)
 
     for lpot_source in test_geometries(queue):
-        lpot_source = lpot_source.copy(cost_model=perf_model)
+        lpot_source = lpot_source.copy(cost_model=cost_model)
         bound_op = get_bound_op(lpot_source)
         sigma = get_test_density(queue, lpot_source)
 
-        perf_S = bound_op.get_modeled_cost(queue, sigma=sigma)
+        cost_S = bound_op.get_modeled_cost(queue, sigma=sigma)
         model_result = (
-                one(perf_S.values())
+                one(cost_S.values())
                 .get_predicted_times(merge_close_lists=True))
 
         # Warm-up run.

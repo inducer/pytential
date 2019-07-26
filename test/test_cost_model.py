@@ -138,15 +138,15 @@ def test_cost_model(ctx_getter, dim):
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
     op_S = bind(lpot_source, sym_op_S)
-    perf_S = op_S.get_modeled_cost(queue, sigma=sigma)
-    assert len(perf_S) == 1
+    cost_S = op_S.get_modeled_cost(queue, sigma=sigma)
+    assert len(cost_S) == 1
 
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
             + sym.D(k_sym, sigma_sym))
     op_S_plus_D = bind(lpot_source, sym_op_S_plus_D)
-    perf_S_plus_D = op_S_plus_D.get_modeled_cost(queue, sigma=sigma)
-    assert len(perf_S_plus_D) == 2
+    cost_S_plus_D = op_S_plus_D.get_modeled_cost(queue, sigma=sigma)
+    assert len(cost_S_plus_D) == 2
 
 # }}}
 
@@ -173,22 +173,22 @@ def test_cost_model_parameter_gathering(ctx_getter):
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1, k=sym.var("k"))
     op_S = bind(lpot_source, sym_op_S)
 
-    perf_S = one(op_S.get_modeled_cost(queue, sigma=sigma, k=k).values())
+    cost_S = one(op_S.get_modeled_cost(queue, sigma=sigma, k=k).values())
 
     geo_data = lpot_source.qbx_fmm_geometry_data(
             target_discrs_and_qbx_sides=((lpot_source.density_discr, 1),))
 
     tree = geo_data.tree()
 
-    assert perf_S.params["p_qbx"] == QBX_ORDER
-    assert perf_S.params["nlevels"] == tree.nlevels
-    assert perf_S.params["nsources"] == tree.nsources
-    assert perf_S.params["ntargets"] == tree.ntargets
-    assert perf_S.params["ncenters"] == geo_data.ncenters
+    assert cost_S.params["p_qbx"] == QBX_ORDER
+    assert cost_S.params["nlevels"] == tree.nlevels
+    assert cost_S.params["nsources"] == tree.nsources
+    assert cost_S.params["ntargets"] == tree.ntargets
+    assert cost_S.params["ncenters"] == geo_data.ncenters
 
     for level in range(tree.nlevels):
         assert (
-                perf_S.params["p_fmm_lev%d" % level]
+                cost_S.params["p_fmm_lev%d" % level]
                 == fmm_level_to_order(k_sym, {"k": 2}, tree, level))
 
 # }}}
@@ -397,12 +397,12 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    perf_model = (
+    cost_model = (
             CostModel(
                 translation_cost_model_factory=OpCountingTranslationCostModel))
 
     lpot_source = get_lpot_source(queue, dim).copy(
-            cost_model=perf_model,
+            cost_model=cost_model,
             _use_target_specific_qbx=use_target_specific_qbx)
 
     # Construct targets.
@@ -428,7 +428,7 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
     sigma = get_density(queue, lpot_source)
 
     from pytools import one
-    perf_S = one(op_S.get_modeled_cost(queue, sigma=sigma).values())
+    cost_S = one(op_S.get_modeled_cost(queue, sigma=sigma).values())
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
     # high-level interface, so call the FMM driver directly.
@@ -448,7 +448,7 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
     # Check constant one wrangler for correctness.
     assert (potential == nnodes).all()
 
-    modeled_time = perf_S.get_predicted_times(merge_close_lists=True)
+    modeled_time = cost_S.get_predicted_times(merge_close_lists=True)
 
     # Check that the cost model matches the timing data returned by the
     # constant one wrangler.
@@ -503,7 +503,7 @@ def test_cost_model_order_varying_by_level(ctx_getter):
 
     sigma = get_density(queue, lpot_source)
 
-    perf_constant = one(
+    cost_constant = one(
             bind(lpot_source, sym_op)
             .get_modeled_cost(queue, sigma=sigma).values())
 
@@ -511,13 +511,13 @@ def test_cost_model_order_varying_by_level(ctx_getter):
 
     # {{{ varying level to order
 
-    varying_order_params = perf_constant.params.copy()
+    varying_order_params = cost_constant.params.copy()
 
-    nlevels = perf_constant.params["nlevels"]
+    nlevels = cost_constant.params["nlevels"]
     for level in range(nlevels):
         varying_order_params["p_fmm_lev%d" % level] = nlevels - level
 
-    perf_varying = perf_constant.with_params(varying_order_params)
+    cost_varying = cost_constant.with_params(varying_order_params)
 
     # }}}
 
@@ -525,8 +525,8 @@ def test_cost_model_order_varying_by_level(ctx_getter):
     # case should have larger cost.
 
     assert (
-            sum(perf_varying.get_predicted_times().values())
-            > sum(perf_constant.get_predicted_times().values()))
+            sum(cost_varying.get_predicted_times().values())
+            > sum(cost_constant.get_predicted_times().values()))
 
 # }}}
 
