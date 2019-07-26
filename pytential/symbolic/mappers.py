@@ -416,7 +416,7 @@ class QBXInterpolationPreprocessor(IdentityMapper):
 
     def map_int_g(self, expr):
         source_dd = prim.as_dofdesc(expr.source)
-        if source_dd.discr == prim.QBX_SOURCE_QUAD_STAGE2:
+        if source_dd.discr is prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
         lpot_source = self.places[expr.source]
 

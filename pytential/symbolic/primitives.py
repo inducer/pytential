@@ -341,14 +341,14 @@ class DOFDescriptor(object):
         else:
             name.append(str(self.where))
 
-        if self.discr == QBX_SOURCE_STAGE2:
+        if self.discr is QBX_SOURCE_STAGE2:
             name.append("stage2")
-        elif self.discr == QBX_SOURCE_QUAD_STAGE2:
+        elif self.discr is QBX_SOURCE_QUAD_STAGE2:
             name.append("quads2")
 
-        if self.granularity == GRANULARITY_CENTER:
+        if self.granularity is GRANULARITY_CENTER:
             name.append("center")
-        elif self.granularity == GRANULARITY_ELEMENT:
+        elif self.granularity is GRANULARITY_ELEMENT:
             name.append("panel")
 
         return "/".join(name)
@@ -358,14 +358,14 @@ def as_dofdesc(desc):
     if isinstance(desc, DOFDescriptor):
         return desc
 
-    if desc == QBX_SOURCE_STAGE1 \
-            or desc == QBX_SOURCE_STAGE2 \
-            or desc == QBX_SOURCE_QUAD_STAGE2:
+    if desc is QBX_SOURCE_STAGE1 \
+            or desc is QBX_SOURCE_STAGE2 \
+            or desc is QBX_SOURCE_QUAD_STAGE2:
         return DOFDescriptor(None, discr=desc)
 
-    if desc == GRANULARITY_NODE \
-            or desc == GRANULARITY_CENTER \
-            or desc == GRANULARITY_ELEMENT:
+    if desc is GRANULARITY_NODE \
+            or desc is GRANULARITY_CENTER \
+            or desc is GRANULARITY_ELEMENT:
         return DOFDescriptor(None, granularity=desc)
 
     return DOFDescriptor(desc)
@@ -988,7 +988,7 @@ def h_max(ambient_dim, dim=None, where=None):
 
 def weights_and_area_elements(ambient_dim, dim=None, where=None):
     where = as_dofdesc(where)
-    if where.discr == QBX_SOURCE_QUAD_STAGE2:
+    if where.discr is QBX_SOURCE_QUAD_STAGE2:
         # quad_stage2_density_discr is not guaranteed to be usable for
         # interpolation/differentiation. Use stage2_density_discr to find
         # area elements instead, then upsample that.

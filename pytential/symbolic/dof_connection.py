@@ -206,21 +206,19 @@ def connection_from_dds(places, from_dd, to_dd):
         places = GeometryCollection(places)
     from_discr = places[from_dd]
 
-    if not ((from_dd.where in (sym.DEFAULT_SOURCE,)
-            and to_dd.where in (sym.DEFAULT_SOURCE, sym.DEFAULT_TARGET))
-            or from_dd.where == to_dd.where):
+    if from_dd.where != to_dd.where:
         raise ValueError("cannot interpolate between different domains")
 
-    if from_dd.granularity != sym.GRANULARITY_NODE:
+    if from_dd.granularity is not sym.GRANULARITY_NODE:
         raise ValueError("can only interpolate from `GRANULARITY_NODE`")
-
-    from pytential.qbx import QBXLayerPotentialSource
-    if (not isinstance(from_discr, QBXLayerPotentialSource)
-            and from_dd.discr is not to_dd.discr):
-        raise ValueError("can only interpolate on a `QBXLayerPotentialSource`")
 
     connections = []
     if from_dd.discr != to_dd.discr:
+        from pytential.qbx import QBXLayerPotentialSource
+        if not isinstance(from_discr, QBXLayerPotentialSource):
+            raise ValueError("can only interpolate on a "
+                    "`QBXLayerPotentialSource`")
+
         if to_dd.discr != sym.QBX_SOURCE_QUAD_STAGE2:
             # TODO: can probably extend this to project from a QUAD_STAGE2
             # using L2ProjectionInverseDiscretizationConnection
