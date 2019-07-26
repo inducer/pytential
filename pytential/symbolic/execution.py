@@ -316,10 +316,10 @@ class CostModelMapper(EvaluationMapperBase):
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         source = bound_expr.places[insn.source]
-        result, perf_model_result = (
-                source.perf_model_compute_potential_insn(
+        result, cost_model_result = (
+                source.cost_model_compute_potential_insn(
                     queue, insn, bound_expr, evaluate))
-        self.modeled_cost[insn] = perf_model_result
+        self.modeled_cost[insn] = cost_model_result
         return result
 
     def get_modeled_cost(self):
@@ -578,9 +578,9 @@ class BoundExpression(object):
         return self.places.get_discretization(where)
 
     def get_modeled_cost(self, queue, **args):
-        perf_model_mapper = CostModelMapper(self, queue, args)
-        self.code.execute(perf_model_mapper)
-        return perf_model_mapper.get_modeled_cost()
+        cost_model_mapper = CostModelMapper(self, queue, args)
+        self.code.execute(cost_model_mapper)
+        return cost_model_mapper.get_modeled_cost()
 
     def scipy_op(self, queue, arg_name, dtype, domains=None, **extra_args):
         """

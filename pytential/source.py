@@ -124,7 +124,7 @@ class PointPotentialSource(PotentialSource):
 
         return p2p
 
-    def perf_model_compute_potential_insn(self, queue, insn, bound_expr,
+    def cost_model_compute_potential_insn(self, queue, insn, bound_expr,
                                           evaluate, costs):
         raise NotImplementedError
 
@@ -201,7 +201,7 @@ class LayerPotentialSourceBase(PotentialSource):
     .. rubric:: Execution
 
     .. method:: weights_and_area_elements
-    .. method:: perf_model_compute_potential_insn
+    .. method:: cost_model_compute_potential_insn
     .. method:: exec_compute_potential_insn
     """
 

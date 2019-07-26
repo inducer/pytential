@@ -643,12 +643,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return self._dispatch_compute_potential_insn(
                 queue, insn, bound_expr, evaluate, func, extra_args)
 
-    def perf_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def cost_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         if self.fmm_level_to_order is False:
             raise NotImplementedError("perf modeling direct evaluations")
         return self._dispatch_compute_potential_insn(
                 queue, insn, bound_expr, evaluate,
-                self.perf_model_compute_potential_insn_fmm)
+                self.cost_model_compute_potential_insn_fmm)
 
     def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
             evaluate, func, extra_args=None):
@@ -735,7 +735,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ execute fmm cost model
 
-    def perf_model_compute_potential_insn_fmm(self, queue, insn, bound_expr,
+    def cost_model_compute_potential_insn_fmm(self, queue, insn, bound_expr,
             evaluate):
         target_name_and_side_to_number, target_discrs_and_qbx_sides = (
                 self.get_target_discrs_and_qbx_sides(insn, bound_expr))
