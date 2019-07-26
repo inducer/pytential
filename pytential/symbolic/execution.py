@@ -491,9 +491,9 @@ class GeometryCollection(object):
     def _get_lpot_discretization(self, lpot, dd):
         dd = sym.as_dofdesc(dd)
 
-        if dd.discr == sym.QBX_SOURCE_STAGE2:
+        if dd.discr is sym.QBX_SOURCE_STAGE2:
             return lpot.stage2_density_discr
-        if dd.discr == sym.QBX_SOURCE_QUAD_STAGE2:
+        if dd.discr is sym.QBX_SOURCE_QUAD_STAGE2:
             return lpot.quad_stage2_density_discr
         return lpot.density_discr
 

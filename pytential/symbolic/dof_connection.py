@@ -213,34 +213,34 @@ def connection_from_dds(places, from_dd, to_dd):
         raise ValueError("can only interpolate from `GRANULARITY_NODE`")
 
     connections = []
-    if from_dd.discr != to_dd.discr:
+    if from_dd.discr is not to_dd.discr:
         from pytential.qbx import QBXLayerPotentialSource
         if not isinstance(from_discr, QBXLayerPotentialSource):
             raise ValueError("can only interpolate on a "
                     "`QBXLayerPotentialSource`")
 
-        if to_dd.discr != sym.QBX_SOURCE_QUAD_STAGE2:
+        if to_dd.discr is not sym.QBX_SOURCE_QUAD_STAGE2:
             # TODO: can probably extend this to project from a QUAD_STAGE2
             # using L2ProjectionInverseDiscretizationConnection
             raise ValueError("can only interpolate to "
                 "`QBX_SOURCE_QUAD_STAGE2`")
 
-        if from_dd.discr == sym.QBX_SOURCE_QUAD_STAGE2:
+        if from_dd.discr is sym.QBX_SOURCE_QUAD_STAGE2:
             pass
-        elif from_dd.discr == sym.QBX_SOURCE_STAGE2:
+        elif from_dd.discr is sym.QBX_SOURCE_STAGE2:
             connections.append(
                     from_discr.refined_interp_to_ovsmp_quad_connection)
         else:
             connections.append(from_discr.resampler)
 
-    if from_dd.granularity != to_dd.granularity:
+    if from_dd.granularity is not to_dd.granularity:
         to_discr = places.get_discretization(to_dd)
 
-        if to_dd.granularity == sym.GRANULARITY_NODE:
+        if to_dd.granularity is sym.GRANULARITY_NODE:
             pass
-        elif to_dd.granularity == sym.GRANULARITY_CENTER:
+        elif to_dd.granularity is sym.GRANULARITY_CENTER:
             connections.append(CenterGranularityConnection(to_discr))
-        elif to_dd.granularity == sym.GRANULARITY_ELEMENT:
+        elif to_dd.granularity is sym.GRANULARITY_ELEMENT:
             raise ValueError("Creating a connection to element granularity "
                     "is not allowed. Use Elementwise{Max,Min,Sum}.")
         else:

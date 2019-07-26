@@ -241,9 +241,9 @@ def test_interpolation(ctx_factory, name, source_discr, target_granularity):
     bound_op = bind(qbx, op_sym, auto_where=where)
 
     target_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
-    if source_discr == sym.QBX_SOURCE_STAGE2:
+    if source_discr is sym.QBX_SOURCE_STAGE2:
         source_nodes = qbx.stage2_density_discr.nodes().get(queue)
-    elif source_discr == sym.QBX_SOURCE_QUAD_STAGE2:
+    elif source_discr is sym.QBX_SOURCE_QUAD_STAGE2:
         source_nodes = target_nodes
     else:
         source_nodes = qbx.density_discr.nodes().get(queue)
