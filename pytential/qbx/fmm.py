@@ -539,8 +539,6 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
 
     recorder.add("form_global_qbx_locals", timing_future)
 
-    qbx_expansions = qbx_expansions + ts_result
-
     local_result, timing_future = (
             wrangler.translate_box_multipoles_to_qbx_local(mpole_exps))
 
