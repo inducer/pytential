@@ -83,7 +83,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
             _tree_kind="adaptive",
-            _use_target_specific_qbx=False,
+            # None means use by default if possible.
+            _use_target_specific_qbx=None,
             geometry_data_inspector=None,
             cost_model=None,
             fmm_backend="sumpy",

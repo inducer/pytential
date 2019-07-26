@@ -123,7 +123,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     def __init__(self, code_container, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs, kernel_extra_kwargs,
-            _use_target_specific_qbx=False):
+            _use_target_specific_qbx=None):
         if _use_target_specific_qbx:
             raise ValueError("TSQBX is not implemented in sumpy")
 

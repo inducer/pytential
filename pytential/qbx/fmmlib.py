@@ -59,7 +59,7 @@ class QBXFMMLibExpansionWranglerCodeContainer(object):
             qbx_order, fmm_level_to_order,
             source_extra_kwargs={},
             kernel_extra_kwargs=None,
-            _use_target_specific_qbx=False):
+            _use_target_specific_qbx=None):
 
         return QBXFMMLibExpansionWrangler(self, queue, geo_data, dtype,
                 qbx_order, fmm_level_to_order,
@@ -77,11 +77,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             qbx_order, fmm_level_to_order,
             source_extra_kwargs,
             kernel_extra_kwargs,
-            _use_target_specific_qbx=False):
-
+            _use_target_specific_qbx=None):
         self.code = code
         self.queue = queue
-        self._use_target_specific_qbx = _use_target_specific_qbx
 
         # FMMLib is CPU-only. This wrapper gets the geometry out of
         # OpenCL-land.
@@ -99,11 +97,16 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         source_deriv_names = []
         k_names = []
 
+        using_tsqbx = (
+                _use_target_specific_qbx
+                # None means use by default if possible
+                or _use_target_specific_qbx is None)
+
         for out_knl in self.code.out_kernels:
-            if (
-                    _use_target_specific_qbx
-                    and not self.is_supported_helmknl_for_tsqbx(out_knl)):
-                raise ValueError("not all kernels passed support TSQBX")
+            if not self.is_supported_helmknl_for_tsqbx(out_knl):
+                if _use_target_specific_qbx:
+                    raise ValueError("not all kernels passed support TSQBX")
+                using_tsqbx = False
 
             if self.is_supported_helmknl(out_knl):
                 outputs.append(())
@@ -129,6 +132,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     if isinstance(base_knl, HelmholtzKernel)
                     else None)
 
+        self.using_tsqbx = using_tsqbx
         self.outputs = outputs
 
         from pytools import is_single_valued
@@ -284,7 +288,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     @log_process(logger)
     @return_timing_data
     def form_global_qbx_locals(self, src_weights):
-        if self._use_target_specific_qbx:
+        if self.using_tsqbx:
             return self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
@@ -578,7 +582,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     @log_process(logger)
     @return_timing_data
     def eval_target_specific_qbx_locals(self, src_weights):
-        if not self._use_target_specific_qbx:
+        if not self.using_tsqbx:
             return self.full_output_zeros()
 
         geo_data = self.geo_data
