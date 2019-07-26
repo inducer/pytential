@@ -212,55 +212,42 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     map_common_subexpression_uncached = \
             IdentityMapper.map_common_subexpression
 
-    def map_ones(self, expr):
-        dd = prim.as_dofdesc(expr.where)
+    def _as_dofdesc(self, where):
+        dd = prim.as_dofdesc(where)
         if dd.where is None:
-            return type(expr)(where=dd.copy(where=self.default_where))
-        else:
-            return expr
+            if dd.discr is None and dd.granularity is prim.GRANULARITY_NODE:
+                dd = dd.copy(where=self.default_where)
+            else:
+                dd = dd.copy(where=self.default_source)
 
-    def map_q_weight(self, expr):
-        dd = prim.as_dofdesc(expr.where)
-        if dd.where is None:
-            return type(expr)(where=dd.copy(where=self.default_source))
-        else:
-            return expr
+        return dd
+
+    def map_ones(self, expr):
+        return type(expr)(where=self._as_dofdesc(expr.where))
+
+    map_q_weight = map_ones
 
     def map_parametrization_derivative_component(self, expr):
-        dd = prim.as_dofdesc(expr.where)
-        if dd.where is None:
-            return type(expr)(
-                    expr.ambient_axis, expr.ref_axis,
-                    dd.copy(where=self.default_where))
-        else:
-            return expr
+        return type(expr)(
+                expr.ambient_axis,
+                expr.ref_axis,
+                self._as_dofdesc(expr.where))
 
     def map_node_coordinate_component(self, expr):
-        dd = prim.as_dofdesc(expr.where)
-        if dd.where is None:
-            return type(expr)(
-                    expr.ambient_axis,
-                    dd.copy(where=self.default_where))
-        else:
-            return expr
+        return type(expr)(
+                expr.ambient_axis,
+                self._as_dofdesc(expr.where))
 
     def map_num_reference_derivative(self, expr):
-        dd = prim.as_dofdesc(expr.where)
-        if dd.where is None:
-            return type(expr)(
-                    expr.ref_axes, self.rec(expr.operand),
-                    dd.copy(where=self.default_where))
-        else:
-            return expr
+        return type(expr)(
+                expr.ref_axes,
+                self.rec(expr.operand),
+                self._as_dofdesc(expr.where))
 
     def map_elementwise_sum(self, expr):
-        operand = self.rec(expr.operand)
-        dd = prim.as_dofdesc(expr.where)
-
-        if dd.where is None:
-            return type(expr)(operand, dd.copy(where=self.default_where))
-        else:
-            return type(expr)(operand, dd)
+        return type(expr)(
+                self.rec(expr.operand),
+                self._as_dofdesc(expr.where))
 
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum

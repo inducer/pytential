@@ -36,22 +36,6 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 # {{{ granularity connections
 
-def mesh_el_view(mesh, group_nr, global_array):
-    """Return a view of *global_array* of shape
-    ``(..., mesh.groups[group_nr].nelements)``
-    where *global_array* is of shape ``(..., nelements)``,
-    where *nelements* is the global (per-mesh) element count.
-    """
-
-    group = mesh.groups[group_nr]
-
-    return global_array[
-        ..., group.element_nr_base:group.element_nr_base + group.nelements] \
-        .reshape(
-            global_array.shape[:-1]
-            + (group.nelements,))
-
-
 class GranularityConnection(object):
     """Abstract interface for transporting a DOF between different levels
     of granularity.
@@ -262,8 +246,7 @@ def connection_from_dds(places, from_dd, to_dd):
             raise ValueError("Creating a connection to element granularity "
                     "is not allowed. Use Elementwise{Max,Min,Sum}.")
         else:
-            raise ValueError("invalid to_dd granularity: %s"
-                    % to_dd.granularity)
+            raise ValueError("invalid to_dd granularity: %s" % to_dd.granularity)
 
     return DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)
 

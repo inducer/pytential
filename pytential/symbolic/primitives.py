@@ -959,8 +959,8 @@ def expansion_centers(ambient_dim, side, dim=None, where=None):
 
 
 def h_max(ambient_dim, dim=None, where=None):
-    r = _quad_resolution(ambient_dim, dim=None,
-            granularity=GRANULARITY_ELEMENT, where=where)
+    where = as_dofdesc(where).copy(granularity=GRANULARITY_ELEMENT)
+    r = _quad_resolution(ambient_dim, dim=dim, where=where)
 
     return cse(NodeMax(r),
             "h_max",
