@@ -104,6 +104,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
              *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
              *kernel_args* is a set of *(key, value)* tuples with evaluated
              kernel arguments. May not be given if *fmm_order* is given.
+        :arg cost_model: Either *None* or instance of
+             :class:`pytential.qbx.cost.CostModel`, used for gathering modeled
+             costs
         """
 
         # {{{ argument processing
