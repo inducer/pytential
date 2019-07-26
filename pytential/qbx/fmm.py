@@ -377,7 +377,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     @log_process(logger)
     def eval_target_specific_qbx_locals(self, src_weights):
-        raise NotImplementedError()
+        return self.qbx_local_expansion_zeros()
 
     # }}}
 
