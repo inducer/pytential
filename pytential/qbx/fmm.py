@@ -377,7 +377,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     @log_process(logger)
     def eval_target_specific_qbx_locals(self, src_weights):
-        return self.qbx_local_expansion_zeros()
+        return self.full_output_zeros()
 
     # }}}
 
@@ -532,16 +532,12 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
 
     # form_global_qbx_locals and eval_target_specific_qbx_locals are responsible
     # for the same interactions (directly evaluated portion of the potentials
-    # via unified List 1).  Which one is used depends on the wrangler. The
-    # unused one returns a zero potential.
+    # via unified List 1).  Which one is used depends on the wrangler. If one of
+    # them is unused the corresponding output entries will be zero.
 
     qbx_expansions, timing_future = wrangler.form_global_qbx_locals(src_weights)
 
     recorder.add("form_global_qbx_locals", timing_future)
-
-    ts_result, timing_future = wrangler.eval_target_specific_qbx_locals(src_weights)
-
-    recorder.add("eval_target_specific_qbx_locals", timing_future)
 
     qbx_expansions = qbx_expansions + ts_result
 
@@ -562,6 +558,12 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
     qbx_potentials, timing_future = wrangler.eval_qbx_expansions(qbx_expansions)
 
     recorder.add("eval_qbx_expansions", timing_future)
+
+    ts_result, timing_future = wrangler.eval_target_specific_qbx_locals(src_weights)
+
+    qbx_potentials = qbx_potentials + ts_result
+
+    recorder.add("eval_target_specific_qbx_locals", timing_future)
 
     # }}}
 
