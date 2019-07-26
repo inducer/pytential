@@ -331,8 +331,27 @@ class DOFDescriptor(object):
                 self.granularity.__name__)
 
     def __str__(self):
-        from pytential.symbolic.mappers import stringify_where
-        return stringify_where(self)
+        name = []
+        if self.where is None:
+            name.append("?")
+        elif self.where is DEFAULT_SOURCE:
+            name.append("s")
+        elif self.where is DEFAULT_TARGET:
+            name.append("t")
+        else:
+            name.append(str(self.where))
+
+        if self.discr == QBX_SOURCE_STAGE2:
+            name.append("stage2")
+        elif self.discr == QBX_SOURCE_QUAD_STAGE2:
+            name.append("quads2")
+
+        if self.granularity == GRANULARITY_CENTER:
+            name.append("center")
+        elif self.granularity == GRANULARITY_ELEMENT:
+            name.append("panel")
+
+        return "/".join(name)
 
 
 def as_dofdesc(desc):

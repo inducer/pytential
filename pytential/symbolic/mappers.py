@@ -502,29 +502,7 @@ class QBXPreprocessor(IdentityMapper):
 # {{{ stringifier
 
 def stringify_where(where):
-    dd = prim.as_dofdesc(where)
-
-    name = []
-    if dd.where is None:
-        name.append("?")
-    elif dd.where is prim.DEFAULT_SOURCE:
-        name.append("s")
-    elif dd.where is prim.DEFAULT_TARGET:
-        name.append("t")
-    else:
-        name.append(str(dd.where))
-
-    if dd.discr == prim.QBX_SOURCE_STAGE2:
-        name.append("stage2")
-    elif dd.discr == prim.QBX_SOURCE_QUAD_STAGE2:
-        name.append("quads2")
-
-    if dd.granularity == prim.GRANULARITY_CENTER:
-        name.append("center")
-    elif dd.granularity == prim.GRANULARITY_ELEMENT:
-        name.append("panel")
-
-    return "/".join(name)
+    return str(prim.as_dofdesc(where))
 
 
 class StringifyMapper(BaseStringifyMapper):
