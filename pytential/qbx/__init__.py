@@ -359,7 +359,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         with cl.CommandQueue(self.cl_context) as queue:
             waa = bind(self, sym.weights_and_area_elements(
                 self.ambient_dim,
-                where=sym.QBX_SOURCE_QUAD_STAGE2))(queue)
+                dofdesc=sym.QBX_SOURCE_QUAD_STAGE2))(queue)
 
             return waa.with_queue(None)
 

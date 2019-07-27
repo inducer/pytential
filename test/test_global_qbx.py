@@ -130,11 +130,11 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
         sym.expansion_radii(lpot_source.ambient_dim))(queue).get()
     source_danger_zone_radii = bind(lpot_source, sym._source_danger_zone_radii(
         lpot_source.ambient_dim,
-        where=sym.GRANULARITY_ELEMENT))(queue).get()
+        dofdesc=sym.GRANULARITY_ELEMENT))(queue).get()
 
     quad_res = bind(lpot_source, sym._quad_resolution(
         lpot_source.ambient_dim,
-        where=sym.GRANULARITY_ELEMENT))(queue)
+        dofdesc=sym.GRANULARITY_ELEMENT))(queue)
 
     # {{{ check if satisfying criteria
 

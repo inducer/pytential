@@ -144,11 +144,11 @@ class EvaluationMapper(EvaluationMapperBase):
 
             return result
 
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.bound_expr.get_discretization(expr.dofdesc)
         operand = self.rec(expr.operand)
         assert operand.shape == (discr.nnodes,)
 
-        where = sym.as_dofdesc(expr.where)
+        where = sym.as_dofdesc(expr.dofdesc)
         if where.granularity is sym.GRANULARITY_NODE:
             return _reduce(discr.nnodes,
                     node_knl(),
@@ -170,7 +170,7 @@ class EvaluationMapper(EvaluationMapperBase):
         return self._map_elementwise_reduction("max", expr)
 
     def map_ones(self, expr):
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.bound_expr.get_discretization(expr.dofdesc)
 
         result = (discr
                 .empty(queue=self.queue, dtype=discr.real_dtype)
@@ -180,12 +180,12 @@ class EvaluationMapper(EvaluationMapperBase):
         return result
 
     def map_node_coordinate_component(self, expr):
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.bound_expr.get_discretization(expr.dofdesc)
         return discr.nodes()[expr.ambient_axis] \
                 .with_queue(self.queue)
 
     def map_num_reference_derivative(self, expr):
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.bound_expr.get_discretization(expr.dofdesc)
 
         from pytools import flatten
         ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
@@ -195,7 +195,7 @@ class EvaluationMapper(EvaluationMapperBase):
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):
-        discr = self.bound_expr.get_discretization(expr.where)
+        discr = self.bound_expr.get_discretization(expr.dofdesc)
         return discr.quad_weights(self.queue) \
                 .with_queue(self.queue)
 
@@ -207,11 +207,11 @@ class EvaluationMapper(EvaluationMapperBase):
         except KeyError:
             bound_op = bind(
                     expr.expression,
-                    self.places[expr.where],
+                    self.places[expr.dofdesc],
                     self.bound_expr.iprec)
             bound_op_cache[expr] = bound_op
 
-        scipy_op = bound_op.scipy_op(expr.variable_name, expr.where,
+        scipy_op = bound_op.scipy_op(expr.variable_name, expr.dofdesc,
                 **dict((var_name, self.rec(var_expr))
                     for var_name, var_expr in six.iteritems(expr.extra_vars)))
 

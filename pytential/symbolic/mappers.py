@@ -62,14 +62,14 @@ class IdentityMapper(IdentityMapperBase):
     map_node_max = map_node_sum
 
     def map_elementwise_sum(self, expr):
-        return type(expr)(self.rec(expr.operand), expr.where)
+        return type(expr)(self.rec(expr.operand), expr.dofdesc)
 
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum
 
     def map_num_reference_derivative(self, expr):
         return type(expr)(expr.ref_axes, self.rec(expr.operand),
-                expr.where)
+                expr.dofdesc)
 
     # {{{ childless -- no need to rebuild
 
@@ -92,7 +92,7 @@ class IdentityMapper(IdentityMapperBase):
                 dict([
                     (name, self.rec(name_expr))
                     for name, name_expr in six.iteritems(expr.extra_vars)]),
-                expr.where)
+                expr.dofdesc)
 
     def map_int_g(self, expr):
         return expr.copy(
@@ -177,7 +177,7 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_num_reference_derivative(self, expr):
         return componentwise(
                 lambda subexpr: type(expr)(
-                        expr.ref_axes, self.rec(subexpr), expr.where),
+                        expr.ref_axes, self.rec(subexpr), expr.dofdesc),
                 expr.operand)
 
     def map_int_g(self, expr):
@@ -223,7 +223,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         return dd
 
     def map_ones(self, expr):
-        return type(expr)(where=self._as_dofdesc(expr.where))
+        return type(expr)(dofdesc=self._as_dofdesc(expr.dofdesc))
 
     map_q_weight = map_ones
 
@@ -231,23 +231,23 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         return type(expr)(
                 expr.ambient_axis,
                 expr.ref_axis,
-                self._as_dofdesc(expr.where))
+                self._as_dofdesc(expr.dofdesc))
 
     def map_node_coordinate_component(self, expr):
         return type(expr)(
                 expr.ambient_axis,
-                self._as_dofdesc(expr.where))
+                self._as_dofdesc(expr.dofdesc))
 
     def map_num_reference_derivative(self, expr):
         return type(expr)(
                 expr.ref_axes,
                 self.rec(expr.operand),
-                self._as_dofdesc(expr.where))
+                self._as_dofdesc(expr.dofdesc))
 
     def map_elementwise_sum(self, expr):
         return type(expr)(
                 self.rec(expr.operand),
-                self._as_dofdesc(expr.where))
+                self._as_dofdesc(expr.dofdesc))
 
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum
@@ -271,7 +271,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     ))
 
     def map_inverse(self, expr):
-        dd = prim.as_dofdesc(expr.where)
+        dd = prim.as_dofdesc(expr.dofdesc)
 
         if dd.where is None:
             dd = dd.copy(where=self.default_where)
@@ -508,7 +508,7 @@ def stringify_where(where):
 class StringifyMapper(BaseStringifyMapper):
 
     def map_ones(self, expr, enclosing_prec):
-        return "Ones[%s]" % stringify_where(expr.where)
+        return "Ones[%s]" % stringify_where(expr.dofdesc)
 
     def map_inverse(self, expr, enclosing_prec):
         return "Solve(%s = %s {%s})" % (
@@ -526,17 +526,17 @@ class StringifyMapper(BaseStringifyMapper):
 
     def map_elementwise_sum(self, expr, enclosing_prec):
         return "ElwiseSum[%s](%s)" % (
-                stringify_where(expr.where),
+                stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_elementwise_min(self, expr, enclosing_prec):
         return "ElwiseMin[%s](%s)" % (
-                stringify_where(expr.where),
+                stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_elementwise_max(self, expr, enclosing_prec):
         return "ElwiseMax[%s](%s)" % (
-                stringify_where(expr.where),
+                stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_node_max(self, expr, enclosing_prec):
@@ -547,7 +547,7 @@ class StringifyMapper(BaseStringifyMapper):
 
     def map_node_coordinate_component(self, expr, enclosing_prec):
         return "x%d[%s]" % (expr.ambient_axis,
-                stringify_where(expr.where))
+                stringify_where(expr.dofdesc))
 
     def map_num_reference_derivative(self, expr, enclosing_prec):
         diff_op = " ".join(
@@ -558,7 +558,7 @@ class StringifyMapper(BaseStringifyMapper):
 
         result = "%s[%s] %s" % (
                 diff_op,
-                stringify_where(expr.where),
+                stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_PRODUCT),
                 )
 
@@ -568,10 +568,10 @@ class StringifyMapper(BaseStringifyMapper):
             return result
 
     def map_parametrization_derivative(self, expr, enclosing_prec):
-        return "dx/dr[%s]" % (stringify_where(expr.where))
+        return "dx/dr[%s]" % (stringify_where(expr.dofdesc))
 
     def map_q_weight(self, expr, enclosing_prec):
-        return "w_quad[%s]" % stringify_where(expr.where)
+        return "w_quad[%s]" % stringify_where(expr.dofdesc)
 
     def _stringify_kernel_args(self, kernel_arguments):
         if not kernel_arguments:
