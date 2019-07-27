@@ -267,15 +267,19 @@ class CostModel(object):
     """
 
     def __init__(self,
+            use_target_specific_qbx,
             translation_cost_model_factory=pde_aware_translation_cost_model,
             calibration_params=None):
         """
+        :arg use_target_specific_qbx: A :class:`bool` indicating whether
+            target-specific QBX is used
         :arg translation_cost_model_factory: A callable which, given arguments
             (*dim*, *nlevels*), returns a translation cost model.
         """
         self.translation_cost_model_factory = translation_cost_model_factory
         if calibration_params is None:
             calibration_params = dict()
+        self.use_target_specific_qbx = use_target_specific_qbx
         self.calibration_params = calibration_params
 
     def with_calibration_params(self, calibration_params):
@@ -672,8 +676,6 @@ class CostModel(object):
 
         lpot_source = geo_data.lpot_source
 
-        use_tsqbx = lpot_source._use_target_specific_qbx
-
         with cl.CommandQueue(geo_data.cl_context) as queue:
             tree = geo_data.tree().get(queue)
             traversal = geo_data.traversal(merge_close_lists=False).get(queue)
@@ -779,14 +781,21 @@ class CostModel(object):
 
         # {{{ form global qbx locals or evaluate target specific qbx expansions
 
-        if use_tsqbx:
+        if self.use_target_specific_qbx:
             result.update(self.process_eval_target_specific_qbxl(
                     xlat_cost, direct_interaction_data, global_qbx_centers,
                     qbx_center_to_target_box, center_to_targets_starts))
+            result["form_global_qbx_locals_list1"] = 0
+            result["form_global_qbx_locals_list3"] = 0
+            result["form_global_qbx_locals_list4"] = 0
+
         else:
             result.update(self.process_form_qbxl(
                     xlat_cost, direct_interaction_data, global_qbx_centers,
                     qbx_center_to_target_box, center_to_targets_starts))
+            result["eval_target_specific_qbx_locals_list1"] = 0
+            result["eval_target_specific_qbx_locals_list3"] = 0
+            result["eval_target_specific_qbx_locals_list4"] = 0
 
         # }}}
 
