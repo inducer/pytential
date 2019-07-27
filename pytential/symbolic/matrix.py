@@ -370,7 +370,7 @@ class MatrixBuilder(MatrixBuilderBase):
     def map_interpolation(self, expr):
         source_dd = sym.as_dofdesc(expr.source)
         target_dd = sym.as_dofdesc(expr.target)
-        if target_dd.discr != sym.QBX_SOURCE_QUAD_STAGE2:
+        if target_dd.discr is not sym.QBX_SOURCE_QUAD_STAGE2:
             raise RuntimeError("can only interpolate to QBX_SOURCE_QUAD_STAGE2")
 
         operand = self.rec(expr.operand)

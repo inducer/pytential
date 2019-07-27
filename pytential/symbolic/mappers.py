@@ -416,7 +416,7 @@ class InterpolationDiscretizationTagger(IdentityMapper):
 
     def map_node_coordinate_component(self, expr):
         dd = prim.as_dofdesc(expr.where)
-        if dd.discr == self.discr:
+        if dd.discr is self.discr:
             return expr
         else:
             return type(expr)(
@@ -425,7 +425,7 @@ class InterpolationDiscretizationTagger(IdentityMapper):
 
     def map_num_reference_derivative(self, expr):
         dd = prim.as_dofdesc(expr.where)
-        if dd.discr == self.discr:
+        if dd.discr is self.discr:
             return expr
         else:
             return type(expr)(
@@ -435,14 +435,14 @@ class InterpolationDiscretizationTagger(IdentityMapper):
 
 
 class InterpolationPreprocessor(IdentityMapper):
-    def __init__(self, places, discr=None):
+    def __init__(self, places, from_discr=None):
         self.places = places
-        self.discr = discr or prim.QBX_SOURCE_STAGE2
-        self.tagger = InterpolationDiscretizationTagger(self.discr)
+        self.from_discr = from_discr or prim.QBX_SOURCE_STAGE2
+        self.tagger = InterpolationDiscretizationTagger(self.from_discr)
 
     def map_num_reference_derivative(self, expr):
         target_dd = prim.as_dofdesc(expr.where)
-        if target_dd.discr != prim.QBX_SOURCE_QUAD_STAGE2:
+        if target_dd.discr is not prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
@@ -450,7 +450,7 @@ class InterpolationPreprocessor(IdentityMapper):
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        source_dd = target_dd.copy(discr=self.discr)
+        source_dd = target_dd.copy(discr=self.from_discr)
         return prim.Interpolation(
                 source_dd,
                 target_dd,
