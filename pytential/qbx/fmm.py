@@ -377,7 +377,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     @log_process(logger)
     def eval_target_specific_qbx_locals(self, src_weights):
-        return self.full_output_zeros()
+        return (self.full_output_zeros(), SumpyTimingFuture(self.queue, events=()))
 
     # }}}
 

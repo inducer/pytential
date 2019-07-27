@@ -126,11 +126,15 @@ def test_timing_data_gathering(ctx_getter):
 # {{{ test cost model
 
 @pytest.mark.parametrize("dim", (2, 3))
-def test_cost_model(ctx_getter, dim):
+@pytest.mark.parametrize("use_target_specific_qbx", (True, False))
+def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    lpot_source = get_lpot_source(queue, dim)
+    lpot_source = (
+            get_lpot_source(queue, dim)
+            .copy(cost_model=CostModel(use_target_specific_qbx)))
+
     sigma = get_density(queue, lpot_source)
 
     sigma_sym = sym.var("sigma")
@@ -162,7 +166,8 @@ def test_cost_model_parameter_gathering(ctx_getter):
     fmm_level_to_order = SimpleExpansionOrderFinder(tol=1e-5)
 
     lpot_source = get_lpot_source(queue, 2).copy(
-            fmm_level_to_order=fmm_level_to_order)
+            fmm_level_to_order=fmm_level_to_order,
+            cost_model=CostModel(use_target_specific_qbx=False))
 
     sigma = get_density(queue, lpot_source)
 
@@ -204,7 +209,10 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
         self.geo_data = geo_data
         self.trav = geo_data.traversal()
-        self.use_target_specific_qbx = use_target_specific_qbx
+        self.use_target_specific_qbx = (
+                use_target_specific_qbx
+                # None means use by default if possible
+                or use_target_specific_qbx is None)
 
         ConstantOneExpansionWrangler.__init__(self, geo_data.tree())
 
@@ -399,6 +407,7 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
 
     perf_model = (
             CostModel(
+                use_target_specific_qbx=use_target_specific_qbx,
                 translation_cost_model_factory=OpCountingTranslationCostModel))
 
     lpot_source = get_lpot_source(queue, dim).copy(
@@ -493,6 +502,7 @@ def test_cost_model_order_varying_by_level(ctx_getter):
 
     lpot_source = get_lpot_source(queue, 2).copy(
             cost_model=CostModel(
+                use_target_specific_qbx=True,
                 calibration_params=CONSTANT_ONE_PARAMS),
             fmm_level_to_order=level_to_order_constant)
 

@@ -747,17 +747,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
 
         if self.cost_model is None:
-            from pytential.qbx.cost import CostModel
-            cost_model = CostModel()
-        else:
-            cost_model = self.cost_model
+            raise ValueError("Cost model not supplied")
 
         kernel_args = {}
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
         cost_model_result = (
-                cost_model(geo_data, insn.base_kernel, kernel_args))
+                self.cost_model(geo_data, insn.base_kernel, kernel_args))
 
         # {{{ construct dummy outputs
 
