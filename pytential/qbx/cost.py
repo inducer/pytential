@@ -285,6 +285,7 @@ class CostModel(object):
     def with_calibration_params(self, calibration_params):
         """Return a copy of *self* with a new set of calibration parameters."""
         return type(self)(
+                use_target_specific_qbx=self.use_target_specific_qbx,
                 translation_cost_model_factory=self.translation_cost_model_factory,
                 calibration_params=calibration_params)
 
