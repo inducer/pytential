@@ -50,8 +50,8 @@ class L2WeightedPDEOperator(object):
 
     def get_weight(self, where=None):
         if self.use_l2_weighting:
-            return cse(area_element(self.kernel.dim, dofdesc=where) *
-                    QWeight(dofdesc=where))
+            return cse(area_element(self.kernel.dim, dofdesc=where)
+                    * QWeight(dofdesc=where))
         else:
             return 1
 
