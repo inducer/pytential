@@ -250,14 +250,14 @@ class GRANULARITY_ELEMENT:  # noqa: N801
 class DOFDescriptor(object):
     """A data structure specifying the meaning of a vector of degrees of freedom
     that is handled by :mod:`pytential` (a "DOF vector"). In particular, using
-    :attr:`where`, this data structure describes the geometric object on which
+    :attr:`geometry`, this data structure describes the geometric object on which
     the (scalar) function described by the DOF vector exists. Using
     :attr:`granularity`, the data structure describes how the geometric object
     is discretized (e.g. conventional nodal data, per-element scalars, etc.)
 
-    .. attribute:: where
+    .. attribute:: geometry
 
-        An identifier for the domain on which the DOFs exist. This can be a
+        An identifier for the geometry on which the DOFs exist. This can be a
         simple string or any other hashable identifier for the geometric object.
         The geometric objects are generally subclasses of
         :class:`~pytential.source.PotentialSource`,
@@ -279,7 +279,7 @@ class DOFDescriptor(object):
         :class:`GRANULARITY_ELEMENT` (one DOF per element).
     """
 
-    def __init__(self, where, discr=None, granularity=None):
+    def __init__(self, geometry=None, discr=None, granularity=None):
         if granularity is None:
             granularity = GRANULARITY_NODE
 
@@ -294,29 +294,29 @@ class DOFDescriptor(object):
                 or granularity is GRANULARITY_ELEMENT):
             raise ValueError('unknown granularity: "{}"'.format(granularity))
 
-        self.where = where
+        self.geometry = geometry
         self.discr = discr
         self.granularity = granularity
 
-    def copy(self, where=None, discr=None, granularity=None):
-        if isinstance(where, DOFDescriptor):
-            discr = where.discr if discr is None else discr
-            where = where.where
+    def copy(self, geometry=None, discr=None, granularity=None):
+        if isinstance(geometry, DOFDescriptor):
+            discr = geometry.discr if discr is None else discr
+            geometry = geometry.geometry
 
         return type(self)(
-                where=(self.where
-                    if where is None else where),
+                geometry=(self.geometry
+                    if geometry is None else geometry),
                 granularity=(self.granularity
                     if granularity is None else granularity),
                 discr=(self.discr
                     if discr is None else discr))
 
     def __hash__(self):
-        return hash((type(self), self.where, self.discr, self.granularity))
+        return hash((type(self), self.geometry, self.discr, self.granularity))
 
     def __eq__(self, other):
         return (type(self) is type(other)
-                and self.where == other.where
+                and self.geometry == other.geometry
                 and self.discr == other.discr
                 and self.granularity == other.granularity)
 
@@ -324,22 +324,22 @@ class DOFDescriptor(object):
         return not self.__eq__(other)
 
     def __repr__(self):
-        return '{}(where={}, discr={}, granularity={})'.format(
+        return '{}(geometry={}, discr={}, granularity={})'.format(
                 type(self).__name__,
-                self.where,
+                self.geometry,
                 self.discr if self.discr is None else self.discr.__name__,
                 self.granularity.__name__)
 
     def __str__(self):
         name = []
-        if self.where is None:
+        if self.geometry is None:
             name.append("?")
-        elif self.where is DEFAULT_SOURCE:
+        elif self.geometry is DEFAULT_SOURCE:
             name.append("s")
-        elif self.where is DEFAULT_TARGET:
+        elif self.geometry is DEFAULT_TARGET:
             name.append("t")
         else:
-            name.append(str(self.where))
+            name.append(str(self.geometry))
 
         if self.discr is QBX_SOURCE_STAGE2:
             name.append("stage2")
@@ -361,14 +361,14 @@ def as_dofdesc(desc):
     if desc is QBX_SOURCE_STAGE1 \
             or desc is QBX_SOURCE_STAGE2 \
             or desc is QBX_SOURCE_QUAD_STAGE2:
-        return DOFDescriptor(None, discr=desc)
+        return DOFDescriptor(discr=desc)
 
     if desc is GRANULARITY_NODE \
             or desc is GRANULARITY_CENTER \
             or desc is GRANULARITY_ELEMENT:
-        return DOFDescriptor(None, granularity=desc)
+        return DOFDescriptor(granularity=desc)
 
-    return DOFDescriptor(desc)
+    return DOFDescriptor(geometry=desc)
 
 
 # }}}

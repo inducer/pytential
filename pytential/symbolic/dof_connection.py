@@ -206,8 +206,8 @@ def connection_from_dds(places, from_dd, to_dd):
         places = GeometryCollection(places)
     from_discr = places[from_dd]
 
-    if from_dd.where != to_dd.where:
-        raise ValueError("cannot interpolate between different domains")
+    if from_dd.geometry != to_dd.geometry:
+        raise ValueError("cannot interpolate between different geometries")
 
     if from_dd.granularity is not sym.GRANULARITY_NODE:
         raise ValueError("can only interpolate from `GRANULARITY_NODE`")

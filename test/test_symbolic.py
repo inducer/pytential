@@ -229,10 +229,12 @@ def test_interpolation(ctx_factory, name, source_discr, target_granularity):
             fmm_order=False).with_refinement()
 
     where = 'test-interpolation'
-    source = sym.DOFDescriptor(where,
+    source = sym.DOFDescriptor(
+            geometry=where,
             discr=source_discr,
             granularity=sym.GRANULARITY_NODE)
-    target = sym.DOFDescriptor(where,
+    target = sym.DOFDescriptor(
+            geometry=where,
             discr=sym.QBX_SOURCE_QUAD_STAGE2,
             granularity=target_granularity)
 
