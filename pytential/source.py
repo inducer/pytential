@@ -172,7 +172,6 @@ class LayerPotentialSourceBase(PotentialSource):
     .. attribute:: stage2_density_discr
     .. attribute:: quad_stage2_density_discr
     .. attribute:: resampler
-    .. method:: with_refinement
 
     .. rubric:: Discretization data
 
@@ -201,9 +200,6 @@ class LayerPotentialSourceBase(PotentialSource):
 
     @property
     def resampler(self):
-        raise NotImplementedError
-
-    def with_refinement(self):
         raise NotImplementedError
 
     @property

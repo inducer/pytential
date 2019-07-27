@@ -49,6 +49,23 @@ logger = logging.getLogger(__name__)
 
 # {{{ evaluation mapper
 
+
+def mesh_el_view(mesh, group_nr, global_array):
+    """Return a view of *global_array* of shape
+    ``(..., mesh.groups[group_nr].nelements)``
+    where *global_array* is of shape ``(..., nelements)``,
+    where *nelements* is the global (per-mesh) element count.
+    """
+
+    group = mesh.groups[group_nr]
+
+    return global_array[
+        ..., group.element_nr_base:group.element_nr_base + group.nelements] \
+        .reshape(
+            global_array.shape[:-1]
+            + (group.nelements,))
+
+
 class EvaluationMapper(EvaluationMapperBase):
     def __init__(self, bound_expr, queue, context={},
             target_geometry=None,
@@ -88,30 +105,63 @@ class EvaluationMapper(EvaluationMapperBase):
         return cl.array.max(self.rec(expr.operand)).get()[()]
 
     def _map_elementwise_reduction(self, reduction_name, expr):
-        @memoize_in(self.bound_expr, "elementwise_"+reduction_name)
-        def knl():
+        @memoize_in(self.places, "elementwise_node_"+reduction_name)
+        def node_knl():
             import loopy as lp
             knl = lp.make_kernel(
-                "{[el, idof, jdof]: 0<=el<nelements and 0<=idof,jdof<ndofs}",
-                "result[el, idof] = %s(jdof, input[el, jdof])" % reduction_name,
-                default_offset=lp.auto,
-                lang_version=MOST_RECENT_LANGUAGE_VERSION)
+                    """{[el, idof, jdof]:
+                        0<=el<nelements and
+                        0<=idof, jdof<ndofs}
+                    """,
+                    """
+                    result[el, idof] = %s(jdof, operand[el, jdof])
+                    """ % reduction_name,
+                    default_offset=lp.auto,
+                    lang_version=MOST_RECENT_LANGUAGE_VERSION)
+
             knl = lp.tag_inames(knl, "el:g.0,idof:l.0")
             return knl
 
+        @memoize_in(self.places, "elementwise_"+reduction_name)
+        def element_knl():
+            import loopy as lp
+            knl = lp.make_kernel(
+                    """{[el, jdof]:
+                        0<=el<nelements and
+                        0<=jdof<ndofs}
+                    """,
+                    """
+                    result[el] = %s(jdof, operand[el, jdof])
+                    """ % reduction_name,
+                    default_offset=lp.auto,
+                    lang_version=MOST_RECENT_LANGUAGE_VERSION)
+
+            return knl
+
+        def _reduce(nresult, knl, view):
+            result = cl.array.empty(self.queue, nresult, operand.dtype)
+            for igrp, group in enumerate(discr.groups):
+                knl(self.queue,
+                        operand=group.view(operand),
+                        result=view(igrp, result))
+
+            return result
+
         discr = self.places.get_discretization(expr.where)
-
         operand = self.rec(expr.operand)
-
         assert operand.shape == (discr.nnodes,)
 
-        result = cl.array.empty(self.queue, discr.nnodes, operand.dtype)
-        for group in discr.groups:
-            knl()(self.queue,
-                    input=group.view(operand),
-                    result=group.view(result))
-
-        return result
+        where = sym.as_dofdesc(expr.where)
+        if where.granularity is sym.GRANULARITY_NODE:
+            return _reduce(discr.nnodes,
+                    node_knl(),
+                    lambda g, x: discr.groups[g].view(x))
+        elif where.granularity is sym.GRANULARITY_ELEMENT:
+            return _reduce(discr.mesh.nelements,
+                    element_knl(),
+                    lambda g, x: mesh_el_view(discr.mesh, g, x))
+        else:
+            raise ValueError('unsupported granularity: %s' % where.granularity)
 
     def map_elementwise_sum(self, expr):
         return self._map_elementwise_reduction("sum", expr)
@@ -172,10 +222,6 @@ class EvaluationMapper(EvaluationMapperBase):
         rhs = self.rec(expr.rhs)
         result = gmres(scipy_op, rhs)
         return result
-
-    def map_quad_kernel_op(self, expr):
-        source = self.places[expr.source]
-        return source.map_quad_kernel_op(expr, self.bound_expr, self.rec)
 
     def map_interpolation(self, expr):
         operand = self.rec(expr.operand)
@@ -467,9 +513,9 @@ class GeometryCollection(object):
     def _get_lpot_discretization(self, lpot, dd):
         dd = sym.as_dofdesc(dd)
 
-        if dd.discr == sym.QBX_SOURCE_STAGE2:
+        if dd.discr is sym.QBX_SOURCE_STAGE2:
             return lpot.stage2_density_discr
-        if dd.discr == sym.QBX_SOURCE_QUAD_STAGE2:
+        if dd.discr is sym.QBX_SOURCE_QUAD_STAGE2:
             return lpot.quad_stage2_density_discr
         return lpot.density_discr
 
@@ -501,12 +547,12 @@ class GeometryCollection(object):
             return discr
 
     def __getitem__(self, where):
-        dd = sym.as_dofdesc(where)
-        return self.places[dd.where]
+        where = sym.as_dofdesc(where)
+        return self.places[where.where]
 
     def __contains__(self, where):
-        dd = sym.as_dofdesc(where)
-        return dd.where in self.places
+        where = sym.as_dofdesc(where)
+        return where.where in self.places
 
     def copy(self):
         return GeometryCollection(

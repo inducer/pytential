@@ -258,7 +258,7 @@ class DOFDescriptor(object):
     .. attribute:: where
 
         An identifier for the domain on which the DOFs exist. This can be a
-        simple string or another hashable identifier for the geometric object.
+        simple string or any other hashable identifier for the geometric object.
         The geometric objects are generally subclasses of
         :class:`~pytential.source.PotentialSource`,
         :class:`~pytential.target.TargetBase` or
@@ -273,10 +273,10 @@ class DOFDescriptor(object):
 
     .. attribute:: granularity
 
-        Describes the level of granularity of the DOF.
-        Can be one of :class:`GRANULARITY_NODE`, :class:`GRANULARITY_CENTER` or
-        :class:`GRANULARITY_ELEMENT`.
-
+        Describes the level of granularity of the DOF vector.
+        Can be one of :class:`GRANULARITY_NODE` (one DOF per node),
+        :class:`GRANULARITY_CENTER` (two DOFs per node, one per side) or
+        :class:`GRANULARITY_ELEMENT` (one DOF per element).
     """
 
     def __init__(self, where, discr=None, granularity=None):
@@ -331,22 +331,41 @@ class DOFDescriptor(object):
                 self.granularity.__name__)
 
     def __str__(self):
-        from pytential.symbolic.mappers import stringify_where
-        return stringify_where(self)
+        name = []
+        if self.where is None:
+            name.append("?")
+        elif self.where is DEFAULT_SOURCE:
+            name.append("s")
+        elif self.where is DEFAULT_TARGET:
+            name.append("t")
+        else:
+            name.append(str(self.where))
+
+        if self.discr is QBX_SOURCE_STAGE2:
+            name.append("stage2")
+        elif self.discr is QBX_SOURCE_QUAD_STAGE2:
+            name.append("quads2")
+
+        if self.granularity is GRANULARITY_CENTER:
+            name.append("center")
+        elif self.granularity is GRANULARITY_ELEMENT:
+            name.append("panel")
+
+        return "/".join(name)
 
 
 def as_dofdesc(desc):
     if isinstance(desc, DOFDescriptor):
         return desc
 
-    if desc == QBX_SOURCE_STAGE1 \
-            or desc == QBX_SOURCE_STAGE2 \
-            or desc == QBX_SOURCE_QUAD_STAGE2:
+    if desc is QBX_SOURCE_STAGE1 \
+            or desc is QBX_SOURCE_STAGE2 \
+            or desc is QBX_SOURCE_QUAD_STAGE2:
         return DOFDescriptor(None, discr=desc)
 
-    if desc == GRANULARITY_NODE \
-            or desc == GRANULARITY_CENTER \
-            or desc == GRANULARITY_ELEMENT:
+    if desc is GRANULARITY_NODE \
+            or desc is GRANULARITY_CENTER \
+            or desc is GRANULARITY_ELEMENT:
         return DOFDescriptor(None, granularity=desc)
 
     return DOFDescriptor(desc)
@@ -894,6 +913,11 @@ def _expansion_radii_factor(ambient_dim, dim):
 
 
 def _quad_resolution(ambient_dim, dim=None, granularity=None, where=None):
+    """This measures the quadrature resolution across the
+    mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
+    should be the same as the panel length.
+    """
+
     source = as_dofdesc(where)
     target = source.copy(granularity=granularity)
 
@@ -954,8 +978,8 @@ def expansion_centers(ambient_dim, side, dim=None, where=None):
 
 
 def h_max(ambient_dim, dim=None, where=None):
-    r = _quad_resolution(ambient_dim, dim=None,
-            granularity=GRANULARITY_ELEMENT, where=where)
+    where = as_dofdesc(where).copy(granularity=GRANULARITY_ELEMENT)
+    r = _quad_resolution(ambient_dim, dim=dim, where=where)
 
     return cse(NodeMax(r),
             "h_max",
@@ -964,7 +988,7 @@ def h_max(ambient_dim, dim=None, where=None):
 
 def weights_and_area_elements(ambient_dim, dim=None, where=None):
     where = as_dofdesc(where)
-    if where.discr == QBX_SOURCE_QUAD_STAGE2:
+    if where.discr is QBX_SOURCE_QUAD_STAGE2:
         # quad_stage2_density_discr is not guaranteed to be usable for
         # interpolation/differentiation. Use stage2_density_discr to find
         # area elements instead, then upsample that.
@@ -1223,6 +1247,12 @@ class Interpolation(Expression):
     init_arg_names = ("source", "target", "operand")
 
     def __new__(cls, source, target, operand):
+        source = as_dofdesc(source)
+        target = as_dofdesc(target)
+
+        if source == target:
+            return operand
+
         if isinstance(operand, np.ndarray):
             def make_op(operand_i):
                 return cls(source, target, operand_i)

@@ -206,7 +206,6 @@ def test_expr_pickling():
     ("default-explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
     ("stage2", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_NODE),
     ("stage2-center", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
-    ("stage2-element", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_ELEMENT),
     ("quad", sym.QBX_SOURCE_QUAD_STAGE2, sym.GRANULARITY_NODE)
     ])
 def test_interpolation(ctx_factory, name, source_discr, target_granularity):
@@ -242,9 +241,9 @@ def test_interpolation(ctx_factory, name, source_discr, target_granularity):
     bound_op = bind(qbx, op_sym, auto_where=where)
 
     target_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
-    if source_discr == sym.QBX_SOURCE_STAGE2:
+    if source_discr is sym.QBX_SOURCE_STAGE2:
         source_nodes = qbx.stage2_density_discr.nodes().get(queue)
-    elif source_discr == sym.QBX_SOURCE_QUAD_STAGE2:
+    elif source_discr is sym.QBX_SOURCE_QUAD_STAGE2:
         source_nodes = target_nodes
     else:
         source_nodes = qbx.density_discr.nodes().get(queue)
@@ -258,9 +257,6 @@ def test_interpolation(ctx_factory, name, source_discr, target_granularity):
         assert error < 1.0e-10
     elif name in ('stage2-center',):
         assert len(sigma_target_interp) == 2 * len(sigma_target)
-    elif name in ('stage2-element',):
-        nelements = qbx.quad_stage2_density_discr.mesh.nelements
-        assert len(sigma_target_interp) == nelements
     else:
         raise ValueError('unknown test case name: {}'.format(name))
 
