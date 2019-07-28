@@ -94,7 +94,7 @@ def calibrate_cost_model(ctx):
 
     from pytential.qbx.cost import CostModel, estimate_calibration_params
 
-    perf_model = CostModel()
+    perf_model = CostModel(use_target_specific_qbx=True)
 
     model_results = []
     timing_results = []
