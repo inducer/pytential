@@ -356,10 +356,10 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
     # defaults are different
     source_dd = sym.DOFDescriptor(
             geometry=sym.DEFAULT_SOURCE,
-            discr=sym.QBX_SOURCE_STAGE2)
+            discr_stage=sym.QBX_SOURCE_STAGE2)
     target_dd = sym.DOFDescriptor(
             geometry=sym.DEFAULT_TARGET,
-            discr=sym.QBX_SOURCE_STAGE2)
+            discr_stage=sym.QBX_SOURCE_STAGE2)
     place_ids = (source_dd, target_dd)
 
     from pytential.symbolic.execution import GeometryCollection, _prepare_expr
@@ -477,7 +477,7 @@ def test_build_matrix_places(ctx_factory, place_ids, visualize=False):
             index_set=index_set,
             context={})
     mat = mbuilder(op)
-    if place_ids[0].discr is not None:
+    if place_ids[0].discr_stage is not None:
         assert _max_block_error(qbx_mat, mat, index_set.get(queue)) < 1.0e-14
 
     from pytential.symbolic.matrix import FarFieldBlockBuilder

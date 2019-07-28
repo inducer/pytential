@@ -401,8 +401,8 @@ class MatrixBuilder(MatrixBuilderBase):
     def map_int_g(self, expr):
         source_dd = sym.as_dofdesc(expr.source)
         target_dd = sym.as_dofdesc(expr.target)
-        if source_dd.discr is None:
-            source_dd = source_dd.copy(discr=sym.QBX_SOURCE_QUAD_STAGE2)
+        if source_dd.discr_stage is None:
+            source_dd = source_dd.copy(discr_stage=sym.QBX_SOURCE_QUAD_STAGE2)
 
         lpot_source = self.places[source_dd]
         source_discr = self.places.get_discretization(source_dd)
@@ -417,7 +417,7 @@ class MatrixBuilder(MatrixBuilderBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        if source_dd.discr == target_dd.discr:
+        if source_dd.discr_stage == target_dd.discr_stage:
             # NOTE: passing None to avoid any resampling
             kernel_args = _get_layer_potential_args(self, expr, None)
         else:
@@ -445,7 +445,7 @@ class MatrixBuilder(MatrixBuilderBase):
         waa = _get_weights_and_area_elements(self.queue, lpot_source, source_discr)
         mat[:, :] *= waa.get(self.queue)
 
-        if source_dd.discr != target_dd.discr:
+        if source_dd.discr_stage != target_dd.discr_stage:
             # NOTE: we only resample sources
             assert target_discr.nnodes < source_discr.nnodes
 

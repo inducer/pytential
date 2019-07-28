@@ -233,12 +233,12 @@ class QBX_SOURCE_QUAD_STAGE2:   # noqa: N801
 
 
 class GRANULARITY_NODE:     # noqa: N801
-    """DOFs are per-source node."""
+    """DOFs are per node."""
     pass
 
 
 class GRANULARITY_CENTER:   # noqa: N801
-    """DOFs interleaved per expansion center."""
+    """DOFs interleaved per expansion center (two per node, one on each side)."""
     pass
 
 
@@ -264,7 +264,7 @@ class DOFDescriptor(object):
         :class:`~pytential.target.TargetBase` or
         :class:`~meshmode.discretization.Discretization`.
 
-    .. attribute:: discr
+    .. attribute:: discr_stage
 
         Specific to a :class:`pytential.source.LayerPotentialSourceBase`,
         this discribes on which of the discretizations the
@@ -279,28 +279,29 @@ class DOFDescriptor(object):
         :class:`GRANULARITY_ELEMENT` (one DOF per element).
     """
 
-    def __init__(self, geometry=None, discr=None, granularity=None):
+    def __init__(self, geometry=None, discr_stage=None, granularity=None):
         if granularity is None:
             granularity = GRANULARITY_NODE
 
-        if discr is not None:
-            if not (discr is QBX_SOURCE_STAGE1
-                    or discr is QBX_SOURCE_STAGE2
-                    or discr is QBX_SOURCE_QUAD_STAGE2):
-                raise ValueError('unknown discr tag: "{}"'.format(discr))
+        if discr_stage is not None:
+            if not (discr_stage == QBX_SOURCE_STAGE1
+                    or discr_stage == QBX_SOURCE_STAGE2
+                    or discr_stage == QBX_SOURCE_QUAD_STAGE2):
+                raise ValueError('unknown discr stage tag: "{}"'.format(discr_stage))
 
-        if not (granularity is GRANULARITY_NODE
-                or granularity is GRANULARITY_CENTER
-                or granularity is GRANULARITY_ELEMENT):
+        if not (granularity == GRANULARITY_NODE
+                or granularity == GRANULARITY_CENTER
+                or granularity == GRANULARITY_ELEMENT):
             raise ValueError('unknown granularity: "{}"'.format(granularity))
 
         self.geometry = geometry
-        self.discr = discr
+        self.discr_stage = discr_stage
         self.granularity = granularity
 
-    def copy(self, geometry=None, discr=None, granularity=None):
+    def copy(self, geometry=None, discr_stage=None, granularity=None):
         if isinstance(geometry, DOFDescriptor):
-            discr = geometry.discr if discr is None else discr
+            discr_stage = geometry.discr_stage \
+                    if discr_stage is None else discr_stage
             geometry = geometry.geometry
 
         return type(self)(
@@ -308,47 +309,49 @@ class DOFDescriptor(object):
                     if geometry is None else geometry),
                 granularity=(self.granularity
                     if granularity is None else granularity),
-                discr=(self.discr
-                    if discr is None else discr))
+                discr_stage=(self.discr_stage
+                    if discr_stage is None else discr_stage))
 
     def __hash__(self):
-        return hash((type(self), self.geometry, self.discr, self.granularity))
+        return hash((type(self),
+            self.geometry, self.discr_stage, self.granularity))
 
     def __eq__(self, other):
         return (type(self) is type(other)
                 and self.geometry == other.geometry
-                and self.discr == other.discr
+                and self.discr_stage == other.discr_stage
                 and self.granularity == other.granularity)
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __repr__(self):
-        return '{}(geometry={}, discr={}, granularity={})'.format(
+        return '{}(geometry={}, stage={}, granularity={})'.format(
                 type(self).__name__,
                 self.geometry,
-                self.discr if self.discr is None else self.discr.__name__,
+                self.discr_stage \
+                    if self.discr_stage is None else self.discr_stage.__name__,
                 self.granularity.__name__)
 
     def __str__(self):
         name = []
         if self.geometry is None:
             name.append("?")
-        elif self.geometry is DEFAULT_SOURCE:
+        elif self.geometry == DEFAULT_SOURCE:
             name.append("s")
-        elif self.geometry is DEFAULT_TARGET:
+        elif self.geometry == DEFAULT_TARGET:
             name.append("t")
         else:
             name.append(str(self.geometry))
 
-        if self.discr is QBX_SOURCE_STAGE2:
+        if self.discr_stage == QBX_SOURCE_STAGE2:
             name.append("stage2")
-        elif self.discr is QBX_SOURCE_QUAD_STAGE2:
+        elif self.discr_stage == QBX_SOURCE_QUAD_STAGE2:
             name.append("quads2")
 
-        if self.granularity is GRANULARITY_CENTER:
+        if self.granularity == GRANULARITY_CENTER:
             name.append("center")
-        elif self.granularity is GRANULARITY_ELEMENT:
+        elif self.granularity == GRANULARITY_ELEMENT:
             name.append("panel")
 
         return "/".join(name)
@@ -358,14 +361,14 @@ def as_dofdesc(desc):
     if isinstance(desc, DOFDescriptor):
         return desc
 
-    if desc is QBX_SOURCE_STAGE1 \
-            or desc is QBX_SOURCE_STAGE2 \
-            or desc is QBX_SOURCE_QUAD_STAGE2:
-        return DOFDescriptor(discr=desc)
+    if desc == QBX_SOURCE_STAGE1 \
+            or desc == QBX_SOURCE_STAGE2 \
+            or desc == QBX_SOURCE_QUAD_STAGE2:
+        return DOFDescriptor(discr_stage=desc)
 
-    if desc is GRANULARITY_NODE \
-            or desc is GRANULARITY_CENTER \
-            or desc is GRANULARITY_ELEMENT:
+    if desc == GRANULARITY_NODE \
+            or desc == GRANULARITY_CENTER \
+            or desc == GRANULARITY_ELEMENT:
         return DOFDescriptor(granularity=desc)
 
     return DOFDescriptor(geometry=desc)
@@ -928,8 +931,8 @@ def _quad_resolution(ambient_dim, dim=None, granularity=None, where=None):
 
 def _source_danger_zone_radii(ambient_dim, dim=None, granularity=None, where=None):
     where = as_dofdesc(where)
-    if where.discr is None:
-        where = where.copy(discr=QBX_SOURCE_STAGE2)
+    if where.discr_stage is None:
+        where = where.copy(discr_stage=QBX_SOURCE_STAGE2)
 
     # This should be the expression of the expansion radii, but
     #
@@ -988,11 +991,11 @@ def h_max(ambient_dim, dim=None, where=None):
 
 def weights_and_area_elements(ambient_dim, dim=None, where=None):
     where = as_dofdesc(where)
-    if where.discr is QBX_SOURCE_QUAD_STAGE2:
+    if where.discr_stage == QBX_SOURCE_QUAD_STAGE2:
         # quad_stage2_density_discr is not guaranteed to be usable for
         # interpolation/differentiation. Use stage2_density_discr to find
         # area elements instead, then upsample that.
-        source = where.copy(discr=QBX_SOURCE_STAGE2)
+        source = where.copy(discr_stage=QBX_SOURCE_STAGE2)
         area = Interpolation(source, where,
             area_element(ambient_dim, dim=dim, where=source))
     else:

@@ -201,14 +201,14 @@ def test_expr_pickling():
 # }}}
 
 
-@pytest.mark.parametrize(("name", "source_discr", "target_granularity"), [
+@pytest.mark.parametrize(("name", "source_discr_stage", "target_granularity"), [
     ("default", None, None),
     ("default-explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
     ("stage2", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_NODE),
     ("stage2-center", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
     ("quad", sym.QBX_SOURCE_QUAD_STAGE2, sym.GRANULARITY_NODE)
     ])
-def test_interpolation(ctx_factory, name, source_discr, target_granularity):
+def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -231,11 +231,11 @@ def test_interpolation(ctx_factory, name, source_discr, target_granularity):
     where = 'test-interpolation'
     source = sym.DOFDescriptor(
             geometry=where,
-            discr=source_discr,
+            discr_stage=source_discr_stage,
             granularity=sym.GRANULARITY_NODE)
     target = sym.DOFDescriptor(
             geometry=where,
-            discr=sym.QBX_SOURCE_QUAD_STAGE2,
+            discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
             granularity=target_granularity)
 
     sigma_sym = sym.var("sigma")
@@ -243,9 +243,9 @@ def test_interpolation(ctx_factory, name, source_discr, target_granularity):
     bound_op = bind(qbx, op_sym, auto_where=where)
 
     target_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
-    if source_discr is sym.QBX_SOURCE_STAGE2:
+    if source_discr_stage == sym.QBX_SOURCE_STAGE2:
         source_nodes = qbx.stage2_density_discr.nodes().get(queue)
-    elif source_discr is sym.QBX_SOURCE_QUAD_STAGE2:
+    elif source_discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
         source_nodes = target_nodes
     else:
         source_nodes = qbx.density_discr.nodes().get(queue)

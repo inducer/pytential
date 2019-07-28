@@ -215,8 +215,8 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     def _as_dofdesc(self, dofdesc):
         dofdesc = prim.as_dofdesc(dofdesc)
         if dofdesc.geometry is None:
-            if dofdesc.discr is None \
-                    and dofdesc.granularity is prim.GRANULARITY_NODE:
+            if dofdesc.discr_stage is None \
+                    and dofdesc.granularity == prim.GRANULARITY_NODE:
                 dofdesc = dofdesc.copy(geometry=self.default_where)
             else:
                 dofdesc = dofdesc.copy(geometry=self.default_source)
@@ -417,7 +417,7 @@ class QBXInterpolationPreprocessor(IdentityMapper):
 
     def map_int_g(self, expr):
         source = prim.as_dofdesc(expr.source)
-        if source.discr is prim.QBX_SOURCE_QUAD_STAGE2:
+        if source.discr_stage == prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
         lpot_source = self.places[source]
 
@@ -425,7 +425,7 @@ class QBXInterpolationPreprocessor(IdentityMapper):
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        target = source.copy(discr=prim.QBX_SOURCE_QUAD_STAGE2)
+        target = source.copy(discr_stage=prim.QBX_SOURCE_QUAD_STAGE2)
         density = prim.Interpolation(
                 source, target, self.rec(expr.density))
         kernel_arguments = dict(

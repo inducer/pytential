@@ -149,11 +149,11 @@ class EvaluationMapper(EvaluationMapperBase):
         assert operand.shape == (discr.nnodes,)
 
         where = sym.as_dofdesc(expr.where)
-        if where.granularity is sym.GRANULARITY_NODE:
+        if where.granularity == sym.GRANULARITY_NODE:
             return _reduce(discr.nnodes,
                     node_knl(),
                     lambda g, x: discr.groups[g].view(x))
-        elif where.granularity is sym.GRANULARITY_ELEMENT:
+        elif where.granularity == sym.GRANULARITY_ELEMENT:
             return _reduce(discr.mesh.nelements,
                     element_knl(),
                     lambda g, x: mesh_el_view(discr.mesh, g, x))
@@ -491,9 +491,9 @@ class GeometryCollection(object):
     def _get_lpot_discretization(self, lpot, dofdesc):
         dofdesc = sym.as_dofdesc(dofdesc)
 
-        if dofdesc.discr is sym.QBX_SOURCE_STAGE2:
+        if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
             return lpot.stage2_density_discr
-        if dofdesc.discr is sym.QBX_SOURCE_QUAD_STAGE2:
+        if dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
             return lpot.quad_stage2_density_discr
         return lpot.density_discr
 
