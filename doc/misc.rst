@@ -33,12 +33,21 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
 
 #.  ``conda config --add channels conda-forge``
 
-#.  ``conda install gcc cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
+Then, on Linux:
 
-#.  Type the following commands::
+#.  ``conda install cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
 
-        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode; do python -m pip install git+https://github.com/inducer/$i; done
-        CC=gcc python -m pip install git+https://gitlab.tiker.net/inducer/pytential@tsqbx
+#.  Type the following command::
+
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
+
+And on macOS:
+
+#.  ``conda install openmp clangdev cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
+
+#.  Type the following command::
+
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do CC=clang python -m pip install git+https://github.com/inducer/$i; done
 
 Next time you want to use :mod:`pytential`, just run the following command::
 
