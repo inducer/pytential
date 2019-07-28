@@ -326,12 +326,11 @@ class DOFDescriptor(object):
         return not self.__eq__(other)
 
     def __repr__(self):
+        discr_stage = self.discr_stage \
+                if self.discr_stage is None else self.discr_stage.__name__,
+        granularity = self.granularity.__name__
         return '{}(geometry={}, stage={}, granularity={})'.format(
-                type(self).__name__,
-                self.geometry,
-                self.discr_stage \
-                    if self.discr_stage is None else self.discr_stage.__name__,
-                self.granularity.__name__)
+                type(self).__name__, self.geometry, discr_stage, granularity)
 
     def __str__(self):
         name = []
