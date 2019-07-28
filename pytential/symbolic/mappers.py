@@ -212,15 +212,16 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     map_common_subexpression_uncached = \
             IdentityMapper.map_common_subexpression
 
-    def _as_dofdesc(self, where):
-        dd = prim.as_dofdesc(where)
-        if dd.where is None:
-            if dd.discr is None and dd.granularity is prim.GRANULARITY_NODE:
-                dd = dd.copy(where=self.default_where)
+    def _as_dofdesc(self, dofdesc):
+        dofdesc = prim.as_dofdesc(dofdesc)
+        if dofdesc.geometry is None:
+            if dofdesc.discr_stage is None \
+                    and dofdesc.granularity == prim.GRANULARITY_NODE:
+                dofdesc = dofdesc.copy(geometry=self.default_where)
             else:
-                dd = dd.copy(where=self.default_source)
+                dofdesc = dofdesc.copy(geometry=self.default_source)
 
-        return dd
+        return dofdesc
 
     def map_ones(self, expr):
         return type(expr)(where=self._as_dofdesc(expr.where))
@@ -256,10 +257,10 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         source = prim.as_dofdesc(expr.source)
         target = prim.as_dofdesc(expr.target)
 
-        if source.where is None:
-            source = source.copy(where=self.default_source)
-        if target.where is None:
-            target = target.copy(where=self.default_where)
+        if source.geometry is None:
+            source = source.copy(geometry=self.default_source)
+        if target.geometry is None:
+            target = target.copy(geometry=self.default_where)
 
         return type(expr)(
                 expr.kernel,
@@ -271,10 +272,10 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     ))
 
     def map_inverse(self, expr):
-        dd = prim.as_dofdesc(expr.where)
+        dofdesc = prim.as_dofdesc(expr.where)
 
-        if dd.where is None:
-            dd = dd.copy(where=self.default_where)
+        if dofdesc.geometry is None:
+            dofdesc = dofdesc.copy(geometry=self.default_where)
 
         return type(expr)(
                 # don't recurse into expression--it is a separate world that
@@ -284,16 +285,16 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 dict([
                     (name, self.rec(name_expr))
                     for name, name_expr in six.iteritems(expr.extra_vars)]),
-                dd)
+                dofdesc)
 
     def map_interpolation(self, expr):
         source = prim.as_dofdesc(expr.source)
         target = prim.as_dofdesc(expr.target)
 
-        if source.where is None:
-            source = source.copy(where=self.default_source)
-        if target.where is None:
-            target = target.copy(where=self.default_source)
+        if source.geometry is None:
+            source = source.copy(geometry=self.default_source)
+        if target.geometry is None:
+            target = target.copy(geometry=self.default_source)
 
         return type(expr)(source, target, self.operand_rec(expr.operand))
 
@@ -457,8 +458,8 @@ class InterpolationPreprocessor(IdentityMapper):
                 self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
-        source_dd = prim.as_dofdesc(expr.source)
-        if source_dd.discr is prim.QBX_SOURCE_QUAD_STAGE2:
+        source = prim.as_dofdesc(expr.source)
+        if source.discr_stage == prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
@@ -466,12 +467,12 @@ class InterpolationPreprocessor(IdentityMapper):
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        target_dd = source_dd.copy(discr=prim.QBX_SOURCE_QUAD_STAGE2)
+        target = source.copy(discr_stage=prim.QBX_SOURCE_QUAD_STAGE2)
         density = prim.Interpolation(
-                source_dd, target_dd, self.rec(expr.density))
+                source, target, self.rec(expr.density))
         kernel_arguments = dict(
                 (name, prim.Interpolation(
-                    source_dd, target_dd, self.rec(arg_expr)))
+                    source, target, self.rec(arg_expr)))
                 for name, arg_expr in expr.kernel_arguments.items())
 
         return expr.copy(
@@ -489,13 +490,13 @@ class QBXPreprocessor(IdentityMapper):
 
     def map_int_g(self, expr):
         from pytential import sym
-        source_dd = sym.as_dofdesc(expr.source)
-        target_dd = sym.as_dofdesc(expr.target)
-        if source_dd.where != self.source_name:
+        source = sym.as_dofdesc(expr.source)
+        target = sym.as_dofdesc(expr.target)
+        if source.geometry != self.source_name:
             return expr
 
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
+        source_discr = self.places.get_discretization(source)
+        target_discr = self.places.get_discretization(target)
 
         if expr.qbx_forced_limit == 0:
             raise ValueError("qbx_forced_limit == 0 was a bad idea and "

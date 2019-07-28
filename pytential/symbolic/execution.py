@@ -149,11 +149,11 @@ class EvaluationMapper(EvaluationMapperBase):
         assert operand.shape == (discr.nnodes,)
 
         where = sym.as_dofdesc(expr.where)
-        if where.granularity is sym.GRANULARITY_NODE:
+        if where.granularity == sym.GRANULARITY_NODE:
             return _reduce(discr.nnodes,
                     node_knl(),
                     lambda g, x: discr.groups[g].view(x))
-        elif where.granularity is sym.GRANULARITY_ELEMENT:
+        elif where.granularity == sym.GRANULARITY_ELEMENT:
             return _reduce(discr.mesh.nelements,
                     element_knl(),
                     lambda g, x: mesh_el_view(discr.mesh, g, x))
@@ -460,18 +460,18 @@ class GeometryCollection(object):
 
         self.places = {}
         if isinstance(places, QBXLayerPotentialSource):
-            self.places[auto_source.where] = places
-            self.places[auto_target.where] = \
+            self.places[auto_source.geometry] = places
+            self.places[auto_target.geometry] = \
                     self._get_lpot_discretization(places, auto_target)
         elif isinstance(places, (Discretization, PotentialSource)):
-            self.places[auto_source.where] = places
-            self.places[auto_target.where] = places
+            self.places[auto_source.geometry] = places
+            self.places[auto_target.geometry] = places
         elif isinstance(places, TargetBase):
-            self.places[auto_target.where] = places
+            self.places[auto_target.geometry] = places
         elif isinstance(places, tuple):
             source_discr, target_discr = places
-            self.places[auto_source.where] = source_discr
-            self.places[auto_target.where] = target_discr
+            self.places[auto_source.geometry] = source_discr
+            self.places[auto_target.geometry] = target_discr
         else:
             self.places = places.copy()
 
@@ -492,49 +492,51 @@ class GeometryCollection(object):
     def auto_target(self):
         return self.auto_where[1]
 
-    def _get_lpot_discretization(self, lpot, dd):
-        dd = sym.as_dofdesc(dd)
+    def _get_lpot_discretization(self, lpot, dofdesc):
+        dofdesc = sym.as_dofdesc(dofdesc)
 
-        if dd.discr is sym.QBX_SOURCE_STAGE2:
+        if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
             return lpot.stage2_density_discr
-        if dd.discr is sym.QBX_SOURCE_QUAD_STAGE2:
+        if dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
             return lpot.quad_stage2_density_discr
         return lpot.density_discr
 
-    def get_discretization(self, where):
+    def get_discretization(self, dofdesc):
         """
-        :arg where: location identifier.
+        :arg dofdesc: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+            specifying the desired discretization.
 
         :return: a geometry object in the collection corresponding to the
-            key *where*. If it is a
+            key *dofdesc*. If it is a
             :class:`~pytential.source.LayerPotentialSourceBase`, we look for
             the corresponding :class:`~meshmode.discretization.Discretization`
             in its attributes instead.
         """
 
-        dd = sym.as_dofdesc(where)
-        if dd.where in self.places:
-            discr = self.places[dd.where]
+        dofdesc = sym.as_dofdesc(dofdesc)
+        if dofdesc.geometry in self.places:
+            discr = self.places[dofdesc.geometry]
         else:
-            raise KeyError('`where` not in the collection: {}'.format(dd.where))
+            raise KeyError('geometry not in the collection: {}'.format(
+                dofdesc.geometry))
 
         from pytential.qbx import QBXLayerPotentialSource
         from pytential.source import LayerPotentialSourceBase
 
         if isinstance(discr, QBXLayerPotentialSource):
-            return self._get_lpot_discretization(discr, dd)
+            return self._get_lpot_discretization(discr, dofdesc)
         elif isinstance(discr, LayerPotentialSourceBase):
             return discr.density_discr
         else:
             return discr
 
-    def __getitem__(self, where):
-        where = sym.as_dofdesc(where)
-        return self.places[where.where]
+    def __getitem__(self, dofdesc):
+        dofdesc = sym.as_dofdesc(dofdesc)
+        return self.places[dofdesc.geometry]
 
-    def __contains__(self, where):
-        where = sym.as_dofdesc(where)
-        return where.where in self.places
+    def __contains__(self, dofdesc):
+        dofdesc = sym.as_dofdesc(dofdesc)
+        return dofdesc.geometry in self.places
 
     def copy(self):
         return GeometryCollection(
