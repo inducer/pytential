@@ -70,7 +70,8 @@ def get_sym_maxwell_point_source(kernel, jxyz, k):
 
 # {{{ plane wave
 
-def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, dofdesc=None):
+def get_sym_maxwell_plane_wave(amplitude_vec, v, omega,
+        epsilon=1, mu=1, dofdesc=None):
     r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
