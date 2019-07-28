@@ -372,7 +372,7 @@ def _prepare_domains(nresults, places, domains, default_domain):
     return domains
 
 
-def _prepare_expr(places, expr, interpolate=True):
+def _prepare_expr(places, expr):
     """
     :arg places: :class:`pytential.symbolic.execution.GeometryCollection`.
     :arg expr: a symbolic expression.
@@ -393,8 +393,9 @@ def _prepare_expr(places, expr, interpolate=True):
         if isinstance(place, LayerPotentialSourceBase):
             expr = place.preprocess_optemplate(name, places, expr)
 
-    if interpolate:
-        expr = InterpolationPreprocessor(places)(expr)
+    # NOTE: only insert interpolation operators after the layer potential
+    # operators were preprocessed to avoid any confusion
+    expr = InterpolationPreprocessor(places)(expr)
     return expr
 
 # }}}
