@@ -1061,17 +1061,7 @@ def h_max(ambient_dim, dim=None, dofdesc=None):
 
 @_deprecate_kwargs('where', 'dofdesc')
 def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
-    dofdesc = as_dofdesc(dofdesc)
-    if dofdesc.discr_stage is QBX_SOURCE_QUAD_STAGE2:
-        # quad_stage2_density_discr is not guaranteed to be usable for
-        # interpolation/differentiation. Use stage2_density_discr to find
-        # area elements instead, then upsample that.
-        source = dofdesc.copy(discr_stage=QBX_SOURCE_STAGE2)
-        area = Interpolation(source, dofdesc,
-            area_element(ambient_dim, dim=dim, dofdesc=source))
-    else:
-        area = area_element(ambient_dim, dim=dim, dofdesc=dofdesc)
-
+    area = area_element(ambient_dim, dim=dim, where=where)
     return cse(area * QWeight(dofdesc=dofdesc),
             "weights_area_elements",
             cse_scope.DISCRETIZATION)

@@ -382,7 +382,9 @@ def _prepare_expr(places, expr):
 
     from pytential.source import LayerPotentialSourceBase
     from pytential.symbolic.mappers import (
-            ToTargetTagger, DerivativeBinder)
+            ToTargetTagger,
+            DerivativeBinder,
+            InterpolationPreprocessor)
 
     expr = ToTargetTagger(*places.auto_where)(expr)
     expr = DerivativeBinder()(expr)
@@ -391,6 +393,9 @@ def _prepare_expr(places, expr):
         if isinstance(place, LayerPotentialSourceBase):
             expr = place.preprocess_optemplate(name, places, expr)
 
+    # NOTE: only insert interpolation operators after the layer potential
+    # operators were preprocessed to avoid any confusion
+    expr = InterpolationPreprocessor(places)(expr)
     return expr
 
 # }}}
@@ -618,10 +623,7 @@ def bind(places, expr, auto_where=None):
 
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
-
-    from pytential.symbolic.mappers import QBXInterpolationPreprocessor
     expr = _prepare_expr(places, expr)
-    expr = QBXInterpolationPreprocessor(places)(expr)
 
     return BoundExpression(places, expr)
 
