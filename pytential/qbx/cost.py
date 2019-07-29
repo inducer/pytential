@@ -724,4 +724,51 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
 
 # }}}
 
+
+def generate_parameters_output(queue, model_costs, real_costs):
+    """Get kernel-specific calibration parameters from samples of model costs and
+    real costs.
+
+    :arg queue: a :class:`pyopencl.CommandQueue` object on which the cost model is
+        created.
+    :arg model_costs: a :class:`list` of modeled costs. Each model cost can be
+        obtained from `BoundExpression.get_modeled_cost`.
+    :arg real_costs: a :class:`list` of timing data. Each timing data can be obtained
+        from `BoundExpression.eval`.
+    :return: a :class:`dict` which maps kernels to calibration parameters.
+    """
+    cost_per_kernel = {}
+    params_per_kernel = {}
+
+    assert len(model_costs) == len(real_costs)
+
+    for icase in range(len(model_costs)):
+        model_cost = model_costs[icase]
+        real_cost = real_costs[icase]
+
+        for insn in real_cost:
+            assert (insn in model_cost)
+
+            knls = tuple(knl for knl in insn.kernels)
+
+            if knls not in cost_per_kernel:
+                cost_per_kernel[knls] = {
+                    "model_costs": [],
+                    "real_costs": []
+                }
+
+            cost_per_kernel[knls]["model_costs"].append(model_cost[insn])
+            cost_per_kernel[knls]["real_costs"].append(real_cost[insn])
+
+    cost_model = CLQBXCostModel(
+        queue, CLQBXCostModel.get_constantone_calibration_params()
+    )
+
+    for knls in cost_per_kernel:
+        params_per_kernel[knls] = cost_model.estimate_calibration_params(
+            cost_per_kernel[knls]["model_costs"], cost_per_kernel[knls]["real_costs"]
+        )
+
+    return params_per_kernel
+
 # vim: foldmethod=marker
