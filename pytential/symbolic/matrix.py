@@ -288,11 +288,11 @@ class MatrixBuilderBase(EvaluationMapperBase):
         op = sym.NumReferenceDerivative(
                 ref_axes=expr.ref_axes,
                 operand=sym.var("u"),
-                where=expr.where)
+                dofdesc=expr.dofdesc)
         return bind(self.places, op)(self.queue, u=rec_operand).get()
 
     def map_node_coordinate_component(self, expr):
-        op = sym.NodeCoordinateComponent(expr.ambient_axis, where=expr.where)
+        op = sym.NodeCoordinateComponent(expr.ambient_axis, dofdesc=expr.dofdesc)
         return bind(self.places, op)(self.queue).get()
 
     def map_call(self, expr):
