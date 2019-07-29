@@ -122,6 +122,8 @@ def _build_block_index(discr, nblks=10, factor=1.0):
 def _build_op(lpot_id,
               k=0,
               ndim=2,
+              source=sym.DEFAULT_SOURCE,
+              target=sym.DEFAULT_TARGET,
               qbx_forced_limit="avg"):
 
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
@@ -132,7 +134,10 @@ def _build_op(lpot_id,
         knl = LaplaceKernel(ndim)
         knl_kwargs = {}
 
-    lpot_kwargs = {"qbx_forced_limit": qbx_forced_limit}
+    lpot_kwargs = {
+            "qbx_forced_limit": qbx_forced_limit,
+            "source": source,
+            "target": target}
     lpot_kwargs.update(knl_kwargs)
     if lpot_id == 1:
         # scalar single-layer potential
@@ -278,23 +283,33 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     from sympy.core.cache import clear_cache
     clear_cache()
 
+    place_ids = (
+            sym.DOFDescriptor(
+                geometry=sym.DEFAULT_SOURCE,
+                discr_stage=sym.QBX_SOURCE_STAGE1),
+            sym.DOFDescriptor(
+                geometry=sym.DEFAULT_TARGET,
+                discr_stage=sym.QBX_SOURCE_STAGE1),
+            )
     target_order = 2 if ndim == 3 else 7
+
     qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
-    op, u_sym, _ = _build_op(lpot_id, ndim=ndim)
+    op, u_sym, _ = _build_op(lpot_id, ndim=ndim,
+            source=place_ids[0],
+            target=place_ids[1])
     index_set = _build_block_index(qbx.density_discr, factor=factor)
 
     from pytential.symbolic.execution import GeometryCollection
-    from pytential.symbolic.execution import _prepare_expr, _prepare_domains
-    places = GeometryCollection(qbx)
+    from pytential.symbolic.execution import _prepare_expr
+    places = GeometryCollection(qbx, auto_where=place_ids)
     expr = _prepare_expr(places, op)
-    domains = _prepare_domains(1, places, None, sym.DEFAULT_SOURCE)
 
     from pytential.symbolic.matrix import P2PMatrixBuilder
     mbuilder = P2PMatrixBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[domains[0]],
-            dep_discr=places.get_discretization(domains[0]),
+            dep_source=places[place_ids[0]],
+            dep_discr=places.get_discretization(place_ids[0]),
             places=places,
             context={},
             exclude_self=True)
@@ -304,8 +319,8 @@ def test_p2p_block_builder(ctx_factory, factor, ndim, lpot_id,
     mbuilder = FarFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places[domains[0]],
-            dep_discr=places.get_discretization(domains[0]),
+            dep_source=places[place_ids[0]],
+            dep_discr=places.get_discretization(place_ids[0]),
             places=places,
             index_set=index_set,
             context={},
@@ -347,20 +362,21 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
     from sympy.core.cache import clear_cache
     clear_cache()
 
+    place_ids = (
+            sym.DOFDescriptor(
+                geometry=sym.DEFAULT_SOURCE,
+                discr_stage=sym.QBX_SOURCE_STAGE2),
+            sym.DOFDescriptor(
+                geometry=sym.DEFAULT_TARGET,
+                discr_stage=sym.QBX_SOURCE_STAGE2),
+            )
     target_order = 2 if ndim == 3 else 7
-    qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
-    op, u_sym, _ = _build_op(lpot_id, ndim=ndim)
 
-    # NOTE: NearFieldBlockBuilder only does stage1/stage1 or stage2/stage2,
-    # so we need to hardcode the discr for MatrixBuilder too, since the
-    # defaults are different
-    source_dd = sym.DOFDescriptor(
-            geometry=sym.DEFAULT_SOURCE,
-            discr_stage=sym.QBX_SOURCE_STAGE2)
-    target_dd = sym.DOFDescriptor(
-            geometry=sym.DEFAULT_TARGET,
-            discr_stage=sym.QBX_SOURCE_STAGE2)
-    place_ids = (source_dd, target_dd)
+    qbx = _build_qbx_discr(queue, target_order=target_order, ndim=ndim)
+    op, u_sym, _ = _build_op(lpot_id, ndim=ndim,
+            source=place_ids[0],
+            target=place_ids[1],
+            qbx_forced_limit="avg")
 
     from pytential.symbolic.execution import GeometryCollection, _prepare_expr
     places = GeometryCollection(qbx, auto_where=place_ids)
@@ -412,11 +428,11 @@ def test_qbx_block_builder(ctx_factory, factor, ndim, lpot_id,
     assert _max_block_error(mat, blk, index_set) < 1.0e-14
 
 
-@pytest.mark.parametrize('place_ids',
-        [(None, None),
-         (sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE1),
+@pytest.mark.parametrize(('source_discr_stage', 'target_discr_stage'),
+        [(sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE1),
          (sym.QBX_SOURCE_QUAD_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)])
-def test_build_matrix_places(ctx_factory, place_ids, visualize=False):
+def test_build_matrix_places(ctx_factory,
+        source_discr_stage, target_discr_stage, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -424,17 +440,24 @@ def test_build_matrix_places(ctx_factory, place_ids, visualize=False):
     from sympy.core.cache import clear_cache
     clear_cache()
 
+    qbx_forced_limit = -1
+    place_ids = (
+            sym.DOFDescriptor(
+                geometry=sym.DEFAULT_SOURCE,
+                discr_stage=source_discr_stage),
+            sym.DOFDescriptor(
+                geometry=sym.DEFAULT_TARGET,
+                discr_stage=target_discr_stage),
+            )
+
+    # build test operators
     qbx = _build_qbx_discr(queue, nelements=8, target_order=2, ndim=2,
                            curve_f=partial(ellipse, 1.0))
 
-    qbx_forced_limit = -1
     op, u_sym, _ = _build_op(lpot_id=1, ndim=2,
+            source=place_ids[0],
+            target=place_ids[1],
             qbx_forced_limit=qbx_forced_limit)
-
-    place_ids = (
-            sym.as_dofdesc(place_ids[0]).copy(geometry=sym.DEFAULT_SOURCE),
-            sym.as_dofdesc(place_ids[1]).copy(geometry=sym.DEFAULT_TARGET)
-            )
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx, auto_where=place_ids)
@@ -443,17 +466,21 @@ def test_build_matrix_places(ctx_factory, place_ids, visualize=False):
 
     index_set = _build_block_index(source_discr, factor=0.6)
 
-    # build full QBX matrix
-    from pytential.symbolic.execution import build_matrix
-    qbx_mat = build_matrix(queue, qbx, op, u_sym, auto_where=place_ids)
-    qbx_mat = qbx_mat.get(queue)
-
-    assert qbx_mat.shape == (target_discr.nnodes, source_discr.nnodes)
-
-    # build full p2p matrix
     from pytential.symbolic.execution import _prepare_expr
     op = _prepare_expr(places, op)
 
+    # build full QBX matrix
+    from pytential.symbolic.matrix import MatrixBuilder
+    mbuilder = MatrixBuilder(queue,
+            dep_expr=u_sym,
+            other_dep_exprs=[],
+            dep_source=places[place_ids[0]],
+            dep_discr=places.get_discretization(place_ids[0]),
+            places=places,
+            context={})
+    qbx_mat = mbuilder(op)
+
+    # build full p2p matrix
     from pytential.symbolic.matrix import P2PMatrixBuilder
     mbuilder = P2PMatrixBuilder(queue,
             dep_expr=u_sym,

@@ -357,11 +357,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def weights_and_area_elements(self):
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
-            waa = bind(self, sym.weights_and_area_elements(
+            return bind(self, sym.weights_and_area_elements(
                 self.ambient_dim,
-                where=sym.QBX_SOURCE_QUAD_STAGE2))(queue)
-
-            return waa.with_queue(None)
+                where=sym.QBX_SOURCE_QUAD_STAGE2))(queue).with_queue(None)
 
     # }}}
 

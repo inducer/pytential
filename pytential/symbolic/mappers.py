@@ -152,7 +152,7 @@ class DependencyMapper(DependencyMapperBase, Collector):
 class EvaluationMapper(EvaluationMapperBase):
     """Unlike :mod:`pymbolic.mapper.evaluation.EvaluationMapper`, this class
     does evaluation mostly to get :class:`pymbolic.geometric_algebra.MultiVector`
-    instances to to do their thing, and perhaps to automatically kill terms
+    instances to do their thing, and perhaps to automatically kill terms
     that are multiplied by zero. Otherwise it intends to largely preserve
     the structure of the input expression.
     """
@@ -199,7 +199,7 @@ class EvaluationMapper(EvaluationMapperBase):
                 expr.scope)
 
 
-# {{{ target/source tagging
+# {{{ dofdesc tagging
 
 class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     """Used internally by :class:`ToTargetTagger`. Tags all src/target taggable
@@ -315,6 +315,46 @@ class ToTargetTagger(LocationTagger):
         self.operand_rec = LocationTagger(default_source,
                                           default_source=default_source)
 
+
+class DiscretizationStageTagger(IdentityMapper):
+    """Descends into an expression tree and changes the
+    :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage` to
+    :attr:`discr_stage`.
+
+    .. attribute:: discr_stage
+
+        The new discretization for the DOFs in the expression. For valid
+        values, see
+        :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage`.
+    """
+
+    def __init__(self, discr_stage):
+        if not (discr_stage == prim.QBX_SOURCE_STAGE1
+                or discr_stage == prim.QBX_SOURCE_STAGE2
+                or discr_stage == prim.QBX_SOURCE_QUAD_STAGE2):
+            raise ValueError('unknown discr stage tag: "{}"'.format(discr_stage))
+
+        self.discr_stage = discr_stage
+
+    def map_node_coordinate_component(self, expr):
+        dofdesc = prim.as_dofdesc(expr.where)
+        if dofdesc.discr_stage == self.discr_stage:
+            return expr
+
+        return type(expr)(
+                expr.ambient_axis,
+                dofdesc.copy(discr_stage=self.discr_stage))
+
+    def map_num_reference_derivative(self, expr):
+        dofdesc = prim.as_dofdesc(expr.where)
+        if dofdesc.discr_stage == self.discr_stage:
+            return expr
+
+        return type(expr)(
+                expr.ref_axes,
+                self.rec(expr.operand),
+                dofdesc.copy(discr_stage=self.discr_stage))
+
 # }}}
 
 
@@ -409,19 +449,49 @@ class UnregularizedPreprocessor(IdentityMapper):
 # }}}
 
 
-# {{{ QBX preprocessor
+# {{{ interpolation preprocessor
 
-class QBXInterpolationPreprocessor(IdentityMapper):
+class InterpolationPreprocessor(IdentityMapper):
+    """Handle expressions that require upsampling or downsampling by inserting
+    a :class:`~pytential.symbolic.primitives.Interpolation`. This is used to
+
+    * do differentiation on
+    :attr:`~pytential.source.LayerPotentialSource.quad_stage2_density_discr`,
+    by performing it on
+    :attr:`~pytential.source.LayerPotentialSource.stage2_density_discr` and
+    upsampling.
+    * upsample layer potential sources to
+    :attr:`~pytential.source.LayerPotentialSource.quad_stage2_density_discr`,
+    """
+
     def __init__(self, places):
         self.places = places
+        self.from_discr_stage = prim.QBX_SOURCE_STAGE2
+        self.tagger = DiscretizationStageTagger(self.from_discr_stage)
+
+    def map_num_reference_derivative(self, expr):
+        target_dd = prim.as_dofdesc(expr.where)
+        if target_dd.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
+            return expr
+
+        from pytential.qbx import QBXLayerPotentialSource
+        lpot_source = self.places[target_dd]
+        if not isinstance(lpot_source, QBXLayerPotentialSource):
+            return expr
+
+        source_dd = target_dd.copy(discr_stage=self.from_discr_stage)
+        return prim.Interpolation(
+                source_dd,
+                target_dd,
+                self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
         source = prim.as_dofdesc(expr.source)
-        if source.discr_stage == prim.QBX_SOURCE_QUAD_STAGE2:
+        if source.discr_stage is not None:
             return expr
-        lpot_source = self.places[source]
 
         from pytential.qbx import QBXLayerPotentialSource
+        lpot_source = self.places[source]
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
@@ -436,8 +506,14 @@ class QBXInterpolationPreprocessor(IdentityMapper):
         return expr.copy(
                 kernel=expr.kernel,
                 density=density,
-                kernel_arguments=kernel_arguments)
+                kernel_arguments=kernel_arguments,
+                source=target,
+                target=expr.target)
 
+# }}}
+
+
+# {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
     def __init__(self, source_name, places):
