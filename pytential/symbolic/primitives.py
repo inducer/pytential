@@ -1061,7 +1061,7 @@ def h_max(ambient_dim, dim=None, dofdesc=None):
 
 @_deprecate_kwargs('where', 'dofdesc')
 def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
-    area = area_element(ambient_dim, dim=dim, where=where)
+    area = area_element(ambient_dim, dim=dim, dofdesc=dofdesc)
     return cse(area * QWeight(dofdesc=dofdesc),
             "weights_area_elements",
             cse_scope.DISCRETIZATION)
