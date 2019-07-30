@@ -212,8 +212,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     map_common_subexpression_uncached = \
             IdentityMapper.map_common_subexpression
 
-    def _as_dofdesc(self, dofdesc):
-        dofdesc = prim.as_dofdesc(dofdesc)
+    def _default_dofdesc(self, dofdesc):
         if dofdesc.geometry is None:
             if dofdesc.discr_stage is None \
                     and dofdesc.granularity == prim.GRANULARITY_NODE:
@@ -224,7 +223,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         return dofdesc
 
     def map_ones(self, expr):
-        return type(expr)(dofdesc=self._as_dofdesc(expr.dofdesc))
+        return type(expr)(dofdesc=self._default_dofdesc(expr.dofdesc))
 
     map_q_weight = map_ones
 
@@ -232,33 +231,33 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         return type(expr)(
                 expr.ambient_axis,
                 expr.ref_axis,
-                self._as_dofdesc(expr.dofdesc))
+                self._default_dofdesc(expr.dofdesc))
 
     def map_node_coordinate_component(self, expr):
         return type(expr)(
                 expr.ambient_axis,
-                self._as_dofdesc(expr.dofdesc))
+                self._default_dofdesc(expr.dofdesc))
 
     def map_num_reference_derivative(self, expr):
         return type(expr)(
                 expr.ref_axes,
                 self.rec(expr.operand),
-                self._as_dofdesc(expr.dofdesc))
+                self._default_dofdesc(expr.dofdesc))
 
     def map_elementwise_sum(self, expr):
         return type(expr)(
                 self.rec(expr.operand),
-                self._as_dofdesc(expr.dofdesc))
+                self._default_dofdesc(expr.dofdesc))
 
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum
 
     def map_int_g(self, expr):
-        source = prim.as_dofdesc(expr.source)
-        target = prim.as_dofdesc(expr.target)
-
+        source = expr.source
         if source.geometry is None:
             source = source.copy(geometry=self.default_source)
+
+        target = expr.target
         if target.geometry is None:
             target = target.copy(geometry=self.default_where)
 
@@ -272,7 +271,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     ))
 
     def map_inverse(self, expr):
-        dofdesc = prim.as_dofdesc(expr.dofdesc)
+        dofdesc = expr.dofdesc
         if dofdesc.geometry is None:
             dofdesc = dofdesc.copy(geometry=self.default_where)
 
@@ -287,11 +286,11 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 dofdesc)
 
     def map_interpolation(self, expr):
-        source = prim.as_dofdesc(expr.source)
-        target = prim.as_dofdesc(expr.target)
-
+        source = expr.source
         if source.geometry is None:
             source = source.copy(geometry=self.default_source)
+
+        target = expr.target
         if target.geometry is None:
             target = target.copy(geometry=self.default_source)
 
@@ -336,7 +335,7 @@ class DiscretizationStageTagger(IdentityMapper):
         self.discr_stage = discr_stage
 
     def map_node_coordinate_component(self, expr):
-        dofdesc = prim.as_dofdesc(expr.where)
+        dofdesc = expr.dofdesc
         if dofdesc.discr_stage == self.discr_stage:
             return expr
 
@@ -345,7 +344,7 @@ class DiscretizationStageTagger(IdentityMapper):
                 dofdesc.copy(discr_stage=self.discr_stage))
 
     def map_num_reference_derivative(self, expr):
-        dofdesc = prim.as_dofdesc(expr.where)
+        dofdesc = expr.dofdesc
         if dofdesc.discr_stage == self.discr_stage:
             return expr
 
@@ -469,23 +468,23 @@ class InterpolationPreprocessor(IdentityMapper):
         self.tagger = DiscretizationStageTagger(self.from_discr_stage)
 
     def map_num_reference_derivative(self, expr):
-        target_dd = prim.as_dofdesc(expr.where)
-        if target_dd.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
+        dofdesc = expr.dofdesc
+        if dofdesc.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places[target_dd]
+        lpot_source = self.places[dofdesc]
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        source_dd = target_dd.copy(discr_stage=self.from_discr_stage)
+        from_dofdesc = dofdesc.copy(discr_stage=self.from_discr_stage)
         return prim.Interpolation(
-                source_dd,
-                target_dd,
+                from_dofdesc,
+                dofdesc,
                 self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
-        source = prim.as_dofdesc(expr.source)
+        source = expr.source
         if source.discr_stage is not None:
             return expr
 
@@ -494,19 +493,20 @@ class InterpolationPreprocessor(IdentityMapper):
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        target = source.copy(discr_stage=prim.QBX_SOURCE_QUAD_STAGE2)
+        from_dd = source
+        to_dd = from_dd.copy(discr_stage=prim.QBX_SOURCE_QUAD_STAGE2)
         density = prim.Interpolation(
-                source, target, self.rec(expr.density))
+                from_dd, to_dd, self.rec(expr.density))
         kernel_arguments = dict(
                 (name, prim.Interpolation(
-                    source, target, self.rec(arg_expr)))
+                    from_dd, to_dd, self.rec(arg_expr)))
                 for name, arg_expr in expr.kernel_arguments.items())
 
         return expr.copy(
                 kernel=expr.kernel,
                 density=density,
                 kernel_arguments=kernel_arguments,
-                source=target,
+                source=to_dd,
                 target=expr.target)
 
 # }}}
@@ -520,14 +520,11 @@ class QBXPreprocessor(IdentityMapper):
         self.places = places
 
     def map_int_g(self, expr):
-        from pytential import sym
-        source = sym.as_dofdesc(expr.source)
-        target = sym.as_dofdesc(expr.target)
-        if source.geometry != self.source_name:
+        if expr.source.geometry != self.source_name:
             return expr
 
-        source_discr = self.places.get_discretization(source)
-        target_discr = self.places.get_discretization(target)
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         if expr.qbx_forced_limit == 0:
             raise ValueError("qbx_forced_limit == 0 was a bad idea and "

@@ -368,9 +368,7 @@ class MatrixBuilder(MatrixBuilderBase):
                 dep_source, dep_discr, places, context)
 
     def map_interpolation(self, expr):
-        source_dd = sym.as_dofdesc(expr.source)
-        target_dd = sym.as_dofdesc(expr.target)
-        if target_dd.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
+        if expr.target.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
             raise RuntimeError("can only interpolate to QBX_SOURCE_QUAD_STAGE2")
 
         operand = self.rec(expr.operand)
@@ -384,19 +382,16 @@ class MatrixBuilder(MatrixBuilderBase):
             operand = cl.array.to_device(self.queue, operand)
             return conn(self.queue, operand).get(self.queue)
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
-            resampler = self.places[source_dd].direct_resampler
+            resampler = self.places[expr.source].direct_resampler
             mat = resampler.full_resample_matrix(self.queue).get(self.queue)
             return mat.dot(operand)
         else:
             raise RuntimeError('unknown operand type: {}'.format(type(operand)))
 
     def map_int_g(self, expr):
-        source_dd = sym.as_dofdesc(expr.source)
-        target_dd = sym.as_dofdesc(expr.target)
-
-        lpot_source = self.places[source_dd]
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
+        lpot_source = self.places[expr.source]
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -449,12 +444,9 @@ class P2PMatrixBuilder(MatrixBuilderBase):
         self.exclude_self = exclude_self
 
     def map_int_g(self, expr):
-        target_dd = sym.as_dofdesc(expr.target)
-        source_dd = sym.as_dofdesc(expr.source)
-
-        source = self.places[source_dd]
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
+        source = self.places[expr.source]
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -515,12 +507,9 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        target_dd = sym.as_dofdesc(expr.target)
-        source_dd = sym.as_dofdesc(expr.source)
-
-        source = self.places[source_dd]
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
+        source = self.places[expr.source]
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         if source_discr is not target_discr:
             raise NotImplementedError()
@@ -584,12 +573,9 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        target_dd = sym.as_dofdesc(expr.target)
-        source_dd = sym.as_dofdesc(expr.source)
-
-        source = self.places[source_dd]
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
+        source = self.places[expr.source]
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         if source_discr is not target_discr:
             raise NotImplementedError()

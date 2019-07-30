@@ -148,17 +148,17 @@ class EvaluationMapper(EvaluationMapperBase):
         operand = self.rec(expr.operand)
         assert operand.shape == (discr.nnodes,)
 
-        where = sym.as_dofdesc(expr.dofdesc)
-        if where.granularity == sym.GRANULARITY_NODE:
+        granularity = expr.dofdesc.granularity
+        if granularity == sym.GRANULARITY_NODE:
             return _reduce(discr.nnodes,
                     node_knl(),
                     lambda g, x: discr.groups[g].view(x))
-        elif where.granularity == sym.GRANULARITY_ELEMENT:
+        elif granularity == sym.GRANULARITY_ELEMENT:
             return _reduce(discr.mesh.nelements,
                     element_knl(),
                     lambda g, x: mesh_el_view(discr.mesh, g, x))
         else:
-            raise ValueError('unsupported granularity: %s' % where.granularity)
+            raise ValueError('unsupported granularity: %s' % granularity)
 
     def map_elementwise_sum(self, expr):
         return self._map_elementwise_reduction("sum", expr)
@@ -368,7 +368,9 @@ def _prepare_domains(nresults, places, domains, default_domain):
         dom_name = domains
         return nresults * [dom_name]
 
+    domains = [sym.as_dofdesc(d) for d in domains]
     assert len(domains) == nresults
+
     return domains
 
 
@@ -494,8 +496,6 @@ class GeometryCollection(object):
         return self.auto_where[1]
 
     def _get_lpot_discretization(self, lpot, dofdesc):
-        dofdesc = sym.as_dofdesc(dofdesc)
-
         if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
             return lpot.stage2_density_discr
         if dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
