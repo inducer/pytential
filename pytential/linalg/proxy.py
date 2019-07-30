@@ -282,15 +282,15 @@ class ProxyGenerator(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, places, where=None, approx_nproxy=None, ratio=None):
+    def __init__(self, places, dofdesc=None, approx_nproxy=None, ratio=None):
         from pytential.symbolic.execution import GeometryCollection
         if not isinstance(places, GeometryCollection):
-            places = GeometryCollection(places, auto_where=where)
+            places = GeometryCollection(places, auto_where=dofdesc)
 
         from pytential import sym
         self.places = places
-        self.where = sym.as_dofdesc(where or places.auto_source)
-        self.discr = places.get_discretization(self.where)
+        self.dofdesc = sym.as_dofdesc(dofdesc or places.auto_source)
+        self.discr = places.get_discretization(self.dofdesc)
 
         self.ambient_dim = self.discr.ambient_dim
         self.ratio = 1.1 if ratio is None else ratio
@@ -396,13 +396,13 @@ class ProxyGenerator(object):
         from pytential import bind, sym
         radii = bind(self.places, sym.expansion_radii(
             self.discr.ambient_dim,
-            where=self.where))(queue)
+            dofdesc=self.dofdesc))(queue)
         center_int = bind(self.places, sym.expansion_centers(
             self.discr.ambient_dim, -1,
-            where=self.where))(queue)
+            dofdesc=self.dofdesc))(queue)
         center_ext = bind(self.places, sym.expansion_centers(
             self.discr.ambient_dim, +1,
-            where=self.where))(queue)
+            dofdesc=self.dofdesc))(queue)
 
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(queue,

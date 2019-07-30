@@ -33,6 +33,7 @@ import six
 from six.moves import intern
 
 from pytools import memoize_method
+import pytential.symbolic.primitives as sym
 from pytential.symbolic.mappers import EvaluationMapperBase
 
 
@@ -42,41 +43,10 @@ def is_zero(x):
     return isinstance(x, (int, float, complex, np.number)) and x == 0
 
 
-def _resample_arg(queue, lpot_source, x):
-    """
-    :arg queue: a :class:`pyopencl.CommandQueue`.
-    :arg lpot_source: a :class:`pytential.source.LayerPotentialSourceBase`
-        subclass. If it is not a layer potential source, no resampling is done.
-    :arg x: a :class:`numpy.ndarray`.
-
-    :return: a resampled :class:`numpy.ndarray` (see
-        :method:`pytential.source.LayerPotentialSourceBase.resampler`).
-    """
-
-    from pytential.source import LayerPotentialSourceBase
-    if not isinstance(lpot_source, LayerPotentialSourceBase):
-        return x
-
-    if not isinstance(x, (np.ndarray, cl.array.Array)):
-        return x
-
-    if len(x.shape) >= 2:
-        raise RuntimeError("matrix variables in kernel arguments")
-
-    def resample(y):
-        if not isinstance(y, cl.array.Array):
-            y = cl.array.to_device(queue, y)
-        return lpot_source.resampler(queue, y).get(queue)
-
-    from pytools.obj_array import with_object_array_or_scalar
-    return with_object_array_or_scalar(resample, x)
-
-
-def _get_layer_potential_args(mapper, expr, lpot_source, include_args=None):
+def _get_layer_potential_args(mapper, expr, include_args=None):
     """
     :arg mapper: a :class:`pytential.symbolic.matrix.MatrixBuilderBase`.
     :arg expr: symbolic layer potential expression.
-    :arg lpot_source: a :class:`pytential.source.LayerPotentialSourceBase`.
 
     :return: a mapping of kernel arguments evaluated by the *mapper*.
     """
@@ -87,8 +57,7 @@ def _get_layer_potential_args(mapper, expr, lpot_source, include_args=None):
                 and arg_name not in include_args):
             continue
 
-        rec_arg = mapper.rec(arg_expr)
-        kernel_args[arg_name] = _resample_arg(mapper.queue, lpot_source, rec_arg)
+        kernel_args[arg_name] = mapper.rec(arg_expr)
 
     return kernel_args
 
@@ -221,29 +190,26 @@ class MatrixBuilderBase(EvaluationMapperBase):
             return vecs_and_scalars
 
     def map_num_reference_derivative(self, expr):
+        from pytential import bind
         rec_operand = self.rec(expr.operand)
 
         assert isinstance(rec_operand, np.ndarray)
         if self.is_kind_matrix(rec_operand):
             raise NotImplementedError("derivatives")
 
-        from pytential import bind, sym
         rec_operand = cl.array.to_device(self.queue, rec_operand)
         op = sym.NumReferenceDerivative(
                 ref_axes=expr.ref_axes,
                 operand=sym.var("u"),
-                where=expr.where)
+                dofdesc=expr.dofdesc)
         return bind(self.places, op)(self.queue, u=rec_operand).get()
 
     def map_node_coordinate_component(self, expr):
-        from pytential import bind, sym
-        op = sym.NodeCoordinateComponent(
-                expr.ambient_axis,
-                where=expr.where)
+        from pytential import bind
+        op = sym.NodeCoordinateComponent(expr.ambient_axis, dofdesc=expr.dofdesc)
         return bind(self.places, op)(self.queue).get()
 
     def map_call(self, expr):
-        from pytential import bind, sym
         arg, = expr.parameters
         rec_arg = self.rec(arg)
 
@@ -253,6 +219,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if isinstance(rec_arg, np.ndarray):
             rec_arg = cl.array.to_device(self.queue, rec_arg)
 
+        from pytential import bind
         op = expr.function(sym.var("u"))
         result = bind(self.places, op)(self.queue, u=rec_arg)
 
@@ -341,17 +308,31 @@ class MatrixBuilder(MatrixBuilderBase):
         super(MatrixBuilder, self).__init__(queue, dep_expr, other_dep_exprs,
                 dep_source, dep_discr, places, context)
 
-    def map_int_g(self, expr):
-        from pytential import bind, sym
-        source_dd = sym.as_dofdesc(expr.source)
-        target_dd = sym.as_dofdesc(expr.target)
-        if source_dd.discr is None:
-            source_dd = source_dd.copy(discr=sym.QBX_SOURCE_QUAD_STAGE2)
+    def map_interpolation(self, expr):
+        if expr.target.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
+            raise RuntimeError("can only interpolate to QBX_SOURCE_QUAD_STAGE2")
 
-        lpot_source = self.places[source_dd]
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
-        assert target_discr.nnodes <= source_discr.nnodes
+        operand = self.rec(expr.operand)
+        if isinstance(operand, (int, float, complex, np.number)):
+            return operand
+        elif isinstance(operand, np.ndarray) and operand.ndim == 1:
+            from pytential.symbolic.dof_connection import connection_from_dds
+            conn = connection_from_dds(self.places,
+                    expr.source, expr.target)
+
+            operand = cl.array.to_device(self.queue, operand)
+            return conn(self.queue, operand).get(self.queue)
+        elif isinstance(operand, np.ndarray) and operand.ndim == 2:
+            resampler = self.places[expr.source].direct_resampler
+            mat = resampler.full_resample_matrix(self.queue).get(self.queue)
+            return mat.dot(operand)
+        else:
+            raise RuntimeError('unknown operand type: {}'.format(type(operand)))
+
+    def map_int_g(self, expr):
+        lpot_source = self.places[expr.source]
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -362,9 +343,7 @@ class MatrixBuilder(MatrixBuilderBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        # NOTE: setting to None to avoid resampling
-        resampler = None if source_dd.discr == target_dd.discr else lpot_source
-        kernel_args = _get_layer_potential_args(self, expr, resampler)
+        kernel_args = _get_layer_potential_args(self, expr)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, lpot_source.qbx_order)
@@ -374,13 +353,14 @@ class MatrixBuilder(MatrixBuilderBase):
                 self.queue.context, (local_expn,))
 
         assert abs(expr.qbx_forced_limit) > 0
+        from pytential import bind
         radii = bind(self.places, sym.expansion_radii(
             source_discr.ambient_dim,
-            where=target_dd))(self.queue)
+            dofdesc=expr.target))(self.queue)
         centers = bind(self.places, sym.expansion_centers(
             source_discr.ambient_dim,
             expr.qbx_forced_limit,
-            where=target_dd))(self.queue)
+            dofdesc=expr.target))(self.queue)
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
@@ -392,14 +372,8 @@ class MatrixBuilder(MatrixBuilderBase):
 
         waa = bind(self.places, sym.weights_and_area_elements(
             source_discr.ambient_dim,
-            where=source_dd))(self.queue)
+            dofdesc=expr.source))(self.queue)
         mat[:, :] *= waa.get(self.queue)
-
-        if source_dd.discr != target_dd.discr:
-            resampler = lpot_source.direct_resampler
-            resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
-            mat = mat.dot(resample_mat)
-
         mat = mat.dot(rec_density)
 
         return mat
@@ -419,13 +393,8 @@ class P2PMatrixBuilder(MatrixBuilderBase):
         self.exclude_self = exclude_self
 
     def map_int_g(self, expr):
-        from pytential import sym
-        source_dd = sym.as_dofdesc(expr.source)
-        target_dd = sym.as_dofdesc(expr.target)
-
-        lpot_source = self.places[source_dd]
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -443,7 +412,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
         kernel_args = set(arg.loopy_arg.name for arg in kernel_args)
 
         kernel_args = _get_layer_potential_args(self,
-                expr, lpot_source, include_args=kernel_args)
+                expr, include_args=kernel_args)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
@@ -480,13 +449,9 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        from pytential import sym
-        source_dd = sym.as_dofdesc(expr.source)
-        target_dd = sym.as_dofdesc(expr.target)
-
-        lpot_source = self.places[source_dd]
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
+        lpot_source = self.places[expr.source]
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         if source_discr is not target_discr:
             raise NotImplementedError
@@ -499,7 +464,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             raise NotImplementedError
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self._mat_mapper, expr, None)
+        kernel_args = _get_layer_potential_args(self._mat_mapper, expr)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, lpot_source.qbx_order)
@@ -509,14 +474,14 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 self.queue.context, (local_expn,))
 
         assert abs(expr.qbx_forced_limit) > 0
-        from pytential import bind, sym
+        from pytential import bind
         radii = bind(self.places, sym.expansion_radii(
             source_discr.ambient_dim,
-            where=target_dd))(self.queue)
+            dofdesc=expr.target))(self.queue)
         centers = bind(self.places, sym.expansion_centers(
             source_discr.ambient_dim,
             expr.qbx_forced_limit,
-            where=target_dd))(self.queue)
+            dofdesc=expr.target))(self.queue)
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
@@ -528,7 +493,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
         waa = bind(self.places, sym.weights_and_area_elements(
             source_discr.ambient_dim,
-            where=source_dd))(self.queue)
+            dofdesc=expr.source))(self.queue)
         mat *= waa[self.index_set.linear_col_indices]
         mat = rec_density * mat.get(self.queue)
 
@@ -550,13 +515,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        from pytential import sym
-        source_dd = sym.as_dofdesc(expr.source)
-        target_dd = sym.as_dofdesc(expr.target)
-
-        lpot_source = self.places[source_dd]
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         if source_discr is not target_discr:
             raise NotImplementedError
@@ -576,7 +536,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         kernel_args = set(arg.loopy_arg.name for arg in kernel_args)
 
         kernel_args = _get_layer_potential_args(self._mat_mapper,
-                expr, lpot_source, include_args=kernel_args)
+                expr, include_args=kernel_args)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
                 cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)

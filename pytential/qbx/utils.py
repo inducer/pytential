@@ -69,24 +69,24 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 
 # {{{ make interleaved centers
 
-def get_interleaved_centers(queue, places, where=None):
+def get_interleaved_centers(queue, places, dofdesc=None):
     """
     Return an array of shape (dim, ncenters) in which interior centers are placed
     next to corresponding exterior centers.
     """
     from pytential.symbolic.execution import GeometryCollection
     if not isinstance(places, GeometryCollection):
-        places = GeometryCollection(places, auto_where=where)
-    where = where or places.auto_source
-    discr = places.get_discretization(where)
+        places = GeometryCollection(places, auto_where=dofdesc)
+    dofdesc = dofdesc or places.auto_source
+    discr = places.get_discretization(dofdesc)
 
     from pytential import bind, sym
     int_centers = bind(places, sym.expansion_centers(
         discr.ambient_dim, -1,
-        where=where))(queue)
+        dofdesc=dofdesc))(queue)
     ext_centers = bind(places, sym.expansion_centers(
         discr.ambient_dim, +1,
-        where=where))(queue)
+        dofdesc=dofdesc))(queue)
 
     from pytential.symbolic.dof_connection import CenterGranularityConnection
     interleaver = CenterGranularityConnection(discr)
@@ -97,21 +97,21 @@ def get_interleaved_centers(queue, places, where=None):
 
 # {{{ make interleaved radii
 
-def get_interleaved_radii(queue, places, where=None):
+def get_interleaved_radii(queue, places, dofdesc=None):
     """
     Return an array of shape (dim, ncenters) in which interior centers are placed
     next to corresponding exterior centers.
     """
     from pytential.symbolic.execution import GeometryCollection
     if not isinstance(places, GeometryCollection):
-        places = GeometryCollection(places, auto_where=where)
-    where = where or places.auto_source
-    discr = places.get_discretization(where)
+        places = GeometryCollection(places, auto_where=dofdesc)
+    dofdesc = dofdesc or places.auto_source
+    discr = places.get_discretization(dofdesc)
 
     from pytential import bind, sym
     radii = bind(places, sym.expansion_radii(
         discr.ambient_dim,
-        where=where))(queue)
+        dofdesc=dofdesc))(queue)
 
     from pytential.symbolic.dof_connection import CenterGranularityConnection
     interleaver = CenterGranularityConnection(discr)

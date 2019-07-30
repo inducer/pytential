@@ -62,14 +62,14 @@ class IdentityMapper(IdentityMapperBase):
     map_node_max = map_node_sum
 
     def map_elementwise_sum(self, expr):
-        return type(expr)(self.rec(expr.operand), expr.where)
+        return type(expr)(self.rec(expr.operand), expr.dofdesc)
 
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum
 
     def map_num_reference_derivative(self, expr):
         return type(expr)(expr.ref_axes, self.rec(expr.operand),
-                expr.where)
+                expr.dofdesc)
 
     # {{{ childless -- no need to rebuild
 
@@ -92,7 +92,7 @@ class IdentityMapper(IdentityMapperBase):
                 dict([
                     (name, self.rec(name_expr))
                     for name, name_expr in six.iteritems(expr.extra_vars)]),
-                expr.where)
+                expr.dofdesc)
 
     def map_int_g(self, expr):
         return expr.copy(
@@ -152,7 +152,7 @@ class DependencyMapper(DependencyMapperBase, Collector):
 class EvaluationMapper(EvaluationMapperBase):
     """Unlike :mod:`pymbolic.mapper.evaluation.EvaluationMapper`, this class
     does evaluation mostly to get :class:`pymbolic.geometric_algebra.MultiVector`
-    instances to to do their thing, and perhaps to automatically kill terms
+    instances to do their thing, and perhaps to automatically kill terms
     that are multiplied by zero. Otherwise it intends to largely preserve
     the structure of the input expression.
     """
@@ -177,7 +177,7 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_num_reference_derivative(self, expr):
         return componentwise(
                 lambda subexpr: type(expr)(
-                        expr.ref_axes, self.rec(subexpr), expr.where),
+                        expr.ref_axes, self.rec(subexpr), expr.dofdesc),
                 expr.operand)
 
     def map_int_g(self, expr):
@@ -199,7 +199,7 @@ class EvaluationMapper(EvaluationMapperBase):
                 expr.scope)
 
 
-# {{{ target/source tagging
+# {{{ dofdesc tagging
 
 class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     """Used internally by :class:`ToTargetTagger`. Tags all src/target taggable
@@ -212,18 +212,18 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     map_common_subexpression_uncached = \
             IdentityMapper.map_common_subexpression
 
-    def _as_dofdesc(self, where):
-        dd = prim.as_dofdesc(where)
-        if dd.where is None:
-            if dd.discr is None and dd.granularity is prim.GRANULARITY_NODE:
-                dd = dd.copy(where=self.default_where)
+    def _default_dofdesc(self, dofdesc):
+        if dofdesc.geometry is None:
+            if dofdesc.discr_stage is None \
+                    and dofdesc.granularity == prim.GRANULARITY_NODE:
+                dofdesc = dofdesc.copy(geometry=self.default_where)
             else:
-                dd = dd.copy(where=self.default_source)
+                dofdesc = dofdesc.copy(geometry=self.default_source)
 
-        return dd
+        return dofdesc
 
     def map_ones(self, expr):
-        return type(expr)(where=self._as_dofdesc(expr.where))
+        return type(expr)(dofdesc=self._default_dofdesc(expr.dofdesc))
 
     map_q_weight = map_ones
 
@@ -231,35 +231,35 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
         return type(expr)(
                 expr.ambient_axis,
                 expr.ref_axis,
-                self._as_dofdesc(expr.where))
+                self._default_dofdesc(expr.dofdesc))
 
     def map_node_coordinate_component(self, expr):
         return type(expr)(
                 expr.ambient_axis,
-                self._as_dofdesc(expr.where))
+                self._default_dofdesc(expr.dofdesc))
 
     def map_num_reference_derivative(self, expr):
         return type(expr)(
                 expr.ref_axes,
                 self.rec(expr.operand),
-                self._as_dofdesc(expr.where))
+                self._default_dofdesc(expr.dofdesc))
 
     def map_elementwise_sum(self, expr):
         return type(expr)(
                 self.rec(expr.operand),
-                self._as_dofdesc(expr.where))
+                self._default_dofdesc(expr.dofdesc))
 
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum
 
     def map_int_g(self, expr):
-        source = prim.as_dofdesc(expr.source)
-        target = prim.as_dofdesc(expr.target)
+        source = expr.source
+        if source.geometry is None:
+            source = source.copy(geometry=self.default_source)
 
-        if source.where is None:
-            source = source.copy(where=self.default_source)
-        if target.where is None:
-            target = target.copy(where=self.default_where)
+        target = expr.target
+        if target.geometry is None:
+            target = target.copy(geometry=self.default_where)
 
         return type(expr)(
                 expr.kernel,
@@ -271,10 +271,9 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     ))
 
     def map_inverse(self, expr):
-        dd = prim.as_dofdesc(expr.where)
-
-        if dd.where is None:
-            dd = dd.copy(where=self.default_where)
+        dofdesc = expr.dofdesc
+        if dofdesc.geometry is None:
+            dofdesc = dofdesc.copy(geometry=self.default_where)
 
         return type(expr)(
                 # don't recurse into expression--it is a separate world that
@@ -284,16 +283,16 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 dict([
                     (name, self.rec(name_expr))
                     for name, name_expr in six.iteritems(expr.extra_vars)]),
-                dd)
+                dofdesc)
 
     def map_interpolation(self, expr):
-        source = prim.as_dofdesc(expr.source)
-        target = prim.as_dofdesc(expr.target)
+        source = expr.source
+        if source.geometry is None:
+            source = source.copy(geometry=self.default_source)
 
-        if source.where is None:
-            source = source.copy(where=self.default_source)
-        if target.where is None:
-            target = target.copy(where=self.default_source)
+        target = expr.target
+        if target.geometry is None:
+            target = target.copy(geometry=self.default_source)
 
         return type(expr)(source, target, self.operand_rec(expr.operand))
 
@@ -313,6 +312,46 @@ class ToTargetTagger(LocationTagger):
                                 default_source=default_source)
         self.operand_rec = LocationTagger(default_source,
                                           default_source=default_source)
+
+
+class DiscretizationStageTagger(IdentityMapper):
+    """Descends into an expression tree and changes the
+    :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage` to
+    :attr:`discr_stage`.
+
+    .. attribute:: discr_stage
+
+        The new discretization for the DOFs in the expression. For valid
+        values, see
+        :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage`.
+    """
+
+    def __init__(self, discr_stage):
+        if not (discr_stage == prim.QBX_SOURCE_STAGE1
+                or discr_stage == prim.QBX_SOURCE_STAGE2
+                or discr_stage == prim.QBX_SOURCE_QUAD_STAGE2):
+            raise ValueError('unknown discr stage tag: "{}"'.format(discr_stage))
+
+        self.discr_stage = discr_stage
+
+    def map_node_coordinate_component(self, expr):
+        dofdesc = expr.dofdesc
+        if dofdesc.discr_stage == self.discr_stage:
+            return expr
+
+        return type(expr)(
+                expr.ambient_axis,
+                dofdesc.copy(discr_stage=self.discr_stage))
+
+    def map_num_reference_derivative(self, expr):
+        dofdesc = expr.dofdesc
+        if dofdesc.discr_stage == self.discr_stage:
+            return expr
+
+        return type(expr)(
+                expr.ref_axes,
+                self.rec(expr.operand),
+                dofdesc.copy(discr_stage=self.discr_stage))
 
 # }}}
 
@@ -408,35 +447,72 @@ class UnregularizedPreprocessor(IdentityMapper):
 # }}}
 
 
-# {{{ QBX preprocessor
+# {{{ interpolation preprocessor
 
-class QBXInterpolationPreprocessor(IdentityMapper):
+class InterpolationPreprocessor(IdentityMapper):
+    """Handle expressions that require upsampling or downsampling by inserting
+    a :class:`~pytential.symbolic.primitives.Interpolation`. This is used to
+
+    * do differentiation on
+    :attr:`~pytential.source.LayerPotentialSource.quad_stage2_density_discr`,
+    by performing it on
+    :attr:`~pytential.source.LayerPotentialSource.stage2_density_discr` and
+    upsampling.
+    * upsample layer potential sources to
+    :attr:`~pytential.source.LayerPotentialSource.quad_stage2_density_discr`,
+    """
+
     def __init__(self, places):
         self.places = places
+        self.from_discr_stage = prim.QBX_SOURCE_STAGE2
+        self.tagger = DiscretizationStageTagger(self.from_discr_stage)
 
-    def map_int_g(self, expr):
-        source_dd = prim.as_dofdesc(expr.source)
-        if source_dd.discr is prim.QBX_SOURCE_QUAD_STAGE2:
+    def map_num_reference_derivative(self, expr):
+        dofdesc = expr.dofdesc
+        if dofdesc.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
-        lpot_source = self.places[expr.source]
 
         from pytential.qbx import QBXLayerPotentialSource
+        lpot_source = self.places[dofdesc]
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        target_dd = source_dd.copy(discr=prim.QBX_SOURCE_QUAD_STAGE2)
+        from_dofdesc = dofdesc.copy(discr_stage=self.from_discr_stage)
+        return prim.Interpolation(
+                from_dofdesc,
+                dofdesc,
+                self.rec(self.tagger(expr)))
+
+    def map_int_g(self, expr):
+        source = expr.source
+        if source.discr_stage is not None:
+            return expr
+
+        from pytential.qbx import QBXLayerPotentialSource
+        lpot_source = self.places[source]
+        if not isinstance(lpot_source, QBXLayerPotentialSource):
+            return expr
+
+        from_dd = source
+        to_dd = from_dd.copy(discr_stage=prim.QBX_SOURCE_QUAD_STAGE2)
         density = prim.Interpolation(
-                source_dd, target_dd, self.rec(expr.density))
+                from_dd, to_dd, self.rec(expr.density))
         kernel_arguments = dict(
                 (name, prim.Interpolation(
-                    source_dd, target_dd, self.rec(arg_expr)))
+                    from_dd, to_dd, self.rec(arg_expr)))
                 for name, arg_expr in expr.kernel_arguments.items())
 
         return expr.copy(
                 kernel=expr.kernel,
                 density=density,
-                kernel_arguments=kernel_arguments)
+                kernel_arguments=kernel_arguments,
+                source=to_dd,
+                target=expr.target)
 
+# }}}
+
+
+# {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
     def __init__(self, source_name, places):
@@ -444,14 +520,11 @@ class QBXPreprocessor(IdentityMapper):
         self.places = places
 
     def map_int_g(self, expr):
-        from pytential import sym
-        source_dd = sym.as_dofdesc(expr.source)
-        target_dd = sym.as_dofdesc(expr.target)
-        if source_dd.where != self.source_name:
+        if expr.source.geometry != self.source_name:
             return expr
 
-        source_discr = self.places.get_discretization(source_dd)
-        target_discr = self.places.get_discretization(target_dd)
+        source_discr = self.places.get_discretization(expr.source)
+        target_discr = self.places.get_discretization(expr.target)
 
         if expr.qbx_forced_limit == 0:
             raise ValueError("qbx_forced_limit == 0 was a bad idea and "
@@ -508,7 +581,7 @@ def stringify_where(where):
 class StringifyMapper(BaseStringifyMapper):
 
     def map_ones(self, expr, enclosing_prec):
-        return "Ones[%s]" % stringify_where(expr.where)
+        return "Ones[%s]" % stringify_where(expr.dofdesc)
 
     def map_inverse(self, expr, enclosing_prec):
         return "Solve(%s = %s {%s})" % (
@@ -526,17 +599,17 @@ class StringifyMapper(BaseStringifyMapper):
 
     def map_elementwise_sum(self, expr, enclosing_prec):
         return "ElwiseSum[%s](%s)" % (
-                stringify_where(expr.where),
+                stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_elementwise_min(self, expr, enclosing_prec):
         return "ElwiseMin[%s](%s)" % (
-                stringify_where(expr.where),
+                stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_elementwise_max(self, expr, enclosing_prec):
         return "ElwiseMax[%s](%s)" % (
-                stringify_where(expr.where),
+                stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_node_max(self, expr, enclosing_prec):
@@ -547,7 +620,7 @@ class StringifyMapper(BaseStringifyMapper):
 
     def map_node_coordinate_component(self, expr, enclosing_prec):
         return "x%d[%s]" % (expr.ambient_axis,
-                stringify_where(expr.where))
+                stringify_where(expr.dofdesc))
 
     def map_num_reference_derivative(self, expr, enclosing_prec):
         diff_op = " ".join(
@@ -558,7 +631,7 @@ class StringifyMapper(BaseStringifyMapper):
 
         result = "%s[%s] %s" % (
                 diff_op,
-                stringify_where(expr.where),
+                stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_PRODUCT),
                 )
 
@@ -568,10 +641,10 @@ class StringifyMapper(BaseStringifyMapper):
             return result
 
     def map_parametrization_derivative(self, expr, enclosing_prec):
-        return "dx/dr[%s]" % (stringify_where(expr.where))
+        return "dx/dr[%s]" % (stringify_where(expr.dofdesc))
 
     def map_q_weight(self, expr, enclosing_prec):
-        return "w_quad[%s]" % stringify_where(expr.where)
+        return "w_quad[%s]" % stringify_where(expr.dofdesc)
 
     def _stringify_kernel_args(self, kernel_arguments):
         if not kernel_arguments:

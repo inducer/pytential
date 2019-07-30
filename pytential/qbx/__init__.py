@@ -357,11 +357,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def weights_and_area_elements(self):
         from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
-            waa = bind(self, sym.weights_and_area_elements(
+            return bind(self, sym.weights_and_area_elements(
                 self.ambient_dim,
-                where=sym.QBX_SOURCE_QUAD_STAGE2))(queue)
-
-            return waa.with_queue(None)
+                dofdesc=sym.QBX_SOURCE_QUAD_STAGE2))(queue).with_queue(None)
 
     # }}}
 
@@ -718,6 +716,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     """)
 
     def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
+        from pytential import bind, sym
+
         lpot_applier = self.get_lpot_applier(insn.kernels)
         p2p = None
         lpot_applier_on_tgt_subset = None
@@ -729,35 +729,29 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
 
-        from pytential import bind, sym
-        expansion_radii = bind(bound_expr.places,
-                sym.expansion_radii(self.ambient_dim,
-                    where=insn.source))(queue)
-        centers = {
-                -1: bind(bound_expr.places,
-                    sym.expansion_centers(self.ambient_dim, -1,
-                        where=insn.source))(queue),
-                +1: bind(bound_expr.places,
-                    sym.expansion_centers(self.ambient_dim, +1,
-                        where=insn.source))(queue)
-                }
-
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
             target_discr = bound_expr.get_discretization(o.target_name)
 
             is_self = self.density_discr is target_discr
-
             if is_self:
                 # QBXPreprocessor is supposed to have taken care of this
                 assert o.qbx_forced_limit is not None
                 assert abs(o.qbx_forced_limit) > 0
 
+                expansion_radii = bind(bound_expr.places,
+                        sym.expansion_radii(self.ambient_dim,
+                            dofdesc=o.target_name))(queue)
+                centers = bind(bound_expr.places,
+                        sym.expansion_centers(self.ambient_dim,
+                            o.qbx_forced_limit,
+                            dofdesc=o.target_name))(queue)
+
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
                         self.quad_stage2_density_discr.nodes(),
-                        centers[o.qbx_forced_limit],
+                        centers,
                         [strengths],
                         expansion_radii=expansion_radii,
                         **kernel_args)
