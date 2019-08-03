@@ -529,7 +529,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         print("quad stage-2 elements have %d nodes"
                 % qbx.quad_stage2_density_discr.groups[0].nunit_nodes)
 
-
     if hasattr(case, "visualize_geometry") and case.visualize_geometry:
         bdry_normals = bind(
                 places, sym.normal(mesh.ambient_dim)
@@ -617,7 +616,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # }}}
 
     # {{{ establish BCs
-
 
     pot_src = sym.IntG(
         # FIXME: qbx_forced_limit--really?

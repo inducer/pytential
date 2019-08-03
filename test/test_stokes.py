@@ -178,8 +178,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
             cl.array.to_device(queue, (strength/path_length)*np.ones(len(nodes[0]))),
             cl.array.to_device(queue, np.zeros(len(nodes[0])))]
     bvp_rhs = bind(places,
-            sym.make_sym_vector("bc", dim) + u_A_sym_bdry
-            )(queue, bc=bc, mu=mu, omega=omega)
+            sym.make_sym_vector("bc", dim) + u_A_sym_bdry)(queue,
+                    bc=bc, mu=mu, omega=omega)
     gmres_result = gmres(
              bound_op.scipy_op(queue, "sigma", np.float64, mu=mu, normal=normal),
              bvp_rhs, tol=1e-9, progress=True,

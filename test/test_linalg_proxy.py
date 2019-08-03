@@ -136,7 +136,7 @@ def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
 
     srcindices = srcindices.get(queue)
     if visualize:
-        if qbx.ambient_dim == 2:
+        if ambient_dim == 2:
             import matplotlib.pyplot as pt
 
             density_nodes = density_discr.nodes().get(queue)
@@ -170,7 +170,8 @@ def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
 
-                filename = "test_proxy_generator_{}d_{:04}.png".format(ambient_dim, i)
+                filename = "test_proxy_generator_{}d_{:04}.png".format(
+                        ambient_dim, i)
                 pt.savefig(filename, dpi=300)
                 pt.clf()
         else:
@@ -195,7 +196,8 @@ def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
                     InterpolatoryQuadratureSimplexGroupFactory(10))
 
                 vis = make_visualizer(queue, discr, 10)
-                filename = "test_proxy_generator_{}d_{:04}.vtu".format(ambient_dim, i)
+                filename = "test_proxy_generator_{}d_{:04}.vtu".format(
+                        ambient_dim, i)
                 vis.write_vtk_file(filename, [])
 
 
