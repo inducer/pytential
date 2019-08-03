@@ -325,10 +325,13 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
 
         density_discr = qbx.density_discr
 
+        from pytential.symbolic.execution import GeometryCollection
+        places = GeometryCollection(qbx)
+
         # {{{ compute values of a solution to the PDE
 
         nodes_host = density_discr.nodes().get(queue)
-        normal = bind(density_discr, sym.normal(d))(queue).as_vector(np.object)
+        normal = bind(places, sym.normal(d))(queue).as_vector(np.object)
         normal_host = [normal[j].get() for j in range(d)]
 
         if k != 0:
@@ -372,7 +375,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
         key = (case.qbx_order, case.geometry.mesh_name, resolution,
                 case.expr.zero_op_name)
 
-        bound_op = bind(qbx, case.expr.get_zero_op(k_sym, **knl_kwargs))
+        bound_op = bind(places, case.expr.get_zero_op(k_sym, **knl_kwargs))
         error = bound_op(
                 queue, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=case.k)
         if 0:
@@ -382,15 +385,15 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
         linf_error_norm = norm(density_discr, queue, error, p=np.inf)
         print("--->", key, linf_error_norm)
 
-        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
         eoc_rec.add_data_point(h_max, linf_error_norm)
 
         if visualize:
             from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, density_discr, target_order)
 
-            bdry_normals = bind(density_discr, sym.normal(mesh.ambient_dim))(queue)\
-                    .as_vector(dtype=object)
+            bdry_normals = bind(places, sym.normal(mesh.ambient_dim))(queue)\
+                    .as_vector(dtype=np.object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
                 ("u", u_dev),
