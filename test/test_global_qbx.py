@@ -284,7 +284,6 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
         sym._close_target_tunnel_radii(lpot_source.ambient_dim))(queue)
 
     def targets_from_sources(sign, dist):
-        from pytential import sym, bind
         dim = 2
         nodes = bind(places, sym.nodes(dim))(queue)
         normals = bind(places, sym.normal(dim))(queue)

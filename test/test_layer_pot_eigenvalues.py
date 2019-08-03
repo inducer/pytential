@@ -62,7 +62,7 @@ except ImportError:
             (2, 7, 5, True),
             ])
 def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
-        force_direct):
+        force_direct, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     print("ellipse_aspect: %s, mode_nr: %d, qbx_order: %d" % (
@@ -116,19 +116,23 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         density_discr = qbx.density_discr
         nodes = density_discr.nodes().with_queue(queue)
 
-        if 0:
-            # plot geometry, centers, normals
+        from pytential.symbolic.execution import GeometryCollection
+        places = GeometryCollection(qbx)
 
-            centers = bind(qbx,
+        if visualize:
+            # plot geometry, centers, normals
+            centers = bind(places,
                     sym.expansion_centers(qbx.ambient_dim, +1))(queue)
+            normal = bind(places,
+                    sym.normal(qbx.ambient_dim))(queue).as_vector(np.object)
 
             nodes_h = nodes.get()
             centers_h = [centers[0].get(), centers[1].get()]
+            normals_h = [normal[0].get(), normal[1].get()]
+
             pt.plot(nodes_h[0], nodes_h[1], "x-")
             pt.plot(centers_h[0], centers_h[1], "o")
-            normal = bind(qbx, sym.normal(ambient_dim=2))(queue).as_vector(np.object)
-            pt.quiver(nodes_h[0], nodes_h[1],
-                    normal[0].get(), normal[1].get())
+            pt.quiver(nodes_h[0], nodes_h[1], normals_h[0], normals_h[1])
             pt.gca().set_aspect("equal")
             pt.show()
 
@@ -146,10 +150,11 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
 
         # {{{ single layer
 
-        sigma = cl.clmath.cos(mode_nr*angle)/J
+        sigma_sym = sym.var("sigma")
+        s_sigma_op = sym.S(lap_knl, sigma_sym, qbx_forced_limit=+1)
 
-        s_sigma_op = bind(qbx, sym.S(lap_knl, sym.var("sigma"), qbx_forced_limit=+1))
-        s_sigma = s_sigma_op(queue=queue, sigma=sigma)
+        sigma = cl.clmath.cos(mode_nr*angle)/J
+        s_sigma = bind(places, s_sigma_op)(queue=queue, sigma=sigma)
 
         # SIGN BINGO! :)
         s_eigval = 1/(2*mode_nr) * (1 + (-1)**mode_nr * ellipse_fraction)
@@ -160,11 +165,11 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         if 0:
             #pt.plot(s_sigma.get(), label="result")
             #pt.plot(s_sigma_ref.get(), label="ref")
-            pt.plot((s_sigma_ref-s_sigma).get(), label="err")
+            pt.plot((s_sigma_ref - s_sigma).get(), label="err")
             pt.legend()
             pt.show()
 
-        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
         s_err = (
                 norm(density_discr, queue, s_sigma - s_sigma_ref)
                 / norm(density_discr, queue, s_sigma_ref))
@@ -174,11 +179,10 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
 
         # {{{ double layer
 
-        sigma = cl.clmath.cos(mode_nr*angle)
+        d_sigma_op = sym.D(lap_knl, sigma_sym, qbx_forced_limit="avg")
 
-        d_sigma_op = bind(qbx,
-                sym.D(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
-        d_sigma = d_sigma_op(queue=queue, sigma=sigma)
+        sigma = cl.clmath.cos(mode_nr*angle)
+        d_sigma = bind(places, d_sigma_op)(queue=queue, sigma=sigma)
 
         # SIGN BINGO! :)
         d_eigval = -(-1)**mode_nr * 1/2*ellipse_fraction
@@ -206,11 +210,10 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         if ellipse_aspect == 1:
             # {{{ S'
 
-            sigma = cl.clmath.cos(mode_nr*angle)
+            sp_sigma_op = sym.Sp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg")
 
-            sp_sigma_op = bind(qbx,
-                    sym.Sp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
-            sp_sigma = sp_sigma_op(queue=queue, sigma=sigma)
+            sigma = cl.clmath.cos(mode_nr*angle)
+            sp_sigma = bind(places, sp_sigma_op)(queue=queue, sigma=sigma)
             sp_eigval = 0
 
             sp_sigma_ref = sp_eigval*sigma
