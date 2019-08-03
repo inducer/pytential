@@ -202,9 +202,8 @@ class EvaluationMapper(EvaluationMapperBase):
 # {{{ dofdesc tagging
 
 class LocationTagger(CSECachingMapperMixin, IdentityMapper):
-    """Used internally by :class:`ToTargetTagger`. Tags all src/target taggable
-    leaves/operators as going back onto the source.
-    """
+    """Used internally by :class:`ToTargetTagger`."""
+
     def __init__(self, default_where, default_source=prim.DEFAULT_SOURCE):
         self.default_source = default_source
         self.default_where = default_where
@@ -286,25 +285,32 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 dofdesc)
 
     def map_interpolation(self, expr):
-        source = expr.source
-        if source.geometry is None:
-            source = source.copy(geometry=self.default_source)
+        from_dd = expr.from_dd
+        if from_dd.geometry is None:
+            from_dd = from_dd.copy(geometry=self.default_source)
 
-        target = expr.target
-        if target.geometry is None:
-            target = target.copy(geometry=self.default_source)
+        to_dd = expr.to_dd
+        if to_dd.geometry is None:
+            to_dd = to_dd.copy(geometry=self.default_source)
 
-        return type(expr)(source, target, self.operand_rec(expr.operand))
+        return type(expr)(from_dd, to_dd, self.operand_rec(expr.operand))
 
     def operand_rec(self, expr):
         return self.rec(expr)
 
 
 class ToTargetTagger(LocationTagger):
-    """Descends into the expression tree, marking everything up to the first
-    layer potential operator as operating on the targets, and everything below
-    there as operating on the source. Also performs a consistency check such
-    that only 'target' and 'source' items are combined arithmetically.
+    """Descends into the expression tree, marking expressions based on two
+    heuristics:
+
+    * everything up to the first layer potential operator is marked as
+    operating on the targets, and everything below there as operating on the
+    source.
+    * if an expression has a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+    that requires a :class:`~pytential.source.LayerPotentialSourceBase` to be
+    used (e.g. by begin defined on
+    :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`), then
+    it is marked as operating on a source.
     """
 
     def __init__(self, default_source, default_target):
