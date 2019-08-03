@@ -306,10 +306,8 @@ def build_tree_with_qbx_metadata(
 
     if use_stage2_discr:
         density_discr = lpot_source.quad_stage2_density_discr
-        npanels = lpot_source.stage2_density_discr.mesh.nelements
     else:
         density_discr = lpot_source.density_discr
-        npanels = lpot_source.density_discr.mesh.nelements
 
     sources = density_discr.nodes()
     centers = get_interleaved_centers(queue, lpot_source)
@@ -321,6 +319,7 @@ def build_tree_with_qbx_metadata(
 
     # Counts
     nparticles = len(particles[0])
+    npanels = density_discr.mesh.nelements
     nsources = len(sources[0])
     ncenters = len(centers[0])
     # Each source gets an interior / exterior center.

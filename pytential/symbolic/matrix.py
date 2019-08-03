@@ -309,7 +309,7 @@ class MatrixBuilder(MatrixBuilderBase):
                 dep_source, dep_discr, places, context)
 
     def map_interpolation(self, expr):
-        if expr.target.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
+        if expr.to_dd.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
             raise RuntimeError("can only interpolate to QBX_SOURCE_QUAD_STAGE2")
 
         operand = self.rec(expr.operand)
@@ -318,12 +318,12 @@ class MatrixBuilder(MatrixBuilderBase):
         elif isinstance(operand, np.ndarray) and operand.ndim == 1:
             from pytential.symbolic.dof_connection import connection_from_dds
             conn = connection_from_dds(self.places,
-                    expr.source, expr.target)
+                    expr.from_dd, expr.to_dd)
 
             operand = cl.array.to_device(self.queue, operand)
             return conn(self.queue, operand).get(self.queue)
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
-            resampler = self.places.get_geometry(expr.source).direct_resampler
+            resampler = self.places.get_geometry(expr.from_dd).direct_resampler
             mat = resampler.full_resample_matrix(self.queue).get(self.queue)
             return mat.dot(operand)
         else:
