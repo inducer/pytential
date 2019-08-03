@@ -576,7 +576,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 tgt_name_and_side_to_number[key] = \
                         len(target_discrs_and_qbx_sides)
 
-                target_discr = bound_expr.places[o.target_name]
+                target_discr = bound_expr.places.get_geometry(o.target_name)
                 if isinstance(target_discr, LayerPotentialSourceBase):
                     target_discr = target_discr.density_discr
 

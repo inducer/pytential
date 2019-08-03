@@ -204,7 +204,7 @@ def connection_from_dds(places, from_dd, to_dd):
     from pytential.symbolic.execution import GeometryCollection
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places)
-    from_discr = places[from_dd]
+    from_discr = places.get_geometry(from_dd)
 
     if from_dd.geometry != to_dd.geometry:
         raise ValueError("cannot interpolate between different geometries")
