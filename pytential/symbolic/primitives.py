@@ -149,6 +149,8 @@ Discretization properties
 
 .. autofunction:: expansion_radii
 .. autofunction:: expansion_centers
+.. autofunction:: h_max
+.. autofunction:: weights_and_area_elements
 
 Elementary numerics
 ^^^^^^^^^^^^^^^^^^^
@@ -169,6 +171,7 @@ Operators
 ^^^^^^^^^
 
 .. autoclass:: Interpolation
+.. autofunction:: interp
 
 Geometric Calculus (based on Geometric/Clifford Algebra)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -303,7 +306,7 @@ class DOFDescriptor(object):
     .. attribute:: discr_stage
 
         Specific to a :class:`pytential.source.LayerPotentialSourceBase`,
-        this discribes on which of the discretizations the
+        this describes on which of the discretizations the
         DOFs are defined. Can be one of :class:`QBX_SOURCE_STAGE1`,
         :class:`QBX_SOURCE_STAGE2` or :class:`QBX_SOURCE_QUAD_STAGE2`.
 
@@ -1050,6 +1053,8 @@ def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
 
 @_deprecate_kwargs('where', 'dofdesc')
 def h_max(ambient_dim, dim=None, dofdesc=None):
+    """Defines a maximum element size in the discretization."""
+
     dofdesc = as_dofdesc(dofdesc).copy(granularity=GRANULARITY_ELEMENT)
     r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
 
@@ -1060,6 +1065,8 @@ def h_max(ambient_dim, dim=None, dofdesc=None):
 
 @_deprecate_kwargs('where', 'dofdesc')
 def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
+    """Combines :func:`area_element` and :class:`QWeight`."""
+
     area = area_element(ambient_dim, dim=dim, dofdesc=dofdesc)
     return cse(area * QWeight(dofdesc=dofdesc),
             "weights_area_elements",

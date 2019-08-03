@@ -484,7 +484,7 @@ class InterpolationPreprocessor(IdentityMapper):
             return expr
 
         from_dd = to_dd.copy(discr_stage=self.from_discr_stage)
-        return prim.interp(from_dd,to_dd, self.rec(self.tagger(expr)))
+        return prim.interp(from_dd, to_dd, self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
         from_dd = expr.source

@@ -412,9 +412,9 @@ class GeometryCollection(object):
     of subsets of them, as well as related common subexpressions such as
     metric terms.
 
-    .. method:: get_discretization
-    .. mathod:: get_geometry
-    .. method:: copy
+    .. automethod:: get_discretization
+    .. automethod:: get_geometry
+    .. automethod:: copy
 
     .. method:: get_cache
     """
