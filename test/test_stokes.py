@@ -45,7 +45,7 @@ import logging
 
 def run_exterior_stokes_2d(ctx_factory, nelements,
         mesh_order=4, target_order=4, qbx_order=4,
-        fmm_order=10, mu=1, circle_rad=1.5, do_plot=False):
+        fmm_order=10, mu=1, circle_rad=1.5, visualize=False):
 
     # This program tests an exterior Stokes flow in 2D using the
     # compound representation given in Hsiao & Kress,
@@ -77,10 +77,35 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
             target_association_tolerance=target_association_tolerance,
             _expansions_in_tree_have_extent=True,
             ).with_refinement()
-
     density_discr = qbx.density_discr
-    normal = bind(density_discr, sym.normal(2).as_vector())(queue)
-    path_length = bind(density_discr, sym.integral(2, 1, 1))(queue)
+
+    def circle_mask(test_points, radius):
+        return (test_points[0, :]**2 + test_points[1, :]**2 > radius**2)
+
+    def outside_circle(test_points, radius):
+        mask = circle_mask(test_points, radius)
+        return np.array([
+            row[mask]
+            for row in test_points])
+
+    from pytential.target import PointsTarget
+    nsamp = 30
+    eval_points_1d = np.linspace(-3., 3., nsamp)
+    eval_points = np.zeros((2, len(eval_points_1d)**2))
+    eval_points[0, :] = np.tile(eval_points_1d, len(eval_points_1d))
+    eval_points[1, :] = np.repeat(eval_points_1d, len(eval_points_1d))
+    eval_points = outside_circle(eval_points, radius=circle_rad)
+
+    point_targets = PointsTarget(eval_points)
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection({
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: density_discr,
+        'point-target': point_targets})
+
+    normal = bind(places, sym.normal(2).as_vector())(queue)
+    path_length = bind(places, sym.integral(2, 1, 1))(queue)
 
     # {{{ describe bvp
 
@@ -110,7 +135,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
 
     # }}}
 
-    bound_op = bind(qbx, bdry_op_sym)
+    bound_op = bind(places, bdry_op_sym)
 
     # {{{ fix rhs and solve
 
@@ -152,8 +177,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     omega = [
             cl.array.to_device(queue, (strength/path_length)*np.ones(len(nodes[0]))),
             cl.array.to_device(queue, np.zeros(len(nodes[0])))]
-    bvp_rhs = bind(
-            qbx, sym.make_sym_vector("bc", dim) + u_A_sym_bdry
+    bvp_rhs = bind(places,
+            sym.make_sym_vector("bc", dim) + u_A_sym_bdry
             )(queue, bc=bc, mu=mu, omega=omega)
     gmres_result = gmres(
              bound_op.scipy_op(queue, "sigma", np.float64, mu=mu, normal=normal),
@@ -167,7 +192,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
 
     sigma = gmres_result.solution
     sigma_int_val_sym = sym.make_sym_vector("sigma_int_val", 2)
-    int_val = bind(qbx, sym.integral(2, 1, sigma_sym))(queue, sigma=sigma)
+    int_val = bind(places, sym.integral(2, 1, sigma_sym))(queue, sigma=sigma)
     int_val = -int_val/(2 * np.pi)
     print("int_val = ", int_val)
 
@@ -180,27 +205,13 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
                 meanless_sigma_sym, mu_sym, qbx_forced_limit=2)
             - u_A_sym_vol + sigma_int_val_sym)
 
-    nsamp = 30
-    eval_points_1d = np.linspace(-3., 3., nsamp)
-    eval_points = np.zeros((2, len(eval_points_1d)**2))
-    eval_points[0, :] = np.tile(eval_points_1d, len(eval_points_1d))
-    eval_points[1, :] = np.repeat(eval_points_1d, len(eval_points_1d))
-
-    def circle_mask(test_points, radius):
-        return (test_points[0, :]**2 + test_points[1, :]**2 > radius**2)
-
-    def outside_circle(test_points, radius):
-        mask = circle_mask(test_points, radius)
-        return np.array([
-            row[mask]
-            for row in test_points])
-
-    eval_points = outside_circle(eval_points, radius=circle_rad)
-    from pytential.target import PointsTarget
-    vel = bind(
-            (qbx, PointsTarget(eval_points)),
-            representation_sym)(queue, sigma=sigma, mu=mu, normal=normal,
-                    sigma_int_val=int_val, omega=omega)
+    where = (sym.DEFAULT_SOURCE, 'point-target')
+    vel = bind(places, representation_sym, auto_where=where)(queue,
+            sigma=sigma,
+            mu=mu,
+            normal=normal,
+            sigma_int_val=int_val,
+            omega=omega)
     print("@@@@@@@@")
 
     fplot = FieldPlotter(np.zeros(2), extent=6, npoints=100)
@@ -249,9 +260,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     print("max rel error at sampled points: ",
             max(abs(rel_err[0])), max(abs(rel_err[1])))
 
-    if do_plot:
-        import matplotlib
-        matplotlib.use("Agg")
+    if visualize:
         import matplotlib.pyplot as plt
 
         full_pot = np.zeros_like(fplot.points) * float("nan")
@@ -268,7 +277,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
 
     # }}}
 
-    h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+    h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
     return h_max, l2_err
 
 
