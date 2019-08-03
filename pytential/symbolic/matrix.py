@@ -368,7 +368,7 @@ class MatrixBuilder(MatrixBuilderBase):
                 dep_source, dep_discr, places, context)
 
     def map_interpolation(self, expr):
-        if expr.target.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
+        if expr.to_dd.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
             raise RuntimeError("can only interpolate to QBX_SOURCE_QUAD_STAGE2")
 
         operand = self.rec(expr.operand)
