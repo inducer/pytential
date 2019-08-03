@@ -227,7 +227,7 @@ class EvaluationMapper(EvaluationMapperBase):
             from pytential.symbolic.dof_connection import connection_from_dds
 
             conn = connection_from_dds(self.places,
-                    expr.source, expr.target)
+                    expr.from_dd, expr.to_dd)
             return conn(self.queue, operand).with_queue(self.queue)
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand

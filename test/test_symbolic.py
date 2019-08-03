@@ -229,17 +229,17 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
             fmm_order=False).with_refinement()
 
     where = 'test-interpolation'
-    source = sym.DOFDescriptor(
+    from_dd = sym.DOFDescriptor(
             geometry=where,
             discr_stage=source_discr_stage,
             granularity=sym.GRANULARITY_NODE)
-    target = sym.DOFDescriptor(
+    to_dd = sym.DOFDescriptor(
             geometry=where,
             discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
             granularity=target_granularity)
 
     sigma_sym = sym.var("sigma")
-    op_sym = sym.sin(sym.Interpolation(source, target, sigma_sym))
+    op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
     bound_op = bind(qbx, op_sym, auto_where=where)
 
     target_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)

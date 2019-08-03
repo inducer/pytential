@@ -103,7 +103,7 @@ class IdentityMapper(IdentityMapperBase):
                     ))
 
     def map_interpolation(self, expr):
-        return type(expr)(expr.source, expr.target, self.rec(expr.operand))
+        return type(expr)(expr.from_dd, expr.to_dd, self.rec(expr.operand))
 
 
 class CombineMapper(CombineMapperBase):
@@ -474,38 +474,32 @@ class InterpolationPreprocessor(IdentityMapper):
         self.tagger = DiscretizationStageTagger(self.from_discr_stage)
 
     def map_num_reference_derivative(self, expr):
-        dofdesc = expr.dofdesc
-        if dofdesc.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
+        to_dd = expr.dofdesc
+        if to_dd.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places.get_geometry(dofdesc)
+        lpot_source = self.places.get_geometry(to_dd)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        from_dofdesc = dofdesc.copy(discr_stage=self.from_discr_stage)
-        return prim.Interpolation(
-                from_dofdesc,
-                dofdesc,
-                self.rec(self.tagger(expr)))
+        from_dd = to_dd.copy(discr_stage=self.from_discr_stage)
+        return prim.interp(from_dd,to_dd, self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
-        source = expr.source
-        if source.discr_stage is not None:
+        from_dd = expr.source
+        if from_dd.discr_stage is not None:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places.get_geometry(source)
+        lpot_source = self.places.get_geometry(from_dd)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        from_dd = source
         to_dd = from_dd.copy(discr_stage=prim.QBX_SOURCE_QUAD_STAGE2)
-        density = prim.Interpolation(
-                from_dd, to_dd, self.rec(expr.density))
+        density = prim.interp(from_dd, to_dd, self.rec(expr.density))
         kernel_arguments = dict(
-                (name, prim.Interpolation(
-                    from_dd, to_dd, self.rec(arg_expr)))
+                (name, prim.interp(from_dd, to_dd, self.rec(arg_expr)))
                 for name, arg_expr in expr.kernel_arguments.items())
 
         return expr.copy(
@@ -672,8 +666,8 @@ class StringifyMapper(BaseStringifyMapper):
 
     def map_interpolation(self, expr, enclosing_prec):
         return "Interp[%s->%s](%s)" % (
-                stringify_where(expr.source),
-                stringify_where(expr.target),
+                stringify_where(expr.from_dd),
+                stringify_where(expr.to_dd),
                 self.rec(expr.operand, PREC_PRODUCT))
 
 # }}}
