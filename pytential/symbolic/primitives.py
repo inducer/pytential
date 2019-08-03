@@ -149,6 +149,8 @@ Discretization properties
 
 .. autofunction:: expansion_radii
 .. autofunction:: expansion_centers
+.. autofunction:: h_max
+.. autofunction:: weights_and_area_elements
 
 Elementary numerics
 ^^^^^^^^^^^^^^^^^^^
@@ -169,6 +171,7 @@ Operators
 ^^^^^^^^^
 
 .. autoclass:: Interpolation
+.. autofunction:: interp
 
 Geometric Calculus (based on Geometric/Clifford Algebra)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -218,10 +221,6 @@ Pretty-printing expressions
 
 .. autofunction:: pretty
 """
-
-
-class _NoArgSentinel(object):
-    pass
 
 
 def _deprecate_kwargs(oldkey, newkey):
@@ -307,7 +306,7 @@ class DOFDescriptor(object):
     .. attribute:: discr_stage
 
         Specific to a :class:`pytential.source.LayerPotentialSourceBase`,
-        this discribes on which of the discretizations the
+        this describes on which of the discretizations the
         DOFs are defined. Can be one of :class:`QBX_SOURCE_STAGE1`,
         :class:`QBX_SOURCE_STAGE2` or :class:`QBX_SOURCE_QUAD_STAGE2`.
 
@@ -411,7 +410,6 @@ def as_dofdesc(desc):
         return DOFDescriptor(granularity=desc)
 
     return DOFDescriptor(geometry=desc)
-
 
 # }}}
 
@@ -990,12 +988,12 @@ def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     should be the same as the panel length.
     """
 
-    source = as_dofdesc(dofdesc)
-    target = source.copy(granularity=granularity)
+    from_dd = as_dofdesc(dofdesc)
+    to_dd = from_dd.copy(granularity=granularity)
 
     stretch = _simplex_mapping_max_stretch_factor(ambient_dim,
-            dim=dim, dofdesc=source)
-    return Interpolation(source, target, stretch)
+            dim=dim, dofdesc=from_dd)
+    return interp(from_dd, to_dd, stretch)
 
 
 @_deprecate_kwargs('where', 'dofdesc')
@@ -1055,6 +1053,8 @@ def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
 
 @_deprecate_kwargs('where', 'dofdesc')
 def h_max(ambient_dim, dim=None, dofdesc=None):
+    """Defines a maximum element size in the discretization."""
+
     dofdesc = as_dofdesc(dofdesc).copy(granularity=GRANULARITY_ELEMENT)
     r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
 
@@ -1065,6 +1065,8 @@ def h_max(ambient_dim, dim=None, dofdesc=None):
 
 @_deprecate_kwargs('where', 'dofdesc')
 def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
+    """Combines :func:`area_element` and :class:`QWeight`."""
+
     area = area_element(ambient_dim, dim=dim, dofdesc=dofdesc)
     return cse(area * QWeight(dofdesc=dofdesc),
             "weights_area_elements",
@@ -1074,6 +1076,42 @@ def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
 
 
 # {{{ operators
+
+class Interpolation(Expression):
+    """Interpolate quantity from a DOF described by *from_dd* to a DOF
+    described by *to_dd*."""
+
+    init_arg_names = ("from_dd", "to_dd", "operand")
+
+    def __new__(cls, from_dd, to_dd, operand):
+        from_dd = as_dofdesc(from_dd)
+        to_dd = as_dofdesc(to_dd)
+
+        if from_dd == to_dd:
+            return operand
+
+        if isinstance(operand, np.ndarray):
+            def make_op(operand_i):
+                return cls(from_dd, to_dd, operand_i)
+
+            return componentwise(make_op, operand)
+        else:
+            return Expression.__new__(cls)
+
+    def __init__(self, from_dd, to_dd, operand):
+        self.from_dd = as_dofdesc(from_dd)
+        self.to_dd = as_dofdesc(to_dd)
+        self.operand = operand
+
+    def __getinitargs__(self):
+        return (self.from_dd, self.to_dd, self.operand)
+
+    mapper_method = intern("map_interpolation")
+
+
+def interp(from_dd, to_dd, operand):
+    return Interpolation(from_dd, to_dd, operand)
+
 
 class SingleScalarOperandExpression(Expression):
 
@@ -1331,35 +1369,8 @@ def hashable_kernel_args(kernel_arguments):
     return tuple(hashable_args)
 
 
-class Interpolation(Expression):
-    """Interpolate quantity from *source* to *target* discretization."""
-
-    init_arg_names = ("source", "target", "operand")
-
-    def __new__(cls, source, target, operand):
-        source = as_dofdesc(source)
-        target = as_dofdesc(target)
-
-        if source == target:
-            return operand
-
-        if isinstance(operand, np.ndarray):
-            def make_op(operand_i):
-                return cls(source, target, operand_i)
-
-            return componentwise(make_op, operand)
-        else:
-            return Expression.__new__(cls)
-
-    def __init__(self, source, target, operand):
-        self.source = as_dofdesc(source)
-        self.target = as_dofdesc(target)
-        self.operand = operand
-
-    def __getinitargs__(self):
-        return (self.source, self.target, self.operand)
-
-    mapper_method = intern("map_interpolation")
+class _NoArgSentinel(object):
+    pass
 
 
 class IntG(Expression):

@@ -323,14 +323,14 @@ class MatrixBuilder(MatrixBuilderBase):
             operand = cl.array.to_device(self.queue, operand)
             return conn(self.queue, operand).get(self.queue)
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
-            resampler = self.places[expr.source].direct_resampler
+            resampler = self.places.get_geometry(expr.source).direct_resampler
             mat = resampler.full_resample_matrix(self.queue).get(self.queue)
             return mat.dot(operand)
         else:
             raise RuntimeError('unknown operand type: {}'.format(type(operand)))
 
     def map_int_g(self, expr):
-        lpot_source = self.places[expr.source]
+        lpot_source = self.places.get_geometry(expr.source)
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
@@ -449,7 +449,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        lpot_source = self.places[expr.source]
+        source = self.places.get_geometry(expr.source)
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 

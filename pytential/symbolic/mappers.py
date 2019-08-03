@@ -103,7 +103,7 @@ class IdentityMapper(IdentityMapperBase):
                     ))
 
     def map_interpolation(self, expr):
-        return type(expr)(expr.source, expr.target, self.rec(expr.operand))
+        return type(expr)(expr.from_dd, expr.to_dd, self.rec(expr.operand))
 
 
 class CombineMapper(CombineMapperBase):
@@ -202,9 +202,8 @@ class EvaluationMapper(EvaluationMapperBase):
 # {{{ dofdesc tagging
 
 class LocationTagger(CSECachingMapperMixin, IdentityMapper):
-    """Used internally by :class:`ToTargetTagger`. Tags all src/target taggable
-    leaves/operators as going back onto the source.
-    """
+    """Used internally by :class:`ToTargetTagger`."""
+
     def __init__(self, default_where, default_source=prim.DEFAULT_SOURCE):
         self.default_source = default_source
         self.default_where = default_where
@@ -286,25 +285,32 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 dofdesc)
 
     def map_interpolation(self, expr):
-        source = expr.source
-        if source.geometry is None:
-            source = source.copy(geometry=self.default_source)
+        from_dd = expr.from_dd
+        if from_dd.geometry is None:
+            from_dd = from_dd.copy(geometry=self.default_source)
 
-        target = expr.target
-        if target.geometry is None:
-            target = target.copy(geometry=self.default_source)
+        to_dd = expr.to_dd
+        if to_dd.geometry is None:
+            to_dd = to_dd.copy(geometry=self.default_source)
 
-        return type(expr)(source, target, self.operand_rec(expr.operand))
+        return type(expr)(from_dd, to_dd, self.operand_rec(expr.operand))
 
     def operand_rec(self, expr):
         return self.rec(expr)
 
 
 class ToTargetTagger(LocationTagger):
-    """Descends into the expression tree, marking everything up to the first
-    layer potential operator as operating on the targets, and everything below
-    there as operating on the source. Also performs a consistency check such
-    that only 'target' and 'source' items are combined arithmetically.
+    """Descends into the expression tree, marking expressions based on two
+    heuristics:
+
+    * everything up to the first layer potential operator is marked as
+    operating on the targets, and everything below there as operating on the
+    source.
+    * if an expression has a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+    that requires a :class:`~pytential.source.LayerPotentialSourceBase` to be
+    used (e.g. by begin defined on
+    :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`), then
+    it is marked as operating on a source.
     """
 
     def __init__(self, default_source, default_target):
@@ -468,38 +474,32 @@ class InterpolationPreprocessor(IdentityMapper):
         self.tagger = DiscretizationStageTagger(self.from_discr_stage)
 
     def map_num_reference_derivative(self, expr):
-        dofdesc = expr.dofdesc
-        if dofdesc.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
+        to_dd = expr.dofdesc
+        if to_dd.discr_stage != prim.QBX_SOURCE_QUAD_STAGE2:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places[dofdesc]
+        lpot_source = self.places.get_geometry(to_dd)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        from_dofdesc = dofdesc.copy(discr_stage=self.from_discr_stage)
-        return prim.Interpolation(
-                from_dofdesc,
-                dofdesc,
-                self.rec(self.tagger(expr)))
+        from_dd = to_dd.copy(discr_stage=self.from_discr_stage)
+        return prim.interp(from_dd, to_dd, self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
-        source = expr.source
-        if source.discr_stage is not None:
+        from_dd = expr.source
+        if from_dd.discr_stage is not None:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places[source]
+        lpot_source = self.places.get_geometry(from_dd)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        from_dd = source
         to_dd = from_dd.copy(discr_stage=prim.QBX_SOURCE_QUAD_STAGE2)
-        density = prim.Interpolation(
-                from_dd, to_dd, self.rec(expr.density))
+        density = prim.interp(from_dd, to_dd, self.rec(expr.density))
         kernel_arguments = dict(
-                (name, prim.Interpolation(
-                    from_dd, to_dd, self.rec(arg_expr)))
+                (name, prim.interp(from_dd, to_dd, self.rec(arg_expr)))
                 for name, arg_expr in expr.kernel_arguments.items())
 
         return expr.copy(
@@ -666,8 +666,8 @@ class StringifyMapper(BaseStringifyMapper):
 
     def map_interpolation(self, expr, enclosing_prec):
         return "Interp[%s->%s](%s)" % (
-                stringify_where(expr.source),
-                stringify_where(expr.target),
+                stringify_where(expr.from_dd),
+                stringify_where(expr.to_dd),
                 self.rec(expr.operand, PREC_PRODUCT))
 
 # }}}

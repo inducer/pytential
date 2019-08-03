@@ -338,8 +338,6 @@ def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
                 isrc = srcindices.block_indices(i)
                 inbr = nbrindices.block_indices(i)
 
-                # TODO: some way to turn off some of the interpolations
-                # would help visualize this better.
                 marker.fill(0.0)
                 marker[srcindices.indices] = 0.0
                 marker[isrc] = -42.0

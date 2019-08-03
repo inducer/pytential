@@ -209,7 +209,7 @@ class EvaluationMapper(EvaluationMapperBase):
         except KeyError:
             bound_op = bind(
                     expr.expression,
-                    self.places[expr.dofdesc],
+                    self.places.get_geometry(expr.dofdesc),
                     self.bound_expr.iprec)
             bound_op_cache[expr] = bound_op
 
@@ -229,7 +229,7 @@ class EvaluationMapper(EvaluationMapperBase):
             from pytential.symbolic.dof_connection import connection_from_dds
 
             conn = connection_from_dds(self.places,
-                    expr.source, expr.target)
+                    expr.from_dd, expr.to_dd)
             return conn(self.queue, operand).with_queue(self.queue)
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand
@@ -380,9 +380,6 @@ def _prepare_domains(nresults, places, domains, default_domain):
     """
 
     if domains is None:
-        if default_domain not in places:
-            raise RuntimeError("'domains is None' requires "
-                               "default domain to be defined in places")
         dom_name = default_domain
         return nresults * [dom_name]
     elif not isinstance(domains, (list, tuple)):
@@ -436,8 +433,10 @@ class GeometryCollection(object):
     of subsets of them, as well as related common subexpressions such as
     metric terms.
 
-    .. method:: __getitem__
-    .. method:: get_discretization
+    .. automethod:: get_discretization
+    .. automethod:: get_geometry
+    .. automethod:: copy
+
     .. method:: get_cache
     """
 
@@ -552,13 +551,9 @@ class GeometryCollection(object):
         else:
             return discr
 
-    def __getitem__(self, dofdesc):
+    def get_geometry(self, dofdesc):
         dofdesc = sym.as_dofdesc(dofdesc)
         return self.places[dofdesc.geometry]
-
-    def __contains__(self, dofdesc):
-        dofdesc = sym.as_dofdesc(dofdesc)
-        return dofdesc.geometry in self.places
 
     def copy(self):
         return GeometryCollection(
@@ -615,7 +610,7 @@ class BoundExpression(object):
             if dom_name is None:
                 size = 1
             else:
-                size = self.places[dom_name].nnodes
+                size = self.places.get_geometry(dom_name).nnodes
 
             starts_and_ends.append((total_dofs, total_dofs+size))
             total_dofs += size
@@ -735,7 +730,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
                 dep_expr=input_exprs[ibcol],
                 other_dep_exprs=(input_exprs[:ibcol]
                                  + input_exprs[ibcol + 1:]),
-                dep_source=places[domains[ibcol]],
+                dep_source=places.get_geometry(domains[ibcol]),
                 dep_discr=places.get_discretization(domains[ibcol]),
                 places=places,
                 context=context)
