@@ -449,7 +449,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        source = self.places.get_geometry(expr.source)
+        lpot_source = self.places.get_geometry(expr.source)
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
