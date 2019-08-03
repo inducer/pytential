@@ -392,7 +392,7 @@ def _prepare_domains(nresults, places, domains, default_domain):
     return domains
 
 
-def _prepare_expr(places, expr):
+def _prepare_expr(places, expr, auto_where=None):
     """
     :arg places: :class:`pytential.symbolic.execution.GeometryCollection`.
     :arg expr: a symbolic expression.
@@ -406,7 +406,8 @@ def _prepare_expr(places, expr):
             DerivativeBinder,
             InterpolationPreprocessor)
 
-    expr = ToTargetTagger(*places.auto_where)(expr)
+    auto_where = places.auto_where if auto_where is None else auto_where
+    expr = ToTargetTagger(*auto_where)(expr)
     expr = DerivativeBinder()(expr)
 
     for name, place in six.iteritems(places.places):
@@ -639,7 +640,7 @@ def bind(places, expr, auto_where=None):
 
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
-    expr = _prepare_expr(places, expr)
+    expr = _prepare_expr(places, expr, auto_where=auto_where)
 
     return BoundExpression(places, expr)
 
