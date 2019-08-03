@@ -84,6 +84,8 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
+    # {{{ initial geometry
+
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
             InterpolatoryQuadratureSimplexGroupFactory)
@@ -96,11 +98,14 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
             RefinerCodeContainer, refine_for_global_qbx)
 
     from pytential.qbx.utils import TreeCodeContainer
-
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in refinement
             fine_order=order)
     del discr
+
+    # }}}
+
+    # {{{ refined geometry
 
     expansion_disturbance_tolerance = 0.025
     refiner_extra_kwargs = {
@@ -119,20 +124,25 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
     fine_discr_nodes = \
             lpot_source.quad_stage2_density_discr.nodes().get(queue)
 
-    int_centers = bind(lpot_source,
+    # }}}
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(lpot_source)
+
+    int_centers = bind(places,
         sym.expansion_centers(lpot_source.ambient_dim, -1))(queue)
     int_centers = np.array([axis.get(queue) for axis in int_centers])
-    ext_centers = bind(lpot_source,
+    ext_centers = bind(places,
         sym.expansion_centers(lpot_source.ambient_dim, +1))(queue)
     ext_centers = np.array([axis.get(queue) for axis in ext_centers])
 
-    expansion_radii = bind(lpot_source,
+    expansion_radii = bind(places,
         sym.expansion_radii(lpot_source.ambient_dim))(queue).get()
-    source_danger_zone_radii = bind(lpot_source, sym._source_danger_zone_radii(
+    source_danger_zone_radii = bind(places, sym._source_danger_zone_radii(
         lpot_source.ambient_dim,
         dofdesc=sym.GRANULARITY_ELEMENT))(queue).get()
 
-    quad_res = bind(lpot_source, sym._quad_resolution(
+    quad_res = bind(places, sym._quad_resolution(
         lpot_source.ambient_dim,
         dofdesc=sym.GRANULARITY_ELEMENT))(queue)
 
@@ -262,18 +272,22 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     # {{{ generate targets
 
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(lpot_source)
+
     from pyopencl.clrandom import PhiloxGenerator
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
+
     nsources = lpot_source.density_discr.nnodes
     noise = rng.uniform(queue, nsources, dtype=np.float, a=0.01, b=1.0)
-    tunnel_radius = bind(lpot_source,
+    tunnel_radius = bind(places,
         sym._close_target_tunnel_radii(lpot_source.ambient_dim))(queue)
 
     def targets_from_sources(sign, dist):
         from pytential import sym, bind
         dim = 2
-        nodes = bind(lpot_source.density_discr, sym.nodes(dim))(queue)
-        normals = bind(lpot_source.density_discr, sym.normal(dim))(queue)
+        nodes = bind(places, sym.nodes(dim))(queue)
+        normals = bind(places, sym.normal(dim))(queue)
         return (nodes + normals * sign * dist).as_vector(np.object)
 
     from pytential.target import PointsTarget
@@ -324,7 +338,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
             target_association_tolerance=1e-10)
         .get(queue=queue))
 
-    expansion_radii = bind(lpot_source, sym.expansion_radii(
+    expansion_radii = bind(places, sym.expansion_radii(
         lpot_source.ambient_dim,
         granularity=sym.GRANULARITY_CENTER))(queue).get()
     surf_targets = np.array(
