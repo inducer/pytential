@@ -39,8 +39,8 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 
 
-def _build_qbx_discr(queue,
-        ndim=2,
+def _build_geometry(queue,
+        ambient_dim=2,
         nelements=30,
         target_order=7,
         qbx_order=4,
@@ -49,11 +49,11 @@ def _build_qbx_discr(queue,
     if curve_f is None:
         curve_f = NArmedStarfish(5, 0.25)
 
-    if ndim == 2:
+    if ambient_dim == 2:
         mesh = make_curve_mesh(curve_f,
                 np.linspace(0, 1, nelements + 1),
                 target_order)
-    elif ndim == 3:
+    elif ambient_dim == 3:
         mesh = generate_torus(10.0, 2.0, order=target_order)
     else:
         raise ValueError("unsupported ambient dimension")
@@ -71,45 +71,47 @@ def _build_qbx_discr(queue,
             qbx_order=qbx_order,
             fmm_order=False).with_refinement()
 
-    return qbx
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(qbx)
+
+    return places, places.auto_source
 
 
-def _build_block_index(discr,
+def _build_block_index(queue,
+                       discr,
                        nblks=10,
                        factor=1.0,
                        use_tree=True):
-
-    from pytential.linalg.proxy import partition_by_nodes
-
     nnodes = discr.nnodes
     max_particles_in_box = nnodes // nblks
 
     # create index ranges
+    from pytential.linalg.proxy import partition_by_nodes
     indices = partition_by_nodes(discr,
-                                 use_tree=use_tree,
-                                 max_nodes_in_box=max_particles_in_box)
+            use_tree=use_tree, max_nodes_in_box=max_particles_in_box)
+
+    if abs(factor - 1.0) < 1.0e-14:
+        return indices
 
     # randomly pick a subset of points
-    if abs(factor - 1.0) > 1.0e-14:
-        with cl.CommandQueue(discr.cl_context) as queue:
-            indices = indices.get(queue)
+    indices = indices.get(queue)
 
-            indices_ = np.empty(indices.nblocks, dtype=np.object)
-            for i in range(indices.nblocks):
-                iidx = indices.block_indices(i)
-                isize = int(factor * len(iidx))
-                isize = max(1, min(isize, len(iidx)))
+    indices_ = np.empty(indices.nblocks, dtype=np.object)
+    for i in range(indices.nblocks):
+        iidx = indices.block_indices(i)
+        isize = int(factor * len(iidx))
+        isize = max(1, min(isize, len(iidx)))
 
-                indices_[i] = np.sort(
-                        np.random.choice(iidx, size=isize, replace=False))
+        indices_[i] = np.sort(
+                np.random.choice(iidx, size=isize, replace=False))
 
-            ranges_ = to_device(queue,
-                    np.cumsum([0] + [r.shape[0] for r in indices_]))
-            indices_ = to_device(queue, np.hstack(indices_))
+    ranges_ = to_device(queue,
+            np.cumsum([0] + [r.shape[0] for r in indices_]))
+    indices_ = to_device(queue, np.hstack(indices_))
 
-            indices = BlockIndexRanges(discr.cl_context,
-                                       indices_.with_queue(None),
-                                       ranges_.with_queue(None))
+    indices = BlockIndexRanges(discr.cl_context,
+                               indices_.with_queue(None),
+                               ranges_.with_queue(None))
 
     return indices
 
@@ -168,29 +170,32 @@ def _plot_partition_indices(queue, discr, indices, **kwargs):
 
 
 @pytest.mark.parametrize("use_tree", [True, False])
-@pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_points(ctx_factory, use_tree, ndim, visualize=False):
+@pytest.mark.parametrize("ambient_dim", [2, 3])
+def test_partition_points(ctx_factory, use_tree, ambient_dim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    qbx = _build_qbx_discr(queue, ndim=ndim)
-    _build_block_index(qbx.density_discr,
-                       use_tree=use_tree,
-                       factor=0.6)
+    places, dofdesc = _build_geometry(queue, ambient_dim=ambient_dim)
+    _build_block_index(queue,
+            places.get_discretization(dofdesc),
+            use_tree=use_tree,
+            factor=0.6)
 
 
-@pytest.mark.parametrize("ndim", [2, 3])
+@pytest.mark.parametrize("ambient_dim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
+def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    qbx = _build_qbx_discr(queue, ndim=ndim)
-    srcindices = _build_block_index(qbx.density_discr,
+    places, dofdesc = _build_geometry(queue, ambient_dim=ambient_dim)
+    density_discr = places.get_discretization(dofdesc)
+    srcindices = _build_block_index(queue,
+            density_discr,
             factor=factor)
 
     from pytential.linalg.proxy import ProxyGenerator
-    generator = ProxyGenerator(qbx, ratio=1.1)
+    generator = ProxyGenerator(places, dofdesc=dofdesc)
     proxies, pxyranges, pxycenters, pxyradii = generator(queue, srcindices)
 
     proxies = np.vstack([p.get() for p in proxies])
@@ -209,12 +214,12 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
         if qbx.ambient_dim == 2:
             import matplotlib.pyplot as pt
 
-            density_nodes = qbx.density_discr.nodes().get(queue)
-            ci = bind(qbx, sym.expansion_centers(qbx.ambient_dim, -1))(queue)
+            density_nodes = density_discr.nodes().get(queue)
+            ci = bind(places, sym.expansion_centers(ambient_dim, -1))(queue)
             ci = np.vstack([c.get(queue) for c in ci])
-            ce = bind(qbx, sym.expansion_centers(qbx.ambient_dim, +1))(queue)
+            ce = bind(places, sym.expansion_centers(ambient_dim, +1))(queue)
             ce = np.vstack([c.get(queue) for c in ce])
-            r = bind(qbx, sym.expansion_radii(qbx.ambient_dim))(queue).get()
+            r = bind(places, sym.expansion_radii(ambient_dim))(queue).get()
 
             for i in range(srcindices.nblocks):
                 isrc = srcindices.block_indices(i)
@@ -240,7 +245,7 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
 
-                filename = "test_proxy_generator_{}d_{:04}.png".format(ndim, i)
+                filename = "test_proxy_generator_{}d_{:04}.png".format(ambient_dim, i)
                 pt.savefig(filename, dpi=300)
                 pt.clf()
         else:
@@ -257,39 +262,43 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
             # NOTE: this does not plot the actual proxy points
             for i in range(srcindices.nblocks):
                 mesh = affine_map(ref_mesh,
-                    A=(pxyradii[i] * np.eye(ndim)),
+                    A=(pxyradii[i] * np.eye(ambient_dim)),
                     b=pxycenters[:, i].reshape(-1))
 
-                mesh = merge_disjoint_meshes([mesh, qbx.density_discr.mesh])
+                mesh = merge_disjoint_meshes([mesh, density_discr.mesh])
                 discr = Discretization(ctx, mesh,
                     InterpolatoryQuadratureSimplexGroupFactory(10))
 
                 vis = make_visualizer(queue, discr, 10)
-                filename = "test_proxy_generator_{}d_{:04}.vtu".format(ndim, i)
+                filename = "test_proxy_generator_{}d_{:04}.vtu".format(ambient_dim, i)
                 vis.write_vtk_file(filename, [])
 
 
-@pytest.mark.parametrize("ndim", [2, 3])
+@pytest.mark.parametrize("ambient_dim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
+def test_interaction_points(ctx_factory, ambient_dim, factor, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    qbx = _build_qbx_discr(queue, ndim=ndim)
-    srcindices = _build_block_index(qbx.density_discr,
+    places, dofdesc = _build_geometry(queue, ambient_dim=ambient_dim)
+    density_discr = places.get_discretization(dofdesc)
+    srcindices = _build_block_index(queue,
+            density_discr,
             factor=factor)
 
     # generate proxy points
     from pytential.linalg.proxy import ProxyGenerator
-    generator = ProxyGenerator(qbx)
+    generator = ProxyGenerator(places, dofdesc=dofdesc)
     _, _, pxycenters, pxyradii = generator(queue, srcindices)
 
     from pytential.linalg.proxy import (  # noqa
             gather_block_neighbor_points,
             gather_block_interaction_points)
-    nbrindices = gather_block_neighbor_points(qbx.density_discr,
+    nbrindices = gather_block_neighbor_points(density_discr,
             srcindices, pxycenters, pxyradii)
-    nodes, ranges = gather_block_interaction_points(qbx, srcindices)
+    nodes, ranges = gather_block_interaction_points(
+            places.get_geometry(dofdesc),
+            srcindices)
 
     srcindices = srcindices.get(queue)
     nbrindices = nbrindices.get(queue)
@@ -301,9 +310,9 @@ def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
         assert not np.any(np.isin(inbr, isrc))
 
     if visualize:
-        if ndim == 2:
+        if ambient_dim == 2:
             import matplotlib.pyplot as pt
-            density_nodes = qbx.density_discr.nodes().get(queue)
+            density_nodes = density_discr.nodes().get(queue)
             nodes = nodes.get(queue)
             ranges = ranges.get(queue)
 
@@ -327,12 +336,12 @@ def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
 
-                filename = "test_area_query_{}d_{:04}.png".format(ndim, i)
+                filename = "test_area_query_{}d_{:04}.png".format(ambient_dim, i)
                 pt.savefig(filename, dpi=300)
                 pt.clf()
-        elif ndim == 3:
+        elif ambient_dim == 3:
             from meshmode.discretization.visualization import make_visualizer
-            marker = np.empty(qbx.density_discr.nnodes)
+            marker = np.empty(density_discr.nnodes)
 
             for i in range(srcindices.nblocks):
                 isrc = srcindices.block_indices(i)
@@ -344,8 +353,8 @@ def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
                 marker[inbr] = +42.0
                 marker_dev = cl.array.to_device(queue, marker)
 
-                vis = make_visualizer(queue, qbx.density_discr, 10)
-                filename = "test_area_query_{}d_{:04}.vtu".format(ndim, i)
+                vis = make_visualizer(queue, density_discr, 10)
+                filename = "test_area_query_{}d_{:04}.vtu".format(ambient_dim, i)
                 vis.write_vtk_file(filename, [
                     ("marker", marker_dev),
                     ])
