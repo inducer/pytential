@@ -26,10 +26,9 @@ import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
-from pyopencl.array import to_device
+import pyopencl.array   # noqa
 
 from pytential import bind, sym
-from sumpy.tools import BlockIndexRanges
 from meshmode.mesh.generation import ( # noqa
         ellipse, NArmedStarfish, generate_torus, make_curve_mesh)
 
@@ -39,81 +38,7 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 
 
-def _build_geometry(queue,
-        ambient_dim=2,
-        nelements=30,
-        target_order=7,
-        qbx_order=4,
-        curve_f=None):
-
-    if curve_f is None:
-        curve_f = NArmedStarfish(5, 0.25)
-
-    if ambient_dim == 2:
-        mesh = make_curve_mesh(curve_f,
-                np.linspace(0, 1, nelements + 1),
-                target_order)
-    elif ambient_dim == 3:
-        mesh = generate_torus(10.0, 2.0, order=target_order)
-    else:
-        raise ValueError("unsupported ambient dimension")
-
-    from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            InterpolatoryQuadratureSimplexGroupFactory
-    from pytential.qbx import QBXLayerPotentialSource
-    density_discr = Discretization(
-            queue.context, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(target_order))
-
-    qbx, _ = QBXLayerPotentialSource(density_discr,
-            fine_order=4 * target_order,
-            qbx_order=qbx_order,
-            fmm_order=False).with_refinement()
-
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(qbx)
-
-    return places, places.auto_source
-
-
-def _build_block_index(queue,
-                       discr,
-                       nblks=10,
-                       factor=1.0,
-                       use_tree=True):
-    nnodes = discr.nnodes
-    max_particles_in_box = nnodes // nblks
-
-    # create index ranges
-    from pytential.linalg.proxy import partition_by_nodes
-    indices = partition_by_nodes(discr,
-            use_tree=use_tree, max_nodes_in_box=max_particles_in_box)
-
-    if abs(factor - 1.0) < 1.0e-14:
-        return indices
-
-    # randomly pick a subset of points
-    indices = indices.get(queue)
-
-    indices_ = np.empty(indices.nblocks, dtype=np.object)
-    for i in range(indices.nblocks):
-        iidx = indices.block_indices(i)
-        isize = int(factor * len(iidx))
-        isize = max(1, min(isize, len(iidx)))
-
-        indices_[i] = np.sort(
-                np.random.choice(iidx, size=isize, replace=False))
-
-    ranges_ = to_device(queue,
-            np.cumsum([0] + [r.shape[0] for r in indices_]))
-    indices_ = to_device(queue, np.hstack(indices_))
-
-    indices = BlockIndexRanges(discr.cl_context,
-                               indices_.with_queue(None),
-                               ranges_.with_queue(None))
-
-    return indices
+from test_matrix import _build_geometry, _build_block_index
 
 
 def _plot_partition_indices(queue, discr, indices, **kwargs):
