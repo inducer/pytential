@@ -458,6 +458,20 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         else:
             qbx_lpot_kwargs["fmm_order"] = case.qbx_order + 5
 
+    if case.prob_side == -1:
+        test_src_geo_radius = case.outer_radius
+        test_tgt_geo_radius = case.inner_radius
+    elif case.prob_side == +1:
+        test_src_geo_radius = case.inner_radius
+        test_tgt_geo_radius = case.outer_radius
+    elif case.prob_side == "scat":
+        test_src_geo_radius = case.outer_radius
+        test_tgt_geo_radius = case.outer_radius
+    else:
+        raise ValueError("unknown problem_side")
+
+    # {{{ construct geometries
+
     qbx = QBXLayerPotentialSource(
             pre_density_discr,
             fine_order=source_order,
@@ -467,6 +481,27 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             _from_sep_smaller_crit=getattr(case, "from_sep_smaller_crit", None),
             _from_sep_smaller_min_nsources_cumul=30,
             fmm_backend=case.fmm_backend, **qbx_lpot_kwargs)
+    density_discr = qbx.density_discr
+
+    from pytential.source import PointPotentialSource
+    point_sources = make_circular_point_group(
+            mesh.ambient_dim, 10, test_src_geo_radius,
+            func=lambda x: x**1.5)
+    point_source = PointPotentialSource(cl_ctx, point_sources)
+
+    from pytential.target import PointsTarget
+    test_targets = make_circular_point_group(
+            mesh.ambient_dim, 20, test_tgt_geo_radius)
+    point_target = PointsTarget(test_targets)
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection({
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: density_discr,
+        'point-source': point_source,
+        'point-target': point_target})
+
+    # }}}
 
     if case.use_refinement:
         if case.k != 0 and getattr(case, "refine_on_helmholtz_k", True):
@@ -494,12 +529,11 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         print("quad stage-2 elements have %d nodes"
                 % qbx.quad_stage2_density_discr.groups[0].nunit_nodes)
 
-    density_discr = qbx.density_discr
 
     if hasattr(case, "visualize_geometry") and case.visualize_geometry:
         bdry_normals = bind(
-                density_discr, sym.normal(mesh.ambient_dim)
-                )(queue).as_vector(dtype=object)
+                places, sym.normal(mesh.ambient_dim)
+                )(queue).as_vector(dtype=np.object)
 
         bdry_vis = make_visualizer(queue, density_discr, case.target_order)
         bdry_vis.write_vtk_file("geometry.vtu", [
@@ -513,7 +547,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             # show geometry, centers, normals
             nodes_h = density_discr.nodes().get(queue=queue)
             pt.plot(nodes_h[0], nodes_h[1], "x-")
-            normal = bind(density_discr, sym.normal(2))(queue).as_vector(np.object)
+            normal = bind(places, sym.normal(2))(queue).as_vector(np.object)
             pt.quiver(nodes_h[0], nodes_h[1],
                     normal[0].get(queue), normal[1].get(queue))
             pt.gca().set_aspect("equal")
@@ -522,8 +556,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         elif mesh.ambient_dim == 3:
             bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
 
-            bdry_normals = bind(density_discr, sym.normal(3))(queue)\
-                    .as_vector(dtype=object)
+            bdry_normals = bind(places,
+                    sym.normal(3))(queue).as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("pre-solve-source-%s.vtu" % resolution, [
                 ("bdry_normals", bdry_normals),
@@ -572,24 +606,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     # {{{ set up test data
 
-    if case.prob_side == -1:
-        test_src_geo_radius = case.outer_radius
-        test_tgt_geo_radius = case.inner_radius
-    elif case.prob_side == +1:
-        test_src_geo_radius = case.inner_radius
-        test_tgt_geo_radius = case.outer_radius
-    elif case.prob_side == "scat":
-        test_src_geo_radius = case.outer_radius
-        test_tgt_geo_radius = case.outer_radius
-    else:
-        raise ValueError("unknown problem_side")
-
-    point_sources = make_circular_point_group(
-            mesh.ambient_dim, 10, test_src_geo_radius,
-            func=lambda x: x**1.5)
-    test_targets = make_circular_point_group(
-            mesh.ambient_dim, 20, test_tgt_geo_radius)
-
     np.random.seed(22)
     source_charges = np.random.randn(point_sources.shape[1])
     source_charges[-1] = -np.sum(source_charges[:-1])
@@ -602,35 +618,36 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     # {{{ establish BCs
 
-    from pytential.source import PointPotentialSource
-    from pytential.target import PointsTarget
-
-    point_source = PointPotentialSource(cl_ctx, point_sources)
 
     pot_src = sym.IntG(
         # FIXME: qbx_forced_limit--really?
         knl, sym.var("charges"), qbx_forced_limit=None, **knl_kwargs)
 
-    test_direct = bind((point_source, PointsTarget(test_targets)), pot_src)(
+    where = ('point-source', 'point-target')
+    test_direct = bind(places, pot_src, auto_where=where)(
             queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     if case.bc_type == "dirichlet":
-        bc = bind((point_source, density_discr), pot_src)(
+        where = ('point-source', sym.DEFAULT_TARGET)
+        bc = bind(places, pot_src, auto_where=where)(
                 queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     elif case.bc_type == "neumann":
-        bc = bind(
-                (point_source, density_discr),
-                sym.normal_derivative(
-                    qbx.ambient_dim, pot_src, dofdesc=sym.DEFAULT_TARGET)
-                )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
+        where = ('point-source', sym.DEFAULT_TARGET)
+        bc = bind(places, sym.normal_derivative(
+            qbx.ambient_dim,
+            pot_src,
+            dofdesc=where[1]),
+            auto_where=where)(queue,
+                    charges=source_charges_dev,
+                    **concrete_knl_kwargs)
 
     # }}}
 
     # {{{ solve
 
-    bound_op = bind(qbx, op_u)
-    rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
+    bound_op = bind(places, op_u)
+    rhs = bind(places, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
 
     try:
         from pytential.solve import gmres
@@ -676,9 +693,10 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     if case.prob_side != "scat":
         # {{{ error check
 
-        points_target = PointsTarget(test_targets)
-        bound_tgt_op = bind((qbx, points_target),
-                op.representation(sym.var("u")))
+        where = (sym.DEFAULT_SOURCE, 'point-target')
+        bound_tgt_op = bind(places,
+                op.representation(sym.var("u")),
+                auto_where=where)
 
         test_via_bdry = bound_tgt_op(queue, u=weighted_u, k=case.k)
 
@@ -713,22 +731,25 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # {{{ test gradient
 
     if case.check_gradient and case.prob_side != "scat":
-        bound_grad_op = bind((qbx, points_target),
+        where = (sym.DEFAULT_SOURCE, 'point-target')
+        bound_grad_op = bind(places,
                 op.representation(
                     sym.var("u"),
                     map_potentials=lambda pot: sym.grad(mesh.ambient_dim, pot),
-                    qbx_forced_limit=None))
+                    qbx_forced_limit=None),
+                auto_where=where)
 
         #print(bound_t_deriv_op.code)
 
         grad_from_src = bound_grad_op(
                 queue, u=weighted_u, **concrete_knl_kwargs)
 
-        grad_ref = (bind(
-                (point_source, points_target),
-                sym.grad(mesh.ambient_dim, pot_src)
-                )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
-                )
+        where = ('point-source', 'point-target')
+        grad_ref = bind(places,
+                sym.grad(mesh.ambient_dim, pot_src),
+                auto_where=where)(queue,
+                        charges=source_charges_dev,
+                        **concrete_knl_kwargs)
 
         grad_err = (grad_from_src - grad_ref)
 
@@ -743,7 +764,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # {{{ test tangential derivative
 
     if case.check_tangential_deriv and case.prob_side != "scat":
-        bound_t_deriv_op = bind(qbx,
+        bound_t_deriv_op = bind(places,
                 op.representation(
                     sym.var("u"),
                     map_potentials=lambda pot: sym.tangential_derivative(2, pot),
@@ -754,11 +775,12 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         tang_deriv_from_src = bound_t_deriv_op(
                 queue, u=weighted_u, **concrete_knl_kwargs).as_scalar().get()
 
-        tang_deriv_ref = (bind(
-                (point_source, density_discr),
-                sym.tangential_derivative(2, pot_src)
-                )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
-                .as_scalar().get())
+        where = ('point-source', sym.DEFAULT_TARGET)
+        tang_deriv_ref = bind(places,
+                sym.tangential_derivative(2, pot_src),
+                auto_where=where)(queue,
+                        charges=source_charges_dev,
+                        **concrete_knl_kwargs).as_scalar().get()
 
         if 0:
             pt.plot(tang_deriv_ref.real)
@@ -781,11 +803,11 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     if visualize:
         bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
 
-        bdry_normals = bind(density_discr, sym.normal(qbx.ambient_dim))(queue)\
-                .as_vector(dtype=object)
+        bdry_normals = bind(places,
+                sym.normal(qbx.ambient_dim))(queue).as_vector(dtype=np.object)
 
         sym_sqrt_j = sym.sqrt_jac_q_weight(density_discr.ambient_dim)
-        u = bind(density_discr, sym.var("u")/sym_sqrt_j)(queue, u=weighted_u)
+        u = bind(places, sym.var("u") / sym_sqrt_j)(queue, u=weighted_u)
 
         bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
             ("u", u),
@@ -864,7 +886,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     class Result(Record):
         pass
 
-    h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+    h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
     return Result(
             h_max=h_max,
             rel_err_2=rel_err_2,
