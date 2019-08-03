@@ -406,8 +406,13 @@ def _prepare_expr(places, expr, auto_where=None):
             DerivativeBinder,
             InterpolationPreprocessor)
 
-    auto_where = places.auto_where if auto_where is None else auto_where
-    expr = ToTargetTagger(*auto_where)(expr)
+    if auto_where is None:
+        auto_where = places.auto_where
+    if not isinstance(auto_where, tuple):
+        auto_where = sym.as_dofdesc(auto_where)
+        auto_where = (auto_where, auto_where)
+
+    expr = ToTargetTagger(auto_where[0], auto_where[1])(expr)
     expr = DerivativeBinder()(expr)
 
     for name, place in six.iteritems(places.places):
@@ -640,7 +645,9 @@ def bind(places, expr, auto_where=None):
 
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
-    expr = _prepare_expr(places, expr, auto_where=auto_where)
+        expr = _prepare_expr(places, expr)
+    else:
+        expr = _prepare_expr(places, expr, auto_where=auto_where)
 
     return BoundExpression(places, expr)
 
