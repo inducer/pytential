@@ -32,6 +32,24 @@ Python 3 POCL:
     reports:
       junit: test/pytest.xml
 
+Python 3 Intel:
+  script:
+  - export PY_EXE=python3
+  - source /opt/enable-intel-cl.sh
+  - export PYOPENCL_TEST="intel(r):pu"
+  - export EXTRA_INSTALL="pybind11 numpy scipy mako"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3
+  - intel-cl-cpu
+  - large-node
+  except:
+  - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
 Python 3 POCL Examples:
   script:
   - test -n "$SKIP_EXAMPLES" && exit
