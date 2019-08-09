@@ -93,8 +93,7 @@ def calibrate_cost_model(ctx):
     queue = cl.CommandQueue(ctx)
 
     from pytential.qbx.cost import CostModel, estimate_calibration_params
-
-    cost_model = CostModel(use_target_specific_qbx=True)
+    cost_model = CostModel()
 
     model_results = []
     timing_results = []
