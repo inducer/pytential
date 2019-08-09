@@ -648,6 +648,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             func = self.exec_compute_potential_insn_direct
         else:
             func = self.exec_compute_potential_insn_fmm
+
             def drive_fmm(wrangler, strengths, geo_data, kernel, kernel_arguments):
                 del geo_data, kernel, kernel_arguments
                 from pytential.qbx.fmm import drive_fmm
@@ -656,6 +657,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 else:
                     timing_data = None
                 return drive_fmm(wrangler, strengths, timing_data), timing_data
+
             extra_args["fmm_driver"] = drive_fmm
 
         return self._dispatch_compute_potential_insn(
@@ -760,7 +762,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
-    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate, fmm_driver):
+    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate,
+            fmm_driver):
         """
         :arg fmm_driver: A function that accepts four arguments:
             *wrangler*, *strength*, *geo_data*, *kernel*, *kernel_arguments*
