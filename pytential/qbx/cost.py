@@ -267,25 +267,20 @@ class CostModel(object):
     """
 
     def __init__(self,
-            use_target_specific_qbx,
             translation_cost_model_factory=pde_aware_translation_cost_model,
             calibration_params=None):
         """
-        :arg use_target_specific_qbx: A :class:`bool` indicating whether
-            target-specific QBX is used
         :arg translation_cost_model_factory: A callable which, given arguments
             (*dim*, *nlevels*), returns a translation cost model.
         """
         self.translation_cost_model_factory = translation_cost_model_factory
         if calibration_params is None:
             calibration_params = dict()
-        self.use_target_specific_qbx = use_target_specific_qbx
         self.calibration_params = calibration_params
 
     def with_calibration_params(self, calibration_params):
         """Return a copy of *self* with a new set of calibration parameters."""
         return type(self)(
-                use_target_specific_qbx=self.use_target_specific_qbx,
                 translation_cost_model_factory=self.translation_cost_model_factory,
                 calibration_params=calibration_params)
 
@@ -666,13 +661,11 @@ class CostModel(object):
     # }}}
 
     @log_process(logger, "model cost")
-    def __call__(self, geo_data, kernel, kernel_arguments):
+    def __call__(self, wrangler, geo_data, kernel, kernel_arguments):
         """Analyze the given geometry and return cost data.
 
         :returns: An instance of :class:`ParametrizedCosts`.
         """
-        # FIXME: This should suport target filtering.
-
         result = OrderedDict()
 
         lpot_source = geo_data.lpot_source
@@ -693,6 +686,9 @@ class CostModel(object):
                 p_qbx=lpot_source.qbx_order,
                 )
 
+        # FIXME: We can avoid using *kernel* and *kernel_arguments* if we talk
+        # to the wrangler to obtain the FMM order (see also
+        # https://gitlab.tiker.net/inducer/boxtree/issues/25)
         for ilevel in range(tree.nlevels):
             params["p_fmm_lev%d" % ilevel] = (
                     lpot_source.fmm_level_to_order(
@@ -782,7 +778,7 @@ class CostModel(object):
 
         # {{{ form global qbx locals or evaluate target specific qbx expansions
 
-        if self.use_target_specific_qbx:
+        if wrangler.using_tsqbx:
             result.update(self.process_eval_target_specific_qbxl(
                     xlat_cost, direct_interaction_data, global_qbx_centers,
                     qbx_center_to_target_box, center_to_targets_starts))
