@@ -646,6 +646,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
+            extra_args["return_timing_data"] = return_timing_data
+
         else:
             func = self.exec_compute_potential_insn_fmm
 
