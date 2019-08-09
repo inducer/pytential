@@ -271,7 +271,7 @@ class CostModel(object):
             calibration_params=None):
         """
         :arg translation_cost_model_factory: A callable which, given arguments
-            (*dim*, *nlevels*), returns a translation cost model.
+            (*dim*, *nlevels*), returns a :class:`TranslationCostModel`.
         """
         self.translation_cost_model_factory = translation_cost_model_factory
         if calibration_params is None:
