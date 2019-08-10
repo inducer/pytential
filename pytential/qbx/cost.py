@@ -41,6 +41,11 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
+.. note::
+
+   This module is experimental. Its interface is subject to change until this
+   notice is removed.
+
 .. autoclass:: CostModel
 .. autoclass:: ParametrizedCosts
 
