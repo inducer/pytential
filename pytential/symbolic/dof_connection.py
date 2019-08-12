@@ -34,6 +34,19 @@ import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 
+__doc__ = """
+
+Connections
+-----------
+
+.. autoclass:: GranularityConnection
+.. autoclass:: CenterGranularityConnection
+.. autoclass:: DOFConnection
+.. autofunction:: connection_from_dds
+
+"""
+
+
 # {{{ granularity connections
 
 class GranularityConnection(object):
