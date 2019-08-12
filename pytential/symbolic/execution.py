@@ -148,11 +148,11 @@ class EvaluationMapper(EvaluationMapperBase):
         assert operand.shape == (discr.nnodes,)
 
         granularity = expr.dofdesc.granularity
-        if granularity == sym.GRANULARITY_NODE:
+        if granularity is sym.GRANULARITY_NODE:
             return _reduce(discr.nnodes,
                     node_knl(),
                     lambda g, x: discr.groups[g].view(x))
-        elif granularity == sym.GRANULARITY_ELEMENT:
+        elif granularity is sym.GRANULARITY_ELEMENT:
             return _reduce(discr.mesh.nelements,
                     element_knl(),
                     lambda g, x: mesh_el_view(discr.mesh, g, x))
