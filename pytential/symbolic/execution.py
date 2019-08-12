@@ -46,7 +46,6 @@ from pytential import sym
 
 # {{{ evaluation mapper
 
-
 def mesh_el_view(mesh, group_nr, global_array):
     """Return a view of *global_array* of shape
     ``(..., mesh.groups[group_nr].nelements)``
@@ -400,7 +399,7 @@ def _prepare_expr(places, expr):
 # }}}
 
 
-# {{{ bound expression
+# {{{ geometry collection
 
 class GeometryCollection(object):
     """A mapping from symbolic identifiers ("place IDs", typically strings)
@@ -543,11 +542,15 @@ class GeometryCollection(object):
         return self.caches.setdefault(name, {})
 
     def __repr__(self):
-        return repr(self.places)
+        return "%s(%s)" % (type(self).__name.__, repr(self.places))
 
     def __str__(self):
-        return str(self.places)
+        return "%s(%s)" % (type(self).__name.__, str(self.places))
 
+# }}}
+
+
+# {{{ bound expression
 
 class BoundExpression(object):
     def __init__(self, places, sym_op_expr):

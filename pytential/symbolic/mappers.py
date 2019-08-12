@@ -308,7 +308,7 @@ class ToTargetTagger(LocationTagger):
     source.
     * if an expression has a :class:`~pytential.symbolic.primitives.DOFDescriptor`
     that requires a :class:`~pytential.source.LayerPotentialSourceBase` to be
-    used (e.g. by begin defined on
+    used (e.g. by being defined on
     :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`), then
     it is marked as operating on a source.
     """

@@ -187,14 +187,14 @@ def connection_from_dds(places, from_dd, to_dd):
     """
     :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`
         or an argument taken by its constructor.
-    :arg from_dd: a descriptor for the incomming degrees of freedom. This
+    :arg from_dd: a descriptor for the incoming degrees of freedom. This
         can be a :class:`~pytential.symbolic.primitives.DOFDescriptor`
         or an identifier that can be transformed into one by
         :func:`~pytential.symbolic.primitives.as_dofdesc`.
     :arg to_dd: a descriptor for the outgoing degrees of freedom.
 
     :return: a :class:`DOFConnection` transporting between the two
-        of DOFs.
+        kinds of DOF vectors.
     """
 
     from pytential import sym
