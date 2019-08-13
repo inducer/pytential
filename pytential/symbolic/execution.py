@@ -300,7 +300,7 @@ class EvaluationMapper(EvaluationMapperBase):
         self.timing_data = timing_data
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
-        source = bound_expr.places[insn.source]
+        source = bound_expr.places.get_geometry(insn.source)
 
         return_timing_data = self.timing_data is not None
 
@@ -340,7 +340,8 @@ class CostModelMapper(EvaluationMapperBase):
         self.modeled_cost = {}
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
-        source = bound_expr.places[insn.source]
+        source = bound_expr.places.get_geometry(insn.source)
+
         result, cost_model_result = (
                 source.cost_model_compute_potential_insn(
                     queue, insn, bound_expr, evaluate))
