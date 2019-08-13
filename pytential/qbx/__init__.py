@@ -218,6 +218,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._tree_kind = _tree_kind
         self._use_target_specific_qbx = _use_target_specific_qbx
         self.geometry_data_inspector = geometry_data_inspector
+
+        if cost_model is None:
+            from pytential.qbx.cost import CostModel
+            cost_model = CostModel()
+
         self.cost_model = cost_model
 
         # /!\ *All* parameters set here must also be set by copy() below,
@@ -526,12 +531,25 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
             return_timing_data):
+        extra_args = {}
+
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
+            extra_args["return_timing_data"] = return_timing_data
+
         else:
             func = self.exec_compute_potential_insn_fmm
 
-        extra_args = {"return_timing_data": return_timing_data}
+            def drive_fmm(wrangler, strengths, geo_data, kernel, kernel_arguments):
+                del geo_data, kernel, kernel_arguments
+                from pytential.qbx.fmm import drive_fmm
+                if return_timing_data:
+                    timing_data = {}
+                else:
+                    timing_data = None
+                return drive_fmm(wrangler, strengths, timing_data), timing_data
+
+            extra_args["fmm_driver"] = drive_fmm
 
         return self._dispatch_compute_potential_insn(
                 queue, insn, bound_expr, evaluate, func, extra_args)
@@ -539,9 +557,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def cost_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         if self.fmm_level_to_order is False:
             raise NotImplementedError("perf modeling direct evaluations")
+
+        def drive_cost_model(
+                    wrangler, strengths, geo_data, kernel, kernel_arguments):
+            del strengths
+            cost_model_result = (
+                    self.cost_model(wrangler, geo_data, kernel, kernel_arguments))
+            return wrangler.full_output_zeros(), cost_model_result
+
         return self._dispatch_compute_potential_insn(
                 queue, insn, bound_expr, evaluate,
-                self.cost_model_compute_potential_insn_fmm)
+                self.exec_compute_potential_insn_fmm,
+                extra_args={"fmm_driver": drive_cost_model})
 
     def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
             evaluate, func, extra_args=None):
@@ -626,59 +653,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
-    # {{{ execute fmm cost model
-
-    def cost_model_compute_potential_insn_fmm(self, queue, insn, bound_expr,
-            evaluate):
-        target_name_and_side_to_number, target_discrs_and_qbx_sides = (
-                self.get_target_discrs_and_qbx_sides(insn, bound_expr))
-
-        geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
-
-        if self.cost_model is None:
-            raise ValueError("Cost model not supplied")
-
-        kernel_args = {}
-        for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
-            kernel_args[arg_name] = evaluate(arg_expr)
-
-        cost_model_result = (
-                self.cost_model(geo_data, insn.base_kernel, kernel_args))
-
-        # {{{ construct dummy outputs
-
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
-        out_kernels = tuple(knl for knl in insn.kernels)
-        fmm_kernel = self.get_fmm_kernel(out_kernels)
-        output_and_expansion_dtype = (
-                self.get_fmm_output_and_expansion_dtype(fmm_kernel, strengths))
-
-        result = []
-
-        for o in insn.outputs:
-            target_side_number = target_name_and_side_to_number[
-                    o.target_name, o.qbx_forced_limit]
-            start, end = geo_data.target_info().target_discr_starts[
-                    target_side_number:target_side_number+2]
-
-            output_array = cl.array.zeros(
-                    queue,
-                    end - start,
-                    dtype=output_and_expansion_dtype)
-
-            result.append((o.name, output_array))
-
-        return result, cost_model_result
-
-        # }}}
-
-    # }}}
-
-    # {{{ execute fmm
-
     def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate,
-            return_timing_data):
+            fmm_driver):
+        """
+        :arg fmm_driver: A function that accepts four arguments:
+            *wrangler*, *strength*, *geo_data*, *kernel*, *kernel_arguments*
+        """
         target_name_and_side_to_number, target_discrs_and_qbx_sides = (
                 self.get_target_discrs_and_qbx_sides(insn, bound_expr))
 
@@ -727,13 +707,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        # {{{ execute global QBX
-
-        from pytential.qbx.fmm import drive_fmm
-        timing_data = {} if return_timing_data else None
-        all_potentials_on_every_target = drive_fmm(wrangler, strengths, timing_data)
-
-        # }}}
+        # Execute global QBX.
+        all_potentials_on_every_target, extra_outputs = (
+                fmm_driver(
+                    wrangler, strengths, geo_data, fmm_kernel, kernel_extra_kwargs))
 
         result = []
 
@@ -746,7 +723,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             result.append((o.name,
                     all_potentials_on_every_target[o.kernel_index][target_slice]))
 
-        return result, timing_data
+        return result, extra_outputs
 
     # }}}
 

@@ -133,6 +133,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         self.qbx_order = qbx_order
         self.geo_data = geo_data
+        self.using_tsqbx = False
 
     # {{{ data vector utilities
 
