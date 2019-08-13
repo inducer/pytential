@@ -415,12 +415,13 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
         bound_jump_identity = bind(qbx, jump_identity_sym)
         jump_identity = bound_jump_identity(queue, density=density)
 
+        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
         err = (
                 norm(qbx, queue, jump_identity, np.inf)
                 / norm(qbx, queue, density, np.inf))
-        print("ERROR", qbx.h_max, err)
+        print("ERROR", h_max, err)
 
-        eoc_rec.add_data_point(qbx.h_max, err)
+        eoc_rec.add_data_point(h_max, err)
 
         # {{{ visualization
 

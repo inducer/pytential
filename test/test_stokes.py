@@ -268,7 +268,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
 
     # }}}
 
-    return qbx.h_max, l2_err
+    h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+    return h_max, l2_err
 
 
 @pytest.mark.slowtest

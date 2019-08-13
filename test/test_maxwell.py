@@ -310,7 +310,7 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
                     case.fmm_tolerance),
                 fmm_backend=case.fmm_backend
                 ).with_refinement(_expansion_disturbance_tolerance=0.05)
-        h_max = qbx.h_max
+        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
 
         scat_discr = qbx.density_discr
         obs_discr = Discretization(

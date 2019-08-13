@@ -70,7 +70,8 @@ def get_sym_maxwell_point_source(kernel, jxyz, k):
 
 # {{{ plane wave
 
-def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=None):
+def get_sym_maxwell_plane_wave(amplitude_vec, v, omega,
+        epsilon=1, mu=1, dofdesc=None):
     r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
@@ -96,7 +97,7 @@ def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=N
 
     # NOTE: for complex, need to ensure real(n).dot(imag(n)) = 0  (7.15)
 
-    x = sym.nodes(3, where).as_vector()
+    x = sym.nodes(3, dofdesc=dofdesc).as_vector()
 
     v_mag_squared = sym.cse(np.dot(v, v), "v_mag_squared")
     n = v/sym.sqrt(v_mag_squared)

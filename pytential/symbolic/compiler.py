@@ -438,8 +438,9 @@ class OperatorCompiler(IdentityMapper):
 
     def op_group_features(self, expr):
         from pytential.symbolic.primitives import hashable_kernel_args
+        lpot_source = self.places.get_geometry(expr.source)
         return (
-                self.places[expr.source].op_group_features(expr)
+                lpot_source.op_group_features(expr)
                 + hashable_kernel_args(expr.kernel_arguments))
 
     @memoize_method

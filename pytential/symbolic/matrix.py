@@ -43,34 +43,6 @@ def is_zero(x):
     return isinstance(x, (int, float, complex, np.number)) and x == 0
 
 
-def _resample_arg(queue, source, x):
-    """
-    :arg queue: a :class:`pyopencl.CommandQueue`.
-    :arg source: a :class:`pytential.source.LayerPotentialSourceBase` subclass.
-        If it is not a layer potential source, no resampling is done.
-    :arg x: a :class:`numpy.ndarray`.
-
-    :return: a resampled :class:`numpy.ndarray` (see
-        :method:`pytential.source.LayerPotentialSourceBase.resampler`).
-    """
-
-    from pytential.source import LayerPotentialSourceBase
-    if not isinstance(source, LayerPotentialSourceBase):
-        return x
-
-    if not isinstance(x, np.ndarray):
-        return x
-
-    if len(x.shape) >= 2:
-        raise RuntimeError("matrix variables in kernel arguments")
-
-    def resample(y):
-        return source.resampler(queue, cl.array.to_device(queue, y)).get(queue)
-
-    from pytools.obj_array import with_object_array_or_scalar
-    return with_object_array_or_scalar(resample, x)
-
-
 def _get_layer_potential_args(mapper, expr, source):
     """
     :arg mapper: a :class:`pytential.symbolic.matrix.MatrixBuilderBase`.
@@ -80,17 +52,9 @@ def _get_layer_potential_args(mapper, expr, source):
     :return: a mapping of kernel arguments evaluated by the *mapper*.
     """
 
-    # skip resampling if source and target are the same
-    from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
-    if ((expr.source is not DEFAULT_SOURCE)
-            and (expr.target is not DEFAULT_TARGET)
-            and (isinstance(expr.source, type(expr.target)))):
-        source = None
-
     kernel_args = {}
     for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
-        rec_arg = mapper.rec(arg_expr)
-        kernel_args[arg_name] = _resample_arg(mapper.queue, source, rec_arg)
+        kernel_args[arg_name] = mapper.rec(arg_expr)
 
     return kernel_args
 
@@ -113,9 +77,7 @@ def _get_kernel_args(mapper, kernel, expr, source):
     for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
         if arg_name not in inner_kernel_args:
             continue
-
-        rec_arg = mapper.rec(arg_expr)
-        kernel_args[arg_name] = _resample_arg(mapper.queue, source, rec_arg)
+        kernel_args[arg_name] = mapper.rec(arg_expr)
 
     return kernel_args
 
@@ -154,13 +116,16 @@ def _get_centers_and_expansion_radii(queue, source, target_discr, qbx_forced_lim
 
     if source.density_discr is target_discr:
         # NOTE: skip expensive target association
-        from pytential.qbx.utils import get_centers_on_side
-        centers = get_centers_on_side(source, qbx_forced_limit)
-        radii = source._expansion_radii('nsources')
+        centers = bind(source,
+            sym.expansion_centers(source.ambient_dim, qbx_forced_limit))(queue)
+        radii = bind(source,
+            sym.expansion_radii(source.ambient_dim))(queue)
     else:
         from pytential.qbx.utils import get_interleaved_centers
         centers = get_interleaved_centers(queue, source)
-        radii = source._expansion_radii('ncenters')
+        radii = bind(source, sym.expansion_radii(
+            source.ambient_dim,
+            granularity=sym.GRANULARITY_CENTER))(queue)
 
         # NOTE: using a very small tolerance to make sure all the stage2
         # targets are associated to a center. We can't use the user provided
@@ -319,15 +284,16 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if self.is_kind_matrix(rec_operand):
             raise NotImplementedError("derivatives")
 
-        where_discr = self.places[expr.where]
-        op = sym.NumReferenceDerivative(expr.ref_axes, sym.var("u"))
-        return bind(where_discr, op)(
-                self.queue, u=cl.array.to_device(self.queue, rec_operand)).get()
+        rec_operand = cl.array.to_device(self.queue, rec_operand)
+        op = sym.NumReferenceDerivative(
+                ref_axes=expr.ref_axes,
+                operand=sym.var("u"),
+                dofdesc=expr.dofdesc)
+        return bind(self.places, op)(self.queue, u=rec_operand).get()
 
     def map_node_coordinate_component(self, expr):
-        where_discr = self.places[expr.where]
-        op = sym.NodeCoordinateComponent(expr.ambient_axis)
-        return bind(where_discr, op)(self.queue).get()
+        op = sym.NodeCoordinateComponent(expr.ambient_axis, dofdesc=expr.dofdesc)
+        return bind(self.places, op)(self.queue).get()
 
     def map_call(self, expr):
         arg, = expr.parameters
@@ -401,13 +367,30 @@ class MatrixBuilder(MatrixBuilderBase):
         super(MatrixBuilder, self).__init__(queue, dep_expr, other_dep_exprs,
                 dep_source, dep_discr, places, context)
 
-    def map_int_g(self, expr):
-        where_source = expr.source
-        if where_source is sym.DEFAULT_SOURCE:
-            where_source = sym.QBXSourceQuadStage2(expr.source)
+    def map_interpolation(self, expr):
+        if expr.to_dd.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
+            raise RuntimeError("can only interpolate to QBX_SOURCE_QUAD_STAGE2")
 
-        source = self.places[expr.source]
-        source_discr = self.places.get_discretization(where_source)
+        operand = self.rec(expr.operand)
+        if isinstance(operand, (int, float, complex, np.number)):
+            return operand
+        elif isinstance(operand, np.ndarray) and operand.ndim == 1:
+            from pytential.symbolic.dof_connection import connection_from_dds
+            conn = connection_from_dds(self.places,
+                    expr.from_dd, expr.to_dd)
+
+            operand = cl.array.to_device(self.queue, operand)
+            return conn(self.queue, operand).get(self.queue)
+        elif isinstance(operand, np.ndarray) and operand.ndim == 2:
+            resampler = self.places.get_geometry(expr.from_dd).direct_resampler
+            mat = resampler.full_resample_matrix(self.queue).get(self.queue)
+            return mat.dot(operand)
+        else:
+            raise RuntimeError('unknown operand type: {}'.format(type(operand)))
+
+    def map_int_g(self, expr):
+        lpot_source = self.places.get_geometry(expr.source)
+        source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
         rec_density = self.rec(expr.density)
@@ -419,10 +402,10 @@ class MatrixBuilder(MatrixBuilderBase):
             raise NotImplementedError("layer potentials on non-variables")
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self, expr, source)
+        kernel_args = _get_layer_potential_args(self, expr, lpot_source)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
-        local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
+        local_expn = LineTaylorLocalExpansion(kernel, lpot_source.qbx_order)
 
         from sumpy.qbx import LayerPotentialMatrixGenerator
         mat_gen = LayerPotentialMatrixGenerator(
@@ -430,7 +413,7 @@ class MatrixBuilder(MatrixBuilderBase):
 
         assert abs(expr.qbx_forced_limit) > 0
         centers, radii = _get_centers_and_expansion_radii(self.queue,
-                source, target_discr, expr.qbx_forced_limit)
+                lpot_source, target_discr, expr.qbx_forced_limit)
 
         _, (mat,) = mat_gen(self.queue,
                 targets=target_discr.nodes(),
@@ -440,17 +423,8 @@ class MatrixBuilder(MatrixBuilderBase):
                 **kernel_args)
         mat = mat.get()
 
-        waa = _get_weights_and_area_elements(self.queue, source, source_discr)
+        waa = _get_weights_and_area_elements(self.queue, lpot_source, source_discr)
         mat[:, :] *= waa.get(self.queue)
-
-        if target_discr.nnodes != source_discr.nnodes:
-            # NOTE: we only resample sources
-            assert target_discr.nnodes < source_discr.nnodes
-
-            resampler = source.direct_resampler
-            resample_mat = resampler.full_resample_matrix(self.queue).get(self.queue)
-            mat = mat.dot(resample_mat)
-
         mat = mat.dot(rec_density)
 
         return mat
@@ -470,7 +444,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
         self.exclude_self = exclude_self
 
     def map_int_g(self, expr):
-        source = self.places[expr.source]
+        source = self.places.get_geometry(expr.source)
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
@@ -533,7 +507,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        source = self.places[expr.source]
+        source = self.places.get_geometry(expr.source)
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
@@ -548,7 +522,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             raise NotImplementedError()
 
         kernel = expr.kernel
-        kernel_args = _get_layer_potential_args(self.mat_mapper, expr, source)
+        kernel_args = _get_layer_potential_args(self.mat_mapper, expr, None)
 
         from sumpy.expansion.local import LineTaylorLocalExpansion
         local_expn = LineTaylorLocalExpansion(kernel, source.qbx_order)
@@ -599,7 +573,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        source = self.places[expr.source]
+        source = self.places.get_geometry(expr.source)
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
