@@ -542,10 +542,10 @@ class GeometryCollection(object):
         return self.caches.setdefault(name, {})
 
     def __repr__(self):
-        return "%s(%s)" % (type(self).__name.__, repr(self.places))
+        return "%s(%s)" % (type(self).__name__, repr(self.places))
 
     def __str__(self):
-        return "%s(%s)" % (type(self).__name.__, str(self.places))
+        return "%s(%s)" % (type(self).__name__, str(self.places))
 
 # }}}
 
