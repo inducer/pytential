@@ -309,6 +309,9 @@ class EvaluationMapper(EvaluationMapperBase):
                     queue, insn, bound_expr, evaluate, return_timing_data))
 
         if return_timing_data:
+            # The compiler ensures this.
+            assert insn not in self.timing_data
+
             self.timing_data[insn] = timing_data
 
         return result
@@ -345,6 +348,10 @@ class CostModelMapper(EvaluationMapperBase):
         result, cost_model_result = (
                 source.cost_model_compute_potential_insn(
                     queue, insn, bound_expr, evaluate))
+
+        # The compiler ensures this.
+        assert insn not in self.modeled_cost
+
         self.modeled_cost[insn] = cost_model_result
         return result
 
