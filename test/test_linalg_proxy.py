@@ -22,15 +22,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import os
-import time
-
 import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
 from pyopencl.array import to_device
 
+from pytential import bind, sym
 from sumpy.tools import BlockIndexRanges
 from meshmode.mesh.generation import ( # noqa
         ellipse, NArmedStarfish, generate_torus, make_curve_mesh)
@@ -79,32 +77,17 @@ def _build_qbx_discr(queue,
 def _build_block_index(discr,
                        nblks=10,
                        factor=1.0,
-                       method='elements',
                        use_tree=True):
 
-    from pytential.linalg.proxy import (
-            partition_by_nodes, partition_by_elements)
+    from pytential.linalg.proxy import partition_by_nodes
 
-    if method == 'elements':
-        factor = 1.0
-
-    if method == 'nodes':
-        nnodes = discr.nnodes
-    else:
-        nnodes = discr.mesh.nelements
+    nnodes = discr.nnodes
     max_particles_in_box = nnodes // nblks
 
     # create index ranges
-    if method == 'nodes':
-        indices = partition_by_nodes(discr,
-                                     use_tree=use_tree,
-                                     max_nodes_in_box=max_particles_in_box)
-    elif method == 'elements':
-        indices = partition_by_elements(discr,
-                                        use_tree=use_tree,
-                                        max_elements_in_box=max_particles_in_box)
-    else:
-        raise ValueError('unknown method: {}'.format(method))
+    indices = partition_by_nodes(discr,
+                                 use_tree=use_tree,
+                                 max_nodes_in_box=max_particles_in_box)
 
     # randomly pick a subset of points
     if abs(factor - 1.0) > 1.0e-14:
@@ -179,70 +162,21 @@ def _plot_partition_indices(queue, discr, indices, **kwargs):
         vis = make_visualizer(queue, discr, 10)
 
         filename = "test_partition_{0}_{1}_{3}d_{2}.png".format(*args)
-        if os.path.isfile(filename):
-            os.remove(filename)
-
         vis.write_vtk_file(filename, [
             ("marker", cl.array.to_device(queue, marker))
             ])
 
 
-@pytest.mark.parametrize("method", ["nodes", "elements"])
 @pytest.mark.parametrize("use_tree", [True, False])
 @pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_points(ctx_factory, method, use_tree, ndim, visualize=False):
+def test_partition_points(ctx_factory, use_tree, ndim, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     qbx = _build_qbx_discr(queue, ndim=ndim)
     _build_block_index(qbx.density_discr,
-                       method=method,
                        use_tree=use_tree,
                        factor=0.6)
-
-
-@pytest.mark.parametrize("use_tree", [True, False])
-@pytest.mark.parametrize("ndim", [2, 3])
-def test_partition_coarse(ctx_factory, use_tree, ndim, visualize=False):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    qbx = _build_qbx_discr(queue, ndim=ndim)
-    srcindices = _build_block_index(qbx.density_discr,
-            method="elements", use_tree=use_tree)
-
-    if visualize:
-        discr = qbx.resampler.from_discr
-        _plot_partition_indices(queue, discr, srcindices,
-                method="elements", use_tree=use_tree, pid="stage1")
-
-    from pytential.linalg.proxy import partition_from_coarse
-    resampler = qbx.direct_resampler
-
-    t_start = time.time()
-    srcindices_ = partition_from_coarse(resampler, srcindices)
-    t_end = time.time()
-    if visualize:
-        print('Time: {:.5f}s'.format(t_end - t_start))
-
-    srcindices = srcindices.get(queue)
-    srcindices_ = srcindices_.get(queue)
-
-    sources = resampler.from_discr.nodes().get(queue)
-    sources_ = resampler.to_discr.nodes().get(queue)
-
-    for i in range(srcindices.nblocks):
-        isrc = srcindices.block_indices(i)
-        isrc_ = srcindices_.block_indices(i)
-
-        for j in range(ndim):
-            assert np.min(sources_[j][isrc_]) <= np.min(sources[j][isrc])
-            assert np.max(sources_[j][isrc_]) >= np.max(sources[j][isrc])
-
-    if visualize:
-        discr = resampler.to_discr
-        _plot_partition_indices(queue, discr, srcindices_,
-                method="elements", use_tree=use_tree, pid="stage2")
 
 
 @pytest.mark.parametrize("ndim", [2, 3])
@@ -253,7 +187,7 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
 
     qbx = _build_qbx_discr(queue, ndim=ndim)
     srcindices = _build_block_index(qbx.density_discr,
-            method='nodes', factor=factor)
+            factor=factor)
 
     from pytential.linalg.proxy import ProxyGenerator
     generator = ProxyGenerator(qbx, ratio=1.1)
@@ -274,14 +208,13 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
     if visualize:
         if qbx.ambient_dim == 2:
             import matplotlib.pyplot as pt
-            from pytential.qbx.utils import get_centers_on_side
 
             density_nodes = qbx.density_discr.nodes().get(queue)
-            ci = get_centers_on_side(qbx, -1)
+            ci = bind(qbx, sym.expansion_centers(qbx.ambient_dim, -1))(queue)
             ci = np.vstack([c.get(queue) for c in ci])
-            ce = get_centers_on_side(qbx, +1)
+            ce = bind(qbx, sym.expansion_centers(qbx.ambient_dim, +1))(queue)
             ce = np.vstack([c.get(queue) for c in ce])
-            r = qbx._expansion_radii("nsources").get(queue)
+            r = bind(qbx, sym.expansion_radii(qbx.ambient_dim))(queue).get()
 
             for i in range(srcindices.nblocks):
                 isrc = srcindices.block_indices(i)
@@ -333,8 +266,6 @@ def test_proxy_generator(ctx_factory, ndim, factor, visualize=False):
 
                 vis = make_visualizer(queue, discr, 10)
                 filename = "test_proxy_generator_{}d_{:04}.vtu".format(ndim, i)
-                if os.path.isfile(filename):
-                    os.remove(filename)
                 vis.write_vtk_file(filename, [])
 
 
@@ -346,7 +277,7 @@ def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
 
     qbx = _build_qbx_discr(queue, ndim=ndim)
     srcindices = _build_block_index(qbx.density_discr,
-            method='nodes', factor=factor)
+            factor=factor)
 
     # generate proxy points
     from pytential.linalg.proxy import ProxyGenerator
@@ -407,8 +338,6 @@ def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
                 isrc = srcindices.block_indices(i)
                 inbr = nbrindices.block_indices(i)
 
-                # TODO: some way to turn off some of the interpolations
-                # would help visualize this better.
                 marker.fill(0.0)
                 marker[srcindices.indices] = 0.0
                 marker[isrc] = -42.0
@@ -417,9 +346,6 @@ def test_interaction_points(ctx_factory, ndim, factor, visualize=False):
 
                 vis = make_visualizer(queue, qbx.density_discr, 10)
                 filename = "test_area_query_{}d_{:04}.vtu".format(ndim, i)
-                if os.path.isfile(filename):
-                    os.remove(filename)
-
                 vis.write_vtk_file(filename, [
                     ("marker", marker_dev),
                     ])

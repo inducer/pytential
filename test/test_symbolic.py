@@ -201,13 +201,14 @@ def test_expr_pickling():
 # }}}
 
 
-@pytest.mark.parametrize("source", [
-    sym.DEFAULT_SOURCE,
-    sym.QBXSourceStage1(sym.DEFAULT_SOURCE),
-    sym.QBXSourceStage2(sym.DEFAULT_SOURCE),
-    sym.QBXSourceQuadStage2(sym.DEFAULT_SOURCE)
+@pytest.mark.parametrize(("name", "source_discr_stage", "target_granularity"), [
+    ("default", None, None),
+    ("default-explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
+    ("stage2", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_NODE),
+    ("stage2-center", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
+    ("quad", sym.QBX_SOURCE_QUAD_STAGE2, sym.GRANULARITY_NODE)
     ])
-def test_interpolation(ctx_factory, source):
+def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -227,25 +228,39 @@ def test_interpolation(ctx_factory, source):
             qbx_order=qbx_order,
             fmm_order=False).with_refinement()
 
-    target = sym.QBXSourceQuadStage2(sym.DEFAULT_SOURCE)
+    where = 'test-interpolation'
+    from_dd = sym.DOFDescriptor(
+            geometry=where,
+            discr_stage=source_discr_stage,
+            granularity=sym.GRANULARITY_NODE)
+    to_dd = sym.DOFDescriptor(
+            geometry=where,
+            discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
+            granularity=target_granularity)
+
     sigma_sym = sym.var("sigma")
-    op_sym = sym.sin(sym.Interpolation(source, target, sigma_sym))
-    bound_op = bind(qbx, op_sym, auto_where=(source, sym.DEFAULT_TARGET))
+    op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
+    bound_op = bind(qbx, op_sym, auto_where=where)
 
-    quad2_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
-    if isinstance(source, sym.QBXSourceStage2):
-        nodes = qbx.stage2_density_discr.nodes().get(queue)
-    elif isinstance(source, sym.QBXSourceQuadStage2):
-        nodes = quad2_nodes
+    target_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
+    if source_discr_stage == sym.QBX_SOURCE_STAGE2:
+        source_nodes = qbx.stage2_density_discr.nodes().get(queue)
+    elif source_discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
+        source_nodes = target_nodes
     else:
-        nodes = qbx.density_discr.nodes().get(queue)
+        source_nodes = qbx.density_discr.nodes().get(queue)
 
-    sigma_dev = cl.array.to_device(queue, la.norm(nodes, axis=0))
-    sigma_quad2 = np.sin(la.norm(quad2_nodes, axis=0))
-    sigma_quad2_interp = bound_op(queue, sigma=sigma_dev).get(queue)
+    sigma_dev = cl.array.to_device(queue, la.norm(source_nodes, axis=0))
+    sigma_target = np.sin(la.norm(target_nodes, axis=0))
+    sigma_target_interp = bound_op(queue, sigma=sigma_dev).get(queue)
 
-    error = la.norm(sigma_quad2_interp - sigma_quad2) / la.norm(sigma_quad2)
-    assert error < 1.0e-10
+    if name in ('default', 'default-explicit', 'stage2', 'quad'):
+        error = la.norm(sigma_target_interp - sigma_target) / la.norm(sigma_target)
+        assert error < 1.0e-10
+    elif name in ('stage2-center',):
+        assert len(sigma_target_interp) == 2 * len(sigma_target)
+    else:
+        raise ValueError('unknown test case name: {}'.format(name))
 
 
 # You can test individual routines by typing

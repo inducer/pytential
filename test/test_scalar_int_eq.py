@@ -622,7 +622,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         bc = bind(
                 (point_source, density_discr),
                 sym.normal_derivative(
-                    qbx.ambient_dim, pot_src, where=sym.DEFAULT_TARGET)
+                    qbx.ambient_dim, pot_src, dofdesc=sym.DEFAULT_TARGET)
                 )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     # }}}
@@ -864,8 +864,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     class Result(Record):
         pass
 
+    h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
     return Result(
-            h_max=qbx.h_max,
+            h_max=h_max,
             rel_err_2=rel_err_2,
             rel_err_inf=rel_err_inf,
             rel_td_err_inf=rel_td_err_inf,

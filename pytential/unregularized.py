@@ -87,37 +87,14 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             expansion_factory = DefaultExpansionFactory()
         self.expansion_factory = expansion_factory
 
-        self.debug = debug
-
     @memoize_method
     def weights_and_area_elements(self):
-        import pytential.symbolic.primitives as p
-        from pytential.symbolic.execution import bind
+        from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
-            # quad_stage2_density_discr is not guaranteed to be usable for
-            # interpolation/differentiation. Use density_discr to find
-            # area element instead, then upsample that.
+            waa = bind(self,
+                    sym.weights_and_area_elements(self.ambient_dim))(queue)
 
-            area_element = self.resampler(
-                    queue,
-                    bind(
-                        self.density_discr,
-                        p.area_element(self.ambient_dim, self.dim)
-                        )(queue))
-
-            qweight = bind(self.quad_stage2_density_discr, p.QWeight())(queue)
-
-            return (area_element.with_queue(queue)*qweight).with_queue(None)
-
-    @property
-    def quad_stage2_density_discr(self):
-        return self.density_discr
-
-    def resampler(self, queue, f):
-        return f
-
-    def with_refinement(self):
-        raise NotImplementedError
+            return waa.with_queue(None)
 
     def copy(
             self,
@@ -182,7 +159,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             evt, output_for_each_kernel = p2p(queue,
                     target_discr.nodes(),
-                    self.quad_stage2_density_discr.nodes(),
+                    self.density_discr.nodes(),
                     [strengths], **kernel_args)
 
             result.append((o.name, output_for_each_kernel[o.kernel_index]))
@@ -223,7 +200,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 self.debug)
 
     def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
-
         # {{{ gather unique target discretizations used
 
         target_name_to_index = {}
@@ -236,7 +212,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 continue
 
             target_name_to_index[o.target_name] = len(targets)
-            targets.append(bound_expr.places[o.target_name])
+            targets.append(bound_expr.places.get_geometry(o.target_name))
 
         targets = tuple(targets)
 
@@ -365,11 +341,11 @@ class _FMMGeometryData(object):
 
     @property
     def coord_dtype(self):
-        return self.lpot_source.quad_stage2_density_discr.nodes().dtype
+        return self.lpot_source.density_discr.nodes().dtype
 
     @property
     def ambient_dim(self):
-        return self.lpot_source.quad_stage2_density_discr.ambient_dim
+        return self.lpot_source.density_discr.ambient_dim
 
     @memoize_method
     def traversal(self):
@@ -392,7 +368,7 @@ class _FMMGeometryData(object):
         target_info = self.target_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            nsources = lpot_src.quad_stage2_density_discr.nnodes
+            nsources = lpot_src.density_discr.nnodes
             nparticles = nsources + target_info.ntargets
 
             refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
@@ -402,7 +378,7 @@ class _FMMGeometryData(object):
             MAX_LEAF_REFINE_WEIGHT = 32  # noqa
 
             tree, _ = code_getter.build_tree(queue,
-                    particles=lpot_src.quad_stage2_density_discr.nodes(),
+                    particles=lpot_src.density_discr.nodes(),
                     targets=target_info.targets,
                     max_leaf_refine_weight=MAX_LEAF_REFINE_WEIGHT,
                     refine_weights=refine_weights,
