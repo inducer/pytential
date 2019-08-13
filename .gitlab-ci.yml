@@ -7,7 +7,7 @@
 Python 2.7 POCL:
   script:
   - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=portable
+  - export PYOPENCL_TEST=portable:pthread
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
   - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
@@ -25,7 +25,7 @@ Python 2.7 POCL:
 Python 3 POCL:
   script:
   - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable
+  - export PYOPENCL_TEST=portable:pthread
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
   - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
@@ -45,7 +45,8 @@ Python 3 Intel:
   - export PY_EXE=python3
   - source /opt/enable-intel-cl.sh
   - export PYOPENCL_TEST="intel(r):pu"
-  - export EXTRA_INSTALL="pybind11 numpy scipy mako"
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
@@ -62,7 +63,7 @@ Python 3 POCL Examples:
   script:
   - test -n "$SKIP_EXAMPLES" && exit
   - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable
+  - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="Cython pybind11 numpy mako pyvisfile matplotlib"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-py-project-and-run-examples.sh
   - ". ./build-py-project-and-run-examples.sh"
