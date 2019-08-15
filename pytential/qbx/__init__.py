@@ -78,7 +78,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             expansion_factory=None,
             target_association_tolerance=_not_provided,
 
-            # begin undocumented arguments
+            # begin experimental arguments
             # FIXME default debug=False once everything has matured
             debug=True,
             _refined_for_global_qbx=False,
@@ -90,7 +90,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
             _tree_kind="adaptive",
-            # None means use by default if possible.
             _use_target_specific_qbx=None,
             geometry_data_inspector=None,
             cost_model=None,
@@ -112,9 +111,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
              *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
              *kernel_args* is a set of *(key, value)* tuples with evaluated
              kernel arguments. May not be given if *fmm_order* is given.
+
+        Experimental arguments without a promise of forward compatibility:
+
+        :arg _use_target_specific_qbx: Whether to use target-specific
+            acceleration by default if possible. *None* means
+            "use if possible".
         :arg cost_model: Either *None* or instance of
-             :class:`pytential.qbx.cost.CostModel`, used for gathering modeled
-             costs
+             :class:`~pytential.qbx.cost.CostModel`, used for gathering modeled
+             costs (experimental)
         """
 
         # {{{ argument processing
@@ -555,6 +560,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 queue, insn, bound_expr, evaluate, func, extra_args)
 
     def cost_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+        """Using :attr:`cost_model`, evaluate the cost of executing *insn*.
+        Cost model results are gathered in
+        :attr:`pytential.symbolic.execution.BoundExpression.modeled_cost`
+        along the way.
+
+        :returns: whatever :meth:`exec_compute_potential_insn_fmm` returns.
+        """
+
         if self.fmm_level_to_order is False:
             raise NotImplementedError("perf modeling direct evaluations")
 
@@ -658,6 +671,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """
         :arg fmm_driver: A function that accepts four arguments:
             *wrangler*, *strength*, *geo_data*, *kernel*, *kernel_arguments*
+        :returns: a tuple ``(assignments, extra_outputs)``, where *assignments*
+            is a list of tuples containing pairs ``(name, value)`` representing
+            assignments to be performed in the evaluation context.
+            *extra_outputs* is data that *fmm_driver* may return
+            (such as timing data), passed through unmodified.
         """
         target_name_and_side_to_number, target_discrs_and_qbx_sides = (
                 self.get_target_discrs_and_qbx_sides(insn, bound_expr))

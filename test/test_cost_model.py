@@ -99,9 +99,11 @@ def get_density(queue, lpot_source):
 # }}}
 
 
-# {{{ test timing data gathering
+# {{{ test that timing data gathering can execute succesfully
 
 def test_timing_data_gathering(ctx_getter):
+    """Test that timing data gathering can execute succesfully."""
+
     pytest.importorskip("pyfmmlib")
 
     cl_ctx = ctx_getter()
@@ -132,6 +134,7 @@ def test_timing_data_gathering(ctx_getter):
     (3, False),
     (3, True)))
 def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
+    """Test that cost model gathering can execute successfully."""
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -161,9 +164,10 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
 # }}}
 
 
-# {{{ test cost model parameter gathering
+# {{{ test cost model metadata gathering
 
-def test_cost_model_parameter_gathering(ctx_getter):
+def test_cost_model_metadata_gathering(ctx_getter):
+    """Test that the cost model correctly gathers metadata."""
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -407,6 +411,7 @@ class OpCountingTranslationCostModel(object):
         (3, True,  True)))
 def test_cost_model_correctness(ctx_getter, dim, off_surface,
         use_target_specific_qbx):
+    """Check that computed cost matches that of a constant-one FMM."""
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -496,6 +501,10 @@ CONSTANT_ONE_PARAMS = dict(
 
 
 def test_cost_model_order_varying_by_level(ctx_getter):
+    """For FMM order varying by level, this checks to ensure that the costs are
+    different. The varying-level case should have larger cost.
+    """
+
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -533,9 +542,6 @@ def test_cost_model_order_varying_by_level(ctx_getter):
     cost_varying = cost_constant.with_params(varying_order_params)
 
     # }}}
-
-    # This only checks to ensure that the costs are different. The varying-level
-    # case should have larger cost.
 
     assert (
             sum(cost_varying.get_predicted_times().values())

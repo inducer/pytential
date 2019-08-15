@@ -63,6 +63,9 @@ class PointPotentialSource(PotentialSource):
         An :class:`pyopencl.array.Array` of shape ``[ambient_dim, nnodes]``.
 
     .. attribute:: nnodes
+
+    .. automethod:: cost_model_compute_potential_insn
+    .. automethod:: exec_compute_potential_insn
     """
 
     def __init__(self, cl_context, nodes):
@@ -196,9 +199,9 @@ class LayerPotentialSourceBase(PotentialSource):
 
     .. rubric:: Execution
 
-    .. method:: weights_and_area_elements
-    .. method:: cost_model_compute_potential_insn
-    .. method:: exec_compute_potential_insn
+    .. automethod:: weights_and_area_elements
+    .. automethod:: cost_model_compute_potential_insn
+    .. automethod:: exec_compute_potential_insn
     """
 
     def __init__(self, density_discr):

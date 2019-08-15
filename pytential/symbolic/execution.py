@@ -42,6 +42,11 @@ from pytools import memoize_in
 from pytential import sym
 
 
+__doc__ = """
+.. autoclass :: BoundExpression
+"""
+
+
 # FIXME caches: fix up queues
 
 # {{{ evaluation mapper
@@ -629,6 +634,17 @@ class GeometryCollection(object):
 # {{{ bound expression
 
 class BoundExpression(object):
+    """An expression readied for evaluation by binding it to a
+    :class:`GeometryCollection`.
+
+    .. automethod :: get_modeled_cost
+    .. automethod :: scipy_pop
+    .. automethod :: eval
+    .. automethod :: __call__
+
+    Created by calling :func:`bind`.
+    """
+
     def __init__(self, places, sym_op_expr):
         self.places = places
         self.sym_op_expr = sym_op_expr
@@ -656,6 +672,9 @@ class BoundExpression(object):
             is a scalar.  If *domains* is *None*,
             :class:`~pytential.symbolic.primitives.DEFAULT_TARGET` is required
             to be a key in :attr:`places`.
+        :returns: An object that (mostly) satisfies the
+            :mod:`scipy.linalg.LinearOperator` protocol, except for accepting
+            and returning :clas:`pyopencl.array.Array` arrays.
         """
 
         from pytools.obj_array import is_obj_array
@@ -687,6 +706,17 @@ class BoundExpression(object):
                 arg_name, dtype, total_dofs, starts_and_ends, extra_args)
 
     def eval(self, queue, context=None, timing_data=None):
+        """Evaluate the expression in *self*, using the
+        :clas:`pyopencl.CommandQueue` *queue* and the
+        input variables given in the dictionary *context*.
+
+        :arg timing_data: A dictionary into which timing
+            data will be inserted during evaluation.
+            (experimental)
+        :returns: the value of the expression, as a scalar,
+            :class:`pyopencl.array.Array`, or an object array of these.
+        """
+
         if context is None:
             context = {}
         exec_mapper = EvaluationMapper(
@@ -694,6 +724,13 @@ class BoundExpression(object):
         return self.code.execute(exec_mapper)
 
     def __call__(self, queue, **args):
+        """Evaluate the expression in *self*, using the
+        :clas:`pyopencl.CommandQueue` *queue* and the
+        input variables given in the dictionary *context*.
+
+        :returns: the value of the expression, as a scalar,
+            :class:`pyopencl.array.Array`, or an object array of these.
+        """
         return self.eval(queue, args)
 
 
@@ -704,6 +741,11 @@ def bind(places, expr, auto_where=None):
         constructor can also be used.
     :arg auto_where: for simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.
+    :arg expr: one or multiple expressions consisting of primitives
+        form :mod:`pytential.symbolic.primitives` (aka :mod:`pytential.sym`).
+        Multiple expressions can be combined into one object to pass here
+        in the form of a :mod:`numpy` object array
+    :returns: a :class:`BoundExpression`
     """
 
     if not isinstance(places, GeometryCollection):
