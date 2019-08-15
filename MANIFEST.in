@@ -1,5 +1,8 @@
 include test/*.py
+include test/*.step
+
 include examples/*.py
+include examples/geometries/*step
 
 include doc/*.rst
 include doc/Makefile
