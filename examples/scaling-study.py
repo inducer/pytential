@@ -117,8 +117,8 @@ def timing_run(nx, ny, visualize=False):
     loc_sign = +1
 
     k_sym = sym.var("k")
-    S_sym = sym.S(kernel, inv_sqrt_w_sigma, k=k, qbx_forced_limit=+1)
-    D_sym = sym.D(kernel, inv_sqrt_w_sigma, k=k, qbx_forced_limit="avg")
+    S_sym = sym.S(kernel, inv_sqrt_w_sigma, k=k_sym, qbx_forced_limit=+1)
+    D_sym = sym.D(kernel, inv_sqrt_w_sigma, k=k_sym, qbx_forced_limit="avg")
     bdry_op_sym = -loc_sign*0.5*sigma_sym + sqrt_w*(alpha*S_sym + D_sym)
 
     # }}}
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     from pytools.convergence import EOCRecorder
     eoc = EOCRecorder()
 
-    for k, (nx, ny) in enumerate(grid_sizes):
+    for nx, ny in grid_sizes:
         npoints, t_elapsed = timing_run(nx, ny)
         eoc.add_data_point(npoints, t_elapsed)
     print(eoc.pretty_print(
