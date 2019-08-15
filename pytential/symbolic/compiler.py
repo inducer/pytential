@@ -533,33 +533,6 @@ class OperatorCompiler(IdentityMapper):
 
     # }}}
 
-    # def map_common_subexpression(self, expr):
-    #     from pytential import sym
-    #     if expr.scope != sym.cse_scope.EXPRESSION:
-    #         from warnings import warn
-    #         warn("mishandling CSE scope")
-    #     try:
-    #         return self.expr_to_var[expr.child]
-    #     except KeyError:
-    #         priority = getattr(expr, "priority", 0)
-
-    #         from pytential.symbolic.primitives import IntG
-    #         if isinstance(expr.child, IntG):
-    #             # We need to catch operators here and
-    #             # treat them specially. They get assigned to their
-    #             # own variable by default, which would mean the
-    #             # CSE prefix would be omitted.
-
-    #             rec_child = self.rec(expr.child, name_hint=expr.prefix)
-    #         else:
-    #             rec_child = self.rec(expr.child)
-
-    #         cse_var = self.assign_to_new_var(rec_child,
-    #                 priority=priority, prefix=expr.prefix)
-
-    #         self.expr_to_var[expr.child] = cse_var
-    #         return cse_var
-
     def make_assign(self, name, expr, priority):
         return Assign(names=[name], exprs=[expr],
                 dep_mapper_factory=self.dep_mapper_factory,

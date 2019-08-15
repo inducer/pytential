@@ -1059,6 +1059,18 @@ def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
 
 
 @_deprecate_kwargs('where', 'dofdesc')
+def interleaved_expansion_centers(ambient_dim, dim=None, dofdesc=None):
+    dofdesc = as_dofdesc(dofdesc)
+    centers = [
+            expansion_centers(ambient_dim, -1, dim=dim, dofdesc=dofdesc),
+            expansion_centers(ambient_dim, +1, dim=dim, dofdesc=dofdesc)
+            ]
+
+    target = dofdesc.copy(granularity=GRANULARITY_CENTER)
+    return interp(dofdesc, target, centers)
+
+
+@_deprecate_kwargs('where', 'dofdesc')
 def h_max(ambient_dim, dim=None, dofdesc=None):
     """Defines a maximum element size in the discretization."""
 

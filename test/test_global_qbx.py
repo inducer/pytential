@@ -264,9 +264,6 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
             fine_order=order).with_refinement()
     del discr
 
-    from pytential.qbx.utils import get_interleaved_centers
-    centers = np.array([ax.get(queue)
-            for ax in get_interleaved_centers(queue, lpot_source)])
 
     # }}}
 
@@ -277,6 +274,10 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     from pyopencl.clrandom import PhiloxGenerator
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
+
+    centers = bind(places,
+            sym.interleaved_expansion_centers(lpot_source.ambient_dim))(queue)
+    centers = np.array([ax.get(queue) for ax in centers])
 
     nsources = lpot_source.density_discr.nnodes
     noise = rng.uniform(queue, nsources, dtype=np.float, a=0.01, b=1.0)

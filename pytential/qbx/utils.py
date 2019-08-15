@@ -81,16 +81,9 @@ def get_interleaved_centers(queue, places, dofdesc=None):
     discr = places.get_discretization(dofdesc)
 
     from pytential import bind, sym
-    int_centers = bind(places, sym.expansion_centers(
-        discr.ambient_dim, -1,
-        dofdesc=dofdesc))(queue)
-    ext_centers = bind(places, sym.expansion_centers(
-        discr.ambient_dim, +1,
-        dofdesc=dofdesc))(queue)
-
-    from pytential.symbolic.dof_connection import CenterGranularityConnection
-    interleaver = CenterGranularityConnection(discr)
-    return interleaver(queue, [int_centers, ext_centers])
+    return bind(places,
+            sym.interleaved_expansion_centers(discr.ambient_dim),
+            auto_where=dofdesc)(queue)
 
 # }}}
 
@@ -109,13 +102,10 @@ def get_interleaved_radii(queue, places, dofdesc=None):
     discr = places.get_discretization(dofdesc)
 
     from pytential import bind, sym
-    radii = bind(places, sym.expansion_radii(
-        discr.ambient_dim,
-        dofdesc=dofdesc))(queue)
-
-    from pytential.symbolic.dof_connection import CenterGranularityConnection
-    interleaver = CenterGranularityConnection(discr)
-    return interleaver(queue, radii)
+    return bind(places, sym.expansion_radii(
+                discr.ambient_dim,
+                granularity=sym.GRANULARITY_CENTER),
+            auto_where=dofdesc)(queue)
 
 # }}}
 

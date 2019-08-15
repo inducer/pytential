@@ -103,11 +103,9 @@ def timing_run(nx, ny, visualize=False):
     from sumpy.kernel import HelmholtzKernel
     kernel = HelmholtzKernel(2)
 
-    cse = sym.cse
-
     sigma_sym = sym.var("sigma")
     sqrt_w = sym.sqrt_jac_q_weight(2)
-    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
+    inv_sqrt_w_sigma = sym.cse(sigma_sym/sqrt_w)
 
     # Brakhage-Werner parameter
     alpha = 1j
@@ -144,10 +142,11 @@ def timing_run(nx, ny, visualize=False):
 
     print("FMM WARM-UP RUN 1: %d elements" % mesh.nelements)
     bound_op(queue, sigma=sigma, k=k)
+    queue.finish()
+
     print("FMM WARM-UP RUN 2: %d elements" % mesh.nelements)
     bound_op(queue, sigma=sigma, k=k)
     queue.finish()
-    print("FMM TIMING RUN:    %d elements" % mesh.nelements)
 
     from time import time
     t_start = time()
@@ -156,7 +155,7 @@ def timing_run(nx, ny, visualize=False):
     t_end = time()
 
     elapsed = t_end - t_start
-    print("FMM TIMING RUN DONE: %d elements -> %g s"
+    print("FMM TIMING RUN:    %d elements -> %g s"
             % (mesh.nelements, elapsed))
 
     if visualize:

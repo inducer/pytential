@@ -224,12 +224,14 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_interpolation(self, expr):
         operand = self.rec(expr.operand)
 
-        if isinstance(operand, cl.array.Array):
+        if isinstance(operand, (cl.array.Array, list)):
             from pytential.symbolic.dof_connection import connection_from_dds
+            conn = connection_from_dds(self.places, expr.from_dd, expr.to_dd)
 
-            conn = connection_from_dds(self.places,
-                    expr.from_dd, expr.to_dd)
-            return conn(self.queue, operand).with_queue(self.queue)
+            if isinstance(operand, list):
+                return conn(self.queue, operand)
+            else:
+                return conn(self.queue, operand).with_queue(self.queue)
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand
         else:
