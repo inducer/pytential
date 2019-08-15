@@ -893,7 +893,8 @@ def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
     mapping stretches the bi-unit (i.e. :math:`[-1,1]`) reference
     element along any axis.
 
-    Returns a DOF vector that is elementwise constant.
+    If *map_elementwise_max* is True, returns a DOF vector that is elementwise
+    constant.
     """
 
     if dim is None:
@@ -986,6 +987,12 @@ def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     """This measures the quadrature resolution across the
     mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
     should be the same as the panel length.
+
+    In multiple dimensions (i.e. with multiple quadrature resolutions
+    depending on direction), this measure returns the coarsest of these resolution,
+    is invariant with respect to rotation of the global coordinate
+    system, and invariant with respect to vertex ordering of the reference
+    element.
     """
 
     from_dd = as_dofdesc(dofdesc)

@@ -49,7 +49,6 @@ logger = logging.getLogger(__name__)
 
 # {{{ evaluation mapper
 
-
 def mesh_el_view(mesh, group_nr, global_array):
     """Return a view of *global_array* of shape
     ``(..., mesh.groups[group_nr].nelements)``
@@ -152,11 +151,11 @@ class EvaluationMapper(EvaluationMapperBase):
         assert operand.shape == (discr.nnodes,)
 
         granularity = expr.dofdesc.granularity
-        if granularity == sym.GRANULARITY_NODE:
+        if granularity is sym.GRANULARITY_NODE:
             return _reduce(discr.nnodes,
                     node_knl(),
                     lambda g, x: discr.groups[g].view(x))
-        elif granularity == sym.GRANULARITY_ELEMENT:
+        elif granularity is sym.GRANULARITY_ELEMENT:
             return _reduce(discr.mesh.nelements,
                     element_knl(),
                     lambda g, x: mesh_el_view(discr.mesh, g, x))
@@ -427,7 +426,7 @@ def _prepare_expr(places, expr, auto_where=None):
 # }}}
 
 
-# {{{ bound expression
+# {{{ geometry collection
 
 class GeometryCollection(object):
     """A mapping from symbolic identifiers ("place IDs", typically strings)
@@ -570,11 +569,15 @@ class GeometryCollection(object):
         return self.caches.setdefault(name, {})
 
     def __repr__(self):
-        return repr(self.places)
+        return "%s(%s)" % (type(self).__name__, repr(self.places))
 
     def __str__(self):
-        return str(self.places)
+        return "%s(%s)" % (type(self).__name__, str(self.places))
 
+# }}}
+
+
+# {{{ bound expression
 
 class BoundExpression(object):
     def __init__(self, places, sym_op_expr):
