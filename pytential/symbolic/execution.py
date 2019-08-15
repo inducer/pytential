@@ -206,7 +206,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 .with_queue(self.queue)
 
     def map_inverse(self, expr):
-        bound_op_cache = self.bound_expr.get_cache("bound_op")
+        bound_op_cache = self.bound_expr.places.get_cache("bound_op")
 
         try:
             bound_op = bound_op_cache[expr]
@@ -652,9 +652,6 @@ class BoundExpression(object):
 
         from pytential.symbolic.compiler import OperatorCompiler
         self.code = OperatorCompiler(self.places)(sym_op_expr)
-
-    def get_cache(self, name):
-        return self.places.get_cache(name)
 
     def get_discretization(self, where):
         return self.places.get_discretization(where)
