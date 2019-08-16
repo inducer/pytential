@@ -200,9 +200,9 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
         direct_density_discr = direct_qbx.density_discr
         direct_sigma = direct_density_discr.zeros(queue) + 1
 
-        where = ('direct-qbx', 'target')
-        direct_fld_in_vol = bind(places, op, auto_where=where)(queue,
-                sigma=direct_sigma)
+        direct_fld_in_vol = bind(places, op,
+                auto_where=('direct-qbx', 'target'))(
+                        queue, sigma=direct_sigma)
     except QBXTargetAssociationFailedException as e:
         fplot.show_scalar_in_matplotlib(e.failed_target_flags.get(queue))
         import matplotlib.pyplot as pt
@@ -212,9 +212,9 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     fmm_density_discr = fmm_qbx.density_discr
     fmm_sigma = fmm_density_discr.zeros(queue) + 1
 
-    where = ('fmm-qbx', 'target')
-    fmm_fld_in_vol = bind(places, op, auto_where=where)(queue,
-            sigma=fmm_sigma)
+    fmm_fld_in_vol = bind(places, op,
+            auto_where=('fmm-qbx', 'target'))(
+                    queue, sigma=fmm_sigma)
 
     err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
 
@@ -273,10 +273,12 @@ def test_unregularized_with_ones_kernel(ctx_factory):
     sigma.fill(1)
     sigma.finish()
 
-    where = places.auto_where
-    result_self = bind(places, op, auto_where=where)(queue, sigma=sigma)
-    where = (where[0], 'target-non-self')
-    result_nonself = bind(places, op, auto_where=where)(queue, sigma=sigma)
+    result_self = bind(places, op,
+            auto_where=places.auto_where)(
+                    queue, sigma=sigma)
+    result_nonself = bind(places, op,
+            auto_where=(places.auto_source, 'target-non-self'))(
+                    queue, sigma=sigma)
 
     assert np.allclose(result_self.get(), 2 * np.pi)
     assert np.allclose(result_nonself.get(), 2 * np.pi)
@@ -289,6 +291,8 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
     nelements = 300
     target_order = 8
     fmm_order = 4
+
+    # {{{ geometry
 
     mesh = make_curve_mesh(WobblyCircle.random(8, seed=30),
                 np.linspace(0, 1, nelements+1),
@@ -313,18 +317,34 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=100)
     from pytential.target import PointsTarget
     ptarget = PointsTarget(fplot.points)
-    from sumpy.kernel import LaplaceKernel
 
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection({
+        'unregularized-direct': direct,
+        'unregularized-fmm': fmm,
+        'targets': ptarget})
+
+    # }}}
+
+    # {{{ check
+
+    from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
 
-    direct_fld_in_vol = bind((direct, ptarget), op)(queue, sigma=sigma)
-    fmm_fld_in_vol = bind((fmm, ptarget), op)(queue, sigma=sigma)
+    direct_fld_in_vol = bind(places, op,
+            auto_where=('unregularized-direct', 'targets'))(
+                    queue, sigma=sigma)
+    fmm_fld_in_vol = bind(places, op,
+            auto_where=('unregularized-fmm', 'targets'))(queue, sigma=sigma)
 
     err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
 
     linf_err = cl.array.max(err).get()
     print("l_inf error:", linf_err)
+
     assert linf_err < 5e-3
+
+    # }}}
 
 # }}}
 

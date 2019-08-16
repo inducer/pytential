@@ -300,6 +300,9 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
                 fmm_backend=fmm_backend,
                 ).with_refinement()
 
+        from pytential.symbolic.execution import GeometryCollection
+        places = GeometryCollection(qbx)
+
         density_discr = qbx.density_discr
         nodes = density_discr.nodes().with_queue(queue)
         r = cl.clmath.sqrt(nodes[0]**2 + nodes[1]**2 + nodes[2]**2)
@@ -314,18 +317,18 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         # {{{ single layer
 
-        s_sigma_op = bind(qbx, sym.S(lap_knl, sym.var("sigma"), qbx_forced_limit=+1))
+        s_sigma_op = bind(places, sym.S(lap_knl, sym.var("sigma"), qbx_forced_limit=+1))
         s_sigma = s_sigma_op(queue=queue, sigma=ymn)
         s_eigval = 1/(2*mode_n + 1)
 
-        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
         s_eoc_rec.add_data_point(h_max, rel_err(s_sigma, s_eigval*ymn))
 
         # }}}
 
         # {{{ double layer
 
-        d_sigma_op = bind(qbx,
+        d_sigma_op = bind(places,
                 sym.D(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         d_sigma = d_sigma_op(queue=queue, sigma=ymn)
         d_eigval = -1/(2*(2*mode_n + 1))
@@ -335,7 +338,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         # {{{ S'
 
-        sp_sigma_op = bind(qbx,
+        sp_sigma_op = bind(places,
                  sym.Sp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         sp_sigma = sp_sigma_op(queue=queue, sigma=ymn)
         sp_eigval = -1/(2*(2*mode_n + 1))
@@ -346,7 +349,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         # {{{ D'
 
-        dp_sigma_op = bind(qbx,
+        dp_sigma_op = bind(places,
                 sym.Dp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
         dp_sigma = dp_sigma_op(queue=queue, sigma=ymn)
         dp_eigval = -(mode_n*(mode_n+1))/(2*mode_n + 1)

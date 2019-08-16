@@ -47,6 +47,11 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 
+try:
+    import matplotlib.pyplot as pt
+except ImportError:
+    pass
+
 
 def _build_geometry(queue,
         ambient_dim=2,
@@ -221,12 +226,15 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
             fmm_order=False).with_refinement()
     density_discr = qbx.density_discr
 
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(qbx)
+
     op, u_sym, knl_kwargs = _build_op(lpot_id, k=k)
     from pytential import bind
-    bound_op = bind(qbx, op)
+    bound_op = bind(places, op)
 
     from pytential.symbolic.execution import build_matrix
-    mat = build_matrix(queue, qbx, op, u_sym).get()
+    mat = build_matrix(queue, places, op, u_sym).get()
 
     if visualize:
         from sumpy.tools import build_matrix as build_matrix_via_matvec
@@ -235,7 +243,6 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
         print(la.norm((mat - mat2).real, "fro") / la.norm(mat2.real, "fro"),
               la.norm((mat - mat2).imag, "fro") / la.norm(mat2.imag, "fro"))
 
-        import matplotlib.pyplot as pt
         pt.subplot(121)
         pt.imshow(np.log10(np.abs(1.0e-20 + (mat - mat2).real)))
         pt.colorbar()
@@ -245,7 +252,6 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
         pt.show()
 
     if visualize:
-        import matplotlib.pyplot as pt
         pt.subplot(121)
         pt.imshow(mat.real)
         pt.colorbar()
@@ -351,7 +357,6 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i)
             mat_full[np.ix_(itgt, isrc)] = index_set.take(mat, i)
 
-        import matplotlib.pyplot as mp
         _, (ax1, ax2) = mp.subplots(1, 2,
                 figsize=(10, 8), dpi=300, constrained_layout=True)
         ax1.imshow(blk_full)
@@ -434,7 +439,6 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i)
             mat_full[np.ix_(itgt, isrc)] = index_set.take(mat, i)
 
-        import matplotlib.pyplot as mp
         _, (ax1, ax2) = mp.subplots(1, 2,
                 figsize=(10, 8), constrained_layout=True)
         ax1.imshow(mat_full)
