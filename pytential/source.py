@@ -27,6 +27,7 @@ import numpy as np  # noqa: F401
 import pyopencl as cl  # noqa: F401
 import six
 from pytools import memoize_method
+from sumpy.fmm import UnableToCollectTimingData
 
 
 __doc__ = """
@@ -62,6 +63,9 @@ class PointPotentialSource(PotentialSource):
         An :class:`pyopencl.array.Array` of shape ``[ambient_dim, nnodes]``.
 
     .. attribute:: nnodes
+
+    .. automethod:: cost_model_compute_potential_insn
+    .. automethod:: exec_compute_potential_insn
     """
 
     def __init__(self, cl_context, nodes):
@@ -123,7 +127,18 @@ class PointPotentialSource(PotentialSource):
 
         return p2p
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def cost_model_compute_potential_insn(self, queue, insn, bound_expr,
+                                          evaluate, costs):
+        raise NotImplementedError
+
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
+        if return_timing_data:
+            from warnings import warn
+            warn(
+                   "Timing data collection not supported.",
+                   category=UnableToCollectTimingData)
+
         p2p = None
 
         kernel_args = {}
@@ -147,7 +162,8 @@ class PointPotentialSource(PotentialSource):
 
             result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
-        return result
+        timing_data = {}
+        return result, timing_data
 
     @memoize_method
     def weights_and_area_elements(self):
@@ -183,8 +199,9 @@ class LayerPotentialSourceBase(PotentialSource):
 
     .. rubric:: Execution
 
-    .. method:: weights_and_area_elements
-    .. method:: exec_compute_potential_insn
+    .. automethod:: weights_and_area_elements
+    .. automethod:: cost_model_compute_potential_insn
+    .. automethod:: exec_compute_potential_insn
     """
 
     def __init__(self, density_discr):

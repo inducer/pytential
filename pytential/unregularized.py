@@ -108,7 +108,15 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 density_discr=density_discr or self.density_discr,
                 debug=debug if debug is not None else self.debug)
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
+        if return_timing_data:
+            from warnings import warn
+            from pytential.source import UnableToCollectTimingData
+            warn(
+                   "Timing data collection not supported.",
+                   category=UnableToCollectTimingData)
+
         from pytools.obj_array import with_object_array_or_scalar
 
         def evaluate_wrapper(expr):
@@ -164,7 +172,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
-        return result
+        timing_data = {}
+        return result, timing_data
 
     # {{{ fmm-based execution
 
@@ -246,8 +255,9 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         from boxtree.fmm import drive_fmm
+        timing_data = {}
         all_potentials_on_every_tgt = drive_fmm(
-                geo_data.traversal(), wrangler, strengths)
+                geo_data.traversal(), wrangler, strengths, timing_data)
 
         # {{{ postprocess fmm
 
@@ -264,7 +274,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        return result
+        return result, timing_data
 
     # }}}
 

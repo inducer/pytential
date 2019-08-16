@@ -3,6 +3,8 @@
 
 import os
 from setuptools import setup, find_packages
+from setuptools.extension import Extension
+from Cython.Build import cythonize
 
 
 # {{{ capture git revision at install time
@@ -54,6 +56,21 @@ write_git_revision("pytential")
 # }}}
 
 
+ext_modules = [
+        Extension(
+            "pytential.qbx.target_specific.impl",
+            sources=[
+                "pytential/qbx/target_specific/impl.pyx",
+                "pytential/qbx/target_specific/helmholtz_utils.c"],
+            depends=[
+                "pytential/qbx/target_specific/impl.h",
+                "pytential/qbx/target_specific/helmholtz_utils.h"],
+            extra_compile_args=["-Wall", "-fopenmp", "-Ofast"],
+            extra_link_args=["-fopenmp"]
+        ),
+]
+
+
 version_dict = {}
 init_filename = "pytential/version.py"
 os.environ["AKPYTHON_EXEC_FROM_WITHIN_WITHIN_SETUP_PY"] = "1"
@@ -90,6 +107,8 @@ setup(name="pytential",
           ],
 
       packages=find_packages(),
+
+      ext_modules=cythonize(ext_modules),
 
       install_requires=[
           "pytest>=2.3",

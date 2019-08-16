@@ -28,5 +28,10 @@ Fast multipole driver
 
 .. automodule:: pytential.qbx.fmm
 
+Cost model
+----------
+
+.. automodule:: pytential.qbx.cost
+
 
 .. vim: sw=4:tw=75

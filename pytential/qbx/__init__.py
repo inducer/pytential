@@ -78,7 +78,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             expansion_factory=None,
             target_association_tolerance=_not_provided,
 
-            # begin undocumented arguments
+            # begin experimental arguments
             # FIXME default debug=False once everything has matured
             debug=True,
             _refined_for_global_qbx=False,
@@ -90,7 +90,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
             _tree_kind="adaptive",
+            _use_target_specific_qbx=None,
             geometry_data_inspector=None,
+            cost_model=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
         """
@@ -109,6 +111,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
              *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
              *kernel_args* is a set of *(key, value)* tuples with evaluated
              kernel arguments. May not be given if *fmm_order* is given.
+
+        Experimental arguments without a promise of forward compatibility:
+
+        :arg _use_target_specific_qbx: Whether to use target-specific
+            acceleration by default if possible. *None* means
+            "use if possible".
+        :arg cost_model: Either *None* or instance of
+             :class:`~pytential.qbx.cost.CostModel`, used for gathering modeled
+             costs (experimental)
         """
 
         # {{{ argument processing
@@ -210,7 +221,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._from_sep_smaller_min_nsources_cumul = \
                 _from_sep_smaller_min_nsources_cumul
         self._tree_kind = _tree_kind
+        self._use_target_specific_qbx = _use_target_specific_qbx
         self.geometry_data_inspector = geometry_data_inspector
+
+        if cost_model is None:
+            from pytential.qbx.cost import CostModel
+            cost_model = CostModel()
+
+        self.cost_model = cost_model
 
         # /!\ *All* parameters set here must also be set by copy() below,
         # otherwise they will be reset to their default values behind your
@@ -232,7 +250,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _tree_kind=None,
+            _use_target_specific_qbx=_not_provided,
             geometry_data_inspector=None,
+            cost_model=_not_provided,
             fmm_backend=None,
 
             debug=_not_provided,
@@ -314,8 +334,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _from_sep_smaller_min_nsources_cumul=(
                     self._from_sep_smaller_min_nsources_cumul),
                 _tree_kind=_tree_kind or self._tree_kind,
+                _use_target_specific_qbx=(_use_target_specific_qbx
+                    if _use_target_specific_qbx is not _not_provided
+                    else self._use_target_specific_qbx),
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
+                cost_model=(
+                    # None is a valid value here
+                    cost_model
+                    if cost_model is not _not_provided
+                    else self.cost_model),
                 fmm_backend=fmm_backend or self.fmm_backend,
                 **kwargs)
 
@@ -506,19 +534,67 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ internal functionality for execution
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
-        if not self._refined_for_global_qbx:
-            from warnings import warn
-            warn(
-                "Executing global QBX without refinement. "
-                "This is unlikely to work.")
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
+        extra_args = {}
 
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
+            extra_args["return_timing_data"] = return_timing_data
+
         else:
             func = self.exec_compute_potential_insn_fmm
 
-        return func(queue, insn, bound_expr, evaluate)
+            def drive_fmm(wrangler, strengths, geo_data, kernel, kernel_arguments):
+                del geo_data, kernel, kernel_arguments
+                from pytential.qbx.fmm import drive_fmm
+                if return_timing_data:
+                    timing_data = {}
+                else:
+                    timing_data = None
+                return drive_fmm(wrangler, strengths, timing_data), timing_data
+
+            extra_args["fmm_driver"] = drive_fmm
+
+        return self._dispatch_compute_potential_insn(
+                queue, insn, bound_expr, evaluate, func, extra_args)
+
+    def cost_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+        """Using :attr:`cost_model`, evaluate the cost of executing *insn*.
+        Cost model results are gathered in
+        :attr:`pytential.symbolic.execution.BoundExpression.modeled_cost`
+        along the way.
+
+        :returns: whatever :meth:`exec_compute_potential_insn_fmm` returns.
+        """
+
+        if self.fmm_level_to_order is False:
+            raise NotImplementedError("perf modeling direct evaluations")
+
+        def drive_cost_model(
+                    wrangler, strengths, geo_data, kernel, kernel_arguments):
+            del strengths
+            cost_model_result = (
+                    self.cost_model(wrangler, geo_data, kernel, kernel_arguments))
+            return wrangler.full_output_zeros(), cost_model_result
+
+        return self._dispatch_compute_potential_insn(
+                queue, insn, bound_expr, evaluate,
+                self.exec_compute_potential_insn_fmm,
+                extra_args={"fmm_driver": drive_cost_model})
+
+    def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
+            evaluate, func, extra_args=None):
+        if not self._refined_for_global_qbx:
+            from warnings import warn
+            warn(
+                    "Executing global QBX without refinement. "
+                    "This is unlikely to work.")
+
+        if extra_args is None:
+            extra_args = {}
+
+        return func(queue, insn, bound_expr, evaluate, **extra_args)
 
     @property
     @memoize_method
@@ -562,18 +638,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             raise ValueError("invalid FMM backend: %s" % self.fmm_backend)
 
-    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
-        # {{{ build list of unique target discretizations used
-
+    def get_target_discrs_and_qbx_sides(self, insn, bound_expr):
+        """Build the list of unique target discretizations used by the
+        provided instruction.
+        """
         # map (name, qbx_side) to number in list
-        tgt_name_and_side_to_number = {}
+        target_name_and_side_to_number = {}
         # list of tuples (discr, qbx_side)
         target_discrs_and_qbx_sides = []
 
         for o in insn.outputs:
             key = (o.target_name, o.qbx_forced_limit)
-            if key not in tgt_name_and_side_to_number:
-                tgt_name_and_side_to_number[key] = \
+            if key not in target_name_and_side_to_number:
+                target_name_and_side_to_number[key] = \
                         len(target_discrs_and_qbx_sides)
 
                 target_discr = bound_expr.places.get_geometry(o.target_name)
@@ -587,13 +664,23 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_discrs_and_qbx_sides.append(
                         (target_discr, qbx_forced_limit))
 
-        target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
+        return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
-        # }}}
+    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate,
+            fmm_driver):
+        """
+        :arg fmm_driver: A function that accepts four arguments:
+            *wrangler*, *strength*, *geo_data*, *kernel*, *kernel_arguments*
+        :returns: a tuple ``(assignments, extra_outputs)``, where *assignments*
+            is a list of tuples containing pairs ``(name, value)`` representing
+            assignments to be performed in the evaluation context.
+            *extra_outputs* is data that *fmm_driver* may return
+            (such as timing data), passed through unmodified.
+        """
+        target_name_and_side_to_number, target_discrs_and_qbx_sides = (
+                self.get_target_discrs_and_qbx_sides(insn, bound_expr))
 
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
-
-        # geo_data.plot()
 
         # FIXME Exert more positive control over geo_data attribute lifetimes using
         # geo_data.<method>.clear_cache(geo_data).
@@ -606,7 +693,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
-
         out_kernels = tuple(knl for knl in insn.kernels)
         fmm_kernel = self.get_fmm_kernel(out_kernels)
         output_and_expansion_dtype = (
@@ -622,14 +708,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         self.qbx_order,
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
-                        kernel_extra_kwargs=kernel_extra_kwargs)
+                        kernel_extra_kwargs=kernel_extra_kwargs,
+                        _use_target_specific_qbx=self._use_target_specific_qbx)
 
         from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)
                 == target_state.FAILED).any().get():
             raise RuntimeError("geometry has failed targets")
 
-        # {{{ performance data hook
+        # {{{ geometry data inspection hook
 
         if self.geometry_data_inspector is not None:
             perform_fmm = self.geometry_data_inspector(insn, bound_expr, geo_data)
@@ -638,26 +725,23 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        # {{{ execute global QBX
-
-        from pytential.qbx.fmm import drive_fmm
-        all_potentials_on_every_tgt = drive_fmm(wrangler, strengths)
-
-        # }}}
+        # Execute global QBX.
+        all_potentials_on_every_target, extra_outputs = (
+                fmm_driver(
+                    wrangler, strengths, geo_data, fmm_kernel, kernel_extra_kwargs))
 
         result = []
 
         for o in insn.outputs:
-            tgt_side_number = tgt_name_and_side_to_number[
+            target_side_number = target_name_and_side_to_number[
                     o.target_name, o.qbx_forced_limit]
-            tgt_slice = slice(*geo_data.target_info().target_discr_starts[
-                    tgt_side_number:tgt_side_number+2])
+            target_slice = slice(*geo_data.target_info().target_discr_starts[
+                    target_side_number:target_side_number+2])
 
-            result.append(
-                    (o.name,
-                        all_potentials_on_every_tgt[o.kernel_index][tgt_slice]))
+            result.append((o.name,
+                    all_potentials_on_every_target[o.kernel_index][target_slice]))
 
-        return result
+        return result, extra_outputs
 
     # }}}
 
@@ -715,7 +799,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         *count = item;
                     """)
 
-    def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
+        if return_timing_data:
+            from pytential.source import UnableToCollectTimingData
+            from warnings import warn
+            warn(
+                    "Timing data collection not supported.",
+                    category=UnableToCollectTimingData)
+
         lpot_applier = self.get_lpot_applier(insn.kernels)
         p2p = None
         lpot_applier_on_tgt_subset = None
@@ -826,7 +918,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
-        return result
+        timing_data = {}
+        return result, timing_data
 
     # }}}
 
