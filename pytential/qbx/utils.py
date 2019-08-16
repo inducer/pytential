@@ -158,12 +158,17 @@ class TreeCodeContainerMixin(object):
 
 class TreeWranglerBase(object):
 
-    def __init__(self, code_container, queue):
+    def __init__(self, code_container, queue, places=None):
         self.code_container = code_container
         self.queue = queue
+        self.places = places
 
     def build_tree(self, lpot_source, targets_list=(),
                    use_stage2_discr=False):
+        from pytential.qbx import QBXLayerPotentialSource
+        if not isinstance(lpot_source, QBXLayerPotentialSource):
+            lpot_source = self.places.get_geometry(lpot_source)
+
         tb = self.code_container.build_tree()
         plfilt = self.code_container.particle_list_filter()
         from pytential.qbx.utils import build_tree_with_qbx_metadata

@@ -365,7 +365,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
     .. method:: m2l_rotation_angles()
     """
 
-    def __init__(self, code_getter, lpot_source,
+    def __init__(self, places, source_name,
+            code_getter,
             target_discrs_and_qbx_sides,
             target_association_tolerance,
             tree_kind, debug):
@@ -381,10 +382,12 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             potentially costly self-checks
         """
 
+        self.places = places
+        self.source_name = source_name
+        self.lpot_source = places.get_geometry(self.source_name)
+
         self.code_getter = code_getter
-        self.lpot_source = lpot_source
-        self.target_discrs_and_qbx_sides = \
-                target_discrs_and_qbx_sides
+        self.target_discrs_and_qbx_sides = target_discrs_and_qbx_sides
         self.target_association_tolerance = target_association_tolerance
         self.tree_kind = tree_kind
         self.debug = debug
@@ -395,7 +398,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
     @property
     def coord_dtype(self):
-        return self.lpot_source.quad_stage2_density_discr.nodes().dtype
+        return self.lpot_source.density_discr.nodes().dtype
 
     # {{{ centers/radii
 
@@ -409,13 +412,14 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         ``coord_t [ambient_dim][ncenters]``
         """
+        from pytential import bind, sym
+        from pytools.obj_array import make_obj_array
 
         with cl.CommandQueue(self.cl_context) as queue:
-            from pytential.qbx.utils import get_interleaved_centers
-            from pytools.obj_array import make_obj_array
-            return make_obj_array([
-                ccomp.with_queue(None)
-                for ccomp in get_interleaved_centers(queue, self.lpot_source)])
+            centers = bind(self.places, sym.interleaved_expansion_centers(
+                self.lpot_source.ambient_dim),
+                auto_where=self.source_name)(queue)
+            return make_obj_array([ax.with_queue(None) for ax in centers])
 
     @memoize_method
     def expansion_radii(self):
@@ -424,9 +428,13 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         ``coord_t [ncenters]``
         """
+        from pytential import bind, sym
+
         with cl.CommandQueue(self.cl_context) as queue:
-            from pytential.qbx.utils import get_interleaved_radii
-            return get_interleaved_radii(queue, self.lpot_source)
+            return bind(self.places, sym.expansion_radii(
+                self.lpot_source.ambient_dim,
+                granularity=sym.GRANULARITY_CENTER),
+                auto_where=self.source_name)(queue)
 
     # }}}
 
@@ -752,10 +760,10 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
             target_association_wrangler = (
                     self.lpot_source.target_association_code_container
-                    .get_wrangler(queue))
+                    .get_wrangler(queue, self.places))
 
             tgt_assoc_result = associate_targets_to_qbx_centers(
-                    self.lpot_source,
+                    self.source_name,
                     target_association_wrangler,
                     target_discrs_and_qbx_sides,
                     target_association_tolerance=(

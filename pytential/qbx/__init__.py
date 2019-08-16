@@ -463,7 +463,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ internal API
 
     @memoize_method
-    def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
+    def qbx_fmm_geometry_data(self, places, source_name,
+            target_discrs_and_qbx_sides):
         """
         :arg target_discrs_and_qbx_sides:
             a tuple of *(discr, qbx_forced_limit)*
@@ -475,8 +476,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """
         from pytential.qbx.geometry import QBXFMMGeometryData
 
-        return QBXFMMGeometryData(self.qbx_fmm_code_getter,
-                self, target_discrs_and_qbx_sides,
+        return QBXFMMGeometryData(places, source_name,
+                self.qbx_fmm_code_getter,
+                target_discrs_and_qbx_sides,
                 target_association_tolerance=self.target_association_tolerance,
                 tree_kind=self._tree_kind,
                 debug=self.debug)
@@ -591,7 +593,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
+        geo_data = self.qbx_fmm_geometry_data(
+                bound_expr.places,
+                insn.source,
+                target_discrs_and_qbx_sides)
 
         # geo_data.plot()
 
@@ -773,10 +778,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 if qbx_forced_limit is None:
                     qbx_forced_limit = 0
 
+                target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
                 geo_data = self.qbx_fmm_geometry_data(
-                        target_discrs_and_qbx_sides=(
-                            (target_discr, qbx_forced_limit),
-                        ))
+                        bound_expr.places,
+                        insn.source,
+                        target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
 
                 # center-related info is independent of targets
 

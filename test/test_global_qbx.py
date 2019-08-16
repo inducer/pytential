@@ -264,7 +264,6 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
             fine_order=order).with_refinement()
     del discr
 
-
     # }}}
 
     # {{{ generate targets
@@ -332,8 +331,8 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
             cl_ctx, TreeCodeContainer(cl_ctx))
 
     target_assoc = (associate_targets_to_qbx_centers(
-            lpot_source,
-            code_container.get_wrangler(queue),
+            places.auto_source,
+            code_container.get_wrangler(queue, places),
             target_discrs,
             target_association_tolerance=1e-10)
         .get(queue=queue))
@@ -448,6 +447,9 @@ def test_target_association_failure(ctx_factory):
             qbx_order=order,  # not used in target association
             fine_order=order)
 
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(lpot_source)
+
     # }}}
 
     # {{{ generate targets and check
@@ -474,8 +476,8 @@ def test_target_association_failure(ctx_factory):
 
     with pytest.raises(QBXTargetAssociationFailedException):
         associate_targets_to_qbx_centers(
-            lpot_source,
-            code_container.get_wrangler(queue),
+            places.auto_source,
+            code_container.get_wrangler(queue, places),
             targets,
             target_association_tolerance=1e-10)
 
