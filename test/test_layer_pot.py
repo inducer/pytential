@@ -115,21 +115,21 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
             fmm_order=fmm_order,
             ).with_refinement()
 
-    density_discr = qbx.density_discr
+    from pytential.target import PointsTarget
+    fplot = FieldPlotter(np.zeros(2), extent=0.54, npoints=30)
+    targets = PointsTarget(fplot.points)
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection((qbx, targets))
 
     from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2)
 
-    sigma = density_discr.zeros(queue) + 1
+    sigma = qbx.density_discr.zeros(queue) + 1
+    fld_in_vol = bind(places, op)(queue, sigma=sigma)
+    fld_in_vol_exact = -1
 
-    fplot = FieldPlotter(np.zeros(2), extent=0.54, npoints=30)
-    from pytential.target import PointsTarget
-    fld_in_vol = bind(
-            (qbx, PointsTarget(fplot.points)),
-            op)(queue, sigma=sigma)
-
-    err = cl.clmath.fabs(fld_in_vol - (-1))
-
+    err = cl.clmath.fabs(fld_in_vol - fld_in_vol_exact)
     linf_err = cl.array.max(err).get()
     print("l_inf error:", linf_err)
 

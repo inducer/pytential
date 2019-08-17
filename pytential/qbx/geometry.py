@@ -381,9 +381,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         :arg debug: a :class:`bool` flag for whether to enable
             potentially costly self-checks
         """
-
+        from pytential import sym
         self.places = places
-        self.source_name = source_name
+        self.source_name = sym.as_dofdesc(source_name).geometry
         self.lpot_source = places.get_geometry(self.source_name)
 
         self.code_getter = code_getter
@@ -391,6 +391,10 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         self.target_association_tolerance = target_association_tolerance
         self.tree_kind = tree_kind
         self.debug = debug
+
+    @property
+    def ambient_dim(self):
+        return self.lpot_source.ambient_dim
 
     @property
     def cl_context(self):
@@ -416,8 +420,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         from pytools.obj_array import make_obj_array
 
         with cl.CommandQueue(self.cl_context) as queue:
-            centers = bind(self.places, sym.interleaved_expansion_centers(
-                self.lpot_source.ambient_dim),
+            centers = bind(self.places,
+                sym.interleaved_expansion_centers(self.ambient_dim),
                 auto_where=self.source_name)(queue)
             return make_obj_array([ax.with_queue(None) for ax in centers])
 
@@ -432,8 +436,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         with cl.CommandQueue(self.cl_context) as queue:
             return bind(self.places, sym.expansion_radii(
-                self.lpot_source.ambient_dim,
-                granularity=sym.GRANULARITY_CENTER),
+                self.ambient_dim, granularity=sym.GRANULARITY_CENTER),
                 auto_where=self.source_name)(queue)
 
     # }}}
