@@ -317,7 +317,8 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         # {{{ single layer
 
-        s_sigma_op = bind(places, sym.S(lap_knl, sym.var("sigma"), qbx_forced_limit=+1))
+        s_sigma_op = bind(places,
+                sym.S(lap_knl, sym.var("sigma"), qbx_forced_limit=+1))
         s_sigma = s_sigma_op(queue=queue, sigma=ymn)
         s_eigval = 1/(2*mode_n + 1)
 

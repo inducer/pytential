@@ -487,7 +487,6 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                 sym.cse((k_expr**2-beta**2)**0.5, "K%d" % i)
                 for i, k_expr in enumerate(self.domain_k_exprs)]
 
-
         # {{{ build bc list
 
         # list of tuples, where each tuple consists of BCTermDescriptor instances
@@ -787,8 +786,8 @@ class DielectricSRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
 # {{{ single + double layer representation
 
 class DielectricSDRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
-    pot_kind_S = 0
-    pot_kind_D = 1
+    pot_kind_S = 0  # noqa
+    pot_kind_D = 1  # noqa
     pot_kinds = [pot_kind_S, pot_kind_D]
     potential_ops = {
             pot_kind_S: sym.S,

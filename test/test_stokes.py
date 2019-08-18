@@ -100,8 +100,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     point_targets = PointsTarget(eval_points)
 
     fplot = FieldPlotter(np.zeros(2), extent=6, npoints=100)
-    plot_pts = outside_circle(fplot.points, radius=circle_rad)
-    plot_targets = PointsTarget(fplot.points)
+    plot_targets = PointsTarget(outside_circle(fplot.points, radius=circle_rad))
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection({

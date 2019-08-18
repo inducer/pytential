@@ -357,13 +357,13 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i)
             mat_full[np.ix_(itgt, isrc)] = index_set.take(mat, i)
 
-        _, (ax1, ax2) = mp.subplots(1, 2,
+        _, (ax1, ax2) = pt.subplots(1, 2,
                 figsize=(10, 8), dpi=300, constrained_layout=True)
         ax1.imshow(blk_full)
         ax1.set_title('FarFieldBlockBuilder')
         ax2.imshow(mat_full)
         ax2.set_title('P2PMatrixBuilder')
-        mp.savefig("test_p2p_block_{}d_{:.1f}.png".format(ambient_dim, factor))
+        pt.savefig("test_p2p_block_{}d_{:.1f}.png".format(ambient_dim, factor))
 
     assert _max_block_error(mat, blk, index_set) < 1.0e-14
 
@@ -439,13 +439,13 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i)
             mat_full[np.ix_(itgt, isrc)] = index_set.take(mat, i)
 
-        _, (ax1, ax2) = mp.subplots(1, 2,
+        _, (ax1, ax2) = pt.subplots(1, 2,
                 figsize=(10, 8), constrained_layout=True)
         ax1.imshow(mat_full)
         ax1.set_title('MatrixBuilder')
         ax2.imshow(blk_full)
         ax2.set_title('NearFieldBlockBuilder')
-        mp.savefig("test_qbx_block_builder.png", dpi=300)
+        pt.savefig("test_qbx_block_builder.png", dpi=300)
 
     assert _max_block_error(mat, blk, index_set) < 1.0e-14
 

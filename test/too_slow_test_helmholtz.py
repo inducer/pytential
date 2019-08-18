@@ -179,11 +179,11 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     pot_p2p = P2P(cl_ctx, [kernel], exclude_self=False)
     pot_p2p_grad = P2P(cl_ctx, kernel_grad, exclude_self=False)
 
-    normal = bind(places, sym.normal(qbx.ambient_dim)
-            )(queue).as_vector(np.object)
+    normal = bind(places, sym.normal(qbx.ambient_dim))(
+            queue).as_vector(np.object)
     tangent = bind(places,
-            sym.pseudoscalar(qbx.ambient_dim)/sym.area_element(qbx.ambient_dim)
-            )(queue).as_vector(np.object)
+            sym.pseudoscalar(qbx.ambient_dim)/sym.area_element(qbx.ambient_dim))(
+                    queue).as_vector(np.object)
 
     _, (E0,) = pot_p2p(queue, density_discr.nodes(), e_sources_0, [e_strengths_0],
                     out_host=False, k=K0)
@@ -281,28 +281,30 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
     # }}}
 
-
-    from pytential.target import PointsTarget
     from sumpy.tools import vector_from_device
     F0_tgt = bind(places, representation0_sym,
-            auto_where=(sym.DEFAULT_SOURCE, 'targets0')
-            )(queue, unknown=unknown, K0=K0, K1=K1)
+            auto_where=(sym.DEFAULT_SOURCE, 'targets0'))(
+                    queue, unknown=unknown, K0=K0, K1=K1)
     F0_tgt = vector_from_device(queue, F0_tgt)
 
     F1_tgt = bind(places, representation1_sym,
-            auto_where=(sym.DEFAULT_SOURCE, 'targets1')
-            )(queue, unknown=unknown, K0=K0, K1=K1)
+            auto_where=(sym.DEFAULT_SOURCE, 'targets1'))(
+                    queue, unknown=unknown, K0=K0, K1=K1)
     F1_tgt = vector_from_device(queue, F1_tgt)
 
-    _, (E0_tgt_true,) = pot_p2p(queue, targets_0.nodes(), e_sources_0, [e_strengths_0],
-                    out_host=True, k=K0)
-    _, (E1_tgt_true,) = pot_p2p(queue, targets_1.nodes(), e_sources_1, [e_strengths_1],
-                    out_host=True, k=K1)
+    _, (E0_tgt_true,) = pot_p2p(queue,
+            targets_0.nodes(), e_sources_0, [e_strengths_0],
+            out_host=True, k=K0)
+    _, (E1_tgt_true,) = pot_p2p(queue,
+            targets_1.nodes(), e_sources_1, [e_strengths_1],
+            out_host=True, k=K1)
 
-    _, (H0_tgt_true,) = pot_p2p(queue, targets_0.nodes(), h_sources_0, [h_strengths_0],
-                    out_host=True, k=K0)
-    _, (H1_tgt_true,) = pot_p2p(queue, targets_1.nodes(), h_sources_1, [h_strengths_1],
-                    out_host=True, k=K1)
+    _, (H0_tgt_true,) = pot_p2p(queue,
+            targets_0.nodes(), h_sources_0, [h_strengths_0],
+            out_host=True, k=K0)
+    _, (H1_tgt_true,) = pot_p2p(queue,
+            targets_1.nodes(), h_sources_1, [h_strengths_1],
+            out_host=True, k=K1)
 
     err_F0_total = 0  # noqa
     err_F1_total = 0  # noqa
@@ -347,11 +349,11 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
     if visualize:
         fld0 = bind(places, representation0_sym,
-                auto_where=(sym.DEFAULT_SOURCE, 'targets-plot')
-                )(queue, unknown=unknown, K0=K0)
+                auto_where=(sym.DEFAULT_SOURCE, 'targets-plot'))(
+                        queue, unknown=unknown, K0=K0)
         fld1 = bind(places, representation1_sym,
-                auto_where=(sym.DEFAULT_SOURCE, 'targets-plot')
-                )(queue, unknown=unknown, K1=K1)
+                auto_where=(sym.DEFAULT_SOURCE, 'targets-plot'))(
+                        queue, unknown=unknown, K1=K1)
 
         comp_fields = []
         i_field = 0
@@ -368,12 +370,11 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             i_field += 0
 
         from sumpy.kernel import LaplaceKernel
-        from pytential.target import PointsTarget
         ones = (cl.array.empty(queue, (density_discr.nnodes,), dtype=np.float64)
                 .fill(1))
         ind_func = - bind(places, sym.D(LaplaceKernel(2), sym.var("u")),
-                auto_where=('qbx-low-order', 'targets-plot')
-                )(queue, u=ones).get()
+                auto_where=('qbx-low-order', 'targets-plot'))(
+                        queue, u=ones).get()
 
         _, (e_fld0_true,) = pot_p2p(
                 queue, fplot.points, e_sources_0, [e_strengths_0],

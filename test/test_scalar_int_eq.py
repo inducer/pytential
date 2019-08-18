@@ -28,7 +28,6 @@ import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pytest
-from pytools import Record
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
@@ -559,8 +558,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
                 % qbx.quad_stage2_density_discr.groups[0].nunit_nodes)
 
     if hasattr(case, "visualize_geometry") and case.visualize_geometry:
-        bdry_normals = bind(places, sym.normal(mesh.ambient_dim)
-                )(queue).as_vector(dtype=np.object)
+        bdry_normals = bind(places, sym.normal(mesh.ambient_dim))(
+                queue).as_vector(dtype=np.object)
 
         bdry_vis = make_visualizer(queue, density_discr, case.target_order)
         bdry_vis.write_vtk_file("geometry.vtu", [
@@ -581,8 +580,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
             pt.gca().set_aspect("equal")
             pt.show()
         elif mesh.ambient_dim == 3:
-            bdry_normals = bind(places, sym.normal(3)
-                    )(queue).as_vector(dtype=object)
+            bdry_normals = bind(places, sym.normal(3))(
+                    queue).as_vector(dtype=object)
 
             bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
             bdry_vis.write_vtk_file("pre-solve-source-%s.vtu" % resolution, [
@@ -780,8 +779,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
         bound_t_deriv_op = bind(places,
                 op.representation(
                     sym.var("u"),
-                    map_potentials=lambda pot: \
-                            sym.tangential_derivative(qbx.ambient_dim, pot),
+                    map_potentials=lambda pot:
+                    sym.tangential_derivative(qbx.ambient_dim, pot),
                     qbx_forced_limit=loc_sign))
 
         tang_deriv_from_src = bound_t_deriv_op(
@@ -812,8 +811,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     # {{{ any-D file plotting
 
     if visualize:
-        bdry_normals = bind(places, sym.normal(qbx.ambient_dim)
-                )(queue).as_vector(dtype=np.object)
+        bdry_normals = bind(places, sym.normal(qbx.ambient_dim))(
+                queue).as_vector(dtype=np.object)
 
         sym_sqrt_j = sym.sqrt_jac_q_weight(density_discr.ambient_dim)
         u = bind(places, sym.var("u") / sym_sqrt_j)(queue, u=weighted_u)
@@ -828,8 +827,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
         try:
             solved_pot = bind(places,
                     op.representation(sym.var("u")),
-                    auto_where=('qbx-target-tol', 'plot-targets')
-                    )(queue, u=weighted_u, k=case.k)
+                    auto_where=('qbx-target-tol', 'plot-targets'))(
+                            queue, u=weighted_u, k=case.k)
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
                     "failed-targets.vts",
@@ -846,14 +845,16 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
                 sym.var("sigma"),
                 qbx_forced_limit=None)
         indicator = bind(places, indicator,
-                auto_where=('qbx-target-tol', 'plot-targets')
-                )(queue, sigma=ones_density).get()
+                auto_where=('qbx-target-tol', 'plot-targets'))(
+                        queue, sigma=ones_density).get()
 
         solved_pot = solved_pot.get()
 
         true_pot = bind(places, pot_src,
-                auto_where=('point-source', 'plot-targets')
-                )(queue, charges=source_charges_dev, **concrete_knl_kwargs).get()
+                auto_where=('point-source', 'plot-targets'))(
+                        queue,
+                        charges=source_charges_dev,
+                        **concrete_knl_kwargs).get()
 
         #fplot.show_scalar_in_mayavi(solved_pot.real, max_val=5)
         if case.prob_side == "scat":
