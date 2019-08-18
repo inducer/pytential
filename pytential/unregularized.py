@@ -160,7 +160,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         p2p = None
 
         for o in insn.outputs:
-            target_discr = bound_expr.get_discretization(o.target_name)
+            target_discr = bound_expr.places.get_discretization(o.target_name)
 
             if p2p is None:
                 p2p = self.get_p2p(insn.kernels)

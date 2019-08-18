@@ -153,7 +153,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
             return result
 
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(expr.dofdesc)
         operand = self.rec(expr.operand)
         assert operand.shape == (discr.nnodes,)
 
@@ -179,7 +179,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return self._map_elementwise_reduction("max", expr)
 
     def map_ones(self, expr):
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(expr.dofdesc)
         result = (discr
                 .empty(queue=self.queue, dtype=discr.real_dtype)
                 .with_queue(self.queue))
@@ -188,12 +188,12 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return result
 
     def map_node_coordinate_component(self, expr):
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(expr.dofdesc)
         return discr.nodes()[expr.ambient_axis] \
                 .with_queue(self.queue)
 
     def map_num_reference_derivative(self, expr):
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(expr.dofdesc)
 
         from pytools import flatten
         ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
@@ -203,7 +203,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(expr.dofdesc)
         return discr.quad_weights(self.queue) \
                 .with_queue(self.queue)
 

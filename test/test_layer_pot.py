@@ -349,7 +349,6 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
 # }}}
 
 
-<<<<<<< HEAD
 # {{{ test performance data gathering
 
 def test_perf_data_gathering(ctx_factory, n_arms=5, visualize=False):
