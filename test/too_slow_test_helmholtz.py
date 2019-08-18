@@ -40,7 +40,7 @@ from meshmode.discretization.poly_element import \
 from six.moves import range
 
 from pytential import bind, sym, norm  # noqa
-from pytential.symbolic.pde.scalar import (  # noqa
+from pytential.symbolic.pde.maxwell.waveguide import (  # noqa
         DielectricSRep2DBoundaryOperator as SRep,
         DielectricSDRep2DBoundaryOperator as SDRep)
 
@@ -66,6 +66,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     if bdry_ovsmp_quad_order is None:
         bdry_ovsmp_quad_order = 4*bdry_quad_order
 
+    # {{{ geometries
+
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
     mesh = make_curve_mesh(
@@ -78,6 +80,50 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     logger.info("%d elements" % mesh.nelements)
+
+    from pytential.qbx import QBXLayerPotentialSource
+    qbx, _ = QBXLayerPotentialSource(
+            density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
+            fmm_order=fmm_order
+            ).with_refinement()
+
+    from pytential.target import PointsTarget
+    targets_0 = PointsTarget(make_obj_array(list(np.array([
+        [3.2 + t, -4]
+        for t in [0, 0.5, 1]
+        ]).T.copy())))
+    targets_1 = PointsTarget(make_obj_array(list(np.array([
+        [-0.3 * t, -0.2 * t]
+        for t in [0, 0.5, 1]
+        ]).T.copy())))
+
+    if visualize:
+        low_order_qbx, _ = QBXLayerPotentialSource(
+                density_discr,
+                fine_order=bdry_ovsmp_quad_order, qbx_order=2,
+                fmm_order=3
+                ).with_refinement()
+
+        from sumpy.visualization import FieldPlotter
+        fplot = FieldPlotter(np.zeros(2), extent=5, npoints=300)
+        targets_plot = PointsTarget(fplot.points)
+
+    places = {
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: qbx.density_discr,
+        'targets0': targets_0,
+        'targets1': targets_1
+        }
+    if visualize:
+        places.update({
+            'qbx-low-order': low_order_qbx,
+            'targets-plot': targets_plot
+            })
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(places)
+
+    # }}}
 
     # from meshmode.discretization.visualization import make_visualizer
     # bdry_vis = make_visualizer(queue, density_discr, 20)
@@ -94,25 +140,16 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     pde_op = op_class(
             mode,
             k_vacuum=1,
-            interfaces=((0, 1, sym.DEFAULT_SOURCE),),
             domain_k_exprs=(k0, k1),
             beta=beta,
+            interfaces=((0, 1, sym.DEFAULT_SOURCE),),
             use_l2_weighting=use_l2_weighting)
 
     op_unknown_sym = pde_op.make_unknown("unknown")
 
     representation0_sym = pde_op.representation(op_unknown_sym, 0)
     representation1_sym = pde_op.representation(op_unknown_sym, 1)
-
-    from pytential.qbx import QBXLayerPotentialSource
-    qbx = QBXLayerPotentialSource(
-            density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
-            fmm_order=fmm_order
-            ).with_refinement()
-
-    #print(sym.pretty(pde_op.operator(op_unknown_sym)))
-    #1/0
-    bound_pde_op = bind(qbx, pde_op.operator(op_unknown_sym))
+    bound_pde_op = bind(places, pde_op.operator(op_unknown_sym))
 
     e_factor = float(pde_op.ez_enabled)
     h_factor = float(pde_op.hz_enabled)
@@ -142,10 +179,11 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     pot_p2p = P2P(cl_ctx, [kernel], exclude_self=False)
     pot_p2p_grad = P2P(cl_ctx, kernel_grad, exclude_self=False)
 
-    normal = bind(density_discr, sym.normal())(queue).as_vector(np.object)
-    tangent = bind(
-        density_discr,
-        sym.pseudoscalar()/sym.area_element())(queue).as_vector(np.object)
+    normal = bind(places, sym.normal(qbx.ambient_dim)
+            )(queue).as_vector(np.object)
+    tangent = bind(places,
+            sym.pseudoscalar(qbx.ambient_dim)/sym.area_element(qbx.ambient_dim)
+            )(queue).as_vector(np.object)
 
     _, (E0,) = pot_p2p(queue, density_discr.nodes(), e_sources_0, [e_strengths_0],
                     out_host=False, k=K0)
@@ -181,7 +219,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     H0_dttarget = (grad0_H0*tangent[0] + grad1_H0*tangent[1])  # noqa
     H1_dttarget = (grad0_H1*tangent[0] + grad1_H1*tangent[1])  # noqa
 
-    sqrt_w = bind(density_discr, sym.sqrt_jac_q_weight())(queue)
+    sqrt_w = bind(places, sym.sqrt_jac_q_weight(qbx.ambient_dim))(queue)
 
     bvp_rhs = np.zeros(len(pde_op.bcs), dtype=np.object)
     for i_bc, terms in enumerate(pde_op.bcs):
@@ -243,32 +281,27 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
     # }}}
 
-    targets_0 = make_obj_array(list(np.array([
-        [3.2 + t, -4]
-        for t in [0, 0.5, 1]
-        ]).T.copy()))
-    targets_1 = make_obj_array(list(np.array([
-        [t*-0.3, t*-0.2]
-        for t in [0, 0.5, 1]
-        ]).T.copy()))
 
     from pytential.target import PointsTarget
     from sumpy.tools import vector_from_device
-    F0_tgt = vector_from_device(queue, bind(  # noqa
-            (qbx, PointsTarget(targets_0)),
-            representation0_sym)(queue, unknown=unknown, K0=K0, K1=K1))
-    F1_tgt = vector_from_device(queue, bind(  # noqa
-            (qbx, PointsTarget(targets_1)),
-            representation1_sym)(queue, unknown=unknown, K0=K0, K1=K1))
+    F0_tgt = bind(places, representation0_sym,
+            auto_where=(sym.DEFAULT_SOURCE, 'targets0')
+            )(queue, unknown=unknown, K0=K0, K1=K1)
+    F0_tgt = vector_from_device(queue, F0_tgt)
 
-    _, (E0_tgt_true,) = pot_p2p(queue, targets_0, e_sources_0, [e_strengths_0],
+    F1_tgt = bind(places, representation1_sym,
+            auto_where=(sym.DEFAULT_SOURCE, 'targets1')
+            )(queue, unknown=unknown, K0=K0, K1=K1)
+    F1_tgt = vector_from_device(queue, F1_tgt)
+
+    _, (E0_tgt_true,) = pot_p2p(queue, targets_0.nodes(), e_sources_0, [e_strengths_0],
                     out_host=True, k=K0)
-    _, (E1_tgt_true,) = pot_p2p(queue, targets_1, e_sources_1, [e_strengths_1],
+    _, (E1_tgt_true,) = pot_p2p(queue, targets_1.nodes(), e_sources_1, [e_strengths_1],
                     out_host=True, k=K1)
 
-    _, (H0_tgt_true,) = pot_p2p(queue, targets_0, h_sources_0, [h_strengths_0],
+    _, (H0_tgt_true,) = pot_p2p(queue, targets_0.nodes(), h_sources_0, [h_strengths_0],
                     out_host=True, k=K0)
-    _, (H1_tgt_true,) = pot_p2p(queue, targets_1, h_sources_1, [h_strengths_1],
+    _, (H1_tgt_true,) = pot_p2p(queue, targets_1.nodes(), h_sources_1, [h_strengths_1],
                     out_host=True, k=K1)
 
     err_F0_total = 0  # noqa
@@ -313,15 +346,12 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         i_field += 1
 
     if visualize:
-        from sumpy.visualization import FieldPlotter
-        fplot = FieldPlotter(np.zeros(2), extent=5, npoints=300)
-        from pytential.target import PointsTarget
-        fld0 = bind(
-                (qbx, PointsTarget(fplot.points)),
-                representation0_sym)(queue, unknown=unknown, K0=K0)
-        fld1 = bind(
-                (qbx, PointsTarget(fplot.points)),
-                representation1_sym)(queue, unknown=unknown, K1=K1)
+        fld0 = bind(places, representation0_sym,
+                auto_where=(sym.DEFAULT_SOURCE, 'targets-plot')
+                )(queue, unknown=unknown, K0=K0)
+        fld1 = bind(places, representation1_sym,
+                auto_where=(sym.DEFAULT_SOURCE, 'targets-plot')
+                )(queue, unknown=unknown, K1=K1)
 
         comp_fields = []
         i_field = 0
@@ -337,16 +367,13 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
             i_field += 0
 
-        low_order_qbx = QBXLayerPotentialSource(
-                density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=2,
-                fmm_order=3).with_refinement()
         from sumpy.kernel import LaplaceKernel
         from pytential.target import PointsTarget
         ones = (cl.array.empty(queue, (density_discr.nnodes,), dtype=np.float64)
                 .fill(1))
-        ind_func = - bind((low_order_qbx, PointsTarget(fplot.points)),
-                sym.D(LaplaceKernel(2), sym.var("u")))(
-                        queue, u=ones).get()
+        ind_func = - bind(places, sym.D(LaplaceKernel(2), sym.var("u")),
+                auto_where=('qbx-low-order', 'targets-plot')
+                )(queue, u=ones).get()
 
         _, (e_fld0_true,) = pot_p2p(
                 queue, fplot.points, e_sources_0, [e_strengths_0],
