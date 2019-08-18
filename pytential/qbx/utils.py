@@ -31,6 +31,7 @@ from boxtree.tree import Tree
 import pyopencl as cl
 import pyopencl.array # noqa
 from pytools import memoize_method
+from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 
 import logging
 logger = logging.getLogger(__name__)
@@ -408,6 +409,80 @@ def build_tree_with_qbx_metadata(
         nqbxcenters=ncenters,
         nqbxtargets=ntargets,
         **tree_attrs).with_queue(None)
+
+# }}}
+
+
+# {{{ host geo data wrapper
+
+class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
+    """Wraps an instance of :class:`pytential.qbx.geometry.QBXFMMGeometryData`,
+    automatically converting returned OpenCL arrays to host data.
+    """
+
+    def __init__(self, queue, geo_data):
+        self.queue = queue
+        self.geo_data = geo_data
+
+    @memoize_method
+    def tree(self):
+        return self.geo_data.tree().get(queue=self.queue)
+
+    @memoize_method
+    def traversal(self):
+        return self.geo_data.traversal().get(queue=self.queue)
+
+    @property
+    def lpot_source(self):
+        return self.geo_data.lpot_source
+
+    @property
+    def ncenters(self):
+        return self.geo_data.ncenters
+
+    @memoize_method
+    def centers(self):
+        return np.array([
+            ci.get(queue=self.queue)
+            for ci in self.geo_data.centers()])
+
+    @memoize_method
+    def expansion_radii(self):
+        return self.geo_data.expansion_radii().get(queue=self.queue)
+
+    @memoize_method
+    def global_qbx_centers(self):
+        return self.geo_data.global_qbx_centers().get(queue=self.queue)
+
+    @memoize_method
+    def qbx_center_to_target_box(self):
+        return self.geo_data.qbx_center_to_target_box().get(queue=self.queue)
+
+    @memoize_method
+    def qbx_center_to_target_box_source_level(self, source_level):
+        return self.geo_data.qbx_center_to_target_box_source_level(
+            source_level).get(queue=self.queue)
+
+    @memoize_method
+    def non_qbx_box_target_lists(self):
+        return self.geo_data.non_qbx_box_target_lists().get(queue=self.queue)
+
+    @memoize_method
+    def center_to_tree_targets(self):
+        return self.geo_data.center_to_tree_targets().get(queue=self.queue)
+
+    @memoize_method
+    def all_targets(self):
+        """All (not just non-QBX) targets packaged into a single array."""
+        return np.array(list(self.tree().targets))
+
+    def m2l_rotation_lists(self):
+        # Already on host
+        return self.geo_data.m2l_rotation_lists()
+
+    def m2l_rotation_angles(self):
+        # Already on host
+        return self.geo_data.m2l_rotation_angles()
 
 # }}}
 

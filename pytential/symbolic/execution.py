@@ -29,7 +29,7 @@ import six
 from six.moves import zip
 
 from pymbolic.mapper.evaluator import (
-        EvaluationMapper as EvaluationMapperBase)
+        EvaluationMapper as PymbolicEvaluationMapper)
 import numpy as np
 
 import pyopencl as cl
@@ -43,6 +43,11 @@ from pytential import sym
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+__doc__ = """
+.. autoclass :: BoundExpression
+"""
 
 
 # FIXME caches: fix up queues
@@ -65,11 +70,13 @@ def mesh_el_view(mesh, group_nr, global_array):
             + (group.nelements,))
 
 
-class EvaluationMapper(EvaluationMapperBase):
-    def __init__(self, bound_expr, queue, context={},
+class EvaluationMapperBase(PymbolicEvaluationMapper):
+    def __init__(self, bound_expr, queue, context=None,
             target_geometry=None,
             target_points=None, target_normals=None, target_tangents=None):
-        EvaluationMapperBase.__init__(self, context)
+        if context is None:
+            context = {}
+        PymbolicEvaluationMapper.__init__(self, context)
 
         self.bound_expr = bound_expr
         self.places = bound_expr.places
@@ -201,7 +208,7 @@ class EvaluationMapper(EvaluationMapperBase):
                 .with_queue(self.queue)
 
     def map_inverse(self, expr):
-        bound_op_cache = self.bound_expr.get_cache("bound_op")
+        bound_op_cache = self.bound_expr.places.get_cache("bound_op")
 
         try:
             bound_op = bound_op_cache[expr]
@@ -262,6 +269,9 @@ class EvaluationMapper(EvaluationMapperBase):
         return [(name, evaluate(expr))
                 for name, expr in zip(insn.names, insn.exprs)]
 
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+        raise NotImplementedError
+
     # {{{ functions
 
     def apply_real(self, args):
@@ -304,6 +314,77 @@ class EvaluationMapper(EvaluationMapperBase):
 
         else:
             return EvaluationMapperBase.map_call(self, expr)
+
+# }}}
+
+
+# {{{ evaluation mapper
+
+class EvaluationMapper(EvaluationMapperBase):
+
+    def __init__(self, bound_expr, queue, context=None,
+            timing_data=None):
+        EvaluationMapperBase.__init__(self, bound_expr, queue, context)
+        self.timing_data = timing_data
+
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+        source = bound_expr.places.get_geometry(insn.source)
+
+        return_timing_data = self.timing_data is not None
+
+        result, timing_data = (
+                source.exec_compute_potential_insn(
+                    queue, insn, bound_expr, evaluate, return_timing_data))
+
+        if return_timing_data:
+            # The compiler ensures this.
+            assert insn not in self.timing_data
+
+            self.timing_data[insn] = timing_data
+
+        return result
+
+# }}}
+
+
+# {{{ cost model mapper
+
+class CostModelMapper(EvaluationMapperBase):
+    """Mapper for evaluating cost models.
+
+    This executes everything *except* the layer potential operator. Instead of
+    executing the operator, the cost model gets run and the cost
+    data is collected.
+    """
+
+    def __init__(self, bound_expr, queue, context=None,
+            target_geometry=None,
+            target_points=None, target_normals=None, target_tangents=None):
+        if context is None:
+            context = {}
+        EvaluationMapperBase.__init__(
+                self, bound_expr, queue, context,
+                target_geometry,
+                target_points,
+                target_normals,
+                target_tangents)
+        self.modeled_cost = {}
+
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+        source = bound_expr.places.get_geometry(insn.source)
+
+        result, cost_model_result = (
+                source.cost_model_compute_potential_insn(
+                    queue, insn, bound_expr, evaluate))
+
+        # The compiler ensures this.
+        assert insn not in self.modeled_cost
+
+        self.modeled_cost[insn] = cost_model_result
+        return result
+
+    def get_modeled_cost(self):
+        return self.modeled_cost
 
 # }}}
 
@@ -582,6 +663,17 @@ class GeometryCollection(object):
 # {{{ bound expression
 
 class BoundExpression(object):
+    """An expression readied for evaluation by binding it to a
+    :class:`GeometryCollection`.
+
+    .. automethod :: get_modeled_cost
+    .. automethod :: scipy_pop
+    .. automethod :: eval
+    .. automethod :: __call__
+
+    Created by calling :func:`bind`.
+    """
+
     def __init__(self, places, sym_op_expr):
         self.places = places
         self.sym_op_expr = sym_op_expr
@@ -593,8 +685,10 @@ class BoundExpression(object):
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
 
-    def get_discretization(self, where):
-        return self.places.get_discretization(where)
+    def get_modeled_cost(self, queue, **args):
+        cost_model_mapper = CostModelMapper(self, queue, args)
+        self.code.execute(cost_model_mapper)
+        return cost_model_mapper.get_modeled_cost()
 
     def scipy_op(self, queue, arg_name, dtype, domains=None, **extra_args):
         """
@@ -604,6 +698,9 @@ class BoundExpression(object):
             is a scalar.  If *domains* is *None*,
             :class:`~pytential.symbolic.primitives.DEFAULT_TARGET` is required
             to be a key in :attr:`places`.
+        :returns: An object that (mostly) satisfies the
+            :mod:`scipy.linalg.LinearOperator` protocol, except for accepting
+            and returning :clas:`pyopencl.array.Array` arrays.
         """
 
         from pytools.obj_array import is_obj_array
@@ -634,9 +731,33 @@ class BoundExpression(object):
         return MatVecOp(self, queue,
                 arg_name, dtype, total_dofs, starts_and_ends, extra_args)
 
-    def __call__(self, queue, **args):
-        exec_mapper = EvaluationMapper(self, queue, args)
+    def eval(self, queue, context=None, timing_data=None):
+        """Evaluate the expression in *self*, using the
+        :clas:`pyopencl.CommandQueue` *queue* and the
+        input variables given in the dictionary *context*.
+
+        :arg timing_data: A dictionary into which timing
+            data will be inserted during evaluation.
+            (experimental)
+        :returns: the value of the expression, as a scalar,
+            :class:`pyopencl.array.Array`, or an object array of these.
+        """
+
+        if context is None:
+            context = {}
+        exec_mapper = EvaluationMapper(
+                self, queue, context, timing_data=timing_data)
         return self.code.execute(exec_mapper)
+
+    def __call__(self, queue, **args):
+        """Evaluate the expression in *self*, using the
+        :clas:`pyopencl.CommandQueue` *queue* and the
+        input variables given in the dictionary *context*.
+
+        :returns: the value of the expression, as a scalar,
+            :class:`pyopencl.array.Array`, or an object array of these.
+        """
+        return self.eval(queue, args)
 
 
 def bind(places, expr, auto_where=None):
@@ -646,6 +767,11 @@ def bind(places, expr, auto_where=None):
         constructor can also be used.
     :arg auto_where: for simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.
+    :arg expr: one or multiple expressions consisting of primitives
+        form :mod:`pytential.symbolic.primitives` (aka :mod:`pytential.sym`).
+        Multiple expressions can be combined into one object to pass here
+        in the form of a :mod:`numpy` object array
+    :returns: a :class:`BoundExpression`
     """
 
     if not isinstance(places, GeometryCollection):

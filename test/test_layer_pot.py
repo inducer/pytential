@@ -183,7 +183,7 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
             target_association_tolerance=0.05,
             ).with_refinement()
 
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
     from pytential.target import PointsTarget
     ptarget = PointsTarget(fplot.points)
     from sumpy.kernel import LaplaceKernel
@@ -349,6 +349,7 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
 # }}}
 
 
+<<<<<<< HEAD
 # {{{ test performance data gathering
 
 def test_perf_data_gathering(ctx_factory, n_arms=5, visualize=False):
