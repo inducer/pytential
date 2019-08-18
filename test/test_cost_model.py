@@ -111,13 +111,16 @@ def test_timing_data_gathering(ctx_getter):
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     lpot_source = get_lpot_source(queue, 2)
-    sigma = get_density(queue, lpot_source)
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(lpot_source)
 
     sigma_sym = sym.var("sigma")
+    sigma = get_density(queue, lpot_source)
+
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
 
-    op_S = bind(lpot_source, sym_op_S)
+    op_S = bind(places, sym_op_S)
 
     timing_data = {}
     op_S.eval(queue, dict(sigma=sigma), timing_data=timing_data)
@@ -143,6 +146,8 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
             .copy(
                 _use_target_specific_qbx=use_target_specific_qbx,
                 cost_model=CostModel()))
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(lpot_source)
 
     sigma = get_density(queue, lpot_source)
 
@@ -150,14 +155,14 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
-    op_S = bind(lpot_source, sym_op_S)
+    op_S = bind(places, sym_op_S)
     cost_S = op_S.get_modeled_cost(queue, sigma=sigma)
     assert len(cost_S) == 1
 
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
-            + sym.D(k_sym, sigma_sym))
-    op_S_plus_D = bind(lpot_source, sym_op_S_plus_D)
+            + sym.D(k_sym, sigma_sym, qbx_forced_limit="avg"))
+    op_S_plus_D = bind(places, sym_op_S_plus_D)
     cost_S_plus_D = op_S_plus_D.get_modeled_cost(queue, sigma=sigma)
     assert len(cost_S_plus_D) == 2
 
@@ -177,6 +182,8 @@ def test_cost_model_metadata_gathering(ctx_getter):
 
     lpot_source = get_lpot_source(queue, 2).copy(
             fmm_level_to_order=fmm_level_to_order)
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(lpot_source)
 
     sigma = get_density(queue, lpot_source)
 
@@ -185,11 +192,13 @@ def test_cost_model_metadata_gathering(ctx_getter):
     k = 2
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1, k=sym.var("k"))
-    op_S = bind(lpot_source, sym_op_S)
+    op_S = bind(places, sym_op_S)
 
     cost_S = one(op_S.get_modeled_cost(queue, sigma=sigma, k=k).values())
 
     geo_data = lpot_source.qbx_fmm_geometry_data(
+            places,
+            places.auto_source,
             target_discrs_and_qbx_sides=((lpot_source.density_discr, 1),))
 
     tree = geo_data.tree()
@@ -437,12 +446,15 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
         target_discrs_and_qbx_sides = ((targets, 1),)
         qbx_forced_limit = 1
 
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection((lpot_source, targets))
+
     # Construct bound op, run cost model.
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=qbx_forced_limit)
 
-    op_S = bind((lpot_source, targets), sym_op_S)
+    op_S = bind(places, sym_op_S)
     sigma = get_density(queue, lpot_source)
 
     from pytools import one
@@ -452,6 +464,8 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
     # high-level interface, so call the FMM driver directly.
     from pytential.qbx.fmm import drive_fmm
     geo_data = lpot_source.qbx_fmm_geometry_data(
+            places,
+            places.auto_source,
             target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
 
     wrangler = ConstantOneQBXExpansionWrangler(
@@ -517,6 +531,8 @@ def test_cost_model_order_varying_by_level(ctx_getter):
             cost_model=CostModel(
                 calibration_params=CONSTANT_ONE_PARAMS),
             fmm_level_to_order=level_to_order_constant)
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(lpot_source)
 
     sigma_sym = sym.var("sigma")
 
@@ -526,7 +542,7 @@ def test_cost_model_order_varying_by_level(ctx_getter):
     sigma = get_density(queue, lpot_source)
 
     cost_constant = one(
-            bind(lpot_source, sym_op)
+            bind(places, sym_op)
             .get_modeled_cost(queue, sigma=sigma).values())
 
     # }}}
