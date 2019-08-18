@@ -428,7 +428,7 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
 
 # {{{ test backend
 
-def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
+def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     mesh = case.get_mesh(resolution, case.target_order)
     print("%d elements" % mesh.nelements)
 
@@ -494,12 +494,41 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             mesh.ambient_dim, 20, test_tgt_geo_radius)
     point_target = PointsTarget(test_targets)
 
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection({
+    if visualize:
+        vis_grid_spacing = (0.1, 0.1, 0.1)[:qbx.ambient_dim]
+        if hasattr(case, "vis_grid_spacing"):
+            vis_grid_spacing = case.vis_grid_spacing
+
+        vis_extend_factor = 0.2
+        if hasattr(case, "vis_extend_factor"):
+            vis_grid_spacing = case.vis_grid_spacing
+
+        qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
+
+        from sumpy.visualization import make_field_plotter_from_bbox  # noqa
+        from meshmode.mesh.processing import find_bounding_box
+        fplot = make_field_plotter_from_bbox(
+                find_bounding_box(mesh),
+                h=vis_grid_spacing,
+                extend_factor=vis_extend_factor)
+
+        from pytential.target import PointsTarget
+        plot_targets = PointsTarget(fplot.points)
+
+    places = {
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: density_discr,
         'point-source': point_source,
-        'point-target': point_target})
+        'point-target': point_target
+        }
+    if visualize:
+        places.update({
+            'qbx-target-tol': qbx_tgt_tol,
+            'plot-targets': plot_targets
+            })
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(places)
 
     # }}}
 
@@ -530,8 +559,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                 % qbx.quad_stage2_density_discr.groups[0].nunit_nodes)
 
     if hasattr(case, "visualize_geometry") and case.visualize_geometry:
-        bdry_normals = bind(
-                places, sym.normal(mesh.ambient_dim)
+        bdry_normals = bind(places, sym.normal(mesh.ambient_dim)
                 )(queue).as_vector(dtype=np.object)
 
         bdry_vis = make_visualizer(queue, density_discr, case.target_order)
@@ -541,27 +569,25 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     # {{{ plot geometry
 
-    if 0:
+    if visualize:
         if mesh.ambient_dim == 2:
             # show geometry, centers, normals
             nodes_h = density_discr.nodes().get(queue=queue)
-            pt.plot(nodes_h[0], nodes_h[1], "x-")
             normal = bind(places, sym.normal(2))(queue).as_vector(np.object)
+
+            pt.plot(nodes_h[0], nodes_h[1], "x-")
             pt.quiver(nodes_h[0], nodes_h[1],
                     normal[0].get(queue), normal[1].get(queue))
             pt.gca().set_aspect("equal")
             pt.show()
-
         elif mesh.ambient_dim == 3:
+            bdry_normals = bind(places, sym.normal(3)
+                    )(queue).as_vector(dtype=object)
+
             bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
-
-            bdry_normals = bind(places,
-                    sym.normal(3))(queue).as_vector(dtype=object)
-
             bdry_vis.write_vtk_file("pre-solve-source-%s.vtu" % resolution, [
                 ("bdry_normals", bdry_normals),
                 ])
-
         else:
             raise ValueError("invalid mesh dim")
 
@@ -621,24 +647,20 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         # FIXME: qbx_forced_limit--really?
         knl, sym.var("charges"), qbx_forced_limit=None, **knl_kwargs)
 
-    where = ('point-source', 'point-target')
-    test_direct = bind(places, pot_src, auto_where=where)(
+    test_direct = bind(places, pot_src,
+            auto_where=('point-source', 'point-target'))(
             queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     if case.bc_type == "dirichlet":
-        where = ('point-source', sym.DEFAULT_TARGET)
-        bc = bind(places, pot_src, auto_where=where)(
-                queue, charges=source_charges_dev, **concrete_knl_kwargs)
+        bc = bind(places, pot_src,
+                auto_where=('point-source', sym.DEFAULT_TARGET))(
+                        queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     elif case.bc_type == "neumann":
-        where = ('point-source', sym.DEFAULT_TARGET)
         bc = bind(places, sym.normal_derivative(
-            qbx.ambient_dim,
-            pot_src,
-            dofdesc=where[1]),
-            auto_where=where)(queue,
-                    charges=source_charges_dev,
-                    **concrete_knl_kwargs)
+            qbx.ambient_dim, pot_src, dofdesc=sym.DEFAULT_TARGET),
+            auto_where=('point-source', sym.DEFAULT_TARGET))(
+                    queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     # }}}
 
@@ -677,24 +699,19 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                 bound_op.scipy_op(
                     queue, arg_name="u", dtype=dtype, k=case.k))
         w, v = la.eig(mat)
-        if 0:
+        if visualize:
             pt.imshow(np.log10(1e-20+np.abs(mat)))
             pt.colorbar()
             pt.show()
-
-        #assert abs(s[-1]) < 1e-13, "h
-        #assert abs(s[-2]) > 1e-7
-        #from pudb import set_trace; set_trace()
 
     # }}}
 
     if case.prob_side != "scat":
         # {{{ error check
 
-        where = (sym.DEFAULT_SOURCE, 'point-target')
         bound_tgt_op = bind(places,
                 op.representation(sym.var("u")),
-                auto_where=where)
+                auto_where=(sym.DEFAULT_SOURCE, 'point-target'))
 
         test_via_bdry = bound_tgt_op(queue, u=weighted_u, k=case.k)
 
@@ -729,23 +746,21 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # {{{ test gradient
 
     if case.check_gradient and case.prob_side != "scat":
-        where = (sym.DEFAULT_SOURCE, 'point-target')
         bound_grad_op = bind(places,
                 op.representation(
                     sym.var("u"),
                     map_potentials=lambda pot: sym.grad(mesh.ambient_dim, pot),
                     qbx_forced_limit=None),
-                auto_where=where)
+                auto_where=(sym.DEFAULT_SOURCE, 'point-target'))
 
         #print(bound_t_deriv_op.code)
 
         grad_from_src = bound_grad_op(
                 queue, u=weighted_u, **concrete_knl_kwargs)
 
-        where = ('point-source', 'point-target')
         grad_ref = bind(places,
                 sym.grad(mesh.ambient_dim, pot_src),
-                auto_where=where)(queue,
+                auto_where=('point-source', 'point-target'))(queue,
                         charges=source_charges_dev,
                         **concrete_knl_kwargs)
 
@@ -765,22 +780,20 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         bound_t_deriv_op = bind(places,
                 op.representation(
                     sym.var("u"),
-                    map_potentials=lambda pot: sym.tangential_derivative(2, pot),
+                    map_potentials=lambda pot: \
+                            sym.tangential_derivative(qbx.ambient_dim, pot),
                     qbx_forced_limit=loc_sign))
-
-        #print(bound_t_deriv_op.code)
 
         tang_deriv_from_src = bound_t_deriv_op(
                 queue, u=weighted_u, **concrete_knl_kwargs).as_scalar().get()
 
-        where = ('point-source', sym.DEFAULT_TARGET)
         tang_deriv_ref = bind(places,
-                sym.tangential_derivative(2, pot_src),
-                auto_where=where)(queue,
+                sym.tangential_derivative(qbx.ambient_dim, pot_src),
+                auto_where=('point-source', sym.DEFAULT_TARGET))(queue,
                         charges=source_charges_dev,
                         **concrete_knl_kwargs).as_scalar().get()
 
-        if 0:
+        if visualize:
             pt.plot(tang_deriv_ref.real)
             pt.plot(tang_deriv_from_src.real)
             pt.show()
@@ -799,42 +812,23 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # {{{ any-D file plotting
 
     if visualize:
-        bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
-
-        bdry_normals = bind(places,
-                sym.normal(qbx.ambient_dim))(queue).as_vector(dtype=np.object)
+        bdry_normals = bind(places, sym.normal(qbx.ambient_dim)
+                )(queue).as_vector(dtype=np.object)
 
         sym_sqrt_j = sym.sqrt_jac_q_weight(density_discr.ambient_dim)
         u = bind(places, sym.var("u") / sym_sqrt_j)(queue, u=weighted_u)
 
+        bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
         bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
             ("u", u),
             ("bc", bc),
             #("bdry_normals", bdry_normals),
             ])
 
-        from sumpy.visualization import make_field_plotter_from_bbox  # noqa
-        from meshmode.mesh.processing import find_bounding_box
-
-        vis_grid_spacing = (0.1, 0.1, 0.1)[:qbx.ambient_dim]
-        if hasattr(case, "vis_grid_spacing"):
-            vis_grid_spacing = case.vis_grid_spacing
-        vis_extend_factor = 0.2
-        if hasattr(case, "vis_extend_factor"):
-            vis_grid_spacing = case.vis_grid_spacing
-
-        fplot = make_field_plotter_from_bbox(
-                find_bounding_box(mesh),
-                h=vis_grid_spacing,
-                extend_factor=vis_extend_factor)
-
-        qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
-        from pytential.target import PointsTarget
-
         try:
-            solved_pot = bind(
-                    (qbx_tgt_tol, PointsTarget(fplot.points)),
-                    op.representation(sym.var("u"))
+            solved_pot = bind(places,
+                    op.representation(sym.var("u")),
+                    auto_where=('qbx-target-tol', 'plot-targets')
                     )(queue, u=weighted_u, k=case.k)
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
@@ -847,17 +841,19 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         from sumpy.kernel import LaplaceKernel
         ones_density = density_discr.zeros(queue)
         ones_density.fill(1)
-        indicator = bind(
-                (qbx_tgt_tol, PointsTarget(fplot.points)),
-                -sym.D(LaplaceKernel(density_discr.ambient_dim),
-                    sym.var("sigma"),
-                    qbx_forced_limit=None))(
-                queue, sigma=ones_density).get()
+
+        indicator = -sym.D(LaplaceKernel(qbx.ambient_dim),
+                sym.var("sigma"),
+                qbx_forced_limit=None)
+        indicator = bind(places, indicator,
+                auto_where=('qbx-target-tol', 'plot-targets')
+                )(queue, sigma=ones_density).get()
 
         solved_pot = solved_pot.get()
 
-        true_pot = bind((point_source, PointsTarget(fplot.points)), pot_src)(
-                queue, charges=source_charges_dev, **concrete_knl_kwargs).get()
+        true_pot = bind(places, pot_src,
+                auto_where=('point-source', 'plot-targets')
+                )(queue, charges=source_charges_dev, **concrete_knl_kwargs).get()
 
         #fplot.show_scalar_in_mayavi(solved_pot.real, max_val=5)
         if case.prob_side == "scat":
@@ -881,11 +877,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     # }}}
 
-    class Result(Record):
-        pass
-
     h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
-    return Result(
+    return dict(
             h_max=h_max,
             rel_err_2=rel_err_2,
             rel_err_inf=rel_err_inf,
@@ -930,17 +923,17 @@ def test_integral_equation(ctx_factory, case, visualize=False):
         result = run_int_eq_test(cl_ctx, queue, case, resolution,
                 visualize=visualize)
 
-        if result.rel_err_2 is not None:
+        if result['rel_err_2'] is not None:
             have_error_data = True
-            eoc_rec_target.add_data_point(result.h_max, result.rel_err_2)
+            eoc_rec_target.add_data_point(result['h_max'], result['rel_err_2'])
 
-        if result.rel_td_err_inf is not None:
-            eoc_rec_td.add_data_point(result.h_max, result.rel_td_err_inf)
+        if result['rel_td_err_inf'] is not None:
+            eoc_rec_td.add_data_point(result['h_max'], result['rel_td_err_inf'])
 
     if case.bc_type == "dirichlet":
         tgt_order = case.qbx_order
     elif case.bc_type == "neumann":
-        tgt_order = case.qbx_order-1
+        tgt_order = case.qbx_order - 1
     else:
         assert False
 

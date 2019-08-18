@@ -351,7 +351,7 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
 
 # {{{ test performance data gathering
 
-def test_perf_data_gathering(ctx_factory, n_arms=5):
+def test_perf_data_gathering(ctx_factory, n_arms=5, visualize=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -392,7 +392,7 @@ def test_perf_data_gathering(ctx_factory, n_arms=5):
         return False  # no need to do the actual FMM
 
     from pytential.qbx import QBXLayerPotentialSource
-    lpot_source = QBXLayerPotentialSource(
+    lpot_source, _ = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
             # qbx order and fmm order don't really matter
             10, fmm_order=10,
@@ -400,13 +400,13 @@ def test_perf_data_gathering(ctx_factory, n_arms=5):
             _expansion_stick_out_factor=0.5,
             geometry_data_inspector=inspect_geo_data,
             target_association_tolerance=1e-10,
-            )
-
-    lpot_source, _ = lpot_source.with_refinement()
-
+            ).with_refinement()
     density_discr = lpot_source.density_discr
 
-    if 0:
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(lpot_source)
+
+    if visualize:
         from meshmode.discretization.visualization import draw_curve
         draw_curve(density_discr)
         import matplotlib.pyplot as plt
@@ -415,7 +415,7 @@ def test_perf_data_gathering(ctx_factory, n_arms=5):
     nodes = density_discr.nodes().with_queue(queue)
     sigma = cl.clmath.sin(10 * nodes[0])
 
-    bind(lpot_source, sym_op)(queue, sigma=sigma)
+    bind(places, sym_op)(queue, sigma=sigma)
 
 # }}}
 
@@ -487,8 +487,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
             # conjure up some globally smooth functions, interpret their values
             # in the tangential coordinate system, and be done. Instead, generate
             # an XYZ function and project it.
-            density = bind(
-                    places,
+            density = bind(places,
                     sym.xyz_to_tangential(sym.make_sym_vector("jxyz", 3)))(
                             queue,
                             jxyz=sym.make_obj_array([

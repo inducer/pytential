@@ -59,6 +59,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
 
     ovsmp_target_order = 4*target_order
 
+    # {{{ geometries
+
     from meshmode.mesh.generation import (  # noqa
             make_curve_mesh, starfish, ellipse, drop)
     mesh = make_curve_mesh(
@@ -95,17 +97,23 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     eval_points[0, :] = np.tile(eval_points_1d, len(eval_points_1d))
     eval_points[1, :] = np.repeat(eval_points_1d, len(eval_points_1d))
     eval_points = outside_circle(eval_points, radius=circle_rad)
-
     point_targets = PointsTarget(eval_points)
+
+    fplot = FieldPlotter(np.zeros(2), extent=6, npoints=100)
+    plot_pts = outside_circle(fplot.points, radius=circle_rad)
+    plot_targets = PointsTarget(fplot.points)
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: density_discr,
-        'point-target': point_targets})
+        'point-target': point_targets,
+        'plot-target': plot_targets})
 
     normal = bind(places, sym.normal(2).as_vector())(queue)
     path_length = bind(places, sym.integral(2, 1, 1))(queue)
+
+    # }}}
 
     # {{{ describe bvp
 
@@ -214,12 +222,13 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
             omega=omega)
     print("@@@@@@@@")
 
-    fplot = FieldPlotter(np.zeros(2), extent=6, npoints=100)
-    plot_pts = outside_circle(fplot.points, radius=circle_rad)
-    plot_vel = bind(
-          (qbx, PointsTarget(plot_pts)),
-          representation_sym)(queue, sigma=sigma, mu=mu, normal=normal,
-                  sigma_int_val=int_val, omega=omega)
+    plot_vel = bind(places, representation_sym,
+            auto_where=(sym.DEFAULT_SOURCE, 'plot-target'))(queue,
+                    sigma=sigma,
+                    mu=mu,
+                    normal=normal,
+                    sigma_int_val=int_val,
+                    omega=omega)
 
     def get_obj_array(obj_array):
         return make_obj_array([

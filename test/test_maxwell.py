@@ -218,7 +218,8 @@ class EHField(object):
     #tc_int,
     tc_ext,
     ])
-def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
+def test_pec_mfie_extinction(ctx_factory, case,
+        use_plane_wave=False, visualize=False):
     """For (say) is_interior=False (the 'exterior' MFIE), this test verifies
     extinction of the combined (incoming + scattered) field on the interior
     of the scatterer.
@@ -256,10 +257,9 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
         if source is None:
             source = 'test-source'
 
-        if 0:
+        if use_plane_wave:
             # plane wave
-            return bind(
-                    places,
+            return bind(places,
                     get_sym_maxwell_plane_wave(
                         amplitude_vec=np.array([1, 1, 1]),
                         v=np.array([1, 0, 0]),
@@ -267,8 +267,7 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
                     auto_where=target)(queue)
         else:
             # point source
-            return bind(
-                    places,
+            return bind(places,
                     get_sym_maxwell_point_source(mfie.kernel, j_sym, mfie.k),
                     auto_where=(source, target))(queue, j=src_j, k=case.k)
 
