@@ -7,7 +7,7 @@ from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
 
-from pytential import bind, sym, norm  # noqa
+from pytential import bind, sym
 from pytential.target import PointsTarget
 
 # {{{ set some constants for use below
@@ -23,7 +23,7 @@ k = 3
 # }}}
 
 
-def main():
+def main(visualize=False, mesh_name="ellipse"):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
@@ -33,12 +33,12 @@ def main():
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
 
-    if 0:
+    if mesh_name == "ellipse":
         mesh = make_curve_mesh(
                 partial(ellipse, 1),
                 np.linspace(0, 1, nelements+1),
                 mesh_order)
-    else:
+    elif mesh_name == "ellipse_array":
         base_mesh = make_curve_mesh(
                 partial(ellipse, 1),
                 np.linspace(0, 1, nelements+1),
@@ -58,11 +58,13 @@ def main():
 
         mesh = merge_disjoint_meshes(meshes, single_group=True)
 
-        if 0:
+        if visualize:
             from meshmode.mesh.visualization import draw_curve
             draw_curve(mesh)
             import matplotlib.pyplot as plt
             plt.show()
+    else:
+        raise ValueError("unknown mesh name: {}".format(mesh_name))
 
     pre_density_discr = Discretization(
             cl_ctx, mesh,
@@ -75,6 +77,20 @@ def main():
             fmm_order=fmm_order
             ).with_refinement()
     density_discr = qbx.density_discr
+
+    qbx_stick_out = qbx.copy(target_association_tolerance=0.05)
+
+    from sumpy.visualization import FieldPlotter
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
+    targets = cl.array.to_device(queue, fplot.points)
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection({
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: qbx.density_discr,
+        'qbx-stick-out': qbx_stick_out,
+        'targets': PointsTarget(targets)
+        })
 
     # {{{ describe bvp
 
@@ -104,7 +120,7 @@ def main():
 
     # }}}
 
-    bound_op = bind(qbx, bdry_op_sym)
+    bound_op = bind(places, bdry_op_sym)
 
     # {{{ fix rhs and solve
 
@@ -118,7 +134,7 @@ def main():
 
     bc = -u_incoming_func(nodes)
 
-    bvp_rhs = bind(qbx, sqrt_w*sym.var("bc"))(queue, bc=bc)
+    bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(queue, bc=bc)
 
     from pytential.solve import gmres
     gmres_result = gmres(
@@ -133,31 +149,26 @@ def main():
 
     sigma = gmres_result.solution
 
-    repr_kwargs = dict(k=sym.var("k"), qbx_forced_limit=None)
+    repr_kwargs = dict(
+            k=sym.var("k"),
+            source='qbx-stick-out',
+            target='targets',
+            qbx_forced_limit=None)
     representation_sym = (
             alpha*sym.S(kernel, inv_sqrt_w_sigma, **repr_kwargs)
             - sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
 
-    from sumpy.visualization import FieldPlotter
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
-
-    targets = cl.array.to_device(queue, fplot.points)
-
     u_incoming = u_incoming_func(targets)
-
-    qbx_stick_out = qbx.copy(target_association_tolerance=0.05)
-
     ones_density = density_discr.zeros(queue)
     ones_density.fill(1)
-    indicator = bind(
-            (qbx_stick_out, PointsTarget(targets)),
-            sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None))(
+
+    del repr_kwargs['k']
+    indicator = bind(places, sym.D(LaplaceKernel(2), sigma_sym, **repr_kwargs))(
             queue, sigma=ones_density).get()
 
     try:
-        fld_in_vol = bind(
-                (qbx_stick_out, PointsTarget(targets)),
-                representation_sym)(queue, sigma=sigma, k=k).get()
+        fld_in_vol = bind(places, representation_sym)(
+                queue, sigma=sigma, k=k).get()
     except QBXTargetAssociationFailedException as e:
         fplot.write_vtk_file(
                 "failed-targets.vts",
