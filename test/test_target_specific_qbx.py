@@ -37,7 +37,7 @@ from meshmode.mesh.generation import (  # noqa
         NArmedStarfish,
         make_curve_mesh)
 
-from pytential import bind, sym, norm  # noqa
+from pytential import bind, sym
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 import logging
@@ -169,8 +169,14 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
             _expansion_stick_out_factor=0.9,
             _use_target_specific_qbx=False,
             ).with_refinement(**refiner_extra_kwargs)
-
     density_discr = qbx.density_discr
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection({
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: qbx.density_discr,
+        'qbx-target-specific': qbx.copy(_use_target_specific_qbx=True)
+        })
 
     nodes = density_discr.nodes().with_queue(queue)
     u_dev = clmath.sin(nodes[0])
@@ -195,11 +201,10 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
 
     expr = op(kernel, u_sym, qbx_forced_limit=-1, **kernel_kwargs)
 
-    bound_op = bind(qbx, expr)
+    bound_op = bind(places, expr)
     pot_ref = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 
-    qbx = qbx.copy(_use_target_specific_qbx=True)
-    bound_op = bind(qbx, expr)
+    bound_op = bind(places, expr, auto_where='qbx-target-specific')
     pot_tsqbx = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 
     assert np.allclose(pot_tsqbx, pot_ref, atol=1e-13, rtol=1e-13)
