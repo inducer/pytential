@@ -1,13 +1,13 @@
 from __future__ import division
+
 import numpy as np
 import pyopencl as cl
+
 from sumpy.visualization import FieldPlotter
-#from mayavi import mlab
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 
-import faulthandler
+from pytential import bind, sym
 from six.moves import range
-faulthandler.enable()
 
 cl_ctx = cl.create_some_context()
 queue = cl.CommandQueue(cl_ctx)
@@ -39,7 +39,8 @@ def main():
     from meshmode.mesh.io import generate_gmsh, FileSource
     mesh = generate_gmsh(
             FileSource(cad_file_name), 2, order=2,
-            other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h])
+            other_options=["-string", "Mesh.CharacteristicLengthMax = %g;" % h],
+            target_unit="MM")
 
     from meshmode.mesh.processing import perform_flips
     # Flip elements--gmsh generates inside-out geometry.
@@ -64,11 +65,19 @@ def main():
             fmm_order=qbx_order + 3,
             target_association_tolerance=0.15).with_refinement()
 
-    nodes = density_discr.nodes().with_queue(queue)
+    from pytential.target import PointsTarget
+    fplot = FieldPlotter(bbox_center, extent=3.5*bbox_size, npoints=150)
 
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection({
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: qbx.density_discr,
+        'targets': PointsTarget(fplot.points)
+        })
+
+    nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
 
-    from pytential import bind, sym
     #op = sym.d_dx(sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None))
     op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None)
     #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
@@ -83,12 +92,9 @@ def main():
     if isinstance(kernel, HelmholtzKernel):
         sigma = sigma.astype(np.complex128)
 
-    fplot = FieldPlotter(bbox_center, extent=3.5*bbox_size, npoints=150)
 
-    from pytential.target import PointsTarget
-    fld_in_vol = bind(
-            (qbx, PointsTarget(fplot.points)),
-            op)(queue, sigma=sigma, k=k).get()
+    fld_in_vol = bind(places, op, auto_where=(sym.DEFAULT_SOURCE, 'targets'))(
+            queue, sigma=sigma, k=k).get()
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
     fplot.write_vtk_file(
@@ -98,8 +104,7 @@ def main():
                 ]
             )
 
-    bdry_normals = bind(
-            density_discr,
+    bdry_normals = bind(places,
             sym.normal(density_discr.ambient_dim))(queue).as_vector(dtype=object)
 
     from meshmode.discretization.visualization import make_visualizer

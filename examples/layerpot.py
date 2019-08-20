@@ -10,10 +10,7 @@ from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 
 from pytential import bind, sym
-
-import faulthandler
 from six.moves import range
-faulthandler.enable()
 
 target_order = 16
 qbx_order = 3
@@ -30,7 +27,7 @@ else:
 #kernel = OneKernel()
 
 
-def main():
+def main(visualize=True):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
@@ -56,11 +53,20 @@ def main():
     qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order+3,
             target_association_tolerance=0.005).with_refinement()
-
     density_discr = qbx.density_discr
 
-    nodes = density_discr.nodes().with_queue(queue)
+    from pytential.target import PointsTarget
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
+    targets_dev = cl.array.to_device(queue, fplot.points)
 
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection({
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: qbx.density_discr,
+        'targets': PointsTarget(targets_dev)
+        })
+
+    nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
 
     def op(**kwargs):
@@ -80,16 +86,12 @@ def main():
     if isinstance(kernel, HelmholtzKernel):
         sigma = sigma.astype(np.complex128)
 
-    bound_bdry_op = bind(qbx, op())
-    #mlab.figure(bgcolor=(1, 1, 1))
-    if 1:
-        fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
-        from pytential.target import PointsTarget
-
-        targets_dev = cl.array.to_device(queue, fplot.points)
-        fld_in_vol = bind(
-                (qbx, PointsTarget(targets_dev)),
-                op(qbx_forced_limit=None))(queue, sigma=sigma, k=k).get()
+    bound_bdry_op = bind(places, op())
+    if visualize:
+        fld_in_vol = bind(places, op(
+            source=sym.DEFAULT_SOURCE,
+            target='targets',
+            qbx_forced_limit=None))(queue, sigma=sigma, k=k).get()
 
         if enable_mayavi:
             fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
