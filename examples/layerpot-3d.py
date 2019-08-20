@@ -92,7 +92,6 @@ def main():
     if isinstance(kernel, HelmholtzKernel):
         sigma = sigma.astype(np.complex128)
 
-
     fld_in_vol = bind(places, op, auto_where=(sym.DEFAULT_SOURCE, 'targets'))(
             queue, sigma=sigma, k=k).get()
 
