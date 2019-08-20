@@ -82,7 +82,7 @@ def timing_run(nx, ny, visualize=False):
         qbx_tgt_indicator = qbx_tgt_tol.copy(
                 fmm_level_to_order=lambda lev: 7,
                 qbx_order=2)
-        qbx_stick_out = qbx.copy(target_stick_out_factor=0.1)
+        qbx_stick_out = qbx.copy(target_association_tolerance=0.1)
 
         places.update({
             "plot-targets": targets,

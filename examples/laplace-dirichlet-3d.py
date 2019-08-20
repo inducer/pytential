@@ -70,7 +70,7 @@ def main():
             ).with_refinement()
     density_discr = qbx.density_discr
 
-    qbx_stick_out = qbx.copy(target_stick_out_factor=0.2)
+    qbx_stick_out = qbx.copy(target_association_tolerance=0.2)
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)
@@ -102,8 +102,8 @@ def main():
 
     bdry_op_sym = (loc_sign*0.5*sigma_sym
             + sqrt_w*(
-                sym.S(kernel, inv_sqrt_w_sigma)
-                + sym.D(kernel, inv_sqrt_w_sigma)
+                sym.S(kernel, inv_sqrt_w_sigma, qbx_forced_limit=+1)
+                + sym.D(kernel, inv_sqrt_w_sigma, qbx_forced_limit="avg")
                 ))
 
     # }}}
