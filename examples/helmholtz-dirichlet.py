@@ -23,7 +23,7 @@ k = 3
 # }}}
 
 
-def main(visualize=False, mesh_name="ellipse"):
+def main(visualize=True, mesh_name="ellipse"):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
@@ -146,6 +146,9 @@ def main(visualize=False, mesh_name="ellipse"):
     # }}}
 
     # {{{ postprocess/visualize
+
+    if not visualize:
+        return
 
     sigma = gmres_result.solution
 
