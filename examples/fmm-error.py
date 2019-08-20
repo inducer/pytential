@@ -24,7 +24,6 @@ def main():
         kernel = HelmholtzKernel(2)
     else:
         kernel = LaplaceKernel(2)
-    #kernel = OneKernel()
 
     mesh = make_curve_mesh(
             #lambda t: ellipse(1, t),
@@ -49,8 +48,17 @@ def main():
     qbx = slow_qbx.copy(fmm_order=10)
     density_discr = slow_qbx.density_discr
 
-    nodes = density_discr.nodes().with_queue(queue)
+    from pytential.target import PointsTarget
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=600)
 
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection({
+        'qbx': qbx,
+        'slow-qbx': slow_qbx,
+        'targets': PointsTarget(fplot.points)
+        })
+
+    nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
 
     from pytential import bind, sym
@@ -63,16 +71,11 @@ def main():
     if isinstance(kernel, HelmholtzKernel):
         sigma = sigma.astype(np.complex128)
 
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=600)
-    from pytential.target import PointsTarget
+    fld_in_vol = bind(places, op, auto_where=('slow-qbx', 'targets'))(
+            queue, sigma=sigma, k=k).get()
 
-    fld_in_vol = bind(
-            (slow_qbx, PointsTarget(fplot.points)),
-            op)(queue, sigma=sigma, k=k).get()
-
-    fmm_fld_in_vol = bind(
-            (qbx, PointsTarget(fplot.points)),
-            op)(queue, sigma=sigma, k=k).get()
+    fmm_fld_in_vol = bind(places, op, auto_where=('qbx', 'targets'))(
+            queue, sigma=sigma, k=k).get()
 
     err = fmm_fld_in_vol-fld_in_vol
 
@@ -89,7 +92,7 @@ def main():
     pt.gca().yaxis.set_major_formatter(NullFormatter())
 
     cb = pt.colorbar(shrink=0.9)
-    cb.set_label(r"$\log_{10}(\mathdefault{Error})$")
+    cb.set_label(r"$\log_{10}(\mathrm{Error})$")
 
     pt.savefig("fmm-error-order-%d.pdf" % qbx_order)
 
