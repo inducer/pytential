@@ -83,8 +83,8 @@ def get_interleaved_centers(queue, places, dofdesc=None):
 
     from pytential import bind, sym
     return bind(places,
-            sym.interleaved_expansion_centers(discr.ambient_dim),
-            auto_where=dofdesc)(queue)
+            sym.interleaved_expansion_centers(discr.ambient_dim,
+                dofdesc=dofdesc))(queue)
 
 # }}}
 
@@ -105,8 +105,8 @@ def get_interleaved_radii(queue, places, dofdesc=None):
     from pytential import bind, sym
     return bind(places, sym.expansion_radii(
                 discr.ambient_dim,
-                granularity=sym.GRANULARITY_CENTER),
-            auto_where=dofdesc)(queue)
+                granularity=sym.GRANULARITY_CENTER,
+                dofdesc=dofdesc))(queue)
 
 # }}}
 
