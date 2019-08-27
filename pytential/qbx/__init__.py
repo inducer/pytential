@@ -464,29 +464,21 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             :class:`meshmode.discretization.connection.DiscretizationConnection`
             from the originally given to the refined geometry.
         """
-        from pytential.qbx.refinement import refine_for_global_qbx
 
-        from meshmode.discretization.poly_element import (
-                InterpolatoryQuadratureSimplexGroupFactory)
+        self._refine_enable = True
+        self._refine_target_order = target_order
+        self._refine_kernel_length_scale = kernel_length_scale
+        self._refine_maxiter = maxiter
+        self._refine_refiner = refiner
+        self._refine_expansion_disturbance_tolerance = \
+                _expansion_disturbance_tolerance
+        self._refine_force_stage2_uniform_refinement_rounds = \
+                _force_stage2_uniform_refinement_rounds
+        self._refine_scaled_max_curvature_threshold = \
+                _scaled_max_curvature_threshold
+        self._refine_visualize = visualize
 
-        if target_order is None:
-            target_order = self.density_discr.groups[0].order
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            lpot, connection = refine_for_global_qbx(
-                    self,
-                    self.refiner_code_container.get_wrangler(queue),
-                    InterpolatoryQuadratureSimplexGroupFactory(target_order),
-                    kernel_length_scale=kernel_length_scale,
-                    maxiter=maxiter, visualize=visualize,
-                    expansion_disturbance_tolerance=_expansion_disturbance_tolerance,
-                    force_stage2_uniform_refinement_rounds=(
-                        _force_stage2_uniform_refinement_rounds),
-                    scaled_max_curvature_threshold=(
-                        _scaled_max_curvature_threshold),
-                    refiner=refiner)
-
-        return lpot, connection
+        return self, None
 
     # {{{ internal API
 

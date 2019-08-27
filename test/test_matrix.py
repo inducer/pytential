@@ -224,10 +224,10 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
             qbx_order,
             # Don't use FMM for now
             fmm_order=False).with_refinement()
-    density_discr = qbx.density_discr
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx)
+    density_discr = places.get_discretization(places.auto_source)
 
     op, u_sym, knl_kwargs = _build_op(lpot_id, k=k)
     from pytential import bind

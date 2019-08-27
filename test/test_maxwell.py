@@ -303,21 +303,23 @@ def test_pec_mfie_extinction(ctx_factory, case,
                 fmm_backend=case.fmm_backend
                 ).with_refinement(_expansion_disturbance_tolerance=0.05)
 
-        scat_discr = qbx.density_discr
+        from pytential.symbolic.execution import GeometryCollection
+        places = GeometryCollection(qbx)
+
         obs_discr = Discretization(
                 cl_ctx, observation_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
         if visualize:
-            qbx_tgt_tol = qbx.copy(target_association_tolerance=0.2)
+            qbx_tgt_tol = places.get_geometry(places.auto_source).copy(
+                    target_association_tolerance=0.2)
 
             fplot = make_field_plotter_from_bbox(
                     find_bounding_box(scat_discr.mesh), h=(0.05, 0.05, 0.3),
                     extend_factor=0.3)
             fplot_tgt = PointsTarget(cl.array.to_device(queue, fplot.points))
 
-        from pytential.symbolic.execution import GeometryCollection
-        places = {}
+        places = places.places
         if visualize:
             places.update({
                 'qbx-target-tol': qbx_tgt_tol,
@@ -325,14 +327,13 @@ def test_pec_mfie_extinction(ctx_factory, case,
                 })
 
         places.update({
-            sym.DEFAULT_SOURCE: qbx,
-            sym.DEFAULT_TARGET: qbx.density_discr,
             'test-source': test_source,
-            'scat-discr': scat_discr,
+            'scat-discr': places[sym.DEFAULT_TARGET],
             'obs-discr': obs_discr,
             'patch-target': calc_patch_tgt,
             })
         places = GeometryCollection(places)
+        density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 
         # {{{ system solve
 
@@ -419,7 +420,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
                     **knl_kwargs)
 
         def scat_norm(f):
-            return norm(qbx, queue, f, p=np.inf)
+            return norm(density_discr, queue, f, p=np.inf)
 
         e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
         h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)

@@ -121,11 +121,12 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection((qbx, targets))
+    density_discr = places.get_discretization(places.auto_source)
 
     from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2)
 
-    sigma = qbx.density_discr.zeros(queue) + 1
+    sigma = density_discr.zeros(queue) + 1
     fld_in_vol = bind(places, op)(queue, sigma=sigma)
     fld_in_vol_exact = -1
 
@@ -194,12 +195,13 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
         'fmm-qbx': fmm_qbx,
         'target': ptarget})
 
+    direct_density_discr = places.get_discretization('direct-qbx')
+    fmm_density_discr = places.get_discretization('fmm-qbx')
+
     from pytential.qbx import QBXTargetAssociationFailedException
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
     try:
-        direct_density_discr = direct_qbx.density_discr
         direct_sigma = direct_density_discr.zeros(queue) + 1
-
         direct_fld_in_vol = bind(places, op,
                 auto_where=('direct-qbx', 'target'))(
                         queue, sigma=direct_sigma)
@@ -209,9 +211,7 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
         pt.show()
         raise
 
-    fmm_density_discr = fmm_qbx.density_discr
     fmm_sigma = fmm_density_discr.zeros(queue) + 1
-
     fmm_fld_in_vol = bind(places, op,
             auto_where=('fmm-qbx', 'target'))(
                     queue, sigma=fmm_sigma)
@@ -391,6 +391,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
 
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(qbx)
+        density_discr = places.get_discretization(places.auto_source)
 
         from sumpy.kernel import LaplaceKernel
         knl = LaplaceKernel(3)
@@ -402,7 +403,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                 sym.cse(sym.tangential_to_xyz(density_sym), "jxyz"),
                 qbx_forced_limit=qbx_forced_limit)))
 
-        x, y, z = qbx.density_discr.nodes().with_queue(queue)
+        x, y, z = density_discr.nodes().with_queue(queue)
         m = cl.clmath
 
         if relation == "nxcurls":
@@ -453,8 +454,8 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
 
         h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
         err = (
-                norm(qbx, queue, jump_identity, np.inf)
-                / norm(qbx, queue, density, np.inf))
+                norm(density_discr, queue, jump_identity, np.inf)
+                / norm(density_discr, queue, density, np.inf))
         print("ERROR", h_max, err)
 
         eoc_rec.add_data_point(h_max, err)

@@ -329,10 +329,9 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                     case, "_expansion_stick_out_factor", 0),
                 ).with_refinement(**refiner_extra_kwargs)
 
-        density_discr = qbx.density_discr
-
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(qbx)
+        density_discr = places.get_discretization(places.auto_source)
 
         # {{{ compute values of a solution to the PDE
 

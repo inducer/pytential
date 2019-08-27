@@ -79,7 +79,6 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
             target_association_tolerance=target_association_tolerance,
             _expansions_in_tree_have_extent=True,
             ).with_refinement()
-    density_discr = qbx.density_discr
 
     def circle_mask(test_points, radius):
         return (test_points[0, :]**2 + test_points[1, :]**2 > radius**2)
@@ -103,11 +102,12 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     plot_targets = PointsTarget(outside_circle(fplot.points, radius=circle_rad))
 
     from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection({
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: density_discr,
+    places = GeometryCollection(qbx).places
+    places.update({
         'point-target': point_targets,
         'plot-target': plot_targets})
+    places = GeometryCollection(places)
+    density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 
     normal = bind(places, sym.normal(2).as_vector())(queue)
     path_length = bind(places, sym.integral(2, 1, 1))(queue)

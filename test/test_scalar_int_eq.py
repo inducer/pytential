@@ -480,7 +480,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
             _from_sep_smaller_crit=getattr(case, "from_sep_smaller_crit", None),
             _from_sep_smaller_min_nsources_cumul=30,
             fmm_backend=case.fmm_backend, **qbx_lpot_kwargs)
-    density_discr = qbx.density_discr
 
     from pytential.source import PointPotentialSource
     point_sources = make_circular_point_group(
@@ -502,8 +501,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
         if hasattr(case, "vis_extend_factor"):
             vis_grid_spacing = case.vis_grid_spacing
 
-        qbx_tgt_tol = qbx.copy(target_association_tolerance=0.15)
-
         from sumpy.visualization import make_field_plotter_from_bbox  # noqa
         from meshmode.mesh.processing import find_bounding_box
         fplot = make_field_plotter_from_bbox(
@@ -513,23 +510,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
         from pytential.target import PointsTarget
         plot_targets = PointsTarget(fplot.points)
-
-    places = {
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: density_discr,
-        'point-source': point_source,
-        'point-target': point_target
-        }
-    if visualize:
-        places.update({
-            'qbx-target-tol': qbx_tgt_tol,
-            'plot-targets': plot_targets
-            })
-
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(places)
-
-    # }}}
 
     if case.use_refinement:
         if case.k != 0 and getattr(case, "refine_on_helmholtz_k", True):
@@ -548,14 +528,44 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
         #refiner_extra_kwargs["visualize"] = True
 
-        print("%d elements before refinement" % pre_density_discr.mesh.nelements)
         qbx, _ = qbx.with_refinement(**refiner_extra_kwargs)
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(qbx).places
+    places = places.update({
+        'point-source': point_source,
+        'point-target': point_target
+        })
+    if visualize:
+        places.update({
+            'qbx-target-tol': places[sym.DEFAULT_SOURCE].copy(
+                target_association_tolerance=0.15),
+            'plot-targets': plot_targets
+            })
+
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(places)
+    density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
+
+    if case.use_refinement:
+        print("%d elements before refinement" % pre_density_discr.mesh.nelements)
+
+        dd = sym.as_dofdesc(sym.DEFAULT_SOURCE)
+        discr = places.get_discretization(dd)
         print("%d stage-1 elements after refinement"
-                % qbx.density_discr.mesh.nelements)
+                % discr.mesh.nelements)
+
+        dd = dd.copy(discr_stage=sym.QBX_SOURCE_STAGE2)
+        discr = places.get_discretization(dd)
         print("%d stage-2 elements after refinement"
-                % qbx.stage2_density_discr.mesh.nelements)
+                % discr.mesh.nelements)
+
+        dd = dd.copy(discr_stage=sym.QBX_SOURCE_QUAD_STAGE2)
+        discr = places.get_discretization(dd)
         print("quad stage-2 elements have %d nodes"
-                % qbx.quad_stage2_density_discr.groups[0].nunit_nodes)
+                % discr.groups[0].nunit_nodes)
+
+    # }}}
 
     if hasattr(case, "visualize_geometry") and case.visualize_geometry:
         bdry_normals = bind(places, sym.normal(mesh.ambient_dim))(

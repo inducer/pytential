@@ -156,7 +156,6 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
 
     refiner_extra_kwargs = {}
-
     if helmholtz_k != 0:
         refiner_extra_kwargs["kernel_length_scale"] = 5 / abs(helmholtz_k)
 
@@ -169,14 +168,15 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
             _expansion_stick_out_factor=0.9,
             _use_target_specific_qbx=False,
             ).with_refinement(**refiner_extra_kwargs)
-    density_discr = qbx.density_discr
 
     from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection({
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: qbx.density_discr,
-        'qbx-target-specific': qbx.copy(_use_target_specific_qbx=True)
+    places = GeometryCollection(qbx).places
+    places.update({
+        'qbx-target-specific': places[sym.DEFAULT_SOURCE].copy(
+            _use_target_specific_qbx=True)
         })
+    places = GeometryCollection(places)
+    density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 
     nodes = density_discr.nodes().with_queue(queue)
     u_dev = clmath.sin(nodes[0])

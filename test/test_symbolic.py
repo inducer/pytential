@@ -216,6 +216,16 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     target_order = 7
     qbx_order = 4
 
+    where = 'test-interpolation'
+    from_dd = sym.DOFDescriptor(
+            geometry=where,
+            discr_stage=source_discr_stage,
+            granularity=sym.GRANULARITY_NODE)
+    to_dd = sym.DOFDescriptor(
+            geometry=where,
+            discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
+            granularity=target_granularity)
+
     mesh = make_curve_mesh(starfish,
             np.linspace(0.0, 1.0, nelements + 1),
             target_order)
@@ -228,15 +238,9 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
             qbx_order=qbx_order,
             fmm_order=False).with_refinement()
 
-    where = 'test-interpolation'
-    from_dd = sym.DOFDescriptor(
-            geometry=where,
-            discr_stage=source_discr_stage,
-            granularity=sym.GRANULARITY_NODE)
-    to_dd = sym.DOFDescriptor(
-            geometry=where,
-            discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
-            granularity=target_granularity)
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(qbx, auto_where=where)
+    qbx = places.get_geometry(where)
 
     sigma_sym = sym.var("sigma")
     op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))

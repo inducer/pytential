@@ -38,7 +38,7 @@ import pyopencl.clmath  # noqa
 
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
-from pytools import memoize_in
+from pytools import memoize_in, memoize_method
 from pytential import sym
 
 import logging
@@ -511,6 +511,7 @@ def _prepare_expr(places, expr, auto_where=None):
 
 # {{{ geometry collection
 
+
 class GeometryCollection(object):
     """A mapping from symbolic identifiers ("place IDs", typically strings)
     to 'geometries', where a geometry can be a
@@ -573,7 +574,7 @@ class GeometryCollection(object):
         if isinstance(places, QBXLayerPotentialSource):
             self.places[auto_source.geometry] = places
             self.places[auto_target.geometry] = \
-                    self._get_lpot_discretization(places, auto_target)
+                    self._get_stage_discretization(places, auto_source)
         elif isinstance(places, (Discretization, PotentialSource)):
             self.places[auto_source.geometry] = places
             self.places[auto_target.geometry] = places
@@ -603,12 +604,58 @@ class GeometryCollection(object):
     def auto_target(self):
         return self.auto_where[1]
 
-    def _get_lpot_discretization(self, lpot, dofdesc):
+    @property
+    @memoize_method
+    def ambient_dim(self):
+        from pytools import single_valued
+        ambient_dim = [p.ambient_dim for p in six.itervalues(self.places)]
+        return single_valued(ambient_dim)
+
+    def _refine_for_global_qbx(self, queue, lpot, dofdesc):
+        from pytential.qbx.refinement import refine_for_global_qbx
+        from meshmode.discretization.poly_element import \
+                InterpolatoryQuadratureSimplexGroupFactory
+
+        lpot_name = dofdesc.geometry
+        if lpot._refine_target_order is None:
+            target_order = lpot.density_discr.groups[0].order
+        else:
+            target_order = lpot._refine_target_order
+
+        lpot._refine_enable = False
+        wrangler = lpot.refiner_code_container.get_wrangler(queue, self)
+
+        refined_lpot, _ = refine_for_global_qbx(
+                lpot_name,
+                wrangler,
+                InterpolatoryQuadratureSimplexGroupFactory(target_order),
+                kernel_length_scale=lpot._refine_kernel_length_scale,
+                maxiter=lpot._refine_maxiter,
+                visualize=lpot._refine_visualize,
+                expansion_disturbance_tolerance=(
+                    lpot._refine_expansion_disturbance_tolerance),
+                force_stage2_uniform_refinement_rounds=(
+                    lpot._refine_force_stage2_uniform_refinement_rounds),
+                scaled_max_curvature_threshold=(
+                    lpot._refine_scaled_max_curvature_threshold),
+                refiner=lpot._refine_refiner)
+
+        return refined_lpot
+
+    def _get_stage_discretization(self, lpot, dofdesc):
+        if not lpot._refined_for_global_qbx \
+                and getattr(lpot, '_refine_enable', False):
+            with cl.CommandQueue(lpot.cl_context) as queue:
+                lpot = self._refine_for_global_qbx(
+                        queue, lpot, dofdesc)
+            self.places[dofdesc.geometry] = lpot
+
         if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
             return lpot.stage2_density_discr
-        if dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
+        elif dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
             return lpot.quad_stage2_density_discr
-        return lpot.density_discr
+        else:
+            return lpot.density_discr
 
     def get_discretization(self, dofdesc):
         """
@@ -633,7 +680,7 @@ class GeometryCollection(object):
         from pytential.source import LayerPotentialSourceBase
 
         if isinstance(discr, QBXLayerPotentialSource):
-            return self._get_lpot_discretization(discr, dofdesc)
+            return self._get_stage_discretization(discr, dofdesc)
         elif isinstance(discr, LayerPotentialSourceBase):
             return discr.density_discr
         else:

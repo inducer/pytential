@@ -264,11 +264,11 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
         knl = lp.split_iname(knl, "ielement", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
-    def get_wrangler(self, queue):
+    def get_wrangler(self, queue, places):
         """
         :arg queue:
         """
-        return RefinerWrangler(self, queue)
+        return RefinerWrangler(self, queue, places)
 
 # }}}
 
@@ -440,6 +440,41 @@ class RefinerWrangler(TreeWranglerBase):
 # }}}
 
 
+class QBXGeometryStage(object):
+    def __init__(self, lpot_source, places):
+        self.lpot_source
+        self.places = places
+
+    @property
+    def density_discr(self):
+        return self.lpot_source.density_discr
+
+    @property
+    @memoize_method
+    def stage2_density_discr(self):
+        return self._stage2_density_discr
+
+    @property
+    @memoize_method
+    def quad_stage2_density_discr(self):
+        return self._quad_stage2_density_discr
+
+    @property
+    @memoize_method
+    def stage1_to_quad_stage2_connection(self):
+        pass
+
+    @property
+    @memoize_method
+    def stage1_to_stage2_connection(self):
+        pass
+
+    @property
+    @memoize_method
+    def stage1_to_quad_stage2_direct_connection(self):
+        pass
+
+
 class RefinerNotConvergedWarning(UserWarning):
     pass
 
@@ -511,6 +546,8 @@ def refine_for_global_qbx(lpot_source, wrangler,
     from meshmode.mesh.refinement import RefinerWithoutAdjacency
     from meshmode.discretization.connection import (
             ChainedDiscretizationConnection, make_same_mesh_connection)
+
+    lpot_source = wrangler.places.get_geometry(lpot_source)
 
     if refiner is not None:
         assert refiner.get_current_mesh() == lpot_source.density_discr.mesh
