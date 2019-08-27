@@ -42,6 +42,7 @@ from pytools import memoize_in
 from pytential.symbolic.primitives import DEFAULT_SOURCE, DEFAULT_TARGET
 from pytential.symbolic.primitives import (
     QBXSourceStage1, QBXSourceStage2, QBXSourceQuadStage2)
+from pytential.qbx.cost import AbstractQBXCostModel
 
 
 # FIXME caches: fix up queues
@@ -268,9 +269,11 @@ class CostModelMapper(EvaluationMapperBase):
     data is collected.
     """
 
-    def __init__(self, bound_expr, queue, context=None,
-            target_geometry=None,
-            target_points=None, target_normals=None, target_tangents=None):
+    def __init__(self, bound_expr, queue,
+                 knl_specific_calibration_params,
+                 context=None,
+                 target_geometry=None,
+                 target_points=None, target_normals=None, target_tangents=None):
         if context is None:
             context = {}
         EvaluationMapperBase.__init__(
@@ -279,13 +282,25 @@ class CostModelMapper(EvaluationMapperBase):
                 target_points,
                 target_normals,
                 target_tangents)
+
+        self.knl_specific_calibration_params = knl_specific_calibration_params
         self.modeled_cost = {}
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         source = bound_expr.places[insn.source]
-        result, perf_model_result = (
-                source.perf_model_compute_potential_insn(
-                    queue, insn, bound_expr, evaluate))
+        knls = tuple(knl for knl in insn.kernels)
+
+        if (isinstance(self.knl_specific_calibration_params, str)
+                and self.knl_specific_calibration_params == "constant_one"):
+            calibration_params = \
+                AbstractQBXCostModel.get_constantone_calibration_params()
+        else:
+            calibration_params = self.knl_specific_calibration_params[knls]
+
+        result, perf_model_result = source.perf_model_compute_potential_insn(
+                    queue, insn, bound_expr, evaluate,
+                    calibration_params
+        )
         self.modeled_cost[insn] = perf_model_result
         return result
 
@@ -541,8 +556,8 @@ class BoundExpression(object):
     def get_discretization(self, where):
         return self.places.get_discretization(where)
 
-    def get_modeled_cost(self, queue, **args):
-        perf_model_mapper = CostModelMapper(self, queue, args)
+    def get_modeled_cost(self, queue, calibration_params, **args):
+        perf_model_mapper = CostModelMapper(self, queue, calibration_params, args)
         self.code.execute(perf_model_mapper)
         return perf_model_mapper.get_modeled_cost()
 

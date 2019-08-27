@@ -83,8 +83,8 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
 
     # {{{ Construct cost models
 
-    cl_cost_model = CLQBXCostModel(queue, None)
-    python_cost_model = PythonQBXCostModel(None)
+    cl_cost_model = CLQBXCostModel(queue)
+    python_cost_model = PythonQBXCostModel()
 
     tree = geo_data.tree()
     xlat_cost = pde_aware_translation_cost_model(tree.targets.shape[0], tree.nlevels)

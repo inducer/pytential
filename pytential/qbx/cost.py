@@ -132,12 +132,6 @@ def taylor_translation_cost_model(dim, nlevels):
 # {{{ cost model
 
 class AbstractQBXCostModel(AbstractFMMCostModel):
-    def with_calibration_params(self, calibration_params):
-        """Return a copy of *self* with a new set of calibration parameters."""
-        return type(self)(
-            calibration_params,
-            translation_cost_model_factory=self.translation_cost_model_factory
-        )
 
     @abstractmethod
     def process_form_qbxl(self, geo_data, p2qbxl_cost,
@@ -255,7 +249,8 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         return cost_factors
 
-    def get_qbx_modeled_cost(self, geo_data, kernel, kernel_arguments):
+    def get_qbx_modeled_cost(self, geo_data, kernel, kernel_arguments,
+                             calibration_params):
         # FIXME: This should support target filtering.
         lpot_source = geo_data.lpot_source
         use_tsqbx = lpot_source._use_target_specific_qbx
@@ -272,7 +267,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         # {{{ Construct parameters
 
-        params = self.calibration_params.copy()
+        params = calibration_params.copy()
         params.update(dict(p_qbx=lpot_source.qbx_order))
 
         for ilevel in range(tree.nlevels):
@@ -294,6 +289,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         result = self.get_fmm_modeled_cost(
             traversal, fmm_level_to_order,
             ndirect_sources_per_target_box,
+            calibration_params,
             box_target_counts_nonchild=box_target_counts_nonchild
         )
 
@@ -363,32 +359,64 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             additional_stage_to_param_names=stage_to_param_names
         )
 
+    def estimate_knl_specific_calibration_params(self, model_results, timing_results,
+                                                 time_field_name="wall_elapsed"):
+        """Get kernel-specific calibration parameters from samples of model costs and
+        real costs.
+
+        :arg model_results: a :class:`list` of modeled costs. Each model cost can be
+            obtained from `BoundExpression.get_modeled_cost` with "constant_one" for
+            argument `calibration_params`.
+        :arg timing_results: a :class:`list` of timing data. Each timing data can be
+            obtained from `BoundExpression.eval`.
+        :arg time_field_name: a :class:`str`, the field name from the timing result.
+            Usually this can be "wall_elapsed" or "process_elapsed".
+        :return: a :class:`dict` which maps kernels to calibration parameters.
+        """
+        cost_per_kernel = {}
+        params_per_kernel = {}
+
+        assert len(model_results) == len(timing_results)
+
+        for icase in range(len(model_results)):
+            model_cost = model_results[icase]
+            real_cost = timing_results[icase]
+
+            for insn in real_cost:
+                assert (insn in model_cost)
+
+                knls = tuple(knl for knl in insn.kernels)
+
+                if knls not in cost_per_kernel:
+                    cost_per_kernel[knls] = {
+                        "model_costs": [],
+                        "real_costs": []
+                    }
+
+                cost_per_kernel[knls]["model_costs"].append(model_cost[insn])
+                cost_per_kernel[knls]["real_costs"].append(real_cost[insn])
+
+        for knls in cost_per_kernel:
+            params_per_kernel[knls] = self.estimate_calibration_params(
+                cost_per_kernel[knls]["model_costs"],
+                cost_per_kernel[knls]["real_costs"],
+                time_field_name=time_field_name
+            )
+
+        return params_per_kernel
+
 
 class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
     def __init__(self, queue,
-                 calibration_params,
                  translation_cost_model_factory=pde_aware_translation_cost_model):
         """
         :arg queue: a :class:`pyopencl.CommandQueue` object on which the execution
             of this object runs.
-        :arg calibration_params: the calibration parameters. For evaluation, use
-            parameters returned by :func:`estimate_calibration_params`. For training,
-            use :func:`get_constantone_calibration_params` to make all cost modifiers
-            1.
         :arg translation_cost_model_factory: a function, which takes tree dimension
             and the number of tree levels as arguments, returns an object of
             :class:`TranslationCostModel`.
         """
-        CLFMMCostModel.__init__(
-            self, queue, calibration_params, translation_cost_model_factory
-        )
-
-    def with_calibration_params(self, calibration_params):
-        """Return a copy of *self* with a new set of calibration parameters."""
-        return type(self)(
-            self.queue, calibration_params,
-            translation_cost_model_factory=self.translation_cost_model_factory
-        )
+        CLFMMCostModel.__init__(self, queue, translation_cost_model_factory)
 
     @memoize_method
     def _fill_array_with_index_knl(self, idx_dtype, array_dtype):
@@ -612,20 +640,13 @@ class CLQBXCostModel(AbstractQBXCostModel, CLFMMCostModel):
 
 class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
     def __init__(self,
-                 calibration_params,
                  translation_cost_model_factory=pde_aware_translation_cost_model):
         """
-        :arg calibration_params: the calibration parameters. For evaluation, use
-            parameters returned by :func:`estimate_calibration_params`. For training,
-            use :func:`get_constantone_calibration_params` to make all cost modifiers
-            1.
         :arg translation_cost_model_factory: a function, which takes tree dimension
             and the number of tree levels as arguments, returns an object of
             :class:`TranslationCostModel`.
         """
-        PythonFMMCostModel.__init__(
-            self, calibration_params, translation_cost_model_factory
-        )
+        PythonFMMCostModel.__init__(self, translation_cost_model_factory)
 
     def process_form_qbxl(self, geo_data, p2qbxl_cost,
                           ndirect_sources_per_target_box):
@@ -724,51 +745,5 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
 
 # }}}
 
-
-def generate_parameters_output(queue, model_costs, real_costs):
-    """Get kernel-specific calibration parameters from samples of model costs and
-    real costs.
-
-    :arg queue: a :class:`pyopencl.CommandQueue` object on which the cost model is
-        created.
-    :arg model_costs: a :class:`list` of modeled costs. Each model cost can be
-        obtained from `BoundExpression.get_modeled_cost`.
-    :arg real_costs: a :class:`list` of timing data. Each timing data can be obtained
-        from `BoundExpression.eval`.
-    :return: a :class:`dict` which maps kernels to calibration parameters.
-    """
-    cost_per_kernel = {}
-    params_per_kernel = {}
-
-    assert len(model_costs) == len(real_costs)
-
-    for icase in range(len(model_costs)):
-        model_cost = model_costs[icase]
-        real_cost = real_costs[icase]
-
-        for insn in real_cost:
-            assert (insn in model_cost)
-
-            knls = tuple(knl for knl in insn.kernels)
-
-            if knls not in cost_per_kernel:
-                cost_per_kernel[knls] = {
-                    "model_costs": [],
-                    "real_costs": []
-                }
-
-            cost_per_kernel[knls]["model_costs"].append(model_cost[insn])
-            cost_per_kernel[knls]["real_costs"].append(real_cost[insn])
-
-    cost_model = CLQBXCostModel(
-        queue, CLQBXCostModel.get_constantone_calibration_params()
-    )
-
-    for knls in cost_per_kernel:
-        params_per_kernel[knls] = cost_model.estimate_calibration_params(
-            cost_per_kernel[knls]["model_costs"], cost_per_kernel[knls]["real_costs"]
-        )
-
-    return params_per_kernel
 
 # vim: foldmethod=marker
