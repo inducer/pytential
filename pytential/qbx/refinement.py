@@ -440,41 +440,6 @@ class RefinerWrangler(TreeWranglerBase):
 # }}}
 
 
-class QBXGeometryStage(object):
-    def __init__(self, lpot_source, places):
-        self.lpot_source
-        self.places = places
-
-    @property
-    def density_discr(self):
-        return self.lpot_source.density_discr
-
-    @property
-    @memoize_method
-    def stage2_density_discr(self):
-        return self._stage2_density_discr
-
-    @property
-    @memoize_method
-    def quad_stage2_density_discr(self):
-        return self._quad_stage2_density_discr
-
-    @property
-    @memoize_method
-    def stage1_to_quad_stage2_connection(self):
-        pass
-
-    @property
-    @memoize_method
-    def stage1_to_stage2_connection(self):
-        pass
-
-    @property
-    @memoize_method
-    def stage1_to_quad_stage2_direct_connection(self):
-        pass
-
-
 class RefinerNotConvergedWarning(UserWarning):
     pass
 

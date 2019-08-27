@@ -81,8 +81,7 @@ def get_bound_op(places, ambient_dim):
     return bind(places, op)
 
 
-def get_test_density(queue, lpot_source):
-    density_discr = lpot_source.density_discr
+def get_test_density(queue, density_discr):
     nodes = density_discr.nodes().with_queue(queue)
     sigma = cl.clmath.sin(10 * nodes[0])
 
@@ -100,11 +99,13 @@ def calibrate_cost_model(ctx):
 
     for lpot_source in training_geometries(queue):
         lpot_source = lpot_source.copy(cost_model=cost_model)
+
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(lpot_source)
+        density_discr = places.get_discretization(places.auto_source)
 
         bound_op = get_bound_op(places, lpot_source.ambient_dim)
-        sigma = get_test_density(queue, lpot_source)
+        sigma = get_test_density(queue, density_discr)
 
         cost_S = bound_op.get_modeled_cost(queue, sigma=sigma)
 
@@ -129,11 +130,13 @@ def test_cost_model(ctx, cost_model):
 
     for lpot_source in test_geometries(queue):
         lpot_source = lpot_source.copy(cost_model=cost_model)
+
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(lpot_source)
+        density_discr = places.get_discretization(places.auto_source)
 
         bound_op = get_bound_op(places, lpot_source.ambient_dim)
-        sigma = get_test_density(queue, lpot_source)
+        sigma = get_test_density(queue, density_discr)
 
         cost_S = bound_op.get_modeled_cost(queue, sigma=sigma)
         model_result = (

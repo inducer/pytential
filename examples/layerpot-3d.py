@@ -69,11 +69,11 @@ def main():
     fplot = FieldPlotter(bbox_center, extent=3.5*bbox_size, npoints=150)
 
     from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection({
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: qbx.density_discr,
-        'targets': PointsTarget(fplot.points)
-        })
+    places = GeometryCollection(qbx).places
+    places.update({'targets': PointsTarget(fplot.points)})
+
+    places = GeometryCollection(places)
+    density_discr = places.get_discretization(places.auto_source)
 
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])

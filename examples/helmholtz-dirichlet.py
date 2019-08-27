@@ -76,21 +76,21 @@ def main(visualize=True, mesh_name="ellipse"):
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
             ).with_refinement()
-    density_discr = qbx.density_discr
-
-    qbx_stick_out = qbx.copy(target_association_tolerance=0.05)
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(qbx)
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
     targets = cl.array.to_device(queue, fplot.points)
 
-    from pytential.symbolic.execution import GeometryCollection
+    qbx = places.get_geometry(places.auto_source)
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,
-        'qbx-stick-out': qbx_stick_out,
+        'qbx-stick-out': qbx.copy(target_association_tolerance=0.05),
         'targets': PointsTarget(targets)
         })
+    density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 
     # {{{ describe bvp
 

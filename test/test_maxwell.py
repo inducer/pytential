@@ -304,8 +304,9 @@ def test_pec_mfie_extinction(ctx_factory, case,
                 ).with_refinement(_expansion_disturbance_tolerance=0.05)
 
         from pytential.symbolic.execution import GeometryCollection
-        places = GeometryCollection(qbx)
+        places = GeometryCollection(qbx).places
 
+        scat_discr = places[sym.DEFAULT_TARGET]
         obs_discr = Discretization(
                 cl_ctx, observation_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))

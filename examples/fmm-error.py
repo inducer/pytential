@@ -45,18 +45,19 @@ def main():
             qbx_order=qbx_order, fmm_order=False,
             target_association_tolerance=.05
             ).with_refinement()
-    qbx = slow_qbx.copy(fmm_order=10)
-    density_discr = slow_qbx.density_discr
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(slow_qbx)
 
     from pytential.target import PointsTarget
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=600)
 
-    from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection({
-        'qbx': qbx,
-        'slow-qbx': slow_qbx,
+        'slow-qbx': places.get_geometry(places.auto_source),
+        'qbx': places.get_geometry(places.auto_source).copy(
+            fmm_order=10),
         'targets': PointsTarget(fplot.points)
         })
+    density_discr = places.get_discretization('slow-qbx')
 
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])

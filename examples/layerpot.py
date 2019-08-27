@@ -53,18 +53,17 @@ def main(visualize=True):
     qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order+3,
             target_association_tolerance=0.005).with_refinement()
-    density_discr = qbx.density_discr
 
     from pytential.target import PointsTarget
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
     targets_dev = cl.array.to_device(queue, fplot.points)
 
     from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection({
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: qbx.density_discr,
-        'targets': PointsTarget(targets_dev)
-        })
+    places = GeometryCollection(qbx).places
+    places.update({'targets': PointsTarget(targets_dev)})
+
+    places = GeometryCollection(places)
+    density_discr = places.get_discretization(places.auto_source)
 
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])

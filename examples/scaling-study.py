@@ -72,31 +72,28 @@ def timing_run(nx, ny, visualize=False):
             fmm_order=fmm_order
             )
 
-    places = {}
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(qbx).places
+
     if visualize:
         from sumpy.visualization import FieldPlotter
         fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
-
         targets = PointsTarget(cl.array.to_device(queue, fplot.points))
-        qbx_tgt_tol = qbx.copy(target_association_tolerance=0.05)
-        qbx_tgt_indicator = qbx_tgt_tol.copy(
-                fmm_level_to_order=lambda lev: 7,
-                qbx_order=2)
-        qbx_stick_out = qbx.copy(target_association_tolerance=0.1)
 
         places.update({
             "plot-targets": targets,
-            "qbx-target-tol": qbx_tgt_tol,
-            "qbx-indicator": qbx_tgt_indicator,
-            "qbx-stick-out": qbx_stick_out
+            "qbx-target-tol": places[sym.DEFAULT_SOURCE].copy(
+                target_association_tolerance=0.05),
+            "qbx-indicator": places[sym.DEFAULT_SOURCE].copy(
+                target_association_tolerance=0.05,
+                fmm_level_to_order=lambda lev: 7,
+                qbx_order=2),
+            "qbx-stick-out": places[sym.DEFAULT_SOURCE].copy(
+                target_association_tolerance=0.1)
             })
-    places.update({
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: qbx.density_discr
-        })
 
-    from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(places)
+    density_discr = places.get_discretization(places.auto_source)
 
     # {{{ describe bvp
 

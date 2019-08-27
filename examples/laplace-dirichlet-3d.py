@@ -68,21 +68,21 @@ def main():
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order,
             ).with_refinement()
-    density_discr = qbx.density_discr
-
-    qbx_stick_out = qbx.copy(target_association_tolerance=0.2)
+    from pytential.symbolic.execution import GeometryCollection
+    places = GeometryCollection(qbx)
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)
     targets = cl.array.to_device(queue, fplot.points)
 
-    from pytential.symbolic.execution import GeometryCollection
+    qbx = places.get_geometry(places.auto_source)
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,
-        'qbx-stick-out': qbx_stick_out,
+        'qbx-stick-out': qbx.copy(target_association_tolerance=0.2),
         'targets': PointsTarget(targets)
         })
+    density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 
     # {{{ describe bvp
 
