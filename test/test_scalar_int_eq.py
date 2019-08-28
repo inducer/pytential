@@ -64,6 +64,23 @@ def make_circular_point_group(ambient_dim, npoints, radius,
 # {{{ test cases
 
 class IntEqTestCase:
+
+    @property
+    def default_helmholtz_k(self):
+        raise NotImplementedError
+
+    @property
+    def name(self):
+        raise NotImplementedError
+
+    @property
+    def qbx_order(self):
+        raise NotImplementedError
+
+    @property
+    def target_order(self):
+        raise NotImplementedError
+
     def __init__(self, helmholtz_k, bc_type, prob_side):
         """
         :arg prob_side: may be -1, +1, or ``'scat'`` for a scattering problem
@@ -92,6 +109,9 @@ class IntEqTestCase:
 
 class CurveIntEqTestCase(IntEqTestCase):
     resolutions = [40, 50, 60]
+
+    def curve_func(self, *args, **kwargs):
+        raise NotImplementedError
 
     def get_mesh(self, resolution, target_order):
         return make_curve_mesh(
@@ -602,7 +622,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         bc = bind(
                 (point_source, density_discr),
                 sym.normal_derivative(
-                    qbx.ambient_dim, pot_src, where=sym.DEFAULT_TARGET)
+                    qbx.ambient_dim, pot_src, dofdesc=sym.DEFAULT_TARGET)
                 )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     # }}}
@@ -610,7 +630,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # {{{ solve
 
     bound_op = bind(qbx, op_u)
-
     rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
 
     try:
@@ -639,7 +658,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     if 0:
         from sumpy.tools import build_matrix
-        mat = build_matrix(bound_op.scipy_op("u", dtype=dtype, k=case.k))
+        mat = build_matrix(
+                bound_op.scipy_op(
+                    queue, arg_name="u", dtype=dtype, k=case.k))
         w, v = la.eig(mat)
         if 0:
             pt.imshow(np.log10(1e-20+np.abs(mat)))
@@ -843,8 +864,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     class Result(Record):
         pass
 
+    h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
     return Result(
-            h_max=qbx.h_max,
+            h_max=h_max,
             rel_err_2=rel_err_2,
             rel_err_inf=rel_err_inf,
             rel_td_err_inf=rel_td_err_inf,
@@ -864,10 +886,10 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     ])
 # Sample test run:
 # 'test_integral_equation(cl._csc, EllipseIntEqTestCase(0, "dirichlet", +1), visualize=True)'  # noqa: E501
-def test_integral_equation(ctx_getter, case, visualize=False):
+def test_integral_equation(ctx_factory, case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     if USE_SYMENGINE and case.fmm_backend is None:

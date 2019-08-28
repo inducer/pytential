@@ -12,10 +12,10 @@ Copyright (c) 2009-2012, Leslie Greengard, Zydrunas Gimbutas
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met: 
+modification, are permitted provided that the following conditions are met:
 
 1. Redistributions of source code must retain the above copyright notice, this
-   list of conditions and the following disclaimer. 
+   list of conditions and the following disclaimer.
 
 2. Redistributions in binary form must reproduce the above copyright
    notice, this list of conditions and the following disclaimer in the
@@ -47,19 +47,19 @@ typedef double doublereal;
 typedef double complex doublecomplex;
 
 static inline double z_abs(doublecomplex *z) {
-  return cabs(*z);
+    return cabs(*z);
 }
 
 static inline void z_exp(doublecomplex *out, doublecomplex *z) {
-  *out = cexp(*z);
+    *out = cexp(*z);
 }
 
 static inline void z_sin(doublecomplex *out, doublecomplex *z) {
-  *out = csin(*z);
+    *out = csin(*z);
 }
 
 static inline void z_cos(doublecomplex *out, doublecomplex *z) {
-  *out = ccos(*z);
+    *out = ccos(*z);
 }
 
 /* Start of functions borrowed from cdjseval3d.f */
@@ -68,7 +68,7 @@ static inline void z_cos(doublecomplex *out, doublecomplex *z) {
 
 /* ********************************************************************** */
 /* Subroutine */ int jfuns3d_(integer *ier, integer *nterms, doublecomplex *
-	z__, doublereal *scale, doublecomplex *fjs, integer *ifder, 
+	z__, doublereal *scale, doublecomplex *fjs, integer *ifder,
 	doublecomplex *fjder, integer *lwfjs, integer *iscale, integer *ntop)
 {
     /* Initialized data */
@@ -341,7 +341,7 @@ static inline void z_cos(doublecomplex *out, doublecomplex *z) {
 /*      h3d01: computes h0, h1 (first two spherical Hankel fns.) */
 /*      h3dall: computes Hankel functions of all orders and scales them */
 /* ********************************************************************** */
-/* Subroutine */ int h3d01_(doublecomplex *z__, doublecomplex *h0, 
+/* Subroutine */ static int h3d01_(doublecomplex *z__, doublecomplex *h0,
 	doublecomplex *h1)
 {
     /* Initialized data */
@@ -409,7 +409,7 @@ static inline void z_cos(doublecomplex *out, doublecomplex *z) {
 
     /* Local variables */
     integer i__;
-    integer i__1;    
+    integer i__1;
     doublereal dtmp;
     doublecomplex zinv, ztmp;
     doublereal scal2;
@@ -513,4 +513,3 @@ static inline void z_cos(doublecomplex *out, doublecomplex *z) {
 
     return 0;
 } /* h3dall_ */
-

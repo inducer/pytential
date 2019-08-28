@@ -7,14 +7,16 @@ dependencies:
 - conda-forge::numpy
 - conda-forge::sympy
 - scipy
-- pocl=1.0
+- pocl
 - islpy
 - pyopencl
-- python=3.6
+- python>=3.6
 - symengine=0.3.0
 - python-symengine=0.3.0
-- osx-pocl-opencl
 - pyfmmlib
-- gcc
+# for OpenMP support in pyfmmlib
+- libgfortran>=3.0.1
+- clangdev
+- openmp
 - cython
 # things not in here: loopy boxtree pymbolic meshmode sumpy

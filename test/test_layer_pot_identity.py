@@ -159,9 +159,14 @@ class ZeroCalderonExpr(object):
 
         u_sym = sym.var("u")
 
+        from functools import partial
+        S = partial(sym.S, qbx_forced_limit=+1)
+        Dp = partial(sym.Dp, qbx_forced_limit="avg")
+        Sp = partial(sym.Sp, qbx_forced_limit="avg")
+
         return (
-                    -sym.Dp(kernel, sym.S(kernel, u_sym))
-                    - 0.25*u_sym + sym.Sp(kernel, sym.Sp(kernel, u_sym))
+                    -Dp(kernel, S(kernel, u_sym))
+                    - 0.25*u_sym + Sp(kernel, Sp(kernel, u_sym))
                     )
 
     order_drop = 1
@@ -248,8 +253,8 @@ class DynamicTestCase(object):
 @pytest.mark.parametrize("case", [
         DynamicTestCase(SphereGeometry(), GreenExpr(), 0),
 ])
-def test_identity_convergence_slow(ctx_getter, case):
-    test_identity_convergence(ctx_getter, case)
+def test_identity_convergence_slow(ctx_factory, case):
+    test_identity_convergence(ctx_factory, case)
 
 
 @pytest.mark.parametrize("case", [
@@ -265,12 +270,12 @@ def test_identity_convergence_slow(ctx_getter, case):
         DynamicTestCase(SphereGeometry(), GreenExpr(), 0, fmm_backend="fmmlib"),
         DynamicTestCase(SphereGeometry(), GreenExpr(), 1.2, fmm_backend="fmmlib")
 ])
-def test_identity_convergence(ctx_getter,  case, visualize=False):
+def test_identity_convergence(ctx_factory,  case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     case.check()
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # prevent cache 'splosion
@@ -383,7 +388,8 @@ def test_identity_convergence(ctx_getter,  case, visualize=False):
         linf_error_norm = norm(density_discr, queue, error, p=np.inf)
         print("--->", key, linf_error_norm)
 
-        eoc_rec.add_data_point(qbx.h_max, linf_error_norm)
+        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+        eoc_rec.add_data_point(h_max, linf_error_norm)
 
         if visualize:
             from meshmode.discretization.visualization import make_visualizer

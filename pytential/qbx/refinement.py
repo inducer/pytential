@@ -276,11 +276,6 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
 # {{{ wrangler
 
 class RefinerWrangler(TreeWranglerBase):
-
-    def __init__(self, code_container, queue):
-        self.code_container = code_container
-        self.queue = queue
-
     # {{{ check subroutines for conditions 1-3
 
     @log_process(logger)
@@ -309,7 +304,10 @@ class RefinerWrangler(TreeWranglerBase):
         found_panel_to_refine.finish()
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
-        center_danger_zone_radii = lpot_source._expansion_radii("ncenters")
+        from pytential import bind, sym
+        center_danger_zone_radii = bind(lpot_source, sym.expansion_radii(
+            lpot_source.ambient_dim,
+            granularity=sym.GRANULARITY_CENTER))(self.queue)
 
         evt = knl(
             *unwrap_args(
@@ -363,8 +361,11 @@ class RefinerWrangler(TreeWranglerBase):
         found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
         found_panel_to_refine.finish()
 
-        source_danger_zone_radii_by_panel = \
-                lpot_source._source_danger_zone_radii("npanels")
+        from pytential import bind, sym
+        source_danger_zone_radii_by_panel = bind(lpot_source,
+                sym._source_danger_zone_radii(
+                    lpot_source.ambient_dim,
+                    dofdesc=sym.GRANULARITY_ELEMENT))(self.queue)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
@@ -404,7 +405,6 @@ class RefinerWrangler(TreeWranglerBase):
 
         evt, out = knl(self.queue,
                        element_property=element_property,
-                       # lpot_source._coarsest_quad_resolution("npanels")),
                        refine_flags=refine_flags,
                        refine_flags_updated=np.array(0),
                        threshold=np.array(threshold),
@@ -604,11 +604,14 @@ def refine_for_global_qbx(lpot_source, wrangler,
             with ProcessLogger(logger,
                     "checking kernel length scale to panel size ratio"):
 
+                from pytential import bind, sym
+                quad_resolution = bind(lpot_source, sym._quad_resolution(
+                    lpot_source.ambient_dim,
+                    dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
+
                 violates_kernel_length_scale = \
                         wrangler.check_element_prop_threshold(
-                                element_property=(
-                                    lpot_source._coarsest_quad_resolution(
-                                        "npanels")),
+                                element_property=quad_resolution,
                                 threshold=kernel_length_scale,
                                 refine_flags=refine_flags, debug=debug)
 
@@ -620,15 +623,11 @@ def refine_for_global_qbx(lpot_source, wrangler,
         if scaled_max_curvature_threshold is not None:
             with ProcessLogger(logger,
                     "checking scaled max curvature threshold"):
-                from pytential.qbx.utils import to_last_dim_length
                 from pytential import sym, bind
-                scaled_max_curv = to_last_dim_length(
-                        lpot_source.density_discr,
-                        bind(lpot_source,
-                            sym.ElementwiseMax(
-                                sym._scaled_max_curvature(
-                                    lpot_source.density_discr.ambient_dim)))
-                            (wrangler.queue), "npanels")
+                scaled_max_curv = bind(lpot_source,
+                    sym.ElementwiseMax(
+                        sym._scaled_max_curvature(lpot_source.ambient_dim),
+                        dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
 
                 violates_scaled_max_curv = \
                         wrangler.check_element_prop_threshold(

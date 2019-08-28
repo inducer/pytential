@@ -46,7 +46,7 @@ def get_sym_maxwell_point_source(kernel, jxyz, k):
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
 
-    Uses the sign convention :math:`\exp(-1 \omega t)` for the time dependency.
+    Uses the sign convention :math:`\exp(-i \omega t)` for the time dependency.
 
     This will return an object of six entries, the first three of which
     represent the electric, and the second three of which represent the
@@ -70,7 +70,8 @@ def get_sym_maxwell_point_source(kernel, jxyz, k):
 
 # {{{ plane wave
 
-def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=None):
+def get_sym_maxwell_plane_wave(amplitude_vec, v, omega,
+        epsilon=1, mu=1, dofdesc=None):
     r"""Return a symbolic expression that, when bound to a
     :class:`pytential.source.PointPotentialSource` will yield
     a field satisfying Maxwell's equations.
@@ -96,7 +97,7 @@ def get_sym_maxwell_plane_wave(amplitude_vec, v, omega, epsilon=1, mu=1, where=N
 
     # NOTE: for complex, need to ensure real(n).dot(imag(n)) = 0  (7.15)
 
-    x = sym.nodes(3, where).as_vector()
+    x = sym.nodes(3, dofdesc=dofdesc).as_vector()
 
     v_mag_squared = sym.cse(np.dot(v, v), "v_mag_squared")
     n = v/sym.sqrt(v_mag_squared)
@@ -152,7 +153,8 @@ class PECChargeCurrentMFIEOperator:
         return xyz_to_tangential(sym.n_cross(Hinc_xyz))
 
     def rho_operator(self, loc, rho):
-        return loc*0.5*rho+sym.Sp(self.kernel, rho, k=self.k)
+        return loc*0.5*rho+sym.Sp(
+                self.kernel, rho, k=self.k, qbx_forced_limit="avg")
 
     def rho_rhs(self, Jt, Einc_xyz):
         Jxyz = cse(tangential_to_xyz(Jt), "Jxyz")
@@ -225,8 +227,8 @@ class MuellerAugmentedMFIEOperator(object):
 
         S = partial(sym.S, self.kernel, qbx_forced_limit="avg")
 
-        def curl_S(dens):
-            return sym.curl(sym.S(self.kernel, dens, qbx_forced_limit="avg"))
+        def curl_S(dens, k):
+            return sym.curl(sym.S(self.kernel, dens, qbx_forced_limit="avg", k=k))
 
         grad = partial(sym.grad, 3)
 
@@ -244,7 +246,7 @@ class MuellerAugmentedMFIEOperator(object):
         F3 = (xyz_to_tangential(sym.n_cross(E1-E0) + 0.5*(mu0+mu1)*Mxyz))
 
         # sign flip included
-        F4 = -sym.n_dot(mu1*H1-mu0*H0) + 0.5*(mu1+mu0)*u.rho_m
+        F4 = -sym.n_dot(mu1*H1-mu0*H0) + 0.5*(mu1+mu0)*u.rho_m  # noqa pylint:disable=invalid-unary-operand-type
 
         return sym.join_fields(F1, F2, F3, F4)
 

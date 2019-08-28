@@ -63,6 +63,9 @@ class PointPotentialSource(PotentialSource):
         An :class:`pyopencl.array.Array` of shape ``[ambient_dim, nnodes]``.
 
     .. attribute:: nnodes
+
+    .. automethod:: cost_model_compute_potential_insn
+    .. automethod:: exec_compute_potential_insn
     """
 
     def __init__(self, cl_context, nodes):
@@ -124,7 +127,7 @@ class PointPotentialSource(PotentialSource):
 
         return p2p
 
-    def perf_model_compute_potential_insn(self, queue, insn, bound_expr,
+    def cost_model_compute_potential_insn(self, queue, insn, bound_expr,
                                           evaluate, costs):
         raise NotImplementedError
 
@@ -142,8 +145,7 @@ class PointPotentialSource(PotentialSource):
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        strengths = evaluate(insn.density).with_queue(queue).copy()
 
         # FIXME: Do this all at once
         result = []
@@ -166,8 +168,7 @@ class PointPotentialSource(PotentialSource):
     @memoize_method
     def weights_and_area_elements(self):
         with cl.CommandQueue(self.cl_context) as queue:
-            result = cl.array.empty(queue, self._nodes.shape[-1],
-                    dtype=self.real_dtype)
+            result = cl.array.empty(queue, self.nnodes, dtype=self.real_dtype)
             result.fill(1)
 
         return result.with_queue(None)
@@ -187,7 +188,6 @@ class LayerPotentialSourceBase(PotentialSource):
     .. attribute:: stage2_density_discr
     .. attribute:: quad_stage2_density_discr
     .. attribute:: resampler
-    .. method:: with_refinement
 
     .. rubric:: Discretization data
 
@@ -196,14 +196,28 @@ class LayerPotentialSourceBase(PotentialSource):
     .. attribute:: dim
     .. attribute:: real_dtype
     .. attribute:: complex_dtype
-    .. attribute:: h_max
 
     .. rubric:: Execution
 
-    .. method:: weights_and_area_elements
-    .. method:: perf_model_compute_potential_insn
-    .. method:: exec_compute_potential_insn
+    .. automethod:: weights_and_area_elements
+    .. automethod:: cost_model_compute_potential_insn
+    .. automethod:: exec_compute_potential_insn
     """
+
+    def __init__(self, density_discr):
+        self.density_discr = density_discr
+
+    @property
+    def stage2_density_discr(self):
+        raise NotImplementedError
+
+    @property
+    def quad_stage2_density_discr(self):
+        raise NotImplementedError
+
+    @property
+    def resampler(self):
+        raise NotImplementedError
 
     @property
     def ambient_dim(self):

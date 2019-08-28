@@ -433,10 +433,6 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
 
 class TargetAssociationWrangler(TreeWranglerBase):
 
-    def __init__(self, code_container, queue):
-        self.code_container = code_container
-        self.queue = queue
-
     @log_process(logger)
     def mark_targets(self, tree, peer_lists, lpot_source, target_status,
                      debug, wait_for=None):
@@ -456,12 +452,12 @@ class TargetAssociationWrangler(TreeWranglerBase):
         found_target_close_to_panel.finish()
 
         # Perform a space invader query over the sources.
+        from pytential import bind, sym
         source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = (
-                lpot_source._close_target_tunnel_radius("nsources")
-                .with_queue(self.queue))
+        tunnel_radius_by_source = bind(lpot_source,
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -497,7 +493,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        tunnel_radius_by_source = lpot_source._close_target_tunnel_radius("nsources")
+        tunnel_radius_by_source = bind(lpot_source,
+            sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         evt = knl(
             *unwrap_args(
@@ -548,13 +545,15 @@ class TargetAssociationWrangler(TreeWranglerBase):
             marked_target_count = int(cl.array.sum(target_status).get())
 
         # Perform a space invader query over the centers.
+        from pytential import bind, sym
         center_slice = (
                 tree.sorted_target_ids[tree.qbx_user_center_slice]
                 .with_queue(self.queue))
         centers = [
                 axis.with_queue(self.queue)[center_slice] for axis in tree.sources]
-        expansion_radii_by_center = \
-                lpot_source._expansion_radii("ncenters").with_queue(self.queue)
+        expansion_radii_by_center = bind(lpot_source, sym.expansion_radii(
+            lpot_source.ambient_dim,
+            granularity=sym.GRANULARITY_CENTER))(self.queue)
         expansion_radii_by_center_with_tolerance = \
                 expansion_radii_by_center * (1 + target_association_tolerance)
 
@@ -629,12 +628,12 @@ class TargetAssociationWrangler(TreeWranglerBase):
         found_panel_to_refine.finish()
 
         # Perform a space invader query over the sources.
+        from pytential import bind, sym
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = (
-                lpot_source._close_target_tunnel_radius("nsources")
-                .with_queue(self.queue))
+        tunnel_radius_by_source = bind(lpot_source,
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         # See (TGTMARK) above for algorithm.
 
@@ -647,6 +646,9 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
+        tunnel_radius_by_source = bind(lpot_source,
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
+
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
@@ -657,7 +659,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tree.qbx_user_target_slice.start,
                 tree.nqbxpanels,
                 tree.sorted_target_ids,
-                lpot_source._close_target_tunnel_radius("nsources"),
+                tunnel_radius_by_source,
                 target_status,
                 box_to_search_dist,
                 refine_flags,

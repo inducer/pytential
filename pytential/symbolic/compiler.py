@@ -294,7 +294,7 @@ class Code(object):
     def dump_dataflow_graph(self):
         from pytools.debug import open_unique_debug_file
 
-        open_unique_debug_file("dataflow", ".dot")\
+        open_unique_debug_file("dataflow", ".dot")[0]\
                 .write(dot_dataflow_graph(self, max_node_label_length=None))
 
     def __str__(self):
@@ -438,8 +438,9 @@ class OperatorCompiler(IdentityMapper):
 
     def op_group_features(self, expr):
         from pytential.symbolic.primitives import hashable_kernel_args
+        lpot_source = self.places.get_geometry(expr.source)
         return (
-                self.places[expr.source].op_group_features(expr)
+                lpot_source.op_group_features(expr)
                 + hashable_kernel_args(expr.kernel_arguments))
 
     @memoize_method

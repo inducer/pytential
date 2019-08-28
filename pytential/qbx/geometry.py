@@ -29,6 +29,7 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 from pytools import memoize_method
 from boxtree.tools import DeviceDataRecord
+from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from cgen import Enum
@@ -254,6 +255,12 @@ class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
         knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
+    @property
+    @memoize_method
+    def rotation_classes_builder(self):
+        from boxtree.rotation_classes import RotationClassesBuilder
+        return RotationClassesBuilder(self.cl_context)
+
 # }}}
 
 
@@ -300,7 +307,7 @@ class CenterToTargetList(DeviceDataRecord):
     """
 
 
-class QBXFMMGeometryData(object):
+class QBXFMMGeometryData(FMMLibRotationDataInterface):
     """
 
     .. rubric :: Attributes
@@ -350,6 +357,12 @@ class QBXFMMGeometryData(object):
     .. automethod:: center_to_tree_targets()
     .. automethod:: non_qbx_box_target_lists()
     .. automethod:: plot()
+
+    The following methods implement the
+    :class:`boxtree.pyfmmlib_integration.FMMLibRotationDataInterface`.
+
+    .. method:: m2l_rotation_lists()
+    .. method:: m2l_rotation_angles()
     """
 
     def __init__(self, code_getter, lpot_source,
@@ -779,7 +792,7 @@ class QBXFMMGeometryData(object):
                     tree_ttc, filtered_tree_ttc, filtered_target_ids, count,
                     queue=queue, size=len(tree_ttc))
 
-            count = np.asscalar(count.get())
+            count = count.get().item()
 
             filtered_tree_ttc = filtered_tree_ttc[:count]
             filtered_target_ids = filtered_target_ids[:count].copy()
@@ -823,6 +836,26 @@ class QBXFMMGeometryData(object):
             result = plfilt.filter_target_lists_in_tree_order(queue, tree, flags)
 
             return result.with_queue(None)
+
+    @memoize_method
+    def build_rotation_classes_lists(self):
+        trav = self.traversal()
+        tree = self.tree()
+
+        with cl.CommandQueue(self.cl_context) as queue:
+            return (self
+                    .code_getter
+                    .rotation_classes_builder(queue, trav, tree)[0].get(queue))
+
+    @memoize_method
+    def m2l_rotation_lists(self):
+        return self.build_rotation_classes_lists().from_sep_siblings_rotation_classes
+
+    @memoize_method
+    def m2l_rotation_angles(self):
+        return (self
+                .build_rotation_classes_lists()
+                .from_sep_siblings_rotation_class_to_angle)
 
     # {{{ plotting (for debugging)
 

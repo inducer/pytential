@@ -259,6 +259,9 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         nqbtl = geo_data.non_qbx_box_target_lists()
         box_target_counts_nonchild = nqbtl.box_target_counts_nonchild
 
+        # FIXME: We can avoid using *kernel* and *kernel_arguments* if we talk
+        # to the wrangler to obtain the FMM order (see also
+        # https://gitlab.tiker.net/inducer/boxtree/issues/25)
         fmm_level_to_order = [
             lpot_source.fmm_level_to_order(
                 kernel.get_base_kernel(), kernel_arguments, tree, ilevel

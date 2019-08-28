@@ -25,6 +25,8 @@ THE SOFTWARE.
 import pytest
 
 import numpy as np
+import numpy.linalg as la
+
 import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
@@ -49,85 +51,88 @@ from meshmode.discretization.poly_element import \
 
 # {{{ discretization getters
 
-def get_ellipse_with_ref_mean_curvature(cl_ctx, aspect=1):
-    nelements = 20
-    order = 16
-
+def get_ellipse_with_ref_mean_curvature(cl_ctx, nelements, aspect=1):
+    order = 4
     mesh = make_curve_mesh(
             partial(ellipse, aspect),
             np.linspace(0, 1, nelements+1),
             order)
 
-    a = 1
-    b = 1/aspect
-
     discr = Discretization(cl_ctx, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(order))
+        InterpolatoryQuadratureSimplexGroupFactory(order))
 
     with cl.CommandQueue(cl_ctx) as queue:
         nodes = discr.nodes().get(queue=queue)
 
+    a = 1
+    b = 1/aspect
     t = np.arctan2(nodes[1] * aspect, nodes[0])
 
     return discr, a*b / ((a*np.sin(t))**2 + (b*np.cos(t))**2)**(3/2)
 
 
-def get_square_with_ref_mean_curvature(cl_ctx):
-    nelements = 8
-    order = 8
+def get_torus_with_ref_mean_curvature(cl_ctx, h):
+    order = 4
+    r_inner = 1.0
+    r_outer = 3.0
 
-    from extra_curve_data import unit_square
-
-    mesh = make_curve_mesh(
-            unit_square,
-            np.linspace(0, 1, nelements+1),
-            order)
-
+    from meshmode.mesh.generation import generate_torus
+    mesh = generate_torus(r_outer, r_inner,
+            n_outer=h, n_inner=h, order=order)
     discr = Discretization(cl_ctx, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(order))
+        InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    return discr, 0
+    with cl.CommandQueue(cl_ctx) as queue:
+        nodes = discr.nodes().get(queue=queue)
 
+    # copied from meshmode.mesh.generation.generate_torus
+    a = r_outer
+    b = r_inner
 
-def get_unit_sphere_with_ref_mean_curvature(cl_ctx):
-    order = 8
+    u = np.arctan2(nodes[1], nodes[0])
+    rvec = np.array([np.cos(u), np.sin(u), np.zeros_like(u)])
+    rvec = np.sum(nodes * rvec, axis=0) - a
+    cosv = np.cos(np.arctan2(nodes[2], rvec))
 
-    from meshmode.mesh.generation import generate_icosphere
-    mesh = generate_icosphere(1, order)
-
-    discr = Discretization(cl_ctx, mesh,
-           InterpolatoryQuadratureSimplexGroupFactory(order))
-
-    return discr, 1
+    return discr, (a + 2.0 * b * cosv) / (2 * b * (a + b * cosv))
 
 # }}}
 
 
 # {{{ test_mean_curvature
 
-@pytest.mark.parametrize(("discr_name", "discr_and_ref_mean_curvature_getter"), [
-    ("unit_circle", get_ellipse_with_ref_mean_curvature),
-    ("2-to-1 ellipse", partial(get_ellipse_with_ref_mean_curvature, aspect=2)),
-    ("square", get_square_with_ref_mean_curvature),
-    ("unit sphere", get_unit_sphere_with_ref_mean_curvature),
+@pytest.mark.parametrize(("discr_name",
+        "resolutions",
+        "discr_and_ref_mean_curvature_getter"), [
+    ("unit_circle", [16, 32, 64],
+        get_ellipse_with_ref_mean_curvature),
+    ("2-to-1 ellipse", [16, 32, 64],
+        partial(get_ellipse_with_ref_mean_curvature, aspect=2)),
+    ("torus", [8, 10, 12, 16],
+        get_torus_with_ref_mean_curvature),
     ])
-def test_mean_curvature(ctx_factory, discr_name,
-        discr_and_ref_mean_curvature_getter):
-    if discr_name == "unit sphere":
-        pytest.skip("not implemented in 3D yet")
-
-    import pytential.symbolic.primitives as prim
+def test_mean_curvature(ctx_factory, discr_name, resolutions,
+        discr_and_ref_mean_curvature_getter, visualize=False):
     ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
 
-    discr, ref_mean_curvature = discr_and_ref_mean_curvature_getter(ctx)
+    from pytools.convergence import EOCRecorder
+    eoc = EOCRecorder()
 
-    with cl.CommandQueue(ctx) as queue:
-        from pytential import bind
+    for r in resolutions:
+        discr, ref_mean_curvature = \
+                discr_and_ref_mean_curvature_getter(ctx, r)
         mean_curvature = bind(
             discr,
-            prim.mean_curvature(discr.ambient_dim))(queue)
+            sym.mean_curvature(discr.ambient_dim))(queue).get(queue)
 
-    assert np.allclose(mean_curvature.get(), ref_mean_curvature)
+        h = 1.0 / r
+        h_error = la.norm(mean_curvature - ref_mean_curvature, np.inf)
+        eoc.add_data_point(h, h_error)
+    print(eoc)
+
+    order = min([g.order for g in discr.groups])
+    assert eoc.order_estimate() > order - 1.1
 
 # }}}
 
@@ -172,20 +177,17 @@ def test_tangential_onb(ctx_factory):
 # {{{ test_expr_pickling
 
 def test_expr_pickling():
-    from sumpy.kernel import LaplaceKernel, AxisTargetDerivative
     import pickle
-    import pytential
+    from sumpy.kernel import LaplaceKernel, AxisTargetDerivative
 
     ops_for_testing = [
-        pytential.sym.d_dx(
+        sym.d_dx(
             2,
-            pytential.sym.D(
-                LaplaceKernel(2), pytential.sym.var("sigma"), qbx_forced_limit=-2
-            )
+            sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2)
         ),
-        pytential.sym.D(
+        sym.D(
             AxisTargetDerivative(0, LaplaceKernel(2)),
-            pytential.sym.var("sigma"),
+            sym.var("sigma"),
             qbx_forced_limit=-2
         )
     ]
@@ -197,6 +199,68 @@ def test_expr_pickling():
         assert op == after_pickle_op
 
 # }}}
+
+
+@pytest.mark.parametrize(("name", "source_discr_stage", "target_granularity"), [
+    ("default", None, None),
+    ("default-explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
+    ("stage2", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_NODE),
+    ("stage2-center", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
+    ("quad", sym.QBX_SOURCE_QUAD_STAGE2, sym.GRANULARITY_NODE)
+    ])
+def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    nelements = 32
+    target_order = 7
+    qbx_order = 4
+
+    mesh = make_curve_mesh(starfish,
+            np.linspace(0.0, 1.0, nelements + 1),
+            target_order)
+    discr = Discretization(ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+
+    from pytential.qbx import QBXLayerPotentialSource
+    qbx, _ = QBXLayerPotentialSource(discr,
+            fine_order=4 * target_order,
+            qbx_order=qbx_order,
+            fmm_order=False).with_refinement()
+
+    where = 'test-interpolation'
+    from_dd = sym.DOFDescriptor(
+            geometry=where,
+            discr_stage=source_discr_stage,
+            granularity=sym.GRANULARITY_NODE)
+    to_dd = sym.DOFDescriptor(
+            geometry=where,
+            discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
+            granularity=target_granularity)
+
+    sigma_sym = sym.var("sigma")
+    op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
+    bound_op = bind(qbx, op_sym, auto_where=where)
+
+    target_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
+    if source_discr_stage == sym.QBX_SOURCE_STAGE2:
+        source_nodes = qbx.stage2_density_discr.nodes().get(queue)
+    elif source_discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
+        source_nodes = target_nodes
+    else:
+        source_nodes = qbx.density_discr.nodes().get(queue)
+
+    sigma_dev = cl.array.to_device(queue, la.norm(source_nodes, axis=0))
+    sigma_target = np.sin(la.norm(target_nodes, axis=0))
+    sigma_target_interp = bound_op(queue, sigma=sigma_dev).get(queue)
+
+    if name in ('default', 'default-explicit', 'stage2', 'quad'):
+        error = la.norm(sigma_target_interp - sigma_target) / la.norm(sigma_target)
+        assert error < 1.0e-10
+    elif name in ('stage2-center',):
+        assert len(sigma_target_interp) == 2 * len(sigma_target)
+    else:
+        raise ValueError('unknown test case name: {}'.format(name))
 
 
 # You can test individual routines by typing

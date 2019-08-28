@@ -123,7 +123,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
     def __init__(self, code_container, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs, kernel_extra_kwargs,
-            _use_target_specific_qbx=False):
+            _use_target_specific_qbx=None):
         if _use_target_specific_qbx:
             raise ValueError("TSQBX is not implemented in sumpy")
 
@@ -133,6 +133,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
         self.qbx_order = qbx_order
         self.geo_data = geo_data
+        self.using_tsqbx = False
 
     # {{{ data vector utilities
 
@@ -377,7 +378,7 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
 
     @log_process(logger)
     def eval_target_specific_qbx_locals(self, src_weights):
-        raise NotImplementedError()
+        return (self.full_output_zeros(), SumpyTimingFuture(self.queue, events=()))
 
     # }}}
 
@@ -405,8 +406,6 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
     wrangler = expansion_wrangler
 
     geo_data = wrangler.geo_data
-
-    use_tsqbx = geo_data.lpot_source._use_target_specific_qbx
 
     if traversal is None:
         traversal = geo_data.traversal()
@@ -532,12 +531,14 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
 
     # {{{ wrangle qbx expansions
 
-    if not use_tsqbx:
-        qbx_expansions, timing_future = wrangler.form_global_qbx_locals(src_weights)
+    # form_global_qbx_locals and eval_target_specific_qbx_locals are responsible
+    # for the same interactions (directly evaluated portion of the potentials
+    # via unified List 1).  Which one is used depends on the wrangler. If one of
+    # them is unused the corresponding output entries will be zero.
 
-        recorder.add("form_global_qbx_locals", timing_future)
-    else:
-        qbx_expansions = wrangler.qbx_local_expansion_zeros()
+    qbx_expansions, timing_future = wrangler.form_global_qbx_locals(src_weights)
+
+    recorder.add("form_global_qbx_locals", timing_future)
 
     local_result, timing_future = (
             wrangler.translate_box_multipoles_to_qbx_local(mpole_exps))
@@ -557,13 +558,11 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
 
     recorder.add("eval_qbx_expansions", timing_future)
 
-    if use_tsqbx:
-        tsqbx_result, timing_future = (
-                wrangler.eval_target_specific_qbx_locals(src_weights))
+    ts_result, timing_future = wrangler.eval_target_specific_qbx_locals(src_weights)
 
-        recorder.add("eval_target_specific_qbx_locals", timing_future)
+    qbx_potentials = qbx_potentials + ts_result
 
-        qbx_potentials = qbx_potentials + tsqbx_result
+    recorder.add("eval_target_specific_qbx_locals", timing_future)
 
     # }}}
 

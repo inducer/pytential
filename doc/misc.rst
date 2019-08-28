@@ -11,7 +11,9 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
     On Debian derivatives (Ubuntu and many more),
     installing ``build-essential`` should do the trick.
 
-    On macOS, run ``xcode-select --install`` to install build tools.
+    On macOS, run ``xcode-select --install`` to install build tools. On Mojave (10.14),
+    you may need to follow `these steps <https://stackoverflow.com/a/52530212>`_
+    as well.
 
     Everywhere else, just making sure you have the ``g++`` package should be
     enough.
@@ -31,14 +33,21 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
 
 #.  ``conda config --add channels conda-forge``
 
-#.  (*macOS only*) ``conda install osx-pocl-opencl pocl pyopencl``
+Then, on Linux:
 
-#.  ``conda install gcc cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
+#.  ``conda install cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
 
-#.  Type the following commands::
+#.  Type the following command::
 
-        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode; do python -m pip install git+https://github.com/inducer/$i; done
-        CC=gcc python -m pip install git+https://gitlab.tiker.net/inducer/pytential@tsqbx
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
+
+And on macOS:
+
+#.  ``conda install openmp clangdev cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
+
+#.  Type the following command::
+
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do CC=clang python -m pip install git+https://github.com/inducer/$i; done
 
 Next time you want to use :mod:`pytential`, just run the following command::
 
@@ -60,19 +69,6 @@ Try::
     sudo apt-get install libstdc++-6-dev
 
 to install the missing C++ development package.
-
-No CL platforms found/unknown error -1001
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you get::
-
-    pyopencl.cffi_cl.LogicError: clGetPlatformIDs failed: <unknown error -1001>
-
-try::
-
-    conda update ocl-icd pocl
-
-(This indicates that the OpenCL driver loader didn't find any drivers, or the
-drivers were themselves missing dependencies.)
 
 Assertion 'error == 0'
 ~~~~~~~~~~~~~~~~~~~~~~~
