@@ -638,9 +638,10 @@ def eval_target_specific_qbx_locals(
     if ifdipole and ifgrad:
         raise ValueError("Does not support computing gradient of dipole sources")
 
-    if helmholtz_k == 0:
-        helmholtz_s = helmholtz_sp = helmholtz_d = 0
+    laplace_s = laplace_sp = laplace_d = 0
+    helmholtz_s = helmholtz_sp = helmholtz_d = 0
 
+    if helmholtz_k == 0:
         if ifpot:
             laplace_s = ifcharge
             laplace_d = ifdipole
@@ -649,8 +650,6 @@ def eval_target_specific_qbx_locals(
             laplace_sp = ifcharge
 
     else:
-        laplace_s = laplace_sp = laplace_d = 0
-
         if ifpot:
             helmholtz_s = ifcharge
             helmholtz_d = ifdipole
