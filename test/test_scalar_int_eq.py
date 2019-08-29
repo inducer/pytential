@@ -532,7 +532,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx).places
-    places = places.update({
+    places.update({
         'point-source': point_source,
         'point-target': point_target
         })

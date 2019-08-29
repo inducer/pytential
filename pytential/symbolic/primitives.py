@@ -251,8 +251,8 @@ class DEFAULT_TARGET:  # noqa: N801
 
 
 class QBX_SOURCE_STAGE1:   # noqa: N801
-    """Symbolic identifier for the base `stage1` discretization
-    :attr:`pytential.source.LayerPotentialSourceBase.density_discr`.
+    """Symbolic identifier for the `stage1` discretization
+    :attr:`pytential.source.LayerPotentialSourceBase.stage1_density_discr`.
     """
     pass
 

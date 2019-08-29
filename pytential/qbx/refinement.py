@@ -444,7 +444,7 @@ class RefinerNotConvergedWarning(UserWarning):
     pass
 
 
-def make_empty_refine_flags(queue, lpot_source, use_stage2_discr=False):
+def make_empty_refine_flags(queue, density_discr):
     """Return an array on the device suitable for use as element refine flags.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`.
@@ -453,10 +453,7 @@ def make_empty_refine_flags(queue, lpot_source, use_stage2_discr=False):
     :returns: A :class:`pyopencl.array.Array` suitable for use as refine flags,
         initialized to zero.
     """
-    discr = (lpot_source.stage2_density_discr
-            if use_stage2_discr
-            else lpot_source.density_discr)
-    result = cl.array.zeros(queue, discr.mesh.nelements, np.int32)
+    result = cl.array.zeros(queue, density_discr.mesh.nelements, np.int32)
     result.finish()
     return result
 
@@ -530,7 +527,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
             return
 
         if stage_nr == 1:
-            discr = lpot_source.density_discr
+            discr = lpot_source.stage1_density_discr
         elif stage_nr == 2:
             discr = lpot_source.stage2_density_discr
         else:
@@ -589,8 +586,9 @@ def refine_for_global_qbx(lpot_source, wrangler,
 
     violated_criteria = []
     iter_violated_criteria = ["start"]
-
     niter = 0
+
+    stage1_density_discr = lpot_source.density_discr
 
     while iter_violated_criteria:
         iter_violated_criteria = []
@@ -601,14 +599,14 @@ def refine_for_global_qbx(lpot_source, wrangler,
             break
 
         refine_flags = make_empty_refine_flags(wrangler.queue,
-                lpot_source)
+                stage1_density_discr)
 
         if kernel_length_scale is not None:
             with ProcessLogger(logger,
                     "checking kernel length scale to panel size ratio"):
 
                 from pytential import bind, sym
-                quad_resolution = bind(lpot_source.stage1_density_discr,
+                quad_resolution = bind(stage1_density_discr,
                         sym._quad_resolution(lpot_source.ambient_dim,
                             dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
 
@@ -627,7 +625,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
             with ProcessLogger(logger,
                     "checking scaled max curvature threshold"):
                 from pytential import sym, bind
-                scaled_max_curv = bind(lpot_source.stage1_density_discr,
+                scaled_max_curv = bind(stage1_density_discr,
                     sym.ElementwiseMax(
                         sym._scaled_max_curvature(lpot_source.ambient_dim),
                         dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
@@ -667,10 +665,11 @@ def refine_for_global_qbx(lpot_source, wrangler,
             violated_criteria.append(" and ".join(iter_violated_criteria))
 
             conn = wrangler.refine(
-                    lpot_source.density_discr, refiner, refine_flags,
+                    stage1_density_discr, refiner, refine_flags,
                     group_factory, debug)
+            stage1_density_discr = conn.to_discr
             connections.append(conn)
-            lpot_source = lpot_source.copy(density_discr=conn.to_discr)
+            lpot_source = lpot_source.copy(density_discr=stage1_density_discr)
 
         del refine_flags
 
@@ -682,7 +681,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
     niter = 0
     fine_connections = []
 
-    stage2_density_discr = lpot_source.density_discr
+    stage2_density_discr = lpot_source.stage1_density_discr
 
     while iter_violated_criteria:
         iter_violated_criteria = []
@@ -697,7 +696,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
         tree = wrangler.build_tree(lpot_source, use_stage2_discr=True)
         peer_lists = wrangler.find_peer_lists(tree)
         refine_flags = make_empty_refine_flags(
-                wrangler.queue, lpot_source, use_stage2_discr=True)
+                wrangler.queue, stage2_density_discr)
 
         has_insufficient_quad_res = \
                 wrangler.check_sufficient_source_quadrature_resolution(

@@ -185,6 +185,7 @@ class LayerPotentialSourceBase(PotentialSource):
     .. rubric:: Discretizations
 
     .. attribute:: density_discr
+    .. attrivute:: stage1_density_discr
     .. attribute:: stage2_density_discr
     .. attribute:: quad_stage2_density_discr
     .. attribute:: resampler
@@ -206,6 +207,10 @@ class LayerPotentialSourceBase(PotentialSource):
 
     def __init__(self, density_discr):
         self.density_discr = density_discr
+
+    @property
+    def stage1_density_discr(self):
+        return NotImplementedError
 
     @property
     def stage2_density_discr(self):

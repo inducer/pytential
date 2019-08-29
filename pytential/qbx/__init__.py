@@ -469,6 +469,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from the originally given to the refined geometry.
         """
 
+        # NOTE: refining was moved to GeometryCollection and is done on
+        # demand when a stage1 / stage2 / quad_stage2 discr is requested
         self._refine_enable = True
         self._refine_target_order = target_order
         self._refine_kernel_length_scale = kernel_length_scale

@@ -236,21 +236,21 @@ def build_tree_with_qbx_metadata(
     potential source. This contains particles of four different types:
 
        * source particles either from
-         ``lpot_source.density_discr`` or
+         ``lpot_source.stage1_density_discr`` or
          ``lpot_source.stage2_density_discr``
-       * centers from ``lpot_source.centers()``
+       * centers from ``lpot_source.stage1_density_discr``
        * targets from ``targets_list``.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`
 
     :arg lpot_source: An instance of
-        :class:`pytential.qbx.NewQBXLayerPotentialSource`.
+        :class:`pytential.qbx.QBXLayerPotentialSource`.
 
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
 
     :arg use_stage2_discr: If *True*, builds a tree with sources
-        from ``lpot_source.stage2_density_discr``. If *False* (default),
-        they are from ``lpot_source.density_discr``.
+        from ``lpot_source.quad_stage2_density_discr``. If *False* (default),
+        they are from ``lpot_source.stage1_density_discr``.
     """
     # The ordering of particles is as follows:
     # - sources go first
