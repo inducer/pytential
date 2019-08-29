@@ -305,9 +305,9 @@ class RefinerWrangler(TreeWranglerBase):
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         from pytential import bind, sym
-        center_danger_zone_radii = bind(lpot_source, sym.expansion_radii(
-            lpot_source.ambient_dim,
-            granularity=sym.GRANULARITY_CENTER))(self.queue)
+        center_danger_zone_radii = bind(lpot_source.stage1_density_discr,
+                sym.expansion_radii(lpot_source.ambient_dim,
+                    granularity=sym.GRANULARITY_CENTER))(self.queue)
 
         evt = knl(
             *unwrap_args(
@@ -362,7 +362,7 @@ class RefinerWrangler(TreeWranglerBase):
         found_panel_to_refine.finish()
 
         from pytential import bind, sym
-        source_danger_zone_radii_by_panel = bind(lpot_source,
+        source_danger_zone_radii_by_panel = bind(lpot_source.stage2_density_discr,
                 sym._source_danger_zone_radii(
                     lpot_source.ambient_dim,
                     dofdesc=sym.GRANULARITY_ELEMENT))(self.queue)
@@ -600,16 +600,17 @@ def refine_for_global_qbx(lpot_source, wrangler,
             warn_max_iterations()
             break
 
-        refine_flags = make_empty_refine_flags(wrangler.queue, lpot_source)
+        refine_flags = make_empty_refine_flags(wrangler.queue,
+                lpot_source)
 
         if kernel_length_scale is not None:
             with ProcessLogger(logger,
                     "checking kernel length scale to panel size ratio"):
 
                 from pytential import bind, sym
-                quad_resolution = bind(lpot_source, sym._quad_resolution(
-                    lpot_source.ambient_dim,
-                    dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
+                quad_resolution = bind(lpot_source.stage1_density_discr,
+                        sym._quad_resolution(lpot_source.ambient_dim,
+                            dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
 
                 violates_kernel_length_scale = \
                         wrangler.check_element_prop_threshold(
@@ -626,7 +627,7 @@ def refine_for_global_qbx(lpot_source, wrangler,
             with ProcessLogger(logger,
                     "checking scaled max curvature threshold"):
                 from pytential import sym, bind
-                scaled_max_curv = bind(lpot_source,
+                scaled_max_curv = bind(lpot_source.stage1_density_discr,
                     sym.ElementwiseMax(
                         sym._scaled_max_curvature(lpot_source.ambient_dim),
                         dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)

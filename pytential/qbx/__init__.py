@@ -350,6 +350,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
     @property
+    def stage1_density_discr(self):
+        return self.density_discr
+
+    @property
     def stage2_density_discr(self):
         """The refined, interpolation-focused density discretization (no oversampling).
         """

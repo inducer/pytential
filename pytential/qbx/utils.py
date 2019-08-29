@@ -68,49 +68,6 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 # }}}
 
 
-# {{{ make interleaved centers
-
-def get_interleaved_centers(queue, places, dofdesc=None):
-    """
-    Return an array of shape (dim, ncenters) in which interior centers are placed
-    next to corresponding exterior centers.
-    """
-    from pytential.symbolic.execution import GeometryCollection
-    if not isinstance(places, GeometryCollection):
-        places = GeometryCollection(places, auto_where=dofdesc)
-    dofdesc = dofdesc or places.auto_source
-    discr = places.get_discretization(dofdesc)
-
-    from pytential import bind, sym
-    return bind(places,
-            sym.interleaved_expansion_centers(discr.ambient_dim,
-                dofdesc=dofdesc))(queue)
-
-# }}}
-
-
-# {{{ make interleaved radii
-
-def get_interleaved_radii(queue, places, dofdesc=None):
-    """
-    Return an array of shape (dim, ncenters) in which interior centers are placed
-    next to corresponding exterior centers.
-    """
-    from pytential.symbolic.execution import GeometryCollection
-    if not isinstance(places, GeometryCollection):
-        places = GeometryCollection(places, auto_where=dofdesc)
-    dofdesc = dofdesc or places.auto_source
-    discr = places.get_discretization(dofdesc)
-
-    from pytential import bind, sym
-    return bind(places, sym.expansion_radii(
-                discr.ambient_dim,
-                granularity=sym.GRANULARITY_CENTER,
-                dofdesc=dofdesc))(queue)
-
-# }}}
-
-
 # {{{ tree code container
 
 class TreeCodeContainer(object):
@@ -303,10 +260,12 @@ def build_tree_with_qbx_metadata(
     if use_stage2_discr:
         density_discr = lpot_source.quad_stage2_density_discr
     else:
-        density_discr = lpot_source.density_discr
+        density_discr = lpot_source.stage1_density_discr
 
+    from pytential import bind, sym
     sources = density_discr.nodes()
-    centers = get_interleaved_centers(queue, lpot_source)
+    centers = bind(lpot_source.stage1_density_discr,
+            sym.interleaved_expansion_centers(lpot_source.ambient_dim))(queue)
     targets = (tgt.nodes() for tgt in targets_list)
 
     particles = tuple(

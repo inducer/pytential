@@ -571,6 +571,8 @@ class GeometryCollection(object):
         # {{{ construct dict
 
         self.places = {}
+        self.caches = {}
+
         if isinstance(places, QBXLayerPotentialSource):
             self.places[auto_source.geometry] = places
             self.places[auto_target.geometry] = \
@@ -593,8 +595,6 @@ class GeometryCollection(object):
                         "layer potential sources as 'places'.")
 
         # }}}
-
-        self.caches = {}
 
     @property
     def auto_source(self):
@@ -622,7 +622,6 @@ class GeometryCollection(object):
         else:
             target_order = lpot._refine_target_order
 
-        lpot._refine_enable = False
         wrangler = lpot.refiner_code_container.get_wrangler(queue, self)
 
         refined_lpot, _ = refine_for_global_qbx(
@@ -643,12 +642,16 @@ class GeometryCollection(object):
         return refined_lpot
 
     def _get_stage_discretization(self, lpot, dofdesc):
-        if not lpot._refined_for_global_qbx \
-                and getattr(lpot, '_refine_enable', False):
-            with cl.CommandQueue(lpot.cl_context) as queue:
-                lpot = self._refine_for_global_qbx(
-                        queue, lpot, dofdesc)
-            self.places[dofdesc.geometry] = lpot
+        cache = self._get_refined_qbx_lpot_cache()
+        if getattr(lpot, '_refine_enable', False):
+            try:
+                lpot = cache[lpot]
+            except KeyError:
+                with cl.CommandQueue(lpot.cl_context) as queue:
+                    refined_qbx_lpot = self._refine_for_global_qbx(
+                            queue, lpot, dofdesc)
+                cache[lpot] = refined_qbx_lpot
+                lpot = refined_qbx_lpot
 
         if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
             return lpot.stage2_density_discr
@@ -688,12 +691,18 @@ class GeometryCollection(object):
 
     def get_geometry(self, dofdesc):
         dofdesc = sym.as_dofdesc(dofdesc)
-        return self.places[dofdesc.geometry]
+        lpot = self.places[dofdesc.geometry]
+
+        cache = self._get_refined_qbx_lpot_cache()
+        return cache.get(lpot, lpot)
 
     def copy(self):
         return GeometryCollection(
                 self.places,
                 auto_where=self.auto_where)
+
+    def _get_refined_qbx_lpot_cache(self):
+        return self.get_cache('refined_qbx_lpot')
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
