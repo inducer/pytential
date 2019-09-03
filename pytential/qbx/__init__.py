@@ -82,6 +82,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # begin experimental arguments
             # FIXME default debug=False once everything has matured
             debug=True,
+            _refined_for_stage1_qbx=False,
             _refined_for_global_qbx=False,
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.5,
@@ -213,6 +214,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         self.debug = debug
         self._refined_for_global_qbx = _refined_for_global_qbx
+        self._refined_for_stage1_qbx = _refined_for_stage1_qbx
         self._expansions_in_tree_have_extent = \
                 _expansions_in_tree_have_extent
         self._expansion_stick_out_factor = _expansion_stick_out_factor
@@ -260,6 +262,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             debug=_not_provided,
             _refined_for_global_qbx=_not_provided,
+            _refined_for_stage1_qbx=_not_provided,
             target_stick_out_factor=_not_provided,
             ):
 
@@ -320,6 +323,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     _refined_for_global_qbx
                     if _refined_for_global_qbx is not _not_provided
                     else self._refined_for_global_qbx),
+                _refined_for_stage1_qbx=(
+                    # False is a valid value here
+                    _refined_for_stage1_qbx
+                    if _refined_for_stage1_qbx is not _not_provided
+                    else self._refined_for_stage1_qbx),
                 _expansions_in_tree_have_extent=(
                     # False is a valid value here
                     _expansions_in_tree_have_extent
@@ -474,20 +482,23 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from the originally given to the refined geometry.
         """
 
-        # NOTE: refining was moved to GeometryCollection and is done on
-        # demand when a stage1 / stage2 / quad_stage2 discr is requested
-        self._refine_enable = True
-        self._refine_target_order = target_order
-        self._refine_kernel_length_scale = kernel_length_scale
-        self._refine_maxiter = maxiter
-        self._refine_refiner = refiner
-        self._refine_expansion_disturbance_tolerance = \
-                _expansion_disturbance_tolerance
-        self._refine_force_stage2_uniform_refinement_rounds = \
-                _force_stage2_uniform_refinement_rounds
-        self._refine_scaled_max_curvature_threshold = \
-                _scaled_max_curvature_threshold
-        self._refine_visualize = visualize
+        from pytential.qbx.refinement import QBXGlobalRefiner
+        from meshmode.discretization.poly_element import \
+                InterpolatoryQuadratureSimplexGroupFactory
+
+        if target_order is None:
+            target_order = self.density_discr.groups[0].order
+
+        self._refiner = QBXGlobalRefiner(
+                self,
+                InterpolatoryQuadratureSimplexGroupFactory(target_order),
+                kernel_length_scale=kernel_length_scale,
+                scaled_max_curvature_threshold=_scaled_max_curvature_threshold,
+                expansion_disturbance_tolerance=_expansion_disturbance_tolerance,
+                force_stage2_uniform_refinement_rounds=(
+                    _force_stage2_uniform_refinement_rounds),
+                refiner=refiner,
+                maxiter=maxiter)
 
         return self, None
 
