@@ -80,7 +80,8 @@ def iter_elements(discr):
             discr_nodes_idx += discr_group.nunit_nodes
 
 
-def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
+def run_source_refinement_test(ctx_factory, mesh, order,
+        helmholtz_k=None, visualize=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
@@ -113,6 +114,7 @@ def run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k=None):
     expansion_disturbance_tolerance = 0.025
     refiner_extra_kwargs = {
             "expansion_disturbance_tolerance": expansion_disturbance_tolerance,
+            "visualize": visualize,
             }
     if helmholtz_k is not None:
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
@@ -269,7 +271,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     lpot_source, _ = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in target association
-            fine_order=order).with_refinement()
+            fine_order=order).with_refinement(visualize=True)
     del discr
 
     # }}}

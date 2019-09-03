@@ -75,6 +75,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             fmm_order=None,
             fmm_level_to_order=None,
             to_refined_connection=None,
+            to_stage1_connection=None,
             expansion_factory=None,
             target_association_tolerance=_not_provided,
 
@@ -203,6 +204,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # Default values are lazily provided if these are None
         self._to_refined_connection = to_refined_connection
+        self._to_stage1_connection = to_stage1_connection
 
         if expansion_factory is None:
             from sumpy.expansion import DefaultExpansionFactory
@@ -243,6 +245,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             fmm_order=_not_provided,
             fmm_level_to_order=_not_provided,
             to_refined_connection=None,
+            to_stage1_connection=None,
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
@@ -306,6 +309,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_association_tolerance=target_association_tolerance,
                 to_refined_connection=(
                     to_refined_connection or self._to_refined_connection),
+                to_stage1_connection=(
+                    to_stage1_connection or self._to_stage1_connection),
 
                 debug=(
                     # False is a valid value here
