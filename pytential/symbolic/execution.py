@@ -612,42 +612,35 @@ class GeometryCollection(object):
         return single_valued(ambient_dim)
 
     def _ensure_qbx_refinement(self, lpot, dofdesc, refine_stage=2):
-        from pytential.qbx.refinement import refine_for_global_qbx
-        from meshmode.discretization.poly_element import \
-                InterpolatoryQuadratureSimplexGroupFactory
-
-        if lpot._refined_for_global_qbx \
-                or not getattr(lpot, '_refine_enable', False):
+        if not hasattr(lpot, '_refiner'):
             return lpot
 
         cache = self._get_refined_qbx_lpot_cache()
         try:
-            return cache[lpot]
+            refined_lpot = cache[lpot]
         except KeyError:
-            if lpot._refine_target_order is None:
-                target_order = lpot.density_discr.groups[0].order
-            else:
-                target_order = lpot._refine_target_order
+            refined_lpot = lpot
 
-            with cl.CommandQueue(lpot.cl_context) as queue:
-                wrangler = lpot.refiner_code_container.get_wrangler(queue, self)
-                refined_lpot, _ = refine_for_global_qbx(
-                        dofdesc.geometry,
-                        wrangler,
-                        InterpolatoryQuadratureSimplexGroupFactory(target_order),
-                        kernel_length_scale=lpot._refine_kernel_length_scale,
-                        maxiter=lpot._refine_maxiter,
-                        visualize=lpot._refine_visualize,
-                        expansion_disturbance_tolerance=(
-                            lpot._refine_expansion_disturbance_tolerance),
-                        force_stage2_uniform_refinement_rounds=(
-                            lpot._refine_force_stage2_uniform_refinement_rounds),
-                        scaled_max_curvature_threshold=(
-                            lpot._refine_scaled_max_curvature_threshold),
-                        refiner=lpot._refine_refiner)
+        if refine_stage == 1:
+            if refined_lpot._refined_for_stage1_qbx:
+                return refined_lpot
+        elif refine_stage == 2:
+            if refined_lpot._refined_for_global_qbx:
+                return refined_lpot
+        else:
+            raise ValueError('unexpected stage number: %d' % refine_stage)
+
+        with cl.CommandQueue(lpot.cl_context) as queue:
+            wrangler = lpot.refiner_code_container.get_wrangler(queue, self)
+            if refine_stage == 1:
+                refined_lpot = lpot._refiner.refine_for_stage1(wrangler)
+            elif refine_stage == 2:
+                refined_lpot = lpot._refiner.refine_for_stage2(wrangler)
+            else:
+                pass
 
             cache[lpot] = refined_lpot
-            return refined_lpot
+        return refined_lpot
 
     def _get_stage_discretization(self, lpot, dofdesc):
         if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE1:
