@@ -128,6 +128,7 @@ Documentation:
 Pylint:
   script:
   # Needed to avoid name shadowing issues when running from source directory.
+  # Pylint won't find the Cython bits without this
   - PROJECT_INSTALL_FLAGS="--editable"
   - export PY_EXE=python3
   # Pin to numpy 1.15

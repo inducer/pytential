@@ -90,6 +90,10 @@ jobs:
             echo "-------------------------------------------"
             USE_CONDA_BUILD=1
             curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
+
+            # Pylint won't find the Cython bits without this
+            PROJECT_INSTALL_FLAGS="--editable"
+
             . ./prepare-and-run-pylint.sh pytential test/test_*.py
 
         displayName: 'Pylint'
