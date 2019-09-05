@@ -16,6 +16,9 @@ dependencies:
 - pyfmmlib
 - cython
 
+# for pylint
+- matplotlib
+
 - pip
 - pip:
     - git+https://gitlab.tiker.net/inducer/boxtree
