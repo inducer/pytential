@@ -750,7 +750,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         values from :class:`target_state` allowed. Targets occur in user order.
         """
         from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
-        tgt_info = self.target_info()
+        target_info = self.target_info()
 
         from pytential.target import PointsTarget
 
@@ -759,21 +759,23 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     .target_side_preferences()[self.ncenters:].get(queue=queue))
 
             target_discrs_and_qbx_sides = [(
-                    PointsTarget(tgt_info.targets[:, self.ncenters:]),
+                    PointsTarget(target_info.targets[:, self.ncenters:]),
                     target_side_prefs.astype(np.int32))]
 
             target_association_wrangler = (
                     self.lpot_source.target_association_code_container
-                    .get_wrangler(queue, self.places))
+                    .get_wrangler(queue))
 
             tgt_assoc_result = associate_targets_to_qbx_centers(
+                    self.places,
                     self.source_name,
                     target_association_wrangler,
                     target_discrs_and_qbx_sides,
                     target_association_tolerance=(
-                        self.target_association_tolerance))
+                        self.target_association_tolerance),
+                    debug=self.debug)
 
-            result = cl.array.empty(queue, tgt_info.ntargets,
+            result = cl.array.empty(queue, target_info.ntargets,
                     tgt_assoc_result.target_to_center.dtype)
             result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
             result[self.ncenters:] = tgt_assoc_result.target_to_center
