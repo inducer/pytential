@@ -120,9 +120,10 @@ def run_source_refinement_test(ctx_factory, mesh, order,
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
     lpot_source, _ = refine_for_global_qbx(
+            places,
             places.auto_source,
             RefinerCodeContainer(
-                cl_ctx, TreeCodeContainer(cl_ctx)).get_wrangler(queue, places),
+                cl_ctx, TreeCodeContainer(cl_ctx)).get_wrangler(queue),
             factory, **refiner_extra_kwargs)
 
     discr_nodes = lpot_source.density_discr.nodes().get(queue)
@@ -341,8 +342,9 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
             cl_ctx, TreeCodeContainer(cl_ctx))
 
     target_assoc = (associate_targets_to_qbx_centers(
+            places,
             places.auto_source,
-            code_container.get_wrangler(queue, places),
+            code_container.get_wrangler(queue),
             target_discrs,
             target_association_tolerance=1e-10)
         .get(queue=queue))
@@ -486,8 +488,9 @@ def test_target_association_failure(ctx_factory):
 
     with pytest.raises(QBXTargetAssociationFailedException):
         associate_targets_to_qbx_centers(
+            places,
             places.auto_source,
-            code_container.get_wrangler(queue, places),
+            code_container.get_wrangler(queue),
             targets,
             target_association_tolerance=1e-10)
 

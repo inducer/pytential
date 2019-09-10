@@ -611,50 +611,164 @@ class GeometryCollection(object):
         ambient_dim = [p.ambient_dim for p in six.itervalues(self.places)]
         return single_valued(ambient_dim)
 
-    def _ensure_qbx_refinement(self, lpot, dofdesc, refine_stage=2):
-        if not hasattr(lpot, '_refiner'):
+    # {{{ qbx refinement
+
+    def _ensure_qbx_stage1(self, queue, lpot, dofdesc):
+        from pytential.qbx.refinement import refine_qbx_stage1
+
+        cache = self.get_cache('qbx_refined_discrs')
+        if (dofdesc.geometry, sym.QBX_SOURCE_STAGE1) in cache:
+            return
+
+        # get stage1 discr
+        wrangler = lpot.refiner_code_container.get_wrangler(queue)
+        info = lpot._refine_info
+
+        discr, to_stage1_conn = refine_qbx_stage1(self, dofdesc.geometry,
+                lpot.density_discr, wrangler, info.group_factory,
+                kernel_length_scale=info.kernel_length_scale,
+                scaled_max_curvature_threshold=(
+                    info.scaled_max_curvature_threshold),
+                expansion_disturbance_tolerance=(
+                    info.expansion_disturbance_tolerance),
+                maxiter=info.maxiter,
+                refiner=info.refiner,
+                debug=info.debug,
+                visualize=info.visualize)
+
+        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE1)
+        cache[key] = discr
+
+        # add connection from density_discr -> stage1
+        cache = self.get_cache('qbx_refined_connections')
+        key = (dofdesc.geometry, None, sym.QBX_SOURCE_STAGE1)
+        cache[key] = to_stage1_conn
+
+    def _ensure_qbx_stage2(self, queue, lpot, dofdesc):
+        from pytential.qbx.refinement import refine_qbx_stage2
+        self._ensure_qbx_stage1(queue, lpot, dofdesc)
+
+        cache = self.get_cache('qbx_refined_discrs')
+        if (dofdesc.geometry, sym.QBX_SOURCE_STAGE2) in cache:
+            return
+
+        # get stage2 discr
+        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE1)
+        stage1_density_discr = cache[key]
+
+        wrangler = lpot.refiner_code_container.get_wrangler(queue)
+        info = lpot._refine_info
+
+        discr, to_stage2_conn = refine_qbx_stage2(self, dofdesc.geometry,
+                stage1_density_discr, wrangler, info.group_factory,
+                expansion_disturbance_tolerance=(
+                    info.expansion_disturbance_tolerance),
+                force_stage2_uniform_refinement_rounds=(
+                    info.force_stage2_uniform_refinement_rounds),
+                maxiter=info.maxiter,
+                refiner=info.refiner,
+                debug=info.debug,
+                visualize=info.visualize)
+
+        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE2)
+        cache[key] = discr
+
+        # add connections from stage1 -> stage2
+        cache = self.get_cache('qbx_refined_connections')
+        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE2)
+        cache[key] = to_stage2_conn
+
+        # FIXME: remove this once we figure out how to handle connections
+        # and remove all the discrs from QBXLayerPotentialSource
+        lpot = lpot.copy(
+                density_discr=stage1_density_discr,
+                to_refined_connection=to_stage2_conn,
+                _refined_for_global_qbx=True)
+        self.places[dofdesc.geometry] = lpot
+
+    def _ensure_qbx_quad_stage2(self, queue, lpot, dofdesc):
+        self._ensure_qbx_stage2(queue, lpot, dofdesc)
+
+        cache = self.get_cache('qbx_refined_discrs')
+        if (dofdesc.geometry, sym.QBX_SOURCE_QUAD_STAGE2) in cache:
+            return
+
+        # get quad_stage2 discr
+        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE2)
+        stage2_density_discr = cache[key]
+
+        discr = Discretization(lpot.cl_context,
+                stage2_density_discr,
+                QuadratureSimplexGroupFactory(lpot.fine_order),
+                lpot.real_dtype)
+
+        key = (dofdesc.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
+        cache[key] = discr
+
+        # add connections from stage2 -> quad_stage2
+        cache = self.get_cache('qbx_refined_connections')
+        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)
+        cache[key] = make_same_mesh_connection(
+                discr, stage2_density_discr)
+
+    def _ensure_qbx_refinement(self, lpot, dofdesc):
+        from pytential.qbx.refinement import (
+                refine_qbx_stage1, refine_qbx_stage2)
+        if not hasattr(lpot, '_refine_info'):
             return lpot
 
-        cache = self._get_refined_qbx_lpot_cache()
-        try:
-            refined_lpot = cache[lpot]
-        except KeyError:
-            refined_lpot = lpot
-
-        if refine_stage == 1:
-            if refined_lpot._refined_for_stage1_qbx:
-                return refined_lpot
-        elif refine_stage == 2:
-            if refined_lpot._refined_for_global_qbx:
-                return refined_lpot
-        else:
-            raise ValueError('unexpected stage number: %d' % refine_stage)
+        cache = self.get_cache('qbx_refined_discrs')
+        key = (dofdesc.geometry, dofdesc.discr_stage)
+        if key in cache:
+            return
 
         with cl.CommandQueue(lpot.cl_context) as queue:
-            wrangler = lpot.refiner_code_container.get_wrangler(queue, self)
-            if refine_stage == 1:
-                refined_lpot = lpot._refiner.refine_for_stage1(wrangler)
-            elif refine_stage == 2:
-                refined_lpot = lpot._refiner.refine_for_stage2(wrangler)
+            if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE1:
+                self._ensure_qbx_stage1(queue, lpot, dofdesc)
+            elif dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
+                self._ensure_qbx_stage2(queue, lpot, dofdesc)
+            elif dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
+                self._ensure_qbx_quad_stage2(queue, lpot, dofdesc)
             else:
-                pass
-
-            cache[lpot] = refined_lpot
-        return refined_lpot
+                raise ValueError('unknown discr stage: {}'.format(dofdesc.discr_stage))
 
     def _get_stage_discretization(self, lpot, dofdesc):
-        if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE1:
-            lpot = self._ensure_qbx_refinement(lpot, dofdesc, refine_stage=1)
-            return lpot.stage1_density_discr
-        elif dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
-            lpot = self._ensure_qbx_refinement(lpot, dofdesc, refine_stage=2)
-            return lpot.stage2_density_discr
-        elif dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
-            lpot = self._ensure_qbx_refinement(lpot, dofdesc, refine_stage=2)
-            return lpot.quad_stage2_density_discr
+        if dofdesc.discr_stage is None:
+            # FIXME: this should just return the base `density_discr`
+            dofdesc = dofdesc.copy(discr_stage=sym.QBX_SOURCE_STAGE1)
+        self._ensure_qbx_refinement(lpot, dofdesc)
+
+        cache = self.get_cache('qbx_refined_discrs')
+        key = (dofdesc.geometry, dofdesc.discr_stage)
+
+        if key in cache:
+            return cache[key]
         else:
-            lpot = self._ensure_qbx_refinement(lpot, dofdesc, refine_stage=1)
             return lpot.density_discr
+
+    def refine_for_global_qbx(self):
+        for name, lpot in six.iteritems(self.places):
+            if not isinstance(lpot, QBXLayerPotentialSource):
+                continue
+
+            dofdesc = sym.as_dofdesc(name).copy(discr_stage=sym.QBX_SOURCE_STAGE2)
+            self._ensure_qbx_refinement(lpot, dofdesc)
+
+    # }}}
+
+    def get_geometry_connection(self, from_dd, to_dd):
+        from_dd = sym.as_dofdesc(from_dd)
+        to_dd = sym.as_dofdesc(to_dd)
+        if from_dd.geometry != to_dd.geometry:
+            raise KeyError('no connections between different geometries')
+
+        key = (from_dd.geomtry, from_dd.discr_stage, to_dd.discr_stage)
+
+        cache = self.get_cache('qbx_refined_connections')
+        if key in cache:
+            return cache[key]
+        else:
+            raise KeyError('connection not in the collection')
 
     def get_discretization(self, dofdesc):
         """
@@ -667,12 +781,15 @@ class GeometryCollection(object):
             the corresponding :class:`~meshmode.discretization.Discretization`
             in its attributes instead.
         """
-
         dofdesc = sym.as_dofdesc(dofdesc)
-        if dofdesc.geometry in self.places:
+
+        key = (dofdesc.geometry, dofdesc.discr_stage)
+        if key in self.places:
+            discr = self.places[key]
+        elif dofdesc.geometry in self.places:
             discr = self.places[dofdesc.geometry]
         else:
-            raise KeyError('geometry not in the collection: {}'.format(
+            raise KeyError('discretization not in the collection: {}'.format(
                 dofdesc.geometry))
 
         from pytential.qbx import QBXLayerPotentialSource
@@ -687,18 +804,19 @@ class GeometryCollection(object):
 
     def get_geometry(self, dofdesc):
         dofdesc = sym.as_dofdesc(dofdesc)
-        lpot = self.places[dofdesc.geometry]
+        return self.places[dofdesc.geometry]
 
-        cache = self._get_refined_qbx_lpot_cache()
-        return cache.get(lpot, lpot)
+    def copy(self, places=None, auto_where=None):
+        if places is None:
+            places = {}
 
-    def copy(self):
+        new_places = self.places.copy()
+        new_places.update(places)
+
         return GeometryCollection(
-                self.places,
-                auto_where=self.auto_where)
-
-    def _get_refined_qbx_lpot_cache(self):
-        return self.get_cache('refined_qbx_lpot')
+                new_places,
+                auto_where=(self.auto_where
+                    if auto_where is None else auto_where))
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
