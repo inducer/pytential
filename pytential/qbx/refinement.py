@@ -32,7 +32,7 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 import numpy as np
 import pyopencl as cl
 
-from pytools import memoize_method
+from pytools import Record, memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
 from pytential.qbx.utils import (
@@ -264,11 +264,11 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
         knl = lp.split_iname(knl, "ielement", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
-    def get_wrangler(self, queue, places):
+    def get_wrangler(self, queue):
         """
         :arg queue:
         """
-        return RefinerWrangler(self, queue, places)
+        return RefinerWrangler(self, queue)
 
 # }}}
 
@@ -280,7 +280,7 @@ class RefinerWrangler(TreeWranglerBase):
 
     @log_process(logger)
     def check_expansion_disks_undisturbed_by_sources(self,
-            lpot_source, tree, peer_lists,
+            stage1_density_discr, tree, peer_lists,
             expansion_disturbance_tolerance,
             refine_flags,
             debug, wait_for=None):
@@ -305,8 +305,8 @@ class RefinerWrangler(TreeWranglerBase):
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         from pytential import bind, sym
-        center_danger_zone_radii = bind(lpot_source.stage1_density_discr,
-                sym.expansion_radii(lpot_source.ambient_dim,
+        center_danger_zone_radii = bind(stage1_density_discr,
+                sym.expansion_radii(stage1_density_discr.ambient_dim,
                     granularity=sym.GRANULARITY_CENTER))(self.queue)
 
         evt = knl(
@@ -340,9 +340,9 @@ class RefinerWrangler(TreeWranglerBase):
         return found_panel_to_refine.get()[0] == 1
 
     @log_process(logger)
-    def check_sufficient_source_quadrature_resolution(
-            self, lpot_source, tree, peer_lists, refine_flags, debug,
-            wait_for=None):
+    def check_sufficient_source_quadrature_resolution(self,
+            stage2_density_discr, tree, peer_lists, refine_flags,
+            debug, wait_for=None):
 
         # Avoid generating too many kernels.
         from pytools import div_ceil
@@ -362,9 +362,9 @@ class RefinerWrangler(TreeWranglerBase):
         found_panel_to_refine.finish()
 
         from pytential import bind, sym
-        source_danger_zone_radii_by_panel = bind(lpot_source.stage2_density_discr,
+        source_danger_zone_radii_by_panel = bind(stage2_density_discr,
                 sym._source_danger_zone_radii(
-                    lpot_source.ambient_dim,
+                    stage2_density_discr.ambient_dim,
                     dofdesc=sym.GRANULARITY_ELEMENT))(self.queue)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
@@ -460,294 +460,302 @@ def make_empty_refine_flags(queue, density_discr):
 
 # {{{ main entry point
 
-class QBXGlobalRefiner(object):
-    def __init__(self, lpot_source, group_factory,
-            refiner=None,
-            kernel_length_scale=None,
-            scaled_max_curvature_threshold=None,
-            expansion_disturbance_tolerance=None,
-            force_stage2_uniform_refinement_rounds=None,
-            maxiter=None):
-        if maxiter is None:
-            maxiter = 10
+class QBXRefinementInfo(Record):
+    """
+    .. attribute:: refiner
+    .. attribute:: group_factory
 
-        if expansion_disturbance_tolerance is None:
-            expansion_disturbance_tolerance = 0.025
+    .. attribute:: kernel_length_scale
+    .. attribute:: scaled_max_curvature_threshold
+    .. attribute:: expansion_disturbance_tolerance
+    .. attribute:: force_stage2_uniform_refinement_rounds
+    .. attribute:: maxiter
 
-        if force_stage2_uniform_refinement_rounds is None:
-            force_stage2_uniform_refinement_rounds = 0
-
-        # TODO: Stop doing redundant checks by avoiding panels which no longer need
-        # refinement.
-
-        from meshmode.mesh.refinement import RefinerWithoutAdjacency
-        if refiner is not None:
-            assert refiner.get_current_mesh() == lpot_source.density_discr.mesh
-        else:
-            # We may be handed a mesh that's already non-conforming, we don't rely
-            # on adjacency, and the no-adjacency refiner is faster.
-            refiner = RefinerWithoutAdjacency(lpot_source.density_discr.mesh)
-
-        self.lpot_source = lpot_source
-        self.group_factory = group_factory
-        self.refiner = refiner
-
-        self.kernel_length_scale = kernel_length_scale
-        self.scaled_max_curvature_threshold = scaled_max_curvature_threshold
-        self.expansion_disturbance_tolerance = expansion_disturbance_tolerance
-        self.force_stage2_uniform_refinement_rounds = \
-                force_stage2_uniform_refinement_rounds
-        self.maxiter = maxiter
-
-    def _warn_max_iterations(self, violated_criteria):
-        from warnings import warn
-        warn(
-                "QBX layer potential source refiner did not terminate "
-                "after %d iterations (the maximum). "
-                "You may pass 'visualize=True' to with_refinement() "
-                "to see what area of the geometry is causing trouble. "
-                "If the issue is disturbance of expansion disks, you may "
-                "pass a slightly increased value (currently: %g) for "
-                "_expansion_disturbance_tolerance in with_refinement(). "
-                "As a last resort, "
-                "you may use Python's warning filtering mechanism to "
-                "not treat this warning as an error. "
-                "The criteria triggering refinement in each iteration "
-                "were: %s. " % (
-                    len(violated_criteria),
-                    self.expansion_disturbance_tolerance,
-                    ", ".join(
-                        "%d: %s" % (i+1, vc_text)
-                        for i, vc_text in enumerate(violated_criteria))),
-                RefinerNotConvergedWarning)
+    .. attribute:: debug
+    .. attribute:: visualize
+    """
 
 
-    def _visualize_refinement(self, queue, niter, stage_nr, stage_name, flags):
-        if stage_nr == 1:
-            discr = self.lpot_source.density_discr
-        elif stage_nr == 2:
-            discr = self.lpot_source.stage2_density_discr
-        else:
-            raise ValueError("unexpected stage number")
+def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
+    from warnings import warn
+    warn(
+            "QBX layer potential source refiner did not terminate "
+            "after %d iterations (the maximum). "
+            "You may pass 'visualize=True' to with_refinement() "
+            "to see what area of the geometry is causing trouble. "
+            "If the issue is disturbance of expansion disks, you may "
+            "pass a slightly increased value (currently: %g) for "
+            "_expansion_disturbance_tolerance in with_refinement(). "
+            "As a last resort, "
+            "you may use Python's warning filtering mechanism to "
+            "not treat this warning as an error. "
+            "The criteria triggering refinement in each iteration "
+            "were: %s. " % (
+                len(violated_criteria),
+                expansion_disturbance_tolerance,
+                ", ".join(
+                    "%d: %s" % (i+1, vc_text)
+                    for i, vc_text in enumerate(violated_criteria))),
+            RefinerNotConvergedWarning)
 
-        flags = flags.get()
-        logger.info("for stage %s: splitting %d/%d stage-%d elements",
-                stage_name, np.sum(flags), discr.mesh.nelements, stage_nr)
 
-        from meshmode.discretization.visualization import make_visualizer
-        vis = make_visualizer(queue, discr, 3)
+def _visualize_refinement(queue, discr, niter, stage_nr, stage_name, flags):
+    if stage_nr not in (1, 2):
+        raise ValueError("unexpected stage number")
 
-        assert len(flags) == discr.mesh.nelements
+    flags = flags.get()
+    logger.info("for stage %s: splitting %d/%d stage-%d elements",
+            stage_name, np.sum(flags), discr.mesh.nelements, stage_nr)
 
-        flags = flags.astype(np.bool)
-        nodes_flags = np.zeros(discr.nnodes)
-        for grp in discr.groups:
-            meg = grp.mesh_el_group
-            grp.view(nodes_flags)[
-                    flags[meg.element_nr_base:meg.nelements+meg.element_nr_base]] = 1
+    from meshmode.discretization.visualization import make_visualizer
+    vis = make_visualizer(queue, discr, 3)
 
-        nodes_flags = cl.array.to_device(queue, nodes_flags)
-        vis_data = [
-            ("refine_flags", nodes_flags),
-            ]
+    assert len(flags) == discr.mesh.nelements
 
-        if 0:
-            from pytential import sym, bind
-            bdry_normals = bind(discr, sym.normal(discr.ambient_dim))(
-                    queue).as_vector(dtype=object)
-            vis_data.append(("bdry_normals", bdry_normals),)
+    flags = flags.astype(np.bool)
+    nodes_flags = np.zeros(discr.nnodes)
+    for grp in discr.groups:
+        meg = grp.mesh_el_group
+        grp.view(nodes_flags)[
+                flags[meg.element_nr_base:meg.nelements+meg.element_nr_base]] = 1
 
-        vis.write_vtk_file("refinement-%s-%03d.vtu" % (stage_name, niter),
-                vis_data, overwrite=True)
+    nodes_flags = cl.array.to_device(queue, nodes_flags)
+    vis_data = [
+        ("refine_flags", nodes_flags),
+        ]
 
-    def refine_for_stage1(self, wrangler, debug=True, visualize=False):
-        from meshmode.discretization.connection import \
-                ChainedDiscretizationConnection
+    if 0:
+        from pytential import sym, bind
+        bdry_normals = bind(discr, sym.normal(discr.ambient_dim))(
+                queue).as_vector(dtype=object)
+        vis_data.append(("bdry_normals", bdry_normals),)
 
-        if self.lpot_source._refined_for_stage1_qbx:
-            return self.lpot_source
-        stage1_density_discr = self.lpot_source.density_discr
+    vis.write_vtk_file("refinement-%s-%03d.vtu" % (stage_name, niter),
+            vis_data, overwrite=True)
 
-        connections = []
-        violated_criteria = []
-        iter_violated_criteria = ["start"]
-        niter = 0
 
-        queue = wrangler.queue
-        while iter_violated_criteria:
-            iter_violated_criteria = []
-            niter += 1
+def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            QuadratureSimplexGroupFactory
 
-            if niter > self.maxiter:
-                self._warn_max_iterations(violated_criteria)
-                break
+    return Discretization(
+            lpot_source.cl_context,
+            stage2_density_discr.mesh,
+            QuadratureSimplexGroupFactory(lpot_source.fine_order),
+            lpot_source.real_dtype)
 
-            refine_flags = make_empty_refine_flags(queue,
-                    stage1_density_discr)
 
-            if self.kernel_length_scale is not None:
-                with ProcessLogger(logger,
-                        "checking kernel length scale to panel size ratio"):
+def refine_qbx_stage1(places, source_name, density_discr,
+        wrangler, group_factory,
+        kernel_length_scale=None,
+        scaled_max_curvature_threshold=None,
+        expansion_disturbance_tolerance=None,
+        maxiter=None,
+        refiner=None,
+        debug=None, visualize=False):
+    from pytential import sym
+    from pytential.symbolic.execution import GeometryCollection
 
-                    from pytential import bind, sym
-                    quad_resolution = bind(stage1_density_discr,
-                            sym._quad_resolution(stage1_density_discr.ambient_dim,
-                                dofdesc=sym.GRANULARITY_ELEMENT))(queue)
+    lpot_source = places.get_geometry(source_name)
 
-                    violates_kernel_length_scale = \
-                            wrangler.check_element_prop_threshold(
-                                    element_property=quad_resolution,
-                                    threshold=self.kernel_length_scale,
-                                    refine_flags=refine_flags, debug=debug)
+    connections = []
+    violated_criteria = []
+    iter_violated_criteria = ["start"]
+    niter = 0
 
-                    if violates_kernel_length_scale:
-                        iter_violated_criteria.append("kernel length scale")
-                        if visualize:
-                            self._visualize_refinement(queue,
-                                    niter, 1, "kernel-length-scale", refine_flags)
+    queue = wrangler.queue
+    stage1_density_discr = density_discr
 
-            if self.scaled_max_curvature_threshold is not None:
-                with ProcessLogger(logger,
-                        "checking scaled max curvature threshold"):
-                    from pytential import sym, bind
-                    scaled_max_curv = bind(stage1_density_discr,
-                        sym.ElementwiseMax(
-                            sym._scaled_max_curvature(stage1_density_discr.ambient_dim),
+    while iter_violated_criteria:
+        iter_violated_criteria = []
+        niter += 1
+
+        if niter > maxiter:
+            _warn_max_iterations(violated_criteria,
+                    expansion_disturbance_tolerance)
+            break
+
+        refine_flags = make_empty_refine_flags(queue,
+                stage1_density_discr)
+
+        if kernel_length_scale is not None:
+            with ProcessLogger(logger,
+                    "checking kernel length scale to panel size ratio"):
+
+                from pytential import bind, sym
+                quad_resolution = bind(stage1_density_discr,
+                        sym._quad_resolution(stage1_density_discr.ambient_dim,
                             dofdesc=sym.GRANULARITY_ELEMENT))(queue)
 
-                    violates_scaled_max_curv = \
-                            wrangler.check_element_prop_threshold(
-                                    element_property=scaled_max_curv,
-                                    threshold=self.scaled_max_curvature_threshold,
-                                    refine_flags=refine_flags, debug=debug)
+                violates_kernel_length_scale = \
+                        wrangler.check_element_prop_threshold(
+                                element_property=quad_resolution,
+                                threshold=kernel_length_scale,
+                                refine_flags=refine_flags, debug=debug)
 
-                    if violates_scaled_max_curv:
-                        iter_violated_criteria.append("curvature")
-                        if visualize:
-                            self._visualize_refinement(queue,
-                                    niter, 1, "curvature", refine_flags)
-
-            if not iter_violated_criteria:
-                # Only start building trees once the simple length-based criteria
-                # are happy.
-
-                # Build tree and auxiliary data.
-                # FIXME: The tree should not have to be rebuilt at each iteration.
-                tree = wrangler.build_tree(self.lpot_source)
-                peer_lists = wrangler.find_peer_lists(tree)
-
-                has_disturbed_expansions = \
-                        wrangler.check_expansion_disks_undisturbed_by_sources(
-                                self.lpot_source, tree, peer_lists,
-                                self.expansion_disturbance_tolerance,
-                                refine_flags, debug)
-                if has_disturbed_expansions:
-                    iter_violated_criteria.append("disturbed expansions")
+                if violates_kernel_length_scale:
+                    iter_violated_criteria.append("kernel length scale")
                     if visualize:
-                        self._visualize_refinement(queue,
-                                niter, 1, "disturbed-expansions", refine_flags)
+                        _visualize_refinement(queue,
+                                niter, 1, "kernel-length-scale", refine_flags)
 
-                del tree
-                del peer_lists
+        if scaled_max_curvature_threshold is not None:
+            with ProcessLogger(logger,
+                    "checking scaled max curvature threshold"):
+                from pytential import sym, bind
+                scaled_max_curv = bind(stage1_density_discr,
+                    sym.ElementwiseMax(
+                        sym._scaled_max_curvature(stage1_density_discr.ambient_dim),
+                        dofdesc=sym.GRANULARITY_ELEMENT))(queue)
 
-            if iter_violated_criteria:
-                violated_criteria.append(
-                        " and ".join(iter_violated_criteria))
+                violates_scaled_max_curv = \
+                        wrangler.check_element_prop_threshold(
+                                element_property=scaled_max_curv,
+                                threshold=scaled_max_curvature_threshold,
+                                refine_flags=refine_flags, debug=debug)
 
-                conn = wrangler.refine(
-                        stage1_density_discr, self.refiner, refine_flags,
-                        self.group_factory, debug)
-                stage1_density_discr = conn.to_discr
-                connections.append(conn)
+                if violates_scaled_max_curv:
+                    iter_violated_criteria.append("curvature")
+                    if visualize:
+                        _visualize_refinement(queue, stage1_density_discr,
+                                niter, 1, "curvature", refine_flags)
 
-                self.lpot_source = self.lpot_source.copy(
-                        density_discr=stage1_density_discr,
-                        to_stage1_connection=ChainedDiscretizationConnection(
-                            connections))
+        if not iter_violated_criteria:
+            # Only start building trees once the simple length-based criteria
+            # are happy.
 
-            del refine_flags
-
-        self.lpot_source = self.lpot_source.copy(
-                _refined_for_stage1_qbx=True)
-        return self.lpot_source
-
-    def refine_for_stage2(self, wrangler, debug=True, visualize=False):
-        from meshmode.discretization.connection import \
-                ChainedDiscretizationConnection
-
-        if self.lpot_source._refined_for_global_qbx:
-            return self.lpot_source
-        if not self.lpot_source._refined_for_stage1_qbx:
-            self.refine_for_stage1(debug=debug, visualize=visualize)
-        stage2_density_discr = self.lpot_source.stage1_density_discr
-
-        connections = []
-        violated_criteria = []
-        iter_violated_criteria = ["start"]
-        niter = 0
-
-        queue = wrangler.queue
-        while iter_violated_criteria:
-            iter_violated_criteria = []
-            niter += 1
-
-            if niter > self.maxiter:
-                self._warn_max_iterations(violated_criteria)
-                break
+            stage1_places = places.copy({
+                (source_name, sym.QBX_SOURCE_STAGE1): stage1_density_discr
+                })
 
             # Build tree and auxiliary data.
             # FIXME: The tree should not have to be rebuilt at each iteration.
-            tree = wrangler.build_tree(self.lpot_source, use_stage2_discr=True)
+            tree = wrangler.build_tree(stage1_places,
+                    sources_list=[source_name])
             peer_lists = wrangler.find_peer_lists(tree)
-            refine_flags = make_empty_refine_flags(
-                    queue, stage2_density_discr)
 
-            has_insufficient_quad_res = \
-                    wrangler.check_sufficient_source_quadrature_resolution(
-                            self.lpot_source, tree, peer_lists, refine_flags,
-                            debug)
-            if has_insufficient_quad_res:
-                iter_violated_criteria.append("insufficient quadrature resolution")
+            has_disturbed_expansions = \
+                    wrangler.check_expansion_disks_undisturbed_by_sources(
+                            stage1_density_discr, tree, peer_lists,
+                            expansion_disturbance_tolerance,
+                            refine_flags, debug)
+            if has_disturbed_expansions:
+                iter_violated_criteria.append("disturbed expansions")
                 if visualize:
-                    self._visualize_refinement(queue,
-                            niter, 2, "quad-resolution", refine_flags)
-
-            if iter_violated_criteria:
-                violated_criteria.append(" and ".join(iter_violated_criteria))
-
-                conn = wrangler.refine(stage2_density_discr,
-                        self.refiner, refine_flags, self.group_factory, debug)
-                stage2_density_discr = conn.to_discr
-                connections.append(conn)
-
-                self.lpot_source = self.lpot_source.copy(
-                        to_refined_connection=ChainedDiscretizationConnection(
-                            connections))
+                    _visualize_refinement(queue, stage1_density_discr,
+                            niter, 1, "disturbed-expansions", refine_flags)
 
             del tree
-            del refine_flags
             del peer_lists
 
-        for round in range(self.force_stage2_uniform_refinement_rounds):
+        if iter_violated_criteria:
+            violated_criteria.append(
+                    " and ".join(iter_violated_criteria))
+
             conn = wrangler.refine(
-                    stage2_density_discr,
-                    self.refiner,
-                    np.ones(stage2_density_discr.mesh.nelements, dtype=np.bool),
-                    self.group_factory, debug)
+                    stage1_density_discr, refiner, refine_flags,
+                    group_factory, debug)
+            stage1_density_discr = conn.to_discr
+            connections.append(conn)
+
+        del refine_flags
+
+    conn = None
+    if connections:
+        from meshmode.discretization.connection import \
+                ChainedDiscretizationConnection
+        conn = ChainedDiscretizationConnection(connections)
+
+    return stage1_density_discr, conn
+
+
+def refine_qbx_stage2(places, source_name, stage1_density_discr,
+        wrangler, group_factory,
+        expansion_disturbance_tolerance=None,
+        force_stage2_uniform_refinement_rounds=None,
+        maxiter=None, refiner=None,
+        debug=None, visualize=False):
+    from pytential import sym
+    from pytential.symbolic.execution import GeometryCollection
+
+    lpot_source = places.get_geometry(source_name)
+
+    connections = []
+    violated_criteria = []
+    iter_violated_criteria = ["start"]
+    niter = 0
+
+    queue = wrangler.queue
+    stage2_density_discr = stage1_density_discr
+
+    while iter_violated_criteria:
+        iter_violated_criteria = []
+        niter += 1
+
+        if niter > maxiter:
+            _warn_max_iterations(violated_criteria,
+                    expansion_disturbance_tolerance)
+            break
+
+        stage2_places = places.copy({
+            (source_name, sym.QBX_SOURCE_STAGE1): stage1_density_discr,
+            (source_name, sym.QBX_SOURCE_STAGE2): stage2_density_discr,
+            (source_name, sym.QBX_SOURCE_QUAD_STAGE2): \
+                    _make_quad_stage2_discr(lpot_source, stage2_density_discr)
+            })
+
+        # Build tree and auxiliary data.
+        # FIXME: The tree should not have to be rebuilt at each iteration.
+        tree = wrangler.build_tree(stage2_places,
+                sources_list=[source_name],
+                use_stage2_discr=True)
+        peer_lists = wrangler.find_peer_lists(tree)
+        refine_flags = make_empty_refine_flags(queue, stage2_density_discr)
+
+        has_insufficient_quad_resolution = \
+                wrangler.check_sufficient_source_quadrature_resolution(
+                        stage2_density_discr, tree, peer_lists, refine_flags,
+                        debug)
+        if has_insufficient_quad_resolution:
+            iter_violated_criteria.append("insufficient quadrature resolution")
+            if visualize:
+                _visualize_refinement(queue, stage2_density_discr,
+                        niter, 2, "quad-resolution", refine_flags)
+
+        if iter_violated_criteria:
+            violated_criteria.append(" and ".join(iter_violated_criteria))
+
+            conn = wrangler.refine(stage2_density_discr,
+                    refiner, refine_flags, group_factory,
+                    debug)
             stage2_density_discr = conn.to_discr
             connections.append(conn)
 
-            self.lpot_source = self.lpot_source.copy(
-                    to_refined_connection=ChainedDiscretizationConnection(
-                        connections))
+        del tree
+        del refine_flags
+        del peer_lists
 
-        self.lpot_source = self.lpot_source.copy(debug=debug,
-                _refined_for_global_qbx=True)
-        return self.lpot_source
+    for round in range(force_stage2_uniform_refinement_rounds):
+        conn = wrangler.refine(
+                stage2_density_discr,
+                refiner,
+                np.ones(stage2_density_discr.mesh.nelements, dtype=np.bool),
+                group_factory, debug)
+        stage2_density_discr = conn.to_discr
+        connections.append(conn)
+
+    conn = None
+    if connections:
+        from meshmode.discretization.connection import \
+                ChainedDiscretizationConnection
+        conn = ChainedDiscretizationConnection(connections)
+
+    return stage2_density_discr, conn
 
 
 def refine_for_global_qbx(
-        source_geometry, wrangler,
+        places, source_name, wrangler,
         group_factory, kernel_length_scale=None,
         force_stage2_uniform_refinement_rounds=None,
         scaled_max_curvature_threshold=None,
@@ -774,28 +782,61 @@ def refine_for_global_qbx(
         going from the original mesh to the refined mesh.
     """
 
+    if maxiter is None:
+        maxiter = 10
+
     if debug is None:
         # FIXME: Set debug=False by default once everything works.
         debug = True
 
+    if expansion_disturbance_tolerance is None:
+        expansion_disturbance_tolerance = 0.025
+
+    if force_stage2_uniform_refinement_rounds is None:
+        force_stage2_uniform_refinement_rounds = 0
+
+    from meshmode.mesh.refinement import RefinerWithoutAdjacency
+    lpot_source = places.get_geometry(source_name)
+    if refiner is not None:
+        assert refiner.get_current_mesh() == lpot_source.density_discr.mesh
+    else:
+        # We may be handed a mesh that's already non-conforming, we don't rely
+        # on adjacency, and the no-adjacency refiner is faster.
+        refiner = RefinerWithoutAdjacency(lpot_source.density_discr.mesh)
+
     # {{{ stage refinement
 
-    lpot_source = wrangler.places.get_geometry(source_geometry)
-    qgr = QBXGlobalRefiner(lpot_source, group_factory,
+    stage1_density_discr, to_stage1_conn = refine_qbx_stage1(
+            places, source_name, lpot_source.density_discr,
+            wrangler, group_factory,
             kernel_length_scale=kernel_length_scale,
             scaled_max_curvature_threshold=scaled_max_curvature_threshold,
             expansion_disturbance_tolerance=expansion_disturbance_tolerance,
+            maxiter=maxiter,
+            refiner=refiner,
+            debug=debug,
+            visualize=visualize)
+
+    stage2_density_discr, to_stage2_conn = refine_qbx_stage2(
+            places, source_name, stage1_density_discr,
+            wrangler, group_factory,
+            expansion_disturbance_tolerance=expansion_disturbance_tolerance,
             force_stage2_uniform_refinement_rounds=(
                 force_stage2_uniform_refinement_rounds),
+            maxiter=maxiter,
             refiner=refiner,
-            maxiter=maxiter)
+            debug=debug,
+            visualize=visualize)
 
-    qgr.refine_for_stage1(wrangler, debug=debug, visualize=visualize)
-    qgr.refine_for_stage2(wrangler, debug=debug, visualize=visualize)
+    lpot_source = lpot_source.copy(
+            density_discr=stage1_density_discr,
+            to_stage1_connection=to_stage1_conn,
+            to_refined_connection=to_stage2_conn,
+            _refined_for_global_qbx=True,
+            debug=debug)
 
     # }}}
 
-    lpot_source = qgr.lpot_source
     if lpot_source._to_stage1_connection is None:
         from meshmode.discretization.connection import make_same_mesh_connection
         # FIXME: This is inefficient
