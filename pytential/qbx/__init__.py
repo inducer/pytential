@@ -482,23 +482,44 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from the originally given to the refined geometry.
         """
 
-        from pytential.qbx.refinement import QBXGlobalRefiner
+        from pytential.qbx.refinement import QBXRefinementInfo
         from meshmode.discretization.poly_element import \
                 InterpolatoryQuadratureSimplexGroupFactory
 
         if target_order is None:
             target_order = self.density_discr.groups[0].order
 
-        self._refiner = QBXGlobalRefiner(
-                self,
-                InterpolatoryQuadratureSimplexGroupFactory(target_order),
+        if maxiter is None:
+            maxiter = 10
+
+        if _expansion_disturbance_tolerance is None:
+            _expansion_disturbance_tolerance = 0.025
+
+        if _force_stage2_uniform_refinement_rounds is None:
+            _force_stage2_uniform_refinement_rounds = 0
+
+        from meshmode.mesh.refinement import RefinerWithoutAdjacency
+        if refiner is not None:
+            assert refiner.get_current_mesh() == self.density_discr.mesh
+        else:
+            # We may be handed a mesh that's already non-conforming, we don't rely
+            # on adjacency, and the no-adjacency refiner is faster.
+            refiner = RefinerWithoutAdjacency(self.density_discr.mesh)
+
+        self._refine_info = QBXRefinementInfo(
+                refiner=refiner,
+                group_factory=(
+                    InterpolatoryQuadratureSimplexGroupFactory(target_order)),
                 kernel_length_scale=kernel_length_scale,
-                scaled_max_curvature_threshold=_scaled_max_curvature_threshold,
-                expansion_disturbance_tolerance=_expansion_disturbance_tolerance,
+                scaled_max_curvature_threshold=(
+                    _scaled_max_curvature_threshold),
+                expansion_disturbance_tolerance=(
+                    _expansion_disturbance_tolerance),
                 force_stage2_uniform_refinement_rounds=(
                     _force_stage2_uniform_refinement_rounds),
-                refiner=refiner,
-                maxiter=maxiter)
+                maxiter=maxiter,
+                debug=self.debug,
+                visualize=visualize)
 
         return self, None
 
