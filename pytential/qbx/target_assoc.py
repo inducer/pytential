@@ -427,16 +427,17 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
         from boxtree.area_query import SpaceInvaderQueryBuilder
         return SpaceInvaderQueryBuilder(self.cl_context)
 
-    def get_wrangler(self, queue, places):
-        return TargetAssociationWrangler(self, queue, places)
+    def get_wrangler(self, queue):
+        return TargetAssociationWrangler(self, queue)
 
 
 class TargetAssociationWrangler(TreeWranglerBase):
 
     @log_process(logger)
-    def mark_targets(self, tree, peer_lists, source, target_status,
-                     debug, wait_for=None):
-        ambient_dim = self.places.get_geometry(source).ambient_dim
+    def mark_targets(self, places, source_name,
+            tree, peer_lists, target_status,
+            debug, wait_for=None):
+        ambient_dim = places.get_geometry(source_name).ambient_dim
 
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
@@ -458,8 +459,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
         source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = bind(self.places,
-                sym._close_target_tunnel_radii(ambient_dim, dofdesc=source))(
+        tunnel_radius_by_source = bind(places,
+                sym._close_target_tunnel_radii(ambient_dim, dofdesc=source_name))(
                         self.queue)
 
         # Target-marking algorithm (TGTMARK):
@@ -496,8 +497,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        tunnel_radius_by_source = bind(self.places,
-            sym._close_target_tunnel_radii(ambient_dim, dofdesc=source))(
+        tunnel_radius_by_source = bind(places,
+            sym._close_target_tunnel_radii(ambient_dim, dofdesc=source_name))(
                     self.queue)
 
         evt = knl(
@@ -529,10 +530,11 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return (found_target_close_to_panel == 1).all().get()
 
     @log_process(logger)
-    def find_centers(self, tree, peer_lists, source,
-            target_status, target_flags, target_assoc,
-            target_association_tolerance, debug, wait_for=None):
-        ambient_dim = self.places.get_geometry(source).ambient_dim
+    def find_centers(self, places, source_name,
+            tree, peer_lists, target_status, target_flags, target_assoc,
+            target_association_tolerance,
+            debug, wait_for=None):
+        ambient_dim = places.get_geometry(source_name).ambient_dim
 
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
@@ -557,10 +559,10 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 .with_queue(self.queue))
         centers = [
                 axis.with_queue(self.queue)[center_slice] for axis in tree.sources]
-        expansion_radii_by_center = bind(self.places, sym.expansion_radii(
+        expansion_radii_by_center = bind(places, sym.expansion_radii(
             ambient_dim,
             granularity=sym.GRANULARITY_CENTER,
-            dofdesc=source))(self.queue)
+            dofdesc=source_name))(self.queue)
         expansion_radii_by_center_with_tolerance = \
                 expansion_radii_by_center * (1 + target_association_tolerance)
 
@@ -616,10 +618,10 @@ class TargetAssociationWrangler(TreeWranglerBase):
         cl.wait_for_events([evt])
 
     @log_process(logger)
-    def mark_panels_for_refinement(self, tree, peer_lists, source,
-                                   target_status, refine_flags, debug,
-                                   wait_for=None):
-        ambient_dim = self.places.get_geometry(source).ambient_dim
+    def mark_panels_for_refinement(self, places, source_name,
+            tree, peer_lists, target_status, refine_flags,
+            debug, wait_for=None):
+        ambient_dim = places.get_geometry(source_name).ambient_dim
 
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
@@ -641,8 +643,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = bind(self.places,
-                sym._close_target_tunnel_radii(ambient_dim, dofdesc=source))(
+        tunnel_radius_by_source = bind(places,
+                sym._close_target_tunnel_radii(ambient_dim, dofdesc=source_name))(
                         self.queue)
 
         # See (TGTMARK) above for algorithm.
@@ -656,8 +658,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        tunnel_radius_by_source = bind(self.places,
-                sym._close_target_tunnel_radii(ambient_dim, dofdesc=source))(
+        tunnel_radius_by_source = bind(places,
+                sym._close_target_tunnel_radii(ambient_dim, dofdesc=source_name))(
                         self.queue)
 
         evt = knl(
@@ -715,7 +717,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return QBXTargetAssociation(target_to_center=target_to_center)
 
 
-def associate_targets_to_qbx_centers(lpot_source, wrangler,
+def associate_targets_to_qbx_centers(places, source_name, wrangler,
         target_discrs_and_qbx_sides, target_association_tolerance,
         debug=True, wait_for=None):
     """
@@ -745,16 +747,21 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
     :returns: A :class:`QBXTargetAssociation`.
     """
 
-    tree = wrangler.build_tree(lpot_source,
-            [discr for discr, _ in target_discrs_and_qbx_sides])
+    from pytential import sym
+    source_name = sym.as_dofdesc(source_name).geometry
+
+    tree = wrangler.build_tree(places,
+            sources_list=[source_name],
+            targets_list=[discr for discr, _ in target_discrs_and_qbx_sides])
 
     peer_lists = wrangler.find_peer_lists(tree)
 
     target_status = cl.array.zeros(wrangler.queue, tree.nqbxtargets, dtype=np.int32)
     target_status.finish()
 
-    have_close_targets = wrangler.mark_targets(tree, peer_lists,
-           lpot_source, target_status, debug)
+    have_close_targets = wrangler.mark_targets(places, source_name,
+            tree, peer_lists, target_status,
+            debug)
 
     target_assoc = wrangler.make_default_target_association(tree.nqbxtargets)
 
@@ -763,8 +770,10 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
 
     target_flags = wrangler.make_target_flags(target_discrs_and_qbx_sides)
 
-    wrangler.find_centers(tree, peer_lists, lpot_source, target_status,
-            target_flags, target_assoc, target_association_tolerance, debug)
+    wrangler.find_centers(places, source_name,
+            tree, peer_lists, target_status,
+            target_flags, target_assoc, target_association_tolerance,
+            debug)
 
     center_not_found = (
         target_status == target_status_enum.MARKED_QBX_CENTER_PENDING)
@@ -794,7 +803,9 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
         refine_flags = cl.array.zeros(
                 wrangler.queue, tree.nqbxpanels, dtype=np.int32)
         have_panel_to_refine = wrangler.mark_panels_for_refinement(
-                tree, peer_lists, lpot_source, target_status, refine_flags, debug)
+                places, source_name,
+                tree, peer_lists, target_status, refine_flags,
+                debug)
 
         assert have_panel_to_refine
         raise QBXTargetAssociationFailedException(
