@@ -555,9 +555,6 @@ def refine_qbx_stage1(places, source_name, density_discr,
         refiner=None,
         debug=None, visualize=False):
     from pytential import sym
-    from pytential.symbolic.execution import GeometryCollection
-
-    lpot_source = places.get_geometry(source_name)
 
     connections = []
     violated_criteria = []
@@ -583,7 +580,7 @@ def refine_qbx_stage1(places, source_name, density_discr,
             with ProcessLogger(logger,
                     "checking kernel length scale to panel size ratio"):
 
-                from pytential import bind, sym
+                from pytential import bind
                 quad_resolution = bind(stage1_density_discr,
                         sym._quad_resolution(stage1_density_discr.ambient_dim,
                             dofdesc=sym.GRANULARITY_ELEMENT))(queue)
@@ -603,7 +600,7 @@ def refine_qbx_stage1(places, source_name, density_discr,
         if scaled_max_curvature_threshold is not None:
             with ProcessLogger(logger,
                     "checking scaled max curvature threshold"):
-                from pytential import sym, bind
+                from pytential import bind
                 scaled_max_curv = bind(stage1_density_discr,
                     sym.ElementwiseMax(
                         sym._scaled_max_curvature(stage1_density_discr.ambient_dim),
@@ -677,8 +674,6 @@ def refine_qbx_stage2(places, source_name, stage1_density_discr,
         maxiter=None, refiner=None,
         debug=None, visualize=False):
     from pytential import sym
-    from pytential.symbolic.execution import GeometryCollection
-
     lpot_source = places.get_geometry(source_name)
 
     connections = []
@@ -701,8 +696,8 @@ def refine_qbx_stage2(places, source_name, stage1_density_discr,
         stage2_places = places.copy({
             (source_name, sym.QBX_SOURCE_STAGE1): stage1_density_discr,
             (source_name, sym.QBX_SOURCE_STAGE2): stage2_density_discr,
-            (source_name, sym.QBX_SOURCE_QUAD_STAGE2): \
-                    _make_quad_stage2_discr(lpot_source, stage2_density_discr)
+            (source_name, sym.QBX_SOURCE_QUAD_STAGE2):
+                _make_quad_stage2_discr(lpot_source, stage2_density_discr)
             })
 
         # Build tree and auxiliary data.

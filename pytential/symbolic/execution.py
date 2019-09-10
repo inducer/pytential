@@ -697,6 +697,9 @@ class GeometryCollection(object):
         key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE2)
         stage2_density_discr = cache[key]
 
+        from meshmode.discretization import Discretization
+        from meshmode.discretization.poly_element import \
+                QuadratureSimplexGroupFactory
         discr = Discretization(lpot.cl_context,
                 stage2_density_discr,
                 QuadratureSimplexGroupFactory(lpot.fine_order),
@@ -706,14 +709,13 @@ class GeometryCollection(object):
         cache[key] = discr
 
         # add connections from stage2 -> quad_stage2
+        from meshmode.discretization.connection import make_same_mesh_connection
         cache = self.get_cache('qbx_refined_connections')
         key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)
         cache[key] = make_same_mesh_connection(
                 discr, stage2_density_discr)
 
     def _ensure_qbx_refinement(self, lpot, dofdesc):
-        from pytential.qbx.refinement import (
-                refine_qbx_stage1, refine_qbx_stage2)
         if not hasattr(lpot, '_refine_info'):
             return lpot
 
@@ -730,7 +732,8 @@ class GeometryCollection(object):
             elif dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
                 self._ensure_qbx_quad_stage2(queue, lpot, dofdesc)
             else:
-                raise ValueError('unknown discr stage: {}'.format(dofdesc.discr_stage))
+                raise ValueError('unknown discr stage: {}'.format(
+                    dofdesc.discr_stage))
 
     def _get_stage_discretization(self, lpot, dofdesc):
         if dofdesc.discr_stage is None:
@@ -747,6 +750,7 @@ class GeometryCollection(object):
             return lpot.density_discr
 
     def refine_for_global_qbx(self):
+        from pytential.qbx import QBXLayerPotentialSource
         for name, lpot in six.iteritems(self.places):
             if not isinstance(lpot, QBXLayerPotentialSource):
                 continue
