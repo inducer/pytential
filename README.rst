@@ -2,14 +2,9 @@ pytential: 2D/3D Layer Potential Evaluation
 ===========================================
 
 .. image:: https://gitlab.tiker.net/inducer/pytential/badges/master/pipeline.svg
-    :alt: Gitlab Build Status
-    :target: https://gitlab.tiker.net/inducer/pytential/commits/master
-.. image:: https://dev.azure.com/ak-spam/inducer/_apis/build/status/inducer.pytential?branchName=master
-    :alt: Azure Build Status
-    :target: https://dev.azure.com/ak-spam/inducer/_build/latest?definitionId=16&branchName=master
+   :target: https://gitlab.tiker.net/inducer/pytential/commits/master
 .. image:: https://badge.fury.io/py/pytential.png
-    :alt: Python Package Index Release Page
-    :target: https://pypi.org/project/pytential/
+    :target: http://pypi.python.org/pypi/pytential
 
 pytential helps you accurately evaluate layer
 potentials (and, sooner or later, volume potentials).
