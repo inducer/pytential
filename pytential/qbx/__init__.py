@@ -559,8 +559,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return self._dispatch_compute_potential_insn(
                 queue, insn, bound_expr, evaluate, func, extra_args)
 
-    def cost_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
-                                          calibration_params):
+    def cost_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         """Using :attr:`cost_model`, evaluate the cost of executing *insn*.
         Cost model results are gathered in
         :attr:`pytential.symbolic.execution.BoundExpression.modeled_cost`
@@ -568,22 +567,28 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         :returns: whatever :meth:`exec_compute_potential_insn_fmm` returns.
         """
+
         if self.fmm_level_to_order is False:
             raise NotImplementedError("perf modeling direct evaluations")
 
         def drive_cost_model(
                     wrangler, strengths, geo_data, kernel, kernel_arguments):
             del strengths
-            cost_model_result = self.cost_model(
-                geo_data, kernel, kernel_arguments, calibration_params
+            cost_model_result = (
+                    self.cost_model(wrangler, geo_data, kernel, kernel_arguments))
+
+            from pytools.obj_array import with_object_array_or_scalar
+            output_placeholder = with_object_array_or_scalar(
+                wrangler.finalize_potentials,
+                wrangler.full_output_zeros()
             )
-            return wrangler.full_output_zeros(), cost_model_result
+
+            return output_placeholder, cost_model_result
 
         return self._dispatch_compute_potential_insn(
-            queue, insn, bound_expr, evaluate,
-            self.exec_compute_potential_insn_fmm,
-            extra_args={"fmm_driver": drive_cost_model}
-        )
+                queue, insn, bound_expr, evaluate,
+                self.exec_compute_potential_insn_fmm,
+                extra_args={"fmm_driver": drive_cost_model})
 
     def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
             evaluate, func, extra_args=None):
