@@ -165,14 +165,6 @@ class PointPotentialSource(PotentialSource):
         timing_data = {}
         return result, timing_data
 
-    @memoize_method
-    def weights_and_area_elements(self):
-        with cl.CommandQueue(self.cl_context) as queue:
-            result = cl.array.empty(queue, self.nnodes, dtype=self.real_dtype)
-            result.fill(1)
-
-        return result.with_queue(None)
-
 # }}}
 
 
@@ -200,7 +192,6 @@ class LayerPotentialSourceBase(PotentialSource):
 
     .. rubric:: Execution
 
-    .. automethod:: weights_and_area_elements
     .. automethod:: cost_model_compute_potential_insn
     .. automethod:: exec_compute_potential_insn
     """

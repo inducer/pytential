@@ -396,18 +396,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             QuadratureSimplexGroupFactory(self.fine_order),
             self.real_dtype)
 
-    # {{{ weights and area elements
-
-    @memoize_method
-    def weights_and_area_elements(self):
-        from pytential import bind, sym
-        with cl.CommandQueue(self.cl_context) as queue:
-            return bind(self, sym.weights_and_area_elements(
-                self.ambient_dim,
-                dofdesc=sym.QBX_SOURCE_QUAD_STAGE2))(queue).with_queue(None)
-
-    # }}}
-
     @property
     @memoize_method
     def resampler(self):
@@ -731,8 +719,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # FIXME don't compute *all* output kernels on all targets--respect that
         # some target discretizations may only be asking for derivatives (e.g.)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        waa = bind(bound_expr.places, sym.weights_and_area_elements(
+            self.ambient_dim,
+            dofdesc=insn.source.to_quad_stage2()))(queue)
+        strengths = waa * evaluate(insn.density).with_queue(queue)
+
         out_kernels = tuple(knl for knl in insn.kernels)
         fmm_kernel = self.get_fmm_kernel(out_kernels)
         output_and_expansion_dtype = (
@@ -857,8 +848,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        waa = bind(bound_expr.places, sym.weights_and_area_elements(
+            self.ambient_dim,
+            dofdesc=insn.source.to_quad_stage2()))(queue)
+        strengths = waa * evaluate(insn.density).with_queue(queue)
 
         # FIXME: Do this all at once
         result = []

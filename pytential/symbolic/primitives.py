@@ -351,6 +351,15 @@ class DOFDescriptor(object):
                 discr_stage=(self.discr_stage
                     if discr_stage is None else discr_stage))
 
+    def to_stage1(self):
+        return self.copy(discr_stage=QBX_SOURCE_STAGE1)
+
+    def to_stage2(self):
+        return self.copy(discr_stage=QBX_SOURCE_STAGE2)
+
+    def to_quad_stage2(self):
+        return self.copy(discr_stage=QBX_SOURCE_QUAD_STAGE2)
+
     def __hash__(self):
         return hash((type(self),
             self.geometry, self.discr_stage, self.granularity))

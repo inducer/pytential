@@ -87,15 +87,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             expansion_factory = DefaultExpansionFactory()
         self.expansion_factory = expansion_factory
 
-    @memoize_method
-    def weights_and_area_elements(self):
-        from pytential import bind, sym
-        with cl.CommandQueue(self.cl_context) as queue:
-            waa = bind(self,
-                    sym.weights_and_area_elements(self.ambient_dim))(queue)
-
-            return waa.with_queue(None)
-
     def copy(
             self,
             density_discr=None,
@@ -153,8 +144,10 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        waa = bind(bound_expr.places, sym.weights_and_area_elements(
+            self.ambient_dim,
+            dofdesc=insn.source.to_quad_stage2()))(queue)
+        strengths = waa * evaluate(insn.density).with_queue(queue)
 
         result = []
         p2p = None
@@ -231,8 +224,10 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         geo_data = self.fmm_geometry_data(targets)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        waa = bind(bound_expr.places, sym.weights_and_area_elements(
+            self.ambient_dim,
+            dofdesc=insn.source.to_quad_stage2()))(queue)
+        strengths = waa * evaluate(insn.density).with_queue(queue)
 
         out_kernels = tuple(knl for knl in insn.kernels)
         fmm_kernel = self.get_fmm_kernel(out_kernels)
