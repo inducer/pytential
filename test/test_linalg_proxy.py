@@ -224,8 +224,7 @@ def test_interaction_points(ctx_factory, ambient_dim, factor, visualize=False):
     nbrindices = gather_block_neighbor_points(density_discr,
             srcindices, pxycenters, pxyradii)
     nodes, ranges = gather_block_interaction_points(
-            places.get_geometry(dofdesc),
-            srcindices)
+            places, dofdesc, srcindices)
 
     srcindices = srcindices.get(queue)
     nbrindices = nbrindices.get(queue)

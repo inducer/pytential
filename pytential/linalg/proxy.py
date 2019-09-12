@@ -525,7 +525,7 @@ def gather_block_neighbor_points(discr, indices, pxycenters, pxyradii,
                                 nbrranges.with_queue(None))
 
 
-def gather_block_interaction_points(source, indices,
+def gather_block_interaction_points(places, source_name, indices,
                                     ratio=None,
                                     approx_nproxy=None,
                                     max_nodes_in_box=None):
@@ -602,8 +602,9 @@ def gather_block_interaction_points(source, indices,
 
         return loopy_knl
 
+    source = places.get_geometry(source_name)
     with cl.CommandQueue(source.cl_context) as queue:
-        generator = ProxyGenerator(source,
+        generator = ProxyGenerator(places, dofdesc=source_name,
                 ratio=ratio, approx_nproxy=approx_nproxy)
         proxies, pxyranges, pxycenters, pxyradii = generator(queue, indices)
 
