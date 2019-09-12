@@ -216,13 +216,13 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     target_order = 7
     qbx_order = 4
 
-    where = 'test-interpolation'
+    where = sym.as_dofdesc('test-interpolation')
     from_dd = sym.DOFDescriptor(
-            geometry=where,
+            geometry=where.geometry,
             discr_stage=source_discr_stage,
             granularity=sym.GRANULARITY_NODE)
     to_dd = sym.DOFDescriptor(
-            geometry=where,
+            geometry=where.geometry,
             discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
             granularity=target_granularity)
 
@@ -240,19 +240,17 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx, auto_where=where)
-    qbx = places.get_geometry(where)
 
     sigma_sym = sym.var("sigma")
     op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
-    bound_op = bind(qbx, op_sym, auto_where=where)
+    bound_op = bind(places, op_sym, auto_where=where)
 
-    target_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
-    if source_discr_stage == sym.QBX_SOURCE_STAGE2:
-        source_nodes = qbx.stage2_density_discr.nodes().get(queue)
-    elif source_discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
-        source_nodes = target_nodes
-    else:
-        source_nodes = qbx.density_discr.nodes().get(queue)
+    def nodes(stage):
+        density_discr = places.get_discretization(where.copy(discr_stage=stage))
+        return density_discr.nodes().get(queue)
+
+    target_nodes = nodes(sym.QBX_SOURCE_QUAD_STAGE2).get(queue)
+    source_nodes = nodes(source_discr_stage).get(queue)
 
     sigma_dev = cl.array.to_device(queue, la.norm(source_nodes, axis=0))
     sigma_target = np.sin(la.norm(target_nodes, axis=0))

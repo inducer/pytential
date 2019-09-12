@@ -119,26 +119,16 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     if helmholtz_k is not None:
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
-    lpot_source, _ = refine_for_global_qbx(
-            places,
-            places.auto_source,
-            RefinerCodeContainer(
-                cl_ctx, TreeCodeContainer(cl_ctx)).get_wrangler(queue),
-            factory, **refiner_extra_kwargs)
-
-    discr_nodes = lpot_source.density_discr.nodes().get(queue)
-    fine_discr_nodes = \
-            lpot_source.quad_stage2_density_discr.nodes().get(queue)
+    places.refine_for_global_qbx(self, **refiner_kwargs)
 
     # }}}
 
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(lpot_source)
+    dd = places.auto_source
+    stage1_density_discr = places.get_discretization(dd.to_stage1())
+    stage1_density_nodes = stage1_density_discr.nodes().get(queue)
 
-    source_dd = places.auto_source
-    density_discr = places.get_discretization(source_dd)
-    quad_stage2_density_discr = places.get_discretization(
-            source_dd.copy(discr_stage=sym.QBX_SOURCE_QUAD_STAGE2))
+    quad_stage2_density_discr = places.get_discretization(dd.to_quad_stage2())
+    quad_stage2_density_nodes = quad_stage2_density_discr.nodes.get(queue)
 
     int_centers = bind(places,
         sym.expansion_centers(lpot_source.ambient_dim, -1))(queue)
@@ -168,7 +158,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
         my_ext_centers = ext_centers[:, centers_panel.discr_slice]
         all_centers = np.append(my_int_centers, my_ext_centers, axis=-1)
 
-        nodes = discr_nodes[:, sources_panel.discr_slice]
+        nodes = stage1_density_nodes[:, sources_panel.discr_slice]
 
         # =distance(centers of panel 1, panel 2)
         dist = (
@@ -193,7 +183,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
         my_ext_centers = ext_centers[:, centers_panel.discr_slice]
         all_centers = np.append(my_int_centers, my_ext_centers, axis=-1)
 
-        nodes = fine_discr_nodes[:, sources_panel.discr_slice]
+        nodes = quad_stage2_density_nodes[:, sources_panel.discr_slice]
 
         # =distance(centers of panel 1, panel 2)
         dist = (
@@ -213,8 +203,8 @@ def run_source_refinement_test(ctx_factory, mesh, order,
         # Check wavenumber to panel size ratio.
         assert quad_res[panel.element_nr] * helmholtz_k <= 5
 
-    for i, panel_1 in enumerate(iter_elements(density_discr)):
-        for panel_2 in iter_elements(density_discr):
+    for i, panel_1 in enumerate(iter_elements(stage1_density_discr)):
+        for panel_2 in iter_elements(stage1_density_discr):
             check_disk_undisturbed_by_sources(panel_1, panel_2)
         for panel_2 in iter_elements(quad_stage2_density_discr):
             check_sufficient_quadrature_resolution(panel_1, panel_2)
@@ -270,9 +260,9 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     discr = Discretization(cl_ctx, mesh, factory)
 
-    lpot_source, _ = QBXLayerPotentialSource(discr,
+    lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in target association
-            fine_order=order).with_refinement(visualize=True)
+            fine_order=order)
     del discr
 
     # }}}
@@ -281,6 +271,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(lpot_source)
+    places.refine_for_global_qbx(visualize=visualize)
 
     from pyopencl.clrandom import PhiloxGenerator
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)

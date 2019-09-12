@@ -460,11 +460,9 @@ def make_empty_refine_flags(queue, density_discr):
 
 # {{{ main entry point
 
-class QBXRefinementInfo(Record):
+class QBXGeometryRefinerData(Record):
     """
-    .. attribute:: refiner
-    .. attribute:: group_factory
-
+    .. attribute:: target_order
     .. attribute:: kernel_length_scale
     .. attribute:: scaled_max_curvature_threshold
     .. attribute:: expansion_disturbance_tolerance
@@ -473,7 +471,40 @@ class QBXRefinementInfo(Record):
 
     .. attribute:: debug
     .. attribute:: visualize
+
+    .. method:: refine_for_stage1
+    .. method:: refine_for_stage2
     """
+
+    @property
+    @memoize_method
+    def _group_factory(self):
+        from meshmode.discretization.poly_element import \
+                InterpolatoryQuadratureSimplexGroupFactory
+        return InterpolatoryQuadratureSimplexGroupFactory(self.target_order)
+
+    def refine_for_stage1(self, places, source_name, discr, wrangler):
+        return _refine_qbx_stage1(places, source_name, discr, wrangler,
+                self._group_factory,
+                kernel_length_scale=self.kernel_length_scale,
+                scaled_max_curvature_threshold=(
+                    self.scaled_max_curvature_threshold),
+                expansion_disturbance_tolerance=(
+                    self.expansion_disturbance_tolerance),
+                maxiter=self.maxiter,
+                debug=self.debug,
+                visualize=self.visualize)
+
+    def refine_for_stage2(self, places, source_name, discr, wrangler):
+        return _refine_qbx_stage2(places, source_name, discr, wrangler,
+                self._group_factory,
+                force_stage2_uniform_refinement_rounds=(
+                    self.force_stage2_uniform_refinement_rounds),
+                expansion_disturbance_tolerance=(
+                    self.expansion_disturbance_tolerance),
+                maxiter=self.maxiter,
+                debug=self.debug,
+                visualize=self.visualize)
 
 
 def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
@@ -499,7 +530,8 @@ def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
             RefinerNotConvergedWarning)
 
 
-def _visualize_refinement(queue, discr, niter, stage_nr, stage_name, flags):
+def _visualize_refinement(queue, source_name, discr,
+        niter, stage_nr, stage_name, flags):
     if stage_nr not in (1, 2):
         raise ValueError("unexpected stage number")
 
@@ -530,7 +562,8 @@ def _visualize_refinement(queue, discr, niter, stage_nr, stage_name, flags):
                 queue).as_vector(dtype=object)
         vis_data.append(("bdry_normals", bdry_normals),)
 
-    vis.write_vtk_file("refinement-%s-%03d.vtu" % (stage_name, niter),
+    source_name = str(source_name).lower().replace('_', '-').replace('/', '-')
+    vis.write_vtk_file("refinement-%s-%s-%03d.vtu" % (stage_name, niter),
             vis_data, overwrite=True)
 
 
@@ -546,7 +579,7 @@ def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
             lpot_source.real_dtype)
 
 
-def refine_qbx_stage1(places, source_name, density_discr,
+def _refine_qbx_stage1(places, source_name, density_discr,
         wrangler, group_factory,
         kernel_length_scale=None,
         scaled_max_curvature_threshold=None,
@@ -555,6 +588,9 @@ def refine_qbx_stage1(places, source_name, density_discr,
         refiner=None,
         debug=None, visualize=False):
     from pytential import sym
+    if refiner is None:
+        from meshmode.mesh.refinement import RefinerWithoutAdjacency
+        refiner = RefinerWithoutAdjacency(density_discr.mesh)
 
     connections = []
     violated_criteria = []
@@ -594,7 +630,8 @@ def refine_qbx_stage1(places, source_name, density_discr,
                 if violates_kernel_length_scale:
                     iter_violated_criteria.append("kernel length scale")
                     if visualize:
-                        _visualize_refinement(queue,
+                        _visualize_refinement(queue, source_name,
+                                stage1_density_discr,
                                 niter, 1, "kernel-length-scale", refine_flags)
 
         if scaled_max_curvature_threshold is not None:
@@ -615,7 +652,8 @@ def refine_qbx_stage1(places, source_name, density_discr,
                 if violates_scaled_max_curv:
                     iter_violated_criteria.append("curvature")
                     if visualize:
-                        _visualize_refinement(queue, stage1_density_discr,
+                        _visualize_refinement(queue, source_name,
+                                stage1_density_discr,
                                 niter, 1, "curvature", refine_flags)
 
         if not iter_violated_criteria:
@@ -640,7 +678,8 @@ def refine_qbx_stage1(places, source_name, density_discr,
             if has_disturbed_expansions:
                 iter_violated_criteria.append("disturbed expansions")
                 if visualize:
-                    _visualize_refinement(queue, stage1_density_discr,
+                    _visualize_refinement(queue, source_name,
+                            stage1_density_discr,
                             niter, 1, "disturbed-expansions", refine_flags)
 
             del tree
@@ -667,7 +706,7 @@ def refine_qbx_stage1(places, source_name, density_discr,
     return stage1_density_discr, conn
 
 
-def refine_qbx_stage2(places, source_name, stage1_density_discr,
+def _refine_qbx_stage2(places, source_name, stage1_density_discr,
         wrangler, group_factory,
         expansion_disturbance_tolerance=None,
         force_stage2_uniform_refinement_rounds=None,
@@ -675,6 +714,10 @@ def refine_qbx_stage2(places, source_name, stage1_density_discr,
         debug=None, visualize=False):
     from pytential import sym
     lpot_source = places.get_geometry(source_name)
+
+    if refiner is None:
+        from meshmode.mesh.refinement import RefinerWithoutAdjacency
+        refiner = RefinerWithoutAdjacency(stage1_density_discr.mesh)
 
     connections = []
     violated_criteria = []
@@ -715,7 +758,8 @@ def refine_qbx_stage2(places, source_name, stage1_density_discr,
         if has_insufficient_quad_resolution:
             iter_violated_criteria.append("insufficient quadrature resolution")
             if visualize:
-                _visualize_refinement(queue, stage2_density_discr,
+                _visualize_refinement(queue, source_name,
+                        stage2_density_discr,
                         niter, 2, "quad-resolution", refine_flags)
 
         if iter_violated_criteria:

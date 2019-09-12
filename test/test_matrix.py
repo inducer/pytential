@@ -81,10 +81,10 @@ def _build_geometry(queue,
             queue.context, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    qbx, _ = QBXLayerPotentialSource(density_discr,
+    qbx = QBXLayerPotentialSource(density_discr,
             fine_order=4 * target_order,
             qbx_order=qbx_order,
-            fmm_order=False).with_refinement()
+            fmm_order=False)
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx, auto_where=auto_where)

@@ -82,8 +82,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # begin experimental arguments
             # FIXME default debug=False once everything has matured
             debug=True,
-            _refined_for_stage1_qbx=False,
-            _refined_for_global_qbx=False,
+            _disable_refinement=False,
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.5,
             _well_sep_is_n_away=2,
@@ -213,8 +212,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self.expansion_factory = expansion_factory
 
         self.debug = debug
-        self._refined_for_global_qbx = _refined_for_global_qbx
-        self._refined_for_stage1_qbx = _refined_for_stage1_qbx
+        self._disable_refinement = _disable_refinement
         self._expansions_in_tree_have_extent = \
                 _expansions_in_tree_have_extent
         self._expansion_stick_out_factor = _expansion_stick_out_factor
@@ -261,8 +259,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             fmm_backend=None,
 
             debug=_not_provided,
-            _refined_for_global_qbx=_not_provided,
-            _refined_for_stage1_qbx=_not_provided,
+            _disable_refinement=_not_provided,
             target_stick_out_factor=_not_provided,
             ):
 
@@ -318,16 +315,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 debug=(
                     # False is a valid value here
                     debug if debug is not _not_provided else self.debug),
-                _refined_for_global_qbx=(
+                _disable_refinement=(
                     # False is a valid value here
-                    _refined_for_global_qbx
-                    if _refined_for_global_qbx is not _not_provided
-                    else self._refined_for_global_qbx),
-                _refined_for_stage1_qbx=(
-                    # False is a valid value here
-                    _refined_for_stage1_qbx
-                    if _refined_for_stage1_qbx is not _not_provided
-                    else self._refined_for_stage1_qbx),
+                    _disable_refinement
+                    if _disable_refinement is not _not_provided
+                    else self._disable_refinement),
                 _expansions_in_tree_have_extent=(
                     # False is a valid value here
                     _expansions_in_tree_have_extent
@@ -452,64 +444,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 self.cl_context, self.tree_code_container)
 
     @memoize_method
-    def with_refinement(self, target_order=None, kernel_length_scale=None,
-            maxiter=None, visualize=False, refiner=None,
-            _expansion_disturbance_tolerance=None,
-            _force_stage2_uniform_refinement_rounds=None,
-            _scaled_max_curvature_threshold=None):
-        """
-        :arg refiner: If the mesh underlying :attr:`density_discr`
-            is itself the result of refinement, then its
-            :class:`meshmode.refinement.Refiner` instance may need to
-            be reused for continued refinement. This argument
-            provides the opportunity to pass in an existing refiner
-            that should be used for continued refinement.
-        :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
-            :class:`QBXLayerPotentialSource` and ``cnx`` is a
-            :class:`meshmode.discretization.connection.DiscretizationConnection`
-            from the originally given to the refined geometry.
-        """
-
-        from pytential.qbx.refinement import QBXRefinementInfo
-        from meshmode.discretization.poly_element import \
-                InterpolatoryQuadratureSimplexGroupFactory
-
-        if target_order is None:
-            target_order = self.density_discr.groups[0].order
-
-        if maxiter is None:
-            maxiter = 10
-
-        if _expansion_disturbance_tolerance is None:
-            _expansion_disturbance_tolerance = 0.025
-
-        if _force_stage2_uniform_refinement_rounds is None:
-            _force_stage2_uniform_refinement_rounds = 0
-
-        from meshmode.mesh.refinement import RefinerWithoutAdjacency
-        if refiner is not None:
-            assert refiner.get_current_mesh() == self.density_discr.mesh
-        else:
-            # We may be handed a mesh that's already non-conforming, we don't rely
-            # on adjacency, and the no-adjacency refiner is faster.
-            refiner = RefinerWithoutAdjacency(self.density_discr.mesh)
-
-        self._refine_info = QBXRefinementInfo(
-                refiner=refiner,
-                group_factory=(
-                    InterpolatoryQuadratureSimplexGroupFactory(target_order)),
-                kernel_length_scale=kernel_length_scale,
-                scaled_max_curvature_threshold=(
-                    _scaled_max_curvature_threshold),
-                expansion_disturbance_tolerance=(
-                    _expansion_disturbance_tolerance),
-                force_stage2_uniform_refinement_rounds=(
-                    _force_stage2_uniform_refinement_rounds),
-                maxiter=maxiter,
-                debug=self.debug,
-                visualize=visualize)
-
-        return self, None
+    def with_refinement(self, **kwargs):
+        raise RuntimeError("call GeometryCollection.refine_for_global_qbx "
+            "to force refinement")
 
     # {{{ internal API
 
@@ -610,7 +547,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
             evaluate, func, extra_args=None):
-        if not self._refined_for_global_qbx:
+        if self._disable_refinement:
             from warnings import warn
             warn(
                     "Executing global QBX without refinement. "
@@ -853,6 +790,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             dofdesc=insn.source.to_quad_stage2()))(queue)
         strengths = waa * evaluate(insn.density).with_queue(queue)
 
+        source_discr = bound_expr.places.get_discretization(
+            insn.source.to_quad_stage2())
+
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
@@ -874,7 +814,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
-                        self.quad_stage2_density_discr.nodes(),
+                        source_discr.nodes(),
                         centers,
                         [strengths],
                         expansion_radii=expansion_radii,
@@ -888,9 +828,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
                             insn.kernels)
 
+                density_discr = bound_expr.places.get_discretization(
+                        insn.source.to_quad_stage2())
                 evt, output_for_each_kernel = p2p(queue,
-                        target_discr.nodes(),
-                        self.quad_stage2_density_discr.nodes(),
+                        source_discr.nodes(),
+                        density_discr.nodes(),
                         [strengths], **kernel_args)
 
                 qbx_forced_limit = o.qbx_forced_limit
@@ -940,7 +882,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     lpot_applier_on_tgt_subset(
                             queue,
                             targets=target_discr.nodes(),
-                            sources=self.quad_stage2_density_discr.nodes(),
+                            sources=source_discr.nodes(),
                             centers=geo_data.centers(),
                             expansion_radii=geo_data.expansion_radii(),
                             strengths=[strengths],
