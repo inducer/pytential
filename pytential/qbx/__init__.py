@@ -27,7 +27,6 @@ import six
 
 import numpy as np
 from pytools import memoize_method
-from meshmode.discretization import Discretization
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 from pytential.source import LayerPotentialSourceBase
 
@@ -639,6 +638,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # FIXME don't compute *all* output kernels on all targets--respect that
         # some target discretizations may only be asking for derivatives (e.g.)
 
+        from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim,
             dofdesc=insn.source.to_quad_stage2()))(queue)

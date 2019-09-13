@@ -90,15 +90,9 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
             InterpolatoryQuadratureSimplexGroupFactory)
+    discr = Discretization(cl_ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    factory = InterpolatoryQuadratureSimplexGroupFactory(order)
-
-    discr = Discretization(cl_ctx, mesh, factory)
-
-    from pytential.qbx.refinement import (
-            RefinerCodeContainer, refine_for_global_qbx)
-
-    from pytential.qbx.utils import TreeCodeContainer
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in refinement
             fine_order=order)
@@ -327,7 +321,6 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
             TargetAssociationCodeContainer, associate_targets_to_qbx_centers)
 
     from pytential.qbx.utils import TreeCodeContainer
-
     code_container = TargetAssociationCodeContainer(
             cl_ctx, TreeCodeContainer(cl_ctx))
 

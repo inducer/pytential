@@ -616,7 +616,6 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                         tree.box_id_dtype,
                         )
 
-        lpot_source = self.places.get_geometry(self.source_name)
         with cl.CommandQueue(self.cl_context) as queue:
             box_to_target_box = cl.array.empty(
                     queue, tree.nboxes, tree.box_id_dtype)

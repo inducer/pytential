@@ -144,6 +144,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
+        from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim,
             dofdesc=insn.source.to_quad_stage2()))(queue)
@@ -224,6 +225,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         geo_data = self.fmm_geometry_data(targets)
 
+        from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim,
             dofdesc=insn.source.to_quad_stage2()))(queue)

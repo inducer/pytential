@@ -366,7 +366,6 @@ class RefinerWrangler(TreeWranglerBase):
                 sym._source_danger_zone_radii(
                     stage2_density_discr.ambient_dim,
                     dofdesc=sym.GRANULARITY_ELEMENT))(self.queue)
-        assert source_danger_zone_radii_by_panel.shape == (stage2_density_discr.mesh.nelements,)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
@@ -846,7 +845,7 @@ def refine_for_global_qbx(
 
     # {{{ stage refinement
 
-    stage1_density_discr, to_stage1_conn = refine_qbx_stage1(
+    stage1_density_discr, to_stage1_conn = _refine_qbx_stage1(
             places, source_name, lpot_source.density_discr,
             wrangler, group_factory,
             kernel_length_scale=kernel_length_scale,
@@ -857,7 +856,7 @@ def refine_for_global_qbx(
             debug=debug,
             visualize=visualize)
 
-    stage2_density_discr, to_stage2_conn = refine_qbx_stage2(
+    stage2_density_discr, to_stage2_conn = _refine_qbx_stage2(
             places, source_name, stage1_density_discr,
             wrangler, group_factory,
             expansion_disturbance_tolerance=expansion_disturbance_tolerance,
