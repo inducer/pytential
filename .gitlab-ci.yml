@@ -82,7 +82,6 @@ Python 3 Conda:
   - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
   - export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
-  - export REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
@@ -101,7 +100,6 @@ Python 3 Conda Apple:
   - export LANG=en_US.UTF-8
   - export CONDA_ENVIRONMENT=.test-conda-env-py3-macos.yml
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
-  - export REQUIREMENTS_TXT=.test-conda-env-py3-requirements.txt
   - export CC=clang
   - set -o xtrace
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
@@ -130,6 +128,7 @@ Documentation:
 Pylint:
   script:
   # Needed to avoid name shadowing issues when running from source directory.
+  # Pylint won't find the Cython bits without this
   - PROJECT_INSTALL_FLAGS="--editable"
   - export PY_EXE=python3
   # Pin to numpy 1.15
