@@ -485,8 +485,6 @@ class QBXGeometryRefinerData(Record):
         return InterpolatoryQuadratureSimplexGroupFactory(self.target_order)
 
     def refine_for_stage1(self, places, source_name, discr, wrangler):
-        print('stage1')
-        print(self)
         return _refine_qbx_stage1(places, source_name, discr, wrangler,
                 self._group_factory,
                 kernel_length_scale=self.kernel_length_scale,
@@ -499,8 +497,6 @@ class QBXGeometryRefinerData(Record):
                 visualize=self.visualize)
 
     def refine_for_stage2(self, places, source_name, discr, wrangler):
-        print('stage2')
-        print(self)
         return _refine_qbx_stage2(places, source_name, discr, wrangler,
                 self._group_factory,
                 force_stage2_uniform_refinement_rounds=(
@@ -705,9 +701,6 @@ def _refine_qbx_stage1(places, source_name, density_discr,
             connections.append(conn)
 
         del refine_flags
-
-        print(niter)
-        print(iter_violated_criteria)
 
     from meshmode.discretization.connection import ChainedDiscretizationConnection
     conn = ChainedDiscretizationConnection(connections,

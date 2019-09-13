@@ -437,6 +437,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
     def mark_targets(self, places, source_name,
             tree, peer_lists, target_status,
             debug, wait_for=None):
+        from pytential import bind, sym
+        source_name = sym.as_dofdesc(source_name).to_stage1()
         ambient_dim = places.get_geometry(source_name).ambient_dim
 
         # Round up level count--this gets included in the kernel as
@@ -455,7 +457,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
         found_target_close_to_panel.finish()
 
         # Perform a space invader query over the sources.
-        from pytential import bind, sym
         source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
@@ -534,6 +535,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
             tree, peer_lists, target_status, target_flags, target_assoc,
             target_association_tolerance,
             debug, wait_for=None):
+        from pytential import bind, sym
+        source_name = sym.as_dofdesc(source_name).to_stage1()
         ambient_dim = places.get_geometry(source_name).ambient_dim
 
         # Round up level count--this gets included in the kernel as
@@ -553,7 +556,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
             marked_target_count = int(cl.array.sum(target_status).get())
 
         # Perform a space invader query over the centers.
-        from pytential import bind, sym
         center_slice = (
                 tree.sorted_target_ids[tree.qbx_user_center_slice]
                 .with_queue(self.queue))
@@ -621,6 +623,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
     def mark_panels_for_refinement(self, places, source_name,
             tree, peer_lists, target_status, refine_flags,
             debug, wait_for=None):
+        from pytential import bind, sym
+        source_name = sym.as_dofdesc(source_name).to_stage1()
         ambient_dim = places.get_geometry(source_name).ambient_dim
 
         # Round up level count--this gets included in the kernel as
@@ -639,7 +643,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
         found_panel_to_refine.finish()
 
         # Perform a space invader query over the sources.
-        from pytential import bind, sym
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]

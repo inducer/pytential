@@ -1046,8 +1046,11 @@ def _close_target_tunnel_radii(ambient_dim, dim=None,
 
 @_deprecate_kwargs('where', 'dofdesc')
 def expansion_radii(ambient_dim, dim=None, granularity=None, dofdesc=None):
-    factor = _expansion_radii_factor(ambient_dim, dim)
+    dofdesc = as_dofdesc(dofdesc)
+    if dofdesc.discr_stage is None:
+        dofdesc = dofdesc.copy(discr_stage=QBX_SOURCE_STAGE1)
 
+    factor = _expansion_radii_factor(ambient_dim, dim)
     return cse(factor * _quad_resolution(ambient_dim, dim=dim,
         granularity=granularity, dofdesc=dofdesc),
         "expansion_radii",
@@ -1056,6 +1059,10 @@ def expansion_radii(ambient_dim, dim=None, granularity=None, dofdesc=None):
 
 @_deprecate_kwargs('where', 'dofdesc')
 def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
+    dofdesc = as_dofdesc(dofdesc)
+    if dofdesc.discr_stage is None:
+        dofdesc = dofdesc.copy(discr_stage=QBX_SOURCE_STAGE1)
+
     x = nodes(ambient_dim, dofdesc=dofdesc)
     normals = normal(ambient_dim, dim=dim, dofdesc=dofdesc)
     radii = expansion_radii(ambient_dim, dim=dim,

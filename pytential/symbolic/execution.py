@@ -738,17 +738,12 @@ class GeometryCollection(object):
 
     def _get_stage_discretization(self, lpot, dofdesc):
         if dofdesc.discr_stage is None:
-            # FIXME: this should just return the base `density_discr`
-            dofdesc = dofdesc.copy(discr_stage=sym.QBX_SOURCE_STAGE1)
+            return lpot.density_discr
+
         self._ensure_qbx_refinement(lpot, dofdesc)
 
         cache = self.get_cache('qbx_refined_discrs')
-        key = (dofdesc.geometry, dofdesc.discr_stage)
-
-        if key in cache:
-            return cache[key]
-        else:
-            return lpot.density_discr
+        return cache[(dofdesc.geometry, dofdesc.discr_stage)]
 
     # }}}
 
@@ -803,6 +798,9 @@ class GeometryCollection(object):
             in its attributes instead.
         """
         dofdesc = sym.as_dofdesc(dofdesc)
+        if dofdesc.discr_stage is None:
+            # FIXME: this should just return the base `density_discr`
+            dofdesc = dofdesc.copy(discr_stage=sym.QBX_SOURCE_STAGE1)
 
         key = (dofdesc.geometry, dofdesc.discr_stage)
         if key in self.places:

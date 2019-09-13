@@ -120,7 +120,6 @@ def run_source_refinement_test(ctx_factory, mesh, order,
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
     places.refine_for_global_qbx(**refiner_extra_kwargs)
-    print('----------- REFINED ----------------')
 
     # }}}
 
@@ -130,8 +129,6 @@ def run_source_refinement_test(ctx_factory, mesh, order,
 
     quad_stage2_density_discr = places.get_discretization(dd.to_quad_stage2())
     quad_stage2_density_nodes = quad_stage2_density_discr.nodes().get(queue)
-
-    print('---------- DISCRETIZATIONS --------------')
 
     int_centers = bind(places,
         sym.expansion_centers(lpot_source.ambient_dim, -1))(queue)
@@ -260,7 +257,6 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
-
     discr = Discretization(cl_ctx, mesh, factory)
 
     lpot_source = QBXLayerPotentialSource(discr,
@@ -282,20 +278,20 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     centers = bind(places,
             sym.interleaved_expansion_centers(lpot_source.ambient_dim))(queue)
     centers = np.array([ax.get(queue) for ax in centers])
-    tunnel_radius = bind(places,
-        sym._close_target_tunnel_radii(lpot_source.ambient_dim))(queue)
 
-    density_discr = places.get_discretization(places.auto_source)
+    dd = places.auto_source.to_stage1()
+    tunnel_radius = bind(places, sym._close_target_tunnel_radii(
+        lpot_source.ambient_dim, dofdesc=dd))(queue)
+
+    density_discr = places.get_discretization(dd)
     noise = rng.uniform(queue, density_discr.nnodes, dtype=np.float, a=0.01, b=1.0)
 
-    def targets_from_sources(sign, dist):
-        dim = 2
-        nodes = bind(places, sym.nodes(dim))(queue)
-        normals = bind(places, sym.normal(dim))(queue)
+    def targets_from_sources(sign, dist, dim=2):
+        nodes = bind(places, sym.nodes(dim, dofdesc=dd))(queue)
+        normals = bind(places, sym.normal(dim, dofdesc=dd))(queue)
         return (nodes + normals * sign * dist).as_vector(np.object)
 
     from pytential.target import PointsTarget
-
     int_targets = PointsTarget(targets_from_sources(-1, noise * tunnel_radius))
     ext_targets = PointsTarget(targets_from_sources(+1, noise * tunnel_radius))
     far_targets = PointsTarget(targets_from_sources(+1, FAR_TARGET_DIST_FROM_SOURCE))
