@@ -798,11 +798,8 @@ class GeometryCollection(object):
             in its attributes instead.
         """
         dofdesc = sym.as_dofdesc(dofdesc)
-        if dofdesc.discr_stage is None:
-            # FIXME: this should just return the base `density_discr`
-            dofdesc = dofdesc.copy(discr_stage=sym.QBX_SOURCE_STAGE1)
-
         key = (dofdesc.geometry, dofdesc.discr_stage)
+
         if key in self.places:
             discr = self.places[key]
         elif dofdesc.geometry in self.places:

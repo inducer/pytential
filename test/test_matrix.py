@@ -220,10 +220,10 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     from pytential.qbx import QBXLayerPotentialSource
-    qbx, _ = QBXLayerPotentialSource(pre_density_discr, 4 * target_order,
+    qbx = QBXLayerPotentialSource(pre_density_discr, 4 * target_order,
             qbx_order,
             # Don't use FMM for now
-            fmm_order=False).with_refinement()
+            fmm_order=False)
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx)
@@ -301,9 +301,7 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             sym.DOFDescriptor(
                 geometry=sym.DEFAULT_SOURCE,
                 discr_stage=sym.QBX_SOURCE_STAGE1),
-            sym.DOFDescriptor(
-                geometry=sym.DEFAULT_TARGET,
-                discr_stage=sym.QBX_SOURCE_STAGE1),
+            sym.DOFDescriptor(geometry=sym.DEFAULT_TARGET)
             )
     target_order = 2 if ambient_dim == 3 else 7
 
@@ -314,7 +312,7 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
     op, u_sym, _ = _build_op(lpot_id,
             ambient_dim=ambient_dim,
             source=place_ids[0],
-            target=place_ids[1])
+            target=place_ids[0])
 
     density_discr = places.get_discretization(place_ids[0])
     index_set = _build_block_index(queue, density_discr, factor=factor)
@@ -384,9 +382,7 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             sym.DOFDescriptor(
                 geometry=sym.DEFAULT_SOURCE,
                 discr_stage=sym.QBX_SOURCE_STAGE2),
-            sym.DOFDescriptor(
-                geometry=sym.DEFAULT_TARGET,
-                discr_stage=sym.QBX_SOURCE_STAGE2),
+            sym.DOFDescriptor(geometry=sym.DEFAULT_TARGET)
             )
     target_order = 2 if ambient_dim == 3 else 7
 
@@ -397,7 +393,7 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
     op, u_sym, _ = _build_op(lpot_id,
             ambient_dim=ambient_dim,
             source=place_ids[0],
-            target=place_ids[1],
+            target=place_ids[0],
             qbx_forced_limit="avg")
 
     from pytential.symbolic.execution import _prepare_expr
@@ -467,9 +463,7 @@ def test_build_matrix_places(ctx_factory,
             sym.DOFDescriptor(
                 geometry=sym.DEFAULT_SOURCE,
                 discr_stage=source_discr_stage),
-            sym.DOFDescriptor(
-                geometry=sym.DEFAULT_TARGET,
-                discr_stage=target_discr_stage),
+            sym.DOFDescriptor(geometry=sym.DEFAULT_TARGET)
             )
 
     # build test operators
@@ -479,9 +473,10 @@ def test_build_matrix_places(ctx_factory,
             ambient_dim=2,
             curve_f=partial(ellipse, 1.0),
             auto_where=place_ids)
-    op, u_sym, _ = _build_op(lpot_id=1, ambient_dim=2,
+    op, u_sym, _ = _build_op(lpot_id=1,
+            ambient_dim=2,
             source=place_ids[0],
-            target=place_ids[1],
+            target=place_ids[0],
             qbx_forced_limit=qbx_forced_limit)
 
     source_discr = places.get_discretization(place_ids[0])

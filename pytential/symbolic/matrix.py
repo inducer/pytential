@@ -312,19 +312,37 @@ class MatrixBuilder(MatrixBuilderBase):
         if expr.to_dd.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
             raise RuntimeError("can only interpolate to QBX_SOURCE_QUAD_STAGE2")
 
+        from pytential.symbolic.dof_connection import connection_from_dds
         operand = self.rec(expr.operand)
+
         if isinstance(operand, (int, float, complex, np.number)):
             return operand
         elif isinstance(operand, np.ndarray) and operand.ndim == 1:
-            from pytential.symbolic.dof_connection import connection_from_dds
             conn = connection_from_dds(self.places,
                     expr.from_dd, expr.to_dd)
 
             operand = cl.array.to_device(self.queue, operand)
             return conn(self.queue, operand).get(self.queue)
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
-            resampler = self.places.get_geometry(expr.from_dd).direct_resampler
-            mat = resampler.full_resample_matrix(self.queue).get(self.queue)
+            cache = self.places.get_cache('direct_resampler')
+            key = (expr.from_dd.geometry,
+                    expr.from_dd.discr_stage,
+                    expr.to_dd.discr_stage)
+
+            try:
+                mat = cache[key]
+            except KeyError:
+                print('cache miss: {} -> {}'.format(expr.from_dd, expr.to_dd))
+                from meshmode.discretization.connection import \
+                    flatten_chained_connection
+
+                conn = connection_from_dds(self.places,
+                    expr.from_dd, expr.to_dd)
+                conn = flatten_chained_connection(self.queue, conn)
+                mat = conn.full_resample_matrix(self.queue).get(self.queue)
+
+                cache[key] = mat
+
             return mat.dot(operand)
         else:
             raise RuntimeError('unknown operand type: {}'.format(type(operand)))

@@ -123,8 +123,8 @@ def run_source_refinement_test(ctx_factory, mesh, order,
 
     # }}}
 
-    dd = places.auto_source
-    stage1_density_discr = places.get_discretization(dd.to_stage1())
+    dd = places.auto_source.to_stage1()
+    stage1_density_discr = places.get_discretization(dd)
     stage1_density_nodes = stage1_density_discr.nodes().get(queue)
 
     quad_stage2_density_discr = places.get_discretization(dd.to_quad_stage2())
@@ -145,7 +145,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
 
     quad_res = bind(places, sym._quad_resolution(
         lpot_source.ambient_dim,
-        dofdesc=sym.GRANULARITY_ELEMENT))(queue)
+        dofdesc=dd.copy(granularity=sym.GRANULARITY_ELEMENT)))(queue)
 
     # {{{ check if satisfying criteria
 
@@ -275,11 +275,11 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     from pyopencl.clrandom import PhiloxGenerator
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
 
-    centers = bind(places,
-            sym.interleaved_expansion_centers(lpot_source.ambient_dim))(queue)
+    dd = places.auto_source.to_stage1()
+    centers = bind(places, sym.interleaved_expansion_centers(
+        lpot_source.ambient_dim, dofdesc=dd))(queue)
     centers = np.array([ax.get(queue) for ax in centers])
 
-    dd = places.auto_source.to_stage1()
     tunnel_radius = bind(places, sym._close_target_tunnel_radii(
         lpot_source.ambient_dim, dofdesc=dd))(queue)
 

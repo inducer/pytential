@@ -114,6 +114,8 @@ def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
     queue = cl.CommandQueue(ctx)
 
     places, dofdesc = _build_geometry(queue, ambient_dim=ambient_dim)
+    dofdesc = dofdesc.to_stage1()
+
     density_discr = places.get_discretization(dofdesc)
     srcindices = _build_block_index(queue,
             density_discr,
@@ -208,6 +210,8 @@ def test_interaction_points(ctx_factory, ambient_dim, factor, visualize=False):
     queue = cl.CommandQueue(ctx)
 
     places, dofdesc = _build_geometry(queue, ambient_dim=ambient_dim)
+    dofdesc = dofdesc.to_stage1()
+
     density_discr = places.get_discretization(dofdesc)
     srcindices = _build_block_index(queue,
             density_discr,

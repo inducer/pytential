@@ -202,7 +202,6 @@ def test_expr_pickling():
 
 
 @pytest.mark.parametrize(("name", "source_discr_stage", "target_granularity"), [
-    ("default", None, None),
     ("default-explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
     ("stage2", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_NODE),
     ("stage2-center", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
@@ -233,10 +232,10 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     from pytential.qbx import QBXLayerPotentialSource
-    qbx, _ = QBXLayerPotentialSource(discr,
+    qbx = QBXLayerPotentialSource(discr,
             fine_order=4 * target_order,
             qbx_order=qbx_order,
-            fmm_order=False).with_refinement()
+            fmm_order=False)
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx, auto_where=where)
@@ -249,8 +248,8 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
         density_discr = places.get_discretization(where.copy(discr_stage=stage))
         return density_discr.nodes().get(queue)
 
-    target_nodes = nodes(sym.QBX_SOURCE_QUAD_STAGE2).get(queue)
-    source_nodes = nodes(source_discr_stage).get(queue)
+    target_nodes = nodes(sym.QBX_SOURCE_QUAD_STAGE2)
+    source_nodes = nodes(source_discr_stage)
 
     sigma_dev = cl.array.to_device(queue, la.norm(source_nodes, axis=0))
     sigma_target = np.sin(la.norm(target_nodes, axis=0))

@@ -217,7 +217,7 @@ def connection_from_dds(places, from_dd, to_dd):
     from pytential.symbolic.execution import GeometryCollection
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places)
-    from_discr = places.get_geometry(from_dd)
+    lpot = places.get_geometry(from_dd)
 
     if from_dd.geometry != to_dd.geometry:
         raise ValueError("cannot interpolate between different geometries")
@@ -228,7 +228,7 @@ def connection_from_dds(places, from_dd, to_dd):
     connections = []
     if from_dd.discr_stage is not to_dd.discr_stage:
         from pytential.qbx import QBXLayerPotentialSource
-        if not isinstance(from_discr, QBXLayerPotentialSource):
+        if not isinstance(lpot, QBXLayerPotentialSource):
             raise ValueError("can only interpolate on a "
                     "`QBXLayerPotentialSource`")
 
@@ -238,13 +238,25 @@ def connection_from_dds(places, from_dd, to_dd):
             raise ValueError("can only interpolate to "
                 "`QBX_SOURCE_QUAD_STAGE2`")
 
-        if from_dd.discr_stage is sym.QBX_SOURCE_QUAD_STAGE2:
-            pass
+        dds = [from_dd, to_dd]
+        if from_dd.discr_stage is None:
+            mid_dd = from_dd.copy(discr_stage=sym.QBX_SOURCE_STAGE2)
+            dds.insert(1, mid_dd)
+            mid_dd = from_dd.copy(discr_stage=sym.QBX_SOURCE_STAGE1)
+            dds.insert(1, mid_dd)
+        elif from_dd.discr_stage is sym.QBX_SOURCE_STAGE1:
+            mid_dd = from_dd.copy(discr_stage=sym.QBX_SOURCE_STAGE2)
+            dds.insert(1, mid_dd)
         elif from_dd.discr_stage is sym.QBX_SOURCE_STAGE2:
-            connections.append(
-                    from_discr.refined_interp_to_ovsmp_quad_connection)
+            pass
+        elif from_dd.discr_stage is sym.QBX_SOURCE_QUAD_STAGE2:
+            dds = []
         else:
-            connections.append(from_discr.resampler)
+            raise ValueError('invalid from_dd stage: %s' % from_dd.discr_stage)
+
+        for n in range(len(dds) - 1):
+            connections.append(
+                    places.get_connection(dds[n], dds[n + 1]))
 
     if from_dd.granularity is not to_dd.granularity:
         to_discr = places.get_discretization(to_dd)
@@ -259,7 +271,16 @@ def connection_from_dds(places, from_dd, to_dd):
         else:
             raise ValueError("invalid to_dd granularity: %s" % to_dd.granularity)
 
-    return DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)
+        conn = DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)
+    else:
+        from meshmode.discretization.connection import \
+                ChainedDiscretizationConnection
+
+        from_discr = places.get_discretization(from_dd)
+        conn = ChainedDiscretizationConnection(connections,
+                from_discr=from_discr)
+
+    return conn
 
 # }}}
 

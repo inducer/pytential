@@ -1077,6 +1077,9 @@ def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
 @_deprecate_kwargs('where', 'dofdesc')
 def interleaved_expansion_centers(ambient_dim, dim=None, dofdesc=None):
     dofdesc = as_dofdesc(dofdesc)
+    if dofdesc.discr_stage is None:
+        dofdesc = dofdesc.copy(discr_stage=QBX_SOURCE_STAGE1)
+
     centers = [
             expansion_centers(ambient_dim, -1, dim=dim, dofdesc=dofdesc),
             expansion_centers(ambient_dim, +1, dim=dim, dofdesc=dofdesc)
