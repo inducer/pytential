@@ -355,18 +355,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
     @property
-    def stage1_density_discr(self):
-        return self.density_discr
-
-    @property
-    def stage2_density_discr(self):
-        """The refined, interpolation-focused density discretization (no oversampling).
-        """
-        return (self._to_refined_connection.to_discr
-                if self._to_refined_connection is not None
-                else self.density_discr)
-
-    @property
     @memoize_method
     def refined_interp_to_ovsmp_quad_connection(self):
         from meshmode.discretization.connection import make_same_mesh_connection
@@ -374,19 +362,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return make_same_mesh_connection(
                 self.quad_stage2_density_discr,
                 self.stage2_density_discr)
-
-    @property
-    @memoize_method
-    def quad_stage2_density_discr(self):
-        """The refined, quadrature-focused density discretization (with upsampling).
-        """
-        from meshmode.discretization.poly_element import (
-                QuadratureSimplexGroupFactory)
-
-        return Discretization(
-            self.density_discr.cl_context, self.stage2_density_discr.mesh,
-            QuadratureSimplexGroupFactory(self.fine_order),
-            self.real_dtype)
 
     @property
     @memoize_method
@@ -439,6 +414,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @property
     @memoize_method
     def target_association_code_container(self):
+
         from pytential.qbx.target_assoc import TargetAssociationCodeContainer
         return TargetAssociationCodeContainer(
                 self.cl_context, self.tree_code_container)

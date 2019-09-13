@@ -119,7 +119,8 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     if helmholtz_k is not None:
         refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
-    places.refine_for_global_qbx(self, **refiner_kwargs)
+    places.refine_for_global_qbx(**refiner_extra_kwargs)
+    print('----------- REFINED ----------------')
 
     # }}}
 
@@ -128,7 +129,9 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     stage1_density_nodes = stage1_density_discr.nodes().get(queue)
 
     quad_stage2_density_discr = places.get_discretization(dd.to_quad_stage2())
-    quad_stage2_density_nodes = quad_stage2_density_discr.nodes.get(queue)
+    quad_stage2_density_nodes = quad_stage2_density_discr.nodes().get(queue)
+
+    print('---------- DISCRETIZATIONS --------------')
 
     int_centers = bind(places,
         sym.expansion_centers(lpot_source.ambient_dim, -1))(queue)

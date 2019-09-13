@@ -366,6 +366,7 @@ class RefinerWrangler(TreeWranglerBase):
                 sym._source_danger_zone_radii(
                     stage2_density_discr.ambient_dim,
                     dofdesc=sym.GRANULARITY_ELEMENT))(self.queue)
+        assert source_danger_zone_radii_by_panel.shape == (stage2_density_discr.mesh.nelements,)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
@@ -484,6 +485,8 @@ class QBXGeometryRefinerData(Record):
         return InterpolatoryQuadratureSimplexGroupFactory(self.target_order)
 
     def refine_for_stage1(self, places, source_name, discr, wrangler):
+        print('stage1')
+        print(self)
         return _refine_qbx_stage1(places, source_name, discr, wrangler,
                 self._group_factory,
                 kernel_length_scale=self.kernel_length_scale,
@@ -496,6 +499,8 @@ class QBXGeometryRefinerData(Record):
                 visualize=self.visualize)
 
     def refine_for_stage2(self, places, source_name, discr, wrangler):
+        print('stage2')
+        print(self)
         return _refine_qbx_stage2(places, source_name, discr, wrangler,
                 self._group_factory,
                 force_stage2_uniform_refinement_rounds=(
@@ -562,8 +567,12 @@ def _visualize_refinement(queue, source_name, discr,
                 queue).as_vector(dtype=object)
         vis_data.append(("bdry_normals", bdry_normals),)
 
+    if isinstance(source_name, type):
+        source_name = source_name.__name__
     source_name = str(source_name).lower().replace('_', '-').replace('/', '-')
-    vis.write_vtk_file("refinement-%s-%s-%03d.vtu" % (stage_name, niter),
+
+    vis.write_vtk_file("refinement-%s-%s-%03d.vtu" %
+            (source_name, stage_name, niter),
             vis_data, overwrite=True)
 
 
@@ -697,11 +706,12 @@ def _refine_qbx_stage1(places, source_name, density_discr,
 
         del refine_flags
 
-    conn = None
-    if connections:
-        from meshmode.discretization.connection import \
-                ChainedDiscretizationConnection
-        conn = ChainedDiscretizationConnection(connections)
+        print(niter)
+        print(iter_violated_criteria)
+
+    from meshmode.discretization.connection import ChainedDiscretizationConnection
+    conn = ChainedDiscretizationConnection(connections,
+            from_discr=density_discr)
 
     return stage1_density_discr, conn
 
@@ -784,11 +794,9 @@ def _refine_qbx_stage2(places, source_name, stage1_density_discr,
         stage2_density_discr = conn.to_discr
         connections.append(conn)
 
-    conn = None
-    if connections:
-        from meshmode.discretization.connection import \
-                ChainedDiscretizationConnection
-        conn = ChainedDiscretizationConnection(connections)
+    from meshmode.discretization.connection import ChainedDiscretizationConnection
+    conn = ChainedDiscretizationConnection(connections,
+            from_discr=stage1_density_discr)
 
     return stage2_density_discr, conn
 

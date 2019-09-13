@@ -511,7 +511,6 @@ def _prepare_expr(places, expr, auto_where=None):
 
 # {{{ geometry collection
 
-
 class GeometryCollection(object):
     """A mapping from symbolic identifiers ("place IDs", typically strings)
     to 'geometries', where a geometry can be a
@@ -575,8 +574,7 @@ class GeometryCollection(object):
 
         if isinstance(places, QBXLayerPotentialSource):
             self.places[auto_source.geometry] = places
-            self.places[auto_target.geometry] = \
-                    self._get_stage_discretization(places, auto_source)
+            self.places[auto_target.geometry] = places.density_discr
         elif isinstance(places, (Discretization, PotentialSource)):
             self.places[auto_source.geometry] = places
             self.places[auto_target.geometry] = places
@@ -669,7 +667,7 @@ class GeometryCollection(object):
         from meshmode.discretization.poly_element import \
                 QuadratureSimplexGroupFactory
         discr = Discretization(lpot.cl_context,
-                stage2_density_discr,
+                stage2_density_discr.mesh,
                 QuadratureSimplexGroupFactory(lpot.fine_order),
                 lpot.real_dtype)
 
@@ -756,8 +754,8 @@ class GeometryCollection(object):
 
     def refine_for_global_qbx(self,
             target_order=None, kernel_length_scale=None, maxiter=None,
+            expansion_disturbance_tolerance=None,
             debug=None, visualize=False,
-            _expansion_disturbance_tolerance=None,
             _force_stage2_uniform_refinement_rounds=None,
             _scaled_max_curvature_threshold=None):
         from pytential.qbx import QBXLayerPotentialSource
@@ -772,7 +770,7 @@ class GeometryCollection(object):
                     kernel_length_scale=kernel_length_scale,
                     maxiter=maxiter,
                     expansion_disturbance_tolerance=(
-                        _expansion_disturbance_tolerance),
+                        expansion_disturbance_tolerance),
                     force_stage2_uniform_refinement_rounds=(
                         _force_stage2_uniform_refinement_rounds),
                     scaled_max_curvature_threshold=(
