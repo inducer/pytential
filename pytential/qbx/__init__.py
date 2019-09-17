@@ -73,8 +73,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             qbx_order=None,
             fmm_order=None,
             fmm_level_to_order=None,
-            to_refined_connection=None,
-            to_stage1_connection=None,
             expansion_factory=None,
             target_association_tolerance=_not_provided,
 
@@ -98,11 +96,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """
         :arg fine_order: The total degree to which the (upsampled)
              underlying quadrature is exact.
-        :arg to_refined_connection: A connection used for resampling from
-             *density_discr* the fine density discretization.  It is assumed
-             that the fine density discretization given by
-             *to_refined_connection.to_discr* is *not* already upsampled. May
-             be *None*.
         :arg fmm_order: `False` for direct calculation. May not be given if
             *fmm_level_to_order* is given.
         :arg fmm_level_to_order: A function that takes arguments of
@@ -201,10 +194,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self.target_association_tolerance = target_association_tolerance
         self.fmm_backend = fmm_backend
 
-        # Default values are lazily provided if these are None
-        self._to_refined_connection = to_refined_connection
-        self._to_stage1_connection = to_stage1_connection
-
         if expansion_factory is None:
             from sumpy.expansion import DefaultExpansionFactory
             expansion_factory = DefaultExpansionFactory()
@@ -243,8 +232,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             qbx_order=None,
             fmm_order=_not_provided,
             fmm_level_to_order=_not_provided,
-            to_refined_connection=None,
-            to_stage1_connection=None,
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
@@ -306,10 +293,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 qbx_order=qbx_order if qbx_order is not None else self.qbx_order,
 
                 target_association_tolerance=target_association_tolerance,
-                to_refined_connection=(
-                    to_refined_connection or self._to_refined_connection),
-                to_stage1_connection=(
-                    to_stage1_connection or self._to_stage1_connection),
 
                 debug=(
                     # False is a valid value here
@@ -352,51 +335,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 **kwargs)
 
     # }}}
-
-    @property
-    @memoize_method
-    def refined_interp_to_ovsmp_quad_connection(self):
-        from meshmode.discretization.connection import make_same_mesh_connection
-
-        return make_same_mesh_connection(
-                self.quad_stage2_density_discr,
-                self.stage2_density_discr)
-
-    @property
-    @memoize_method
-    def resampler(self):
-        from meshmode.discretization.connection import \
-                ChainedDiscretizationConnection
-
-        conn = self.refined_interp_to_ovsmp_quad_connection
-
-        if self._to_refined_connection is not None:
-            return ChainedDiscretizationConnection(
-                    [self._to_refined_connection, conn])
-
-        return conn
-
-    @property
-    @memoize_method
-    def direct_resampler(self):
-        """
-        .. warning::
-
-            This always returns a
-            :class:`~meshmode.discretization.connection.DirectDiscretizationConnection`.
-            In case the geometry has been refined multiple times, a direct
-            connection can have a large number of groups and/or
-            interpolation batches, making it scale significantly worse than
-            the one returned by :attr:`resampler`.
-        """
-        from meshmode.discretization.connection import \
-                flatten_chained_connection
-
-        conn = self.resampler
-        with cl.CommandQueue(self.cl_context) as queue:
-            conn = flatten_chained_connection(queue, conn)
-
-        return conn
 
     @property
     @memoize_method
