@@ -122,7 +122,6 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(places)
-    places.refine_for_global_qbx()
 
     # }}}
 

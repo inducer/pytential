@@ -121,7 +121,6 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection((qbx, targets))
-    places.refine_for_global_qbx()
     density_discr = places.get_discretization(places.auto_source)
 
     from sumpy.kernel import LaplaceKernel
@@ -195,7 +194,6 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
         'direct-qbx': direct_qbx,
         'fmm-qbx': fmm_qbx,
         'target': ptarget})
-    places.refine_for_global_qbx()
 
     direct_density_discr = places.get_discretization('direct-qbx')
     fmm_density_discr = places.get_discretization('fmm-qbx')
@@ -393,7 +391,6 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
 
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(qbx)
-        places.refine_for_global_qbx()
         density_discr = places.get_discretization(places.auto_source)
 
         from sumpy.kernel import LaplaceKernel

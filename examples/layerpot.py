@@ -64,7 +64,6 @@ def main(visualize=True):
         sym.DEFAULT_TARGET: qbx.density_discr,
         'targets': PointsTarget(targets_dev),
         })
-    places.refine_for_global_qbx()
     density_discr = places.get_discretization(places.auto_source)
 
     nodes = density_discr.nodes().with_queue(queue)

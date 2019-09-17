@@ -115,7 +115,6 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
 
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(qbx)
-        places.refine_for_global_qbx()
 
         density_discr = places.get_discretization(places.auto_source)
         nodes = density_discr.nodes().with_queue(queue)
@@ -303,7 +302,6 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(qbx)
-        places.refine_for_global_qbx()
 
         density_discr = places.get_discretization(places.auto_source)
         nodes = density_discr.nodes().with_queue(queue)

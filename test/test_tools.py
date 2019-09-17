@@ -147,7 +147,6 @@ def test_geometry_collection_caching(ctx_factory):
     # construct a geometry collection
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(places)
-    places.refine_for_global_qbx()
     print(places.places)
 
     # construct a layer potential on each qbx geometry

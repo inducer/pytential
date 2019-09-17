@@ -70,7 +70,6 @@ def main():
             )
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx)
-    places.refine_for_global_qbx()
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)

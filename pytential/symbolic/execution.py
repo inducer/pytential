@@ -780,8 +780,13 @@ class GeometryCollection(object):
         if from_dd.geometry != to_dd.geometry:
             raise KeyError('no connections between different geometries')
 
-        key = (from_dd.geometry, from_dd.discr_stage, to_dd.discr_stage)
+        lpot = self.get_geometry(from_dd)
+        if from_dd.discr_stage is not None:
+            self._ensure_qbx_refinement(lpot, from_dd)
+        if to_dd.discr_stage is not None:
+            self._ensure_qbx_refinement(lpot, to_dd)
 
+        key = (from_dd.geometry, from_dd.discr_stage, to_dd.discr_stage)
         cache = self.get_cache('qbx_refined_connections')
         if key in cache:
             return cache[key]

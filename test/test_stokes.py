@@ -108,7 +108,6 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
         'point-target': point_targets,
         'plot-target': plot_targets,
         })
-    places.refine_for_global_qbx()
 
     density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 
