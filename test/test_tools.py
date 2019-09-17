@@ -132,7 +132,7 @@ def test_geometry_collection_caching(ctx_factory):
 
     places = {}
     for k in range(ngeometry):
-        qbx, _ = QBXLayerPotentialSource(discrs[k],
+        qbx = QBXLayerPotentialSource(discrs[k],
             fine_order=2 * target_order,
             qbx_order=qbx_order,
             fmm_order=False)
