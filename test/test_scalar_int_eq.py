@@ -528,40 +528,39 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
         #refiner_extra_kwargs["visualize"] = True
 
-        qbx, _ = qbx.with_refinement(**refiner_extra_kwargs)
-
     from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(qbx).places
-    places.update({
+    places = {
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: qbx.density_discr,
         'point-source': point_source,
         'point-target': point_target
-        })
+        }
     if visualize:
         places.update({
-            'qbx-target-tol': places[sym.DEFAULT_SOURCE].copy(
-                target_association_tolerance=0.15),
+            'qbx-target-tol': qbx.copy(target_association_tolerance=0.15),
             'plot-targets': plot_targets
             })
 
-    from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(places)
-    density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
+    if case.use_refinement:
+        print(refiner_extra_kwargs)
+        places.refine_for_global_qbx(**refiner_extra_kwargs)
+
+    dd = sym.as_dofdesc(sym.DEFAULT_SOURCE)
+    density_discr = places.get_discretization(dd)
 
     if case.use_refinement:
         print("%d elements before refinement" % pre_density_discr.mesh.nelements)
 
-        dd = sym.as_dofdesc(sym.DEFAULT_SOURCE)
-        discr = places.get_discretization(dd)
+        discr = places.get_discretization(dd.to_stage1())
         print("%d stage-1 elements after refinement"
                 % discr.mesh.nelements)
 
-        dd = dd.copy(discr_stage=sym.QBX_SOURCE_STAGE2)
-        discr = places.get_discretization(dd)
+        discr = places.get_discretization(dd.to_stage2())
         print("%d stage-2 elements after refinement"
                 % discr.mesh.nelements)
 
-        dd = dd.copy(discr_stage=sym.QBX_SOURCE_QUAD_STAGE2)
-        discr = places.get_discretization(dd)
+        discr = places.get_discretization(dd.to_quad_stage2())
         print("quad stage-2 elements have %d nodes"
                 % discr.groups[0].nunit_nodes)
 

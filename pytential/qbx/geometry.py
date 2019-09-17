@@ -397,6 +397,10 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         self.debug = debug
 
     @property
+    def lpot_source(self):
+        return self.places.get_geometry(self.source_name)
+
+    @property
     @memoize_method
     def ambient_dim(self):
         discr = self.places.get_discretization(self.source_name)

@@ -493,6 +493,8 @@ def _prepare_expr(places, expr, auto_where=None):
     if not isinstance(auto_where, tuple):
         auto_where = sym.as_dofdesc(auto_where)
         auto_where = (auto_where, auto_where)
+    auto_where = (sym.as_dofdesc(auto_where[0]),
+                  sym.as_dofdesc(auto_where[1]))
 
     expr = ToTargetTagger(auto_where[0], auto_where[1])(expr)
     expr = DerivativeBinder()(expr)

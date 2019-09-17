@@ -770,11 +770,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim,
-            dofdesc=insn.source.to_quad_stage2()))(queue)
+            dofdesc=insn.source))(queue)
         strengths = waa * evaluate(insn.density).with_queue(queue)
 
-        source_discr = bound_expr.places.get_discretization(
-            insn.source.to_quad_stage2())
+        source_discr = bound_expr.places.get_discretization(insn.source)
 
         # FIXME: Do this all at once
         result = []
@@ -811,11 +810,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
                             insn.kernels)
 
-                density_discr = bound_expr.places.get_discretization(
-                        insn.source.to_quad_stage2())
                 evt, output_for_each_kernel = p2p(queue,
+                        target_discr.nodes(),
                         source_discr.nodes(),
-                        density_discr.nodes(),
                         [strengths], **kernel_args)
 
                 qbx_forced_limit = o.qbx_forced_limit

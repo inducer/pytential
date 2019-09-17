@@ -468,9 +468,10 @@ class InterpolationPreprocessor(IdentityMapper):
     :attr:`~pytential.source.LayerPotentialSource.quad_stage2_density_discr`,
     """
 
-    def __init__(self, places):
+    def __init__(self, places, from_discr_stage=None):
         self.places = places
-        self.from_discr_stage = prim.QBX_SOURCE_STAGE2
+        self.from_discr_stage = (prim.QBX_SOURCE_STAGE2
+                if from_discr_stage is None else from_discr_stage)
         self.tagger = DiscretizationStageTagger(self.from_discr_stage)
 
     def map_num_reference_derivative(self, expr):
@@ -496,10 +497,13 @@ class InterpolationPreprocessor(IdentityMapper):
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        to_dd = from_dd.copy(discr_stage=prim.QBX_SOURCE_QUAD_STAGE2)
+        to_dd = from_dd.to_quad_stage2()
         density = prim.interp(from_dd, to_dd, self.rec(expr.density))
+
+        from_dd = from_dd.to_stage2()
         kernel_arguments = dict(
-                (name, prim.interp(from_dd, to_dd, self.rec(arg_expr)))
+                (name, prim.interp(from_dd, to_dd,
+                    self.rec(self.tagger(arg_expr))))
                 for name, arg_expr in expr.kernel_arguments.items())
 
         return expr.copy(
