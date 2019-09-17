@@ -72,10 +72,10 @@ def main(visualize=True, mesh_name="ellipse"):
 
     from pytential.qbx import (
             QBXLayerPotentialSource, QBXTargetAssociationFailedException)
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
-            ).with_refinement()
+            )
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx)
 

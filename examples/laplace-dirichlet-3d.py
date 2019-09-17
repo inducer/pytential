@@ -64,12 +64,13 @@ def main():
 
     from pytential.qbx import (
             QBXLayerPotentialSource, QBXTargetAssociationFailedException)
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order,
-            ).with_refinement()
+            )
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(qbx)
+    places.refine_for_global_qbx()
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)

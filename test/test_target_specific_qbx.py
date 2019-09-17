@@ -159,7 +159,7 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
     if helmholtz_k != 0:
         refiner_extra_kwargs["kernel_length_scale"] = 5 / abs(helmholtz_k)
 
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
             qbx_order=qbx_order,
             fmm_level_to_order=SimpleExpansionOrderFinder(fmm_tol),
@@ -167,15 +167,15 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.9,
             _use_target_specific_qbx=False,
-            ).with_refinement(**refiner_extra_kwargs)
+            )
 
     from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(qbx).places
-    places.update({
-        'qbx-target-specific': places[sym.DEFAULT_SOURCE].copy(
-            _use_target_specific_qbx=True)
+    places = GeometryCollection({
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: qbx.density_discr,
+        'qbx-target-specific': qbx.copy(_use_target_specific_qbx=True)
         })
-    places = GeometryCollection(places)
+    places.refine_for_global_qbx(**refiner_extra_kwargs)
     density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 
     nodes = density_discr.nodes().with_queue(queue)

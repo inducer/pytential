@@ -73,12 +73,12 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
 
     from pytential.qbx import QBXLayerPotentialSource
     target_association_tolerance = 0.05
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
             coarse_density_discr, fine_order=ovsmp_target_order, qbx_order=qbx_order,
             fmm_order=fmm_order,
             target_association_tolerance=target_association_tolerance,
             _expansions_in_tree_have_extent=True,
-            ).with_refinement()
+            )
 
     def circle_mask(test_points, radius):
         return (test_points[0, :]**2 + test_points[1, :]**2 > radius**2)
@@ -102,11 +102,14 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     plot_targets = PointsTarget(outside_circle(fplot.points, radius=circle_rad))
 
     from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(qbx).places
-    places.update({
+    places = GeometryCollection({
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: qbx.density_discr,
         'point-target': point_targets,
-        'plot-target': plot_targets})
-    places = GeometryCollection(places)
+        'plot-target': plot_targets,
+        })
+    places.refine_for_global_qbx()
+
     density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 
     normal = bind(places, sym.normal(2).as_vector())(queue)

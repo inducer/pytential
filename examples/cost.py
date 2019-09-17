@@ -55,8 +55,6 @@ def starfish_lpot_source(queue, n_arms):
             pre_density_discr, OVSMP_FACTOR * TARGET_ORDER,
             **lpot_kwargs)
 
-    lpot_source, _ = lpot_source.with_refinement()
-
     return lpot_source
 
 # }}}

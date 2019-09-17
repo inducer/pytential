@@ -295,16 +295,17 @@ def test_pec_mfie_extinction(ctx_factory, case,
         pre_scat_discr = Discretization(
                 cl_ctx, scat_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
-        qbx, _ = QBXLayerPotentialSource(
+        qbx = QBXLayerPotentialSource(
                 pre_scat_discr, fine_order=4*case.target_order,
                 qbx_order=case.qbx_order,
                 fmm_level_to_order=SimpleExpansionOrderFinder(
                     case.fmm_tolerance),
-                fmm_backend=case.fmm_backend
-                ).with_refinement(_expansion_disturbance_tolerance=0.05)
+                fmm_backend=case.fmm_backend,
+                )
 
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(qbx).places
+        places.refine_for_global_qbx(_expansion_disturbance_tolerance=0.05)
 
         scat_discr = places[sym.DEFAULT_TARGET]
         obs_discr = Discretization(

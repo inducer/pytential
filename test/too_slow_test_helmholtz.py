@@ -82,10 +82,10 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     logger.info("%d elements" % mesh.nelements)
 
     from pytential.qbx import QBXLayerPotentialSource
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
             density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
-            ).with_refinement()
+            )
 
     from pytential.target import PointsTarget
     targets_0 = PointsTarget(make_obj_array(list(np.array([
@@ -101,8 +101,8 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         low_order_qbx, _ = QBXLayerPotentialSource(
                 density_discr,
                 fine_order=bdry_ovsmp_quad_order, qbx_order=2,
-                fmm_order=3
-                ).with_refinement()
+                fmm_order=3,
+                )
 
         from sumpy.visualization import FieldPlotter
         fplot = FieldPlotter(np.zeros(2), extent=5, npoints=300)
@@ -122,6 +122,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(places)
+    places.refine_for_global_qbx()
 
     # }}}
 

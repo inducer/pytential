@@ -319,7 +319,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
         if case.k != 0:
             refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
 
-        qbx, _ = QBXLayerPotentialSource(
+        qbx = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
                 case.qbx_order,
                 fmm_order=case.fmm_order,
@@ -327,10 +327,11 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                 _expansions_in_tree_have_extent=True,
                 _expansion_stick_out_factor=getattr(
                     case, "_expansion_stick_out_factor", 0),
-                ).with_refinement(**refiner_extra_kwargs)
+                )
 
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(qbx)
+        places.refine_for_global_qbx(**refiner_extra_kwargs)
         density_discr = places.get_discretization(places.auto_source)
 
         # {{{ compute values of a solution to the PDE

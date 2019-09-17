@@ -108,12 +108,12 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
 
     pre_density_discr = Discretization(
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
             pre_density_discr,
             4*target_order,
             qbx_order,
             fmm_order=fmm_order,
-            ).with_refinement()
+            )
 
     from pytential.target import PointsTarget
     fplot = FieldPlotter(np.zeros(2), extent=0.54, npoints=30)
@@ -121,6 +121,7 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection((qbx, targets))
+    places.refine_for_global_qbx()
     density_discr = places.get_discretization(places.auto_source)
 
     from sumpy.kernel import LaplaceKernel
@@ -172,17 +173,17 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
 
     pre_density_discr = Discretization(
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
-    direct_qbx, _ = QBXLayerPotentialSource(
+    direct_qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=False,
             target_association_tolerance=0.05,
-            ).with_refinement()
-    fmm_qbx, _ = QBXLayerPotentialSource(
+            )
+    fmm_qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order + 3,
             _expansions_in_tree_have_extent=True,
             target_association_tolerance=0.05,
-            ).with_refinement()
+            )
 
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
     from pytential.target import PointsTarget
@@ -194,6 +195,7 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
         'direct-qbx': direct_qbx,
         'fmm-qbx': fmm_qbx,
         'target': ptarget})
+    places.refine_for_global_qbx()
 
     direct_density_discr = places.get_discretization('direct-qbx')
     fmm_density_discr = places.get_discretization('fmm-qbx')
@@ -382,15 +384,16 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                 InterpolatoryQuadratureSimplexGroupFactory(3))
 
         from pytential.qbx import QBXLayerPotentialSource
-        qbx, _ = QBXLayerPotentialSource(
+        qbx = QBXLayerPotentialSource(
                 pre_discr, fine_order=4*target_order,
                 qbx_order=qbx_order,
                 fmm_order=qbx_order + 5,
                 fmm_backend="fmmlib"
-                ).with_refinement()
+                )
 
         from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(qbx)
+        places.refine_for_global_qbx()
         density_discr = places.get_discretization(places.auto_source)
 
         from sumpy.kernel import LaplaceKernel

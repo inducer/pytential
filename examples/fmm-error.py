@@ -40,21 +40,19 @@ def main():
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    slow_qbx, _ = QBXLayerPotentialSource(
+    slow_qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=2*target_order,
             qbx_order=qbx_order, fmm_order=False,
             target_association_tolerance=.05
-            ).with_refinement()
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(slow_qbx)
+            )
 
     from pytential.target import PointsTarget
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=600)
 
+    from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection({
-        'slow-qbx': places.get_geometry(places.auto_source),
-        'qbx': places.get_geometry(places.auto_source).copy(
-            fmm_order=10),
+        'slow-qbx': slow_qbx,
+        'qbx': slow_qbx.copy(fmm_order=10),
         'targets': PointsTarget(fplot.points)
         })
     density_discr = places.get_discretization('slow-qbx')
