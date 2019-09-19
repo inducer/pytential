@@ -214,7 +214,7 @@ def connection_from_dds(places, from_dd, to_dd):
     from_dd = sym.as_dofdesc(from_dd)
     to_dd = sym.as_dofdesc(to_dd)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places)
     lpot = places.get_geometry(from_dd)

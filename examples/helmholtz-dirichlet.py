@@ -81,7 +81,7 @@ def main(mesh_name="ellipse", visualize=False):
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
     targets = cl.array.to_device(queue, fplot.points)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,

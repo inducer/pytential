@@ -64,7 +64,7 @@ def main(mesh_name='ellipsoid'):
     from pytential.target import PointsTarget
     fplot = FieldPlotter(bbox_center, extent=3.5*bbox_size, npoints=150)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,

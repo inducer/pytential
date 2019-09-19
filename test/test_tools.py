@@ -145,7 +145,7 @@ def test_geometry_collection_caching(ctx_factory):
                 places["source_{}".format(k)].density_discr
 
     # construct a geometry collection
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection(places)
     print(places.places)
 

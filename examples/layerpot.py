@@ -51,7 +51,7 @@ def main(curve_fn=starfish, visualize=True):
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
     targets_dev = cl.array.to_device(queue, fplot.points)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,

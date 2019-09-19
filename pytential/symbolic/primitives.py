@@ -322,11 +322,13 @@ class DOFDescriptor(object):
         if granularity is None:
             granularity = GRANULARITY_NODE
 
-        if discr_stage is not None:
-            if not (discr_stage == QBX_SOURCE_STAGE1
-                    or discr_stage == QBX_SOURCE_STAGE2
-                    or discr_stage == QBX_SOURCE_QUAD_STAGE2):
-                raise ValueError('unknown discr stage tag: "{}"'.format(discr_stage))
+        if discr_stage is None:
+            discr_stage = QBX_SOURCE_STAGE1
+
+        if not (discr_stage == QBX_SOURCE_STAGE1
+                or discr_stage == QBX_SOURCE_STAGE2
+                or discr_stage == QBX_SOURCE_QUAD_STAGE2):
+            raise ValueError('unknown discr stage tag: "{}"'.format(discr_stage))
 
         if not (granularity == GRANULARITY_NODE
                 or granularity == GRANULARITY_CENTER
@@ -1015,10 +1017,6 @@ def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
 @_deprecate_kwargs('where', 'dofdesc')
 def _source_danger_zone_radii(ambient_dim, dim=None,
         granularity=None, dofdesc=None):
-    dofdesc = as_dofdesc(dofdesc)
-    if dofdesc.discr_stage is None:
-        dofdesc = dofdesc.copy(discr_stage=QBX_SOURCE_STAGE2)
-
     # This should be the expression of the expansion radii, but
     #
     # - in reference to the stage 2 discretization
@@ -1046,10 +1044,6 @@ def _close_target_tunnel_radii(ambient_dim, dim=None,
 
 @_deprecate_kwargs('where', 'dofdesc')
 def expansion_radii(ambient_dim, dim=None, granularity=None, dofdesc=None):
-    dofdesc = as_dofdesc(dofdesc)
-    if dofdesc.discr_stage is None:
-        dofdesc = dofdesc.copy(discr_stage=QBX_SOURCE_STAGE1)
-
     factor = _expansion_radii_factor(ambient_dim, dim)
     return cse(factor * _quad_resolution(ambient_dim, dim=dim,
         granularity=granularity, dofdesc=dofdesc),
@@ -1059,10 +1053,6 @@ def expansion_radii(ambient_dim, dim=None, granularity=None, dofdesc=None):
 
 @_deprecate_kwargs('where', 'dofdesc')
 def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
-    dofdesc = as_dofdesc(dofdesc)
-    if dofdesc.discr_stage is None:
-        dofdesc = dofdesc.copy(discr_stage=QBX_SOURCE_STAGE1)
-
     x = nodes(ambient_dim, dofdesc=dofdesc)
     normals = normal(ambient_dim, dim=dim, dofdesc=dofdesc)
     radii = expansion_radii(ambient_dim, dim=dim,
@@ -1076,17 +1066,14 @@ def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
 
 @_deprecate_kwargs('where', 'dofdesc')
 def interleaved_expansion_centers(ambient_dim, dim=None, dofdesc=None):
-    dofdesc = as_dofdesc(dofdesc)
-    if dofdesc.discr_stage is None:
-        dofdesc = dofdesc.copy(discr_stage=QBX_SOURCE_STAGE1)
-
     centers = [
             expansion_centers(ambient_dim, -1, dim=dim, dofdesc=dofdesc),
             expansion_centers(ambient_dim, +1, dim=dim, dofdesc=dofdesc)
             ]
 
-    target = dofdesc.copy(granularity=GRANULARITY_CENTER)
-    return interp(dofdesc, target, centers)
+    source = as_dofdesc(dofdesc)
+    target = source.copy(granularity=GRANULARITY_CENTER)
+    return interp(source, target, centers)
 
 
 @_deprecate_kwargs('where', 'dofdesc')

@@ -49,7 +49,7 @@ def main():
     from pytential.target import PointsTarget
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=600)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection({
         'slow-qbx': slow_qbx,
         'qbx': slow_qbx.copy(fmm_order=10),

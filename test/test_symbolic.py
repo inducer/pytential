@@ -237,7 +237,7 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
             qbx_order=qbx_order,
             fmm_order=False)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection(qbx, auto_where=where)
 
     sigma_sym = sym.var("sigma")

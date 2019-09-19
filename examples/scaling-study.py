@@ -91,7 +91,7 @@ def timing_run(nx, ny, visualize=False):
         sym.DEFAULT_TARGET: qbx.density_discr,
         })
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection(places)
 
     density_discr = places.get_discretization(places.auto_source)

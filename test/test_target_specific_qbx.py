@@ -38,22 +38,12 @@ from meshmode.mesh.generation import (  # noqa
         make_curve_mesh)
 
 from pytential import bind, sym
-from pytential.symbolic.execution import \
-        GeometryCollection as GeometryCollectionBase
+from pytential import GeometryCollection
+
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-class GeometryCollection(GeometryCollectionBase):
-    def __init__(self, places, auto_where=None, **kwargs):
-        super(GeometryCollection, self).__init__(places, auto_where=auto_where)
-        self.refiner_extra_kwargs = kwargs
-
-    def refiner(self, lpot):
-        return super(GeometryCollection, self).refiner(lpot).copy(
-                **self.refiner_extra_kwargs)
 
 
 def test_spherical_bessel_functions():
@@ -171,22 +161,23 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
             qbx_order=qbx_order,
             fmm_level_to_order=SimpleExpansionOrderFinder(fmm_tol),
             fmm_backend="fmmlib",
-            target_association_tolerance=5.0e-1,
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.9,
             _use_target_specific_qbx=False,
             )
 
     kernel_length_scale = 5 / abs(helmholtz_k) if helmholtz_k else None
-    places = GeometryCollection({
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: qbx.density_discr,
+    places = {
+        'source': qbx,
         'qbx-target-specific': qbx.copy(_use_target_specific_qbx=True)
-        },
-        kernel_length_scale=kernel_length_scale)
+        }
+    dd = sym.as_dofdesc('source')
 
-    density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
+    places = GeometryCollection(places,
+            auto_where=(dd, dd.to_stage1()))
+    places = places.with_refinement(kernel_length_scale=kernel_length_scale)
 
+    density_discr = places.get_discretization(dd)
     nodes = density_discr.nodes().with_queue(queue)
     u_dev = clmath.sin(nodes[0])
 

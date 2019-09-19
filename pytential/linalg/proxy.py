@@ -244,7 +244,7 @@ class ProxyGenerator(object):
     r"""
     .. attribute:: places
 
-        A :class:`~pytential.symbolic.execution.GeometryCollection`
+        A :class:`~pytential.symbolic.geometry.GeometryCollection`
         containing the geometry on which the proxy balls are generated.
 
     .. attribute:: dofdesc
@@ -288,7 +288,7 @@ class ProxyGenerator(object):
 
     def __init__(self, places, dofdesc=None,
             approx_nproxy=None, radius_factor=None):
-        from pytential.symbolic.execution import GeometryCollection
+        from pytential import GeometryCollection
         if not isinstance(places, GeometryCollection):
             places = GeometryCollection(places, auto_where=dofdesc)
 

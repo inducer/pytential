@@ -43,8 +43,7 @@ from meshmode.mesh.generation import (  # noqa
 from extra_curve_data import horseshoe
 
 from pytential import bind, sym
-from pytential.symbolic.execution import \
-        GeometryCollection as GeometryCollectionBase
+from pytential import GeometryCollection
 
 import logging
 logger = logging.getLogger(__name__)
@@ -82,16 +81,6 @@ def iter_elements(discr):
             discr_nodes_idx += discr_group.nunit_nodes
 
 
-class GeometryCollection(GeometryCollectionBase):
-    def __init__(self, places, auto_where=None, **kwargs):
-        super(GeometryCollection, self).__init__(places, auto_where=auto_where)
-        self.refiner_extra_kwargs = kwargs
-
-    def refiner(self, lpot):
-        return super(GeometryCollection, self).refiner(lpot).copy(
-                **self.refiner_extra_kwargs)
-
-
 def run_source_refinement_test(ctx_factory, mesh, order,
         helmholtz_k=None, visualize=False):
     cl_ctx = ctx_factory()
@@ -108,6 +97,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in refinement
             fine_order=order)
+    places = GeometryCollection(lpot_source)
 
     # }}}
 
@@ -116,14 +106,15 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     kernel_length_scale = 5 / helmholtz_k if helmholtz_k else None
     expansion_disturbance_tolerance = 0.025
 
-    places = GeometryCollection(lpot_source,
+    from pytential.symbolic.geometry import refine_geometry_collection
+    places = refine_geometry_collection(places,
             kernel_length_scale=kernel_length_scale,
             expansion_disturbance_tolerance=expansion_disturbance_tolerance,
             visualize=visualize)
 
     # }}}
 
-    dd = places.auto_source.to_stage1()
+    dd = places.auto_source
     stage1_density_discr = places.get_discretization(dd)
     stage1_density_nodes = stage1_density_discr.nodes().get(queue)
 
@@ -139,13 +130,12 @@ def run_source_refinement_test(ctx_factory, mesh, order,
 
     expansion_radii = bind(places,
         sym.expansion_radii(lpot_source.ambient_dim))(queue).get()
-    source_danger_zone_radii = bind(places, sym._source_danger_zone_radii(
-        lpot_source.ambient_dim,
-        dofdesc=sym.GRANULARITY_ELEMENT))(queue).get()
 
+    dd = dd.copy(granularity=sym.GRANULARITY_ELEMENT)
+    source_danger_zone_radii = bind(places, sym._source_danger_zone_radii(
+        lpot_source.ambient_dim, dofdesc=dd.to_stage2()))(queue).get()
     quad_res = bind(places, sym._quad_resolution(
-        lpot_source.ambient_dim,
-        dofdesc=dd.copy(granularity=sym.GRANULARITY_ELEMENT)))(queue)
+        lpot_source.ambient_dim, dofdesc=dd))(queue)
 
     # {{{ check if satisfying criteria
 
@@ -262,14 +252,12 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in target association
             fine_order=order)
-    del discr
+    places = GeometryCollection(lpot_source)
 
     # }}}
 
     # {{{ generate targets
 
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(lpot_source)
 
     from pyopencl.clrandom import PhiloxGenerator
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
@@ -446,8 +434,6 @@ def test_target_association_failure(ctx_factory):
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in target association
             fine_order=order)
-
-    from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(lpot_source)
 
     # }}}

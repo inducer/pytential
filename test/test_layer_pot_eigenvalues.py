@@ -113,7 +113,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
                 _expansions_in_tree_have_extent=True,
                 )
 
-        from pytential.symbolic.execution import GeometryCollection
+        from pytential import GeometryCollection
         places = GeometryCollection(qbx)
 
         density_discr = places.get_discretization(places.auto_source)
@@ -300,7 +300,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
                 fmm_backend=fmm_backend,
                 )
 
-        from pytential.symbolic.execution import GeometryCollection
+        from pytential import GeometryCollection
         places = GeometryCollection(qbx)
 
         density_discr = places.get_discretization(places.auto_source)

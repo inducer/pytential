@@ -25,7 +25,7 @@ THE SOFTWARE.
 import numpy as np
 
 import pytential.symbolic.primitives as sym
-from pytential.symbolic.execution import GeometryCollection # noqa
+from pytential.symbolic.geometry import GeometryCollection # noqa
 from pytential.symbolic.execution import bind
 
 from pytools import memoize_on_first_arg

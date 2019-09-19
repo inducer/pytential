@@ -32,7 +32,7 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 import numpy as np
 import pyopencl as cl
 
-from pytools import Record, memoize_method
+from pytools import memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
 from pytential.qbx.utils import (
@@ -362,10 +362,10 @@ class RefinerWrangler(TreeWranglerBase):
         found_panel_to_refine.finish()
 
         from pytential import bind, sym
+        dd = sym.as_dofdesc(sym.GRANULARITY_ELEMENT).to_stage2()
         source_danger_zone_radii_by_panel = bind(stage2_density_discr,
                 sym._source_danger_zone_radii(
-                    stage2_density_discr.ambient_dim,
-                    dofdesc=sym.GRANULARITY_ELEMENT))(self.queue)
+                    stage2_density_discr.ambient_dim, dofdesc=dd))(self.queue)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
@@ -460,53 +460,6 @@ def make_empty_refine_flags(queue, density_discr):
 
 # {{{ main entry point
 
-class QBXGeometryRefinerData(Record):
-    """
-    .. attribute:: target_order
-    .. attribute:: kernel_length_scale
-    .. attribute:: scaled_max_curvature_threshold
-    .. attribute:: expansion_disturbance_tolerance
-    .. attribute:: force_stage2_uniform_refinement_rounds
-    .. attribute:: maxiter
-
-    .. attribute:: debug
-    .. attribute:: visualize
-
-    .. method:: refine_for_stage1
-    .. method:: refine_for_stage2
-    """
-
-    @property
-    @memoize_method
-    def _group_factory(self):
-        from meshmode.discretization.poly_element import \
-                InterpolatoryQuadratureSimplexGroupFactory
-        return InterpolatoryQuadratureSimplexGroupFactory(self.target_order)
-
-    def refine_for_stage1(self, places, source_name, discr, wrangler):
-        return _refine_qbx_stage1(places, source_name, discr, wrangler,
-                self._group_factory,
-                kernel_length_scale=self.kernel_length_scale,
-                scaled_max_curvature_threshold=(
-                    self.scaled_max_curvature_threshold),
-                expansion_disturbance_tolerance=(
-                    self.expansion_disturbance_tolerance),
-                maxiter=self.maxiter,
-                debug=self.debug,
-                visualize=self.visualize)
-
-    def refine_for_stage2(self, places, source_name, discr, wrangler):
-        return _refine_qbx_stage2(places, source_name, discr, wrangler,
-                self._group_factory,
-                force_stage2_uniform_refinement_rounds=(
-                    self.force_stage2_uniform_refinement_rounds),
-                expansion_disturbance_tolerance=(
-                    self.expansion_disturbance_tolerance),
-                maxiter=self.maxiter,
-                debug=self.debug,
-                visualize=self.visualize)
-
-
 def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
     from warnings import warn
     warn(
@@ -583,7 +536,7 @@ def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
             lpot_source.real_dtype)
 
 
-def _refine_qbx_stage1(places, source_name, density_discr,
+def refine_qbx_stage1(places, source_name, density_discr,
         wrangler, group_factory,
         kernel_length_scale=None,
         scaled_max_curvature_threshold=None,
@@ -708,7 +661,7 @@ def _refine_qbx_stage1(places, source_name, density_discr,
     return stage1_density_discr, conn
 
 
-def _refine_qbx_stage2(places, source_name, stage1_density_discr,
+def refine_qbx_stage2(places, source_name, stage1_density_discr,
         wrangler, group_factory,
         expansion_disturbance_tolerance=None,
         force_stage2_uniform_refinement_rounds=None,

@@ -86,7 +86,7 @@ def _build_geometry(queue,
             qbx_order=qbx_order,
             fmm_order=False)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection(qbx, auto_where=auto_where)
 
     return places, places.auto_source
@@ -225,7 +225,7 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
             # Don't use FMM for now
             fmm_order=False)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection(qbx)
     density_discr = places.get_discretization(places.auto_source)
 

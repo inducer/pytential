@@ -451,7 +451,7 @@ class MatVecOp:
 def _prepare_domains(nresults, places, domains, default_domain):
     """
     :arg nresults: number of results.
-    :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
     :arg domains: recommended domains.
     :arg default_domain: default value for domains which are not provided.
 
@@ -476,7 +476,7 @@ def _prepare_domains(nresults, places, domains, default_domain):
 
 def _prepare_expr(places, expr, auto_where=None):
     """
-    :arg places: :class:`pytential.symbolic.execution.GeometryCollection`.
+    :arg places: :class:`~pytential.symbolic.geometry.GeometryCollection`.
     :arg expr: a symbolic expression.
     :return: processed symbolic expressions, tagged with the appropriate
         `where` identifier from places, etc.
@@ -513,329 +513,12 @@ def _prepare_expr(places, expr, auto_where=None):
 
 # {{{ geometry collection
 
-class GeometryCollection(object):
-    """A mapping from symbolic identifiers ("place IDs", typically strings)
-    to 'geometries', where a geometry can be a
-    :class:`pytential.source.PotentialSource`
-    or a :class:`pytential.target.TargetBase`.
-    This class is meant to hold a specific combination of sources and targets
-    serve to host caches of information derived from them, e.g. FMM trees
-    of subsets of them, as well as related common subexpressions such as
-    metric terms.
-
-    .. automethod:: get_discretization
-    .. automethod:: get_geometry
-    .. automethod:: copy
-
-    .. method:: get_cache
-    """
-
-    def __init__(self, places, auto_where=None):
-        """
-        :arg places: a scalar, tuple of or mapping of symbolic names to
-            geometry objects. Supported objects are
-            :class:`~pytential.source.PotentialSource`,
-            :class:`~potential.target.TargetBase` and
-            :class:`~meshmode.discretization.Discretization`.
-        :arg auto_where: location identifier for each geometry object, used
-            to denote specific discretizations, e.g. in the case where
-            *places* is a :class:`~pytential.source.LayerPotentialSourceBase`.
-            By default, we assume
-            :class:`~pytential.symbolic.primitives.DEFAULT_SOURCE` and
-            :class:`~pytential.symbolic.primitives.DEFAULT_TARGET` for
-            sources and targets, respectively.
-        """
-
-        from pytential.target import TargetBase
-        from pytential.source import PotentialSource
-        from pytential.qbx import QBXLayerPotentialSource
-        from meshmode.discretization import Discretization
-
-        # {{{ define default source and target descriptors
-
-        if isinstance(auto_where, (list, tuple)):
-            auto_source, auto_target = auto_where
-        else:
-            auto_source, auto_target = auto_where, None
-
-        if auto_source is None:
-            auto_source = sym.DEFAULT_SOURCE
-        if auto_target is None:
-            auto_target = sym.DEFAULT_TARGET
-
-        auto_source = sym.as_dofdesc(auto_source)
-        auto_target = sym.as_dofdesc(auto_target)
-        self.auto_where = (auto_source, auto_target)
-
-        # }}}
-
-        # {{{ construct dict
-
-        self.places = {}
-        self.caches = {}
-
-        if isinstance(places, QBXLayerPotentialSource):
-            self.places[auto_source.geometry] = places
-            self.places[auto_target.geometry] = places.density_discr
-        elif isinstance(places, (Discretization, PotentialSource)):
-            self.places[auto_source.geometry] = places
-            self.places[auto_target.geometry] = places
-        elif isinstance(places, TargetBase):
-            self.places[auto_target.geometry] = places
-        elif isinstance(places, tuple):
-            source_discr, target_discr = places
-            self.places[auto_source.geometry] = source_discr
-            self.places[auto_target.geometry] = target_discr
-        else:
-            self.places = places.copy()
-
-        for p in six.itervalues(self.places):
-            if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
-                raise TypeError("Must pass discretization, targets or "
-                        "layer potential sources as 'places'.")
-
-        # }}}
-
-    @property
-    def auto_source(self):
-        return self.auto_where[0]
-
-    @property
-    def auto_target(self):
-        return self.auto_where[1]
-
-    @property
-    @memoize_method
-    def ambient_dim(self):
-        from pytools import single_valued
-        ambient_dim = [p.ambient_dim for p in six.itervalues(self.places)]
-        return single_valued(ambient_dim)
-
-    # {{{ qbx refinement
-
-    def _ensure_qbx_stage1(self, queue, lpot, dofdesc):
-        cache = self.get_cache('qbx_refined_discrs')
-        if (dofdesc.geometry, sym.QBX_SOURCE_STAGE1) in cache:
-            return
-
-        # get stage1 discr
-        r = self.refiner(lpot)
-        discr, to_stage1_conn = r.refine_for_stage1(
-                self, dofdesc.geometry, lpot.density_discr,
-                lpot.refiner_code_container.get_wrangler(queue))
-
-        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE1)
-        cache[key] = discr
-
-        # add connection from density_discr -> stage1
-        cache = self.get_cache('qbx_refined_connections')
-        key = (dofdesc.geometry, None, sym.QBX_SOURCE_STAGE1)
-        cache[key] = to_stage1_conn
-
-    def _ensure_qbx_stage2(self, queue, lpot, dofdesc):
-        self._ensure_qbx_stage1(queue, lpot, dofdesc)
-
-        cache = self.get_cache('qbx_refined_discrs')
-        if (dofdesc.geometry, sym.QBX_SOURCE_STAGE2) in cache:
-            return
-
-        # get stage2 discr
-        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE1)
-        stage1_density_discr = cache[key]
-
-        r = self.refiner(lpot)
-        discr, to_stage2_conn = r.refine_for_stage2(
-                self, dofdesc.geometry, stage1_density_discr,
-                lpot.refiner_code_container.get_wrangler(queue))
-
-        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE2)
-        cache[key] = discr
-
-        # add connections from stage1 -> stage2
-        cache = self.get_cache('qbx_refined_connections')
-        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE2)
-        cache[key] = to_stage2_conn
-
-    def _ensure_qbx_quad_stage2(self, queue, lpot, dofdesc):
-        self._ensure_qbx_stage2(queue, lpot, dofdesc)
-
-        cache = self.get_cache('qbx_refined_discrs')
-        if (dofdesc.geometry, sym.QBX_SOURCE_QUAD_STAGE2) in cache:
-            return
-
-        # get quad_stage2 discr
-        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE2)
-        stage2_density_discr = cache[key]
-
-        from meshmode.discretization import Discretization
-        from meshmode.discretization.poly_element import \
-                QuadratureSimplexGroupFactory
-        discr = Discretization(lpot.cl_context,
-                stage2_density_discr.mesh,
-                QuadratureSimplexGroupFactory(lpot.fine_order),
-                lpot.real_dtype)
-
-        key = (dofdesc.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
-        cache[key] = discr
-
-        # add connections from stage2 -> quad_stage2
-        from meshmode.discretization.connection import make_same_mesh_connection
-        cache = self.get_cache('qbx_refined_connections')
-        key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)
-        cache[key] = make_same_mesh_connection(
-                discr, stage2_density_discr)
-
-    def _ensure_qbx_refinement(self, lpot, dofdesc,
-            target_order=None, kernel_length_scale=None, maxiter=None,
-            expansion_disturbance_tolerance=None,
-            force_stage2_uniform_refinement_rounds=None,
-            scaled_max_curvature_threshold=None,
-            debug=None, visualize=False):
-        if lpot._disable_refinement:
-            return
-
-        cache = self.get_cache('qbx_refined_discrs')
-        key = (dofdesc.geometry, dofdesc.discr_stage)
-        if key in cache:
-            return
-
-        with cl.CommandQueue(lpot.cl_context) as queue:
-            if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE1:
-                self._ensure_qbx_stage1(queue, lpot, dofdesc)
-            elif dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
-                self._ensure_qbx_stage2(queue, lpot, dofdesc)
-            elif dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
-                self._ensure_qbx_quad_stage2(queue, lpot, dofdesc)
-            else:
-                raise ValueError('unknown discr stage: {}'.format(
-                    dofdesc.discr_stage))
-
-    def _get_stage_discretization(self, lpot, dofdesc):
-        if dofdesc.discr_stage is None:
-            return lpot.density_discr
-
-        self._ensure_qbx_refinement(lpot, dofdesc)
-
-        cache = self.get_cache('qbx_refined_discrs')
-        return cache[(dofdesc.geometry, dofdesc.discr_stage)]
-
-    # }}}
-
-    @memoize_method
-    def refiner(self, lpot):
-        from pytential.qbx.refinement import QBXGeometryRefinerData
-        return QBXGeometryRefinerData(
-                target_order=lpot.density_discr.groups[0].order,
-                kernel_length_scale=None,
-                scaled_max_curvature_threshold=None,
-                expansion_disturbance_tolerance=0.025,
-                force_stage2_uniform_refinement_rounds=0,
-                maxiter=10,
-                debug=lpot.debug,
-                visualize=False)
-
-    def refine_for_global_qbx(self, dofdesc=None):
-        from pytential.qbx import QBXLayerPotentialSource
-
-        if dofdesc is None:
-            for name, lpot in six.iteritems(self.places):
-                if not isinstance(lpot, QBXLayerPotentialSource):
-                    continue
-
-                dofdesc = sym.as_dofdesc(name).to_quad_stage2()
-                print(self.refiner(lpot))
-                self._ensure_qbx_refinement(lpot, dofdesc)
-        else:
-            dofdesc = sym.as_dofdesc(dofdesc).to_quad_stage2()
-            lpot = self.get_geometry(dofdesc)
-
-            if isinstance(lpot, QBXLayerPotentialSource):
-                self._ensure_qbx_refinement(lpot, dofdesc)
-
-    def get_connection(self, from_dd, to_dd):
-        from_dd = sym.as_dofdesc(from_dd)
-        to_dd = sym.as_dofdesc(to_dd)
-        if from_dd.geometry != to_dd.geometry:
-            raise KeyError('no connections between different geometries')
-
-        lpot = self.get_geometry(from_dd)
-        if from_dd.discr_stage is not None:
-            self._ensure_qbx_refinement(lpot, from_dd)
-        if to_dd.discr_stage is not None:
-            self._ensure_qbx_refinement(lpot, to_dd)
-
-        key = (from_dd.geometry, from_dd.discr_stage, to_dd.discr_stage)
-        cache = self.get_cache('qbx_refined_connections')
-        if key in cache:
-            return cache[key]
-        else:
-            raise KeyError('connection not in the collection')
-
-    def get_discretization(self, dofdesc):
-        """
-        :arg dofdesc: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
-            specifying the desired discretization.
-
-        :return: a geometry object in the collection corresponding to the
-            key *dofdesc*. If it is a
-            :class:`~pytential.source.LayerPotentialSourceBase`, we look for
-            the corresponding :class:`~meshmode.discretization.Discretization`
-            in its attributes instead.
-        """
-        dofdesc = sym.as_dofdesc(dofdesc)
-        key = (dofdesc.geometry, dofdesc.discr_stage)
-
-        if key in self.places:
-            discr = self.places[key]
-        elif dofdesc.geometry in self.places:
-            discr = self.places[dofdesc.geometry]
-        else:
-            raise KeyError('discretization not in the collection: {}'.format(
-                dofdesc.geometry))
-
-        from pytential.qbx import QBXLayerPotentialSource
-        from pytential.source import LayerPotentialSourceBase
-
-        if isinstance(discr, QBXLayerPotentialSource):
-            return self._get_stage_discretization(discr, dofdesc)
-        elif isinstance(discr, LayerPotentialSourceBase):
-            return discr.density_discr
-        else:
-            return discr
-
-    def get_geometry(self, dofdesc):
-        dofdesc = sym.as_dofdesc(dofdesc)
-        return self.places[dofdesc.geometry]
-
-    def copy(self, places=None, auto_where=None):
-        if places is None:
-            places = {}
-
-        new_places = self.places.copy()
-        new_places.update(places)
-
-        return GeometryCollection(
-                new_places,
-                auto_where=(self.auto_where
-                    if auto_where is None else auto_where))
-
-    def get_cache(self, name):
-        return self.caches.setdefault(name, {})
-
-    def __repr__(self):
-        return "%s(%s)" % (type(self).__name__, repr(self.places))
-
-    def __str__(self):
-        return "%s(%s)" % (type(self).__name__, str(self.places))
-
-# }}}
-
 
 # {{{ bound expression
 
 class BoundExpression(object):
     """An expression readied for evaluation by binding it to a
-    :class:`GeometryCollection`.
+    :class:`~pytential.symbolic.geometry.GeometryCollection`.
 
     .. automethod :: get_modeled_cost
     .. automethod :: scipy_pop
@@ -933,7 +616,7 @@ class BoundExpression(object):
 
 def bind(places, expr, auto_where=None):
     """
-    :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
     :arg auto_where: for simple source-to-self or source-to-target
@@ -945,6 +628,7 @@ def bind(places, expr, auto_where=None):
     :returns: a :class:`BoundExpression`
     """
 
+    from pytential import GeometryCollection
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
         expr = _prepare_expr(places, expr)
@@ -992,7 +676,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
     :arg queue: a :class:`pyopencl.CommandQueue`.
-    :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
     :arg exprs: an array of expressions corresponding to the output block
@@ -1012,6 +696,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
     if context is None:
         context = {}
 
+    from pytential import GeometryCollection
     from pytools.obj_array import is_obj_array, make_obj_array
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)

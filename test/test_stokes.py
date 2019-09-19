@@ -101,7 +101,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     fplot = FieldPlotter(np.zeros(2), extent=6, npoints=100)
     plot_targets = PointsTarget(outside_circle(fplot.points, radius=circle_rad))
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,

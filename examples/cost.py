@@ -98,7 +98,7 @@ def calibrate_cost_model(ctx):
     for lpot_source in training_geometries(queue):
         lpot_source = lpot_source.copy(cost_model=cost_model)
 
-        from pytential.symbolic.execution import GeometryCollection
+        from pytential import GeometryCollection
         places = GeometryCollection(lpot_source)
         density_discr = places.get_discretization(places.auto_source)
 
@@ -129,7 +129,7 @@ def test_cost_model(ctx, cost_model):
     for lpot_source in test_geometries(queue):
         lpot_source = lpot_source.copy(cost_model=cost_model)
 
-        from pytential.symbolic.execution import GeometryCollection
+        from pytential import GeometryCollection
         places = GeometryCollection(lpot_source)
         density_discr = places.get_discretization(places.auto_source)
 

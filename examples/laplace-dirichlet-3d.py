@@ -75,7 +75,7 @@ def main(mesh_name="torus", visualize=False):
     fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)
     targets = cl.array.to_device(queue, fplot.points)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,
