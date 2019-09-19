@@ -332,7 +332,6 @@ class MatrixBuilder(MatrixBuilderBase):
             try:
                 mat = cache[key]
             except KeyError:
-                print('cache miss: {} -> {}'.format(expr.from_dd, expr.to_dd))
                 from meshmode.discretization.connection import \
                     flatten_chained_connection
 
@@ -341,6 +340,8 @@ class MatrixBuilder(MatrixBuilderBase):
                 conn = flatten_chained_connection(self.queue, conn)
                 mat = conn.full_resample_matrix(self.queue).get(self.queue)
 
+                # FIXME: the resample matrix is slow to compute and very big
+                # to store, so caching it may not be the best idea
                 cache[key] = mat
 
             return mat.dot(operand)
