@@ -242,32 +242,36 @@ def _generate_unit_sphere(ambient_dim, approx_npoints):
 
 class ProxyGenerator(object):
     r"""
-    .. attribute:: ambient_dim
+    .. attribute:: places
+
+        A :class:`~pytential.symbolic.execution.GeometryCollection`
+        containing the geometry on which the proxy balls are generated.
+
+    .. attribute:: dofdesc
+
+        A :class:`~pytential.symbolic.primitives.DOFDescriptor` which
+        defines on which discretization the proxy balls are generated.
+
     .. attribute:: nproxy
 
         Number of proxy points in a single proxy ball.
 
-    .. attribute:: discr
+    .. attribute:: radius_factor
 
-        The :class:`~meshmode.discretization.Discretization` on which the
-        proxy balls are generated.
-
-    .. attribute:: ratio
-
-        A ratio used to compute the proxy ball radius. The radius
+        A factor used to compute the proxy ball radius. The radius
         is computed in the :math:`\ell^2` norm, resulting in a circle or
         sphere of proxy points. For QBX, we have two radii of interest
         for a set of points: the radius :math:`r_{block}` of the
         smallest ball containing all the points and the radius
         :math:`r_{qbx}` of the smallest ball containing all the QBX
-        expansion balls in the block. If the ratio :math:`\theta \in
+        expansion balls in the block. If the factor :math:`\theta \in
         [0, 1]`, then the radius of the proxy ball is
 
         .. math::
 
             r = (1 - \theta) r_{block} + \theta r_{qbx}.
 
-        If the ratio :math:`\theta > 1`, the the radius is simply
+        If the factor :math:`\theta > 1`, the the radius is simply
 
         .. math::
 
@@ -282,7 +286,8 @@ class ProxyGenerator(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, places, dofdesc=None, approx_nproxy=None, ratio=None):
+    def __init__(self, places, dofdesc=None,
+            approx_nproxy=None, radius_factor=None):
         from pytential.symbolic.execution import GeometryCollection
         if not isinstance(places, GeometryCollection):
             places = GeometryCollection(places, auto_where=dofdesc)
@@ -293,7 +298,7 @@ class ProxyGenerator(object):
         self.discr = places.get_discretization(self.dofdesc)
 
         self.ambient_dim = self.discr.ambient_dim
-        self.ratio = 1.1 if ratio is None else ratio
+        self.radius_factor = 1.1 if radius_factor is None else radius_factor
 
         approx_nproxy = 32 if approx_nproxy is None else approx_nproxy
         self.ref_points = \
@@ -305,11 +310,11 @@ class ProxyGenerator(object):
 
     @memoize_method
     def get_kernel(self):
-        if self.ratio < 1.0:
-            radius_expr = "(1.0 - {ratio}) * rblk + {ratio} * rqbx"
+        if self.radius_factor < 1.0:
+            radius_expr = "(1.0 - {f}) * rblk + {f} * rqbx"
         else:
-            radius_expr = "{ratio} * rqbx"
-        radius_expr = radius_expr.format(ratio=self.ratio)
+            radius_expr = "{f} * rqbx"
+        radius_expr = radius_expr.format(f=self.radius_factor)
 
         # NOTE: centers of mass are computed using a second-order approximation
         knl = lp.make_kernel([
@@ -526,7 +531,7 @@ def gather_block_neighbor_points(discr, indices, pxycenters, pxyradii,
 
 
 def gather_block_interaction_points(places, source_name, indices,
-                                    ratio=None,
+                                    radius_factor=None,
                                     approx_nproxy=None,
                                     max_nodes_in_box=None):
     """Generate sets of interaction points for each given range of indices
@@ -605,7 +610,8 @@ def gather_block_interaction_points(places, source_name, indices,
     source = places.get_geometry(source_name)
     with cl.CommandQueue(source.cl_context) as queue:
         generator = ProxyGenerator(places, dofdesc=source_name,
-                ratio=ratio, approx_nproxy=approx_nproxy)
+                radius_factor=radius_factor,
+                approx_nproxy=approx_nproxy)
         proxies, pxyranges, pxycenters, pxyradii = generator(queue, indices)
 
         neighbors = gather_block_neighbor_points(generator.discr,
