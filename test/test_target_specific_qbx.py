@@ -171,6 +171,7 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
             qbx_order=qbx_order,
             fmm_level_to_order=SimpleExpansionOrderFinder(fmm_tol),
             fmm_backend="fmmlib",
+            target_association_tolerance=5.0e-1,
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.9,
             _use_target_specific_qbx=False,

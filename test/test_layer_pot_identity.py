@@ -66,7 +66,7 @@ class GeometryCollection(GeometryCollectionBase):
 
     def refiner(self, lpot):
         return super(GeometryCollection, self).refiner(lpot).copy(
-                self.refiner_extra_kwargs)
+                **self.refiner_extra_kwargs)
 
 
 def get_sphere_mesh(refinement_increment, target_order):
@@ -333,6 +333,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                 case.qbx_order,
                 fmm_order=case.fmm_order,
                 fmm_backend=case.fmm_backend,
+                target_association_tolerance=1.0e-1,
                 _expansions_in_tree_have_extent=True,
                 _expansion_stick_out_factor=getattr(
                     case, "_expansion_stick_out_factor", 0),
