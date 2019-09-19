@@ -23,7 +23,7 @@ k = 3
 # }}}
 
 
-def main(visualize=True, mesh_name="ellipse"):
+def main(mesh_name="ellipse", visualize=False):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
@@ -76,18 +76,16 @@ def main(visualize=True, mesh_name="ellipse"):
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
             )
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(qbx)
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
     targets = cl.array.to_device(queue, fplot.points)
 
-    qbx = places.get_geometry(places.auto_source)
+    from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,
-        'qbx-stick-out': qbx.copy(target_association_tolerance=0.05),
+        'qbx-target-assoc': qbx.copy(target_association_tolerance=0.05),
         'targets': PointsTarget(targets)
         })
     density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
@@ -97,11 +95,9 @@ def main(visualize=True, mesh_name="ellipse"):
     from sumpy.kernel import LaplaceKernel, HelmholtzKernel
     kernel = HelmholtzKernel(2)
 
-    cse = sym.cse
-
     sigma_sym = sym.var("sigma")
     sqrt_w = sym.sqrt_jac_q_weight(2)
-    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
+    inv_sqrt_w_sigma = sym.cse(sigma_sym/sqrt_w)
 
     # Brakhage-Werner parameter
     alpha = 1j
@@ -110,11 +106,12 @@ def main(visualize=True, mesh_name="ellipse"):
     # +1 for exterior Dirichlet
     loc_sign = +1
 
+    k_sym = sym.var("k")
     bdry_op_sym = (-loc_sign*0.5*sigma_sym
             + sqrt_w*(
-                alpha*sym.S(kernel, inv_sqrt_w_sigma, k=sym.var("k"),
+                alpha*sym.S(kernel, inv_sqrt_w_sigma, k=k_sym,
                     qbx_forced_limit=+1)
-                - sym.D(kernel, inv_sqrt_w_sigma, k=sym.var("k"),
+                - sym.D(kernel, inv_sqrt_w_sigma, k=k_sym,
                     qbx_forced_limit="avg")
                 ))
 
@@ -138,7 +135,7 @@ def main(visualize=True, mesh_name="ellipse"):
 
     from pytential.solve import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),
+            bound_op.scipy_op(queue, sigma_sym.name, dtype=np.complex128, k=k),
             bvp_rhs, tol=1e-8, progress=True,
             stall_iterations=0,
             hard_failure=True)
@@ -147,49 +144,36 @@ def main(visualize=True, mesh_name="ellipse"):
 
     # {{{ postprocess/visualize
 
-    if not visualize:
-        return
-
-    sigma = gmres_result.solution
-
     repr_kwargs = dict(
-            k=sym.var("k"),
-            source='qbx-stick-out',
+            source='qbx-target-assoc',
             target='targets',
             qbx_forced_limit=None)
     representation_sym = (
-            alpha*sym.S(kernel, inv_sqrt_w_sigma, **repr_kwargs)
-            - sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
+            alpha*sym.S(kernel, inv_sqrt_w_sigma, k=k_sym, **repr_kwargs)
+            - sym.D(kernel, inv_sqrt_w_sigma, k=k_sym, **repr_kwargs))
 
     u_incoming = u_incoming_func(targets)
     ones_density = density_discr.zeros(queue)
     ones_density.fill(1)
 
-    del repr_kwargs['k']
     indicator = bind(places, sym.D(LaplaceKernel(2), sigma_sym, **repr_kwargs))(
             queue, sigma=ones_density).get()
 
     try:
         fld_in_vol = bind(places, representation_sym)(
-                queue, sigma=sigma, k=k).get()
+                queue, sigma=gmres_result.solution, k=k).get()
     except QBXTargetAssociationFailedException as e:
-        fplot.write_vtk_file(
-                "failed-targets.vts",
-                [
-                    ("failed", e.failed_target_flags.get(queue))
-                    ]
-                )
+        fplot.write_vtk_file("failed-targets.vts", [
+            ("failed", e.failed_target_flags.get(queue))
+            ])
         raise
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-    fplot.write_vtk_file(
-            "potential-helm.vts",
-            [
-                ("potential", fld_in_vol),
-                ("indicator", indicator),
-                ("u_incoming", u_incoming.get()),
-                ]
-            )
+    fplot.write_vtk_file("potential-helm.vts", [
+        ("potential", fld_in_vol),
+        ("indicator", indicator),
+        ("u_incoming", u_incoming.get()),
+        ])
 
     # }}}
 

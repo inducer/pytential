@@ -72,9 +72,7 @@ def timing_run(nx, ny, visualize=False):
             fmm_order=fmm_order
             )
 
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(qbx).places
-
+    places = {}
     if visualize:
         from sumpy.visualization import FieldPlotter
         fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
@@ -82,17 +80,20 @@ def timing_run(nx, ny, visualize=False):
 
         places.update({
             "plot-targets": targets,
-            "qbx-target-tol": places[sym.DEFAULT_SOURCE].copy(
-                target_association_tolerance=0.05),
-            "qbx-indicator": places[sym.DEFAULT_SOURCE].copy(
+            "qbx-indicator": qbx.copy(
                 target_association_tolerance=0.05,
                 fmm_level_to_order=lambda lev: 7,
                 qbx_order=2),
-            "qbx-stick-out": places[sym.DEFAULT_SOURCE].copy(
-                target_association_tolerance=0.1)
+            "qbx-target-assoc": qbx.copy(target_association_tolerance=0.1)
             })
+    places.update({
+        sym.DEFAULT_SOURCE: qbx,
+        sym.DEFAULT_TARGET: qbx.density_discr,
+        })
 
+    from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(places)
+
     density_discr = places.get_discretization(places.auto_source)
 
     # {{{ describe bvp
@@ -164,24 +165,18 @@ def timing_run(nx, ny, visualize=False):
 
         try:
             fld_in_vol = bind(places, sym_op,
-                    auto_where=("qbx-stick-out", "plot_targets"))(
+                    auto_where=("qbx-target-assoc", "plot_targets"))(
                     queue, sigma=sigma, k=k).get()
         except QBXTargetAssociationFailedException as e:
-            fplot.write_vtk_file(
-                    "failed-targets.vts",
-                    [
-                        ("failed", e.failed_target_flags.get(queue))
-                        ]
-                    )
+            fplot.write_vtk_file("failed-targets.vts", [
+                ("failed", e.failed_target_flags.get(queue)),
+                ])
             raise
 
-        fplot.write_vtk_file(
-                "potential-scaling.vts",
-                [
-                    ("potential", fld_in_vol),
-                    ("indicator", indicator)
-                    ]
-                )
+        fplot.write_vtk_file("potential-scaling.vts", [
+            ("potential", fld_in_vol),
+            ("indicator", indicator),
+            ])
 
     return (mesh.nelements, elapsed)
 

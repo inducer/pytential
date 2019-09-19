@@ -12,33 +12,26 @@ from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 from pytential import bind, sym
 from six.moves import range
 
+from meshmode.mesh.generation import starfish, ellipse, drop # noqa
+
 target_order = 16
 qbx_order = 3
 nelements = 60
 mode_nr = 3
 
 k = 0
-if k:
-    kernel = HelmholtzKernel(2)
-    kernel_kwargs = {"k": sym.var("k")}
-else:
-    kernel = LaplaceKernel(2)
-    kernel_kwargs = {}
-#kernel = OneKernel()
 
 
-def main(visualize=True):
+def main(curve_fn=starfish, visualize=True):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
 
-    from meshmode.mesh.generation import (  # noqa
-            make_curve_mesh, starfish, ellipse, drop)
+    from meshmode.mesh.generation import make_curve_mesh
     mesh = make_curve_mesh(
-            #lambda t: ellipse(1, t),
-            starfish,
+            curve_fn,
             np.linspace(0, 1, nelements+1),
             target_order)
 
@@ -69,6 +62,13 @@ def main(visualize=True):
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
 
+    if k:
+        kernel = HelmholtzKernel(2)
+        kernel_kwargs = {"k": sym.var("k")}
+    else:
+        kernel = LaplaceKernel(2)
+        kernel_kwargs = {}
+
     def op(**kwargs):
         kwargs.update(kernel_kwargs)
 
@@ -96,12 +96,9 @@ def main(visualize=True):
         if enable_mayavi:
             fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         else:
-            fplot.write_vtk_file(
-                    "potential-2d.vts",
-                    [
-                        ("potential", fld_in_vol)
-                        ]
-                    )
+            fplot.write_vtk_file("potential-2d.vts", [
+                ("potential", fld_in_vol)
+                ])
 
     if 0:
         def apply_op(density):

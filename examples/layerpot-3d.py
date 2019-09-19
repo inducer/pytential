@@ -9,32 +9,28 @@ from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 from pytential import bind, sym
 from six.moves import range
 
-cl_ctx = cl.create_some_context()
-queue = cl.CommandQueue(cl_ctx)
-
 target_order = 5
 qbx_order = 3
 mode_nr = 4
-
-if 1:
-    cad_file_name = "geometries/ellipsoid.step"
-    h = 0.6
-else:
-    cad_file_name = "geometries/two-cylinders-smooth.step"
-    h = 0.4
-
 k = 0
-if k:
-    kernel = HelmholtzKernel(3)
-else:
-    kernel = LaplaceKernel(3)
-#kernel = OneKernel()
 
 
-def main():
+def main(mesh_name='ellipsoid'):
     import logging
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
+
+    cl_ctx = cl.create_some_context()
+    queue = cl.CommandQueue(cl_ctx)
+
+    if mesh_name == 'ellipsoid':
+        cad_file_name = "geometries/ellipsoid.step"
+        h = 0.6
+    elif mesh_name == 'two-cylinders':
+        cad_file_name = "geometries/two-cylinders-smooth.step"
+        h = 0.4
+    else:
+        raise ValueError('unknown mesh name: %s' % mesh_name)
 
     from meshmode.mesh.io import generate_gmsh, FileSource
     mesh = generate_gmsh(
@@ -79,6 +75,11 @@ def main():
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
 
+    if k:
+        kernel = HelmholtzKernel(3)
+    else:
+        kernel = LaplaceKernel(3)
+
     #op = sym.d_dx(sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None))
     op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None)
     #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
@@ -97,12 +98,9 @@ def main():
             queue, sigma=sigma, k=k).get()
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-    fplot.write_vtk_file(
-            "potential-3d.vts",
-            [
-                ("potential", fld_in_vol)
-                ]
-            )
+    fplot.write_vtk_file("potential-3d.vts", [
+        ("potential", fld_in_vol)
+        ])
 
     bdry_normals = bind(places,
             sym.normal(density_discr.ambient_dim))(queue).as_vector(dtype=object)

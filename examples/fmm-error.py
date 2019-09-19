@@ -78,7 +78,11 @@ def main():
 
     err = fmm_fld_in_vol-fld_in_vol
 
-    import matplotlib
+    try:
+        import matplotlib
+    except ImportError:
+        return
+
     matplotlib.use('Agg')
     im = fplot.show_scalar_in_matplotlib(np.log10(np.abs(err) + 1e-17))
 

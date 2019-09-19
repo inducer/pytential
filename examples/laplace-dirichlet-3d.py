@@ -22,18 +22,18 @@ fmm_order = 3
 # }}}
 
 
-def main():
+def main(mesh_name="torus", visualize=False):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
 
-    from meshmode.mesh.generation import generate_torus
+    if mesh_name == "torus":
+        rout = 10
+        rin = 1
 
-    rout = 10
-    rin = 1
-    if 1:
+        from meshmode.mesh.generation import generate_torus
         base_mesh = generate_torus(
                 rout, rin, 40, 4,
                 mesh_order)
@@ -52,11 +52,13 @@ def main():
 
         mesh = merge_disjoint_meshes(meshes, single_group=True)
 
-        if 0:
+        if visualize:
             from meshmode.mesh.visualization import draw_curve
             draw_curve(mesh)
             import matplotlib.pyplot as plt
             plt.show()
+    else:
+        raise ValueError('unknown mesh name: {}'.format(mesh_name))
 
     pre_density_discr = Discretization(
             cl_ctx, mesh,
@@ -68,18 +70,16 @@ def main():
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order,
             )
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(qbx)
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)
     targets = cl.array.to_device(queue, fplot.points)
 
-    qbx = places.get_geometry(places.auto_source)
+    from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,
-        'qbx-stick-out': qbx.copy(target_association_tolerance=0.2),
+        'qbx-target-assoc': qbx.copy(target_association_tolerance=0.2),
         'targets': PointsTarget(targets)
         })
     density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
@@ -89,12 +89,10 @@ def main():
     from sumpy.kernel import LaplaceKernel
     kernel = LaplaceKernel(3)
 
-    cse = sym.cse
-
     sigma_sym = sym.var("sigma")
     #sqrt_w = sym.sqrt_jac_q_weight(3)
     sqrt_w = 1
-    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
+    inv_sqrt_w_sigma = sym.cse(sigma_sym/sqrt_w)
 
     # -1 for interior Dirichlet
     # +1 for exterior Dirichlet
@@ -146,7 +144,7 @@ def main():
     # {{{ postprocess/visualize
 
     repr_kwargs = dict(
-            source='qbx-stick-out',
+            source='qbx-target-assoc',
             target='targets',
             qbx_forced_limit=None)
     representation_sym = (
