@@ -289,6 +289,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
 
     for resolution in case.resolutions:
+        places = {}
         scat_mesh = case.get_mesh(resolution, case.target_order)
         observation_mesh = case.get_observation_mesh(case.target_order)
 
@@ -303,37 +304,34 @@ def test_pec_mfie_extinction(ctx_factory, case,
                 fmm_backend=case.fmm_backend,
                 )
 
-        from pytential.symbolic.execution import GeometryCollection
-        places = GeometryCollection(qbx).places
-        places.refine_for_global_qbx(_expansion_disturbance_tolerance=0.05)
-
-        scat_discr = places[sym.DEFAULT_TARGET]
+        scat_discr = qbx.density_discr
         obs_discr = Discretization(
                 cl_ctx, observation_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
+        places.update({
+            sym.DEFAULT_SOURCE: qbx,
+            sym.DEFAULT_TARGET: qbx.density_discr,
+            'test-source': test_source,
+            'scat-discr': scat_discr,
+            'obs-discr': obs_discr,
+            'patch-target': calc_patch_tgt,
+            })
+
         if visualize:
-            qbx_tgt_tol = places.get_geometry(places.auto_source).copy(
-                    target_association_tolerance=0.2)
+            qbx_tgt_tol = qbx.copy(target_association_tolerance=0.2)
 
             fplot = make_field_plotter_from_bbox(
                     find_bounding_box(scat_discr.mesh), h=(0.05, 0.05, 0.3),
                     extend_factor=0.3)
             fplot_tgt = PointsTarget(cl.array.to_device(queue, fplot.points))
 
-        places = places.places
-        if visualize:
             places.update({
                 'qbx-target-tol': qbx_tgt_tol,
                 'plot-targets': fplot_tgt,
                 })
 
-        places.update({
-            'test-source': test_source,
-            'scat-discr': places[sym.DEFAULT_TARGET],
-            'obs-discr': obs_discr,
-            'patch-target': calc_patch_tgt,
-            })
+        from pytential.symbolic.execution import GeometryCollection
         places = GeometryCollection(places)
         density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 

@@ -38,10 +38,22 @@ from meshmode.mesh.generation import (  # noqa
         make_curve_mesh)
 
 from pytential import bind, sym
+from pytential.symbolic.execution import \
+        GeometryCollection as GeometryCollectionBase
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+class GeometryCollection(GeometryCollectionBase):
+    def __init__(self, places, auto_where=None, **kwargs):
+        super(GeometryCollection, self).__init__(places, auto_where=auto_where)
+        self.refiner_extra_kwargs = kwargs
+
+    def refiner(self, lpot):
+        return super(GeometryCollection, self).refiner(lpot).copy(
+                **self.refiner_extra_kwargs)
 
 
 def test_spherical_bessel_functions():
@@ -154,11 +166,6 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
-
-    refiner_extra_kwargs = {}
-    if helmholtz_k != 0:
-        refiner_extra_kwargs["kernel_length_scale"] = 5 / abs(helmholtz_k)
-
     qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
             qbx_order=qbx_order,
@@ -169,13 +176,14 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
             _use_target_specific_qbx=False,
             )
 
-    from pytential.symbolic.execution import GeometryCollection
+    kernel_length_scale = 5 / abs(helmholtz_k) if helmholtz_k else None
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,
         'qbx-target-specific': qbx.copy(_use_target_specific_qbx=True)
-        })
-    places.refine_for_global_qbx(**refiner_extra_kwargs)
+        },
+        kernel_length_scale=kernel_length_scale)
+
     density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 
     nodes = density_discr.nodes().with_queue(queue)

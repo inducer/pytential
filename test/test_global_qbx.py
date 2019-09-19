@@ -43,6 +43,8 @@ from meshmode.mesh.generation import (  # noqa
 from extra_curve_data import horseshoe
 
 from pytential import bind, sym
+from pytential.symbolic.execution import \
+        GeometryCollection as GeometryCollectionBase
 
 import logging
 logger = logging.getLogger(__name__)
@@ -80,6 +82,16 @@ def iter_elements(discr):
             discr_nodes_idx += discr_group.nunit_nodes
 
 
+class GeometryCollection(GeometryCollectionBase):
+    def __init__(self, places, auto_where=None, **kwargs):
+        super(GeometryCollection, self).__init__(places, auto_where=auto_where)
+        self.refiner_extra_kwargs = kwargs
+
+    def refiner(self, lpot):
+        return super(GeometryCollection, self).refiner(lpot).copy(
+                **self.refiner_extra_kwargs)
+
+
 def run_source_refinement_test(ctx_factory, mesh, order,
         helmholtz_k=None, visualize=False):
     cl_ctx = ctx_factory()
@@ -96,24 +108,18 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in refinement
             fine_order=order)
-    del discr
-
-    from pytential.symbolic.execution import GeometryCollection
-    places = GeometryCollection(lpot_source)
 
     # }}}
 
     # {{{ refined geometry
 
+    kernel_length_scale = 5 / helmholtz_k if helmholtz_k else None
     expansion_disturbance_tolerance = 0.025
-    refiner_extra_kwargs = {
-            "expansion_disturbance_tolerance": expansion_disturbance_tolerance,
-            "visualize": visualize,
-            }
-    if helmholtz_k is not None:
-        refiner_extra_kwargs["kernel_length_scale"] = 5/helmholtz_k
 
-    places.refine_for_global_qbx(**refiner_extra_kwargs)
+    places = GeometryCollection(lpot_source,
+            kernel_length_scale=kernel_length_scale,
+            expansion_disturbance_tolerance=expansion_disturbance_tolerance,
+            visualize=visualize)
 
     # }}}
 
@@ -264,7 +270,6 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     from pytential.symbolic.execution import GeometryCollection
     places = GeometryCollection(lpot_source)
-    places.refine_for_global_qbx(visualize=visualize)
 
     from pyopencl.clrandom import PhiloxGenerator
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)

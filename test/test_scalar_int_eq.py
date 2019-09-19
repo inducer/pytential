@@ -22,23 +22,27 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
+from functools import partial
 import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
+
 import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
-from functools import partial
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
 from meshmode.discretization.visualization import make_visualizer
+
 from sumpy.symbolic import USE_SYMENGINE
+
 from pytential import bind, sym
 from pytential.qbx import QBXTargetAssociationFailedException
+from pytential.symbolic.execution import \
+        GeometryCollection as GeometryCollectionBase
 
 import logging
 logger = logging.getLogger(__name__)
@@ -58,6 +62,16 @@ def make_circular_point_group(ambient_dim, npoints, radius,
     result = np.zeros((ambient_dim, npoints))
     result[:2, :] = center[:, np.newaxis] + radius*np.vstack((np.cos(t), np.sin(t)))
     return result
+
+
+class GeometryCollection(GeometryCollectionBase):
+    def __init__(self, places, auto_where=None, **kwargs):
+        super(GeometryCollection, self).__init__(places, auto_where=auto_where)
+        self.refiner_extra_kwargs = kwargs
+
+    def refiner(self, lpot):
+        return super(GeometryCollection, self).refiner(lpot).copy(
+                **self.refiner_extra_kwargs)
 
 
 # {{{ test cases
@@ -476,6 +490,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
             fine_order=source_order,
             qbx_order=case.qbx_order,
 
+            _disable_refinement=not case.use_refinement,
             _box_extent_norm=getattr(case, "box_extent_norm", None),
             _from_sep_smaller_crit=getattr(case, "from_sep_smaller_crit", None),
             _from_sep_smaller_min_nsources_cumul=30,
@@ -516,11 +531,11 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
             refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
 
         if hasattr(case, "scaled_max_curvature_threshold"):
-            refiner_extra_kwargs["_scaled_max_curvature_threshold"] = \
+            refiner_extra_kwargs["scaled_max_curvature_threshold"] = \
                     case.scaled_max_curvature_threshold
 
         if hasattr(case, "expansion_disturbance_tolerance"):
-            refiner_extra_kwargs["_expansion_disturbance_tolerance"] = \
+            refiner_extra_kwargs["expansion_disturbance_tolerance"] = \
                     case.expansion_disturbance_tolerance
 
         if hasattr(case, "refinement_maxiter"):
@@ -540,11 +555,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
             'qbx-target-tol': qbx.copy(target_association_tolerance=0.15),
             'plot-targets': plot_targets
             })
-
-    places = GeometryCollection(places)
-    if case.use_refinement:
-        print(refiner_extra_kwargs)
-        places.refine_for_global_qbx(**refiner_extra_kwargs)
+    places = GeometryCollection(places, **refiner_extra_kwargs)
 
     dd = sym.as_dofdesc(sym.DEFAULT_SOURCE)
     density_discr = places.get_discretization(dd)

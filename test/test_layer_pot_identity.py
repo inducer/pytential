@@ -36,8 +36,12 @@ from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         NArmedStarfish,
         make_curve_mesh)
+
 # from sumpy.visualization import FieldPlotter
 from pytential import bind, sym, norm
+from pytential.symbolic.execution import \
+        GeometryCollection as GeometryCollectionBase
+
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 import logging
@@ -53,6 +57,16 @@ except ImportError:
 
 d1 = sym.Derivative()
 d2 = sym.Derivative()
+
+
+class GeometryCollection(GeometryCollectionBase):
+    def __init__(self, places, auto_where=None, **kwargs):
+        super(GeometryCollection, self).__init__(places, auto_where=auto_where)
+        self.refiner_extra_kwargs = kwargs
+
+    def refiner(self, lpot):
+        return super(GeometryCollection, self).refiner(lpot).copy(
+                self.refiner_extra_kwargs)
 
 
 def get_sphere_mesh(refinement_increment, target_order):
@@ -314,11 +328,6 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-        refiner_extra_kwargs = {}
-
-        if case.k != 0:
-            refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
-
         qbx = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
                 case.qbx_order,
@@ -329,9 +338,9 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                     case, "_expansion_stick_out_factor", 0),
                 )
 
-        from pytential.symbolic.execution import GeometryCollection
-        places = GeometryCollection(qbx)
-        places.refine_for_global_qbx(**refiner_extra_kwargs)
+        kernel_length_scale = 5 / case.k if case.k else None
+        places = GeometryCollection(qbx,
+                kernel_length_scale=kernel_length_scale)
         density_discr = places.get_discretization(places.auto_source)
 
         # {{{ compute values of a solution to the PDE

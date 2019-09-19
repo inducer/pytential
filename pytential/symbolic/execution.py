@@ -613,13 +613,14 @@ class GeometryCollection(object):
 
     # {{{ qbx refinement
 
-    def _ensure_qbx_stage1(self, queue, lpot, dofdesc, refiner):
+    def _ensure_qbx_stage1(self, queue, lpot, dofdesc):
         cache = self.get_cache('qbx_refined_discrs')
         if (dofdesc.geometry, sym.QBX_SOURCE_STAGE1) in cache:
             return
 
         # get stage1 discr
-        discr, to_stage1_conn = refiner.refine_for_stage1(
+        r = self.refiner(lpot)
+        discr, to_stage1_conn = r.refine_for_stage1(
                 self, dofdesc.geometry, lpot.density_discr,
                 lpot.refiner_code_container.get_wrangler(queue))
 
@@ -631,8 +632,8 @@ class GeometryCollection(object):
         key = (dofdesc.geometry, None, sym.QBX_SOURCE_STAGE1)
         cache[key] = to_stage1_conn
 
-    def _ensure_qbx_stage2(self, queue, lpot, dofdesc, refiner):
-        self._ensure_qbx_stage1(queue, lpot, dofdesc, refiner)
+    def _ensure_qbx_stage2(self, queue, lpot, dofdesc):
+        self._ensure_qbx_stage1(queue, lpot, dofdesc)
 
         cache = self.get_cache('qbx_refined_discrs')
         if (dofdesc.geometry, sym.QBX_SOURCE_STAGE2) in cache:
@@ -642,7 +643,8 @@ class GeometryCollection(object):
         key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE1)
         stage1_density_discr = cache[key]
 
-        discr, to_stage2_conn = refiner.refine_for_stage2(
+        r = self.refiner(lpot)
+        discr, to_stage2_conn = r.refine_for_stage2(
                 self, dofdesc.geometry, stage1_density_discr,
                 lpot.refiner_code_container.get_wrangler(queue))
 
@@ -654,8 +656,8 @@ class GeometryCollection(object):
         key = (dofdesc.geometry, sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE2)
         cache[key] = to_stage2_conn
 
-    def _ensure_qbx_quad_stage2(self, queue, lpot, dofdesc, refiner):
-        self._ensure_qbx_stage2(queue, lpot, dofdesc, refiner)
+    def _ensure_qbx_quad_stage2(self, queue, lpot, dofdesc):
+        self._ensure_qbx_stage2(queue, lpot, dofdesc)
 
         cache = self.get_cache('qbx_refined_discrs')
         if (dofdesc.geometry, sym.QBX_SOURCE_QUAD_STAGE2) in cache:
@@ -692,36 +694,6 @@ class GeometryCollection(object):
         if lpot._disable_refinement:
             return
 
-        # {{{ default arguments
-
-        if debug is None:
-            debug = lpot.debug
-
-        if target_order is None:
-            target_order = lpot.density_discr.groups[0].order
-
-        if maxiter is None:
-            maxiter = 10
-
-        if expansion_disturbance_tolerance is None:
-            expansion_disturbance_tolerance = 0.025
-
-        if force_stage2_uniform_refinement_rounds is None:
-            force_stage2_uniform_refinement_rounds = 0
-
-        from pytential.qbx.refinement import QBXGeometryRefinerData
-        refiner = QBXGeometryRefinerData(
-                target_order=target_order,
-                kernel_length_scale=kernel_length_scale,
-                scaled_max_curvature_threshold=scaled_max_curvature_threshold,
-                expansion_disturbance_tolerance=expansion_disturbance_tolerance,
-                force_stage2_uniform_refinement_rounds=(
-                    force_stage2_uniform_refinement_rounds),
-                maxiter=maxiter,
-                debug=debug, visualize=visualize)
-
-        # }}}
-
         cache = self.get_cache('qbx_refined_discrs')
         key = (dofdesc.geometry, dofdesc.discr_stage)
         if key in cache:
@@ -729,11 +701,11 @@ class GeometryCollection(object):
 
         with cl.CommandQueue(lpot.cl_context) as queue:
             if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE1:
-                self._ensure_qbx_stage1(queue, lpot, dofdesc, refiner)
+                self._ensure_qbx_stage1(queue, lpot, dofdesc)
             elif dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
-                self._ensure_qbx_stage2(queue, lpot, dofdesc, refiner)
+                self._ensure_qbx_stage2(queue, lpot, dofdesc)
             elif dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
-                self._ensure_qbx_quad_stage2(queue, lpot, dofdesc, refiner)
+                self._ensure_qbx_quad_stage2(queue, lpot, dofdesc)
             else:
                 raise ValueError('unknown discr stage: {}'.format(
                     dofdesc.discr_stage))
@@ -749,30 +721,36 @@ class GeometryCollection(object):
 
     # }}}
 
-    def refine_for_global_qbx(self,
-            target_order=None, kernel_length_scale=None, maxiter=None,
-            expansion_disturbance_tolerance=None,
-            debug=None, visualize=False,
-            _force_stage2_uniform_refinement_rounds=None,
-            _scaled_max_curvature_threshold=None):
+    @memoize_method
+    def refiner(self, lpot):
+        from pytential.qbx.refinement import QBXGeometryRefinerData
+        return QBXGeometryRefinerData(
+                target_order=lpot.density_discr.groups[0].order,
+                kernel_length_scale=None,
+                scaled_max_curvature_threshold=None,
+                expansion_disturbance_tolerance=0.025,
+                force_stage2_uniform_refinement_rounds=0,
+                maxiter=10,
+                debug=lpot.debug,
+                visualize=False)
+
+    def refine_for_global_qbx(self, dofdesc=None):
         from pytential.qbx import QBXLayerPotentialSource
 
-        for name, lpot in six.iteritems(self.places):
-            if not isinstance(lpot, QBXLayerPotentialSource):
-                continue
+        if dofdesc is None:
+            for name, lpot in six.iteritems(self.places):
+                if not isinstance(lpot, QBXLayerPotentialSource):
+                    continue
 
-            dofdesc = sym.as_dofdesc(name).to_quad_stage2()
-            self._ensure_qbx_refinement(lpot, dofdesc,
-                    target_order=target_order,
-                    kernel_length_scale=kernel_length_scale,
-                    maxiter=maxiter,
-                    expansion_disturbance_tolerance=(
-                        expansion_disturbance_tolerance),
-                    force_stage2_uniform_refinement_rounds=(
-                        _force_stage2_uniform_refinement_rounds),
-                    scaled_max_curvature_threshold=(
-                        _scaled_max_curvature_threshold),
-                    debug=debug, visualize=visualize)
+                dofdesc = sym.as_dofdesc(name).to_quad_stage2()
+                print(self.refiner(lpot))
+                self._ensure_qbx_refinement(lpot, dofdesc)
+        else:
+            dofdesc = sym.as_dofdesc(dofdesc).to_quad_stage2()
+            lpot = self.get_geometry(dofdesc)
+
+            if isinstance(lpot, QBXLayerPotentialSource):
+                self._ensure_qbx_refinement(lpot, dofdesc)
 
     def get_connection(self, from_dd, to_dd):
         from_dd = sym.as_dofdesc(from_dd)
