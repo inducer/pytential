@@ -527,7 +527,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """
 
         code_getter = self.code_getter
-        lpot_source = self.places.get_geometry(self.source_name)
+        lpot_source = self.lpot_source
         target_info = self.target_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
@@ -588,7 +588,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         |cached|
         """
 
-        lpot_source = self.places.get_geometry(self.source_name)
+        lpot_source = self.lpot_source
         with cl.CommandQueue(self.cl_context) as queue:
             trav, _ = self.code_getter.build_traversal(queue, self.tree(),
                     debug=self.debug,
@@ -770,7 +770,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         from pytential.target import PointsTarget
 
-        lpot_source = self.places.get_geometry(self.source_name)
+        lpot_source = self.lpot_source
         with cl.CommandQueue(self.cl_context) as queue:
             target_side_prefs = (self
                     .target_side_preferences()[self.ncenters:].get(queue=queue))

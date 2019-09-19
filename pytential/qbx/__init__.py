@@ -351,7 +351,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @property
     @memoize_method
     def target_association_code_container(self):
-
         from pytential.qbx.target_assoc import TargetAssociationCodeContainer
         return TargetAssociationCodeContainer(
                 self.cl_context, self.tree_code_container)
