@@ -82,7 +82,7 @@ Refiner driver
 
 .. autoclass:: RefinerWrangler
 
-.. autofunction:: refine_for_global_qbx
+.. autoclass:: QBXGeometryRefinerData
 """
 
 # {{{ kernels
@@ -792,102 +792,6 @@ def _refine_qbx_stage2(places, source_name, stage1_density_discr,
 
     return stage2_density_discr, conn
 
-
-def refine_for_global_qbx(
-        places, source_name, wrangler,
-        group_factory, kernel_length_scale=None,
-        force_stage2_uniform_refinement_rounds=None,
-        scaled_max_curvature_threshold=None,
-        debug=None, maxiter=None,
-        visualize=None, expansion_disturbance_tolerance=None,
-        refiner=None):
-    """
-    Entry point for calling the refiner.
-
-    :arg source_geometry: Identifier for the geometry to be refined. The
-        identifier acts as a key to :attr:`RefinerWrangler.places` and
-        it should point to a :class:`QBXLayerPotentialSource`.
-    :arg wrangler: An instance of :class:`RefinerWrangler`.
-    :arg group_factory: An instance of
-        :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
-        discretizing the coarse refined mesh.
-    :arg kernel_length_scale: The kernel length scale, or *None* if not
-        applicable. All panels are refined to below this size.
-    :arg maxiter: The maximum number of refiner iterations.
-
-    :returns: A tuple ``(lpot_source, *conn*)`` where ``lpot_source`` is the
-        refined layer potential source, and ``conn`` is a
-        :class:`meshmode.discretization.connection.DiscretizationConnection`
-        going from the original mesh to the refined mesh.
-    """
-
-    if maxiter is None:
-        maxiter = 10
-
-    if debug is None:
-        # FIXME: Set debug=False by default once everything works.
-        debug = True
-
-    if expansion_disturbance_tolerance is None:
-        expansion_disturbance_tolerance = 0.025
-
-    if force_stage2_uniform_refinement_rounds is None:
-        force_stage2_uniform_refinement_rounds = 0
-
-    from meshmode.mesh.refinement import RefinerWithoutAdjacency
-    lpot_source = places.get_geometry(source_name)
-    if refiner is not None:
-        assert refiner.get_current_mesh() == lpot_source.density_discr.mesh
-    else:
-        # We may be handed a mesh that's already non-conforming, we don't rely
-        # on adjacency, and the no-adjacency refiner is faster.
-        refiner = RefinerWithoutAdjacency(lpot_source.density_discr.mesh)
-
-    # {{{ stage refinement
-
-    stage1_density_discr, to_stage1_conn = _refine_qbx_stage1(
-            places, source_name, lpot_source.density_discr,
-            wrangler, group_factory,
-            kernel_length_scale=kernel_length_scale,
-            scaled_max_curvature_threshold=scaled_max_curvature_threshold,
-            expansion_disturbance_tolerance=expansion_disturbance_tolerance,
-            maxiter=maxiter,
-            refiner=refiner,
-            debug=debug,
-            visualize=visualize)
-
-    stage2_density_discr, to_stage2_conn = _refine_qbx_stage2(
-            places, source_name, stage1_density_discr,
-            wrangler, group_factory,
-            expansion_disturbance_tolerance=expansion_disturbance_tolerance,
-            force_stage2_uniform_refinement_rounds=(
-                force_stage2_uniform_refinement_rounds),
-            maxiter=maxiter,
-            refiner=refiner,
-            debug=debug,
-            visualize=visualize)
-
-    lpot_source = lpot_source.copy(
-            density_discr=stage1_density_discr,
-            to_stage1_connection=to_stage1_conn,
-            to_refined_connection=to_stage2_conn,
-            _refined_for_global_qbx=True,
-            debug=debug)
-
-    # }}}
-
-    if lpot_source._to_stage1_connection is None:
-        from meshmode.discretization.connection import make_same_mesh_connection
-        # FIXME: This is inefficient
-        connection = make_same_mesh_connection(
-                lpot_source.density_discr,
-                lpot_source.density_discr)
-    else:
-        connection = lpot_source._to_stage1_connection
-
-    return lpot_source, connection
-
 # }}}
-
 
 # vim: foldmethod=marker:filetype=pyopencl
