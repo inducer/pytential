@@ -543,7 +543,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
         #refiner_extra_kwargs["visualize"] = True
 
-    from pytential.symbolic.execution import GeometryCollection
     places = {
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,
