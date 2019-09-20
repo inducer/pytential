@@ -534,7 +534,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_name_and_side_to_number[key] = \
                         len(target_discrs_and_qbx_sides)
 
-                target_discr = bound_expr.places.get_geometry(o.target_name)
+                target_discr = bound_expr.places.get_discretization(o.target_name)
                 if isinstance(target_discr, LayerPotentialSourceBase):
                     target_discr = target_discr.density_discr
 
@@ -715,9 +715,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
+            source_name = insn.source.copy(discr_stage=o.target_name.discr_stage)
             target_discr = bound_expr.places.get_discretization(o.target_name)
+            density_discr = bound_expr.places.get_discretization(source_name)
 
-            is_self = self.density_discr is target_discr
+            is_self = density_discr is target_discr
             if is_self:
                 # QBXPreprocessor is supposed to have taken care of this
                 assert o.qbx_forced_limit is not None

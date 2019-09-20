@@ -83,12 +83,11 @@ def main(mesh_name="ellipse", visualize=False):
 
     from pytential import GeometryCollection
     places = GeometryCollection({
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: qbx.density_discr,
+        'qbx': qbx,
         'qbx-target-assoc': qbx.copy(target_association_tolerance=0.05),
         'targets': PointsTarget(targets)
-        })
-    density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
+        }, auto_where=('qbx', 'qbx'))
+    density_discr = places.get_discretization(places.auto_source)
 
     # {{{ describe bvp
 

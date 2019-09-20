@@ -331,7 +331,6 @@ def test_pec_mfie_extinction(ctx_factory, case,
                 'plot-targets': fplot_tgt,
                 })
 
-        from pytential import GeometryCollection
         places = GeometryCollection(places)
         density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
 

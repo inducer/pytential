@@ -214,6 +214,11 @@ def connection_from_dds(places, from_dd, to_dd):
     from_dd = sym.as_dofdesc(from_dd)
     to_dd = sym.as_dofdesc(to_dd)
 
+    if from_dd.discr_stage is None:
+        from_dd = from_dd.to_stage1()
+    if to_dd.discr_stage is None:
+        to_dd = to_dd.to_stage1()
+
     from pytential import GeometryCollection
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places)

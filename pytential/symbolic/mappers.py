@@ -488,19 +488,23 @@ class InterpolationPreprocessor(IdentityMapper):
         return prim.interp(from_dd, to_dd, self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
-        from_dd = expr.source
-        if from_dd.discr_stage is not None:
+        from pytential import sym
+        if expr.target.discr_stage is None:
+            expr = expr.copy(target=expr.target.to_stage1())
+
+        if expr.source.discr_stage is not None:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places.get_geometry(from_dd)
+        lpot_source = self.places.get_geometry(expr.source)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
+        from_dd = expr.source
         to_dd = from_dd.to_quad_stage2()
         density = prim.interp(from_dd, to_dd, self.rec(expr.density))
 
-        from_dd = from_dd.to_stage2()
+        from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
         kernel_arguments = dict(
                 (name, prim.interp(from_dd, to_dd,
                     self.rec(self.tagger(arg_expr))))
@@ -510,8 +514,7 @@ class InterpolationPreprocessor(IdentityMapper):
                 kernel=expr.kernel,
                 density=density,
                 kernel_arguments=kernel_arguments,
-                source=to_dd,
-                target=expr.target)
+                source=to_dd)
 
 # }}}
 

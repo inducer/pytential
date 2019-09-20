@@ -485,8 +485,7 @@ def _prepare_expr(places, expr, auto_where=None):
     from pytential.source import LayerPotentialSourceBase
     from pytential.symbolic.mappers import (
             ToTargetTagger,
-            DerivativeBinder,
-            InterpolationPreprocessor)
+            DerivativeBinder)
 
     if auto_where is None:
         auto_where = places.auto_where
@@ -503,9 +502,9 @@ def _prepare_expr(places, expr, auto_where=None):
         if isinstance(place, LayerPotentialSourceBase):
             expr = place.preprocess_optemplate(name, places, expr)
 
-    # NOTE: only insert interpolation operators after the layer potential
-    # operators were preprocessed to avoid any confusion
+    from pytential.symbolic.mappers import InterpolationPreprocessor
     expr = InterpolationPreprocessor(places)(expr)
+
     return expr
 
 # }}}
@@ -572,7 +571,7 @@ class BoundExpression(object):
             if dom_name is None:
                 size = 1
             else:
-                size = self.places.get_geometry(dom_name).nnodes
+                size = self.places.get_discretization(dom_name).nnodes
 
             starts_and_ends.append((total_dofs, total_dofs+size))
             total_dofs += size
@@ -700,7 +699,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
     from pytools.obj_array import is_obj_array, make_obj_array
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
-    exprs = _prepare_expr(places, exprs)
+    exprs = _prepare_expr(places, exprs, auto_where=auto_where)
 
     if not is_obj_array(exprs):
         exprs = make_obj_array([exprs])

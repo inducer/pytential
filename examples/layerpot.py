@@ -53,10 +53,9 @@ def main(curve_fn=starfish, visualize=True):
 
     from pytential import GeometryCollection
     places = GeometryCollection({
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: qbx.density_discr,
+        'qbx': qbx,
         'targets': PointsTarget(targets_dev),
-        })
+        }, auto_where=('qbx', 'qbx'))
     density_discr = places.get_discretization(places.auto_source)
 
     nodes = density_discr.nodes().with_queue(queue)

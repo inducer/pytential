@@ -36,6 +36,8 @@ from pytools import one
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 from pytential import bind, sym, norm  # noqa
+from pytential import GeometryCollection
+
 from pytential.qbx.cost import CostModel
 
 
@@ -108,10 +110,10 @@ def test_timing_data_gathering(ctx_getter):
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     lpot_source = get_lpot_source(queue, 2)
-    from pytential import GeometryCollection
     places = GeometryCollection(lpot_source)
 
-    density_discr = places.get_discretization(places.auto_source)
+    dofdesc = places.auto_source.to_stage1()
+    density_discr = places.get_discretization(dofdesc)
     sigma = get_density(queue, density_discr)
 
     sigma_sym = sym.var("sigma")
@@ -139,12 +141,9 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    lpot_source = (
-            get_lpot_source(queue, dim)
-            .copy(
-                _use_target_specific_qbx=use_target_specific_qbx,
-                cost_model=CostModel()))
-    from pytential import GeometryCollection
+    lpot_source = get_lpot_source(queue, dim).copy(
+            _use_target_specific_qbx=use_target_specific_qbx,
+            cost_model=CostModel())
     places = GeometryCollection(lpot_source)
 
     density_discr = places.get_discretization(places.auto_source)
@@ -181,7 +180,6 @@ def test_cost_model_metadata_gathering(ctx_getter):
 
     lpot_source = get_lpot_source(queue, 2).copy(
             fmm_level_to_order=fmm_level_to_order)
-    from pytential import GeometryCollection
     places = GeometryCollection(lpot_source)
 
     density_discr = places.get_discretization(places.auto_source)
@@ -462,7 +460,6 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
         target_discrs_and_qbx_sides = ((targets, 1),)
         qbx_forced_limit = 1
 
-    from pytential import GeometryCollection
     places = GeometryCollection((lpot_source, targets))
 
     source_dd = places.auto_source
@@ -553,7 +550,6 @@ def test_cost_model_order_varying_by_level(ctx_getter):
             cost_model=CostModel(
                 calibration_params=CONSTANT_ONE_PARAMS),
             fmm_level_to_order=level_to_order_constant)
-    from pytential import GeometryCollection
     places = GeometryCollection(lpot_source)
 
     density_discr = places.get_discretization(places.auto_source)

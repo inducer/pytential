@@ -39,6 +39,8 @@ from sumpy.tools import BlockIndexRanges, MatrixBlockIndexRanges
 from sumpy.symbolic import USE_SYMENGINE
 
 from pytential import sym
+from pytential import GeometryCollection
+
 from meshmode.mesh.generation import (  # noqa
         ellipse, NArmedStarfish, make_curve_mesh, generate_torus)
 
@@ -85,8 +87,6 @@ def _build_geometry(queue,
             fine_order=4 * target_order,
             qbx_order=qbx_order,
             fmm_order=False)
-
-    from pytential import GeometryCollection
     places = GeometryCollection(qbx, auto_where=auto_where)
 
     return places, places.auto_source
@@ -220,16 +220,24 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     from pytential.qbx import QBXLayerPotentialSource
-    qbx = QBXLayerPotentialSource(pre_density_discr, 4 * target_order,
-            qbx_order,
+    qbx = QBXLayerPotentialSource(pre_density_discr,
+            4 * target_order,
+            qbx_order=qbx_order,
             # Don't use FMM for now
             fmm_order=False)
 
-    from pytential import GeometryCollection
+    from pytential.symbolic.geometry import refine_geometry_collection
     places = GeometryCollection(qbx)
-    density_discr = places.get_discretization(places.auto_source)
+    places = refine_geometry_collection(places,
+            refine_for_global_qbx=True,
+            kernel_length_scale=(5 / k if k else None))
 
-    op, u_sym, knl_kwargs = _build_op(lpot_id, k=k)
+    source = places.auto_source.to_stage1()
+    density_discr = places.get_discretization(source)
+
+    op, u_sym, knl_kwargs = _build_op(lpot_id, k=k,
+            source=places.auto_source,
+            target=places.auto_target)
     from pytential import bind
     bound_op = bind(places, op)
 
@@ -282,7 +290,7 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
         rel_err = abs_err / la.norm(res_matvec, np.inf)
 
         print("AbsErr {:.5e} RelErr {:.5e}".format(abs_err, rel_err))
-        assert rel_err < 1e-13
+        assert rel_err < 1e-13, 'iteration: {}'.format(i)
 
 
 @pytest.mark.parametrize("ambient_dim", [2, 3])
@@ -300,7 +308,7 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
     place_ids = (
             sym.DOFDescriptor(
                 geometry=sym.DEFAULT_SOURCE,
-                discr_stage=sym.QBX_SOURCE_STAGE1),
+                discr_stage=sym.QBX_SOURCE_STAGE2),
             sym.DOFDescriptor(geometry=sym.DEFAULT_TARGET)
             )
     target_order = 2 if ambient_dim == 3 else 7
@@ -311,10 +319,11 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             auto_where=place_ids)
     op, u_sym, _ = _build_op(lpot_id,
             ambient_dim=ambient_dim,
-            source=place_ids[0],
-            target=place_ids[0])
+            source=places.auto_source,
+            target=places.auto_target)
 
-    density_discr = places.get_discretization(place_ids[0])
+    dd = places.auto_source
+    density_discr = places.get_discretization(dd)
     index_set = _build_block_index(queue, density_discr, factor=factor)
     index_set = MatrixBlockIndexRanges(ctx, index_set, index_set)
 
@@ -325,8 +334,8 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
     mbuilder = P2PMatrixBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(place_ids[0]),
-            dep_discr=places.get_discretization(place_ids[0]),
+            dep_source=places.get_geometry(dd),
+            dep_discr=places.get_discretization(dd),
             places=places,
             context={},
             exclude_self=True)
@@ -336,8 +345,8 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
     mbuilder = FarFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(place_ids[0]),
-            dep_discr=places.get_discretization(place_ids[0]),
+            dep_source=places.get_geometry(places.auto_source),
+            dep_discr=places.get_discretization(places.auto_source),
             places=places,
             index_set=index_set,
             context={},
@@ -392,14 +401,15 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             auto_where=place_ids)
     op, u_sym, _ = _build_op(lpot_id,
             ambient_dim=ambient_dim,
-            source=place_ids[0],
-            target=place_ids[0],
+            source=places.auto_source,
+            target=places.auto_target,
             qbx_forced_limit="avg")
 
     from pytential.symbolic.execution import _prepare_expr
     expr = _prepare_expr(places, op)
 
-    density_discr = places.get_discretization(place_ids[0])
+    dd = places.auto_source
+    density_discr = places.get_discretization(dd)
     index_set = _build_block_index(queue, density_discr, factor=factor)
     index_set = MatrixBlockIndexRanges(ctx, index_set, index_set)
 
@@ -407,8 +417,8 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
     mbuilder = NearFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(place_ids[0]),
-            dep_discr=places.get_discretization(place_ids[0]),
+            dep_source=places.get_geometry(dd),
+            dep_discr=places.get_discretization(dd),
             places=places,
             index_set=index_set,
             context={})
@@ -418,8 +428,8 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
     mbuilder = MatrixBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(place_ids[0]),
-            dep_discr=places.get_discretization(place_ids[0]),
+            dep_source=places.get_geometry(dd),
+            dep_discr=places.get_discretization(dd),
             places=places,
             context={})
     mat = mbuilder(expr)
@@ -475,12 +485,13 @@ def test_build_matrix_places(ctx_factory,
             auto_where=place_ids)
     op, u_sym, _ = _build_op(lpot_id=1,
             ambient_dim=2,
-            source=place_ids[0],
-            target=place_ids[0],
+            source=places.auto_source,
+            target=places.auto_target,
             qbx_forced_limit=qbx_forced_limit)
 
-    source_discr = places.get_discretization(place_ids[0])
-    target_discr = places.get_discretization(place_ids[1])
+    dd = places.auto_source
+    source_discr = places.get_discretization(places.auto_source)
+    target_discr = places.get_discretization(places.auto_target)
 
     index_set = _build_block_index(queue, source_discr, factor=0.6)
     index_set = MatrixBlockIndexRanges(ctx, index_set, index_set)
@@ -493,8 +504,8 @@ def test_build_matrix_places(ctx_factory,
     mbuilder = MatrixBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(place_ids[0]),
-            dep_discr=places.get_discretization(place_ids[0]),
+            dep_source=places.get_geometry(dd),
+            dep_discr=places.get_discretization(dd),
             places=places,
             context={})
     qbx_mat = mbuilder(op)
@@ -504,8 +515,8 @@ def test_build_matrix_places(ctx_factory,
     mbuilder = P2PMatrixBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(place_ids[0]),
-            dep_discr=places.get_discretization(place_ids[0]),
+            dep_source=places.get_geometry(dd),
+            dep_discr=places.get_discretization(dd),
             places=places,
             context={})
     p2p_mat = mbuilder(op)
@@ -517,21 +528,21 @@ def test_build_matrix_places(ctx_factory,
     mbuilder = NearFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(place_ids[0]),
-            dep_discr=places.get_discretization(place_ids[0]),
+            dep_source=places.get_geometry(dd),
+            dep_discr=places.get_discretization(dd),
             places=places,
             index_set=index_set,
             context={})
     mat = mbuilder(op)
-    if place_ids[0].discr_stage is not None:
+    if dd.discr_stage is not None:
         assert _max_block_error(qbx_mat, mat, index_set.get(queue)) < 1.0e-14
 
     from pytential.symbolic.matrix import FarFieldBlockBuilder
     mbuilder = FarFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(place_ids[0]),
-            dep_discr=places.get_discretization(place_ids[0]),
+            dep_source=places.get_geometry(dd),
+            dep_discr=places.get_discretization(dd),
             places=places,
             index_set=index_set,
             context={},

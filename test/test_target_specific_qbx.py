@@ -168,16 +168,17 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
 
     kernel_length_scale = 5 / abs(helmholtz_k) if helmholtz_k else None
     places = {
-        'source': qbx,
+        'qbx': qbx,
         'qbx-target-specific': qbx.copy(_use_target_specific_qbx=True)
         }
-    dd = sym.as_dofdesc('source')
+    where = ('qbx', 'qbx')
 
-    places = GeometryCollection(places,
-            auto_where=(dd, dd.to_stage1()))
-    places = places.with_refinement(kernel_length_scale=kernel_length_scale)
+    from pytential.symbolic.geometry import refine_geometry_collection
+    places = GeometryCollection(places, auto_where=where)
+    places = refine_geometry_collection(places,
+            kernel_length_scale=kernel_length_scale)
 
-    density_discr = places.get_discretization(dd)
+    density_discr = places.get_discretization(where[0])
     nodes = density_discr.nodes().with_queue(queue)
     u_dev = clmath.sin(nodes[0])
 

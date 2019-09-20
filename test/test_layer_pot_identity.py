@@ -39,8 +39,7 @@ from meshmode.mesh.generation import (  # noqa
 
 # from sumpy.visualization import FieldPlotter
 from pytential import bind, sym, norm
-from pytential.symbolic.execution import \
-        GeometryCollection as GeometryCollectionBase
+from pytential import GeometryCollection
 
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
@@ -57,16 +56,6 @@ except ImportError:
 
 d1 = sym.Derivative()
 d2 = sym.Derivative()
-
-
-class GeometryCollection(GeometryCollectionBase):
-    def __init__(self, places, auto_where=None, **kwargs):
-        super(GeometryCollection, self).__init__(places, auto_where=auto_where)
-        self.refiner_extra_kwargs = kwargs
-
-    def refiner(self, lpot):
-        return super(GeometryCollection, self).refiner(lpot).copy(
-                **self.refiner_extra_kwargs)
 
 
 def get_sphere_mesh(refinement_increment, target_order):
@@ -338,13 +327,16 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                 _expansion_stick_out_factor=getattr(
                     case, "_expansion_stick_out_factor", 0),
                 )
+        places = GeometryCollection(qbx)
 
+        from pytential.symbolic.geometry import refine_geometry_collection
         kernel_length_scale = 5 / case.k if case.k else None
-        places = GeometryCollection(qbx,
+        places = refine_geometry_collection(places,
                 kernel_length_scale=kernel_length_scale)
-        density_discr = places.get_discretization(places.auto_source)
 
         # {{{ compute values of a solution to the PDE
+
+        density_discr = places.get_discretization(places.auto_source)
 
         nodes_host = density_discr.nodes().get(queue)
         normal = bind(places, sym.normal(d))(queue).as_vector(np.object)

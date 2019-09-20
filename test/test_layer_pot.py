@@ -36,7 +36,9 @@ from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh, NArmedStarfish)
 from sumpy.visualization import FieldPlotter
+
 from pytential import bind, sym, norm
+from pytential import GeometryCollection
 
 import logging
 logger = logging.getLogger(__name__)
@@ -119,7 +121,6 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
     fplot = FieldPlotter(np.zeros(2), extent=0.54, npoints=30)
     targets = PointsTarget(fplot.points)
 
-    from pytential import GeometryCollection
     places = GeometryCollection((qbx, targets))
     density_discr = places.get_discretization(places.auto_source)
 
@@ -189,7 +190,6 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     ptarget = PointsTarget(fplot.points)
     from sumpy.kernel import LaplaceKernel
 
-    from pytential import GeometryCollection
     places = GeometryCollection({
         'direct-qbx': direct_qbx,
         'fmm-qbx': fmm_qbx,
@@ -259,7 +259,6 @@ def test_unregularized_with_ones_kernel(ctx_factory):
     from pytential.target import PointsTarget
     targets = PointsTarget(np.zeros((2, 1), dtype=float))
 
-    from pytential import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: lpot_source,
         sym.DEFAULT_TARGET: lpot_source,
@@ -389,7 +388,6 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                 fmm_backend="fmmlib"
                 )
 
-        from pytential import GeometryCollection
         places = GeometryCollection(qbx)
         density_discr = places.get_discretization(places.auto_source)
 

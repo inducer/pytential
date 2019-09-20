@@ -434,9 +434,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         from pytools.obj_array import make_obj_array
 
         with cl.CommandQueue(self.cl_context) as queue:
-            centers = bind(self.places,
-                sym.interleaved_expansion_centers(self.ambient_dim,
-                    dofdesc=self.source_name.geometry))(queue)
+            centers = bind(self.places, sym.interleaved_expansion_centers(
+                self.ambient_dim,
+                dofdesc=self.source_name.to_stage1()))(queue)
             return make_obj_array([ax.with_queue(None) for ax in centers])
 
     @memoize_method
@@ -452,7 +452,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             return bind(self.places, sym.expansion_radii(
                 self.ambient_dim,
                 granularity=sym.GRANULARITY_CENTER,
-                dofdesc=self.source_name.geometry))(queue)
+                dofdesc=self.source_name.to_stage1()))(queue)
 
     # }}}
 

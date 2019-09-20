@@ -41,8 +41,7 @@ from sumpy.symbolic import USE_SYMENGINE
 
 from pytential import bind, sym
 from pytential.qbx import QBXTargetAssociationFailedException
-from pytential.symbolic.execution import \
-        GeometryCollection as GeometryCollectionBase
+from pytential import GeometryCollection
 
 import logging
 logger = logging.getLogger(__name__)
@@ -62,16 +61,6 @@ def make_circular_point_group(ambient_dim, npoints, radius,
     result = np.zeros((ambient_dim, npoints))
     result[:2, :] = center[:, np.newaxis] + radius*np.vstack((np.cos(t), np.sin(t)))
     return result
-
-
-class GeometryCollection(GeometryCollectionBase):
-    def __init__(self, places, auto_where=None, **kwargs):
-        super(GeometryCollection, self).__init__(places, auto_where=auto_where)
-        self.refiner_extra_kwargs = kwargs
-
-    def refiner(self, lpot):
-        return super(GeometryCollection, self).refiner(lpot).copy(
-                **self.refiner_extra_kwargs)
 
 
 # {{{ test cases
@@ -545,7 +534,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
     places = {
         sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: qbx.density_discr,
+        sym.DEFAULT_TARGET: qbx,
         'point-source': point_source,
         'point-target': point_target
         }
@@ -554,9 +543,13 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
             'qbx-target-tol': qbx.copy(target_association_tolerance=0.15),
             'plot-targets': plot_targets
             })
-    places = GeometryCollection(places, **refiner_extra_kwargs)
 
-    dd = sym.as_dofdesc(sym.DEFAULT_SOURCE)
+    places = GeometryCollection(places)
+    if case.use_refinement:
+        from pytential.symbolic.geometry import refine_geometry_collection
+        places = refine_geometry_collection(places, **refiner_extra_kwargs)
+
+    dd = sym.as_dofdesc(sym.DEFAULT_SOURCE).to_stage1()
     density_discr = places.get_discretization(dd)
 
     if case.use_refinement:

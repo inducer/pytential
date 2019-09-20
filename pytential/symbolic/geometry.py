@@ -92,7 +92,6 @@ class GeometryCollection(object):
 
         auto_source = sym.as_dofdesc(auto_source)
         auto_target = sym.as_dofdesc(auto_target)
-        self.auto_where = (auto_source, auto_target)
 
         # }}}
 
@@ -101,10 +100,14 @@ class GeometryCollection(object):
         self.places = {}
         self.caches = {}
 
+        if isinstance(places, QBXLayerPotentialSource):
+            self.places[auto_source.geometry] = places
+            auto_target = auto_source
+        elif isinstance(places, TargetBase):
+            self.places[auto_target.geometry] = places
+            auto_source = auto_target
         if isinstance(places, (Discretization, PotentialSource)):
             self.places[auto_source.geometry] = places
-            self.places[auto_target.geometry] = places
-        elif isinstance(places, TargetBase):
             self.places[auto_target.geometry] = places
         elif isinstance(places, tuple):
             source_discr, target_discr = places
@@ -112,6 +115,8 @@ class GeometryCollection(object):
             self.places[auto_target.geometry] = target_discr
         else:
             self.places = places.copy()
+
+        self.auto_where = (auto_source, auto_target)
 
         for p in six.itervalues(self.places):
             if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
@@ -138,6 +143,9 @@ class GeometryCollection(object):
     def _refined_discretization_stage(self, lpot, dofdesc, refiner=None):
         if lpot._disable_refinement:
             return lpot.density_discr
+
+        if dofdesc.discr_stage is None:
+            dofdesc = dofdesc.to_stage1()
 
         cache = self.get_cache('qbx_refined_discrs')
         key = (dofdesc.geometry, dofdesc.discr_stage)
@@ -185,16 +193,18 @@ class GeometryCollection(object):
             return _rec_refine(queue, dofdesc)
 
     def get_connection(self, from_dd, to_dd):
+        from pytential import sym
         from_dd = sym.as_dofdesc(from_dd)
         to_dd = sym.as_dofdesc(to_dd)
+
         if from_dd.geometry != to_dd.geometry:
             raise KeyError('no connections between different geometries')
 
         lpot = self.get_geometry(from_dd)
         if from_dd.discr_stage is not None:
-            self._ensure_qbx_refinement(lpot, from_dd)
+            self._refined_discretization_stage(lpot, from_dd)
         if to_dd.discr_stage is not None:
-            self._ensure_qbx_refinement(lpot, to_dd)
+            self._refined_discretization_stage(lpot, to_dd)
 
         key = (from_dd.geometry, from_dd.discr_stage, to_dd.discr_stage)
         cache = self.get_cache('qbx_refined_connections')

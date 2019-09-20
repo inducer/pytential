@@ -39,6 +39,7 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 from pytential import bind, sym, norm  # noqa
+from pytential import GeometryCollection
 from pytential.solve import gmres
 import logging
 
@@ -101,7 +102,6 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     fplot = FieldPlotter(np.zeros(2), extent=6, npoints=100)
     plot_targets = PointsTarget(outside_circle(fplot.points, radius=circle_rad))
 
-    from pytential import GeometryCollection
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,

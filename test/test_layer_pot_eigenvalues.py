@@ -35,7 +35,9 @@ from functools import partial
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh, NArmedStarfish)
+
 from pytential import bind, sym, norm
+from pytential import GeometryCollection
 
 import logging
 logger = logging.getLogger(__name__)
@@ -112,8 +114,6 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
                 qbx_order, fmm_order=fmm_order,
                 _expansions_in_tree_have_extent=True,
                 )
-
-        from pytential import GeometryCollection
         places = GeometryCollection(qbx)
 
         density_discr = places.get_discretization(places.auto_source)
@@ -299,8 +299,6 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
                 qbx_order, fmm_order=6,
                 fmm_backend=fmm_backend,
                 )
-
-        from pytential import GeometryCollection
         places = GeometryCollection(qbx)
 
         density_discr = places.get_discretization(places.auto_source)

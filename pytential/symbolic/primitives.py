@@ -240,6 +240,10 @@ def _deprecate_kwargs(oldkey, newkey):
     return super_wrapper
 
 
+class _NoArgSentinel(object):
+    pass
+
+
 # {{{ dof descriptors
 
 class DEFAULT_SOURCE:  # noqa: N801
@@ -322,10 +326,8 @@ class DOFDescriptor(object):
         if granularity is None:
             granularity = GRANULARITY_NODE
 
-        if discr_stage is None:
-            discr_stage = QBX_SOURCE_STAGE1
-
-        if not (discr_stage == QBX_SOURCE_STAGE1
+        if not (discr_stage is None
+                or discr_stage == QBX_SOURCE_STAGE1
                 or discr_stage == QBX_SOURCE_STAGE2
                 or discr_stage == QBX_SOURCE_QUAD_STAGE2):
             raise ValueError('unknown discr stage tag: "{}"'.format(discr_stage))
@@ -339,10 +341,10 @@ class DOFDescriptor(object):
         self.discr_stage = discr_stage
         self.granularity = granularity
 
-    def copy(self, geometry=None, discr_stage=None, granularity=None):
+    def copy(self, geometry=None, discr_stage=_NoArgSentinel, granularity=None):
         if isinstance(geometry, DOFDescriptor):
             discr_stage = geometry.discr_stage \
-                    if discr_stage is None else discr_stage
+                    if discr_stage is _NoArgSentinel else discr_stage
             geometry = geometry.geometry
 
         return type(self)(
@@ -351,7 +353,7 @@ class DOFDescriptor(object):
                 granularity=(self.granularity
                     if granularity is None else granularity),
                 discr_stage=(self.discr_stage
-                    if discr_stage is None else discr_stage))
+                    if discr_stage is _NoArgSentinel else discr_stage))
 
     def to_stage1(self):
         return self.copy(discr_stage=QBX_SOURCE_STAGE1)
@@ -1394,8 +1396,6 @@ def hashable_kernel_args(kernel_arguments):
     return tuple(hashable_args)
 
 
-class _NoArgSentinel(object):
-    pass
 
 
 class IntG(Expression):
