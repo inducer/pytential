@@ -122,8 +122,9 @@ def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
             factor=factor)
 
     from pytential.linalg.proxy import ProxyGenerator
-    generator = ProxyGenerator(places, dofdesc=dofdesc)
-    proxies, pxyranges, pxycenters, pxyradii = generator(queue, srcindices)
+    generator = ProxyGenerator(places)
+    proxies, pxyranges, pxycenters, pxyradii = \
+            generator(queue, dofdesc, srcindices)
 
     proxies = np.vstack([p.get() for p in proxies])
     pxyranges = pxyranges.get()
@@ -219,8 +220,8 @@ def test_interaction_points(ctx_factory, ambient_dim, factor, visualize=False):
 
     # generate proxy points
     from pytential.linalg.proxy import ProxyGenerator
-    generator = ProxyGenerator(places, dofdesc=dofdesc)
-    _, _, pxycenters, pxyradii = generator(queue, srcindices)
+    generator = ProxyGenerator(places)
+    _, _, pxycenters, pxyradii = generator(queue, dofdesc, srcindices)
 
     from pytential.linalg.proxy import (  # noqa
             gather_block_neighbor_points,

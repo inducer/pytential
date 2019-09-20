@@ -198,7 +198,7 @@ class DOFConnection(object):
 
 def connection_from_dds(places, from_dd, to_dd):
     """
-    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`
+    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`
         or an argument taken by its constructor.
     :arg from_dd: a descriptor for the incoming degrees of freedom. This
         can be a :class:`~pytential.symbolic.primitives.DOFDescriptor`

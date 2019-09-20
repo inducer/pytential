@@ -247,11 +247,6 @@ class ProxyGenerator(object):
         A :class:`~pytential.symbolic.geometry.GeometryCollection`
         containing the geometry on which the proxy balls are generated.
 
-    .. attribute:: dofdesc
-
-        A :class:`~pytential.symbolic.primitives.DOFDescriptor` which
-        defines on which discretization the proxy balls are generated.
-
     .. attribute:: nproxy
 
         Number of proxy points in a single proxy ball.
@@ -286,18 +281,14 @@ class ProxyGenerator(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, places, dofdesc=None,
+    def __init__(self, places,
             approx_nproxy=None, radius_factor=None):
         from pytential import GeometryCollection
         if not isinstance(places, GeometryCollection):
-            places = GeometryCollection(places, auto_where=dofdesc)
+            places = GeometryCollection(places)
 
-        from pytential import sym
         self.places = places
-        self.dofdesc = sym.as_dofdesc(dofdesc or places.auto_source)
-        self.discr = places.get_discretization(self.dofdesc)
-
-        self.ambient_dim = self.discr.ambient_dim
+        self.ambient_dim = places.ambient_dim
         self.radius_factor = 1.1 if radius_factor is None else radius_factor
 
         approx_nproxy = 32 if approx_nproxy is None else approx_nproxy
@@ -377,7 +368,7 @@ class ProxyGenerator(object):
 
         return knl
 
-    def __call__(self, queue, indices, **kwargs):
+    def __call__(self, queue, source_name, indices, **kwargs):
         """Generate proxy points for each given range of source points in
         the discretization in :attr:`source`.
 
@@ -399,19 +390,17 @@ class ProxyGenerator(object):
             return np.dot(A, v) + b
 
         from pytential import bind, sym
+        discr = self.places.get_discretization(source_name)
         radii = bind(self.places, sym.expansion_radii(
-            self.discr.ambient_dim,
-            dofdesc=self.dofdesc))(queue)
+            self.ambient_dim, dofdesc=source_name))(queue)
         center_int = bind(self.places, sym.expansion_centers(
-            self.discr.ambient_dim, -1,
-            dofdesc=self.dofdesc))(queue)
+            self.ambient_dim, -1, dofdesc=source_name))(queue)
         center_ext = bind(self.places, sym.expansion_centers(
-            self.discr.ambient_dim, +1,
-            dofdesc=self.dofdesc))(queue)
+            self.ambient_dim, +1, dofdesc=source_name))(queue)
 
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(queue,
-            sources=self.discr.nodes(),
+            sources=discr.nodes(),
             center_int=center_int,
             center_ext=center_ext,
             expansion_radii=radii,
@@ -609,18 +598,20 @@ def gather_block_interaction_points(places, source_name, indices,
 
     source = places.get_geometry(source_name)
     with cl.CommandQueue(source.cl_context) as queue:
-        generator = ProxyGenerator(places, dofdesc=source_name,
+        generator = ProxyGenerator(places,
                 radius_factor=radius_factor,
                 approx_nproxy=approx_nproxy)
-        proxies, pxyranges, pxycenters, pxyradii = generator(queue, indices)
+        proxies, pxyranges, pxycenters, pxyradii = \
+                generator(queue, source_name, indices)
 
-        neighbors = gather_block_neighbor_points(generator.discr,
+        discr = places.get_discretization(source_name)
+        neighbors = gather_block_neighbor_points(discr,
                 indices, pxycenters, pxyradii,
                 max_nodes_in_box=max_nodes_in_box)
 
         ranges = cl.array.zeros(queue, indices.nblocks + 1, dtype=np.int)
         _, (nodes, ranges) = knl()(queue,
-                sources=generator.discr.nodes(),
+                sources=discr.nodes(),
                 proxies=proxies,
                 pxyranges=pxyranges,
                 nbrindices=neighbors.indices,

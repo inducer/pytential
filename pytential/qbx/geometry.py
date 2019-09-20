@@ -314,7 +314,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
     .. attribute:: places
 
-        A :class:`~pytential.symbolic.execution.GeometryCollection`
+        A :class:`~pytential.symbolic.geometry.GeometryCollection`
         containing the :class:`~pytential.qbx.QBXLayerPotentialSource`.
 
     .. attribute:: source_name

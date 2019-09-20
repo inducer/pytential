@@ -72,7 +72,7 @@ def timing_run(nx, ny, visualize=False):
             fmm_order=fmm_order
             )
 
-    places = {}
+    places = {'qbx': qbx}
     if visualize:
         from sumpy.visualization import FieldPlotter
         fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
@@ -86,14 +86,9 @@ def timing_run(nx, ny, visualize=False):
                 qbx_order=2),
             "qbx-target-assoc": qbx.copy(target_association_tolerance=0.1)
             })
-    places.update({
-        sym.DEFAULT_SOURCE: qbx,
-        sym.DEFAULT_TARGET: qbx.density_discr,
-        })
 
     from pytential import GeometryCollection
-    places = GeometryCollection(places)
-
+    places = GeometryCollection(places, auto_where=('qbx', 'qbx'))
     density_discr = places.get_discretization(places.auto_source)
 
     # {{{ describe bvp

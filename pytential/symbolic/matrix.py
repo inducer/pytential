@@ -79,7 +79,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
             for the given *dep_expr*.
         :arg dep_discr: a concerete :class:`meshmode.discretization.Discretization`
             for the given *dep_expr*.
-        :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`
+        :arg places: a :class:`pytential.symbolic.geometry.GeometryCollection`
             for all the sources and targets the builder is expected to
             encounter.
         """
