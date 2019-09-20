@@ -31,7 +31,7 @@ import pyopencl.array # noqa
 from pyopencl.array import to_device
 
 from pytools.obj_array import make_obj_array
-from pytools import memoize_method, memoize
+from pytools import memoize_method, memoize_in
 from sumpy.tools import BlockIndexRanges
 
 import loopy as lp
