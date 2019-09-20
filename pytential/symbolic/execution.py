@@ -38,7 +38,7 @@ import pyopencl.clmath  # noqa
 
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
-from pytools import memoize_in, memoize_method
+from pytools import memoize_in
 from pytential import sym
 
 import logging

@@ -258,7 +258,6 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     # {{{ generate targets
 
-
     from pyopencl.clrandom import PhiloxGenerator
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
 

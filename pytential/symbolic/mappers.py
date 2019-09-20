@@ -488,7 +488,6 @@ class InterpolationPreprocessor(IdentityMapper):
         return prim.interp(from_dd, to_dd, self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
-        from pytential import sym
         if expr.target.discr_stage is None:
             expr = expr.copy(target=expr.target.to_stage1())
 

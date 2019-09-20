@@ -31,9 +31,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
 __doc__ = """
-.. autoclass :: GeometryCollection
+.. autoclass:: GeometryCollection
+
+.. automethod:: refine_geometry_collection
 """
 
 
@@ -144,6 +145,7 @@ class GeometryCollection(object):
         if lpot._disable_refinement:
             return lpot.density_discr
 
+        from pytential import sym
         if dofdesc.discr_stage is None:
             dofdesc = dofdesc.to_stage1()
 
@@ -155,7 +157,6 @@ class GeometryCollection(object):
         if refiner is None:
             refiner = _make_qbx_refiner(self, dofdesc.geometry)
 
-        from pytential import sym
         def _rec_refine(queue, dd):
             cache = self.get_cache('qbx_refined_discrs')
             key = (dd.geometry, dd.discr_stage)

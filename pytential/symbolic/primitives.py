@@ -1396,8 +1396,6 @@ def hashable_kernel_args(kernel_arguments):
     return tuple(hashable_args)
 
 
-
-
 class IntG(Expression):
     r"""
     .. math::
