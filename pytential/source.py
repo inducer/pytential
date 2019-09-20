@@ -193,22 +193,6 @@ class LayerPotentialSourceBase(PotentialSource):
         self.density_discr = density_discr
 
     @property
-    def stage1_density_discr(self):
-        return NotImplementedError
-
-    @property
-    def stage2_density_discr(self):
-        raise NotImplementedError
-
-    @property
-    def quad_stage2_density_discr(self):
-        raise NotImplementedError
-
-    @property
-    def resampler(self):
-        raise NotImplementedError
-
-    @property
     def ambient_dim(self):
         return self.density_discr.ambient_dim
 

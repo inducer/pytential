@@ -255,22 +255,22 @@ class DEFAULT_TARGET:  # noqa: N801
 
 
 class QBX_SOURCE_STAGE1:   # noqa: N801
-    """Symbolic identifier for the `stage1` discretization
-    :attr:`pytential.source.LayerPotentialSourceBase.stage1_density_discr`.
+    """Symbolic identifier for the Stage 1 discretization of a
+    :class:`pytential.source.QBXLayerPotentialSource`.
     """
     pass
 
 
 class QBX_SOURCE_STAGE2:   # noqa: N801
-    """Symbolic identifier for the `stage2` discretization
-    :attr:`pytential.source.LayerPotentialSourceBase.stage2_density_discr`.
+    """Symbolic identifier for the Stage 2 discretization of a
+    :class:`pytential.source.QBXLayerPotentialSource`.
     """
     pass
 
 
 class QBX_SOURCE_QUAD_STAGE2:   # noqa: N801
-    """Symbolic identifier for the `stage2` discretization
-    :attr:`pytential.source.LayerPotentialSourceBase.quad_stage2_density_discr`.
+    """Symbolic identifier for the upsampled Stage 2 discretization of a
+    :class:`pytential.source.QBXLayerPotentialSource`.
     """
     pass
 

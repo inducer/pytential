@@ -269,8 +269,6 @@ def build_tree_with_qbx_metadata(queue, places,
         if use_stage2_discr:
             discr = places.get_discretization(dd.copy(
                 discr_stage=sym.QBX_SOURCE_QUAD_STAGE2))
-        else:
-            pass
         density_discrs.append(discr)
 
     # TODO: update code to work for multiple source discretizations

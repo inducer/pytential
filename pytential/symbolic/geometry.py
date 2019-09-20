@@ -248,14 +248,8 @@ class GeometryCollection(object):
         return self.places[dofdesc.geometry]
 
     def copy(self, places=None, auto_where=None):
-        if places is None:
-            places = {}
-
-        new_places = self.places.copy()
-        new_places.update(places)
-
         return GeometryCollection(
-                new_places,
+                self.places if places is None else places,
                 auto_where=(self.auto_where
                     if auto_where is None else auto_where))
 
