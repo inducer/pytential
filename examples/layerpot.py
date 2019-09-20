@@ -88,7 +88,7 @@ def main(curve_fn=starfish, visualize=True):
     bound_bdry_op = bind(places, op())
     if visualize:
         fld_in_vol = bind(places, op(
-            source=sym.DEFAULT_SOURCE,
+            source='qbx',
             target='targets',
             qbx_forced_limit=None))(queue, sigma=sigma, k=k).get()
 

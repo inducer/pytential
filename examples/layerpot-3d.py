@@ -93,7 +93,7 @@ def main(mesh_name='ellipsoid'):
     if isinstance(kernel, HelmholtzKernel):
         sigma = sigma.astype(np.complex128)
 
-    fld_in_vol = bind(places, op, auto_where=(sym.DEFAULT_SOURCE, 'targets'))(
+    fld_in_vol = bind(places, op, auto_where=('qbx', 'targets'))(
             queue, sigma=sigma, k=k).get()
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
