@@ -370,9 +370,12 @@ class ProxyGenerator(object):
 
     def __call__(self, queue, source_name, indices, **kwargs):
         """Generate proxy points for each given range of source points in
-        the discretization in :attr:`source`.
+        the discretization in *source_name*.
 
         :arg queue: a :class:`pyopencl.CommandQueue`.
+        :arg source_name: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+            for the discretization on which the proxy points are to be
+            generated.
         :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
 
         :return: a tuple of ``(proxies, pxyranges, pxycenters, pxyranges)``,
@@ -535,15 +538,18 @@ def gather_block_interaction_points(places, source_name, indices,
       do not belong to the given range, which model nearby interactions.
       These are constructed with :func:`gather_block_neighbor_points`.
 
-    :arg source: a :class:`pytential.qbx.QBXLayerPotentialSource`.
-    :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
+    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
+    :arg source_name: geometry in *places* for which to generate the
+        interaction points.
+    :arg indices: a :class:`sumpy.tools.BlockIndexRanges` on the
+        discretization described by *source_name*.
 
     :return: a tuple ``(nodes, ranges)``, where each value is a
         :class:`pyopencl.array.Array`. For a range :math:`i`, we can
         get the slice using ``nodes[ranges[i]:ranges[i + 1]]``.
     """
 
-    @memoize
+    @memoize_in(places, "concat_proxy_and_neighbors")
     def knl():
         loopy_knl = lp.make_kernel([
             "{[irange, idim]: 0 <= irange < nranges and \

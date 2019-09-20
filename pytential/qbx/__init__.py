@@ -355,11 +355,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return TargetAssociationCodeContainer(
                 self.cl_context, self.tree_code_container)
 
-    @memoize_method
-    def with_refinement(self, **kwargs):
-        raise RuntimeError("call GeometryCollection.refine_for_global_qbx "
-            "to force refinement")
-
     # {{{ internal API
 
     @memoize_method

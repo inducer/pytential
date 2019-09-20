@@ -174,16 +174,9 @@ class LayerPotentialSourceBase(PotentialSource):
     """A discretization of a layer potential using panel-based geometry, with
     support for refinement and upsampling.
 
-    .. rubric:: Discretizations
-
-    .. attribute:: density_discr
-    .. attrivute:: stage1_density_discr
-    .. attribute:: stage2_density_discr
-    .. attribute:: quad_stage2_density_discr
-    .. attribute:: resampler
-
     .. rubric:: Discretization data
 
+    .. attribute:: density_discr
     .. attribute:: cl_context
     .. attribute:: ambient_dim
     .. attribute:: dim

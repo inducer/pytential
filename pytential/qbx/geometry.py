@@ -401,22 +401,16 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         return self.places.get_geometry(self.source_name)
 
     @property
-    @memoize_method
     def ambient_dim(self):
-        discr = self.places.get_discretization(self.source_name)
-        return discr.ambient_dim
+        return self.lpot_source.ambient_dim
 
     @property
-    @memoize_method
     def cl_context(self):
-        discr = self.places.get_discretization(self.source_name)
-        return discr.cl_context
+        return self.lpot_source.cl_context
 
     @property
-    @memoize_method
     def coord_dtype(self):
-        discr = self.places.get_discretization(self.source_name)
-        return discr.nodes().dtype
+        return self.lpot_source.density_discr.nodes().dtype
 
     # {{{ centers/radii
 
@@ -588,15 +582,14 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         |cached|
         """
 
-        lpot_source = self.lpot_source
         with cl.CommandQueue(self.cl_context) as queue:
             trav, _ = self.code_getter.build_traversal(queue, self.tree(),
                     debug=self.debug,
                     _from_sep_smaller_min_nsources_cumul=(
-                        lpot_source._from_sep_smaller_min_nsources_cumul))
+                        self.lpot_source._from_sep_smaller_min_nsources_cumul))
 
             if (merge_close_lists
-                    and lpot_source._expansions_in_tree_have_extent):
+                    and self.lpot_source._expansions_in_tree_have_extent):
                 trav = trav.merge_close_lists(queue)
 
             return trav
@@ -770,7 +763,6 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         from pytential.target import PointsTarget
 
-        lpot_source = self.lpot_source
         with cl.CommandQueue(self.cl_context) as queue:
             target_side_prefs = (self
                     .target_side_preferences()[self.ncenters:].get(queue=queue))
@@ -780,12 +772,12 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     target_side_prefs.astype(np.int32))]
 
             target_association_wrangler = (
-                    lpot_source.target_association_code_container
+                    self.lpot_source.target_association_code_container
                     .get_wrangler(queue))
 
             tgt_assoc_result = associate_targets_to_qbx_centers(
                     self.places,
-                    self.source_name.geometry,
+                    self.source_name,
                     target_association_wrangler,
                     target_discrs_and_qbx_sides,
                     target_association_tolerance=(

@@ -82,7 +82,8 @@ Refiner driver
 
 .. autoclass:: RefinerWrangler
 
-.. autoclass:: QBXGeometryRefinerData
+.. automethod:: refine_qbx_stage1
+.. automethod:: refine_qbx_stage2
 """
 
 # {{{ kernels
@@ -536,15 +537,44 @@ def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
             lpot_source.real_dtype)
 
 
-def refine_qbx_stage1(places, source_name, density_discr,
+def refine_qbx_stage1(places, source_name,
         wrangler, group_factory,
         kernel_length_scale=None,
         scaled_max_curvature_threshold=None,
         expansion_disturbance_tolerance=None,
-        maxiter=None,
-        refiner=None,
-        debug=None, visualize=False):
+        maxiter=None, refiner=None, debug=None, visualize=False):
+    """Stage 1 refinement entry point.
+
+    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
+    :arg source_name: symbolic name for the layer potential to be refined.
+    :arg wrangler: a :class:`RefinerWrangler`.
+    :arg group_factory: a :class:`~meshmode.discretization.ElementGroupFactory`.
+
+    :arg kernel_length_scale: The kernel length scale, or *None* if not
+        applicable. All panels are refined to below this size.
+    :maxiter: maximum number of refinement iterations.
+
+    :returns: a tuple of ``(discr, conn)``, where ``discr`` is the refined
+        discretizations and ``conn`` is a
+        :class:`meshmode.discretization.connection.DiscretizationConnection`
+        going from the original
+        :attr:`pytential.source.LayerPotentialSourceBase.density_discr`
+        refined discretization.
+    """
     from pytential import sym
+    source_name = sym.as_dofdesc(source_name).geometry
+    lpot_source = places.get_geometry(source_name)
+    density_discr = lpot_source.density_discr
+
+    if maxiter is None:
+        maxiter = 10
+
+    if debug is None:
+        debug = lpot_source.debug
+
+    if expansion_disturbance_tolerance is None:
+        expansion_disturbance_tolerance = 0.025
+
     if refiner is None:
         from meshmode.mesh.refinement import RefinerWithoutAdjacency
         refiner = RefinerWithoutAdjacency(density_discr.mesh)
@@ -554,9 +584,9 @@ def refine_qbx_stage1(places, source_name, density_discr,
     iter_violated_criteria = ["start"]
     niter = 0
 
-    queue = wrangler.queue
     stage1_density_discr = density_discr
 
+    queue = wrangler.queue
     while iter_violated_criteria:
         iter_violated_criteria = []
         niter += 1
@@ -661,14 +691,45 @@ def refine_qbx_stage1(places, source_name, density_discr,
     return stage1_density_discr, conn
 
 
-def refine_qbx_stage2(places, source_name, stage1_density_discr,
+def refine_qbx_stage2(places, source_name,
         wrangler, group_factory,
         expansion_disturbance_tolerance=None,
         force_stage2_uniform_refinement_rounds=None,
         maxiter=None, refiner=None,
         debug=None, visualize=False):
+    """Stage 1 refinement entry point.
+
+    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
+    :arg source_name: symbolic name for the layer potential to be refined.
+    :arg wrangler: a :class:`RefinerWrangler`.
+    :arg group_factory: a :class:`~meshmode.discretization.ElementGroupFactory`.
+
+    :maxiter: maximum number of refinement iterations.
+
+    :returns: a tuple of ``(discr, conn)``, where ``discr`` is the refined
+        discretizations and ``conn`` is a
+        :class:`meshmode.discretization.connection.DiscretizationConnection`
+        going from the stage 1 discretization (see :func:`refine_qbx_stage1`)
+        to ``discr``.
+    """
     from pytential import sym
+    source_name = sym.as_dofdesc(source_name).geometry
+
     lpot_source = places.get_geometry(source_name)
+    stage1_density_discr = places.get_discretization(
+            sym.as_dofdesc(source_name).to_stage1())
+
+    if maxiter is None:
+        maxiter = 10
+
+    if debug is None:
+        debug = lpot_source.debug
+
+    if expansion_disturbance_tolerance is None:
+        expansion_disturbance_tolerance = 0.025
+
+    if force_stage2_uniform_refinement_rounds is None:
+        force_stage2_uniform_refinement_rounds = 0
 
     if refiner is None:
         from meshmode.mesh.refinement import RefinerWithoutAdjacency
@@ -679,9 +740,9 @@ def refine_qbx_stage2(places, source_name, stage1_density_discr,
     iter_violated_criteria = ["start"]
     niter = 0
 
-    queue = wrangler.queue
     stage2_density_discr = stage1_density_discr
 
+    queue = wrangler.queue
     while iter_violated_criteria:
         iter_violated_criteria = []
         niter += 1

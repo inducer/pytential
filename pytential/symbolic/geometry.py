@@ -175,12 +175,7 @@ class GeometryCollection(object):
             else:
                 raise ValueError('unknown discr stage: {}'.format(dd.discr_stage))
 
-            if prev_discr_stage is None:
-                discr = lpot.density_discr
-            else:
-                discr = _rec_refine(queue, dd.copy(discr_stage=prev_discr_stage))
-
-            discr, conn = method(self, dd.geometry, discr,
+            discr, conn = method(self, dd,
                     lpot.refiner_code_container.get_wrangler(queue))
             cache[key] = discr
 
@@ -305,9 +300,9 @@ class QBXGeometryRefinerData(Record):
                 InterpolatoryQuadratureSimplexGroupFactory
         return InterpolatoryQuadratureSimplexGroupFactory(self.target_order)
 
-    def refine_for_stage1(self, places, source_name, discr, wrangler):
+    def refine_for_stage1(self, places, source_name, wrangler):
         from pytential.qbx.refinement import refine_qbx_stage1
-        return refine_qbx_stage1(places, source_name, discr, wrangler,
+        return refine_qbx_stage1(places, source_name, wrangler,
                 self._group_factory,
                 kernel_length_scale=self.kernel_length_scale,
                 scaled_max_curvature_threshold=(
@@ -318,9 +313,9 @@ class QBXGeometryRefinerData(Record):
                 debug=self.debug,
                 visualize=self.visualize)
 
-    def refine_for_stage2(self, places, source_name, discr, wrangler):
+    def refine_for_stage2(self, places, source_name, wrangler):
         from pytential.qbx.refinement import refine_qbx_stage2
-        return refine_qbx_stage2(places, source_name, discr, wrangler,
+        return refine_qbx_stage2(places, source_name, wrangler,
                 self._group_factory,
                 force_stage2_uniform_refinement_rounds=(
                     self.force_stage2_uniform_refinement_rounds),
@@ -330,12 +325,14 @@ class QBXGeometryRefinerData(Record):
                 debug=self.debug,
                 visualize=self.visualize)
 
-    def refine_for_quad_stage2(self, places, source_name, discr, wrangler):
+    def refine_for_quad_stage2(self, places, source_name, wrangler):
         from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \
                 QuadratureSimplexGroupFactory
 
         lpot = places.get_geometry(source_name)
+        discr = places.get_discretization(source_name.to_stage2())
+
         quad_stage2_density_discr = Discretization(lpot.cl_context,
                 discr.mesh,
                 QuadratureSimplexGroupFactory(lpot.fine_order),
