@@ -647,7 +647,7 @@ def refine_qbx_stage1(places, source_name,
             # Only start building trees once the simple length-based criteria
             # are happy.
 
-            stage1_places = places.copy({
+            stage1_places = places.merge({
                 (source_name, sym.QBX_SOURCE_STAGE1): stage1_density_discr
                 })
 
@@ -752,7 +752,7 @@ def refine_qbx_stage2(places, source_name,
                     expansion_disturbance_tolerance)
             break
 
-        stage2_places = places.copy({
+        stage2_places = places.merge({
             (source_name, sym.QBX_SOURCE_STAGE1): stage1_density_discr,
             (source_name, sym.QBX_SOURCE_STAGE2): stage2_density_discr,
             (source_name, sym.QBX_SOURCE_QUAD_STAGE2):

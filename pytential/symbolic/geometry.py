@@ -50,9 +50,10 @@ class GeometryCollection(object):
     of subsets of them, as well as related common subexpressions such as
     metric terms.
 
+    .. automethod:: get_connection
     .. automethod:: get_discretization
     .. automethod:: get_geometry
-    .. automethod:: copy
+    .. automethod:: merge
 
     .. method:: get_cache
     """
@@ -247,11 +248,21 @@ class GeometryCollection(object):
         dofdesc = sym.as_dofdesc(dofdesc)
         return self.places[dofdesc.geometry]
 
-    def copy(self, places=None, auto_where=None):
-        return GeometryCollection(
-                self.places if places is None else places,
-                auto_where=(self.auto_where
-                    if auto_where is None else auto_where))
+    def merge(self, places):
+        """Merges two geometry collections and returns the new collection.
+
+        :arg places: A :class:`dict` or :class:`GeometryCollection` to
+            merge with the current collection. If it is empty, a copy of the
+            current collection is returned.
+        """
+
+        new_places = self.places.copy()
+        if places is not None:
+            if isinstance(places, GeometryCollection):
+                places = places.places
+            new_places.update(places)
+
+        return GeometryCollection(new_places, auto_where=self.auto_where)
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
@@ -344,9 +355,9 @@ def _make_qbx_refiner(places, source_name,
         scaled_max_curvature_threshold=None,
         expansion_disturbance_tolerance=None,
         force_stage2_uniform_refinement_rounds=None,
-        maxiter=None, debug=None, visualize=False):
+        maxiter=None, debug=None, visualize=False, overwrite=False):
     cache = places.get_cache('qbx_refiner_data')
-    if source_name in cache:
+    if not overwrite and source_name in cache:
         return cache[source_name]
 
     lpot = places.get_geometry(source_name)
@@ -410,7 +421,8 @@ def refine_geometry_collection(places,
                     expansion_disturbance_tolerance),
                 force_stage2_uniform_refinement_rounds=(
                     force_stage2_uniform_refinement_rounds),
-                maxiter=maxiter, debug=debug, visualize=visualize)
+                maxiter=maxiter, debug=debug, visualize=visualize,
+                overwrite=True)
 
         places._refined_discretization_stage(lpot, dd, refiner=refiner)
 
