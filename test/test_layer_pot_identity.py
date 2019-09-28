@@ -329,9 +329,9 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                 )
         places = GeometryCollection(qbx)
 
-        from pytential.symbolic.geometry import refine_geometry_collection
+        from pytential.qbx.refinement import refine_geometry_collection
         kernel_length_scale = 5 / case.k if case.k else None
-        places = refine_geometry_collection(places,
+        refine_geometry_collection(queue, places,
                 kernel_length_scale=kernel_length_scale)
 
         # {{{ compute values of a solution to the PDE

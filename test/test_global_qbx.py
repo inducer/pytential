@@ -106,8 +106,8 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     kernel_length_scale = 5 / helmholtz_k if helmholtz_k else None
     expansion_disturbance_tolerance = 0.025
 
-    from pytential.symbolic.geometry import refine_geometry_collection
-    places = refine_geometry_collection(places,
+    from pytential.qbx.refinement import refine_geometry_collection
+    refine_geometry_collection(queue, places,
             kernel_length_scale=kernel_length_scale,
             expansion_disturbance_tolerance=expansion_disturbance_tolerance,
             visualize=visualize)

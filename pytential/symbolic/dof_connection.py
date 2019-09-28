@@ -26,6 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
 import pyopencl as cl
 import pyopencl.array # noqa
 from pytools import memoize
@@ -42,7 +43,6 @@ Connections
 .. autoclass:: GranularityConnection
 .. autoclass:: CenterGranularityConnection
 .. autoclass:: DOFConnection
-.. autofunction:: connection_from_dds
 
 """
 
@@ -198,7 +198,7 @@ class DOFConnection(object):
 
 def connection_from_dds(places, from_dd, to_dd):
     """
-    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`
+    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`
         or an argument taken by its constructor.
     :arg from_dd: a descriptor for the incoming degrees of freedom. This
         can be a :class:`~pytential.symbolic.primitives.DOFDescriptor`
@@ -214,15 +214,13 @@ def connection_from_dds(places, from_dd, to_dd):
     from_dd = sym.as_dofdesc(from_dd)
     to_dd = sym.as_dofdesc(to_dd)
 
-    if from_dd.discr_stage is None:
-        from_dd = from_dd.to_stage1()
-    if to_dd.discr_stage is None:
-        to_dd = to_dd.to_stage1()
-
     from pytential import GeometryCollection
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places)
+
     lpot = places.get_geometry(from_dd)
+    from_discr = places.get_discretization(from_dd)
+    to_discr = places.get_discretization(to_dd)
 
     if from_dd.geometry != to_dd.geometry:
         raise ValueError("cannot interpolate between different geometries")
@@ -243,29 +241,28 @@ def connection_from_dds(places, from_dd, to_dd):
             raise ValueError("can only interpolate to "
                 "`QBX_SOURCE_QUAD_STAGE2`")
 
-        dds = [from_dd, to_dd]
-        if from_dd.discr_stage is None:
-            mid_dd = from_dd.copy(discr_stage=sym.QBX_SOURCE_STAGE2)
-            dds.insert(1, mid_dd)
-            mid_dd = from_dd.copy(discr_stage=sym.QBX_SOURCE_STAGE1)
-            dds.insert(1, mid_dd)
-        elif from_dd.discr_stage is sym.QBX_SOURCE_STAGE1:
-            mid_dd = from_dd.copy(discr_stage=sym.QBX_SOURCE_STAGE2)
-            dds.insert(1, mid_dd)
-        elif from_dd.discr_stage is sym.QBX_SOURCE_STAGE2:
-            pass
-        elif from_dd.discr_stage is sym.QBX_SOURCE_QUAD_STAGE2:
-            dds = []
-        else:
-            raise ValueError('invalid from_dd stage: %s' % from_dd.discr_stage)
+        # FIXME: would be nice if these were ordered by themselves
+        stage_name_to_index_map = {
+                None: 0,
+                sym.QBX_SOURCE_STAGE1: 1,
+                sym.QBX_SOURCE_STAGE2: 2,
+                sym.QBX_SOURCE_QUAD_STAGE2: 3
+                }
+        stage_index_to_name_map = dict([(i, name) for name, i in
+                    six.iteriterms(stage_name_to_index_map)])
 
-        for n in range(len(dds) - 1):
-            connections.append(
-                    places.get_connection(dds[n], dds[n + 1]))
+        from_stage = stage_name_to_index_map[from_dd.discr_stage]
+        to_stage = stage_name_to_index_map[to_dd.discr_stage]
+
+        # NOTE: need to keep cache name in sync with `refine_for_global_qbx`
+        cache = places.get_cache("refined_qbx_connections")
+        for istage in range(from_stage, to_stage):
+            key = (from_dd.geometry,
+                    stage_index_to_name_map[istage],
+                    stage_index_to_name_map[istage + 1])
+            connections.append(cache[key])
 
     if from_dd.granularity is not to_dd.granularity:
-        to_discr = places.get_discretization(to_dd)
-
         if to_dd.granularity is sym.GRANULARITY_NODE:
             pass
         elif to_dd.granularity is sym.GRANULARITY_CENTER:
@@ -276,12 +273,11 @@ def connection_from_dds(places, from_dd, to_dd):
         else:
             raise ValueError("invalid to_dd granularity: %s" % to_dd.granularity)
 
+    if from_dd.granularity is not to_dd.granularity:
         conn = DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)
     else:
         from meshmode.discretization.connection import \
                 ChainedDiscretizationConnection
-
-        from_discr = places.get_discretization(from_dd)
         conn = ChainedDiscretizationConnection(connections,
                 from_discr=from_discr)
 

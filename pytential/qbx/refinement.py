@@ -441,6 +441,8 @@ class RefinerWrangler(TreeWranglerBase):
 # }}}
 
 
+# {{{ stage1/stage2 refinement
+
 class RefinerNotConvergedWarning(UserWarning):
     pass
 
@@ -458,8 +460,6 @@ def make_empty_refine_flags(queue, density_discr):
     result.finish()
     return result
 
-
-# {{{ main entry point
 
 def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
     from warnings import warn
@@ -484,8 +484,7 @@ def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
             RefinerNotConvergedWarning)
 
 
-def _visualize_refinement(queue, source_name, discr,
-        niter, stage_nr, stage_name, flags):
+def _visualize_refinement(queue, discr, niter, stage_nr, stage_name, flags):
     if stage_nr not in (1, 2):
         raise ValueError("unexpected stage number")
 
@@ -516,12 +515,7 @@ def _visualize_refinement(queue, source_name, discr,
                 queue).as_vector(dtype=object)
         vis_data.append(("bdry_normals", bdry_normals),)
 
-    if isinstance(source_name, type):
-        source_name = source_name.__name__
-    source_name = str(source_name).lower().replace('_', '-').replace('/', '-')
-
-    vis.write_vtk_file("refinement-%s-%s-%03d.vtu" %
-            (source_name, stage_name, niter),
+    vis.write_vtk_file("refinement-%s-%03d.vtu" % (stage_name, niter),
             vis_data, overwrite=True)
 
 
@@ -537,47 +531,18 @@ def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
             lpot_source.real_dtype)
 
 
-def refine_qbx_stage1(places, source_name,
+def _refine_qbx_stage1(lpot_source, density_discr,
         wrangler, group_factory,
         kernel_length_scale=None,
         scaled_max_curvature_threshold=None,
         expansion_disturbance_tolerance=None,
-        maxiter=None, refiner=None, debug=None, visualize=False):
-    """Stage 1 refinement entry point.
+        maxiter=None, debug=None, visualize=False):
+    from pytential import bind, sym
+    from meshmode.mesh.refinement import RefinerWithoutAdjacency
+    refiner = RefinerWithoutAdjacency(density_discr.mesh)
 
-    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
-    :arg source_name: symbolic name for the layer potential to be refined.
-    :arg wrangler: a :class:`RefinerWrangler`.
-    :arg group_factory: a :class:`~meshmode.discretization.ElementGroupFactory`.
-
-    :arg kernel_length_scale: The kernel length scale, or *None* if not
-        applicable. All panels are refined to below this size.
-    :maxiter: maximum number of refinement iterations.
-
-    :returns: a tuple of ``(discr, conn)``, where ``discr`` is the refined
-        discretizations and ``conn`` is a
-        :class:`meshmode.discretization.connection.DiscretizationConnection`
-        going from the original
-        :attr:`pytential.source.LayerPotentialSourceBase.density_discr`
-        refined discretization.
-    """
-    from pytential import sym
-    source_name = sym.as_dofdesc(source_name).geometry
-    lpot_source = places.get_geometry(source_name)
-    density_discr = lpot_source.density_discr
-
-    if maxiter is None:
-        maxiter = 10
-
-    if debug is None:
-        debug = lpot_source.debug
-
-    if expansion_disturbance_tolerance is None:
-        expansion_disturbance_tolerance = 0.025
-
-    if refiner is None:
-        from meshmode.mesh.refinement import RefinerWithoutAdjacency
-        refiner = RefinerWithoutAdjacency(density_discr.mesh)
+    # TODO: Stop doing redundant checks by avoiding panels which no longer need
+    # refinement.
 
     connections = []
     violated_criteria = []
@@ -596,14 +561,12 @@ def refine_qbx_stage1(places, source_name,
                     expansion_disturbance_tolerance)
             break
 
-        refine_flags = make_empty_refine_flags(queue,
-                stage1_density_discr)
+        refine_flags = make_empty_refine_flags(queue, stage1_density_discr)
 
         if kernel_length_scale is not None:
             with ProcessLogger(logger,
                     "checking kernel length scale to panel size ratio"):
 
-                from pytential import bind
                 quad_resolution = bind(stage1_density_discr,
                         sym._quad_resolution(stage1_density_discr.ambient_dim,
                             dofdesc=sym.GRANULARITY_ELEMENT))(queue)
@@ -617,14 +580,12 @@ def refine_qbx_stage1(places, source_name,
                 if violates_kernel_length_scale:
                     iter_violated_criteria.append("kernel length scale")
                     if visualize:
-                        _visualize_refinement(queue, source_name,
-                                stage1_density_discr,
+                        _visualize_refinement(queue, stage1_density_discr,
                                 niter, 1, "kernel-length-scale", refine_flags)
 
         if scaled_max_curvature_threshold is not None:
             with ProcessLogger(logger,
                     "checking scaled max curvature threshold"):
-                from pytential import bind
                 scaled_max_curv = bind(stage1_density_discr,
                     sym.ElementwiseMax(
                         sym._scaled_max_curvature(stage1_density_discr.ambient_dim),
@@ -639,22 +600,22 @@ def refine_qbx_stage1(places, source_name,
                 if violates_scaled_max_curv:
                     iter_violated_criteria.append("curvature")
                     if visualize:
-                        _visualize_refinement(queue, source_name,
-                                stage1_density_discr,
+                        _visualize_refinement(queue, stage1_density_discr,
                                 niter, 1, "curvature", refine_flags)
 
         if not iter_violated_criteria:
             # Only start building trees once the simple length-based criteria
             # are happy.
 
-            stage1_places = places.merge({
-                (source_name, sym.QBX_SOURCE_STAGE1): stage1_density_discr
+            from pytential import GeometryCollection
+            places = GeometryCollection({
+                ('qbx', sym.QBX_SOURCE_STAGE1): stage1_density_discr
                 })
 
             # Build tree and auxiliary data.
             # FIXME: The tree should not have to be rebuilt at each iteration.
-            tree = wrangler.build_tree(stage1_places,
-                    sources_list=[source_name])
+            tree = wrangler.build_tree(places,
+                    sources_list=['qbx'])
             peer_lists = wrangler.find_peer_lists(tree)
 
             has_disturbed_expansions = \
@@ -665,8 +626,7 @@ def refine_qbx_stage1(places, source_name,
             if has_disturbed_expansions:
                 iter_violated_criteria.append("disturbed expansions")
                 if visualize:
-                    _visualize_refinement(queue, source_name,
-                            stage1_density_discr,
+                    _visualize_refinement(queue, stage1_density_discr,
                             niter, 1, "disturbed-expansions", refine_flags)
 
             del tree
@@ -691,49 +651,17 @@ def refine_qbx_stage1(places, source_name,
     return stage1_density_discr, conn
 
 
-def refine_qbx_stage2(places, source_name,
+def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         wrangler, group_factory,
         expansion_disturbance_tolerance=None,
         force_stage2_uniform_refinement_rounds=None,
-        maxiter=None, refiner=None,
-        debug=None, visualize=False):
-    """Stage 1 refinement entry point.
-
-    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
-    :arg source_name: symbolic name for the layer potential to be refined.
-    :arg wrangler: a :class:`RefinerWrangler`.
-    :arg group_factory: a :class:`~meshmode.discretization.ElementGroupFactory`.
-
-    :maxiter: maximum number of refinement iterations.
-
-    :returns: a tuple of ``(discr, conn)``, where ``discr`` is the refined
-        discretizations and ``conn`` is a
-        :class:`meshmode.discretization.connection.DiscretizationConnection`
-        going from the stage 1 discretization (see :func:`refine_qbx_stage1`)
-        to ``discr``.
-    """
+        maxiter=None, debug=None, visualize=False):
     from pytential import sym
-    source_name = sym.as_dofdesc(source_name).geometry
+    from meshmode.mesh.refinement import RefinerWithoutAdjacency
+    refiner = RefinerWithoutAdjacency(stage1_density_discr.mesh)
 
-    lpot_source = places.get_geometry(source_name)
-    stage1_density_discr = places.get_discretization(
-            sym.as_dofdesc(source_name).to_stage1())
-
-    if maxiter is None:
-        maxiter = 10
-
-    if debug is None:
-        debug = lpot_source.debug
-
-    if expansion_disturbance_tolerance is None:
-        expansion_disturbance_tolerance = 0.025
-
-    if force_stage2_uniform_refinement_rounds is None:
-        force_stage2_uniform_refinement_rounds = 0
-
-    if refiner is None:
-        from meshmode.mesh.refinement import RefinerWithoutAdjacency
-        refiner = RefinerWithoutAdjacency(stage1_density_discr.mesh)
+    # TODO: Stop doing redundant checks by avoiding panels which no longer need
+    # refinement.
 
     connections = []
     violated_criteria = []
@@ -752,17 +680,18 @@ def refine_qbx_stage2(places, source_name,
                     expansion_disturbance_tolerance)
             break
 
-        stage2_places = places.merge({
-            (source_name, sym.QBX_SOURCE_STAGE1): stage1_density_discr,
-            (source_name, sym.QBX_SOURCE_STAGE2): stage2_density_discr,
-            (source_name, sym.QBX_SOURCE_QUAD_STAGE2):
+        from pytential import GeometryCollection
+        places = GeometryCollection({
+            ('qbx', sym.QBX_SOURCE_STAGE1): stage1_density_discr,
+            ('qbx', sym.QBX_SOURCE_STAGE2): stage2_density_discr,
+            ('qbx', sym.QBX_SOURCE_QUAD_STAGE2):
                 _make_quad_stage2_discr(lpot_source, stage2_density_discr)
             })
 
         # Build tree and auxiliary data.
         # FIXME: The tree should not have to be rebuilt at each iteration.
-        tree = wrangler.build_tree(stage2_places,
-                sources_list=[source_name],
+        tree = wrangler.build_tree(places,
+                sources_list=['qbx'],
                 use_stage2_discr=True)
         peer_lists = wrangler.find_peer_lists(tree)
         refine_flags = make_empty_refine_flags(queue, stage2_density_discr)
@@ -774,8 +703,7 @@ def refine_qbx_stage2(places, source_name,
         if has_insufficient_quad_resolution:
             iter_violated_criteria.append("insufficient quadrature resolution")
             if visualize:
-                _visualize_refinement(queue, source_name,
-                        stage2_density_discr,
+                _visualize_refinement(queue, stage2_density_discr,
                         niter, 2, "quad-resolution", refine_flags)
 
         if iter_violated_criteria:
@@ -805,6 +733,159 @@ def refine_qbx_stage2(places, source_name,
             from_discr=stage1_density_discr)
 
     return stage2_density_discr, conn
+
+
+def _refine_qbx_quad_stage2(lpot_source, stage2_density_discr):
+    from meshmode.discretization.connection import make_same_mesh_connection
+    discr = _make_quad_stage2_discr(lpot_source, stage2_density_discr)
+    conn = make_same_mesh_connection(discr, stage2_density_discr)
+
+    return discr, conn
+
+# }}}
+
+
+# {{{ main entry point
+
+def refine_for_global_qbx(places, dofdesc, wrangler,
+        group_factory=None,
+        kernel_length_scale=None,
+        force_stage2_uniform_refinement_rounds=None,
+        scaled_max_curvature_threshold=None,
+        expansion_disturbance_tolerance=None,
+        maxiter=None,
+        debug=None, visualize=False):
+    """Entry point for calling the refiner. Once the refinement is complete,
+    the refined discretizations can be obtained from *places* by calling
+    :meth:`~pytential.symbolic.execution.GeometryCollection.get_discretization`.
+
+    :arg places: A :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg dofdesc: A :class:`pytential.symbolic.primitives.DOFDescriptor`
+        of a :class:`~pytential.qbx.QBXLayerPotentialSource` in the collection.
+        The *discr_stage* member of the descriptor defines what type of
+        refinement should be performed.
+    :arg wrangler: An instance of :class:`RefinerWrangler`.
+    :arg group_factory: An instance of
+        :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
+        discretizing the coarse refined mesh.
+
+    :arg kernel_length_scale: The kernel length scale, or *None* if not
+        applicable. All panels are refined to below this size.
+    :arg maxiter: The maximum number of refiner iterations.
+    """
+    from pytential import sym
+    dofdesc = sym.as_dofdesc(dofdesc)
+
+    from pytential.qbx import QBXLayerPotentialSource
+    lpot_source = places.get_geometry(dofdesc)
+    if not isinstance(lpot_source, QBXLayerPotentialSource):
+        raise ValueError('`%s` is not a `QBXLayerPotentialSource`' % (
+            dofdesc.geometry))
+
+    if maxiter is None:
+        maxiter = 10
+
+    if debug is None:
+        # FIXME: Set debug=False by default once everything works.
+        debug = lpot_source.debug
+
+    if expansion_disturbance_tolerance is None:
+        expansion_disturbance_tolerance = 0.025
+
+    if force_stage2_uniform_refinement_rounds is None:
+        force_stage2_uniform_refinement_rounds = 0
+
+    if group_factory is None:
+        from meshmode.discretization.poly_element import \
+                InterpolatoryQuadratureSimplexGroupFactory
+        group_factory = InterpolatoryQuadratureSimplexGroupFactory(
+                lpot_source.density_discr.groups[0].order)
+
+    # FIXME: would be nice if this was an IntFlag or something ordered
+    stage_index_map = {
+            sym.QBX_SOURCE_STAGE1: 1,
+            sym.QBX_SOURCE_STAGE2: 2,
+            sym.QBX_SOURCE_QUAD_STAGE2: 3
+            }
+    if dofdesc.discr_stage not in stage_index_map:
+        raise ValueError('unknown discr stage: %s' % dofdesc.discr_stage)
+    stage_index = stage_index_map[dofdesc.discr_stage]
+
+    def add_to_cache(refine_discr, refine_conn, from_ds, to_ds):
+        cache = places.get_cache("refined_qbx_discrs")
+        cache[(dofdesc.geometry, to_ds)] = refine_discr
+
+        cache = places.get_cache("refined_qbx_connections")
+        cache[(dofdesc.geometry, from_ds, to_ds)] = refine_conn
+
+    discr = lpot_source.density_discr
+    if stage_index <= 1:
+        discr, conn = _refine_qbx_stage1(
+                lpot_source, discr, wrangler, group_factory,
+                kernel_length_scale=kernel_length_scale,
+                scaled_max_curvature_threshold=scaled_max_curvature_threshold,
+                expansion_disturbance_tolerance=expansion_disturbance_tolerance,
+                maxiter=maxiter, debug=debug, visualize=visualize)
+        add_to_cache(discr, conn,
+                None, sym.QBX_SOURCE_STAGE1)
+
+    if stage_index <= 2:
+        discr, conn = _refine_qbx_stage2(
+                lpot_source, discr, wrangler, group_factory,
+                expansion_disturbance_tolerance=expansion_disturbance_tolerance,
+                force_stage2_uniform_refinement_rounds=(
+                    force_stage2_uniform_refinement_rounds),
+                maxiter=maxiter, debug=debug, visualize=visualize)
+        add_to_cache(discr, conn,
+                sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE2)
+
+    if stage_index <= 3:
+        discr, conn = _refine_qbx_quad_stage2(lpot_source, discr)
+        add_to_cache(discr, conn,
+                sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)
+
+
+def refine_geometry_collection(queue, places,
+        group_factory=None,
+        refine_discr_stage=None,
+        kernel_length_scale=None,
+        force_stage2_uniform_refinement_rounds=None,
+        scaled_max_curvature_threshold=None,
+        expansion_disturbance_tolerance=None,
+        maxiter=None,
+        debug=None, visualize=False):
+    """Entry point for refining all the
+    :class:`~pytential.qbx.QBXLayerPotentialSource` in the given collection.
+    Arguments are the same as for :func:`refine_for_global_qbx`.
+
+    :arg refine_discr_stage: Defines up to which stage the refinement should
+        be performed. One of
+        :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`,
+        :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE2` or
+        :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+    """
+
+    from pytential import sym
+    if refine_discr_stage is None:
+        if force_stage2_uniform_refinement_rounds is not None:
+            refine_discr_stage = sym.QBX_SOURCE_STAGE2
+        else:
+            refine_discr_stage = sym.QBX_SOURCE_STAGE1
+
+    for geometry in places.places:
+        dofdesc = sym.as_dofdesc(geometry).copy(
+                discr_stage=refine_discr_stage)
+        lpot_source = places.get_geometry(dofdesc)
+
+        refine_for_global_qbx(places, dofdesc,
+                lpot_source.refiner_code_container.get_wrangler(queue),
+                group_factory=group_factory,
+                kernel_length_scale=kernel_length_scale,
+                scaled_max_curvature_threshold=scaled_max_curvature_threshold,
+                expansion_disturbance_tolerance=expansion_disturbance_tolerance,
+                force_stage2_uniform_refinement_rounds=(
+                    force_stage2_uniform_refinement_rounds),
+                maxiter=maxiter, debug=debug, visualize=visualize)
 
 # }}}
 

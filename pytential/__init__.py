@@ -25,8 +25,8 @@ THE SOFTWARE.
 import numpy as np
 
 import pytential.symbolic.primitives as sym
-from pytential.symbolic.geometry import GeometryCollection # noqa
 from pytential.symbolic.execution import bind
+from pytential.symbolic.execution import GeometryCollection
 
 from pytools import memoize_on_first_arg
 
@@ -123,4 +123,4 @@ def norm(discr, queue, x, p=2):
         raise ValueError("unsupported norm order: %s" % p)
 
 
-__all__ = ["sym", "bind"]
+__all__ = ["sym", "bind", "GeometryCollection"]

@@ -38,7 +38,7 @@ import pyopencl.clmath  # noqa
 
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
-from pytools import memoize_in
+from pytools import memoize_in, memoize_method
 from pytential import sym
 
 import logging
@@ -232,8 +232,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         operand = self.rec(expr.operand)
 
         if isinstance(operand, (cl.array.Array, list)):
-            from pytential.symbolic.dof_connection import connection_from_dds
-            conn = connection_from_dds(self.places, expr.from_dd, expr.to_dd)
+            conn = self.places.get_connection(expr.from_dd, expr.to_dd)
 
             if isinstance(operand, list):
                 return conn(self.queue, operand)
@@ -451,7 +450,7 @@ class MatVecOp:
 def _prepare_domains(nresults, places, domains, default_domain):
     """
     :arg nresults: number of results.
-    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
+    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg domains: recommended domains.
     :arg default_domain: default value for domains which are not provided.
 
@@ -476,7 +475,7 @@ def _prepare_domains(nresults, places, domains, default_domain):
 
 def _prepare_expr(places, expr, auto_where=None):
     """
-    :arg places: :class:`~pytential.symbolic.geometry.GeometryCollection`.
+    :arg places: :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg expr: a symbolic expression.
     :return: processed symbolic expressions, tagged with the appropriate
         `where` identifier from places, etc.
@@ -512,12 +511,206 @@ def _prepare_expr(places, expr, auto_where=None):
 
 # {{{ geometry collection
 
+class GeometryCollection(object):
+    """A mapping from symbolic identifiers ("place IDs", typically strings)
+    to 'geometries', where a geometry can be a
+    :class:`pytential.source.PotentialSource`
+    or a :class:`pytential.target.TargetBase`.
+    This class is meant to hold a specific combination of sources and targets
+    serve to host caches of information derived from them, e.g. FMM trees
+    of subsets of them, as well as related common subexpressions such as
+    metric terms.
+
+    .. automethod:: get_geometry
+    .. automethod:: get_connection
+    .. automethod:: get_discretization
+    .. automethod:: merge
+
+    .. method:: get_cache
+    """
+
+    def __init__(self, places, auto_where=None):
+        """
+        :arg places: a scalar, tuple of or mapping of symbolic names to
+            geometry objects. Supported objects are
+            :class:`~pytential.source.PotentialSource`,
+            :class:`~potential.target.TargetBase` and
+            :class:`~meshmode.discretization.Discretization`.
+        :arg auto_where: location identifier for each geometry object, used
+            to denote specific discretizations, e.g. in the case where
+            *places* is a :class:`~pytential.source.LayerPotentialSourceBase`.
+            By default, we assume
+            :class:`~pytential.symbolic.primitives.DEFAULT_SOURCE` and
+            :class:`~pytential.symbolic.primitives.DEFAULT_TARGET` for
+            sources and targets, respectively.
+        """
+
+        from pytential import sym
+        from pytential.target import TargetBase
+        from pytential.source import PotentialSource
+        from pytential.qbx import QBXLayerPotentialSource
+        from meshmode.discretization import Discretization
+
+        # {{{ define default source and target descriptors
+
+        if isinstance(auto_where, (list, tuple)):
+            auto_source, auto_target = auto_where
+        else:
+            auto_source, auto_target = auto_where, None
+
+        if auto_source is None:
+            auto_source = sym.DEFAULT_SOURCE
+        if auto_target is None:
+            auto_target = sym.DEFAULT_TARGET
+
+        auto_source = sym.as_dofdesc(auto_source)
+        auto_target = sym.as_dofdesc(auto_target)
+
+        # }}}
+
+        # {{{ construct dict
+
+        self.places = {}
+        self.caches = {}
+
+        if isinstance(places, QBXLayerPotentialSource):
+            self.places[auto_source.geometry] = places
+            auto_target = auto_source
+        elif isinstance(places, TargetBase):
+            self.places[auto_target.geometry] = places
+            auto_source = auto_target
+        if isinstance(places, (Discretization, PotentialSource)):
+            self.places[auto_source.geometry] = places
+            self.places[auto_target.geometry] = places
+        elif isinstance(places, tuple):
+            source_discr, target_discr = places
+            self.places[auto_source.geometry] = source_discr
+            self.places[auto_target.geometry] = target_discr
+        else:
+            self.places = places.copy()
+
+        self.auto_where = (auto_source, auto_target)
+
+        for p in six.itervalues(self.places):
+            if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
+                raise TypeError("Must pass discretization, targets or "
+                        "layer potential sources as 'places'.")
+
+        # }}}
+
+    @property
+    def auto_source(self):
+        return self.auto_where[0]
+
+    @property
+    def auto_target(self):
+        return self.auto_where[1]
+
+    @property
+    @memoize_method
+    def ambient_dim(self):
+        from pytools import single_valued
+        ambient_dim = [p.ambient_dim for p in six.itervalues(self.places)]
+        return single_valued(ambient_dim)
+
+    def _get_qbx_discretization(self, dofdesc):
+        lpot_source = self.get_geometry(dofdesc)
+        if lpot_source._disable_refinement:
+            return lpot_source.density_discr
+
+        if dofdesc.discr_stage is None:
+            dofdesc = dofdesc.to_stage1()
+
+        # NOTE: need to keep cache name in sync with `refine_for_global_qbx`
+        cache = self.get_cache('refined_qbx_discrs')
+        key = (dofdesc.geometry, dofdesc.discr_stage)
+        if key in cache:
+            return cache[key]
+
+        from pytential.qbx.refinement import refine_for_global_qbx
+        with cl.CommandQueue(lpot_source.cl_context) as queue:
+            # NOTE: this adds the required discretizations to the cache
+            refine_for_global_qbx(self, dofdesc,
+                    lpot_source.refiner_code_container.get_wrangler(queue))
+
+        cache = self.get_cache('refined_qbx_discrs')
+        return cache[key]
+
+    def get_connection(self, from_dd, to_dd):
+        from pytential.symbolic.dof_connection import connection_from_dds
+        return connection_from_dds(self, from_dd, to_dd)
+
+    def get_discretization(self, dofdesc):
+        """
+        :arg dofdesc: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+            specifying the desired discretization.
+
+        :return: a geometry object in the collection corresponding to the
+            key *dofdesc*. If it is a
+            :class:`~pytential.source.LayerPotentialSourceBase`, we look for
+            the corresponding :class:`~meshmode.discretization.Discretization`
+            in its attributes instead.
+        """
+        from pytential import sym
+        dofdesc = sym.as_dofdesc(dofdesc)
+        key = (dofdesc.geometry, dofdesc.discr_stage)
+
+        if key in self.places:
+            discr = self.places[key]
+        elif dofdesc.geometry in self.places:
+            discr = self.places[dofdesc.geometry]
+        else:
+            raise KeyError('geometry not in the collection: {}'.format(
+                dofdesc.geometry))
+
+        from pytential.qbx import QBXLayerPotentialSource
+        from pytential.source import LayerPotentialSourceBase
+
+        if isinstance(discr, QBXLayerPotentialSource):
+            return self._get_qbx_discretization(dofdesc)
+        elif isinstance(discr, LayerPotentialSourceBase):
+            return discr.density_discr
+        else:
+            return discr
+
+    def get_geometry(self, dofdesc):
+        from pytential import sym
+        dofdesc = sym.as_dofdesc(dofdesc)
+        return self.places[dofdesc.geometry]
+
+    def merge(self, places):
+        """Merges two geometry collections and returns the new collection.
+
+        :arg places: A :class:`dict` or :class:`GeometryCollection` to
+            merge with the current collection. If it is empty, a copy of the
+            current collection is returned.
+        """
+
+        new_places = self.places.copy()
+        if places is not None:
+            if isinstance(places, GeometryCollection):
+                places = places.places
+            new_places.update(places)
+
+        return GeometryCollection(new_places, auto_where=self.auto_where)
+
+    def get_cache(self, name):
+        return self.caches.setdefault(name, {})
+
+    def __repr__(self):
+        return "%s(%s)" % (type(self).__name__, repr(self.places))
+
+    def __str__(self):
+        return "%s(%s)" % (type(self).__name__, str(self.places))
+
+# }}}
+
 
 # {{{ bound expression
 
 class BoundExpression(object):
     """An expression readied for evaluation by binding it to a
-    :class:`~pytential.symbolic.geometry.GeometryCollection`.
+    :class:`~pytential.symbolic.execution.GeometryCollection`.
 
     .. automethod :: get_modeled_cost
     .. automethod :: scipy_pop
@@ -615,7 +808,7 @@ class BoundExpression(object):
 
 def bind(places, expr, auto_where=None):
     """
-    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
+    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
     :arg auto_where: for simple source-to-self or source-to-target
@@ -675,7 +868,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
     :arg queue: a :class:`pyopencl.CommandQueue`.
-    :arg places: a :class:`~pytential.symbolic.geometry.GeometryCollection`.
+    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
     :arg exprs: an array of expressions corresponding to the output block

@@ -226,10 +226,9 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
             # Don't use FMM for now
             fmm_order=False)
 
-    from pytential.symbolic.geometry import refine_geometry_collection
+    from pytential.qbx.refinement import refine_geometry_collection
     places = GeometryCollection(qbx)
-    places = refine_geometry_collection(places,
-            refine_for_global_qbx=True,
+    refine_geometry_collection(queue, places,
             kernel_length_scale=(5 / k if k else None))
 
     source = places.auto_source.to_stage1()

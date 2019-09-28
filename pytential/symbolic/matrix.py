@@ -79,7 +79,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
             for the given *dep_expr*.
         :arg dep_discr: a concerete :class:`meshmode.discretization.Discretization`
             for the given *dep_expr*.
-        :arg places: a :class:`pytential.symbolic.geometry.GeometryCollection`
+        :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`
             for all the sources and targets the builder is expected to
             encounter.
         """
@@ -311,18 +311,14 @@ class MatrixBuilder(MatrixBuilderBase):
     def map_interpolation(self, expr):
         if expr.to_dd.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
             raise RuntimeError("can only interpolate to QBX_SOURCE_QUAD_STAGE2")
-
-        from pytential.symbolic.dof_connection import connection_from_dds
         operand = self.rec(expr.operand)
 
         if isinstance(operand, (int, float, complex, np.number)):
             return operand
         elif isinstance(operand, np.ndarray) and operand.ndim == 1:
-            conn = connection_from_dds(self.places,
-                    expr.from_dd, expr.to_dd)
-
-            operand = cl.array.to_device(self.queue, operand)
-            return conn(self.queue, operand).get(self.queue)
+            conn = self.places.get_connection(expr.from_dd, expr.to_dd)
+            return conn(self.queue,
+                    cl.array.to_device(self.queue, operand)).get(self.queue)
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
             cache = self.places.get_cache('direct_resampler')
             key = (expr.from_dd.geometry,
@@ -335,8 +331,7 @@ class MatrixBuilder(MatrixBuilderBase):
                 from meshmode.discretization.connection import \
                     flatten_chained_connection
 
-                conn = connection_from_dds(self.places,
-                    expr.from_dd, expr.to_dd)
+                conn = self.places.get_connection(expr.from_dd, expr.to_dd)
                 conn = flatten_chained_connection(self.queue, conn)
                 mat = conn.full_resample_matrix(self.queue).get(self.queue)
 
