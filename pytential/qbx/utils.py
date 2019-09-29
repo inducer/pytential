@@ -234,21 +234,19 @@ def build_tree_with_qbx_metadata(queue, places,
     potential source. This contains particles of four different types:
 
        * source particles either from
-         ``lpot_source.stage1_density_discr`` or
-         ``lpot_source.quad_stage2_density_discr``
-       * centers from ``lpot_source.stage1_density_discr``
+         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1` or
+         :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+       * centers from
+         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`.
        * targets from ``targets_list``.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`
-
-    :arg lpot_source: An instance of
-        :class:`pytential.qbx.QBXLayerPotentialSource`.
-
+    :arg places: An instance of
+        :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
 
-    :arg use_stage2_discr: If *True*, builds a tree with sources
-        from ``lpot_source.quad_stage2_density_discr``. If *False* (default),
-        they are from ``lpot_source.stage1_density_discr``.
+    :arg use_stage2_discr: If *True*, builds a tree with stage 2 sources.
+        If *False*, they are from stage2 sources.
     """
 
     # The ordering of particles is as follows:
@@ -262,13 +260,11 @@ def build_tree_with_qbx_metadata(queue, places,
     for source_name in sources_list:
         dd = sym.as_dofdesc(source_name)
 
-        discr = places.get_discretization(dd.copy(
-            discr_stage=sym.QBX_SOURCE_STAGE1))
+        discr = places.get_discretization(dd.to_stage1())
         stage1_density_discrs.append(discr)
 
         if use_stage2_discr:
-            discr = places.get_discretization(dd.copy(
-                discr_stage=sym.QBX_SOURCE_QUAD_STAGE2))
+            discr = places.get_discretization(dd.to_quad_stage2())
         density_discrs.append(discr)
 
     # TODO: update code to work for multiple source discretizations

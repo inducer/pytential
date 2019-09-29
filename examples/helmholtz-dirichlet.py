@@ -162,13 +162,13 @@ def main(mesh_name="ellipse", visualize=False):
         fld_in_vol = bind(places, representation_sym)(
                 queue, sigma=gmres_result.solution, k=k).get()
     except QBXTargetAssociationFailedException as e:
-        fplot.write_vtk_file("failed-targets.vts", [
+        fplot.write_vtk_file("helmholtz-dirichlet-failed-targets.vts", [
             ("failed", e.failed_target_flags.get(queue))
             ])
         raise
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-    fplot.write_vtk_file("potential-helm.vts", [
+    fplot.write_vtk_file("helmholtz-dirichlet-potential.vts", [
         ("potential", fld_in_vol),
         ("indicator", indicator),
         ("u_incoming", u_incoming.get()),

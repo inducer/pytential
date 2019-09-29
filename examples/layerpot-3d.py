@@ -97,7 +97,7 @@ def main(mesh_name='ellipsoid'):
             queue, sigma=sigma, k=k).get()
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-    fplot.write_vtk_file("potential-3d.vts", [
+    fplot.write_vtk_file("layerpot-3d-potential.vts", [
         ("potential", fld_in_vol)
         ])
 
@@ -107,7 +107,7 @@ def main(mesh_name='ellipsoid'):
     from meshmode.discretization.visualization import make_visualizer
     bdry_vis = make_visualizer(queue, density_discr, target_order)
 
-    bdry_vis.write_vtk_file("source-3d.vtu", [
+    bdry_vis.write_vtk_file("layerpot-3d-density.vtu", [
         ("sigma", sigma),
         ("bdry_normals", bdry_normals),
         ])

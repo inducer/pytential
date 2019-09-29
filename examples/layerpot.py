@@ -95,7 +95,7 @@ def main(curve_fn=starfish, visualize=True):
         if enable_mayavi:
             fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
         else:
-            fplot.write_vtk_file("potential-2d.vts", [
+            fplot.write_vtk_file("layerpot-potential.vts", [
                 ("potential", fld_in_vol)
                 ])
 

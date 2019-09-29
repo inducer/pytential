@@ -82,8 +82,8 @@ Refiner driver
 
 .. autoclass:: RefinerWrangler
 
-.. automethod:: refine_for_global_qbx
-.. automethod:: refine_geometry_collection
+.. autofunction:: refine_for_global_qbx
+.. autofunction:: refine_geometry_collection
 """
 
 # {{{ kernels

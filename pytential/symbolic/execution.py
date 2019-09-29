@@ -524,6 +524,8 @@ class GeometryCollection(object):
     .. automethod:: get_geometry
     .. automethod:: get_connection
     .. automethod:: get_discretization
+
+    .. automethod:: copy
     .. automethod:: merge
 
     .. method:: get_cache

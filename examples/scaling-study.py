@@ -133,11 +133,11 @@ def timing_run(nx, ny, visualize=False):
     sym_op = sym.S(kernel, sym.var("sigma"), **repr_kwargs)
     bound_op = bind(places, sym_op)
 
-    print("FMM WARM-UP RUN 1: %d elements" % mesh.nelements)
+    print("FMM WARM-UP RUN 1: %5d elements" % mesh.nelements)
     bound_op(queue, sigma=sigma, k=k)
     queue.finish()
 
-    print("FMM WARM-UP RUN 2: %d elements" % mesh.nelements)
+    print("FMM WARM-UP RUN 2: %5d elements" % mesh.nelements)
     bound_op(queue, sigma=sigma, k=k)
     queue.finish()
 
@@ -148,7 +148,7 @@ def timing_run(nx, ny, visualize=False):
     t_end = time()
 
     elapsed = t_end - t_start
-    print("FMM TIMING RUN:    %d elements -> %g s"
+    print("FMM TIMING RUN:    %5d elements -> %g s"
             % (mesh.nelements, elapsed))
 
     if visualize:
@@ -163,12 +163,12 @@ def timing_run(nx, ny, visualize=False):
                     auto_where=("qbx-target-assoc", "plot_targets"))(
                     queue, sigma=sigma, k=k).get()
         except QBXTargetAssociationFailedException as e:
-            fplot.write_vtk_file("failed-targets.vts", [
+            fplot.write_vtk_file("scaling-study-failed-targets.vts", [
                 ("failed", e.failed_target_flags.get(queue)),
                 ])
             raise
 
-        fplot.write_vtk_file("potential-scaling.vts", [
+        fplot.write_vtk_file("scaling-study-potential.vts", [
             ("potential", fld_in_vol),
             ("indicator", indicator),
             ])

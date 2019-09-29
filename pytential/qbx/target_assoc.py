@@ -501,7 +501,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
             debug, wait_for=None):
         from pytential import bind, sym
         source_name = sym.as_dofdesc(source_name).to_stage1()
-        ambient_dim = places.get_geometry(source_name).ambient_dim
+        ambient_dim = places.ambient_dim
 
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
@@ -599,7 +599,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
             debug, wait_for=None):
         from pytential import bind, sym
         source_name = sym.as_dofdesc(source_name).to_stage1()
-        ambient_dim = places.get_geometry(source_name).ambient_dim
+        ambient_dim = places.ambient_dim
 
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
@@ -702,7 +702,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
             debug, wait_for=None):
         from pytential import bind, sym
         source_name = sym.as_dofdesc(source_name).to_stage1()
-        ambient_dim = places.get_geometry(source_name).ambient_dim
+        ambient_dim = places.ambient_dim
 
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.

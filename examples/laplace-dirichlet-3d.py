@@ -154,13 +154,13 @@ def main(mesh_name="torus", visualize=False):
         fld_in_vol = bind(places, representation_sym)(
                 queue, sigma=sigma).get()
     except QBXTargetAssociationFailedException as e:
-        fplot.write_vtk_file("failed-targets.vts", [
+        fplot.write_vtk_file("laplace-dirichlet-3d-failed-targets.vts", [
             ("failed", e.failed_target_flags.get(queue)),
             ])
         raise
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-    fplot.write_vtk_file("potential-laplace-3d.vts", [
+    fplot.write_vtk_file("laplace-dirichlet-3d-potential.vts", [
         ("potential", fld_in_vol),
         ])
 

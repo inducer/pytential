@@ -460,12 +460,12 @@ class InterpolationPreprocessor(IdentityMapper):
     a :class:`~pytential.symbolic.primitives.Interpolation`. This is used to
 
     * do differentiation on
-    :attr:`~pytential.source.LayerPotentialSource.quad_stage2_density_discr`,
+    :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
     by performing it on
-    :attr:`~pytential.source.LayerPotentialSource.stage2_density_discr` and
+    :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE2` and
     upsampling.
     * upsample layer potential sources to
-    :attr:`~pytential.source.LayerPotentialSource.quad_stage2_density_discr`,
+    :attr:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`,
     """
 
     def __init__(self, places, from_discr_stage=None):

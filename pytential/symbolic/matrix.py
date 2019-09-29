@@ -33,7 +33,6 @@ import six
 from six.moves import intern
 
 from pytools import memoize_method
-import pytential.symbolic.primitives as sym
 from pytential.symbolic.mappers import EvaluationMapperBase
 
 
@@ -45,7 +44,7 @@ def is_zero(x):
 
 def _get_layer_potential_args(mapper, expr, include_args=None):
     """
-    :arg mapper: a :class:`pytential.symbolic.matrix.MatrixBuilderBase`.
+    :arg mapper: a :class:`~pytential.symbolic.matrix.MatrixBuilderBase`.
     :arg expr: symbolic layer potential expression.
 
     :return: a mapping of kernel arguments evaluated by the *mapper*.
@@ -75,11 +74,11 @@ class MatrixBuilderBase(EvaluationMapperBase):
             that the builder is evaluating.
         :arg other_dep_exprs: symbolic expressions for the remaining input
             block columns.
-        :arg dep_source: a :class:`pytential.source.LayerPotentialSourceBase`
+        :arg dep_source: a :class:`~pytential.source.LayerPotentialSourceBase`
             for the given *dep_expr*.
-        :arg dep_discr: a concerete :class:`meshmode.discretization.Discretization`
+        :arg dep_discr: a concerete :class:`~meshmode.discretization.Discretization`
             for the given *dep_expr*.
-        :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`
+        :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`
             for all the sources and targets the builder is expected to
             encounter.
         """
@@ -190,7 +189,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
             return vecs_and_scalars
 
     def map_num_reference_derivative(self, expr):
-        from pytential import bind
+        from pytential import bind, sym
         rec_operand = self.rec(expr.operand)
 
         assert isinstance(rec_operand, np.ndarray)
@@ -205,7 +204,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
         return bind(self.places, op)(self.queue, u=rec_operand).get()
 
     def map_node_coordinate_component(self, expr):
-        from pytential import bind
+        from pytential import bind, sym
         op = sym.NodeCoordinateComponent(expr.ambient_axis, dofdesc=expr.dofdesc)
         return bind(self.places, op)(self.queue).get()
 
@@ -219,7 +218,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if isinstance(rec_arg, np.ndarray):
             rec_arg = cl.array.to_device(self.queue, rec_arg)
 
-        from pytential import bind
+        from pytential import bind, sym
         op = expr.function(sym.var("u"))
         result = bind(self.places, op)(self.queue, u=rec_arg)
 
@@ -309,6 +308,8 @@ class MatrixBuilder(MatrixBuilderBase):
                 dep_source, dep_discr, places, context)
 
     def map_interpolation(self, expr):
+        from pytential import sym
+
         if expr.to_dd.discr_stage != sym.QBX_SOURCE_QUAD_STAGE2:
             raise RuntimeError("can only interpolate to QBX_SOURCE_QUAD_STAGE2")
         operand = self.rec(expr.operand)
@@ -367,7 +368,7 @@ class MatrixBuilder(MatrixBuilderBase):
                 self.queue.context, (local_expn,))
 
         assert abs(expr.qbx_forced_limit) > 0
-        from pytential import bind
+        from pytential import bind, sym
         radii = bind(self.places, sym.expansion_radii(
             source_discr.ambient_dim,
             dofdesc=expr.target))(self.queue)
@@ -488,7 +489,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 self.queue.context, (local_expn,))
 
         assert abs(expr.qbx_forced_limit) > 0
-        from pytential import bind
+        from pytential import bind, sym
         radii = bind(self.places, sym.expansion_radii(
             source_discr.ambient_dim,
             dofdesc=expr.target))(self.queue)

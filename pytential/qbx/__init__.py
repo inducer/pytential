@@ -56,11 +56,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     .. attribute :: fmm_order
 
     .. automethod :: __init__
-    .. automethod :: with_refinement
     .. automethod :: copy
-
-    .. attribute :: stage2_density_discr
-    .. attribute :: quad_stage2_density_discr
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
