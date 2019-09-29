@@ -631,7 +631,8 @@ class GeometryCollection(object):
         with cl.CommandQueue(lpot_source.cl_context) as queue:
             # NOTE: this adds the required discretizations to the cache
             refine_for_global_qbx(self, dofdesc,
-                    lpot_source.refiner_code_container.get_wrangler(queue))
+                    lpot_source.refiner_code_container.get_wrangler(queue),
+                    _copy_collection=False)
 
         cache = self.get_cache('refined_qbx_discrs')
         return cache[key]
@@ -678,6 +679,11 @@ class GeometryCollection(object):
         dofdesc = sym.as_dofdesc(dofdesc)
         return self.places[dofdesc.geometry]
 
+    def copy(self, places=None, auto_where=None):
+        return type(self)(
+                places=self.places if places is None else places,
+                auto_where=self.auto_where if auto_where is None else auto_where)
+
     def merge(self, places):
         """Merges two geometry collections and returns the new collection.
 
@@ -687,12 +693,12 @@ class GeometryCollection(object):
         """
 
         new_places = self.places.copy()
-        if places is not None:
+        if places:
             if isinstance(places, GeometryCollection):
                 places = places.places
             new_places.update(places)
 
-        return GeometryCollection(new_places, auto_where=self.auto_where)
+        return type(self)(new_places, auto_where=self.auto_where)
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})

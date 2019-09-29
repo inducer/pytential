@@ -82,8 +82,8 @@ Refiner driver
 
 .. autoclass:: RefinerWrangler
 
-.. automethod:: refine_qbx_stage1
-.. automethod:: refine_qbx_stage2
+.. automethod:: refine_for_global_qbx
+.. automethod:: refine_geometry_collection
 """
 
 # {{{ kernels
@@ -753,8 +753,8 @@ def refine_for_global_qbx(places, dofdesc, wrangler,
         force_stage2_uniform_refinement_rounds=None,
         scaled_max_curvature_threshold=None,
         expansion_disturbance_tolerance=None,
-        maxiter=None,
-        debug=None, visualize=False):
+        maxiter=None, debug=None, visualize=False,
+        _copy_collection=True):
     """Entry point for calling the refiner. Once the refinement is complete,
     the refined discretizations can be obtained from *places* by calling
     :meth:`~pytential.symbolic.execution.GeometryCollection.get_discretization`.
@@ -773,6 +773,7 @@ def refine_for_global_qbx(places, dofdesc, wrangler,
         applicable. All panels are refined to below this size.
     :arg maxiter: The maximum number of refiner iterations.
     """
+
     from pytential import sym
     dofdesc = sym.as_dofdesc(dofdesc)
 
@@ -781,6 +782,7 @@ def refine_for_global_qbx(places, dofdesc, wrangler,
     if not isinstance(lpot_source, QBXLayerPotentialSource):
         raise ValueError('`%s` is not a `QBXLayerPotentialSource`' % (
             dofdesc.geometry))
+    # {{{
 
     if maxiter is None:
         maxiter = 10
@@ -801,6 +803,10 @@ def refine_for_global_qbx(places, dofdesc, wrangler,
         group_factory = InterpolatoryQuadratureSimplexGroupFactory(
                 lpot_source.density_discr.groups[0].order)
 
+    # }}}
+
+    # {{{
+
     # FIXME: would be nice if this was an IntFlag or something ordered
     stage_index_map = {
             sym.QBX_SOURCE_STAGE1: 1,
@@ -811,38 +817,67 @@ def refine_for_global_qbx(places, dofdesc, wrangler,
         raise ValueError('unknown discr stage: %s' % dofdesc.discr_stage)
     stage_index = stage_index_map[dofdesc.discr_stage]
 
-    def add_to_cache(refine_discr, refine_conn, from_ds, to_ds):
-        cache = places.get_cache("refined_qbx_discrs")
-        cache[(dofdesc.geometry, to_ds)] = refine_discr
+    discr_cache = places.get_cache("refined_qbx_discrs")
+    conns_cache = places.get_cache("refined_qbx_connections")
 
-        cache = places.get_cache("refined_qbx_connections")
-        cache[(dofdesc.geometry, from_ds, to_ds)] = refine_conn
+    def add_to_cache(refine_discr, refine_conn, from_ds, to_ds):
+        discr_cache[(dofdesc.geometry, to_ds)] = refine_discr
+        conns_cache[(dofdesc.geometry, from_ds, to_ds)] = refine_conn
+
+    def get_from_cache(from_ds, to_ds):
+        return (discr_cache[(dofdesc.geometry, to_ds)],
+                conns_cache[(dofdesc.geometry, from_ds, to_ds)])
+
+    if _copy_collection:
+        places = places.copy()
+
+    # }}}
+
+    # {{{
 
     discr = lpot_source.density_discr
-    if stage_index <= 1:
-        discr, conn = _refine_qbx_stage1(
-                lpot_source, discr, wrangler, group_factory,
-                kernel_length_scale=kernel_length_scale,
-                scaled_max_curvature_threshold=scaled_max_curvature_threshold,
-                expansion_disturbance_tolerance=expansion_disturbance_tolerance,
-                maxiter=maxiter, debug=debug, visualize=visualize)
-        add_to_cache(discr, conn,
-                None, sym.QBX_SOURCE_STAGE1)
+    if stage_index >= 1:
+        try:
+            discr, conn = get_from_cache(None, sym.QBX_SOURCE_STAGE1)
+        except KeyError:
+            discr, conn = _refine_qbx_stage1(
+                    lpot_source, discr, wrangler, group_factory,
+                    kernel_length_scale=kernel_length_scale,
+                    scaled_max_curvature_threshold=(
+                        scaled_max_curvature_threshold),
+                    expansion_disturbance_tolerance=(
+                        expansion_disturbance_tolerance),
+                    maxiter=maxiter, debug=debug, visualize=visualize)
+            add_to_cache(discr, conn,
+                    None, sym.QBX_SOURCE_STAGE1)
 
-    if stage_index <= 2:
-        discr, conn = _refine_qbx_stage2(
-                lpot_source, discr, wrangler, group_factory,
-                expansion_disturbance_tolerance=expansion_disturbance_tolerance,
-                force_stage2_uniform_refinement_rounds=(
-                    force_stage2_uniform_refinement_rounds),
-                maxiter=maxiter, debug=debug, visualize=visualize)
-        add_to_cache(discr, conn,
-                sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE2)
+    if stage_index >= 2:
+        try:
+            discr, conn = get_from_cache(sym.QBX_SOURCE_STAGE1,
+                                         sym.QBX_SOURCE_STAGE2)
+        except KeyError:
+            discr, conn = _refine_qbx_stage2(
+                    lpot_source, discr, wrangler, group_factory,
+                    expansion_disturbance_tolerance=(
+                        expansion_disturbance_tolerance),
+                    force_stage2_uniform_refinement_rounds=(
+                        force_stage2_uniform_refinement_rounds),
+                    maxiter=maxiter, debug=debug, visualize=visualize)
+            add_to_cache(discr, conn,
+                    sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE2)
 
-    if stage_index <= 3:
-        discr, conn = _refine_qbx_quad_stage2(lpot_source, discr)
-        add_to_cache(discr, conn,
+    if stage_index >= 3:
+        try:
+            discr, conn = get_from_cache(sym.QBX_SOURCE_STAGE2,
+                                         sym.QBX_SOURCE_QUAD_STAGE2)
+        except KeyError:
+            discr, conn = _refine_qbx_quad_stage2(lpot_source, discr)
+            add_to_cache(discr, conn,
                 sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)
+
+    # }}}
+
+    return places
 
 
 def refine_geometry_collection(queue, places,
@@ -872,10 +907,14 @@ def refine_geometry_collection(queue, places,
         else:
             refine_discr_stage = sym.QBX_SOURCE_STAGE1
 
+    from pytential.qbx import QBXLayerPotentialSource
+    places = places.copy()
     for geometry in places.places:
         dofdesc = sym.as_dofdesc(geometry).copy(
                 discr_stage=refine_discr_stage)
         lpot_source = places.get_geometry(dofdesc)
+        if not isinstance(lpot_source, QBXLayerPotentialSource):
+            continue
 
         refine_for_global_qbx(places, dofdesc,
                 lpot_source.refiner_code_container.get_wrangler(queue),
@@ -885,7 +924,10 @@ def refine_geometry_collection(queue, places,
                 expansion_disturbance_tolerance=expansion_disturbance_tolerance,
                 force_stage2_uniform_refinement_rounds=(
                     force_stage2_uniform_refinement_rounds),
-                maxiter=maxiter, debug=debug, visualize=visualize)
+                maxiter=maxiter, debug=debug, visualize=visualize,
+                _copy_collection=False)
+
+    return places
 
 # }}}
 

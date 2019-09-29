@@ -499,7 +499,7 @@ class InterpolationPreprocessor(IdentityMapper):
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        from_dd = expr.source
+        from_dd = expr.source.to_stage1()
         to_dd = from_dd.to_quad_stage2()
         density = prim.interp(from_dd, to_dd, self.rec(expr.density))
 
