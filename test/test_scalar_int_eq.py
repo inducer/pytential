@@ -547,7 +547,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     places = GeometryCollection(places)
     if case.use_refinement:
         from pytential.qbx.refinement import refine_geometry_collection
-        refine_geometry_collection(queue, places, **refiner_extra_kwargs)
+        places = refine_geometry_collection(queue, places,
+                **refiner_extra_kwargs)
 
     dd = sym.as_dofdesc(sym.DEFAULT_SOURCE).to_stage1()
     density_discr = places.get_discretization(dd)

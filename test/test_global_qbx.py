@@ -107,7 +107,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     expansion_disturbance_tolerance = 0.025
 
     from pytential.qbx.refinement import refine_geometry_collection
-    refine_geometry_collection(queue, places,
+    places = refine_geometry_collection(queue, places,
             kernel_length_scale=kernel_length_scale,
             expansion_disturbance_tolerance=expansion_disturbance_tolerance,
             visualize=visualize)

@@ -228,7 +228,7 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
 
     from pytential.qbx.refinement import refine_geometry_collection
     places = GeometryCollection(qbx)
-    refine_geometry_collection(queue, places,
+    places = refine_geometry_collection(queue, places,
             kernel_length_scale=(5 / k if k else None))
 
     source = places.auto_source.to_stage1()

@@ -171,14 +171,13 @@ def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
         'qbx': qbx,
         'qbx-target-specific': qbx.copy(_use_target_specific_qbx=True)
         }
-    where = ('qbx', 'qbx')
 
     from pytential.qbx.refinement import refine_geometry_collection
-    places = GeometryCollection(places, auto_where=where)
-    refine_geometry_collection(queue, places,
+    places = GeometryCollection(places, auto_where=('qbx', 'qbx'))
+    places = refine_geometry_collection(queue, places,
             kernel_length_scale=kernel_length_scale)
 
-    density_discr = places.get_discretization(where[0])
+    density_discr = places.get_discretization('qbx')
     nodes = density_discr.nodes().with_queue(queue)
     u_dev = clmath.sin(nodes[0])
 
