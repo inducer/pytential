@@ -1030,18 +1030,15 @@ def _source_danger_zone_radii(ambient_dim, dim=None,
     #   - Setting this equal to half the expansion radius will not provide
     #     a refinement 'buffer layer' at a 2x coarsening fringe.
 
-    factor = 0.75 * _expansion_radii_factor(ambient_dim, dim)
-    return factor * _quad_resolution(ambient_dim, dim=dim,
-            granularity=granularity, dofdesc=dofdesc)
+    return 0.75 * expansion_radii(ambient_dim,
+            dim=dim, granularity=granularity, dofdesc=dofdesc)
 
 
 @_deprecate_kwargs('where', 'dofdesc')
 def _close_target_tunnel_radii(ambient_dim, dim=None,
         granularity=None, dofdesc=None):
-    factor = 0.5 * _expansion_radii_factor(ambient_dim, dim)
-
-    return factor * _quad_resolution(ambient_dim, dim=dim,
-            granularity=granularity, dofdesc=dofdesc)
+    return 0.5 * expansion_radii(ambient_dim,
+            dim=dim, granularity=granularity, dofdesc=dofdesc)
 
 
 @_deprecate_kwargs('where', 'dofdesc')

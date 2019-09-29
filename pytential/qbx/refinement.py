@@ -484,7 +484,11 @@ def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
             RefinerNotConvergedWarning)
 
 
-def _visualize_refinement(queue, discr, niter, stage_nr, stage_name, flags):
+def _visualize_refinement(queue, discr,
+        niter, stage_nr, stage_name, flags, visualize=False):
+    if not visualize:
+        return
+
     if stage_nr not in (1, 2):
         raise ValueError("unexpected stage number")
 
@@ -515,8 +519,7 @@ def _visualize_refinement(queue, discr, niter, stage_nr, stage_name, flags):
                 queue).as_vector(dtype=object)
         vis_data.append(("bdry_normals", bdry_normals),)
 
-    vis.write_vtk_file("refinement-%s-%03d.vtu" % (stage_name, niter),
-            vis_data, overwrite=True)
+    vis.write_vtk_file("refinement-%s-%03d.vtu" % (stage_name, niter), vis_data)
 
 
 def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
@@ -557,8 +560,8 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         niter += 1
 
         if niter > maxiter:
-            _warn_max_iterations(violated_criteria,
-                    expansion_disturbance_tolerance)
+            _warn_max_iterations(
+                    violated_criteria, expansion_disturbance_tolerance)
             break
 
         refine_flags = make_empty_refine_flags(queue, stage1_density_discr)
@@ -579,16 +582,16 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
                 if violates_kernel_length_scale:
                     iter_violated_criteria.append("kernel length scale")
-                    if visualize:
-                        _visualize_refinement(queue, stage1_density_discr,
-                                niter, 1, "kernel-length-scale", refine_flags)
+                    _visualize_refinement(queue, stage1_density_discr,
+                            niter, 1, "kernel-length-scale", refine_flags,
+                            visualize=visualize)
 
         if scaled_max_curvature_threshold is not None:
             with ProcessLogger(logger,
                     "checking scaled max curvature threshold"):
                 scaled_max_curv = bind(stage1_density_discr,
-                    sym.ElementwiseMax(
-                        sym._scaled_max_curvature(stage1_density_discr.ambient_dim),
+                    sym.ElementwiseMax(sym._scaled_max_curvature(
+                        stage1_density_discr.ambient_dim),
                         dofdesc=sym.GRANULARITY_ELEMENT))(queue)
 
                 violates_scaled_max_curv = \
@@ -599,9 +602,9 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
                 if violates_scaled_max_curv:
                     iter_violated_criteria.append("curvature")
-                    if visualize:
-                        _visualize_refinement(queue, stage1_density_discr,
-                                niter, 1, "curvature", refine_flags)
+                    _visualize_refinement(queue, stage1_density_discr,
+                            niter, 1, "curvature", refine_flags,
+                            visualize=visualize)
 
         if not iter_violated_criteria:
             # Only start building trees once the simple length-based criteria
@@ -614,8 +617,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
             # Build tree and auxiliary data.
             # FIXME: The tree should not have to be rebuilt at each iteration.
-            tree = wrangler.build_tree(places,
-                    sources_list=['qbx'])
+            tree = wrangler.build_tree(places, sources_list=['qbx'])
             peer_lists = wrangler.find_peer_lists(tree)
 
             has_disturbed_expansions = \
@@ -625,16 +627,15 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                             refine_flags, debug)
             if has_disturbed_expansions:
                 iter_violated_criteria.append("disturbed expansions")
-                if visualize:
-                    _visualize_refinement(queue, stage1_density_discr,
-                            niter, 1, "disturbed-expansions", refine_flags)
+                _visualize_refinement(queue, stage1_density_discr,
+                        niter, 1, "disturbed-expansions", refine_flags,
+                        visualize=visualize)
 
             del tree
             del peer_lists
 
         if iter_violated_criteria:
-            violated_criteria.append(
-                    " and ".join(iter_violated_criteria))
+            violated_criteria.append(" and ".join(iter_violated_criteria))
 
             conn = wrangler.refine(
                     stage1_density_discr, refiner, refine_flags,
@@ -676,8 +677,8 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         niter += 1
 
         if niter > maxiter:
-            _warn_max_iterations(violated_criteria,
-                    expansion_disturbance_tolerance)
+            _warn_max_iterations(
+                    violated_criteria, expansion_disturbance_tolerance)
             break
 
         from pytential import GeometryCollection
@@ -690,8 +691,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
 
         # Build tree and auxiliary data.
         # FIXME: The tree should not have to be rebuilt at each iteration.
-        tree = wrangler.build_tree(places,
-                sources_list=['qbx'],
+        tree = wrangler.build_tree(places, sources_list=['qbx'],
                 use_stage2_discr=True)
         peer_lists = wrangler.find_peer_lists(tree)
         refine_flags = make_empty_refine_flags(queue, stage2_density_discr)
@@ -702,16 +702,16 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
                         debug)
         if has_insufficient_quad_resolution:
             iter_violated_criteria.append("insufficient quadrature resolution")
-            if visualize:
-                _visualize_refinement(queue, stage2_density_discr,
-                        niter, 2, "quad-resolution", refine_flags)
+            _visualize_refinement(queue, stage2_density_discr,
+                    niter, 2, "quad-resolution", refine_flags,
+                    visualize=visualize)
 
         if iter_violated_criteria:
             violated_criteria.append(" and ".join(iter_violated_criteria))
 
-            conn = wrangler.refine(stage2_density_discr,
-                    refiner, refine_flags, group_factory,
-                    debug)
+            conn = wrangler.refine(
+                    stage2_density_discr,
+                    refiner, refine_flags, group_factory, debug)
             stage2_density_discr = conn.to_discr
             connections.append(conn)
 
