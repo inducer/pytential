@@ -49,6 +49,7 @@ if sys.version_info >= (3, 0):
 else:
     Template = partial(Template, strict_undefined=True, disable_unicode=True)
 
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -747,6 +748,5 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
         return neval_qbxl * qbxl2p_cost
 
 # }}}
-
 
 # vim: foldmethod=marker

@@ -148,12 +148,18 @@ def test_cost_model(ctx, calibration_params):
                     sum(temp_timing_result[param]["process_elapsed"]
                         for temp_timing_result in temp_timing_results)) / RUNS
 
-        print("=" * 20)
+        from pytools import Table
+        table = Table()
+        table.add_row(["stage", "actual (s)", "predicted (s)"])
         for stage in model_result:
-            print("stage: ", stage)
-            print("actual: ", timing_result[stage])
-            print("predicted: ", cost_model.aggregate(model_result[stage]))
-        print("=" * 20)
+            row = [
+                    stage,
+                    "%.2f" % timing_result[stage],
+                    "%.2f" % cost_model.aggregate(model_result[stage])
+            ]
+            table.add_row(row)
+
+        print(table)
 
 
 def predict_cost(ctx):
