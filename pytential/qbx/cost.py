@@ -747,6 +747,21 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
 
         return neval_qbxl * qbxl2p_cost
 
+    def get_qbx_modeled_cost(self, geo_data, kernel, kernel_arguments,
+                             calibration_params):
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
+        from pytential.qbx.geometry import QBXFMMGeometryData
+
+        if not isinstance(geo_data, ToHostTransferredGeoDataWrapper):
+            assert isinstance(geo_data, QBXFMMGeometryData)
+
+            queue = cl.CommandQueue(geo_data.cl_context)
+            geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+
+            AbstractQBXCostModel.get_qbx_modeled_cost(
+                self, geo_data, kernel, kernel_arguments, calibration_params
+            )
+
 # }}}
 
 # vim: foldmethod=marker
