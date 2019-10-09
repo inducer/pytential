@@ -82,7 +82,6 @@ Refiner driver
 
 .. autoclass:: RefinerWrangler
 
-.. autofunction:: refine_for_global_qbx
 .. autofunction:: refine_geometry_collection
 """
 
@@ -747,31 +746,18 @@ def _refine_qbx_quad_stage2(lpot_source, stage2_density_discr):
 
 # {{{ main entry point
 
-def refine_for_global_qbx(places, dofdesc, wrangler,
+def _refine_for_global_qbx(places, dofdesc, wrangler,
         group_factory=None,
         kernel_length_scale=None,
         force_stage2_uniform_refinement_rounds=None,
         scaled_max_curvature_threshold=None,
         expansion_disturbance_tolerance=None,
         maxiter=None, debug=None, visualize=False,
-        _copy_collection=True):
+        _copy_collection=False):
     """Entry point for calling the refiner. Once the refinement is complete,
     the refined discretizations can be obtained from *places* by calling
     :meth:`~pytential.symbolic.execution.GeometryCollection.get_discretization`.
 
-    :arg places: A :class:`~pytential.symbolic.execution.GeometryCollection`.
-    :arg dofdesc: A :class:`pytential.symbolic.primitives.DOFDescriptor`
-        of a :class:`~pytential.qbx.QBXLayerPotentialSource` in the collection.
-        The *discr_stage* member of the descriptor defines what type of
-        refinement should be performed.
-    :arg wrangler: An instance of :class:`RefinerWrangler`.
-    :arg group_factory: An instance of
-        :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
-        discretizing the coarse refined mesh.
-
-    :arg kernel_length_scale: The kernel length scale, or *None* if not
-        applicable. All panels are refined to below this size.
-    :arg maxiter: The maximum number of refiner iterations.
     """
 
     from pytential import sym
@@ -891,13 +877,24 @@ def refine_geometry_collection(queue, places,
         debug=None, visualize=False):
     """Entry point for refining all the
     :class:`~pytential.qbx.QBXLayerPotentialSource` in the given collection.
-    Arguments are the same as for :func:`refine_for_global_qbx`.
+    The :class:`~pytential.symbolic.execution.GeometryCollection` performs
+    on-demand refinement, but this function can be used to tweak the
+    parameters.
 
+    :arg places: A :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg refine_discr_stage: Defines up to which stage the refinement should
         be performed. One of
         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`,
         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE2` or
         :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+    :arg wrangler: An instance of :class:`RefinerWrangler`.
+    :arg group_factory: An instance of
+        :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
+        discretizing the coarse refined mesh.
+
+    :arg kernel_length_scale: The kernel length scale, or *None* if not
+        applicable. All panels are refined to below this size.
+    :arg maxiter: The maximum number of refiner iterations.
     """
 
     from pytential import sym
@@ -916,7 +913,7 @@ def refine_geometry_collection(queue, places,
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             continue
 
-        refine_for_global_qbx(places, dofdesc,
+        _refine_for_global_qbx(places, dofdesc,
                 lpot_source.refiner_code_container.get_wrangler(queue),
                 group_factory=group_factory,
                 kernel_length_scale=kernel_length_scale,

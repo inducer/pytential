@@ -623,16 +623,16 @@ class GeometryCollection(object):
         if dofdesc.discr_stage is None:
             dofdesc = dofdesc.to_stage1()
 
-        # NOTE: need to keep cache name in sync with `refine_for_global_qbx`
+        # NOTE: need to keep cache name in sync with `_refine_for_global_qbx`
         cache = self.get_cache('refined_qbx_discrs')
         key = (dofdesc.geometry, dofdesc.discr_stage)
         if key in cache:
             return cache[key]
 
-        from pytential.qbx.refinement import refine_for_global_qbx
+        from pytential.qbx.refinement import _refine_for_global_qbx
         with cl.CommandQueue(lpot_source.cl_context) as queue:
             # NOTE: this adds the required discretizations to the cache
-            refine_for_global_qbx(self, dofdesc,
+            _refine_for_global_qbx(self, dofdesc,
                     lpot_source.refiner_code_container.get_wrangler(queue),
                     _copy_collection=False)
 
