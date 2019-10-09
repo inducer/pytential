@@ -56,7 +56,7 @@ def main(curve_fn=starfish, visualize=True):
         'qbx': qbx,
         'targets': PointsTarget(targets_dev),
         }, auto_where=('qbx', 'qbx'))
-    density_discr = places.get_discretization(places.auto_source)
+    density_discr = places.get_discretization('qbx')
 
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])

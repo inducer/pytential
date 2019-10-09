@@ -70,9 +70,9 @@ def test_geometries(queue):
         yield starfish_lpot_source(queue, n_arms)
 
 
-def get_bound_op(places, ambient_dim):
+def get_bound_op(places):
     from sumpy.kernel import LaplaceKernel
-    op = sym.S(LaplaceKernel(ambient_dim),
+    op = sym.S(LaplaceKernel(places.ambient_dim),
             sym.var("sigma"),
             qbx_forced_limit=+1)
 
@@ -102,7 +102,7 @@ def calibrate_cost_model(ctx):
         places = GeometryCollection(lpot_source)
         density_discr = places.get_discretization(places.auto_source)
 
-        bound_op = get_bound_op(places, lpot_source.ambient_dim)
+        bound_op = get_bound_op(places)
         sigma = get_test_density(queue, density_discr)
 
         cost_S = bound_op.get_modeled_cost(queue, sigma=sigma)
@@ -133,7 +133,7 @@ def test_cost_model(ctx, cost_model):
         places = GeometryCollection(lpot_source)
         density_discr = places.get_discretization(places.auto_source)
 
-        bound_op = get_bound_op(places, lpot_source.ambient_dim)
+        bound_op = get_bound_op(places)
         sigma = get_test_density(queue, density_discr)
 
         cost_S = bound_op.get_modeled_cost(queue, sigma=sigma)

@@ -81,7 +81,7 @@ def main(mesh_name="torus", visualize=False):
         'qbx-target-assoc': qbx.copy(target_association_tolerance=0.2),
         'targets': PointsTarget(targets)
         }, auto_where=('qbx', 'qbx'))
-    density_discr = places.get_discretization(places.auto_source)
+    density_discr = places.get_discretization('qbx')
 
     # {{{ describe bvp
 

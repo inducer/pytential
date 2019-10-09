@@ -89,7 +89,7 @@ def timing_run(nx, ny, visualize=False):
 
     from pytential import GeometryCollection
     places = GeometryCollection(places, auto_where=('qbx', 'qbx'))
-    density_discr = places.get_discretization(places.auto_source)
+    density_discr = places.get_discretization('qbx')
 
     # {{{ describe bvp
 
@@ -160,7 +160,7 @@ def timing_run(nx, ny, visualize=False):
 
         try:
             fld_in_vol = bind(places, sym_op,
-                    auto_where=("qbx-target-assoc", "plot_targets"))(
+                    auto_where=("qbx-target-assoc", "plot-targets"))(
                     queue, sigma=sigma, k=k).get()
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file("scaling-study-failed-targets.vts", [

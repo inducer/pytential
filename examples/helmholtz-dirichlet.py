@@ -87,7 +87,7 @@ def main(mesh_name="ellipse", visualize=False):
         'qbx-target-assoc': qbx.copy(target_association_tolerance=0.05),
         'targets': PointsTarget(targets)
         }, auto_where=('qbx', 'qbx'))
-    density_discr = places.get_discretization(places.auto_source)
+    density_discr = places.get_discretization('qbx')
 
     # {{{ describe bvp
 
