@@ -827,13 +827,10 @@ def bind(places, expr, auto_where=None):
         in the form of a :mod:`numpy` object array
     :returns: a :class:`BoundExpression`
     """
-
-    from pytential import GeometryCollection
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
-        expr = _prepare_expr(places, expr)
-    else:
-        expr = _prepare_expr(places, expr, auto_where=auto_where)
+        auto_where = places.auto_where
+    expr = _prepare_expr(places, expr, auto_where=auto_where)
 
     return BoundExpression(places, expr)
 

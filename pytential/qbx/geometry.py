@@ -374,7 +374,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             code_getter,
             target_discrs_and_qbx_sides,
             target_association_tolerance,
-            tree_kind, debug):
+            tree_kind, debug=None):
         """
         .. rubric:: Constructor arguments
 
@@ -389,16 +389,13 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         from pytential import sym
         self.places = places
         self.source_name = sym.as_dofdesc(source_name)
+        self.lpot_source = places.get_geometry(self.source_name)
 
         self.code_getter = code_getter
         self.target_discrs_and_qbx_sides = target_discrs_and_qbx_sides
         self.target_association_tolerance = target_association_tolerance
         self.tree_kind = tree_kind
-        self.debug = debug
-
-    @property
-    def lpot_source(self):
-        return self.places.get_geometry(self.source_name)
+        self.debug = self.lpot_source.debug if debug is None else debug
 
     @property
     def ambient_dim(self):

@@ -146,8 +146,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim,
-            dofdesc=insn.source.to_quad_stage2()))(queue)
+            self.ambient_dim, dofdesc=insn.source))(queue)
         strengths = waa * evaluate(insn.density).with_queue(queue)
 
         result = []
@@ -227,8 +226,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim,
-            dofdesc=insn.source.to_quad_stage2()))(queue)
+            self.ambient_dim, dofdesc=insn.source))(queue)
         strengths = waa * evaluate(insn.density).with_queue(queue)
 
         out_kernels = tuple(knl for knl in insn.kernels)

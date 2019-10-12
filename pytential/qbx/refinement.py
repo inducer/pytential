@@ -552,8 +552,6 @@ def _refine_qbx_stage1(lpot_source, density_discr,
     niter = 0
 
     stage1_density_discr = density_discr
-
-    queue = wrangler.queue
     while iter_violated_criteria:
         iter_violated_criteria = []
         niter += 1
@@ -563,7 +561,8 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                     violated_criteria, expansion_disturbance_tolerance)
             break
 
-        refine_flags = make_empty_refine_flags(queue, stage1_density_discr)
+        refine_flags = make_empty_refine_flags(
+                wrangler.queue, stage1_density_discr)
 
         if kernel_length_scale is not None:
             with ProcessLogger(logger,
@@ -571,7 +570,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
                 quad_resolution = bind(stage1_density_discr,
                         sym._quad_resolution(stage1_density_discr.ambient_dim,
-                            dofdesc=sym.GRANULARITY_ELEMENT))(queue)
+                            dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
 
                 violates_kernel_length_scale = \
                         wrangler.check_element_prop_threshold(
@@ -581,7 +580,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
                 if violates_kernel_length_scale:
                     iter_violated_criteria.append("kernel length scale")
-                    _visualize_refinement(queue, stage1_density_discr,
+                    _visualize_refinement(wrangler.queue, stage1_density_discr,
                             niter, 1, "kernel-length-scale", refine_flags,
                             visualize=visualize)
 
@@ -591,7 +590,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                 scaled_max_curv = bind(stage1_density_discr,
                     sym.ElementwiseMax(sym._scaled_max_curvature(
                         stage1_density_discr.ambient_dim),
-                        dofdesc=sym.GRANULARITY_ELEMENT))(queue)
+                        dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
 
                 violates_scaled_max_curv = \
                         wrangler.check_element_prop_threshold(
@@ -601,7 +600,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
                 if violates_scaled_max_curv:
                     iter_violated_criteria.append("curvature")
-                    _visualize_refinement(queue, stage1_density_discr,
+                    _visualize_refinement(wrangler.queue, stage1_density_discr,
                             niter, 1, "curvature", refine_flags,
                             visualize=visualize)
 
@@ -626,7 +625,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                             refine_flags, debug)
             if has_disturbed_expansions:
                 iter_violated_criteria.append("disturbed expansions")
-                _visualize_refinement(queue, stage1_density_discr,
+                _visualize_refinement(wrangler.queue, stage1_density_discr,
                         niter, 1, "disturbed-expansions", refine_flags,
                         visualize=visualize)
 
@@ -669,8 +668,6 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
     niter = 0
 
     stage2_density_discr = stage1_density_discr
-
-    queue = wrangler.queue
     while iter_violated_criteria:
         iter_violated_criteria = []
         niter += 1
@@ -693,7 +690,8 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         tree = wrangler.build_tree(places, sources_list=['qbx'],
                 use_stage2_discr=True)
         peer_lists = wrangler.find_peer_lists(tree)
-        refine_flags = make_empty_refine_flags(queue, stage2_density_discr)
+        refine_flags = make_empty_refine_flags(
+                wrangler.queue, stage2_density_discr)
 
         has_insufficient_quad_resolution = \
                 wrangler.check_sufficient_source_quadrature_resolution(
@@ -701,7 +699,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
                         debug)
         if has_insufficient_quad_resolution:
             iter_violated_criteria.append("insufficient quadrature resolution")
-            _visualize_refinement(queue, stage2_density_discr,
+            _visualize_refinement(wrangler.queue, stage2_density_discr,
                     niter, 2, "quad-resolution", refine_flags,
                     visualize=visualize)
 
@@ -741,10 +739,6 @@ def _refine_qbx_quad_stage2(lpot_source, stage2_density_discr):
 
     return discr, conn
 
-# }}}
-
-
-# {{{ main entry point
 
 def _refine_for_global_qbx(places, dofdesc, wrangler,
         group_factory=None,
@@ -865,6 +859,10 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
 
     return places
 
+# }}}
+
+
+# {{{ main entry point
 
 def refine_geometry_collection(queue, places,
         group_factory=None,
@@ -911,6 +909,8 @@ def refine_geometry_collection(queue, places,
                 discr_stage=refine_discr_stage)
         lpot_source = places.get_geometry(dofdesc)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
+            continue
+        if lpot_source._disable_refinement:
             continue
 
         _refine_for_global_qbx(places, dofdesc,

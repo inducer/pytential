@@ -145,9 +145,8 @@ def timing_run(nx, ny, visualize=False):
     t_start = time()
     bound_op(queue, sigma=sigma, k=k)
     queue.finish()
-    t_end = time()
+    elapsed = time() - t_start
 
-    elapsed = t_end - t_start
     print("FMM TIMING RUN:    %5d elements -> %g s"
             % (mesh.nelements, elapsed))
 

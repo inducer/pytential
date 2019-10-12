@@ -554,7 +554,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         geo_data = self.qbx_fmm_geometry_data(
                 bound_expr.places,
-                insn.source,
+                insn.source.geometry,
                 target_discrs_and_qbx_sides)
 
         # FIXME Exert more positive control over geo_data attribute lifetimes using
@@ -568,8 +568,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim,
-            dofdesc=insn.source.to_quad_stage2()))(queue)
+            self.ambient_dim, dofdesc=insn.source))(queue)
         strengths = waa * evaluate(insn.density).with_queue(queue)
 
         out_kernels = tuple(knl for knl in insn.kernels)
@@ -697,8 +696,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             kernel_args[arg_name] = evaluate(arg_expr)
 
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim,
-            dofdesc=insn.source))(queue)
+            self.ambient_dim, dofdesc=insn.source))(queue)
         strengths = waa * evaluate(insn.density).with_queue(queue)
 
         source_discr = bound_expr.places.get_discretization(insn.source)
@@ -716,13 +714,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 assert o.qbx_forced_limit is not None
                 assert abs(o.qbx_forced_limit) > 0
 
-                expansion_radii = bind(bound_expr.places,
-                        sym.expansion_radii(self.ambient_dim,
-                            dofdesc=o.target_name))(queue)
-                centers = bind(bound_expr.places,
-                        sym.expansion_centers(self.ambient_dim,
-                            o.qbx_forced_limit,
-                            dofdesc=o.target_name))(queue)
+                expansion_radii = bind(bound_expr.places, sym.expansion_radii(
+                    self.ambient_dim, dofdesc=o.target_name))(queue)
+                centers = bind(bound_expr.places, sym.expansion_centers(
+                    self.ambient_dim, o.qbx_forced_limit,
+                    dofdesc=o.target_name))(queue)
 
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
@@ -752,7 +748,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
                 geo_data = self.qbx_fmm_geometry_data(
                         bound_expr.places,
-                        insn.source,
+                        insn.source.geometry,
                         target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
 
                 # center-related info is independent of targets

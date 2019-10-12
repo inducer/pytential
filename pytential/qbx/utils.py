@@ -246,7 +246,7 @@ def build_tree_with_qbx_metadata(queue, places,
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
 
     :arg use_stage2_discr: If *True*, builds a tree with stage 2 sources.
-        If *False*, they are from stage2 sources.
+        If *False*, the tree is built with stage 1 sources.
     """
 
     # The ordering of particles is as follows:

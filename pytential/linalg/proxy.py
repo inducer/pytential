@@ -281,8 +281,7 @@ class ProxyGenerator(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, places,
-            approx_nproxy=None, radius_factor=None):
+    def __init__(self, places, approx_nproxy=None, radius_factor=None):
         from pytential import GeometryCollection
         if not isinstance(places, GeometryCollection):
             places = GeometryCollection(places)
@@ -393,7 +392,9 @@ class ProxyGenerator(object):
             return np.dot(A, v) + b
 
         from pytential import bind, sym
+        source_name = sym.as_dofdesc(source_name)
         discr = self.places.get_discretization(source_name)
+
         radii = bind(self.places, sym.expansion_radii(
             self.ambient_dim, dofdesc=source_name))(queue)
         center_int = bind(self.places, sym.expansion_centers(

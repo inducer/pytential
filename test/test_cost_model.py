@@ -459,7 +459,6 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
         targets = lpot_source.density_discr
         target_discrs_and_qbx_sides = ((targets, 1),)
         qbx_forced_limit = 1
-
     places = GeometryCollection((lpot_source, targets))
 
     source_dd = places.auto_source
@@ -480,15 +479,14 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
     # high-level interface, so call the FMM driver directly.
     from pytential.qbx.fmm import drive_fmm
     geo_data = lpot_source.qbx_fmm_geometry_data(
-            places,
-            places.auto_source,
+            places, source_dd.geometry,
             target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
 
     wrangler = ConstantOneQBXExpansionWrangler(
             queue, geo_data, use_target_specific_qbx)
 
     quad_stage2_density_discr = places.get_discretization(
-            source_dd.copy(discr_stage=sym.QBX_SOURCE_QUAD_STAGE2))
+            source_dd.to_quad_stage2())
     nnodes = quad_stage2_density_discr.nnodes
     src_weights = np.ones(nnodes)
 
