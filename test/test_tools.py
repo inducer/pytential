@@ -175,8 +175,6 @@ def test_geometry_collection_caching(ctx_factory):
 
     # evaluate layer potentials
     import time
-    k = 0
-    lpot_eval = []
     kernel_args = {}
     for i in range(ngeometry):
         density_discr = places.get_discretization(sources[i])
@@ -189,13 +187,25 @@ def test_geometry_collection_caching(ctx_factory):
         print("=" * 32)
         print()
 
-        for j in range(1, ngeometry):
+        for j in range(0, ngeometry):
+            k = i * ngeometry + j
+
             t_start = time.time()
             bind(places, ops[k])(queue, **kernel_args)
             t_end = time.time()
 
-            k += 1
             print("Elapsed: {:.3}s".format(t_end - t_start))
+        return
+
+
+def bug_run_loop(ctx_factory):
+    while True:
+        try:
+            test_geometry_collection_caching(ctx_factory)
+        except:
+            import pudb
+            pudb.post_mortem()
+            break
 
 
 # You can test individual routines by typing
