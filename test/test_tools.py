@@ -116,10 +116,11 @@ def test_geometry_collection_caching(ctx_factory):
     discrs = []
     radius = 1.0
     for k in range(ngeometry):
-        mesh = make_curve_mesh(partial(ellipse, radius),
-                np.linspace(0.0, 1.0, nelements + 1),
-                target_order)
-        if k > 0:
+        if k == 0:
+            mesh = make_curve_mesh(partial(ellipse, radius),
+                    np.linspace(0.0, 1.0, nelements + 1),
+                    target_order)
+        else:
             mesh = affine_map(discrs[0].mesh,
                     b=np.array([3 * k * radius, 0]))
 
@@ -130,55 +131,71 @@ def test_geometry_collection_caching(ctx_factory):
     # construct qbx source
     from pytential.qbx import QBXLayerPotentialSource
 
-    places = {}
-    for k in range(ngeometry):
-        qbx = QBXLayerPotentialSource(discrs[k],
+    lpots = []
+    sources = ['source_{}'.format(k) for k in range(ngeometry)]
+    for k, density_discr in enumerate(discrs):
+        qbx = QBXLayerPotentialSource(density_discr,
             fine_order=2 * target_order,
             qbx_order=qbx_order,
             fmm_order=False)
-
-        places["source_{}".format(k)] = qbx
-
-    # construct some target points
-    for k in range(ngeometry):
-        places["target_{}".format(k)] = \
-                places["source_{}".format(k)].density_discr
+        lpots.append(qbx)
 
     # construct a geometry collection
     from pytential import GeometryCollection
-    places = GeometryCollection(places)
+    places = GeometryCollection(dict(zip(sources, lpots)))
     print(places.places)
 
+    # check on-demand refinement
+    from pytential import bind, sym
+    discr_stages = [sym.QBX_SOURCE_STAGE1,
+            sym.QBX_SOURCE_STAGE2,
+            sym.QBX_SOURCE_QUAD_STAGE2]
+
+    for k in range(ngeometry):
+        for discr_stage in discr_stages:
+            cache = places.get_cache('refined_qbx_discrs')
+            assert (sources[k], discr_stage) not in cache
+
+            dofdesc = sym.DOFDescriptor(sources[k], discr_stage=discr_stage)
+            bind(places, sym.nodes(ndim, dofdesc=dofdesc))(queue)
+
+            cache = places.get_cache('refined_qbx_discrs')
+            assert (sources[k], discr_stage) in cache
+
     # construct a layer potential on each qbx geometry
-    from pytential import sym
     from sumpy.kernel import LaplaceKernel
     ops = []
-    for k in range(ngeometry):
-        op = sym.D(LaplaceKernel(ndim),
-                sym.var("sigma"),
-                qbx_forced_limit="avg",
-                source="source_{}".format(k),
-                target="target_{}".format(k))
-        print(op)
-        print()
-        ops.append(op)
+    for i in range(ngeometry):
+        sigma = sym.var("sigma_{}".format(i))
+        for j in range(ngeometry):
+            op = sym.D(LaplaceKernel(ndim), sigma,
+                    source=sources[i], target=sources[j],
+                    qbx_forced_limit="avg" if i == j else None)
+            ops.append(op)
 
     # evaluate layer potentials
     import time
-    from pytential import bind
+    k = 0
     lpot_eval = []
-    for k in range(ngeometry):
-        density_discr = places.get_discretization("source_{}".format(k))
+    kernel_args = {}
+    for i in range(ngeometry):
+        density_discr = places.get_discretization(sources[i])
         sigma = 1.0 + density_discr.zeros(queue)
+
+        kernel_args.clear()
+        kernel_args["sigma_{}".format(i)] = sigma
 
         print()
         print("=" * 32)
         print()
 
-        t_start = time.time()
-        lpot_eval.append(bind(places, ops[k])(queue, sigma=sigma))
-        t_end = time.time()
-        print("Elapsed: {:.3}s".format(t_end - t_start))
+        for j in range(1, ngeometry):
+            t_start = time.time()
+            bind(places, ops[k])(queue, **kernel_args)
+            t_end = time.time()
+
+            k += 1
+            print("Elapsed: {:.3}s".format(t_end - t_start))
 
 
 # You can test individual routines by typing
