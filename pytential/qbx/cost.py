@@ -54,6 +54,53 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+__doc__ = """
+
+This module helps predict the running time of each step of QBX, as an extension of
+the similar module *boxtree.cost* in boxtree.
+
+:class:`QBXTranslationCostModel` describes the translation or evaluation cost of a
+single operation. For example, *m2qbxl* describes the cost for translating a single
+multipole expansion to a QBX local expansion.
+
+:class:`AbstractQBXCostModel` uses :class:`QBXTranslationCostModel` and
+kernel-specific calibration parameter to compute the total cost of each step of QBX
+in each box. There are two implementations of the interface
+:class:`AbstractQBXCostModel`, namely :class:`CLQBXCostModel` using OpenCL and
+:class:`PythonQBXCostModel` using pure Python. The kernel-specific calibration
+parameter can be estimated using *estimate_knl_specific_calibration_params*.
+
+Translation Cost of a Single Operation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: QBXTranslationCostModel
+
+.. autofunction:: pde_aware_translation_cost_model
+
+.. autofunction:: taylor_translation_cost_model
+
+Training (Generate Calibration Parameters)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automethod:: AbstractQBXCostModel.estimate_knl_specific_calibration_params
+
+Evaluating
+^^^^^^^^^^
+
+.. automethod:: AbstractQBXCostModel.get_qbx_modeled_cost
+
+Utilities
+^^^^^^^^^
+
+.. automethod:: boxtree.cost.AbstractFMMCostModel.aggregate
+
+.. automethod:: boxtree.cost.AbstractFMMCostModel.aggregate_stage_costs_per_box
+
+.. automethod:: AbstractQBXCostModel.get_constantone_calibration_params
+
+"""
+
+
 # {{{ translation cost model
 
 class QBXTranslationCostModel(FMMTranslationCostModel):
