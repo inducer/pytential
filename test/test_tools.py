@@ -200,12 +200,7 @@ def test_geometry_collection_caching(ctx_factory):
 
 def bug_run_loop(ctx_factory):
     while True:
-        try:
-            test_geometry_collection_caching(ctx_factory)
-        except:
-            import pudb
-            pudb.post_mortem()
-            break
+        test_geometry_collection_caching(ctx_factory)
 
 
 # You can test individual routines by typing

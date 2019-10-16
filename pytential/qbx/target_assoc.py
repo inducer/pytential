@@ -525,6 +525,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         tunnel_radius_by_source = bind(places,
                 sym._close_target_tunnel_radii(ambient_dim, dofdesc=source_name))(
                         self.queue)
+        tunnel_radius_by_source.finish()
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -559,10 +560,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
-
-        tunnel_radius_by_source = bind(places,
-            sym._close_target_tunnel_radii(ambient_dim, dofdesc=source_name))(
-                    self.queue)
 
         evt = knl(
             *unwrap_args(
