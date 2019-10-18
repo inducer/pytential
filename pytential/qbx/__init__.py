@@ -560,7 +560,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 queue, insn, bound_expr, evaluate, func, extra_args)
 
     def cost_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
-                                          calibration_params):
+                                          calibration_params, per_box):
         """Using :attr:`cost_model`, evaluate the cost of executing *insn*.
         Cost model results are gathered in
         :attr:`pytential.symbolic.execution.BoundExpression.modeled_cost`
@@ -575,7 +575,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     wrangler, strengths, geo_data, kernel, kernel_arguments):
             del strengths
             cost_model_result = self.cost_model(
-                geo_data, kernel, kernel_arguments, calibration_params
+                geo_data, kernel, kernel_arguments, calibration_params,
+                per_box=per_box
             )
             return wrangler.full_output_zeros(), cost_model_result
 

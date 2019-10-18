@@ -357,11 +357,14 @@ def test_timing_data_gathering(ctx_getter):
 
 # {{{ test cost model
 
-@pytest.mark.parametrize("dim, use_target_specific_qbx", (
-    (2, False),
-    (3, False),
-    (3, True)))
-def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
+@pytest.mark.parametrize("dim, use_target_specific_qbx, per_box", (
+    (2, False, False),
+    (3, False, False),
+    (3, True, False),
+    (2, False, True),
+    (3, False, True),
+    (3, True, True)))
+def test_cost_model(ctx_getter, dim, use_target_specific_qbx, per_box):
     """Test that cost model gathering can execute successfully."""
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
@@ -379,14 +382,16 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
     op_S = bind(lpot_source, sym_op_S)
-    cost_S = op_S.get_modeled_cost(queue, "constant_one", sigma=sigma)
+    cost_S = op_S.get_modeled_cost(queue, "constant_one", per_box, sigma=sigma)
     assert len(cost_S) == 1
 
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
             + sym.D(k_sym, sigma_sym))
     op_S_plus_D = bind(lpot_source, sym_op_S_plus_D)
-    cost_S_plus_D = op_S_plus_D.get_modeled_cost(queue, "constant_one", sigma=sigma)
+    cost_S_plus_D = op_S_plus_D.get_modeled_cost(
+        queue, "constant_one", per_box, sigma=sigma
+    )
     assert len(cost_S_plus_D) == 2
 
 # }}}
@@ -647,7 +652,7 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
 
     from pytools import one
     modeled_time = one(
-        op_S.get_modeled_cost(queue, "constant_one", sigma=sigma).values()
+        op_S.get_modeled_cost(queue, "constant_one", False, sigma=sigma).values()
     )
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
@@ -675,8 +680,7 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
         if stage not in modeled_time:
             assert timing_data[stage]["ops_elapsed"] == 0
         else:
-            modeled_stage_time = cost_model.aggregate(modeled_time[stage])
-            if timing_data[stage]["ops_elapsed"] != modeled_stage_time:
+            if timing_data[stage]["ops_elapsed"] != modeled_time[stage]:
                 mismatches.append(
                     (stage, timing_data[stage]["ops_elapsed"], modeled_time[stage]))
 

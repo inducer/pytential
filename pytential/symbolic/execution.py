@@ -336,7 +336,7 @@ class CostModelMapper(EvaluationMapperBase):
     """
 
     def __init__(self, bound_expr, queue,
-                 knl_specific_calibration_params,
+                 knl_specific_calibration_params, per_box,
                  context=None,
                  target_geometry=None,
                  target_points=None, target_normals=None, target_tangents=None):
@@ -351,6 +351,7 @@ class CostModelMapper(EvaluationMapperBase):
 
         self.knl_specific_calibration_params = knl_specific_calibration_params
         self.modeled_cost = {}
+        self.per_box = per_box
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
         source = bound_expr.places.get_geometry(insn.source)
@@ -364,7 +365,7 @@ class CostModelMapper(EvaluationMapperBase):
             calibration_params = self.knl_specific_calibration_params[knls]
 
         result, cost_model_result = source.cost_model_compute_potential_insn(
-                    queue, insn, bound_expr, evaluate, calibration_params
+            queue, insn, bound_expr, evaluate, calibration_params, self.per_box
         )
 
         # The compiler ensures this.
@@ -670,8 +671,10 @@ class BoundExpression(object):
     def get_discretization(self, where):
         return self.places.get_discretization(where)
 
-    def get_modeled_cost(self, queue, calibration_params, **args):
-        cost_model_mapper = CostModelMapper(self, queue, calibration_params, args)
+    def get_modeled_cost(self, queue, calibration_params, per_box, **args):
+        cost_model_mapper = CostModelMapper(
+            self, queue, calibration_params, per_box, args
+        )
         self.code.execute(cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()
 

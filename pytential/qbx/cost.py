@@ -87,14 +87,14 @@ Training (Generate Calibration Parameters)
 Evaluating
 ^^^^^^^^^^
 
-.. automethod:: AbstractQBXCostModel.get_qbx_modeled_cost
+.. automethod:: AbstractQBXCostModel.qbx_modeled_cost_per_stage
+
+.. automethod:: AbstractQBXCostModel.qbx_modeled_cost_per_box
 
 Utilities
 ^^^^^^^^^
 
 .. automethod:: boxtree.cost.AbstractFMMCostModel.aggregate
-
-.. automethod:: boxtree.cost.AbstractFMMCostModel.aggregate_stage_costs_per_box
 
 .. automethod:: AbstractQBXCostModel.get_constantone_calibration_params
 
@@ -297,8 +297,81 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         return cost_factors
 
-    def get_qbx_modeled_cost(self, geo_data, kernel, kernel_arguments,
-                             calibration_params):
+    def qbx_modeled_cost_per_box(self, geo_data, kernel, kernel_arguments,
+                                 calibration_params):
+        # FIXME: This should support target filtering.
+        lpot_source = geo_data.lpot_source
+        use_tsqbx = lpot_source._use_target_specific_qbx
+        tree = geo_data.tree()
+        traversal = geo_data.traversal()
+        nqbtl = geo_data.non_qbx_box_target_lists()
+        box_target_counts_nonchild = nqbtl.box_target_counts_nonchild
+        target_boxes = traversal.target_boxes
+
+        # FIXME: We can avoid using *kernel* and *kernel_arguments* if we talk
+        # to the wrangler to obtain the FMM order (see also
+        # https://gitlab.tiker.net/inducer/boxtree/issues/25)
+        fmm_level_to_order = [
+            lpot_source.fmm_level_to_order(
+                kernel.get_base_kernel(), kernel_arguments, tree, ilevel
+            ) for ilevel in range(tree.nlevels)
+        ]
+
+        # {{{ Construct parameters
+
+        params = calibration_params.copy()
+        params.update(dict(p_qbx=lpot_source.qbx_order))
+
+        for ilevel in range(tree.nlevels):
+            params["p_fmm_lev%d" % ilevel] = fmm_level_to_order[ilevel]
+
+        # }}}
+
+        xlat_cost = self.translation_cost_model_factory(
+            tree.dimensions, tree.nlevels
+        )
+
+        translation_cost = self.qbx_cost_factors_for_kernels_from_model(
+            tree.nlevels, xlat_cost, params
+        )
+
+        ndirect_sources_per_target_box = \
+            self.get_ndirect_sources_per_target_box(traversal)
+
+        result = self.fmm_modeled_cost_per_box(
+            traversal, fmm_level_to_order,
+            ndirect_sources_per_target_box,
+            calibration_params,
+            box_target_counts_nonchild=box_target_counts_nonchild
+        )
+
+        if use_tsqbx:
+            result[target_boxes] += self.process_eval_target_specific_qbxl(
+                geo_data, translation_cost["p2p_tsqbx_cost"],
+                ndirect_sources_per_target_box
+            )
+        else:
+            result[target_boxes] += self.process_form_qbxl(
+                geo_data, translation_cost["p2qbxl_cost"],
+                ndirect_sources_per_target_box
+            )
+
+        result[target_boxes] += self.process_m2qbxl(
+            geo_data, translation_cost["m2qbxl_cost"]
+        )
+
+        result[target_boxes] += self.process_l2qbxl(
+            geo_data, translation_cost["l2qbxl_cost"]
+        )
+
+        result[target_boxes] += self.process_eval_qbxl(
+            geo_data, translation_cost["qbxl2p_cost"]
+        )
+
+        return result
+
+    def qbx_modeled_cost_per_stage(self, geo_data, kernel, kernel_arguments,
+                                   calibration_params):
         # FIXME: This should support target filtering.
         lpot_source = geo_data.lpot_source
         use_tsqbx = lpot_source._use_target_specific_qbx
@@ -337,7 +410,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         ndirect_sources_per_target_box = \
             self.get_ndirect_sources_per_target_box(traversal)
 
-        result = self.get_fmm_modeled_cost(
+        result = self.fmm_modeled_cost_per_stage(
             traversal, fmm_level_to_order,
             ndirect_sources_per_target_box,
             calibration_params,
@@ -345,33 +418,40 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         )
 
         if use_tsqbx:
-            result["eval_target_specific_qbx_locals"] = \
+            result["eval_target_specific_qbx_locals"] = self.aggregate(
                 self.process_eval_target_specific_qbxl(
                     geo_data, translation_cost["p2p_tsqbx_cost"],
                     ndirect_sources_per_target_box=ndirect_sources_per_target_box
                 )
+            )
         else:
-            result["form_global_qbx_locals"] = self.process_form_qbxl(
-                geo_data, translation_cost["p2qbxl_cost"],
-                ndirect_sources_per_target_box
+            result["form_global_qbx_locals"] = self.aggregate(
+                self.process_form_qbxl(
+                    geo_data, translation_cost["p2qbxl_cost"],
+                    ndirect_sources_per_target_box
+                )
             )
 
-        result["translate_box_multipoles_to_qbx_local"] = self.process_m2qbxl(
-            geo_data, translation_cost["m2qbxl_cost"]
+        result["translate_box_multipoles_to_qbx_local"] = self.aggregate(
+            self.process_m2qbxl(geo_data, translation_cost["m2qbxl_cost"])
         )
 
-        result["translate_box_local_to_qbx_local"] = self.process_l2qbxl(
-            geo_data, translation_cost["l2qbxl_cost"]
+        result["translate_box_local_to_qbx_local"] = self.aggregate(
+            self.process_l2qbxl(geo_data, translation_cost["l2qbxl_cost"])
         )
 
-        result["eval_qbx_expansions"] = self.process_eval_qbxl(
-            geo_data, translation_cost["qbxl2p_cost"]
+        result["eval_qbx_expansions"] = self.aggregate(
+            self.process_eval_qbxl(geo_data, translation_cost["qbxl2p_cost"])
         )
 
         return result
 
     def __call__(self, *args, **kwargs):
-        return self.get_qbx_modeled_cost(*args, **kwargs)
+        per_box = kwargs.pop('per_box', True)
+        if per_box:
+            return self.qbx_modeled_cost_per_box(*args, **kwargs)
+        else:
+            return self.qbx_modeled_cost_per_stage(*args, **kwargs)
 
     @staticmethod
     def get_constantone_calibration_params():
@@ -417,7 +497,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         :arg model_results: a :class:`list` of modeled costs. Each model cost can be
             obtained from `BoundExpression.get_modeled_cost` with "constant_one" for
-            argument `calibration_params`.
+            argument `calibration_params`, and `per_box` set to *False*.
         :arg timing_results: a :class:`list` of timing data. Each timing data can be
             obtained from `BoundExpression.eval`.
         :arg time_field_name: a :class:`str`, the field name from the timing result.

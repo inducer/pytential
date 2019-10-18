@@ -102,7 +102,9 @@ def calibrate_cost_model(ctx):
         bound_op = get_bound_op(lpot_source)
         sigma = get_test_density(queue, lpot_source)
 
-        cost_S = bound_op.get_modeled_cost(queue, "constant_one", sigma=sigma)
+        modeled_cost = bound_op.get_modeled_cost(
+            queue, "constant_one", False, sigma=sigma
+        )
 
         # Warm-up run.
         bound_op.eval(queue, {"sigma": sigma})
@@ -111,7 +113,7 @@ def calibrate_cost_model(ctx):
             timing_data = {}
             bound_op.eval(queue, {"sigma": sigma}, timing_data=timing_data)
 
-            model_results.append(cost_S)
+            model_results.append(modeled_cost)
             timing_results.append(timing_data)
 
     calibration_params = cost_model.estimate_knl_specific_calibration_params(
@@ -130,7 +132,9 @@ def test_cost_model(ctx, calibration_params):
         bound_op = get_bound_op(lpot_source)
         sigma = get_test_density(queue, lpot_source)
 
-        cost_S = bound_op.get_modeled_cost(queue, calibration_params, sigma=sigma)
+        cost_S = bound_op.get_modeled_cost(
+            queue, calibration_params, False, sigma=sigma
+        )
         model_result = one(cost_S.values())
 
         # Warm-up run.
@@ -155,7 +159,7 @@ def test_cost_model(ctx, calibration_params):
             row = [
                     stage,
                     "%.2f" % timing_result[stage],
-                    "%.2f" % cost_model.aggregate(model_result[stage])
+                    "%.2f" % model_result[stage]
             ]
             table.add_row(row)
 
