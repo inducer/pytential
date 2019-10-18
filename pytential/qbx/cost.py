@@ -297,6 +297,24 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         return cost_factors
 
+    @staticmethod
+    def gather_metadata(geo_data, fmm_level_to_order):
+        lpot_source = geo_data.lpot_source
+        tree = geo_data.tree()
+
+        metadata = {
+            "p_qbx": lpot_source.qbx_order,
+            "nlevels": tree.nlevels,
+            "nsources": tree.nsources,
+            "ntargets": tree.ntargets,
+            "ncenters": geo_data.ncenters
+        }
+
+        for level in range(tree.nlevels):
+            metadata["p_fmm_lev%d" % level] = fmm_level_to_order[level]
+
+        return metadata
+
     def qbx_modeled_cost_per_box(self, geo_data, kernel, kernel_arguments,
                                  calibration_params):
         # FIXME: This should support target filtering.
@@ -368,7 +386,9 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             geo_data, translation_cost["qbxl2p_cost"]
         )
 
-        return result
+        metadata = self.gather_metadata(geo_data, fmm_level_to_order)
+
+        return result, metadata
 
     def qbx_modeled_cost_per_stage(self, geo_data, kernel, kernel_arguments,
                                    calibration_params):
@@ -444,7 +464,9 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             self.process_eval_qbxl(geo_data, translation_cost["qbxl2p_cost"])
         )
 
-        return result
+        metadata = self.gather_metadata(geo_data, fmm_level_to_order)
+
+        return result, metadata
 
     def __call__(self, *args, **kwargs):
         per_box = kwargs.pop('per_box', True)
@@ -874,8 +896,10 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
 
         return neval_qbxl * qbxl2p_cost
 
-    def get_qbx_modeled_cost(self, geo_data, kernel, kernel_arguments,
-                             calibration_params):
+    def qbx_modeled_cost_per_box(self, geo_data, kernel, kernel_arguments,
+                                 calibration_params):
+        """This function additionally transfers geo_data to host if necessary
+        """
         from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
         from pytential.qbx.geometry import QBXFMMGeometryData
 
@@ -885,9 +909,26 @@ class PythonQBXCostModel(AbstractQBXCostModel, PythonFMMCostModel):
             queue = cl.CommandQueue(geo_data.cl_context)
             geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
 
-            AbstractQBXCostModel.get_qbx_modeled_cost(
-                self, geo_data, kernel, kernel_arguments, calibration_params
-            )
+        return AbstractQBXCostModel.qbx_modeled_cost_per_box(
+            self, geo_data, kernel, kernel_arguments, calibration_params
+        )
+
+    def qbx_modeled_cost_per_stage(self, geo_data, kernel, kernel_arguments,
+                                   calibration_params):
+        """This function additionally transfers geo_data to host if necessary
+        """
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
+        from pytential.qbx.geometry import QBXFMMGeometryData
+
+        if not isinstance(geo_data, ToHostTransferredGeoDataWrapper):
+            assert isinstance(geo_data, QBXFMMGeometryData)
+
+            queue = cl.CommandQueue(geo_data.cl_context)
+            geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+
+        return AbstractQBXCostModel.qbx_modeled_cost_per_stage(
+            self, geo_data, kernel, kernel_arguments, calibration_params
+        )
 
 # }}}
 

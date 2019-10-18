@@ -34,8 +34,9 @@ import pyopencl as cl
 
 from boxtree.tools import ConstantOneExpansionWrangler
 from pytential.qbx import QBXLayerPotentialSource
-from sumpy.kernel import LaplaceKernel
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 from pytential import bind, sym, norm  # noqa
+from pytools import one
 
 from pytential.qbx.cost import (
     CLQBXCostModel, PythonQBXCostModel, pde_aware_translation_cost_model
@@ -382,17 +383,65 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx, per_box):
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
     op_S = bind(lpot_source, sym_op_S)
-    cost_S = op_S.get_modeled_cost(queue, "constant_one", per_box, sigma=sigma)
+    cost_S, _ = op_S.get_modeled_cost(
+        queue, "constant_one", per_box=per_box, sigma=sigma
+    )
     assert len(cost_S) == 1
 
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
             + sym.D(k_sym, sigma_sym))
     op_S_plus_D = bind(lpot_source, sym_op_S_plus_D)
-    cost_S_plus_D = op_S_plus_D.get_modeled_cost(
-        queue, "constant_one", per_box, sigma=sigma
+    cost_S_plus_D, _ = op_S_plus_D.get_modeled_cost(
+        queue, "constant_one", per_box=per_box, sigma=sigma
     )
     assert len(cost_S_plus_D) == 2
+
+# }}}
+
+
+# {{{ test cost model metadata gathering
+
+def test_cost_model_metadata_gathering(ctx_getter):
+    """Test that the cost model correctly gathers metadata."""
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
+
+    fmm_level_to_order = SimpleExpansionOrderFinder(tol=1e-5)
+
+    lpot_source = get_lpot_source(queue, 2).copy(
+            fmm_level_to_order=fmm_level_to_order)
+
+    sigma = get_density(queue, lpot_source)
+
+    sigma_sym = sym.var("sigma")
+    k_sym = HelmholtzKernel(2, "k")
+    k = 2
+
+    sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1, k=sym.var("k"))
+    op_S = bind(lpot_source, sym_op_S)
+
+    _, metadata = op_S.get_modeled_cost(
+        queue, "constant_one", sigma=sigma, k=k, per_box=False, return_metadata=True)
+    metadata = one(metadata.values())
+
+    geo_data = lpot_source.qbx_fmm_geometry_data(
+            target_discrs_and_qbx_sides=((lpot_source.density_discr, 1),))
+
+    tree = geo_data.tree()
+
+    assert metadata["p_qbx"] == QBX_ORDER
+    assert metadata["nlevels"] == tree.nlevels
+    assert metadata["nsources"] == tree.nsources
+    assert metadata["ntargets"] == tree.ntargets
+    assert metadata["ncenters"] == geo_data.ncenters
+
+    for level in range(tree.nlevels):
+        assert (
+                metadata["p_fmm_lev%d" % level]
+                == fmm_level_to_order(k_sym, {"k": 2}, tree, level))
 
 # }}}
 
@@ -651,9 +700,10 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
     sigma = get_density(queue, lpot_source)
 
     from pytools import one
-    modeled_time = one(
-        op_S.get_modeled_cost(queue, "constant_one", False, sigma=sigma).values()
+    modeled_time, _ = op_S.get_modeled_cost(
+        queue, "constant_one", per_box=False, sigma=sigma
     )
+    modeled_time = one(modeled_time.values())
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
     # high-level interface, so call the FMM driver directly.
