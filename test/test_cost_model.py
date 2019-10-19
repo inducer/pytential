@@ -739,6 +739,65 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
 # }}}
 
 
+# {{{ test order varying by level
+
+def test_cost_model_order_varying_by_level(ctx_getter):
+    """For FMM order varying by level, this checks to ensure that the costs are
+    different. The varying-level case should have larger cost.
+    """
+
+    cl_ctx = ctx_getter()
+    queue = cl.CommandQueue(cl_ctx)
+
+    # {{{ constant level to order
+
+    def level_to_order_constant(kernel, kernel_args, tree, level):
+        return 1
+
+    lpot_source = get_lpot_source(queue, 2).copy(
+            cost_model=CLQBXCostModel(queue),
+            fmm_level_to_order=level_to_order_constant)
+
+    sigma_sym = sym.var("sigma")
+
+    k_sym = LaplaceKernel(2)
+    sym_op = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
+
+    sigma = get_density(queue, lpot_source)
+
+    cost_constant, metadata = bind(lpot_source, sym_op).get_modeled_cost(
+        queue, "constant_one", per_box=False, sigma=sigma
+    )
+
+    cost_constant = one(cost_constant.values())
+    metadata = one(metadata.values())
+
+    # }}}
+
+    # {{{ varying level to order
+
+    def level_to_order_varying(kernel, kernel_args, tree, level):
+        return metadata["nlevels"] - level
+
+    lpot_source = get_lpot_source(queue, 2).copy(
+            cost_model=CLQBXCostModel(queue),
+            fmm_level_to_order=level_to_order_varying)
+
+    sigma = get_density(queue, lpot_source)
+
+    cost_varying, _ = bind(lpot_source, sym_op).get_modeled_cost(
+        queue, "constant_one", per_box=False, sigma=sigma
+    )
+
+    cost_varying = one(cost_varying.values())
+
+    # }}}
+
+    assert sum(cost_varying.values()) > sum(cost_constant.values())
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_cost_model.py 'test_routine()'
 
