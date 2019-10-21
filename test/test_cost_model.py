@@ -736,6 +736,26 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
 
     assert not mismatches, "\n".join(str(s) for s in mismatches)
 
+    # {{{ Test per-box cost
+
+    total_cost = 0.0
+    for stage in timing_data:
+        total_cost += timing_data[stage]["ops_elapsed"]
+
+    per_box_cost, _ = op_S.get_modeled_cost(
+        queue, "constant_one", per_box=True, sigma=sigma
+    )
+    per_box_cost = one(per_box_cost.values())
+
+    total_aggregate_cost = cost_model.aggregate(per_box_cost)
+    assert total_cost == (
+            total_aggregate_cost
+            + modeled_time["coarsen_multipoles"]
+            + modeled_time["refine_locals"]
+    )
+
+    # }}}
+
 # }}}
 
 
