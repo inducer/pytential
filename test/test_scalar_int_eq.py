@@ -375,7 +375,7 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
                     // p() = Unique(Abs(Boundary{ Line{l_fine()}; }));
                     // Characteristic Length{p()} = 0.05;
 
-                    Field[1] = Attractor;
+                    Field[1] = Distance;
                     Field[1].NNodesByEdge = 100;
                     Field[1].EdgesList = {l_superfine()};
 
@@ -386,7 +386,7 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
                     Field[2].DistMin = 0.1;
                     Field[2].DistMax = 0.4;
 
-                    Field[3] = Attractor;
+                    Field[3] = Distance;
                     Field[3].NNodesByEdge = 100;
                     Field[3].EdgesList = {l_fine()};
 
@@ -397,7 +397,7 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
                     Field[4].DistMin = 0.15;
                     Field[4].DistMax = 0.4;
 
-                    Field[5] = Attractor;
+                    Field[5] = Distance;
                     Field[5].NNodesByEdge = 100;
                     Field[5].EdgesList = {l_coarse()};
 
