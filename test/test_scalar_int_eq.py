@@ -566,11 +566,11 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         op = NeumannOperator(knl, loc_sign, use_l2_weighting=True,
                  use_improved_operator=False, kernel_arguments=knl_kwargs_syms)
     elif case.bc_type == "clamped_plate":
-        op = BiharmonicClampedPlateOperator(knl)
+        op = BiharmonicClampedPlateOperator(knl, loc_sign)
     else:
         assert False
 
-    op_u = op.operator(sym.var("u"))
+    op_u = op.operator(op.get_density_var("u"))
 
     # }}}
 
@@ -645,7 +645,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # {{{ solve
 
     bound_op = bind(qbx, op_u)
-    rhs = bind(density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bc)
+    rhs = bind(density_discr, op.prepare_rhs(op.get_var("bc")))(queue, bc=bc)
 
     try:
         from pytential.solve import gmres
@@ -693,7 +693,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
         points_target = PointsTarget(test_targets)
         bound_tgt_op = bind((qbx, points_target),
-                op.representation(sym.var("u")))
+                op.representation(op.get_density_var("u")))
 
         test_via_bdry = bound_tgt_op(queue, u=weighted_u, **concrete_knl_kwargs)
 
@@ -730,7 +730,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     if case.check_gradient and case.prob_side != "scat":
         bound_grad_op = bind((qbx, points_target),
                 op.representation(
-                    sym.var("u"),
+                    op.get_density_var("u"),
                     map_potentials=lambda pot: sym.grad(mesh.ambient_dim, pot),
                     qbx_forced_limit=None))
 
@@ -760,7 +760,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     if case.check_tangential_deriv and case.prob_side != "scat":
         bound_t_deriv_op = bind(qbx,
                 op.representation(
-                    sym.var("u"),
+                    op.get_density_var("u"),
                     map_potentials=lambda pot: sym.tangential_derivative(2, pot),
                     qbx_forced_limit=loc_sign))
 
@@ -800,7 +800,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                 .as_vector(dtype=object)
 
         sym_sqrt_j = sym.sqrt_jac_q_weight(density_discr.ambient_dim)
-        u = bind(density_discr, sym.var("u")/sym_sqrt_j)(queue, u=weighted_u)
+        u = bind(density_discr, op.get_density_var("u")/sym_sqrt_j)(queue, u=weighted_u)
 
         bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
             ("u", u),
@@ -829,7 +829,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         try:
             solved_pot = bind(
                     (qbx_tgt_tol, PointsTarget(fplot.points)),
-                    op.representation(sym.var("u"))
+                    op.representation(op.get_density_var("u"))
                     )(queue, u=weighted_u, **concrete_knl_kwargs)
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
@@ -844,7 +844,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         indicator = bind(
                 (qbx_tgt_tol, PointsTarget(fplot.points)),
                 -sym.D(LaplaceKernel(density_discr.ambient_dim),
-                    sym.var("sigma"),
+                    op.get_density_var("sigma"),
                     qbx_forced_limit=None))(
                 queue, sigma=ones_density).get()
 
