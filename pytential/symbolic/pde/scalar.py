@@ -33,7 +33,7 @@ from pytential import sym
 from pytential.symbolic.primitives import (
         cse,
         sqrt_jac_q_weight, QWeight, area_element)
-from sumpy.kernel import DirectionalSourceDerivative, DirectionalTargetDerivative
+from sumpy.kernel import DirectionalSourceDerivative
 import numpy as np  # noqa
 
 
@@ -132,7 +132,8 @@ class DirichletOperator(L2WeightedPDEOperator):
         inv_sqrt_w_u = cse(u/sqrt_w)
 
         if map_potentials is None:
-            map_potentials = lambda x: x
+            def map_potentials(x):  # pylint:disable=function-redefined
+                return x
 
         def S(density):  # noqa
             return sym.S(self.kernel, density,
@@ -243,7 +244,8 @@ class NeumannOperator(L2WeightedPDEOperator):
         inv_sqrt_w_u = cse(u/sqrt_w)
 
         if map_potentials is None:
-            map_potentials = lambda x: x
+            def map_potentials(x):  # pylint:disable=function-redefined
+                return x
 
         kwargs["qbx_forced_limit"] = qbx_forced_limit
         kwargs["kernel_arguments"] = self.kernel_arguments
@@ -342,7 +344,8 @@ class BiharmonicClampedPlateOperator:
             sigma, map_potentials=None, qbx_forced_limit=None):
 
         if map_potentials is None:
-            map_potentials = lambda x: x
+            def map_potentials(x):
+                return x
 
         def dv(knl):
             return DirectionalSourceDerivative(knl, "normal_dir")
@@ -369,7 +372,6 @@ class BiharmonicClampedPlateOperator:
                     qbx_forced_limit=qbx_forced_limit))
 
         return k1 + k2
-
 
     def operator(self, sigma):
         rep = self.representation(sigma, qbx_forced_limit='avg')

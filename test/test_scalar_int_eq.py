@@ -475,7 +475,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             fmm_backend=case.fmm_backend, **qbx_lpot_kwargs)
 
     if case.use_refinement:
-        if case.knl_class == HelmholtzKernel and getattr(case, "refine_on_helmholtz_k", True):
+        if case.knl_class == HelmholtzKernel and \
+                getattr(case, "refine_on_helmholtz_k", True):
             refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
 
         if hasattr(case, "scaled_max_curvature_threshold"):
@@ -639,7 +640,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                 )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
         bc = [bc_u, bc_du]
 
-
     # }}}
 
     # {{{ solve
@@ -705,7 +705,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
         # {{{ remove effect of net source charge
 
-        if case.knl_class == LaplaceKernel and case.bc_type == "neumann" and loc_sign == -1:
+        if case.knl_class == LaplaceKernel and case.bc_type == "neumann" \
+                and loc_sign == -1:
 
             # remove constant offset in interior Laplace Neumann error
             tgt_ones = np.ones_like(test_direct)
@@ -800,7 +801,8 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                 .as_vector(dtype=object)
 
         sym_sqrt_j = sym.sqrt_jac_q_weight(density_discr.ambient_dim)
-        u = bind(density_discr, op.get_density_var("u")/sym_sqrt_j)(queue, u=weighted_u)
+        u = bind(density_discr, op.get_density_var("u")/sym_sqrt_j)(queue,
+                u=weighted_u)
 
         bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
             ("u", u),
@@ -887,6 +889,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
 # }}}
 
+
 cases = [
     EllipseIntEqTestCase(helmholtz_k, bc_type=bc_type,
         prob_side=prob_side)
@@ -897,12 +900,13 @@ cases = [
 
 cases += [
     EllipseIntEqTestCase(BiharmonicKernel, bc_type="clamped_plate",
-        prob_side=-1, fmm_backend = None),
+        prob_side=-1, fmm_backend=None),
     EllipseIntEqTestCase(BiharmonicKernel, bc_type="clamped_plate",
-        prob_side=-1, fmm_backend = "sumpy", fmm_order=15),
+        prob_side=-1, fmm_backend="sumpy", fmm_order=15),
 ]
 
 # {{{ test frontend
+
 
 @pytest.mark.parametrize("case", cases)
 # Sample test run:
