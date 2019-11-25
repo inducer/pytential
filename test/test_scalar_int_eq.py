@@ -40,6 +40,7 @@ from meshmode.discretization.visualization import make_visualizer
 from sumpy.symbolic import USE_SYMENGINE
 from pytential import bind, sym
 from pytential.qbx import QBXTargetAssociationFailedException
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel, BiharmonicKernel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -66,10 +67,6 @@ def make_circular_point_group(ambient_dim, npoints, radius,
 class IntEqTestCase:
 
     @property
-    def default_helmholtz_k(self):
-        raise NotImplementedError
-
-    @property
     def name(self):
         raise NotImplementedError
 
@@ -81,27 +78,37 @@ class IntEqTestCase:
     def target_order(self):
         raise NotImplementedError
 
-    def __init__(self, helmholtz_k, bc_type, prob_side):
+    def __init__(self, knl_class_or_helmholtz_k, bc_type,
+            prob_side, knl_kwargs={}, **kwargs):
         """
         :arg prob_side: may be -1, +1, or ``'scat'`` for a scattering problem
         """
-
-        if helmholtz_k is None:
-            helmholtz_k = self.default_helmholtz_k
-
-        self.helmholtz_k = helmholtz_k
         self.bc_type = bc_type
         self.prob_side = prob_side
-
-    @property
-    def k(self):
-        return self.helmholtz_k
+        if not isinstance(knl_class_or_helmholtz_k, type):
+            if knl_class_or_helmholtz_k == 0:
+                knl_class = LaplaceKernel
+            else:
+                knl_kwargs = {"k": knl_class_or_helmholtz_k}
+                knl_class = HelmholtzKernel
+        else:
+            knl_class = knl_class_or_helmholtz_k
+        self.knl_class = knl_class
+        self.knl_kwargs = knl_kwargs
+        self.knl_kwargs_syms = dict((k, sym.var(k)) for k in self.knl_kwargs.keys())
+        for k, v in self.knl_kwargs.items():
+            setattr(self, k, v)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
     def __str__(self):
+        kwargs = ", ".join("%s: %s" % (k, v) for k, v in self.knl_kwargs.items())
+        if kwargs:
+            kwargs = " , " + kwargs
         return ("name: %s, bc_type: %s, prob_side: %s, "
-                "helmholtz_k: %s, qbx_order: %d, target_order: %d"
-            % (self.name, self.bc_type, self.prob_side, self.helmholtz_k,
-                self.qbx_order, self.target_order))
+                "knl_class: %s, qbx_order: %d, target_order: %d%s"
+            % (self.name, self.bc_type, self.prob_side, self.knl_class,
+                self.qbx_order, self.target_order, kwargs))
 
     fmm_backend = "sumpy"
     gmres_tol = 1e-14
@@ -125,8 +132,9 @@ class CurveIntEqTestCase(IntEqTestCase):
     outer_radius = 2
 
     qbx_order = 5
-    target_order = qbx_order
-    fmm_backend = None
+    target_order = 5
+    fmm_order = 15
+    fmm_backend = "sumpy"
 
     check_tangential_deriv = True
     check_gradient = False
@@ -323,7 +331,6 @@ class ElliptiplaneIntEqTestCase(IntEqTestCase):
 class BetterplaneIntEqTestCase(IntEqTestCase):
     name = "betterplane"
 
-    default_helmholtz_k = 20
     resolutions = [0.2]
     # refine_on_helmholtz_k = False
 
@@ -469,7 +476,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             fmm_backend=case.fmm_backend, **qbx_lpot_kwargs)
 
     if case.use_refinement:
-        if case.k != 0 and getattr(case, "refine_on_helmholtz_k", True):
+        if case.knl_class == HelmholtzKernel and getattr(case, "refine_on_helmholtz_k", True):
             refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
 
         if hasattr(case, "scaled_max_curvature_threshold"):
@@ -537,18 +544,14 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # {{{ set up operator
 
     from pytential.symbolic.pde.scalar import (
-            DirichletOperator,
-            NeumannOperator)
+        DirichletOperator,
+        NeumannOperator,
+        BiharmonicClampedPlateOperator,
+    )
 
-    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-    if case.k:
-        knl = HelmholtzKernel(mesh.ambient_dim)
-        knl_kwargs = {"k": sym.var("k")}
-        concrete_knl_kwargs = {"k": case.k}
-    else:
-        knl = LaplaceKernel(mesh.ambient_dim)
-        knl_kwargs = {}
-        concrete_knl_kwargs = {}
+    knl = case.knl_class(mesh.ambient_dim)
+    knl_kwargs_syms = case.knl_kwargs_syms
+    concrete_knl_kwargs = case.knl_kwargs
 
     if knl.is_complex_valued:
         dtype = np.complex128
@@ -559,10 +562,12 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     if case.bc_type == "dirichlet":
         op = DirichletOperator(knl, loc_sign, use_l2_weighting=True,
-                kernel_arguments=knl_kwargs)
+                kernel_arguments=knl_kwargs_syms)
     elif case.bc_type == "neumann":
         op = NeumannOperator(knl, loc_sign, use_l2_weighting=True,
-                 use_improved_operator=False, kernel_arguments=knl_kwargs)
+                 use_improved_operator=False, kernel_arguments=knl_kwargs_syms)
+    elif case.bc_type == "clamped_plate":
+        op = BiharmonicClampedPlateOperator(knl)
     else:
         assert False
 
@@ -609,7 +614,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
     pot_src = sym.IntG(
         # FIXME: qbx_forced_limit--really?
-        knl, sym.var("charges"), qbx_forced_limit=None, **knl_kwargs)
+        knl, sym.var("charges"), qbx_forced_limit=None, **knl_kwargs_syms)
 
     test_direct = bind((point_source, PointsTarget(test_targets)), pot_src)(
             queue, charges=source_charges_dev, **concrete_knl_kwargs)
@@ -624,6 +629,17 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                 sym.normal_derivative(
                     qbx.ambient_dim, pot_src, where=sym.DEFAULT_TARGET)
                 )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
+
+    elif case.bc_type == "clamped_plate":
+        bc_u = bind((point_source, density_discr), pot_src)(
+                queue, charges=source_charges_dev, **concrete_knl_kwargs)
+        bc_du = bind(
+                (point_source, density_discr),
+                sym.normal_derivative(
+                    qbx.ambient_dim, pot_src, where=sym.DEFAULT_TARGET)
+                )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
+        bc = [bc_u, bc_du]
+
 
     # }}}
 
@@ -660,7 +676,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         from sumpy.tools import build_matrix
         mat = build_matrix(
                 bound_op.scipy_op(
-                    queue, arg_name="u", dtype=dtype, k=case.k))
+                    queue, arg_name="u", dtype=dtype, **concrete_knl_kwargs))
         w, v = la.eig(mat)
         if 0:
             pt.imshow(np.log10(1e-20+np.abs(mat)))
@@ -680,7 +696,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         bound_tgt_op = bind((qbx, points_target),
                 op.representation(sym.var("u")))
 
-        test_via_bdry = bound_tgt_op(queue, u=weighted_u, k=case.k)
+        test_via_bdry = bound_tgt_op(queue, u=weighted_u, **concrete_knl_kwargs)
 
         err = test_via_bdry - test_direct
 
@@ -690,7 +706,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
         # {{{ remove effect of net source charge
 
-        if case.k == 0 and case.bc_type == "neumann" and loc_sign == -1:
+        if case.knl_class == LaplaceKernel and case.bc_type == "neumann" and loc_sign == -1:
 
             # remove constant offset in interior Laplace Neumann error
             tgt_ones = np.ones_like(test_direct)
@@ -815,7 +831,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
             solved_pot = bind(
                     (qbx_tgt_tol, PointsTarget(fplot.points)),
                     op.representation(sym.var("u"))
-                    )(queue, u=weighted_u, k=case.k)
+                    )(queue, u=weighted_u, **concrete_knl_kwargs)
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
                     "failed-targets.vts",
@@ -824,7 +840,6 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
                         ])
             raise
 
-        from sumpy.kernel import LaplaceKernel
         ones_density = density_discr.zeros(queue)
         ones_density.fill(1)
         indicator = bind(
@@ -873,18 +888,25 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
 
 # }}}
 
-
-# {{{ test frontend
-
-@pytest.mark.parametrize("case", [
-    EllipseIntEqTestCase(helmholtz_k=helmholtz_k, bc_type=bc_type,
+cases = [
+    EllipseIntEqTestCase(helmholtz_k, bc_type=bc_type,
         prob_side=prob_side)
     for helmholtz_k in [0, 1.2]
     for bc_type in ["dirichlet", "neumann"]
     for prob_side in [-1, +1]
-    ])
+]
+
+cases += [
+    EllipseIntEqTestCase(BiharmonicKernel, bc_type="clamped_plate",
+        prob_side=prob_side)
+    for prob_side in [-1, +1]
+]
+
+# {{{ test frontend
+
+@pytest.mark.parametrize("case", cases)
 # Sample test run:
-# 'test_integral_equation(cl._csc, EllipseIntEqTestCase(0, "dirichlet", +1), visualize=True)'  # noqa: E501
+# 'test_integral_equation(cl._csc, EllipseIntEqTestCase(LaplaceKernel, "dirichlet", +1), visualize=True)'  # noqa: E501
 def test_integral_equation(ctx_factory, case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
@@ -920,6 +942,8 @@ def test_integral_equation(ctx_factory, case, visualize=False):
         tgt_order = case.qbx_order
     elif case.bc_type == "neumann":
         tgt_order = case.qbx_order-1
+    elif case.bc_type == "clamped_plate":
+        tgt_order = case.qbx_order
     else:
         assert False
 

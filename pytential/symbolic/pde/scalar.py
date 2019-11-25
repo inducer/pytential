@@ -33,6 +33,7 @@ from pytential import sym
 from pytential.symbolic.primitives import (
         cse,
         sqrt_jac_q_weight, QWeight, area_element)
+from sumpy.kernel import DirectionalSourceDerivative, DirectionalTargetDerivative
 import numpy as np  # noqa
 
 
@@ -303,6 +304,58 @@ class NeumannOperator(L2WeightedPDEOperator):
                     - self.alpha*DpS0u
                     + ones_contribution
                     ))
+
+
+class BiharmonicClampedPlateOperator:
+
+    def __init__(self, knl):
+        self.knl = knl
+
+    def prepare_rhs(self, b):
+        return sym.make_sym_vector("bc", 2)
+
+    def representation(self,
+            u, map_potentials=None, qbx_forced_limit=None):
+
+        if map_potentials is None:
+            def map_potentials(x):  # pylint:disable=function-redefined
+                return x
+
+        def dv(knl):
+            return DirectionalSourceDerivative(knl, "normal_dir")
+
+        def dt(knl):
+            return DirectionalSourceDerivative(knl, "tangent_dir")
+
+        sigma_sym = sym.make_sym_vector(str(u), 2)
+        normal_dir = sym.normal(2).as_vector()
+        tangent_dir = np.array([-normal_dir[1], normal_dir[0]])
+
+        k1 = sym.S(dv(dv(dv(self.knl))), sigma_sym[0],
+                    kernel_arguments={"normal_dir": normal_dir},
+                    qbx_forced_limit=qbx_forced_limit) + \
+             3*sym.S(dv(dt(dt(self.knl))), sigma_sym[0],
+                    kernel_arguments={"normal_dir": normal_dir,
+                                      "tangent_dir": tangent_dir},
+                    qbx_forced_limit=qbx_forced_limit)
+
+        k2 = -sym.S(dv(dv(self.knl)), sigma_sym[1],
+                    kernel_arguments={"normal_dir": normal_dir},
+                    qbx_forced_limit=qbx_forced_limit) + \
+             sym.S(dt(dt(self.knl)), sigma_sym[1],
+                    kernel_arguments={"tangent_dir": tangent_dir},
+                    qbx_forced_limit=qbx_forced_limit)
+
+        return map_potentials(k1 + k2)
+
+
+    def operator(self, u):
+        sigma_sym = sym.make_sym_vector(str(u), 2)
+        rep = self.representation(u, qbx_forced_limit='avg')
+        rep_diff = sym.normal_derivative(2, rep)
+        int_eq1 = sigma_sym[0]/2 + rep
+        int_eq2 = -sym.mean_curvature(2)*sigma_sym[0] + sigma_sym[1]/2 + rep_diff
+        return np.array([int_eq1, int_eq2])
 
 # }}}
 
