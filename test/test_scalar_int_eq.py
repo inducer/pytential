@@ -645,7 +645,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     # {{{ solve
 
     bound_op = bind(qbx, op_u)
-    rhs = bind(density_discr, op.prepare_rhs(op.get_var("bc")))(queue, bc=bc)
+    rhs = bind(density_discr, op.prepare_rhs(op.get_density_var("bc")))(queue, bc=bc)
 
     try:
         from pytential.solve import gmres
