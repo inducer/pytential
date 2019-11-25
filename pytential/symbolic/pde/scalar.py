@@ -345,7 +345,7 @@ class BiharmonicClampedPlateOperator:
             sigma, map_potentials=None, qbx_forced_limit=None):
 
         if map_potentials is None:
-            def map_potentials(x):
+            def map_potentials(x):  # pylint:disable=function-redefined
                 return x
 
         def dv(knl):
