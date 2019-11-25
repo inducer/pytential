@@ -636,7 +636,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         bc_du = bind(
                 (point_source, density_discr),
                 sym.normal_derivative(
-                    qbx.ambient_dim, pot_src, where=sym.DEFAULT_TARGET)
+                    qbx.ambient_dim, pot_src, dofdesc=sym.DEFAULT_TARGET)
                 )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
         bc = [bc_u, bc_du]
 
