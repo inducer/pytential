@@ -381,7 +381,7 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
                     // p() = Unique(Abs(Boundary{ Line{l_fine()}; }));
                     // Characteristic Length{p()} = 0.05;
 
-                    Field[1] = Attractor;
+                    Field[1] = Distance;
                     Field[1].NNodesByEdge = 100;
                     Field[1].EdgesList = {l_superfine()};
 
@@ -392,7 +392,7 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
                     Field[2].DistMin = 0.1;
                     Field[2].DistMax = 0.4;
 
-                    Field[3] = Attractor;
+                    Field[3] = Distance;
                     Field[3].NNodesByEdge = 100;
                     Field[3].EdgesList = {l_fine()};
 
@@ -403,7 +403,7 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
                     Field[4].DistMin = 0.15;
                     Field[4].DistMax = 0.4;
 
-                    Field[5] = Attractor;
+                    Field[5] = Distance;
                     Field[5].NNodesByEdge = 100;
                     Field[5].EdgesList = {l_coarse()};
 
@@ -627,7 +627,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
         bc = bind(
                 (point_source, density_discr),
                 sym.normal_derivative(
-                    qbx.ambient_dim, pot_src, where=sym.DEFAULT_TARGET)
+                    qbx.ambient_dim, pot_src, dofdesc=sym.DEFAULT_TARGET)
                 )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     elif case.bc_type == "clamped_plate":
@@ -880,8 +880,9 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize):
     class Result(Record):
         pass
 
+    h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
     return Result(
-            h_max=qbx.h_max,
+            h_max=h_max,
             rel_err_2=rel_err_2,
             rel_err_inf=rel_err_inf,
             rel_td_err_inf=rel_td_err_inf,

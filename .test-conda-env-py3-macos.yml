@@ -10,10 +10,20 @@ dependencies:
 - pocl
 - islpy
 - pyopencl
-- python=3.6
+- python>=3.6
 - symengine=0.3.0
 - python-symengine=0.3.0
 - pyfmmlib
 # for OpenMP support in pyfmmlib
 - libgfortran>=3.0.1
-# things not in here: loopy boxtree pymbolic meshmode sumpy
+- clangdev
+- openmp
+- cython
+
+- pip
+- pip:
+    - git+https://gitlab.tiker.net/inducer/boxtree
+    - git+https://github.com/inducer/pymbolic
+    - git+https://github.com/inducer/loopy
+    - git+https://gitlab.tiker.net/inducer/sumpy
+    - git+https://github.com/inducer/meshmode

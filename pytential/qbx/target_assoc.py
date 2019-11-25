@@ -233,7 +233,12 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
 
         /* output */
         int *target_to_center,
-        coord_t *min_dist_to_center,
+        int *target_to_center_plus,
+        int *target_to_center_minus,
+        coord_t *min_dist_to_center_plus,
+        coord_t *min_dist_to_center_minus,
+        coord_t *min_rel_dist_to_center_plus,
+        coord_t *min_rel_dist_to_center_minus,
 
         /* input, dim-dependent size */
         %for ax in AXIS_NAMES[:dimensions]:
@@ -272,16 +277,73 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
                 coord_vec_t center_coords;
                 ${load_particle(
                     "INDEX_FOR_CENTER_PARTICLE(center)", "center_coords")}
+
                 coord_t my_dist_to_center = distance(tgt_coords, center_coords);
 
-                if (my_dist_to_center
-                        <= expansion_radii_by_center_with_tolerance[center]
-                    && my_dist_to_center < min_dist_to_center[i])
+                // Relative distance is weighted by disk radius, or,
+                // equivalently, by the expanded radius (constant times disk radius).
+                coord_t my_rel_dist_to_center = my_dist_to_center / (
+                    expansion_radii_by_center_with_tolerance[center]);
+
+                if (my_rel_dist_to_center > 1)
                 {
-                    target_status[i] = MARKED_QBX_CENTER_FOUND;
-                    min_dist_to_center[i] = my_dist_to_center;
-                    target_to_center[i] = center;
+                    continue;
                 }
+
+                // The idea is to use relative distance to determine the closest
+                // disk center on each side, and then pick the one with smaller
+                // absolute distance.
+                //
+                // Specifically, the following code does two things:
+                //
+                // 1. Find the center with minimal relative distance on either side
+                // 2. Find the side with minimal Euclidean distance from one of the
+                //    choosen centers in step 1.
+                //
+                // min_dist_to_center_plus and min_dist_to_center_minus
+                // hold the absolute distances from minimum
+                // relative distance centers.
+                //
+                // Refer to:
+                // - https://gitlab.tiker.net/inducer/pytential/issues/132
+                // - https://gitlab.tiker.net/inducer/pytential/merge_requests/181
+                if (center_side > 0)
+                {
+                    if (my_rel_dist_to_center < min_rel_dist_to_center_plus[i])
+                    {
+                        target_status[i] = MARKED_QBX_CENTER_FOUND;
+                        min_rel_dist_to_center_plus[i] = my_rel_dist_to_center;
+                        min_dist_to_center_plus[i] = my_dist_to_center;
+                        target_to_center_plus[i] = center;
+                    }
+                }
+                else
+                {
+                    if (my_rel_dist_to_center < min_rel_dist_to_center_minus[i])
+                    {
+                        target_status[i] = MARKED_QBX_CENTER_FOUND;
+                        min_rel_dist_to_center_minus[i] = my_rel_dist_to_center;
+                        min_dist_to_center_minus[i] = my_dist_to_center;
+                        target_to_center_minus[i] = center;
+                    }
+                }
+            }
+
+            // If the "winner" on either side is updated,
+            // bind to the newly found center if it is closer than the
+            // currently found one.
+
+            if (min_dist_to_center_plus[i] < min_dist_to_center_minus[i])
+            {
+                target_to_center[i] = target_to_center_plus[i];
+            }
+            else
+            {
+                // This also includes the case where both distances are INFINITY,
+                // thus target_to_center_plus and target_to_center_minus are
+                // required to be initialized with the same default center
+                // -1 as make_default_target_association
+                target_to_center[i] = target_to_center_minus[i];
             }
         }
     """,
@@ -452,12 +514,12 @@ class TargetAssociationWrangler(TreeWranglerBase):
         found_target_close_to_panel.finish()
 
         # Perform a space invader query over the sources.
+        from pytential import bind, sym
         source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = (
-                lpot_source._close_target_tunnel_radius("nsources")
-                .with_queue(self.queue))
+        tunnel_radius_by_source = bind(lpot_source,
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -493,7 +555,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        tunnel_radius_by_source = lpot_source._close_target_tunnel_radius("nsources")
+        tunnel_radius_by_source = bind(lpot_source,
+            sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         evt = knl(
             *unwrap_args(
@@ -524,9 +587,9 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return (found_target_close_to_panel == 1).all().get()
 
     @log_process(logger)
-    def try_find_centers(self, tree, peer_lists, lpot_source,
-                         target_status, target_flags, target_assoc,
-                         target_association_tolerance, debug, wait_for=None):
+    def find_centers(self, tree, peer_lists, lpot_source,
+                     target_status, target_flags, target_assoc,
+                     target_association_tolerance, debug, wait_for=None):
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
         from pytools import div_ceil
@@ -544,13 +607,15 @@ class TargetAssociationWrangler(TreeWranglerBase):
             marked_target_count = int(cl.array.sum(target_status).get())
 
         # Perform a space invader query over the centers.
+        from pytential import bind, sym
         center_slice = (
                 tree.sorted_target_ids[tree.qbx_user_center_slice]
                 .with_queue(self.queue))
         centers = [
                 axis.with_queue(self.queue)[center_slice] for axis in tree.sources]
-        expansion_radii_by_center = \
-                lpot_source._expansion_radii("ncenters").with_queue(self.queue)
+        expansion_radii_by_center = bind(lpot_source, sym.expansion_radii(
+            lpot_source.ambient_dim,
+            granularity=sym.GRANULARITY_CENTER))(self.queue)
         expansion_radii_by_center_with_tolerance = \
                 expansion_radii_by_center * (1 + target_association_tolerance)
 
@@ -558,7 +623,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         #
         # (1) Tag leaf boxes around centers with max distance to usable center.
         # (2) Area query from targets with those radii to find closest eligible
-        # center.
+        # center in terms of relative distance.
 
         box_to_search_dist, evt = self.code_container.space_invader_query()(
                 self.queue,
@@ -569,11 +634,21 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
-        min_dist_to_center = cl.array.empty(
-                self.queue, tree.nqbxtargets, tree.coord_dtype)
-        min_dist_to_center.fill(np.inf)
+        def make_target_field(fill_val, dtype=tree.coord_dtype):
+            arr = cl.array.empty(
+                self.queue, tree.nqbxtargets, dtype)
+            arr.fill(fill_val)
+            wait_for.extend(arr.events)
+            return arr
 
-        wait_for.extend(min_dist_to_center.events)
+        target_to_center_plus = make_target_field(-1, np.int32)
+        target_to_center_minus = make_target_field(-1, np.int32)
+
+        min_dist_to_center_plus = make_target_field(np.inf)
+        min_dist_to_center_minus = make_target_field(np.inf)
+
+        min_rel_dist_to_center_plus = make_target_field(np.inf)
+        min_rel_dist_to_center_minus = make_target_field(np.inf)
 
         evt = knl(
             *unwrap_args(
@@ -588,7 +663,12 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 target_flags,
                 target_status,
                 target_assoc.target_to_center,
-                min_dist_to_center,
+                target_to_center_plus,
+                target_to_center_minus,
+                min_dist_to_center_plus,
+                min_dist_to_center_minus,
+                min_rel_dist_to_center_plus,
+                min_rel_dist_to_center_minus,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
             queue=self.queue,
@@ -625,12 +705,12 @@ class TargetAssociationWrangler(TreeWranglerBase):
         found_panel_to_refine.finish()
 
         # Perform a space invader query over the sources.
+        from pytential import bind, sym
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = (
-                lpot_source._close_target_tunnel_radius("nsources")
-                .with_queue(self.queue))
+        tunnel_radius_by_source = bind(lpot_source,
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
 
         # See (TGTMARK) above for algorithm.
 
@@ -643,6 +723,9 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 wait_for=wait_for)
         wait_for = [evt]
 
+        tunnel_radius_by_source = bind(lpot_source,
+                sym._close_target_tunnel_radii(lpot_source.ambient_dim))(self.queue)
+
         evt = knl(
             *unwrap_args(
                 tree, peer_lists,
@@ -653,7 +736,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tree.qbx_user_target_slice.start,
                 tree.nqbxpanels,
                 tree.sorted_target_ids,
-                lpot_source._close_target_tunnel_radius("nsources"),
+                tunnel_radius_by_source,
                 target_status,
                 box_to_search_dist,
                 refine_flags,
@@ -746,7 +829,7 @@ def associate_targets_to_qbx_centers(lpot_source, wrangler,
 
     target_flags = wrangler.make_target_flags(target_discrs_and_qbx_sides)
 
-    wrangler.try_find_centers(tree, peer_lists, lpot_source, target_status,
+    wrangler.find_centers(tree, peer_lists, lpot_source, target_status,
             target_flags, target_assoc, target_association_tolerance, debug)
 
     center_not_found = (

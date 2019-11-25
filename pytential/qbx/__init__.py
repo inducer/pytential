@@ -56,6 +56,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     .. attribute :: qbx_order
     .. attribute :: fmm_order
 
+    .. automethod :: __init__
+    .. automethod :: with_refinement
+    .. automethod :: copy
+
+    .. attribute :: stage2_density_discr
+    .. attribute :: quad_stage2_density_discr
+
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
 
@@ -71,7 +78,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             expansion_factory=None,
             target_association_tolerance=_not_provided,
 
-            # begin undocumented arguments
+            # begin experimental arguments
             # FIXME default debug=False once everything has matured
             debug=True,
             _refined_for_global_qbx=False,
@@ -83,7 +90,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _from_sep_smaller_crit=None,
             _from_sep_smaller_min_nsources_cumul=None,
             _tree_kind="adaptive",
+            _use_target_specific_qbx=None,
             geometry_data_inspector=None,
+            cost_model=None,
             fmm_backend="sumpy",
             target_stick_out_factor=_not_provided):
         """
@@ -102,6 +111,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
              *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
              *kernel_args* is a set of *(key, value)* tuples with evaluated
              kernel arguments. May not be given if *fmm_order* is given.
+
+        Experimental arguments without a promise of forward compatibility:
+
+        :arg _use_target_specific_qbx: Whether to use target-specific
+            acceleration by default if possible. *None* means
+            "use if possible".
+        :arg cost_model: Either *None* or instance of
+             :class:`~pytential.qbx.cost.CostModel`, used for gathering modeled
+             costs (experimental)
         """
 
         # {{{ argument processing
@@ -203,7 +221,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self._from_sep_smaller_min_nsources_cumul = \
                 _from_sep_smaller_min_nsources_cumul
         self._tree_kind = _tree_kind
+        self._use_target_specific_qbx = _use_target_specific_qbx
         self.geometry_data_inspector = geometry_data_inspector
+
+        if cost_model is None:
+            from pytential.qbx.cost import CostModel
+            cost_model = CostModel()
+
+        self.cost_model = cost_model
 
         # /!\ *All* parameters set here must also be set by copy() below,
         # otherwise they will be reset to their default values behind your
@@ -225,7 +250,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             _box_extent_norm=None,
             _from_sep_smaller_crit=None,
             _tree_kind=None,
+            _use_target_specific_qbx=_not_provided,
             geometry_data_inspector=None,
+            cost_model=_not_provided,
             fmm_backend=None,
 
             debug=_not_provided,
@@ -307,8 +334,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _from_sep_smaller_min_nsources_cumul=(
                     self._from_sep_smaller_min_nsources_cumul),
                 _tree_kind=_tree_kind or self._tree_kind,
+                _use_target_specific_qbx=(_use_target_specific_qbx
+                    if _use_target_specific_qbx is not _not_provided
+                    else self._use_target_specific_qbx),
                 geometry_data_inspector=(
                     geometry_data_inspector or self.geometry_data_inspector),
+                cost_model=(
+                    # None is a valid value here
+                    cost_model
+                    if cost_model is not _not_provided
+                    else self.cost_model),
                 fmm_backend=fmm_backend or self.fmm_backend,
                 **kwargs)
 
@@ -348,23 +383,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     @memoize_method
     def weights_and_area_elements(self):
-        import pytential.symbolic.primitives as p
-        from pytential.symbolic.execution import bind
+        from pytential import bind, sym
         with cl.CommandQueue(self.cl_context) as queue:
-            # quad_stage2_density_discr is not guaranteed to be usable for
-            # interpolation/differentiation. Use density_discr to find
-            # area element instead, then upsample that.
-
-            area_element = self.refined_interp_to_ovsmp_quad_connection(
-                    queue,
-                    bind(
-                        self.stage2_density_discr,
-                        p.area_element(self.ambient_dim, self.dim)
-                        )(queue))
-
-            qweight = bind(self.quad_stage2_density_discr, p.QWeight())(queue)
-
-            return (area_element.with_queue(queue)*qweight).with_queue(None)
+            return bind(self, sym.weights_and_area_elements(
+                self.ambient_dim,
+                dofdesc=sym.QBX_SOURCE_QUAD_STAGE2))(queue).with_queue(None)
 
     # }}}
 
@@ -389,7 +412,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         .. warning::
 
             This always returns a
-            :class:`~meshmode.discretization.connection.DirectDiscretizationConnect`.
+            :class:`~meshmode.discretization.connection.DirectDiscretizationConnection`.
             In case the geometry has been refined multiple times, a direct
             connection can have a large number of groups and/or
             interpolation batches, making it scale significantly worse than
@@ -465,113 +488,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         return lpot, connection
 
-    @property
-    @memoize_method
-    def h_max(self):
-        with cl.CommandQueue(self.cl_context) as queue:
-            quad_res = self._coarsest_quad_resolution("npanels").with_queue(queue)
-            return cl.array.max(quad_res).get().item()
-
     # {{{ internal API
-
-    @memoize_method
-    def _panel_centers_of_mass(self):
-        import pytential.qbx.utils as utils
-        return utils.element_centers_of_mass(self.density_discr)
-
-    @memoize_method
-    def _stage2_panel_centers_of_mass(self):
-        import pytential.qbx.utils as utils
-        return utils.element_centers_of_mass(self.stage2_density_discr)
-
-    def _dim_fudge_factor(self):
-        if self.density_discr.dim == 2:
-            return 0.5
-        else:
-            return 1
-
-    @memoize_method
-    def _expansion_radii(self, last_dim_length):
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (self._coarsest_quad_resolution(last_dim_length)
-                    .with_queue(queue)
-                    * 0.5 * self._dim_fudge_factor()).with_queue(None)
-
-    # _expansion_radii should not be needed for the fine discretization
-
-    @memoize_method
-    def _source_danger_zone_radii(self, last_dim_length="npanels"):
-        # This should be the expression of the expansion radii, but
-        #
-        # - in reference to the stage 2 discretization
-        # - mutliplied by 0.75 because
-        #
-        #   - Setting this equal to the expansion radii ensures that *every*
-        #     stage 2 element will be refined, which is wasteful.
-        #     (so this needs to be smaller than that)
-        #
-
-        #   - Setting this equal to half the expansion radius will not provide
-        #     a refinement 'buffer layer' at a 2x coarsening fringe.
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (
-                    (self._stage2_coarsest_quad_resolution(last_dim_length)
-                        .with_queue(queue))
-                    * 0.5 * 0.75 * self._dim_fudge_factor()).with_queue(None)
-
-    @memoize_method
-    def _close_target_tunnel_radius(self, last_dim_length):
-        with cl.CommandQueue(self.cl_context) as queue:
-            return (
-                    self._expansion_radii(last_dim_length).with_queue(queue)
-                    * 0.5
-                    ).with_queue(None)
-
-    @memoize_method
-    def _coarsest_quad_resolution(self, last_dim_length="npanels"):
-        """This measures the quadrature resolution across the
-        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
-        should be the same as the panel length.
-        """
-        import pytential.qbx.utils as utils
-        from pytential import sym, bind
-        with cl.CommandQueue(self.cl_context) as queue:
-            maxstretch = bind(
-                    self,
-                    sym._simplex_mapping_max_stretch_factor(
-                        self.ambient_dim)
-                    )(queue)
-
-            maxstretch = utils.to_last_dim_length(
-                    self.density_discr, maxstretch, last_dim_length)
-            maxstretch = maxstretch.with_queue(None)
-
-        return maxstretch
-
-    @memoize_method
-    def _stage2_coarsest_quad_resolution(self, last_dim_length="npanels"):
-        """This measures the quadrature resolution across the
-        mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
-        should be the same as the panel length.
-        """
-        if last_dim_length != "npanels":
-            # Not technically required below, but no need to loosen for now.
-            raise NotImplementedError()
-
-        import pytential.qbx.utils as utils
-        from pytential import sym, bind
-        with cl.CommandQueue(self.cl_context) as queue:
-            maxstretch = bind(
-                    self, sym._simplex_mapping_max_stretch_factor(
-                        self.ambient_dim,
-                        where=sym.QBXSourceStage2(sym.DEFAULT_SOURCE))
-                    )(queue)
-            maxstretch = utils.to_last_dim_length(
-                    self.stage2_density_discr, maxstretch, last_dim_length)
-            maxstretch = maxstretch.with_queue(None)
-
-        return maxstretch
 
     @memoize_method
     def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
@@ -617,19 +534,74 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ internal functionality for execution
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
-        if not self._refined_for_global_qbx:
-            from warnings import warn
-            warn(
-                "Executing global QBX without refinement. "
-                "This is unlikely to work.")
+    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
+        extra_args = {}
 
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
+            extra_args["return_timing_data"] = return_timing_data
+
         else:
             func = self.exec_compute_potential_insn_fmm
 
-        return func(queue, insn, bound_expr, evaluate)
+            def drive_fmm(wrangler, strengths, geo_data, kernel, kernel_arguments):
+                del geo_data, kernel, kernel_arguments
+                from pytential.qbx.fmm import drive_fmm
+                if return_timing_data:
+                    timing_data = {}
+                else:
+                    timing_data = None
+                return drive_fmm(wrangler, strengths, timing_data), timing_data
+
+            extra_args["fmm_driver"] = drive_fmm
+
+        return self._dispatch_compute_potential_insn(
+                queue, insn, bound_expr, evaluate, func, extra_args)
+
+    def cost_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+        """Using :attr:`cost_model`, evaluate the cost of executing *insn*.
+        Cost model results are gathered in
+        :attr:`pytential.symbolic.execution.BoundExpression.modeled_cost`
+        along the way.
+
+        :returns: whatever :meth:`exec_compute_potential_insn_fmm` returns.
+        """
+
+        if self.fmm_level_to_order is False:
+            raise NotImplementedError("perf modeling direct evaluations")
+
+        def drive_cost_model(
+                    wrangler, strengths, geo_data, kernel, kernel_arguments):
+            del strengths
+            cost_model_result = (
+                    self.cost_model(wrangler, geo_data, kernel, kernel_arguments))
+
+            from pytools.obj_array import with_object_array_or_scalar
+            output_placeholder = with_object_array_or_scalar(
+                wrangler.finalize_potentials,
+                wrangler.full_output_zeros()
+            )
+
+            return output_placeholder, cost_model_result
+
+        return self._dispatch_compute_potential_insn(
+                queue, insn, bound_expr, evaluate,
+                self.exec_compute_potential_insn_fmm,
+                extra_args={"fmm_driver": drive_cost_model})
+
+    def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
+            evaluate, func, extra_args=None):
+        if not self._refined_for_global_qbx:
+            from warnings import warn
+            warn(
+                    "Executing global QBX without refinement. "
+                    "This is unlikely to work.")
+
+        if extra_args is None:
+            extra_args = {}
+
+        return func(queue, insn, bound_expr, evaluate, **extra_args)
 
     @property
     @memoize_method
@@ -673,21 +645,22 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         else:
             raise ValueError("invalid FMM backend: %s" % self.fmm_backend)
 
-    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
-        # {{{ build list of unique target discretizations used
-
+    def get_target_discrs_and_qbx_sides(self, insn, bound_expr):
+        """Build the list of unique target discretizations used by the
+        provided instruction.
+        """
         # map (name, qbx_side) to number in list
-        tgt_name_and_side_to_number = {}
+        target_name_and_side_to_number = {}
         # list of tuples (discr, qbx_side)
         target_discrs_and_qbx_sides = []
 
         for o in insn.outputs:
             key = (o.target_name, o.qbx_forced_limit)
-            if key not in tgt_name_and_side_to_number:
-                tgt_name_and_side_to_number[key] = \
+            if key not in target_name_and_side_to_number:
+                target_name_and_side_to_number[key] = \
                         len(target_discrs_and_qbx_sides)
 
-                target_discr = bound_expr.places[o.target_name]
+                target_discr = bound_expr.places.get_geometry(o.target_name)
                 if isinstance(target_discr, LayerPotentialSourceBase):
                     target_discr = target_discr.density_discr
 
@@ -698,13 +671,23 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_discrs_and_qbx_sides.append(
                         (target_discr, qbx_forced_limit))
 
-        target_discrs_and_qbx_sides = tuple(target_discrs_and_qbx_sides)
+        return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
-        # }}}
+    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate,
+            fmm_driver):
+        """
+        :arg fmm_driver: A function that accepts four arguments:
+            *wrangler*, *strength*, *geo_data*, *kernel*, *kernel_arguments*
+        :returns: a tuple ``(assignments, extra_outputs)``, where *assignments*
+            is a list of tuples containing pairs ``(name, value)`` representing
+            assignments to be performed in the evaluation context.
+            *extra_outputs* is data that *fmm_driver* may return
+            (such as timing data), passed through unmodified.
+        """
+        target_name_and_side_to_number, target_discrs_and_qbx_sides = (
+                self.get_target_discrs_and_qbx_sides(insn, bound_expr))
 
         geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
-
-        # geo_data.plot()
 
         # FIXME Exert more positive control over geo_data attribute lifetimes using
         # geo_data.<method>.clear_cache(geo_data).
@@ -717,7 +700,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
-
         out_kernels = tuple(knl for knl in insn.kernels)
         fmm_kernel = self.get_fmm_kernel(out_kernels)
         output_and_expansion_dtype = (
@@ -733,14 +715,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         self.qbx_order,
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
-                        kernel_extra_kwargs=kernel_extra_kwargs)
+                        kernel_extra_kwargs=kernel_extra_kwargs,
+                        _use_target_specific_qbx=self._use_target_specific_qbx)
 
         from pytential.qbx.geometry import target_state
         if (geo_data.user_target_to_center().with_queue(queue)
                 == target_state.FAILED).any().get():
             raise RuntimeError("geometry has failed targets")
 
-        # {{{ performance data hook
+        # {{{ geometry data inspection hook
 
         if self.geometry_data_inspector is not None:
             perform_fmm = self.geometry_data_inspector(insn, bound_expr, geo_data)
@@ -749,26 +732,23 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        # {{{ execute global QBX
-
-        from pytential.qbx.fmm import drive_fmm
-        all_potentials_on_every_tgt = drive_fmm(wrangler, strengths)
-
-        # }}}
+        # Execute global QBX.
+        all_potentials_on_every_target, extra_outputs = (
+                fmm_driver(
+                    wrangler, strengths, geo_data, fmm_kernel, kernel_extra_kwargs))
 
         result = []
 
         for o in insn.outputs:
-            tgt_side_number = tgt_name_and_side_to_number[
+            target_side_number = target_name_and_side_to_number[
                     o.target_name, o.qbx_forced_limit]
-            tgt_slice = slice(*geo_data.target_info().target_discr_starts[
-                    tgt_side_number:tgt_side_number+2])
+            target_slice = slice(*geo_data.target_info().target_discr_starts[
+                    target_side_number:target_side_number+2])
 
-            result.append(
-                    (o.name,
-                        all_potentials_on_every_tgt[o.kernel_index][tgt_slice]))
+            result.append((o.name,
+                    all_potentials_on_every_target[o.kernel_index][target_slice]))
 
-        return result
+        return result, extra_outputs
 
     # }}}
 
@@ -826,7 +806,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         *count = item;
                     """)
 
-    def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate,
+            return_timing_data):
+        if return_timing_data:
+            from pytential.source import UnableToCollectTimingData
+            from warnings import warn
+            warn(
+                    "Timing data collection not supported.",
+                    category=UnableToCollectTimingData)
+
         lpot_applier = self.get_lpot_applier(insn.kernels)
         p2p = None
         lpot_applier_on_tgt_subset = None
@@ -838,7 +826,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         strengths = (evaluate(insn.density).with_queue(queue)
                 * self.weights_and_area_elements())
 
-        import pytential.qbx.utils as utils
+        from pytential import bind, sym
+        expansion_radii = bind(self,
+                sym.expansion_radii(self.ambient_dim))(queue)
+        centers = {
+                -1: bind(self,
+                    sym.expansion_centers(self.ambient_dim, -1))(queue),
+                +1: bind(self,
+                    sym.expansion_centers(self.ambient_dim, +1))(queue)
+                }
 
         # FIXME: Do this all at once
         result = []
@@ -855,9 +851,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
                         self.quad_stage2_density_discr.nodes(),
-                        utils.get_centers_on_side(self, o.qbx_forced_limit),
+                        centers[o.qbx_forced_limit],
                         [strengths],
-                        expansion_radii=self._expansion_radii("nsources"),
+                        expansion_radii=expansion_radii,
                         **kernel_args)
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
             else:
@@ -929,7 +925,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 result.append((o.name, output_for_each_kernel[o.kernel_index]))
 
-        return result
+        timing_data = {}
+        return result, timing_data
 
     # }}}
 
