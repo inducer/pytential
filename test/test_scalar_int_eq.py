@@ -132,9 +132,8 @@ class CurveIntEqTestCase(IntEqTestCase):
     outer_radius = 2
 
     qbx_order = 5
-    target_order = 5
-    fmm_order = 15
-    fmm_backend = "sumpy"
+    target_order = qbx_order
+    fmm_backend = None
 
     check_tangential_deriv = True
     check_gradient = False
@@ -898,7 +897,7 @@ cases = [
 
 cases += [
     EllipseIntEqTestCase(BiharmonicKernel, bc_type="clamped_plate",
-        prob_side=prob_side)
+        prob_side=prob_side, fmm_order = 15, fmm_backend = "sympy")
     for prob_side in [-1, +1]
 ]
 
