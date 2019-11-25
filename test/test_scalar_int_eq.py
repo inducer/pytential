@@ -897,8 +897,9 @@ cases = [
 
 cases += [
     EllipseIntEqTestCase(BiharmonicKernel, bc_type="clamped_plate",
-        prob_side=prob_side, fmm_order = 15, fmm_backend = "sympy")
-    for prob_side in [-1, +1]
+        prob_side=-1, fmm_backend = None),
+    EllipseIntEqTestCase(BiharmonicKernel, bc_type="clamped_plate",
+        prob_side=-1, fmm_backend = "sumpy", fmm_order=15),
 ]
 
 # {{{ test frontend
