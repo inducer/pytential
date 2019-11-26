@@ -319,7 +319,8 @@ class BiharmonicClampedPlateOperator:
     equation. Supports only interior problem.
 
     Ref: Farkas, Peter. Mathematical foundations for fast algorithms for the
-    biharmonic equation. Diss. University of Chicago, Dept. of Mathematics, 1989.
+    biharmonic equation. Technical Report 765, Department of Computer Science,
+    Yale University, 1990.
 
     .. automethod:: representation
     .. automethod:: operator
