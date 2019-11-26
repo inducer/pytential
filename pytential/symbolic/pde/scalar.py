@@ -26,6 +26,7 @@ __doc__ = """
 .. autoclass:: L2WeightedPDEOperator
 .. autoclass:: DirichletOperator
 .. autoclass:: NeumannOperator
+.. autoclass:: BiharmonicClampedPlateOperator
 """
 
 
