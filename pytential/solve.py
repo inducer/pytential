@@ -301,7 +301,7 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
         inner_product=None,
         maxiter=None, hard_failure=None,
         no_progress_factor=None, stall_iterations=None,
-        callback=None, progress=False):
+        callback=None, progress=False, require_monotonicity=True):
     """Solve a linear system Ax=b by means of GMRES
     with restarts.
 
@@ -338,7 +338,8 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
             dot=inner_product,
             maxiter=maxiter, hard_failure=hard_failure,
             no_progress_factor=no_progress_factor,
-            stall_iterations=stall_iterations, callback=callback)
+            stall_iterations=stall_iterations, callback=callback,
+            require_monotonicity=require_monotonicity)
 
     return result.copy(solution=chopper.chop(result.solution))
 
