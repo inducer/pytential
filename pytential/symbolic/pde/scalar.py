@@ -326,7 +326,10 @@ class BiharmonicClampedPlateOperator:
       \frac{\partial u}{\partial \nu} &= g_2 \text{ on } \delta D.
       \end{align*}
 
-    Supports only interior problem.
+    This operator assumes that the boundary data :math:`g_1, g_2` are
+    represented as column vectors and vertically stacked.
+
+    .. note :: This operator supports only interior problem.
 
     Ref: Farkas, Peter. Mathematical foundations for fast algorithms for the
     biharmonic equation. Technical Report 765, Department of Computer Science,
