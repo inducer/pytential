@@ -316,8 +316,17 @@ class NeumannOperator(L2WeightedPDEOperator):
 
 
 class BiharmonicClampedPlateOperator:
-    """IE operator and field representation for solving clamped plate Biharmonic
-    equation. Supports only interior problem.
+    r"""IE operator and field representation for solving clamped plate Biharmonic
+    equation where,
+
+    .. math::
+      \begin{align*}
+      \Delta^2 u &= 0 \text{ on } D \\
+      u &= g_1 \text{ on } \delta D \\
+      \frac{\partial u}{\partial \nu} &= g_2 \text{ on } \delta D.
+      \end{align*}
+
+    Supports only interior problem.
 
     Ref: Farkas, Peter. Mathematical foundations for fast algorithms for the
     biharmonic equation. Technical Report 765, Department of Computer Science,
@@ -338,8 +347,8 @@ class BiharmonicClampedPlateOperator:
 
     def get_density_var(self, name):
         """
-        Returns a symbolic variable/array corresponding to the density with the
-        given name.
+        Returns a symbolic variable of length 2 corresponding to the density with
+        the given name.
         """
         return sym.make_sym_vector(name, 2)
 
@@ -377,6 +386,9 @@ class BiharmonicClampedPlateOperator:
         return k1 + k2
 
     def operator(self, sigma):
+        """
+        Returns the two second kind integral equations.
+        """
         rep = self.representation(sigma, qbx_forced_limit='avg')
         rep_diff = sym.normal_derivative(2, rep)
         int_eq1 = sigma[0]/2 + rep
