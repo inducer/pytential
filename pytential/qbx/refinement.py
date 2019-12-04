@@ -252,16 +252,10 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
                 <> over_threshold = element_property[ielement] > threshold
                 if over_threshold
                     refine_flags[ielement] = 1
-                    refine_flags_updated = 1 {id=write_refine_flags_updated, atomic}
                 end
             end
             """,
-            [
-                lp.GlobalArg("refine_flags_updated", shape=(), for_atomic=True),
-                "..."
-                ],
             options="return_dict",
-            silenced_warnings="write_race(write_refine_flags_updated)",
             name="refine_kernel_length_scale_to_quad_resolution_ratio",
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
@@ -404,25 +398,25 @@ class RefinerWrangler(TreeWranglerBase):
             debug, wait_for=None):
         knl = self.code_container.element_prop_threshold_checker()
 
-        if debug:
-            npanels_to_refine_prev = cl.array.sum(refine_flags).get()
+        npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
         evt, out = knl(self.queue,
                        element_property=element_property,
                        refine_flags=refine_flags,
-                       refine_flags_updated=np.array(0),
                        threshold=np.array(threshold),
                        wait_for=wait_for)
 
         cl.wait_for_events([evt])
 
-        if debug:
-            npanels_to_refine = cl.array.sum(refine_flags).get()
-            if npanels_to_refine > npanels_to_refine_prev:
-                logger.debug("refiner: found {} panel(s) to refine".format(
-                    npanels_to_refine - npanels_to_refine_prev))
+        npanels_to_refine = cl.array.sum(refine_flags).get()
+        updated = npanels_to_refine > npanels_to_refine_prev
 
-        return (out["refine_flags_updated"].get() == 1).all()
+        if debug:
+            logger.debug(
+                    "refiner: found %d panel(s) to refine",
+                    npanels_to_refine - npanels_to_refine_prev)
+
+        return updated
 
     # }}}
 
