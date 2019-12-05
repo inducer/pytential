@@ -23,4 +23,4 @@ dependencies:
     - git+https://github.com/inducer/pymbolic
     - git+https://github.com/inducer/loopy
     - git+https://gitlab.tiker.net/inducer/sumpy
-    - git+https://github.com/inducer/meshmode
+    - git+https://gitlab.tiker.net/inducer/meshmode@fix-torus-param-names
