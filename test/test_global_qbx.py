@@ -219,7 +219,7 @@ def test_source_refinement_2d(ctx_factory, curve_name, curve_f, nelements):
 
 @pytest.mark.parametrize(("surface_name", "surface_f", "order"), [
     ("sphere", partial(generate_icosphere, 1), 4),
-    ("torus", partial(generate_torus, 3, 1, n_inner=10, n_outer=7), 6),
+    ("torus", partial(generate_torus, 3, 1, n_minor=10, n_major=7), 6),
     ])
 def test_source_refinement_3d(ctx_factory, surface_name, surface_f, order):
     mesh = surface_f(order=order)

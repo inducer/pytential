@@ -73,12 +73,12 @@ def get_ellipse_with_ref_mean_curvature(cl_ctx, nelements, aspect=1):
 
 def get_torus_with_ref_mean_curvature(cl_ctx, h):
     order = 4
-    r_inner = 1.0
-    r_outer = 3.0
+    r_minor = 1.0
+    r_major = 3.0
 
     from meshmode.mesh.generation import generate_torus
-    mesh = generate_torus(r_outer, r_inner,
-            n_outer=h, n_inner=h, order=order)
+    mesh = generate_torus(r_major, r_minor,
+            n_major=h, n_minor=h, order=order)
     discr = Discretization(cl_ctx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
@@ -86,8 +86,8 @@ def get_torus_with_ref_mean_curvature(cl_ctx, h):
         nodes = discr.nodes().get(queue=queue)
 
     # copied from meshmode.mesh.generation.generate_torus
-    a = r_outer
-    b = r_inner
+    a = r_major
+    b = r_minor
 
     u = np.arctan2(nodes[1], nodes[0])
     rvec = np.array([np.cos(u), np.sin(u), np.zeros_like(u)])
