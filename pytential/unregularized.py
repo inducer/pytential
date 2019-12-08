@@ -273,6 +273,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
+        timing_data = {}
         return result, timing_data
 
     # }}}
