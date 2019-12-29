@@ -100,12 +100,12 @@ def get_density(queue, discr):
 
 # {{{ test that timing data gathering can execute succesfully
 
-def test_timing_data_gathering(ctx_getter):
+def test_timing_data_gathering(ctx_factory):
     """Test that timing data gathering can execute succesfully."""
 
     pytest.importorskip("pyfmmlib")
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
@@ -136,9 +136,9 @@ def test_timing_data_gathering(ctx_getter):
     (2, False),
     (3, False),
     (3, True)))
-def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
+def test_cost_model(ctx_factory, dim, use_target_specific_qbx):
     """Test that cost model gathering can execute successfully."""
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     lpot_source = get_lpot_source(queue, dim).copy(
@@ -169,9 +169,9 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx):
 
 # {{{ test cost model metadata gathering
 
-def test_cost_model_metadata_gathering(ctx_getter):
+def test_cost_model_metadata_gathering(ctx_factory):
     """Test that the cost model correctly gathers metadata."""
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
@@ -432,10 +432,10 @@ class OpCountingTranslationCostModel(object):
         (3, False, True),
         (3, True,  False),
         (3, True,  True)))
-def test_cost_model_correctness(ctx_getter, dim, off_surface,
+def test_cost_model_correctness(ctx_factory, dim, off_surface,
         use_target_specific_qbx):
     """Check that computed cost matches that of a constant-one FMM."""
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     cost_model = (
@@ -531,12 +531,12 @@ CONSTANT_ONE_PARAMS = dict(
         )
 
 
-def test_cost_model_order_varying_by_level(ctx_getter):
+def test_cost_model_order_varying_by_level(ctx_factory):
     """For FMM order varying by level, this checks to ensure that the costs are
     different. The varying-level case should have larger cost.
     """
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # {{{ constant level to order

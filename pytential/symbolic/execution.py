@@ -721,7 +721,7 @@ class BoundExpression(object):
     :class:`~pytential.symbolic.execution.GeometryCollection`.
 
     .. automethod :: get_modeled_cost
-    .. automethod :: scipy_pop
+    .. automethod :: scipy_op
     .. automethod :: eval
     .. automethod :: __call__
 
@@ -754,7 +754,7 @@ class BoundExpression(object):
             to be a key in :attr:`places`.
         :returns: An object that (mostly) satisfies the
             :mod:`scipy.linalg.LinearOperator` protocol, except for accepting
-            and returning :clas:`pyopencl.array.Array` arrays.
+            and returning :class:`pyopencl.array.Array` arrays.
         """
 
         from pytools.obj_array import is_obj_array
@@ -787,7 +787,7 @@ class BoundExpression(object):
 
     def eval(self, queue, context=None, timing_data=None):
         """Evaluate the expression in *self*, using the
-        :clas:`pyopencl.CommandQueue` *queue* and the
+        :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
 
         :arg timing_data: A dictionary into which timing
@@ -805,7 +805,7 @@ class BoundExpression(object):
 
     def __call__(self, queue, **args):
         """Evaluate the expression in *self*, using the
-        :clas:`pyopencl.CommandQueue` *queue* and the
+        :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
 
         :returns: the value of the expression, as a scalar,

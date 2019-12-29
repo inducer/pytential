@@ -208,7 +208,7 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
                     <= tunnel_radius_by_source[source])
             {
                 target_status[i] = MARKED_QBX_CENTER_PENDING;
-                *found_target_close_to_panel = 1;
+                atomic_or(found_target_close_to_panel, 1);
             }
         }
     """,
@@ -401,8 +401,8 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
             {
                 particle_id_t panel = bsearch(
                     panel_to_source_starts, npanels + 1, source);
-                refine_flags[panel] = 1;
-                *found_panel_to_refine = 1;
+                atomic_or(&refine_flags[panel], 1);
+                atomic_or(found_panel_to_refine, 1);
             }
         }
     """,

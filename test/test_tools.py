@@ -198,11 +198,6 @@ def test_geometry_collection_caching(ctx_factory):
         return
 
 
-def bug_run_loop(ctx_factory):
-    while True:
-        test_geometry_collection_caching(ctx_factory)
-
-
 # You can test individual routines by typing
 # $ python test_tools.py 'test_routine()'
 

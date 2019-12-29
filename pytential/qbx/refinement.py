@@ -144,8 +144,8 @@ EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER = AreaQueryElementwiseTemplate(
 
             if (is_close)
             {
-                panel_refine_flags[center_panel] = 1;
-                *found_panel_to_refine = 1;
+                atomic_or(&panel_refine_flags[center_panel], 1);
+                atomic_or(found_panel_to_refine, 1);
                 break;
             }
         }
@@ -203,8 +203,8 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
 
             if (is_close)
             {
-                panel_refine_flags[my_panel] = 1;
-                *found_panel_to_refine = 1;
+                atomic_or(&panel_refine_flags[my_panel], 1);
+                atomic_or(found_panel_to_refine, 1);
                 break;
             }
         }
@@ -252,10 +252,14 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
                 <> over_threshold = element_property[ielement] > threshold
                 if over_threshold
                     refine_flags[ielement] = 1
-                    refine_flags_updated = 1 {id=write_refine_flags_updated}
+                    refine_flags_updated = 1 {id=write_refine_flags_updated, atomic}
                 end
             end
             """,
+            [
+                lp.GlobalArg("refine_flags_updated", shape=(), for_atomic=True),
+                "..."
+                ],
             options="return_dict",
             silenced_warnings="write_race(write_refine_flags_updated)",
             name="refine_kernel_length_scale_to_quad_resolution_ratio",

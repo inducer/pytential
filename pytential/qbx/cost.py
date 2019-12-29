@@ -32,7 +32,6 @@ import logging
 import numpy as np
 import pyopencl as cl
 from six.moves import range
-import sympy as sp
 
 from pytools import log_process
 from pymbolic import var
@@ -831,32 +830,6 @@ class CostModel(object):
 
 # {{{ calibrate cost model
 
-def _collect(expr, variables):
-    """Collect terms with respect to a list of variables.
-
-    This applies :func:`sympy.simplify.collect` to the a :mod:`pymbolic` expression
-    with respect to the iterable of names in *variables*.
-
-    Returns a dictionary mapping variable names to terms.
-    """
-    from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
-    p2s = PymbolicToSympyMapper()
-    s2p = SympyToPymbolicMapper()
-
-    from sympy.simplify import collect
-    sympy_variables = [sp.var(v) for v in variables]
-    collect_result = collect(p2s(expr), sympy_variables, evaluate=False)
-
-    result = {}
-    for v in variables:
-        try:
-            result[v] = s2p(collect_result[sp.var(v)])
-        except KeyError:
-            continue
-
-    return result
-
-
 _FMM_STAGE_TO_CALIBRATION_PARAMETER = {
         "form_multipoles": "c_p2m",
         "coarsen_multipoles": "c_m2m",
@@ -894,6 +867,8 @@ def estimate_calibration_params(model_results, timing_results):
         actual_times[param] = np.zeros(nresults)
 
     from pymbolic import evaluate
+    from pymbolic.mapper.coefficient import CoefficientCollector
+    collect_coeffs = CoefficientCollector()
 
     for i, model_result in enumerate(model_results):
         context = model_result.params.copy()
@@ -902,14 +877,16 @@ def estimate_calibration_params(model_results, timing_results):
 
         # Represents the total modeled cost, but leaves the calibration
         # parameters symbolic.
-        total_modeled_cost = evaluate(
+        total_cost = evaluate(
                 sum(model_result.raw_costs.values()),
                 context=context)
 
-        collected_times = _collect(total_modeled_cost, params)
+        coeffs = collect_coeffs(total_cost)
+        # Assumes the total cost is a sum of terms linear in the parameters.
+        assert set(key.name for key in coeffs) <= params
 
-        for param, time in collected_times.items():
-            uncalibrated_times[param][i] = time
+        for param, time in coeffs.items():
+            uncalibrated_times[param.name][i] = time
 
     for i, timing_result in enumerate(timing_results):
         for param, time in timing_result.items():

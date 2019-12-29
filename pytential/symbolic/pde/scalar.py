@@ -26,6 +26,7 @@ __doc__ = """
 .. autoclass:: L2WeightedPDEOperator
 .. autoclass:: DirichletOperator
 .. autoclass:: NeumannOperator
+.. autoclass:: BiharmonicClampedPlateOperator
 """
 
 
@@ -33,6 +34,7 @@ from pytential import sym
 from pytential.symbolic.primitives import (
         cse,
         sqrt_jac_q_weight, QWeight, area_element)
+from sumpy.kernel import DirectionalSourceDerivative
 import numpy as np  # noqa
 
 
@@ -63,6 +65,13 @@ class L2WeightedPDEOperator(object):
 
     def prepare_rhs(self, b):
         return self.get_sqrt_weight()*b
+
+    def get_density_var(self, name):
+        """
+        Returns a symbolic variable/array corresponding to the density with the
+        given name.
+        """
+        return sym.var(name)
 
 # }}}
 
@@ -304,6 +313,90 @@ class NeumannOperator(L2WeightedPDEOperator):
                     - self.alpha*DpS0u
                     + ones_contribution
                     ))
+
+
+class BiharmonicClampedPlateOperator:
+    r"""IE operator and field representation for solving clamped plate Biharmonic
+    equation where,
+
+    .. math::
+      \begin{align*}
+      \Delta^2 u &= 0 \text{ on } D \\
+      u &= g_1 \text{ on } \delta D \\
+      \frac{\partial u}{\partial \nu} &= g_2 \text{ on } \delta D.
+      \end{align*}
+
+    This operator assumes that the boundary data :math:`g_1, g_2` are
+    represented as column vectors and vertically stacked.
+
+    .. note :: This operator supports only interior problem.
+
+    Ref: Farkas, Peter. Mathematical foundations for fast algorithms for the
+    biharmonic equation. Technical Report 765, Department of Computer Science,
+    Yale University, 1990.
+
+    .. automethod:: representation
+    .. automethod:: operator
+    """
+
+    def __init__(self, knl, loc_sign):
+        self.knl = knl
+        self.loc_sign = loc_sign
+        if loc_sign != -1:
+            raise ValueError("loc_sign!=-1 is not supported.")
+
+    def prepare_rhs(self, b):
+        return b
+
+    def get_density_var(self, name):
+        """
+        Returns a symbolic variable of length 2 corresponding to the density with
+        the given name.
+        """
+        return sym.make_sym_vector(name, 2)
+
+    def representation(self,
+            sigma, map_potentials=None, qbx_forced_limit=None):
+
+        if map_potentials is None:
+            def map_potentials(x):  # pylint:disable=function-redefined
+                return x
+
+        def dv(knl):
+            return DirectionalSourceDerivative(knl, "normal_dir")
+
+        def dt(knl):
+            return DirectionalSourceDerivative(knl, "tangent_dir")
+
+        normal_dir = sym.normal(2).as_vector()
+        tangent_dir = np.array([-normal_dir[1], normal_dir[0]])
+
+        k1 = map_potentials(sym.S(dv(dv(dv(self.knl))), sigma[0],
+                    kernel_arguments={"normal_dir": normal_dir},
+                    qbx_forced_limit=qbx_forced_limit)) + \
+             3*map_potentials(sym.S(dv(dt(dt(self.knl))), sigma[0],
+                    kernel_arguments={"normal_dir": normal_dir,
+                                      "tangent_dir": tangent_dir},
+                    qbx_forced_limit=qbx_forced_limit))
+
+        k2 = -map_potentials(sym.S(dv(dv(self.knl)), sigma[1],
+                    kernel_arguments={"normal_dir": normal_dir},
+                    qbx_forced_limit=qbx_forced_limit)) + \
+             map_potentials(sym.S(dt(dt(self.knl)), sigma[1],
+                    kernel_arguments={"tangent_dir": tangent_dir},
+                    qbx_forced_limit=qbx_forced_limit))
+
+        return k1 + k2
+
+    def operator(self, sigma):
+        """
+        Returns the two second kind integral equations.
+        """
+        rep = self.representation(sigma, qbx_forced_limit='avg')
+        rep_diff = sym.normal_derivative(2, rep)
+        int_eq1 = sigma[0]/2 + rep
+        int_eq2 = -sym.mean_curvature(2)*sigma[0] + sigma[1]/2 + rep_diff
+        return np.array([int_eq1, int_eq2])
 
 # }}}
 
