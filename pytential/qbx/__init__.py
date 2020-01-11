@@ -225,8 +225,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self.geometry_data_inspector = geometry_data_inspector
 
         if cost_model is None:
-            from pytential.qbx.cost import PythonQBXCostModel
-            cost_model = PythonQBXCostModel()
+            from pytential.qbx.cost import QBXCostModel
+            with cl.CommandQueue(self.cl_context) as queue:
+                cost_model = QBXCostModel(queue)
 
         self.cost_model = cost_model
 

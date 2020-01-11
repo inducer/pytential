@@ -361,7 +361,7 @@ class CostModelMapper(EvaluationMapperBase):
         if (isinstance(self.knl_specific_calibration_params, str)
                 and self.knl_specific_calibration_params == "constant_one"):
             calibration_params = \
-                AbstractQBXCostModel.get_constantone_calibration_params()
+                AbstractQBXCostModel.get_unit_calibration_params()
         else:
             calibration_params = self.knl_specific_calibration_params[knls]
 

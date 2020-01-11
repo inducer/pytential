@@ -39,7 +39,7 @@ from pytential import bind, sym, norm  # noqa
 from pytools import one
 
 from pytential.qbx.cost import (
-    CLQBXCostModel, PythonQBXCostModel, pde_aware_translation_cost_model
+    QBXCostModel, _PythonQBXCostModel, make_pde_aware_translation_cost_model
 )
 
 import time
@@ -91,13 +91,15 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
 
     # {{{ Construct cost models
 
-    cl_cost_model = CLQBXCostModel(queue)
-    python_cost_model = PythonQBXCostModel()
+    cl_cost_model = QBXCostModel(queue)
+    python_cost_model = _PythonQBXCostModel()
 
     tree = geo_data.tree()
-    xlat_cost = pde_aware_translation_cost_model(tree.targets.shape[0], tree.nlevels)
+    xlat_cost = make_pde_aware_translation_cost_model(
+        tree.targets.shape[0], tree.nlevels
+    )
 
-    constant_one_params = CLQBXCostModel.get_constantone_calibration_params()
+    constant_one_params = QBXCostModel.get_unit_calibration_params()
     constant_one_params["p_qbx"] = 5
     for ilevel in range(tree.nlevels):
         constant_one_params["p_fmm_lev%d" % ilevel] = 10
@@ -374,7 +376,7 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx, per_box):
             get_lpot_source(queue, dim)
             .copy(
                 _use_target_specific_qbx=use_target_specific_qbx,
-                cost_model=CLQBXCostModel(queue)))
+                cost_model=QBXCostModel(queue)))
 
     sigma = get_density(queue, lpot_source)
 
@@ -669,7 +671,7 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
     cl_ctx = ctx_getter()
     queue = cl.CommandQueue(cl_ctx)
 
-    cost_model = CLQBXCostModel(
+    cost_model = QBXCostModel(
         queue, translation_cost_model_factory=OpCountingTranslationCostModel
     )
 
@@ -747,7 +749,7 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
     )
     per_box_cost = one(per_box_cost.values())
 
-    total_aggregate_cost = cost_model.aggregate(per_box_cost)
+    total_aggregate_cost = cost_model.aggregate_over_boxes(per_box_cost)
     assert total_cost == (
             total_aggregate_cost
             + modeled_time["coarsen_multipoles"]
@@ -775,7 +777,7 @@ def test_cost_model_order_varying_by_level(ctx_getter):
         return 1
 
     lpot_source = get_lpot_source(queue, 2).copy(
-            cost_model=CLQBXCostModel(queue),
+            cost_model=QBXCostModel(queue),
             fmm_level_to_order=level_to_order_constant)
 
     sigma_sym = sym.var("sigma")
@@ -800,7 +802,7 @@ def test_cost_model_order_varying_by_level(ctx_getter):
         return metadata["nlevels"] - level
 
     lpot_source = get_lpot_source(queue, 2).copy(
-            cost_model=CLQBXCostModel(queue),
+            cost_model=QBXCostModel(queue),
             fmm_level_to_order=level_to_order_varying)
 
     sigma = get_density(queue, lpot_source)
