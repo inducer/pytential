@@ -25,8 +25,8 @@ THE SOFTWARE.
 import loopy as lp
 import numpy as np
 
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from sumpy.qbx import LayerPotentialBase
-
 from pytential.version import PYTENTIAL_KERNEL_VERSION
 
 
@@ -98,7 +98,8 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
             arguments,
             name=self.name,
             assumptions="ntargets>=1 and nsources>=1",
-            fixed_parameters=dict(dim=self.dim))
+            fixed_parameters=dict(dim=self.dim),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
         for expn in self.expansions:

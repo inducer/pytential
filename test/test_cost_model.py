@@ -332,12 +332,12 @@ def get_density(queue, lpot_source):
 
 # {{{ test that timing data gathering can execute succesfully
 
-def test_timing_data_gathering(ctx_getter):
+def test_timing_data_gathering(ctx_factory):
     """Test that timing data gathering can execute succesfully."""
 
     pytest.importorskip("pyfmmlib")
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
@@ -367,9 +367,9 @@ def test_timing_data_gathering(ctx_getter):
     (2, False, True),
     (3, False, True),
     (3, True, True)))
-def test_cost_model(ctx_getter, dim, use_target_specific_qbx, per_box):
+def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
     """Test that cost model gathering can execute successfully."""
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     lpot_source = (
@@ -392,7 +392,7 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx, per_box):
 
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
-            + sym.D(k_sym, sigma_sym))
+            + sym.D(k_sym, sigma_sym, qbx_forced_limit="avg"))
     op_S_plus_D = bind(lpot_source, sym_op_S_plus_D)
     cost_S_plus_D, _ = op_S_plus_D.get_modeled_cost(
         queue, "constant_one", per_box=per_box, sigma=sigma
@@ -404,9 +404,9 @@ def test_cost_model(ctx_getter, dim, use_target_specific_qbx, per_box):
 
 # {{{ test cost model metadata gathering
 
-def test_cost_model_metadata_gathering(ctx_getter):
+def test_cost_model_metadata_gathering(ctx_factory):
     """Test that the cost model correctly gathers metadata."""
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
@@ -665,10 +665,10 @@ class OpCountingTranslationCostModel(object):
         (3, False, True),
         (3, True,  False),
         (3, True,  True)))
-def test_cost_model_correctness(ctx_getter, dim, off_surface,
+def test_cost_model_correctness(ctx_factory, dim, off_surface,
         use_target_specific_qbx):
     """Check that computed cost matches that of a constant-one FMM."""
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     cost_model = QBXCostModel(
@@ -763,12 +763,12 @@ def test_cost_model_correctness(ctx_getter, dim, off_surface,
 
 # {{{ test order varying by level
 
-def test_cost_model_order_varying_by_level(ctx_getter):
+def test_cost_model_order_varying_by_level(ctx_factory):
     """For FMM order varying by level, this checks to ensure that the costs are
     different. The varying-level case should have larger cost.
     """
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     # {{{ constant level to order
