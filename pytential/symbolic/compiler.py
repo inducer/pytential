@@ -515,6 +515,11 @@ class OperatorCompiler(IdentityMapper):
         self.assigned_names.add(name)
         return name
 
+    def make_assign(self, name, expr, priority):
+        return Assign(names=[name], exprs=[expr],
+                dep_mapper_factory=self.dep_mapper_factory,
+                priority=priority)
+
     def assign_to_new_var(self, expr, priority=0, prefix=None):
         from pymbolic.primitives import Variable, Subscript
 
@@ -531,10 +536,7 @@ class OperatorCompiler(IdentityMapper):
 
     # }}}
 
-    def make_assign(self, name, expr, priority):
-        return Assign(names=[name], exprs=[expr],
-                dep_mapper_factory=self.dep_mapper_factory,
-                priority=priority)
+    # {{{ map_xxx routines
 
     def map_int_g(self, expr, name_hint=None):
         try:
