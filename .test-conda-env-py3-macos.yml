@@ -19,6 +19,7 @@ dependencies:
 - clangdev
 - openmp
 - cython
+- gmsh
 
 - pip
 - pip:
