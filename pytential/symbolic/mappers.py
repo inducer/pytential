@@ -469,6 +469,12 @@ class InterpolationPreprocessor(IdentityMapper):
     """
 
     def __init__(self, places, from_discr_stage=None):
+        """
+        .. attribute:: from_discr_stage
+
+            For valid values, see
+            :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage`.
+        """
         self.places = places
         self.from_discr_stage = (prim.QBX_SOURCE_STAGE2
                 if from_discr_stage is None else from_discr_stage)
