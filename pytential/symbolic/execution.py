@@ -95,13 +95,13 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_max(self, expr):
         return self._map_minmax(
                 cl.array.maximum,
-                super(EvaluationMapper, self).map_max,
+                super(EvaluationMapperBase, self).map_max,
                 expr)
 
     def map_min(self, expr):
         return self._map_minmax(
                 cl.array.minimum,
-                super(EvaluationMapper, self).map_min,
+                super(EvaluationMapperBase, self).map_min,
                 expr)
 
     def map_node_sum(self, expr):
@@ -312,7 +312,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                         *args, queue=self.queue)
 
         else:
-            return EvaluationMapperBase.map_call(self, expr)
+            return super(EvaluationMapperBase, self).map_call(expr)
 
 # }}}
 
