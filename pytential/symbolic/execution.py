@@ -346,7 +346,7 @@ class EvaluationMapper(EvaluationMapperBase):
 # }}}
 
 
-# {{{ cost model mapper
+# {{{ cost model evaluation mapper
 
 class CostModelMapper(EvaluationMapperBase):
     """Mapper for evaluating cost models.
