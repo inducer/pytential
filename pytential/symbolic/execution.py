@@ -52,7 +52,7 @@ __doc__ = """
 
 # FIXME caches: fix up queues
 
-# {{{ evaluation mapper
+# {{{ evaluation mapper base (shared, between actual eval and cost model)
 
 def mesh_el_view(mesh, group_nr, global_array):
     """Return a view of *global_array* of shape
