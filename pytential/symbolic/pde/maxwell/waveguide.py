@@ -783,8 +783,8 @@ class DielectricSRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
 # {{{ single + double layer representation
 
 class DielectricSDRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
-    pot_kind_S = 0
-    pot_kind_D = 1
+    pot_kind_S = 0  # noqa: N815
+    pot_kind_D = 1  # noqa: N815
     pot_kinds = [pot_kind_S, pot_kind_D]
     potential_ops = {
             pot_kind_S: sym.S,
