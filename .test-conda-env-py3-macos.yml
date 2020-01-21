@@ -12,7 +12,7 @@ dependencies:
 - pyopencl
 - python>=3.6
 - symengine=0.5.0
-- python-symengine=0.5.0
+- python-symengine=0.5.1
 - pyfmmlib
 # for OpenMP support in pyfmmlib
 - libgfortran>=3.0.1
