@@ -529,6 +529,12 @@ class GeometryCollection(object):
     .. automethod:: merge
 
     .. method:: get_cache
+
+    Refinement of :class:`QBXLayerPotentialSource` entries is performed
+    on demand, or it may be performed by explcitly calling
+    :func:`pytential.qbx.refinement.refine_geometry_collection`,
+    which allows more customization of the refinement process through
+    parameters.
     """
 
     def __init__(self, places, auto_where=None):
@@ -636,7 +642,6 @@ class GeometryCollection(object):
                     lpot_source.refiner_code_container.get_wrangler(queue),
                     _copy_collection=False)
 
-        cache = self.get_cache('refined_qbx_discrs')
         return cache[key]
 
     def get_connection(self, from_dd, to_dd):

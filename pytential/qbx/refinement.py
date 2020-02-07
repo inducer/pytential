@@ -743,6 +743,10 @@ def _refine_qbx_quad_stage2(lpot_source, stage2_density_discr):
 
     return discr, conn
 
+# }}}
+
+
+# {{{ _refine_for_global_qbx
 
 def _refine_for_global_qbx(places, dofdesc, wrangler,
         group_factory=None,
@@ -756,6 +760,10 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
     the refined discretizations can be obtained from *places* by calling
     :meth:`~pytential.symbolic.execution.GeometryCollection.get_discretization`.
 
+    :returns: a new version of the :class:`pytential.GeometryCollection`
+        *places* with (what)?
+        Depending on *_copy_collection*, *places* is updated in-place
+        or copied.
     """
 
     from pytential import sym
@@ -866,7 +874,7 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
 # }}}
 
 
-# {{{ main entry point
+# {{{ refine_geometry_collection
 
 def refine_geometry_collection(queue, places,
         group_factory=None,
