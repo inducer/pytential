@@ -55,8 +55,12 @@ Next time you want to use :mod:`pytential`, just run the following command::
 
 You may also like to add this to a startup file (like :file:`$HOME/.bashrc`) or create an alias for it.
 
-After this, you should be able to run the `tests <https://github.com/inducer/pytential/tree/master/test>`_
-or `examples <https://github.com/inducer/pytential/tree/master/examples>`_.
+After this, you should be able to run the `tests <https://github.com/inducer/pytential/tree/master/test>`__
+or `examples <https://github.com/inducer/pytential/tree/master/examples>`__.
+For example, you should be able to download `this file <https://github.com/inducer/pytential/blob/master/examples/helmholtz-dirichlet.py>`__
+and run it as::
+
+    python helmholtz-dirichlet.py
 
 Troubleshooting the Installation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

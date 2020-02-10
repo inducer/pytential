@@ -338,7 +338,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
         from meshmode.mesh.generation import generate_torus
         mesh = generate_torus(
                 5, 2, order=target_order,
-                n_outer=2*nel_factor, n_inner=nel_factor)
+                n_major=2*nel_factor, n_minor=nel_factor)
 
         from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \

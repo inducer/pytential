@@ -64,7 +64,7 @@ Python 3 POCL Examples:
   - test -n "$SKIP_EXAMPLES" && exit
   - export PY_EXE=python3
   - export PYOPENCL_TEST=portable:pthread
-  - export EXTRA_INSTALL="Cython pybind11 numpy mako pyvisfile matplotlib"
+  - export EXTRA_INSTALL="Cython pybind11 numpy mako git+git://github.com/inducer/pytools pyvisfile matplotlib"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-py-project-and-run-examples.sh
   - ". ./build-py-project-and-run-examples.sh"
   tags:
@@ -131,9 +131,7 @@ Pylint:
   # Pylint won't find the Cython bits without this
   - PROJECT_INSTALL_FLAGS="--editable"
   - export PY_EXE=python3
-  # Pin to numpy 1.15
-  # See https://github.com/PyCQA/pylint/issues/2721
-  - EXTRA_INSTALL="Cython pybind11 numpy==1.15 mako matplotlib"
+  - EXTRA_INSTALL="Cython pybind11 numpy mako matplotlib"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
   - ". ./prepare-and-run-pylint.sh pytential test/test_*.py"
   tags:

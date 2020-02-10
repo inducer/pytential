@@ -199,9 +199,6 @@ class LayerPotentialSourceBase(PotentialSource):
 
     .. rubric:: Execution
 
-    .. automethod:: weights_and_area_elements
-    .. automethod:: cost_model_compute_potential_insn
-    .. automethod:: exec_compute_potential_insn
     """
 
     def __init__(self, density_discr):

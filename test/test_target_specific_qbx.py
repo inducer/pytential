@@ -133,10 +133,10 @@ def test_spherical_hankel_functions():
 @pytest.mark.parametrize("op", ["S", "D", "Sp"])
 @pytest.mark.parametrize("helmholtz_k", [0, 1.2, 12 + 1.2j])
 @pytest.mark.parametrize("qbx_order", [0, 1, 5])
-def test_target_specific_qbx(ctx_getter, op, helmholtz_k, qbx_order):
+def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_getter()
+    cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
     target_order = 4

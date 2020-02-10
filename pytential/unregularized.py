@@ -255,9 +255,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         from boxtree.fmm import drive_fmm
-        timing_data = {}
         all_potentials_on_every_tgt = drive_fmm(
-                geo_data.traversal(), wrangler, strengths, timing_data)
+                geo_data.traversal(), wrangler, strengths, timing_data=None)
 
         # {{{ postprocess fmm
 
@@ -274,6 +273,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
+        timing_data = {}
         return result, timing_data
 
     # }}}
