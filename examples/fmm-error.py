@@ -40,7 +40,7 @@ def main():
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    slow_qbx = QBXLayerPotentialSource(
+    unaccel_qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=2*target_order,
             qbx_order=qbx_order, fmm_order=False,
             target_association_tolerance=.05
@@ -51,11 +51,11 @@ def main():
 
     from pytential import GeometryCollection
     places = GeometryCollection({
-        'slow-qbx': slow_qbx,
-        'qbx': slow_qbx.copy(fmm_order=10),
+        'unaccel_qbx': unaccel_qbx,
+        'qbx': unaccel_qbx.copy(fmm_order=10),
         'targets': PointsTarget(fplot.points)
         })
-    density_discr = places.get_discretization('slow-qbx')
+    density_discr = places.get_discretization('unaccel_qbx')
 
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
@@ -70,7 +70,7 @@ def main():
     if isinstance(kernel, HelmholtzKernel):
         sigma = sigma.astype(np.complex128)
 
-    fld_in_vol = bind(places, op, auto_where=('slow-qbx', 'targets'))(
+    fld_in_vol = bind(places, op, auto_where=('unaccel_qbx', 'targets'))(
             queue, sigma=sigma, k=k).get()
 
     fmm_fld_in_vol = bind(places, op, auto_where=('qbx', 'targets'))(
