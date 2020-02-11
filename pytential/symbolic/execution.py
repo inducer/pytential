@@ -701,7 +701,7 @@ class GeometryCollection(object):
                 places = places.places
             new_places.update(places)
 
-        return type(self)(new_places, auto_where=self.auto_where)
+        return self.copy(places=new_places)
 
     def get_cache(self, name):
         return self.caches.setdefault(name, {})
