@@ -522,10 +522,10 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         target_info = self.target_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            density_discr = self.places.get_discretization(
+            quad_stage2_discr = self.places.get_discretization(
                     self.source_dd.to_quad_stage2())
 
-            nsources = density_discr.nnodes
+            nsources = quad_stage2_discr.nnodes
             nparticles = nsources + target_info.ntargets
 
             target_radii = None
@@ -549,7 +549,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             refine_weights.finish()
 
             tree, _ = code_getter.build_tree()(queue,
-                    particles=density_discr.nodes(),
+                    particles=quad_stage2_discr.nodes(),
                     targets=target_info.targets,
                     target_radii=target_radii,
                     max_leaf_refine_weight=lpot_source._max_leaf_refine_weight,
