@@ -407,7 +407,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
     @property
     def coord_dtype(self):
-        return self.lpot_source.density_discr.nodes().dtype
+        return self.lpot_source.density_discr.real_dtype
 
     # {{{ centers/radii
 
