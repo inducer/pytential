@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 import numpy as np  # noqa
 from pytools import Record, memoize_method
+from pymbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper
 import six
 from six.moves import zip
@@ -537,6 +538,35 @@ class OperatorCompiler(IdentityMapper):
     # }}}
 
     # {{{ map_xxx routines
+
+    def map_common_subexpression(self, expr):
+        # NOTE: EXPRESSION and DISCRETIZATION scopes are handled in
+        # execution.py::EvaluationMapperBase so that they can be cached
+        # with a longer lifetime
+        if expr.scope != cse_scope.EVALUATION:
+            return expr
+
+        try:
+            return self.expr_to_var[expr.child]
+        except KeyError:
+            priority = getattr(expr, "priority", 0)
+
+            from pytential.symbolic.primitives import IntG
+            if isinstance(expr.child, IntG):
+                # We need to catch operators here and
+                # treat them specially. They get assigned to their
+                # own variable by default, which would mean the
+                # CSE prefix would be omitted.
+
+                rec_child = self.rec(expr.child, name_hint=expr.prefix)
+            else:
+                rec_child = self.rec(expr.child)
+
+            cse_var = self.assign_to_new_var(rec_child,
+                    priority=priority, prefix=expr.prefix)
+
+            self.expr_to_var[expr.child] = cse_var
+            return cse_var
 
     def map_int_g(self, expr, name_hint=None):
         try:
