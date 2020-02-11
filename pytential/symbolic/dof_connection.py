@@ -43,6 +43,7 @@ Connections
 .. autoclass:: GranularityConnection
 .. autoclass:: CenterGranularityConnection
 .. autoclass:: DOFConnection
+.. autofunction:: connection_from_dds
 
 """
 
