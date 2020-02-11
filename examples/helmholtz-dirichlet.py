@@ -84,7 +84,7 @@ def main(mesh_name="ellipse", visualize=False):
     from pytential import GeometryCollection
     places = GeometryCollection({
         'qbx': qbx,
-        'qbx-target-assoc': qbx.copy(target_association_tolerance=0.05),
+        'qbx_high_target_assoc_tol': qbx.copy(target_association_tolerance=0.05),
         'targets': PointsTarget(targets)
         }, auto_where=('qbx', 'qbx'))
     density_discr = places.get_discretization('qbx')
@@ -144,7 +144,7 @@ def main(mesh_name="ellipse", visualize=False):
     # {{{ postprocess/visualize
 
     repr_kwargs = dict(
-            source='qbx-target-assoc',
+            source='qbx_high_target_assoc_tol',
             target='targets',
             qbx_forced_limit=None)
     representation_sym = (
