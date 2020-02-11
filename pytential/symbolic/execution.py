@@ -233,11 +233,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         if isinstance(operand, (cl.array.Array, list)):
             conn = self.places.get_connection(expr.from_dd, expr.to_dd)
-
-            if isinstance(operand, list):
-                return conn(self.queue, operand)
-            else:
-                return conn(self.queue, operand).with_queue(self.queue)
+            return conn(self.queue, operand)
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand
         else:
