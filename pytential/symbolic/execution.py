@@ -469,6 +469,26 @@ def _prepare_domains(nresults, places, domains, default_domain):
     return domains
 
 
+def _prepare_auto_where(auto_where, places=None):
+
+    if auto_where is None:
+        if places is None:
+            auto_source = sym.DEFAULT_SOURCE
+            auto_target = sym.DEFAULT_TARGET
+        else:
+            auto_source, auto_target = places.auto_where
+    elif isinstance(auto_where, (list, tuple)):
+        auto_source, auto_target = auto_where
+    else:
+        auto_source = auto_where
+        if places is None:
+            auto_target = sym.DEFAULT_TARGET
+        else:
+            auto_target = places.auto_target
+
+    return (sym.as_dofdesc(auto_source), sym.as_dofdesc(auto_target))
+
+
 def _prepare_expr(places, expr, auto_where=None):
     """
     :arg places: :class:`~pytential.symbolic.execution.GeometryCollection`.
@@ -482,14 +502,7 @@ def _prepare_expr(places, expr, auto_where=None):
             ToTargetTagger,
             DerivativeBinder)
 
-    if auto_where is None:
-        auto_where = places.auto_where
-    if not isinstance(auto_where, tuple):
-        auto_where = sym.as_dofdesc(auto_where)
-        auto_where = (auto_where, auto_where)
-    auto_where = (sym.as_dofdesc(auto_where[0]),
-                  sym.as_dofdesc(auto_where[1]))
-
+    auto_where = _prepare_auto_where(auto_where, places=places)
     expr = ToTargetTagger(auto_where[0], auto_where[1])(expr)
     expr = DerivativeBinder()(expr)
 
@@ -549,34 +562,17 @@ class GeometryCollection(object):
             sources and targets, respectively.
         """
 
-        from pytential import sym
         from pytential.target import TargetBase
         from pytential.source import PotentialSource
         from pytential.qbx import QBXLayerPotentialSource
         from meshmode.discretization import Discretization
-
-        # {{{ define default source and target descriptors
-
-        if isinstance(auto_where, (list, tuple)):
-            auto_source, auto_target = auto_where
-        else:
-            auto_source, auto_target = auto_where, None
-
-        if auto_source is None:
-            auto_source = sym.DEFAULT_SOURCE
-        if auto_target is None:
-            auto_target = sym.DEFAULT_TARGET
-
-        auto_source = sym.as_dofdesc(auto_source)
-        auto_target = sym.as_dofdesc(auto_target)
-
-        # }}}
 
         # {{{ construct dict
 
         self.places = {}
         self.caches = {}
 
+        auto_source, auto_target = _prepare_auto_where(auto_where)
         if isinstance(places, QBXLayerPotentialSource):
             self.places[auto_source.geometry] = places
             auto_target = auto_source
