@@ -354,7 +354,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ internal API
 
     @memoize_method
-    def qbx_fmm_geometry_data(self, places, source_name,
+    def qbx_fmm_geometry_data(self, places, name,
             target_discrs_and_qbx_sides):
         """
         :arg target_discrs_and_qbx_sides:
@@ -367,7 +367,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """
         from pytential.qbx.geometry import QBXFMMGeometryData
 
-        return QBXFMMGeometryData(places, source_name,
+        return QBXFMMGeometryData(places, name,
                 self.qbx_fmm_code_getter,
                 target_discrs_and_qbx_sides,
                 target_association_tolerance=self.target_association_tolerance,
@@ -704,9 +704,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
-            source_name = insn.source.copy(discr_stage=o.target_name.discr_stage)
+            source_dd = insn.source.copy(discr_stage=o.target_name.discr_stage)
             target_discr = bound_expr.places.get_discretization(o.target_name)
-            density_discr = bound_expr.places.get_discretization(source_name)
+            density_discr = bound_expr.places.get_discretization(source_dd)
 
             is_self = density_discr is target_discr
             if is_self:

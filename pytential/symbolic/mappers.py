@@ -430,8 +430,8 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
 
 class UnregularizedPreprocessor(IdentityMapper):
 
-    def __init__(self, source_name, places):
-        self.source_name = source_name
+    def __init__(self, geometry, places):
+        self.geometry = geometry
         self.places = places
 
     def map_int_g(self, expr):
@@ -526,12 +526,12 @@ class InterpolationPreprocessor(IdentityMapper):
 # {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
-    def __init__(self, source_name, places):
-        self.source_name = source_name
+    def __init__(self, geometry, places):
+        self.geometry = geometry
         self.places = places
 
     def map_int_g(self, expr):
-        if expr.source.geometry != self.source_name:
+        if expr.source.geometry != self.geometry:
             return expr
 
         source_discr = self.places.get_discretization(expr.source)

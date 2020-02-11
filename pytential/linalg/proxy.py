@@ -367,12 +367,12 @@ class ProxyGenerator(object):
 
         return knl
 
-    def __call__(self, queue, source_name, indices, **kwargs):
+    def __call__(self, queue, source_dd, indices, **kwargs):
         """Generate proxy points for each given range of source points in
-        the discretization in *source_name*.
+        the discretization in *source_dd*.
 
         :arg queue: a :class:`pyopencl.CommandQueue`.
-        :arg source_name: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+        :arg source_dd: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
             for the discretization on which the proxy points are to be
             generated.
         :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
@@ -392,15 +392,15 @@ class ProxyGenerator(object):
             return np.dot(A, v) + b
 
         from pytential import bind, sym
-        source_name = sym.as_dofdesc(source_name)
-        discr = self.places.get_discretization(source_name)
+        source_dd = sym.as_dofdesc(source_dd)
+        discr = self.places.get_discretization(source_dd)
 
         radii = bind(self.places, sym.expansion_radii(
-            self.ambient_dim, dofdesc=source_name))(queue)
+            self.ambient_dim, dofdesc=source_dd))(queue)
         center_int = bind(self.places, sym.expansion_centers(
-            self.ambient_dim, -1, dofdesc=source_name))(queue)
+            self.ambient_dim, -1, dofdesc=source_dd))(queue)
         center_ext = bind(self.places, sym.expansion_centers(
-            self.ambient_dim, +1, dofdesc=source_name))(queue)
+            self.ambient_dim, +1, dofdesc=source_dd))(queue)
 
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(queue,
@@ -523,7 +523,7 @@ def gather_block_neighbor_points(discr, indices, pxycenters, pxyradii,
                                 nbrranges.with_queue(None))
 
 
-def gather_block_interaction_points(places, source_name, indices,
+def gather_block_interaction_points(places, source_dd, indices,
                                     radius_factor=None,
                                     approx_nproxy=None,
                                     max_nodes_in_box=None):
@@ -540,10 +540,12 @@ def gather_block_interaction_points(places, source_name, indices,
       These are constructed with :func:`gather_block_neighbor_points`.
 
     :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
-    :arg source_name: geometry in *places* for which to generate the
-        interaction points.
+    :arg source_dd: geometry in *places* for which to generate the
+        interaction points. This is a
+        :class:`~pytential.symbolic.primitives.DOFDescriptor` describing
+        the exact discretization.
     :arg indices: a :class:`sumpy.tools.BlockIndexRanges` on the
-        discretization described by *source_name*.
+        discretization described by *source_dd*.
 
     :return: a tuple ``(nodes, ranges)``, where each value is a
         :class:`pyopencl.array.Array`. For a range :math:`i`, we can
@@ -603,15 +605,15 @@ def gather_block_interaction_points(places, source_name, indices,
 
         return loopy_knl
 
-    source = places.get_geometry(source_name)
+    source = places.get_geometry(source_dd)
     with cl.CommandQueue(source.cl_context) as queue:
         generator = ProxyGenerator(places,
                 radius_factor=radius_factor,
                 approx_nproxy=approx_nproxy)
         proxies, pxyranges, pxycenters, pxyradii = \
-                generator(queue, source_name, indices)
+                generator(queue, source_dd, indices)
 
-        discr = places.get_discretization(source_name)
+        discr = places.get_discretization(source_dd)
         neighbors = gather_block_neighbor_points(discr,
                 indices, pxycenters, pxyradii,
                 max_nodes_in_box=max_nodes_in_box)
