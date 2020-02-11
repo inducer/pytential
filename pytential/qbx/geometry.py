@@ -317,7 +317,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         A :class:`~pytential.symbolic.execution.GeometryCollection`
         containing the :class:`~pytential.qbx.QBXLayerPotentialSource`.
 
-    .. attribute:: source_name
+    .. attribute:: source_dd
 
         Symbolic name for the :class:`~pytential.qbx.QBXLayerPotentialSource`
         in the collection :attr:`places`.
@@ -370,7 +370,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
     .. method:: m2l_rotation_angles()
     """
 
-    def __init__(self, places, source_name,
+    def __init__(self, places, source_dd,
             code_getter,
             target_discrs_and_qbx_sides,
             target_association_tolerance,
@@ -388,8 +388,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """
         from pytential import sym
         self.places = places
-        self.source_name = sym.as_dofdesc(source_name)
-        self.lpot_source = places.get_geometry(self.source_name)
+        self.source_dd = sym.as_dofdesc(source_dd)
+        self.lpot_source = places.get_geometry(self.source_dd)
 
         self.code_getter = code_getter
         self.target_discrs_and_qbx_sides = target_discrs_and_qbx_sides
@@ -427,7 +427,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         with cl.CommandQueue(self.cl_context) as queue:
             centers = bind(self.places, sym.interleaved_expansion_centers(
                 self.ambient_dim,
-                dofdesc=self.source_name.to_stage1()))(queue)
+                dofdesc=self.source_dd.to_stage1()))(queue)
             return make_obj_array([ax.with_queue(None) for ax in centers])
 
     @memoize_method
@@ -443,7 +443,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             return bind(self.places, sym.expansion_radii(
                 self.ambient_dim,
                 granularity=sym.GRANULARITY_CENTER,
-                dofdesc=self.source_name.to_stage1()))(queue)
+                dofdesc=self.source_dd.to_stage1()))(queue)
 
     # }}}
 
@@ -523,7 +523,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         with cl.CommandQueue(self.cl_context) as queue:
             density_discr = self.places.get_discretization(
-                    self.source_name.to_quad_stage2())
+                    self.source_dd.to_quad_stage2())
 
             nsources = density_discr.nnodes
             nparticles = nsources + target_info.ntargets
@@ -774,7 +774,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
             tgt_assoc_result = associate_targets_to_qbx_centers(
                     self.places,
-                    self.source_name,
+                    self.source_dd,
                     target_association_wrangler,
                     target_discrs_and_qbx_sides,
                     target_association_tolerance=(
@@ -901,9 +901,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         with cl.CommandQueue(self.cl_context) as queue:
             stage2_density_discr = self.places.get_discretization(
-                    self.source_name.to_stage2())
+                    self.source_dd.to_stage2())
             quad_stage2_density_discr = self.places.get_discretization(
-                    self.source_name.to_quad_stage2())
+                    self.source_dd.to_quad_stage2())
             from meshmode.discretization.visualization import draw_curve
             draw_curve(quad_stage2_density_discr)
 
