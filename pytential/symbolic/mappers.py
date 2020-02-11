@@ -461,9 +461,7 @@ class InterpolationPreprocessor(IdentityMapper):
 
     * do differentiation on
     :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
-    by performing it on
-    :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE2` and
-    upsampling.
+    by performing it on :attr:`from_discr_stage` and upsampling.
     * upsample layer potential sources to
     :attr:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`,
     """
@@ -472,6 +470,7 @@ class InterpolationPreprocessor(IdentityMapper):
         """
         .. attribute:: from_discr_stage
 
+            Sets the stage on which to compute the data before interpolation.
             For valid values, see
             :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage`.
         """
