@@ -11,8 +11,7 @@ dependencies:
 - islpy
 - pyopencl
 - python>=3.6
-- symengine=0.3.0
-- python-symengine=0.3.0
+- python-symengine=0.6.0
 - pyfmmlib
 # for OpenMP support in pyfmmlib
 - libgfortran>=3.0.1
