@@ -470,6 +470,16 @@ def _prepare_domains(nresults, places, domains, default_domain):
 
 
 def _prepare_auto_where(auto_where, places=None):
+    """
+    :arg auto_where: a 2-tuple, single identifier or `None` used as a hint
+        to determine the default geometries.
+    :arg places: a :class:`GeometryCollection`,
+        whose :attr:`GeometryCollection.auto_where` is used by default if
+        provided and `auto_where` is `None`.
+    :return: a tuple ``(source, target)`` of
+        :class:`~pytential.symbolic.primitives.DOFDescriptor`s denoting
+        the default source and target geometries.
+    """
 
     if auto_where is None:
         if places is None:
@@ -481,10 +491,7 @@ def _prepare_auto_where(auto_where, places=None):
         auto_source, auto_target = auto_where
     else:
         auto_source = auto_where
-        if places is None:
-            auto_target = sym.DEFAULT_TARGET
-        else:
-            auto_target = places.auto_target
+        auto_target = auto_source
 
     return (sym.as_dofdesc(auto_source), sym.as_dofdesc(auto_target))
 
