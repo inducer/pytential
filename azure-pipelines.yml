@@ -110,7 +110,7 @@ jobs:
         script: |
             set -e
             CONDA_ENVIRONMENT=.test-conda-env-py3-pylint.yml
-            sed 's/numpy/numpy=1.15/' .test-conda-env-py3.yml > $CONDA_ENVIRONMENT
+            cp .test-conda-env-py3.yml $CONDA_ENVIRONMENT
             echo "- matplotlib" >> $CONDA_ENVIRONMENT
             echo "-------------------------------------------"
             cat $CONDA_ENVIRONMENT
