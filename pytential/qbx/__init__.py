@@ -228,6 +228,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             qbx_order=None,
             fmm_order=_not_provided,
             fmm_level_to_order=_not_provided,
+            expansion_factory=None,
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
             _expansion_stick_out_factor=_not_provided,
@@ -289,6 +290,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 qbx_order=qbx_order if qbx_order is not None else self.qbx_order,
 
                 target_association_tolerance=target_association_tolerance,
+                expansion_factory=(
+                    expansion_factory or self.expansion_factory),
 
                 debug=(
                     # False is a valid value here
