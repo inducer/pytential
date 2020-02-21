@@ -665,11 +665,8 @@ class GeometryCollection(object):
         """
         from pytential import sym
         dofdesc = sym.as_dofdesc(dofdesc)
-        key = (dofdesc.geometry, dofdesc.discr_stage)
 
-        if key in self.places:
-            discr = self.places[key]
-        elif dofdesc.geometry in self.places:
+        if dofdesc.geometry in self.places:
             discr = self.places[dofdesc.geometry]
         else:
             raise KeyError('geometry not in the collection: {}'.format(

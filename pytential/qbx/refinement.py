@@ -537,6 +537,27 @@ def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
             lpot_source.real_dtype)
 
 
+def _make_temporary_collection(lpot_source,
+        stage1_density_discr=None,
+        stage2_density_discr=None):
+    from pytential import sym
+    from pytential import GeometryCollection
+
+    name = "_tmp_refine_source"
+    places = GeometryCollection(lpot_source, auto_where=name)
+
+    discr_cache = places.get_cache("refined_qbx_discrs")
+    if stage1_density_discr is not None:
+        discr_cache[(name, sym.QBX_SOURCE_STAGE1)] = stage1_density_discr
+
+    if stage2_density_discr is not None:
+        discr_cache[(name, sym.QBX_SOURCE_STAGE2)] = stage2_density_discr
+        discr_cache[(name, sym.QBX_SOURCE_QUAD_STAGE2)] = \
+                _make_quad_stage2_discr(lpot_source, stage2_density_discr)
+
+    return places
+
+
 def _refine_qbx_stage1(lpot_source, density_discr,
         wrangler, group_factory,
         kernel_length_scale=None,
@@ -611,15 +632,13 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         if not iter_violated_criteria:
             # Only start building trees once the simple length-based criteria
             # are happy.
-
-            from pytential import GeometryCollection
-            places = GeometryCollection({
-                ('qbx', sym.QBX_SOURCE_STAGE1): stage1_density_discr
-                })
+            places = _make_temporary_collection(lpot_source,
+                    stage1_density_discr=stage1_density_discr)
 
             # Build tree and auxiliary data.
             # FIXME: The tree should not have to be rebuilt at each iteration.
-            tree = wrangler.build_tree(places, sources_list=['qbx'])
+            tree = wrangler.build_tree(places,
+                    sources_list=[places.auto_source.geometry])
             peer_lists = wrangler.find_peer_lists(tree)
 
             has_disturbed_expansions = \
@@ -681,17 +700,14 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
                     violated_criteria, expansion_disturbance_tolerance)
             break
 
-        from pytential import GeometryCollection
-        places = GeometryCollection({
-            ('qbx', sym.QBX_SOURCE_STAGE1): stage1_density_discr,
-            ('qbx', sym.QBX_SOURCE_STAGE2): stage2_density_discr,
-            ('qbx', sym.QBX_SOURCE_QUAD_STAGE2):
-                _make_quad_stage2_discr(lpot_source, stage2_density_discr)
-            })
+        places = _make_temporary_collection(lpot_source,
+                stage1_density_discr=stage1_density_discr,
+                stage2_density_discr=stage2_density_discr)
 
         # Build tree and auxiliary data.
         # FIXME: The tree should not have to be rebuilt at each iteration.
-        tree = wrangler.build_tree(places, sources_list=['qbx'],
+        tree = wrangler.build_tree(places,
+                sources_list=[places.auto_source.geometry],
                 use_stage2_discr=True)
         peer_lists = wrangler.find_peer_lists(tree)
         refine_flags = make_empty_refine_flags(
