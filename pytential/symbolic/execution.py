@@ -245,14 +245,11 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         elif expr.scope == sym.cse_scope.DISCRETIZATION:
             cache = self.places.get_cache("cse")
         else:
-            logger.debug("Cache ignore: %s", expr.child)
             return self.rec(expr.child)
 
         try:
             rec = cache[expr.child]
-            logger.debug("Cache hit: {}".format(expr.child))
         except KeyError:
-            logger.debug("Cache miss: {}".format(expr.child))
             rec = self.rec(expr.child)
             cache[expr.child] = rec
 
