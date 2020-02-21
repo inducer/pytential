@@ -521,8 +521,8 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         real costs.
 
         :arg model_results: a :class:`list` of modeled costs. Each model cost can be
-            obtained from `BoundExpression.get_modeled_cost` with "constant_one" for
-            argument `calibration_params`, and `per_box` set to *False*.
+            obtained from `BoundExpression.cost_per_stage` with "constant_one" for
+            argument `calibration_params`.
         :arg timing_results: a :class:`list` of timing data. Each timing data can be
             obtained from `BoundExpression.eval`.
         :arg time_field_name: a :class:`str`, the field name from the timing result.

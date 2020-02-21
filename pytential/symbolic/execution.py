@@ -655,7 +655,8 @@ class BoundExpression(object):
     """An expression readied for evaluation by binding it to a
     :class:`GeometryCollection`.
 
-    .. automethod :: get_modeled_cost
+    .. automethod :: cost_per_stage
+    .. automethod :: cost_per_box
     .. automethod :: scipy_op
     .. automethod :: eval
     .. automethod :: __call__
@@ -674,11 +675,35 @@ class BoundExpression(object):
     def get_discretization(self, where):
         return self.places.get_discretization(where)
 
-    def get_modeled_cost(self, queue, calibration_params, **args):
-        per_box = args.pop('per_box', True)
-
+    def cost_per_stage(self, queue, calibration_params, **args):
+        """
+        :arg queue: a :class:`pyopencl.CommandQueue` object.
+        :arg calibration_params: either a :class:`dict` returned by
+            `estimate_knl_specific_calibration_params`, or a :class:`str`
+            "constant_one".
+        :return: a :class:`dict` mapping from instruction to per-stage cost. Each
+            per-stage cost is represented by a :class:`dict` mapping from the stage
+            name to the predicted time.
+        """
         cost_model_mapper = CostModelMapper(
-            self, queue, calibration_params, per_box, args
+            self, queue, calibration_params, False, args
+        )
+        self.code.execute(cost_model_mapper)
+        return cost_model_mapper.get_modeled_cost()
+
+    def cost_per_box(self, queue, calibration_params, **args):
+        """
+        :arg queue: a :class:`pyopencl.CommandQueue` object.
+        :arg calibration_params: either a :class:`dict` returned by
+            `estimate_knl_specific_calibration_params`, or a :class:`str`
+            "constant_one".
+        :return: a :class:`dict` mapping from instruction to per-box cost. Each
+            per-box cost is represented by a :class:`numpy.ndarray` or
+            :class:`pyopencl.array.Array` of shape (nboxes,), where the ith entry
+            represents the cost of all stages for box i.
+        """
+        cost_model_mapper = CostModelMapper(
+            self, queue, calibration_params, True, args
         )
         self.code.execute(cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()

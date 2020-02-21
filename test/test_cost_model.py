@@ -385,18 +385,28 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
     op_S = bind(lpot_source, sym_op_S)
-    cost_S, _ = op_S.get_modeled_cost(
-        queue, "constant_one", per_box=per_box, sigma=sigma
-    )
+
+    if per_box:
+        cost_S, _ = op_S.cost_per_box(queue, "constant_one", sigma=sigma)
+    else:
+        cost_S, _ = op_S.cost_per_stage(queue, "constant_one", sigma=sigma)
+
     assert len(cost_S) == 1
 
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
             + sym.D(k_sym, sigma_sym, qbx_forced_limit="avg"))
     op_S_plus_D = bind(lpot_source, sym_op_S_plus_D)
-    cost_S_plus_D, _ = op_S_plus_D.get_modeled_cost(
-        queue, "constant_one", per_box=per_box, sigma=sigma
-    )
+
+    if per_box:
+        cost_S_plus_D, _ = op_S_plus_D.cost_per_box(
+            queue, "constant_one", sigma=sigma
+        )
+    else:
+        cost_S_plus_D, _ = op_S_plus_D.cost_per_stage(
+            queue, "constant_one", sigma=sigma
+        )
+
     assert len(cost_S_plus_D) == 2
 
 # }}}
@@ -425,8 +435,9 @@ def test_cost_model_metadata_gathering(ctx_factory):
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1, k=sym.var("k"))
     op_S = bind(lpot_source, sym_op_S)
 
-    _, metadata = op_S.get_modeled_cost(
-        queue, "constant_one", sigma=sigma, k=k, per_box=False, return_metadata=True)
+    _, metadata = op_S.cost_per_stage(
+        queue, "constant_one", sigma=sigma, k=k, return_metadata=True
+    )
     metadata = one(metadata.values())
 
     geo_data = lpot_source.qbx_fmm_geometry_data(
@@ -702,9 +713,7 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     sigma = get_density(queue, lpot_source)
 
     from pytools import one
-    modeled_time, _ = op_S.get_modeled_cost(
-        queue, "constant_one", per_box=False, sigma=sigma
-    )
+    modeled_time, _ = op_S.cost_per_stage(queue, "constant_one", sigma=sigma)
     modeled_time = one(modeled_time.values())
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
@@ -744,9 +753,8 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     for stage in timing_data:
         total_cost += timing_data[stage]["ops_elapsed"]
 
-    per_box_cost, _ = op_S.get_modeled_cost(
-        queue, "constant_one", per_box=True, sigma=sigma
-    )
+    per_box_cost, _ = op_S.cost_per_box(queue, "constant_one", sigma=sigma)
+    print(per_box_cost)
     per_box_cost = one(per_box_cost.values())
 
     total_aggregate_cost = cost_model.aggregate_over_boxes(per_box_cost)
@@ -787,8 +795,8 @@ def test_cost_model_order_varying_by_level(ctx_factory):
 
     sigma = get_density(queue, lpot_source)
 
-    cost_constant, metadata = bind(lpot_source, sym_op).get_modeled_cost(
-        queue, "constant_one", per_box=False, sigma=sigma
+    cost_constant, metadata = bind(lpot_source, sym_op).cost_per_stage(
+        queue, "constant_one", sigma=sigma
     )
 
     cost_constant = one(cost_constant.values())
@@ -807,8 +815,8 @@ def test_cost_model_order_varying_by_level(ctx_factory):
 
     sigma = get_density(queue, lpot_source)
 
-    cost_varying, _ = bind(lpot_source, sym_op).get_modeled_cost(
-        queue, "constant_one", per_box=False, sigma=sigma
+    cost_varying, _ = bind(lpot_source, sym_op).cost_per_stage(
+        queue, "constant_one", sigma=sigma
     )
 
     cost_varying = one(cost_varying.values())

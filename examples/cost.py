@@ -129,9 +129,7 @@ def calibrate_cost_model(ctx):
         bound_op = get_bound_op(lpot_source)
         sigma = get_test_density(queue, lpot_source)
 
-        modeled_cost, _ = bound_op.get_modeled_cost(
-            queue, "constant_one", per_box=False, sigma=sigma
-        )
+        modeled_cost, _ = bound_op.cost_per_stage(queue, "constant_one", sigma=sigma)
 
         # Warm-up run.
         bound_op.eval(queue, {"sigma": sigma})
@@ -159,9 +157,7 @@ def test_cost_model(ctx, calibration_params):
         bound_op = get_bound_op(lpot_source)
         sigma = get_test_density(queue, lpot_source)
 
-        cost_S, _ = bound_op.get_modeled_cost(
-            queue, calibration_params, per_box=False, sigma=sigma
-        )
+        cost_S, _ = bound_op.cost_per_stage(queue, calibration_params, sigma=sigma)
         model_result = one(cost_S.values())
 
         # Warm-up run.
