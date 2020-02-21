@@ -500,7 +500,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
             tree, peer_lists, target_status,
             debug, wait_for=None):
         from pytential import bind, sym
-        dofdesc = dofdesc.to_stage1()
         ambient_dim = places.ambient_dim
 
         # Round up level count--this gets included in the kernel as
@@ -594,7 +593,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
             target_association_tolerance,
             debug, wait_for=None):
         from pytential import bind, sym
-        dofdesc = dofdesc.to_stage1()
         ambient_dim = places.ambient_dim
 
         # Round up level count--this gets included in the kernel as
@@ -697,7 +695,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
             tree, peer_lists, target_status, refine_flags,
             debug, wait_for=None):
         from pytential import bind, sym
-        dofdesc = dofdesc.to_stage1()
         ambient_dim = places.ambient_dim
 
         # Round up level count--this gets included in the kernel as
@@ -824,7 +821,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
     """
 
     from pytential import sym
-    dofdesc = sym.as_dofdesc(geometry)
+    dofdesc = sym.as_dofdesc(geometry).to_stage1()
 
     tree = wrangler.build_tree(places,
             sources_list=[dofdesc.geometry],
