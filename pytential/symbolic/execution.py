@@ -524,6 +524,18 @@ def _prepare_expr(places, expr, auto_where=None):
 
 # {{{ geometry collection
 
+def _is_valid_identifier(name):
+    if six.PY2:
+        # https://docs.python.org/2.7/reference/lexical_analysis.html#identifiers
+        import re
+        is_identifier = re.match(r"^[^\d\W]\w*\Z", name) is not None
+    else:
+        is_identifier = name.isidentifier()
+
+    import keyword
+    return is_identifier and not keyword.iskeyword(name)
+
+
 _GEOMETRY_COLLECTION_DISCR_CACHE_NAME = "refined_qbx_discrs"
 _GEOMETRY_COLLECTION_CONNS_CACHE_NAME = "refined_qbx_conns"
 
@@ -605,11 +617,10 @@ class GeometryCollection(object):
                 raise TypeError("Must pass discretization, targets or "
                         "layer potential sources as 'places'.")
 
-        import keyword
         for name in self.places:
             if not isinstance(name, str):
                 continue
-            if not name.isidentifier() or keyword.iskeyword(name):
+            if not _is_valid_identifier(name):
                 raise ValueError("`{}` is not a valid identifier".format(name))
 
         # }}}

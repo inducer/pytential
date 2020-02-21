@@ -542,13 +542,13 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     places = {
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx,
-        'point-source': point_source,
-        'point-target': point_target
+        'point_source': point_source,
+        'point_target': point_target
         }
     if visualize:
         places.update({
-            'qbx-target-tol': qbx.copy(target_association_tolerance=0.15),
-            'plot-targets': plot_targets
+            'qbx_target_tol': qbx.copy(target_association_tolerance=0.15),
+            'plot_targets': plot_targets
             })
 
     places = GeometryCollection(places)
@@ -665,18 +665,18 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
         knl, sym.var("charges"), qbx_forced_limit=None, **knl_kwargs_syms)
 
     test_direct = bind(places, pot_src,
-            auto_where=('point-source', 'point-target'))(
+            auto_where=('point_source', 'point_target'))(
             queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     if case.bc_type == "dirichlet":
         bc = bind(places, pot_src,
-                auto_where=('point-source', sym.DEFAULT_TARGET))(
+                auto_where=('point_source', sym.DEFAULT_TARGET))(
                         queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     elif case.bc_type == "neumann":
         bc = bind(places, sym.normal_derivative(
             qbx.ambient_dim, pot_src, dofdesc=sym.DEFAULT_TARGET),
-            auto_where=('point-source', sym.DEFAULT_TARGET))(
+            auto_where=('point_source', sym.DEFAULT_TARGET))(
                     queue, charges=source_charges_dev, **concrete_knl_kwargs)
 
     elif case.bc_type == "clamped_plate":
@@ -738,7 +738,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
         bound_tgt_op = bind(places,
                 op.representation(op.get_density_var("u")),
-                auto_where=(sym.DEFAULT_SOURCE, 'point-target'))
+                auto_where=(sym.DEFAULT_SOURCE, 'point_target'))
 
         test_via_bdry = bound_tgt_op(queue, u=weighted_u, **concrete_knl_kwargs)
 
@@ -779,7 +779,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
                     op.get_density_var("u"),
                     map_potentials=lambda pot: sym.grad(mesh.ambient_dim, pot),
                     qbx_forced_limit=None),
-                auto_where=(sym.DEFAULT_SOURCE, 'point-target'))
+                auto_where=(sym.DEFAULT_SOURCE, 'point_target'))
 
         #print(bound_t_deriv_op.code)
 
@@ -788,7 +788,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
         grad_ref = bind(places,
                 sym.grad(mesh.ambient_dim, pot_src),
-                auto_where=('point-source', 'point-target'))(queue,
+                auto_where=('point_source', 'point_target'))(queue,
                         charges=source_charges_dev,
                         **concrete_knl_kwargs)
 
@@ -817,7 +817,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
         tang_deriv_ref = bind(places,
                 sym.tangential_derivative(qbx.ambient_dim, pot_src),
-                auto_where=('point-source', sym.DEFAULT_TARGET))(queue,
+                auto_where=('point_source', sym.DEFAULT_TARGET))(queue,
                         charges=source_charges_dev,
                         **concrete_knl_kwargs).as_scalar().get()
 
@@ -856,7 +856,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
         try:
             solved_pot = bind(places,
                     op.representation(op.get_density_var("u")),
-                    auto_where=('qbx-target-tol', 'plot-targets'))(
+                    auto_where=('qbx_target_tol', 'plot_targets'))(
                             queue, u=weighted_u, k=case.k)
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
@@ -873,13 +873,13 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
                 op.get_density_var("sigma"),
                 qbx_forced_limit=None)
         indicator = bind(places, indicator,
-                auto_where=('qbx-target-tol', 'plot-targets'))(
+                auto_where=('qbx_target_tol', 'plot_targets'))(
                         queue, sigma=ones_density).get()
 
         solved_pot = solved_pot.get()
 
         true_pot = bind(places, pot_src,
-                auto_where=('point-source', 'plot-targets'))(
+                auto_where=('point_source', 'plot_targets'))(
                         queue,
                         charges=source_charges_dev,
                         **concrete_knl_kwargs).get()
