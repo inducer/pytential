@@ -105,8 +105,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,
-        'point-target': point_targets,
-        'plot-target': plot_targets,
+        'point_target': point_targets,
+        'plot_target': plot_targets,
         })
 
     density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
@@ -214,7 +214,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
                 meanless_sigma_sym, mu_sym, qbx_forced_limit=2)
             - u_A_sym_vol + sigma_int_val_sym)
 
-    where = (sym.DEFAULT_SOURCE, 'point-target')
+    where = (sym.DEFAULT_SOURCE, 'point_target')
     vel = bind(places, representation_sym, auto_where=where)(queue,
             sigma=sigma,
             mu=mu,
@@ -224,7 +224,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     print("@@@@@@@@")
 
     plot_vel = bind(places, representation_sym,
-            auto_where=(sym.DEFAULT_SOURCE, 'plot-target'))(queue,
+            auto_where=(sym.DEFAULT_SOURCE, 'plot_target'))(queue,
                     sigma=sigma,
                     mu=mu,
                     normal=normal,

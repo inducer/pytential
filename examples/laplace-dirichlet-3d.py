@@ -78,7 +78,7 @@ def main(mesh_name="torus", visualize=False):
     from pytential import GeometryCollection
     places = GeometryCollection({
         'qbx': qbx,
-        'qbx-target-assoc': qbx.copy(target_association_tolerance=0.2),
+        'qbx_target_assoc': qbx.copy(target_association_tolerance=0.2),
         'targets': PointsTarget(targets)
         }, auto_where=('qbx', 'qbx'))
     density_discr = places.get_discretization('qbx')
@@ -143,7 +143,7 @@ def main(mesh_name="torus", visualize=False):
     # {{{ postprocess/visualize
 
     repr_kwargs = dict(
-            source='qbx-target-assoc',
+            source='qbx_target_assoc',
             target='targets',
             qbx_forced_limit=None)
     representation_sym = (

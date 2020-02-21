@@ -559,7 +559,8 @@ class GeometryCollection(object):
             geometry objects. Supported objects are
             :class:`~pytential.source.PotentialSource`,
             :class:`~potential.target.TargetBase` and
-            :class:`~meshmode.discretization.Discretization`.
+            :class:`~meshmode.discretization.Discretization`. If this is
+            a mapping, its string-based keys must be valid Python identifiers.
         :arg auto_where: location identifier for each geometry object, used
             to denote specific discretizations, e.g. in the case where
             *places* is a :class:`~pytential.source.LayerPotentialSourceBase`.
@@ -594,7 +595,7 @@ class GeometryCollection(object):
             self.places[auto_source.geometry] = source_discr
             self.places[auto_target.geometry] = target_discr
         else:
-            self.places = places.copy()
+            self.places = places
 
         self.auto_where = (auto_source, auto_target)
 
@@ -602,6 +603,13 @@ class GeometryCollection(object):
             if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
                 raise TypeError("Must pass discretization, targets or "
                         "layer potential sources as 'places'.")
+
+        import keyword
+        for name in self.places:
+            if not isinstance(name, str):
+                continue
+            if not name.isidentifier() or keyword.iskeyword(name):
+                raise ValueError("`{}` is not a valid identifier".format(name))
 
         # }}}
 

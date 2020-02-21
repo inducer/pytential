@@ -191,19 +191,19 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     from sumpy.kernel import LaplaceKernel
 
     places = GeometryCollection({
-        'direct-qbx': direct_qbx,
-        'fmm-qbx': fmm_qbx,
+        'direct_qbx': direct_qbx,
+        'fmm_qbx': fmm_qbx,
         'target': ptarget})
 
-    direct_density_discr = places.get_discretization('direct-qbx')
-    fmm_density_discr = places.get_discretization('fmm-qbx')
+    direct_density_discr = places.get_discretization('direct_qbx')
+    fmm_density_discr = places.get_discretization('fmm_qbx')
 
     from pytential.qbx import QBXTargetAssociationFailedException
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
     try:
         direct_sigma = direct_density_discr.zeros(queue) + 1
         direct_fld_in_vol = bind(places, op,
-                auto_where=('direct-qbx', 'target'))(
+                auto_where=('direct_qbx', 'target'))(
                         queue, sigma=direct_sigma)
     except QBXTargetAssociationFailedException as e:
         fplot.show_scalar_in_matplotlib(e.failed_target_flags.get(queue))
@@ -213,7 +213,7 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
 
     fmm_sigma = fmm_density_discr.zeros(queue) + 1
     fmm_fld_in_vol = bind(places, op,
-            auto_where=('fmm-qbx', 'target'))(
+            auto_where=('fmm_qbx', 'target'))(
                     queue, sigma=fmm_sigma)
 
     err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
@@ -262,7 +262,7 @@ def test_unregularized_with_ones_kernel(ctx_factory):
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: lpot_source,
         sym.DEFAULT_TARGET: lpot_source,
-        'target-non-self': targets})
+        'target_non_self': targets})
 
     from sumpy.kernel import one_kernel_2d
     sigma_sym = sym.var("sigma")
@@ -276,7 +276,7 @@ def test_unregularized_with_ones_kernel(ctx_factory):
             auto_where=places.auto_where)(
                     queue, sigma=sigma)
     result_nonself = bind(places, op,
-            auto_where=(places.auto_source, 'target-non-self'))(
+            auto_where=(places.auto_source, 'target_non_self'))(
                     queue, sigma=sigma)
 
     assert np.allclose(result_self.get(), 2 * np.pi)
@@ -319,8 +319,8 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
 
     from pytential import GeometryCollection
     places = GeometryCollection({
-        'unregularized-direct': direct,
-        'unregularized-fmm': fmm,
+        'unregularized_direct': direct,
+        'unregularized_fmm': fmm,
         'targets': ptarget})
 
     # }}}
@@ -331,10 +331,10 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
 
     direct_fld_in_vol = bind(places, op,
-            auto_where=('unregularized-direct', 'targets'))(
+            auto_where=('unregularized_direct', 'targets'))(
                     queue, sigma=sigma)
     fmm_fld_in_vol = bind(places, op,
-            auto_where=('unregularized-fmm', 'targets'))(queue, sigma=sigma)
+            auto_where=('unregularized_fmm', 'targets'))(queue, sigma=sigma)
 
     err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
 
