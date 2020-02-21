@@ -688,8 +688,9 @@ class GeometryCollection(object):
         return self.places[dofdesc.geometry]
 
     def copy(self, places=None, auto_where=None):
+        places = self.places if places is None else places
         return type(self)(
-                places=self.places if places is None else places,
+                places = places.copy(),
                 auto_where=self.auto_where if auto_where is None else auto_where)
 
     def merge(self, places):
