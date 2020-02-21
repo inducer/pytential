@@ -546,7 +546,8 @@ def _make_temporary_collection(lpot_source,
     name = "_tmp_refine_source"
     places = GeometryCollection(lpot_source, auto_where=name)
 
-    discr_cache = places.get_cache("refined_qbx_discrs")
+    from pytential.symbolic.execution import _GEOMETRY_COLLECTION_DISCR_CACHE_NAME
+    discr_cache = places.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
     if stage1_density_discr is not None:
         discr_cache[(name, sym.QBX_SOURCE_STAGE1)] = stage1_density_discr
 
@@ -825,8 +826,11 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
         raise ValueError('unknown discr stage: %s' % dofdesc.discr_stage)
     stage_index = stage_index_map[dofdesc.discr_stage]
 
-    discr_cache = places.get_cache("refined_qbx_discrs")
-    conns_cache = places.get_cache("refined_qbx_connections")
+    from pytential.symbolic.execution import (
+            _GEOMETRY_COLLECTION_DISCR_CACHE_NAME,
+            _GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+    discr_cache = places.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
+    conns_cache = places.get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
 
     def add_to_cache(refine_discr, refine_conn, from_ds, to_ds):
         discr_cache[(dofdesc.geometry, to_ds)] = refine_discr

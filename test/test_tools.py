@@ -151,15 +151,16 @@ def test_geometry_collection_caching(ctx_factory):
             sym.QBX_SOURCE_STAGE2,
             sym.QBX_SOURCE_QUAD_STAGE2]
 
+    from pytential.symbolic.execution import _GEOMETRY_COLLECTION_DISCR_CACHE_NAME
     for k in range(ngeometry):
         for discr_stage in discr_stages:
-            cache = places.get_cache('refined_qbx_discrs')
+            cache = places.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
             assert (sources[k], discr_stage) not in cache
 
             dofdesc = sym.DOFDescriptor(sources[k], discr_stage=discr_stage)
             bind(places, sym.nodes(ndim, dofdesc=dofdesc))(queue)
 
-            cache = places.get_cache('refined_qbx_discrs')
+            cache = places.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
             assert (sources[k], discr_stage) in cache
 
     # construct a layer potential on each qbx geometry

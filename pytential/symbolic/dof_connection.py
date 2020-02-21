@@ -256,7 +256,8 @@ def connection_from_dds(places, from_dd, to_dd):
         to_stage = stage_name_to_index_map[to_dd.discr_stage]
 
         # NOTE: need to keep cache name in sync with `refine_for_global_qbx`
-        cache = places.get_cache("refined_qbx_connections")
+        from pytential.symbolic.execution import _GEOMETRY_COLLECTION_CONNS_CACHE_NAME
+        cache = places.get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
         for istage in range(from_stage, to_stage):
             key = (from_dd.geometry,
                     stage_index_to_name_map[istage],

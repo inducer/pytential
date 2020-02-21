@@ -524,6 +524,10 @@ def _prepare_expr(places, expr, auto_where=None):
 
 # {{{ geometry collection
 
+_GEOMETRY_COLLECTION_DISCR_CACHE_NAME = "refined_qbx_discrs"
+_GEOMETRY_COLLECTION_CONNS_CACHE_NAME = "refined_qbx_conns"
+
+
 class GeometryCollection(object):
     """A mapping from symbolic identifiers ("place IDs", typically strings)
     to 'geometries', where a geometry can be a
@@ -634,7 +638,7 @@ class GeometryCollection(object):
             dofdesc = dofdesc.to_stage1()
 
         # NOTE: need to keep cache name in sync with `_refine_for_global_qbx`
-        cache = self.get_cache('refined_qbx_discrs')
+        cache = self.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
         key = (dofdesc.geometry, dofdesc.discr_stage)
         if key in cache:
             return cache[key]
