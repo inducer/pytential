@@ -679,7 +679,6 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         expansion_disturbance_tolerance=None,
         force_stage2_uniform_refinement_rounds=None,
         maxiter=None, debug=None, visualize=False):
-    from pytential import sym
     from meshmode.mesh.refinement import RefinerWithoutAdjacency
     refiner = RefinerWithoutAdjacency(stage1_density_discr.mesh)
 

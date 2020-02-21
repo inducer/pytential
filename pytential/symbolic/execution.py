@@ -694,7 +694,7 @@ class GeometryCollection(object):
     def copy(self, places=None, auto_where=None):
         places = self.places if places is None else places
         return type(self)(
-                places = places.copy(),
+                places=places.copy(),
                 auto_where=self.auto_where if auto_where is None else auto_where)
 
     def merge(self, places):
