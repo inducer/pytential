@@ -122,7 +122,7 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
     targets = PointsTarget(fplot.points)
 
     places = GeometryCollection((qbx, targets))
-    density_discr = places.get_discretization(places.auto_source)
+    density_discr = places.get_discretization(places.auto_source.geometry)
 
     from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2)
@@ -389,7 +389,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                 )
 
         places = GeometryCollection(qbx)
-        density_discr = places.get_discretization(places.auto_source)
+        density_discr = places.get_discretization(places.auto_source.geometry)
 
         from sumpy.kernel import LaplaceKernel
         knl = LaplaceKernel(3)

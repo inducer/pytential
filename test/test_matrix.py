@@ -232,7 +232,7 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
             kernel_length_scale=(5 / k if k else None))
 
     source = places.auto_source.to_stage1()
-    density_discr = places.get_discretization(source)
+    density_discr = places.get_discretization(source.geometry)
 
     op, u_sym, knl_kwargs = _build_op(lpot_id, k=k,
             source=places.auto_source,
@@ -322,7 +322,7 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             target=places.auto_target)
 
     dd = places.auto_source
-    density_discr = places.get_discretization(dd)
+    density_discr = places.get_discretization(dd.geometry, dd.discr_stage)
     index_set = _build_block_index(queue, density_discr, factor=factor)
     index_set = MatrixBlockIndexRanges(ctx, index_set, index_set)
 
@@ -334,7 +334,7 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places.get_geometry(dd.geometry),
-            dep_discr=places.get_discretization(dd),
+            dep_discr=places.get_discretization(dd.geometry, dd.discr_stage),
             places=places,
             context={},
             exclude_self=True)
@@ -344,8 +344,8 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
     mbuilder = FarFieldBlockBuilder(queue,
             dep_expr=u_sym,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(places.auto_source.geometry),
-            dep_discr=places.get_discretization(places.auto_source),
+            dep_source=places.get_geometry(dd.geometry),
+            dep_discr=places.get_discretization(dd.geometry, dd.discr_stage),
             places=places,
             index_set=index_set,
             context={},
@@ -408,7 +408,7 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
     expr = _prepare_expr(places, op)
 
     dd = places.auto_source
-    density_discr = places.get_discretization(dd)
+    density_discr = places.get_discretization(dd.geometry, dd.discr_stage)
     index_set = _build_block_index(queue, density_discr, factor=factor)
     index_set = MatrixBlockIndexRanges(ctx, index_set, index_set)
 
@@ -417,7 +417,7 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places.get_geometry(dd.geometry),
-            dep_discr=places.get_discretization(dd),
+            dep_discr=places.get_discretization(dd.geometry, dd.discr_stage),
             places=places,
             index_set=index_set,
             context={})
@@ -428,7 +428,7 @@ def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places.get_geometry(dd.geometry),
-            dep_discr=places.get_discretization(dd),
+            dep_discr=places.get_discretization(dd.geometry, dd.discr_stage),
             places=places,
             context={})
     mat = mbuilder(expr)
@@ -488,9 +488,10 @@ def test_build_matrix_places(ctx_factory,
             target=places.auto_target,
             qbx_forced_limit=qbx_forced_limit)
 
+    dd = places.auto_target
+    target_discr = places.get_discretization(dd.geometry, dd.discr_stage)
     dd = places.auto_source
-    source_discr = places.get_discretization(places.auto_source)
-    target_discr = places.get_discretization(places.auto_target)
+    source_discr = places.get_discretization(dd.geometry, dd.discr_stage)
 
     index_set = _build_block_index(queue, source_discr, factor=0.6)
     index_set = MatrixBlockIndexRanges(ctx, index_set, index_set)
@@ -504,7 +505,7 @@ def test_build_matrix_places(ctx_factory,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places.get_geometry(dd.geometry),
-            dep_discr=places.get_discretization(dd),
+            dep_discr=places.get_discretization(dd.geometry, dd.discr_stage),
             places=places,
             context={})
     qbx_mat = mbuilder(op)
@@ -515,7 +516,7 @@ def test_build_matrix_places(ctx_factory,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places.get_geometry(dd.geometry),
-            dep_discr=places.get_discretization(dd),
+            dep_discr=places.get_discretization(dd.geometry, dd.discr_stage),
             places=places,
             context={})
     p2p_mat = mbuilder(op)
@@ -528,7 +529,7 @@ def test_build_matrix_places(ctx_factory,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places.get_geometry(dd.geometry),
-            dep_discr=places.get_discretization(dd),
+            dep_discr=places.get_discretization(dd.geometry, dd.discr_stage),
             places=places,
             index_set=index_set,
             context={})
@@ -541,7 +542,7 @@ def test_build_matrix_places(ctx_factory,
             dep_expr=u_sym,
             other_dep_exprs=[],
             dep_source=places.get_geometry(dd.geometry),
-            dep_discr=places.get_discretization(dd),
+            dep_discr=places.get_discretization(dd.geometry, dd.discr_stage),
             places=places,
             index_set=index_set,
             context={},

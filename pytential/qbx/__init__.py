@@ -528,7 +528,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_name_and_side_to_number[key] = \
                         len(target_discrs_and_qbx_sides)
 
-                target_discr = bound_expr.places.get_discretization(o.target_name)
+                target_discr = bound_expr.places.get_discretization(
+                        o.target_name.geometry, o.target_name.discr_stage)
                 if isinstance(target_discr, LayerPotentialSourceBase):
                     target_discr = target_discr.density_discr
 
@@ -702,14 +703,17 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             self.ambient_dim, dofdesc=insn.source))(queue)
         strengths = waa * evaluate(insn.density).with_queue(queue)
 
-        source_discr = bound_expr.places.get_discretization(insn.source)
+        source_discr = bound_expr.places.get_discretization(
+                insn.source.geometry, insn.source.discr_stage)
 
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
             source_dd = insn.source.copy(discr_stage=o.target_name.discr_stage)
-            target_discr = bound_expr.places.get_discretization(o.target_name)
-            density_discr = bound_expr.places.get_discretization(source_dd)
+            target_discr = bound_expr.places.get_discretization(
+                    o.target_name.geometry, o.target_name.discr_stage)
+            density_discr = bound_expr.places.get_discretization(
+                    source_dd.geometry, source_dd.discr_stage)
 
             is_self = density_discr is target_discr
             if is_self:

@@ -393,7 +393,8 @@ class ProxyGenerator(object):
 
         from pytential import bind, sym
         source_dd = sym.as_dofdesc(source_dd)
-        discr = self.places.get_discretization(source_dd)
+        discr = self.places.get_discretization(
+                source_dd.geometry, source_dd.discr_stage)
 
         radii = bind(self.places, sym.expansion_radii(
             self.ambient_dim, dofdesc=source_dd))(queue)
@@ -582,13 +583,13 @@ def gather_block_interaction_points(places, source_dd, indices,
             """,
             [
                 lp.GlobalArg("sources", None,
-                    shape=(source.ambient_dim, "nsources")),
+                    shape=(lpot_source.ambient_dim, "nsources")),
                 lp.GlobalArg("proxies", None,
-                    shape=(source.ambient_dim, "nproxies"), dim_tags="sep,C"),
+                    shape=(lpot_source.ambient_dim, "nproxies"), dim_tags="sep,C"),
                 lp.GlobalArg("nbrindices", None,
                     shape="nnbrindices"),
                 lp.GlobalArg("nodes", None,
-                    shape=(source.ambient_dim, "nproxies + nnbrindices")),
+                    shape=(lpot_source.ambient_dim, "nproxies + nnbrindices")),
                 lp.ValueArg("nsources", np.int),
                 lp.ValueArg("nproxies", np.int),
                 lp.ValueArg("nnbrindices", np.int),
@@ -597,7 +598,7 @@ def gather_block_interaction_points(places, source_dd, indices,
             name="concat_proxy_and_neighbors",
             default_offset=lp.auto,
             silenced_warnings="write_race(write_*)",
-            fixed_parameters=dict(dim=source.ambient_dim),
+            fixed_parameters=dict(dim=lpot_source.ambient_dim),
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
@@ -613,7 +614,7 @@ def gather_block_interaction_points(places, source_dd, indices,
         proxies, pxyranges, pxycenters, pxyradii = \
                 generator(queue, source_dd, indices)
 
-        discr = places.get_discretization(source_dd)
+        discr = places.get_discretization(source_dd.geometry, source_dd.discr_stage)
         neighbors = gather_block_neighbor_points(discr,
                 indices, pxycenters, pxyradii,
                 max_nodes_in_box=max_nodes_in_box)

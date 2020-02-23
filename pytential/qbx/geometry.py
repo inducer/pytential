@@ -522,8 +522,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         target_info = self.target_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
+            from pytential import sym
             quad_stage2_discr = self.places.get_discretization(
-                    self.source_dd.to_quad_stage2())
+                    self.source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
 
             nsources = quad_stage2_discr.nnodes
             nparticles = nsources + target_info.ntargets
@@ -892,6 +893,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             This only works for two-dimensional geometries.
         """
 
+        from pytential import sym
         import matplotlib.pyplot as pt
         pt.clf()
 
@@ -901,9 +903,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         with cl.CommandQueue(self.cl_context) as queue:
             stage2_density_discr = self.places.get_discretization(
-                    self.source_dd.to_stage2())
+                    self.source_dd.geometry, sym.QBX_SOURCE_STAGE2)
             quad_stage2_density_discr = self.places.get_discretization(
-                    self.source_dd.to_quad_stage2())
+                    self.source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
             from meshmode.discretization.visualization import draw_curve
             draw_curve(quad_stage2_density_discr)
 

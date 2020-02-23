@@ -558,20 +558,20 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
                 **refiner_extra_kwargs)
 
     dd = sym.as_dofdesc(sym.DEFAULT_SOURCE).to_stage1()
-    density_discr = places.get_discretization(dd)
+    density_discr = places.get_discretization(dd.geometry)
 
     if case.use_refinement:
         print("%d elements before refinement" % pre_density_discr.mesh.nelements)
 
-        discr = places.get_discretization(dd.to_stage1())
+        discr = places.get_discretization(dd.geometry, sym.QBX_SOURCE_STAGE1)
         print("%d stage-1 elements after refinement"
                 % discr.mesh.nelements)
 
-        discr = places.get_discretization(dd.to_stage2())
+        discr = places.get_discretization(dd.geometry, sym.QBX_SOURCE_STAGE2)
         print("%d stage-2 elements after refinement"
                 % discr.mesh.nelements)
 
-        discr = places.get_discretization(dd.to_quad_stage2())
+        discr = places.get_discretization(dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
         print("quad stage-2 elements have %d nodes"
                 % discr.groups[0].nunit_nodes)
 

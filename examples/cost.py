@@ -100,7 +100,7 @@ def calibrate_cost_model(ctx):
 
         from pytential import GeometryCollection
         places = GeometryCollection(lpot_source)
-        density_discr = places.get_discretization(places.auto_source)
+        density_discr = places.get_discretization(places.auto_source.geometry)
 
         bound_op = get_bound_op(places)
         sigma = get_test_density(queue, density_discr)
@@ -131,7 +131,7 @@ def test_cost_model(ctx, cost_model):
 
         from pytential import GeometryCollection
         places = GeometryCollection(lpot_source)
-        density_discr = places.get_discretization(places.auto_source)
+        density_discr = places.get_discretization(places.auto_source.geometry)
 
         bound_op = get_bound_op(places)
         sigma = get_test_density(queue, density_discr)

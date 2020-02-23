@@ -346,8 +346,10 @@ class MatrixBuilder(MatrixBuilderBase):
 
     def map_int_g(self, expr):
         lpot_source = self.places.get_geometry(expr.source.geometry)
-        source_discr = self.places.get_discretization(expr.source)
-        target_discr = self.places.get_discretization(expr.target)
+        source_discr = self.places.get_discretization(
+                expr.source.geometry, expr.source.discr_stage)
+        target_discr = self.places.get_discretization(
+                expr.target.geometry, expr.target.discr_stage)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -408,8 +410,10 @@ class P2PMatrixBuilder(MatrixBuilderBase):
         self.exclude_self = exclude_self
 
     def map_int_g(self, expr):
-        source_discr = self.places.get_discretization(expr.source)
-        target_discr = self.places.get_discretization(expr.target)
+        source_discr = self.places.get_discretization(
+                expr.source.geometry, expr.source.discr_stage)
+        target_discr = self.places.get_discretization(
+                expr.target.geometry, expr.target.discr_stage)
 
         rec_density = self.rec(expr.density)
         if is_zero(rec_density):
@@ -465,8 +469,10 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
     def map_int_g(self, expr):
         lpot_source = self.places.get_geometry(expr.source.geometry)
-        source_discr = self.places.get_discretization(expr.source)
-        target_discr = self.places.get_discretization(expr.target)
+        source_discr = self.places.get_discretization(
+                expr.source.geometry, expr.source.discr_stage)
+        target_discr = self.places.get_discretization(
+                expr.target.geometry, expr.target.discr_stage)
 
         if source_discr is not target_discr:
             raise NotImplementedError
@@ -530,8 +536,10 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        source_discr = self.places.get_discretization(expr.source)
-        target_discr = self.places.get_discretization(expr.target)
+        source_discr = self.places.get_discretization(
+                expr.source.geometry, expr.source.discr_stage)
+        target_discr = self.places.get_discretization(
+                expr.target.geometry, expr.target.discr_stage)
 
         if source_discr is not target_discr:
             raise NotImplementedError

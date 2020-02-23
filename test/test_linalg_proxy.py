@@ -102,7 +102,7 @@ def test_partition_points(ctx_factory, use_tree, ambient_dim, visualize=False):
 
     places, dofdesc = _build_geometry(queue, ambient_dim=ambient_dim)
     _build_block_index(queue,
-            places.get_discretization(dofdesc),
+            places.get_discretization(dofdesc.geometry, dofdesc.discr_stage),
             use_tree=use_tree,
             factor=0.6)
 
@@ -116,7 +116,7 @@ def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
     places, dofdesc = _build_geometry(queue, ambient_dim=ambient_dim)
     dofdesc = dofdesc.to_stage1()
 
-    density_discr = places.get_discretization(dofdesc)
+    density_discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
     srcindices = _build_block_index(queue,
             density_discr,
             factor=factor)
@@ -213,7 +213,7 @@ def test_interaction_points(ctx_factory, ambient_dim, factor, visualize=False):
     places, dofdesc = _build_geometry(queue, ambient_dim=ambient_dim)
     dofdesc = dofdesc.to_stage1()
 
-    density_discr = places.get_discretization(dofdesc)
+    density_discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
     srcindices = _build_block_index(queue,
             density_discr,
             factor=factor)

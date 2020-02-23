@@ -534,8 +534,10 @@ class QBXPreprocessor(IdentityMapper):
         if expr.source.geometry != self.geometry:
             return expr
 
-        source_discr = self.places.get_discretization(expr.source)
-        target_discr = self.places.get_discretization(expr.target)
+        source_discr = self.places.get_discretization(
+                expr.source.geometry, expr.source.discr_stage)
+        target_discr = self.places.get_discretization(
+                expr.target.geometry, expr.target.discr_stage)
 
         if expr.qbx_forced_limit == 0:
             raise ValueError("qbx_forced_limit == 0 was a bad idea and "

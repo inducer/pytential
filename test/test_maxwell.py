@@ -333,7 +333,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
         from pytential import GeometryCollection
         places = GeometryCollection(places)
-        density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
+        density_discr = places.get_discretization(places.auto_source.geometry)
 
         # {{{ system solve
 

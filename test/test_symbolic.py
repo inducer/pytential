@@ -245,7 +245,7 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     bound_op = bind(places, op_sym, auto_where=where)
 
     def nodes(stage):
-        density_discr = places.get_discretization(where.copy(discr_stage=stage))
+        density_discr = places.get_discretization(where.geometry, stage)
         return density_discr.nodes().get(queue)
 
     target_nodes = nodes(sym.QBX_SOURCE_QUAD_STAGE2)

@@ -115,10 +115,11 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     # }}}
 
     dd = places.auto_source
-    stage1_density_discr = places.get_discretization(dd)
+    stage1_density_discr = places.get_discretization(dd.geometry)
     stage1_density_nodes = stage1_density_discr.nodes().get(queue)
 
-    quad_stage2_density_discr = places.get_discretization(dd.to_quad_stage2())
+    quad_stage2_density_discr = places.get_discretization(
+            dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
     quad_stage2_density_nodes = quad_stage2_density_discr.nodes().get(queue)
 
     int_centers = bind(places,
@@ -269,7 +270,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     tunnel_radius = bind(places, sym._close_target_tunnel_radii(
         lpot_source.ambient_dim, dofdesc=dd))(queue)
 
-    density_discr = places.get_discretization(dd)
+    density_discr = places.get_discretization(dd.geometry)
     noise = rng.uniform(queue, density_discr.nnodes, dtype=np.float, a=0.01, b=1.0)
 
     def targets_from_sources(sign, dist, dim=2):

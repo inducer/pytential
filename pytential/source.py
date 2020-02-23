@@ -150,7 +150,8 @@ class PointPotentialSource(PotentialSource):
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
-            target_discr = bound_expr.places.get_discretization(o.target_name)
+            target_discr = bound_expr.places.get_discretization(
+                    o.target_name.geometry, o.target_name.discr_stage)
 
             # no on-disk kernel caching
             if p2p is None:

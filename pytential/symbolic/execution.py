@@ -153,7 +153,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
             return result
 
-        discr = self.places.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         operand = self.rec(expr.operand)
         assert operand.shape == (discr.nnodes,)
 
@@ -179,7 +180,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return self._map_elementwise_reduction("max", expr)
 
     def map_ones(self, expr):
-        discr = self.places.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         result = (discr
                 .empty(queue=self.queue, dtype=discr.real_dtype)
                 .with_queue(self.queue))
@@ -188,12 +190,14 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return result
 
     def map_node_coordinate_component(self, expr):
-        discr = self.places.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         return discr.nodes()[expr.ambient_axis] \
                 .with_queue(self.queue)
 
     def map_num_reference_derivative(self, expr):
-        discr = self.places.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
 
         from pytools import flatten
         ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
@@ -203,7 +207,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):
-        discr = self.places.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         return discr.quad_weights(self.queue) \
                 .with_queue(self.queue)
 
@@ -640,23 +645,21 @@ class GeometryCollection(object):
         ambient_dim = [p.ambient_dim for p in six.itervalues(self.places)]
         return single_valued(ambient_dim)
 
-    def _get_qbx_discretization(self, dofdesc):
-        lpot_source = self.get_geometry(dofdesc.geometry)
+    def _get_qbx_discretization(self, geometry, discr_stage):
+        lpot_source = self.get_geometry(geometry)
         if lpot_source._disable_refinement:
             return lpot_source.density_discr
 
-        if dofdesc.discr_stage is None:
-            dofdesc = dofdesc.to_stage1()
-
-        # NOTE: need to keep cache name in sync with `_refine_for_global_qbx`
         cache = self.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
-        key = (dofdesc.geometry, dofdesc.discr_stage)
+        key = (geometry, discr_stage)
         if key in cache:
             return cache[key]
 
+        from pytential import sym
         from pytential.qbx.refinement import _refine_for_global_qbx
         with cl.CommandQueue(lpot_source.cl_context) as queue:
             # NOTE: this adds the required discretizations to the cache
+            dofdesc = sym.DOFDescriptor(geometry, discr_stage)
             _refine_for_global_qbx(self, dofdesc,
                     lpot_source.refiner_code_container.get_wrangler(queue),
                     _copy_collection=False)
@@ -667,7 +670,7 @@ class GeometryCollection(object):
         from pytential.symbolic.dof_connection import connection_from_dds
         return connection_from_dds(self, from_dd, to_dd)
 
-    def get_discretization(self, dofdesc):
+    def get_discretization(self, geometry, discr_stage=None):
         """
         :arg dofdesc: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
             specifying the desired discretization.
@@ -678,27 +681,26 @@ class GeometryCollection(object):
             the corresponding :class:`~meshmode.discretization.Discretization`
             in its attributes instead.
         """
-        from pytential import sym
-        dofdesc = sym.as_dofdesc(dofdesc)
-
-        if dofdesc.geometry in self.places:
-            discr = self.places[dofdesc.geometry]
-        else:
-            raise KeyError('geometry not in the collection: {}'.format(
-                dofdesc.geometry))
+        if discr_stage is None:
+            discr_stage = sym.QBX_SOURCE_STAGE1
+        discr = self.get_geometry(geometry)
 
         from pytential.qbx import QBXLayerPotentialSource
         from pytential.source import LayerPotentialSourceBase
 
         if isinstance(discr, QBXLayerPotentialSource):
-            return self._get_qbx_discretization(dofdesc)
+            return self._get_qbx_discretization(geometry, discr_stage)
         elif isinstance(discr, LayerPotentialSourceBase):
             return discr.density_discr
         else:
             return discr
 
     def get_geometry(self, geometry):
-        return self.places[geometry]
+        if geometry in self.places:
+            return self.places[geometry]
+        else:
+            raise KeyError("geometry not in the collection: '{}'".format(
+                geometry))
 
     def copy(self, places=None, auto_where=None):
         places = self.places if places is None else places
@@ -792,7 +794,9 @@ class BoundExpression(object):
             if dom_name is None:
                 size = 1
             else:
-                size = self.places.get_discretization(dom_name).nnodes
+                discr = self.places.get_discretization(
+                        dom_name.geometry, dom_name.discr_stage)
+                size = discr.nnodes
 
             starts_and_ends.append((total_dofs, total_dofs+size))
             total_dofs += size
@@ -937,13 +941,17 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
 
     dtypes = []
     for ibcol in range(nblock_columns):
+        dep_source = places.get_geometry(domains[ibcol].geometry)
+        dep_discr = places.get_discretization(
+                domains[ibcol].geometry, domains[ibcol].discr_stage)
+
         mbuilder = MatrixBuilder(
                 queue,
                 dep_expr=input_exprs[ibcol],
                 other_dep_exprs=(input_exprs[:ibcol]
                                  + input_exprs[ibcol + 1:]),
-                dep_source=places.get_geometry(domains[ibcol].geometry),
-                dep_discr=places.get_discretization(domains[ibcol]),
+                dep_source=dep_source,
+                dep_discr=dep_discr,
                 places=places,
                 context=context)
 

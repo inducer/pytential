@@ -336,7 +336,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
 
         # {{{ compute values of a solution to the PDE
 
-        density_discr = places.get_discretization(places.auto_source)
+        density_discr = places.get_discretization(places.auto_source.geometry)
 
         nodes_host = density_discr.nodes().get(queue)
         normal = bind(places, sym.normal(d))(queue).as_vector(np.object)

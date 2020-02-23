@@ -116,7 +116,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
                 )
         places = GeometryCollection(qbx)
 
-        density_discr = places.get_discretization(places.auto_source)
+        density_discr = places.get_discretization(places.auto_source.geometry)
         nodes = density_discr.nodes().with_queue(queue)
 
         if visualize:
@@ -301,7 +301,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
                 )
         places = GeometryCollection(qbx)
 
-        density_discr = places.get_discretization(places.auto_source)
+        density_discr = places.get_discretization(places.auto_source.geometry)
         nodes = density_discr.nodes().with_queue(queue)
         r = cl.clmath.sqrt(nodes[0]**2 + nodes[1]**2 + nodes[2]**2)
         phi = cl.clmath.acos(nodes[2]/r)

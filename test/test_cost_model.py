@@ -113,7 +113,7 @@ def test_timing_data_gathering(ctx_factory):
     places = GeometryCollection(lpot_source)
 
     dofdesc = places.auto_source.to_stage1()
-    density_discr = places.get_discretization(dofdesc)
+    density_discr = places.get_discretization(dofdesc.geometry)
     sigma = get_density(queue, density_discr)
 
     sigma_sym = sym.var("sigma")
@@ -146,7 +146,7 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx):
             cost_model=CostModel())
     places = GeometryCollection(lpot_source)
 
-    density_discr = places.get_discretization(places.auto_source)
+    density_discr = places.get_discretization(places.auto_source.geometry)
     sigma = get_density(queue, density_discr)
 
     sigma_sym = sym.var("sigma")
@@ -182,7 +182,7 @@ def test_cost_model_metadata_gathering(ctx_factory):
             fmm_level_to_order=fmm_level_to_order)
     places = GeometryCollection(lpot_source)
 
-    density_discr = places.get_discretization(places.auto_source)
+    density_discr = places.get_discretization(places.auto_source.geometry)
     sigma = get_density(queue, density_discr)
 
     sigma_sym = sym.var("sigma")
@@ -462,7 +462,7 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     places = GeometryCollection((lpot_source, targets))
 
     source_dd = places.auto_source
-    density_discr = places.get_discretization(source_dd)
+    density_discr = places.get_discretization(source_dd.geometry)
 
     # Construct bound op, run cost model.
     sigma_sym = sym.var("sigma")
@@ -486,7 +486,7 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
             queue, geo_data, use_target_specific_qbx)
 
     quad_stage2_density_discr = places.get_discretization(
-            source_dd.to_quad_stage2())
+            source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
     nnodes = quad_stage2_density_discr.nnodes
     src_weights = np.ones(nnodes)
 
@@ -550,7 +550,7 @@ def test_cost_model_order_varying_by_level(ctx_factory):
             fmm_level_to_order=level_to_order_constant)
     places = GeometryCollection(lpot_source)
 
-    density_discr = places.get_discretization(places.auto_source)
+    density_discr = places.get_discretization(places.auto_source.geometry)
     sigma_sym = sym.var("sigma")
 
     k_sym = LaplaceKernel(2)

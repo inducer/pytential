@@ -220,8 +220,8 @@ def connection_from_dds(places, from_dd, to_dd):
         places = GeometryCollection(places)
 
     lpot = places.get_geometry(from_dd.geometry)
-    from_discr = places.get_discretization(from_dd)
-    to_discr = places.get_discretization(to_dd)
+    from_discr = places.get_discretization(from_dd.geometry, from_dd.discr_stage)
+    to_discr = places.get_discretization(to_dd.geometry, to_dd.discr_stage)
 
     if from_dd.geometry != to_dd.geometry:
         raise ValueError("cannot interpolate between different geometries")
