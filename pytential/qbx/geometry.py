@@ -389,7 +389,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         from pytential import sym
         self.places = places
         self.source_dd = sym.as_dofdesc(source_dd)
-        self.lpot_source = places.get_geometry(self.source_dd)
+        self.lpot_source = places.get_geometry(self.source_dd.geometry)
 
         self.code_getter = code_getter
         self.target_discrs_and_qbx_sides = target_discrs_and_qbx_sides

@@ -485,7 +485,7 @@ class InterpolationPreprocessor(IdentityMapper):
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places.get_geometry(to_dd)
+        lpot_source = self.places.get_geometry(to_dd.geometry)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
@@ -500,7 +500,7 @@ class InterpolationPreprocessor(IdentityMapper):
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places.get_geometry(expr.source)
+        lpot_source = self.places.get_geometry(expr.source.geometry)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 

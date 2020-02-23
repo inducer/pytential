@@ -219,7 +219,7 @@ def connection_from_dds(places, from_dd, to_dd):
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places)
 
-    lpot = places.get_geometry(from_dd)
+    lpot = places.get_geometry(from_dd.geometry)
     from_discr = places.get_discretization(from_dd)
     to_discr = places.get_discretization(to_dd)
 

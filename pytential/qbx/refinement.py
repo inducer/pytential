@@ -786,7 +786,7 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
     dofdesc = sym.as_dofdesc(dofdesc)
 
     from pytential.qbx import QBXLayerPotentialSource
-    lpot_source = places.get_geometry(dofdesc)
+    lpot_source = places.get_geometry(dofdesc.geometry)
     if not isinstance(lpot_source, QBXLayerPotentialSource):
         raise ValueError("`%s` is not a `QBXLayerPotentialSource`" % (
             dofdesc.geometry))
@@ -938,7 +938,7 @@ def refine_geometry_collection(queue, places,
     for geometry in places.places:
         dofdesc = sym.as_dofdesc(geometry).copy(
                 discr_stage=refine_discr_stage)
-        lpot_source = places.get_geometry(dofdesc)
+        lpot_source = places.get_geometry(dofdesc.geometry)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             continue
         if lpot_source._disable_refinement:

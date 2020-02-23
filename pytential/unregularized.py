@@ -214,7 +214,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 continue
 
             target_name_to_index[o.target_name] = len(targets)
-            targets.append(bound_expr.places.get_geometry(o.target_name))
+            targets.append(bound_expr.places.get_geometry(o.target_name.geometry))
 
         targets = tuple(targets)
 

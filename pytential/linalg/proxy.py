@@ -605,8 +605,8 @@ def gather_block_interaction_points(places, source_dd, indices,
 
         return loopy_knl
 
-    source = places.get_geometry(source_dd)
-    with cl.CommandQueue(source.cl_context) as queue:
+    lpot_source = places.get_geometry(source_dd.geometry)
+    with cl.CommandQueue(lpot_source.cl_context) as queue:
         generator = ProxyGenerator(places,
                 radius_factor=radius_factor,
                 approx_nproxy=approx_nproxy)

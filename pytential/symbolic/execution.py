@@ -215,7 +215,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         except KeyError:
             bound_op = bind(
                     expr.expression,
-                    self.places.get_geometry(expr.dofdesc),
+                    self.places.get_geometry(expr.dofdesc.geometry),
                     self.bound_expr.iprec)
             bound_op_cache[expr] = bound_op
 
@@ -320,7 +320,7 @@ class EvaluationMapper(EvaluationMapperBase):
         self.timing_data = timing_data
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
-        source = bound_expr.places.get_geometry(insn.source)
+        source = bound_expr.places.get_geometry(insn.source.geometry)
 
         return_timing_data = self.timing_data is not None
 
@@ -363,7 +363,7 @@ class CostModelMapper(EvaluationMapperBase):
         self.modeled_cost = {}
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
-        source = bound_expr.places.get_geometry(insn.source)
+        source = bound_expr.places.get_geometry(insn.source.geometry)
 
         result, cost_model_result = (
                 source.cost_model_compute_potential_insn(
@@ -641,7 +641,7 @@ class GeometryCollection(object):
         return single_valued(ambient_dim)
 
     def _get_qbx_discretization(self, dofdesc):
-        lpot_source = self.get_geometry(dofdesc)
+        lpot_source = self.get_geometry(dofdesc.geometry)
         if lpot_source._disable_refinement:
             return lpot_source.density_discr
 
@@ -697,10 +697,8 @@ class GeometryCollection(object):
         else:
             return discr
 
-    def get_geometry(self, dofdesc):
-        from pytential import sym
-        dofdesc = sym.as_dofdesc(dofdesc)
-        return self.places[dofdesc.geometry]
+    def get_geometry(self, geometry):
+        return self.places[geometry]
 
     def copy(self, places=None, auto_where=None):
         places = self.places if places is None else places
@@ -944,7 +942,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
                 dep_expr=input_exprs[ibcol],
                 other_dep_exprs=(input_exprs[:ibcol]
                                  + input_exprs[ibcol + 1:]),
-                dep_source=places.get_geometry(domains[ibcol]),
+                dep_source=places.get_geometry(domains[ibcol].geometry),
                 dep_discr=places.get_discretization(domains[ibcol]),
                 places=places,
                 context=context)

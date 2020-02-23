@@ -345,7 +345,7 @@ class MatrixBuilder(MatrixBuilderBase):
             raise RuntimeError("unknown operand type: {}".format(type(operand)))
 
     def map_int_g(self, expr):
-        lpot_source = self.places.get_geometry(expr.source)
+        lpot_source = self.places.get_geometry(expr.source.geometry)
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
@@ -464,7 +464,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         return np.equal(tgtindices, srcindices).astype(np.float64)
 
     def map_int_g(self, expr):
-        lpot_source = self.places.get_geometry(expr.source)
+        lpot_source = self.places.get_geometry(expr.source.geometry)
         source_discr = self.places.get_discretization(expr.source)
         target_discr = self.places.get_discretization(expr.target)
 
