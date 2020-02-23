@@ -58,7 +58,7 @@ def main(mesh_name="torus", visualize=False):
             import matplotlib.pyplot as plt
             plt.show()
     else:
-        raise ValueError('unknown mesh name: {}'.format(mesh_name))
+        raise ValueError("unknown mesh name: {}".format(mesh_name))
 
     pre_density_discr = Discretization(
             cl_ctx, mesh,
@@ -77,11 +77,11 @@ def main(mesh_name="torus", visualize=False):
 
     from pytential import GeometryCollection
     places = GeometryCollection({
-        'qbx': qbx,
-        'qbx_target_assoc': qbx.copy(target_association_tolerance=0.2),
-        'targets': PointsTarget(targets)
-        }, auto_where=('qbx', 'qbx'))
-    density_discr = places.get_discretization('qbx')
+        "qbx": qbx,
+        "qbx_target_assoc": qbx.copy(target_association_tolerance=0.2),
+        "targets": PointsTarget(targets)
+        }, auto_where="qbx")
+    density_discr = places.get_discretization("qbx")
 
     # {{{ describe bvp
 
@@ -143,8 +143,8 @@ def main(mesh_name="torus", visualize=False):
     # {{{ postprocess/visualize
 
     repr_kwargs = dict(
-            source='qbx_target_assoc',
-            target='targets',
+            source="qbx_target_assoc",
+            target="targets",
             qbx_forced_limit=None)
     representation_sym = (
             sym.S(kernel, inv_sqrt_w_sigma, **repr_kwargs)

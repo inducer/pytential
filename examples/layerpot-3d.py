@@ -15,7 +15,7 @@ mode_nr = 4
 k = 0
 
 
-def main(mesh_name='ellipsoid'):
+def main(mesh_name="ellipsoid"):
     import logging
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
@@ -23,14 +23,14 @@ def main(mesh_name='ellipsoid'):
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
 
-    if mesh_name == 'ellipsoid':
+    if mesh_name == "ellipsoid":
         cad_file_name = "geometries/ellipsoid.step"
         h = 0.6
-    elif mesh_name == 'two-cylinders':
+    elif mesh_name == "two-cylinders":
         cad_file_name = "geometries/two-cylinders-smooth.step"
         h = 0.4
     else:
-        raise ValueError('unknown mesh name: %s' % mesh_name)
+        raise ValueError("unknown mesh name: %s" % mesh_name)
 
     from meshmode.mesh.io import generate_gmsh, FileSource
     mesh = generate_gmsh(
@@ -66,10 +66,10 @@ def main(mesh_name='ellipsoid'):
 
     from pytential import GeometryCollection
     places = GeometryCollection({
-        'qbx': qbx,
-        'targets': PointsTarget(fplot.points)
-        }, auto_where=('qbx', 'qbx'))
-    density_discr = places.get_discretization('qbx')
+        "qbx": qbx,
+        "targets": PointsTarget(fplot.points)
+        }, auto_where="qbx")
+    density_discr = places.get_discretization("qbx")
 
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
@@ -93,7 +93,7 @@ def main(mesh_name='ellipsoid'):
     if isinstance(kernel, HelmholtzKernel):
         sigma = sigma.astype(np.complex128)
 
-    fld_in_vol = bind(places, op, auto_where=('qbx', 'targets'))(
+    fld_in_vol = bind(places, op, auto_where=("qbx", "targets"))(
             queue, sigma=sigma, k=k).get()
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)

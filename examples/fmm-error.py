@@ -51,11 +51,11 @@ def main():
 
     from pytential import GeometryCollection
     places = GeometryCollection({
-        'unaccel_qbx': unaccel_qbx,
-        'qbx': unaccel_qbx.copy(fmm_order=10),
-        'targets': PointsTarget(fplot.points)
+        "unaccel_qbx": unaccel_qbx,
+        "qbx": unaccel_qbx.copy(fmm_order=10),
+        "targets": PointsTarget(fplot.points)
         })
-    density_discr = places.get_discretization('unaccel_qbx')
+    density_discr = places.get_discretization("unaccel_qbx")
 
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
@@ -70,10 +70,10 @@ def main():
     if isinstance(kernel, HelmholtzKernel):
         sigma = sigma.astype(np.complex128)
 
-    fld_in_vol = bind(places, op, auto_where=('unaccel_qbx', 'targets'))(
+    fld_in_vol = bind(places, op, auto_where=("unaccel_qbx", "targets"))(
             queue, sigma=sigma, k=k).get()
 
-    fmm_fld_in_vol = bind(places, op, auto_where=('qbx', 'targets'))(
+    fmm_fld_in_vol = bind(places, op, auto_where=("qbx", "targets"))(
             queue, sigma=sigma, k=k).get()
 
     err = fmm_fld_in_vol-fld_in_vol
@@ -83,7 +83,7 @@ def main():
     except ImportError:
         return
 
-    matplotlib.use('Agg')
+    matplotlib.use("Agg")
     im = fplot.show_scalar_in_matplotlib(np.log10(np.abs(err) + 1e-17))
 
     from matplotlib.colors import Normalize

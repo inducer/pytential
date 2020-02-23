@@ -269,7 +269,7 @@ def build_tree_with_qbx_metadata(queue, places,
 
     # TODO: update code to work for multiple source discretizations
     if len(sources_list) != 1:
-        raise RuntimeError('can only build a tree for a single source')
+        raise RuntimeError("can only build a tree for a single source")
 
     def _make_centers(discr):
         return bind(discr, sym.interleaved_expansion_centers(

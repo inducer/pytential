@@ -72,7 +72,7 @@ def timing_run(nx, ny, visualize=False):
             fmm_order=fmm_order
             )
 
-    places = {'qbx': qbx}
+    places = {"qbx": qbx}
     if visualize:
         from sumpy.visualization import FieldPlotter
         fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
@@ -88,8 +88,8 @@ def timing_run(nx, ny, visualize=False):
             })
 
     from pytential import GeometryCollection
-    places = GeometryCollection(places, auto_where=('qbx', 'qbx'))
-    density_discr = places.get_discretization('qbx')
+    places = GeometryCollection(places, auto_where="qbx")
+    density_discr = places.get_discretization("qbx")
 
     # {{{ describe bvp
 
@@ -203,5 +203,5 @@ if __name__ == "__main__":
         npoints, t_elapsed = timing_run(nx, ny)
         eoc.add_data_point(npoints, t_elapsed)
     print(eoc.pretty_print(
-        abscissa_label='Elements',
-        error_label='Timing (s)'))
+        abscissa_label="Elements",
+        error_label="Timing (s)"))

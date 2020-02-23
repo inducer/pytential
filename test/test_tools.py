@@ -132,7 +132,7 @@ def test_geometry_collection_caching(ctx_factory):
     from pytential.qbx import QBXLayerPotentialSource
 
     lpots = []
-    sources = ['source_{}'.format(k) for k in range(ngeometry)]
+    sources = ["source_{}".format(k) for k in range(ngeometry)]
     for k, density_discr in enumerate(discrs):
         qbx = QBXLayerPotentialSource(density_discr,
             fine_order=2 * target_order,

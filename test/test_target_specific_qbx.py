@@ -168,16 +168,16 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
 
     kernel_length_scale = 5 / abs(helmholtz_k) if helmholtz_k else None
     places = {
-        'qbx': qbx,
-        'qbx_target_specific': qbx.copy(_use_target_specific_qbx=True)
+        "qbx": qbx,
+        "qbx_target_specific": qbx.copy(_use_target_specific_qbx=True)
         }
 
     from pytential.qbx.refinement import refine_geometry_collection
-    places = GeometryCollection(places, auto_where=('qbx', 'qbx'))
+    places = GeometryCollection(places, auto_where="qbx")
     places = refine_geometry_collection(queue, places,
             kernel_length_scale=kernel_length_scale)
 
-    density_discr = places.get_discretization('qbx')
+    density_discr = places.get_discretization("qbx")
     nodes = density_discr.nodes().with_queue(queue)
     u_dev = clmath.sin(nodes[0])
 
@@ -204,7 +204,7 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
     bound_op = bind(places, expr)
     pot_ref = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 
-    bound_op = bind(places, expr, auto_where='qbx_target_specific')
+    bound_op = bind(places, expr, auto_where="qbx_target_specific")
     pot_tsqbx = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 
     assert np.allclose(pot_tsqbx, pot_ref, atol=1e-13, rtol=1e-13)

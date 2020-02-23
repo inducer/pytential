@@ -215,7 +215,7 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     target_order = 7
     qbx_order = 4
 
-    where = sym.as_dofdesc('test_interpolation')
+    where = sym.as_dofdesc("test_interpolation")
     from_dd = sym.DOFDescriptor(
             geometry=where.geometry,
             discr_stage=source_discr_stage,
@@ -255,13 +255,13 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     sigma_target = np.sin(la.norm(target_nodes, axis=0))
     sigma_target_interp = bound_op(queue, sigma=sigma_dev).get(queue)
 
-    if name in ('default', 'default_explicit', 'stage2', 'quad'):
+    if name in ("default", "default_explicit", "stage2", "quad"):
         error = la.norm(sigma_target_interp - sigma_target) / la.norm(sigma_target)
         assert error < 1.0e-10
-    elif name in ('stage2_center',):
+    elif name in ("stage2_center",):
         assert len(sigma_target_interp) == 2 * len(sigma_target)
     else:
-        raise ValueError('unknown test case name: {}'.format(name))
+        raise ValueError("unknown test case name: {}".format(name))
 
 
 # You can test individual routines by typing

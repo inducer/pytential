@@ -255,7 +255,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
     def eval_inc_field_at(places, source=None, target=None):
         if source is None:
-            source = 'test-source'
+            source = "test_source"
 
         if use_plane_wave:
             # plane wave
@@ -312,10 +312,10 @@ def test_pec_mfie_extinction(ctx_factory, case,
         places.update({
             sym.DEFAULT_SOURCE: qbx,
             sym.DEFAULT_TARGET: qbx.density_discr,
-            'test-source': test_source,
-            'scat-discr': scat_discr,
-            'obs-discr': obs_discr,
-            'patch-target': calc_patch_tgt,
+            "test_source": test_source,
+            "scat_discr": scat_discr,
+            "obs_discr": obs_discr,
+            "patch_target": calc_patch_tgt,
             })
 
         if visualize:
@@ -327,8 +327,8 @@ def test_pec_mfie_extinction(ctx_factory, case,
             fplot_tgt = PointsTarget(cl.array.to_device(queue, fplot.points))
 
             places.update({
-                'qbx-target-tol': qbx_tgt_tol,
-                'plot-targets': fplot_tgt,
+                "qbx_target_tol": qbx_tgt_tol,
+                "plot_targets": fplot_tgt,
                 })
 
         from pytential import GeometryCollection
@@ -340,7 +340,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
         h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
 
         pde_test_inc = EHField(vector_from_device(queue,
-            eval_inc_field_at(places, target='patch-target')))
+            eval_inc_field_at(places, target="patch_target")))
 
         source_maxwell_resids = [
                 calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_inc.e, np.inf)
@@ -349,8 +349,8 @@ def test_pec_mfie_extinction(ctx_factory, case,
         print("Source Maxwell residuals:", source_maxwell_resids)
         assert max(source_maxwell_resids) < 1e-6
 
-        inc_field_scat = EHField(eval_inc_field_at(places, target='scat-discr'))
-        inc_field_obs = EHField(eval_inc_field_at(places, target='obs-discr'))
+        inc_field_scat = EHField(eval_inc_field_at(places, target="scat_discr"))
+        inc_field_obs = EHField(eval_inc_field_at(places, target="obs_discr"))
 
         inc_xyz_sym = EHField(sym.make_sym_vector("inc_fld", 6))
 
@@ -396,7 +396,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
                     queue, jt=jt, rho=rho, **knl_kwargs)
 
         pde_test_repr = EHField(vector_from_device(queue,
-            eval_repr_at(places, target='patch-target')))
+            eval_repr_at(places, target="patch_target")))
 
         maxwell_residuals = [
                 calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_repr.e, np.inf)
@@ -438,7 +438,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
             bdry_vis = make_visualizer(queue, scat_discr, case.target_order+3)
 
             bdry_normals = bind(places,
-                    sym.normal(3, dofdesc='scat-discr')
+                    sym.normal(3, dofdesc="scat_discr")
                     )(queue).as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
@@ -454,7 +454,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
             from pytential.qbx import QBXTargetAssociationFailedException
             try:
                 fplot_repr = eval_repr_at(places,
-                        target='plot-targets', source='qbx-target-tol')
+                        target="plot_targets", source="qbx_target_tol")
             except QBXTargetAssociationFailedException as e:
                 fplot.write_vtk_file(
                         "failed-targets.vts",
@@ -465,7 +465,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
             fplot_repr = EHField(vector_from_device(queue, fplot_repr))
             fplot_inc = EHField(vector_from_device(queue,
-                eval_inc_field_at(places, target='plot-targets')))
+                eval_inc_field_at(places, target="plot_targets")))
 
             fplot.write_vtk_file(
                     "potential-%s.vts" % resolution,
@@ -481,7 +481,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
         # {{{ error in E, H
 
-        obs_repr = EHField(eval_repr_at(places, target='obs-discr'))
+        obs_repr = EHField(eval_repr_at(places, target="obs_discr"))
 
         def obs_norm(f):
             return norm(obs_discr, queue, f, p=np.inf)

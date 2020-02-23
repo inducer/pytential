@@ -53,10 +53,10 @@ def main(curve_fn=starfish, visualize=True):
 
     from pytential import GeometryCollection
     places = GeometryCollection({
-        'qbx': qbx,
-        'targets': PointsTarget(targets_dev),
-        }, auto_where=('qbx', 'qbx'))
-    density_discr = places.get_discretization('qbx')
+        "qbx": qbx,
+        "targets": PointsTarget(targets_dev),
+        }, auto_where="qbx")
+    density_discr = places.get_discretization("qbx")
 
     nodes = density_discr.nodes().with_queue(queue)
     angle = cl.clmath.atan2(nodes[1], nodes[0])
@@ -88,8 +88,8 @@ def main(curve_fn=starfish, visualize=True):
     bound_bdry_op = bind(places, op())
     if visualize:
         fld_in_vol = bind(places, op(
-            source='qbx',
-            target='targets',
+            source="qbx",
+            target="targets",
             qbx_forced_limit=None))(queue, sigma=sigma, k=k).get()
 
         if enable_mayavi:

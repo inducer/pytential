@@ -788,7 +788,7 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
     from pytential.qbx import QBXLayerPotentialSource
     lpot_source = places.get_geometry(dofdesc)
     if not isinstance(lpot_source, QBXLayerPotentialSource):
-        raise ValueError('`%s` is not a `QBXLayerPotentialSource`' % (
+        raise ValueError("`%s` is not a `QBXLayerPotentialSource`" % (
             dofdesc.geometry))
     # {{{
 
@@ -822,7 +822,7 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
             sym.QBX_SOURCE_QUAD_STAGE2: 3
             }
     if dofdesc.discr_stage not in stage_index_map:
-        raise ValueError('unknown discr stage: %s' % dofdesc.discr_stage)
+        raise ValueError("unknown discr stage: %s" % dofdesc.discr_stage)
     stage_index = stage_index_map[dofdesc.discr_stage]
 
     from pytential.symbolic.execution import (

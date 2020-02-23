@@ -111,13 +111,13 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
     places = {
         sym.DEFAULT_SOURCE: qbx,
         sym.DEFAULT_TARGET: qbx.density_discr,
-        'targets0': targets_0,
-        'targets1': targets_1
+        "targets0": targets_0,
+        "targets1": targets_1
         }
     if visualize:
         places.update({
-            'qbx-low-order': low_order_qbx,
-            'targets-plot': targets_plot
+            "qbx-low-order": low_order_qbx,
+            "targets-plot": targets_plot
             })
 
     from pytential import GeometryCollection
@@ -283,12 +283,12 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
     from sumpy.tools import vector_from_device
     F0_tgt = bind(places, representation0_sym,
-            auto_where=(sym.DEFAULT_SOURCE, 'targets0'))(
+            auto_where=(sym.DEFAULT_SOURCE, "targets0"))(
                     queue, unknown=unknown, K0=K0, K1=K1)
     F0_tgt = vector_from_device(queue, F0_tgt)
 
     F1_tgt = bind(places, representation1_sym,
-            auto_where=(sym.DEFAULT_SOURCE, 'targets1'))(
+            auto_where=(sym.DEFAULT_SOURCE, "targets1"))(
                     queue, unknown=unknown, K0=K0, K1=K1)
     F1_tgt = vector_from_device(queue, F1_tgt)
 
@@ -349,10 +349,10 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
 
     if visualize:
         fld0 = bind(places, representation0_sym,
-                auto_where=(sym.DEFAULT_SOURCE, 'targets-plot'))(
+                auto_where=(sym.DEFAULT_SOURCE, "targets-plot"))(
                         queue, unknown=unknown, K0=K0)
         fld1 = bind(places, representation1_sym,
-                auto_where=(sym.DEFAULT_SOURCE, 'targets-plot'))(
+                auto_where=(sym.DEFAULT_SOURCE, "targets-plot"))(
                         queue, unknown=unknown, K1=K1)
 
         comp_fields = []
@@ -373,7 +373,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
         ones = (cl.array.empty(queue, (density_discr.nnodes,), dtype=np.float64)
                 .fill(1))
         ind_func = - bind(places, sym.D(LaplaceKernel(2), sym.var("u")),
-                auto_where=('qbx-low-order', 'targets-plot'))(
+                auto_where=("qbx-low-order", "targets-plot"))(
                         queue, u=ones).get()
 
         _, (e_fld0_true,) = pot_p2p(
