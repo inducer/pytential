@@ -226,8 +226,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         if cost_model is None:
             from pytential.qbx.cost import QBXCostModel
-            with cl.CommandQueue(self.cl_context) as queue:
-                cost_model = QBXCostModel(queue)
+            queue = cl.CommandQueue(self.cl_context)
+            cost_model = QBXCostModel(queue)
 
         self.cost_model = cost_model
 
@@ -575,10 +575,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         def drive_cost_model(
                     wrangler, strengths, geo_data, kernel, kernel_arguments):
             del strengths
-            cost_model_result, metadata = self.cost_model(
-                geo_data, kernel, kernel_arguments, calibration_params,
-                per_box=per_box
-            )
+
+            if per_box:
+                cost_model_result, metadata = self.cost_model.qbx_cost_per_box(
+                    geo_data, kernel, kernel_arguments, calibration_params
+                )
+            else:
+                cost_model_result, metadata = self.cost_model.qbx_cost_per_stage(
+                    geo_data, kernel, kernel_arguments, calibration_params
+                )
+
             return wrangler.full_output_zeros(), (cost_model_result, metadata)
 
         return self._dispatch_compute_potential_insn(

@@ -80,6 +80,13 @@ Translation Cost of a Single Operation
 
 .. autofunction:: make_taylor_translation_cost_model
 
+Cost Model Classes
+^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: AbstractQBXCostModel
+
+.. autoclass:: QBXCostModel
+
 Calibration (Generate Calibration Parameters)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -92,13 +99,16 @@ Evaluating
 
 .. automethod:: AbstractQBXCostModel.qbx_cost_per_box
 
+To get the cost from `BoundExpression`, refer to
+:meth:`pytential.symbolic.execution.BoundExpression.cost_per_stage` and
+:meth:`pytential.symbolic.execution.BoundExpression.cost_per_box`.
+
 Utilities
 ^^^^^^^^^
 
 .. automethod:: boxtree.cost.AbstractFMMCostModel.aggregate_over_boxes
 
 .. automethod:: AbstractQBXCostModel.get_unit_calibration_params
-
 """
 
 
@@ -181,6 +191,19 @@ def make_taylor_translation_cost_model(dim, nlevels):
 # {{{ cost model
 
 class AbstractQBXCostModel(AbstractFMMCostModel):
+    """An interface to obtain both QBX operation counts and calibrated (e.g. in
+    seconds) cost estimates.
+
+    * To obtain operation counts only, use :meth:`get_unit_calibration_params`
+      with :meth:`qbx_cost_per_stage` or :meth:`qbx_cost_per_box`.
+
+    * To calibrate the model, pass operation counts per stage together with timing
+      data to :meth:`estimate_knl_specific_calibration_params`.
+
+    * To evaluate the calibrated models, pass the kernel-specific calibration
+      parameters from :meth:`estimate_knl_specific_calibration_params` to
+      :meth:`qbx_cost_per_stage` or :meth:`qbx_cost_per_box`.
+    """
 
     @abstractmethod
     def process_form_qbxl(self, geo_data, p2qbxl_cost,
@@ -471,13 +494,6 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
         return result, metadata
 
-    def __call__(self, *args, **kwargs):
-        per_box = kwargs.pop('per_box', True)
-        if per_box:
-            return self.qbx_cost_per_box(*args, **kwargs)
-        else:
-            return self.qbx_cost_per_stage(*args, **kwargs)
-
     @staticmethod
     def get_unit_calibration_params():
         return dict(
@@ -563,6 +579,9 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
 
 class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
+    """This class is an implementation of interface :class:`AbstractQBXCostModel`
+    using PyOpenCL
+    """
     def __init__(
             self, queue,
             translation_cost_model_factory=make_pde_aware_translation_cost_model):
@@ -571,7 +590,7 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
             of this object runs.
         :arg translation_cost_model_factory: a function, which takes tree dimension
             and the number of tree levels as arguments, returns an object of
-            :class:`TranslationCostModel`.
+            :class:`QBXTranslationCostModel`.
         """
         FMMCostModel.__init__(self, queue, translation_cost_model_factory)
 
