@@ -97,6 +97,10 @@ def test_interpolatory_error_reporting(ctx_factory):
 
 
 def test_geometry_collection_caching(ctx_factory):
+    # NOTE: checks that the on-demand caching works properly in
+    # the `GeometryCollection`. This is done by constructing a few separated
+    # spheres, putting a few `QBXLayerPotentialSource`s on them and requesting
+    # the `nodes` on each `discr_stage`.
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -162,41 +166,6 @@ def test_geometry_collection_caching(ctx_factory):
 
             cache = places.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
             assert (sources[k], discr_stage) in cache
-
-    # construct a layer potential on each qbx geometry
-    from sumpy.kernel import LaplaceKernel
-    ops = []
-    for i in range(ngeometry):
-        sigma = sym.var("sigma_{}".format(i))
-        for j in range(ngeometry):
-            op = sym.D(LaplaceKernel(ndim), sigma,
-                    source=sources[i], target=sources[j],
-                    qbx_forced_limit="avg" if i == j else None)
-            ops.append(op)
-
-    # evaluate layer potentials
-    import time
-    kernel_args = {}
-    for i in range(ngeometry):
-        density_discr = places.get_discretization(sources[i])
-        sigma = 1.0 + density_discr.zeros(queue)
-
-        kernel_args.clear()
-        kernel_args["sigma_{}".format(i)] = sigma
-
-        print()
-        print("=" * 32)
-        print()
-
-        for j in range(0, ngeometry):
-            k = i * ngeometry + j
-
-            t_start = time.time()
-            bind(places, ops[k])(queue, **kernel_args)
-            t_end = time.time()
-
-            print("Elapsed: {:.3}s".format(t_end - t_start))
-        return
 
 
 # You can test individual routines by typing
