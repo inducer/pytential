@@ -578,7 +578,7 @@ class GeometryCollection(object):
             :class:`~pytential.source.PotentialSource`,
             :class:`~potential.target.TargetBase` and
             :class:`~meshmode.discretization.Discretization`. If this is
-            a mapping, its string-based keys must be valid Python identifiers.
+            a mapping, the keys that are strings must be valid Python identifiers.
         :arg auto_where: location identifier for each geometry object, used
             to denote specific discretizations, e.g. in the case where
             *places* is a :class:`~pytential.source.LayerPotentialSourceBase`.
