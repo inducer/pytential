@@ -696,9 +696,9 @@ class GeometryCollection(object):
             return discr
 
     def get_geometry(self, geometry):
-        if geometry in self.places:
+        try:
             return self.places[geometry]
-        else:
+        except KeyError:
             raise KeyError("geometry not in the collection: '{}'".format(
                 geometry))
 
