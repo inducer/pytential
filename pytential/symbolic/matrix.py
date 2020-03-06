@@ -321,7 +321,7 @@ class MatrixBuilder(MatrixBuilderBase):
             return conn(self.queue,
                     cl.array.to_device(self.queue, operand)).get(self.queue)
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
-            cache = self.places.get_cache("direct_resampler")
+            cache = self.places._get_cache("direct_resampler")
             key = (expr.from_dd.geometry,
                     expr.from_dd.discr_stage,
                     expr.to_dd.discr_stage)

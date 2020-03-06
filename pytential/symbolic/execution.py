@@ -213,7 +213,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 .with_queue(self.queue)
 
     def map_inverse(self, expr):
-        bound_op_cache = self.bound_expr.places.get_cache("bound_op")
+        bound_op_cache = self.bound_expr.places._get_cache("bound_op")
 
         try:
             bound_op = bound_op_cache[expr]
@@ -248,7 +248,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         if expr.scope == sym.cse_scope.EXPRESSION:
             cache = self.bound_expr.get_cache("cse")
         elif expr.scope == sym.cse_scope.DISCRETIZATION:
-            cache = self.places.get_cache("cse")
+            cache = self.places._get_cache("cse")
         else:
             return self.rec(expr.child)
 
@@ -562,8 +562,6 @@ class GeometryCollection(object):
     .. automethod:: copy
     .. automethod:: merge
 
-    .. method:: get_cache
-
     Refinement of :class:`QBXLayerPotentialSource` entries is performed
     on demand, or it may be performed by explcitly calling
     :func:`pytential.qbx.refinement.refine_geometry_collection`,
@@ -647,11 +645,11 @@ class GeometryCollection(object):
 
     # {{{ cache handling
 
-    def get_cache(self, name):
+    def _get_cache(self, name):
         return self.caches.setdefault(name, {})
 
     def _get_discr_from_cache(self, geometry, discr_stage):
-        cache = self.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
+        cache = self._get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
         key = (geometry, discr_stage)
 
         if key not in cache:
@@ -661,7 +659,7 @@ class GeometryCollection(object):
         return cache[key]
 
     def _add_discr_to_cache(self, discr, geometry, discr_stage):
-        cache = self.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
+        cache = self._get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
         key = (geometry, discr_stage)
 
         if key in cache:
@@ -670,7 +668,7 @@ class GeometryCollection(object):
         cache[key] = discr
 
     def _get_conn_from_cache(self, geometry, from_stage, to_stage):
-        cache = self.get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+        cache = self._get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
         key = (geometry, from_stage, to_stage)
 
         if key not in cache:
@@ -680,7 +678,7 @@ class GeometryCollection(object):
         return cache[key]
 
     def _add_conn_to_cache(self, conn, geometry, from_stage, to_stage):
-        cache = self.get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+        cache = self._get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
         key = (geometry, from_stage, to_stage)
 
         if key in cache:
