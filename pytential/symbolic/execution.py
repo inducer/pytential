@@ -615,6 +615,10 @@ class GeometryCollection(object):
 
         self.auto_where = (auto_source, auto_target)
 
+        # }}}
+
+        # {{{ validate
+
         for p in six.itervalues(self.places):
             if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
                 raise TypeError("Must pass discretization, targets or "
@@ -625,6 +629,21 @@ class GeometryCollection(object):
                 continue
             if not _is_valid_identifier(name):
                 raise ValueError("`{}` is not a valid identifier".format(name))
+
+        from pytools import is_single_valued
+        cl_contexts = []
+        for p in six.itervalues(self.places):
+            if isinstance(p, (PotentialSource, Discretization)):
+                cl_contexts.append(p.cl_context)
+            elif isinstance(p, TargetBase):
+                nodes = p.nodes()[0]
+                if isinstance(nodes, cl.array.Array) and nodes.queue is not None:
+                    cl_contexts.append(nodes.queue.context)
+
+        if not is_single_valued(cl_contexts):
+            raise RuntimeError("All 'places' must have the same CL context.")
+
+        self.cl_context = cl_contexts[0]
 
         # }}}
 
