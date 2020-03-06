@@ -38,7 +38,7 @@ import pyopencl.clmath  # noqa
 
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
-from pytools import memoize_in, memoize_method
+from pytools import memoize_in
 from pytential import sym
 
 import logging
@@ -619,17 +619,20 @@ class GeometryCollection(object):
 
         # {{{ validate
 
-        for p in six.itervalues(self.places):
-            if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
-                raise TypeError("Must pass discretization, targets or "
-                        "layer potential sources as 'places'.")
-
+        # check allowed identifiers
         for name in self.places:
             if not isinstance(name, str):
                 continue
             if not _is_valid_identifier(name):
                 raise ValueError("`{}` is not a valid identifier".format(name))
 
+        # check allowed types
+        for p in six.itervalues(self.places):
+            if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
+                raise TypeError("Must pass discretization, targets or "
+                        "layer potential sources as 'places'.")
+
+        # check cl_context
         from pytools import is_single_valued
         cl_contexts = []
         for p in six.itervalues(self.places):
@@ -645,6 +648,13 @@ class GeometryCollection(object):
 
         self.cl_context = cl_contexts[0]
 
+        # check ambient_dim
+        ambient_dims = [p.ambient_dim for p in six.itervalues(self.places)]
+        if not is_single_valued(ambient_dims):
+            raise RuntimeError("All 'places' must have the same ambient dimension.")
+
+        self.ambient_dim = ambient_dims[0]
+
         # }}}
 
     @property
@@ -654,13 +664,6 @@ class GeometryCollection(object):
     @property
     def auto_target(self):
         return self.auto_where[1]
-
-    @property
-    @memoize_method
-    def ambient_dim(self):
-        from pytools import single_valued
-        ambient_dim = [p.ambient_dim for p in six.itervalues(self.places)]
-        return single_valued(ambient_dim)
 
     # {{{ cache handling
 
