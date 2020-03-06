@@ -255,15 +255,11 @@ def connection_from_dds(places, from_dd, to_dd):
         from_stage = stage_name_to_index_map[from_dd.discr_stage]
         to_stage = stage_name_to_index_map[to_dd.discr_stage]
 
-        # NOTE: need to keep cache name in sync with `refine_for_global_qbx`
-        from pytential.symbolic.execution import \
-                _GEOMETRY_COLLECTION_CONNS_CACHE_NAME
-        cache = places.get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
         for istage in range(from_stage, to_stage):
-            key = (from_dd.geometry,
+            conn = places._get_conn_from_cache(from_dd.geometry,
                     stage_index_to_name_map[istage],
                     stage_index_to_name_map[istage + 1])
-            connections.append(cache[key])
+            connections.append(conn)
 
     if from_dd.granularity is not to_dd.granularity:
         if to_dd.granularity is sym.GRANULARITY_NODE:

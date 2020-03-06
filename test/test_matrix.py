@@ -292,8 +292,8 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
         assert rel_err < 1e-13, 'iteration: {}'.format(i)
 
 
-@pytest.mark.parametrize("ambient_dim", [2, 3])
 @pytest.mark.parametrize("factor", [1.0, 0.6])
+@pytest.mark.parametrize("ambient_dim", [2, 3])
 @pytest.mark.parametrize("lpot_id", [1, 2])
 def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
                            visualize=False):

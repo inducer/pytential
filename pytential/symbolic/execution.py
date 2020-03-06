@@ -511,8 +511,8 @@ def _prepare_expr(places, expr, auto_where=None):
             ToTargetTagger,
             DerivativeBinder)
 
-    auto_where = _prepare_auto_where(auto_where, places=places)
-    expr = ToTargetTagger(auto_where[0], auto_where[1])(expr)
+    auto_source, auto_target = _prepare_auto_where(auto_where, places=places)
+    expr = ToTargetTagger(auto_source, auto_target)(expr)
     expr = DerivativeBinder()(expr)
 
     for name, place in six.iteritems(places.places):
@@ -645,26 +645,72 @@ class GeometryCollection(object):
         ambient_dim = [p.ambient_dim for p in six.itervalues(self.places)]
         return single_valued(ambient_dim)
 
+    # {{{ cache handling
+
+    def get_cache(self, name):
+        return self.caches.setdefault(name, {})
+
+    def _get_discr_from_cache(self, geometry, discr_stage):
+        cache = self.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
+        key = (geometry, discr_stage)
+
+        if key not in cache:
+            raise KeyError("cached discretization does not exist on `{}`"
+                    "for stage `{}`".format(geometry, discr_stage))
+
+        return cache[key]
+
+    def _add_discr_to_cache(self, discr, geometry, discr_stage):
+        cache = self.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
+        key = (geometry, discr_stage)
+
+        if key in cache:
+            raise RuntimeError("trying to overwrite the cache")
+
+        cache[key] = discr
+
+    def _get_conn_from_cache(self, geometry, from_stage, to_stage):
+        cache = self.get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+        key = (geometry, from_stage, to_stage)
+
+        if key not in cache:
+            raise KeyError("cached connection does not exist on `{}` "
+                    "from `{}` to `{}`".format(geometry, from_stage, to_stage))
+
+        return cache[key]
+
+    def _add_conn_to_cache(self, conn, geometry, from_stage, to_stage):
+        cache = self.get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+        key = (geometry, from_stage, to_stage)
+
+        if key in cache:
+            raise RuntimeError("trying to overwrite the cache")
+
+        cache[key] = conn
+
     def _get_qbx_discretization(self, geometry, discr_stage):
         lpot_source = self.get_geometry(geometry)
         if lpot_source._disable_refinement:
             return lpot_source.density_discr
 
-        cache = self.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
-        key = (geometry, discr_stage)
-        if key in cache:
-            return cache[key]
+        try:
+            discr = self._get_discr_from_cache(geometry, discr_stage)
+        except KeyError:
+            from pytential import sym
+            from pytential.qbx.refinement import _refine_for_global_qbx
 
-        from pytential import sym
-        from pytential.qbx.refinement import _refine_for_global_qbx
-        with cl.CommandQueue(lpot_source.cl_context) as queue:
-            # NOTE: this adds the required discretizations to the cache
-            dofdesc = sym.DOFDescriptor(geometry, discr_stage)
-            _refine_for_global_qbx(self, dofdesc,
-                    lpot_source.refiner_code_container.get_wrangler(queue),
-                    _copy_collection=False)
+            with cl.CommandQueue(lpot_source.cl_context) as queue:
+                # NOTE: this adds the required discretizations to the cache
+                dofdesc = sym.DOFDescriptor(geometry, discr_stage)
+                _refine_for_global_qbx(self, dofdesc,
+                        lpot_source.refiner_code_container.get_wrangler(queue),
+                        _copy_collection=False)
 
-        return cache[key]
+            discr = self._get_discr_from_cache(geometry, discr_stage)
+
+        return discr
+
+    # }}}
 
     def get_connection(self, from_dd, to_dd):
         from pytential.symbolic.dof_connection import connection_from_dds
@@ -723,9 +769,6 @@ class GeometryCollection(object):
             new_places.update(places)
 
         return self.copy(places=new_places)
-
-    def get_cache(self, name):
-        return self.caches.setdefault(name, {})
 
     def __repr__(self):
         return "%s(%s)" % (type(self).__name__, repr(self.places))

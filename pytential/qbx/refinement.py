@@ -546,15 +546,18 @@ def _make_temporary_collection(lpot_source,
     name = "_tmp_refine_source"
     places = GeometryCollection(lpot_source, auto_where=name)
 
-    from pytential.symbolic.execution import _GEOMETRY_COLLECTION_DISCR_CACHE_NAME
-    discr_cache = places.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
     if stage1_density_discr is not None:
-        discr_cache[(name, sym.QBX_SOURCE_STAGE1)] = stage1_density_discr
+        places._add_discr_to_cache(stage1_density_discr,
+                name, sym.QBX_SOURCE_STAGE1)
 
     if stage2_density_discr is not None:
-        discr_cache[(name, sym.QBX_SOURCE_STAGE2)] = stage2_density_discr
-        discr_cache[(name, sym.QBX_SOURCE_QUAD_STAGE2)] = \
+        quad_stage2_density_discr = \
                 _make_quad_stage2_discr(lpot_source, stage2_density_discr)
+
+        places._add_discr_to_cache(stage2_density_discr,
+                name, sym.QBX_SOURCE_STAGE2)
+        places._add_discr_to_cache(quad_stage2_density_discr,
+                name, sym.QBX_SOURCE_QUAD_STAGE2)
 
     return places
 
@@ -824,20 +827,16 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
     if dofdesc.discr_stage not in stage_index_map:
         raise ValueError("unknown discr stage: %s" % dofdesc.discr_stage)
     stage_index = stage_index_map[dofdesc.discr_stage]
-
-    from pytential.symbolic.execution import (
-            _GEOMETRY_COLLECTION_DISCR_CACHE_NAME,
-            _GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
-    discr_cache = places.get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
-    conns_cache = places.get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+    geometry = dofdesc.geometry
 
     def add_to_cache(refine_discr, refine_conn, from_ds, to_ds):
-        discr_cache[(dofdesc.geometry, to_ds)] = refine_discr
-        conns_cache[(dofdesc.geometry, from_ds, to_ds)] = refine_conn
+        places._add_discr_to_cache(refine_discr, geometry, to_ds)
+        places._add_conn_to_cache(refine_conn, geometry, from_ds, to_ds)
 
     def get_from_cache(from_ds, to_ds):
-        return (discr_cache[(dofdesc.geometry, to_ds)],
-                conns_cache[(dofdesc.geometry, from_ds, to_ds)])
+        discr = places._get_discr_from_cache(geometry, to_ds)
+        conn = places._get_conn_from_cache(geometry, from_ds, to_ds)
+        return discr, conn
 
     if _copy_collection:
         places = places.copy()
@@ -848,8 +847,9 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
 
     discr = lpot_source.density_discr
     if stage_index >= 1:
+        ds = (None, sym.QBX_SOURCE_STAGE1)
         try:
-            discr, conn = get_from_cache(None, sym.QBX_SOURCE_STAGE1)
+            discr, conn = get_from_cache(*ds)
         except KeyError:
             discr, conn = _refine_qbx_stage1(
                     lpot_source, discr, wrangler, group_factory,
@@ -859,13 +859,12 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
                     expansion_disturbance_tolerance=(
                         expansion_disturbance_tolerance),
                     maxiter=maxiter, debug=debug, visualize=visualize)
-            add_to_cache(discr, conn,
-                    None, sym.QBX_SOURCE_STAGE1)
+            add_to_cache(discr, conn, *ds)
 
     if stage_index >= 2:
+        ds = (sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE2)
         try:
-            discr, conn = get_from_cache(sym.QBX_SOURCE_STAGE1,
-                                         sym.QBX_SOURCE_STAGE2)
+            discr, conn = get_from_cache(*ds)
         except KeyError:
             discr, conn = _refine_qbx_stage2(
                     lpot_source, discr, wrangler, group_factory,
@@ -874,17 +873,15 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
                     force_stage2_uniform_refinement_rounds=(
                         force_stage2_uniform_refinement_rounds),
                     maxiter=maxiter, debug=debug, visualize=visualize)
-            add_to_cache(discr, conn,
-                    sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE2)
+            add_to_cache(discr, conn, *ds)
 
     if stage_index >= 3:
+        ds = (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)
         try:
-            discr, conn = get_from_cache(sym.QBX_SOURCE_STAGE2,
-                                         sym.QBX_SOURCE_QUAD_STAGE2)
+            discr, conn = get_from_cache(*ds)
         except KeyError:
             discr, conn = _refine_qbx_quad_stage2(lpot_source, discr)
-            add_to_cache(discr, conn,
-                sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)
+            add_to_cache(discr, conn, *ds)
 
     # }}}
 
