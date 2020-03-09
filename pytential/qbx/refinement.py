@@ -469,16 +469,14 @@ def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
     warn(
             "QBX layer potential source refiner did not terminate "
             "after %d iterations (the maximum). "
-            "You may pass 'visualize=True' to with_refinement() "
-            "to see what area of the geometry is causing trouble. "
-            "If the issue is disturbance of expansion disks, you may "
-            "pass a slightly increased value (currently: %g) for "
-            "_expansion_disturbance_tolerance in with_refinement(). "
-            "As a last resort, "
+            "You may call 'refine_geometry_collection()' manually "
+            "and pass 'visualize=True' to see what area of the geometry is "
+            "causing trouble. If the issue is disturbance of expansion disks, "
+            "you may pass a slightly increased value (currently: %g) for "
+            "'expansion_disturbance_tolerance'. As a last resort, "
             "you may use Python's warning filtering mechanism to "
-            "not treat this warning as an error. "
-            "The criteria triggering refinement in each iteration "
-            "were: %s. " % (
+            "not treat this warning as an error. The criteria triggering "
+            "refinement in each iteration were: %s. " % (
                 len(violated_criteria),
                 expansion_disturbance_tolerance,
                 ", ".join(
