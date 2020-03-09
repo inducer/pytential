@@ -796,20 +796,17 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
     """
     Associate targets to centers in a layer potential source.
 
-    :arg lpot_source: An instance of :class:`QBXLayerPotentialSource`
-
+    :arg places: A :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg geometry: Name of the source geometry in *places* for which to
+        associate targets.
     :arg wrangler: An instance of :class:`TargetAssociationWrangler`
-
     :arg target_discrs_and_qbx_sides:
-
-        a list of tuples ``(discr, sides)``, where
-        *discr* is a
+        a list of tuples ``(discr, sides)``, where *discr* is a
         :class:`pytential.discretization.Discretization`
         or a
         :class:`pytential.discretization.target.TargetBase` instance, and
-        *sides* is either a :class:`int` or
-        an array of (:class:`numpy.int8`) side requests for each
-        target.
+        *sides* is either a :class:`int` or an array of (:class:`numpy.int8`)
+        side requests for each target.
 
         The side request can take on the values in :ref:`qbx-side-request-table`.
 

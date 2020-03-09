@@ -911,7 +911,6 @@ def refine_geometry_collection(queue, places,
         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`,
         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE2` or
         :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
-    :arg wrangler: An instance of :class:`RefinerWrangler`.
     :arg group_factory: An instance of
         :class:`meshmode.mesh.discretization.ElementGroupFactory`. Used for
         discretizing the coarse refined mesh.
