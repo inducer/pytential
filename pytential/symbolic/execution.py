@@ -246,7 +246,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     def map_common_subexpression(self, expr):
         if expr.scope == sym.cse_scope.EXPRESSION:
-            cache = self.bound_expr.get_cache("cse")
+            cache = self.bound_expr._get_cache("cse")
         elif expr.scope == sym.cse_scope.DISCRETIZATION:
             cache = self.places._get_cache("cse")
         else:
@@ -821,7 +821,7 @@ class BoundExpression(object):
         from pytential.symbolic.compiler import OperatorCompiler
         self.code = OperatorCompiler(self.places)(sym_op_expr)
 
-    def get_cache(self, name):
+    def _get_cache(self, name):
         return self.caches.setdefault(name, {})
 
     def get_modeled_cost(self, queue, **args):
