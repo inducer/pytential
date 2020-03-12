@@ -156,10 +156,12 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
             qbx, sym.make_sym_vector("bc", dim) + u_A_sym_bdry
             )(queue, bc=bc, mu=mu, omega=omega)
     gmres_result = gmres(
-             bound_op.scipy_op(queue, "sigma", np.float64, mu=mu, normal=normal),
-             bvp_rhs, tol=1e-9, progress=True,
-             stall_iterations=0,
-             hard_failure=True)
+            bound_op.scipy_op(queue, "sigma", np.float64, mu=mu, normal=normal),
+            bvp_rhs,
+            x0=bvp_rhs,
+            tol=1e-9, progress=True,
+            stall_iterations=0,
+            hard_failure=True)
 
     # }}}
 
