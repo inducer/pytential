@@ -1,3 +1,4 @@
+build
 _build
 .sw[po]
 .*.sw[po]
@@ -27,3 +28,6 @@ tags
 
 pytential/_git_rev.py
 .pytest_cache
+
+*.so
+pytential/qbx/target_specific/impl.c
