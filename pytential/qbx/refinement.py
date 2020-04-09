@@ -567,6 +567,11 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         expansion_disturbance_tolerance=None,
         maxiter=None, debug=None, visualize=False):
     from pytential import bind, sym
+    from meshmode.discretization.connection import ChainedDiscretizationConnection
+    if lpot_source._disable_refinement:
+        return density_discr, ChainedDiscretizationConnection([],
+                from_discr=density_discr)
+
     from meshmode.mesh.refinement import RefinerWithoutAdjacency
     refiner = RefinerWithoutAdjacency(density_discr.mesh)
 
@@ -668,7 +673,6 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
         del refine_flags
 
-    from meshmode.discretization.connection import ChainedDiscretizationConnection
     conn = ChainedDiscretizationConnection(connections,
             from_discr=density_discr)
 
@@ -680,6 +684,11 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         expansion_disturbance_tolerance=None,
         force_stage2_uniform_refinement_rounds=None,
         maxiter=None, debug=None, visualize=False):
+    from meshmode.discretization.connection import ChainedDiscretizationConnection
+    if lpot_source._disable_refinement:
+        return stage1_density_discr, ChainedDiscretizationConnection([],
+                from_discr=stage1_density_discr)
+
     from meshmode.mesh.refinement import RefinerWithoutAdjacency
     refiner = RefinerWithoutAdjacency(stage1_density_discr.mesh)
 
@@ -737,7 +746,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         del refine_flags
         del peer_lists
 
-    for round in range(force_stage2_uniform_refinement_rounds):
+    for _ in range(force_stage2_uniform_refinement_rounds):
         conn = wrangler.refine(
                 stage2_density_discr,
                 refiner,
@@ -746,7 +755,6 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         stage2_density_discr = conn.to_discr
         connections.append(conn)
 
-    from meshmode.discretization.connection import ChainedDiscretizationConnection
     conn = ChainedDiscretizationConnection(connections,
             from_discr=stage1_density_discr)
 
@@ -934,8 +942,6 @@ def refine_geometry_collection(queue, places,
                 discr_stage=refine_discr_stage)
         lpot_source = places.get_geometry(dofdesc.geometry)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
-            continue
-        if lpot_source._disable_refinement:
             continue
 
         _refine_for_global_qbx(places, dofdesc,

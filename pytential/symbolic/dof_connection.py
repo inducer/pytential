@@ -230,8 +230,7 @@ def connection_from_dds(places, from_dd, to_dd):
         raise ValueError("can only interpolate from `GRANULARITY_NODE`")
 
     connections = []
-    if (from_dd.discr_stage is not to_dd.discr_stage
-            and not lpot._disable_refinement):
+    if from_dd.discr_stage is not to_dd.discr_stage:
         from pytential.qbx import QBXLayerPotentialSource
         if not isinstance(lpot, QBXLayerPotentialSource):
             raise ValueError("can only interpolate on a "

@@ -710,8 +710,6 @@ class GeometryCollection(object):
 
     def _get_qbx_discretization(self, geometry, discr_stage):
         lpot_source = self.get_geometry(geometry)
-        if lpot_source._disable_refinement:
-            return lpot_source.density_discr
 
         try:
             discr = self._get_discr_from_cache(geometry, discr_stage)
