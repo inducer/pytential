@@ -1682,6 +1682,16 @@ def normal_derivative(ambient_dim, operand, dim=None, dofdesc=None):
             * d(operand))
 
 
+def normal_second_derivative(ambient_dim, operand, dim=None, dofdesc=None):
+    d = Derivative()
+    n = normal(ambient_dim, dim, dofdesc)
+    nabla = d.dnabla(ambient_dim)
+
+    return d.resolve(n.scalar_product(
+        n.scalar_product(nabla) * d(d.resolve(nabla * d(operand)))
+        ))
+
+
 def Sp(kernel, *args, **kwargs):
     dofdesc = kwargs.get("target")
     if "qbx_forced_limit" not in kwargs:
@@ -1715,9 +1725,9 @@ def Spp(kernel, *args, **kwargs):
     dim = kwargs.pop("dim", None)
 
     dofdesc = kwargs.get("target")
-    return normal_derivative(
+    return normal_second_derivative(
             ambient_dim,
-            Sp(kernel, *args, **kwargs),
+            S(kernel, *args, **kwargs),
             dim=dim, dofdesc=dofdesc)
 
 

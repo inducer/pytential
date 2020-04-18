@@ -325,6 +325,10 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
     chopper = VectorChopper(rhs)
     stacked_rhs = chopper.stack(rhs)
 
+    stacked_x0 = x0
+    if stacked_x0 is not None:
+        stacked_x0 = chopper.stack(stacked_x0)
+
     if inner_product is None:
         inner_product = amod.vdot
 
@@ -334,7 +338,7 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
         else:
             callback = None
 
-    result = _gmres(op, stacked_rhs, restart=restart, tol=tol, x0=x0,
+    result = _gmres(op, stacked_rhs, restart=restart, tol=tol, x0=stacked_x0,
             dot=inner_product,
             maxiter=maxiter, hard_failure=hard_failure,
             no_progress_factor=no_progress_factor,

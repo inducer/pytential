@@ -11,9 +11,7 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
     On Debian derivatives (Ubuntu and many more),
     installing ``build-essential`` should do the trick.
 
-    On macOS, run ``xcode-select --install`` to install build tools. On Mojave (10.14),
-    you may need to follow `these steps <https://stackoverflow.com/a/52530212>`_
-    as well.
+    On macOS, run ``xcode-select --install`` to install build tools.
 
     Everywhere else, just making sure you have the ``g++`` package should be
     enough.
@@ -45,9 +43,19 @@ And on macOS:
 
 #.  ``conda install openmp clangdev cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
 
+#.  Ensure the Conda version of clang finds the system headers.  For Catalina
+    (10.15), you should set (`source <https://stackoverflow.com/a/60002595>`_)::
+
+      export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
+
+    Whereas for Mojave (10.14), you may need to follow `these steps
+    <https://stackoverflow.com/a/52530212>`_.
+
 #.  Type the following command::
 
-        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do CC=clang python -m pip install git+https://github.com/inducer/$i; done
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential;do CC=clang LDFLAGS="-mlinker-version=519" python -m pip install git+https://github.com/inducer/$i; done
+
+    (The `LDFLAGS` argument is due to a `bug <https://stackoverflow.com/q/60934005>`_.)
 
 Next time you want to use :mod:`pytential`, just run the following command::
 
