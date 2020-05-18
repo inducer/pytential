@@ -201,6 +201,23 @@ def test_expr_pickling():
 # }}}
 
 
+# {{{ test basic layer potentials
+
+@pytest.mark.parametrize("lpot_class", [
+    sym.S, sym.Sp, sym.Spp, sym.D, sym.Dp
+    ])
+def test_layer_potential_construction(lpot_class, ambient_dim=2):
+    from sumpy.kernel import LaplaceKernel
+
+    kernel_sym = LaplaceKernel(ambient_dim)
+    density_sym = sym.var("sigma")
+    lpot_sym = lpot_class(kernel_sym, density_sym, qbx_forced_limit=None)
+
+    assert lpot_sym is not None
+
+# }}}
+
+
 @pytest.mark.parametrize(("name", "source_discr_stage", "target_granularity"), [
     ("default", None, None),
     ("default-explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
