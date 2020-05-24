@@ -1,7 +1,7 @@
 name: test-conda-env-py3-macos
 channels:
 - conda-forge
-- defaults
+- nodefaults
 dependencies:
 - git
 - conda-forge::numpy
