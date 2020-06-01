@@ -1872,9 +1872,9 @@ def curl(vec):
 
     return make_obj_array([
         sum(
-            levi_civita((l, m, n)) * dd_axis(m, 3, vec[n])
+            levi_civita((ell, m, n)) * dd_axis(m, 3, vec[n])
             for m in range(3) for n in range(3))
-        for l in range(3)])
+        for ell in range(3)])
 
 # }}}
 
