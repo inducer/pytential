@@ -629,8 +629,8 @@ class GeometryCollection(object):
         # check allowed types
         for p in six.itervalues(self.places):
             if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
-                raise TypeError("Must pass discretization, targets or "
-                        "layer potential sources as 'places'.")
+                raise TypeError("Values in 'places' must be discretization, targets "
+                        "or layer potential sources.")
 
         # check cl_context
         from pytools import is_single_valued
@@ -642,6 +642,8 @@ class GeometryCollection(object):
                 nodes = p.nodes()[0]
                 if isinstance(nodes, cl.array.Array) and nodes.queue is not None:
                     cl_contexts.append(nodes.queue.context)
+            else:
+                raise ValueError("unexpected value type in 'places'")
 
         if not is_single_valued(cl_contexts):
             raise RuntimeError("All 'places' must have the same CL context.")
