@@ -312,14 +312,19 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
     .. rubric :: Attributes
 
+    .. attribute:: places
+
+        A :class:`~pytential.symbolic.execution.GeometryCollection`
+        containing the :class:`~pytential.qbx.QBXLayerPotentialSource`.
+
+    .. attribute:: source_dd
+
+        Symbolic name for the :class:`~pytential.qbx.QBXLayerPotentialSource`
+        in the collection :attr:`places`.
+
     .. attribute:: code_getter
 
         The :class:`QBXFMMGeometryCodeGetter` for this object.
-
-    .. attribute:: lpot_source
-
-        The :class:`pytential.qbx.QBXLayerPotentialSource`
-        acting as the source geometry.
 
     .. attribute:: target_discrs_and_qbx_sides
 
@@ -365,10 +370,11 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
     .. method:: m2l_rotation_angles()
     """
 
-    def __init__(self, code_getter, lpot_source,
+    def __init__(self, places, source_dd,
+            code_getter,
             target_discrs_and_qbx_sides,
             target_association_tolerance,
-            tree_kind, debug):
+            tree_kind, debug=None):
         """
         .. rubric:: Constructor arguments
 
@@ -380,14 +386,20 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         :arg debug: a :class:`bool` flag for whether to enable
             potentially costly self-checks
         """
+        from pytential import sym
+        self.places = places
+        self.source_dd = sym.as_dofdesc(source_dd)
+        self.lpot_source = places.get_geometry(self.source_dd.geometry)
 
         self.code_getter = code_getter
-        self.lpot_source = lpot_source
-        self.target_discrs_and_qbx_sides = \
-                target_discrs_and_qbx_sides
+        self.target_discrs_and_qbx_sides = target_discrs_and_qbx_sides
         self.target_association_tolerance = target_association_tolerance
         self.tree_kind = tree_kind
-        self.debug = debug
+        self.debug = self.lpot_source.debug if debug is None else debug
+
+    @property
+    def ambient_dim(self):
+        return self.lpot_source.ambient_dim
 
     @property
     def cl_context(self):
@@ -395,7 +407,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
     @property
     def coord_dtype(self):
-        return self.lpot_source.quad_stage2_density_discr.nodes().dtype
+        return self.lpot_source.density_discr.real_dtype
 
     # {{{ centers/radii
 
@@ -409,13 +421,14 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         ``coord_t [ambient_dim][ncenters]``
         """
+        from pytential import bind, sym
+        from pytools.obj_array import make_obj_array
 
         with cl.CommandQueue(self.cl_context) as queue:
-            from pytential.qbx.utils import get_interleaved_centers
-            from pytools.obj_array import make_obj_array
-            return make_obj_array([
-                ccomp.with_queue(None)
-                for ccomp in get_interleaved_centers(queue, self.lpot_source)])
+            centers = bind(self.places, sym.interleaved_expansion_centers(
+                self.ambient_dim,
+                dofdesc=self.source_dd.to_stage1()))(queue)
+            return make_obj_array([ax.with_queue(None) for ax in centers])
 
     @memoize_method
     def expansion_radii(self):
@@ -424,9 +437,13 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         ``coord_t [ncenters]``
         """
+        from pytential import bind, sym
+
         with cl.CommandQueue(self.cl_context) as queue:
-            from pytential.qbx.utils import get_interleaved_radii
-            return get_interleaved_radii(queue, self.lpot_source)
+            return bind(self.places, sym.expansion_radii(
+                self.ambient_dim,
+                granularity=sym.GRANULARITY_CENTER,
+                dofdesc=self.source_dd.to_stage1()))(queue)
 
     # }}}
 
@@ -437,8 +454,6 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """Return a :class:`TargetInfo`. |cached|"""
 
         code_getter = self.code_getter
-        lpot_src = self.lpot_source
-
         with cl.CommandQueue(self.cl_context) as queue:
             ntargets = self.ncenters
             target_discr_starts = []
@@ -450,7 +465,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             target_discr_starts.append(ntargets)
 
             targets = cl.array.empty(
-                    self.cl_context, (lpot_src.ambient_dim, ntargets),
+                    self.cl_context, (self.ambient_dim, ntargets),
                     self.coord_dtype)
             code_getter.copy_targets_kernel()(
                     queue,
@@ -503,15 +518,19 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """
 
         code_getter = self.code_getter
-        lpot_src = self.lpot_source
+        lpot_source = self.lpot_source
         target_info = self.target_info()
 
         with cl.CommandQueue(self.cl_context) as queue:
-            nsources = lpot_src.quad_stage2_density_discr.nnodes
+            from pytential import sym
+            quad_stage2_discr = self.places.get_discretization(
+                    self.source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
+
+            nsources = quad_stage2_discr.nnodes
             nparticles = nsources + target_info.ntargets
 
             target_radii = None
-            if self.lpot_source._expansions_in_tree_have_extent:
+            if lpot_source._expansions_in_tree_have_extent:
                 target_radii = cl.array.zeros(queue, target_info.ntargets,
                         self.coord_dtype)
                 target_radii[:self.ncenters] = self.expansion_radii()
@@ -531,14 +550,14 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             refine_weights.finish()
 
             tree, _ = code_getter.build_tree()(queue,
-                    particles=lpot_src.quad_stage2_density_discr.nodes(),
+                    particles=quad_stage2_discr.nodes(),
                     targets=target_info.targets,
                     target_radii=target_radii,
-                    max_leaf_refine_weight=lpot_src._max_leaf_refine_weight,
+                    max_leaf_refine_weight=lpot_source._max_leaf_refine_weight,
                     refine_weights=refine_weights,
                     debug=self.debug,
-                    stick_out_factor=lpot_src._expansion_stick_out_factor,
-                    extent_norm=lpot_src._box_extent_norm,
+                    stick_out_factor=lpot_source._expansion_stick_out_factor,
+                    extent_norm=lpot_source._box_extent_norm,
                     kind=self.tree_kind)
 
             if self.debug:
@@ -612,7 +631,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             qbx_center_to_target_box = cl.array.empty(
                     queue, self.ncenters, tree.box_id_dtype)
 
-            if self.lpot_source.debug:
+            if self.debug:
                 qbx_center_to_target_box.fill(-1)
 
             evt, _ = qbx_center_to_target_box_lookup(
@@ -624,7 +643,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     user_target_from_tree_target=user_target_from_tree_target,
                     ncenters=self.ncenters)
 
-            if self.lpot_source.debug:
+            if self.debug:
                 assert 0 <= cl.array.min(qbx_center_to_target_box).get()
                 assert (
                         cl.array.max(qbx_center_to_target_box).get()
@@ -738,7 +757,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         values from :class:`target_state` allowed. Targets occur in user order.
         """
         from pytential.qbx.target_assoc import associate_targets_to_qbx_centers
-        tgt_info = self.target_info()
+        target_info = self.target_info()
 
         from pytential.target import PointsTarget
 
@@ -747,7 +766,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     .target_side_preferences()[self.ncenters:].get(queue=queue))
 
             target_discrs_and_qbx_sides = [(
-                    PointsTarget(tgt_info.targets[:, self.ncenters:]),
+                    PointsTarget(target_info.targets[:, self.ncenters:]),
                     target_side_prefs.astype(np.int32))]
 
             target_association_wrangler = (
@@ -755,13 +774,15 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     .get_wrangler(queue))
 
             tgt_assoc_result = associate_targets_to_qbx_centers(
-                    self.lpot_source,
+                    self.places,
+                    self.source_dd,
                     target_association_wrangler,
                     target_discrs_and_qbx_sides,
                     target_association_tolerance=(
-                        self.target_association_tolerance))
+                        self.target_association_tolerance),
+                    debug=self.debug)
 
-            result = cl.array.empty(queue, tgt_info.ntargets,
+            result = cl.array.empty(queue, target_info.ntargets,
                     tgt_assoc_result.target_to_center.dtype)
             result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
             result[self.ncenters:] = tgt_assoc_result.target_to_center
@@ -872,6 +893,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             This only works for two-dimensional geometries.
         """
 
+        from pytential import sym
         import matplotlib.pyplot as pt
         pt.clf()
 
@@ -880,8 +902,12 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             raise ValueError("only 2-dimensional geometry info can be plotted")
 
         with cl.CommandQueue(self.cl_context) as queue:
+            stage2_density_discr = self.places.get_discretization(
+                    self.source_dd.geometry, sym.QBX_SOURCE_STAGE2)
+            quad_stage2_density_discr = self.places.get_discretization(
+                    self.source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
             from meshmode.discretization.visualization import draw_curve
-            draw_curve(self.lpot_source.quad_stage2_density_discr)
+            draw_curve(quad_stage2_density_discr)
 
             global_flags = self.global_qbx_flags().get(queue=queue)
 
@@ -967,7 +993,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             #pt.legend()
             pt.savefig(
                     "geodata-stage2-nelem%d.pdf"
-                    % self.lpot_source.stage2_density_discr.mesh.nelements)
+                    % stage2_density_discr.mesh.nelements)
 
     # }}}
 

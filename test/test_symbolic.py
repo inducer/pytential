@@ -219,10 +219,9 @@ def test_layer_potential_construction(lpot_class, ambient_dim=2):
 
 
 @pytest.mark.parametrize(("name", "source_discr_stage", "target_granularity"), [
-    ("default", None, None),
-    ("default-explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
+    ("default_explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
     ("stage2", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_NODE),
-    ("stage2-center", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
+    ("stage2_center", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
     ("quad", sym.QBX_SOURCE_QUAD_STAGE2, sym.GRANULARITY_NODE)
     ])
 def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity):
@@ -233,6 +232,16 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     target_order = 7
     qbx_order = 4
 
+    where = sym.as_dofdesc("test_interpolation")
+    from_dd = sym.DOFDescriptor(
+            geometry=where.geometry,
+            discr_stage=source_discr_stage,
+            granularity=sym.GRANULARITY_NODE)
+    to_dd = sym.DOFDescriptor(
+            geometry=where.geometry,
+            discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
+            granularity=target_granularity)
+
     mesh = make_curve_mesh(starfish,
             np.linspace(0.0, 1.0, nelements + 1),
             target_order)
@@ -240,44 +249,36 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     from pytential.qbx import QBXLayerPotentialSource
-    qbx, _ = QBXLayerPotentialSource(discr,
+    qbx = QBXLayerPotentialSource(discr,
             fine_order=4 * target_order,
             qbx_order=qbx_order,
-            fmm_order=False).with_refinement()
+            fmm_order=False)
 
-    where = 'test-interpolation'
-    from_dd = sym.DOFDescriptor(
-            geometry=where,
-            discr_stage=source_discr_stage,
-            granularity=sym.GRANULARITY_NODE)
-    to_dd = sym.DOFDescriptor(
-            geometry=where,
-            discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
-            granularity=target_granularity)
+    from pytential import GeometryCollection
+    places = GeometryCollection(qbx, auto_where=where)
 
     sigma_sym = sym.var("sigma")
     op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
-    bound_op = bind(qbx, op_sym, auto_where=where)
+    bound_op = bind(places, op_sym, auto_where=where)
 
-    target_nodes = qbx.quad_stage2_density_discr.nodes().get(queue)
-    if source_discr_stage == sym.QBX_SOURCE_STAGE2:
-        source_nodes = qbx.stage2_density_discr.nodes().get(queue)
-    elif source_discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
-        source_nodes = target_nodes
-    else:
-        source_nodes = qbx.density_discr.nodes().get(queue)
+    def nodes(stage):
+        density_discr = places.get_discretization(where.geometry, stage)
+        return density_discr.nodes().get(queue)
+
+    target_nodes = nodes(sym.QBX_SOURCE_QUAD_STAGE2)
+    source_nodes = nodes(source_discr_stage)
 
     sigma_dev = cl.array.to_device(queue, la.norm(source_nodes, axis=0))
     sigma_target = np.sin(la.norm(target_nodes, axis=0))
     sigma_target_interp = bound_op(queue, sigma=sigma_dev).get(queue)
 
-    if name in ('default', 'default-explicit', 'stage2', 'quad'):
+    if name in ("default", "default_explicit", "stage2", "quad"):
         error = la.norm(sigma_target_interp - sigma_target) / la.norm(sigma_target)
         assert error < 1.0e-10
-    elif name in ('stage2-center',):
+    elif name in ("stage2_center",):
         assert len(sigma_target_interp) == 2 * len(sigma_target)
     else:
-        raise ValueError('unknown test case name: {}'.format(name))
+        raise ValueError("unknown test case name: {}".format(name))
 
 
 # You can test individual routines by typing

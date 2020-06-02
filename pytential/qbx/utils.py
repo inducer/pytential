@@ -68,45 +68,6 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 # }}}
 
 
-# {{{ make interleaved centers
-
-def get_interleaved_centers(queue, lpot_source):
-    """
-    Return an array of shape (dim, ncenters) in which interior centers are placed
-    next to corresponding exterior centers.
-    """
-    from pytential import bind, sym
-    int_centers = bind(lpot_source,
-            sym.expansion_centers(lpot_source.ambient_dim, -1))(queue)
-    ext_centers = bind(lpot_source,
-            sym.expansion_centers(lpot_source.ambient_dim, +1))(queue)
-
-    from pytential.symbolic.dof_connection import CenterGranularityConnection
-    interleaver = CenterGranularityConnection(lpot_source.density_discr)
-    return interleaver(queue, [int_centers, ext_centers])
-
-# }}}
-
-
-# {{{ make interleaved radii
-
-def get_interleaved_radii(queue, lpot_source):
-    """
-    Return an array of shape (dim, ncenters) in which interior centers are placed
-    next to corresponding exterior centers.
-    """
-    from pytential import bind, sym
-
-    radii = bind(lpot_source,
-            sym.expansion_radii(lpot_source.ambient_dim))(queue)
-
-    from pytential.symbolic.dof_connection import CenterGranularityConnection
-    interleaver = CenterGranularityConnection(lpot_source.density_discr)
-    return interleaver(queue, radii)
-
-# }}}
-
-
 # {{{ tree code container
 
 class TreeCodeContainer(object):
@@ -159,13 +120,15 @@ class TreeWranglerBase(object):
         self.code_container = code_container
         self.queue = queue
 
-    def build_tree(self, lpot_source, targets_list=(),
+    def build_tree(self, places, targets_list=(), sources_list=(),
                    use_stage2_discr=False):
         tb = self.code_container.build_tree()
         plfilt = self.code_container.particle_list_filter()
-        from pytential.qbx.utils import build_tree_with_qbx_metadata
+
         return build_tree_with_qbx_metadata(
-                self.queue, tb, plfilt, lpot_source, targets_list=targets_list,
+                self.queue, places, tb, plfilt,
+                sources_list=sources_list,
+                targets_list=targets_list,
                 use_stage2_discr=use_stage2_discr)
 
     def find_peer_lists(self, tree):
@@ -263,41 +226,61 @@ MAX_REFINE_WEIGHT = 64
 
 
 @log_process(logger)
-def build_tree_with_qbx_metadata(
-        queue, tree_builder, particle_list_filter, lpot_source, targets_list=(),
+def build_tree_with_qbx_metadata(queue, places,
+        tree_builder, particle_list_filter,
+        sources_list=(), targets_list=(),
         use_stage2_discr=False):
     """Return a :class:`TreeWithQBXMetadata` built from the given layer
     potential source. This contains particles of four different types:
 
        * source particles either from
-         ``lpot_source.density_discr`` or
-         ``lpot_source.stage2_density_discr``
-       * centers from ``lpot_source.centers()``
+         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1` or
+         :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+       * centers from
+         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`.
        * targets from ``targets_list``.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`
-
-    :arg lpot_source: An instance of
-        :class:`pytential.qbx.NewQBXLayerPotentialSource`.
-
+    :arg places: An instance of
+        :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
 
-    :arg use_stage2_discr: If *True*, builds a tree with sources
-        from ``lpot_source.stage2_density_discr``. If *False* (default),
-        they are from ``lpot_source.density_discr``.
+    :arg use_stage2_discr: If *True*, builds a tree with stage 2 sources.
+        If *False*, the tree is built with stage 1 sources.
     """
+
     # The ordering of particles is as follows:
     # - sources go first
     # - then centers
     # - then targets
 
-    if use_stage2_discr:
-        density_discr = lpot_source.quad_stage2_density_discr
-    else:
-        density_discr = lpot_source.density_discr
+    from pytential import bind, sym
+    stage1_density_discrs = []
+    density_discrs = []
+    for source_name in sources_list:
+        dd = sym.as_dofdesc(source_name)
+
+        discr = places.get_discretization(dd.geometry)
+        stage1_density_discrs.append(discr)
+
+        if use_stage2_discr:
+            discr = places.get_discretization(
+                    dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
+        density_discrs.append(discr)
+
+    # TODO: update code to work for multiple source discretizations
+    if len(sources_list) != 1:
+        raise RuntimeError("can only build a tree for a single source")
+
+    def _make_centers(discr):
+        return bind(discr, sym.interleaved_expansion_centers(
+            discr.ambient_dim))(queue)
+
+    stage1_density_discr = stage1_density_discrs[0]
+    density_discr = density_discrs[0]
 
     sources = density_discr.nodes()
-    centers = get_interleaved_centers(queue, lpot_source)
+    centers = _make_centers(stage1_density_discr)
     targets = (tgt.nodes() for tgt in targets_list)
 
     particles = tuple(

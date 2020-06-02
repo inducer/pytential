@@ -36,8 +36,11 @@ from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         NArmedStarfish,
         make_curve_mesh)
+
 # from sumpy.visualization import FieldPlotter
 from pytential import bind, sym, norm
+from pytential import GeometryCollection
+
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 import logging
@@ -314,27 +317,29 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                 cl_ctx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-        refiner_extra_kwargs = {}
-
-        if case.k != 0:
-            refiner_extra_kwargs["kernel_length_scale"] = 5/case.k
-
-        qbx, _ = QBXLayerPotentialSource(
+        qbx = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
                 case.qbx_order,
                 fmm_order=case.fmm_order,
                 fmm_backend=case.fmm_backend,
+                target_association_tolerance=1.0e-1,
                 _expansions_in_tree_have_extent=True,
                 _expansion_stick_out_factor=getattr(
                     case, "_expansion_stick_out_factor", 0),
-                ).with_refinement(**refiner_extra_kwargs)
+                )
+        places = GeometryCollection(qbx)
 
-        density_discr = qbx.density_discr
+        from pytential.qbx.refinement import refine_geometry_collection
+        kernel_length_scale = 5 / case.k if case.k else None
+        places = refine_geometry_collection(queue, places,
+                kernel_length_scale=kernel_length_scale)
 
         # {{{ compute values of a solution to the PDE
 
+        density_discr = places.get_discretization(places.auto_source.geometry)
+
         nodes_host = density_discr.nodes().get(queue)
-        normal = bind(density_discr, sym.normal(d))(queue).as_vector(np.object)
+        normal = bind(places, sym.normal(d))(queue).as_vector(np.object)
         normal_host = [normal[j].get() for j in range(d)]
 
         if k != 0:
@@ -378,7 +383,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
         key = (case.qbx_order, case.geometry.mesh_name, resolution,
                 case.expr.zero_op_name)
 
-        bound_op = bind(qbx, case.expr.get_zero_op(k_sym, **knl_kwargs))
+        bound_op = bind(places, case.expr.get_zero_op(k_sym, **knl_kwargs))
         error = bound_op(
                 queue, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=case.k)
         if 0:
@@ -388,15 +393,15 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
         linf_error_norm = norm(density_discr, queue, error, p=np.inf)
         print("--->", key, linf_error_norm)
 
-        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
         eoc_rec.add_data_point(h_max, linf_error_norm)
 
         if visualize:
             from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, density_discr, target_order)
 
-            bdry_normals = bind(density_discr, sym.normal(mesh.ambient_dim))(queue)\
-                    .as_vector(dtype=object)
+            bdry_normals = bind(places, sym.normal(mesh.ambient_dim))(queue)\
+                    .as_vector(dtype=np.object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
                 ("u", u_dev),

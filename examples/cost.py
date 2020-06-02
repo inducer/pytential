@@ -55,8 +55,6 @@ def starfish_lpot_source(queue, n_arms):
             pre_density_discr, OVSMP_FACTOR * TARGET_ORDER,
             **lpot_kwargs)
 
-    lpot_source, _ = lpot_source.with_refinement()
-
     return lpot_source
 
 # }}}
@@ -72,17 +70,16 @@ def test_geometries(queue):
         yield starfish_lpot_source(queue, n_arms)
 
 
-def get_bound_op(lpot_source):
+def get_bound_op(places):
     from sumpy.kernel import LaplaceKernel
-    sigma_sym = sym.var("sigma")
-    k_sym = LaplaceKernel(lpot_source.ambient_dim)
-    op = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
+    op = sym.S(LaplaceKernel(places.ambient_dim),
+            sym.var("sigma"),
+            qbx_forced_limit=+1)
 
-    return bind(lpot_source, op)
+    return bind(places, op)
 
 
-def get_test_density(queue, lpot_source):
-    density_discr = lpot_source.density_discr
+def get_test_density(queue, density_discr):
     nodes = density_discr.nodes().with_queue(queue)
     sigma = cl.clmath.sin(10 * nodes[0])
 
@@ -100,8 +97,13 @@ def calibrate_cost_model(ctx):
 
     for lpot_source in training_geometries(queue):
         lpot_source = lpot_source.copy(cost_model=cost_model)
-        bound_op = get_bound_op(lpot_source)
-        sigma = get_test_density(queue, lpot_source)
+
+        from pytential import GeometryCollection
+        places = GeometryCollection(lpot_source)
+        density_discr = places.get_discretization(places.auto_source.geometry)
+
+        bound_op = get_bound_op(places)
+        sigma = get_test_density(queue, density_discr)
 
         cost_S = bound_op.get_modeled_cost(queue, sigma=sigma)
 
@@ -126,8 +128,13 @@ def test_cost_model(ctx, cost_model):
 
     for lpot_source in test_geometries(queue):
         lpot_source = lpot_source.copy(cost_model=cost_model)
-        bound_op = get_bound_op(lpot_source)
-        sigma = get_test_density(queue, lpot_source)
+
+        from pytential import GeometryCollection
+        places = GeometryCollection(lpot_source)
+        density_discr = places.get_discretization(places.auto_source.geometry)
+
+        bound_op = get_bound_op(places)
+        sigma = get_test_density(queue, density_discr)
 
         cost_S = bound_op.get_modeled_cost(queue, sigma=sigma)
         model_result = (

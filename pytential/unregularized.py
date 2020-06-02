@@ -87,15 +87,6 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             expansion_factory = DefaultExpansionFactory()
         self.expansion_factory = expansion_factory
 
-    @memoize_method
-    def weights_and_area_elements(self):
-        from pytential import bind, sym
-        with cl.CommandQueue(self.cl_context) as queue:
-            waa = bind(self,
-                    sym.weights_and_area_elements(self.ambient_dim))(queue)
-
-            return waa.with_queue(None)
-
     def copy(
             self,
             density_discr=None,
@@ -153,14 +144,17 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        from pytential import bind, sym
+        waa = bind(bound_expr.places, sym.weights_and_area_elements(
+            self.ambient_dim, dofdesc=insn.source))(queue)
+        strengths = waa * evaluate(insn.density).with_queue(queue)
 
         result = []
         p2p = None
 
         for o in insn.outputs:
-            target_discr = bound_expr.get_discretization(o.target_name)
+            target_discr = bound_expr.places.get_discretization(
+                    o.target_name.geometry, o.target_name.discr_stage)
 
             if p2p is None:
                 p2p = self.get_p2p(insn.kernels)
@@ -221,7 +215,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 continue
 
             target_name_to_index[o.target_name] = len(targets)
-            targets.append(bound_expr.places.get_geometry(o.target_name))
+            targets.append(bound_expr.places.get_geometry(o.target_name.geometry))
 
         targets = tuple(targets)
 
@@ -231,8 +225,10 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         geo_data = self.fmm_geometry_data(targets)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        from pytential import bind, sym
+        waa = bind(bound_expr.places, sym.weights_and_area_elements(
+            self.ambient_dim, dofdesc=insn.source))(queue)
+        strengths = waa * evaluate(insn.density).with_queue(queue)
 
         out_kernels = tuple(knl for knl in insn.kernels)
         fmm_kernel = self.get_fmm_kernel(out_kernels)

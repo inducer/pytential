@@ -218,7 +218,8 @@ class EHField(object):
     #tc_int,
     tc_ext,
     ])
-def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
+def test_pec_mfie_extinction(ctx_factory, case,
+        use_plane_wave=False, visualize=False):
     """For (say) is_interior=False (the 'exterior' MFIE), this test verifies
     extinction of the combined (incoming + scattered) field on the interior
     of the scatterer.
@@ -252,32 +253,23 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
     rng = cl.clrandom.PhiloxGenerator(cl_ctx, seed=12)
     src_j = rng.normal(queue, (3, test_source.nnodes), dtype=np.float64)
 
-    def eval_inc_field_at(tgt):
-        if 0:
+    def eval_inc_field_at(places, source=None, target=None):
+        if source is None:
+            source = "test_source"
+
+        if use_plane_wave:
             # plane wave
-            return bind(
-                    tgt,
+            return bind(places,
                     get_sym_maxwell_plane_wave(
                         amplitude_vec=np.array([1, 1, 1]),
                         v=np.array([1, 0, 0]),
-                        omega=case.k)
-                    )(queue)
+                        omega=case.k),
+                    auto_where=target)(queue)
         else:
             # point source
-            return bind(
-                    (test_source, tgt),
-                    get_sym_maxwell_point_source(mfie.kernel, j_sym, mfie.k)
-                    )(queue, j=src_j, k=case.k)
-
-    pde_test_inc = EHField(
-            vector_from_device(queue, eval_inc_field_at(calc_patch_tgt)))
-
-    source_maxwell_resids = [
-            calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_inc.e, np.inf)
-            for x in frequency_domain_maxwell(
-                calc_patch, pde_test_inc.e, pde_test_inc.h, case.k)]
-    print("Source Maxwell residuals:", source_maxwell_resids)
-    assert max(source_maxwell_resids) < 1e-6
+            return bind(places,
+                    get_sym_maxwell_point_source(mfie.kernel, j_sym, mfie.k),
+                    auto_where=(source, target))(queue, j=src_j, k=case.k)
 
     # }}}
 
@@ -297,35 +289,73 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
 
     for resolution in case.resolutions:
+        places = {}
         scat_mesh = case.get_mesh(resolution, case.target_order)
         observation_mesh = case.get_observation_mesh(case.target_order)
 
         pre_scat_discr = Discretization(
                 cl_ctx, scat_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
-        qbx, _ = QBXLayerPotentialSource(
+        qbx = QBXLayerPotentialSource(
                 pre_scat_discr, fine_order=4*case.target_order,
                 qbx_order=case.qbx_order,
                 fmm_level_to_order=SimpleExpansionOrderFinder(
                     case.fmm_tolerance),
-                fmm_backend=case.fmm_backend
-                ).with_refinement(_expansion_disturbance_tolerance=0.05)
-        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+                fmm_backend=case.fmm_backend,
+                )
 
         scat_discr = qbx.density_discr
         obs_discr = Discretization(
                 cl_ctx, observation_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
-        inc_field_scat = EHField(eval_inc_field_at(scat_discr))
-        inc_field_obs = EHField(eval_inc_field_at(obs_discr))
+        places.update({
+            sym.DEFAULT_SOURCE: qbx,
+            sym.DEFAULT_TARGET: qbx.density_discr,
+            "test_source": test_source,
+            "scat_discr": scat_discr,
+            "obs_discr": obs_discr,
+            "patch_target": calc_patch_tgt,
+            })
+
+        if visualize:
+            qbx_tgt_tol = qbx.copy(target_association_tolerance=0.2)
+
+            fplot = make_field_plotter_from_bbox(
+                    find_bounding_box(scat_discr.mesh), h=(0.05, 0.05, 0.3),
+                    extend_factor=0.3)
+            fplot_tgt = PointsTarget(cl.array.to_device(queue, fplot.points))
+
+            places.update({
+                "qbx_target_tol": qbx_tgt_tol,
+                "plot_targets": fplot_tgt,
+                })
+
+        from pytential import GeometryCollection
+        places = GeometryCollection(places)
+        density_discr = places.get_discretization(places.auto_source.geometry)
 
         # {{{ system solve
 
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
+
+        pde_test_inc = EHField(vector_from_device(queue,
+            eval_inc_field_at(places, target="patch_target")))
+
+        source_maxwell_resids = [
+                calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_inc.e, np.inf)
+                for x in frequency_domain_maxwell(
+                    calc_patch, pde_test_inc.e, pde_test_inc.h, case.k)]
+        print("Source Maxwell residuals:", source_maxwell_resids)
+        assert max(source_maxwell_resids) < 1e-6
+
+        inc_field_scat = EHField(eval_inc_field_at(places, target="scat_discr"))
+        inc_field_obs = EHField(eval_inc_field_at(places, target="obs_discr"))
+
         inc_xyz_sym = EHField(sym.make_sym_vector("inc_fld", 6))
 
-        bound_j_op = bind(qbx, mfie.j_operator(loc_sign, jt_sym))
-        j_rhs = bind(qbx, mfie.j_rhs(inc_xyz_sym.h))(
+        bound_j_op = bind(places, mfie.j_operator(loc_sign, jt_sym))
+        j_rhs = bind(places, mfie.j_rhs(inc_xyz_sym.h))(
                 queue, inc_fld=inc_field_scat.field, **knl_kwargs)
 
         gmres_settings = dict(
@@ -340,8 +370,8 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
 
         jt = gmres_result.solution
 
-        bound_rho_op = bind(qbx, mfie.rho_operator(loc_sign, rho_sym))
-        rho_rhs = bind(qbx, mfie.rho_rhs(jt_sym, inc_xyz_sym.e))(
+        bound_rho_op = bind(places, mfie.rho_operator(loc_sign, rho_sym))
+        rho_rhs = bind(places, mfie.rho_rhs(jt_sym, inc_xyz_sym.e))(
                 queue, jt=jt, inc_fld=inc_field_scat.field, **knl_kwargs)
 
         gmres_result = gmres(
@@ -352,20 +382,21 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
 
         # }}}
 
-        jxyz = bind(qbx, sym.tangential_to_xyz(jt_sym))(queue, jt=jt)
+        jxyz = bind(places, sym.tangential_to_xyz(jt_sym))(queue, jt=jt)
 
         # {{{ volume eval
 
         sym_repr = mfie.scattered_volume_field(jt_sym, rho_sym)
 
-        def eval_repr_at(tgt, source=None):
+        def eval_repr_at(tgt, source=None, target=None):
             if source is None:
-                source = qbx
+                source = sym.DEFAULT_SOURCE
 
-            return bind((source, tgt), sym_repr)(queue, jt=jt, rho=rho, **knl_kwargs)
+            return bind(places, sym_repr, auto_where=(source, target))(
+                    queue, jt=jt, rho=rho, **knl_kwargs)
 
-        pde_test_repr = EHField(
-                vector_from_device(queue, eval_repr_at(calc_patch_tgt)))
+        pde_test_repr = EHField(vector_from_device(queue,
+            eval_repr_at(places, target="patch_target")))
 
         maxwell_residuals = [
                 calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_repr.e, np.inf)
@@ -384,12 +415,12 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
         pec_bc_e = sym.n_cross(bc_repr.e + inc_xyz_sym.e)
         pec_bc_h = sym.normal(3).as_vector().dot(bc_repr.h + inc_xyz_sym.h)
 
-        eh_bc_values = bind(qbx, sym.join_fields(pec_bc_e, pec_bc_h))(
+        eh_bc_values = bind(places, sym.join_fields(pec_bc_e, pec_bc_h))(
                     queue, jt=jt, rho=rho, inc_fld=inc_field_scat.field,
                     **knl_kwargs)
 
         def scat_norm(f):
-            return norm(qbx, queue, f, p=np.inf)
+            return norm(density_discr, queue, f, p=np.inf)
 
         e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
         h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
@@ -406,8 +437,9 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
             from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, scat_discr, case.target_order+3)
 
-            bdry_normals = bind(scat_discr, sym.normal(3))(queue)\
-                    .as_vector(dtype=object)
+            bdry_normals = bind(places,
+                    sym.normal(3, dofdesc="scat_discr")
+                    )(queue).as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
                 ("j", jxyz),
@@ -419,17 +451,10 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
                 ("h_bc_residual", eh_bc_values[3]),
                 ])
 
-            fplot = make_field_plotter_from_bbox(
-                    find_bounding_box(scat_discr.mesh), h=(0.05, 0.05, 0.3),
-                    extend_factor=0.3)
-
             from pytential.qbx import QBXTargetAssociationFailedException
-
-            qbx_tgt_tol = qbx.copy(target_association_tolerance=0.2)
-
-            fplot_tgt = PointsTarget(cl.array.to_device(queue, fplot.points))
             try:
-                fplot_repr = eval_repr_at(fplot_tgt, source=qbx_tgt_tol)
+                fplot_repr = eval_repr_at(places,
+                        target="plot_targets", source="qbx_target_tol")
             except QBXTargetAssociationFailedException as e:
                 fplot.write_vtk_file(
                         "failed-targets.vts",
@@ -439,9 +464,8 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
                 raise
 
             fplot_repr = EHField(vector_from_device(queue, fplot_repr))
-
-            fplot_inc = EHField(
-                    vector_from_device(queue, eval_inc_field_at(fplot_tgt)))
+            fplot_inc = EHField(vector_from_device(queue,
+                eval_inc_field_at(places, target="plot_targets")))
 
             fplot.write_vtk_file(
                     "potential-%s.vts" % resolution,
@@ -457,7 +481,7 @@ def test_pec_mfie_extinction(ctx_factory, case, visualize=False):
 
         # {{{ error in E, H
 
-        obs_repr = EHField(eval_repr_at(obs_discr))
+        obs_repr = EHField(eval_repr_at(places, target="obs_discr"))
 
         def obs_norm(f):
             return norm(obs_discr, queue, f, p=np.inf)

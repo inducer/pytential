@@ -27,7 +27,6 @@ import six
 
 import numpy as np
 from pytools import memoize_method
-from meshmode.discretization import Discretization
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 from pytential.source import LayerPotentialSourceBase
 
@@ -57,11 +56,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     .. attribute :: fmm_order
 
     .. automethod :: __init__
-    .. automethod :: with_refinement
     .. automethod :: copy
-
-    .. attribute :: stage2_density_discr
-    .. attribute :: quad_stage2_density_discr
 
     See :ref:`qbxguts` for some information on the inner workings of this.
     """
@@ -74,14 +69,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             qbx_order=None,
             fmm_order=None,
             fmm_level_to_order=None,
-            to_refined_connection=None,
             expansion_factory=None,
             target_association_tolerance=_not_provided,
 
             # begin experimental arguments
             # FIXME default debug=False once everything has matured
             debug=True,
-            _refined_for_global_qbx=False,
+            _disable_refinement=False,
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.5,
             _well_sep_is_n_away=2,
@@ -98,11 +92,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """
         :arg fine_order: The total degree to which the (upsampled)
              underlying quadrature is exact.
-        :arg to_refined_connection: A connection used for resampling from
-             *density_discr* the fine density discretization.  It is assumed
-             that the fine density discretization given by
-             *to_refined_connection.to_discr* is *not* already upsampled. May
-             be *None*.
         :arg fmm_order: `False` for direct calculation. May not be given if
             *fmm_level_to_order* is given.
         :arg fmm_level_to_order: A function that takes arguments of
@@ -201,16 +190,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self.target_association_tolerance = target_association_tolerance
         self.fmm_backend = fmm_backend
 
-        # Default values are lazily provided if these are None
-        self._to_refined_connection = to_refined_connection
-
         if expansion_factory is None:
             from sumpy.expansion import DefaultExpansionFactory
             expansion_factory = DefaultExpansionFactory()
         self.expansion_factory = expansion_factory
 
         self.debug = debug
-        self._refined_for_global_qbx = _refined_for_global_qbx
+        self._disable_refinement = _disable_refinement
         self._expansions_in_tree_have_extent = \
                 _expansions_in_tree_have_extent
         self._expansion_stick_out_factor = _expansion_stick_out_factor
@@ -242,7 +228,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             qbx_order=None,
             fmm_order=_not_provided,
             fmm_level_to_order=_not_provided,
-            to_refined_connection=None,
             expansion_factory=None,
             target_association_tolerance=_not_provided,
             _expansions_in_tree_have_extent=_not_provided,
@@ -257,7 +242,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             fmm_backend=None,
 
             debug=_not_provided,
-            _refined_for_global_qbx=_not_provided,
+            _disable_refinement=_not_provided,
             target_stick_out_factor=_not_provided,
             ):
 
@@ -305,19 +290,17 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 qbx_order=qbx_order if qbx_order is not None else self.qbx_order,
 
                 target_association_tolerance=target_association_tolerance,
-                to_refined_connection=(
-                    to_refined_connection or self._to_refined_connection),
                 expansion_factory=(
                     expansion_factory or self.expansion_factory),
 
                 debug=(
                     # False is a valid value here
                     debug if debug is not _not_provided else self.debug),
-                _refined_for_global_qbx=(
+                _disable_refinement=(
                     # False is a valid value here
-                    _refined_for_global_qbx
-                    if _refined_for_global_qbx is not _not_provided
-                    else self._refined_for_global_qbx),
+                    _disable_refinement
+                    if _disable_refinement is not _not_provided
+                    else self._disable_refinement),
                 _expansions_in_tree_have_extent=(
                     # False is a valid value here
                     _expansions_in_tree_have_extent
@@ -353,84 +336,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
     @property
-    def stage2_density_discr(self):
-        """The refined, interpolation-focused density discretization (no oversampling).
-        """
-        return (self._to_refined_connection.to_discr
-                if self._to_refined_connection is not None
-                else self.density_discr)
-
-    @property
-    @memoize_method
-    def refined_interp_to_ovsmp_quad_connection(self):
-        from meshmode.discretization.connection import make_same_mesh_connection
-
-        return make_same_mesh_connection(
-                self.quad_stage2_density_discr,
-                self.stage2_density_discr)
-
-    @property
-    @memoize_method
-    def quad_stage2_density_discr(self):
-        """The refined, quadrature-focused density discretization (with upsampling).
-        """
-        from meshmode.discretization.poly_element import (
-                QuadratureSimplexGroupFactory)
-
-        return Discretization(
-            self.density_discr.cl_context, self.stage2_density_discr.mesh,
-            QuadratureSimplexGroupFactory(self.fine_order),
-            self.real_dtype)
-
-    # {{{ weights and area elements
-
-    @memoize_method
-    def weights_and_area_elements(self):
-        from pytential import bind, sym
-        with cl.CommandQueue(self.cl_context) as queue:
-            return bind(self, sym.weights_and_area_elements(
-                self.ambient_dim,
-                dofdesc=sym.QBX_SOURCE_QUAD_STAGE2))(queue).with_queue(None)
-
-    # }}}
-
-    @property
-    @memoize_method
-    def resampler(self):
-        from meshmode.discretization.connection import \
-                ChainedDiscretizationConnection
-
-        conn = self.refined_interp_to_ovsmp_quad_connection
-
-        if self._to_refined_connection is not None:
-            return ChainedDiscretizationConnection(
-                    [self._to_refined_connection, conn])
-
-        return conn
-
-    @property
-    @memoize_method
-    def direct_resampler(self):
-        """
-        .. warning::
-
-            This always returns a
-            :class:`~meshmode.discretization.connection.DirectDiscretizationConnection`.
-            In case the geometry has been refined multiple times, a direct
-            connection can have a large number of groups and/or
-            interpolation batches, making it scale significantly worse than
-            the one returned by :attr:`resampler`.
-        """
-        from meshmode.discretization.connection import \
-                flatten_chained_connection
-
-        conn = self.resampler
-        with cl.CommandQueue(self.cl_context) as queue:
-            conn = flatten_chained_connection(queue, conn)
-
-        return conn
-
-    @property
     @memoize_method
     def tree_code_container(self):
         from pytential.qbx.utils import TreeCodeContainer
@@ -449,52 +354,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return TargetAssociationCodeContainer(
                 self.cl_context, self.tree_code_container)
 
-    @memoize_method
-    def with_refinement(self, target_order=None, kernel_length_scale=None,
-            maxiter=None, visualize=False, refiner=None,
-            _expansion_disturbance_tolerance=None,
-            _force_stage2_uniform_refinement_rounds=None,
-            _scaled_max_curvature_threshold=None):
-        """
-        :arg refiner: If the mesh underlying :attr:`density_discr`
-            is itself the result of refinement, then its
-            :class:`meshmode.refinement.Refiner` instance may need to
-            be reused for continued refinement. This argument
-            provides the opportunity to pass in an existing refiner
-            that should be used for continued refinement.
-        :returns: a tuple ``(lpot_src, cnx)``, where ``lpot_src`` is a
-            :class:`QBXLayerPotentialSource` and ``cnx`` is a
-            :class:`meshmode.discretization.connection.DiscretizationConnection`
-            from the originally given to the refined geometry.
-        """
-        from pytential.qbx.refinement import refine_for_global_qbx
-
-        from meshmode.discretization.poly_element import (
-                InterpolatoryQuadratureSimplexGroupFactory)
-
-        if target_order is None:
-            target_order = self.density_discr.groups[0].order
-
-        with cl.CommandQueue(self.cl_context) as queue:
-            lpot, connection = refine_for_global_qbx(
-                    self,
-                    self.refiner_code_container.get_wrangler(queue),
-                    InterpolatoryQuadratureSimplexGroupFactory(target_order),
-                    kernel_length_scale=kernel_length_scale,
-                    maxiter=maxiter, visualize=visualize,
-                    expansion_disturbance_tolerance=_expansion_disturbance_tolerance,
-                    force_stage2_uniform_refinement_rounds=(
-                        _force_stage2_uniform_refinement_rounds),
-                    scaled_max_curvature_threshold=(
-                        _scaled_max_curvature_threshold),
-                    refiner=refiner)
-
-        return lpot, connection
-
     # {{{ internal API
 
     @memoize_method
-    def qbx_fmm_geometry_data(self, target_discrs_and_qbx_sides):
+    def qbx_fmm_geometry_data(self, places, name,
+            target_discrs_and_qbx_sides):
         """
         :arg target_discrs_and_qbx_sides:
             a tuple of *(discr, qbx_forced_limit)*
@@ -506,8 +370,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """
         from pytential.qbx.geometry import QBXFMMGeometryData
 
-        return QBXFMMGeometryData(self.qbx_fmm_code_getter,
-                self, target_discrs_and_qbx_sides,
+        return QBXFMMGeometryData(places, name,
+                self.qbx_fmm_code_getter,
+                target_discrs_and_qbx_sides,
                 target_association_tolerance=self.target_association_tolerance,
                 tree_kind=self._tree_kind,
                 debug=self.debug)
@@ -595,7 +460,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
             evaluate, func, extra_args=None):
-        if not self._refined_for_global_qbx:
+        if self._disable_refinement:
             from warnings import warn
             warn(
                     "Executing global QBX without refinement. "
@@ -663,7 +528,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_name_and_side_to_number[key] = \
                         len(target_discrs_and_qbx_sides)
 
-                target_discr = bound_expr.places.get_geometry(o.target_name)
+                target_discr = bound_expr.places.get_discretization(
+                        o.target_name.geometry, o.target_name.discr_stage)
                 if isinstance(target_discr, LayerPotentialSourceBase):
                     target_discr = target_discr.density_discr
 
@@ -690,7 +556,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         target_name_and_side_to_number, target_discrs_and_qbx_sides = (
                 self.get_target_discrs_and_qbx_sides(insn, bound_expr))
 
-        geo_data = self.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
+        geo_data = self.qbx_fmm_geometry_data(
+                bound_expr.places,
+                insn.source.geometry,
+                target_discrs_and_qbx_sides)
 
         # FIXME Exert more positive control over geo_data attribute lifetimes using
         # geo_data.<method>.clear_cache(geo_data).
@@ -701,8 +570,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # FIXME don't compute *all* output kernels on all targets--respect that
         # some target discretizations may only be asking for derivatives (e.g.)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        from pytential import bind, sym
+        waa = bind(bound_expr.places, sym.weights_and_area_elements(
+            self.ambient_dim, dofdesc=insn.source))(queue)
+        strengths = waa * evaluate(insn.density).with_queue(queue)
+
         out_kernels = tuple(knl for knl in insn.kernels)
         fmm_kernel = self.get_fmm_kernel(out_kernels)
         output_and_expansion_dtype = (
@@ -811,6 +683,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate,
             return_timing_data):
+        from pytential import bind, sym
         if return_timing_data:
             from pytential.source import UnableToCollectTimingData
             from warnings import warn
@@ -826,35 +699,38 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        strengths = (evaluate(insn.density).with_queue(queue)
-                * self.weights_and_area_elements())
+        waa = bind(bound_expr.places, sym.weights_and_area_elements(
+            self.ambient_dim, dofdesc=insn.source))(queue)
+        strengths = waa * evaluate(insn.density).with_queue(queue)
 
-        from pytential import bind, sym
-        expansion_radii = bind(self,
-                sym.expansion_radii(self.ambient_dim))(queue)
-        centers = {
-                -1: bind(self,
-                    sym.expansion_centers(self.ambient_dim, -1))(queue),
-                +1: bind(self,
-                    sym.expansion_centers(self.ambient_dim, +1))(queue)
-                }
+        source_discr = bound_expr.places.get_discretization(
+                insn.source.geometry, insn.source.discr_stage)
 
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
-            target_discr = bound_expr.get_discretization(o.target_name)
+            source_dd = insn.source.copy(discr_stage=o.target_name.discr_stage)
+            target_discr = bound_expr.places.get_discretization(
+                    o.target_name.geometry, o.target_name.discr_stage)
+            density_discr = bound_expr.places.get_discretization(
+                    source_dd.geometry, source_dd.discr_stage)
 
-            is_self = self.density_discr is target_discr
-
+            is_self = density_discr is target_discr
             if is_self:
                 # QBXPreprocessor is supposed to have taken care of this
                 assert o.qbx_forced_limit is not None
                 assert abs(o.qbx_forced_limit) > 0
 
+                expansion_radii = bind(bound_expr.places, sym.expansion_radii(
+                    self.ambient_dim, dofdesc=o.target_name))(queue)
+                centers = bind(bound_expr.places, sym.expansion_centers(
+                    self.ambient_dim, o.qbx_forced_limit,
+                    dofdesc=o.target_name))(queue)
+
                 evt, output_for_each_kernel = lpot_applier(
                         queue, target_discr.nodes(),
-                        self.quad_stage2_density_discr.nodes(),
-                        centers[o.qbx_forced_limit],
+                        source_discr.nodes(),
+                        centers,
                         [strengths],
                         expansion_radii=expansion_radii,
                         **kernel_args)
@@ -869,17 +745,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 evt, output_for_each_kernel = p2p(queue,
                         target_discr.nodes(),
-                        self.quad_stage2_density_discr.nodes(),
+                        source_discr.nodes(),
                         [strengths], **kernel_args)
 
                 qbx_forced_limit = o.qbx_forced_limit
                 if qbx_forced_limit is None:
                     qbx_forced_limit = 0
 
+                target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
                 geo_data = self.qbx_fmm_geometry_data(
-                        target_discrs_and_qbx_sides=(
-                            (target_discr, qbx_forced_limit),
-                        ))
+                        bound_expr.places,
+                        insn.source.geometry,
+                        target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
 
                 # center-related info is independent of targets
 
@@ -918,7 +795,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     lpot_applier_on_tgt_subset(
                             queue,
                             targets=target_discr.nodes(),
-                            sources=self.quad_stage2_density_discr.nodes(),
+                            sources=source_discr.nodes(),
                             centers=geo_data.centers(),
                             expansion_radii=geo_data.expansion_radii(),
                             strengths=[strengths],
