@@ -31,7 +31,7 @@ import pyopencl.array # noqa
 from pyopencl.array import to_device
 
 from pytools.obj_array import make_obj_array
-from pytools import memoize_method, memoize
+from pytools import memoize_method, memoize_in
 from sumpy.tools import BlockIndexRanges
 
 import loopy as lp
@@ -242,31 +242,31 @@ def _generate_unit_sphere(ambient_dim, approx_npoints):
 
 class ProxyGenerator(object):
     r"""
-    .. attribute:: ambient_dim
+    .. attribute:: places
+
+        A :class:`~pytential.symbolic.execution.GeometryCollection`
+        containing the geometry on which the proxy balls are generated.
+
     .. attribute:: nproxy
 
         Number of proxy points in a single proxy ball.
 
-    .. attribute:: source
+    .. attribute:: radius_factor
 
-        A :class:`pytential.qbx.QBXLayerPotentialSource`.
-
-    .. attribute:: ratio
-
-        A ratio used to compute the proxy ball radius. The radius
+        A factor used to compute the proxy ball radius. The radius
         is computed in the :math:`\ell^2` norm, resulting in a circle or
         sphere of proxy points. For QBX, we have two radii of interest
         for a set of points: the radius :math:`r_{block}` of the
         smallest ball containing all the points and the radius
         :math:`r_{qbx}` of the smallest ball containing all the QBX
-        expansion balls in the block. If the ratio :math:`\theta \in
+        expansion balls in the block. If the factor :math:`\theta \in
         [0, 1]`, then the radius of the proxy ball is
 
         .. math::
 
             r = (1 - \theta) r_{block} + \theta r_{qbx}.
 
-        If the ratio :math:`\theta > 1`, the the radius is simply
+        If the factor :math:`\theta > 1`, the the radius is simply
 
         .. math::
 
@@ -281,10 +281,14 @@ class ProxyGenerator(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, source, approx_nproxy=None, ratio=None):
-        self.source = source
-        self.ambient_dim = source.density_discr.ambient_dim
-        self.ratio = 1.1 if ratio is None else ratio
+    def __init__(self, places, approx_nproxy=None, radius_factor=None):
+        from pytential import GeometryCollection
+        if not isinstance(places, GeometryCollection):
+            places = GeometryCollection(places)
+
+        self.places = places
+        self.ambient_dim = places.ambient_dim
+        self.radius_factor = 1.1 if radius_factor is None else radius_factor
 
         approx_nproxy = 32 if approx_nproxy is None else approx_nproxy
         self.ref_points = \
@@ -296,11 +300,11 @@ class ProxyGenerator(object):
 
     @memoize_method
     def get_kernel(self):
-        if self.ratio < 1.0:
-            radius_expr = "(1.0 - {ratio}) * rblk + {ratio} * rqbx"
+        if self.radius_factor < 1.0:
+            radius_expr = "(1.0 - {f}) * rblk + {f} * rqbx"
         else:
-            radius_expr = "{ratio} * rqbx"
-        radius_expr = radius_expr.format(ratio=self.ratio)
+            radius_expr = "{f} * rqbx"
+        radius_expr = radius_expr.format(f=self.radius_factor)
 
         # NOTE: centers of mass are computed using a second-order approximation
         knl = lp.make_kernel([
@@ -363,11 +367,14 @@ class ProxyGenerator(object):
 
         return knl
 
-    def __call__(self, queue, indices, **kwargs):
+    def __call__(self, queue, source_dd, indices, **kwargs):
         """Generate proxy points for each given range of source points in
-        the discretization in :attr:`source`.
+        the discretization in *source_dd*.
 
         :arg queue: a :class:`pyopencl.CommandQueue`.
+        :arg source_dd: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+            for the discretization on which the proxy points are to be
+            generated.
         :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
 
         :return: a tuple of ``(proxies, pxyranges, pxycenters, pxyranges)``,
@@ -385,16 +392,20 @@ class ProxyGenerator(object):
             return np.dot(A, v) + b
 
         from pytential import bind, sym
-        radii = bind(self.source,
-                sym.expansion_radii(self.source.ambient_dim))(queue)
-        center_int = bind(self.source,
-                sym.expansion_centers(self.source.ambient_dim, -1))(queue)
-        center_ext = bind(self.source,
-                sym.expansion_centers(self.source.ambient_dim, +1))(queue)
+        source_dd = sym.as_dofdesc(source_dd)
+        discr = self.places.get_discretization(
+                source_dd.geometry, source_dd.discr_stage)
+
+        radii = bind(self.places, sym.expansion_radii(
+            self.ambient_dim, dofdesc=source_dd))(queue)
+        center_int = bind(self.places, sym.expansion_centers(
+            self.ambient_dim, -1, dofdesc=source_dd))(queue)
+        center_ext = bind(self.places, sym.expansion_centers(
+            self.ambient_dim, +1, dofdesc=source_dd))(queue)
 
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(queue,
-            sources=self.source.density_discr.nodes(),
+            sources=discr.nodes(),
             center_int=center_int,
             center_ext=center_ext,
             expansion_radii=radii,
@@ -513,8 +524,8 @@ def gather_block_neighbor_points(discr, indices, pxycenters, pxyradii,
                                 nbrranges.with_queue(None))
 
 
-def gather_block_interaction_points(source, indices,
-                                    ratio=None,
+def gather_block_interaction_points(places, source_dd, indices,
+                                    radius_factor=None,
                                     approx_nproxy=None,
                                     max_nodes_in_box=None):
     """Generate sets of interaction points for each given range of indices
@@ -529,15 +540,20 @@ def gather_block_interaction_points(source, indices,
       do not belong to the given range, which model nearby interactions.
       These are constructed with :func:`gather_block_neighbor_points`.
 
-    :arg source: a :class:`pytential.qbx.QBXLayerPotentialSource`.
-    :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
+    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg source_dd: geometry in *places* for which to generate the
+        interaction points. This is a
+        :class:`~pytential.symbolic.primitives.DOFDescriptor` describing
+        the exact discretization.
+    :arg indices: a :class:`sumpy.tools.BlockIndexRanges` on the
+        discretization described by *source_dd*.
 
     :return: a tuple ``(nodes, ranges)``, where each value is a
         :class:`pyopencl.array.Array`. For a range :math:`i`, we can
         get the slice using ``nodes[ranges[i]:ranges[i + 1]]``.
     """
 
-    @memoize
+    @memoize_in(places, "concat_proxy_and_neighbors")
     def knl():
         loopy_knl = lp.make_kernel([
             "{[irange, idim]: 0 <= irange < nranges and \
@@ -567,13 +583,13 @@ def gather_block_interaction_points(source, indices,
             """,
             [
                 lp.GlobalArg("sources", None,
-                    shape=(source.ambient_dim, "nsources")),
+                    shape=(lpot_source.ambient_dim, "nsources")),
                 lp.GlobalArg("proxies", None,
-                    shape=(source.ambient_dim, "nproxies"), dim_tags="sep,C"),
+                    shape=(lpot_source.ambient_dim, "nproxies"), dim_tags="sep,C"),
                 lp.GlobalArg("nbrindices", None,
                     shape="nnbrindices"),
                 lp.GlobalArg("nodes", None,
-                    shape=(source.ambient_dim, "nproxies + nnbrindices")),
+                    shape=(lpot_source.ambient_dim, "nproxies + nnbrindices")),
                 lp.ValueArg("nsources", np.int),
                 lp.ValueArg("nproxies", np.int),
                 lp.ValueArg("nnbrindices", np.int),
@@ -582,7 +598,7 @@ def gather_block_interaction_points(source, indices,
             name="concat_proxy_and_neighbors",
             default_offset=lp.auto,
             silenced_warnings="write_race(write_*)",
-            fixed_parameters=dict(dim=source.ambient_dim),
+            fixed_parameters=dict(dim=lpot_source.ambient_dim),
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
@@ -590,19 +606,22 @@ def gather_block_interaction_points(source, indices,
 
         return loopy_knl
 
-    with cl.CommandQueue(source.cl_context) as queue:
-        generator = ProxyGenerator(source,
-                                   ratio=ratio,
-                                   approx_nproxy=approx_nproxy)
-        proxies, pxyranges, pxycenters, pxyradii = generator(queue, indices)
+    lpot_source = places.get_geometry(source_dd.geometry)
+    with cl.CommandQueue(lpot_source.cl_context) as queue:
+        generator = ProxyGenerator(places,
+                radius_factor=radius_factor,
+                approx_nproxy=approx_nproxy)
+        proxies, pxyranges, pxycenters, pxyradii = \
+                generator(queue, source_dd, indices)
 
-        neighbors = gather_block_neighbor_points(source.density_discr,
+        discr = places.get_discretization(source_dd.geometry, source_dd.discr_stage)
+        neighbors = gather_block_neighbor_points(discr,
                 indices, pxycenters, pxyradii,
                 max_nodes_in_box=max_nodes_in_box)
 
         ranges = cl.array.zeros(queue, indices.nblocks + 1, dtype=np.int)
         _, (nodes, ranges) = knl()(queue,
-                sources=source.density_discr.nodes(),
+                sources=discr.nodes(),
                 proxies=proxies,
                 pxyranges=pxyranges,
                 nbrindices=neighbors.indices,

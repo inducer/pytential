@@ -430,8 +430,8 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
 
 class UnregularizedPreprocessor(IdentityMapper):
 
-    def __init__(self, source_name, places):
-        self.source_name = source_name
+    def __init__(self, geometry, places):
+        self.geometry = geometry
         self.places = places
 
     def map_int_g(self, expr):
@@ -460,17 +460,23 @@ class InterpolationPreprocessor(IdentityMapper):
     a :class:`~pytential.symbolic.primitives.Interpolation`. This is used to
 
     * do differentiation on
-    :attr:`~pytential.source.LayerPotentialSource.quad_stage2_density_discr`,
-    by performing it on
-    :attr:`~pytential.source.LayerPotentialSource.stage2_density_discr` and
-    upsampling.
+    :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+    by performing it on :attr:`from_discr_stage` and upsampling.
     * upsample layer potential sources to
-    :attr:`~pytential.source.LayerPotentialSource.quad_stage2_density_discr`,
+    :attr:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`,
     """
 
-    def __init__(self, places):
+    def __init__(self, places, from_discr_stage=None):
+        """
+        .. attribute:: from_discr_stage
+
+            Sets the stage on which to compute the data before interpolation.
+            For valid values, see
+            :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage`.
+        """
         self.places = places
-        self.from_discr_stage = prim.QBX_SOURCE_STAGE2
+        self.from_discr_stage = (prim.QBX_SOURCE_STAGE2
+                if from_discr_stage is None else from_discr_stage)
         self.tagger = DiscretizationStageTagger(self.from_discr_stage)
 
     def map_num_reference_derivative(self, expr):
@@ -479,7 +485,7 @@ class InterpolationPreprocessor(IdentityMapper):
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places.get_geometry(to_dd)
+        lpot_source = self.places.get_geometry(to_dd.geometry)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
@@ -487,27 +493,32 @@ class InterpolationPreprocessor(IdentityMapper):
         return prim.interp(from_dd, to_dd, self.rec(self.tagger(expr)))
 
     def map_int_g(self, expr):
-        from_dd = expr.source
-        if from_dd.discr_stage is not None:
+        if expr.target.discr_stage is None:
+            expr = expr.copy(target=expr.target.to_stage1())
+
+        if expr.source.discr_stage is not None:
             return expr
 
         from pytential.qbx import QBXLayerPotentialSource
-        lpot_source = self.places.get_geometry(from_dd)
+        lpot_source = self.places.get_geometry(expr.source.geometry)
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             return expr
 
-        to_dd = from_dd.copy(discr_stage=prim.QBX_SOURCE_QUAD_STAGE2)
+        from_dd = expr.source.to_stage1()
+        to_dd = from_dd.to_quad_stage2()
         density = prim.interp(from_dd, to_dd, self.rec(expr.density))
+
+        from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
         kernel_arguments = dict(
-                (name, prim.interp(from_dd, to_dd, self.rec(arg_expr)))
+                (name, prim.interp(from_dd, to_dd,
+                    self.rec(self.tagger(arg_expr))))
                 for name, arg_expr in expr.kernel_arguments.items())
 
         return expr.copy(
                 kernel=expr.kernel,
                 density=density,
                 kernel_arguments=kernel_arguments,
-                source=to_dd,
-                target=expr.target)
+                source=to_dd)
 
 # }}}
 
@@ -515,16 +526,18 @@ class InterpolationPreprocessor(IdentityMapper):
 # {{{ QBX preprocessor
 
 class QBXPreprocessor(IdentityMapper):
-    def __init__(self, source_name, places):
-        self.source_name = source_name
+    def __init__(self, geometry, places):
+        self.geometry = geometry
         self.places = places
 
     def map_int_g(self, expr):
-        if expr.source.geometry != self.source_name:
+        if expr.source.geometry != self.geometry:
             return expr
 
-        source_discr = self.places.get_discretization(expr.source)
-        target_discr = self.places.get_discretization(expr.target)
+        source_discr = self.places.get_discretization(
+                expr.source.geometry, expr.source.discr_stage)
+        target_discr = self.places.get_discretization(
+                expr.target.geometry, expr.target.discr_stage)
 
         if expr.qbx_forced_limit == 0:
             raise ValueError("qbx_forced_limit == 0 was a bad idea and "

@@ -436,7 +436,11 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
         if use_l2_weighting is None:
             use_l2_weighting = False
 
+        from sumpy.kernel import HelmholtzKernel
+        self.kernel = HelmholtzKernel(2, allow_evanescent=True)
+
         super(Dielectric2DBoundaryOperatorBase, self).__init__(
+                self.kernel,
                 use_l2_weighting=use_l2_weighting)
 
         if mode == "te":
@@ -482,9 +486,6 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
         self.domain_K_exprs = [
                 sym.cse((k_expr**2-beta**2)**0.5, "K%d" % i)
                 for i, k_expr in enumerate(self.domain_k_exprs)]
-
-        from sumpy.kernel import HelmholtzKernel
-        self.kernel = HelmholtzKernel(2, allow_evanescent=True)
 
         # {{{ build bc list
 
@@ -629,7 +630,7 @@ class Dielectric2DBoundaryOperatorBase(L2WeightedPDEOperator):
                 assert False, raw_potential_op
         elif term.direction == self.dir_normal:
             potential_op = sym.normal_derivative(
-                    potential_op, interface_id)
+                    2, potential_op, dofdesc=interface_id)
 
             if raw_potential_op is sym.S:
                 # S'
@@ -686,6 +687,14 @@ class DielectricSRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
             ``i_interface`` is the number of the enclosed domain, starting from 0.
         """
         result = np.zeros((2, 2, len(self.interfaces)), dtype=np.object)
+        sides = {
+                self.side_out: "o",
+                self.side_in: "i"
+                }
+        fields = {
+                self.field_kind_e: "E",
+                self.field_kind_h: "H"
+                }
 
         i_unknown = 0
         for side in self.sides:
@@ -704,15 +713,8 @@ class DielectricSRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
                         dens = sym.cse(
                                 dens/self.get_sqrt_weight(interface_id),
                                 "dens_{side}_{field}_{dom}".format(
-                                    side={
-                                        self.side_out: "o",
-                                        self.side_in: "i"}
-                                    [side],
-                                    field={
-                                        self.field_kind_e: "E",
-                                        self.field_kind_h: "H"
-                                        }
-                                    [field_kind],
+                                    side=sides[side],
+                                    field=fields[field_kind],
                                     dom=i_interface))
 
                     result[side, field_kind, i_interface] = dens
@@ -720,7 +722,7 @@ class DielectricSRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
         assert i_unknown == len(unknown)
         return result
 
-    def representation(self, unknown, i_domain):
+    def representation(self, unknown, i_domain, qbx_forced_limit=None):
         """
         :return: a symbolic expression for the representation of the PDE solution
             in domain number *i_domain*.
@@ -749,7 +751,8 @@ class DielectricSRep2DBoundaryOperator(Dielectric2DBoundaryOperatorBase):
                             self.kernel,
                             my_unk,
                             source=interface_id,
-                            k=self.domain_K_exprs[i_domain])
+                            k=self.domain_K_exprs[i_domain],
+                            qbx_forced_limit=qbx_forced_limit)
 
             result.append(field_result)
 

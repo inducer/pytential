@@ -42,6 +42,9 @@ from pytools import memoize_in
 from pytential.qbx.cost import AbstractQBXCostModel
 from pytential import sym
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 __doc__ = """
 .. autoclass :: BoundExpression
@@ -50,7 +53,7 @@ __doc__ = """
 
 # FIXME caches: fix up queues
 
-# {{{ evaluation mapper
+# {{{ evaluation mapper base (shared, between actual eval and cost model)
 
 def mesh_el_view(mesh, group_nr, global_array):
     """Return a view of *global_array* of shape
@@ -93,13 +96,13 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_max(self, expr):
         return self._map_minmax(
                 cl.array.maximum,
-                super(EvaluationMapper, self).map_max,
+                super(EvaluationMapperBase, self).map_max,
                 expr)
 
     def map_min(self, expr):
         return self._map_minmax(
                 cl.array.minimum,
-                super(EvaluationMapper, self).map_min,
+                super(EvaluationMapperBase, self).map_min,
                 expr)
 
     def map_node_sum(self, expr):
@@ -151,7 +154,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
             return result
 
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         operand = self.rec(expr.operand)
         assert operand.shape == (discr.nnodes,)
 
@@ -177,8 +181,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return self._map_elementwise_reduction("max", expr)
 
     def map_ones(self, expr):
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
-
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         result = (discr
                 .empty(queue=self.queue, dtype=discr.real_dtype)
                 .with_queue(self.queue))
@@ -187,12 +191,14 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return result
 
     def map_node_coordinate_component(self, expr):
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         return discr.nodes()[expr.ambient_axis] \
                 .with_queue(self.queue)
 
     def map_num_reference_derivative(self, expr):
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
 
         from pytools import flatten
         ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
@@ -202,19 +208,20 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                         .with_queue(self.queue)
 
     def map_q_weight(self, expr):
-        discr = self.bound_expr.get_discretization(expr.dofdesc)
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         return discr.quad_weights(self.queue) \
                 .with_queue(self.queue)
 
     def map_inverse(self, expr):
-        bound_op_cache = self.bound_expr.places.get_cache("bound_op")
+        bound_op_cache = self.bound_expr.places._get_cache("bound_op")
 
         try:
             bound_op = bound_op_cache[expr]
         except KeyError:
             bound_op = bind(
                     expr.expression,
-                    self.places.get_geometry(expr.dofdesc),
+                    self.places.get_geometry(expr.dofdesc.geometry),
                     self.bound_expr.iprec)
             bound_op_cache[expr] = bound_op
 
@@ -230,16 +237,29 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_interpolation(self, expr):
         operand = self.rec(expr.operand)
 
-        if isinstance(operand, cl.array.Array):
-            from pytential.symbolic.dof_connection import connection_from_dds
-
-            conn = connection_from_dds(self.places,
-                    expr.from_dd, expr.to_dd)
-            return conn(self.queue, operand).with_queue(self.queue)
+        if isinstance(operand, (cl.array.Array, list)):
+            conn = self.places.get_connection(expr.from_dd, expr.to_dd)
+            return conn(self.queue, operand)
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand
         else:
             raise TypeError("cannot interpolate `{}`".format(type(operand)))
+
+    def map_common_subexpression(self, expr):
+        if expr.scope == sym.cse_scope.EXPRESSION:
+            cache = self.bound_expr._get_cache("cse")
+        elif expr.scope == sym.cse_scope.DISCRETIZATION:
+            cache = self.places._get_cache("cse")
+        else:
+            return self.rec(expr.child)
+
+        try:
+            rec = cache[expr.child]
+        except KeyError:
+            rec = self.rec(expr.child)
+            cache[expr.child] = rec
+
+        return rec
 
     # }}}
 
@@ -291,7 +311,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                         *args, queue=self.queue)
 
         else:
-            return EvaluationMapperBase.map_call(self, expr)
+            return super(EvaluationMapperBase, self).map_call(expr)
 
 # }}}
 
@@ -306,7 +326,7 @@ class EvaluationMapper(EvaluationMapperBase):
         self.timing_data = timing_data
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
-        source = bound_expr.places.get_geometry(insn.source)
+        source = bound_expr.places.get_geometry(insn.source.geometry)
 
         return_timing_data = self.timing_data is not None
 
@@ -325,7 +345,7 @@ class EvaluationMapper(EvaluationMapperBase):
 # }}}
 
 
-# {{{ cost model mapper
+# {{{ cost model evaluation mapper
 
 class CostModelMapper(EvaluationMapperBase):
     """Mapper for evaluating cost models.
@@ -355,7 +375,7 @@ class CostModelMapper(EvaluationMapperBase):
         self.per_box = per_box
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
-        source = bound_expr.places.get_geometry(insn.source)
+        source = bound_expr.places.get_geometry(insn.source.geometry)
         knls = frozenset(knl for knl in insn.kernels)
 
         if (isinstance(self.knl_specific_calibration_params, str)
@@ -446,7 +466,7 @@ class MatVecOp:
 def _prepare_domains(nresults, places, domains, default_domain):
     """
     :arg nresults: number of results.
-    :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg domains: recommended domains.
     :arg default_domain: default value for domains which are not provided.
 
@@ -469,9 +489,36 @@ def _prepare_domains(nresults, places, domains, default_domain):
     return domains
 
 
-def _prepare_expr(places, expr):
+def _prepare_auto_where(auto_where, places=None):
     """
-    :arg places: :class:`pytential.symbolic.execution.GeometryCollection`.
+    :arg auto_where: a 2-tuple, single identifier or `None` used as a hint
+        to determine the default geometries.
+    :arg places: a :class:`GeometryCollection`,
+        whose :attr:`GeometryCollection.auto_where` is used by default if
+        provided and `auto_where` is `None`.
+    :return: a tuple ``(source, target)`` of
+        :class:`~pytential.symbolic.primitives.DOFDescriptor`s denoting
+        the default source and target geometries.
+    """
+
+    if auto_where is None:
+        if places is None:
+            auto_source = sym.DEFAULT_SOURCE
+            auto_target = sym.DEFAULT_TARGET
+        else:
+            auto_source, auto_target = places.auto_where
+    elif isinstance(auto_where, (list, tuple)):
+        auto_source, auto_target = auto_where
+    else:
+        auto_source = auto_where
+        auto_target = auto_source
+
+    return (sym.as_dofdesc(auto_source), sym.as_dofdesc(auto_target))
+
+
+def _prepare_expr(places, expr, auto_where=None):
+    """
+    :arg places: :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg expr: a symbolic expression.
     :return: processed symbolic expressions, tagged with the appropriate
         `where` identifier from places, etc.
@@ -480,25 +527,41 @@ def _prepare_expr(places, expr):
     from pytential.source import LayerPotentialSourceBase
     from pytential.symbolic.mappers import (
             ToTargetTagger,
-            DerivativeBinder,
-            InterpolationPreprocessor)
+            DerivativeBinder)
 
-    expr = ToTargetTagger(*places.auto_where)(expr)
+    auto_source, auto_target = _prepare_auto_where(auto_where, places=places)
+    expr = ToTargetTagger(auto_source, auto_target)(expr)
     expr = DerivativeBinder()(expr)
 
     for name, place in six.iteritems(places.places):
         if isinstance(place, LayerPotentialSourceBase):
             expr = place.preprocess_optemplate(name, places, expr)
 
-    # NOTE: only insert interpolation operators after the layer potential
-    # operators were preprocessed to avoid any confusion
+    from pytential.symbolic.mappers import InterpolationPreprocessor
     expr = InterpolationPreprocessor(places)(expr)
+
     return expr
 
 # }}}
 
 
 # {{{ geometry collection
+
+def _is_valid_identifier(name):
+    if six.PY2:
+        # https://docs.python.org/2.7/reference/lexical_analysis.html#identifiers
+        import re
+        is_identifier = re.match(r"^[^\d\W]\w*\Z", name) is not None
+    else:
+        is_identifier = name.isidentifier()
+
+    import keyword
+    return is_identifier and not keyword.iskeyword(name)
+
+
+_GEOMETRY_COLLECTION_DISCR_CACHE_NAME = "refined_qbx_discrs"
+_GEOMETRY_COLLECTION_CONNS_CACHE_NAME = "refined_qbx_conns"
+
 
 class GeometryCollection(object):
     """A mapping from symbolic identifiers ("place IDs", typically strings)
@@ -510,11 +573,18 @@ class GeometryCollection(object):
     of subsets of them, as well as related common subexpressions such as
     metric terms.
 
-    .. automethod:: get_discretization
     .. automethod:: get_geometry
-    .. automethod:: copy
+    .. automethod:: get_connection
+    .. automethod:: get_discretization
 
-    .. method:: get_cache
+    .. automethod:: copy
+    .. automethod:: merge
+
+    Refinement of :class:`QBXLayerPotentialSource` entries is performed
+    on demand, or it may be performed by explcitly calling
+    :func:`pytential.qbx.refinement.refine_geometry_collection`,
+    which allows more customization of the refinement process through
+    parameters.
     """
 
     def __init__(self, places, auto_where=None):
@@ -523,7 +593,8 @@ class GeometryCollection(object):
             geometry objects. Supported objects are
             :class:`~pytential.source.PotentialSource`,
             :class:`~potential.target.TargetBase` and
-            :class:`~meshmode.discretization.Discretization`.
+            :class:`~meshmode.discretization.Discretization`. If this is
+            a mapping, the keys that are strings must be valid Python identifiers.
         :arg auto_where: location identifier for each geometry object, used
             to denote specific discretizations, e.g. in the case where
             *places* is a :class:`~pytential.source.LayerPotentialSourceBase`.
@@ -538,51 +609,73 @@ class GeometryCollection(object):
         from pytential.qbx import QBXLayerPotentialSource
         from meshmode.discretization import Discretization
 
-        # {{{ define default source and target descriptors
-
-        if isinstance(auto_where, (list, tuple)):
-            auto_source, auto_target = auto_where
-        else:
-            auto_source, auto_target = auto_where, None
-
-        if auto_source is None:
-            auto_source = sym.DEFAULT_SOURCE
-        if auto_target is None:
-            auto_target = sym.DEFAULT_TARGET
-
-        auto_source = sym.as_dofdesc(auto_source)
-        auto_target = sym.as_dofdesc(auto_target)
-        self.auto_where = (auto_source, auto_target)
-
-        # }}}
-
         # {{{ construct dict
 
         self.places = {}
+        self.caches = {}
+
+        auto_source, auto_target = _prepare_auto_where(auto_where)
         if isinstance(places, QBXLayerPotentialSource):
             self.places[auto_source.geometry] = places
-            self.places[auto_target.geometry] = \
-                    self._get_lpot_discretization(places, auto_target)
-        elif isinstance(places, (Discretization, PotentialSource)):
-            self.places[auto_source.geometry] = places
-            self.places[auto_target.geometry] = places
+            auto_target = auto_source
         elif isinstance(places, TargetBase):
+            self.places[auto_target.geometry] = places
+            auto_source = auto_target
+        if isinstance(places, (Discretization, PotentialSource)):
+            self.places[auto_source.geometry] = places
             self.places[auto_target.geometry] = places
         elif isinstance(places, tuple):
             source_discr, target_discr = places
             self.places[auto_source.geometry] = source_discr
             self.places[auto_target.geometry] = target_discr
         else:
-            self.places = places.copy()
+            self.places = places
 
-        for p in six.itervalues(self.places):
-            if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
-                raise TypeError("Must pass discretization, targets or "
-                        "layer potential sources as 'places'.")
+        self.auto_where = (auto_source, auto_target)
 
         # }}}
 
-        self.caches = {}
+        # {{{ validate
+
+        # check allowed identifiers
+        for name in self.places:
+            if not isinstance(name, str):
+                continue
+            if not _is_valid_identifier(name):
+                raise ValueError("`{}` is not a valid identifier".format(name))
+
+        # check allowed types
+        for p in six.itervalues(self.places):
+            if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
+                raise TypeError("Values in 'places' must be discretization, targets "
+                        "or layer potential sources.")
+
+        # check cl_context
+        from pytools import is_single_valued
+        cl_contexts = []
+        for p in six.itervalues(self.places):
+            if isinstance(p, (PotentialSource, Discretization)):
+                cl_contexts.append(p.cl_context)
+            elif isinstance(p, TargetBase):
+                nodes = p.nodes()[0]
+                if isinstance(nodes, cl.array.Array) and nodes.queue is not None:
+                    cl_contexts.append(nodes.queue.context)
+            else:
+                raise ValueError("unexpected value type in 'places'")
+
+        if not is_single_valued(cl_contexts):
+            raise RuntimeError("All 'places' must have the same CL context.")
+
+        self.cl_context = cl_contexts[0]
+
+        # check ambient_dim
+        ambient_dims = [p.ambient_dim for p in six.itervalues(self.places)]
+        if not is_single_valued(ambient_dims):
+            raise RuntimeError("All 'places' must have the same ambient dimension.")
+
+        self.ambient_dim = ambient_dims[0]
+
+        # }}}
 
     @property
     def auto_source(self):
@@ -592,14 +685,76 @@ class GeometryCollection(object):
     def auto_target(self):
         return self.auto_where[1]
 
-    def _get_lpot_discretization(self, lpot, dofdesc):
-        if dofdesc.discr_stage == sym.QBX_SOURCE_STAGE2:
-            return lpot.stage2_density_discr
-        if dofdesc.discr_stage == sym.QBX_SOURCE_QUAD_STAGE2:
-            return lpot.quad_stage2_density_discr
-        return lpot.density_discr
+    # {{{ cache handling
 
-    def get_discretization(self, dofdesc):
+    def _get_cache(self, name):
+        return self.caches.setdefault(name, {})
+
+    def _get_discr_from_cache(self, geometry, discr_stage):
+        cache = self._get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
+        key = (geometry, discr_stage)
+
+        if key not in cache:
+            raise KeyError("cached discretization does not exist on `{}`"
+                    "for stage `{}`".format(geometry, discr_stage))
+
+        return cache[key]
+
+    def _add_discr_to_cache(self, discr, geometry, discr_stage):
+        cache = self._get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
+        key = (geometry, discr_stage)
+
+        if key in cache:
+            raise RuntimeError("trying to overwrite the cache")
+
+        cache[key] = discr
+
+    def _get_conn_from_cache(self, geometry, from_stage, to_stage):
+        cache = self._get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+        key = (geometry, from_stage, to_stage)
+
+        if key not in cache:
+            raise KeyError("cached connection does not exist on `{}` "
+                    "from `{}` to `{}`".format(geometry, from_stage, to_stage))
+
+        return cache[key]
+
+    def _add_conn_to_cache(self, conn, geometry, from_stage, to_stage):
+        cache = self._get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+        key = (geometry, from_stage, to_stage)
+
+        if key in cache:
+            raise RuntimeError("trying to overwrite the cache")
+
+        cache[key] = conn
+
+    def _get_qbx_discretization(self, geometry, discr_stage):
+        lpot_source = self.get_geometry(geometry)
+
+        try:
+            discr = self._get_discr_from_cache(geometry, discr_stage)
+        except KeyError:
+            from pytential import sym
+            from pytential.qbx.refinement import _refine_for_global_qbx
+
+            with cl.CommandQueue(lpot_source.cl_context) as queue:
+                # NOTE: this adds the required discretizations to the cache
+                dofdesc = sym.DOFDescriptor(geometry, discr_stage)
+                _refine_for_global_qbx(self, dofdesc,
+                        lpot_source.refiner_code_container.get_wrangler(queue),
+                        _copy_collection=False)
+
+            discr = self._get_discr_from_cache(geometry, discr_stage)
+
+        return discr
+
+    # }}}
+
+    def get_connection(self, from_dd, to_dd):
+        from pytential.symbolic.dof_connection import connection_from_dds
+        return connection_from_dds(self, from_dd, to_dd)
+
+    def get_discretization(self, geometry, discr_stage=None):
         """
         :arg dofdesc: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
             specifying the desired discretization.
@@ -610,35 +765,48 @@ class GeometryCollection(object):
             the corresponding :class:`~meshmode.discretization.Discretization`
             in its attributes instead.
         """
-
-        dofdesc = sym.as_dofdesc(dofdesc)
-        if dofdesc.geometry in self.places:
-            discr = self.places[dofdesc.geometry]
-        else:
-            raise KeyError('geometry not in the collection: {}'.format(
-                dofdesc.geometry))
+        if discr_stage is None:
+            discr_stage = sym.QBX_SOURCE_STAGE1
+        discr = self.get_geometry(geometry)
 
         from pytential.qbx import QBXLayerPotentialSource
         from pytential.source import LayerPotentialSourceBase
 
         if isinstance(discr, QBXLayerPotentialSource):
-            return self._get_lpot_discretization(discr, dofdesc)
+            return self._get_qbx_discretization(geometry, discr_stage)
         elif isinstance(discr, LayerPotentialSourceBase):
             return discr.density_discr
         else:
             return discr
 
-    def get_geometry(self, dofdesc):
-        dofdesc = sym.as_dofdesc(dofdesc)
-        return self.places[dofdesc.geometry]
+    def get_geometry(self, geometry):
+        try:
+            return self.places[geometry]
+        except KeyError:
+            raise KeyError("geometry not in the collection: '{}'".format(
+                geometry))
 
-    def copy(self):
-        return GeometryCollection(
-                self.places,
-                auto_where=self.auto_where)
+    def copy(self, places=None, auto_where=None):
+        places = self.places if places is None else places
+        return type(self)(
+                places=places.copy(),
+                auto_where=self.auto_where if auto_where is None else auto_where)
 
-    def get_cache(self, name):
-        return self.caches.setdefault(name, {})
+    def merge(self, places):
+        """Merges two geometry collections and returns the new collection.
+
+        :arg places: A :class:`dict` or :class:`GeometryCollection` to
+            merge with the current collection. If it is empty, a copy of the
+            current collection is returned.
+        """
+
+        new_places = self.places.copy()
+        if places:
+            if isinstance(places, GeometryCollection):
+                places = places.places
+            new_places.update(places)
+
+        return self.copy(places=new_places)
 
     def __repr__(self):
         return "%s(%s)" % (type(self).__name__, repr(self.places))
@@ -653,7 +821,7 @@ class GeometryCollection(object):
 
 class BoundExpression(object):
     """An expression readied for evaluation by binding it to a
-    :class:`GeometryCollection`.
+    :class:`~pytential.symbolic.execution.GeometryCollection`.
 
     .. automethod :: cost_per_stage
     .. automethod :: cost_per_box
@@ -672,8 +840,8 @@ class BoundExpression(object):
         from pytential.symbolic.compiler import OperatorCompiler
         self.code = OperatorCompiler(self.places)(sym_op_expr)
 
-    def get_discretization(self, where):
-        return self.places.get_discretization(where)
+    def _get_cache(self, name):
+        return self.caches.setdefault(name, {})
 
     def cost_per_stage(self, queue, calibration_params, **args):
         """
@@ -736,7 +904,9 @@ class BoundExpression(object):
             if dom_name is None:
                 size = 1
             else:
-                size = self.places.get_geometry(dom_name).nnodes
+                discr = self.places.get_discretization(
+                        dom_name.geometry, dom_name.discr_stage)
+                size = discr.nnodes
 
             starts_and_ends.append((total_dofs, total_dofs+size))
             total_dofs += size
@@ -780,7 +950,7 @@ class BoundExpression(object):
 
 def bind(places, expr, auto_where=None):
     """
-    :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
     :arg auto_where: for simple source-to-self or source-to-target
@@ -791,10 +961,10 @@ def bind(places, expr, auto_where=None):
         in the form of a :mod:`numpy` object array
     :returns: a :class:`BoundExpression`
     """
-
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
-    expr = _prepare_expr(places, expr)
+        auto_where = places.auto_where
+    expr = _prepare_expr(places, expr, auto_where=auto_where)
 
     return BoundExpression(places, expr)
 
@@ -837,7 +1007,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
     :arg queue: a :class:`pyopencl.CommandQueue`.
-    :arg places: a :class:`pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
     :arg exprs: an array of expressions corresponding to the output block
@@ -857,10 +1027,11 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
     if context is None:
         context = {}
 
+    from pytential import GeometryCollection
     from pytools.obj_array import is_obj_array, make_obj_array
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
-    exprs = _prepare_expr(places, exprs)
+    exprs = _prepare_expr(places, exprs, auto_where=auto_where)
 
     if not is_obj_array(exprs):
         exprs = make_obj_array([exprs])
@@ -880,13 +1051,17 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
 
     dtypes = []
     for ibcol in range(nblock_columns):
+        dep_source = places.get_geometry(domains[ibcol].geometry)
+        dep_discr = places.get_discretization(
+                domains[ibcol].geometry, domains[ibcol].discr_stage)
+
         mbuilder = MatrixBuilder(
                 queue,
                 dep_expr=input_exprs[ibcol],
                 other_dep_exprs=(input_exprs[:ibcol]
                                  + input_exprs[ibcol + 1:]),
-                dep_source=places.get_geometry(domains[ibcol]),
-                dep_discr=places.get_discretization(domains[ibcol]),
+                dep_source=dep_source,
+                dep_discr=dep_discr,
                 places=places,
                 context=context)
 

@@ -36,7 +36,9 @@ from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh, NArmedStarfish)
 from sumpy.visualization import FieldPlotter
+
 from pytential import bind, sym, norm
+from pytential import GeometryCollection
 
 import logging
 logger = logging.getLogger(__name__)
@@ -79,7 +81,7 @@ def test_geometry(ctx_factory):
 # {{{ test off-surface eval
 
 @pytest.mark.parametrize("use_fmm", [True, False])
-def test_off_surface_eval(ctx_factory, use_fmm, do_plot=False):
+def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_factory()
@@ -108,32 +110,32 @@ def test_off_surface_eval(ctx_factory, use_fmm, do_plot=False):
 
     pre_density_discr = Discretization(
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
             pre_density_discr,
             4*target_order,
             qbx_order,
             fmm_order=fmm_order,
-            ).with_refinement()
+            )
 
-    density_discr = qbx.density_discr
+    from pytential.target import PointsTarget
+    fplot = FieldPlotter(np.zeros(2), extent=0.54, npoints=30)
+    targets = PointsTarget(fplot.points)
+
+    places = GeometryCollection((qbx, targets))
+    density_discr = places.get_discretization(places.auto_source.geometry)
 
     from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2)
 
     sigma = density_discr.zeros(queue) + 1
+    fld_in_vol = bind(places, op)(queue, sigma=sigma)
+    fld_in_vol_exact = -1
 
-    fplot = FieldPlotter(np.zeros(2), extent=0.54, npoints=30)
-    from pytential.target import PointsTarget
-    fld_in_vol = bind(
-            (qbx, PointsTarget(fplot.points)),
-            op)(queue, sigma=sigma)
-
-    err = cl.clmath.fabs(fld_in_vol - (-1))
-
+    err = cl.clmath.fabs(fld_in_vol - fld_in_vol_exact)
     linf_err = cl.array.max(err).get()
     print("l_inf error:", linf_err)
 
-    if do_plot:
+    if visualize:
         fplot.show_scalar_in_matplotlib(fld_in_vol.get())
         import matplotlib.pyplot as pt
         pt.colorbar()
@@ -171,41 +173,48 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
 
     pre_density_discr = Discretization(
             cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
-    direct_qbx, _ = QBXLayerPotentialSource(
+    direct_qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=False,
             target_association_tolerance=0.05,
-            ).with_refinement()
-    fmm_qbx, _ = QBXLayerPotentialSource(
+            )
+    fmm_qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order + 3,
             _expansions_in_tree_have_extent=True,
             target_association_tolerance=0.05,
-            ).with_refinement()
+            )
 
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
     from pytential.target import PointsTarget
     ptarget = PointsTarget(fplot.points)
     from sumpy.kernel import LaplaceKernel
 
-    op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
+    places = GeometryCollection({
+        "direct_qbx": direct_qbx,
+        "fmm_qbx": fmm_qbx,
+        "target": ptarget})
+
+    direct_density_discr = places.get_discretization("direct_qbx")
+    fmm_density_discr = places.get_discretization("fmm_qbx")
 
     from pytential.qbx import QBXTargetAssociationFailedException
+    op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
     try:
-        direct_density_discr = direct_qbx.density_discr
         direct_sigma = direct_density_discr.zeros(queue) + 1
-        direct_fld_in_vol = bind((direct_qbx, ptarget), op)(
-                queue, sigma=direct_sigma)
-
+        direct_fld_in_vol = bind(places, op,
+                auto_where=("direct_qbx", "target"))(
+                        queue, sigma=direct_sigma)
     except QBXTargetAssociationFailedException as e:
         fplot.show_scalar_in_matplotlib(e.failed_target_flags.get(queue))
         import matplotlib.pyplot as pt
         pt.show()
         raise
 
-    fmm_density_discr = fmm_qbx.density_discr
     fmm_sigma = fmm_density_discr.zeros(queue) + 1
-    fmm_fld_in_vol = bind((fmm_qbx, ptarget), op)(queue, sigma=fmm_sigma)
+    fmm_fld_in_vol = bind(places, op,
+            auto_where=("fmm_qbx", "target"))(
+                    queue, sigma=fmm_sigma)
 
     err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
 
@@ -246,23 +255,29 @@ def test_unregularized_with_ones_kernel(ctx_factory):
             InterpolatoryQuadratureSimplexGroupFactory(order))
 
     from pytential.unregularized import UnregularizedLayerPotentialSource
-    lpot_src = UnregularizedLayerPotentialSource(discr)
+    lpot_source = UnregularizedLayerPotentialSource(discr)
+    from pytential.target import PointsTarget
+    targets = PointsTarget(np.zeros((2, 1), dtype=float))
+
+    places = GeometryCollection({
+        sym.DEFAULT_SOURCE: lpot_source,
+        sym.DEFAULT_TARGET: lpot_source,
+        "target_non_self": targets})
 
     from sumpy.kernel import one_kernel_2d
+    sigma_sym = sym.var("sigma")
+    op = sym.IntG(one_kernel_2d, sigma_sym, qbx_forced_limit=None)
 
-    expr = sym.IntG(one_kernel_2d, sym.var("sigma"), qbx_forced_limit=None)
+    sigma = cl.array.zeros(queue, discr.nnodes, dtype=float)
+    sigma.fill(1)
+    sigma.finish()
 
-    from pytential.target import PointsTarget
-    op_self = bind(lpot_src, expr)
-    op_nonself = bind((lpot_src, PointsTarget(np.zeros((2, 1), dtype=float))), expr)
-
-    with cl.CommandQueue(cl_ctx) as queue:
-        sigma = cl.array.zeros(queue, discr.nnodes, dtype=float)
-        sigma.fill(1)
-        sigma.finish()
-
-        result_self = op_self(queue, sigma=sigma)
-        result_nonself = op_nonself(queue, sigma=sigma)
+    result_self = bind(places, op,
+            auto_where=places.auto_where)(
+                    queue, sigma=sigma)
+    result_nonself = bind(places, op,
+            auto_where=(places.auto_source, "target_non_self"))(
+                    queue, sigma=sigma)
 
     assert np.allclose(result_self.get(), 2 * np.pi)
     assert np.allclose(result_nonself.get(), 2 * np.pi)
@@ -275,6 +290,8 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
     nelements = 300
     target_order = 8
     fmm_order = 4
+
+    # {{{ geometry
 
     mesh = make_curve_mesh(WobblyCircle.random(8, seed=30),
                 np.linspace(0, 1, nelements+1),
@@ -299,18 +316,34 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=100)
     from pytential.target import PointsTarget
     ptarget = PointsTarget(fplot.points)
-    from sumpy.kernel import LaplaceKernel
 
+    from pytential import GeometryCollection
+    places = GeometryCollection({
+        "unregularized_direct": direct,
+        "unregularized_fmm": fmm,
+        "targets": ptarget})
+
+    # }}}
+
+    # {{{ check
+
+    from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
 
-    direct_fld_in_vol = bind((direct, ptarget), op)(queue, sigma=sigma)
-    fmm_fld_in_vol = bind((fmm, ptarget), op)(queue, sigma=sigma)
+    direct_fld_in_vol = bind(places, op,
+            auto_where=("unregularized_direct", "targets"))(
+                    queue, sigma=sigma)
+    fmm_fld_in_vol = bind(places, op,
+            auto_where=("unregularized_fmm", "targets"))(queue, sigma=sigma)
 
     err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
 
     linf_err = cl.array.max(err).get()
     print("l_inf error:", linf_err)
+
     assert linf_err < 5e-3
+
+    # }}}
 
 # }}}
 
@@ -348,12 +381,15 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                 InterpolatoryQuadratureSimplexGroupFactory(3))
 
         from pytential.qbx import QBXLayerPotentialSource
-        qbx, _ = QBXLayerPotentialSource(
+        qbx = QBXLayerPotentialSource(
                 pre_discr, fine_order=4*target_order,
                 qbx_order=qbx_order,
                 fmm_order=qbx_order + 5,
                 fmm_backend="fmmlib"
-                ).with_refinement()
+                )
+
+        places = GeometryCollection(qbx)
+        density_discr = places.get_discretization(places.auto_source.geometry)
 
         from sumpy.kernel import LaplaceKernel
         knl = LaplaceKernel(3)
@@ -365,7 +401,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                 sym.cse(sym.tangential_to_xyz(density_sym), "jxyz"),
                 qbx_forced_limit=qbx_forced_limit)))
 
-        x, y, z = qbx.density_discr.nodes().with_queue(queue)
+        x, y, z = density_discr.nodes().with_queue(queue)
         m = cl.clmath
 
         if relation == "nxcurls":
@@ -379,8 +415,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
             # conjure up some globally smooth functions, interpret their values
             # in the tangential coordinate system, and be done. Instead, generate
             # an XYZ function and project it.
-            density = bind(
-                    qbx,
+            density = bind(places,
                     sym.xyz_to_tangential(sym.make_sym_vector("jxyz", 3)))(
                             queue,
                             jxyz=sym.make_obj_array([
@@ -412,13 +447,13 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
         else:
             raise ValueError("unexpected value of 'relation': %s" % relation)
 
-        bound_jump_identity = bind(qbx, jump_identity_sym)
+        bound_jump_identity = bind(places, jump_identity_sym)
         jump_identity = bound_jump_identity(queue, density=density)
 
-        h_max = bind(qbx, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
         err = (
-                norm(qbx, queue, jump_identity, np.inf)
-                / norm(qbx, queue, density, np.inf))
+                norm(density_discr, queue, jump_identity, np.inf)
+                / norm(density_discr, queue, density, np.inf))
         print("ERROR", h_max, err)
 
         eoc_rec.add_data_point(h_max, err)
@@ -426,15 +461,15 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
         # {{{ visualization
 
         if visualize and relation == "nxcurls":
-            nxcurlS_ext = bind(qbx, nxcurlS(+1))(queue, density=density)
-            nxcurlS_avg = bind(qbx, nxcurlS("avg"))(queue, density=density)
-            jtxyz = bind(qbx, sym.tangential_to_xyz(density_sym))(
+            nxcurlS_ext = bind(places, nxcurlS(+1))(queue, density=density)
+            nxcurlS_avg = bind(places, nxcurlS("avg"))(queue, density=density)
+            jtxyz = bind(places, sym.tangential_to_xyz(density_sym))(
                     queue, density=density)
 
             from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, qbx.density_discr, target_order+3)
 
-            bdry_normals = bind(qbx, sym.normal(3))(queue)\
+            bdry_normals = bind(places, sym.normal(3))(queue)\
                     .as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % nel_factor, [
@@ -445,16 +480,16 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                 ])
 
         if visualize and relation == "sp":
-            sp_ext = bind(qbx, sym.Sp(knl, density_sym, qbx_forced_limit=+1))(
-                    queue, density=density)
-            sp_avg = bind(qbx, sym.Sp(knl, density_sym, qbx_forced_limit="avg"))(
-                    queue, density=density)
+            op = sym.Sp(knl, density_sym, qbx_forced_limit=+1)
+            sp_ext = bind(places, op)(queue, density=density)
+            op = sym.Sp(knl, density_sym, qbx_forced_limit="avg")
+            sp_avg = bind(places, op)(queue, density=density)
 
             from meshmode.discretization.visualization import make_visualizer
             bdry_vis = make_visualizer(queue, qbx.density_discr, target_order+3)
 
-            bdry_normals = bind(qbx, sym.normal(3))(queue)\
-                    .as_vector(dtype=object)
+            bdry_normals = bind(places,
+                    sym.normal(3))(queue).as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % nel_factor, [
                 ("density", density),

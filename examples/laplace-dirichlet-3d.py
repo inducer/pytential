@@ -7,7 +7,7 @@ from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
 
-from pytential import bind, sym, norm  # noqa
+from pytential import bind, sym
 from pytential.target import PointsTarget
 
 # {{{ set some constants for use below
@@ -22,18 +22,18 @@ fmm_order = 3
 # }}}
 
 
-def main():
+def main(mesh_name="torus", visualize=False):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
 
-    from meshmode.mesh.generation import generate_torus
+    if mesh_name == "torus":
+        rout = 10
+        rin = 1
 
-    rout = 10
-    rin = 1
-    if 1:
+        from meshmode.mesh.generation import generate_torus
         base_mesh = generate_torus(
                 rout, rin, 40, 4,
                 mesh_order)
@@ -52,11 +52,13 @@ def main():
 
         mesh = merge_disjoint_meshes(meshes, single_group=True)
 
-        if 0:
+        if visualize:
             from meshmode.mesh.visualization import draw_curve
             draw_curve(mesh)
             import matplotlib.pyplot as plt
             plt.show()
+    else:
+        raise ValueError("unknown mesh name: {}".format(mesh_name))
 
     pre_density_discr = Discretization(
             cl_ctx, mesh,
@@ -64,23 +66,32 @@ def main():
 
     from pytential.qbx import (
             QBXLayerPotentialSource, QBXTargetAssociationFailedException)
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order,
-            ).with_refinement()
-    density_discr = qbx.density_discr
+            )
+
+    from sumpy.visualization import FieldPlotter
+    fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)
+    targets = cl.array.to_device(queue, fplot.points)
+
+    from pytential import GeometryCollection
+    places = GeometryCollection({
+        "qbx": qbx,
+        "qbx_target_assoc": qbx.copy(target_association_tolerance=0.2),
+        "targets": PointsTarget(targets)
+        }, auto_where="qbx")
+    density_discr = places.get_discretization("qbx")
 
     # {{{ describe bvp
 
     from sumpy.kernel import LaplaceKernel
     kernel = LaplaceKernel(3)
 
-    cse = sym.cse
-
     sigma_sym = sym.var("sigma")
     #sqrt_w = sym.sqrt_jac_q_weight(3)
     sqrt_w = 1
-    inv_sqrt_w_sigma = cse(sigma_sym/sqrt_w)
+    inv_sqrt_w_sigma = sym.cse(sigma_sym/sqrt_w)
 
     # -1 for interior Dirichlet
     # +1 for exterior Dirichlet
@@ -88,13 +99,13 @@ def main():
 
     bdry_op_sym = (loc_sign*0.5*sigma_sym
             + sqrt_w*(
-                sym.S(kernel, inv_sqrt_w_sigma)
-                + sym.D(kernel, inv_sqrt_w_sigma)
+                sym.S(kernel, inv_sqrt_w_sigma, qbx_forced_limit=+1)
+                + sym.D(kernel, inv_sqrt_w_sigma, qbx_forced_limit="avg")
                 ))
 
     # }}}
 
-    bound_op = bind(qbx, bdry_op_sym)
+    bound_op = bind(places, bdry_op_sym)
 
     # {{{ fix rhs and solve
 
@@ -109,7 +120,7 @@ def main():
 
     bc = cl.array.to_device(queue, u_incoming_func(nodes))
 
-    bvp_rhs = bind(qbx, sqrt_w*sym.var("bc"))(queue, bc=bc)
+    bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(queue, bc=bc)
 
     from pytential.solve import gmres
     gmres_result = gmres(
@@ -118,7 +129,8 @@ def main():
             stall_iterations=0,
             hard_failure=True)
 
-    sigma = bind(qbx, sym.var("sigma")/sqrt_w)(queue, sigma=gmres_result.solution)
+    sigma = bind(places, sym.var("sigma")/sqrt_w)(
+            queue, sigma=gmres_result.solution)
 
     # }}}
 
@@ -130,38 +142,27 @@ def main():
 
     # {{{ postprocess/visualize
 
-    repr_kwargs = dict(qbx_forced_limit=None)
+    repr_kwargs = dict(
+            source="qbx_target_assoc",
+            target="targets",
+            qbx_forced_limit=None)
     representation_sym = (
             sym.S(kernel, inv_sqrt_w_sigma, **repr_kwargs)
             + sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
 
-    from sumpy.visualization import FieldPlotter
-    fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)
-
-    targets = cl.array.to_device(queue, fplot.points)
-
-    qbx_stick_out = qbx.copy(target_stick_out_factor=0.2)
-
     try:
-        fld_in_vol = bind(
-                (qbx_stick_out, PointsTarget(targets)),
-                representation_sym)(queue, sigma=sigma).get()
+        fld_in_vol = bind(places, representation_sym)(
+                queue, sigma=sigma).get()
     except QBXTargetAssociationFailedException as e:
-        fplot.write_vtk_file(
-                "failed-targets.vts",
-                [
-                    ("failed", e.failed_target_flags.get(queue))
-                    ]
-                )
+        fplot.write_vtk_file("laplace-dirichlet-3d-failed-targets.vts", [
+            ("failed", e.failed_target_flags.get(queue)),
+            ])
         raise
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-    fplot.write_vtk_file(
-            "potential-laplace-3d.vts",
-            [
-                ("potential", fld_in_vol),
-                ]
-            )
+    fplot.write_vtk_file("laplace-dirichlet-3d-potential.vts", [
+        ("potential", fld_in_vol),
+        ])
 
     # }}}
 

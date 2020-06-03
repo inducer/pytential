@@ -24,7 +24,6 @@ def main():
         kernel = HelmholtzKernel(2)
     else:
         kernel = LaplaceKernel(2)
-    #kernel = OneKernel()
 
     mesh = make_curve_mesh(
             #lambda t: ellipse(1, t),
@@ -41,16 +40,24 @@ def main():
             cl_ctx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    slow_qbx, _ = QBXLayerPotentialSource(
+    unaccel_qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=2*target_order,
             qbx_order=qbx_order, fmm_order=False,
             target_association_tolerance=.05
-            ).with_refinement()
-    qbx = slow_qbx.copy(fmm_order=10)
-    density_discr = slow_qbx.density_discr
+            )
+
+    from pytential.target import PointsTarget
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=600)
+
+    from pytential import GeometryCollection
+    places = GeometryCollection({
+        "unaccel_qbx": unaccel_qbx,
+        "qbx": unaccel_qbx.copy(fmm_order=10),
+        "targets": PointsTarget(fplot.points)
+        })
+    density_discr = places.get_discretization("unaccel_qbx")
 
     nodes = density_discr.nodes().with_queue(queue)
-
     angle = cl.clmath.atan2(nodes[1], nodes[0])
 
     from pytential import bind, sym
@@ -63,21 +70,20 @@ def main():
     if isinstance(kernel, HelmholtzKernel):
         sigma = sigma.astype(np.complex128)
 
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=600)
-    from pytential.target import PointsTarget
+    fld_in_vol = bind(places, op, auto_where=("unaccel_qbx", "targets"))(
+            queue, sigma=sigma, k=k).get()
 
-    fld_in_vol = bind(
-            (slow_qbx, PointsTarget(fplot.points)),
-            op)(queue, sigma=sigma, k=k).get()
-
-    fmm_fld_in_vol = bind(
-            (qbx, PointsTarget(fplot.points)),
-            op)(queue, sigma=sigma, k=k).get()
+    fmm_fld_in_vol = bind(places, op, auto_where=("qbx", "targets"))(
+            queue, sigma=sigma, k=k).get()
 
     err = fmm_fld_in_vol-fld_in_vol
 
-    import matplotlib
-    matplotlib.use('Agg')
+    try:
+        import matplotlib
+    except ImportError:
+        return
+
+    matplotlib.use("Agg")
     im = fplot.show_scalar_in_matplotlib(np.log10(np.abs(err) + 1e-17))
 
     from matplotlib.colors import Normalize
@@ -89,7 +95,7 @@ def main():
     pt.gca().yaxis.set_major_formatter(NullFormatter())
 
     cb = pt.colorbar(shrink=0.9)
-    cb.set_label(r"$\log_{10}(\mathdefault{Error})$")
+    cb.set_label(r"$\log_{10}(\mathrm{Error})$")
 
     pt.savefig("fmm-error-order-%d.pdf" % qbx_order)
 

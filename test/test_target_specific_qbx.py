@@ -37,7 +37,9 @@ from meshmode.mesh.generation import (  # noqa
         NArmedStarfish,
         make_curve_mesh)
 
-from pytential import bind, sym, norm  # noqa
+from pytential import bind, sym
+from pytential import GeometryCollection
+
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 import logging
@@ -154,13 +156,7 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
-
-    refiner_extra_kwargs = {}
-
-    if helmholtz_k != 0:
-        refiner_extra_kwargs["kernel_length_scale"] = 5 / abs(helmholtz_k)
-
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order,
             qbx_order=qbx_order,
             fmm_level_to_order=SimpleExpansionOrderFinder(fmm_tol),
@@ -168,10 +164,20 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
             _expansions_in_tree_have_extent=True,
             _expansion_stick_out_factor=0.9,
             _use_target_specific_qbx=False,
-            ).with_refinement(**refiner_extra_kwargs)
+            )
 
-    density_discr = qbx.density_discr
+    kernel_length_scale = 5 / abs(helmholtz_k) if helmholtz_k else None
+    places = {
+        "qbx": qbx,
+        "qbx_target_specific": qbx.copy(_use_target_specific_qbx=True)
+        }
 
+    from pytential.qbx.refinement import refine_geometry_collection
+    places = GeometryCollection(places, auto_where="qbx")
+    places = refine_geometry_collection(queue, places,
+            kernel_length_scale=kernel_length_scale)
+
+    density_discr = places.get_discretization("qbx")
     nodes = density_discr.nodes().with_queue(queue)
     u_dev = clmath.sin(nodes[0])
 
@@ -195,11 +201,10 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
 
     expr = op(kernel, u_sym, qbx_forced_limit=-1, **kernel_kwargs)
 
-    bound_op = bind(qbx, expr)
+    bound_op = bind(places, expr)
     pot_ref = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 
-    qbx = qbx.copy(_use_target_specific_qbx=True)
-    bound_op = bind(qbx, expr)
+    bound_op = bind(places, expr, auto_where="qbx_target_specific")
     pot_tsqbx = bound_op(queue, u=u_dev, k=helmholtz_k).get()
 
     assert np.allclose(pot_tsqbx, pot_ref, atol=1e-13, rtol=1e-13)

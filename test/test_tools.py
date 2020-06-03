@@ -22,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import partial
+
 import pytest
 
 import numpy as np
@@ -92,6 +94,77 @@ def test_interpolatory_error_reporting(ctx_factory):
     one.fill(1)
     with pytest.raises(TypeError):
         print("AREA", integral(vol_discr, queue, one), 0.25**2*np.pi)
+
+
+def test_geometry_collection_caching(ctx_factory):
+    # NOTE: checks that the on-demand caching works properly in
+    # the `GeometryCollection`. This is done by constructing a few separated
+    # spheres, putting a few `QBXLayerPotentialSource`s on them and requesting
+    # the `nodes` on each `discr_stage`.
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    ndim = 2
+    nelements = 1024
+    target_order = 7
+    qbx_order = 4
+    ngeometry = 3
+
+    # construct discretizations
+    from meshmode.mesh.generation import ellipse, make_curve_mesh
+    from meshmode.mesh.processing import affine_map
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+
+    discrs = []
+    radius = 1.0
+    for k in range(ngeometry):
+        if k == 0:
+            mesh = make_curve_mesh(partial(ellipse, radius),
+                    np.linspace(0.0, 1.0, nelements + 1),
+                    target_order)
+        else:
+            mesh = affine_map(discrs[0].mesh,
+                    b=np.array([3 * k * radius, 0]))
+
+        discr = Discretization(ctx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+        discrs.append(discr)
+
+    # construct qbx source
+    from pytential.qbx import QBXLayerPotentialSource
+
+    lpots = []
+    sources = ["source_{}".format(k) for k in range(ngeometry)]
+    for k, density_discr in enumerate(discrs):
+        qbx = QBXLayerPotentialSource(density_discr,
+            fine_order=2 * target_order,
+            qbx_order=qbx_order,
+            fmm_order=False)
+        lpots.append(qbx)
+
+    # construct a geometry collection
+    from pytential import GeometryCollection
+    places = GeometryCollection(dict(zip(sources, lpots)))
+    print(places.places)
+
+    # check on-demand refinement
+    from pytential import bind, sym
+    discr_stages = [sym.QBX_SOURCE_STAGE1,
+            sym.QBX_SOURCE_STAGE2,
+            sym.QBX_SOURCE_QUAD_STAGE2]
+
+    for k in range(ngeometry):
+        for discr_stage in discr_stages:
+            with pytest.raises(KeyError):
+                discr = places._get_discr_from_cache(sources[k], discr_stage)
+
+            dofdesc = sym.DOFDescriptor(sources[k], discr_stage=discr_stage)
+            bind(places, sym.nodes(ndim, dofdesc=dofdesc))(queue)
+
+            discr = places._get_discr_from_cache(sources[k], discr_stage)
+            assert discr is not None
 
 
 # You can test individual routines by typing

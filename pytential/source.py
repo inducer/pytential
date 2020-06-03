@@ -150,7 +150,8 @@ class PointPotentialSource(PotentialSource):
         # FIXME: Do this all at once
         result = []
         for o in insn.outputs:
-            target_discr = bound_expr.get_discretization(o.target_name)
+            target_discr = bound_expr.places.get_discretization(
+                    o.target_name.geometry, o.target_name.discr_stage)
 
             # no on-disk kernel caching
             if p2p is None:
@@ -165,14 +166,6 @@ class PointPotentialSource(PotentialSource):
         timing_data = {}
         return result, timing_data
 
-    @memoize_method
-    def weights_and_area_elements(self):
-        with cl.CommandQueue(self.cl_context) as queue:
-            result = cl.array.empty(queue, self.nnodes, dtype=self.real_dtype)
-            result.fill(1)
-
-        return result.with_queue(None)
-
 # }}}
 
 
@@ -182,15 +175,9 @@ class LayerPotentialSourceBase(PotentialSource):
     """A discretization of a layer potential using panel-based geometry, with
     support for refinement and upsampling.
 
-    .. rubric:: Discretizations
-
-    .. attribute:: density_discr
-    .. attribute:: stage2_density_discr
-    .. attribute:: quad_stage2_density_discr
-    .. attribute:: resampler
-
     .. rubric:: Discretization data
 
+    .. attribute:: density_discr
     .. attribute:: cl_context
     .. attribute:: ambient_dim
     .. attribute:: dim
@@ -199,22 +186,12 @@ class LayerPotentialSourceBase(PotentialSource):
 
     .. rubric:: Execution
 
+    .. automethod:: cost_model_compute_potential_insn
+    .. automethod:: exec_compute_potential_insn
     """
 
     def __init__(self, density_discr):
         self.density_discr = density_discr
-
-    @property
-    def stage2_density_discr(self):
-        raise NotImplementedError
-
-    @property
-    def quad_stage2_density_discr(self):
-        raise NotImplementedError
-
-    @property
-    def resampler(self):
-        raise NotImplementedError
 
     @property
     def ambient_dim(self):

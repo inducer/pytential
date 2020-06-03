@@ -36,6 +36,7 @@ from boxtree.tools import ConstantOneExpansionWrangler
 from pytential.qbx import QBXLayerPotentialSource
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 from pytential import bind, sym, norm  # noqa
+from pytential import GeometryCollection
 from pytools import one
 
 from pytential.qbx.cost import (
@@ -75,14 +76,20 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
         InterpolatoryQuadratureSimplexGroupFactory(target_order)
     )
 
-    qbx, _ = QBXLayerPotentialSource(
+    qbx = QBXLayerPotentialSource(
         pre_density_discr, 4 * target_order,
         qbx_order,
         fmm_order=fmm_order
-    ).with_refinement()
+    )
+    places = GeometryCollection(qbx)
+
+    from pytential.qbx.refinement import refine_geometry_collection
+    places = refine_geometry_collection(queue, places)
 
     target_discrs_and_qbx_sides = tuple([(qbx.density_discr, 0)])
-    geo_data_dev = qbx.qbx_fmm_geometry_data(target_discrs_and_qbx_sides)
+    geo_data_dev = qbx.qbx_fmm_geometry_data(
+        places, places.auto_source.geometry, target_discrs_and_qbx_sides
+    )
 
     from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
     geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data_dev)
@@ -317,14 +324,11 @@ def get_lpot_source(queue, dim):
             pre_density_discr, OVSMP_FACTOR*target_order,
             **lpot_kwargs)
 
-    lpot_source, _ = lpot_source.with_refinement()
-
     return lpot_source
 
 
-def get_density(queue, lpot_source):
-    density_discr = lpot_source.density_discr
-    nodes = density_discr.nodes().with_queue(queue)
+def get_density(queue, discr):
+    nodes = discr.nodes().with_queue(queue)
     return cl.clmath.sin(10 * nodes[0])
 
 # }}}
@@ -342,13 +346,17 @@ def test_timing_data_gathering(ctx_factory):
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     lpot_source = get_lpot_source(queue, 2)
-    sigma = get_density(queue, lpot_source)
+    places = GeometryCollection(lpot_source)
+
+    dofdesc = places.auto_source.to_stage1()
+    density_discr = places.get_discretization(dofdesc.geometry)
+    sigma = get_density(queue, density_discr)
 
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
 
-    op_S = bind(lpot_source, sym_op_S)
+    op_S = bind(places, sym_op_S)
 
     timing_data = {}
     op_S.eval(queue, dict(sigma=sigma), timing_data=timing_data)
@@ -372,19 +380,19 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
 
-    lpot_source = (
-            get_lpot_source(queue, dim)
-            .copy(
-                _use_target_specific_qbx=use_target_specific_qbx,
-                cost_model=QBXCostModel(queue)))
+    lpot_source = get_lpot_source(queue, dim).copy(
+            _use_target_specific_qbx=use_target_specific_qbx,
+            cost_model=QBXCostModel(queue))
+    places = GeometryCollection(lpot_source)
 
-    sigma = get_density(queue, lpot_source)
+    density_discr = places.get_discretization(places.auto_source.geometry)
+    sigma = get_density(queue, density_discr)
 
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
-    op_S = bind(lpot_source, sym_op_S)
+    op_S = bind(places, sym_op_S)
 
     if per_box:
         cost_S, _ = op_S.cost_per_box(queue, "constant_one", sigma=sigma)
@@ -396,7 +404,7 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
             + sym.D(k_sym, sigma_sym, qbx_forced_limit="avg"))
-    op_S_plus_D = bind(lpot_source, sym_op_S_plus_D)
+    op_S_plus_D = bind(places, sym_op_S_plus_D)
 
     if per_box:
         cost_S_plus_D, _ = op_S_plus_D.cost_per_box(
@@ -425,15 +433,17 @@ def test_cost_model_metadata_gathering(ctx_factory):
 
     lpot_source = get_lpot_source(queue, 2).copy(
             fmm_level_to_order=fmm_level_to_order)
+    places = GeometryCollection(lpot_source)
 
-    sigma = get_density(queue, lpot_source)
+    density_discr = places.get_discretization(places.auto_source.geometry)
+    sigma = get_density(queue, density_discr)
 
     sigma_sym = sym.var("sigma")
     k_sym = HelmholtzKernel(2, "k")
     k = 2
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1, k=sym.var("k"))
-    op_S = bind(lpot_source, sym_op_S)
+    op_S = bind(places, sym_op_S)
 
     _, metadata = op_S.cost_per_stage(
         queue, "constant_one", sigma=sigma, k=k, return_metadata=True
@@ -441,7 +451,9 @@ def test_cost_model_metadata_gathering(ctx_factory):
     metadata = one(metadata.values())
 
     geo_data = lpot_source.qbx_fmm_geometry_data(
-            target_discrs_and_qbx_sides=((lpot_source.density_discr, 1),))
+            places,
+            places.auto_source,
+            target_discrs_and_qbx_sides=((density_discr, 1),))
 
     tree = geo_data.tree()
 
@@ -703,14 +715,18 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
         targets = lpot_source.density_discr
         target_discrs_and_qbx_sides = ((targets, 1),)
         qbx_forced_limit = 1
+    places = GeometryCollection((lpot_source, targets))
+
+    source_dd = places.auto_source
+    density_discr = places.get_discretization(source_dd.geometry)
 
     # Construct bound op, run cost model.
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=qbx_forced_limit)
 
-    op_S = bind((lpot_source, targets), sym_op_S)
-    sigma = get_density(queue, lpot_source)
+    op_S = bind(places, sym_op_S)
+    sigma = get_density(queue, density_discr)
 
     from pytools import one
     modeled_time, _ = op_S.cost_per_stage(queue, "constant_one", sigma=sigma)
@@ -720,11 +736,15 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     # high-level interface, so call the FMM driver directly.
     from pytential.qbx.fmm import drive_fmm
     geo_data = lpot_source.qbx_fmm_geometry_data(
+            places, source_dd.geometry,
             target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
 
     wrangler = ConstantOneQBXExpansionWrangler(
             queue, geo_data, use_target_specific_qbx)
-    nnodes = lpot_source.quad_stage2_density_discr.nnodes
+
+    quad_stage2_density_discr = places.get_discretization(
+            source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
+    nnodes = quad_stage2_density_discr.nnodes
     src_weights = np.ones(nnodes)
 
     timing_data = {}
@@ -787,15 +807,17 @@ def test_cost_model_order_varying_by_level(ctx_factory):
     lpot_source = get_lpot_source(queue, 2).copy(
             cost_model=QBXCostModel(queue),
             fmm_level_to_order=level_to_order_constant)
+    places = GeometryCollection(lpot_source)
 
+    density_discr = places.get_discretization(places.auto_source.geometry)
     sigma_sym = sym.var("sigma")
 
     k_sym = LaplaceKernel(2)
     sym_op = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
 
-    sigma = get_density(queue, lpot_source)
+    sigma = get_density(queue, density_discr)
 
-    cost_constant, metadata = bind(lpot_source, sym_op).cost_per_stage(
+    cost_constant, metadata = bind(places, sym_op).cost_per_stage(
         queue, "constant_one", sigma=sigma
     )
 
@@ -812,8 +834,11 @@ def test_cost_model_order_varying_by_level(ctx_factory):
     lpot_source = get_lpot_source(queue, 2).copy(
             cost_model=QBXCostModel(queue),
             fmm_level_to_order=level_to_order_varying)
+    places = GeometryCollection(lpot_source)
 
-    sigma = get_density(queue, lpot_source)
+    density_discr = places.get_discretization(places.auto_source.geometry)
+
+    sigma = get_density(queue, density_discr)
 
     cost_varying, _ = bind(lpot_source, sym_op).cost_per_stage(
         queue, "constant_one", sigma=sigma

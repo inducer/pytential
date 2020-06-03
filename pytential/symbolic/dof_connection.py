@@ -26,6 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
 import pyopencl as cl
 import pyopencl.array # noqa
 from pytools import memoize
@@ -214,10 +215,13 @@ def connection_from_dds(places, from_dd, to_dd):
     from_dd = sym.as_dofdesc(from_dd)
     to_dd = sym.as_dofdesc(to_dd)
 
-    from pytential.symbolic.execution import GeometryCollection
+    from pytential import GeometryCollection
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places)
-    from_discr = places.get_geometry(from_dd)
+
+    lpot = places.get_geometry(from_dd.geometry)
+    from_discr = places.get_discretization(from_dd.geometry, from_dd.discr_stage)
+    to_discr = places.get_discretization(to_dd.geometry, to_dd.discr_stage)
 
     if from_dd.geometry != to_dd.geometry:
         raise ValueError("cannot interpolate between different geometries")
@@ -228,7 +232,7 @@ def connection_from_dds(places, from_dd, to_dd):
     connections = []
     if from_dd.discr_stage is not to_dd.discr_stage:
         from pytential.qbx import QBXLayerPotentialSource
-        if not isinstance(from_discr, QBXLayerPotentialSource):
+        if not isinstance(lpot, QBXLayerPotentialSource):
             raise ValueError("can only interpolate on a "
                     "`QBXLayerPotentialSource`")
 
@@ -238,17 +242,26 @@ def connection_from_dds(places, from_dd, to_dd):
             raise ValueError("can only interpolate to "
                 "`QBX_SOURCE_QUAD_STAGE2`")
 
-        if from_dd.discr_stage is sym.QBX_SOURCE_QUAD_STAGE2:
-            pass
-        elif from_dd.discr_stage is sym.QBX_SOURCE_STAGE2:
-            connections.append(
-                    from_discr.refined_interp_to_ovsmp_quad_connection)
-        else:
-            connections.append(from_discr.resampler)
+        # FIXME: would be nice if these were ordered by themselves
+        stage_name_to_index_map = {
+                None: 0,
+                sym.QBX_SOURCE_STAGE1: 1,
+                sym.QBX_SOURCE_STAGE2: 2,
+                sym.QBX_SOURCE_QUAD_STAGE2: 3
+                }
+        stage_index_to_name_map = dict([(i, name) for name, i in
+                    six.iteritems(stage_name_to_index_map)])
+
+        from_stage = stage_name_to_index_map[from_dd.discr_stage]
+        to_stage = stage_name_to_index_map[to_dd.discr_stage]
+
+        for istage in range(from_stage, to_stage):
+            conn = places._get_conn_from_cache(from_dd.geometry,
+                    stage_index_to_name_map[istage],
+                    stage_index_to_name_map[istage + 1])
+            connections.append(conn)
 
     if from_dd.granularity is not to_dd.granularity:
-        to_discr = places.get_discretization(to_dd)
-
         if to_dd.granularity is sym.GRANULARITY_NODE:
             pass
         elif to_dd.granularity is sym.GRANULARITY_CENTER:
@@ -259,7 +272,15 @@ def connection_from_dds(places, from_dd, to_dd):
         else:
             raise ValueError("invalid to_dd granularity: %s" % to_dd.granularity)
 
-    return DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)
+    if from_dd.granularity is not to_dd.granularity:
+        conn = DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)
+    else:
+        from meshmode.discretization.connection import \
+                ChainedDiscretizationConnection
+        conn = ChainedDiscretizationConnection(connections,
+                from_discr=from_discr)
+
+    return conn
 
 # }}}
 
