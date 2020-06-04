@@ -4,24 +4,6 @@
 #   which skips the slow running tests.
 # * SKIP_EXAMPLES, if non-empty, can be used to skip the examples job.
 
-Python 2.7 POCL:
-  script:
-  - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=portable:pthread
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
-  - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python2.7
-  - pocl
-  - large-node
-  except:
-  - tags
-  artifacts:
-    reports:
-      junit: test/pytest.xml
-
 Python 3 POCL:
   script:
   - export PY_EXE=python3
