@@ -38,6 +38,9 @@ import pyopencl.clmath  # noqa
 
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
+from meshmode.array_context import ArrayContext
+from meshmode.dof_array import DOFArray, thaw
+
 from pytools import memoize_in
 from pytential import sym
 
@@ -71,7 +74,7 @@ def mesh_el_view(mesh, group_nr, global_array):
 
 
 class EvaluationMapperBase(PymbolicEvaluationMapper):
-    def __init__(self, bound_expr, queue, context=None,
+    def __init__(self, bound_expr, actx, context=None,
             target_geometry=None,
             target_points=None, target_normals=None, target_tangents=None):
         if context is None:
@@ -80,7 +83,13 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         self.bound_expr = bound_expr
         self.places = bound_expr.places
-        self.queue = queue
+        self.array_context = actx
+
+        from meshmode.array_context import PyOpenCLArrayContext
+        if not isinstance(actx, PyOpenCLArrayContext):
+            raise NotImplementedError("evaluation with non-PyOpenCL array contexts")
+
+        self.queue = actx.queue
 
     # {{{ map_XXX
 
@@ -105,10 +114,14 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 expr)
 
     def map_node_sum(self, expr):
-        return cl.array.sum(self.rec(expr.operand)).get()[()]
+        return sum(
+                cl.array.sum(grp_ary).get()[()]
+                for grp_ary in self.rec(expr.operand))
 
     def map_node_max(self, expr):
-        return cl.array.max(self.rec(expr.operand)).get()[()]
+        return max(
+                cl.array.max(grp_ary).get()[()]
+                for grp_ary in self.rec(expr.operand))
 
     def _map_elementwise_reduction(self, reduction_name, expr):
         @memoize_in(self.places, "elementwise_node_"+reduction_name)
@@ -154,6 +167,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             return result
 
         discr = self.places.get_discretization(
+                self.array_context,
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         operand = self.rec(expr.operand)
         assert operand.shape == (discr.nnodes,)
@@ -181,36 +195,34 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     def map_ones(self, expr):
         discr = self.places.get_discretization(
+                self.array_context,
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        result = (discr
-                .empty(queue=self.queue, dtype=discr.real_dtype)
-                .with_queue(self.queue))
+        result = discr.empty(actx=self.array_context, dtype=discr.real_dtype)
 
-        result.fill(1)
+        for grp_ary in result:
+            grp_ary.fill(1)
         return result
 
     def map_node_coordinate_component(self, expr):
         discr = self.places.get_discretization(
+                self.array_context,
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        return discr.nodes()[expr.ambient_axis] \
-                .with_queue(self.queue)
+        return thaw(self.array_context, discr.nodes()[expr.ambient_axis])
 
     def map_num_reference_derivative(self, expr):
         discr = self.places.get_discretization(
+                self.array_context,
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
 
         from pytools import flatten
         ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
-        return discr.num_reference_derivative(
-                self.queue,
-                ref_axes, self.rec(expr.operand)) \
-                        .with_queue(self.queue)
+        return discr.num_reference_derivative(ref_axes, self.rec(expr.operand))
 
     def map_q_weight(self, expr):
         discr = self.places.get_discretization(
+                self.array_context,
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        return discr.quad_weights(self.queue) \
-                .with_queue(self.queue)
+        return thaw(self.array_context, discr.quad_weights())
 
     def map_inverse(self, expr):
         bound_op_cache = self.bound_expr.places._get_cache("bound_op")
@@ -306,8 +318,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             if all(isinstance(arg, Number) for arg in args):
                 return getattr(np, expr.function.name)(*args)
             else:
-                return getattr(cl.clmath, expr.function.name)(
-                        *args, queue=self.queue)
+                return self.array_context.special_func(expr.function.name)(*args)
 
         else:
             return super(EvaluationMapperBase, self).map_call(expr)
@@ -319,9 +330,9 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
 class EvaluationMapper(EvaluationMapperBase):
 
-    def __init__(self, bound_expr, queue, context=None,
+    def __init__(self, bound_expr, actx, context=None,
             timing_data=None):
-        EvaluationMapperBase.__init__(self, bound_expr, queue, context)
+        EvaluationMapperBase.__init__(self, bound_expr, actx, context)
         self.timing_data = timing_data
 
     def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
@@ -354,13 +365,13 @@ class CostModelMapper(EvaluationMapperBase):
     data is collected.
     """
 
-    def __init__(self, bound_expr, queue, context=None,
+    def __init__(self, bound_expr, actx, context=None,
             target_geometry=None,
             target_points=None, target_normals=None, target_tangents=None):
         if context is None:
             context = {}
         EvaluationMapperBase.__init__(
-                self, bound_expr, queue, context,
+                self, bound_expr, actx, context,
                 target_geometry,
                 target_points,
                 target_normals,
@@ -632,25 +643,8 @@ class GeometryCollection(object):
                 raise TypeError("Values in 'places' must be discretization, targets "
                         "or layer potential sources.")
 
-        # check cl_context
-        from pytools import is_single_valued
-        cl_contexts = []
-        for p in six.itervalues(self.places):
-            if isinstance(p, (PotentialSource, Discretization)):
-                cl_contexts.append(p.cl_context)
-            elif isinstance(p, TargetBase):
-                nodes = p.nodes()[0]
-                if isinstance(nodes, cl.array.Array) and nodes.queue is not None:
-                    cl_contexts.append(nodes.queue.context)
-            else:
-                raise ValueError("unexpected value type in 'places'")
-
-        if not is_single_valued(cl_contexts):
-            raise RuntimeError("All 'places' must have the same CL context.")
-
-        self.cl_context = cl_contexts[0]
-
         # check ambient_dim
+        from pytools import is_single_valued
         ambient_dims = [p.ambient_dim for p in six.itervalues(self.places)]
         if not is_single_valued(ambient_dims):
             raise RuntimeError("All 'places' must have the same ambient dimension.")
@@ -710,7 +704,7 @@ class GeometryCollection(object):
 
         cache[key] = conn
 
-    def _get_qbx_discretization(self, geometry, discr_stage):
+    def _get_qbx_discretization(self, actx: ArrayContext, geometry, discr_stage):
         lpot_source = self.get_geometry(geometry)
 
         try:
@@ -736,7 +730,7 @@ class GeometryCollection(object):
         from pytential.symbolic.dof_connection import connection_from_dds
         return connection_from_dds(self, from_dd, to_dd)
 
-    def get_discretization(self, geometry, discr_stage=None):
+    def get_discretization(self, actx: ArrayContext, geometry, discr_stage=None):
         """
         :arg dofdesc: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
             specifying the desired discretization.
@@ -747,6 +741,9 @@ class GeometryCollection(object):
             the corresponding :class:`~meshmode.discretization.Discretization`
             in its attributes instead.
         """
+        if not isinstance(actx, ArrayContext):
+            raise TypeError("first argument must be an ArrayContext")
+
         if discr_stage is None:
             discr_stage = sym.QBX_SOURCE_STAGE1
         discr = self.get_geometry(geometry)
@@ -755,7 +752,7 @@ class GeometryCollection(object):
         from pytential.source import LayerPotentialSourceBase
 
         if isinstance(discr, QBXLayerPotentialSource):
-            return self._get_qbx_discretization(geometry, discr_stage)
+            return self._get_qbx_discretization(actx, geometry, discr_stage)
         elif isinstance(discr, LayerPotentialSourceBase):
             return discr.density_discr
         else:
@@ -872,7 +869,8 @@ class BoundExpression(object):
         return MatVecOp(self, queue,
                 arg_name, dtype, total_dofs, starts_and_ends, extra_args)
 
-    def eval(self, queue, context=None, timing_data=None):
+    def eval(self, context=None, timing_data=None,
+            array_context: ArrayContext = None):
         """Evaluate the expression in *self*, using the
         :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
@@ -880,25 +878,76 @@ class BoundExpression(object):
         :arg timing_data: A dictionary into which timing
             data will be inserted during evaluation.
             (experimental)
+        :arg array_context: only needs to be supplied if no instances of
+            :class:`~meshmode.dof_array.DOFArray` with a
+            :class:`~meshmode.array_context.ArrayContext`
+            are supplied as part of *context*.
         :returns: the value of the expression, as a scalar,
             :class:`pyopencl.array.Array`, or an object array of these.
         """
 
         if context is None:
             context = {}
+
+        array_contexts = []
+        if array_context is not None:
+            array_contexts.append(array_context)
+        del array_context
+
+        # {{{ figure array context
+
+        def look_for_array_contexts(ary):
+            if isinstance(ary, DOFArray):
+                if ary.array_context is not None:
+                    array_contexts.append(ary.array_context)
+            elif isinstance(ary, np.ndarray) and ary.dtype.char == "O":
+                for idx in np.ndindex(ary.shape):
+                    look_for_array_contexts(ary[idx])
+            else:
+                pass
+
+        for key, val in context.items():
+            look_for_array_contexts(val)
+
+        if array_contexts:
+            from pytools import is_single_valued
+            if not is_single_valued(array_contexts):
+                raise ValueError("arguments do not agree on an array context")
+
+            array_context = array_contexts[0]
+        else:
+            array_context = None
+
+        # }}}
+
         exec_mapper = EvaluationMapper(
-                self, queue, context, timing_data=timing_data)
+                self, array_context, context, timing_data=timing_data)
         return self.code.execute(exec_mapper)
 
-    def __call__(self, queue, **args):
+    def __call__(self, *args, **kwargs):
         """Evaluate the expression in *self*, using the
         :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
 
         :returns: the value of the expression, as a scalar,
-            :class:`pyopencl.array.Array`, or an object array of these.
+            :class:`meshmode.dof_array.DOFArray`, or an object array of
+            these.
         """
-        return self.eval(queue, args)
+        array_context = None
+        if len(args) == 1:
+            array_context, = args
+            if not isinstance(array_context, ArrayContext):
+                raise TypeError("first positional argument must be of type "
+                        "ArrayContext")
+
+        elif not args:
+            pass
+
+        else:
+            raise TypeError("More than one positional argument supplied. "
+                    "None or an ArrayContext expected.")
+
+        return self.eval(kwargs, array_context=array_context)
 
 
 def bind(places, expr, auto_where=None):

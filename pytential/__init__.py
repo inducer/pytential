@@ -66,8 +66,8 @@ def _integral_op(discr):
                 discr.ambient_dim, discr.dim, sym.var("integrand")))
 
 
-def integral(discr, queue, x):
-    return _integral_op(discr)(queue, integrand=x)
+def integral(discr, x):
+    return _integral_op(discr)(integrand=x)
 
 
 @memoize_on_first_arg
@@ -97,23 +97,26 @@ def _norm_inf_op(discr, num_components):
     return bind(discr, sym.NodeMax(max_arg))
 
 
-def norm(discr, queue, x, p=2):
+def norm(discr, x, p=2):
     from pymbolic.geometric_algebra import MultiVector
     if isinstance(x, MultiVector):
         x = x.as_vector(np.object)
 
+    from meshmode.dof_array import DOFArray
     num_components = None
-    if isinstance(x, np.ndarray):
+    if (isinstance(x, np.ndarray)
+            and x.dtype.char == "O"
+            and not isinstance(x, DOFArray)):
         num_components, = x.shape
 
     if p == 2:
         norm_op = _norm_2_op(discr, num_components)
         from math import sqrt
-        return sqrt(norm_op(queue, integrand=x))
+        return sqrt(norm_op(integrand=x))
 
     elif p == np.inf or p == "inf":
         norm_op = _norm_inf_op(discr, num_components)
-        norm_res = norm_op(queue, arg=x)
+        norm_res = norm_op(arg=x)
         if isinstance(norm_res, np.ndarray):
             return max(norm_res)
         else:
