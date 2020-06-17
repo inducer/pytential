@@ -320,7 +320,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             if all(isinstance(arg, Number) for arg in args):
                 return getattr(np, expr.function.name)(*args)
             else:
-                return self.array_context.special_func(expr.function.name)(*args)
+                return getattr(self.array_context.np, expr.function.name)(*args)
 
         else:
             return super(EvaluationMapperBase, self).map_call(expr)
