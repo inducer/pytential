@@ -25,6 +25,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Optional
+
 import six
 from six.moves import zip
 
@@ -870,7 +872,7 @@ class BoundExpression(object):
                 arg_name, dtype, total_dofs, starts_and_ends, extra_args)
 
     def eval(self, context=None, timing_data=None,
-            array_context: ArrayContext = None):
+            array_context: Optional[ArrayContext] = None):
         """Evaluate the expression in *self*, using the
         :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
@@ -889,12 +891,16 @@ class BoundExpression(object):
         if context is None:
             context = {}
 
+        # {{{ figure array context
+
         array_contexts = []
         if array_context is not None:
+            if not isinstance(array_context, ArrayContext):
+                raise TypeError(
+                        "first argument (if supplied) must be an ArrayContext")
+
             array_contexts.append(array_context)
         del array_context
-
-        # {{{ figure array context
 
         def look_for_array_contexts(ary):
             if isinstance(ary, DOFArray):
@@ -937,8 +943,8 @@ class BoundExpression(object):
         if len(args) == 1:
             array_context, = args
             if not isinstance(array_context, ArrayContext):
-                raise TypeError("first positional argument must be of type "
-                        "ArrayContext")
+                raise TypeError("first positional argument (if given) "
+                        "must be of type ArrayContext")
 
         elif not args:
             pass
