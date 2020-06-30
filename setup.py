@@ -94,10 +94,7 @@ setup(name="pytential",
           'License :: OSI Approved :: MIT License',
           'Natural Language :: English',
           'Programming Language :: Python',
-
-          'Programming Language :: Python :: 2.6',
-          'Programming Language :: Python :: 2.7',
-          # 3.x has not yet been tested.
+          'Programming Language :: Python :: 3',
           'Topic :: Scientific/Engineering',
           'Topic :: Scientific/Engineering :: Information Analysis',
           'Topic :: Scientific/Engineering :: Mathematics',
@@ -110,6 +107,7 @@ setup(name="pytential",
 
       ext_modules=cythonize(ext_modules),
 
+      python_requires="~=3.6",
       install_requires=[
           "pytest>=2.3",
           # FIXME leave out for now
