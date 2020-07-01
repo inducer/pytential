@@ -759,7 +759,7 @@ def first_fundamental_form(ambient_dim, dim=None, dofdesc=None):
     if dim is None:
         dim = ambient_dim - 1
 
-    if ambient_dim != 3 and dim != 2:
+    if not (ambient_dim == 3 and dim == 2):
         raise NotImplementedError("only available for surfaces in 3D")
 
     pd_mat = parametrization_derivative_matrix(ambient_dim, dim, dofdesc)
@@ -782,7 +782,7 @@ def second_fundamental_form(ambient_dim, dim=None, dofdesc=None):
     if dim is None:
         dim = ambient_dim - 1
 
-    if ambient_dim != 3 and dim != 2:
+    if not (ambient_dim == 3 and dim == 2):
         raise NotImplementedError("only available for surfaces in 3D")
 
     r = nodes(ambient_dim, dofdesc=dofdesc).as_vector()
@@ -814,7 +814,7 @@ def shape_operator(ambient_dim, dim=None, dofdesc=None):
     if dim is None:
         dim = ambient_dim - 1
 
-    if ambient_dim != 3 and dim != 2:
+    if not (ambient_dim == 3 and dim == 2):
         raise NotImplementedError("only available for surfaces in 3D")
 
     # https://en.wikipedia.org/w/index.php?title=Differential_geometry_of_surfaces&oldid=833587563
