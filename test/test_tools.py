@@ -92,8 +92,9 @@ def test_interpolatory_error_reporting(ctx_factory):
 
     from pytential import integral
     one = 1 + 0*vol_x[0]
-    with pytest.raises(TypeError):
-        print("AREA", integral(vol_discr, queue, one), 0.25**2*np.pi)
+    from meshmode.discretization import NoninterpolatoryElementGroupError
+    with pytest.raises(NoninterpolatoryElementGroupError):
+        print("AREA", integral(vol_discr, one), 0.25**2*np.pi)
 
 
 def test_geometry_collection_caching(ctx_factory):
