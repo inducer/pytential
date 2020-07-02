@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 
+from meshmode.array_context import PyOpenCLArrayContext
 import numpy as np
 import numpy.linalg as la  # noqa
 import pyopencl as cl
@@ -140,6 +141,7 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     target_order = 4
     fmm_tol = 1e-3
@@ -152,7 +154,7 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
         InterpolatoryQuadratureSimplexGroupFactory
     from pytential.qbx import QBXLayerPotentialSource
     pre_density_discr = Discretization(
-            cl_ctx, mesh,
+            actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
@@ -174,12 +176,13 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
 
     from pytential.qbx.refinement import refine_geometry_collection
     places = GeometryCollection(places, auto_where="qbx")
-    places = refine_geometry_collection(queue, places,
+    places = refine_geometry_collection(places,
             kernel_length_scale=kernel_length_scale)
 
     density_discr = places.get_discretization("qbx")
-    nodes = density_discr.nodes().with_queue(queue)
-    u_dev = clmath.sin(nodes[0])
+    from meshmode.dof_array import thaw
+    nodes = thaw(actx, density_discr.nodes())
+    u_dev = actx.np.sin(nodes[0])
 
     if helmholtz_k == 0:
         kernel = LaplaceKernel(3)
@@ -201,11 +204,12 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
 
     expr = op(kernel, u_sym, qbx_forced_limit=-1, **kernel_kwargs)
 
+    from meshmode.dof_array import flatten
     bound_op = bind(places, expr)
-    pot_ref = bound_op(queue, u=u_dev, k=helmholtz_k).get()
+    pot_ref = actx.to_numpy(flatten(bound_op(actx, u=u_dev, k=helmholtz_k)))
 
     bound_op = bind(places, expr, auto_where="qbx_target_specific")
-    pot_tsqbx = bound_op(queue, u=u_dev, k=helmholtz_k).get()
+    pot_tsqbx = actx.to_numpy(flatten(bound_op(actx, u=u_dev, k=helmholtz_k)))
 
     assert np.allclose(pot_tsqbx, pot_ref, atol=1e-13, rtol=1e-13)
 

@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 from functools import partial
 
+from meshmode.array_context import PyOpenCLArrayContext
 import pytest
 
 import numpy as np
@@ -62,7 +63,8 @@ def test_interpolatory_error_reporting(ctx_factory):
     logging.basicConfig(level=logging.INFO)
 
     ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)  # noqa
+    queue = cl.CommandQueue(ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     h = 0.2
     from meshmode.mesh.io import generate_gmsh, FileSource
@@ -80,20 +82,18 @@ def test_interpolatory_error_reporting(ctx_factory):
     from meshmode.discretization.poly_element import \
             QuadratureSimplexGroupFactory
 
-    vol_discr = Discretization(ctx, mesh,
+    vol_discr = Discretization(actx, mesh,
             QuadratureSimplexGroupFactory(5))
 
-    vol_x = vol_discr.nodes()
+    from meshmode.dof_array import thaw
+    vol_x = thaw(actx, vol_discr.nodes())
 
     # }}}
 
     from pytential import integral
-    rhs = 1 + 0*vol_x[0]
-
-    one = rhs.copy()
-    one.fill(1)
+    one = 1 + 0*vol_x[0]
     with pytest.raises(TypeError):
-        print("AREA", integral(vol_discr, one), 0.25**2*np.pi)
+        print("AREA", integral(vol_discr, queue, one), 0.25**2*np.pi)
 
 
 def test_geometry_collection_caching(ctx_factory):
@@ -103,6 +103,7 @@ def test_geometry_collection_caching(ctx_factory):
     # the `nodes` on each `discr_stage`.
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     ndim = 2
     nelements = 1024
@@ -128,7 +129,7 @@ def test_geometry_collection_caching(ctx_factory):
             mesh = affine_map(discrs[0].mesh,
                     b=np.array([3 * k * radius, 0]))
 
-        discr = Discretization(ctx, mesh,
+        discr = Discretization(actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
         discrs.append(discr)
 
@@ -161,7 +162,7 @@ def test_geometry_collection_caching(ctx_factory):
                 discr = places._get_discr_from_cache(sources[k], discr_stage)
 
             dofdesc = sym.DOFDescriptor(sources[k], discr_stage=discr_stage)
-            bind(places, sym.nodes(ndim, dofdesc=dofdesc))(queue)
+            bind(places, sym.nodes(ndim, dofdesc=dofdesc))(actx)
 
             discr = places._get_discr_from_cache(sources[k], discr_stage)
             assert discr is not None
