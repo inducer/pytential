@@ -26,12 +26,12 @@ THE SOFTWARE.
 import numpy as np
 import numpy.linalg as la  # noqa
 import pyopencl as cl
-import pyopencl.clmath  # noqa
 import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 from functools import partial
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh, NArmedStarfish)
@@ -72,6 +72,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     target_order = 8
 
@@ -107,7 +108,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
             fmm_order = False
 
         pre_density_discr = Discretization(
-                cl_ctx, mesh,
+                actx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
         qbx = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
@@ -117,18 +118,19 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         places = GeometryCollection(qbx)
 
         density_discr = places.get_discretization(places.auto_source.geometry)
-        nodes = density_discr.nodes().with_queue(queue)
+        from meshmode.dof_array import thaw, flatten
+        nodes = thaw(actx, density_discr.nodes())
 
         if visualize:
             # plot geometry, centers, normals
             centers = bind(places,
-                    sym.expansion_centers(qbx.ambient_dim, +1))(queue)
-            normal = bind(places,
-                    sym.normal(qbx.ambient_dim))(queue).as_vector(np.object)
+                    sym.expansion_centers(qbx.ambient_dim, +1))(actx)
+            normals = bind(places,
+                    sym.normal(qbx.ambient_dim))(actx).as_vector(np.object)
 
-            nodes_h = nodes.get()
-            centers_h = [centers[0].get(), centers[1].get()]
-            normals_h = [normal[0].get(), normal[1].get()]
+            nodes_h = np.array([actx.to_numpy(axis) for axis in flatten(nodes)])
+            centers_h = np.array([actx.to_numpy(axis) for axis in flatten(centers)])
+            normals_h = np.array([actx.to_numpy(axis) for axis in flatten(normals)])
 
             pt.plot(nodes_h[0], nodes_h[1], "x-")
             pt.plot(centers_h[0], centers_h[1], "o")
@@ -136,14 +138,14 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
             pt.gca().set_aspect("equal")
             pt.show()
 
-        angle = cl.clmath.atan2(nodes[1]*ellipse_aspect, nodes[0])
+        angle = actx.np.atan2(nodes[1]*ellipse_aspect, nodes[0])
 
         ellipse_fraction = ((1-ellipse_aspect)/(1+ellipse_aspect))**mode_nr
 
         # (2.6) in [1]
-        J = cl.clmath.sqrt(  # noqa
-                cl.clmath.sin(angle)**2
-                + (1/ellipse_aspect)**2 * cl.clmath.cos(angle)**2)
+        J = actx.np.sqrt(  # noqa
+                actx.np.sin(angle)**2
+                + (1/ellipse_aspect)**2 * actx.np.cos(angle)**2)
 
         from sumpy.kernel import LaplaceKernel
         lap_knl = LaplaceKernel(2)
@@ -153,8 +155,8 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         sigma_sym = sym.var("sigma")
         s_sigma_op = sym.S(lap_knl, sigma_sym, qbx_forced_limit=+1)
 
-        sigma = cl.clmath.cos(mode_nr*angle)/J
-        s_sigma = bind(places, s_sigma_op)(queue=queue, sigma=sigma)
+        sigma = actx.np.cos(mode_nr*angle)/J
+        s_sigma = bind(places, s_sigma_op)(actx, sigma=sigma)
 
         # SIGN BINGO! :)
         s_eigval = 1/(2*mode_nr) * (1 + (-1)**mode_nr * ellipse_fraction)
@@ -165,14 +167,14 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         if 0:
             #pt.plot(s_sigma.get(), label="result")
             #pt.plot(s_sigma_ref.get(), label="ref")
-            pt.plot((s_sigma_ref - s_sigma).get(), label="err")
+            pt.plot(actx.to_numpy(flatten(s_sigma_ref - s_sigma)), label="err")
             pt.legend()
             pt.show()
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
         s_err = (
-                norm(density_discr, queue, s_sigma - s_sigma_ref)
-                / norm(density_discr, queue, s_sigma_ref))
+                norm(density_discr, s_sigma - s_sigma_ref)
+                / norm(density_discr, s_sigma_ref))
         s_eoc_rec.add_data_point(h_max, s_err)
 
         # }}}
@@ -181,8 +183,8 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
 
         d_sigma_op = sym.D(lap_knl, sigma_sym, qbx_forced_limit="avg")
 
-        sigma = cl.clmath.cos(mode_nr*angle)
-        d_sigma = bind(places, d_sigma_op)(queue=queue, sigma=sigma)
+        sigma = actx.np.cos(mode_nr*angle)
+        d_sigma = bind(places, d_sigma_op)(actx, sigma=sigma)
 
         # SIGN BINGO! :)
         d_eigval = -(-1)**mode_nr * 1/2*ellipse_fraction
@@ -190,18 +192,18 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
         d_sigma_ref = d_eigval*sigma
 
         if 0:
-            pt.plot(d_sigma.get(), label="result")
-            pt.plot(d_sigma_ref.get(), label="ref")
+            pt.plot(actx.to_numpy(flatten(d_sigma)), label="result")
+            pt.plot(actx.to_numpy(flatten(d_sigma_ref)), label="ref")
             pt.legend()
             pt.show()
 
         if ellipse_aspect == 1:
-            d_ref_norm = norm(density_discr, queue, sigma)
+            d_ref_norm = norm(density_discr, sigma)
         else:
-            d_ref_norm = norm(density_discr, queue, d_sigma_ref)
+            d_ref_norm = norm(density_discr, d_sigma_ref)
 
         d_err = (
-                norm(density_discr, queue, d_sigma - d_sigma_ref)
+                norm(density_discr, d_sigma - d_sigma_ref)
                 / d_ref_norm)
         d_eoc_rec.add_data_point(h_max, d_err)
 
@@ -212,15 +214,15 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
 
             sp_sigma_op = sym.Sp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg")
 
-            sigma = cl.clmath.cos(mode_nr*angle)
-            sp_sigma = bind(places, sp_sigma_op)(queue=queue, sigma=sigma)
+            sigma = actx.np.cos(mode_nr*angle)
+            sp_sigma = bind(places, sp_sigma_op)(actx, sigma=sigma)
             sp_eigval = 0
 
             sp_sigma_ref = sp_eigval*sigma
 
             sp_err = (
-                    norm(density_discr, queue, sp_sigma - sp_sigma_ref)
-                    / norm(density_discr, queue, sigma))
+                    norm(density_discr, sp_sigma - sp_sigma_ref)
+                    / norm(density_discr, sigma))
             sp_eoc_rec.add_data_point(h_max, sp_err)
 
             # }}}
@@ -261,6 +263,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     target_order = 8
 
@@ -277,8 +280,8 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
     def rel_err(comp, ref):
         return (
-                norm(density_discr, queue, comp - ref)
-                / norm(density_discr, queue, ref))
+                norm(density_discr, comp - ref)
+                / norm(density_discr, ref))
 
     for nrefinements in [0, 1]:
         from meshmode.mesh.generation import generate_icosphere
@@ -292,7 +295,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
             mesh = refiner.get_current_mesh()
 
         pre_density_discr = Discretization(
-                cl_ctx, mesh,
+                actx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
         qbx = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
@@ -301,14 +304,20 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
                 )
         places = GeometryCollection(qbx)
 
-        density_discr = places.get_discretization(places.auto_source.geometry)
-        nodes = density_discr.nodes().with_queue(queue)
-        r = cl.clmath.sqrt(nodes[0]**2 + nodes[1]**2 + nodes[2]**2)
-        phi = cl.clmath.acos(nodes[2]/r)
-        theta = cl.clmath.atan2(nodes[0], nodes[1])
+        from meshmode.dof_array import flatten, unflatten, thaw
 
-        ymn = cl.array.to_device(queue,
-                special.sph_harm(mode_m, mode_n, theta.get(), phi.get()))
+        density_discr = places.get_discretization(places.auto_source.geometry)
+        nodes = thaw(actx, density_discr.nodes())
+        r = actx.np.sqrt(nodes[0]*nodes[0] + nodes[1]*nodes[1] + nodes[2]*nodes[2])
+        phi = actx.np.acos(nodes[2]/r)
+        theta = actx.np.atan2(nodes[0], nodes[1])
+
+        ymn = unflatten(actx, density_discr,
+                actx.from_numpy(
+                    special.sph_harm(
+                        mode_m, mode_n,
+                        actx.to_numpy(flatten(theta)),
+                        actx.to_numpy(flatten(phi)))))
 
         from sumpy.kernel import LaplaceKernel
         lap_knl = LaplaceKernel(3)
@@ -317,10 +326,10 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         s_sigma_op = bind(places,
                 sym.S(lap_knl, sym.var("sigma"), qbx_forced_limit=+1))
-        s_sigma = s_sigma_op(queue=queue, sigma=ymn)
+        s_sigma = s_sigma_op(actx, sigma=ymn)
         s_eigval = 1/(2*mode_n + 1)
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
         s_eoc_rec.add_data_point(h_max, rel_err(s_sigma, s_eigval*ymn))
 
         # }}}
@@ -329,7 +338,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         d_sigma_op = bind(places,
                 sym.D(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
-        d_sigma = d_sigma_op(queue=queue, sigma=ymn)
+        d_sigma = d_sigma_op(actx, sigma=ymn)
         d_eigval = -1/(2*(2*mode_n + 1))
         d_eoc_rec.add_data_point(h_max, rel_err(d_sigma, d_eigval*ymn))
 
@@ -339,7 +348,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         sp_sigma_op = bind(places,
                  sym.Sp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
-        sp_sigma = sp_sigma_op(queue=queue, sigma=ymn)
+        sp_sigma = sp_sigma_op(actx, sigma=ymn)
         sp_eigval = -1/(2*(2*mode_n + 1))
 
         sp_eoc_rec.add_data_point(h_max, rel_err(sp_sigma, sp_eigval*ymn))
@@ -350,7 +359,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
 
         dp_sigma_op = bind(places,
                 sym.Dp(lap_knl, sym.var("sigma"), qbx_forced_limit="avg"))
-        dp_sigma = dp_sigma_op(queue=queue, sigma=ymn)
+        dp_sigma = dp_sigma_op(actx, sigma=ymn)
         dp_eigval = -(mode_n*(mode_n+1))/(2*mode_n + 1)
 
         dp_eoc_rec.add_data_point(h_max, rel_err(dp_sigma, dp_eigval*ymn))
