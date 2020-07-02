@@ -27,7 +27,6 @@ from meshmode.array_context import PyOpenCLArrayContext
 import numpy as np
 import numpy.linalg as la  # noqa
 import pyopencl as cl
-import pyopencl.clmath as clmath
 import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
