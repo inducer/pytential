@@ -83,7 +83,7 @@ def test_interpolatory_error_reporting(ctx_factory):
     vol_discr = Discretization(ctx, mesh,
             QuadratureSimplexGroupFactory(5))
 
-    vol_x = vol_discr.nodes().with_queue(queue)
+    vol_x = vol_discr.nodes()
 
     # }}}
 
@@ -93,7 +93,7 @@ def test_interpolatory_error_reporting(ctx_factory):
     one = rhs.copy()
     one.fill(1)
     with pytest.raises(TypeError):
-        print("AREA", integral(vol_discr, queue, one), 0.25**2*np.pi)
+        print("AREA", integral(vol_discr, one), 0.25**2*np.pi)
 
 
 def test_geometry_collection_caching(ctx_factory):

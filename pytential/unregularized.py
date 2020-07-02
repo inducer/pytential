@@ -138,7 +138,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.symbolic.mappers import UnregularizedPreprocessor
         return UnregularizedPreprocessor(name, discretizations)(expr)
 
-    def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_direct(self, actx, insn, bound_expr, evaluate):
         kernel_args = {}
 
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
@@ -146,8 +146,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim, dofdesc=insn.source))(queue)
-        strengths = waa * evaluate(insn.density).with_queue(queue)
+            self.ambient_dim, dofdesc=insn.source))(actx)
+        strengths = waa * evaluate(insn.density)
 
         result = []
         p2p = None
@@ -157,9 +157,9 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     o.target_name.geometry, o.target_name.discr_stage)
 
             if p2p is None:
-                p2p = self.get_p2p(insn.kernels)
+                p2p = self.get_p2p(actx, insn.kernels)
 
-            evt, output_for_each_kernel = p2p(queue,
+            evt, output_for_each_kernel = p2p(actx,
                     target_discr.nodes(),
                     self.density_discr.nodes(),
                     [strengths], **kernel_args)

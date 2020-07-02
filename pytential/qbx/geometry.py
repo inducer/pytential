@@ -958,7 +958,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             if draw_circles:
                 for icenter, (cx, cy, r) in enumerate(zip(
                         centers[0], centers[1],
-                        self.expansion_radii().get(queue))):
+                        self.flat_expansion_radii().get(queue))):
                     ax.add_artist(
                             pt.Circle((cx, cy), r, fill=False, ls="dotted", lw=1))
 

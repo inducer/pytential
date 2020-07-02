@@ -123,7 +123,7 @@ def test_timing_data_gathering(ctx_factory):
     op_S = bind(places, sym_op_S)
 
     timing_data = {}
-    op_S.eval(queue, dict(sigma=sigma), timing_data=timing_data)
+    op_S.eval(dict(sigma=sigma), timing_data=timing_data, array_context=queue)
     assert timing_data
     print(timing_data)
 

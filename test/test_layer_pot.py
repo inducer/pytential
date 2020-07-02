@@ -268,7 +268,7 @@ def test_unregularized_with_ones_kernel(ctx_factory):
     sigma_sym = sym.var("sigma")
     op = sym.IntG(one_kernel_2d, sigma_sym, qbx_forced_limit=None)
 
-    sigma = cl.array.zeros(queue, discr.nnodes, dtype=float)
+    sigma = cl.array.zeros(queue, discr.ndofs, dtype=float)
     sigma.fill(1)
     sigma.finish()
 
@@ -452,8 +452,8 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
 
         h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
         err = (
-                norm(density_discr, queue, jump_identity, np.inf)
-                / norm(density_discr, queue, density, np.inf))
+                norm(density_discr, jump_identity, np.inf)
+                / norm(density_discr, density, np.inf))
         print("ERROR", h_max, err)
 
         eoc_rec.add_data_point(h_max, err)

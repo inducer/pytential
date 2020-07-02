@@ -62,7 +62,7 @@ def get_ellipse_with_ref_mean_curvature(cl_ctx, nelements, aspect=1):
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
     with cl.CommandQueue(cl_ctx) as queue:
-        nodes = discr.nodes().get(queue=queue)
+        nodes = discr.nodes()
 
     a = 1
     b = 1/aspect
@@ -83,7 +83,7 @@ def get_torus_with_ref_mean_curvature(cl_ctx, h):
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
     with cl.CommandQueue(cl_ctx) as queue:
-        nodes = discr.nodes().get(queue=queue)
+        nodes = discr.nodes()
 
     # copied from meshmode.mesh.generation.generate_torus
     a = r_major

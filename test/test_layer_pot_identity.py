@@ -390,7 +390,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
             pt.plot(error)
             pt.show()
 
-        linf_error_norm = norm(density_discr, queue, error, p=np.inf)
+        linf_error_norm = norm(density_discr, error, p=np.inf)
         print("--->", key, linf_error_norm)
 
         h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
