@@ -32,6 +32,7 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 from functools import partial
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         NArmedStarfish,
@@ -280,6 +281,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
@@ -314,7 +316,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                 InterpolatoryQuadratureSimplexGroupFactory
         from pytential.qbx import QBXLayerPotentialSource
         pre_density_discr = Discretization(
-                cl_ctx, mesh,
+                actx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
         qbx = QBXLayerPotentialSource(
@@ -331,16 +333,18 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
 
         from pytential.qbx.refinement import refine_geometry_collection
         kernel_length_scale = 5 / case.k if case.k else None
-        places = refine_geometry_collection(queue, places,
+        places = refine_geometry_collection(places,
                 kernel_length_scale=kernel_length_scale)
 
         # {{{ compute values of a solution to the PDE
 
         density_discr = places.get_discretization(places.auto_source.geometry)
 
-        nodes_host = density_discr.nodes().get(queue)
-        normal = bind(places, sym.normal(d))(queue).as_vector(np.object)
-        normal_host = [normal[j].get() for j in range(d)]
+        from meshmode.dof_array import thaw, flatten, unflatten
+        nodes_host = [actx.to_numpy(axis)
+                for axis in flatten(thaw(actx, density_discr.nodes()))]
+        normal = bind(places, sym.normal(d))(actx).as_vector(np.object)
+        normal_host = [actx.to_numpy(axis)for axis in flatten(normal)]
 
         if k != 0:
             if d == 2:
@@ -376,16 +380,18 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
 
         # }}}
 
-        u_dev = cl.array.to_device(queue, u)
-        dn_u_dev = cl.array.to_device(queue, dn_u)
-        grad_u_dev = cl.array.to_device(queue, grad_u)
+        u_dev = unflatten(actx, density_discr, actx.from_numpy(u))
+        dn_u_dev = unflatten(actx, density_discr, actx.from_numpy(dn_u))
+        from pytools.obj_array import make_obj_array, obj_array_vectorize
+        grad_u_dev = unflatten(actx, density_discr,
+                obj_array_vectorize(actx.from_numpy, make_obj_array(grad_u)))
 
         key = (case.qbx_order, case.geometry.mesh_name, resolution,
                 case.expr.zero_op_name)
 
         bound_op = bind(places, case.expr.get_zero_op(k_sym, **knl_kwargs))
         error = bound_op(
-                queue, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=case.k)
+                actx, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=case.k)
         if 0:
             pt.plot(error)
             pt.show()
@@ -393,14 +399,14 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
         linf_error_norm = norm(density_discr, error, p=np.inf)
         print("--->", key, linf_error_norm)
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
         eoc_rec.add_data_point(h_max, linf_error_norm)
 
         if visualize:
             from meshmode.discretization.visualization import make_visualizer
-            bdry_vis = make_visualizer(queue, density_discr, target_order)
+            bdry_vis = make_visualizer(actx, density_discr, target_order)
 
-            bdry_normals = bind(places, sym.normal(mesh.ambient_dim))(queue)\
+            bdry_normals = bind(places, sym.normal(mesh.ambient_dim))(actx)\
                     .as_vector(dtype=np.object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
