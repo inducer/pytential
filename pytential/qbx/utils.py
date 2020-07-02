@@ -304,7 +304,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     ncenters = len(centers[0])
     # Each source gets an interior / exterior center.
     assert 2 * nsources == ncenters or use_stage2_discr
-    ntargets = sum(tgt.nnodes for tgt in targets_list)
+    ntargets = sum(tgt.ndofs for tgt in targets_list)
 
     # Slices
     qbx_user_source_slice = slice(0, nsources)

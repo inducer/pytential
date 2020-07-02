@@ -733,6 +733,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))(
                         self.array_context)
 
+        tunnel_radius_by_source = flatten(tunnel_radius_by_source)
+
         # see (TGTMARK) above for algorithm.
 
         box_to_search_dist, evt = self.code_container.space_invader_query()(
@@ -776,17 +778,17 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return (found_panel_to_refine == 1).all().get()
 
     def make_target_flags(self, target_discrs_and_qbx_sides):
-        ntargets = sum(discr.nnodes for discr, _ in target_discrs_and_qbx_sides)
+        ntargets = sum(discr.ndofs for discr, _ in target_discrs_and_qbx_sides)
         target_flags = cl.array.empty(self.queue, ntargets, dtype=np.int32)
         offset = 0
 
         for discr, flags in target_discrs_and_qbx_sides:
             if np.isscalar(flags):
-                target_flags[offset:offset + discr.nnodes].fill(flags)
+                target_flags[offset:offset + discr.ndofs].fill(flags)
             else:
-                assert len(flags) == discr.nnodes
-                target_flags[offset:offset + discr.nnodes] = flags
-            offset += discr.nnodes
+                assert len(flags) == discr.ndofs
+                target_flags[offset:offset + discr.ndofs] = flags
+            offset += discr.ndofs
 
         target_flags.finish()
         return target_flags

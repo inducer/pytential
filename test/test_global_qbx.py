@@ -296,7 +296,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     density_discr = places.get_discretization(dd.geometry)
 
-    noise = actx.dof_array_to_numpy(
+    noise = actx.to_numpy(
             rng.uniform(queue, density_discr.ndofs, dtype=np.float, a=0.01, b=1.0))
 
     tunnel_radius = dof_array_to_numpy(actx,
