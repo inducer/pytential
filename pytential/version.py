@@ -43,7 +43,7 @@ else:
 # }}}
 
 
-VERSION = (2020, 1)
+VERSION = (2020, 2)
 VERSION_TEXT = ".".join(str(i) for i in VERSION)
 
 PYTENTIAL_KERNEL_VERSION = (VERSION, _git_rev, 0)

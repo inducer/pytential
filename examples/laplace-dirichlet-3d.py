@@ -3,6 +3,7 @@ import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -28,6 +29,7 @@ def main(mesh_name="torus", visualize=False):
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     if mesh_name == "torus":
         rout = 10
@@ -61,7 +63,7 @@ def main(mesh_name="torus", visualize=False):
         raise ValueError("unknown mesh name: {}".format(mesh_name))
 
     pre_density_discr = Discretization(
-            cl_ctx, mesh,
+            actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     from pytential.qbx import (
@@ -73,7 +75,7 @@ def main(mesh_name="torus", visualize=False):
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(3), extent=20, npoints=50)
-    targets = cl.array.to_device(queue, fplot.points)
+    targets = actx.from_numpy(fplot.points)
 
     from pytential import GeometryCollection
     places = GeometryCollection({
@@ -109,33 +111,39 @@ def main(mesh_name="torus", visualize=False):
 
     # {{{ fix rhs and solve
 
-    nodes = density_discr.nodes().with_queue(queue)
+    from meshmode.dof_array import thaw, flatten, unflatten
+    nodes = thaw(actx, density_discr.nodes())
     source = np.array([rout, 0, 0])
 
     def u_incoming_func(x):
+        from pytools.obj_array import obj_array_vectorize
+        x = obj_array_vectorize(actx.to_numpy, flatten(x))
+        x = np.array(list(x))
         #        return 1/cl.clmath.sqrt( (x[0] - source[0])**2
         #                                +(x[1] - source[1])**2
         #                                +(x[2] - source[2])**2 )
-        return 1.0/la.norm(x.get()-source[:, None], axis=0)
+        return 1.0/la.norm(x - source[:, None], axis=0)
 
-    bc = cl.array.to_device(queue, u_incoming_func(nodes))
+    bc = unflatten(actx,
+            density_discr,
+            actx.from_numpy(u_incoming_func(nodes)))
 
-    bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(queue, bc=bc)
+    bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(actx, bc=bc)
 
     from pytential.solve import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, "sigma", dtype=np.float64),
+            bound_op.scipy_op(actx, "sigma", dtype=np.float64),
             bvp_rhs, tol=1e-14, progress=True,
             stall_iterations=0,
             hard_failure=True)
 
     sigma = bind(places, sym.var("sigma")/sqrt_w)(
-            queue, sigma=gmres_result.solution)
+            actx, sigma=gmres_result.solution)
 
     # }}}
 
     from meshmode.discretization.visualization import make_visualizer
-    bdry_vis = make_visualizer(queue, density_discr, 20)
+    bdry_vis = make_visualizer(actx, density_discr, 20)
     bdry_vis.write_vtk_file("laplace.vtu", [
         ("sigma", sigma),
         ])
@@ -151,8 +159,8 @@ def main(mesh_name="torus", visualize=False):
             + sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))
 
     try:
-        fld_in_vol = bind(places, representation_sym)(
-                queue, sigma=sigma).get()
+        fld_in_vol = actx.to_numpy(
+                bind(places, representation_sym)(actx, sigma=sigma))
     except QBXTargetAssociationFailedException as e:
         fplot.write_vtk_file("laplace-dirichlet-3d-failed-targets.vts", [
             ("failed", e.failed_target_flags.get(queue)),

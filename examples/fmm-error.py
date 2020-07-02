@@ -1,6 +1,8 @@
 from __future__ import division
 import numpy as np
 import pyopencl as cl
+from meshmode.array_context import PyOpenCLArrayContext
+from meshmode.dof_array import thaw
 from meshmode.mesh.generation import (  # noqa
         make_curve_mesh, starfish, ellipse, drop)
 from sumpy.visualization import FieldPlotter
@@ -13,6 +15,7 @@ def main():
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     target_order = 16
     qbx_order = 3
@@ -37,7 +40,7 @@ def main():
             InterpolatoryQuadratureSimplexGroupFactory
 
     pre_density_discr = Discretization(
-            cl_ctx, mesh,
+            actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     unaccel_qbx = QBXLayerPotentialSource(
@@ -57,24 +60,27 @@ def main():
         })
     density_discr = places.get_discretization("unaccel_qbx")
 
-    nodes = density_discr.nodes().with_queue(queue)
-    angle = cl.clmath.atan2(nodes[1], nodes[0])
+    nodes = thaw(actx, density_discr.nodes())
+    angle = actx.np.atan2(nodes[1], nodes[0])
 
     from pytential import bind, sym
-    #op = sym.d_dx(sym.S(kernel, sym.var("sigma")), qbx_forced_limit=None)
-    #op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None)
-    op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
+    kwargs = {"k": sym.var("k")} if k else {}
+    #op = sym.d_dx(
+    #    sym.S(kernel, sym.var("sigma")), qbx_forced_limit=None, **kwargs)
+    #op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None, **kwargs)
+    op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None, **kwargs)
 
-    sigma = cl.clmath.cos(mode_nr*angle)
+    sigma = actx.np.cos(mode_nr*angle)
 
     if isinstance(kernel, HelmholtzKernel):
-        sigma = sigma.astype(np.complex128)
+        for i, elem in np.ndenumerate(sigma):
+            sigma[i] = elem.astype(np.complex128)
 
     fld_in_vol = bind(places, op, auto_where=("unaccel_qbx", "targets"))(
-            queue, sigma=sigma, k=k).get()
+            actx, sigma=sigma, k=k).get()
 
     fmm_fld_in_vol = bind(places, op, auto_where=("qbx", "targets"))(
-            queue, sigma=sigma, k=k).get()
+            actx, sigma=sigma, k=k).get()
 
     err = fmm_fld_in_vol-fld_in_vol
 

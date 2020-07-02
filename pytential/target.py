@@ -73,4 +73,7 @@ class PointsTarget(TargetBase):
         for coord_ary in self._nodes:
             return coord_ary.shape[0]
 
+    # FIXME: Rename
+    ndofs = nnodes
+
 # vim: foldmethod=marker

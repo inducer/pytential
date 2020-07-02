@@ -22,9 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from six.moves import range
-
 __doc__ = """
 
 .. autofunction:: gmres
@@ -37,52 +34,22 @@ __doc__ = """
 """
 
 
-def get_array_module(vec):
-    try:
-        from pyopencl.tools import array_module
-        from pytools.obj_array import is_obj_array
-        if is_obj_array(vec):
-            return array_module(vec[0])
-        else:
-            return array_module(vec)
-    except ImportError:
-        return np
+import numpy as np
+from numbers import Number
+import pyopencl as cl
+import pyopencl.array  # noqa
+from pytools.obj_array import obj_array_vectorize_n_args
 
 
-# {{{ block system support
-
-class VectorChopper(object):
-    def __init__(self, structured_vec):
-        from pytools.obj_array import is_obj_array
-        self.is_structured = is_obj_array(structured_vec)
-        self.array_module = get_array_module(structured_vec)
-
-        if self.is_structured:
-            self.slices = []
-            num_dofs = 0
-            for entry in structured_vec:
-                if isinstance(entry, self.array_module.ndarray):
-                    length = len(entry)
-                else:
-                    length = 1
-
-                self.slices.append(slice(num_dofs, num_dofs+length))
-                num_dofs += length
-
-    def stack(self, vec):
-        if not self.is_structured:
-            return vec
-
-        return self.array_module.hstack(vec)
-
-    def chop(self, vec):
-        if not self.is_structured:
-            return vec
-
-        from pytools.obj_array import make_obj_array
-        return make_obj_array([vec[slc] for slc in self.slices])
-
-# }}}
+def default_vdot(x, y):
+    if (isinstance(x, Number)
+            or (isinstance(x, np.ndarray) and x.dtype.char != "O")):
+        return np.vdot(x, y)
+    elif isinstance(x, cl.array.Array):
+        return cl.array.vdot(x, y).get()
+    else:
+        assert isinstance(x, np.ndarray) and x.dtype.char == "O"
+        return sum(obj_array_vectorize_n_args(default_vdot, x, y))
 
 
 # {{{ gmres
@@ -92,7 +59,6 @@ class VectorChopper(object):
 # Necessary because SciPy gmres is not reentrant and thus does
 # not allow recursive solves.
 
-import numpy as np
 from pytools import Record
 
 
@@ -298,7 +264,7 @@ class ResidualPrinter:
 # {{{ entrypoint
 
 def gmres(op, rhs, restart=None, tol=None, x0=None,
-        inner_product=None,
+        inner_product=default_vdot,
         maxiter=None, hard_failure=None,
         no_progress_factor=None, stall_iterations=None,
         callback=None, progress=False, require_monotonicity=True):
@@ -320,32 +286,20 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
 
     :return: a :class:`GMRESResult`
     """
-    amod = get_array_module(rhs)
-
-    chopper = VectorChopper(rhs)
-    stacked_rhs = chopper.stack(rhs)
-
-    stacked_x0 = x0
-    if stacked_x0 is not None:
-        stacked_x0 = chopper.stack(stacked_x0)
-
-    if inner_product is None:
-        inner_product = amod.vdot
-
     if callback is None:
         if progress:
             callback = ResidualPrinter(inner_product)
         else:
             callback = None
 
-    result = _gmres(op, stacked_rhs, restart=restart, tol=tol, x0=stacked_x0,
+    result = _gmres(op, rhs, restart=restart, tol=tol, x0=x0,
             dot=inner_product,
             maxiter=maxiter, hard_failure=hard_failure,
             no_progress_factor=no_progress_factor,
             stall_iterations=stall_iterations, callback=callback,
             require_monotonicity=require_monotonicity)
 
-    return result.copy(solution=chopper.chop(result.solution))
+    return result
 
 # }}}
 
@@ -367,10 +321,7 @@ def lu(op, rhs, show_spectrum=False):
         pt.plot(ev.real, ev.imag, "o")
         pt.show()
 
-    chopper = VectorChopper(rhs)
-    return chopper.chop(
-            la.solve(mat,
-                chopper.stack(rhs)))
+    return la.solve(mat, rhs)
 
 # }}}
 

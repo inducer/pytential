@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import division, absolute_import, print_function
+from __future__ import annotations
 
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
@@ -29,6 +29,7 @@ THE SOFTWARE.
 
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+from meshmode.array_context import PyOpenCLArrayContext
 import numpy as np
 import pyopencl as cl
 
@@ -219,8 +220,8 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
 
 class RefinerCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, cl_context, tree_code_container):
-        self.cl_context = cl_context
+    def __init__(self, actx: PyOpenCLArrayContext, tree_code_container):
+        self.array_context = actx
         self.tree_code_container = tree_code_container
 
     @memoize_method
@@ -228,7 +229,7 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
             self, dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
             particle_id_dtype, max_levels):
         return EXPANSION_DISK_UNDISTURBED_BY_SOURCES_CHECKER.generate(
-                self.cl_context,
+                self.array_context.context,
                 dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
                 max_levels,
                 extra_type_aliases=(("particle_id_t", particle_id_dtype),))
@@ -238,7 +239,7 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
             self, dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
             particle_id_dtype, max_levels):
         return SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER.generate(
-                self.cl_context,
+                self.array_context.context,
                 dimensions, coord_dtype, box_id_dtype, peer_list_idx_dtype,
                 max_levels,
                 extra_type_aliases=(("particle_id_t", particle_id_dtype),))
@@ -268,11 +269,11 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
         knl = lp.split_iname(knl, "ielement", 128, inner_tag="l.0", outer_tag="g.0")
         return knl
 
-    def get_wrangler(self, queue):
+    def get_wrangler(self):
         """
         :arg queue:
         """
-        return RefinerWrangler(self, queue)
+        return RefinerWrangler(self.array_context, self)
 
 # }}}
 
@@ -311,7 +312,10 @@ class RefinerWrangler(TreeWranglerBase):
         from pytential import bind, sym
         center_danger_zone_radii = bind(stage1_density_discr,
                 sym.expansion_radii(stage1_density_discr.ambient_dim,
-                    granularity=sym.GRANULARITY_CENTER))(self.queue)
+                    granularity=sym.GRANULARITY_CENTER))(self.array_context)
+
+        from meshmode.dof_array import flatten
+        center_danger_zone_radii = flatten(center_danger_zone_radii)
 
         evt = knl(
             *unwrap_args(
@@ -369,7 +373,11 @@ class RefinerWrangler(TreeWranglerBase):
         dd = sym.as_dofdesc(sym.GRANULARITY_ELEMENT).to_stage2()
         source_danger_zone_radii_by_panel = bind(stage2_density_discr,
                 sym._source_danger_zone_radii(
-                    stage2_density_discr.ambient_dim, dofdesc=dd))(self.queue)
+                    stage2_density_discr.ambient_dim, dofdesc=dd))(
+                self.array_context)
+        from meshmode.dof_array import flatten
+        source_danger_zone_radii_by_panel = flatten(
+                source_danger_zone_radii_by_panel)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
@@ -407,6 +415,10 @@ class RefinerWrangler(TreeWranglerBase):
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
+        from pytential.utils import flatten_if_needed
+        element_property = flatten_if_needed(
+                self.array_context, element_property)
+
         evt, out = knl(self.queue,
                        element_property=element_property,
                        refine_flags=refine_flags,
@@ -436,8 +448,10 @@ class RefinerWrangler(TreeWranglerBase):
 
         with ProcessLogger(logger, "refine mesh"):
             refiner.refine(refine_flags)
-            from meshmode.discretization.connection import make_refinement_connection
-            conn = make_refinement_connection(refiner, density_discr, factory)
+            from meshmode.discretization.connection import (
+                    make_refinement_connection)
+            conn = make_refinement_connection(
+                    self.array_context, refiner, density_discr, factory)
 
         return conn
 
@@ -451,6 +465,7 @@ class RefinerNotConvergedWarning(UserWarning):
 
 
 def make_empty_refine_flags(queue, density_discr):
+    # FIXME: queue => actx
     """Return an array on the device suitable for use as element refine flags.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`.
@@ -487,6 +502,7 @@ def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
 
 def _visualize_refinement(queue, discr,
         niter, stage_nr, stage_name, flags, visualize=False):
+    # FIXME: queue => actx
     if not visualize:
         return
 
@@ -529,7 +545,7 @@ def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
             QuadratureSimplexGroupFactory
 
     return Discretization(
-            lpot_source.cl_context,
+            lpot_source._setup_actx,
             stage2_density_discr.mesh,
             QuadratureSimplexGroupFactory(lpot_source.fine_order),
             lpot_source.real_dtype)
@@ -583,6 +599,8 @@ def _refine_qbx_stage1(lpot_source, density_discr,
     iter_violated_criteria = ["start"]
     niter = 0
 
+    actx = wrangler.array_context
+
     stage1_density_discr = density_discr
     while iter_violated_criteria:
         iter_violated_criteria = []
@@ -602,7 +620,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
                 quad_resolution = bind(stage1_density_discr,
                         sym._quad_resolution(stage1_density_discr.ambient_dim,
-                            dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
+                            dofdesc=sym.GRANULARITY_ELEMENT))(actx)
 
                 violates_kernel_length_scale = \
                         wrangler.check_element_prop_threshold(
@@ -622,7 +640,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                 scaled_max_curv = bind(stage1_density_discr,
                     sym.ElementwiseMax(sym._scaled_max_curvature(
                         stage1_density_discr.ambient_dim),
-                        dofdesc=sym.GRANULARITY_ELEMENT))(wrangler.queue)
+                        dofdesc=sym.GRANULARITY_ELEMENT))(actx)
 
                 violates_scaled_max_curv = \
                         wrangler.check_element_prop_threshold(
@@ -764,7 +782,8 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
 def _refine_qbx_quad_stage2(lpot_source, stage2_density_discr):
     from meshmode.discretization.connection import make_same_mesh_connection
     discr = _make_quad_stage2_discr(lpot_source, stage2_density_discr)
-    conn = make_same_mesh_connection(discr, stage2_density_discr)
+    conn = make_same_mesh_connection(
+            lpot_source._setup_actx, discr, stage2_density_discr)
 
     return discr, conn
 
@@ -898,7 +917,7 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
 
 # {{{ refine_geometry_collection
 
-def refine_geometry_collection(queue, places,
+def refine_geometry_collection(places,
         group_factory=None,
         refine_discr_stage=None,
         kernel_length_scale=None,
@@ -945,7 +964,7 @@ def refine_geometry_collection(queue, places,
             continue
 
         _refine_for_global_qbx(places, dofdesc,
-                lpot_source.refiner_code_container.get_wrangler(queue),
+                lpot_source.refiner_code_container.get_wrangler(),
                 group_factory=group_factory,
                 kernel_length_scale=kernel_length_scale,
                 scaled_max_curvature_threshold=scaled_max_curvature_threshold,
