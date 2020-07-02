@@ -107,6 +107,7 @@ setup(name="pytential",
 
       ext_modules=cythonize(ext_modules),
 
+      python_requires="~=3.6",
       install_requires=[
           "pytest>=2.3",
           # FIXME leave out for now
