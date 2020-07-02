@@ -223,10 +223,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # back if the layer potential source is ever copied. (such as
         # during refinement)
 
-    @property
-    def _setup_actx(self):
-        return self.density_discr._setup_actx
-
     def copy(
             self,
             density_discr=None,

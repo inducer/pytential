@@ -207,6 +207,10 @@ class LayerPotentialSourceBase(PotentialSource):
         return self.density_discr.ambient_dim
 
     @property
+    def _setup_actx(self):
+        return self.density_discr._setup_actx
+
+    @property
     def dim(self):
         return self.density_discr.dim
 

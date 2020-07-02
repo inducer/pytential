@@ -26,12 +26,12 @@ THE SOFTWARE.
 import numpy as np
 import numpy.linalg as la  # noqa
 import pyopencl as cl
-import pyopencl.clmath  # noqa
 import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 from functools import partial
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh, NArmedStarfish)
@@ -51,6 +51,7 @@ circle = partial(ellipse, 1)
 def test_geometry(ctx_factory):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     nelements = 30
     order = 5
@@ -63,13 +64,13 @@ def test_geometry(ctx_factory):
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
 
-    discr = Discretization(cl_ctx, mesh,
+    discr = Discretization(actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(order))
 
     import pytential.symbolic.primitives as prim
     area_sym = prim.integral(2, 1, 1)
 
-    area = bind(discr, area_sym)(queue)
+    area = bind(discr, area_sym)(actx)
 
     err = abs(area-2*np.pi)
     print(err)
@@ -86,6 +87,7 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
@@ -109,7 +111,7 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
             InterpolatoryQuadratureSimplexGroupFactory
 
     pre_density_discr = Discretization(
-            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+            actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
     qbx = QBXLayerPotentialSource(
             pre_density_discr,
             4*target_order,
@@ -127,16 +129,16 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
     from sumpy.kernel import LaplaceKernel
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=-2)
 
-    sigma = density_discr.zeros(queue) + 1
-    fld_in_vol = bind(places, op)(queue, sigma=sigma)
+    sigma = density_discr.zeros(actx) + 1
+    fld_in_vol = bind(places, op)(actx, sigma=sigma)
     fld_in_vol_exact = -1
 
-    err = cl.clmath.fabs(fld_in_vol - fld_in_vol_exact)
-    linf_err = cl.array.max(err).get()
+    err = actx.np.fabs(fld_in_vol - fld_in_vol_exact)
+    linf_err = actx.to_numpy(err).max()
     print("l_inf error:", linf_err)
 
     if visualize:
-        fplot.show_scalar_in_matplotlib(fld_in_vol.get())
+        fplot.show_scalar_in_matplotlib(actx.to_numpy(fld_in_vol))
         import matplotlib.pyplot as pt
         pt.colorbar()
         pt.show()
@@ -153,6 +155,7 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
@@ -172,7 +175,7 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
             InterpolatoryQuadratureSimplexGroupFactory
 
     pre_density_discr = Discretization(
-            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+            actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
     direct_qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=False,
@@ -201,31 +204,30 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     from pytential.qbx import QBXTargetAssociationFailedException
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
     try:
-        direct_sigma = direct_density_discr.zeros(queue) + 1
+        direct_sigma = direct_density_discr.zeros(actx) + 1
         direct_fld_in_vol = bind(places, op,
                 auto_where=("direct_qbx", "target"))(
-                        queue, sigma=direct_sigma)
+                        actx, sigma=direct_sigma)
     except QBXTargetAssociationFailedException as e:
-        fplot.show_scalar_in_matplotlib(e.failed_target_flags.get(queue))
+        fplot.show_scalar_in_matplotlib(actx.to_numpy(e.failed_target_flags))
         import matplotlib.pyplot as pt
         pt.show()
         raise
 
-    fmm_sigma = fmm_density_discr.zeros(queue) + 1
+    fmm_sigma = fmm_density_discr.zeros(actx) + 1
     fmm_fld_in_vol = bind(places, op,
             auto_where=("fmm_qbx", "target"))(
-                    queue, sigma=fmm_sigma)
+                    actx, sigma=fmm_sigma)
 
-    err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
-
-    linf_err = cl.array.max(err).get()
+    err = actx.np.fabs(fmm_fld_in_vol - direct_fld_in_vol)
+    linf_err = actx.to_numpy(err).max()
     print("l_inf error:", linf_err)
 
     if do_plot:
         #fplot.show_scalar_in_mayavi(0.1*.get(queue))
         fplot.write_vtk_file("potential.vts", [
-            ("fmm_fld_in_vol", fmm_fld_in_vol.get(queue)),
-            ("direct_fld_in_vol", direct_fld_in_vol.get(queue))
+            ("fmm_fld_in_vol", actx.to_numpy(fmm_fld_in_vol)),
+            ("direct_fld_in_vol", actx.to_numpy(direct_fld_in_vol))
             ])
 
     assert linf_err < 1e-3
@@ -235,10 +237,10 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
 
 # {{{ unregularized tests
 
-
 def test_unregularized_with_ones_kernel(ctx_factory):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     nelements = 10
     order = 8
@@ -251,7 +253,7 @@ def test_unregularized_with_ones_kernel(ctx_factory):
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
 
-    discr = Discretization(cl_ctx, mesh,
+    discr = Discretization(actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(order))
 
     from pytential.unregularized import UnregularizedLayerPotentialSource
@@ -268,24 +270,24 @@ def test_unregularized_with_ones_kernel(ctx_factory):
     sigma_sym = sym.var("sigma")
     op = sym.IntG(one_kernel_2d, sigma_sym, qbx_forced_limit=None)
 
-    sigma = cl.array.zeros(queue, discr.ndofs, dtype=float)
-    sigma.fill(1)
-    sigma.finish()
+    sigma = discr.zeros(actx) + 1
 
     result_self = bind(places, op,
             auto_where=places.auto_where)(
-                    queue, sigma=sigma)
+                    actx, sigma=sigma)
     result_nonself = bind(places, op,
             auto_where=(places.auto_source, "target_non_self"))(
-                    queue, sigma=sigma)
+                    actx, sigma=sigma)
 
-    assert np.allclose(result_self.get(), 2 * np.pi)
-    assert np.allclose(result_nonself.get(), 2 * np.pi)
+    from meshmode.dof_array import flatten
+    assert np.allclose(actx.to_numpy(flatten(result_self)), 2 * np.pi)
+    assert np.allclose(actx.to_numpy(result_nonself), 2 * np.pi)
 
 
 def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     nelements = 300
     target_order = 8
@@ -303,7 +305,7 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
             InterpolatoryQuadratureSimplexGroupFactory
 
     density_discr = Discretization(
-            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+            actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
     direct = UnregularizedLayerPotentialSource(
             density_discr,
             fmm_order=False,
@@ -311,7 +313,7 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
     fmm = direct.copy(
             fmm_level_to_order=lambda kernel, kernel_args, tree, level: fmm_order)
 
-    sigma = density_discr.zeros(queue) + 1
+    sigma = density_discr.zeros(actx) + 1
 
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=100)
     from pytential.target import PointsTarget
@@ -332,13 +334,12 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
 
     direct_fld_in_vol = bind(places, op,
             auto_where=("unregularized_direct", "targets"))(
-                    queue, sigma=sigma)
+                    actx, sigma=sigma)
     fmm_fld_in_vol = bind(places, op,
-            auto_where=("unregularized_fmm", "targets"))(queue, sigma=sigma)
+            auto_where=("unregularized_fmm", "targets"))(actx, sigma=sigma)
 
-    err = cl.clmath.fabs(fmm_fld_in_vol - direct_fld_in_vol)
-
-    linf_err = cl.array.max(err).get()
+    err = actx.np.fabs(fmm_fld_in_vol - direct_fld_in_vol)
+    linf_err = actx.to_numpy(err).max()
     print("l_inf error:", linf_err)
 
     assert linf_err < 5e-3
@@ -356,6 +357,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     if relation == "div_s":
         target_order = 3
@@ -377,7 +379,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
         from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
         pre_discr = Discretization(
-                cl_ctx, mesh,
+                actx, mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(3))
 
         from pytential.qbx import QBXLayerPotentialSource
@@ -401,8 +403,9 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                 sym.cse(sym.tangential_to_xyz(density_sym), "jxyz"),
                 qbx_forced_limit=qbx_forced_limit)))
 
-        x, y, z = density_discr.nodes().with_queue(queue)
-        m = cl.clmath
+        from meshmode.dof_array import thaw
+        x, y, z = thaw(actx, density_discr.nodes())
+        m = actx.np
 
         if relation == "nxcurls":
             density_sym = sym.make_sym_vector("density", 2)
@@ -417,7 +420,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
             # an XYZ function and project it.
             density = bind(places,
                     sym.xyz_to_tangential(sym.make_sym_vector("jxyz", 3)))(
-                            queue,
+                            actx,
                             jxyz=sym.make_obj_array([
                                 m.cos(0.5*x) * m.cos(0.5*y) * m.cos(0.5*z),
                                 m.sin(0.5*x) * m.cos(0.5*y) * m.sin(0.5*z),
@@ -448,9 +451,9 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
             raise ValueError("unexpected value of 'relation': %s" % relation)
 
         bound_jump_identity = bind(places, jump_identity_sym)
-        jump_identity = bound_jump_identity(queue, density=density)
+        jump_identity = bound_jump_identity(actx, density=density)
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
         err = (
                 norm(density_discr, jump_identity, np.inf)
                 / norm(density_discr, density, np.inf))
@@ -461,15 +464,15 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
         # {{{ visualization
 
         if visualize and relation == "nxcurls":
-            nxcurlS_ext = bind(places, nxcurlS(+1))(queue, density=density)
-            nxcurlS_avg = bind(places, nxcurlS("avg"))(queue, density=density)
+            nxcurlS_ext = bind(places, nxcurlS(+1))(actx, density=density)
+            nxcurlS_avg = bind(places, nxcurlS("avg"))(actx, density=density)
             jtxyz = bind(places, sym.tangential_to_xyz(density_sym))(
-                    queue, density=density)
+                    actx, density=density)
 
             from meshmode.discretization.visualization import make_visualizer
-            bdry_vis = make_visualizer(queue, qbx.density_discr, target_order+3)
+            bdry_vis = make_visualizer(actx, qbx.density_discr, target_order+3)
 
-            bdry_normals = bind(places, sym.normal(3))(queue)\
+            bdry_normals = bind(places, sym.normal(3))(actx)\
                     .as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % nel_factor, [
@@ -481,15 +484,15 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
 
         if visualize and relation == "sp":
             op = sym.Sp(knl, density_sym, qbx_forced_limit=+1)
-            sp_ext = bind(places, op)(queue, density=density)
+            sp_ext = bind(places, op)(actx, density=density)
             op = sym.Sp(knl, density_sym, qbx_forced_limit="avg")
-            sp_avg = bind(places, op)(queue, density=density)
+            sp_avg = bind(places, op)(actx, density=density)
 
             from meshmode.discretization.visualization import make_visualizer
-            bdry_vis = make_visualizer(queue, qbx.density_discr, target_order+3)
+            bdry_vis = make_visualizer(actx, qbx.density_discr, target_order+3)
 
             bdry_normals = bind(places,
-                    sym.normal(3))(queue).as_vector(dtype=object)
+                    sym.normal(3))(actx).as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % nel_factor, [
                 ("density", density),
