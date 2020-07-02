@@ -62,7 +62,7 @@ def test_interpolatory_error_reporting(ctx_factory):
     logging.basicConfig(level=logging.INFO)
 
     ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
+    queue = cl.CommandQueue(ctx)  # noqa
 
     h = 0.2
     from meshmode.mesh.io import generate_gmsh, FileSource
