@@ -119,7 +119,7 @@ setup(name="pytential",
           "boxtree>=2019.1",
           "pymbolic>=2013.2",
           "loo.py>=2017.2",
-          "sumpy>=2020.2",
+          "sumpy>=2013.1",
           "cgen>=2013.1.2",
           "pyfmmlib>=2019.1.1",
 
