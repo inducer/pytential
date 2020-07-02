@@ -25,7 +25,7 @@ THE SOFTWARE.
 import six
 
 from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import flatten, thaw
+from meshmode.dof_array import flatten, unflatten, thaw
 import numpy as np
 from pytools import memoize_method, memoize_in
 
@@ -735,20 +735,23 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         p2p = None
         lpot_applier_on_tgt_subset = None
 
+        from pytential.utils import flatten_if_needed
         kernel_args = {}
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
-            kernel_args[arg_name] = evaluate(arg_expr)
+            kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
 
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim, dofdesc=insn.source))(actx)
         strengths = waa * evaluate(insn.density)
+
+        from meshmode.discretization import Discretization
         flat_strengths = flatten(strengths)
 
         source_discr = bound_expr.places.get_discretization(
                 insn.source.geometry, insn.source.discr_stage)
 
         # FIXME: Do this all at once
-        result = []
+        results = []
         for o in insn.outputs:
             source_dd = insn.source.copy(discr_stage=o.target_name.discr_stage)
             target_discr = bound_expr.places.get_discretization(
@@ -769,13 +772,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     dofdesc=o.target_name))(actx)
 
                 evt, output_for_each_kernel = lpot_applier(
-                        actx.queue, target_discr.nodes(),
-                        source_discr.nodes(),
-                        centers,
-                        [strengths],
-                        expansion_radii=expansion_radii,
+                        actx.queue,
+                        flatten(thaw(actx, target_discr.nodes())),
+                        flatten(thaw(actx, source_discr.nodes())),
+                        flatten(centers),
+                        [flat_strengths],
+                        expansion_radii=flatten(expansion_radii),
                         **kernel_args)
-                result.append((o.name, output_for_each_kernel[o.kernel_index]))
+
+                result = output_for_each_kernel[o.kernel_index]
+                if isinstance(target_discr, Discretization):
+                    result = unflatten(actx, target_discr, result)
+
+                results.append((o.name, result))
             else:
                 # no on-disk kernel caching
                 if p2p is None:
@@ -786,7 +795,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 queue = actx.queue
 
-                from pytential.utils import flatten_if_needed
                 flat_targets = flatten_if_needed(actx, target_discr.nodes())
                 flat_sources = flatten(thaw(actx, source_discr.nodes()))
 
@@ -849,10 +857,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                             qbx_center_numbers=qbx_center_numbers,
                             **tgt_subset_kwargs)
 
-                result.append((o.name, output_for_each_kernel[o.kernel_index]))
+                result = output_for_each_kernel[o.kernel_index]
+                if isinstance(target_discr, Discretization):
+                    result = unflatten(actx, target_discr, result)
+
+                results.append((o.name, result))
 
         timing_data = {}
-        return result, timing_data
+        return results, timing_data
 
     # }}}
 
