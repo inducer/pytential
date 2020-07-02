@@ -37,6 +37,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 from pytential.qbx import QBXLayerPotentialSource
 
 from functools import partial
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
         make_curve_mesh, generate_icosphere, generate_torus)
@@ -53,6 +54,22 @@ __all__ = ["pytest_generate_tests"]
 
 RNG_SEED = 10
 FAR_TARGET_DIST_FROM_SOURCE = 10
+
+
+# {{{ utils
+
+def dof_array_to_numpy(actx, ary):
+    """Converts DOFArrays (or object arrays of DOFArrays) to NumPy arrays.
+    Object arrays get turned into multidimensional arrays.
+    """
+    from pytools.obj_array import obj_array_vectorize
+    from meshmode.dof_array import flatten
+    arr = obj_array_vectorize(actx.to_numpy, flatten(ary))
+    if arr.dtype.char == "O":
+        arr = np.array(list(arr))
+    return arr
+
+# }}}
 
 
 # {{{ source refinement checker
@@ -76,22 +93,23 @@ def iter_elements(discr):
             yield ElementInfo(
                 element_nr=element_nr,
                 discr_slice=slice(discr_nodes_idx,
-                   discr_nodes_idx + discr_group.nunit_nodes))
+                    discr_nodes_idx + discr_group.nunit_dofs))
 
-            discr_nodes_idx += discr_group.nunit_nodes
+            discr_nodes_idx += discr_group.nunit_dofs
 
 
 def run_source_refinement_test(ctx_factory, mesh, order,
         helmholtz_k=None, visualize=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     # {{{ initial geometry
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
             InterpolatoryQuadratureSimplexGroupFactory)
-    discr = Discretization(cl_ctx, mesh,
+    discr = Discretization(actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(order))
 
     lpot_source = QBXLayerPotentialSource(discr,
@@ -107,7 +125,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
     expansion_disturbance_tolerance = 0.025
 
     from pytential.qbx.refinement import refine_geometry_collection
-    places = refine_geometry_collection(queue, places,
+    places = refine_geometry_collection(places,
             kernel_length_scale=kernel_length_scale,
             expansion_disturbance_tolerance=expansion_disturbance_tolerance,
             visualize=visualize)
@@ -116,27 +134,35 @@ def run_source_refinement_test(ctx_factory, mesh, order,
 
     dd = places.auto_source
     stage1_density_discr = places.get_discretization(dd.geometry)
-    stage1_density_nodes = stage1_density_discr.nodes().get(queue)
+    from meshmode.dof_array import thaw, flatten
+
+    stage1_density_nodes = dof_array_to_numpy(actx,
+            thaw(actx, stage1_density_discr.nodes()))
 
     quad_stage2_density_discr = places.get_discretization(
             dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
-    quad_stage2_density_nodes = quad_stage2_density_discr.nodes().get(queue)
+    quad_stage2_density_nodes = dof_array_to_numpy(actx,
+            thaw(actx, quad_stage2_density_discr.nodes()))
 
-    int_centers = bind(places,
-        sym.expansion_centers(lpot_source.ambient_dim, -1))(queue)
-    int_centers = np.array([axis.get(queue) for axis in int_centers])
-    ext_centers = bind(places,
-        sym.expansion_centers(lpot_source.ambient_dim, +1))(queue)
-    ext_centers = np.array([axis.get(queue) for axis in ext_centers])
-
-    expansion_radii = bind(places,
-        sym.expansion_radii(lpot_source.ambient_dim))(queue).get()
+    int_centers = dof_array_to_numpy(actx,
+            bind(places,
+                sym.expansion_centers(lpot_source.ambient_dim, -1))(actx))
+    ext_centers = dof_array_to_numpy(actx,
+            bind(places,
+                sym.expansion_centers(lpot_source.ambient_dim, +1))(actx))
+    expansion_radii = dof_array_to_numpy(actx,
+            bind(places, sym.expansion_radii(lpot_source.ambient_dim))(actx))
 
     dd = dd.copy(granularity=sym.GRANULARITY_ELEMENT)
-    source_danger_zone_radii = bind(places, sym._source_danger_zone_radii(
-        lpot_source.ambient_dim, dofdesc=dd.to_stage2()))(queue).get()
-    quad_res = bind(places, sym._quad_resolution(
-        lpot_source.ambient_dim, dofdesc=dd))(queue)
+    source_danger_zone_radii = dof_array_to_numpy(actx,
+            bind(places,
+                sym._source_danger_zone_radii(
+                    lpot_source.ambient_dim, dofdesc=dd.to_stage2()))(actx))
+    # FIXME: Why does _quad_resolution() return a host array?
+    quad_res = flatten(
+            bind(places,
+                sym._quad_resolution(
+                    lpot_source.ambient_dim, dofdesc=dd))(actx))
 
     # {{{ check if satisfying criteria
 
@@ -236,6 +262,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
         visualize=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     # {{{ generate lpot source
 
@@ -248,7 +275,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
-    discr = Discretization(cl_ctx, mesh, factory)
+    discr = Discretization(actx, mesh, factory)
 
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in target association
@@ -263,20 +290,25 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
 
     dd = places.auto_source.to_stage1()
-    centers = bind(places, sym.interleaved_expansion_centers(
-        lpot_source.ambient_dim, dofdesc=dd))(queue)
-    centers = np.array([ax.get(queue) for ax in centers])
-
-    tunnel_radius = bind(places, sym._close_target_tunnel_radii(
-        lpot_source.ambient_dim, dofdesc=dd))(queue)
+    centers = dof_array_to_numpy(actx,
+            bind(places, sym.interleaved_expansion_centers(
+                lpot_source.ambient_dim, dofdesc=dd))(actx))
 
     density_discr = places.get_discretization(dd.geometry)
-    noise = rng.uniform(queue, density_discr.nnodes, dtype=np.float, a=0.01, b=1.0)
+
+    noise = actx.dof_array_to_numpy(
+            rng.uniform(queue, density_discr.ndofs, dtype=np.float, a=0.01, b=1.0))
+
+    tunnel_radius = dof_array_to_numpy(actx,
+            bind(places, sym._close_target_tunnel_radii(
+                lpot_source.ambient_dim, dofdesc=dd))(actx))
 
     def targets_from_sources(sign, dist, dim=2):
-        nodes = bind(places, sym.nodes(dim, dofdesc=dd))(queue)
-        normals = bind(places, sym.normal(dim, dofdesc=dd))(queue)
-        return (nodes + normals * sign * dist).as_vector(np.object)
+        nodes = dof_array_to_numpy(actx,
+                bind(places, sym.nodes(dim, dofdesc=dd))(actx).as_vector(np.object))
+        normals = dof_array_to_numpy(actx,
+                bind(places, sym.normal(dim, dofdesc=dd))(actx).as_vector(np.object))
+        return actx.from_numpy(nodes + normals * sign * dist)
 
     from pytential.target import PointsTarget
     int_targets = PointsTarget(targets_from_sources(-1, noise * tunnel_radius))
@@ -297,7 +329,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
         (far_targets, 0),
     )
 
-    sizes = np.cumsum([discr.nnodes for discr, _ in target_discrs])
+    sizes = np.cumsum([discr.ndofs for discr, _ in target_discrs])
 
     (surf_int_slice,
      surf_ext_slice,
@@ -315,23 +347,24 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     from pytential.qbx.utils import TreeCodeContainer
     code_container = TargetAssociationCodeContainer(
-            cl_ctx, TreeCodeContainer(cl_ctx))
+            actx, TreeCodeContainer(actx))
 
     target_assoc = (associate_targets_to_qbx_centers(
             places,
             places.auto_source,
-            code_container.get_wrangler(queue),
+            code_container.get_wrangler(actx),
             target_discrs,
             target_association_tolerance=1e-10)
         .get(queue=queue))
 
-    expansion_radii = bind(places, sym.expansion_radii(
-        lpot_source.ambient_dim,
-        granularity=sym.GRANULARITY_CENTER))(queue).get()
-    surf_targets = np.array(
-            [axis.get(queue) for axis in density_discr.nodes()])
-    int_targets = np.array([axis.get(queue) for axis in int_targets.nodes()])
-    ext_targets = np.array([axis.get(queue) for axis in ext_targets.nodes()])
+    expansion_radii = dof_array_to_numpy(actx,
+            bind(places, sym.expansion_radii(
+                lpot_source.ambient_dim,
+                granularity=sym.GRANULARITY_CENTER))(actx))
+    from meshmode.dof_array import thaw
+    surf_targets = dof_array_to_numpy(actx, thaw(actx, density_discr.nodes()))
+    int_targets = actx.to_numpy(int_targets.nodes())
+    ext_targets = actx.to_numpy(ext_targets.nodes())
 
     def visualize_curve_and_assoc():
         import matplotlib.pyplot as plt
@@ -416,6 +449,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 def test_target_association_failure(ctx_factory):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     # {{{ generate circle
 
@@ -430,7 +464,7 @@ def test_target_association_failure(ctx_factory):
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
     factory = InterpolatoryQuadratureSimplexGroupFactory(order)
-    discr = Discretization(cl_ctx, mesh, factory)
+    discr = Discretization(actx, mesh, factory)
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in target association
             fine_order=order)
@@ -444,8 +478,9 @@ def test_target_association_failure(ctx_factory):
         2j * np.pi * np.linspace(0, 1, 500, endpoint=False))
     from pytential.target import PointsTarget
     close_circle_target = (
-        PointsTarget(cl.array.to_device(
-            queue, np.array([close_circle.real, close_circle.imag]))))
+            PointsTarget(
+                actx.from_numpy(
+                    np.array([close_circle.real, close_circle.imag]))))
 
     targets = (
         (close_circle_target, 0),
@@ -458,13 +493,13 @@ def test_target_association_failure(ctx_factory):
     from pytential.qbx.utils import TreeCodeContainer
 
     code_container = TargetAssociationCodeContainer(
-            cl_ctx, TreeCodeContainer(cl_ctx))
+            actx, TreeCodeContainer(actx))
 
     with pytest.raises(QBXTargetAssociationFailedException):
         associate_targets_to_qbx_centers(
             places,
             places.auto_source,
-            code_container.get_wrangler(queue),
+            code_container.get_wrangler(actx),
             targets,
             target_association_tolerance=1e-10)
 
