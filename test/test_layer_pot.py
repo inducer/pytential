@@ -209,7 +209,8 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
                 auto_where=("direct_qbx", "target"))(
                         actx, sigma=direct_sigma)
     except QBXTargetAssociationFailedException as e:
-        fplot.show_scalar_in_matplotlib(actx.to_numpy(e.failed_target_flags))
+        fplot.show_scalar_in_matplotlib(
+            actx.to_numpy(actx.thaw(e.failed_target_flags)))
         import matplotlib.pyplot as pt
         pt.show()
         raise

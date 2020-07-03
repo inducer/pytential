@@ -715,7 +715,7 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
         bdry_vis = make_visualizer(actx, density_discr, case.target_order+3)
 
         bdry_vis.write_vtk_file("failed-targets-%s.vtu" % resolution, [
-            ("failed_targets", e.failed_target_flags),
+            ("failed_targets", actx.thaw(e.failed_target_flags)),
             ])
         raise
 
@@ -871,7 +871,8 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
             fplot.write_vtk_file(
                     "failed-targets.vts",
                     [
-                        ("failed_targets", actx.to_numpy(e.failed_target_flags))
+                        ("failed_targets", actx.to_numpy(
+                            actx.thaw(e.failed_target_flags)))
                         ])
             raise
 
