@@ -42,6 +42,8 @@ from pytools.obj_array import obj_array_vectorize_n_args
 
 
 def default_vdot(x, y):
+    # vdot() implementation that is aware of scalars and host or
+    # PyOpenCL arrays. It also recurses down nested object arrays.
     if (isinstance(x, Number)
             or (isinstance(x, np.ndarray) and x.dtype.char != "O")):
         return np.vdot(x, y)
@@ -240,11 +242,8 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
 # {{{ progress reporting
 
 class ResidualPrinter:
-    def __init__(self, inner_product=None):
+    def __init__(self, inner_product=default_vdot):
         self.count = 0
-        if inner_product is None:
-            inner_product = np.vdot
-
         self.inner_product = inner_product
 
     def __call__(self, resid):
