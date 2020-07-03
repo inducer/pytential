@@ -389,7 +389,11 @@ class CostModelMapper(EvaluationMapperBase):
 class MatVecOp(object):
     """A :class:`scipy.sparse.linalg.LinearOperator` work-alike.
     Exposes a :mod:`pytential` operator as a generic matrix operation,
-    i.e. given :math:`x`, compute :math:`Ax`.
+    i.e., given :math:`x`, compute :math:`Ax`.
+
+    .. attribute:: shape
+    .. attribute:: dtype
+    .. automethod:: matvec
     """
 
     def __init__(self,
@@ -413,6 +417,8 @@ class MatVecOp(object):
         return len(self.discrs) > 1
 
     def flatten(self, ary):
+        # Return a flat version of *ary*. The returned value is suitable for
+        # use with solvers whose API expects a one-dimensional array.
         if not self._operator_uses_obj_array:
             ary = [ary]
 
@@ -423,6 +429,7 @@ class MatVecOp(object):
         return result
 
     def unflatten(self, ary):
+        # Convert a flat version of *ary* into a structured version.
         components = []
         for discr, (start, end) in zip(self.discrs, self.starts_and_ends):
             component = ary[start:end]
