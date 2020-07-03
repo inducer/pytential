@@ -158,8 +158,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
             bind(places,
                 sym._source_danger_zone_radii(
                     lpot_source.ambient_dim, dofdesc=dd.to_stage2()))(actx))
-    # FIXME: Why does _quad_resolution() return a host array?
-    quad_res = flatten(
+    quad_res = dof_array_to_numpy(actx,
             bind(places,
                 sym._quad_resolution(
                     lpot_source.ambient_dim, dofdesc=dd))(actx))
