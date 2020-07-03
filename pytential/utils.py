@@ -48,10 +48,7 @@ def unflatten_from_numpy(actx, ary, discr=None):
     from pytools.obj_array import obj_array_vectorize
     from meshmode.dof_array import unflatten
 
-    if isinstance(ary, np.ndarray) and ary.dtype.char == "O":
-        ary = obj_array_vectorize(actx.from_numpy, ary)
-    else:
-        ary = actx.from_numpy(ary)
+    ary = obj_array_vectorize(actx.from_numpy, ary)
 
     if discr is None:
         return ary
