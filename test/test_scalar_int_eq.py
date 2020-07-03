@@ -32,6 +32,7 @@ import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
@@ -436,7 +437,8 @@ class BetterplaneIntEqTestCase(IntEqTestCase):
 
 # {{{ test backend
 
-def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
+def run_int_eq_test(actx: PyOpenCLArrayContext,
+        case, resolution, visualize=False):
     mesh = case.get_mesh(resolution, case.target_order)
     print("%d elements" % mesh.nelements)
 
@@ -445,7 +447,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
     pre_density_discr = Discretization(
-            cl_ctx, mesh,
+            actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
     source_order = 4*case.target_order
@@ -495,7 +497,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     point_sources = make_circular_point_group(
             mesh.ambient_dim, 10, test_src_geo_radius,
             func=lambda x: x**1.5)
-    point_source = PointPotentialSource(cl_ctx, point_sources)
+    point_source = PointPotentialSource(point_sources)
 
     from pytential.target import PointsTarget
     test_targets = make_circular_point_group(
@@ -554,7 +556,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     places = GeometryCollection(places)
     if case.use_refinement:
         from pytential.qbx.refinement import refine_geometry_collection
-        places = refine_geometry_collection(queue, places,
+        places = refine_geometry_collection(places,
                 **refiner_extra_kwargs)
 
     dd = sym.as_dofdesc(sym.DEFAULT_SOURCE).to_stage1()
@@ -573,15 +575,15 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
         discr = places.get_discretization(dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
         print("quad stage-2 elements have %d nodes"
-                % discr.groups[0].nunit_nodes)
+                % discr.groups[0].nunit_dofs)
 
     # }}}
 
     if hasattr(case, "visualize_geometry") and case.visualize_geometry:
         bdry_normals = bind(places, sym.normal(mesh.ambient_dim))(
-                queue).as_vector(dtype=np.object)
+                actx).as_vector(dtype=np.object)
 
-        bdry_vis = make_visualizer(queue, density_discr, case.target_order)
+        bdry_vis = make_visualizer(actx, density_discr, case.target_order)
         bdry_vis.write_vtk_file("geometry.vtu", [
             ("normals", bdry_normals)
             ])
@@ -591,19 +593,23 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     if visualize:
         if mesh.ambient_dim == 2:
             # show geometry, centers, normals
-            nodes_h = density_discr.nodes().get(queue=queue)
-            normal = bind(places, sym.normal(2))(queue).as_vector(np.object)
+            from meshmode.dof_array import thaw, flatten
+            nodes_h = [actx.to_numpy(axis) for axis in
+                    flatten(thaw(actx, density_discr.nodes()))]
+            normal_h = [actx.to_numpy(axis) for axis in
+                    flatten(
+                        bind(places, sym.normal(2))(actx)
+                        .as_vector(np.object))]
 
             pt.plot(nodes_h[0], nodes_h[1], "x-")
-            pt.quiver(nodes_h[0], nodes_h[1],
-                    normal[0].get(queue), normal[1].get(queue))
+            pt.quiver(nodes_h[0], nodes_h[1], normal_h[0], normal_h[1])
             pt.gca().set_aspect("equal")
             pt.show()
         elif mesh.ambient_dim == 3:
             bdry_normals = bind(places, sym.normal(3))(
-                    queue).as_vector(dtype=object)
+                    actx).as_vector(dtype=object)
 
-            bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
+            bdry_vis = make_visualizer(actx, density_discr, case.target_order+3)
             bdry_vis.write_vtk_file("pre-solve-source-%s.vtu" % resolution, [
                 ("bdry_normals", bdry_normals),
                 ])
@@ -654,7 +660,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     source_charges = source_charges.astype(dtype)
     assert np.sum(source_charges) < 1e-15
 
-    source_charges_dev = cl.array.to_device(queue, source_charges)
+    source_charges_dev = actx.from_numpy(source_charges)
 
     # }}}
 
@@ -666,27 +672,27 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
     test_direct = bind(places, pot_src,
             auto_where=("point_source", "point_target"))(
-            queue, charges=source_charges_dev, **concrete_knl_kwargs)
+            actx, charges=source_charges_dev, **concrete_knl_kwargs)
 
     if case.bc_type == "dirichlet":
         bc = bind(places, pot_src,
                 auto_where=("point_source", sym.DEFAULT_TARGET))(
-                        queue, charges=source_charges_dev, **concrete_knl_kwargs)
+                        actx, charges=source_charges_dev, **concrete_knl_kwargs)
 
     elif case.bc_type == "neumann":
         bc = bind(places, sym.normal_derivative(
             qbx.ambient_dim, pot_src, dofdesc=sym.DEFAULT_TARGET),
             auto_where=("point_source", sym.DEFAULT_TARGET))(
-                    queue, charges=source_charges_dev, **concrete_knl_kwargs)
+                    actx, charges=source_charges_dev, **concrete_knl_kwargs)
 
     elif case.bc_type == "clamped_plate":
         bc_u = bind((point_source, density_discr), pot_src)(
-                queue, charges=source_charges_dev, **concrete_knl_kwargs)
+                actx, charges=source_charges_dev, **concrete_knl_kwargs)
         bc_du = bind(
                 (point_source, density_discr),
                 sym.normal_derivative(
                     qbx.ambient_dim, pot_src, dofdesc=sym.DEFAULT_TARGET)
-                )(queue, charges=source_charges_dev, **concrete_knl_kwargs)
+                )(actx, charges=source_charges_dev, **concrete_knl_kwargs)
         bc = [bc_u, bc_du]
 
     # }}}
@@ -694,22 +700,22 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     # {{{ solve
 
     bound_op = bind(places, op_u)
-    rhs = bind(places, op.prepare_rhs(op.get_density_var("bc")))(queue, bc=bc)
+    rhs = bind(places, op.prepare_rhs(op.get_density_var("bc")))(actx, bc=bc)
 
     try:
         from pytential.solve import gmres
         gmres_result = gmres(
-                bound_op.scipy_op(queue, "u", dtype, **concrete_knl_kwargs),
+                bound_op.scipy_op(actx, "u", dtype, **concrete_knl_kwargs),
                 rhs,
                 tol=case.gmres_tol,
                 progress=True,
                 hard_failure=True,
                 stall_iterations=50, no_progress_factor=1.05)
     except QBXTargetAssociationFailedException as e:
-        bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
+        bdry_vis = make_visualizer(actx, density_discr, case.target_order+3)
 
         bdry_vis.write_vtk_file("failed-targets-%s.vtu" % resolution, [
-            ("failed_targets", e.failed_target_flags),
+            ("failed_targets", actx.thaw(e.failed_target_flags)),
             ])
         raise
 
@@ -721,10 +727,11 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
     # {{{ build matrix for spectrum check
 
     if 0:
+        # FIXME: Ensure this works
         from sumpy.tools import build_matrix
         mat = build_matrix(
                 bound_op.scipy_op(
-                    queue, arg_name="u", dtype=dtype, **concrete_knl_kwargs))
+                    actx, arg_name="u", dtype=dtype, **concrete_knl_kwargs))
         w, v = la.eig(mat)
         if visualize:
             pt.imshow(np.log10(1e-20+np.abs(mat)))
@@ -740,7 +747,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
                 op.representation(op.get_density_var("u")),
                 auto_where=(sym.DEFAULT_SOURCE, "point_target"))
 
-        test_via_bdry = bound_tgt_op(queue, u=weighted_u, **concrete_knl_kwargs)
+        test_via_bdry = bound_tgt_op(actx, u=weighted_u, **concrete_knl_kwargs)
 
         err = test_via_bdry - test_direct
 
@@ -784,11 +791,11 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
         #print(bound_t_deriv_op.code)
 
         grad_from_src = bound_grad_op(
-                queue, u=weighted_u, **concrete_knl_kwargs)
+                actx, u=weighted_u, **concrete_knl_kwargs)
 
         grad_ref = bind(places,
                 sym.grad(mesh.ambient_dim, pot_src),
-                auto_where=("point_source", "point_target"))(queue,
+                auto_where=("point_source", "point_target"))(actx,
                         charges=source_charges_dev,
                         **concrete_knl_kwargs)
 
@@ -812,14 +819,16 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
                     sym.tangential_derivative(qbx.ambient_dim, pot),
                     qbx_forced_limit=loc_sign))
 
-        tang_deriv_from_src = bound_t_deriv_op(
-                queue, u=weighted_u, **concrete_knl_kwargs).as_scalar().get()
+        from meshmode.dof_array import flatten
+        tang_deriv_from_src = actx.to_numpy(
+                flatten(bound_t_deriv_op(
+                    actx, u=weighted_u, **concrete_knl_kwargs).as_scalar()))
 
-        tang_deriv_ref = bind(places,
+        tang_deriv_ref = actx.to_numpy(flatten(bind(places,
                 sym.tangential_derivative(qbx.ambient_dim, pot_src),
-                auto_where=("point_source", sym.DEFAULT_TARGET))(queue,
+                auto_where=("point_source", sym.DEFAULT_TARGET))(actx,
                         charges=source_charges_dev,
-                        **concrete_knl_kwargs).as_scalar().get()
+                        **concrete_knl_kwargs).as_scalar()))
 
         if visualize:
             pt.plot(tang_deriv_ref.real)
@@ -841,12 +850,12 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
     if visualize:
         bdry_normals = bind(places, sym.normal(qbx.ambient_dim))(
-                queue).as_vector(dtype=np.object)
+                actx).as_vector(dtype=np.object)
 
         sym_sqrt_j = sym.sqrt_jac_q_weight(density_discr.ambient_dim)
-        u = bind(places, op.get_density_var("u") / sym_sqrt_j)(queue, u=weighted_u)
+        u = bind(places, op.get_density_var("u") / sym_sqrt_j)(actx, u=weighted_u)
 
-        bdry_vis = make_visualizer(queue, density_discr, case.target_order+3)
+        bdry_vis = make_visualizer(actx, density_discr, case.target_order+3)
         bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
             ("u", u),
             ("bc", bc),
@@ -857,32 +866,34 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
             solved_pot = bind(places,
                     op.representation(op.get_density_var("u")),
                     auto_where=("qbx_target_tol", "plot_targets"))(
-                            queue, u=weighted_u, k=case.k)
+                            actx, u=weighted_u, k=getattr(case, "k", None))
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(
                     "failed-targets.vts",
                     [
-                        ("failed_targets", e.failed_target_flags.get(queue))
+                        ("failed_targets", actx.to_numpy(
+                            actx.thaw(e.failed_target_flags)))
                         ])
             raise
 
-        ones_density = density_discr.zeros(queue)
-        ones_density.fill(1)
+        ones_density = density_discr.zeros(actx) + 1
 
         indicator = -sym.D(LaplaceKernel(qbx.ambient_dim),
                 op.get_density_var("sigma"),
                 qbx_forced_limit=None)
         indicator = bind(places, indicator,
                 auto_where=("qbx_target_tol", "plot_targets"))(
-                        queue, sigma=ones_density).get()
-
-        solved_pot = solved_pot.get()
+                        actx, sigma=ones_density)
 
         true_pot = bind(places, pot_src,
                 auto_where=("point_source", "plot_targets"))(
-                        queue,
+                        actx,
                         charges=source_charges_dev,
-                        **concrete_knl_kwargs).get()
+                        **concrete_knl_kwargs)
+
+        solved_pot = actx.to_numpy(solved_pot)
+        true_pot = actx.to_numpy(true_pot)
+        indicator = actx.to_numpy(indicator)
 
         #fplot.show_scalar_in_mayavi(solved_pot.real, max_val=5)
         if case.prob_side == "scat":
@@ -906,7 +917,7 @@ def run_int_eq_test(cl_ctx, queue, case, resolution, visualize=False):
 
     # }}}
 
-    h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
+    h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
     return dict(
             h_max=h_max,
             rel_err_2=rel_err_2,
@@ -943,6 +954,7 @@ def test_integral_equation(ctx_factory, case, visualize=False):
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     if USE_SYMENGINE and case.fmm_backend is None:
         pytest.skip("https://gitlab.tiker.net/inducer/sumpy/issues/25")
@@ -959,8 +971,7 @@ def test_integral_equation(ctx_factory, case, visualize=False):
 
     have_error_data = False
     for resolution in case.resolutions:
-        result = run_int_eq_test(cl_ctx, queue, case, resolution,
-                visualize=visualize)
+        result = run_int_eq_test(actx, case, resolution, visualize=visualize)
 
         if result["rel_err_2"] is not None:
             have_error_data = True
