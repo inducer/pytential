@@ -1031,10 +1031,10 @@ def _bmat(blocks, dtypes):
     return result
 
 
-def build_matrix(queue, places, exprs, input_exprs, domains=None,
+def build_matrix(actx, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
-    :arg queue: a :class:`pyopencl.CommandQueue`.
+    :arg actx: a :class:`~meshmode.array_context.ArrayContext`.
     :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
@@ -1085,7 +1085,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
                 domains[ibcol].geometry, domains[ibcol].discr_stage)
 
         mbuilder = MatrixBuilder(
-                queue,
+                actx,
                 dep_expr=input_exprs[ibcol],
                 other_dep_exprs=(input_exprs[:ibcol]
                                  + input_exprs[ibcol + 1:]),
@@ -1102,7 +1102,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
             if isinstance(block, np.ndarray):
                 dtypes.append(block.dtype)
 
-    return cl.array.to_device(queue, _bmat(blocks, dtypes))
+    return actx.from_numpy(_bmat(blocks, dtypes))
 
 # }}}
 
