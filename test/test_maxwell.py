@@ -31,6 +31,7 @@ import pytest
 
 from pytential import bind, sym, norm
 
+from meshmode.array_context import PyOpenCLArrayContext
 from sumpy.visualization import make_field_plotter_from_bbox  # noqa
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
 from sumpy.tools import vector_from_device
@@ -77,7 +78,7 @@ class SphereTestCase(MaxwellTestCase):
         else:
             return generate_icosphere(0.5, target_order)
 
-    def get_source(self, queue):
+    def get_source(self, actx):
         if self.is_interior:
             source_ctr = np.array([[0.35, 0.1, 0.15]]).T
         else:
@@ -87,9 +88,7 @@ class SphereTestCase(MaxwellTestCase):
 
         sources = source_ctr + source_rad*2*(np.random.rand(3, 10)-0.5)
         from pytential.source import PointPotentialSource
-        return PointPotentialSource(
-                queue.context,
-                cl.array.to_device(queue, sources))
+        return PointPotentialSource(actx.from_numpy(sources))
 
 
 class RoundedCubeTestCase(MaxwellTestCase):
@@ -121,7 +120,7 @@ class RoundedCubeTestCase(MaxwellTestCase):
         else:
             return generate_icosphere(0.5, target_order)
 
-    def get_source(self, queue):
+    def get_source(self, actx):
         if self.is_interior:
             source_ctr = np.array([[0.35, 0.1, 0.15]]).T
         else:
@@ -131,9 +130,7 @@ class RoundedCubeTestCase(MaxwellTestCase):
 
         sources = source_ctr + source_rad*2*(np.random.rand(3, 10)-0.5)
         from pytential.source import PointPotentialSource
-        return PointPotentialSource(
-                queue.context,
-                cl.array.to_device(queue, sources))
+        return PointPotentialSource(actx.from_numpy(sources))
 
 
 class ElliptiPlaneTestCase(MaxwellTestCase):
@@ -168,7 +165,7 @@ class ElliptiPlaneTestCase(MaxwellTestCase):
         else:
             return generate_icosphere(0.5, target_order)
 
-    def get_source(self, queue):
+    def get_source(self, actx):
         if self.is_interior:
             source_ctr = np.array([[0.35, 0.1, 0.15]]).T
         else:
@@ -178,9 +175,7 @@ class ElliptiPlaneTestCase(MaxwellTestCase):
 
         sources = source_ctr + source_rad*2*(np.random.rand(3, 10)-0.5)
         from pytential.source import PointPotentialSource
-        return PointPotentialSource(
-                queue.context,
-                cl.array.to_device(queue, sources))
+        return PointPotentialSource(actx.from_numpy(sources))
 
 # }}}
 
@@ -228,6 +223,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     np.random.seed(12)
 
@@ -245,13 +241,17 @@ def test_pec_mfie_extinction(ctx_factory, case,
             get_sym_maxwell_plane_wave)
     mfie = PECChargeCurrentMFIEOperator()
 
-    test_source = case.get_source(queue)
+    test_source = case.get_source(actx)
 
     calc_patch = CalculusPatch(np.array([-3, 0, 0]), h=0.01)
-    calc_patch_tgt = PointsTarget(cl.array.to_device(queue, calc_patch.points))
+    calc_patch_tgt = PointsTarget(actx.from_numpy(calc_patch.points))
 
     rng = cl.clrandom.PhiloxGenerator(cl_ctx, seed=12)
-    src_j = rng.normal(queue, (3, test_source.nnodes), dtype=np.float64)
+    from pytools.obj_array import make_obj_array
+    # FIXME: default_offset=lp.auto
+    src_j = make_obj_array([
+            rng.normal(actx.queue, (test_source.ndofs), dtype=np.float64)
+            for i in range(3)])
 
     def eval_inc_field_at(places, source=None, target=None):
         if source is None:
@@ -264,12 +264,12 @@ def test_pec_mfie_extinction(ctx_factory, case,
                         amplitude_vec=np.array([1, 1, 1]),
                         v=np.array([1, 0, 0]),
                         omega=case.k),
-                    auto_where=target)(queue)
+                    auto_where=target)(actx)
         else:
             # point source
             return bind(places,
                     get_sym_maxwell_point_source(mfie.kernel, j_sym, mfie.k),
-                    auto_where=(source, target))(queue, j=src_j, k=case.k)
+                    auto_where=(source, target))(actx, j=src_j, k=case.k)
 
     # }}}
 
@@ -294,7 +294,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
         observation_mesh = case.get_observation_mesh(case.target_order)
 
         pre_scat_discr = Discretization(
-                cl_ctx, scat_mesh,
+                actx, scat_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
         qbx = QBXLayerPotentialSource(
                 pre_scat_discr, fine_order=4*case.target_order,
@@ -306,7 +306,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
         scat_discr = qbx.density_discr
         obs_discr = Discretization(
-                cl_ctx, observation_mesh,
+                actx, observation_mesh,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
         places.update({
@@ -324,7 +324,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
             fplot = make_field_plotter_from_bbox(
                     find_bounding_box(scat_discr.mesh), h=(0.05, 0.05, 0.3),
                     extend_factor=0.3)
-            fplot_tgt = PointsTarget(cl.array.to_device(queue, fplot.points))
+            fplot_tgt = PointsTarget(actx.from_numpy(fplot.points))
 
             places.update({
                 "qbx_target_tol": qbx_tgt_tol,
@@ -337,9 +337,9 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
         # {{{ system solve
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(queue)
+        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
 
-        pde_test_inc = EHField(vector_from_device(queue,
+        pde_test_inc = EHField(vector_from_device(actx.queue,
             eval_inc_field_at(places, target="patch_target")))
 
         source_maxwell_resids = [
@@ -356,7 +356,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
         bound_j_op = bind(places, mfie.j_operator(loc_sign, jt_sym))
         j_rhs = bind(places, mfie.j_rhs(inc_xyz_sym.h))(
-                queue, inc_fld=inc_field_scat.field, **knl_kwargs)
+                actx, inc_fld=inc_field_scat.field, **knl_kwargs)
 
         gmres_settings = dict(
                 tol=case.gmres_tol,
@@ -365,24 +365,24 @@ def test_pec_mfie_extinction(ctx_factory, case,
                 stall_iterations=50, no_progress_factor=1.05)
         from pytential.solve import gmres
         gmres_result = gmres(
-                bound_j_op.scipy_op(queue, "jt", np.complex128, **knl_kwargs),
+                bound_j_op.scipy_op(actx, "jt", np.complex128, **knl_kwargs),
                 j_rhs, **gmres_settings)
 
         jt = gmres_result.solution
 
         bound_rho_op = bind(places, mfie.rho_operator(loc_sign, rho_sym))
         rho_rhs = bind(places, mfie.rho_rhs(jt_sym, inc_xyz_sym.e))(
-                queue, jt=jt, inc_fld=inc_field_scat.field, **knl_kwargs)
+                actx, jt=jt, inc_fld=inc_field_scat.field, **knl_kwargs)
 
         gmres_result = gmres(
-                bound_rho_op.scipy_op(queue, "rho", np.complex128, **knl_kwargs),
+                bound_rho_op.scipy_op(actx, "rho", np.complex128, **knl_kwargs),
                 rho_rhs, **gmres_settings)
 
         rho = gmres_result.solution
 
         # }}}
 
-        jxyz = bind(places, sym.tangential_to_xyz(jt_sym))(queue, jt=jt)
+        jxyz = bind(places, sym.tangential_to_xyz(jt_sym))(actx, jt=jt)
 
         # {{{ volume eval
 
@@ -393,9 +393,9 @@ def test_pec_mfie_extinction(ctx_factory, case,
                 source = sym.DEFAULT_SOURCE
 
             return bind(places, sym_repr, auto_where=(source, target))(
-                    queue, jt=jt, rho=rho, **knl_kwargs)
+                    actx, jt=jt, rho=rho, **knl_kwargs)
 
-        pde_test_repr = EHField(vector_from_device(queue,
+        pde_test_repr = EHField(vector_from_device(actx.queue,
             eval_repr_at(places, target="patch_target")))
 
         maxwell_residuals = [
@@ -416,7 +416,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
         pec_bc_h = sym.normal(3).as_vector().dot(bc_repr.h + inc_xyz_sym.h)
 
         eh_bc_values = bind(places, sym.flat_obj_array(pec_bc_e, pec_bc_h))(
-                    queue, jt=jt, rho=rho, inc_fld=inc_field_scat.field,
+                    actx, jt=jt, rho=rho, inc_fld=inc_field_scat.field,
                     **knl_kwargs)
 
         def scat_norm(f):
@@ -435,11 +435,11 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
         if visualize:
             from meshmode.discretization.visualization import make_visualizer
-            bdry_vis = make_visualizer(queue, scat_discr, case.target_order+3)
+            bdry_vis = make_visualizer(actx, scat_discr, case.target_order+3)
 
             bdry_normals = bind(places,
                     sym.normal(3, dofdesc="scat_discr")
-                    )(queue).as_vector(dtype=object)
+                    )(actx).as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
                 ("j", jxyz),
@@ -459,12 +459,13 @@ def test_pec_mfie_extinction(ctx_factory, case,
                 fplot.write_vtk_file(
                         "failed-targets.vts",
                         [
-                            ("failed_targets", e.failed_target_flags.get(queue))
+                            ("failed_targets", actx.to_numpy(
+                                actx.thaw(e.failed_target_flags))),
                             ])
                 raise
 
-            fplot_repr = EHField(vector_from_device(queue, fplot_repr))
-            fplot_inc = EHField(vector_from_device(queue,
+            fplot_repr = EHField(vector_from_device(actx.queue, fplot_repr))
+            fplot_inc = EHField(vector_from_device(actx.queue,
                 eval_inc_field_at(places, target="plot_targets")))
 
             fplot.write_vtk_file(
