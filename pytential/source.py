@@ -113,6 +113,9 @@ class PointPotentialSource(PotentialSource):
     def nnodes(self):
         return self._nodes.shape[-1]
 
+    # FIXME: replace
+    ndofs = nnodes
+
     @property
     def complex_dtype(self):
         return {
