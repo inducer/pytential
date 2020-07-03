@@ -8,7 +8,7 @@ Python 3 POCL:
   script:
   - export PY_EXE=python3
   - export PYOPENCL_TEST=portable:pthread
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - # export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}  # FIXME: Uncomment
   - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
