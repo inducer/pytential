@@ -309,7 +309,6 @@ def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
     for nelements in [20, 50]:
         h_max, l2_err = run_exterior_stokes_2d(ctx_factory, nelements)
         eoc_rec.add_data_point(h_max, l2_err)
-        break
 
     print(eoc_rec)
     assert eoc_rec.order_estimate() >= qbx_order - 1

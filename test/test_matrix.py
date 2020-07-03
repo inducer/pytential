@@ -375,7 +375,7 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
 @pytest.mark.parametrize("ambient_dim", [2, 3])
 @pytest.mark.parametrize("lpot_id", [1, 2])
 def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
-                           visualize=True):
+                           visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     actx = PyOpenCLArrayContext(queue)
