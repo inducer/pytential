@@ -601,14 +601,13 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
                         bind(places, sym.normal(2))(actx)
                         .as_vector(np.object))]
 
-            import matplotlib.pyplot as pt
             pt.plot(nodes_h[0], nodes_h[1], "x-")
             pt.quiver(nodes_h[0], nodes_h[1], normal_h[0], normal_h[1])
             pt.gca().set_aspect("equal")
             pt.show()
         elif mesh.ambient_dim == 3:
             bdry_normals = bind(places, sym.normal(3))(
-                    queue).as_vector(dtype=object)
+                    actx).as_vector(dtype=object)
 
             bdry_vis = make_visualizer(actx, density_discr, case.target_order+3)
             bdry_vis.write_vtk_file("pre-solve-source-%s.vtu" % resolution, [
@@ -872,7 +871,7 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
             fplot.write_vtk_file(
                     "failed-targets.vts",
                     [
-                        ("failed_targets", e.failed_target_flags.get(queue))
+                        ("failed_targets", actx.to_numpy(e.failed_target_flags))
                         ])
             raise
 
