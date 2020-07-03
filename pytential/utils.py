@@ -43,4 +43,29 @@ def flatten_if_needed(actx: PyOpenCLArrayContext, ary: np.ndarray):
 
     return flatten(ary)
 
+
+def unflatten_from_numpy(actx, ary, discr=None):
+    from pytools.obj_array import obj_array_vectorize
+    from meshmode.dof_array import unflatten
+
+    if isinstance(ary, np.ndarray) and ary.dtype.char == "O":
+        ary = obj_array_vectorize(actx.from_numpy, ary)
+    else:
+        ary = actx.from_numpy(ary)
+
+    if discr is None:
+        return ary
+    else:
+        return unflatten(actx, discr, ary)
+
+
+def flatten_to_numpy(actx, ary):
+    result = flatten_if_needed(actx, ary)
+
+    from pytools.obj_array import obj_array_vectorize
+    if isinstance(result, np.ndarray) and ary.dtype.char == "O":
+        return obj_array_vectorize(actx.to_numpy, result)
+    else:
+        return actx.to_numpy(result)
+
 # vim: foldmethod=marker

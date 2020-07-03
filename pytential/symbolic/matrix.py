@@ -32,7 +32,8 @@ from six.moves import intern
 
 from pytools import memoize_method
 from pytential.symbolic.mappers import EvaluationMapperBase
-from pytential.utils import flatten_if_needed
+from pytential.utils import (
+        flatten_if_needed, flatten_to_numpy, unflatten_from_numpy)
 
 
 # {{{ helpers
@@ -60,31 +61,6 @@ def _get_layer_potential_args(mapper, expr, include_args=None):
                 )
 
     return kernel_args
-
-
-def _unflatten_from_numpy(actx, ary, discr=None):
-    from pytools.obj_array import obj_array_vectorize
-    from meshmode.dof_array import unflatten
-
-    if isinstance(ary, np.ndarray) and ary.dtype.char == "O":
-        ary = obj_array_vectorize(actx.from_numpy, ary)
-    else:
-        ary = actx.from_numpy(ary)
-
-    if discr is None:
-        return ary
-    else:
-        return unflatten(actx, discr, ary)
-
-
-def _flatten_to_numpy(actx, ary):
-    result = flatten_if_needed(actx, ary)
-
-    from pytools.obj_array import obj_array_vectorize
-    if isinstance(result, np.ndarray) and ary.dtype.char == "O":
-        return obj_array_vectorize(actx.to_numpy, result)
-    else:
-        return actx.to_numpy(result)
 
 # }}}
 
@@ -229,16 +205,16 @@ class MatrixBuilderBase(EvaluationMapperBase):
                 dofdesc=dofdesc)
 
         discr = self.places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
-        rec_operand = _unflatten_from_numpy(self.array_context, rec_operand, discr)
+        rec_operand = unflatten_from_numpy(self.array_context, rec_operand, discr)
 
-        return _flatten_to_numpy(self.array_context,
+        return flatten_to_numpy(self.array_context,
                 bind(self.places, op)(self.array_context, u=rec_operand)
                 )
 
     def map_node_coordinate_component(self, expr):
         from pytential import bind, sym
         op = sym.NodeCoordinateComponent(expr.ambient_axis, dofdesc=expr.dofdesc)
-        return _flatten_to_numpy(self.array_context,
+        return flatten_to_numpy(self.array_context,
                 bind(self.places, op)(self.array_context)
                 )
 
@@ -253,9 +229,9 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if isinstance(rec_arg, Number):
             return getattr(np, expr.function.name)(rec_arg)
         else:
-            rec_arg = _unflatten_from_numpy(self.array_context, rec_arg)
+            rec_arg = unflatten_from_numpy(self.array_context, rec_arg)
             result = getattr(self.array_context.np, expr.function.name)(rec_arg)
-            return _flatten_to_numpy(self.array_context, result)
+            return flatten_to_numpy(self.array_context, result)
 
     # }}}
 
@@ -353,8 +329,8 @@ class MatrixBuilder(MatrixBuilderBase):
             discr = self.places.get_discretization(
                     expr.from_dd.geometry, expr.from_dd.discr_stage)
 
-            operand = _unflatten_from_numpy(actx, operand, discr)
-            return _flatten_to_numpy(actx, conn(operand))
+            operand = unflatten_from_numpy(actx, operand, discr)
+            return flatten_to_numpy(actx, conn(operand))
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
             cache = self.places._get_cache("direct_resampler")
             key = (expr.from_dd.geometry,

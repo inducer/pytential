@@ -100,7 +100,7 @@ def _build_block_index(actx, discr,
 
     # create index ranges
     from pytential.linalg.proxy import partition_by_nodes
-    indices = partition_by_nodes(discr,
+    indices = partition_by_nodes(actx, discr,
             use_tree=use_tree,
             max_nodes_in_box=max_particles_in_box)
 
@@ -264,7 +264,7 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
         pt.colorbar()
         pt.show()
 
-    from pytential.symbolic.matrix import _unflatten_from_numpy, _flatten_to_numpy
+    from pytential.utils import unflatten_from_numpy, flatten_to_numpy
     np.random.seed(12)
     for i in range(5):
         if is_obj_array(u_sym):
@@ -274,10 +274,10 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
                 ])
         else:
             u = np.random.randn(density_discr.ndofs)
-        u_dev = _unflatten_from_numpy(actx, u, density_discr)
+        u_dev = unflatten_from_numpy(actx, u, density_discr)
 
         res_matvec = np.hstack(
-                _flatten_to_numpy(actx, bound_op(actx, u=u_dev))
+                flatten_to_numpy(actx, bound_op(actx, u=u_dev))
                 )
         res_mat = mat.dot(np.hstack(u))
 
@@ -375,7 +375,7 @@ def test_p2p_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
 @pytest.mark.parametrize("ambient_dim", [2, 3])
 @pytest.mark.parametrize("lpot_id", [1, 2])
 def test_qbx_block_builder(ctx_factory, factor, ambient_dim, lpot_id,
-                           visualize=False):
+                           visualize=True):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     actx = PyOpenCLArrayContext(queue)
