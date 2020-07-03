@@ -60,9 +60,6 @@ def flatten_to_numpy(actx, ary):
     result = flatten_if_needed(actx, ary)
 
     from pytools.obj_array import obj_array_vectorize
-    if isinstance(result, np.ndarray) and ary.dtype.char == "O":
-        return obj_array_vectorize(actx.to_numpy, result)
-    else:
-        return actx.to_numpy(result)
+    return obj_array_vectorize(actx.to_numpy, result)
 
 # vim: foldmethod=marker
