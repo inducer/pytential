@@ -91,8 +91,7 @@ class PointPotentialSource(PotentialSource):
     .. automethod:: exec_compute_potential_insn
     """
 
-    def __init__(self, cl_context, nodes):
-        self.cl_context = cl_context
+    def __init__(self, nodes):
         self._nodes = nodes
 
     @property
@@ -155,7 +154,7 @@ class PointPotentialSource(PotentialSource):
         strengths = evaluate(insn.density)
 
         # FIXME: Do this all at once
-        result = []
+        results = []
         for o in insn.outputs:
             target_discr = bound_expr.places.get_discretization(
                     o.target_name.geometry, o.target_name.discr_stage)
@@ -170,10 +169,16 @@ class PointPotentialSource(PotentialSource):
                     self._nodes,
                     [strengths], **kernel_args)
 
-            result.append((o.name, output_for_each_kernel[o.kernel_index]))
+            from meshmode.discretization import Discretization
+            result = output_for_each_kernel[o.kernel_index]
+            if isinstance(target_discr, Discretization):
+                from meshmode.dof_array import unflatten
+                result = unflatten(actx, target_discr, result)
+
+            results.append((o.name, result))
 
         timing_data = {}
-        return result, timing_data
+        return results, timing_data
 
 # }}}
 
