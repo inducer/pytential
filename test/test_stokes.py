@@ -25,7 +25,6 @@ THE SOFTWARE.
 
 import numpy as np
 import pyopencl as cl
-import pyopencl.clmath
 import pytest
 
 from meshmode.array_context import PyOpenCLArrayContext
