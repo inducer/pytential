@@ -186,10 +186,10 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
             omega_sym, mu_sym, qbx_forced_limit=1)
 
     from pytential.utils import unflatten_from_numpy
-    omega = unflatten_from_numpy(actx, make_obj_array([
+    omega = unflatten_from_numpy(actx, density_discr, make_obj_array([
             (strength/path_length)*np.ones(len(nodes[0])),
             np.zeros(len(nodes[0]))
-            ]), density_discr)
+            ]))
 
     bvp_rhs = bind(places,
             sym.make_sym_vector("bc", dim) + u_A_sym_bdry)(actx,

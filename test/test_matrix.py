@@ -274,7 +274,7 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
                 ])
         else:
             u = np.random.randn(density_discr.ndofs)
-        u_dev = unflatten_from_numpy(actx, u, density_discr)
+        u_dev = unflatten_from_numpy(actx, density_discr, u)
 
         res_matvec = np.hstack(
                 flatten_to_numpy(actx, bound_op(actx, u=u_dev))

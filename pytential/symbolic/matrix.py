@@ -205,7 +205,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
                 dofdesc=dofdesc)
 
         discr = self.places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
-        rec_operand = unflatten_from_numpy(self.array_context, rec_operand, discr)
+        rec_operand = unflatten_from_numpy(self.array_context, discr, rec_operand)
 
         return flatten_to_numpy(self.array_context,
                 bind(self.places, op)(self.array_context, u=rec_operand)
@@ -229,7 +229,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if isinstance(rec_arg, Number):
             return getattr(np, expr.function.name)(rec_arg)
         else:
-            rec_arg = unflatten_from_numpy(self.array_context, rec_arg)
+            rec_arg = unflatten_from_numpy(self.array_context, None, rec_arg)
             result = getattr(self.array_context.np, expr.function.name)(rec_arg)
             return flatten_to_numpy(self.array_context, result)
 
@@ -329,7 +329,7 @@ class MatrixBuilder(MatrixBuilderBase):
             discr = self.places.get_discretization(
                     expr.from_dd.geometry, expr.from_dd.discr_stage)
 
-            operand = unflatten_from_numpy(actx, operand, discr)
+            operand = unflatten_from_numpy(actx, discr, operand)
             return flatten_to_numpy(actx, conn(operand))
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
             cache = self.places._get_cache("direct_resampler")

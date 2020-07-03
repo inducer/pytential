@@ -44,12 +44,11 @@ def flatten_if_needed(actx: PyOpenCLArrayContext, ary: np.ndarray):
     return flatten(ary)
 
 
-def unflatten_from_numpy(actx, ary, discr=None):
+def unflatten_from_numpy(actx, discr, ary):
     from pytools.obj_array import obj_array_vectorize
     from meshmode.dof_array import unflatten
 
     ary = obj_array_vectorize(actx.from_numpy, ary)
-
     if discr is None:
         return ary
     else:
