@@ -829,7 +829,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 if (o.qbx_forced_limit is not None
                         and abs(o.qbx_forced_limit) == 1
-                        and qbx_tgt_count < target_discr.nnodes):
+                        and qbx_tgt_count < target_discr.ndofs):
                     raise RuntimeError("Did not find a matching QBX center "
                             "for some targets")
 

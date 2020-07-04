@@ -94,7 +94,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
     # {{{
 
     def get_dep_variable(self):
-        return np.eye(self.dep_discr.nnodes, dtype=np.float64)
+        return np.eye(self.dep_discr.ndofs, dtype=np.float64)
 
     def is_kind_vector(self, x):
         return len(x.shape) == 1
@@ -434,7 +434,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                 expr, include_args=kernel_args)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
-                cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
+                cl.array.arange(self.queue, 0, target_discr.ndofs, dtype=np.int)
 
         from sumpy.p2p import P2PMatrixGenerator
         mat_gen = P2PMatrixGenerator(
@@ -562,7 +562,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                 expr, include_args=kernel_args)
         if self.exclude_self:
             kernel_args["target_to_source"] = \
-                cl.array.arange(self.queue, 0, target_discr.nnodes, dtype=np.int)
+                cl.array.arange(self.queue, 0, target_discr.ndofs, dtype=np.int)
 
         from sumpy.p2p import P2PMatrixBlockGenerator
         mat_gen = P2PMatrixBlockGenerator(

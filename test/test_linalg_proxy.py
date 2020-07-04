@@ -62,7 +62,7 @@ def _plot_partition_indices(queue, discr, indices, **kwargs):
 
         pt.figure(figsize=(10, 8), dpi=300)
 
-        if indices.indices.shape[0] != discr.nnodes:
+        if indices.indices.shape[0] != discr.ndofs:
             pt.plot(sources[0], sources[1], 'ko', alpha=0.5)
         for i in range(indices.nblocks):
             isrc = indices.block_indices(i)
@@ -80,7 +80,7 @@ def _plot_partition_indices(queue, discr, indices, **kwargs):
             return
 
         from meshmode.discretization.visualization import make_visualizer
-        marker = -42.0 * np.ones(discr.nnodes)
+        marker = -42.0 * np.ones(discr.ndofs)
 
         for i in range(indices.nblocks):
             isrc = indices.block_indices(i)
@@ -272,7 +272,7 @@ def test_interaction_points(ctx_factory, ambient_dim, factor, visualize=False):
                 pt.clf()
         elif ambient_dim == 3:
             from meshmode.discretization.visualization import make_visualizer
-            marker = np.empty(density_discr.nnodes)
+            marker = np.empty(density_discr.ndofs)
 
             for i in range(srcindices.nblocks):
                 isrc = srcindices.block_indices(i)

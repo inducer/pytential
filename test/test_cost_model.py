@@ -493,15 +493,15 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
 
     quad_stage2_density_discr = places.get_discretization(
             source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
-    nnodes = quad_stage2_density_discr.ndofs
-    src_weights = np.ones(nnodes)
+    ndofs = quad_stage2_density_discr.ndofs
+    src_weights = np.ones(ndofs)
 
     timing_data = {}
     potential = drive_fmm(wrangler, src_weights, timing_data,
             traversal=wrangler.trav)[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
-    assert (potential == nnodes).all()
+    assert (potential == ndofs).all()
 
     modeled_time = cost_S.get_predicted_times(merge_close_lists=True)
 

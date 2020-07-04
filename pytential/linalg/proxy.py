@@ -106,12 +106,12 @@ def partition_by_nodes(discr,
                 np.cumsum([0] + [box.shape[0] for box in indices]))
             indices = to_device(queue, np.hstack(indices))
         else:
-            indices = cl.array.arange(queue, 0, discr.nnodes,
+            indices = cl.array.arange(queue, 0, discr.ndofs,
                                       dtype=np.int)
-            ranges = cl.array.arange(queue, 0, discr.nnodes + 1,
-                                     discr.nnodes // max_nodes_in_box,
+            ranges = cl.array.arange(queue, 0, discr.ndofs + 1,
+                                     discr.ndofs // max_nodes_in_box,
                                      dtype=np.int)
-        assert ranges[-1] == discr.nnodes
+        assert ranges[-1] == discr.ndofs
 
         return BlockIndexRanges(discr.cl_context,
                                 indices.with_queue(None),
@@ -148,7 +148,7 @@ def partition_from_coarse(resampler, from_indices):
         from_grp_ranges = np.cumsum(
             [0] + [grp.nelements for grp in from_discr.mesh.groups])
         from_el_ranges = np.hstack([
-            np.arange(grp.node_nr_base, grp.nnodes + 1, grp.nunit_nodes)
+            np.arange(grp.node_nr_base, grp.ndofs + 1, grp.nunit_nodes)
             for grp in from_discr.groups])
 
         # construct coarse element arrays in each from_range

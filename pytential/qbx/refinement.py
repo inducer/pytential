@@ -465,7 +465,6 @@ class RefinerNotConvergedWarning(UserWarning):
 
 
 def make_empty_refine_flags(queue, density_discr):
-    # FIXME: queue => actx
     """Return an array on the device suitable for use as element refine flags.
 
     :arg queue: An instance of :class:`pyopencl.CommandQueue`.
@@ -500,9 +499,8 @@ def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
             RefinerNotConvergedWarning)
 
 
-def _visualize_refinement(queue, discr,
+def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
         niter, stage_nr, stage_name, flags, visualize=False):
-    # FIXME: queue => actx
     if not visualize:
         return
 
@@ -514,18 +512,18 @@ def _visualize_refinement(queue, discr,
             stage_name, np.sum(flags), discr.mesh.nelements, stage_nr)
 
     from meshmode.discretization.visualization import make_visualizer
-    vis = make_visualizer(queue, discr, 3)
+    vis = make_visualizer(actx, discr, 3)
 
     assert len(flags) == discr.mesh.nelements
 
     flags = flags.astype(np.bool)
-    nodes_flags = np.zeros(discr.nnodes)
+    nodes_flags = np.zeros(discr.ndofs)
     for grp in discr.groups:
         meg = grp.mesh_el_group
         grp.view(nodes_flags)[
                 flags[meg.element_nr_base:meg.nelements+meg.element_nr_base]] = 1
 
-    nodes_flags = cl.array.to_device(queue, nodes_flags)
+    nodes_flags = actx.from_numpy(nodes_flags)
     vis_data = [
         ("refine_flags", nodes_flags),
         ]
@@ -533,7 +531,7 @@ def _visualize_refinement(queue, discr,
     if 0:
         from pytential import sym, bind
         bdry_normals = bind(discr, sym.normal(discr.ambient_dim))(
-                queue).as_vector(dtype=object)
+                actx).as_vector(dtype=object)
         vis_data.append(("bdry_normals", bdry_normals),)
 
     vis.write_vtk_file("refinement-%s-%03d.vtu" % (stage_name, niter), vis_data)
@@ -630,7 +628,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
                 if violates_kernel_length_scale:
                     iter_violated_criteria.append("kernel length scale")
-                    _visualize_refinement(wrangler.queue, stage1_density_discr,
+                    _visualize_refinement(actx, stage1_density_discr,
                             niter, 1, "kernel-length-scale", refine_flags,
                             visualize=visualize)
 

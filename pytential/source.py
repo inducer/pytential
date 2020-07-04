@@ -83,9 +83,9 @@ class PointPotentialSource(PotentialSource):
     """
     .. attribute:: nodes
 
-        An :class:`pyopencl.array.Array` of shape ``[ambient_dim, nnodes]``.
+        An :class:`pyopencl.array.Array` of shape ``[ambient_dim, ndofs]``.
 
-    .. attribute:: nnodes
+    .. attribute:: ndofs
 
     .. automethod:: cost_model_compute_potential_insn
     .. automethod:: exec_compute_potential_insn
@@ -110,11 +110,9 @@ class PointPotentialSource(PotentialSource):
         return self._nodes.dtype
 
     @property
-    def nnodes(self):
-        return self._nodes.shape[-1]
-
-    # FIXME: replace
-    ndofs = nnodes
+    def ndofs(self):
+        for coord_ary in self._nodes:
+            return coord_ary.shape[0]
 
     @property
     def complex_dtype(self):

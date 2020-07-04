@@ -97,8 +97,8 @@ def _build_block_index(queue,
                        nblks=10,
                        factor=1.0,
                        use_tree=True):
-    nnodes = discr.nnodes
-    max_particles_in_box = nnodes // nblks
+    ndofs = discr.ndofs
+    max_particles_in_box = ndofs // nblks
 
     # create index ranges
     from pytential.linalg.proxy import partition_by_nodes
@@ -272,11 +272,11 @@ def test_matrix_build(ctx_factory, k, curve_f, lpot_id, visualize=False):
     for i in range(5):
         if is_obj_array(u_sym):
             u = make_obj_array([
-                np.random.randn(density_discr.nnodes)
+                np.random.randn(density_discr.ndofs)
                 for _ in range(len(u_sym))
                 ])
         else:
-            u = np.random.randn(density_discr.nnodes)
+            u = np.random.randn(density_discr.ndofs)
 
         u_dev = vector_to_device(queue, u)
         res_matvec = np.hstack(
@@ -521,7 +521,7 @@ def test_build_matrix_places(ctx_factory,
             context={})
     p2p_mat = mbuilder(op)
 
-    assert p2p_mat.shape == (target_discr.nnodes, source_discr.nnodes)
+    assert p2p_mat.shape == (target_discr.ndofs, source_discr.ndofs)
 
     # build block qbx and p2p matrices
     from pytential.symbolic.matrix import NearFieldBlockBuilder
