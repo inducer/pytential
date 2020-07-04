@@ -143,7 +143,7 @@ def partition_from_coarse(actx, resampler, from_indices):
     from_grp_ranges = np.cumsum(
         [0] + [grp.nelements for grp in from_discr.mesh.groups])
     from_el_ranges = np.hstack([
-        np.arange(grp.node_nr_base, grp.nnodes + 1, grp.nunit_nodes)
+        np.arange(grp.node_nr_base, grp.ndofs + 1, grp.nunit_dofs)
         for grp in from_discr.groups])
 
     # construct coarse element arrays in each from_range
