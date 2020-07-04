@@ -340,7 +340,6 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
         flags[particle_slice].fill(1)
         flags.finish()
 
-        # FIXME: thaw
         box_to_class = (
             particle_list_filter
             .filter_target_lists_in_user_order(queue, tree, flags)
