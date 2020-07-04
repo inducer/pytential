@@ -41,7 +41,7 @@ import pyopencl.array  # noqa
 from pytools.obj_array import obj_array_vectorize_n_args
 
 
-def default_vdot(x, y):
+def structured_vdot(x, y):
     # vdot() implementation that is aware of scalars and host or
     # PyOpenCL arrays. It also recurses down nested object arrays.
     if (isinstance(x, Number)
@@ -51,7 +51,7 @@ def default_vdot(x, y):
         return cl.array.vdot(x, y).get()
     else:
         assert isinstance(x, np.ndarray) and x.dtype.char == "O"
-        return sum(obj_array_vectorize_n_args(default_vdot, x, y))
+        return sum(obj_array_vectorize_n_args(structured_vdot, x, y))
 
 
 # {{{ gmres
@@ -242,7 +242,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
 # {{{ progress reporting
 
 class ResidualPrinter:
-    def __init__(self, inner_product=default_vdot):
+    def __init__(self, inner_product=structured_vdot):
         self.count = 0
         self.inner_product = inner_product
 
@@ -263,7 +263,7 @@ class ResidualPrinter:
 # {{{ entrypoint
 
 def gmres(op, rhs, restart=None, tol=None, x0=None,
-        inner_product=default_vdot,
+        inner_product=structured_vdot,
         maxiter=None, hard_failure=None,
         no_progress_factor=None, stall_iterations=None,
         callback=None, progress=False, require_monotonicity=True):
