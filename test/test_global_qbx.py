@@ -134,7 +134,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
 
     dd = places.auto_source
     stage1_density_discr = places.get_discretization(dd.geometry)
-    from meshmode.dof_array import thaw, flatten
+    from meshmode.dof_array import thaw
 
     stage1_density_nodes = dof_array_to_numpy(actx,
             thaw(actx, stage1_density_discr.nodes()))
