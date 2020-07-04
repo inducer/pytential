@@ -370,7 +370,7 @@ def run_dielectric_test(cl_ctx, queue, nelements, qbx_order,
             i_field += 0
 
         from sumpy.kernel import LaplaceKernel
-        ones = (cl.array.empty(queue, (density_discr.nnodes,), dtype=np.float64)
+        ones = (cl.array.empty(queue, (density_discr.ndofs,), dtype=np.float64)
                 .fill(1))
         ind_func = - bind(places, sym.D(LaplaceKernel(2), sym.var("u")),
                 auto_where=("qbx-low-order", "targets-plot"))(

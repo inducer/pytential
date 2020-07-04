@@ -248,10 +248,9 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
     rng = cl.clrandom.PhiloxGenerator(cl_ctx, seed=12)
     from pytools.obj_array import make_obj_array
-    # FIXME: default_offset=lp.auto
     src_j = make_obj_array([
             rng.normal(actx.queue, (test_source.ndofs), dtype=np.float64)
-            for i in range(3)])
+            for _ in range(3)])
 
     def eval_inc_field_at(places, source=None, target=None):
         if source is None:
