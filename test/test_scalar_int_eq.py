@@ -727,7 +727,6 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
     # {{{ build matrix for spectrum check
 
     if 0:
-        # FIXME: Ensure this works
         from sumpy.tools import build_matrix
         mat = build_matrix(
                 bound_op.scipy_op(
