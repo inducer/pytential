@@ -50,13 +50,6 @@ Proxy Point Generation
 
 # {{{ point index partitioning
 
-def _element_node_range(group, ielement):
-    istart = group.node_nr_base + group.nunit_nodes * ielement
-    iend = group.node_nr_base + group.nunit_nodes * (ielement + 1)
-
-    return np.arange(istart, iend)
-
-
 def partition_by_nodes(actx, discr, use_tree=True, max_nodes_in_box=None):
     """Generate equally sized ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
@@ -112,75 +105,6 @@ def partition_by_nodes(actx, discr, use_tree=True, max_nodes_in_box=None):
 
     return BlockIndexRanges(actx.context,
         actx.freeze(indices), actx.freeze(ranges))
-
-
-def partition_from_coarse(actx, resampler, from_indices):
-    """Generate a partition of nodes from an existing partition on a
-    coarser discretization. The new partition is generated based on element
-    refinement relationships in *resampler*, so the existing partition
-    needs to be created using :func:`partition_by_elements`,
-    since we assume that each range contains all the nodes in an element.
-
-    The new partition will have the same number of ranges as the old partition.
-    The nodes inside each range in the new partition are all the nodes in
-    *resampler.to_discr* that were refined from elements in the same
-    range from *resampler.from_discr*.
-
-    :arg resampler: a
-        :class:`meshmode.discretization.connection.DirectDiscretizationConnection`.
-    :arg from_indices: a :class:`sumpy.tools.BlockIndexRanges`.
-
-    :return: a :class:`sumpy.tools.BlockIndexRanges`.
-    """
-
-    if not hasattr(resampler, "groups"):
-        raise ValueError("resampler must be a DirectDiscretizationConnection.")
-
-    from_indices = from_indices.get(actx.queue)
-
-    # construct ranges
-    from_discr = resampler.from_discr
-    from_grp_ranges = np.cumsum(
-        [0] + [grp.nelements for grp in from_discr.mesh.groups])
-    from_el_ranges = np.hstack([
-        np.arange(grp.node_nr_base, grp.ndofs + 1, grp.nunit_dofs)
-        for grp in from_discr.groups])
-
-    # construct coarse element arrays in each from_range
-    el_indices = np.empty(from_indices.nblocks, dtype=np.object)
-    el_ranges = np.full(from_grp_ranges[-1], -1, dtype=np.int)
-    for i in range(from_indices.nblocks):
-        ifrom = from_indices.block_indices(i)
-        el_indices[i] = np.unique(np.digitize(ifrom, from_el_ranges)) - 1
-        el_ranges[el_indices[i]] = i
-    el_indices = np.hstack(el_indices)
-
-    # construct lookup table
-    to_el_table = [np.full(g.nelements, -1, dtype=np.int)
-                   for g in resampler.to_discr.groups]
-
-    for igrp, grp in enumerate(resampler.groups):
-        for batch in grp.batches:
-            to_el_table[igrp][actx.to_numpy(batch.to_element_indices)] = \
-                from_grp_ranges[igrp] + actx.to_numpy(batch.from_element_indices)
-
-    # construct fine node index list
-    indices = [np.empty(0, dtype=np.int)
-               for _ in range(from_indices.nblocks)]
-    for igrp in range(len(resampler.groups)):
-        to_element_indices = \
-                np.where(np.isin(to_el_table[igrp], el_indices))[0]
-
-        for i, j in zip(el_ranges[to_el_table[igrp][to_element_indices]],
-                        to_element_indices):
-            indices[i] = np.hstack([indices[i],
-                _element_node_range(resampler.to_discr.groups[igrp], j)])
-
-    ranges = actx.from_numpy(np.cumsum([0] + [b.shape[0] for b in indices]))
-    indices = actx.from_numpy(np.hstack(indices))
-
-    return BlockIndexRanges(resampler.cl_context,
-            actx.freeze(indices), actx.freeze(ranges))
 
 # }}}
 
