@@ -46,7 +46,8 @@ import logging
 
 def run_exterior_stokes_2d(ctx_factory, nelements,
         mesh_order=4, target_order=4, qbx_order=4,
-        fmm_order=False, mu=1, circle_rad=1.5, visualize=False):
+        fmm_order=False,  # FIXME: FMM is slower than direct eval
+        mu=1, circle_rad=1.5, visualize=False):
 
     # This program tests an exterior Stokes flow in 2D using the
     # compound representation given in Hsiao & Kress,
