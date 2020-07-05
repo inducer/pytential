@@ -104,9 +104,6 @@ class IntegralEquationTestCase(RecordWithoutPickling):
     check_gradient = False
 
     def __init__(self, **kwargs):
-        """
-        :arg prob_side: may be -1, +1, or ``'scat'`` for a scattering problem
-        """
         import inspect
         members = inspect.getmembers(type(self), lambda m: not inspect.isroutine(m))
         members = dict(
@@ -270,11 +267,16 @@ class EllipseTestCase(CurveTestCase):
 
     # geometry
     aspect_ratio = 3.0
-    radius = 1.0
 
     def _curve_fn(self, t):
         from meshmode.mesh.generation import ellipse
-        return self.radius * ellipse(self.aspect_ratio, t)
+        return ellipse(self.aspect_ratio, t)
+
+
+class CircleTestCase(EllipseTestCase):
+    name = "circle"
+    aspect_ratio = 1.0
+    radius = 1.0
 
 # }}}
 
@@ -304,7 +306,7 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
 
     # test case
     resolutions = [2, 0.8]
-    inner_radius = 0.5
+    inner_radius = 0.4
     outer_radius = 5.0
     check_gradient = True
 
