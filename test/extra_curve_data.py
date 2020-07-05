@@ -27,7 +27,6 @@ import numpy.linalg as la
 
 
 class Curve(object):
-
     def plot(self, npoints=50):
         import matplotlib.pyplot as plt
         x, y = self(np.linspace(0, 1, npoints))
@@ -37,6 +36,9 @@ class Curve(object):
 
     def __add__(self, other):
         return CompositeCurve(self, other)
+
+    def __call__(self, ts):
+        raise NotImplementedError
 
 
 class CompositeCurve(Curve):
