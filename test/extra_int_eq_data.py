@@ -249,17 +249,18 @@ class CurveTestCase(IntegralEquationTestCase):
     fmm_backend = None
 
     # test case
+    curve_fn = None
     inner_radius = 0.1
     outer_radius = 2
     resolutions = [40, 50, 60]
 
-    def curve_fn(self, *args, **kwargs):
-        raise NotImplementedError
+    def _curve_fn(self, t):
+        return self.curve_fn(t)
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.generation import make_curve_mesh
         return make_curve_mesh(
-                self.curve_fn,
+                self._curve_fn,
                 np.linspace(0, 1, resolution + 1),
                 mesh_order)
 
@@ -271,7 +272,7 @@ class EllipseTestCase(CurveTestCase):
     aspect_ratio = 3.0
     radius = 1.0
 
-    def curve_fn(self, t):
+    def _curve_fn(self, t):
         from meshmode.mesh.generation import ellipse
         return self.radius * ellipse(self.aspect_ratio, t)
 

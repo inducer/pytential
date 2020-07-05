@@ -444,6 +444,8 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 # }}}
 
 
+# {{{ test frontend
+
 cases = [
         inteq.EllipseTestCase(
             knl_class_or_helmholtz_k=helmholtz_k,
@@ -464,8 +466,6 @@ cases += [
             bc_type="clamped_plate", side=-1, fmm_backend="sumpy", fmm_order=15),
         ]
 
-
-# {{{ test frontend
 
 # Sample test run:
 # 'test_integral_equation(cl._csc, EllipseIntEqTestCase(LaplaceKernel, "dirichlet", +1), visualize=True)'  # noqa: E501
