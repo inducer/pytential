@@ -23,8 +23,8 @@ k = 0
 
 
 def main(curve_fn=starfish, visualize=True):
-    #import logging
-    #logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
+    import logging
+    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
