@@ -89,7 +89,7 @@ class CenterGranularityConnection(GranularityConnection):
     def __init__(self, discr):
         super(CenterGranularityConnection, self).__init__(discr)
 
-    def interleave_dof_arrays(self, ary1, ary2):
+    def _interleave_dof_arrays(self, ary1, ary2):
         if not isinstance(ary1, DOFArray) or not isinstance(ary2, DOFArray):
             raise TypeError("non-array passed to connection")
 
@@ -145,10 +145,10 @@ class CenterGranularityConnection(GranularityConnection):
             raise ValueError("cannot interleave arrays")
 
         if isinstance(arys[0], DOFArray):
-            return self.interleave_dof_arrays(*arys)
+            return self._interleave_dof_arrays(*arys)
         else:
             from pytools.obj_array import obj_array_vectorize_n_args
-            return obj_array_vectorize_n_args(self.interleave_dof_arrays, *arys)
+            return obj_array_vectorize_n_args(self._interleave_dof_arrays, *arys)
 
 # }}}
 
