@@ -79,7 +79,7 @@ Enums of special values
 Geometry description code container
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: QBXFMMGeometryCodeContainer
+.. autoclass:: QBXFMMGeometryDataCodeContainer
     :members:
     :undoc-members:
 
@@ -332,7 +332,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
     .. attribute:: code_getter
 
-        The :class:`QBXFMMGeometryCodeContainer` for this object.
+        The :class:`QBXFMMGeometryDataCodeContainer` for this object.
 
     .. attribute:: target_discrs_and_qbx_sides
 
