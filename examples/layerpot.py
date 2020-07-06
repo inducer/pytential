@@ -121,24 +121,19 @@ def main(curve_fn=starfish, visualize=True):
     if enable_mayavi:
         # {{{ plot boundary field
 
-        from meshmode.dof_array import flatten
-        from pytools.obj_array import obj_array_vectorize
+        from pytential.utils import flatten_to_numpy
 
-        fld_on_bdry = actx.to_numpy(
-                flatten(bound_bdry_op(actx, sigma=sigma, k=k)))
-
-        nodes_host = obj_array_vectorize(
-                actx.to_numpy,
-                thaw(actx, density_discr.nodes()))
+        fld_on_bdry = flatten_to_numpy(
+                actx, bound_bdry_op(actx, sigma=sigma, k=k))
+        nodes_host = flatten_to_numpy(actx, density_discr.nodes())
 
         mlab.points3d(nodes_host[0], nodes_host[1],
                 fld_on_bdry.real, scale_factor=0.03)
 
-        # }}}
-
-    if enable_mayavi:
         mlab.colorbar()
         mlab.show()
+
+        # }}}
 
 
 if __name__ == "__main__":
