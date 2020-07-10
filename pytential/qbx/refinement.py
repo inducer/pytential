@@ -373,8 +373,8 @@ class RefinerWrangler(TreeWranglerBase):
         source_danger_zone_radii_by_panel = flatten(
                 bind(stage2_density_discr,
                     sym._source_danger_zone_radii(
-                        stage2_density_discr.ambient_dim, dofdesc=dd)
-                (self.array_context)))
+                        stage2_density_discr.ambient_dim, dofdesc=dd))
+                (self.array_context))
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
