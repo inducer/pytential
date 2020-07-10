@@ -62,7 +62,13 @@ class PotentialSource(object):
         raise NotImplementedError
 
     def get_p2p(self, actx, kernels):
-        @memoize_in(actx, (PotentialSource, "p2p"))
+        raise NotImplementedError
+
+
+class _SumpyP2PMixin(object):
+
+    def get_p2p(self, actx, kernels):
+        @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
         def p2p(kernels):
             from pytools import any
             if any(knl.is_complex_valued for knl in kernels):
@@ -72,14 +78,14 @@ class PotentialSource(object):
 
             from sumpy.p2p import P2P
             return P2P(actx.context,
-                      kernels, exclude_self=False, value_dtypes=value_dtype)
+                    kernels, exclude_self=False, value_dtypes=value_dtype)
 
         return p2p(kernels)
 
 
 # {{{ point potential source
 
-class PointPotentialSource(PotentialSource):
+class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
     """
     .. attribute:: nodes
 
@@ -186,7 +192,7 @@ class PointPotentialSource(PotentialSource):
 
 # {{{ layer potential source
 
-class LayerPotentialSourceBase(PotentialSource):
+class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     """A discretization of a layer potential using panel-based geometry, with
     support for refinement and upsampling.
 
