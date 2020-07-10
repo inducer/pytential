@@ -30,6 +30,7 @@ THE SOFTWARE.
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from meshmode.array_context import PyOpenCLArrayContext
+from meshmode.dof_array import flatten
 import numpy as np
 import pyopencl as cl
 
@@ -310,12 +311,10 @@ class RefinerWrangler(TreeWranglerBase):
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         from pytential import bind, sym
-        center_danger_zone_radii = bind(stage1_density_discr,
+        center_danger_zone_radii = flatten(
+            bind(stage1_density_discr,
                 sym.expansion_radii(stage1_density_discr.ambient_dim,
-                    granularity=sym.GRANULARITY_CENTER))(self.array_context)
-
-        from meshmode.dof_array import flatten
-        center_danger_zone_radii = flatten(center_danger_zone_radii)
+                    granularity=sym.GRANULARITY_CENTER))(self.array_context))
 
         evt = knl(
             *unwrap_args(
@@ -371,13 +370,11 @@ class RefinerWrangler(TreeWranglerBase):
 
         from pytential import bind, sym
         dd = sym.as_dofdesc(sym.GRANULARITY_ELEMENT).to_stage2()
-        source_danger_zone_radii_by_panel = bind(stage2_density_discr,
-                sym._source_danger_zone_radii(
-                    stage2_density_discr.ambient_dim, dofdesc=dd))(
-                self.array_context)
-        from meshmode.dof_array import flatten
         source_danger_zone_radii_by_panel = flatten(
-                source_danger_zone_radii_by_panel)
+                bind(stage2_density_discr,
+                    sym._source_danger_zone_radii(
+                        stage2_density_discr.ambient_dim, dofdesc=dd)
+                (self.array_context)))
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(

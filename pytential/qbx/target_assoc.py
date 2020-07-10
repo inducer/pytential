@@ -528,11 +528,10 @@ class TargetAssociationWrangler(TreeWranglerBase):
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
 
-        tunnel_radius_by_source = bind(places,
-                sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))(
-                        self.array_context)
-
-        tunnel_radius_by_source = flatten(tunnel_radius_by_source)
+        tunnel_radius_by_source = flatten(
+                bind(places,
+                    sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))
+                (self.array_context))
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -630,11 +629,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
             ambient_dim,
             granularity=sym.GRANULARITY_CENTER,
             dofdesc=dofdesc))(self.array_context)
-        expansion_radii_by_center_with_tolerance = \
-                expansion_radii_by_center * (1 + target_association_tolerance)
-
         expansion_radii_by_center_with_tolerance = flatten(
-                expansion_radii_by_center_with_tolerance)
+                expansion_radii_by_center * (1 + target_association_tolerance))
 
         # Idea:
         #
@@ -729,11 +725,10 @@ class TargetAssociationWrangler(TreeWranglerBase):
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
 
-        tunnel_radius_by_source = bind(places,
-                sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))(
-                        self.array_context)
-
-        tunnel_radius_by_source = flatten(tunnel_radius_by_source)
+        tunnel_radius_by_source = flatten(
+                bind(places,
+                    sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))
+                (self.array_context))
 
         # see (TGTMARK) above for algorithm.
 
