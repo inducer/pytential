@@ -72,6 +72,8 @@ jobs:
                 export LC_ALL=en_US.UTF-8
                 export LANG=en_US.UTF-8
                 grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
+                echo "- compiler" >> .test-conda-env.yml
+                echo "- openmp" >> .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
                 set -o xtrace
