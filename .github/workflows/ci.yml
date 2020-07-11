@@ -18,7 +18,7 @@ jobs:
         -
             uses: actions/setup-python@v1
             with:
-                python-version: '3.x' 
+                python-version: '3.x'
         -   name: "Main Script"
             run: |
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
@@ -32,7 +32,7 @@ jobs:
         -
             uses: actions/setup-python@v1
             with:
-                python-version: '3.x' 
+                python-version: '3.x'
         -   name: "Main Script"
             run: |
                 set -e
@@ -51,15 +51,32 @@ jobs:
                 . ./prepare-and-run-pylint.sh pytential test/test_*.py
 
     pytest3:
-        name: Pytest on Py3
+        name: Pytest Linux
         runs-on: ubuntu-latest
         steps:
         -   uses: actions/checkout@v2
         -   name: "Main Script"
             run: |
-                set -e
                 grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
+                . ./build-and-test-py-project-within-miniconda.sh
+
+    pytest3mac:
+        name: Pytest Mac
+        runs-on: macos-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            run: |
+                export LC_ALL=en_US.UTF-8
+                export LANG=en_US.UTF-8
+                export CONDA_ENVIRONMENT=.test-conda-env-py3-macos.yml
+                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+                export CC=clang
+                # https://stackoverflow.com/q/60934005; https://reviews.llvm.org/D71579
+                export LDFLAGS="-mlinker-version=519"
+                set -o xtrace
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
