@@ -124,7 +124,7 @@ def timing_run(nx, ny, visualize=False):
 
     from meshmode.dof_array import thaw
     nodes = thaw(actx, density_discr.nodes())
-    angle = actx.np.atan2(nodes[1], nodes[0])
+    angle = actx.np.arctan2(nodes[1], nodes[0])
 
     sigma = actx.np.cos(mode_nr*angle)
 

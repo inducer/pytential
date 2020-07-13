@@ -61,7 +61,7 @@ def main():
     density_discr = places.get_discretization("unaccel_qbx")
 
     nodes = thaw(actx, density_discr.nodes())
-    angle = actx.np.atan2(nodes[1], nodes[0])
+    angle = actx.np.arctan2(nodes[1], nodes[0])
 
     from pytential import bind, sym
     if k:
