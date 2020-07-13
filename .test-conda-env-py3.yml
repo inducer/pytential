@@ -22,5 +22,5 @@ dependencies:
     - git+https://gitlab.tiker.net/inducer/boxtree
     - git+https://github.com/inducer/pymbolic
     - git+https://github.com/inducer/loopy
-    - git+https://gitlab.tiker.net/inducer/sumpy
+    - git+https://github.com/inducer/sumpy
     - git+https://github.com/inducer/meshmode

@@ -3,6 +3,7 @@ import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -29,6 +30,7 @@ def main(mesh_name="ellipse", visualize=False):
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial
@@ -67,7 +69,7 @@ def main(mesh_name="ellipse", visualize=False):
         raise ValueError("unknown mesh name: {}".format(mesh_name))
 
     pre_density_discr = Discretization(
-            cl_ctx, mesh,
+            actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     from pytential.qbx import (
@@ -79,7 +81,7 @@ def main(mesh_name="ellipse", visualize=False):
 
     from sumpy.visualization import FieldPlotter
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
-    targets = cl.array.to_device(queue, fplot.points)
+    targets = actx.from_numpy(fplot.points)
 
     from pytential import GeometryCollection
     places = GeometryCollection({
@@ -120,21 +122,22 @@ def main(mesh_name="ellipse", visualize=False):
 
     # {{{ fix rhs and solve
 
-    nodes = density_discr.nodes().with_queue(queue)
+    from meshmode.dof_array import thaw
+    nodes = thaw(actx, density_discr.nodes())
     k_vec = np.array([2, 1])
     k_vec = k * k_vec / la.norm(k_vec, 2)
 
     def u_incoming_func(x):
-        return cl.clmath.exp(
+        return actx.np.exp(
                 1j * (x[0] * k_vec[0] + x[1] * k_vec[1]))
 
     bc = -u_incoming_func(nodes)
 
-    bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(queue, bc=bc)
+    bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(actx, bc=bc)
 
     from pytential.solve import gmres
     gmres_result = gmres(
-            bound_op.scipy_op(queue, sigma_sym.name, dtype=np.complex128, k=k),
+            bound_op.scipy_op(actx, sigma_sym.name, dtype=np.complex128, k=k),
             bvp_rhs, tol=1e-8, progress=True,
             stall_iterations=0,
             hard_failure=True)
@@ -152,15 +155,18 @@ def main(mesh_name="ellipse", visualize=False):
             - sym.D(kernel, inv_sqrt_w_sigma, k=k_sym, **repr_kwargs))
 
     u_incoming = u_incoming_func(targets)
-    ones_density = density_discr.zeros(queue)
-    ones_density.fill(1)
+    ones_density = density_discr.zeros(actx)
+    for elem in ones_density:
+        elem.fill(1)
 
-    indicator = bind(places, sym.D(LaplaceKernel(2), sigma_sym, **repr_kwargs))(
-            queue, sigma=ones_density).get()
+    indicator = actx.to_numpy(
+            bind(places, sym.D(LaplaceKernel(2), sigma_sym, **repr_kwargs))(
+                actx, sigma=ones_density))
 
     try:
-        fld_in_vol = bind(places, representation_sym)(
-                queue, sigma=gmres_result.solution, k=k).get()
+        fld_in_vol = actx.to_numpy(
+                bind(places, representation_sym)(
+                    actx, sigma=gmres_result.solution, k=k))
     except QBXTargetAssociationFailedException as e:
         fplot.write_vtk_file("helmholtz-dirichlet-failed-targets.vts", [
             ("failed", e.failed_target_flags.get(queue))
@@ -171,7 +177,7 @@ def main(mesh_name="ellipse", visualize=False):
     fplot.write_vtk_file("helmholtz-dirichlet-potential.vts", [
         ("potential", fld_in_vol),
         ("indicator", indicator),
-        ("u_incoming", u_incoming.get()),
+        ("u_incoming", actx.to_numpy(u_incoming)),
         ])
 
     # }}}

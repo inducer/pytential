@@ -73,29 +73,6 @@ Python 3 Conda:
     reports:
       junit: test/pytest.xml
 
-Python 3 Conda Apple:
-  script:
-  - export LC_ALL=en_US.UTF-8
-  - export LANG=en_US.UTF-8
-  - export CONDA_ENVIRONMENT=.test-conda-env-py3-macos.yml
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
-  - export CC=clang
-  # https://stackoverflow.com/q/60934005; https://reviews.llvm.org/D71579
-  - export LDFLAGS="-mlinker-version=519"
-  - set -o xtrace
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
-  - ". ./build-and-test-py-project-within-miniconda.sh"
-
-  tags:
-  - apple
-  except:
-  - tags
-  retry: 2
-
-  artifacts:
-    reports:
-      junit: test/pytest.xml
-
 Documentation:
   script:
   - EXTRA_INSTALL="Cython pybind11 numpy mako"

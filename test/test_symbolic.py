@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
@@ -51,27 +52,27 @@ from meshmode.discretization.poly_element import \
 
 # {{{ discretization getters
 
-def get_ellipse_with_ref_mean_curvature(cl_ctx, nelements, aspect=1):
+def get_ellipse_with_ref_mean_curvature(actx, nelements, aspect=1):
     order = 4
     mesh = make_curve_mesh(
             partial(ellipse, aspect),
             np.linspace(0, 1, nelements+1),
             order)
 
-    discr = Discretization(cl_ctx, mesh,
+    discr = Discretization(actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    with cl.CommandQueue(cl_ctx) as queue:
-        nodes = discr.nodes().get(queue=queue)
+    from meshmode.dof_array import thaw
+    nodes = thaw(actx, discr.nodes())
 
     a = 1
     b = 1/aspect
-    t = np.arctan2(nodes[1] * aspect, nodes[0])
+    t = actx.np.atan2(nodes[1] * aspect, nodes[0])
 
-    return discr, a*b / ((a*np.sin(t))**2 + (b*np.cos(t))**2)**(3/2)
+    return discr, a*b / ((a*actx.np.sin(t))**2 + (b*actx.np.cos(t))**2)**(3/2)
 
 
-def get_torus_with_ref_mean_curvature(cl_ctx, h):
+def get_torus_with_ref_mean_curvature(actx, h):
     order = 4
     r_minor = 1.0
     r_major = 3.0
@@ -79,20 +80,21 @@ def get_torus_with_ref_mean_curvature(cl_ctx, h):
     from meshmode.mesh.generation import generate_torus
     mesh = generate_torus(r_major, r_minor,
             n_major=h, n_minor=h, order=order)
-    discr = Discretization(cl_ctx, mesh,
+    discr = Discretization(actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    with cl.CommandQueue(cl_ctx) as queue:
-        nodes = discr.nodes().get(queue=queue)
+    from meshmode.dof_array import thaw
+    nodes = thaw(actx, discr.nodes())
 
     # copied from meshmode.mesh.generation.generate_torus
     a = r_major
     b = r_minor
 
-    u = np.arctan2(nodes[1], nodes[0])
-    rvec = np.array([np.cos(u), np.sin(u), np.zeros_like(u)])
-    rvec = np.sum(nodes * rvec, axis=0) - a
-    cosv = np.cos(np.arctan2(nodes[2], rvec))
+    u = actx.np.atan2(nodes[1], nodes[0])
+    from pytools.obj_array import flat_obj_array
+    rvec = flat_obj_array(actx.np.cos(u), actx.np.sin(u), 0*u)
+    rvec = sum(nodes * rvec) - a
+    cosv = actx.np.cos(actx.np.atan2(nodes[2], rvec))
 
     return discr, (a + 2.0 * b * cosv) / (2 * b * (a + b * cosv))
 
@@ -115,19 +117,20 @@ def test_mean_curvature(ctx_factory, discr_name, resolutions,
         discr_and_ref_mean_curvature_getter, visualize=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     from pytools.convergence import EOCRecorder
     eoc = EOCRecorder()
 
     for r in resolutions:
         discr, ref_mean_curvature = \
-                discr_and_ref_mean_curvature_getter(ctx, r)
+                discr_and_ref_mean_curvature_getter(actx, r)
         mean_curvature = bind(
-            discr,
-            sym.mean_curvature(discr.ambient_dim))(queue).get(queue)
+            discr, sym.mean_curvature(discr.ambient_dim))(actx)
 
         h = 1.0 / r
-        h_error = la.norm(mean_curvature - ref_mean_curvature, np.inf)
+        from meshmode.dof_array import flat_norm
+        h_error = flat_norm(mean_curvature - ref_mean_curvature, np.inf)
         eoc.add_data_point(h, h_error)
     print(eoc)
 
@@ -142,13 +145,13 @@ def test_mean_curvature(ctx_factory, discr_name, resolutions,
 def test_tangential_onb(ctx_factory):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     from meshmode.mesh.generation import generate_torus
     mesh = generate_torus(5, 2, order=3)
 
     discr = Discretization(
-            cl_ctx, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(3))
+            actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(3))
 
     tob = sym.tangential_onb(mesh.ambient_dim)
     nvecs = tob.shape[1]
@@ -157,8 +160,10 @@ def test_tangential_onb(ctx_factory):
     orth_check = bind(discr, sym.make_obj_array([
         np.dot(tob[:, i], tob[:, j]) - (1 if i == j else 0)
         for i in range(nvecs) for j in range(nvecs)])
-        )(queue)
+        )(actx)
 
+    from meshmode.dof_array import flatten
+    orth_check = flatten(orth_check)
     for i, orth_i in enumerate(orth_check):
         assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
 
@@ -166,8 +171,9 @@ def test_tangential_onb(ctx_factory):
     orth_check = bind(discr, sym.make_obj_array([
         np.dot(tob[:, i], sym.normal(mesh.ambient_dim).as_vector())
         for i in range(nvecs)])
-        )(queue)
+        )(actx)
 
+    orth_check = flatten(orth_check)
     for i, orth_i in enumerate(orth_check):
         assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
 
@@ -227,6 +233,7 @@ def test_layer_potential_construction(lpot_class, ambient_dim=2):
 def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     nelements = 32
     target_order = 7
@@ -245,7 +252,7 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     mesh = make_curve_mesh(starfish,
             np.linspace(0.0, 1.0, nelements + 1),
             target_order)
-    discr = Discretization(ctx, mesh,
+    discr = Discretization(actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     from pytential.qbx import QBXLayerPotentialSource
@@ -261,16 +268,22 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
     bound_op = bind(places, op_sym, auto_where=where)
 
-    def nodes(stage):
+    from meshmode.dof_array import thaw, flatten, unflatten
+
+    def discr_and_nodes(stage):
         density_discr = places.get_discretization(where.geometry, stage)
-        return density_discr.nodes().get(queue)
+        return density_discr, np.array([
+                actx.to_numpy(flatten(axis))
+                for axis in thaw(actx, density_discr.nodes())])
 
-    target_nodes = nodes(sym.QBX_SOURCE_QUAD_STAGE2)
-    source_nodes = nodes(source_discr_stage)
+    _, target_nodes = discr_and_nodes(sym.QBX_SOURCE_QUAD_STAGE2)
+    source_discr, source_nodes = discr_and_nodes(source_discr_stage)
 
-    sigma_dev = cl.array.to_device(queue, la.norm(source_nodes, axis=0))
     sigma_target = np.sin(la.norm(target_nodes, axis=0))
-    sigma_target_interp = bound_op(queue, sigma=sigma_dev).get(queue)
+    sigma_dev = unflatten(
+            actx, source_discr,
+            actx.from_numpy(la.norm(source_nodes, axis=0)))
+    sigma_target_interp = actx.to_numpy(flatten(bound_op(actx, sigma=sigma_dev)))
 
     if name in ("default", "default_explicit", "stage2", "quad"):
         error = la.norm(sigma_target_interp - sigma_target) / la.norm(sigma_target)

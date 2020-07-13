@@ -153,8 +153,8 @@ class DebyeOperatorBase(object):
         E = 1j*k*A - grad_phi - curl_S_volume(k, m)
         H = curl_S_volume(k, j) + 1j*k*Q - grad_psi
 
-        from pytools.obj_array import join_fields
-        return join_fields(E, H)
+        from pytools.obj_array import flat_obj_array
+        return flat_obj_array(E, H)
 
     def integral_equation(self, *args, **kwargs):
         nxnxE, ndotH = self.boundary_field(*args)
@@ -178,8 +178,8 @@ class DebyeOperatorBase(object):
         E_minus_grad_phi = 1j*k*A - curl_S_volume(k, m)
 
         from hellskitchen.fmm import DifferenceKernel
-        from pytools.obj_array import join_fields
-        return join_fields(
+        from pytools.obj_array import flat_obj_array
+        return flat_obj_array(
                 eh_op,
                 # FIXME: These are inefficient. They compute a full volume field,
                 # but only actually use the line part of it.
@@ -262,10 +262,10 @@ class InvertingDebyeOperatorBase(DebyeOperatorBase):
             r_coeff = inv_rank_one_coeff(r_tilde)
             q_coeff = inv_rank_one_coeff(q_tilde)
 
-            from pytools.obj_array import join_fields
+            from pytools.obj_array import flat_obj_array
             factors = self.cluster_points()
 
-            fix = join_fields(
+            fix = flat_obj_array(
                     factors[0]*s_ones*r_coeff,
                     factors[1]*Ones()*q_coeff,
                     )
@@ -376,10 +376,10 @@ class NonInvertingDebyeOperator(DebyeOperatorBase):
             r_coeff = inv_rank_one_coeff(r_tilde)
             q_coeff = inv_rank_one_coeff(q_tilde)
 
-            from pytools.obj_array import join_fields
+            from pytools.obj_array import flat_obj_array
             factors = self.cluster_points()
 
-            fix = join_fields(
+            fix = flat_obj_array(
                     factors[0]*s_ones*(r_coeff),
                     factors[1]*Ones()*(q_coeff),
                     )
