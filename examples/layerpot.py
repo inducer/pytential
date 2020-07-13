@@ -64,7 +64,7 @@ def main(curve_fn=starfish, visualize=True):
 
     from meshmode.dof_array import thaw
     nodes = thaw(actx, density_discr.nodes())
-    angle = actx.np.atan2(nodes[1], nodes[0])
+    angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
         kernel = HelmholtzKernel(2)

@@ -73,7 +73,7 @@ def main(mesh_name="ellipsoid"):
     density_discr = places.get_discretization("qbx")
 
     nodes = thaw(actx, density_discr.nodes())
-    angle = actx.np.atan2(nodes[1], nodes[0])
+    angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
         kernel = HelmholtzKernel(3)
