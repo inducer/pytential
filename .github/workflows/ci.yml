@@ -53,6 +53,7 @@ jobs:
             run: |
                 grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
+                export CISUPPORT_PARALLEL_PYTEST=no
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
@@ -83,6 +84,7 @@ jobs:
             run: |
                 set -e
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                export CISUPPORT_PARALLEL_PYTEST=no
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
