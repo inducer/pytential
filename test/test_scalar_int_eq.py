@@ -51,7 +51,6 @@ logger = logging.getLogger(__name__)
 def run_int_eq_test(actx: PyOpenCLArrayContext,
         case, resolution, visualize=False, check_spectrum=False):
     refiner_extra_kwargs = {}
-
     if case.use_refinement:
         if case.knl_class == HelmholtzKernel and \
                 getattr(case, "refine_on_helmholtz_k", True):
@@ -73,15 +72,18 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 
     # {{{ construct geometries
 
-    # layer potential
     qbx = case.get_layer_potential(actx, resolution, case.target_order)
+    point_source, point_target = inteq.make_source_and_target_points(
+            case.side, case.inner_radius, case.outer_radius, qbx.ambient_dim)
 
-    # test points
-    ambient_dim = qbx.ambient_dim
-    point_source, point_target = \
-            inteq.make_source_and_target_points(case, ambient_dim)
+    places = {
+            case.name: qbx,
+            "point_source": point_source,
+            "point_target": point_target
+            }
 
     # plotting grid points
+    ambient_dim = qbx.ambient_dim
     if visualize:
         vis_grid_spacing = getattr(case, "vis_grid_spacing",
                 (0.1, 0.1, 0.1)[:ambient_dim]
@@ -98,13 +100,6 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
         from pytential.target import PointsTarget
         plot_targets = PointsTarget(fplot.points)
 
-    places = {
-            case.name: qbx,
-            "point_source": point_source,
-            "point_target": point_target
-            }
-
-    if visualize:
         places.update({
             "qbx_target_tol": qbx.copy(target_association_tolerance=0.15),
             "plot_targets": plot_targets

@@ -40,18 +40,19 @@ def make_circular_point_group(ambient_dim, npoints, radius,
     return result
 
 
-def make_source_and_target_points(case, ambient_dim, nsources=10, ntargets=20):
-    if case.side == -1:
-        test_src_geo_radius = case.outer_radius
-        test_tgt_geo_radius = case.inner_radius
-    elif case.side == +1:
-        test_src_geo_radius = case.inner_radius
-        test_tgt_geo_radius = case.outer_radius
-    elif case.side == "scat":
-        test_src_geo_radius = case.outer_radius
-        test_tgt_geo_radius = case.outer_radius
+def make_source_and_target_points(side, inner_radius, outer_radius, ambient_dim,
+        nsources=10, ntargets=20):
+    if side == -1:
+        test_src_geo_radius = outer_radius
+        test_tgt_geo_radius = inner_radius
+    elif side == +1:
+        test_src_geo_radius = inner_radius
+        test_tgt_geo_radius = outer_radius
+    elif side == "scat":
+        test_src_geo_radius = outer_radius
+        test_tgt_geo_radius = outer_radius
     else:
-        raise ValueError(f"unknown problem side: {case.side}")
+        raise ValueError(f"unknown side: {side}")
 
     from pytential.source import PointPotentialSource
     point_sources = make_circular_point_group(
@@ -270,13 +271,12 @@ class CurveTestCase(IntegralEquationTestCase):
 
 class EllipseTestCase(CurveTestCase):
     name = "ellipse"
-
-    # geometry
     aspect_ratio = 3.0
+    radius = 1.0
 
     def _curve_fn(self, t):
         from meshmode.mesh.generation import ellipse
-        return ellipse(self.aspect_ratio, t)
+        return self.radius * ellipse(self.aspect_ratio, t)
 
 
 class CircleTestCase(EllipseTestCase):
