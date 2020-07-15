@@ -15,6 +15,3 @@ dependencies:
 - pyfmmlib
 - cython
 - gmsh
-
-# https://gitlab.tiker.net/inducer/pytential/-/issues/146
-- compilers
