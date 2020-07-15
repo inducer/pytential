@@ -55,10 +55,7 @@ jobs:
                 CONDA_ENVIRONMENT=.test-conda-env.yml
 
                 # https://gitlab.tiker.net/inducer/pytential/-/issues/146
-                echo "- _openmp_mutex=*=*gnu*" >> .test-conda-env.yml
-
-                # https://gitlab.tiker.net/inducer/pytential/-/issues/146
-                CISUPPORT_PYTEST_NO_DOCTEST_MODULES=1
+                echo "- _openmp_mutex=*=*gnu*" >> $CONDA_ENVIRONMENT
 
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
@@ -92,9 +89,6 @@ jobs:
 
                 # https://gitlab.tiker.net/inducer/pytential/-/issues/146
                 echo "- _openmp_mutex=*=*gnu*" >> $CONDA_ENVIRONMENT
-
-                # https://gitlab.tiker.net/inducer/pytential/-/issues/146
-                CISUPPORT_PYTEST_NO_DOCTEST_MODULES=1
 
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
