@@ -89,6 +89,8 @@ jobs:
                 set -e
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
 
+                echo "- _openmp_mutex=*=*gnu*" >> $CONDA_ENVIRONMENT
+
                 # https://gitlab.tiker.net/inducer/pytential/-/issues/146
                 CISUPPORT_PYTEST_NO_DOCTEST_MODULES=1
 
