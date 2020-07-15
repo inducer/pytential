@@ -96,7 +96,7 @@ def partition_by_nodes(actx, discr,
         ranges = actx.from_numpy(np.arange(
             0,
             discr.ndofs + 1,
-            discr.ndofs // max_nodes_in_box, dtype=np.int))
+            max_nodes_in_box, dtype=np.int))
 
     assert ranges[-1] == discr.ndofs
 

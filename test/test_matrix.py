@@ -50,6 +50,7 @@ from pyopencl.tools import (  # noqa
 import extra_matrix_data as extra
 import logging
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 @pytest.mark.skipif(USE_SYMENGINE,
@@ -73,6 +74,7 @@ def test_build_matrix(ctx_factory, k, curve_fn, op_type, visualize=False):
     clear_cache()
 
     case = extra.CurveTestCase(
+            name="curve",
             knl_class_or_helmholtz_k=k,
             curve_fn=curve_fn,
             op_type=op_type,
@@ -112,6 +114,12 @@ def test_build_matrix(ctx_factory, k, curve_fn, op_type, visualize=False):
     mat = actx.to_numpy(
             build_matrix(actx, places, sym_op, sym_u,
             context=case.knl_concrete_kwargs))
+
+    if visualize:
+        try:
+            import matplotlib.pyplot as pt
+        except ImportError:
+            visualize = False
 
     if visualize:
         from sumpy.tools import build_matrix as build_matrix_via_matvec
@@ -191,6 +199,7 @@ def test_block_builder(ctx_factory, ambient_dim,
 
     if ambient_dim == 2:
         case = extra.CurveTestCase(
+                name="ellipse",
                 target_order=7,
                 index_sparsity_factor=index_sparsity_factor,
                 op_type=op_type,
@@ -214,10 +223,9 @@ def test_block_builder(ctx_factory, ambient_dim,
     dd = sym.DOFDescriptor(case.name, discr_stage=sym.QBX_SOURCE_STAGE2)
     qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
 
-    from pytential.qbx.refinement import refine_geometry_collection
     places = GeometryCollection(qbx, auto_where=(dd, dd.to_stage1()))
-
     density_discr = places.get_discretization(dd.geometry, dd.discr_stage)
+
     logger.info("nelements:     %d", density_discr.mesh.nelements)
     logger.info("ndofs:         %d", density_discr.ndofs)
 
@@ -246,10 +254,12 @@ def test_block_builder(ctx_factory, ambient_dim,
 
     if block_builder_type == "qbx":
         from pytential.symbolic.matrix import MatrixBuilder
-        from pytential.symbolic.matrix import NearFieldBlockBuilder as BlockMatrixBuilder
+        from pytential.symbolic.matrix import \
+                NearFieldBlockBuilder as BlockMatrixBuilder
     elif block_builder_type == "p2p":
         from pytential.symbolic.matrix import P2PMatrixBuilder as MatrixBuilder
-        from pytential.symbolic.matrix import FarFieldBlockBuilder as BlockMatrixBuilder
+        from pytential.symbolic.matrix import \
+                FarFieldBlockBuilder as BlockMatrixBuilder
         kwargs["exclude_self"] = True
     else:
         raise ValueError(f"unknown block builder type: '{block_builder_type}'")
@@ -260,6 +270,12 @@ def test_block_builder(ctx_factory, ambient_dim,
     # }}}
 
     # {{{ check
+
+    if visualize and ambient_dim == 2:
+        try:
+            import matplotlib.pyplot as pt
+        except ImportError:
+            visualize = False
 
     index_set = index_set.get(actx.queue)
     if visualize and ambient_dim == 2:
@@ -287,10 +303,10 @@ def test_block_builder(ctx_factory, ambient_dim,
     # }}}
 
 
-@pytest.mark.parametrize(('source_discr_stage', 'target_discr_stage'),[
+@pytest.mark.parametrize(('source_discr_stage', 'target_discr_stage'), [
     (sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE1),
     (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE2),
-    (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE1),
+    # (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE1),
     ])
 def test_build_matrix_fixed_stage(ctx_factory,
         source_discr_stage, target_discr_stage, visualize=False):
@@ -305,11 +321,15 @@ def test_build_matrix_fixed_stage(ctx_factory,
     clear_cache()
 
     case = extra.CurveTestCase(
+            name="starfish",
+            curve_fn=NArmedStarfish(5, 0.25),
+
             target_order=4,
+            resolutions=[32],
+
             index_sparsity_factor=0.6,
             op_type="scalar",
-            resolutions=[32],
-            curve_fn=partial(ellipse, 1.0),
+            tree_kind=None,
             )
 
     logger.info("\n%s", case)
@@ -319,8 +339,7 @@ def test_build_matrix_fixed_stage(ctx_factory,
     dd = sym.DOFDescriptor(case.name)
     qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
 
-    from pytential.qbx.refinement import refine_geometry_collection
-    places = GeometryCollection(qbx,
+    places = GeometryCollection({case.name: qbx},
             auto_where=(
                 dd.copy(discr_stage=source_discr_stage),
                 dd.copy(discr_stage=target_discr_stage)))
@@ -328,14 +347,15 @@ def test_build_matrix_fixed_stage(ctx_factory,
     dd = places.auto_source
     density_discr = places.get_discretization(dd.geometry, dd.discr_stage)
 
-    logger.info("nelements:     %d", density_discr.mesh.nelements)
-    logger.info("ndofs:         %d", density_discr.ndofs)
-
     # }}}
 
     # {{{ symbolic
 
-    qbx_forced_limit = -1
+    if source_discr_stage is target_discr_stage:
+        qbx_forced_limit = -1
+    else:
+        qbx_forced_limit = None
+
     sym_u, sym_op = case.get_operator(places.ambient_dim, qbx_forced_limit)
 
     from pytential.symbolic.execution import _prepare_expr
@@ -347,6 +367,10 @@ def test_build_matrix_fixed_stage(ctx_factory,
 
     source_discr = places.get_discretization(case.name, source_discr_stage)
     target_discr = places.get_discretization(case.name, target_discr_stage)
+
+    logger.info("nelements:     %d", density_discr.mesh.nelements)
+    logger.info("ndofs:         %d", source_discr.ndofs)
+    logger.info("ndofs:         %d", target_discr.ndofs)
 
     icols = case.get_block_indices(actx, source_discr, matrix_indices=False)
     irows = case.get_block_indices(actx, target_discr, matrix_indices=False)

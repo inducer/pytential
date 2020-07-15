@@ -8,6 +8,7 @@ from pytential import sym
 
 import extra_int_eq_data as extra
 
+
 # {{{ helpers
 
 def max_block_error(mat, blk, index_set, p=None):
