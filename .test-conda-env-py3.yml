@@ -1,6 +1,5 @@
 name: test-conda-env-py3
 channels:
-- isuruf/label/pocl
 - conda-forge
 - nodefaults
 dependencies:
