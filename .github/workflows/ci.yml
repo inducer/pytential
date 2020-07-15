@@ -53,6 +53,7 @@ jobs:
             run: |
                 grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
+                echo "- _openmp_mutex=*=*gnu*" >> .test-conda-env.yml
 
                 # https://gitlab.tiker.net/inducer/pytential/-/issues/146
                 CISUPPORT_PYTEST_NO_DOCTEST_MODULES=1
