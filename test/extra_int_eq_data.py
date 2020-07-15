@@ -69,9 +69,7 @@ def make_source_and_target_points(case, ambient_dim, nsources=10, ntargets=20):
 # }}}
 
 
-# {{{ IntEqTestCase
-
-# TODO: this should probably be a dataclass
+# {{{ IntegralEquationTestCase
 
 class IntegralEquationTestCase(RecordWithoutPickling):
     name = "unknown"
@@ -120,6 +118,8 @@ class IntegralEquationTestCase(RecordWithoutPickling):
 
         super(IntegralEquationTestCase, self).__init__(**members)
 
+    # {{{ symbolic
+
     @property
     @memoize_method
     def knl_class(self):
@@ -149,6 +149,36 @@ class IntegralEquationTestCase(RecordWithoutPickling):
     @memoize_method
     def knl_sym_kwargs(self):
         return dict((k, sym.var(k)) for k in self.knl_concrete_kwargs)
+
+    def get_operator(self, ambient_dim):
+        sign = +1 if self.side in [+1, "scat"] else -1
+        knl = self.knl_class(ambient_dim)   # noqa: pylint:disable=E1102
+
+        if self.bc_type == "dirichlet":
+            from pytential.symbolic.pde.scalar import DirichletOperator
+            op = DirichletOperator(knl, sign,
+                    use_l2_weighting=True,
+                    kernel_arguments=self.knl_sym_kwargs)
+        elif self.bc_type == "neumann":
+            from pytential.symbolic.pde.scalar import NeumannOperator
+            op = NeumannOperator(knl, sign,
+                    use_l2_weighting=True,
+                    use_improved_operator=False,
+                    kernel_arguments=self.knl_sym_kwargs)
+        elif self.bc_type == "clamped_plate":
+            from pytential.symbolic.pde.scalar import BiharmonicClampedPlateOperator
+            op = BiharmonicClampedPlateOperator(knl, sign)
+        else:
+            raise ValueError(f"unknown bc_type: '{self.bc_type}'")
+
+        return op
+
+    # }}}
+
+    # {{{ geometry
+
+    def get_mesh(self, resolution, mesh_order):
+        raise NotImplementedError
 
     def get_discretization(self, actx, resolution, mesh_order):
         mesh = self.get_mesh(resolution, mesh_order)
@@ -187,28 +217,7 @@ class IntegralEquationTestCase(RecordWithoutPickling):
                 _from_sep_smaller_min_nsources_cumul=30,
                 )
 
-    def get_operator(self, ambient_dim):
-        sign = +1 if self.side in [+1, "scat"] else -1
-        knl = self.knl_class(ambient_dim)   # noqa: pylint:disable=E1102
-
-        if self.bc_type == "dirichlet":
-            from pytential.symbolic.pde.scalar import DirichletOperator
-            op = DirichletOperator(knl, sign,
-                    use_l2_weighting=True,
-                    kernel_arguments=self.knl_sym_kwargs)
-        elif self.bc_type == "neumann":
-            from pytential.symbolic.pde.scalar import NeumannOperator
-            op = NeumannOperator(knl, sign,
-                    use_l2_weighting=True,
-                    use_improved_operator=False,
-                    kernel_arguments=self.knl_sym_kwargs)
-        elif self.bc_type == "clamped_plate":
-            from pytential.symbolic.pde.scalar import BiharmonicClampedPlateOperator
-            op = BiharmonicClampedPlateOperator(knl, sign)
-        else:
-            raise ValueError(f"unknown bc_type: '{self.bc_type}'")
-
-        return op
+    # }}}
 
     def __str__(self):
         if not self.__class__.fields:
@@ -228,9 +237,6 @@ class IntegralEquationTestCase(RecordWithoutPickling):
             "\t%s" % "\n\t".join(fmt % (k, v) for k, v in header.items()),
             "\t%s" % "\n\t".join(fmt % (k, v) for k, v in sorted(attrs.items())),
             ])
-
-    def get_mesh(self, resolution, mesh_order):
-        raise NotImplementedError
 
 # }}}
 
