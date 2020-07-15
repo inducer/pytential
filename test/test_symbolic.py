@@ -67,7 +67,7 @@ def get_ellipse_with_ref_mean_curvature(actx, nelements, aspect=1):
 
     a = 1
     b = 1/aspect
-    t = actx.np.atan2(nodes[1] * aspect, nodes[0])
+    t = actx.np.arctan2(nodes[1] * aspect, nodes[0])
 
     return discr, a*b / ((a*actx.np.sin(t))**2 + (b*actx.np.cos(t))**2)**(3/2)
 
@@ -90,11 +90,11 @@ def get_torus_with_ref_mean_curvature(actx, h):
     a = r_major
     b = r_minor
 
-    u = actx.np.atan2(nodes[1], nodes[0])
+    u = actx.np.arctan2(nodes[1], nodes[0])
     from pytools.obj_array import flat_obj_array
     rvec = flat_obj_array(actx.np.cos(u), actx.np.sin(u), 0*u)
     rvec = sum(nodes * rvec) - a
-    cosv = actx.np.cos(actx.np.atan2(nodes[2], rvec))
+    cosv = actx.np.cos(actx.np.arctan2(nodes[2], rvec))
 
     return discr, (a + 2.0 * b * cosv) / (2 * b * (a + b * cosv))
 

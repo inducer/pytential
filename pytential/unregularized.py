@@ -202,7 +202,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
     @property
     def fmm_geometry_code_container(self):
-        return _FMMGeometryCodeContainer(
+        return _FMMGeometryDataCodeContainer(
                 self._setup_actx, self.ambient_dim, self.debug)
 
     def fmm_geometry_data(self, targets):
@@ -300,7 +300,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
 # {{{ fmm tools
 
-class _FMMGeometryCodeContainer(object):
+class _FMMGeometryDataCodeContainer(object):
 
     def __init__(self, actx, ambient_dim, debug):
         self.array_context = actx

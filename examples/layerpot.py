@@ -23,8 +23,8 @@ k = 0
 
 
 def main(curve_fn=starfish, visualize=True):
-    #import logging
-    #logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
+    import logging
+    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
@@ -64,7 +64,7 @@ def main(curve_fn=starfish, visualize=True):
 
     from meshmode.dof_array import thaw
     nodes = thaw(actx, density_discr.nodes())
-    angle = actx.np.atan2(nodes[1], nodes[0])
+    angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
         kernel = HelmholtzKernel(2)
@@ -121,24 +121,19 @@ def main(curve_fn=starfish, visualize=True):
     if enable_mayavi:
         # {{{ plot boundary field
 
-        from meshmode.dof_array import flatten
-        from pytools.obj_array import obj_array_vectorize
+        from pytential.utils import flatten_to_numpy
 
-        fld_on_bdry = actx.to_numpy(
-                flatten(bound_bdry_op(actx, sigma=sigma, k=k)))
-
-        nodes_host = obj_array_vectorize(
-                actx.to_numpy,
-                thaw(actx, density_discr.nodes()))
+        fld_on_bdry = flatten_to_numpy(
+                actx, bound_bdry_op(actx, sigma=sigma, k=k))
+        nodes_host = flatten_to_numpy(actx, density_discr.nodes())
 
         mlab.points3d(nodes_host[0], nodes_host[1],
                 fld_on_bdry.real, scale_factor=0.03)
 
-        # }}}
-
-    if enable_mayavi:
         mlab.colorbar()
         mlab.show()
+
+        # }}}
 
 
 if __name__ == "__main__":

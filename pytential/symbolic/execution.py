@@ -87,7 +87,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         self.array_context = actx
 
         if not isinstance(actx, PyOpenCLArrayContext):
-            raise NotImplementedError("evaluation with non-PyOpenCL array contexts")
+            raise NotImplementedError("evaluation with non-PyOpenCL array context")
 
         self.queue = actx.queue
 

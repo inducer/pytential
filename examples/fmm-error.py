@@ -46,7 +46,7 @@ def main():
     unaccel_qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=2*target_order,
             qbx_order=qbx_order, fmm_order=False,
-            target_association_tolerance=.05
+            target_association_tolerance=.05,
             )
 
     from pytential.target import PointsTarget
@@ -61,14 +61,22 @@ def main():
     density_discr = places.get_discretization("unaccel_qbx")
 
     nodes = thaw(actx, density_discr.nodes())
-    angle = actx.np.atan2(nodes[1], nodes[0])
+    angle = actx.np.arctan2(nodes[1], nodes[0])
 
     from pytential import bind, sym
-    kwargs = {"k": sym.var("k")} if k else {}
-    #op = sym.d_dx(
-    #    sym.S(kernel, sym.var("sigma")), qbx_forced_limit=None, **kwargs)
-    #op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None, **kwargs)
-    op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None, **kwargs)
+    if k:
+        kernel_kwargs = {"k": sym.var("k")}
+    else:
+        kernel_kwargs = {}
+
+    def get_op():
+        kwargs = dict(qbx_forced_limit=None)
+        kwargs.update(kernel_kwargs)
+        # return sym.d_dx(2, sym.S(kernel, sym.var("sigma"), **kwargs))
+        # return sym.D(kernel, sym.var("sigma"), **kwargs)
+        return sym.S(kernel, sym.var("sigma"), **kwargs)
+
+    op = get_op()
 
     sigma = actx.np.cos(mode_nr*angle)
 
