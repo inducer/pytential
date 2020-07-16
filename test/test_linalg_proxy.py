@@ -181,6 +181,7 @@ def test_proxy_generator(ctx_factory, case, index_sparsity_factor, visualize=Fal
 
     srcindices = srcindices.get(queue)
     if visualize:
+        ambient_dim = places.ambient_dim
         if ambient_dim == 2:
             import matplotlib.pyplot as pt
 
@@ -252,7 +253,8 @@ def test_proxy_generator(ctx_factory, case, index_sparsity_factor, visualize=Fal
 
 @pytest.mark.parametrize("case", PROXY_TEST_CASES)
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
-def test_interaction_points(ctx_factory, case, index_sparsity_factor, visualize=False):
+def test_interaction_points(ctx_factory,
+        case, index_sparsity_factor, visualize=False):
     """Test that neighboring points (inside the proxy balls, but outside the
     current block/cluster) are actually inside.
     """
@@ -301,6 +303,7 @@ def test_interaction_points(ctx_factory, case, index_sparsity_factor, visualize=
 
     from pytential.utils import flatten_to_numpy
     if visualize:
+        ambient_dim = places.ambient_dim
         if ambient_dim == 2:
             import matplotlib.pyplot as pt
             density_nodes = flatten_to_numpy(actx, density_discr.nodes())
