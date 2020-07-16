@@ -202,6 +202,9 @@ def test_cost_model(ctx, calibration_params):
 
 
 def predict_cost(ctx):
+    import logging
+    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
+
     params = calibrate_cost_model(ctx)
     test_cost_model(ctx, params)
 
