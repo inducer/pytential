@@ -64,6 +64,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
 
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     # {{{ Construct geometry
 
@@ -74,7 +75,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
     pre_density_discr = Discretization(
-        ctx, mesh,
+        actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(target_order)
     )
 
@@ -86,7 +87,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     places = GeometryCollection(qbx)
 
     from pytential.qbx.refinement import refine_geometry_collection
-    places = refine_geometry_collection(queue, places)
+    places = refine_geometry_collection(places)
 
     target_discrs_and_qbx_sides = tuple([(qbx.density_discr, 0)])
     geo_data_dev = qbx.qbx_fmm_geometry_data(
@@ -100,7 +101,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
 
     # {{{ Construct cost models
 
-    cl_cost_model = QBXCostModel(queue)
+    cl_cost_model = QBXCostModel(actx)
     python_cost_model = _PythonQBXCostModel()
 
     tree = geo_data.tree()
@@ -387,7 +388,7 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
 
     lpot_source = get_lpot_source(actx, dim).copy(
             _use_target_specific_qbx=use_target_specific_qbx,
-            cost_model=QBXCostModel(queue))
+            cost_model=QBXCostModel(actx))
     places = GeometryCollection(lpot_source)
 
     density_discr = places.get_discretization(places.auto_source.geometry)
@@ -702,8 +703,7 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     actx = PyOpenCLArrayContext(queue)
 
     cost_model = QBXCostModel(
-        queue, translation_cost_model_factory=OpCountingTranslationCostModel
-    )
+        actx, translation_cost_model_factory=OpCountingTranslationCostModel)
 
     lpot_source = get_lpot_source(actx, dim).copy(
             cost_model=cost_model,
@@ -780,7 +780,7 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     for stage in timing_data:
         total_cost += timing_data[stage]["ops_elapsed"]
 
-    per_box_cost, _ = op_S.cost_per_box(queue, "constant_one", sigma=sigma)
+    per_box_cost, _ = op_S.cost_per_box("constant_one", sigma=sigma)
     print(per_box_cost)
     per_box_cost = one(per_box_cost.values())
 
@@ -812,7 +812,7 @@ def test_cost_model_order_varying_by_level(ctx_factory):
     def level_to_order_constant(kernel, kernel_args, tree, level):
         return 1
 
-    lpot_source = get_lpot_source(queue, 2).copy(
+    lpot_source = get_lpot_source(actx, 2).copy(
             cost_model=QBXCostModel(actx),
             fmm_level_to_order=level_to_order_constant)
     places = GeometryCollection(lpot_source)
@@ -838,18 +838,17 @@ def test_cost_model_order_varying_by_level(ctx_factory):
     def level_to_order_varying(kernel, kernel_args, tree, level):
         return metadata["nlevels"] - level
 
-    lpot_source = get_lpot_source(queue, 2).copy(
-            cost_model=QBXCostModel(queue),
+    lpot_source = get_lpot_source(actx, 2).copy(
+            cost_model=QBXCostModel(actx),
             fmm_level_to_order=level_to_order_varying)
     places = GeometryCollection(lpot_source)
 
     density_discr = places.get_discretization(places.auto_source.geometry)
 
-    sigma = get_density(queue, density_discr)
+    sigma = get_density(actx, density_discr)
 
     cost_varying, _ = bind(lpot_source, sym_op).cost_per_stage(
-        queue, "constant_one", sigma=sigma
-    )
+        "constant_one", sigma=sigma)
 
     cost_varying = one(cost_varying.values())
 

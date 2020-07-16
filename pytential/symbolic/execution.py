@@ -926,7 +926,7 @@ class BoundExpression(object):
         self.code.execute(cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()
 
-    def cost_per_box(self, queue, calibration_params, **kwargs):
+    def cost_per_box(self, calibration_params, **kwargs):
         """
         :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg calibration_params: either a :class:`dict` returned by

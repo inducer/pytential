@@ -488,7 +488,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     geo_data, kernel, kernel_arguments, calibration_params
                 )
 
-            return wrangler.full_output_zeros(), (cost_model_result, metadata)
+            from pytools.obj_array import obj_array_vectorize
+            return (
+                    obj_array_vectorize(
+                        wrangler.finalize_potentials,
+                        wrangler.full_output_zeros()),
+                    (cost_model_result, metadata))
 
         return self._dispatch_compute_potential_insn(
             actx, insn, bound_expr, evaluate,
