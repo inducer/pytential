@@ -53,6 +53,12 @@ jobs:
             run: |
                 grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
+
+                # https://gitlab.tiker.net/inducer/pytential/-/issues/146
+                echo "- _openmp_mutex=*=*gnu*" >> $CONDA_ENVIRONMENT
+
+                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
@@ -70,7 +76,7 @@ jobs:
                 echo "- llvm-openmp" >> .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
-                set -o xtrace
+
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
@@ -81,8 +87,13 @@ jobs:
         -   uses: actions/checkout@v2
         -   name: "Main Script"
             run: |
-                set -e
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+
+                # https://gitlab.tiker.net/inducer/pytential/-/issues/146
+                echo "- _openmp_mutex=*=*gnu*" >> $CONDA_ENVIRONMENT
+
+                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
