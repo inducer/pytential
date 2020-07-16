@@ -175,8 +175,9 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 
     sym_u = op.get_density_var("u")
     sym_bc = op.get_density_var("bc")
+    sym_charges = op.get_density_var("charges")
 
-    sym_op_u = op.operator(op.get_density_var("u"))
+    sym_op_u = op.operator(sym_u)
 
     # }}}
 
@@ -196,7 +197,7 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 
     pot_src = sym.IntG(
         # FIXME: qbx_forced_limit--really?
-        knl, sym.var("charges"), qbx_forced_limit=None, **case.knl_sym_kwargs)
+        knl, sym_charges, qbx_forced_limit=None, **case.knl_sym_kwargs)
 
     test_direct = bind(places,
             pot_src,
@@ -318,15 +319,14 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
                 map_potentials=lambda p: sym.grad(ambient_dim, p),
                 qbx_forced_limit=None)
 
-        grad_from_src = bind(places, sym_grad_op,
-                auto_where=(case.name, "point_target"))(actx,
-                        u=weighted_u,
-                        **case.knl_concrete_kwargs)
+        grad_from_src = bind(places,
+                sym_grad_op,
+                auto_where=(case.name, "point_target"))(
+                        actx, u=weighted_u, **case.knl_concrete_kwargs)
         grad_ref = bind(places,
                 sym.grad(ambient_dim, pot_src),
-                auto_where=("point_source", "point_target"))(actx,
-                        charges=source_charges_dev,
-                        **case.knl_concrete_kwargs)
+                auto_where=("point_source", "point_target"))(
+                        actx, charges=source_charges_dev, **case.knl_concrete_kwargs)
 
         grad_err = grad_from_src - grad_ref
         grad_ref = flatten_to_numpy(actx, grad_ref[0])
@@ -346,14 +346,14 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
                 map_potentials=lambda p: sym.tangential_derivative(ambient_dim, p),
                 qbx_forced_limit=case.side).as_scalar()
 
-        tang_deriv_from_src = bind(places, sym_tang_deriv_op)(actx,
-                u=weighted_u,
-                **case.knl_concrete_kwargs)
+        tang_deriv_from_src = bind(places,
+                sym_tang_deriv_op,
+                auto_where=case.name)(
+                        actx, u=weighted_u, **case.knl_concrete_kwargs)
         tang_deriv_ref = bind(places,
                 sym.tangential_derivative(ambient_dim, pot_src).as_scalar(),
-                auto_where=("point_source", case.name))(actx,
-                        charges=source_charges_dev,
-                        **case.knl_concrete_kwargs)
+                auto_where=("point_source", case.name))(
+                        actx, charges=source_charges_dev, **case.knl_concrete_kwargs)
 
         tang_deriv_from_src = flatten_to_numpy(actx, tang_deriv_from_src)
         tang_deriv_ref = flatten_to_numpy(actx, tang_deriv_ref)
@@ -384,10 +384,10 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
             ])
 
         try:
-            solved_pot = bind(places, op.representation(sym_u),
-                    auto_where=("qbx_target_tol", "plot_targets"))(actx,
-                            u=weighted_u,
-                            **case.knl_concrete_kwargs)
+            solved_pot = bind(places,
+                    op.representation(sym_u),
+                    auto_where=("qbx_target_tol", "plot_targets"))(
+                            actx, u=weighted_u, **case.knl_concrete_kwargs)
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file(f"failed-targets-plotter-{resolution}.vts", [
                 ("failed_targets", actx.thaw(e.failed_target_flags))
@@ -399,14 +399,15 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
         sym_indicator = -sym.D(LaplaceKernel(ambient_dim),
                 op.get_density_var("sigma"),
                 qbx_forced_limit=None)
-        indicator = bind(places, sym_indicator,
+        indicator = bind(places,
+                sym_indicator,
                 auto_where=("qbx_target_tol", "plot_targets"))(
                         actx, sigma=ones_density)
 
-        true_pot = bind(places, pot_src,
-                auto_where=("point_source", "plot_targets"))(actx,
-                        charges=source_charges_dev,
-                        **case.knl_concrete_kwargs)
+        true_pot = bind(places,
+                pot_src,
+                auto_where=("point_source", "plot_targets"))(
+                        actx, charges=source_charges_dev, **case.knl_concrete_kwargs)
 
         solved_pot = actx.to_numpy(solved_pot)
         true_pot = actx.to_numpy(true_pot)
