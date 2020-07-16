@@ -175,7 +175,7 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 
     sym_u = op.get_density_var("u")
     sym_bc = op.get_density_var("bc")
-    sym_charges = op.get_density_var("charges")
+    sym_charges = sym.var("charges")
 
     sym_op_u = op.operator(sym_u)
 
