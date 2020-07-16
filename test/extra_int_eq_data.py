@@ -259,7 +259,7 @@ class CurveTestCase(IntegralEquationTestCase):
     resolutions = [40, 50, 60]
 
     def _curve_fn(self, t):
-        return self.curve_fn(t)
+        return self.curve_fn(t)     # pylint:disable=not-callable
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.generation import make_curve_mesh
