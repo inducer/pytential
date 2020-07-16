@@ -27,12 +27,12 @@ THE SOFTWARE.
 """
 
 import six
-import pyopencl as cl
-import pyopencl.array # noqa
-from pytools import memoize
+from meshmode.array_context import PyOpenCLArrayContext  # noqa
+from meshmode.dof_array import DOFArray
+import numpy as np
+from pytools import memoize_in
 
 import loopy as lp
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 
 __doc__ = """
@@ -69,7 +69,11 @@ class GranularityConnection(object):
     def to_discr(self):
         return self.discr
 
-    def __call__(self, queue, vec):
+    @property
+    def array_context(self):
+        return self.discr._setup_actx
+
+    def __call__(self, ary):
         raise NotImplementedError()
 
 
@@ -85,61 +89,66 @@ class CenterGranularityConnection(GranularityConnection):
     def __init__(self, discr):
         super(CenterGranularityConnection, self).__init__(discr)
 
-    @memoize
-    def kernel(self):
-        knl = lp.make_kernel(
-            "[srclen, dstlen] -> {[i]: 0 <= i < srclen}",
-            """
-            dst[2*i] = src1[i]
-            dst[2*i + 1] = src2[i]
-            """,
-            [
-                lp.GlobalArg("src1", shape="srclen"),
-                lp.GlobalArg("src2", shape="srclen"),
-                lp.GlobalArg("dst", shape="dstlen"),
-                "..."
-            ],
-            name="node_interleaver_knl",
-            assumptions="2*srclen = dstlen",
-            lang_version=MOST_RECENT_LANGUAGE_VERSION,
-            )
+    def _interleave_dof_arrays(self, ary1, ary2):
+        if not isinstance(ary1, DOFArray) or not isinstance(ary2, DOFArray):
+            raise TypeError("non-array passed to connection")
 
-        knl = lp.split_iname(knl, "i", 128,
-                inner_tag="l.0", outer_tag="g.0")
-        return knl
+        @memoize_in(self.array_context,
+                 (CenterGranularityConnection, "interleave"))
+        def prg():
+            from meshmode.array_context import make_loopy_program
+            return make_loopy_program(
+                    """{[iel, idof]: 0<=iel<nelements and 0<=idof<nunit_dofs}""",
+                    """
+                    dst[iel, 2*idof] = src1[iel, idof]
+                    dst[iel, 2*idof + 1] = src2[iel, idof]
+                    """,
+                    [
+                        lp.GlobalArg("src1", shape="(nelements, nunit_dofs)"),
+                        lp.GlobalArg("src2", shape="(nelements, nunit_dofs)"),
+                        lp.GlobalArg("dst", shape="(nelements, 2*nunit_dofs)"),
+                        "...",
+                        ],
+                    name="interleave")
 
-    def __call__(self, queue, vecs):
+        results = []
+        for grp, src1, src2 in zip(self.discr.groups, ary1, ary2):
+            if src1.dtype != src2.dtype:
+                raise ValueError("dtype mismatch in inputs")
+            result = self.array_context.empty(
+                    (grp.nelements, 2 * grp.nunit_dofs), dtype=src1.dtype)
+            self.array_context.call_loopy(
+                    prg(), src1=src1, src2=src2, dst=result,
+                    nelements=grp.nelements, nunit_dofs=grp.nunit_dofs)
+            results.append(result)
+        return DOFArray.from_list(self.array_context, results)
+
+    def __call__(self, arys):
         r"""
-        :arg vecs: a single :class:`pyopencl.array.Array` or a pair of arrays.
+        :arg arys: either a single :class:`~meshmode.dof_array.DOFArray`
+            or a list/tuple with exactly 2 entries that are both
+            :class:`~meshmode.dof_array.DOFArray`\ s.
+            Additionally, this function vectorizes over object arrays of
+            :class:`~meshmode.dof_array.DOFArrays`\ s.
+
         :return: an interleaved array or list of :class:`pyopencl.array.Array`s.
             If *vecs* was a pair of arrays :math:`(x, y)`, they are
             interleaved as :math:`[x_1, y_1, x_2, y_2, \ddots, x_n, y_n]`.
             A single array is simply interleaved with itself.
+
         """
-
-        if isinstance(vecs, cl.array.Array):
-            vecs = [[vecs], [vecs]]
-        elif isinstance(vecs, (list, tuple)):
-            assert len(vecs) == 2
+        if isinstance(arys, np.ndarray):
+            arys = (arys, arys)
+        if isinstance(arys, (list, tuple)):
+            assert len(arys) == 2
         else:
-            raise ValueError('cannot interleave arrays')
+            raise ValueError("cannot interleave arrays")
 
-        result = []
-        for src1, src2 in zip(vecs[0], vecs[1]):
-            if not isinstance(src1, cl.array.Array) \
-                    or not isinstance(src2, cl.array.Array):
-                raise TypeError('non-array passed to connection')
-
-            if src1.shape != (self.discr.nnodes,) \
-                    or src2.shape != (self.discr.nnodes,):
-                raise ValueError('invalid shape of incoming array')
-
-            axis = cl.array.empty(queue, 2 * len(src1), src1.dtype)
-            self.kernel()(queue,
-                    src1=src1, src2=src2, dst=axis)
-            result.append(axis)
-
-        return result[0] if len(result) == 1 else result
+        if isinstance(arys[0], DOFArray):
+            return self._interleave_dof_arrays(*arys)
+        else:
+            from pytools.obj_array import obj_array_vectorize_n_args
+            return obj_array_vectorize_n_args(self._interleave_dof_arrays, *arys)
 
 # }}}
 
@@ -190,11 +199,11 @@ class DOFConnection(object):
             self.from_discr = self.connections[0].from_discr
             self.to_discr = self.connections[-1].to_discr
 
-    def __call__(self, queue, vec):
+    def __call__(self, ary):
         for conn in self.connections:
-            vec = conn(queue, vec)
+            ary = conn(ary)
 
-        return vec
+        return ary
 
 
 def connection_from_dds(places, from_dd, to_dd):

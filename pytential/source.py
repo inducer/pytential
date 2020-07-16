@@ -26,7 +26,7 @@ THE SOFTWARE.
 import numpy as np  # noqa: F401
 import pyopencl as cl  # noqa: F401
 import six
-from pytools import memoize_method
+from pytools import memoize_in
 from sumpy.fmm import UnableToCollectTimingData
 
 
@@ -53,23 +53,51 @@ class PotentialSource(object):
     def preprocess_optemplate(self, name, discretizations, expr):
         return expr
 
+    @property
+    def real_dtype(self):
+        raise NotImplementedError
+
+    @property
+    def complex_dtype(self):
+        raise NotImplementedError
+
+    def get_p2p(self, actx, kernels):
+        raise NotImplementedError
+
+
+class _SumpyP2PMixin(object):
+
+    def get_p2p(self, actx, kernels):
+        @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
+        def p2p(kernels):
+            from pytools import any
+            if any(knl.is_complex_valued for knl in kernels):
+                value_dtype = self.complex_dtype
+            else:
+                value_dtype = self.real_dtype
+
+            from sumpy.p2p import P2P
+            return P2P(actx.context,
+                    kernels, exclude_self=False, value_dtypes=value_dtype)
+
+        return p2p(kernels)
+
 
 # {{{ point potential source
 
-class PointPotentialSource(PotentialSource):
+class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
     """
     .. attribute:: nodes
 
-        An :class:`pyopencl.array.Array` of shape ``[ambient_dim, nnodes]``.
+        An :class:`pyopencl.array.Array` of shape ``[ambient_dim, ndofs]``.
 
-    .. attribute:: nnodes
+    .. attribute:: ndofs
 
     .. automethod:: cost_model_compute_potential_insn
     .. automethod:: exec_compute_potential_insn
     """
 
-    def __init__(self, cl_context, nodes):
-        self.cl_context = cl_context
+    def __init__(self, nodes):
         self._nodes = nodes
 
     @property
@@ -88,8 +116,9 @@ class PointPotentialSource(PotentialSource):
         return self._nodes.dtype
 
     @property
-    def nnodes(self):
-        return self._nodes.shape[-1]
+    def ndofs(self):
+        for coord_ary in self._nodes:
+            return coord_ary.shape[0]
 
     @property
     def complex_dtype(self):
@@ -111,27 +140,11 @@ class PointPotentialSource(PotentialSource):
 
         return result
 
-    @memoize_method
-    def get_p2p(self, kernels):
-        # needs to be separate method for caching
-
-        from pytools import any
-        if any(knl.is_complex_valued for knl in kernels):
-            value_dtype = self.complex_dtype
-        else:
-            value_dtype = self.real_dtype
-
-        from sumpy.p2p import P2P
-        p2p = P2P(self.cl_context,
-                    kernels, exclude_self=False, value_dtypes=value_dtype)
-
-        return p2p
-
-    def cost_model_compute_potential_insn(self, queue, insn, bound_expr,
+    def cost_model_compute_potential_insn(self, actx, insn, bound_expr,
                                           evaluate, costs):
         raise NotImplementedError
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
+    def exec_compute_potential_insn(self, actx, insn, bound_expr, evaluate,
             return_timing_data):
         if return_timing_data:
             from warnings import warn
@@ -145,33 +158,41 @@ class PointPotentialSource(PotentialSource):
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        strengths = evaluate(insn.density).with_queue(queue).copy()
+        strengths = evaluate(insn.density)
 
         # FIXME: Do this all at once
-        result = []
+        results = []
         for o in insn.outputs:
             target_discr = bound_expr.places.get_discretization(
                     o.target_name.geometry, o.target_name.discr_stage)
 
             # no on-disk kernel caching
             if p2p is None:
-                p2p = self.get_p2p(insn.kernels)
+                p2p = self.get_p2p(actx, insn.kernels)
 
-            evt, output_for_each_kernel = p2p(queue,
-                    target_discr.nodes(), self._nodes,
+            from pytential.utils import flatten_if_needed
+            evt, output_for_each_kernel = p2p(actx.queue,
+                    flatten_if_needed(actx, target_discr.nodes()),
+                    self._nodes,
                     [strengths], **kernel_args)
 
-            result.append((o.name, output_for_each_kernel[o.kernel_index]))
+            from meshmode.discretization import Discretization
+            result = output_for_each_kernel[o.kernel_index]
+            if isinstance(target_discr, Discretization):
+                from meshmode.dof_array import unflatten
+                result = unflatten(actx, target_discr, result)
+
+            results.append((o.name, result))
 
         timing_data = {}
-        return result, timing_data
+        return results, timing_data
 
 # }}}
 
 
 # {{{ layer potential source
 
-class LayerPotentialSourceBase(PotentialSource):
+class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     """A discretization of a layer potential using panel-based geometry, with
     support for refinement and upsampling.
 
@@ -198,12 +219,16 @@ class LayerPotentialSourceBase(PotentialSource):
         return self.density_discr.ambient_dim
 
     @property
+    def _setup_actx(self):
+        return self.density_discr._setup_actx
+
+    @property
     def dim(self):
         return self.density_discr.dim
 
     @property
     def cl_context(self):
-        return self.density_discr.cl_context
+        return self.density_discr._setup_actx.context
 
     @property
     def real_dtype(self):
@@ -212,22 +237,6 @@ class LayerPotentialSourceBase(PotentialSource):
     @property
     def complex_dtype(self):
         return self.density_discr.complex_dtype
-
-    @memoize_method
-    def get_p2p(self, kernels):
-        # needs to be separate method for caching
-
-        from pytools import any
-        if any(knl.is_complex_valued for knl in kernels):
-            value_dtype = self.density_discr.complex_dtype
-        else:
-            value_dtype = self.density_discr.real_dtype
-
-        from sumpy.p2p import P2P
-        p2p = P2P(self.cl_context,
-                  kernels, exclude_self=False, value_dtypes=value_dtype)
-
-        return p2p
 
     # {{{ fmm setup helpers
 
@@ -252,9 +261,11 @@ class LayerPotentialSourceBase(PotentialSource):
             return self.real_dtype
 
     def get_fmm_expansion_wrangler_extra_kwargs(
-            self, queue, out_kernels, tree_user_source_ids, arguments, evaluator):
+            self, actx, out_kernels, tree_user_source_ids, arguments, evaluator):
         # This contains things like the Helmholtz parameter k or
         # the normal directions for double layers.
+
+        queue = actx.queue
 
         def reorder_sources(source_array):
             if isinstance(source_array, cl.array.Array):
@@ -269,15 +280,17 @@ class LayerPotentialSourceBase(PotentialSource):
         source_extra_kwargs = {}
 
         from sumpy.tools import gather_arguments, gather_source_arguments
-        from pytools.obj_array import with_object_array_or_scalar
+        from pytools.obj_array import obj_array_vectorize
+        from pytential.utils import flatten_if_needed
+
         for func, var_dict in [
                 (gather_arguments, kernel_extra_kwargs),
                 (gather_source_arguments, source_extra_kwargs),
                 ]:
             for arg in func(out_kernels):
-                var_dict[arg.name] = with_object_array_or_scalar(
+                var_dict[arg.name] = obj_array_vectorize(
                         reorder_sources,
-                        evaluator(arguments[arg.name]))
+                        flatten_if_needed(actx, evaluator(arguments[arg.name])))
 
         return kernel_extra_kwargs, source_extra_kwargs
 

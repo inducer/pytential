@@ -225,8 +225,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                 self.queue,
                 global_qbx_centers=geo_data.global_qbx_centers(),
                 qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
-                qbx_centers=geo_data.centers(),
-                qbx_expansion_radii=geo_data.expansion_radii(),
+                qbx_centers=geo_data.flat_centers(),
+                qbx_expansion_radii=geo_data.flat_expansion_radii(),
 
                 source_box_starts=starts,
                 source_box_lists=lists,
@@ -268,8 +268,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     ),
 
                     centers=self.tree.box_centers,
-                    qbx_centers=geo_data.centers(),
-                    qbx_expansion_radii=geo_data.expansion_radii(),
+                    qbx_centers=geo_data.flat_centers(),
+                    qbx_expansion_radii=geo_data.flat_expansion_radii(),
 
                     src_expansions=source_mpoles_view,
                     src_base_ibox=source_level_start_ibox,
@@ -321,8 +321,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
                     target_base_ibox=target_level_start_ibox,
 
                     centers=self.tree.box_centers,
-                    qbx_centers=geo_data.centers(),
-                    qbx_expansion_radii=geo_data.expansion_radii(),
+                    qbx_centers=geo_data.flat_centers(),
+                    qbx_expansion_radii=geo_data.flat_expansion_radii(),
 
                     expansions=target_locals_view,
                     qbx_expansions=qbx_expansions,
@@ -356,8 +356,8 @@ QBXFMMGeometryData.non_qbx_box_target_lists`),
         qbxl2p = self.code.qbxl2p(self.qbx_order)
 
         evt, pot_res = qbxl2p(self.queue,
-                qbx_centers=geo_data.centers(),
-                qbx_expansion_radii=geo_data.expansion_radii(),
+                qbx_centers=geo_data.flat_centers(),
+                qbx_expansion_radii=geo_data.flat_expansion_radii(),
 
                 global_qbx_centers=geo_data.global_qbx_centers(),
 
@@ -582,8 +582,8 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
         # potential back into a CL array.
         return wrangler.finalize_potentials(x[tree.sorted_target_ids])
 
-    from pytools.obj_array import with_object_array_or_scalar
-    result = with_object_array_or_scalar(
+    from pytools.obj_array import obj_array_vectorize
+    result = obj_array_vectorize(
             reorder_and_finalize_potentials, all_potentials_in_tree_order)
 
     # }}}

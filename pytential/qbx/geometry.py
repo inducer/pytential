@@ -28,6 +28,9 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.array  # noqa
 from pytools import memoize_method
+from pytools.obj_array import obj_array_vectorize
+from meshmode.array_context import PyOpenCLArrayContext
+from meshmode.dof_array import flatten, thaw
 from boxtree.tools import DeviceDataRecord
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 import loopy as lp
@@ -76,7 +79,7 @@ Enums of special values
 Geometry description code container
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: QBXFMMGeometryCodeGetter
+.. autoclass:: QBXFMMGeometryDataCodeContainer
     :members:
     :undoc-members:
 
@@ -109,15 +112,20 @@ class target_state(Enum):  # noqa
     FAILED = -2
 
 
-class QBXFMMGeometryCodeGetter(TreeCodeContainerMixin):
-    def __init__(self, cl_context, ambient_dim, tree_code_container, debug,
+class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
+    def __init__(self, actx: PyOpenCLArrayContext, ambient_dim,
+            tree_code_container, debug,
             _well_sep_is_n_away, _from_sep_smaller_crit):
-        self.cl_context = cl_context
+        self.array_context = actx
         self.ambient_dim = ambient_dim
         self.tree_code_container = tree_code_container
         self.debug = debug
         self._well_sep_is_n_away = _well_sep_is_n_away
         self._from_sep_smaller_crit = _from_sep_smaller_crit
+
+    @property
+    def cl_context(self):
+        return self.array_context.context
 
     @memoize_method
     def copy_targets_kernel(self):
@@ -324,7 +332,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
     .. attribute:: code_getter
 
-        The :class:`QBXFMMGeometryCodeGetter` for this object.
+        The :class:`QBXFMMGeometryDataCodeContainer` for this object.
 
     .. attribute:: target_discrs_and_qbx_sides
 
@@ -348,7 +356,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
     .. rubric :: Expansion centers
 
     .. attribute:: ncenters
-    .. automethod:: centers()
+    .. automethod:: flat_centers()
 
     .. rubric :: Methods
 
@@ -402,48 +410,53 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         return self.lpot_source.ambient_dim
 
     @property
-    def cl_context(self):
-        return self.lpot_source.cl_context
-
-    @property
     def coord_dtype(self):
         return self.lpot_source.density_discr.real_dtype
+
+    @property
+    def array_context(self):
+        return self.code_getter.array_context
+
+    @property
+    def cl_context(self):
+        return self.code_getter.cl_context
 
     # {{{ centers/radii
 
     @property
     def ncenters(self):
-        return len(self.centers()[0])
+        return len(self.flat_centers()[0])
 
     @memoize_method
-    def centers(self):
-        """ Return an object array of (interleaved) center coordinates.
+    def flat_centers(self):
+        """Return an object array of (interleaved) center coordinates.
 
         ``coord_t [ambient_dim][ncenters]``
         """
         from pytential import bind, sym
-        from pytools.obj_array import make_obj_array
 
-        with cl.CommandQueue(self.cl_context) as queue:
-            centers = bind(self.places, sym.interleaved_expansion_centers(
+        centers = bind(self.places, sym.interleaved_expansion_centers(
                 self.ambient_dim,
-                dofdesc=self.source_dd.to_stage1()))(queue)
-            return make_obj_array([ax.with_queue(None) for ax in centers])
+                dofdesc=self.source_dd.to_stage1()))(self.array_context)
+        return obj_array_vectorize(self.array_context.freeze, flatten(centers))
 
     @memoize_method
-    def expansion_radii(self):
-        """Return an  array of radii associated with the (interleaved)
+    def flat_expansion_radii(self):
+        """Return an array of radii associated with the (interleaved)
         expansion centers.
 
         ``coord_t [ncenters]``
         """
         from pytential import bind, sym
 
-        with cl.CommandQueue(self.cl_context) as queue:
-            return bind(self.places, sym.expansion_radii(
-                self.ambient_dim,
-                granularity=sym.GRANULARITY_CENTER,
-                dofdesc=self.source_dd.to_stage1()))(queue)
+        radii = bind(self.places,
+                    sym.expansion_radii(
+                        self.ambient_dim,
+                        granularity=sym.GRANULARITY_CENTER,
+                        dofdesc=self.source_dd.to_stage1()))(
+                    self.array_context)
+
+        return self.array_context.freeze(flatten(radii))
 
     # }}}
 
@@ -453,36 +466,41 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
     def target_info(self):
         """Return a :class:`TargetInfo`. |cached|"""
 
+        from pytential.utils import flatten_if_needed
+
         code_getter = self.code_getter
-        with cl.CommandQueue(self.cl_context) as queue:
-            ntargets = self.ncenters
-            target_discr_starts = []
+        queue = self.array_context.queue
+        ntargets = self.ncenters
+        target_discr_starts = []
 
-            for target_discr, qbx_side in self.target_discrs_and_qbx_sides:
-                target_discr_starts.append(ntargets)
-                ntargets += target_discr.nnodes
-
+        for target_discr, qbx_side in self.target_discrs_and_qbx_sides:
             target_discr_starts.append(ntargets)
+            ntargets += target_discr.ndofs
 
-            targets = cl.array.empty(
-                    self.cl_context, (self.ambient_dim, ntargets),
-                    self.coord_dtype)
+        target_discr_starts.append(ntargets)
+
+        targets = cl.array.empty(
+                self.cl_context, (self.ambient_dim, ntargets),
+                self.coord_dtype)
+        code_getter.copy_targets_kernel()(
+                queue,
+                targets=targets[:, :self.ncenters],
+                points=self.flat_centers())
+
+        for start, (target_discr, _) in zip(
+                target_discr_starts, self.target_discrs_and_qbx_sides):
             code_getter.copy_targets_kernel()(
                     queue,
-                    targets=targets[:, :self.ncenters],
-                    points=self.centers())
+                    targets=targets[:,
+                        start:start+target_discr.ndofs],
+                    points=flatten_if_needed(
+                        self.array_context,
+                        target_discr.nodes()))
 
-            for start, (target_discr, _) in zip(
-                    target_discr_starts, self.target_discrs_and_qbx_sides):
-                code_getter.copy_targets_kernel()(
-                        queue,
-                        targets=targets[:, start:start+target_discr.nnodes],
-                        points=target_discr.nodes())
-
-            return TargetInfo(
-                    targets=targets,
-                    target_discr_starts=target_discr_starts,
-                    ntargets=ntargets).with_queue(None)
+        return TargetInfo(
+                targets=targets,
+                target_discr_starts=target_discr_starts,
+                ntargets=ntargets).with_queue(None)
 
     def target_side_preferences(self):
         """Return one big array combining all the data from
@@ -492,7 +510,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         tgt_info = self.target_info()
 
-        with cl.CommandQueue(self.cl_context) as queue:
+        with cl.CommandQueue(self.array_context.context) as queue:
             target_side_preferences = cl.array.empty(
                     queue, tgt_info.ntargets, np.int8)
             target_side_preferences[:self.ncenters] = 0
@@ -500,7 +518,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             for tdstart, (target_discr, qbx_side) in \
                     zip(tgt_info.target_discr_starts,
                             self.target_discrs_and_qbx_sides):
-                target_side_preferences[tdstart:tdstart+target_discr.nnodes] \
+                target_side_preferences[tdstart:tdstart+target_discr.ndofs] \
                     = qbx_side
 
             return target_side_preferences.with_queue(None)
@@ -521,52 +539,54 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         lpot_source = self.lpot_source
         target_info = self.target_info()
 
-        with cl.CommandQueue(self.cl_context) as queue:
-            from pytential import sym
-            quad_stage2_discr = self.places.get_discretization(
-                    self.source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
+        queue = self.array_context.queue
 
-            nsources = quad_stage2_discr.nnodes
-            nparticles = nsources + target_info.ntargets
+        from pytential import sym
+        quad_stage2_discr = self.places.get_discretization(
+                self.source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
 
-            target_radii = None
-            if lpot_source._expansions_in_tree_have_extent:
-                target_radii = cl.array.zeros(queue, target_info.ntargets,
-                        self.coord_dtype)
-                target_radii[:self.ncenters] = self.expansion_radii()
+        nsources = sum(grp.ndofs for grp in quad_stage2_discr.groups)
+        nparticles = nsources + target_info.ntargets
 
-            refine_weights = cl.array.empty(queue, nparticles, dtype=np.int32)
+        target_radii = None
+        if lpot_source._expansions_in_tree_have_extent:
+            target_radii = cl.array.zeros(queue, target_info.ntargets,
+                    self.coord_dtype)
+            target_radii[:self.ncenters] = self.flat_expansion_radii()
 
-            # Assign a weight of 1 to all sources, QBX centers, and conventional
-            # (non-QBX) targets. Assign a weight of 0 to all targets that need
-            # QBX centers. The potential at the latter targets is mediated
-            # entirely by the QBX center, so as a matter of evaluation cost,
-            # their location in the tree is irrelevant.
-            refine_weights[:-target_info.ntargets] = 1
-            user_ttc = self.user_target_to_center().with_queue(queue)
-            refine_weights[-target_info.ntargets:] = (
-                    user_ttc == target_state.NO_QBX_NEEDED).astype(np.int32)
+        refine_weights = cl.array.empty(queue, nparticles, dtype=np.int32)
 
-            refine_weights.finish()
+        # Assign a weight of 1 to all sources, QBX centers, and conventional
+        # (non-QBX) targets. Assign a weight of 0 to all targets that need
+        # QBX centers. The potential at the latter targets is mediated
+        # entirely by the QBX center, so as a matter of evaluation cost,
+        # their location in the tree is irrelevant.
+        refine_weights[:-target_info.ntargets] = 1
+        user_ttc = self.user_target_to_center().with_queue(queue)
+        refine_weights[-target_info.ntargets:] = (
+                user_ttc == target_state.NO_QBX_NEEDED).astype(np.int32)
 
-            tree, _ = code_getter.build_tree()(queue,
-                    particles=quad_stage2_discr.nodes(),
-                    targets=target_info.targets,
-                    target_radii=target_radii,
-                    max_leaf_refine_weight=lpot_source._max_leaf_refine_weight,
-                    refine_weights=refine_weights,
-                    debug=self.debug,
-                    stick_out_factor=lpot_source._expansion_stick_out_factor,
-                    extent_norm=lpot_source._box_extent_norm,
-                    kind=self.tree_kind)
+        refine_weights.finish()
 
-            if self.debug:
-                tgt_count_2 = cl.array.sum(
-                        tree.box_target_counts_nonchild, queue=queue).get()
+        tree, _ = code_getter.build_tree()(queue,
+                particles=flatten(thaw(
+                    self.array_context, quad_stage2_discr.nodes())),
+                targets=target_info.targets,
+                target_radii=target_radii,
+                max_leaf_refine_weight=lpot_source._max_leaf_refine_weight,
+                refine_weights=refine_weights,
+                debug=self.debug,
+                stick_out_factor=lpot_source._expansion_stick_out_factor,
+                extent_norm=lpot_source._box_extent_norm,
+                kind=self.tree_kind)
 
-                assert (tree.ntargets == tgt_count_2), (tree.ntargets, tgt_count_2)
+        if self.debug:
+            tgt_count_2 = cl.array.sum(
+                    tree.box_target_counts_nonchild, queue=queue).get()
 
-            return tree
+            assert (tree.ntargets == tgt_count_2), (tree.ntargets, tgt_count_2)
+
+        return tree
 
     # }}}
 
@@ -761,31 +781,32 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         from pytential.target import PointsTarget
 
-        with cl.CommandQueue(self.cl_context) as queue:
-            target_side_prefs = (self
-                    .target_side_preferences()[self.ncenters:].get(queue=queue))
+        queue = self.array_context.queue
 
-            target_discrs_and_qbx_sides = [(
-                    PointsTarget(target_info.targets[:, self.ncenters:]),
-                    target_side_prefs.astype(np.int32))]
+        target_side_prefs = (self
+                .target_side_preferences()[self.ncenters:].get(queue=queue))
 
-            target_association_wrangler = (
-                    self.lpot_source.target_association_code_container
-                    .get_wrangler(queue))
+        target_discrs_and_qbx_sides = [(
+                PointsTarget(target_info.targets[:, self.ncenters:]),
+                target_side_prefs.astype(np.int32))]
 
-            tgt_assoc_result = associate_targets_to_qbx_centers(
-                    self.places,
-                    self.source_dd,
-                    target_association_wrangler,
-                    target_discrs_and_qbx_sides,
-                    target_association_tolerance=(
-                        self.target_association_tolerance),
-                    debug=self.debug)
+        target_association_wrangler = (
+                self.lpot_source.target_association_code_container
+                .get_wrangler(self.array_context))
 
-            result = cl.array.empty(queue, target_info.ntargets,
-                    tgt_assoc_result.target_to_center.dtype)
-            result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
-            result[self.ncenters:] = tgt_assoc_result.target_to_center
+        tgt_assoc_result = associate_targets_to_qbx_centers(
+                self.places,
+                self.source_dd,
+                target_association_wrangler,
+                target_discrs_and_qbx_sides,
+                target_association_tolerance=(
+                    self.target_association_tolerance),
+                debug=self.debug)
+
+        result = cl.array.empty(queue, target_info.ntargets,
+                tgt_assoc_result.target_to_center.dtype)
+        result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
+        result[self.ncenters:] = tgt_assoc_result.target_to_center
 
         return result.with_queue(None)
 
@@ -918,7 +939,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
             # {{{ draw centers and circles
 
-            centers = self.centers()
+            centers = self.flat_centers()
             centers = [
                     centers[0].get(queue),
                     centers[1].get(queue)]
@@ -937,7 +958,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             if draw_circles:
                 for icenter, (cx, cy, r) in enumerate(zip(
                         centers[0], centers[1],
-                        self.expansion_radii().get(queue))):
+                        self.flat_expansion_radii().get(queue))):
                     ax.add_artist(
                             pt.Circle((cx, cy), r, fill=False, ls="dotted", lw=1))
 

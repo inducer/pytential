@@ -29,6 +29,8 @@ import pytest
 from pyopencl.tools import (  # noqa
     pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
+from meshmode.array_context import PyOpenCLArrayContext
+
 import numpy as np
 import pyopencl as cl
 
@@ -291,7 +293,7 @@ DEFAULT_LPOT_KWARGS = {
         }
 
 
-def get_lpot_source(queue, dim):
+def get_lpot_source(actx: PyOpenCLArrayContext, dim):
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
             InterpolatoryQuadratureSimplexGroupFactory)
@@ -308,7 +310,7 @@ def get_lpot_source(queue, dim):
         raise ValueError("unsupported dimension: %d" % dim)
 
     pre_density_discr = Discretization(
-            queue.context, mesh,
+            actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     lpot_kwargs = DEFAULT_LPOT_KWARGS.copy()
@@ -327,9 +329,10 @@ def get_lpot_source(queue, dim):
     return lpot_source
 
 
-def get_density(queue, discr):
-    nodes = discr.nodes().with_queue(queue)
-    return cl.clmath.sin(10 * nodes[0])
+def get_density(actx, discr):
+    from meshmode.dof_array import thaw
+    nodes = thaw(actx, discr.nodes())
+    return actx.np.sin(10 * nodes[0])
 
 # }}}
 
@@ -344,13 +347,14 @@ def test_timing_data_gathering(ctx_factory):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
+    actx = PyOpenCLArrayContext(queue)
 
-    lpot_source = get_lpot_source(queue, 2)
+    lpot_source = get_lpot_source(actx, 2)
     places = GeometryCollection(lpot_source)
 
     dofdesc = places.auto_source.to_stage1()
     density_discr = places.get_discretization(dofdesc.geometry)
-    sigma = get_density(queue, density_discr)
+    sigma = get_density(actx, density_discr)
 
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
@@ -359,7 +363,7 @@ def test_timing_data_gathering(ctx_factory):
     op_S = bind(places, sym_op_S)
 
     timing_data = {}
-    op_S.eval(queue, dict(sigma=sigma), timing_data=timing_data)
+    op_S.eval(dict(sigma=sigma), timing_data=timing_data, array_context=actx)
     assert timing_data
     print(timing_data)
 
@@ -379,14 +383,15 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
     """Test that cost model gathering can execute successfully."""
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
-    lpot_source = get_lpot_source(queue, dim).copy(
+    lpot_source = get_lpot_source(actx, dim).copy(
             _use_target_specific_qbx=use_target_specific_qbx,
             cost_model=QBXCostModel(queue))
     places = GeometryCollection(lpot_source)
 
     density_discr = places.get_discretization(places.auto_source.geometry)
-    sigma = get_density(queue, density_discr)
+    sigma = get_density(actx, density_discr)
 
     sigma_sym = sym.var("sigma")
     k_sym = LaplaceKernel(lpot_source.ambient_dim)
@@ -395,9 +400,9 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
     op_S = bind(places, sym_op_S)
 
     if per_box:
-        cost_S, _ = op_S.cost_per_box(queue, "constant_one", sigma=sigma)
+        cost_S, _ = op_S.cost_per_box("constant_one", sigma=sigma)
     else:
-        cost_S, _ = op_S.cost_per_stage(queue, "constant_one", sigma=sigma)
+        cost_S, _ = op_S.cost_per_stage("constant_one", sigma=sigma)
 
     assert len(cost_S) == 1
 
@@ -408,11 +413,11 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
 
     if per_box:
         cost_S_plus_D, _ = op_S_plus_D.cost_per_box(
-            queue, "constant_one", sigma=sigma
+            "constant_one", sigma=sigma
         )
     else:
         cost_S_plus_D, _ = op_S_plus_D.cost_per_stage(
-            queue, "constant_one", sigma=sigma
+            "constant_one", sigma=sigma
         )
 
     assert len(cost_S_plus_D) == 2
@@ -426,17 +431,18 @@ def test_cost_model_metadata_gathering(ctx_factory):
     """Test that the cost model correctly gathers metadata."""
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
 
     fmm_level_to_order = SimpleExpansionOrderFinder(tol=1e-5)
 
-    lpot_source = get_lpot_source(queue, 2).copy(
+    lpot_source = get_lpot_source(actx, 2).copy(
             fmm_level_to_order=fmm_level_to_order)
     places = GeometryCollection(lpot_source)
 
     density_discr = places.get_discretization(places.auto_source.geometry)
-    sigma = get_density(queue, density_discr)
+    sigma = get_density(actx, density_discr)
 
     sigma_sym = sym.var("sigma")
     k_sym = HelmholtzKernel(2, "k")
@@ -446,7 +452,7 @@ def test_cost_model_metadata_gathering(ctx_factory):
     op_S = bind(places, sym_op_S)
 
     _, metadata = op_S.cost_per_stage(
-        queue, "constant_one", sigma=sigma, k=k, return_metadata=True
+        "constant_one", sigma=sigma, k=k, return_metadata=True
     )
     metadata = one(metadata.values())
 
@@ -693,12 +699,13 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     """Check that computed cost matches that of a constant-one FMM."""
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     cost_model = QBXCostModel(
         queue, translation_cost_model_factory=OpCountingTranslationCostModel
     )
 
-    lpot_source = get_lpot_source(queue, dim).copy(
+    lpot_source = get_lpot_source(actx, dim).copy(
             cost_model=cost_model,
             _use_target_specific_qbx=use_target_specific_qbx)
 
@@ -726,10 +733,10 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=qbx_forced_limit)
 
     op_S = bind(places, sym_op_S)
-    sigma = get_density(queue, density_discr)
+    sigma = get_density(actx, density_discr)
 
     from pytools import one
-    modeled_time, _ = op_S.cost_per_stage(queue, "constant_one", sigma=sigma)
+    modeled_time, _ = op_S.cost_per_stage("constant_one", sigma=sigma)
     modeled_time = one(modeled_time.values())
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
@@ -744,15 +751,15 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
 
     quad_stage2_density_discr = places.get_discretization(
             source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
-    nnodes = quad_stage2_density_discr.nnodes
-    src_weights = np.ones(nnodes)
+    ndofs = quad_stage2_density_discr.ndofs
+    src_weights = np.ones(ndofs)
 
     timing_data = {}
     potential = drive_fmm(wrangler, src_weights, timing_data,
             traversal=wrangler.trav)[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
-    assert (potential == nnodes).all()
+    assert (potential == ndofs).all()
 
     # Check that the cost model matches the timing data returned by the
     # constant one wrangler.
@@ -798,6 +805,7 @@ def test_cost_model_order_varying_by_level(ctx_factory):
 
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     # {{{ constant level to order
 
@@ -805,7 +813,7 @@ def test_cost_model_order_varying_by_level(ctx_factory):
         return 1
 
     lpot_source = get_lpot_source(queue, 2).copy(
-            cost_model=QBXCostModel(queue),
+            cost_model=QBXCostModel(actx),
             fmm_level_to_order=level_to_order_constant)
     places = GeometryCollection(lpot_source)
 
@@ -815,11 +823,10 @@ def test_cost_model_order_varying_by_level(ctx_factory):
     k_sym = LaplaceKernel(2)
     sym_op = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
 
-    sigma = get_density(queue, density_discr)
+    sigma = get_density(actx, density_discr)
 
     cost_constant, metadata = bind(places, sym_op).cost_per_stage(
-        queue, "constant_one", sigma=sigma
-    )
+            "constant_one", sigma=sigma)
 
     cost_constant = one(cost_constant.values())
     metadata = one(metadata.values())
