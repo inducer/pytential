@@ -234,7 +234,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
     def reorder_potentials(self, potentials):
         raise NotImplementedError("reorder_potentials should not "
-            "be called on a QBXFMMLibHelmholtzExpansionWrangler")
+            "be called on a QBXFMMLibExpansionWrangler")
 
         # Because this is a multi-stage, more complicated process that combines
         # potentials from non-QBX targets and QBX targets.

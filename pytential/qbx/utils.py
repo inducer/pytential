@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import division, absolute_import, print_function
+from __future__ import annotations
 
 __copyright__ = """
 Copyright (C) 2016 Matt Wala
@@ -28,6 +28,7 @@ THE SOFTWARE.
 
 import numpy as np
 from boxtree.tree import Tree
+from meshmode.array_context import PyOpenCLArrayContext
 import pyopencl as cl
 import pyopencl.array # noqa
 from pytools import memoize_method
@@ -72,23 +73,23 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 
 class TreeCodeContainer(object):
 
-    def __init__(self, cl_context):
-        self.cl_context = cl_context
+    def __init__(self, actx: PyOpenCLArrayContext):
+        self.array_context = actx
 
     @memoize_method
     def build_tree(self):
         from boxtree.tree_build import TreeBuilder
-        return TreeBuilder(self.cl_context)
+        return TreeBuilder(self.array_context.context)
 
     @memoize_method
     def peer_list_finder(self):
         from boxtree.area_query import PeerListFinder
-        return PeerListFinder(self.cl_context)
+        return PeerListFinder(self.array_context.context)
 
     @memoize_method
     def particle_list_filter(self):
         from boxtree.tree import ParticleListFilter
-        return ParticleListFilter(self.cl_context)
+        return ParticleListFilter(self.array_context.context)
 
 # }}}
 
@@ -116,9 +117,13 @@ class TreeCodeContainerMixin(object):
 
 class TreeWranglerBase(object):
 
-    def __init__(self, code_container, queue):
+    def __init__(self, array_context: PyOpenCLArrayContext, code_container):
         self.code_container = code_container
-        self.queue = queue
+        self.array_context = array_context
+
+    @property
+    def queue(self):
+        return self.array_context.queue
 
     def build_tree(self, places, targets_list=(), sources_list=(),
                    use_stage2_discr=False):
@@ -126,7 +131,7 @@ class TreeWranglerBase(object):
         plfilt = self.code_container.particle_list_filter()
 
         return build_tree_with_qbx_metadata(
-                self.queue, places, tb, plfilt,
+                self.array_context, places, tb, plfilt,
                 sources_list=sources_list,
                 targets_list=targets_list,
                 use_stage2_discr=use_stage2_discr)
@@ -226,8 +231,8 @@ MAX_REFINE_WEIGHT = 64
 
 
 @log_process(logger)
-def build_tree_with_qbx_metadata(queue, places,
-        tree_builder, particle_list_filter,
+def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
+        places, tree_builder, particle_list_filter,
         sources_list=(), targets_list=(),
         use_stage2_discr=False):
     """Return a :class:`TreeWithQBXMetadata` built from the given layer
@@ -240,7 +245,7 @@ def build_tree_with_qbx_metadata(queue, places,
          :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`.
        * targets from ``targets_list``.
 
-    :arg queue: An instance of :class:`pyopencl.CommandQueue`
+    :arg actx: A :class:`PyOpenCLArrayContext`
     :arg places: An instance of
         :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
@@ -274,15 +279,20 @@ def build_tree_with_qbx_metadata(queue, places,
 
     def _make_centers(discr):
         return bind(discr, sym.interleaved_expansion_centers(
-            discr.ambient_dim))(queue)
+            discr.ambient_dim))(actx)
 
     stage1_density_discr = stage1_density_discrs[0]
     density_discr = density_discrs[0]
 
-    sources = density_discr.nodes()
-    centers = _make_centers(stage1_density_discr)
-    targets = (tgt.nodes() for tgt in targets_list)
+    from meshmode.dof_array import flatten, thaw
+    from pytential.utils import flatten_if_needed
+    sources = flatten(thaw(actx, density_discr.nodes()))
+    centers = flatten(_make_centers(stage1_density_discr))
+    targets = [
+            flatten_if_needed(actx, tgt.nodes())
+            for tgt in targets_list]
 
+    queue = actx.queue
     particles = tuple(
             cl.array.concatenate(dim_coords, queue=queue)
             for dim_coords in zip(sources, centers, *targets))
@@ -294,7 +304,7 @@ def build_tree_with_qbx_metadata(queue, places,
     ncenters = len(centers[0])
     # Each source gets an interior / exterior center.
     assert 2 * nsources == ncenters or use_stage2_discr
-    ntargets = sum(tgt.nnodes for tgt in targets_list)
+    ntargets = sum(tgt.ndofs for tgt in targets_list)
 
     # Slices
     qbx_user_source_slice = slice(0, nsources)
@@ -333,7 +343,7 @@ def build_tree_with_qbx_metadata(queue, places,
         box_to_class = (
             particle_list_filter
             .filter_target_lists_in_user_order(queue, tree, flags)
-            .with_queue(queue))
+            .with_queue(actx.queue))
 
         if fixup:
             box_to_class.target_lists += fixup
@@ -347,12 +357,14 @@ def build_tree_with_qbx_metadata(queue, places,
     qbx_panel_to_source_starts = cl.array.empty(
             queue, npanels + 1, dtype=tree.particle_id_dtype)
     el_offset = 0
+    node_nr_base = 0
     for group in density_discr.groups:
         qbx_panel_to_source_starts[el_offset:el_offset + group.nelements] = \
-                cl.array.arange(queue, group.node_nr_base,
-                                group.node_nr_base + group.nnodes,
-                                group.nunit_nodes,
+                cl.array.arange(queue, node_nr_base,
+                                node_nr_base + group.ndofs,
+                                group.nunit_dofs,
                                 dtype=tree.particle_id_dtype)
+        node_nr_base += group.ndofs
         el_offset += group.nelements
     qbx_panel_to_source_starts[-1] = nsources
 
@@ -418,11 +430,11 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
     def centers(self):
         return np.array([
             ci.get(queue=self.queue)
-            for ci in self.geo_data.centers()])
+            for ci in self.geo_data.flat_centers()])
 
     @memoize_method
     def expansion_radii(self):
-        return self.geo_data.expansion_radii().get(queue=self.queue)
+        return self.geo_data.flat_expansion_radii().get(queue=self.queue)
 
     @memoize_method
     def global_qbx_centers(self):

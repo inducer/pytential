@@ -36,12 +36,15 @@ def main(curve_fn=starfish, visualize=True):
             target_order)
 
     from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.array_context import PyOpenCLArrayContext
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
 
+    actx = PyOpenCLArrayContext(queue)
+
     pre_density_discr = Discretization(
-            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+            actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     qbx = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order+3,
@@ -56,10 +59,12 @@ def main(curve_fn=starfish, visualize=True):
         "qbx": qbx,
         "targets": PointsTarget(targets_dev),
         }, auto_where="qbx")
+
     density_discr = places.get_discretization("qbx")
 
-    nodes = density_discr.nodes().with_queue(queue)
-    angle = cl.clmath.atan2(nodes[1], nodes[0])
+    from meshmode.dof_array import thaw
+    nodes = thaw(actx, density_discr.nodes())
+    angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
         kernel = HelmholtzKernel(2)
@@ -75,22 +80,26 @@ def main(curve_fn=starfish, visualize=True):
         return sym.D(kernel, sym.var("sigma"), **kwargs)
         #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None, **kwargs)
 
-    sigma = cl.clmath.cos(mode_nr*angle)
+    sigma = actx.np.cos(mode_nr*angle)
     if 0:
-        sigma = 0*angle
+        from meshmode.dof_array import flatten, unflatten
+        sigma = flatten(0 * angle)
         from random import randrange
         for i in range(5):
             sigma[randrange(len(sigma))] = 1
+        sigma = unflatten(actx, density_discr, sigma)
 
     if isinstance(kernel, HelmholtzKernel):
-        sigma = sigma.astype(np.complex128)
+        for i, elem in np.ndenumerate(sigma):
+            sigma[i] = elem.astype(np.complex128)
 
     bound_bdry_op = bind(places, op())
     if visualize:
-        fld_in_vol = bind(places, op(
-            source="qbx",
-            target="targets",
-            qbx_forced_limit=None))(queue, sigma=sigma, k=k).get()
+        fld_in_vol = actx.to_numpy(
+                bind(places, op(
+                    source="qbx",
+                    target="targets",
+                    qbx_forced_limit=None))(actx, sigma=sigma, k=k))
 
         if enable_mayavi:
             fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
@@ -100,13 +109,9 @@ def main(curve_fn=starfish, visualize=True):
                 ])
 
     if 0:
-        def apply_op(density):
-            return bound_bdry_op(
-                    queue, sigma=cl.array.to_device(queue, density), k=k).get()
-
+        apply_op = bound_bdry_op.scipy_op(actx, "sigma", np.float64, k=k)
         from sumpy.tools import build_matrix
-        n = len(sigma)
-        mat = build_matrix(apply_op, dtype=np.float64, shape=(n, n))
+        mat = build_matrix(apply_op)
 
         import matplotlib.pyplot as pt
         pt.imshow(mat)
@@ -116,17 +121,19 @@ def main(curve_fn=starfish, visualize=True):
     if enable_mayavi:
         # {{{ plot boundary field
 
-        fld_on_bdry = bound_bdry_op(queue, sigma=sigma, k=k).get()
+        from pytential.utils import flatten_to_numpy
 
-        nodes_host = density_discr.nodes().get(queue=queue)
+        fld_on_bdry = flatten_to_numpy(
+                actx, bound_bdry_op(actx, sigma=sigma, k=k))
+        nodes_host = flatten_to_numpy(actx, density_discr.nodes())
+
         mlab.points3d(nodes_host[0], nodes_host[1],
                 fld_on_bdry.real, scale_factor=0.03)
 
-        # }}}
-
-    if enable_mayavi:
         mlab.colorbar()
         mlab.show()
+
+        # }}}
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ THE SOFTWARE.
 
 import six
 
+from meshmode.array_context import PyOpenCLArrayContext
 import numpy as np
 import loopy as lp
 
@@ -99,8 +100,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 density_discr=density_discr or self.density_discr,
                 debug=debug if debug is not None else self.debug)
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
-            return_timing_data):
+    def exec_compute_potential_insn(self, actx: PyOpenCLArrayContext,
+            insn, bound_expr, evaluate, return_timing_data):
         if return_timing_data:
             from warnings import warn
             from pytential.source import UnableToCollectTimingData
@@ -108,18 +109,18 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                    "Timing data collection not supported.",
                    category=UnableToCollectTimingData)
 
-        from pytools.obj_array import with_object_array_or_scalar
+        from pytools.obj_array import obj_array_vectorize
 
         def evaluate_wrapper(expr):
             value = evaluate(expr)
-            return with_object_array_or_scalar(lambda x: x, value)
+            return obj_array_vectorize(lambda x: x, value)
 
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
         else:
             func = self.exec_compute_potential_insn_fmm
 
-        return func(queue, insn, bound_expr, evaluate_wrapper)
+        return func(actx, insn, bound_expr, evaluate_wrapper)
 
     def op_group_features(self, expr):
         from sumpy.kernel import AxisTargetDerivativeRemover
@@ -138,18 +139,23 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.symbolic.mappers import UnregularizedPreprocessor
         return UnregularizedPreprocessor(name, discretizations)(expr)
 
-    def exec_compute_potential_insn_direct(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_direct(self, actx: PyOpenCLArrayContext,
+            insn, bound_expr, evaluate):
         kernel_args = {}
 
+        from pytential.utils import flatten_if_needed
+        from meshmode.dof_array import flatten, thaw, unflatten
+
         for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
-            kernel_args[arg_name] = evaluate(arg_expr)
+            kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim, dofdesc=insn.source))(queue)
-        strengths = waa * evaluate(insn.density).with_queue(queue)
+            self.ambient_dim, dofdesc=insn.source))(actx)
+        strengths = waa * evaluate(insn.density)
+        flat_strengths = flatten(strengths)
 
-        result = []
+        results = []
         p2p = None
 
         for o in insn.outputs:
@@ -157,17 +163,22 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     o.target_name.geometry, o.target_name.discr_stage)
 
             if p2p is None:
-                p2p = self.get_p2p(insn.kernels)
+                p2p = self.get_p2p(actx, insn.kernels)
 
-            evt, output_for_each_kernel = p2p(queue,
-                    target_discr.nodes(),
-                    self.density_discr.nodes(),
-                    [strengths], **kernel_args)
+            evt, output_for_each_kernel = p2p(actx.queue,
+                    flatten_if_needed(actx, target_discr.nodes()),
+                    flatten(thaw(actx, self.density_discr.nodes())),
+                    [flat_strengths], **kernel_args)
 
-            result.append((o.name, output_for_each_kernel[o.kernel_index]))
+            from meshmode.discretization import Discretization
+            result = output_for_each_kernel[o.kernel_index]
+            if isinstance(target_discr, Discretization):
+                result = unflatten(actx, target_discr, result)
+
+            results.append((o.name, result))
 
         timing_data = {}
-        return result, timing_data
+        return results, timing_data
 
     # {{{ fmm-based execution
 
@@ -190,10 +201,9 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 out_kernels)
 
     @property
-    @memoize_method
     def fmm_geometry_code_container(self):
-        return _FMMGeometryCodeContainer(
-                self.cl_context, self.ambient_dim, self.debug)
+        return _FMMGeometryDataCodeContainer(
+                self._setup_actx, self.ambient_dim, self.debug)
 
     def fmm_geometry_data(self, targets):
         return _FMMGeometryData(
@@ -202,7 +212,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 targets,
                 self.debug)
 
-    def exec_compute_potential_insn_fmm(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_fmm(self, actx: PyOpenCLArrayContext,
+            insn, bound_expr, evaluate):
         # {{{ gather unique target discretizations used
 
         target_name_to_index = {}
@@ -227,8 +238,11 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim, dofdesc=insn.source))(queue)
-        strengths = waa * evaluate(insn.density).with_queue(queue)
+            self.ambient_dim, dofdesc=insn.source))(actx)
+        strengths = waa * evaluate(insn.density)
+
+        from meshmode.dof_array import flatten
+        flat_strengths = flatten(strengths)
 
         out_kernels = tuple(knl for knl in insn.kernels)
         fmm_kernel = self.get_fmm_kernel(out_kernels)
@@ -236,12 +250,12 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 self.get_fmm_output_and_expansion_dtype(fmm_kernel, strengths))
         kernel_extra_kwargs, source_extra_kwargs = (
                 self.get_fmm_expansion_wrangler_extra_kwargs(
-                    queue, out_kernels, geo_data.tree().user_source_ids,
+                    actx, out_kernels, geo_data.tree().user_source_ids,
                     insn.kernel_arguments, evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
                 fmm_kernel, out_kernels).get_wrangler(
-                    queue,
+                    actx.queue,
                     geo_data.tree(),
                     output_and_expansion_dtype,
                     self.fmm_level_to_order,
@@ -252,25 +266,32 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from boxtree.fmm import drive_fmm
         all_potentials_on_every_tgt = drive_fmm(
-                geo_data.traversal(), wrangler, strengths, timing_data=None)
+                geo_data.traversal(), wrangler, flat_strengths,
+                timing_data=None)
 
         # {{{ postprocess fmm
 
-        result = []
+        results = []
 
         for o in insn.outputs:
             target_index = target_name_to_index[o.target_name]
             target_slice = slice(*geo_data.target_info().target_discr_starts[
                     target_index:target_index+2])
+            target_discr = targets[target_index]
 
-            result.append(
-                    (o.name,
-                        all_potentials_on_every_tgt[o.kernel_index][target_slice]))
+            result = all_potentials_on_every_tgt[o.kernel_index][target_slice]
+
+            from meshmode.discretization import Discretization
+            if isinstance(target_discr, Discretization):
+                from meshmode.dof_array import unflatten
+                result = unflatten(actx, target_discr, result)
+
+            results.append((o.name, result))
 
         # }}}
 
         timing_data = {}
-        return result, timing_data
+        return results, timing_data
 
     # }}}
 
@@ -279,12 +300,16 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
 # {{{ fmm tools
 
-class _FMMGeometryCodeContainer(object):
+class _FMMGeometryDataCodeContainer(object):
 
-    def __init__(self, cl_context, ambient_dim, debug):
-        self.cl_context = cl_context
+    def __init__(self, actx, ambient_dim, debug):
+        self.array_context = actx
         self.ambient_dim = ambient_dim
         self.debug = debug
+
+    @property
+    def cl_context(self):
+        return self.array_context.context
 
     @memoize_method
     def copy_targets_kernel(self):
@@ -343,11 +368,15 @@ class _FMMGeometryData(object):
 
     @property
     def cl_context(self):
-        return self.lpot_source.cl_context
+        return self.code_getter.cl_context
+
+    @property
+    def array_context(self):
+        return self.code_getter.array_context
 
     @property
     def coord_dtype(self):
-        return self.lpot_source.density_discr.nodes().dtype
+        return self.lpot_source.density_discr.real_dtype
 
     @property
     def ambient_dim(self):
@@ -373,25 +402,29 @@ class _FMMGeometryData(object):
         lpot_src = self.lpot_source
         target_info = self.target_info()
 
-        with cl.CommandQueue(self.cl_context) as queue:
-            nsources = lpot_src.density_discr.nnodes
-            nparticles = nsources + target_info.ntargets
+        queue = self.array_context.queue
 
-            refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
-            refine_weights[:nsources] = 1
-            refine_weights.finish()
+        nsources = lpot_src.density_discr.ndofs
+        nparticles = nsources + target_info.ntargets
 
-            MAX_LEAF_REFINE_WEIGHT = 32  # noqa
+        refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
+        refine_weights[:nsources] = 1
+        refine_weights.finish()
 
-            tree, _ = code_getter.build_tree(queue,
-                    particles=lpot_src.density_discr.nodes(),
-                    targets=target_info.targets,
-                    max_leaf_refine_weight=MAX_LEAF_REFINE_WEIGHT,
-                    refine_weights=refine_weights,
-                    debug=self.debug,
-                    kind="adaptive")
+        MAX_LEAF_REFINE_WEIGHT = 32  # noqa
 
-            return tree
+        from meshmode.dof_array import thaw, flatten
+
+        tree, _ = code_getter.build_tree(queue,
+                particles=flatten(
+                    thaw(self.array_context, lpot_src.density_discr.nodes())),
+                targets=target_info.targets,
+                max_leaf_refine_weight=MAX_LEAF_REFINE_WEIGHT,
+                refine_weights=refine_weights,
+                debug=self.debug,
+                kind="adaptive")
+
+        return tree
 
     @memoize_method
     def target_info(self):
@@ -399,31 +432,31 @@ class _FMMGeometryData(object):
         lpot_src = self.lpot_source
         target_discrs = self.target_discrs
 
-        with cl.CommandQueue(self.cl_context) as queue:
-            ntargets = 0
-            target_discr_starts = []
+        ntargets = 0
+        target_discr_starts = []
 
-            for target_discr in target_discrs:
-                target_discr_starts.append(ntargets)
-                ntargets += target_discr.nnodes
-
+        for target_discr in target_discrs:
             target_discr_starts.append(ntargets)
+            ntargets += target_discr.ndofs
 
-            targets = cl.array.empty(
-                    self.cl_context,
-                    (lpot_src.ambient_dim, ntargets),
-                    self.coord_dtype)
+        target_discr_starts.append(ntargets)
 
-            for start, target_discr in zip(target_discr_starts, target_discrs):
-                code_getter.copy_targets_kernel()(
-                        queue,
-                        targets=targets[:, start:start+target_discr.nnodes],
-                        points=target_discr.nodes())
+        targets = self.array_context.empty(
+                (lpot_src.ambient_dim, ntargets),
+                self.coord_dtype)
 
-            return _TargetInfo(
-                    targets=targets,
-                    target_discr_starts=target_discr_starts,
-                    ntargets=ntargets).with_queue(None)
+        from pytential.utils import flatten_if_needed
+        for start, target_discr in zip(target_discr_starts, target_discrs):
+            code_getter.copy_targets_kernel()(
+                    self.array_context.queue,
+                    targets=targets[:, start:start+target_discr.ndofs],
+                    points=flatten_if_needed(
+                        self.array_context, target_discr.nodes()))
+
+        return _TargetInfo(
+                targets=targets,
+                target_discr_starts=target_discr_starts,
+                ntargets=ntargets).with_queue(None)
 
 # }}}
 

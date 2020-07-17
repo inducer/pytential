@@ -1,5 +1,5 @@
-from __future__ import division
-
+from meshmode.array_context import PyOpenCLArrayContext
+from meshmode.dof_array import thaw
 import numpy as np
 import pyopencl as cl
 
@@ -22,6 +22,7 @@ def main(mesh_name="ellipsoid"):
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     if mesh_name == "ellipsoid":
         cad_file_name = "geometries/ellipsoid.step"
@@ -55,7 +56,7 @@ def main(mesh_name="ellipsoid"):
             InterpolatoryQuadratureSimplexGroupFactory
 
     density_discr = Discretization(
-            cl_ctx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+            actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
     qbx = QBXLayerPotentialSource(density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order + 3,
@@ -71,8 +72,8 @@ def main(mesh_name="ellipsoid"):
         }, auto_where="qbx")
     density_discr = places.get_discretization("qbx")
 
-    nodes = density_discr.nodes().with_queue(queue)
-    angle = cl.clmath.atan2(nodes[1], nodes[0])
+    nodes = thaw(actx, density_discr.nodes())
+    angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
         kernel = HelmholtzKernel(3)
@@ -83,18 +84,22 @@ def main(mesh_name="ellipsoid"):
     op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None)
     #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
 
-    sigma = cl.clmath.cos(mode_nr*angle)
+    sigma = actx.np.cos(mode_nr*angle)
     if 0:
-        sigma = 0*angle
+        from meshmode.dof_array import flatten, unflatten
+        sigma = flatten(0 * angle)
         from random import randrange
         for i in range(5):
             sigma[randrange(len(sigma))] = 1
+        sigma = unflatten(actx, density_discr, sigma)
 
     if isinstance(kernel, HelmholtzKernel):
-        sigma = sigma.astype(np.complex128)
+        for i, elem in np.ndenumerate(sigma):
+            sigma[i] = elem.astype(np.complex128)
 
-    fld_in_vol = bind(places, op, auto_where=("qbx", "targets"))(
-            queue, sigma=sigma, k=k).get()
+    fld_in_vol = actx.to_numpy(
+            bind(places, op, auto_where=("qbx", "targets"))(
+                actx, sigma=sigma, k=k))
 
     #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
     fplot.write_vtk_file("layerpot-3d-potential.vts", [
@@ -102,11 +107,10 @@ def main(mesh_name="ellipsoid"):
         ])
 
     bdry_normals = bind(places,
-            sym.normal(density_discr.ambient_dim))(queue).as_vector(dtype=object)
+            sym.normal(density_discr.ambient_dim))(actx).as_vector(dtype=object)
 
     from meshmode.discretization.visualization import make_visualizer
-    bdry_vis = make_visualizer(queue, density_discr, target_order)
-
+    bdry_vis = make_visualizer(actx, density_discr, target_order)
     bdry_vis.write_vtk_file("layerpot-3d-density.vtu", [
         ("sigma", sigma),
         ("bdry_normals", bdry_normals),

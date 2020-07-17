@@ -29,6 +29,8 @@ THE SOFTWARE.
 
 import pyopencl as cl
 import numpy as np
+from meshmode.array_context import PyOpenCLArrayContext
+from meshmode.dof_array import thaw
 
 from pytential import sym, bind
 from pytential.qbx.cost import QBXCostModel
@@ -54,7 +56,7 @@ TRAINING_ARMS = (10, 15, 25)
 TESTING_ARMS = (20,)
 
 
-def starfish_lpot_source(queue, n_arms):
+def starfish_lpot_source(actx, n_arms):
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
             InterpolatoryQuadratureSimplexGroupFactory)
@@ -67,7 +69,7 @@ def starfish_lpot_source(queue, n_arms):
             TARGET_ORDER)
 
     pre_density_discr = Discretization(
-            queue.context, mesh,
+            actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(TARGET_ORDER))
 
     lpot_kwargs = DEFAULT_LPOT_KWARGS.copy()
@@ -88,14 +90,14 @@ def starfish_lpot_source(queue, n_arms):
 # }}}
 
 
-def training_geometries(queue):
+def training_geometries(actx):
     for n_arms in TRAINING_ARMS:
-        yield starfish_lpot_source(queue, n_arms)
+        yield starfish_lpot_source(actx, n_arms)
 
 
-def test_geometries(queue):
+def test_geometries(actx):
     for n_arms in TESTING_ARMS:
-        yield starfish_lpot_source(queue, n_arms)
+        yield starfish_lpot_source(actx, n_arms)
 
 
 def get_bound_op(places):
@@ -107,21 +109,21 @@ def get_bound_op(places):
     return bind(places, op)
 
 
-def get_test_density(queue, density_discr):
-    nodes = density_discr.nodes().with_queue(queue)
-    sigma = cl.clmath.sin(10 * nodes[0])
-
+def get_test_density(actx, density_discr):
+    nodes = thaw(actx, density_discr.nodes())
+    sigma = actx.np.sin(10 * nodes[0])
     return sigma
 
 
 def calibrate_cost_model(ctx):
     queue = cl.CommandQueue(ctx)
-    cost_model = QBXCostModel(queue)
+    actx = PyOpenCLArrayContext(queue)
+    cost_model = QBXCostModel(actx)
 
     model_results = []
     timing_results = []
 
-    for lpot_source in training_geometries(queue):
+    for lpot_source in training_geometries(actx):
         lpot_source = lpot_source.copy(cost_model=cost_model)
 
         from pytential import GeometryCollection
@@ -129,16 +131,17 @@ def calibrate_cost_model(ctx):
         density_discr = places.get_discretization(places.auto_source.geometry)
 
         bound_op = get_bound_op(places)
-        sigma = get_test_density(queue, density_discr)
+        sigma = get_test_density(actx, density_discr)
 
-        modeled_cost, _ = bound_op.cost_per_stage(queue, "constant_one", sigma=sigma)
+        modeled_cost, _ = bound_op.cost_per_stage("constant_one", sigma=sigma)
 
         # Warm-up run.
-        bound_op.eval(queue, {"sigma": sigma})
+        bound_op.eval({"sigma": sigma}, array_context=actx)
 
         for _ in range(RUNS):
             timing_data = {}
-            bound_op.eval(queue, {"sigma": sigma}, timing_data=timing_data)
+            bound_op.eval({"sigma": sigma}, array_context=actx,
+                    timing_data=timing_data)
 
             model_results.append(modeled_cost)
             timing_results.append(timing_data)
@@ -152,9 +155,10 @@ def calibrate_cost_model(ctx):
 
 def test_cost_model(ctx, calibration_params):
     queue = cl.CommandQueue(ctx)
-    cost_model = QBXCostModel(queue)
+    actx = PyOpenCLArrayContext(queue)
+    cost_model = QBXCostModel(actx)
 
-    for lpot_source in test_geometries(queue):
+    for lpot_source in test_geometries(actx):
         lpot_source = lpot_source.copy(cost_model=cost_model)
 
         from pytential import GeometryCollection
@@ -162,18 +166,19 @@ def test_cost_model(ctx, calibration_params):
         density_discr = places.get_discretization(places.auto_source.geometry)
 
         bound_op = get_bound_op(places)
-        sigma = get_test_density(queue, density_discr)
+        sigma = get_test_density(actx, density_discr)
 
-        cost_S, _ = bound_op.cost_per_stage(queue, calibration_params, sigma=sigma)
+        cost_S, _ = bound_op.cost_per_stage(calibration_params, sigma=sigma)
         model_result = one(cost_S.values())
 
         # Warm-up run.
-        bound_op.eval(queue, {"sigma": sigma})
+        bound_op.eval({"sigma": sigma}, array_context=actx)
 
         temp_timing_results = []
         for _ in range(RUNS):
             timing_data = {}
-            bound_op.eval(queue, {"sigma": sigma}, timing_data=timing_data)
+            bound_op.eval({"sigma": sigma},
+                    array_context=actx, timing_data=timing_data)
             temp_timing_results.append(one(timing_data.values()))
 
         timing_result = {}
@@ -197,6 +202,9 @@ def test_cost_model(ctx, calibration_params):
 
 
 def predict_cost(ctx):
+    import logging
+    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
+
     params = calibrate_cost_model(ctx)
     test_cost_model(ctx, params)
 

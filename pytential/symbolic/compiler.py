@@ -270,13 +270,13 @@ def dot_dataflow_graph(code, max_node_label_length=30,
         for dep in insn.get_dependencies():
             gen_expr_arrow(dep, node_names[insn])
 
-    from pytools.obj_array import is_obj_array
+    code_res = code.result
 
-    if is_obj_array(code.result):
-        for subexp in code.result:
+    if isinstance(code_res, np.ndarray) and code_res.dtype.char == "O":
+        for subexp in code_res:
             gen_expr_arrow(subexp, "result")
     else:
-        gen_expr_arrow(code.result, "result")
+        gen_expr_arrow(code_res, "result")
 
     return "digraph dataflow {\n%s\n}\n" % "\n".join(result)
 
@@ -331,7 +331,7 @@ class Code(object):
         discardable_vars = set(available_names) - needed_vars
 
         # {{{ make sure results do not get discarded
-        from pytools.obj_array import with_object_array_or_scalar
+        from pytools.obj_array import obj_array_vectorize
 
         from pytential.symbolic.mappers import DependencyMapper
         dm = DependencyMapper(composite_leaves=False)
@@ -347,7 +347,7 @@ class Code(object):
                 assert isinstance(var, Variable)
                 discardable_vars.discard(var.name)
 
-        with_object_array_or_scalar(remove_result_variable, self.result)
+        obj_array_vectorize(remove_result_variable, self.result)
         # }}}
 
         return argmax2(available_insns), discardable_vars
@@ -387,9 +387,9 @@ class Code(object):
 
                 done_insns.add(insn)
                 assignments = (
-                        self.get_exec_function(insn, exec_mapper)
-                        (exec_mapper.queue, insn, exec_mapper.bound_expr,
-                            exec_mapper))
+                        self.get_exec_function(insn, exec_mapper)(
+                            exec_mapper.array_context,
+                            insn, exec_mapper.bound_expr, exec_mapper))
 
                 assignees = insn.get_assignees()
                 for target, value in assignments:
@@ -412,8 +412,8 @@ class Code(object):
             raise RuntimeError("not all instructions are reachable"
                     "--did you forget to pass a value for a placeholder?")
 
-        from pytools.obj_array import with_object_array_or_scalar
-        return with_object_array_or_scalar(exec_mapper, self.result)
+        from pytools.obj_array import obj_array_vectorize
+        return obj_array_vectorize(exec_mapper, self.result)
 
     # }}}
 
@@ -480,8 +480,8 @@ class OperatorCompiler(IdentityMapper):
 
         # Put the toplevel expressions into variables as well.
 
-        from pytools.obj_array import with_object_array_or_scalar
-        result = with_object_array_or_scalar(self.assign_to_new_var, result)
+        from pytools.obj_array import obj_array_vectorize
+        result = obj_array_vectorize(self.assign_to_new_var, result)
 
         return Code(self.code, result)
 

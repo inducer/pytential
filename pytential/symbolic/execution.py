@@ -25,6 +25,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Optional
+
 import six
 from six.moves import zip
 
@@ -36,10 +38,12 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+from meshmode.array_context import PyOpenCLArrayContext
+from meshmode.dof_array import DOFArray, thaw
 
 from pytools import memoize_in
 from pytential.qbx.cost import AbstractQBXCostModel
+
 from pytential import sym
 
 import logging
@@ -72,7 +76,7 @@ def mesh_el_view(mesh, group_nr, global_array):
 
 
 class EvaluationMapperBase(PymbolicEvaluationMapper):
-    def __init__(self, bound_expr, queue, context=None,
+    def __init__(self, bound_expr, actx: PyOpenCLArrayContext, context=None,
             target_geometry=None,
             target_points=None, target_normals=None, target_tangents=None):
         if context is None:
@@ -81,93 +85,95 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         self.bound_expr = bound_expr
         self.places = bound_expr.places
-        self.queue = queue
+        self.array_context = actx
+
+        if not isinstance(actx, PyOpenCLArrayContext):
+            raise NotImplementedError("evaluation with non-PyOpenCL array context")
+
+        self.queue = actx.queue
 
     # {{{ map_XXX
 
-    def _map_minmax(self, func, inherited, expr):
+    def _map_minmax(self, func, inherited_func, expr):
         ev_children = [self.rec(ch) for ch in expr.children]
-        from functools import reduce, partial
-        if any(isinstance(ch, cl.array.Array) for ch in ev_children):
-            return reduce(partial(func, queue=self.queue), ev_children)
+        from functools import reduce
+        from meshmode.dof_array import DOFArray
+        if any(isinstance(ch, (cl.array.Array, DOFArray)) for ch in ev_children):
+            return reduce(func, ev_children)
         else:
-            return inherited(expr)
+            return inherited_func(expr)
 
     def map_max(self, expr):
         return self._map_minmax(
-                cl.array.maximum,
+                self.array_context.np.maximum,
                 super(EvaluationMapperBase, self).map_max,
                 expr)
 
     def map_min(self, expr):
         return self._map_minmax(
-                cl.array.minimum,
+                self.array_context.np.minimum,
                 super(EvaluationMapperBase, self).map_min,
                 expr)
 
     def map_node_sum(self, expr):
-        return cl.array.sum(self.rec(expr.operand)).get()[()]
+        return sum(
+                cl.array.sum(grp_ary).get()[()]
+                for grp_ary in self.rec(expr.operand))
 
     def map_node_max(self, expr):
-        return cl.array.max(self.rec(expr.operand)).get()[()]
+        return max(
+                cl.array.max(grp_ary).get()[()]
+                for grp_ary in self.rec(expr.operand))
 
     def _map_elementwise_reduction(self, reduction_name, expr):
         @memoize_in(self.places, "elementwise_node_"+reduction_name)
         def node_knl():
-            import loopy as lp
-            knl = lp.make_kernel(
-                    """{[el, idof, jdof]:
-                        0<=el<nelements and
-                        0<=idof, jdof<ndofs}
-                    """,
+            from meshmode.array_context import make_loopy_program
+            return make_loopy_program(
+                    """{[iel, idof, jdof]:
+                        0<=iel<nelements and
+                        0<=idof, jdof<ndofs}""",
                     """
-                    result[el, idof] = %s(jdof, operand[el, jdof])
+                    result[iel, idof] = %s(jdof, operand[iel, jdof])
                     """ % reduction_name,
-                    default_offset=lp.auto,
-                    lang_version=MOST_RECENT_LANGUAGE_VERSION)
-
-            knl = lp.tag_inames(knl, "el:g.0,idof:l.0")
-            return knl
+                    name="nodewise_reduce")
 
         @memoize_in(self.places, "elementwise_"+reduction_name)
         def element_knl():
-            import loopy as lp
-            knl = lp.make_kernel(
-                    """{[el, jdof]:
-                        0<=el<nelements and
+            from meshmode.array_context import make_loopy_program
+            return make_loopy_program(
+                    """{[iel, jdof]:
+                        0<=iel<nelements and
                         0<=jdof<ndofs}
                     """,
                     """
-                    result[el] = %s(jdof, operand[el, jdof])
+                    result[iel, 0] = %s(jdof, operand[iel, jdof])
                     """ % reduction_name,
-                    default_offset=lp.auto,
-                    lang_version=MOST_RECENT_LANGUAGE_VERSION)
-
-            return knl
-
-        def _reduce(nresult, knl, view):
-            result = cl.array.empty(self.queue, nresult, operand.dtype)
-            for igrp, group in enumerate(discr.groups):
-                knl(self.queue,
-                        operand=group.view(operand),
-                        result=view(igrp, result))
-
-            return result
+                    name="elementwise_reduce")
 
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
         operand = self.rec(expr.operand)
-        assert operand.shape == (discr.nnodes,)
+        assert operand.shape == (len(discr.groups),)
 
+        def _reduce(knl, result):
+            for grp in discr.groups:
+                self.array_context.call_loopy(knl,
+                        operand=operand[grp.index],
+                        result=result[grp.index])
+
+            return result
+
+        dtype = operand.entry_dtype
         granularity = expr.dofdesc.granularity
         if granularity is sym.GRANULARITY_NODE:
-            return _reduce(discr.nnodes,
-                    node_knl(),
-                    lambda g, x: discr.groups[g].view(x))
+            return _reduce(node_knl(),
+                    discr.empty(self.array_context, dtype=dtype))
         elif granularity is sym.GRANULARITY_ELEMENT:
-            return _reduce(discr.mesh.nelements,
-                    element_knl(),
-                    lambda g, x: mesh_el_view(discr.mesh, g, x))
+            result = DOFArray.from_list(self.array_context, [
+                    self.array_context.empty((grp.nelements, 1), dtype=dtype)
+                    for grp in discr.groups])
+            return _reduce(element_knl(), result)
         else:
             raise ValueError('unsupported granularity: %s' % granularity)
 
@@ -183,18 +189,16 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_ones(self, expr):
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        result = (discr
-                .empty(queue=self.queue, dtype=discr.real_dtype)
-                .with_queue(self.queue))
+        result = discr.empty(actx=self.array_context, dtype=discr.real_dtype)
 
-        result.fill(1)
+        for grp_ary in result:
+            grp_ary.fill(1)
         return result
 
     def map_node_coordinate_component(self, expr):
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        return discr.nodes()[expr.ambient_axis] \
-                .with_queue(self.queue)
+        return thaw(self.array_context, discr.nodes()[expr.ambient_axis])
 
     def map_num_reference_derivative(self, expr):
         discr = self.places.get_discretization(
@@ -202,16 +206,12 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         from pytools import flatten
         ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
-        return discr.num_reference_derivative(
-                self.queue,
-                ref_axes, self.rec(expr.operand)) \
-                        .with_queue(self.queue)
+        return discr.num_reference_derivative(ref_axes, self.rec(expr.operand))
 
     def map_q_weight(self, expr):
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        return discr.quad_weights(self.queue) \
-                .with_queue(self.queue)
+        return thaw(self.array_context, discr.quad_weights())
 
     def map_inverse(self, expr):
         bound_op_cache = self.bound_expr.places._get_cache("bound_op")
@@ -237,9 +237,9 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_interpolation(self, expr):
         operand = self.rec(expr.operand)
 
-        if isinstance(operand, (cl.array.Array, list)):
+        if isinstance(operand, (cl.array.Array, list, np.ndarray)):
             conn = self.places.get_connection(expr.from_dd, expr.to_dd)
-            return conn(self.queue, operand)
+            return conn(operand)
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand
         else:
@@ -263,28 +263,25 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     # }}}
 
-    def exec_assign(self, queue, insn, bound_expr, evaluate):
+    def exec_assign(self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         return [(name, evaluate(expr))
                 for name, expr in zip(insn.names, insn.exprs)]
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn(
+            self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         raise NotImplementedError
 
     # {{{ functions
 
     def apply_real(self, args):
-        from pytools.obj_array import is_obj_array
         arg, = args
-        result = self.rec(arg)
-        assert not is_obj_array(result)  # numpy bug with obj_array.imag
-        return result.real
+        from pytools.obj_array import obj_array_real
+        return obj_array_real(self.rec(arg))
 
     def apply_imag(self, args):
-        from pytools.obj_array import is_obj_array
         arg, = args
-        result = self.rec(arg)
-        assert not is_obj_array(result)  # numpy bug with obj_array.imag
-        return result.imag
+        from pytools.obj_array import obj_array_imag
+        return obj_array_imag(self.rec(arg))
 
     def apply_conj(self, args):
         arg, = args
@@ -307,8 +304,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             if all(isinstance(arg, Number) for arg in args):
                 return getattr(np, expr.function.name)(*args)
             else:
-                return getattr(cl.clmath, expr.function.name)(
-                        *args, queue=self.queue)
+                return getattr(self.array_context.np, expr.function.name)(*args)
 
         else:
             return super(EvaluationMapperBase, self).map_call(expr)
@@ -320,19 +316,20 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
 class EvaluationMapper(EvaluationMapperBase):
 
-    def __init__(self, bound_expr, queue, context=None,
+    def __init__(self, bound_expr, actx, context=None,
             timing_data=None):
-        EvaluationMapperBase.__init__(self, bound_expr, queue, context)
+        EvaluationMapperBase.__init__(self, bound_expr, actx, context)
         self.timing_data = timing_data
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn(
+            self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         source = bound_expr.places.get_geometry(insn.source.geometry)
 
         return_timing_data = self.timing_data is not None
 
         result, timing_data = (
                 source.exec_compute_potential_insn(
-                    queue, insn, bound_expr, evaluate, return_timing_data))
+                    actx, insn, bound_expr, evaluate, return_timing_data))
 
         if return_timing_data:
             # The compiler ensures this.
@@ -355,7 +352,7 @@ class CostModelMapper(EvaluationMapperBase):
     data is collected.
     """
 
-    def __init__(self, bound_expr, queue,
+    def __init__(self, bound_expr, actx,
                  knl_specific_calibration_params, per_box,
                  context=None,
                  target_geometry=None,
@@ -363,7 +360,7 @@ class CostModelMapper(EvaluationMapperBase):
         if context is None:
             context = {}
         EvaluationMapperBase.__init__(
-                self, bound_expr, queue, context,
+                self, bound_expr, actx, context,
                 target_geometry,
                 target_points,
                 target_normals,
@@ -374,7 +371,8 @@ class CostModelMapper(EvaluationMapperBase):
         self.metadata = {}
         self.per_box = per_box
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def exec_compute_potential_insn(
+            self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         source = bound_expr.places.get_geometry(insn.source.geometry)
         knls = frozenset(knl for knl in insn.kernels)
 
@@ -387,8 +385,8 @@ class CostModelMapper(EvaluationMapperBase):
 
         result, (cost_model_result, metadata) = \
             source.cost_model_compute_potential_insn(
-                queue, insn, bound_expr, evaluate, calibration_params, self.per_box,
-            )
+                actx, insn, bound_expr, evaluate, calibration_params,
+                self.per_box)
 
         # The compiler ensures this.
         assert insn not in self.modeled_cost
@@ -406,20 +404,25 @@ class CostModelMapper(EvaluationMapperBase):
 
 # {{{ scipy-like mat-vec op
 
-class MatVecOp:
+class MatVecOp(object):
     """A :class:`scipy.sparse.linalg.LinearOperator` work-alike.
     Exposes a :mod:`pytential` operator as a generic matrix operation,
-    i.e. given :math:`x`, compute :math:`Ax`.
+    i.e., given :math:`x`, compute :math:`Ax`.
+
+    .. attribute:: shape
+    .. attribute:: dtype
+    .. automethod:: matvec
     """
 
     def __init__(self,
-            bound_expr, queue, arg_name, dtype, total_dofs,
-            starts_and_ends, extra_args):
+            bound_expr, actx: PyOpenCLArrayContext,
+            arg_name, dtype, total_dofs, discrs, starts_and_ends, extra_args):
         self.bound_expr = bound_expr
-        self.queue = queue
+        self.array_context = actx
         self.arg_name = arg_name
         self.dtype = dtype
         self.total_dofs = total_dofs
+        self.discrs = discrs
         self.starts_and_ends = starts_and_ends
         self.extra_args = extra_args
 
@@ -427,34 +430,70 @@ class MatVecOp:
     def shape(self):
         return (self.total_dofs, self.total_dofs)
 
-    def matvec(self, x):
-        if isinstance(x, np.ndarray):
-            x = cl.array.to_device(self.queue, x)
-            out_host = True
+    @property
+    def _operator_uses_obj_array(self):
+        return len(self.discrs) > 1
+
+    def flatten(self, ary):
+        # Return a flat version of *ary*. The returned value is suitable for
+        # use with solvers whose API expects a one-dimensional array.
+        if not self._operator_uses_obj_array:
+            ary = [ary]
+
+        result = self.array_context.empty(self.total_dofs, self.dtype)
+        from pytential.utils import flatten_if_needed
+        for res_i, (start, end) in zip(ary, self.starts_and_ends):
+            result[start:end] = flatten_if_needed(self.array_context, res_i)
+        return result
+
+    def unflatten(self, ary):
+        # Convert a flat version of *ary* into a structured version.
+        components = []
+        for discr, (start, end) in zip(self.discrs, self.starts_and_ends):
+            component = ary[start:end]
+            from meshmode.discretization import Discretization
+            if isinstance(discr, Discretization):
+                from meshmode.dof_array import unflatten
+                component = unflatten(self.array_context, discr, component)
+            components.append(component)
+
+        if self._operator_uses_obj_array:
+            from pytools.obj_array import make_obj_array
+            return make_obj_array(components)
         else:
-            out_host = False
+            return components[0]
 
-        do_split = len(self.starts_and_ends) > 1
-        from pytools.obj_array import make_obj_array
-
-        if do_split:
-            x = make_obj_array(
-                    [x[start:end] for start, end in self.starts_and_ends])
+    def matvec(self, x):
+        # Three types of inputs are supported:
+        # * flat NumPy arrays
+        #    => output is a flat NumPy array
+        # * flat PyOpenCL arrays
+        #    => output is a flat PyOpenCL array
+        # * structured arrays (object arrays/DOFArrays)
+        #    => output has same structure as input
+        if isinstance(x, np.ndarray) and x.dtype.char != "O":
+            x = self.array_context.from_numpy(x)
+            flat = True
+            host = True
+            assert x.shape == (self.total_dofs,)
+        elif isinstance(x, cl.array.Array):
+            flat = True
+            host = False
+            assert x.shape == (self.total_dofs,)
+        elif isinstance(x, np.ndarray) and x.dtype.char == "O":
+            flat = False
+            host = False
+        else:
+            raise ValueError("unsupported input type")
 
         args = self.extra_args.copy()
-        args[self.arg_name] = x
-        result = self.bound_expr(self.queue, **args)
+        args[self.arg_name] = self.unflatten(x) if flat else x
+        result = self.bound_expr(self.array_context, **args)
 
-        if do_split:
-            # re-join what was split
-            joined_result = cl.array.empty(self.queue, self.total_dofs,
-                    self.dtype)
-            for res_i, (start, end) in zip(result, self.starts_and_ends):
-                joined_result[start:end] = res_i
-            result = joined_result
-
-        if out_host:
-            result = result.get()
+        if flat:
+            result = self.flatten(result)
+        if host:
+            result = self.array_context.to_numpy(result)
 
         return result
 
@@ -650,25 +689,8 @@ class GeometryCollection(object):
                 raise TypeError("Values in 'places' must be discretization, targets "
                         "or layer potential sources.")
 
-        # check cl_context
-        from pytools import is_single_valued
-        cl_contexts = []
-        for p in six.itervalues(self.places):
-            if isinstance(p, (PotentialSource, Discretization)):
-                cl_contexts.append(p.cl_context)
-            elif isinstance(p, TargetBase):
-                nodes = p.nodes()[0]
-                if isinstance(nodes, cl.array.Array) and nodes.queue is not None:
-                    cl_contexts.append(nodes.queue.context)
-            else:
-                raise ValueError("unexpected value type in 'places'")
-
-        if not is_single_valued(cl_contexts):
-            raise RuntimeError("All 'places' must have the same CL context.")
-
-        self.cl_context = cl_contexts[0]
-
         # check ambient_dim
+        from pytools import is_single_valued
         ambient_dims = [p.ambient_dim for p in six.itervalues(self.places)]
         if not is_single_valued(ambient_dims):
             raise RuntimeError("All 'places' must have the same ambient dimension.")
@@ -737,12 +759,11 @@ class GeometryCollection(object):
             from pytential import sym
             from pytential.qbx.refinement import _refine_for_global_qbx
 
-            with cl.CommandQueue(lpot_source.cl_context) as queue:
-                # NOTE: this adds the required discretizations to the cache
-                dofdesc = sym.DOFDescriptor(geometry, discr_stage)
-                _refine_for_global_qbx(self, dofdesc,
-                        lpot_source.refiner_code_container.get_wrangler(queue),
-                        _copy_collection=False)
+            # NOTE: this adds the required discretizations to the cache
+            dofdesc = sym.DOFDescriptor(geometry, discr_stage)
+            _refine_for_global_qbx(self, dofdesc,
+                    lpot_source.refiner_code_container.get_wrangler(),
+                    _copy_collection=False)
 
             discr = self._get_discr_from_cache(geometry, discr_stage)
 
@@ -819,6 +840,47 @@ class GeometryCollection(object):
 
 # {{{ bound expression
 
+def _find_array_context_from_args_in_context(context, supplied_array_context=None):
+    array_contexts = []
+    if supplied_array_context is not None:
+        if not isinstance(supplied_array_context, PyOpenCLArrayContext):
+            raise TypeError(
+                    "first argument (if supplied) must be a "
+                    "PyOpenCLArrayContext")
+
+        array_contexts.append(supplied_array_context)
+    del supplied_array_context
+
+    def look_for_array_contexts(ary):
+        if isinstance(ary, DOFArray):
+            if ary.array_context is not None:
+                array_contexts.append(ary.array_context)
+        elif isinstance(ary, np.ndarray) and ary.dtype.char == "O":
+            for idx in np.ndindex(ary.shape):
+                look_for_array_contexts(ary[idx])
+        else:
+            pass
+
+    for key, val in context.items():
+        look_for_array_contexts(val)
+
+    if array_contexts:
+        from pytools import is_single_valued
+        if not is_single_valued(array_contexts):
+            raise ValueError("arguments do not agree on an array context")
+
+        array_context = array_contexts[0]
+    else:
+        array_context = None
+
+    if not isinstance(array_context, PyOpenCLArrayContext):
+        raise TypeError(
+                "array context (derived from arguments) is not a "
+                "PyOpenCLArrayContext")
+
+    return array_context
+
+
 class BoundExpression(object):
     """An expression readied for evaluation by binding it to a
     :class:`~pytential.symbolic.execution.GeometryCollection`.
@@ -843,7 +905,7 @@ class BoundExpression(object):
     def _get_cache(self, name):
         return self.caches.setdefault(name, {})
 
-    def cost_per_stage(self, queue, calibration_params, **args):
+    def cost_per_stage(self, calibration_params, **kwargs):
         """
         :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg calibration_params: either a :class:`dict` returned by
@@ -853,13 +915,18 @@ class BoundExpression(object):
             per-stage cost is represented by a :class:`dict` mapping from the stage
             name to the predicted time.
         """
+        array_context = _find_array_context_from_args_in_context(kwargs)
+
+        if array_context is None:
+            raise ValueError("unable to figure array context from arguments")
+
         cost_model_mapper = CostModelMapper(
-            self, queue, calibration_params, False, args
+            self, array_context, calibration_params, False, kwargs
         )
         self.code.execute(cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()
 
-    def cost_per_box(self, queue, calibration_params, **args):
+    def cost_per_box(self, calibration_params, **kwargs):
         """
         :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg calibration_params: either a :class:`dict` returned by
@@ -870,13 +937,16 @@ class BoundExpression(object):
             :class:`pyopencl.array.Array` of shape (nboxes,), where the ith entry
             represents the cost of all stages for box i.
         """
+        array_context = _find_array_context_from_args_in_context(kwargs)
+
         cost_model_mapper = CostModelMapper(
-            self, queue, calibration_params, True, args
-        )
+            self, array_context, calibration_params, True, kwargs)
         self.code.execute(cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()
 
-    def scipy_op(self, queue, arg_name, dtype, domains=None, **extra_args):
+    def scipy_op(
+            self, actx: PyOpenCLArrayContext, arg_name, dtype,
+            domains=None, **extra_args):
         """
         :arg domains: a list of discretization identifiers or
             *None* values indicating the domains on which each component of the
@@ -889,8 +959,7 @@ class BoundExpression(object):
             and returning :class:`pyopencl.array.Array` arrays.
         """
 
-        from pytools.obj_array import is_obj_array
-        if is_obj_array(self.code.result):
+        if isinstance(self.code.result, np.ndarray):
             nresults = len(self.code.result)
         else:
             nresults = 1
@@ -899,15 +968,18 @@ class BoundExpression(object):
                 self.places, domains, self.places.auto_target)
 
         total_dofs = 0
+        discrs = []
         starts_and_ends = []
         for dom_name in domains:
             if dom_name is None:
+                discr = None
                 size = 1
             else:
                 discr = self.places.get_discretization(
                         dom_name.geometry, dom_name.discr_stage)
-                size = discr.nnodes
+                size = discr.ndofs
 
+            discrs.append(discr)
             starts_and_ends.append((total_dofs, total_dofs+size))
             total_dofs += size
 
@@ -916,10 +988,11 @@ class BoundExpression(object):
         # fair, since these operators are usually only used
         # for linear system solving, in which case the assumption
         # has to be true.
-        return MatVecOp(self, queue,
-                arg_name, dtype, total_dofs, starts_and_ends, extra_args)
+        return MatVecOp(self, actx,
+                arg_name, dtype, total_dofs, discrs, starts_and_ends, extra_args)
 
-    def eval(self, queue, context=None, timing_data=None):
+    def eval(self, context=None, timing_data=None,
+            array_context: Optional[PyOpenCLArrayContext] = None):
         """Evaluate the expression in *self*, using the
         :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
@@ -927,25 +1000,48 @@ class BoundExpression(object):
         :arg timing_data: A dictionary into which timing
             data will be inserted during evaluation.
             (experimental)
+        :arg array_context: only needs to be supplied if no instances of
+            :class:`~meshmode.dof_array.DOFArray` with a
+            :class:`~meshmode.array_context.PyOpenCLArrayContext`
+            are supplied as part of *context*.
         :returns: the value of the expression, as a scalar,
             :class:`pyopencl.array.Array`, or an object array of these.
         """
 
         if context is None:
             context = {}
+
+        array_context = _find_array_context_from_args_in_context(
+                context, array_context)
+
         exec_mapper = EvaluationMapper(
-                self, queue, context, timing_data=timing_data)
+                self, array_context, context, timing_data=timing_data)
         return self.code.execute(exec_mapper)
 
-    def __call__(self, queue, **args):
+    def __call__(self, *args, **kwargs):
         """Evaluate the expression in *self*, using the
         :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
 
         :returns: the value of the expression, as a scalar,
-            :class:`pyopencl.array.Array`, or an object array of these.
+            :class:`meshmode.dof_array.DOFArray`, or an object array of
+            these.
         """
-        return self.eval(queue, args)
+        array_context = None
+        if len(args) == 1:
+            array_context, = args
+            if not isinstance(array_context, PyOpenCLArrayContext):
+                raise TypeError("first positional argument (if given) "
+                        "must be of type PyOpenCLArrayContext")
+
+        elif not args:
+            pass
+
+        else:
+            raise TypeError("More than one positional argument supplied. "
+                    "None or an ArrayContext expected.")
+
+        return self.eval(kwargs, array_context=array_context)
 
 
 def bind(places, expr, auto_where=None):
@@ -1003,10 +1099,10 @@ def _bmat(blocks, dtypes):
     return result
 
 
-def build_matrix(queue, places, exprs, input_exprs, domains=None,
+def build_matrix(actx, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
-    :arg queue: a :class:`pyopencl.CommandQueue`.
+    :arg actx: a :class:`~meshmode.array_context.ArrayContext`.
     :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
@@ -1028,13 +1124,14 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
         context = {}
 
     from pytential import GeometryCollection
-    from pytools.obj_array import is_obj_array, make_obj_array
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
     exprs = _prepare_expr(places, exprs, auto_where=auto_where)
 
-    if not is_obj_array(exprs):
+    if not (isinstance(exprs, np.ndarray) and exprs.dtype.char == "O"):
+        from pytools.obj_array import make_obj_array
         exprs = make_obj_array([exprs])
+
     try:
         input_exprs = list(input_exprs)
     except TypeError:
@@ -1056,7 +1153,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
                 domains[ibcol].geometry, domains[ibcol].discr_stage)
 
         mbuilder = MatrixBuilder(
-                queue,
+                actx,
                 dep_expr=input_exprs[ibcol],
                 other_dep_exprs=(input_exprs[:ibcol]
                                  + input_exprs[ibcol + 1:]),
@@ -1073,7 +1170,7 @@ def build_matrix(queue, places, exprs, input_exprs, domains=None,
             if isinstance(block, np.ndarray):
                 dtypes.append(block.dtype)
 
-    return cl.array.to_device(queue, _bmat(blocks, dtypes))
+    return actx.from_numpy(_bmat(blocks, dtypes))
 
 # }}}
 
