@@ -2,6 +2,7 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -58,11 +59,12 @@ def timing_run(nx, ny, visualize=False):
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     mesh = make_mesh(nx=nx, ny=ny, visualize=visualize)
 
     density_discr = Discretization(
-            cl_ctx, mesh,
+            actx, mesh,
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     from pytential.qbx import (
@@ -76,7 +78,7 @@ def timing_run(nx, ny, visualize=False):
     if visualize:
         from sumpy.visualization import FieldPlotter
         fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1500)
-        targets = PointsTarget(cl.array.to_device(queue, fplot.points))
+        targets = PointsTarget(actx.from_numpy(fplot.points))
 
         places.update({
             "plot-targets": targets,
@@ -119,10 +121,12 @@ def timing_run(nx, ny, visualize=False):
     # {{{ fix rhs and solve
 
     mode_nr = 3
-    nodes = density_discr.nodes().with_queue(queue)
-    angle = cl.clmath.atan2(nodes[1], nodes[0])
 
-    sigma = cl.clmath.cos(mode_nr*angle)
+    from meshmode.dof_array import thaw
+    nodes = thaw(actx, density_discr.nodes())
+    angle = actx.np.arctan2(nodes[1], nodes[0])
+
+    sigma = actx.np.cos(mode_nr*angle)
 
     # }}}
 
@@ -134,17 +138,17 @@ def timing_run(nx, ny, visualize=False):
     bound_op = bind(places, sym_op)
 
     print("FMM WARM-UP RUN 1: %5d elements" % mesh.nelements)
-    bound_op(queue, sigma=sigma, k=k)
+    bound_op(actx, sigma=sigma, k=k)
     queue.finish()
 
     print("FMM WARM-UP RUN 2: %5d elements" % mesh.nelements)
-    bound_op(queue, sigma=sigma, k=k)
+    bound_op(actx, sigma=sigma, k=k)
     queue.finish()
 
     from time import time
     t_start = time()
-    bound_op(queue, sigma=sigma, k=k)
-    queue.finish()
+    bound_op(actx, sigma=sigma, k=k)
+    actx.queue.finish()
     elapsed = time() - t_start
 
     print("FMM TIMING RUN:    %5d elements -> %g s"

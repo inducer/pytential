@@ -41,8 +41,8 @@ class TargetBase(object):
     .. attribute:: ambient_dim
     .. method:: nodes
 
-        Shape: ``[ambient_dim, nnodes]``
-    .. attribute:: nnodes
+        Shape: ``[ambient_dim, ndofs]``
+    .. attribute:: ndofs
     """
 
 
@@ -63,13 +63,13 @@ class PointsTarget(TargetBase):
         return expr
 
     def nodes(self):
-        """Shape: ``[ambient_dim, nnodes]``
+        """Shape: ``[ambient_dim, ndofs]``
         """
 
         return self._nodes
 
     @property
-    def nnodes(self):
+    def ndofs(self):
         for coord_ary in self._nodes:
             return coord_ary.shape[0]
 

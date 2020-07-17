@@ -4,24 +4,6 @@
 #   which skips the slow running tests.
 # * SKIP_EXAMPLES, if non-empty, can be used to skip the examples job.
 
-Python 2.7 POCL:
-  script:
-  - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=portable:pthread
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
-  - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python2.7
-  - pocl
-  - large-node
-  except:
-  - tags
-  artifacts:
-    reports:
-      junit: test/pytest.xml
-
 Python 3 POCL:
   script:
   - export PY_EXE=python3
@@ -79,6 +61,10 @@ Python 3 Conda:
   - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
   - export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+
+  # https://gitlab.tiker.net/inducer/pytential/-/issues/146
+  - echo "- _openmp_mutex=*=*gnu*" >> $CONDA_ENVIRONMENT
+
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
@@ -86,29 +72,6 @@ Python 3 Conda:
   - large-node
   except:
   - tags
-
-  artifacts:
-    reports:
-      junit: test/pytest.xml
-
-Python 3 Conda Apple:
-  script:
-  - export LC_ALL=en_US.UTF-8
-  - export LANG=en_US.UTF-8
-  - export CONDA_ENVIRONMENT=.test-conda-env-py3-macos.yml
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
-  - export CC=clang
-  # https://stackoverflow.com/q/60934005; https://reviews.llvm.org/D71579
-  - export LDFLAGS="-mlinker-version=519"
-  - set -o xtrace
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
-  - ". ./build-and-test-py-project-within-miniconda.sh"
-
-  tags:
-  - apple
-  except:
-  - tags
-  retry: 2
 
   artifacts:
     reports:

@@ -36,6 +36,8 @@ from boxtree.tools import DeviceDataRecord
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
 from cgen import Enum
+from meshmode.array_context import PyOpenCLArrayContext
+from meshmode.dof_array import flatten
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
     TreeCodeContainerMixin)
@@ -444,9 +446,13 @@ class QBXTargetAssociation(DeviceDataRecord):
 
 class TargetAssociationCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, cl_context, tree_code_container):
-        self.cl_context = cl_context
+    def __init__(self, actx: PyOpenCLArrayContext, tree_code_container):
+        self.array_context = actx
         self.tree_code_container = tree_code_container
+
+    @property
+    def cl_context(self):
+        return self.array_context.context
 
     @memoize_method
     def target_marker(self, dimensions, coord_dtype, box_id_dtype,
@@ -489,8 +495,8 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
         from boxtree.area_query import SpaceInvaderQueryBuilder
         return SpaceInvaderQueryBuilder(self.cl_context)
 
-    def get_wrangler(self, queue):
-        return TargetAssociationWrangler(self, queue)
+    def get_wrangler(self, actx: PyOpenCLArrayContext):
+        return TargetAssociationWrangler(actx, code_container=self)
 
 
 class TargetAssociationWrangler(TreeWranglerBase):
@@ -521,9 +527,11 @@ class TargetAssociationWrangler(TreeWranglerBase):
         source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = bind(places,
-                sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))(
-                        self.queue)
+
+        tunnel_radius_by_source = flatten(
+                bind(places,
+                    sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))
+                (self.array_context))
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -620,9 +628,9 @@ class TargetAssociationWrangler(TreeWranglerBase):
         expansion_radii_by_center = bind(places, sym.expansion_radii(
             ambient_dim,
             granularity=sym.GRANULARITY_CENTER,
-            dofdesc=dofdesc))(self.queue)
-        expansion_radii_by_center_with_tolerance = \
-                expansion_radii_by_center * (1 + target_association_tolerance)
+            dofdesc=dofdesc))(self.array_context)
+        expansion_radii_by_center_with_tolerance = flatten(
+                expansion_radii_by_center * (1 + target_association_tolerance))
 
         # Idea:
         #
@@ -716,11 +724,13 @@ class TargetAssociationWrangler(TreeWranglerBase):
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
         sources = [
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
-        tunnel_radius_by_source = bind(places,
-                sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))(
-                        self.queue)
 
-        # See (TGTMARK) above for algorithm.
+        tunnel_radius_by_source = flatten(
+                bind(places,
+                    sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))
+                (self.array_context))
+
+        # see (TGTMARK) above for algorithm.
 
         box_to_search_dist, evt = self.code_container.space_invader_query()(
                 self.queue,
@@ -730,10 +740,6 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 peer_lists,
                 wait_for=wait_for)
         wait_for = [evt]
-
-        tunnel_radius_by_source = bind(places,
-                sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))(
-                        self.queue)
 
         evt = knl(
             *unwrap_args(
@@ -767,17 +773,17 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return (found_panel_to_refine == 1).all().get()
 
     def make_target_flags(self, target_discrs_and_qbx_sides):
-        ntargets = sum(discr.nnodes for discr, _ in target_discrs_and_qbx_sides)
+        ntargets = sum(discr.ndofs for discr, _ in target_discrs_and_qbx_sides)
         target_flags = cl.array.empty(self.queue, ntargets, dtype=np.int32)
         offset = 0
 
         for discr, flags in target_discrs_and_qbx_sides:
             if np.isscalar(flags):
-                target_flags[offset:offset + discr.nnodes].fill(flags)
+                target_flags[offset:offset + discr.ndofs].fill(flags)
             else:
-                assert len(flags) == discr.nnodes
-                target_flags[offset:offset + discr.nnodes] = flags
-            offset += discr.nnodes
+                assert len(flags) == discr.ndofs
+                target_flags[offset:offset + discr.ndofs] = flags
+            offset += discr.ndofs
 
         target_flags.finish()
         return target_flags

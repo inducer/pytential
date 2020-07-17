@@ -61,7 +61,7 @@ def get_sym_maxwell_point_source(kernel, jxyz, k):
     # https://en.wikipedia.org/w/index.php?title=Maxwell%27s_equations&oldid=798940325#Alternative_formulations
     # (Vector calculus/Potentials/Any Gauge)
     # assumed time dependence exp(-1j*omega*t)
-    return sym.join_fields(
+    return sym.flat_obj_array(
         1j*k*A,
         sym.curl(A))
 
@@ -108,7 +108,7 @@ def get_sym_maxwell_plane_wave(amplitude_vec, v, omega,
 
     e = amplitude_vec * sym.exp(1j*np.dot(n*omega, x))
 
-    return sym.join_fields(e, c_inv * sym.cross(n, e))
+    return sym.flat_obj_array(e, c_inv * sym.cross(n, e))
 
 # }}}
 
@@ -180,7 +180,7 @@ class PECChargeCurrentMFIEOperator:
         E_scat = 1j*self.k*A - sym.grad(3, phi)
         H_scat = sym.curl(A)
 
-        return sym.join_fields(E_scat, H_scat)
+        return sym.flat_obj_array(E_scat, H_scat)
 
 # }}}
 
@@ -248,13 +248,13 @@ class MuellerAugmentedMFIEOperator(object):
         # sign flip included
         F4 = -sym.n_dot(mu1*H1-mu0*H0) + 0.5*(mu1+mu0)*u.rho_m  # noqa pylint:disable=invalid-unary-operand-type
 
-        return sym.join_fields(F1, F2, F3, F4)
+        return sym.flat_obj_array(F1, F2, F3, F4)
 
     def rhs(self, Einc_xyz, Hinc_xyz):
         mu1 = self.mus[1]
         eps1 = self.epss[1]
 
-        return sym.join_fields(
+        return sym.flat_obj_array(
             xyz_to_tangential(sym.n_cross(Hinc_xyz)),
             sym.n_dot(eps1*Einc_xyz),
             xyz_to_tangential(sym.n_cross(Einc_xyz)),
@@ -280,7 +280,7 @@ class MuellerAugmentedMFIEOperator(object):
         E0 = 1j*k*eps*S(Jxyz) + mu*curl_S(Mxyz) - grad(S(u.rho_e))
         H0 = -1j*k*mu*S(Mxyz) + eps*curl_S(Jxyz) + grad(S(u.rho_m))
 
-        return sym.join_fields(E0, H0)
+        return sym.flat_obj_array(E0, H0)
 
 # }}}
 
