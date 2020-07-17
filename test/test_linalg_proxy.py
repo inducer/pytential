@@ -22,41 +22,46 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import partial
+
 import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
-import pyopencl.array   # noqa
 
 from pytential import bind, sym
+from pytential import GeometryCollection
 
 from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.mesh.generation import ( # noqa
-        ellipse, NArmedStarfish, generate_torus, make_curve_mesh)
+from meshmode.mesh.generation import ellipse
 
 import pytest
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 
+import extra_matrix_data as extra
+import logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-from test_matrix import _build_geometry, _build_block_index
 
+def plot_partition_indices(actx, discr, indices, **kwargs):
+    try:
+        import matplotlib.pyplot as pt
+    except ImportError:
+        return
 
-def _plot_partition_indices(actx, discr, indices, **kwargs):
-    import matplotlib.pyplot as pt
     indices = indices.get(actx.queue)
-
     args = [
-        kwargs.get("method", "unknown"),
-        "tree" if kwargs.get("use_tree", False) else "linear",
-        kwargs.get("pid", "stage1"),
+        kwargs.get("tree_kind", "linear").replace("-", "_"),
+        kwargs.get("discr_stage", "stage1"),
         discr.ambient_dim
         ]
 
     pt.figure(figsize=(10, 8), dpi=300)
     pt.plot(np.diff(indices.ranges))
-    pt.savefig("test_partition_{0}_{1}_{3}d_ranges_{2}.png".format(*args))
+    pt.savefig("test_partition_{1}_{3}d_ranges_{2}.png".format(*args))
     pt.clf()
 
     from pytential.utils import flatten_to_numpy
@@ -64,24 +69,18 @@ def _plot_partition_indices(actx, discr, indices, **kwargs):
         sources = flatten_to_numpy(actx, discr.nodes())
 
         pt.figure(figsize=(10, 8), dpi=300)
-
         if indices.indices.shape[0] != discr.ndofs:
             pt.plot(sources[0], sources[1], 'ko', alpha=0.5)
+
         for i in range(indices.nblocks):
             isrc = indices.block_indices(i)
             pt.plot(sources[0][isrc], sources[1][isrc], 'o')
 
         pt.xlim([-1.5, 1.5])
         pt.ylim([-1.5, 1.5])
-        pt.savefig("test_partition_{0}_{1}_{3}d_{2}.png".format(*args))
+        pt.savefig("test_partition_{1}_{3}d_{2}.png".format(*args))
         pt.clf()
     elif discr.ambient_dim == 3:
-        from meshmode.discretization import NoninterpolatoryElementGroupError
-        try:
-            discr.groups[0].basis()
-        except NoninterpolatoryElementGroupError:
-            return
-
         from meshmode.discretization.visualization import make_visualizer
         marker = -42.0 * np.ones(discr.ndofs)
 
@@ -100,38 +99,70 @@ def _plot_partition_indices(actx, discr, indices, **kwargs):
             ])
 
 
-@pytest.mark.parametrize("use_tree", [True, False])
-@pytest.mark.parametrize("ambient_dim", [2, 3])
-def test_partition_points(ctx_factory, use_tree, ambient_dim, visualize=False):
+PROXY_TEST_CASES = [
+        extra.CurveTestCase(
+            name="ellipse",
+            target_order=7,
+            curve_fn=partial(ellipse, 3.0)),
+        extra.TorusTestCase(
+            target_order=2,
+            resolutions=[0])
+        ]
+
+
+@pytest.mark.skip(reason="only useful with visualize=True")
+@pytest.mark.parametrize("tree_kind", ['adaptive', None])
+@pytest.mark.parametrize("case", PROXY_TEST_CASES)
+def test_partition_points(ctx_factory, tree_kind, case, visualize=False):
+    """Tests that the points are correctly partitioned (by visualization)."""
+
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     actx = PyOpenCLArrayContext(queue)
 
-    places, dofdesc = _build_geometry(actx, ambient_dim=ambient_dim)
-    discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
-    indices = _build_block_index(actx, discr, use_tree=use_tree, factor=0.6)
+    case = case.copy(tree_kind=tree_kind, index_sparsity_factor=0.6)
+    logger.info("\n%s", case)
+
+    # {{{
+
+    qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
+    places = GeometryCollection(qbx, auto_where=case.name)
+
+    density_discr = places.get_discretization(case.name)
+    indices = case.get_block_indices(actx, density_discr)
 
     if visualize:
-        _plot_partition_indices(actx, discr, indices, use_tree=use_tree)
+        plot_partition_indices(actx, density_discr, indices, tree_kind=tree_kind)
+
+    # }}}
 
 
-@pytest.mark.parametrize("ambient_dim", [2, 3])
-@pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
+@pytest.mark.parametrize("case", PROXY_TEST_CASES)
+@pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
+def test_proxy_generator(ctx_factory, case, index_sparsity_factor, visualize=False):
+    """Tests that the proxies generated are all at the correct radius from the
+    points in the cluster, etc.
+    """
+
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     actx = PyOpenCLArrayContext(queue)
 
-    places, dofdesc = _build_geometry(actx, ambient_dim=ambient_dim)
-    dofdesc = dofdesc.to_stage1()
+    case = case.copy(index_sparsity_factor=index_sparsity_factor)
+    logger.info("\n%s", case)
 
-    density_discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
-    srcindices = _build_block_index(actx, density_discr, factor=factor)
+    # {{{ generate proxies
+
+    qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
+    places = GeometryCollection(qbx, auto_where=case.name)
+
+    density_discr = places.get_discretization(case.name)
+    srcindices = case.get_block_indices(actx, density_discr, matrix_indices=False)
 
     from pytential.linalg.proxy import ProxyGenerator
     generator = ProxyGenerator(places)
     proxies, pxyranges, pxycenters, pxyradii = \
-            generator(actx, dofdesc, srcindices)
+            generator(actx, places.auto_source, srcindices)
 
     proxies = np.vstack([actx.to_numpy(p) for p in proxies])
     pxyranges = actx.to_numpy(pxyranges)
@@ -144,8 +175,13 @@ def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
         r = la.norm(proxies[:, ipxy] - pxycenters[:, i].reshape(-1, 1), axis=0)
         assert np.allclose(r - pxyradii[i], 0.0, atol=1.0e-14)
 
+    # }}}
+
+    # {{{ visualization
+
     srcindices = srcindices.get(queue)
     if visualize:
+        ambient_dim = places.ambient_dim
         if ambient_dim == 2:
             import matplotlib.pyplot as pt
 
@@ -212,32 +248,45 @@ def test_proxy_generator(ctx_factory, ambient_dim, factor, visualize=False):
                         ambient_dim, i)
                 vis.write_vtk_file(filename, [])
 
+    # }}}
 
-@pytest.mark.parametrize("ambient_dim", [2, 3])
-@pytest.mark.parametrize("factor", [1.0, 0.6])
-def test_interaction_points(ctx_factory, ambient_dim, factor, visualize=False):
+
+@pytest.mark.parametrize("case", PROXY_TEST_CASES)
+@pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
+def test_interaction_points(ctx_factory,
+        case, index_sparsity_factor, visualize=False):
+    """Test that neighboring points (inside the proxy balls, but outside the
+    current block/cluster) are actually inside.
+    """
+
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     actx = PyOpenCLArrayContext(queue)
 
-    places, dofdesc = _build_geometry(actx, ambient_dim=ambient_dim)
-    dofdesc = dofdesc.to_stage1()
+    case = case.copy(index_sparsity_factor=index_sparsity_factor)
+    logger.info("\n%s", case)
 
-    density_discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
-    srcindices = _build_block_index(actx, density_discr, factor=factor)
+    # {{{ check neighboring points
+
+    qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
+    places = GeometryCollection(qbx, auto_where=case.name)
+
+    density_discr = places.get_discretization(case.name)
+    srcindices = case.get_block_indices(actx, density_discr, matrix_indices=False)
 
     # generate proxy points
     from pytential.linalg.proxy import ProxyGenerator
     generator = ProxyGenerator(places)
-    _, _, pxycenters, pxyradii = generator(actx, dofdesc, srcindices)
+    _, _, pxycenters, pxyradii = generator(actx, places.auto_source, srcindices)
 
+    # get neighboring points
     from pytential.linalg.proxy import (  # noqa
             gather_block_neighbor_points,
             gather_block_interaction_points)
     nbrindices = gather_block_neighbor_points(actx, density_discr,
             srcindices, pxycenters, pxyradii)
     nodes, ranges = gather_block_interaction_points(actx,
-            places, dofdesc, srcindices)
+            places, places.auto_source, srcindices)
 
     srcindices = srcindices.get(queue)
     nbrindices = nbrindices.get(queue)
@@ -248,8 +297,13 @@ def test_interaction_points(ctx_factory, ambient_dim, factor, visualize=False):
 
         assert not np.any(np.isin(inbr, isrc))
 
+    # }}}
+
+    # {{{ visualize
+
     from pytential.utils import flatten_to_numpy
     if visualize:
+        ambient_dim = places.ambient_dim
         if ambient_dim == 2:
             import matplotlib.pyplot as pt
             density_nodes = flatten_to_numpy(actx, density_discr.nodes())
@@ -300,6 +354,7 @@ def test_interaction_points(ctx_factory, ambient_dim, factor, visualize=False):
                 vis.write_vtk_file(filename, [
                     ("marker", marker_dev),
                     ])
+    # }}}
 
 
 if __name__ == "__main__":
