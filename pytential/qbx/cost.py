@@ -39,6 +39,8 @@ from pytools import memoize_method
 from functools import partial
 import sys
 
+from meshmode.array_context import PyOpenCLArrayContext
+
 from boxtree.cost import (
     FMMTranslationCostModel, AbstractFMMCostModel, FMMCostModel, _PythonFMMCostModel
 )
@@ -580,10 +582,10 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
 class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
     """This class is an implementation of interface :class:`AbstractQBXCostModel`
-    using PyOpenCL
+    using :mod:`pyopencl`.
     """
     def __init__(
-            self, queue,
+            self, actx,
             translation_cost_model_factory=make_pde_aware_translation_cost_model):
         """
         :arg queue: a :class:`pyopencl.CommandQueue` object on which the execution
@@ -592,7 +594,12 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
             and the number of tree levels as arguments, returns an object of
             :class:`QBXTranslationCostModel`.
         """
-        FMMCostModel.__init__(self, queue, translation_cost_model_factory)
+        if not isinstance(actx, PyOpenCLArrayContext):
+            raise TypeError("actx must be a PyOpenCLArrayContext")
+
+        # FIXME: Should the cost model own a queue?
+        self.array_context = actx
+        FMMCostModel.__init__(self, actx.queue, translation_cost_model_factory)
 
     @memoize_method
     def _fill_array_with_index_knl(self, idx_dtype, array_dtype):
