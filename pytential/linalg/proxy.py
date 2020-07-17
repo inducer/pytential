@@ -39,7 +39,9 @@ Proxy Point Generation
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ProxyGenerator
+
 .. autofunction:: partition_by_nodes
+.. autofunction:: partition_from_coarse
 
 .. autofunction:: gather_block_neighbor_points
 .. autofunction:: gather_block_interaction_points
@@ -48,14 +50,16 @@ Proxy Point Generation
 
 # {{{ point index partitioning
 
-def partition_by_nodes(actx, discr,
-        tree_kind="adaptive-level-restricted", max_nodes_in_box=None):
+def partition_by_nodes(actx, discr, use_tree=True, max_nodes_in_box=None):
     """Generate equally sized ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
     of points, but will split elements across different ranges.
 
     :arg discr: a :class:`meshmode.discretization.Discretization`.
-    :arg tree_kind: if not *None*, it is passed to :class:`boxtree.TreeBuilder`.
+    :arg use_tree: if ``True``, node partitions are generated using a
+        :class:`boxtree.TreeBuilder`, which leads to geometrically close
+        points to belong to the same partition. If ``False``, a simple linear
+        partition is constructed.
     :arg max_nodes_in_box: passed to :class:`boxtree.TreeBuilder`.
 
     :return: a :class:`sumpy.tools.BlockIndexRanges`.
@@ -65,7 +69,7 @@ def partition_by_nodes(actx, discr,
         # FIXME: this is just an arbitrary value
         max_nodes_in_box = 32
 
-    if tree_kind is not None:
+    if use_tree:
         from boxtree import box_flags_enum
         from boxtree import TreeBuilder
 
@@ -74,8 +78,7 @@ def partition_by_nodes(actx, discr,
         from meshmode.dof_array import flatten, thaw
         tree, _ = builder(actx.queue,
                 flatten(thaw(actx, discr.nodes())),
-                max_particles_in_box=max_nodes_in_box,
-                kind=tree_kind)
+                max_particles_in_box=max_nodes_in_box)
 
         tree = tree.get(actx.queue)
         leaf_boxes, = (tree.box_flags
@@ -96,7 +99,7 @@ def partition_by_nodes(actx, discr,
         ranges = actx.from_numpy(np.arange(
             0,
             discr.ndofs + 1,
-            max_nodes_in_box, dtype=np.int))
+            discr.ndofs // max_nodes_in_box, dtype=np.int))
 
     assert ranges[-1] == discr.ndofs
 
