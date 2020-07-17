@@ -54,9 +54,6 @@ jobs:
                 grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
 
-                # https://gitlab.tiker.net/inducer/pytential/-/issues/146
-                echo "- _openmp_mutex=*=*gnu*" >> $CONDA_ENVIRONMENT
-
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
 
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
@@ -88,9 +85,6 @@ jobs:
         -   name: "Main Script"
             run: |
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-
-                # https://gitlab.tiker.net/inducer/pytential/-/issues/146
-                echo "- _openmp_mutex=*=*gnu*" >> $CONDA_ENVIRONMENT
 
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
 
