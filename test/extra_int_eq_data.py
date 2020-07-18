@@ -367,7 +367,7 @@ class TorusTestCase(IntegralEquationTestCase):
 
     # geometry
     r_major = 10.0
-    r_minor = 1.0
+    r_minor = 2.0
 
     # test case
     resolutions = [0, 1, 2]

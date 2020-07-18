@@ -99,6 +99,7 @@ class MatrixTestCaseMixin:
         else:
             raise ValueError(f"unknown operator type: '{self.op_type}'")
 
+        sym_op = 0.5 * sym_u + sym_op
         return sym_u, sym_op
 
 
