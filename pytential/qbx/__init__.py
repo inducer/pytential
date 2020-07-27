@@ -108,9 +108,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         :arg _use_target_specific_qbx: Whether to use target-specific
             acceleration by default if possible. *None* means
             "use if possible".
-        :arg cost_model: Either *None* or instance of
-             :class:`~pytential.qbx.cost.AbstractQBXCostModel`, used for gathering
-             modeled costs (experimental)
+        :arg cost_model: Either *None* or an object implementing the
+             :class:`~pytential.qbx.cost.AbstractQBXCostModel` interface, used for
+             gathering modeled costs (experimental)
         """
 
         # {{{ argument processing
@@ -469,6 +469,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         Cost model results are gathered in
         :attr:`pytential.symbolic.execution.BoundExpression.modeled_cost`
         along the way.
+
+        :arg calibration_params: a :class:`dict` of calibration parameters, mapping
+            from parameter names to calibration values.
+        :arg per_box: if *true*, cost model result will be a :class:`numpy.ndarray`
+            or :class:`pyopencl.array.Array` with shape of the number of boxes, where
+            the ith entry is the sum of the cost of all stages for box i. If *false*,
+            cost model result will be a :class:`dict`, mapping from the stage name to
+            predicted cost of the stage for all boxes.
 
         :returns: whatever :meth:`exec_compute_potential_insn_fmm` returns.
         """

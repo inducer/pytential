@@ -350,10 +350,18 @@ class CostModelMapper(EvaluationMapperBase):
     This executes everything *except* the layer potential operator. Instead of
     executing the operator, the cost model gets run and the cost
     data is collected.
+
+    .. attribute:: kernel_to_calibration_params
+
+        Can either be a :class:`str` "constant_one", which uses the constant 1.0 as
+        calibration parameters for all stages of all kernels, or be a :class:`dict`,
+        which maps from kernels to the calibration parameters, returned from
+        `estimate_kernel_specific_calibration_params`.
+
     """
 
     def __init__(self, bound_expr, actx,
-                 knl_specific_calibration_params, per_box,
+                 kernel_to_calibration_params, per_box,
                  context=None,
                  target_geometry=None,
                  target_points=None, target_normals=None, target_tangents=None):
@@ -366,7 +374,7 @@ class CostModelMapper(EvaluationMapperBase):
                 target_normals,
                 target_tangents)
 
-        self.knl_specific_calibration_params = knl_specific_calibration_params
+        self.kernel_to_calibration_params = kernel_to_calibration_params
         self.modeled_cost = {}
         self.metadata = {}
         self.per_box = per_box
@@ -376,12 +384,12 @@ class CostModelMapper(EvaluationMapperBase):
         source = bound_expr.places.get_geometry(insn.source.geometry)
         knls = frozenset(knl for knl in insn.kernels)
 
-        if (isinstance(self.knl_specific_calibration_params, str)
-                and self.knl_specific_calibration_params == "constant_one"):
+        if (isinstance(self.kernel_to_calibration_params, str)
+                and self.kernel_to_calibration_params == "constant_one"):
             calibration_params = \
                 AbstractQBXCostModel.get_unit_calibration_params()
         else:
-            calibration_params = self.knl_specific_calibration_params[knls]
+            calibration_params = self.kernel_to_calibration_params[knls]
 
         result, (cost_model_result, metadata) = \
             source.cost_model_compute_potential_insn(
@@ -909,7 +917,7 @@ class BoundExpression(object):
         """
         :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg calibration_params: either a :class:`dict` returned by
-            `estimate_knl_specific_calibration_params`, or a :class:`str`
+            `estimate_kernel_specific_calibration_params`, or a :class:`str`
             "constant_one".
         :return: a :class:`dict` mapping from instruction to per-stage cost. Each
             per-stage cost is represented by a :class:`dict` mapping from the stage
@@ -921,7 +929,7 @@ class BoundExpression(object):
             raise ValueError("unable to figure array context from arguments")
 
         cost_model_mapper = CostModelMapper(
-            self, array_context, calibration_params, False, kwargs
+            self, array_context, calibration_params, per_box=False, context=kwargs
         )
         self.code.execute(cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()
@@ -930,7 +938,7 @@ class BoundExpression(object):
         """
         :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg calibration_params: either a :class:`dict` returned by
-            `estimate_knl_specific_calibration_params`, or a :class:`str`
+            `estimate_kernel_specific_calibration_params`, or a :class:`str`
             "constant_one".
         :return: a :class:`dict` mapping from instruction to per-box cost. Each
             per-box cost is represented by a :class:`numpy.ndarray` or
@@ -940,7 +948,8 @@ class BoundExpression(object):
         array_context = _find_array_context_from_args_in_context(kwargs)
 
         cost_model_mapper = CostModelMapper(
-            self, array_context, calibration_params, True, kwargs)
+            self, array_context, calibration_params, per_box=True, context=kwargs
+        )
         self.code.execute(cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()
 

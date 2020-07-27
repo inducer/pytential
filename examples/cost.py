@@ -146,7 +146,7 @@ def calibrate_cost_model(ctx):
             model_results.append(modeled_cost)
             timing_results.append(timing_data)
 
-    calibration_params = cost_model.estimate_knl_specific_calibration_params(
+    calibration_params = cost_model.estimate_kernel_specific_calibration_params(
         model_results, timing_results, time_field_name="process_elapsed"
     )
 

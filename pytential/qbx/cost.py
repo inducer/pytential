@@ -57,6 +57,10 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
+.. note::
+
+   This module is experimental. Its interface is subject to change until this
+   notice is removed.
 
 This module helps predict the running time of each step of QBX, as an extension of
 the similar module *boxtree.cost* in boxtree.
@@ -92,7 +96,7 @@ Cost Model Classes
 Calibration (Generate Calibration Parameters)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automethod:: AbstractQBXCostModel.estimate_knl_specific_calibration_params
+.. automethod:: AbstractQBXCostModel.estimate_kernel_specific_calibration_params
 
 Evaluating
 ^^^^^^^^^^
@@ -200,10 +204,10 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
       with :meth:`qbx_cost_per_stage` or :meth:`qbx_cost_per_box`.
 
     * To calibrate the model, pass operation counts per stage together with timing
-      data to :meth:`estimate_knl_specific_calibration_params`.
+      data to :meth:`estimate_kernel_specific_calibration_params`.
 
     * To evaluate the calibrated models, pass the kernel-specific calibration
-      parameters from :meth:`estimate_knl_specific_calibration_params` to
+      parameters from :meth:`estimate_kernel_specific_calibration_params` to
       :meth:`qbx_cost_per_stage` or :meth:`qbx_cost_per_box`.
     """
 
@@ -533,8 +537,8 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             additional_stage_to_param_names=stage_to_param_names
         )
 
-    def estimate_knl_specific_calibration_params(self, model_results, timing_results,
-                                                 time_field_name="wall_elapsed"):
+    def estimate_kernel_specific_calibration_params(
+            self, model_results, timing_results, time_field_name="wall_elapsed"):
         """Get kernel-specific calibration parameters from samples of model costs and
         real costs.
 
