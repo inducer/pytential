@@ -73,9 +73,18 @@ jobs:
                 echo "- llvm-openmp" >> .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+                
+                touch .not-actually-ci-tests
+                export NO_DOCTESTS=1
 
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
+                
+                echo "---------------------------------------------------------------------------"
+                echo "which gmsh"
+                which gmsh
+                echo "gmsh dylibs"
+                otool -L $(which gmsh)
 
     pytest3symengine:
         name: Pytest on Py3 with SymEngine
