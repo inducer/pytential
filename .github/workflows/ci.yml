@@ -77,8 +77,9 @@ jobs:
                 touch .not-actually-ci-tests
                 export NO_DOCTESTS=1
 
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
-                . ./build-and-test-py-project-within-miniconda.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                . ./ci-support.sh
+                build_py_project_in_conda_env
                 
                 echo "---------------------------------------------------------------------------"
                 echo "which gmsh"
