@@ -74,18 +74,22 @@ jobs:
                 CONDA_ENVIRONMENT=.test-conda-env.yml
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
                 
-                touch .not-actually-ci-tests
-                export NO_DOCTESTS=1
-
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
                 . ./ci-support.sh
                 build_py_project_in_conda_env
                 
                 echo "---------------------------------------------------------------------------"
-                echo "which gmsh"
-                which gmsh
-                echo "gmsh dylibs"
-                otool -L $(which gmsh)
+                echo $PATH
+                function with_echo()
+                {
+                    echo "$@"
+                    "$@"
+                }
+                with_echo which conda
+                find miniforge3 -type f -iname '*gmsh*'
+                
+                with_echo which gmsh
+                with_echo otool -L $(which gmsh)
 
     pytest3symengine:
         name: Pytest on Py3 with SymEngine
