@@ -214,8 +214,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         if cost_model is None:
             from pytential.qbx.cost import QBXCostModel
-            # FIXME: Yuck
-            cost_model = QBXCostModel(self._setup_actx)
+            cost_model = QBXCostModel()
 
         self.cost_model = cost_model
 
@@ -489,11 +488,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             if per_box:
                 cost_model_result, metadata = self.cost_model.qbx_cost_per_box(
-                    geo_data, kernel, kernel_arguments, calibration_params
+                    actx.queue, geo_data, kernel, kernel_arguments,
+                    calibration_params
                 )
             else:
                 cost_model_result, metadata = self.cost_model.qbx_cost_per_stage(
-                    geo_data, kernel, kernel_arguments, calibration_params
+                    actx.queue, geo_data, kernel, kernel_arguments,
+                    calibration_params
                 )
 
             from pytools.obj_array import obj_array_vectorize

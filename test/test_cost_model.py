@@ -101,7 +101,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
 
     # {{{ Construct cost models
 
-    cl_cost_model = QBXCostModel(actx)
+    cl_cost_model = QBXCostModel()
     python_cost_model = _PythonQBXCostModel()
 
     tree = geo_data.tree()
@@ -115,25 +115,28 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
         constant_one_params["p_fmm_lev%d" % ilevel] = 10
 
     cl_cost_factors = cl_cost_model.qbx_cost_factors_for_kernels_from_model(
-        tree.nlevels, xlat_cost, constant_one_params
+        queue, tree.nlevels, xlat_cost, constant_one_params
     )
 
     python_cost_factors = python_cost_model.qbx_cost_factors_for_kernels_from_model(
-        tree.nlevels, xlat_cost, constant_one_params
+        None, tree.nlevels, xlat_cost, constant_one_params
     )
 
     # }}}
 
     # {{{ Test process_form_qbxl
 
-    cl_ndirect_sources_per_target_box = \
-        cl_cost_model.get_ndirect_sources_per_target_box(geo_data_dev.traversal())
+    cl_ndirect_sources_per_target_box = (
+        cl_cost_model.get_ndirect_sources_per_target_box(
+            queue, geo_data_dev.traversal()
+        )
+    )
 
     queue.finish()
     start_time = time.time()
 
     cl_p2qbxl = cl_cost_model.process_form_qbxl(
-        geo_data_dev, cl_cost_factors["p2qbxl_cost"],
+        queue, geo_data_dev, cl_cost_factors["p2qbxl_cost"],
         cl_ndirect_sources_per_target_box
     )
 
@@ -142,13 +145,16 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
         str(time.time() - start_time)
     ))
 
-    python_ndirect_sources_per_target_box = \
-        python_cost_model.get_ndirect_sources_per_target_box(geo_data.traversal())
+    python_ndirect_sources_per_target_box = (
+        python_cost_model.get_ndirect_sources_per_target_box(
+            queue, geo_data.traversal()
+        )
+    )
 
     start_time = time.time()
 
     python_p2qbxl = python_cost_model.process_form_qbxl(
-        geo_data, python_cost_factors["p2qbxl_cost"],
+        queue, geo_data, python_cost_factors["p2qbxl_cost"],
         python_ndirect_sources_per_target_box
     )
 
@@ -166,7 +172,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     start_time = time.time()
 
     cl_m2qbxl = cl_cost_model.process_m2qbxl(
-        geo_data_dev, cl_cost_factors["m2qbxl_cost"]
+        queue, geo_data_dev, cl_cost_factors["m2qbxl_cost"]
     )
 
     queue.finish()
@@ -177,7 +183,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     start_time = time.time()
 
     python_m2qbxl = python_cost_model.process_m2qbxl(
-        geo_data, python_cost_factors["m2qbxl_cost"]
+        queue, geo_data, python_cost_factors["m2qbxl_cost"]
     )
 
     logger.info("Python time for process_m2qbxl: {0}".format(
@@ -194,7 +200,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     start_time = time.time()
 
     cl_l2qbxl = cl_cost_model.process_l2qbxl(
-        geo_data_dev, cl_cost_factors["l2qbxl_cost"]
+        queue, geo_data_dev, cl_cost_factors["l2qbxl_cost"]
     )
 
     queue.finish()
@@ -205,7 +211,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     start_time = time.time()
 
     python_l2qbxl = python_cost_model.process_l2qbxl(
-        geo_data, python_cost_factors["l2qbxl_cost"]
+        queue, geo_data, python_cost_factors["l2qbxl_cost"]
     )
 
     logger.info("Python time for process_l2qbxl: {0}".format(
@@ -222,7 +228,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     start_time = time.time()
 
     cl_eval_qbxl = cl_cost_model.process_eval_qbxl(
-        geo_data_dev, cl_cost_factors["qbxl2p_cost"]
+        queue, geo_data_dev, cl_cost_factors["qbxl2p_cost"]
     )
 
     queue.finish()
@@ -233,7 +239,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     start_time = time.time()
 
     python_eval_qbxl = python_cost_model.process_eval_qbxl(
-        geo_data, python_cost_factors["qbxl2p_cost"]
+        queue, geo_data, python_cost_factors["qbxl2p_cost"]
     )
 
     logger.info("Python time for process_eval_qbxl: {0}".format(
@@ -250,7 +256,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     start_time = time.time()
 
     cl_eval_target_specific_qbxl = cl_cost_model.process_eval_target_specific_qbxl(
-        geo_data_dev, cl_cost_factors["p2p_tsqbx_cost"],
+        queue, geo_data_dev, cl_cost_factors["p2p_tsqbx_cost"],
         cl_ndirect_sources_per_target_box
     )
 
@@ -263,7 +269,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
 
     python_eval_target_specific_qbxl = \
         python_cost_model.process_eval_target_specific_qbxl(
-            geo_data, python_cost_factors["p2p_tsqbx_cost"],
+            queue, geo_data, python_cost_factors["p2p_tsqbx_cost"],
             python_ndirect_sources_per_target_box
         )
 
@@ -388,7 +394,7 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
 
     lpot_source = get_lpot_source(actx, dim).copy(
             _use_target_specific_qbx=use_target_specific_qbx,
-            cost_model=QBXCostModel(actx))
+            cost_model=QBXCostModel())
     places = GeometryCollection(lpot_source)
 
     density_discr = places.get_discretization(places.auto_source.geometry)
@@ -703,7 +709,7 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     actx = PyOpenCLArrayContext(queue)
 
     cost_model = QBXCostModel(
-        actx, translation_cost_model_factory=OpCountingTranslationCostModel)
+        translation_cost_model_factory=OpCountingTranslationCostModel)
 
     lpot_source = get_lpot_source(actx, dim).copy(
             cost_model=cost_model,
@@ -813,7 +819,7 @@ def test_cost_model_order_varying_by_level(ctx_factory):
         return 1
 
     lpot_source = get_lpot_source(actx, 2).copy(
-            cost_model=QBXCostModel(actx),
+            cost_model=QBXCostModel(),
             fmm_level_to_order=level_to_order_constant)
     places = GeometryCollection(lpot_source)
 
@@ -839,7 +845,7 @@ def test_cost_model_order_varying_by_level(ctx_factory):
         return metadata["nlevels"] - level
 
     lpot_source = get_lpot_source(actx, 2).copy(
-            cost_model=QBXCostModel(actx),
+            cost_model=QBXCostModel(),
             fmm_level_to_order=level_to_order_varying)
     places = GeometryCollection(lpot_source)
 
