@@ -431,7 +431,7 @@ class RefinerWrangler(TreeWranglerBase):
                 logger.debug("refiner: found {} panel(s) to refine".format(
                     npanels_to_refine - npanels_to_refine_prev))
 
-        return (out["refine_flags_updated"].get() == 1).all()
+        return (out["refine_flags_updated"] == 1).all()
 
     # }}}
 
