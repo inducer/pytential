@@ -328,7 +328,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         })
 
         if queue:
-            self.cost_factors_to_dev(cost_factors, queue)
+            cost_factors = self.cost_factors_to_dev(cost_factors, queue)
 
         return cost_factors
 
