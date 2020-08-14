@@ -357,6 +357,29 @@ class SphereTestCase(IntegralEquationTestCase):
                 uniform_refinement_rounds=resolution)
 
 
+class TorusTestCase(IntegralEquationTestCase):
+    name = "torus"
+
+    # qbx
+    qbx_order = 4
+    target_order = 7
+    use_refinement = True
+
+    # geometry
+    r_major = 10.0
+    r_minor = 2.0
+
+    # test case
+    resolutions = [0, 1, 2]
+
+    def get_mesh(self, resolution, mesh_order):
+        from meshmode.mesh.generation import generate_torus
+        mesh = generate_torus(self.r_major, self.r_minor, order=mesh_order)
+
+        from meshmode.mesh.refinement import refine_uniformly
+        return refine_uniformly(mesh, resolution)
+
+
 class MergedCubesTestCase(Helmholtz3DTestCase):
     name = "merged_cubes"
 
