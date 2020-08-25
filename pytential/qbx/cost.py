@@ -307,7 +307,8 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         :arg context: a :class:`dict` mapping from the symbolic names of parameters
             to their values, serving as context when evaluating symbolic expressions
             in *xlat_cost*.
-        :return: a :class:`dict`, the translation cost of each step in FMM and QBX.
+        :return: a :class:`dict`, mapping from stage names to the translation costs
+            of those stages in FMM and QBX.
         """
         cost_factors = self.fmm_cost_factors_for_kernels_from_model(
             queue, nlevels, xlat_cost, context
