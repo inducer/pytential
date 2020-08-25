@@ -49,7 +49,6 @@ if sys.version_info >= (3, 0):
 else:
     Template = partial(Template, strict_undefined=True, disable_unicode=True)
 
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -61,7 +60,7 @@ __doc__ = """
    notice is removed.
 
 This module helps predict the running time of each step of QBX, as an extension of
-the similar module *boxtree.cost* in boxtree.
+the similar module :mod:`boxtree.cost` in boxtree.
 
 :class:`QBXTranslationCostModel` describes the translation or evaluation cost of a
 single operation. For example, *m2qbxl* describes the cost for translating a single
@@ -72,8 +71,8 @@ kernel-specific calibration parameter to compute the total cost of each step of 
 in each box. :class:`QBXCostModel` is one implementation of
 :class:`AbstractQBXCostModel` using OpenCL.
 
-:file:`examples/cost.py` demostrates how the calibration and evaluation are
-performed.
+:file:`examples/cost.py` in the source distribution demonstrates how the calibration
+and evaluation are performed.
 
 Translation Cost of a Single Operation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -305,8 +304,9 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
             using this queue.
         :arg nlevels: the number of tree levels.
         :arg xlat_cost: a :class:`QBXTranslationCostModel`.
-        :arg context: a :class:`dict` of parameters passed as context when
-            evaluating symbolic expressions in *xlat_cost*.
+        :arg context: a :class:`dict` mapping from the symbolic names of parameters
+            to their values, serving as context when evaluating symbolic expressions
+            in *xlat_cost*.
         :return: a :class:`dict`, the translation cost of each step in FMM and QBX.
         """
         cost_factors = self.fmm_cost_factors_for_kernels_from_model(
@@ -507,21 +507,17 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
     @staticmethod
     def get_unit_calibration_params():
-        return dict(
-            c_l2l=1.0,
-            c_l2p=1.0,
-            c_m2l=1.0,
-            c_m2m=1.0,
-            c_m2p=1.0,
-            c_p2l=1.0,
-            c_p2m=1.0,
-            c_p2p=1.0,
+        calibration_params = AbstractFMMCostModel.get_unit_calibration_params()
+
+        calibration_params.update(dict(
             c_p2qbxl=1.0,
             c_p2p_tsqbx=1.0,
             c_qbxl2p=1.0,
             c_m2qbxl=1.0,
             c_l2qbxl=1.0
-        )
+        ))
+
+        return calibration_params
 
     _QBX_STAGE_TO_CALIBRATION_PARAMETER = {
         "form_global_qbx_locals": "c_p2qbxl",
@@ -553,7 +549,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         :arg timing_results: a :class:`list` of timing data. Each timing data can be
             obtained from `BoundExpression.eval`.
         :arg time_field_name: a :class:`str`, the field name from the timing result.
-            Usually this can be "wall_elapsed" or "process_elapsed".
+            Usually this can be ``"wall_elapsed"`` or ``"process_elapsed"``.
         :return: a :class:`dict` which maps kernels to calibration parameters.
         """
         cost_per_kernel = {}
@@ -830,7 +826,9 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
     def __init__(
             self,
             translation_cost_model_factory=make_pde_aware_translation_cost_model):
-        """
+        """This cost model is a redundant implementation used for testing. It should
+        not be used outside of tests for :mod:`pytential`.
+
         :arg translation_cost_model_factory: a function, which takes tree dimension
             and the number of tree levels as arguments, returns an object of
             :class:`TranslationCostModel`.
@@ -942,7 +940,6 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
         if not isinstance(geo_data, ToHostTransferredGeoDataWrapper):
             assert isinstance(geo_data, QBXFMMGeometryData)
             geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
-            queue.finish()
 
         return AbstractQBXCostModel.qbx_cost_per_box(
             self, queue, geo_data, kernel, kernel_arguments, calibration_params

@@ -110,7 +110,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             "use if possible".
         :arg cost_model: Either *None* or an object implementing the
              :class:`~pytential.qbx.cost.AbstractQBXCostModel` interface, used for
-             gathering modeled costs (experimental)
+             gathering modeled costs if provided (experimental)
         """
 
         # {{{ argument processing
