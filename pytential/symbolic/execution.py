@@ -124,6 +124,11 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 cl.array.max(grp_ary).get()[()]
                 for grp_ary in self.rec(expr.operand))
 
+    def map_node_min(self, expr):
+        return min(
+                cl.array.min(grp_ary).get()[()]
+                for grp_ary in self.rec(expr.operand))
+
     def _map_elementwise_reduction(self, reduction_name, expr):
         @memoize_in(self.places, "elementwise_node_"+reduction_name)
         def node_knl():

@@ -165,6 +165,7 @@ Elementary numerics
 .. autoclass:: NumReferenceDerivative
 .. autoclass:: NodeSum
 .. autoclass:: NodeMax
+.. autoclass:: NodeMin
 .. autoclass:: ElementwiseSum
 .. autoclass:: ElementwiseMax
 .. autofunction:: integral
@@ -1178,6 +1179,12 @@ class NodeMax(SingleScalarOperandExpression):
     """Implements a global maximum over all discretization nodes."""
 
     mapper_method = "map_node_max"
+
+
+class NodeMin(SingleScalarOperandExpression):
+    """Implements a global minimum over all discretization nodes."""
+
+    mapper_method = "map_node_min"
 
 
 @_deprecate_kwargs("where", "dofdesc")
