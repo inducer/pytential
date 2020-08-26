@@ -191,7 +191,7 @@ def make_taylor_translation_cost_model(dim, nlevels):
 # }}}
 
 
-# {{{ cost model
+# {{{ abstract cost model
 
 class AbstractQBXCostModel(AbstractFMMCostModel):
     """An interface to obtain both QBX operation counts and calibrated (e.g. in
@@ -213,61 +213,57 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
                           ndirect_sources_per_target_box):
         """
         :arg queue: a :class:`pyopencl.CommandQueue` object.
-        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object or
-            similar object in the host memory.
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg p2qbxl_cost: a :class:`numpy.float64` constant representing the cost of
             adding a source to a QBX local expansion.
         :arg ndirect_sources_per_target_box: a :class:`numpy.ndarray` or
-            :class:`pyopencl.array.Array` of shape (ntarget_boxes,), with the ith
-            entry representing the number of direct evaluation sources (list 1,
-            list 3 close and list 4 close) for target_boxes[i].
+            :class:`pyopencl.array.Array` of shape ``(ntarget_boxes,)``, with the
+            *i*th entry representing the number of direct evaluation sources (list 1,
+            list 3 close and list 4 close) for ``target_boxes[i]``.
         :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
-            (ntarget_boxes,), with the ith entry representing the cost of adding all
-            direct evaluation sources to QBX local expansions of centers in
-            target_boxes[i].
+            ``(ntarget_boxes,)``, with the *i*th entry representing the cost of
+            adding all direct evaluation sources to QBX local expansions of centers
+            in ``target_boxes[i]``.
         """
         pass
 
     @abstractmethod
     def process_m2qbxl(self, queue, geo_data, m2qbxl_cost):
         """
-        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object or
-            similar object in the host memory.
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg m2qbxl_cost: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array`
-            of shape (nlevels,) where the ith entry represents the translation cost
-            from multipole expansion at level i to a QBX center.
+            of shape ``(nlevels,)`` where the *i*th entry represents the translation
+            cost from multipole expansion at level *i* to a QBX center.
         :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
-            (ntarget_boxes,), with the ith entry representing the cost of translating
-            multipole expansions of list 3 boxes at all source levels to all QBX
-            centers in target_boxes[i].
+            ``(ntarget_boxes,)``, with the *i*th entry representing the cost of
+            translating multipole expansions of list 3 boxes at all source levels to
+            all QBX centers in ``target_boxes[i]``.
         """
         pass
 
     @abstractmethod
     def process_l2qbxl(self, queue, geo_data, l2qbxl_cost):
         """
-        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object or
-            similar object in the host memory.
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg l2qbxl_cost: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array`
-            of shape (nlevels,) where the ith entry represents the translation cost
-            from a box local expansion to a QBX local expansion.
+            of shape ``(nlevels,)`` where each entry represents the translation
+            cost from a box local expansion to a QBX local expansion.
         :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
-            (ntarget_boxes,), with the ith entry representing the cost of translating
-            box local expansions to all QBX local expansions.
+            ``(ntarget_boxes,)``, with each entry representing the cost of
+            translating box local expansions to all QBX local expansions.
         """
         pass
 
     @abstractmethod
     def process_eval_qbxl(self, queue, geo_data, qbxl2p_cost):
         """
-        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object or
-            similar object in the host memory.
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg qbxl2p_cost: a :class:`numpy.float64` constant, representing the
             evaluation cost of a target from its QBX local expansion.
         :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
-            (ntarget_boxes,), with the ith entry representing the cost of evaluating
-            all targets associated with QBX centers in target_boxes[i] from QBX local
-            expansions.
+            ``(ntarget_boxes,)``, with the *i*th entry representing the cost of
+            evaluating all targets associated with QBX centers in ``target_boxes[i]``
+            from QBX local expansions.
         """
         pass
 
@@ -275,19 +271,18 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
     def process_eval_target_specific_qbxl(self, queue, geo_data, p2p_tsqbx_cost,
                                           ndirect_sources_per_target_box):
         """
-        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object or
-            similar object in the host memory.
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg p2p_tsqbx_cost: a :class:`numpy.float64` constant representing the
             evaluation cost of a target from a direct evaluation source of the target
             box containing the expansion center.
         :arg ndirect_sources_per_target_box: a :class:`numpy.ndarray` or
-            :class:`pyopencl.array.Array` of shape (ntarget_boxes,), with the ith
-            entry representing the number of direct evaluation sources (list 1,
-            list 3 close and list 4 close) for target_boxes[i].
+            :class:`pyopencl.array.Array` of shape ``(ntarget_boxes,)``, with the
+            *i*th entry representing the number of direct evaluation sources
+            (list 1, list 3 close and list 4 close) for ``target_boxes[i]``.
         :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
-            (ntarget_boxes,), with the ith entry representing the evaluation cost of
-            all targets associated with centers in target_boxes[i] from the direct
-            evaluation sources of target_boxes[i].
+            ``(ntarget_boxes,)``, with the *i*th entry representing the evaluation
+            cost of all targets associated with centers in ``target_boxes[i]`` from
+            the direct evaluation sources of ``target_boxes[i]``.
         """
         pass
 
@@ -661,12 +656,12 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
         """
         :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
-        :arg weights: a :class:`pyopencl.array.Array` of shape (ncenters,) with
+        :arg weights: a :class:`pyopencl.array.Array` of shape ``(ncenters,)`` with
             particle_id_dtype, the weight of each center in user order.
-        :return: a :class:`pyopencl.array.Array` of shape (ntarget_boxes,) with type
-            *particle_id_dtype* where the ith entry represents the number of
-            `geo_data.global_qbx_centers` in target_boxes[i], optionally weighted by
-            *weights*.
+        :return: a :class:`pyopencl.array.Array` of shape ``(ntarget_boxes,)`` with
+            type *particle_id_dtype* where the *i*th entry represents the number of
+            `geo_data.global_qbx_centers` in ``target_boxes[i]``, optionally weighted
+            by *weights*.
         """
         traversal = geo_data.traversal()
         tree = geo_data.tree()
