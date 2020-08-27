@@ -115,13 +115,24 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 expr)
 
     def map_node_sum(self, expr):
+        # FIXME: make less CL specific
+        queue = self.array_context.queue
         return sum(
-                cl.array.sum(grp_ary).get()[()]
+                cl.array.sum(grp_ary, queue=queue).get()[()]
                 for grp_ary in self.rec(expr.operand))
 
     def map_node_max(self, expr):
+        # FIXME: make less CL specific
+        queue = self.array_context.queue
         return max(
-                cl.array.max(grp_ary).get()[()]
+                cl.array.max(grp_ary, queue=queue).get()[()]
+                for grp_ary in self.rec(expr.operand))
+
+    def map_node_min(self, expr):
+        # FIXME: make less CL specific
+        queue = self.array_context.queue
+        return min(
+                cl.array.min(grp_ary, queue=queue).get()[()]
                 for grp_ary in self.rec(expr.operand))
 
     def _map_elementwise_reduction(self, reduction_name, expr):

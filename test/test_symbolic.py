@@ -224,6 +224,8 @@ def test_layer_potential_construction(lpot_class, ambient_dim=2):
 # }}}
 
 
+# {{{ test interpolation
+
 @pytest.mark.parametrize(("name", "source_discr_stage", "target_granularity"), [
     ("default_explicit", sym.QBX_SOURCE_STAGE1, sym.GRANULARITY_NODE),
     ("stage2", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_NODE),
@@ -292,6 +294,56 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
         assert len(sigma_target_interp) == 2 * len(sigma_target)
     else:
         raise ValueError("unknown test case name: {}".format(name))
+
+# }}}
+
+
+# {{{ test node reductions
+
+def test_node_reduction(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    actx = PyOpenCLArrayContext(queue)
+
+    # {{{ build discretization
+
+    target_order = 4
+    nelements = 32
+
+    mesh = make_curve_mesh(starfish,
+            np.linspace(0.0, 1.0, nelements + 1),
+            target_order)
+    discr = Discretization(actx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+
+    # }}}
+
+    # {{{ test
+
+    # create a shuffled [1, nelements + 1] array
+    ary = []
+    el_nr_base = 0
+    for grp in discr.groups:
+        x = 1 + np.arange(el_nr_base, grp.nelements)
+        np.random.shuffle(x)
+
+        ary.append(actx.freeze(actx.from_numpy(x.reshape(-1, 1))))
+        el_nr_base += grp.nelements
+
+    from meshmode.dof_array import DOFArray
+    ary = DOFArray.from_list(actx, ary)
+
+    for func, expected in [
+            (sym.NodeSum, nelements * (nelements + 1) // 2),
+            (sym.NodeMax, nelements),
+            (sym.NodeMin, 1),
+            ]:
+        r = bind(discr, func(sym.var("x")))(actx, x=ary)
+        assert abs(r - expected) < 1.0e-15, r
+
+    # }}}
+
+# }}}
 
 
 # You can test individual routines by typing
