@@ -1,6 +1,8 @@
 Welcome to pytential's documentation!
 =====================================
 
+.. automodule:: pytential
+
 :mod:`pytential` helps you accurately evaluate layer
 potentials (and, sooner or later, volume potentials).
 It also knows how to set up meshes and solve integral

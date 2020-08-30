@@ -498,7 +498,7 @@ class MatVecOp(object):
 def _prepare_domains(nresults, places, domains, default_domain):
     """
     :arg nresults: number of results.
-    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`~pytential.GeometryCollection`.
     :arg domains: recommended domains.
     :arg default_domain: default value for domains which are not provided.
 
@@ -550,7 +550,7 @@ def _prepare_auto_where(auto_where, places=None):
 
 def _prepare_expr(places, expr, auto_where=None):
     """
-    :arg places: :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg places: :class:`~pytential.GeometryCollection`.
     :arg expr: a symbolic expression.
     :return: processed symbolic expressions, tagged with the appropriate
         `where` identifier from places, etc.
@@ -612,8 +612,8 @@ class GeometryCollection(object):
     .. automethod:: copy
     .. automethod:: merge
 
-    Refinement of :class:`QBXLayerPotentialSource` entries is performed
-    on demand, or it may be performed by explcitly calling
+    Refinement of :class:`pytential.qbx.QBXLayerPotentialSource` entries is
+    performed on demand, or it may be performed by explcitly calling
     :func:`pytential.qbx.refinement.refine_geometry_collection`,
     which allows more customization of the refinement process through
     parameters.
@@ -624,7 +624,7 @@ class GeometryCollection(object):
         :arg places: a scalar, tuple of or mapping of symbolic names to
             geometry objects. Supported objects are
             :class:`~pytential.source.PotentialSource`,
-            :class:`~potential.target.TargetBase` and
+            :class:`~pytential.target.TargetBase` and
             :class:`~meshmode.discretization.Discretization`. If this is
             a mapping, the keys that are strings must be valid Python identifiers.
         :arg auto_where: location identifier for each geometry object, used
@@ -835,14 +835,15 @@ class GeometryCollection(object):
 
 class BoundExpression(object):
     """An expression readied for evaluation by binding it to a
-    :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :class:`~pytential.GeometryCollection`.
 
     .. automethod :: get_modeled_cost
     .. automethod :: scipy_op
     .. automethod :: eval
     .. automethod :: __call__
+    .. attribute :: places
 
-    Created by calling :func:`bind`.
+    Created by calling :func:`pytential.bind`.
     """
 
     def __init__(self, places, sym_op_expr):
@@ -996,7 +997,7 @@ class BoundExpression(object):
 
 def bind(places, expr, auto_where=None):
     """
-    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`pytential.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
     :arg auto_where: for simple source-to-self or source-to-target
@@ -1005,7 +1006,7 @@ def bind(places, expr, auto_where=None):
         form :mod:`pytential.symbolic.primitives` (aka :mod:`pytential.sym`).
         Multiple expressions can be combined into one object to pass here
         in the form of a :mod:`numpy` object array
-    :returns: a :class:`BoundExpression`
+    :returns: a :class:`pytential.symbolic.execution.BoundExpression`
     """
     if not isinstance(places, GeometryCollection):
         places = GeometryCollection(places, auto_where=auto_where)
@@ -1053,7 +1054,7 @@ def build_matrix(actx, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
     :arg actx: a :class:`~meshmode.array_context.ArrayContext`.
-    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`pytential.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.
     :arg exprs: an array of expressions corresponding to the output block

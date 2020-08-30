@@ -106,8 +106,8 @@ class QBXExpansionWrangler(SumpyExpansionWrangler):
     :class:`boxtree.fmm.ExpansionWranglerInterface` for the QBX FMM.
     The conventional ('point') FMM is carried out on a filtered
     set of targets
-    (see :meth:`pytential.discretization.qbx.geometry.\
-QBXFMMGeometryData.non_qbx_box_target_lists`),
+    (see :meth:`pytential.qbx.geometry.QBXFMMGeometryData.\
+non_qbx_box_target_lists`),
     and thus all *non-QBX* potential arrays handled by this wrangler don't
     include all targets in the tree, just the non-QBX ones.
 
@@ -391,9 +391,9 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
         traversal=None):
     """Top-level driver routine for the QBX fast multipole calculation.
 
-    :arg geo_data: A :class:`QBXFMMGeometryData` instance.
+    :arg geo_data: A :class:`pytential.qbx.geometry.QBXFMMGeometryData` instance.
     :arg expansion_wrangler: An object exhibiting the
-        :class:`ExpansionWranglerInterface`.
+        :class:`boxtree.fmm.ExpansionWranglerInterface`.
     :arg src_weights: Source 'density/weights/charges'.
         Passed unmodified to *expansion_wrangler*.
     :arg timing_data: Either *None* or a dictionary that collects

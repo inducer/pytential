@@ -92,7 +92,7 @@ Geometry description code container
 
 class target_state(Enum):  # noqa
     """This enumeration contains special values that are used in
-    the array returned by :meth:`QBXFMMGeometryData.target_to_center`.
+    the array returned by :meth:`QBXFMMGeometryData.user_target_to_center`.
 
     .. attribute:: NO_QBX_NEEDED
 
@@ -322,7 +322,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
     .. attribute:: places
 
-        A :class:`~pytential.symbolic.execution.GeometryCollection`
+        A :class:`~pytential.GeometryCollection`
         containing the :class:`~pytential.qbx.QBXLayerPotentialSource`.
 
     .. attribute:: source_dd
@@ -338,9 +338,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         a list of tuples ``(discr, sides)``, where
         *discr* is a
-        :class:`pytential.discretization.Discretization`
+        :class:`meshmode.discretization.Discretization`
         or a
-        :class:`pytential.discretization.target.TargetBase` instance, and
+        :class:`pytential.target.TargetBase` instance, and
         *sides* is an array of (:class:`numpy.int8`) side requests for each
         target.
 
@@ -813,7 +813,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
     @memoize_method
     @log_process(logger)
     def center_to_tree_targets(self):
-        """Return a :class:`CenterToTargetList`. See :meth:`target_to_center`
+        """Return a :class:`CenterToTargetList`. See :meth:`user_target_to_center`
         for the reverse look-up table with targets in user order.
 
         |cached|

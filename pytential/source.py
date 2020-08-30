@@ -205,10 +205,6 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     .. attribute:: real_dtype
     .. attribute:: complex_dtype
 
-    .. rubric:: Execution
-
-    .. automethod:: cost_model_compute_potential_insn
-    .. automethod:: exec_compute_potential_insn
     """
 
     def __init__(self, density_discr):

@@ -104,7 +104,6 @@ Placeholders
 ^^^^^^^^^^^^
 
 .. autoclass:: var
-.. autofunction:: make_sym_vector
 .. autofunction:: make_sym_mv
 .. autofunction:: make_sym_surface_mv
 
@@ -222,7 +221,6 @@ Layer potentials
 .. autofunction:: n_dot
 .. autofunction:: n_cross
 .. autofunction:: curl
-.. autofunction:: pretty
 
 Pretty-printing expressions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -264,21 +262,21 @@ class DEFAULT_TARGET:  # noqa: N801
 
 class QBX_SOURCE_STAGE1:   # noqa: N801
     """Symbolic identifier for the Stage 1 discretization of a
-    :class:`pytential.source.QBXLayerPotentialSource`.
+    :class:`pytential.qbx.QBXLayerPotentialSource`.
     """
     pass
 
 
 class QBX_SOURCE_STAGE2:   # noqa: N801
     """Symbolic identifier for the Stage 2 discretization of a
-    :class:`pytential.source.QBXLayerPotentialSource`.
+    :class:`pytential.qbx.QBXLayerPotentialSource`.
     """
     pass
 
 
 class QBX_SOURCE_QUAD_STAGE2:   # noqa: N801
     """Symbolic identifier for the upsampled Stage 2 discretization of a
-    :class:`pytential.source.QBXLayerPotentialSource`.
+    :class:`pytential.qbx.QBXLayerPotentialSource`.
     """
     pass
 

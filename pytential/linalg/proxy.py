@@ -158,7 +158,7 @@ class ProxyGenerator(object):
     r"""
     .. attribute:: places
 
-        A :class:`~pytential.symbolic.execution.GeometryCollection`
+        A :class:`~pytential.GeometryCollection`
         containing the geometry on which the proxy balls are generated.
 
     .. attribute:: nproxy
@@ -456,7 +456,7 @@ def gather_block_interaction_points(actx, places, source_dd, indices,
       do not belong to the given range, which model nearby interactions.
       These are constructed with :func:`gather_block_neighbor_points`.
 
-    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg places: a :class:`~pytential.GeometryCollection`.
     :arg source_dd: geometry in *places* for which to generate the
         interaction points. This is a
         :class:`~pytential.symbolic.primitives.DOFDescriptor` describing
