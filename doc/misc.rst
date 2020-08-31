@@ -103,8 +103,8 @@ colon-separated list of module names. Example usage::
     PYTENTIAL_LOG_DEBUG=pytential:loopy PYTENTIAL_LOG_INFO=boxtree python test.py
 
 This sets the logging level of :mod:`pytential` and :mod:`loopy` to
-:attr:`logging.DEBUG`, and the logging level of :mod:`boxtree` to
-:attr:`logging.INFO`.
+``logging.DEBUG``, and the logging level of :mod:`boxtree` to
+``logging.INFO``.
 
 Note: This feature is incompatible with :func:`logging.basicConfig()`.
 
@@ -167,3 +167,12 @@ Andreas Klöckner's work on :mod:`pytential` was supported in part by
 AK also gratefully acknowledges a hardware gift from Nvidia Corporation.  The
 views and opinions expressed herein do not necessarily reflect those of the
 funding agencies.
+
+Cross-References to Other Documentation
+=======================================
+
+.. currentmodule:: numpy
+
+.. class:: int8
+
+    See :class:`numpy.generic`.

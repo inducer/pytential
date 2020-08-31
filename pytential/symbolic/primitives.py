@@ -104,7 +104,6 @@ Placeholders
 ^^^^^^^^^^^^
 
 .. autoclass:: var
-.. autofunction:: make_sym_vector
 .. autofunction:: make_sym_mv
 .. autofunction:: make_sym_surface_mv
 
@@ -222,7 +221,6 @@ Layer potentials
 .. autofunction:: n_dot
 .. autofunction:: n_cross
 .. autofunction:: curl
-.. autofunction:: pretty
 
 Pretty-printing expressions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -264,21 +262,21 @@ class DEFAULT_TARGET:  # noqa: N801
 
 class QBX_SOURCE_STAGE1:   # noqa: N801
     """Symbolic identifier for the Stage 1 discretization of a
-    :class:`pytential.source.QBXLayerPotentialSource`.
+    :class:`pytential.qbx.QBXLayerPotentialSource`.
     """
     pass
 
 
 class QBX_SOURCE_STAGE2:   # noqa: N801
     """Symbolic identifier for the Stage 2 discretization of a
-    :class:`pytential.source.QBXLayerPotentialSource`.
+    :class:`pytential.qbx.QBXLayerPotentialSource`.
     """
     pass
 
 
 class QBX_SOURCE_QUAD_STAGE2:   # noqa: N801
     """Symbolic identifier for the upsampled Stage 2 discretization of a
-    :class:`pytential.source.QBXLayerPotentialSource`.
+    :class:`pytential.qbx.QBXLayerPotentialSource`.
     """
     pass
 
@@ -650,7 +648,7 @@ class NumReferenceDerivative(DiscretizationProperty):
 
 @_deprecate_kwargs("where", "dofdesc")
 def reference_jacobian(func, output_dim, dim, dofdesc=None):
-    """Return a :class:`np.array` representing the Jacobian of a vector function
+    """Return a :class:`numpy.ndarray` representing the Jacobian of a vector function
     with respect to the reference coordinates.
     """
     jac = np.zeros((output_dim, dim), np.object)
@@ -665,7 +663,7 @@ def reference_jacobian(func, output_dim, dim, dofdesc=None):
 
 @_deprecate_kwargs("where", "dofdesc")
 def parametrization_derivative_matrix(ambient_dim, dim, dofdesc=None):
-    """Return a :class:`np.array` representing the derivative of the
+    """Return a :class:`numpy.ndarray` representing the derivative of the
     reference-to-global parametrization.
     """
 
@@ -1439,9 +1437,7 @@ class IntG(Expression):
         """*target_derivatives* and later arguments should be considered
         keyword-only.
 
-        :arg kernel: a kernel as accepted by
-            :func:`sumpy.kernel.to_kernel_and_args`,
-            likely a :class:`sumpy.kernel.Kernel`.
+        :arg kernel: an instance of :class:`sumpy.kernel.Kernel`.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
             QBX center on the "+" side of the boundary. -1 for the other side.
             Evaluation at a target with a value of +/- 1 in *qbx_forced_limit*

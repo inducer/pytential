@@ -6,7 +6,7 @@ QBX discretization
 
 To compute a layer potential as an an end user, create a
 :class:`meshmode.discretization.Discretization`
-with a :class:`InterpolatoryQuadratureSimplexGroupFactory`
+with a :class:`meshmode.discretization.poly_element.InterpolatoryQuadratureSimplexGroupFactory`
 as a discretization for the density.
 
 Then create :class:`pytential.qbx.QBXLayerPotentialSource`,
