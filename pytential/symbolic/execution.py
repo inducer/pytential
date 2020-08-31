@@ -1003,7 +1003,7 @@ def bind(places, expr, auto_where=None):
     :arg auto_where: for simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.
     :arg expr: one or multiple expressions consisting of primitives
-        form :mod:`pytential.symbolic.primitives` (aka :mod:`pytential.sym`).
+        form :mod:`pytential.symbolic.primitives` (aka ``pytential.sym``).
         Multiple expressions can be combined into one object to pass here
         in the form of a :mod:`numpy` object array
     :returns: a :class:`pytential.symbolic.execution.BoundExpression`

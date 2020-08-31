@@ -648,7 +648,7 @@ class NumReferenceDerivative(DiscretizationProperty):
 
 @_deprecate_kwargs("where", "dofdesc")
 def reference_jacobian(func, output_dim, dim, dofdesc=None):
-    """Return a :class:`np.array` representing the Jacobian of a vector function
+    """Return a :class:`numpy.ndarray` representing the Jacobian of a vector function
     with respect to the reference coordinates.
     """
     jac = np.zeros((output_dim, dim), np.object)
@@ -663,7 +663,7 @@ def reference_jacobian(func, output_dim, dim, dofdesc=None):
 
 @_deprecate_kwargs("where", "dofdesc")
 def parametrization_derivative_matrix(ambient_dim, dim, dofdesc=None):
-    """Return a :class:`np.array` representing the derivative of the
+    """Return a :class:`numpy.ndarray` representing the derivative of the
     reference-to-global parametrization.
     """
 
