@@ -529,7 +529,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
     @memoize_method
     def tree(self):
-        """Build and return a :class:`boxtree.tree.Tree`
+        """Build and return a :class:`boxtree.Tree`
         for this source with these targets.
 
         |cached|

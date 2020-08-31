@@ -1437,9 +1437,7 @@ class IntG(Expression):
         """*target_derivatives* and later arguments should be considered
         keyword-only.
 
-        :arg kernel: a kernel as accepted by
-            :func:`sumpy.kernel.to_kernel_and_args`,
-            likely a :class:`sumpy.kernel.Kernel`.
+        :arg kernel: an instance of :class:`sumpy.kernel.Kernel`.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
             QBX center on the "+" side of the boundary. -1 for the other side.
             Evaluation at a target with a value of +/- 1 in *qbx_forced_limit*

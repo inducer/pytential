@@ -873,8 +873,8 @@ class BoundExpression(object):
             :class:`~pytential.symbolic.primitives.DEFAULT_TARGET` is required
             to be a key in :attr:`places`.
         :returns: An object that (mostly) satisfies the
-            :class:`scipy.sparse.linalg.LinearOperator` protocol, except for accepting
-            and returning :class:`pyopencl.array.Array` arrays.
+            :class:`scipy.sparse.linalg.LinearOperator` protocol, except for
+            accepting and returning :class:`pyopencl.array.Array` arrays.
         """
 
         if isinstance(self.code.result, np.ndarray):
