@@ -48,10 +48,7 @@ from pytential.qbx.cost import (
 import time
 
 import logging
-import os
-logging.basicConfig(level=os.environ.get("LOGLEVEL", "WARNING"))
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 # {{{ Compare the time and result of OpenCL implementation and Python implementation
@@ -867,8 +864,15 @@ def test_cost_model_order_varying_by_level(ctx_factory):
 
 # You can test individual routines by typing
 # $ python test_cost_model.py 'test_routine()'
+# You can specify the log level by setting 'LOGLEVEL' enviroment variable, for
+# example
+# $ LOGLEVEL=INFO python test_cost_model.py 'test_compare_cl_and_py_cost_model(
+# $     cl.create_some_context)'
 
 if __name__ == "__main__":
+    import os
+    logging.basicConfig(level=os.environ.get("LOGLEVEL", "WARNING"))
+
     import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
