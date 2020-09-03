@@ -280,4 +280,4 @@ intersphinx_mapping = {
     'https://documen.tician.de/loopy/': None,
     'https://documen.tician.de/sumpy/': None,
     }
-autoclass_content = "both"
+autoclass_content = "class"

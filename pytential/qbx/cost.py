@@ -40,7 +40,8 @@ from functools import partial
 import sys
 
 from boxtree.cost import (
-    FMMTranslationCostModel, AbstractFMMCostModel, FMMCostModel, _PythonFMMCostModel
+    FMMTranslationCostModel, AbstractFMMCostModel as BaseAbstractFMMCostModel,
+    FMMCostModel, _PythonFMMCostModel
 )
 from abc import abstractmethod
 
@@ -193,7 +194,7 @@ def make_taylor_translation_cost_model(dim, nlevels):
 
 # {{{ abstract cost model
 
-class AbstractQBXCostModel(AbstractFMMCostModel):
+class AbstractQBXCostModel(BaseAbstractFMMCostModel):
     """An interface to obtain both QBX operation counts and calibrated (e.g. in
     seconds) cost estimates.
 
@@ -503,7 +504,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
 
     @staticmethod
     def get_unit_calibration_params():
-        calibration_params = AbstractFMMCostModel.get_unit_calibration_params()
+        calibration_params = super().get_unit_calibration_params()
 
         calibration_params.update(dict(
             c_p2qbxl=1.0,
@@ -529,7 +530,7 @@ class AbstractQBXCostModel(AbstractFMMCostModel):
         stage_to_param_names = self._QBX_STAGE_TO_CALIBRATION_PARAMETER.copy()
         stage_to_param_names.update(additional_stage_to_param_names)
 
-        return AbstractFMMCostModel.estimate_calibration_params(
+        return super().estimate_calibration_params(
             self, model_results, timing_results, time_field_name=time_field_name,
             additional_stage_to_param_names=stage_to_param_names
         )
