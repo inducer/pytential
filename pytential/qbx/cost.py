@@ -3,6 +3,7 @@ from __future__ import division, absolute_import
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2018 Matt Wala
+Copyright (C) 2019 Hao Gao
 """
 
 __license__ = """
@@ -25,17 +26,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections import OrderedDict
-
-import logging
-
+from six.moves import range
 import numpy as np
 import pyopencl as cl
-from six.moves import range
+import pyopencl.array  # noqa: F401
+from pyopencl.array import take
+from pyopencl.elementwise import ElementwiseKernel
+from pyopencl.tools import dtype_to_ctype
+from mako.template import Template
+from pymbolic import var, evaluate
+from pytools import memoize_method
+from functools import partial
+import sys
 
-from pytools import log_process
-from pymbolic import var
+from boxtree.cost import (
+    FMMTranslationCostModel, AbstractFMMCostModel, FMMCostModel, _PythonFMMCostModel
+)
+from abc import abstractmethod
 
+if sys.version_info >= (3, 0):
+    Template = partial(Template, strict_undefined=True)
+else:
+    Template = partial(Template, strict_undefined=True, disable_unicode=True)
+
+import logging
 logger = logging.getLogger(__name__)
 
 
@@ -45,31 +59,72 @@ __doc__ = """
    This module is experimental. Its interface is subject to change until this
    notice is removed.
 
-.. autoclass:: CostModel
-.. autoclass:: ParametrizedCosts
+This module helps predict the running time of each step of QBX, as an extension of
+the similar module :mod:`boxtree.cost` in boxtree.
 
-.. autoclass:: TranslationCostModel
+:class:`QBXTranslationCostModel` describes the translation or evaluation cost of a
+single operation. For example, *m2qbxl* describes the cost for translating a single
+multipole expansion to a QBX local expansion.
 
-.. autofunction:: pde_aware_translation_cost_model
-.. autofunction:: taylor_translation_cost_model
+:class:`AbstractQBXCostModel` uses :class:`QBXTranslationCostModel` and
+kernel-specific calibration parameter to compute the total cost of each step of QBX
+in each box. :class:`QBXCostModel` is one implementation of
+:class:`AbstractQBXCostModel` using OpenCL.
 
-.. autofunction:: estimate_calibration_params
+:file:`examples/cost.py` in the source distribution demonstrates how the calibration
+and evaluation are performed.
+
+Translation Cost of a Single Operation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: QBXTranslationCostModel
+
+.. autofunction:: make_pde_aware_translation_cost_model
+
+.. autofunction:: make_taylor_translation_cost_model
+
+Cost Model Classes
+^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: AbstractQBXCostModel
+
+.. autoclass:: QBXCostModel
+
+Calibration (Generate Calibration Parameters)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automethod:: AbstractQBXCostModel.estimate_kernel_specific_calibration_params
+
+Evaluating
+^^^^^^^^^^
+
+.. automethod:: AbstractQBXCostModel.qbx_cost_per_stage
+
+.. automethod:: AbstractQBXCostModel.qbx_cost_per_box
+
+To get the cost from `BoundExpression`, refer to
+:meth:`pytential.symbolic.execution.BoundExpression.cost_per_stage` and
+:meth:`pytential.symbolic.execution.BoundExpression.cost_per_box`.
+
+Utilities
+^^^^^^^^^
+
+.. automethod:: boxtree.cost.AbstractFMMCostModel.aggregate_over_boxes
+
+.. automethod:: AbstractQBXCostModel.get_unit_calibration_params
 """
 
 
 # {{{ translation cost model
 
-class TranslationCostModel(object):
+class QBXTranslationCostModel(FMMTranslationCostModel):
     """Provides modeled costs for individual translations or evaluations."""
 
     def __init__(self, ncoeffs_qbx, ncoeffs_fmm_by_level, uses_point_and_shoot):
         self.ncoeffs_qbx = ncoeffs_qbx
-        self.ncoeffs_fmm_by_level = ncoeffs_fmm_by_level
-        self.uses_point_and_shoot = uses_point_and_shoot
-
-    @staticmethod
-    def direct():
-        return var("c_p2p")
+        FMMTranslationCostModel.__init__(
+            self, ncoeffs_fmm_by_level, uses_point_and_shoot
+        )
 
     def p2qbxl(self):
         return var("c_p2qbxl") * self.ncoeffs_qbx
@@ -77,66 +132,27 @@ class TranslationCostModel(object):
     def p2p_tsqbx(self):
         # This term should be linear in the QBX order, which is the
         # square root of the number of QBX coefficients.
-        return var("c_p2p_tsqbx") * self.ncoeffs_qbx ** (1/2)
+        return var("c_p2p_tsqbx") * self.ncoeffs_qbx ** (1 / 2)
 
     def qbxl2p(self):
         return var("c_qbxl2p") * self.ncoeffs_qbx
 
-    def p2l(self, level):
-        return var("c_p2l") * self.ncoeffs_fmm_by_level[level]
-
-    def l2p(self, level):
-        return var("c_l2p") * self.ncoeffs_fmm_by_level[level]
-
-    def p2m(self, level):
-        return var("c_p2m") * self.ncoeffs_fmm_by_level[level]
-
-    def m2p(self, level):
-        return var("c_m2p") * self.ncoeffs_fmm_by_level[level]
-
-    def m2m(self, src_level, tgt_level):
-        return var("c_m2m") * self.e2e_cost(
-                self.ncoeffs_fmm_by_level[src_level],
-                self.ncoeffs_fmm_by_level[tgt_level])
-
-    def l2l(self, src_level, tgt_level):
-        return var("c_l2l") * self.e2e_cost(
-                self.ncoeffs_fmm_by_level[src_level],
-                self.ncoeffs_fmm_by_level[tgt_level])
-
-    def m2l(self, src_level, tgt_level):
-        return var("c_m2l") * self.e2e_cost(
-                self.ncoeffs_fmm_by_level[src_level],
-                self.ncoeffs_fmm_by_level[tgt_level])
-
     def m2qbxl(self, level):
         return var("c_m2qbxl") * self.e2e_cost(
-                self.ncoeffs_fmm_by_level[level],
-                self.ncoeffs_qbx)
+            self.ncoeffs_fmm_by_level[level],
+            self.ncoeffs_qbx)
 
     def l2qbxl(self, level):
         return var("c_l2qbxl") * self.e2e_cost(
-                self.ncoeffs_fmm_by_level[level],
-                self.ncoeffs_qbx)
-
-    def e2e_cost(self, nsource_coeffs, ntarget_coeffs):
-        if self.uses_point_and_shoot:
-            return (
-                    # Rotate the coordinate system to be z axis aligned.
-                    nsource_coeffs ** (3 / 2)
-                    # Translate the expansion along the z axis.
-                    + nsource_coeffs ** (1 / 2) * ntarget_coeffs
-                    # Rotate the coordinate system back.
-                    + ntarget_coeffs ** (3 / 2))
-
-        return nsource_coeffs * ntarget_coeffs
+            self.ncoeffs_fmm_by_level[level],
+            self.ncoeffs_qbx)
 
 # }}}
 
 
 # {{{ translation cost model factories
 
-def pde_aware_translation_cost_model(dim, nlevels):
+def make_pde_aware_translation_cost_model(dim, nlevels):
     """Create a cost model for FMM translation operators that make use of the
     knowledge that the potential satisfies a PDE.
     """
@@ -151,13 +167,13 @@ def pde_aware_translation_cost_model(dim, nlevels):
     if dim == 3:
         uses_point_and_shoot = True
 
-    return TranslationCostModel(
-            ncoeffs_qbx=ncoeffs_qbx,
-            ncoeffs_fmm_by_level=ncoeffs_fmm,
-            uses_point_and_shoot=uses_point_and_shoot)
+    return QBXTranslationCostModel(
+        ncoeffs_qbx=ncoeffs_qbx,
+        ncoeffs_fmm_by_level=ncoeffs_fmm,
+        uses_point_and_shoot=uses_point_and_shoot)
 
 
-def taylor_translation_cost_model(dim, nlevels):
+def make_taylor_translation_cost_model(dim, nlevels):
     """Create a cost model for FMM translation based on Taylor expansions
     in Cartesian coordinates.
     """
@@ -167,747 +183,785 @@ def taylor_translation_cost_model(dim, nlevels):
     ncoeffs_fmm = (p_fmm + 1) ** dim
     ncoeffs_qbx = (p_qbx + 1) ** dim
 
-    return TranslationCostModel(
-            ncoeffs_qbx=ncoeffs_qbx,
-            ncoeffs_fmm_by_level=ncoeffs_fmm,
-            uses_point_and_shoot=False)
+    return QBXTranslationCostModel(
+        ncoeffs_qbx=ncoeffs_qbx,
+        ncoeffs_fmm_by_level=ncoeffs_fmm,
+        uses_point_and_shoot=False)
 
 # }}}
 
 
-# {{{ parameterized costs returned by cost model
+# {{{ abstract cost model
 
-class ParametrizedCosts(object):
-    """A container for data returned by the cost model.
+class AbstractQBXCostModel(AbstractFMMCostModel):
+    """An interface to obtain both QBX operation counts and calibrated (e.g. in
+    seconds) cost estimates.
 
-    This holds both symbolic costs as well as parameter values. To obtain a
-    prediction of the running time, use :meth:`get_predicted_times`.
+    * To obtain operation counts only, use :meth:`get_unit_calibration_params`
+      with :meth:`qbx_cost_per_stage` or :meth:`qbx_cost_per_box`.
 
-    .. attribute:: raw_costs
+    * To calibrate the model, pass operation counts per stage together with timing
+      data to :meth:`estimate_kernel_specific_calibration_params`.
 
-        A dictionary mapping algorithmic stage names to symbolic costs.
-
-    .. attribute:: params
-
-        A dictionary mapping names of symbolic parameters to values.  Parameters
-        appear in *raw_costs* and may include values such as QBX or FMM order
-        as well as calibration constants.
-
-    .. automethod:: copy
-    .. automethod:: with_params
-    .. automethod:: get_predicted_times
+    * To evaluate the calibrated models, pass the kernel-specific calibration
+      parameters from :meth:`estimate_kernel_specific_calibration_params` to
+      :meth:`qbx_cost_per_stage` or :meth:`qbx_cost_per_box`.
     """
 
-    def __init__(self, raw_costs, params):
-        self.raw_costs = OrderedDict(raw_costs)
-        self.params = params
-
-    def with_params(self, params):
-        """Return a copy of *self* with parameters updated to include *params*."""
-        new_params = self.params.copy()
-        new_params.update(params)
-        return type(self)(
-                raw_costs=self.raw_costs.copy(),
-                params=new_params)
-
-    def copy(self):
-        return self.with_params({})
-
-    def __str__(self):
-        return "".join([
-                type(self).__name__,
-                "(raw_costs=",
-                str(self.raw_costs),
-                ", params=",
-                str(self.params),
-                ")"])
-
-    def __repr__(self):
-        return "".join([
-                type(self).__name__,
-                "(raw_costs=",
-                repr(self.raw_costs),
-                ", params=",
-                repr(self.params),
-                ")"])
-
-    def get_predicted_times(self, merge_close_lists=False):
-        """Return a dictionary mapping stage names to predicted time in seconds.
-
-        :arg merge_close_lists: If *True*, the returned estimate combines
-            the cost of "close" lists (Lists 1, 3 close, and 4 close). If
-            *False*, the time of each "close" list is reported separately.
+    @abstractmethod
+    def process_form_qbxl(self, queue, geo_data, p2qbxl_cost,
+                          ndirect_sources_per_target_box):
         """
-        from pymbolic import evaluate
-        from functools import partial
-
-        get_time = partial(evaluate, context=self.params)
-
-        result = OrderedDict()
-
-        for name, val in self.raw_costs.items():
-            if merge_close_lists:
-                for suffix in ("_list1", "_list3", "_list4"):
-                    if name.endswith(suffix):
-                        name = name[:-len(suffix)]
-                        break
-
-            result[name] = get_time(val) + result.get(name, 0)
-
-        return result
-
-# }}}
-
-
-# {{{ cost model
-
-class CostModel(object):
-    """
-    .. automethod:: with_calibration_params
-    .. automethod:: __call__
-
-    The cost model relies on a translation cost model. See
-    :class:`TranslationCostModel` for the translation cost model interface.
-    """
-
-    def __init__(self,
-            translation_cost_model_factory=pde_aware_translation_cost_model,
-            calibration_params=None):
+        :arg queue: a :class:`pyopencl.CommandQueue` object.
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
+        :arg p2qbxl_cost: a :class:`numpy.float64` constant representing the cost of
+            adding a source to a QBX local expansion.
+        :arg ndirect_sources_per_target_box: a :class:`numpy.ndarray` or
+            :class:`pyopencl.array.Array` of shape ``(ntarget_boxes,)``, with the
+            *i*th entry representing the number of direct evaluation sources (list 1,
+            list 3 close and list 4 close) for ``target_boxes[i]``.
+        :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
+            ``(ntarget_boxes,)``, with the *i*th entry representing the cost of
+            adding all direct evaluation sources to QBX local expansions of centers
+            in ``target_boxes[i]``.
         """
-        :arg translation_cost_model_factory: A callable which, given arguments
-            (*dim*, *nlevels*), returns a :class:`TranslationCostModel`.
+        pass
+
+    @abstractmethod
+    def process_m2qbxl(self, queue, geo_data, m2qbxl_cost):
         """
-        self.translation_cost_model_factory = translation_cost_model_factory
-        if calibration_params is None:
-            calibration_params = dict()
-        self.calibration_params = calibration_params
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
+        :arg m2qbxl_cost: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array`
+            of shape ``(nlevels,)`` where the *i*th entry represents the translation
+            cost from multipole expansion at level *i* to a QBX center.
+        :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
+            ``(ntarget_boxes,)``, with the *i*th entry representing the cost of
+            translating multipole expansions of list 3 boxes at all source levels to
+            all QBX centers in ``target_boxes[i]``.
+        """
+        pass
 
-    def with_calibration_params(self, calibration_params):
-        """Return a copy of *self* with a new set of calibration parameters."""
-        return type(self)(
-                translation_cost_model_factory=self.translation_cost_model_factory,
-                calibration_params=calibration_params)
+    @abstractmethod
+    def process_l2qbxl(self, queue, geo_data, l2qbxl_cost):
+        """
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
+        :arg l2qbxl_cost: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array`
+            of shape ``(nlevels,)`` where each entry represents the translation
+            cost from a box local expansion to a QBX local expansion.
+        :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
+            ``(ntarget_boxes,)``, with each entry representing the cost of
+            translating box local expansions to all QBX local expansions.
+        """
+        pass
 
-    # {{{ form multipoles
+    @abstractmethod
+    def process_eval_qbxl(self, queue, geo_data, qbxl2p_cost):
+        """
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
+        :arg qbxl2p_cost: a :class:`numpy.float64` constant, representing the
+            evaluation cost of a target from its QBX local expansion.
+        :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
+            ``(ntarget_boxes,)``, with the *i*th entry representing the cost of
+            evaluating all targets associated with QBX centers in ``target_boxes[i]``
+            from QBX local expansions.
+        """
+        pass
 
-    def process_form_multipoles(self, xlat_cost, traversal, tree):
-        result = 0
+    @abstractmethod
+    def process_eval_target_specific_qbxl(self, queue, geo_data, p2p_tsqbx_cost,
+                                          ndirect_sources_per_target_box):
+        """
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
+        :arg p2p_tsqbx_cost: a :class:`numpy.float64` constant representing the
+            evaluation cost of a target from a direct evaluation source of the target
+            box containing the expansion center.
+        :arg ndirect_sources_per_target_box: a :class:`numpy.ndarray` or
+            :class:`pyopencl.array.Array` of shape ``(ntarget_boxes,)``, with the
+            *i*th entry representing the number of direct evaluation sources
+            (list 1, list 3 close and list 4 close) for ``target_boxes[i]``.
+        :return: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array` of shape
+            ``(ntarget_boxes,)``, with the *i*th entry representing the evaluation
+            cost of all targets associated with centers in ``target_boxes[i]`` from
+            the direct evaluation sources of ``target_boxes[i]``.
+        """
+        pass
+
+    def qbx_cost_factors_for_kernels_from_model(
+            self, queue, nlevels, xlat_cost, context):
+        """Evaluate translation cost factors from symbolic model. The result of this
+        function can be used for process_* methods in this class.
+
+        This method overwrite the method in parent
+        :class:`boxtree.cost.AbstractFMMCostModel` to support operations specific to
+        QBX.
+
+        :arg queue: If not None, the cost factor arrays will be transferred to device
+            using this queue.
+        :arg nlevels: the number of tree levels.
+        :arg xlat_cost: a :class:`QBXTranslationCostModel`.
+        :arg context: a :class:`dict` mapping from the symbolic names of parameters
+            to their values, serving as context when evaluating symbolic expressions
+            in *xlat_cost*.
+        :return: a :class:`dict`, mapping from stage names to the translation costs
+            of those stages in FMM and QBX.
+        """
+        cost_factors = self.fmm_cost_factors_for_kernels_from_model(
+            queue, nlevels, xlat_cost, context
+        )
+
+        cost_factors.update({
+            "p2qbxl_cost": evaluate(xlat_cost.p2qbxl(), context=context),
+            "m2qbxl_cost": np.array([
+                evaluate(xlat_cost.m2qbxl(ilevel), context=context)
+                for ilevel in range(nlevels)
+            ]),
+            "l2qbxl_cost": np.array([
+                evaluate(xlat_cost.l2qbxl(ilevel), context=context)
+                for ilevel in range(nlevels)
+            ]),
+            "qbxl2p_cost": evaluate(xlat_cost.qbxl2p(), context=context),
+            "p2p_tsqbx_cost": evaluate(xlat_cost.p2p_tsqbx(), context=context)
+        })
+
+        if queue:
+            cost_factors = self.cost_factors_to_dev(cost_factors, queue)
+
+        return cost_factors
+
+    @staticmethod
+    def gather_metadata(geo_data, fmm_level_to_order):
+        lpot_source = geo_data.lpot_source
+        tree = geo_data.tree()
+
+        metadata = {
+            "p_qbx": lpot_source.qbx_order,
+            "nlevels": tree.nlevels,
+            "nsources": tree.nsources,
+            "ntargets": tree.ntargets,
+            "ncenters": geo_data.ncenters
+        }
 
         for level in range(tree.nlevels):
-            src_count = 0
-            start, stop = traversal.level_start_source_box_nrs[level:level + 2]
-            for src_ibox in traversal.source_boxes[start:stop]:
-                nsrcs = tree.box_source_counts_nonchild[src_ibox]
-                src_count += nsrcs
-            result += src_count * xlat_cost.p2m(level)
+            metadata["p_fmm_lev%d" % level] = fmm_level_to_order[level]
 
-        return dict(form_multipoles=result)
+        return metadata
 
-    # }}}
-
-    # {{{ propagate multipoles upward
-
-    def process_coarsen_multipoles(self, xlat_cost, traversal, tree):
-        result = 0
-
-        # nlevels-1 is the last valid level index
-        # nlevels-2 is the last valid level that could have children
-        #
-        # 3 is the last relevant source_level.
-        # 2 is the last relevant target_level.
-        # (because no level 1 box will be well-separated from another)
-        for source_level in range(tree.nlevels-1, 2, -1):
-            target_level = source_level - 1
-            cost = xlat_cost.m2m(source_level, target_level)
-
-            nmultipoles = 0
-            start, stop = traversal.level_start_source_parent_box_nrs[
-                            target_level:target_level+2]
-            for ibox in traversal.source_parent_boxes[start:stop]:
-                for child in tree.box_child_ids[:, ibox]:
-                    if child:
-                        nmultipoles += 1
-
-            result += cost * nmultipoles
-
-        return dict(coarsen_multipoles=result)
-
-    # }}}
-
-    # {{{ collect direct interaction data
-
-    @staticmethod
-    def _collect_direction_interaction_data(traversal, tree):
-        ntarget_boxes = len(traversal.target_boxes)
-
-        # target box index -> nsources
-        nlist1_srcs_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
-        nlist3close_srcs_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
-        nlist4close_srcs_by_itgt_box = np.zeros(ntarget_boxes, dtype=np.intp)
-
-        for itgt_box in range(ntarget_boxes):
-            nlist1_srcs = 0
-            start, end = traversal.neighbor_source_boxes_starts[itgt_box:itgt_box+2]
-            for src_ibox in traversal.neighbor_source_boxes_lists[start:end]:
-                nlist1_srcs += tree.box_source_counts_nonchild[src_ibox]
-
-            nlist1_srcs_by_itgt_box[itgt_box] = nlist1_srcs
-
-            nlist3close_srcs = 0
-            # Could be None, if not using targets with extent.
-            if traversal.from_sep_close_smaller_starts is not None:
-                start, end = (
-                        traversal.from_sep_close_smaller_starts[itgt_box:itgt_box+2])
-                for src_ibox in traversal.from_sep_close_smaller_lists[start:end]:
-                    nlist3close_srcs += tree.box_source_counts_nonchild[src_ibox]
-
-            nlist3close_srcs_by_itgt_box[itgt_box] = nlist3close_srcs
-
-            nlist4close_srcs = 0
-            # Could be None, if not using targets with extent.
-            if traversal.from_sep_close_bigger_starts is not None:
-                start, end = (
-                        traversal.from_sep_close_bigger_starts[itgt_box:itgt_box+2])
-                for src_ibox in traversal.from_sep_close_bigger_lists[start:end]:
-                    nlist4close_srcs += tree.box_source_counts_nonchild[src_ibox]
-
-            nlist4close_srcs_by_itgt_box[itgt_box] = nlist4close_srcs
-
-        result = {}
-        result["nlist1_srcs_by_itgt_box"] = nlist1_srcs_by_itgt_box
-        result["nlist3close_srcs_by_itgt_box"] = nlist3close_srcs_by_itgt_box
-        result["nlist4close_srcs_by_itgt_box"] = nlist4close_srcs_by_itgt_box
-
-        return result
-
-    # }}}
-
-    # {{{ direct evaluation to point targets (lists 1, 3 close, 4 close)
-
-    def process_direct(self, xlat_cost, traversal, direct_interaction_data,
-            box_target_counts_nonchild):
-        nlist1_srcs_by_itgt_box = (
-                direct_interaction_data["nlist1_srcs_by_itgt_box"])
-        nlist3close_srcs_by_itgt_box = (
-                direct_interaction_data["nlist3close_srcs_by_itgt_box"])
-        nlist4close_srcs_by_itgt_box = (
-                direct_interaction_data["nlist4close_srcs_by_itgt_box"])
-
-        # list -> number of source-target interactions
-        npart_direct_list1 = 0
-        npart_direct_list3 = 0
-        npart_direct_list4 = 0
-
-        for itgt_box, tgt_ibox in enumerate(traversal.target_boxes):
-            ntargets = box_target_counts_nonchild[tgt_ibox]
-
-            npart_direct_list1 += ntargets * nlist1_srcs_by_itgt_box[itgt_box]
-            npart_direct_list3 += ntargets * nlist3close_srcs_by_itgt_box[itgt_box]
-            npart_direct_list4 += ntargets * nlist4close_srcs_by_itgt_box[itgt_box]
-
-        result = {}
-        result["eval_direct_list1"] = npart_direct_list1 * xlat_cost.direct()
-        result["eval_direct_list3"] = npart_direct_list3 * xlat_cost.direct()
-        result["eval_direct_list4"] = npart_direct_list4 * xlat_cost.direct()
-
-        return result
-
-    # }}}
-
-    # {{{ translate separated siblings' ("list 2") mpoles to local
-
-    def process_list2(self, xlat_cost, traversal, tree):
-        nm2l_by_level = np.zeros(tree.nlevels, dtype=np.intp)
-
-        for itgt_box, tgt_ibox in enumerate(traversal.target_or_target_parent_boxes):
-            start, end = traversal.from_sep_siblings_starts[itgt_box:itgt_box+2]
-
-            level = tree.box_levels[tgt_ibox]
-            nm2l_by_level[level] += end-start
-
-        result = sum(
-                cost * xlat_cost.m2l(ilevel, ilevel)
-                for ilevel, cost in enumerate(nm2l_by_level))
-
-        return dict(multipole_to_local=result)
-
-    # }}}
-
-    # {{{ evaluate sep. smaller mpoles ("list 3") at particles
-
-    def process_list3(self, xlat_cost, traversal, tree, box_target_counts_nonchild):
-        nmp_eval_by_source_level = np.zeros(tree.nlevels, dtype=np.intp)
-
-        assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
-
-        for ilevel, sep_smaller_list in enumerate(
-                traversal.from_sep_smaller_by_level):
-            for itgt_box, tgt_ibox in enumerate(
-                        traversal.target_boxes_sep_smaller_by_source_level[ilevel]):
-                ntargets = box_target_counts_nonchild[tgt_ibox]
-                start, end = sep_smaller_list.starts[itgt_box:itgt_box+2]
-                nmp_eval_by_source_level[ilevel] += ntargets * (end-start)
-
-        result = sum(
-                cost * xlat_cost.m2p(ilevel)
-                for ilevel, cost in enumerate(nmp_eval_by_source_level))
-
-        return dict(eval_multipoles=result)
-
-    # }}}
-
-    # {{{ form locals for separated bigger source boxes ("list 4")
-
-    def process_list4(self, xlat_cost, traversal, tree):
-        nform_local_by_source_level = np.zeros(tree.nlevels, dtype=np.intp)
-
-        for itgt_box in range(len(traversal.target_or_target_parent_boxes)):
-            start, end = traversal.from_sep_bigger_starts[itgt_box:itgt_box+2]
-            for src_ibox in traversal.from_sep_bigger_lists[start:end]:
-                nsources = tree.box_source_counts_nonchild[src_ibox]
-                level = tree.box_levels[src_ibox]
-                nform_local_by_source_level[level] += nsources
-
-        result = sum(
-                cost * xlat_cost.p2l(ilevel)
-                for ilevel, cost in enumerate(nform_local_by_source_level))
-
-        return dict(form_locals=result)
-
-    # }}}
-
-    # {{{ propogate locals downward
-
-    def process_refine_locals(self, xlat_cost, traversal, tree):
-        result = 0
-
-        for target_lev in range(1, tree.nlevels):
-            start, stop = traversal.level_start_target_or_target_parent_box_nrs[
-                    target_lev:target_lev+2]
-            source_lev = target_lev - 1
-            result += (stop-start) * xlat_cost.l2l(source_lev, target_lev)
-
-        return dict(refine_locals=result)
-
-    # }}}
-
-    # {{{ evaluate local expansions at non-qbx targets
-
-    def process_eval_locals(self, xlat_cost, traversal, tree, nqbtl):
-        ntargets_by_level = np.zeros(tree.nlevels, dtype=np.intp)
-
-        for target_lev in range(tree.nlevels):
-            start, stop = traversal.level_start_target_box_nrs[
-                    target_lev:target_lev+2]
-            for tgt_ibox in traversal.target_boxes[start:stop]:
-                ntargets_by_level[target_lev] += (
-                        nqbtl.box_target_counts_nonchild[tgt_ibox])
-
-        result = sum(
-                cost * xlat_cost.l2p(ilevel)
-                for ilevel, cost in enumerate(ntargets_by_level))
-
-        return dict(eval_locals=result)
-
-    # }}}
-
-    # {{{ collect data about direct interactions with qbx centers
-
-    @staticmethod
-    def _collect_qbxl_direct_interaction_data(direct_interaction_data,
-            global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
-        nlist1_srcs_by_itgt_box = (
-                direct_interaction_data["nlist1_srcs_by_itgt_box"])
-        nlist3close_srcs_by_itgt_box = (
-                direct_interaction_data["nlist3close_srcs_by_itgt_box"])
-        nlist4close_srcs_by_itgt_box = (
-                direct_interaction_data["nlist4close_srcs_by_itgt_box"])
-
-        # center -> nsources
-        np2qbxl_list1_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
-        np2qbxl_list3_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
-        np2qbxl_list4_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
-
-        # center -> number of associated targets
-        nqbxl2p_by_center = np.zeros(len(global_qbx_centers), dtype=np.intp)
-
-        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
-            start, end = center_to_targets_starts[tgt_icenter:tgt_icenter+2]
-            nqbxl2p_by_center[itgt_center] = end - start
-
-            itgt_box = qbx_center_to_target_box[tgt_icenter]
-            np2qbxl_list1_by_center[itgt_center] = (
-                    nlist1_srcs_by_itgt_box[itgt_box])
-            np2qbxl_list3_by_center[itgt_center] = (
-                    nlist3close_srcs_by_itgt_box[itgt_box])
-            np2qbxl_list4_by_center[itgt_center] = (
-                    nlist4close_srcs_by_itgt_box[itgt_box])
-
-        result = {}
-        result["np2qbxl_list1_by_center"] = np2qbxl_list1_by_center
-        result["np2qbxl_list3_by_center"] = np2qbxl_list3_by_center
-        result["np2qbxl_list4_by_center"] = np2qbxl_list4_by_center
-        result["nqbxl2p_by_center"] = nqbxl2p_by_center
-
-        return result
-
-    # }}}
-
-    # {{{ eval target specific qbx expansions
-
-    def process_eval_target_specific_qbxl(self, xlat_cost, direct_interaction_data,
-            global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
-
-        counts = self._collect_qbxl_direct_interaction_data(
-                direct_interaction_data, global_qbx_centers,
-                qbx_center_to_target_box, center_to_targets_starts)
-
-        result = {}
-        result["eval_target_specific_qbx_locals_list1"] = (
-                sum(counts["np2qbxl_list1_by_center"] * counts["nqbxl2p_by_center"])
-                * xlat_cost.p2p_tsqbx())
-        result["eval_target_specific_qbx_locals_list3"] = (
-                sum(counts["np2qbxl_list3_by_center"] * counts["nqbxl2p_by_center"])
-                * xlat_cost.p2p_tsqbx())
-        result["eval_target_specific_qbx_locals_list4"] = (
-                sum(counts["np2qbxl_list4_by_center"] * counts["nqbxl2p_by_center"])
-                * xlat_cost.p2p_tsqbx())
-
-        return result
-
-    # }}}
-
-    # {{{ form global qbx locals
-
-    def process_form_qbxl(self, xlat_cost, direct_interaction_data,
-            global_qbx_centers, qbx_center_to_target_box, center_to_targets_starts):
-
-        counts = self._collect_qbxl_direct_interaction_data(
-                direct_interaction_data, global_qbx_centers,
-                qbx_center_to_target_box, center_to_targets_starts)
-
-        result = {}
-        result["form_global_qbx_locals_list1"] = (
-                sum(counts["np2qbxl_list1_by_center"]) * xlat_cost.p2qbxl())
-        result["form_global_qbx_locals_list3"] = (
-                sum(counts["np2qbxl_list3_by_center"]) * xlat_cost.p2qbxl())
-        result["form_global_qbx_locals_list4"] = (
-                sum(counts["np2qbxl_list4_by_center"]) * xlat_cost.p2qbxl())
-
-        return result
-
-    # }}}
-
-    # {{{ translate from list 3 multipoles to qbx local expansions
-
-    def process_m2qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
-            qbx_center_to_target_box_source_level):
-        nm2qbxl_by_source_level = np.zeros(tree.nlevels, dtype=np.intp)
-
-        assert tree.nlevels == len(traversal.from_sep_smaller_by_level)
-
-        for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
-            for tgt_icenter in global_qbx_centers:
-                icontaining_tgt_box = qbx_center_to_target_box_source_level[
-                        isrc_level][tgt_icenter]
-
-                if icontaining_tgt_box == -1:
-                    continue
-
-                start, stop = (
-                        ssn.starts[icontaining_tgt_box],
-                        ssn.starts[icontaining_tgt_box+1])
-
-                nm2qbxl_by_source_level[isrc_level] += stop-start
-
-        result = sum(
-                cost * xlat_cost.m2qbxl(ilevel)
-                for ilevel, cost in enumerate(nm2qbxl_by_source_level))
-
-        return dict(translate_box_multipoles_to_qbx_local=result)
-
-    # }}}
-
-    # {{{ translate from box locals to qbx local expansions
-
-    def process_l2qbxl(self, xlat_cost, traversal, tree, global_qbx_centers,
-            qbx_center_to_target_box):
-        nl2qbxl_by_level = np.zeros(tree.nlevels, dtype=np.intp)
-
-        for tgt_icenter in global_qbx_centers:
-            itgt_box = qbx_center_to_target_box[tgt_icenter]
-            tgt_ibox = traversal.target_boxes[itgt_box]
-            level = tree.box_levels[tgt_ibox]
-            nl2qbxl_by_level[level] += 1
-
-        result = sum(
-                cost * xlat_cost.l2qbxl(ilevel)
-                for ilevel, cost in enumerate(nl2qbxl_by_level))
-
-        return dict(translate_box_local_to_qbx_local=result)
-
-    # }}}
-
-    # {{{ evaluate qbx local expansions
-
-    def process_eval_qbxl(self, xlat_cost, global_qbx_centers,
-            center_to_targets_starts):
-        result = 0
-
-        for src_icenter in global_qbx_centers:
-            start, end = center_to_targets_starts[src_icenter:src_icenter+2]
-            result += (end - start)
-
-        result *= xlat_cost.qbxl2p()
-
-        return dict(eval_qbx_expansions=result)
-
-    # }}}
-
-    @log_process(logger, "model cost")
-    def __call__(self, wrangler, geo_data, kernel, kernel_arguments):
-        """Analyze the given geometry and return cost data.
-
-        :returns: An instance of :class:`ParametrizedCosts`.
-        """
-        result = OrderedDict()
-
+    def qbx_cost_per_box(self, queue, geo_data, kernel, kernel_arguments,
+                         calibration_params):
+        # FIXME: This should support target filtering.
         lpot_source = geo_data.lpot_source
-
-        with cl.CommandQueue(geo_data.cl_context) as queue:
-            tree = geo_data.tree().get(queue)
-            traversal = geo_data.traversal(merge_close_lists=False).get(queue)
-            nqbtl = geo_data.non_qbx_box_target_lists().get(queue)
-
+        use_tsqbx = lpot_source._use_target_specific_qbx
+        tree = geo_data.tree()
+        traversal = geo_data.traversal()
+        nqbtl = geo_data.non_qbx_box_target_lists()
         box_target_counts_nonchild = nqbtl.box_target_counts_nonchild
-
-        params = dict(
-                nlevels=tree.nlevels,
-                nboxes=tree.nboxes,
-                nsources=tree.nsources,
-                ntargets=tree.ntargets,
-                ncenters=geo_data.ncenters,
-                p_qbx=lpot_source.qbx_order,
-                )
+        target_boxes = traversal.target_boxes
 
         # FIXME: We can avoid using *kernel* and *kernel_arguments* if we talk
         # to the wrangler to obtain the FMM order (see also
         # https://gitlab.tiker.net/inducer/boxtree/issues/25)
+        fmm_level_to_order = [
+            lpot_source.fmm_level_to_order(
+                kernel.get_base_kernel(), kernel_arguments, tree, ilevel
+            ) for ilevel in range(tree.nlevels)
+        ]
+
+        # {{{ Construct parameters
+
+        params = calibration_params.copy()
+        params.update(dict(p_qbx=lpot_source.qbx_order))
+
         for ilevel in range(tree.nlevels):
-            params["p_fmm_lev%d" % ilevel] = (
-                    lpot_source.fmm_level_to_order(
-                        kernel.get_base_kernel(), kernel_arguments, tree, ilevel))
-
-        params.update(self.calibration_params)
-
-        xlat_cost = (
-                self.translation_cost_model_factory(tree.dimensions, tree.nlevels))
-
-        # {{{ construct local multipoles
-
-        result.update(self.process_form_multipoles(xlat_cost, traversal, tree))
+            params["p_fmm_lev%d" % ilevel] = fmm_level_to_order[ilevel]
 
         # }}}
 
-        # {{{ propagate multipoles upward
+        xlat_cost = self.translation_cost_model_factory(
+            tree.dimensions, tree.nlevels
+        )
 
-        result.update(self.process_coarsen_multipoles(xlat_cost, traversal, tree))
+        translation_cost = self.qbx_cost_factors_for_kernels_from_model(
+            queue, tree.nlevels, xlat_cost, params
+        )
 
-        # }}}
+        ndirect_sources_per_target_box = \
+            self.get_ndirect_sources_per_target_box(queue, traversal)
 
-        direct_interaction_data = (
-                self._collect_direction_interaction_data(traversal, tree))
+        # get FMM cost per box from parent class
+        result = self.cost_per_box(
+            queue, traversal, fmm_level_to_order,
+            calibration_params,
+            ndirect_sources_per_target_box=ndirect_sources_per_target_box,
+            box_target_counts_nonchild=box_target_counts_nonchild
+        )
 
-        # {{{ direct evaluation to point targets (lists 1, 3 close, 4 close)
-
-        result.update(self.process_direct(
-                xlat_cost, traversal, direct_interaction_data,
-                box_target_counts_nonchild))
-
-        # }}}
-
-        # {{{ translate separated siblings' ("list 2") mpoles to local
-
-        result.update(self.process_list2(xlat_cost, traversal, tree))
-
-        # }}}
-
-        # {{{ evaluate sep. smaller mpoles ("list 3") at particles
-
-        result.update(self.process_list3(
-                xlat_cost, traversal, tree, box_target_counts_nonchild))
-
-        # }}}
-
-        # {{{ form locals for separated bigger source boxes ("list 4")
-
-        result.update(self.process_list4(xlat_cost, traversal, tree))
-
-        # }}}
-
-        # {{{ propagate local_exps downward
-
-        result.update(self.process_refine_locals(xlat_cost, traversal, tree))
-
-        # }}}
-
-        # {{{ evaluate locals
-
-        result.update(self.process_eval_locals(xlat_cost, traversal, tree, nqbtl))
-
-        # }}}
-
-        global_qbx_centers = geo_data.global_qbx_centers()
-
-        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
-        center_to_targets_starts = geo_data.center_to_tree_targets().starts
-        qbx_center_to_target_box_source_level = np.empty(
-                (tree.nlevels,), dtype=object)
-
-        for src_level in range(tree.nlevels):
-            qbx_center_to_target_box_source_level[src_level] = (
-                    geo_data.qbx_center_to_target_box_source_level(src_level))
-
-        with cl.CommandQueue(geo_data.cl_context) as queue:
-            global_qbx_centers = global_qbx_centers.get(
-                    queue=queue)
-            qbx_center_to_target_box = qbx_center_to_target_box.get(
-                    queue=queue)
-            center_to_targets_starts = center_to_targets_starts.get(
-                    queue=queue)
-            for src_level in range(tree.nlevels):
-                qbx_center_to_target_box_source_level[src_level] = (
-                        qbx_center_to_target_box_source_level[src_level]
-                        .get(queue=queue))
-
-        # {{{ form global qbx locals or evaluate target specific qbx expansions
-
-        if wrangler.using_tsqbx:
-            result.update(self.process_eval_target_specific_qbxl(
-                    xlat_cost, direct_interaction_data, global_qbx_centers,
-                    qbx_center_to_target_box, center_to_targets_starts))
-            result["form_global_qbx_locals_list1"] = 0
-            result["form_global_qbx_locals_list3"] = 0
-            result["form_global_qbx_locals_list4"] = 0
-
+        if use_tsqbx:
+            result[target_boxes] += self.process_eval_target_specific_qbxl(
+                queue, geo_data, translation_cost["p2p_tsqbx_cost"],
+                ndirect_sources_per_target_box
+            )
         else:
-            result.update(self.process_form_qbxl(
-                    xlat_cost, direct_interaction_data, global_qbx_centers,
-                    qbx_center_to_target_box, center_to_targets_starts))
-            result["eval_target_specific_qbx_locals_list1"] = 0
-            result["eval_target_specific_qbx_locals_list3"] = 0
-            result["eval_target_specific_qbx_locals_list4"] = 0
+            result[target_boxes] += self.process_form_qbxl(
+                queue, geo_data, translation_cost["p2qbxl_cost"],
+                ndirect_sources_per_target_box
+            )
+
+        result[target_boxes] += self.process_m2qbxl(
+            queue, geo_data, translation_cost["m2qbxl_cost"]
+        )
+
+        result[target_boxes] += self.process_l2qbxl(
+            queue, geo_data, translation_cost["l2qbxl_cost"]
+        )
+
+        result[target_boxes] += self.process_eval_qbxl(
+            queue, geo_data, translation_cost["qbxl2p_cost"]
+        )
+
+        metadata = self.gather_metadata(geo_data, fmm_level_to_order)
+
+        return result, metadata
+
+    def qbx_cost_per_stage(self, queue, geo_data, kernel, kernel_arguments,
+                           calibration_params):
+        # FIXME: This should support target filtering.
+        lpot_source = geo_data.lpot_source
+        use_tsqbx = lpot_source._use_target_specific_qbx
+        tree = geo_data.tree()
+        traversal = geo_data.traversal()
+        nqbtl = geo_data.non_qbx_box_target_lists()
+        box_target_counts_nonchild = nqbtl.box_target_counts_nonchild
+
+        # FIXME: We can avoid using *kernel* and *kernel_arguments* if we talk
+        # to the wrangler to obtain the FMM order (see also
+        # https://gitlab.tiker.net/inducer/boxtree/issues/25)
+        fmm_level_to_order = [
+            lpot_source.fmm_level_to_order(
+                kernel.get_base_kernel(), kernel_arguments, tree, ilevel
+            ) for ilevel in range(tree.nlevels)
+        ]
+
+        # {{{ Construct parameters
+
+        params = calibration_params.copy()
+        params.update(dict(p_qbx=lpot_source.qbx_order))
+
+        for ilevel in range(tree.nlevels):
+            params["p_fmm_lev%d" % ilevel] = fmm_level_to_order[ilevel]
 
         # }}}
 
-        # {{{ translate from list 3 multipoles to qbx local expansions
+        xlat_cost = self.translation_cost_model_factory(
+            tree.dimensions, tree.nlevels
+        )
 
-        result.update(self.process_m2qbxl(
-                xlat_cost, traversal, tree, global_qbx_centers,
-                qbx_center_to_target_box_source_level))
+        translation_cost = self.qbx_cost_factors_for_kernels_from_model(
+            queue, tree.nlevels, xlat_cost, params
+        )
 
-        # }}}
+        ndirect_sources_per_target_box = \
+            self.get_ndirect_sources_per_target_box(queue, traversal)
 
-        # {{{ translate from box local expansions to qbx local expansions
+        # get FMM per-stage cost from parent class
+        result = self.cost_per_stage(
+            queue, traversal, fmm_level_to_order,
+            calibration_params,
+            ndirect_sources_per_target_box=ndirect_sources_per_target_box,
+            box_target_counts_nonchild=box_target_counts_nonchild
+        )
 
-        result.update(self.process_l2qbxl(
-                xlat_cost, traversal, tree, global_qbx_centers,
-                qbx_center_to_target_box))
+        if use_tsqbx:
+            result["eval_target_specific_qbx_locals"] = self.aggregate_over_boxes(
+                self.process_eval_target_specific_qbxl(
+                    queue, geo_data, translation_cost["p2p_tsqbx_cost"],
+                    ndirect_sources_per_target_box=ndirect_sources_per_target_box
+                )
+            )
+        else:
+            result["form_global_qbx_locals"] = self.aggregate_over_boxes(
+                self.process_form_qbxl(
+                    queue, geo_data, translation_cost["p2qbxl_cost"],
+                    ndirect_sources_per_target_box
+                )
+            )
 
-        # }}}
+        result["translate_box_multipoles_to_qbx_local"] = self.aggregate_over_boxes(
+            self.process_m2qbxl(queue, geo_data, translation_cost["m2qbxl_cost"])
+        )
 
-        # {{{ evaluate qbx local expansions
+        result["translate_box_local_to_qbx_local"] = self.aggregate_over_boxes(
+            self.process_l2qbxl(queue, geo_data, translation_cost["l2qbxl_cost"])
+        )
 
-        result.update(self.process_eval_qbxl(
-                xlat_cost, global_qbx_centers, center_to_targets_starts))
+        result["eval_qbx_expansions"] = self.aggregate_over_boxes(
+            self.process_eval_qbxl(queue, geo_data, translation_cost["qbxl2p_cost"])
+        )
 
-        # }}}
+        metadata = self.gather_metadata(geo_data, fmm_level_to_order)
 
-        return ParametrizedCosts(result, params)
+        return result, metadata
 
-# }}}
+    @staticmethod
+    def get_unit_calibration_params():
+        calibration_params = AbstractFMMCostModel.get_unit_calibration_params()
 
+        calibration_params.update(dict(
+            c_p2qbxl=1.0,
+            c_p2p_tsqbx=1.0,
+            c_qbxl2p=1.0,
+            c_m2qbxl=1.0,
+            c_l2qbxl=1.0
+        ))
 
-# {{{ calibrate cost model
+        return calibration_params
 
-_FMM_STAGE_TO_CALIBRATION_PARAMETER = {
-        "form_multipoles": "c_p2m",
-        "coarsen_multipoles": "c_m2m",
-        "eval_direct": "c_p2p",
-        "multipole_to_local": "c_m2l",
-        "eval_multipoles": "c_m2p",
-        "form_locals": "c_p2l",
-        "refine_locals": "c_l2l",
-        "eval_locals": "c_l2p",
+    _QBX_STAGE_TO_CALIBRATION_PARAMETER = {
         "form_global_qbx_locals": "c_p2qbxl",
         "translate_box_multipoles_to_qbx_local": "c_m2qbxl",
         "translate_box_local_to_qbx_local": "c_l2qbxl",
         "eval_qbx_expansions": "c_qbxl2p",
-        "eval_target_specific_qbx_locals": "c_p2p_tsqbx",
-        }
+        "eval_target_specific_qbx_locals": "c_p2p_tsqbx"
+    }
+
+    def estimate_calibration_params(self, model_results, timing_results,
+                                    time_field_name="wall_elapsed",
+                                    additional_stage_to_param_names=()):
+        stage_to_param_names = self._QBX_STAGE_TO_CALIBRATION_PARAMETER.copy()
+        stage_to_param_names.update(additional_stage_to_param_names)
+
+        return AbstractFMMCostModel.estimate_calibration_params(
+            self, model_results, timing_results, time_field_name=time_field_name,
+            additional_stage_to_param_names=stage_to_param_names
+        )
+
+    def estimate_kernel_specific_calibration_params(
+            self, model_results, timing_results, time_field_name="wall_elapsed"):
+        """Get kernel-specific calibration parameters from samples of model costs and
+        real costs.
+
+        :arg model_results: a :class:`list` of modeled costs. Each model cost can be
+            obtained from `BoundExpression.cost_per_stage` with "constant_one" for
+            argument `calibration_params`.
+        :arg timing_results: a :class:`list` of timing data. Each timing data can be
+            obtained from `BoundExpression.eval`.
+        :arg time_field_name: a :class:`str`, the field name from the timing result.
+            Usually this can be ``"wall_elapsed"`` or ``"process_elapsed"``.
+        :return: a :class:`dict` which maps kernels to calibration parameters.
+        """
+        cost_per_kernel = {}
+        params_per_kernel = {}
+
+        assert len(model_results) == len(timing_results)
+
+        for icase in range(len(model_results)):
+            model_cost = model_results[icase]
+            real_cost = timing_results[icase]
+
+            for insn in real_cost:
+                assert (insn in model_cost)
+
+                knls = frozenset(knl for knl in insn.kernels)
+
+                if knls not in cost_per_kernel:
+                    cost_per_kernel[knls] = {
+                        "model_costs": [],
+                        "real_costs": []
+                    }
+
+                cost_per_kernel[knls]["model_costs"].append(model_cost[insn])
+                cost_per_kernel[knls]["real_costs"].append(real_cost[insn])
+
+        for knls in cost_per_kernel:
+            params_per_kernel[knls] = self.estimate_calibration_params(
+                cost_per_kernel[knls]["model_costs"],
+                cost_per_kernel[knls]["real_costs"],
+                time_field_name=time_field_name
+            )
+
+        return params_per_kernel
 
 
-def estimate_calibration_params(model_results, timing_results):
-    """Given a set of model results and matching timing results, estimate the best
-    calibration parameters for the model.
+class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
+    """This class is an implementation of interface :class:`AbstractQBXCostModel`
+    using :mod:`pyopencl`.
     """
+    def __init__(
+            self,
+            translation_cost_model_factory=make_pde_aware_translation_cost_model):
+        """
+        :arg translation_cost_model_factory: a function, which takes tree dimension
+            and the number of tree levels as arguments, returns an object of
+            :class:`QBXTranslationCostModel`.
+        """
+        FMMCostModel.__init__(self, translation_cost_model_factory)
 
-    params = set(_FMM_STAGE_TO_CALIBRATION_PARAMETER.values())
+    @memoize_method
+    def _fill_array_with_index_knl(self, context, idx_dtype, array_dtype):
+        return ElementwiseKernel(
+            context,
+            Template(r"""
+                ${idx_t} *index,
+                ${array_t} *array,
+                ${array_t} val
+            """).render(
+                idx_t=dtype_to_ctype(idx_dtype),
+                array_t=dtype_to_ctype(array_dtype)
+            ),
+            Template(r"""
+                array[index[i]] = val;
+            """).render(),
+            name="fill_array_with_index"
+        )
 
-    nresults = len(model_results)
+    def _fill_array_with_index(self, queue, array, index, value):
+        idx_dtype = index.dtype
+        array_dtype = array.dtype
+        knl = self._fill_array_with_index_knl(queue.context, idx_dtype, array_dtype)
+        knl(index, array, value, queue=queue)
 
-    if nresults != len(timing_results):
-        raise ValueError("must have same number of model and timing results")
+    @memoize_method
+    def count_global_qbx_centers_knl(self, context, box_id_dtype, particle_id_dtype):
+        return ElementwiseKernel(
+            context,
+            Template(r"""
+                ${particle_id_t} *nqbx_centers_itgt_box,
+                ${particle_id_t} *global_qbx_center_weight,
+                ${box_id_t} *target_boxes,
+                ${particle_id_t} *box_target_starts,
+                ${particle_id_t} *box_target_counts_nonchild
+            """).render(
+                box_id_t=dtype_to_ctype(box_id_dtype),
+                particle_id_t=dtype_to_ctype(particle_id_dtype)
+            ),
+            Template(r"""
+                ${box_id_t} global_box_id = target_boxes[i];
+                ${particle_id_t} start = box_target_starts[global_box_id];
+                ${particle_id_t} end = start + box_target_counts_nonchild[
+                    global_box_id
+                ];
 
-    uncalibrated_times = {}
-    actual_times = {}
+                ${particle_id_t} nqbx_centers = 0;
+                for(${particle_id_t} iparticle = start; iparticle < end; iparticle++)
+                    nqbx_centers += global_qbx_center_weight[iparticle];
 
-    for param in params:
-        uncalibrated_times[param] = np.zeros(nresults)
-        actual_times[param] = np.zeros(nresults)
+                nqbx_centers_itgt_box[i] = nqbx_centers;
+            """).render(
+                box_id_t=dtype_to_ctype(box_id_dtype),
+                particle_id_t=dtype_to_ctype(particle_id_dtype)
+            ),
+            name="count_global_qbx_centers"
+        )
 
-    from pymbolic import evaluate
-    from pymbolic.mapper.coefficient import CoefficientCollector
-    collect_coeffs = CoefficientCollector()
+    def get_nqbx_centers_per_tgt_box(self, queue, geo_data, weights=None):
+        """
+        :arg queue: a :class:`pyopencl.CommandQueue` object.
+        :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
+        :arg weights: a :class:`pyopencl.array.Array` of shape ``(ncenters,)`` with
+            particle_id_dtype, the weight of each center in user order.
+        :return: a :class:`pyopencl.array.Array` of shape ``(ntarget_boxes,)`` with
+            type *particle_id_dtype* where the *i*th entry represents the number of
+            `geo_data.global_qbx_centers` in ``target_boxes[i]``, optionally weighted
+            by *weights*.
+        """
+        traversal = geo_data.traversal()
+        tree = geo_data.tree()
+        global_qbx_centers = geo_data.global_qbx_centers()
+        ncenters = geo_data.ncenters
 
-    for i, model_result in enumerate(model_results):
-        context = model_result.params.copy()
-        for param in params:
-            context[param] = var(param)
+        # Build a mask (weight) of whether a target is a global qbx center
+        global_qbx_centers_tree_order = take(
+            tree.sorted_target_ids, global_qbx_centers, queue=queue
+        )
+        global_qbx_center_weight = cl.array.zeros(
+            queue, tree.ntargets, dtype=tree.particle_id_dtype
+        )
 
-        # Represents the total modeled cost, but leaves the calibration
-        # parameters symbolic.
-        total_cost = evaluate(
-                sum(model_result.raw_costs.values()),
-                context=context)
+        self._fill_array_with_index(
+            queue, global_qbx_center_weight, global_qbx_centers_tree_order, 1
+        )
 
-        coeffs = collect_coeffs(total_cost)
-        # Assumes the total cost is a sum of terms linear in the parameters.
-        assert set(key.name for key in coeffs) <= params
+        if weights is not None:
+            assert weights.dtype == tree.particle_id_dtype
+            global_qbx_center_weight[tree.sorted_target_ids[:ncenters]] *= weights
 
-        for param, time in coeffs.items():
-            uncalibrated_times[param.name][i] = time
+        # Each target box enumerate its target list and add the weight of global
+        # qbx centers
+        ntarget_boxes = len(traversal.target_boxes)
+        nqbx_centers_itgt_box = cl.array.empty(
+            queue, ntarget_boxes, dtype=tree.particle_id_dtype
+        )
 
-    for i, timing_result in enumerate(timing_results):
-        for param, time in timing_result.items():
-            calibration_param = (
-                    _FMM_STAGE_TO_CALIBRATION_PARAMETER[param])
-            actual_times[calibration_param][i] = time["process_elapsed"]
+        count_global_qbx_centers_knl = self.count_global_qbx_centers_knl(
+            queue.context, tree.box_id_dtype, tree.particle_id_dtype
+        )
+        count_global_qbx_centers_knl(
+            nqbx_centers_itgt_box,
+            global_qbx_center_weight,
+            traversal.target_boxes,
+            tree.box_target_starts,
+            tree.box_target_counts_nonchild,
+            queue=queue
+        )
 
-    result = {}
+        return nqbx_centers_itgt_box
 
-    for param in params:
-        uncalibrated = uncalibrated_times[param]
-        actual = actual_times[param]
+    def process_form_qbxl(self, queue, geo_data, p2qbxl_cost,
+                          ndirect_sources_per_target_box):
+        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(queue, geo_data)
 
-        if np.allclose(uncalibrated, 0):
-            result[param] = float("NaN")
-            continue
+        return (nqbx_centers_itgt_box
+                * ndirect_sources_per_target_box
+                * p2qbxl_cost)
 
-        result[param] = (
-                actual.dot(uncalibrated) / uncalibrated.dot(uncalibrated))
+    @memoize_method
+    def process_m2qbxl_knl(self, context, box_id_dtype, particle_id_dtype):
+        return ElementwiseKernel(
+            context,
+            Template(r"""
+                ${box_id_t} *idx_to_itgt_box,
+                ${particle_id_t} *nqbx_centers_itgt_box,
+                ${box_id_t} *ssn_starts,
+                double *nm2qbxl,
+                double m2qbxl_cost
+            """).render(
+                box_id_t=dtype_to_ctype(box_id_dtype),
+                particle_id_t=dtype_to_ctype(particle_id_dtype)
+            ),
+            Template(r"""
+                // get the index of current box in target_boxes
+                ${box_id_t} itgt_box = idx_to_itgt_box[i];
+                // get the number of expansion centers in current box
+                ${particle_id_t} nqbx_centers = nqbx_centers_itgt_box[itgt_box];
+                // get the number of list 3 boxes of the current box in a particular
+                // level
+                ${box_id_t} nlist3_boxes = ssn_starts[i + 1] - ssn_starts[i];
+                // calculate the cost
+                nm2qbxl[itgt_box] += (nqbx_centers * nlist3_boxes * m2qbxl_cost);
+            """).render(
+                box_id_t=dtype_to_ctype(box_id_dtype),
+                particle_id_t=dtype_to_ctype(particle_id_dtype)
+            ),
+            name="process_m2qbxl"
+        )
 
-    return result
+    def process_m2qbxl(self, queue, geo_data, m2qbxl_cost):
+        tree = geo_data.tree()
+        traversal = geo_data.traversal()
+        ntarget_boxes = len(traversal.target_boxes)
+        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(queue, geo_data)
+
+        process_m2qbxl_knl = self.process_m2qbxl_knl(
+            queue.context, tree.box_id_dtype, tree.particle_id_dtype
+        )
+
+        nm2qbxl = cl.array.zeros(queue, ntarget_boxes, dtype=np.float64)
+
+        for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
+            process_m2qbxl_knl(
+                ssn.nonempty_indices,
+                nqbx_centers_itgt_box,
+                ssn.starts,
+                nm2qbxl,
+                m2qbxl_cost[isrc_level].get(queue).reshape(-1)[0],
+                queue=queue
+            )
+
+        return nm2qbxl
+
+    def process_l2qbxl(self, queue, geo_data, l2qbxl_cost):
+        tree = geo_data.tree()
+        traversal = geo_data.traversal()
+        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(queue, geo_data)
+
+        # l2qbxl_cost_itgt_box = l2qbxl_cost[tree.box_levels[traversal.target_boxes]]
+        l2qbxl_cost_itgt_box = take(
+            l2qbxl_cost,
+            take(tree.box_levels, traversal.target_boxes, queue=queue),
+            queue=queue
+        )
+
+        return nqbx_centers_itgt_box * l2qbxl_cost_itgt_box
+
+    def process_eval_qbxl(self, queue, geo_data, qbxl2p_cost):
+        center_to_targets_starts = geo_data.center_to_tree_targets().starts
+        center_to_targets_starts = center_to_targets_starts.with_queue(queue)
+        weights = center_to_targets_starts[1:] - center_to_targets_starts[:-1]
+
+        nqbx_targets_itgt_box = self.get_nqbx_centers_per_tgt_box(
+            queue, geo_data, weights=weights
+        )
+
+        return nqbx_targets_itgt_box * qbxl2p_cost
+
+    def process_eval_target_specific_qbxl(self, queue, geo_data, p2p_tsqbx_cost,
+                                          ndirect_sources_per_target_box):
+        center_to_targets_starts = geo_data.center_to_tree_targets().starts
+        center_to_targets_starts = center_to_targets_starts.with_queue(queue)
+        weights = center_to_targets_starts[1:] - center_to_targets_starts[:-1]
+
+        nqbx_targets_itgt_box = self.get_nqbx_centers_per_tgt_box(
+            queue, geo_data, weights=weights
+        )
+
+        return (nqbx_targets_itgt_box
+                * ndirect_sources_per_target_box
+                * p2p_tsqbx_cost)
+
+    def qbx_cost_factors_for_kernels_from_model(
+            self, queue, nlevels, xlat_cost, context):
+        if not isinstance(queue, cl.CommandQueue):
+            raise TypeError(
+                "An OpenCL command queue must be supplied for cost model")
+
+        return AbstractQBXCostModel.qbx_cost_factors_for_kernels_from_model(
+            self, queue, nlevels, xlat_cost, context
+        )
+
+
+class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
+    def __init__(
+            self,
+            translation_cost_model_factory=make_pde_aware_translation_cost_model):
+        """This cost model is a redundant implementation used for testing. It should
+        not be used outside of tests for :mod:`pytential`.
+
+        :arg translation_cost_model_factory: a function, which takes tree dimension
+            and the number of tree levels as arguments, returns an object of
+            :class:`TranslationCostModel`.
+        """
+        _PythonFMMCostModel.__init__(self, translation_cost_model_factory)
+
+    def process_form_qbxl(self, queue, geo_data, p2qbxl_cost,
+                          ndirect_sources_per_target_box):
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+        traversal = geo_data.traversal()
+
+        np2qbxl = np.zeros(len(traversal.target_boxes), dtype=np.float64)
+
+        for tgt_icenter in global_qbx_centers:
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+            np2qbxl[itgt_box] += ndirect_sources_per_target_box[itgt_box]
+
+        return np2qbxl * p2qbxl_cost
+
+    def process_eval_target_specific_qbxl(self, queue, geo_data, p2p_tsqbx_cost,
+                                          ndirect_sources_per_target_box):
+        center_to_targets_starts = geo_data.center_to_tree_targets().starts
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+        traversal = geo_data.traversal()
+
+        neval_tsqbx = np.zeros(len(traversal.target_boxes), dtype=np.float64)
+        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+            start, end = center_to_targets_starts[tgt_icenter:tgt_icenter + 2]
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+            neval_tsqbx[itgt_box] += (
+                    ndirect_sources_per_target_box[itgt_box] * (end - start)
+            )
+
+        return neval_tsqbx * p2p_tsqbx_cost
+
+    def process_m2qbxl(self, queue, geo_data, m2qbxl_cost):
+        traversal = geo_data.traversal()
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+
+        ntarget_boxes = len(traversal.target_boxes)
+        nm2qbxl = np.zeros(ntarget_boxes, dtype=np.float64)
+
+        for isrc_level, sep_smaller_list in enumerate(
+                traversal.from_sep_smaller_by_level):
+
+            qbx_center_to_target_box_source_level = \
+                geo_data.qbx_center_to_target_box_source_level(isrc_level)
+
+            for tgt_icenter in global_qbx_centers:
+                icontaining_tgt_box = qbx_center_to_target_box_source_level[
+                    tgt_icenter
+                ]
+
+                if icontaining_tgt_box == -1:
+                    continue
+
+                start = sep_smaller_list.starts[icontaining_tgt_box]
+                stop = sep_smaller_list.starts[icontaining_tgt_box + 1]
+
+                containing_tgt_box = qbx_center_to_target_box[tgt_icenter]
+
+                nm2qbxl[containing_tgt_box] += (
+                        (stop - start) * m2qbxl_cost[isrc_level])
+
+        return nm2qbxl
+
+    def process_l2qbxl(self, queue, geo_data, l2qbxl_cost):
+        tree = geo_data.tree()
+        traversal = geo_data.traversal()
+        global_qbx_centers = geo_data.global_qbx_centers()
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+
+        ntarget_boxes = len(traversal.target_boxes)
+        nl2qbxl = np.zeros(ntarget_boxes, dtype=np.float64)
+
+        for tgt_icenter in global_qbx_centers:
+            itgt_box = qbx_center_to_target_box[tgt_icenter]
+            tgt_ibox = traversal.target_boxes[itgt_box]
+            nl2qbxl[itgt_box] += l2qbxl_cost[tree.box_levels[tgt_ibox]]
+
+        return nl2qbxl
+
+    def process_eval_qbxl(self, queue, geo_data, qbxl2p_cost):
+        traversal = geo_data.traversal()
+        global_qbx_centers = geo_data.global_qbx_centers()
+        center_to_targets_starts = geo_data.center_to_tree_targets().starts
+        qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
+
+        ntarget_boxes = len(traversal.target_boxes)
+        neval_qbxl = np.zeros(ntarget_boxes, dtype=np.float64)
+
+        for src_icenter in global_qbx_centers:
+            start, end = center_to_targets_starts[src_icenter:src_icenter+2]
+            icontaining_tgt_box = qbx_center_to_target_box[src_icenter]
+            neval_qbxl[icontaining_tgt_box] += (end - start)
+
+        return neval_qbxl * qbxl2p_cost
+
+    def qbx_cost_per_box(self, queue, geo_data, kernel, kernel_arguments,
+                         calibration_params):
+        """This function transfers *geo_data* to host if necessary
+        """
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
+        from pytential.qbx.geometry import QBXFMMGeometryData
+
+        if not isinstance(geo_data, ToHostTransferredGeoDataWrapper):
+            assert isinstance(geo_data, QBXFMMGeometryData)
+            geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+
+        return AbstractQBXCostModel.qbx_cost_per_box(
+            self, queue, geo_data, kernel, kernel_arguments, calibration_params
+        )
+
+    def qbx_cost_per_stage(self, queue, geo_data, kernel, kernel_arguments,
+                           calibration_params):
+        """This function additionally transfers geo_data to host if necessary
+        """
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
+        from pytential.qbx.geometry import QBXFMMGeometryData
+
+        if not isinstance(geo_data, ToHostTransferredGeoDataWrapper):
+            assert isinstance(geo_data, QBXFMMGeometryData)
+            geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+            queue.finish()
+
+        return AbstractQBXCostModel.qbx_cost_per_stage(
+            self, queue, geo_data, kernel, kernel_arguments, calibration_params
+        )
+
+    def qbx_cost_factors_for_kernels_from_model(
+            self, queue, nlevels, xlat_cost, context):
+        return AbstractQBXCostModel.qbx_cost_factors_for_kernels_from_model(
+            self, None, nlevels, xlat_cost, context
+        )
 
 # }}}
 

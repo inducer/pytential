@@ -108,9 +108,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         :arg _use_target_specific_qbx: Whether to use target-specific
             acceleration by default if possible. *None* means
             "use if possible".
-        :arg cost_model: Either *None* or instance of
-             :class:`~pytential.qbx.cost.CostModel`, used for gathering modeled
-             costs (experimental)
+        :arg cost_model: Either *None* or an object implementing the
+             :class:`~pytential.qbx.cost.AbstractQBXCostModel` interface, used for
+             gathering modeled costs if provided (experimental)
         """
 
         # {{{ argument processing
@@ -213,8 +213,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self.geometry_data_inspector = geometry_data_inspector
 
         if cost_model is None:
-            from pytential.qbx.cost import CostModel
-            cost_model = CostModel()
+            from pytential.qbx.cost import QBXCostModel
+            cost_model = QBXCostModel()
 
         self.cost_model = cost_model
 
@@ -437,7 +437,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ internal functionality for execution
 
-    def exec_compute_potential_insn(self, queue, insn, bound_expr, evaluate,
+    def exec_compute_potential_insn(self, actx, insn, bound_expr, evaluate,
             return_timing_data):
         extra_args = {}
 
@@ -460,40 +460,57 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             extra_args["fmm_driver"] = drive_fmm
 
         return self._dispatch_compute_potential_insn(
-                queue, insn, bound_expr, evaluate, func, extra_args)
+                actx, insn, bound_expr, evaluate, func, extra_args)
 
-    def cost_model_compute_potential_insn(self, queue, insn, bound_expr, evaluate):
+    def cost_model_compute_potential_insn(self, actx, insn, bound_expr, evaluate,
+                                          calibration_params, per_box):
         """Using :attr:`cost_model`, evaluate the cost of executing *insn*.
         Cost model results are gathered in
         :attr:`pytential.symbolic.execution.BoundExpression.modeled_cost`
         along the way.
 
+        :arg calibration_params: a :class:`dict` of calibration parameters, mapping
+            from parameter names to calibration values.
+        :arg per_box: if *true*, cost model result will be a :class:`numpy.ndarray`
+            or :class:`pyopencl.array.Array` with shape of the number of boxes, where
+            the ith entry is the sum of the cost of all stages for box i. If *false*,
+            cost model result will be a :class:`dict`, mapping from the stage name to
+            predicted cost of the stage for all boxes.
+
         :returns: whatever :meth:`exec_compute_potential_insn_fmm` returns.
         """
-
         if self.fmm_level_to_order is False:
             raise NotImplementedError("perf modeling direct evaluations")
 
         def drive_cost_model(
                     wrangler, strengths, geo_data, kernel, kernel_arguments):
             del strengths
-            cost_model_result = (
-                    self.cost_model(wrangler, geo_data, kernel, kernel_arguments))
+
+            if per_box:
+                cost_model_result, metadata = self.cost_model.qbx_cost_per_box(
+                    actx.queue, geo_data, kernel, kernel_arguments,
+                    calibration_params
+                )
+            else:
+                cost_model_result, metadata = self.cost_model.qbx_cost_per_stage(
+                    actx.queue, geo_data, kernel, kernel_arguments,
+                    calibration_params
+                )
 
             from pytools.obj_array import obj_array_vectorize
-            output_placeholder = obj_array_vectorize(
-                wrangler.finalize_potentials,
-                wrangler.full_output_zeros()
-            )
-
-            return output_placeholder, cost_model_result
+            return (
+                    obj_array_vectorize(
+                        wrangler.finalize_potentials,
+                        wrangler.full_output_zeros()),
+                    (cost_model_result, metadata))
 
         return self._dispatch_compute_potential_insn(
-                queue, insn, bound_expr, evaluate,
-                self.exec_compute_potential_insn_fmm,
-                extra_args={"fmm_driver": drive_cost_model})
+            actx, insn, bound_expr, evaluate,
+            self.exec_compute_potential_insn_fmm,
+            extra_args={"fmm_driver": drive_cost_model}
+        )
 
-    def _dispatch_compute_potential_insn(self, queue, insn, bound_expr,
+    def _dispatch_compute_potential_insn(self, actx, insn, bound_expr,
             evaluate, func, extra_args=None):
         if self._disable_refinement:
             from warnings import warn
@@ -504,7 +521,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         if extra_args is None:
             extra_args = {}
 
-        return func(queue, insn, bound_expr, evaluate, **extra_args)
+        return func(actx, insn, bound_expr, evaluate, **extra_args)
 
     # {{{ fmm-based execution
 

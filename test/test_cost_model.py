@@ -1,6 +1,9 @@
 from __future__ import division, print_function
 
-__copyright__ = "Copyright (C) 2018 Matt Wala"
+__copyright__ = """
+    Copyright (C) 2018 Matt Wala
+    Copyright (C) 2019 Hao Gao
+"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -22,24 +25,262 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-import numpy.linalg as la  # noqa
-
-from boxtree.tools import ConstantOneExpansionWrangler
-from meshmode.array_context import PyOpenCLArrayContext
-import pyopencl as cl
-import pyopencl.clmath  # noqa
 import pytest
 from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
-from pytools import one
+from meshmode.array_context import PyOpenCLArrayContext
+
+import numpy as np
+import pyopencl as cl
+
+from boxtree.tools import ConstantOneExpansionWrangler
+from pytential.qbx import QBXLayerPotentialSource
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-
 from pytential import bind, sym, norm  # noqa
 from pytential import GeometryCollection
+from pytools import one
 
-from pytential.qbx.cost import CostModel
+from pytential.qbx.cost import (
+    QBXCostModel, _PythonQBXCostModel, make_pde_aware_translation_cost_model
+)
+
+import time
+
+import logging
+logger = logging.getLogger(__name__)
+
+
+# {{{ Compare the time and result of OpenCL implementation and Python implementation
+
+def test_compare_cl_and_py_cost_model(ctx_factory):
+    nelements = 3600
+    target_order = 16
+    fmm_order = 5
+    qbx_order = fmm_order
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    actx = PyOpenCLArrayContext(queue)
+
+    # {{{ Construct geometry
+
+    from meshmode.mesh.generation import make_curve_mesh, starfish
+    mesh = make_curve_mesh(starfish, np.linspace(0, 1, nelements), target_order)
+
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+        InterpolatoryQuadratureSimplexGroupFactory
+    pre_density_discr = Discretization(
+        actx, mesh,
+        InterpolatoryQuadratureSimplexGroupFactory(target_order)
+    )
+
+    qbx = QBXLayerPotentialSource(
+        pre_density_discr, 4 * target_order,
+        qbx_order,
+        fmm_order=fmm_order
+    )
+    places = GeometryCollection(qbx)
+
+    from pytential.qbx.refinement import refine_geometry_collection
+    places = refine_geometry_collection(places)
+
+    target_discrs_and_qbx_sides = tuple([(qbx.density_discr, 0)])
+    geo_data_dev = qbx.qbx_fmm_geometry_data(
+        places, places.auto_source.geometry, target_discrs_and_qbx_sides
+    )
+
+    from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
+    geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data_dev)
+
+    # }}}
+
+    # {{{ Construct cost models
+
+    cl_cost_model = QBXCostModel()
+    python_cost_model = _PythonQBXCostModel()
+
+    tree = geo_data.tree()
+    xlat_cost = make_pde_aware_translation_cost_model(
+        tree.targets.shape[0], tree.nlevels
+    )
+
+    constant_one_params = QBXCostModel.get_unit_calibration_params()
+    constant_one_params["p_qbx"] = 5
+    for ilevel in range(tree.nlevels):
+        constant_one_params["p_fmm_lev%d" % ilevel] = 10
+
+    cl_cost_factors = cl_cost_model.qbx_cost_factors_for_kernels_from_model(
+        queue, tree.nlevels, xlat_cost, constant_one_params
+    )
+
+    python_cost_factors = python_cost_model.qbx_cost_factors_for_kernels_from_model(
+        None, tree.nlevels, xlat_cost, constant_one_params
+    )
+
+    # }}}
+
+    # {{{ Test process_form_qbxl
+
+    cl_ndirect_sources_per_target_box = (
+        cl_cost_model.get_ndirect_sources_per_target_box(
+            queue, geo_data_dev.traversal()
+        )
+    )
+
+    queue.finish()
+    start_time = time.time()
+
+    cl_p2qbxl = cl_cost_model.process_form_qbxl(
+        queue, geo_data_dev, cl_cost_factors["p2qbxl_cost"],
+        cl_ndirect_sources_per_target_box
+    )
+
+    queue.finish()
+    logger.info("OpenCL time for process_form_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    python_ndirect_sources_per_target_box = (
+        python_cost_model.get_ndirect_sources_per_target_box(
+            queue, geo_data.traversal()
+        )
+    )
+
+    start_time = time.time()
+
+    python_p2qbxl = python_cost_model.process_form_qbxl(
+        queue, geo_data, python_cost_factors["p2qbxl_cost"],
+        python_ndirect_sources_per_target_box
+    )
+
+    logger.info("Python time for process_form_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    assert np.array_equal(cl_p2qbxl.get(), python_p2qbxl)
+
+    # }}}
+
+    # {{{ Test process_m2qbxl
+
+    queue.finish()
+    start_time = time.time()
+
+    cl_m2qbxl = cl_cost_model.process_m2qbxl(
+        queue, geo_data_dev, cl_cost_factors["m2qbxl_cost"]
+    )
+
+    queue.finish()
+    logger.info("OpenCL time for process_m2qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    start_time = time.time()
+
+    python_m2qbxl = python_cost_model.process_m2qbxl(
+        queue, geo_data, python_cost_factors["m2qbxl_cost"]
+    )
+
+    logger.info("Python time for process_m2qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    assert np.array_equal(cl_m2qbxl.get(), python_m2qbxl)
+
+    # }}}
+
+    # {{{ Test process_l2qbxl
+
+    queue.finish()
+    start_time = time.time()
+
+    cl_l2qbxl = cl_cost_model.process_l2qbxl(
+        queue, geo_data_dev, cl_cost_factors["l2qbxl_cost"]
+    )
+
+    queue.finish()
+    logger.info("OpenCL time for process_l2qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    start_time = time.time()
+
+    python_l2qbxl = python_cost_model.process_l2qbxl(
+        queue, geo_data, python_cost_factors["l2qbxl_cost"]
+    )
+
+    logger.info("Python time for process_l2qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    assert np.array_equal(cl_l2qbxl.get(), python_l2qbxl)
+
+    # }}}
+
+    # {{{ Test process_eval_qbxl
+
+    queue.finish()
+    start_time = time.time()
+
+    cl_eval_qbxl = cl_cost_model.process_eval_qbxl(
+        queue, geo_data_dev, cl_cost_factors["qbxl2p_cost"]
+    )
+
+    queue.finish()
+    logger.info("OpenCL time for process_eval_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    start_time = time.time()
+
+    python_eval_qbxl = python_cost_model.process_eval_qbxl(
+        queue, geo_data, python_cost_factors["qbxl2p_cost"]
+    )
+
+    logger.info("Python time for process_eval_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    assert np.array_equal(cl_eval_qbxl.get(), python_eval_qbxl)
+
+    # }}}
+
+    # {{{ Test eval_target_specific_qbxl
+
+    queue.finish()
+    start_time = time.time()
+
+    cl_eval_target_specific_qbxl = cl_cost_model.process_eval_target_specific_qbxl(
+        queue, geo_data_dev, cl_cost_factors["p2p_tsqbx_cost"],
+        cl_ndirect_sources_per_target_box
+    )
+
+    queue.finish()
+    logger.info("OpenCL time for eval_target_specific_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    start_time = time.time()
+
+    python_eval_target_specific_qbxl = \
+        python_cost_model.process_eval_target_specific_qbxl(
+            queue, geo_data, python_cost_factors["p2p_tsqbx_cost"],
+            python_ndirect_sources_per_target_box
+        )
+
+    logger.info("Python time for eval_target_specific_qbxl: {0}".format(
+        str(time.time() - start_time)
+    ))
+
+    assert np.array_equal(
+        cl_eval_target_specific_qbxl.get(), python_eval_target_specific_qbxl
+    )
+
+    # }}}
+
+# }}}
 
 
 # {{{ global params
@@ -135,11 +376,14 @@ def test_timing_data_gathering(ctx_factory):
 
 # {{{ test cost model
 
-@pytest.mark.parametrize("dim, use_target_specific_qbx", (
-    (2, False),
-    (3, False),
-    (3, True)))
-def test_cost_model(ctx_factory, dim, use_target_specific_qbx):
+@pytest.mark.parametrize("dim, use_target_specific_qbx, per_box", (
+    (2, False, False),
+    (3, False, False),
+    (3, True, False),
+    (2, False, True),
+    (3, False, True),
+    (3, True, True)))
+def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
     """Test that cost model gathering can execute successfully."""
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
@@ -147,7 +391,7 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx):
 
     lpot_source = get_lpot_source(actx, dim).copy(
             _use_target_specific_qbx=use_target_specific_qbx,
-            cost_model=CostModel())
+            cost_model=QBXCostModel())
     places = GeometryCollection(lpot_source)
 
     density_discr = places.get_discretization(places.auto_source.geometry)
@@ -158,14 +402,28 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx):
 
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
     op_S = bind(places, sym_op_S)
-    cost_S = op_S.get_modeled_cost(actx, sigma=sigma)
+
+    if per_box:
+        cost_S, _ = op_S.cost_per_box("constant_one", sigma=sigma)
+    else:
+        cost_S, _ = op_S.cost_per_stage("constant_one", sigma=sigma)
+
     assert len(cost_S) == 1
 
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
             + sym.D(k_sym, sigma_sym, qbx_forced_limit="avg"))
     op_S_plus_D = bind(places, sym_op_S_plus_D)
-    cost_S_plus_D = op_S_plus_D.get_modeled_cost(actx, sigma=sigma)
+
+    if per_box:
+        cost_S_plus_D, _ = op_S_plus_D.cost_per_box(
+            "constant_one", sigma=sigma
+        )
+    else:
+        cost_S_plus_D, _ = op_S_plus_D.cost_per_stage(
+            "constant_one", sigma=sigma
+        )
+
     assert len(cost_S_plus_D) == 2
 
 # }}}
@@ -197,7 +455,10 @@ def test_cost_model_metadata_gathering(ctx_factory):
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1, k=sym.var("k"))
     op_S = bind(places, sym_op_S)
 
-    cost_S = one(op_S.get_modeled_cost(actx, sigma=sigma, k=k).values())
+    _, metadata = op_S.cost_per_stage(
+        "constant_one", sigma=sigma, k=k, return_metadata=True
+    )
+    metadata = one(metadata.values())
 
     geo_data = lpot_source.qbx_fmm_geometry_data(
             places,
@@ -206,15 +467,15 @@ def test_cost_model_metadata_gathering(ctx_factory):
 
     tree = geo_data.tree()
 
-    assert cost_S.params["p_qbx"] == QBX_ORDER
-    assert cost_S.params["nlevels"] == tree.nlevels
-    assert cost_S.params["nsources"] == tree.nsources
-    assert cost_S.params["ntargets"] == tree.ntargets
-    assert cost_S.params["ncenters"] == geo_data.ncenters
+    assert metadata["p_qbx"] == QBX_ORDER
+    assert metadata["nlevels"] == tree.nlevels
+    assert metadata["nsources"] == tree.nsources
+    assert metadata["ntargets"] == tree.ntargets
+    assert metadata["ncenters"] == geo_data.ncenters
 
     for level in range(tree.nlevels):
         assert (
-                cost_S.params["p_fmm_lev%d" % level]
+                metadata["p_fmm_lev%d" % level]
                 == fmm_level_to_order(k_sym, {"k": 2}, tree, level))
 
 # }}}
@@ -444,9 +705,8 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue)
 
-    cost_model = (
-            CostModel(
-                translation_cost_model_factory=OpCountingTranslationCostModel))
+    cost_model = QBXCostModel(
+        translation_cost_model_factory=OpCountingTranslationCostModel)
 
     lpot_source = get_lpot_source(actx, dim).copy(
             cost_model=cost_model,
@@ -479,7 +739,8 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     sigma = get_density(actx, density_discr)
 
     from pytools import one
-    cost_S = one(op_S.get_modeled_cost(actx, sigma=sigma).values())
+    modeled_time, _ = op_S.cost_per_stage("constant_one", sigma=sigma)
+    modeled_time = one(modeled_time.values())
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
     # high-level interface, so call the FMM driver directly.
@@ -503,39 +764,42 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     # Check constant one wrangler for correctness.
     assert (potential == ndofs).all()
 
-    modeled_time = cost_S.get_predicted_times(merge_close_lists=True)
-
     # Check that the cost model matches the timing data returned by the
     # constant one wrangler.
     mismatches = []
     for stage in timing_data:
-        if timing_data[stage]["ops_elapsed"] != modeled_time[stage]:
-            mismatches.append(
+        if stage not in modeled_time:
+            assert timing_data[stage]["ops_elapsed"] == 0
+        else:
+            if timing_data[stage]["ops_elapsed"] != modeled_time[stage]:
+                mismatches.append(
                     (stage, timing_data[stage]["ops_elapsed"], modeled_time[stage]))
 
     assert not mismatches, "\n".join(str(s) for s in mismatches)
+
+    # {{{ Test per-box cost
+
+    total_cost = 0.0
+    for stage in timing_data:
+        total_cost += timing_data[stage]["ops_elapsed"]
+
+    per_box_cost, _ = op_S.cost_per_box("constant_one", sigma=sigma)
+    print(per_box_cost)
+    per_box_cost = one(per_box_cost.values())
+
+    total_aggregate_cost = cost_model.aggregate_over_boxes(per_box_cost)
+    assert total_cost == (
+            total_aggregate_cost
+            + modeled_time["coarsen_multipoles"]
+            + modeled_time["refine_locals"]
+    )
+
+    # }}}
 
 # }}}
 
 
 # {{{ test order varying by level
-
-CONSTANT_ONE_PARAMS = dict(
-        c_l2l=1,
-        c_l2p=1,
-        c_l2qbxl=1,
-        c_m2l=1,
-        c_m2m=1,
-        c_m2p=1,
-        c_m2qbxl=1,
-        c_p2l=1,
-        c_p2m=1,
-        c_p2p=1,
-        c_p2qbxl=1,
-        c_qbxl2p=1,
-        c_p2p_tsqbx=1,
-        )
-
 
 def test_cost_model_order_varying_by_level(ctx_factory):
     """For FMM order varying by level, this checks to ensure that the costs are
@@ -552,8 +816,7 @@ def test_cost_model_order_varying_by_level(ctx_factory):
         return 1
 
     lpot_source = get_lpot_source(actx, 2).copy(
-            cost_model=CostModel(
-                calibration_params=CONSTANT_ONE_PARAMS),
+            cost_model=QBXCostModel(),
             fmm_level_to_order=level_to_order_constant)
     places = GeometryCollection(lpot_source)
 
@@ -565,35 +828,51 @@ def test_cost_model_order_varying_by_level(ctx_factory):
 
     sigma = get_density(actx, density_discr)
 
-    cost_constant = one(
-            bind(places, sym_op)
-            .get_modeled_cost(actx, sigma=sigma).values())
+    cost_constant, metadata = bind(places, sym_op).cost_per_stage(
+            "constant_one", sigma=sigma)
+
+    cost_constant = one(cost_constant.values())
+    metadata = one(metadata.values())
 
     # }}}
 
     # {{{ varying level to order
 
-    varying_order_params = cost_constant.params.copy()
+    def level_to_order_varying(kernel, kernel_args, tree, level):
+        return metadata["nlevels"] - level
 
-    nlevels = cost_constant.params["nlevels"]
-    for level in range(nlevels):
-        varying_order_params["p_fmm_lev%d" % level] = nlevels - level
+    lpot_source = get_lpot_source(actx, 2).copy(
+            cost_model=QBXCostModel(),
+            fmm_level_to_order=level_to_order_varying)
+    places = GeometryCollection(lpot_source)
 
-    cost_varying = cost_constant.with_params(varying_order_params)
+    density_discr = places.get_discretization(places.auto_source.geometry)
+
+    sigma = get_density(actx, density_discr)
+
+    cost_varying, _ = bind(lpot_source, sym_op).cost_per_stage(
+        "constant_one", sigma=sigma)
+
+    cost_varying = one(cost_varying.values())
 
     # }}}
 
-    assert (
-            sum(cost_varying.get_predicted_times().values())
-            > sum(cost_constant.get_predicted_times().values()))
+    assert sum(cost_varying.values()) > sum(cost_constant.values())
 
 # }}}
 
 
 # You can test individual routines by typing
 # $ python test_cost_model.py 'test_routine()'
+# You can specify the log level by setting 'LOGLEVEL' enviroment variable, for
+# example
+# $ LOGLEVEL=INFO python test_cost_model.py 'test_compare_cl_and_py_cost_model(
+# $     cl.create_some_context)'
 
 if __name__ == "__main__":
+    import os
+    logging.basicConfig(level=os.environ.get("LOGLEVEL", "WARNING"))
+
     import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])

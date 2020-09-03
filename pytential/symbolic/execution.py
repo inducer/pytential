@@ -42,6 +42,7 @@ from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.dof_array import DOFArray, thaw
 
 from pytools import memoize_in
+from pytential.qbx.cost import AbstractQBXCostModel
 
 from pytential import sym
 
@@ -360,11 +361,21 @@ class CostModelMapper(EvaluationMapperBase):
     This executes everything *except* the layer potential operator. Instead of
     executing the operator, the cost model gets run and the cost
     data is collected.
+
+    .. attribute:: kernel_to_calibration_params
+
+        Can either be a :class:`str` "constant_one", which uses the constant 1.0 as
+        calibration parameters for all stages of all kernels, or be a :class:`dict`,
+        which maps from kernels to the calibration parameters, returned from
+        `estimate_kernel_specific_calibration_params`.
+
     """
 
-    def __init__(self, bound_expr, actx, context=None,
-            target_geometry=None,
-            target_points=None, target_normals=None, target_tangents=None):
+    def __init__(self, bound_expr, actx,
+                 kernel_to_calibration_params, per_box,
+                 context=None,
+                 target_geometry=None,
+                 target_points=None, target_normals=None, target_tangents=None):
         if context is None:
             context = {}
         EvaluationMapperBase.__init__(
@@ -373,24 +384,39 @@ class CostModelMapper(EvaluationMapperBase):
                 target_points,
                 target_normals,
                 target_tangents)
+
+        self.kernel_to_calibration_params = kernel_to_calibration_params
         self.modeled_cost = {}
+        self.metadata = {}
+        self.per_box = per_box
 
     def exec_compute_potential_insn(
             self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         source = bound_expr.places.get_geometry(insn.source.geometry)
+        knls = frozenset(knl for knl in insn.kernels)
 
-        result, cost_model_result = (
-                source.cost_model_compute_potential_insn(
-                    actx, insn, bound_expr, evaluate))
+        if (isinstance(self.kernel_to_calibration_params, str)
+                and self.kernel_to_calibration_params == "constant_one"):
+            calibration_params = \
+                AbstractQBXCostModel.get_unit_calibration_params()
+        else:
+            calibration_params = self.kernel_to_calibration_params[knls]
+
+        result, (cost_model_result, metadata) = \
+            source.cost_model_compute_potential_insn(
+                actx, insn, bound_expr, evaluate, calibration_params,
+                self.per_box)
 
         # The compiler ensures this.
         assert insn not in self.modeled_cost
 
         self.modeled_cost[insn] = cost_model_result
+        self.metadata[insn] = metadata
+
         return result
 
     def get_modeled_cost(self):
-        return self.modeled_cost
+        return self.modeled_cost, self.metadata
 
 # }}}
 
@@ -833,11 +859,53 @@ class GeometryCollection(object):
 
 # {{{ bound expression
 
+def _find_array_context_from_args_in_context(context, supplied_array_context=None):
+    array_contexts = []
+    if supplied_array_context is not None:
+        if not isinstance(supplied_array_context, PyOpenCLArrayContext):
+            raise TypeError(
+                    "first argument (if supplied) must be a "
+                    "PyOpenCLArrayContext")
+
+        array_contexts.append(supplied_array_context)
+    del supplied_array_context
+
+    def look_for_array_contexts(ary):
+        if isinstance(ary, DOFArray):
+            if ary.array_context is not None:
+                array_contexts.append(ary.array_context)
+        elif isinstance(ary, np.ndarray) and ary.dtype.char == "O":
+            for idx in np.ndindex(ary.shape):
+                look_for_array_contexts(ary[idx])
+        else:
+            pass
+
+    for key, val in context.items():
+        look_for_array_contexts(val)
+
+    if array_contexts:
+        from pytools import is_single_valued
+        if not is_single_valued(array_contexts):
+            raise ValueError("arguments do not agree on an array context")
+
+        array_context = array_contexts[0]
+    else:
+        array_context = None
+
+    if not isinstance(array_context, PyOpenCLArrayContext):
+        raise TypeError(
+                "array context (derived from arguments) is not a "
+                "PyOpenCLArrayContext")
+
+    return array_context
+
+
 class BoundExpression(object):
     """An expression readied for evaluation by binding it to a
     :class:`~pytential.GeometryCollection`.
 
-    .. automethod :: get_modeled_cost
+    .. automethod :: cost_per_stage
+    .. automethod :: cost_per_box
     .. automethod :: scipy_op
     .. automethod :: eval
     .. automethod :: __call__
@@ -857,8 +925,43 @@ class BoundExpression(object):
     def _get_cache(self, name):
         return self.caches.setdefault(name, {})
 
-    def get_modeled_cost(self, queue, **args):
-        cost_model_mapper = CostModelMapper(self, queue, args)
+    def cost_per_stage(self, calibration_params, **kwargs):
+        """
+        :arg queue: a :class:`pyopencl.CommandQueue` object.
+        :arg calibration_params: either a :class:`dict` returned by
+            `estimate_kernel_specific_calibration_params`, or a :class:`str`
+            "constant_one".
+        :return: a :class:`dict` mapping from instruction to per-stage cost. Each
+            per-stage cost is represented by a :class:`dict` mapping from the stage
+            name to the predicted time.
+        """
+        array_context = _find_array_context_from_args_in_context(kwargs)
+
+        if array_context is None:
+            raise ValueError("unable to figure array context from arguments")
+
+        cost_model_mapper = CostModelMapper(
+            self, array_context, calibration_params, per_box=False, context=kwargs
+        )
+        self.code.execute(cost_model_mapper)
+        return cost_model_mapper.get_modeled_cost()
+
+    def cost_per_box(self, calibration_params, **kwargs):
+        """
+        :arg queue: a :class:`pyopencl.CommandQueue` object.
+        :arg calibration_params: either a :class:`dict` returned by
+            `estimate_kernel_specific_calibration_params`, or a :class:`str`
+            "constant_one".
+        :return: a :class:`dict` mapping from instruction to per-box cost. Each
+            per-box cost is represented by a :class:`numpy.ndarray` or
+            :class:`pyopencl.array.Array` of shape (nboxes,), where the ith entry
+            represents the cost of all stages for box i.
+        """
+        array_context = _find_array_context_from_args_in_context(kwargs)
+
+        cost_model_mapper = CostModelMapper(
+            self, array_context, calibration_params, per_box=True, context=kwargs
+        )
         self.code.execute(cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()
 
@@ -929,41 +1032,8 @@ class BoundExpression(object):
         if context is None:
             context = {}
 
-        # {{{ figure array context
-
-        array_contexts = []
-        if array_context is not None:
-            if not isinstance(array_context, PyOpenCLArrayContext):
-                raise TypeError(
-                        "first argument (if supplied) must be a "
-                        "PyOpenCLArrayContext")
-
-            array_contexts.append(array_context)
-        del array_context
-
-        def look_for_array_contexts(ary):
-            if isinstance(ary, DOFArray):
-                if ary.array_context is not None:
-                    array_contexts.append(ary.array_context)
-            elif isinstance(ary, np.ndarray) and ary.dtype.char == "O":
-                for idx in np.ndindex(ary.shape):
-                    look_for_array_contexts(ary[idx])
-            else:
-                pass
-
-        for key, val in context.items():
-            look_for_array_contexts(val)
-
-        if array_contexts:
-            from pytools import is_single_valued
-            if not is_single_valued(array_contexts):
-                raise ValueError("arguments do not agree on an array context")
-
-            array_context = array_contexts[0]
-        else:
-            array_context = None
-
-        # }}}
+        array_context = _find_array_context_from_args_in_context(
+                context, array_context)
 
         exec_mapper = EvaluationMapper(
                 self, array_context, context, timing_data=timing_data)

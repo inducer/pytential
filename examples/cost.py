@@ -1,3 +1,30 @@
+from __future__ import division, print_function
+
+__copyright__ = """
+    Copyright (C) 2018 Matt Wala
+    Copyright (C) 2019 Hao Gao
+"""
+
+__license__ = """
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
+
 """Calibrates a cost model and reports on the accuracy."""
 
 import pyopencl as cl
@@ -6,6 +33,7 @@ from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.dof_array import thaw
 
 from pytential import sym, bind
+from pytential.qbx.cost import QBXCostModel
 from pytools import one
 
 
@@ -90,9 +118,7 @@ def get_test_density(actx, density_discr):
 def calibrate_cost_model(ctx):
     queue = cl.CommandQueue(ctx)
     actx = PyOpenCLArrayContext(queue)
-
-    from pytential.qbx.cost import CostModel, estimate_calibration_params
-    cost_model = CostModel()
+    cost_model = QBXCostModel()
 
     model_results = []
     timing_results = []
@@ -107,7 +133,7 @@ def calibrate_cost_model(ctx):
         bound_op = get_bound_op(places)
         sigma = get_test_density(actx, density_discr)
 
-        cost_S = bound_op.get_modeled_cost(actx, sigma=sigma)
+        modeled_cost, _ = bound_op.cost_per_stage("constant_one", sigma=sigma)
 
         # Warm-up run.
         bound_op.eval({"sigma": sigma}, array_context=actx)
@@ -117,18 +143,20 @@ def calibrate_cost_model(ctx):
             bound_op.eval({"sigma": sigma}, array_context=actx,
                     timing_data=timing_data)
 
-            model_results.append(one(cost_S.values()))
-            timing_results.append(one(timing_data.values()))
+            model_results.append(modeled_cost)
+            timing_results.append(timing_data)
 
-    calibration_params = (
-            estimate_calibration_params(model_results, timing_results))
+    calibration_params = cost_model.estimate_kernel_specific_calibration_params(
+        model_results, timing_results, time_field_name="process_elapsed"
+    )
 
-    return cost_model.with_calibration_params(calibration_params)
+    return calibration_params
 
 
-def test_cost_model(ctx, cost_model):
+def test_cost_model(ctx, calibration_params):
     queue = cl.CommandQueue(ctx)
     actx = PyOpenCLArrayContext(queue)
+    cost_model = QBXCostModel()
 
     for lpot_source in test_geometries(actx):
         lpot_source = lpot_source.copy(cost_model=cost_model)
@@ -140,10 +168,8 @@ def test_cost_model(ctx, cost_model):
         bound_op = get_bound_op(places)
         sigma = get_test_density(actx, density_discr)
 
-        cost_S = bound_op.get_modeled_cost(actx, sigma=sigma)
-        model_result = (
-                one(cost_S.values())
-                .get_predicted_times(merge_close_lists=True))
+        cost_S, _ = bound_op.cost_per_stage(calibration_params, sigma=sigma)
+        model_result = one(cost_S.values())
 
         # Warm-up run.
         bound_op.eval({"sigma": sigma}, array_context=actx)
@@ -168,15 +194,19 @@ def test_cost_model(ctx, cost_model):
             row = [
                     stage,
                     "%.2f" % timing_result[stage],
-                    "%.2f" % model_result[stage]]
+                    "%.2f" % model_result[stage]
+            ]
             table.add_row(row)
 
         print(table)
 
 
 def predict_cost(ctx):
-    model = calibrate_cost_model(ctx)
-    test_cost_model(ctx, model)
+    import logging
+    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
+
+    params = calibrate_cost_model(ctx)
+    test_cost_model(ctx, params)
 
 
 if __name__ == "__main__":
