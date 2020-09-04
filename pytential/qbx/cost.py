@@ -531,7 +531,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         stage_to_param_names.update(additional_stage_to_param_names)
 
         return super().estimate_calibration_params(
-            self, model_results, timing_results, time_field_name=time_field_name,
+            model_results, timing_results, time_field_name=time_field_name,
             additional_stage_to_param_names=stage_to_param_names
         )
 
