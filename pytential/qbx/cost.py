@@ -504,7 +504,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
 
     @staticmethod
     def get_unit_calibration_params():
-        calibration_params = super().get_unit_calibration_params()
+        calibration_params = BaseAbstractFMMCostModel.get_unit_calibration_params()
 
         calibration_params.update(dict(
             c_p2qbxl=1.0,
