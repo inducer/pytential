@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2016, 2017 Matt Wala
