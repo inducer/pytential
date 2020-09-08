@@ -552,7 +552,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     out_kernels)
 
         else:
-            raise ValueError("invalid FMM backend: %s" % self.fmm_backend)
+            raise ValueError(f"invalid FMM backend: {self.fmm_backend}")
 
     def get_target_discrs_and_qbx_sides(self, insn, bound_expr):
         """Build the list of unique target discretizations used by the
@@ -854,7 +854,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 tgt_subset_kwargs = kernel_args.copy()
                 for i, res_i in enumerate(output_for_each_kernel):
-                    tgt_subset_kwargs["result_%d" % i] = res_i
+                    tgt_subset_kwargs[f"result_{i}"] = res_i
 
                 if qbx_tgt_count:
                     lpot_applier_on_tgt_subset(

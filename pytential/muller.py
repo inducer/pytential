@@ -85,8 +85,7 @@ def muller(f, maxiter=100, tol=1e-11, z_start=None):
     while True:
         niter = niter + 1
         if niter >= maxiter:
-            raise RuntimeError("convergence not achieved in %d iterations"
-                    % maxiter)
+            raise RuntimeError(f"convergence not achieved in {maxiter} iterations")
 
         h1 = z2 - z1
         h2 = z3 - z2

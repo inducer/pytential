@@ -274,7 +274,7 @@ def connection_from_dds(places, from_dd, to_dd):
             raise ValueError("Creating a connection to element granularity "
                     "is not allowed. Use Elementwise{Max,Min,Sum}.")
         else:
-            raise ValueError("invalid to_dd granularity: %s" % to_dd.granularity)
+            raise ValueError(f"invalid to_dd granularity: {to_dd.granularity}")
 
     if from_dd.granularity is not to_dd.granularity:
         conn = DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)

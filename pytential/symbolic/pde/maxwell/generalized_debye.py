@@ -70,7 +70,7 @@ class DebyeOperatorBase:
 
         if harmonic_vector_field_names is None:
             harmonic_vector_field_names = \
-                    ["hvf%d" % i for i in range(2*genus)]
+                    [f"hvf{i}" for i in range(2*genus)]
 
         self.harmonic_vector_field_names = harmonic_vector_field_names
         self.harmonic_vector_field_symbols = [
@@ -78,19 +78,19 @@ class DebyeOperatorBase:
                 for name in harmonic_vector_field_names]
 
         if a_cycle_names is None:
-            a_cycle_names = ["acyc%d" % i for i in range(genus)]
+            a_cycle_names = [f"acyc{i}" for i in range(genus)]
         self.a_cycle_names = a_cycle_names
 
         if b_cycle_names is None:
-            b_cycle_names = ["bcyc%d" % i for i in range(genus)]
+            b_cycle_names = [f"bcyc{i}" i for i in range(genus)]
         self.b_cycle_names = b_cycle_names
 
         if b_spanning_surface_names is None:
-            b_spanning_surface_names = ["span_surf_%d" % i for i in range(genus)]
+            b_spanning_surface_names = [f"span_surf_{i}" for i in range(genus)]
         self.b_spanning_surface_names = b_spanning_surface_names
 
         if h_on_spanning_surface_names is None:
-            h_on_spanning_surface_names = ["h_%s" % name
+            h_on_spanning_surface_names = [f"h_{name}"
                     for name in b_spanning_surface_names]
         self.h_on_spanning_surface_names = h_on_spanning_surface_names
 

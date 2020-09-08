@@ -530,7 +530,7 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
                 actx).as_vector(dtype=object)
         vis_data.append(("bdry_normals", bdry_normals),)
 
-    vis.write_vtk_file("refinement-%s-%03d.vtu" % (stage_name, niter), vis_data)
+    vis.write_vtk_file(f"refinement-{stage_name}-{niter:03d}.vtu", vis_data)
 
 
 def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
@@ -810,8 +810,8 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
     from pytential.qbx import QBXLayerPotentialSource
     lpot_source = places.get_geometry(dofdesc.geometry)
     if not isinstance(lpot_source, QBXLayerPotentialSource):
-        raise ValueError("`%s` is not a `QBXLayerPotentialSource`" % (
-            dofdesc.geometry))
+        raise ValueError(f"'{dofdesc.geometry}' is not a QBXLayerPotentialSource")
+
     # {{{
 
     if maxiter is None:
@@ -844,7 +844,8 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
             sym.QBX_SOURCE_QUAD_STAGE2: 3
             }
     if dofdesc.discr_stage not in stage_index_map:
-        raise ValueError("unknown discr stage: %s" % dofdesc.discr_stage)
+        raise ValueError(f"unknown discr stage: {dofdesc.discr_stage}")
+
     stage_index = stage_index_map[dofdesc.discr_stage]
     geometry = dofdesc.geometry
 

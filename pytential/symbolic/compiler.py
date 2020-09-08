@@ -35,10 +35,10 @@ class Instruction(Record):
     priority = 0
 
     def get_assignees(self):
-        raise NotImplementedError("no get_assignees in %s" % self.__class__)
+        raise NotImplementedError(f"no get_assignees in {self.__class__}")
 
     def get_dependencies(self):
-        raise NotImplementedError("no get_dependencies in %s" % self.__class__)
+        raise NotImplementedError(f"no get_dependencies in {self.__class__}")
 
     def __str__(self):
         raise NotImplementedError
@@ -85,12 +85,12 @@ class Assign(Instruction):
         comment = self.comment
         if len(self.names) == 1:
             if comment:
-                comment = "/* %s */ " % comment
+                comment = f"/* {comment} */ "
 
             return "{} <- {}{}".format(self.names[0], comment, self.exprs[0])
         else:
             if comment:
-                comment = " /* %s */" % comment
+                comment = f" /* {comment} */"
 
             lines = []
             lines.append("{" + comment)
@@ -171,8 +171,7 @@ class ComputePotentialInstruction(Instruction):
         return result
 
     def __str__(self):
-        args = ["density=%s" % self.density,
-                "source=%s" % self.source]
+        args = [f"density={self.density}", f"source={self.source}"]
 
         from pytential.symbolic.mappers import StringifyMapper, stringify_where
         strify = StringifyMapper()
@@ -180,7 +179,7 @@ class ComputePotentialInstruction(Instruction):
         lines = []
         for o in self.outputs:
             if o.target_name != self.source:
-                tgt_str = " @ %s" % stringify_where(o.target_name)
+                tgt_str = " @ {}".format(stringify_where(o.target_name))
             else:
                 tgt_str = ""
 
@@ -231,7 +230,7 @@ def dot_dataflow_graph(code, max_node_label_length=30,
             'result [label="result"]']
 
     for num, insn in enumerate(code.instructions):
-        node_name = "node%d" % num
+        node_name = f"node{num}"
         node_names[insn] = node_name
         node_label = str(insn)
 
@@ -354,7 +353,7 @@ class Code:
             return exec_mapper.exec_assign
         if isinstance(insn, ComputePotentialInstruction):
             return exec_mapper.exec_compute_potential_insn
-        raise ValueError("unknown instruction class: %s" % type(insn))
+        raise ValueError(f"unknown instruction class: {type(insn)}")
 
     def execute(self, exec_mapper, pre_assign_check=None):
         """Execute the instruction stream, make all scheduling decisions
@@ -490,7 +489,7 @@ class OperatorCompiler(IdentityMapper):
             yield ""
             i = 2
             while True:
-                yield "_%d" % i
+                yield f"_{i}"
                 i += 1
 
         def generate_plain_names():

@@ -60,10 +60,10 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                 lp.ValueArg("ntargets", np.int32),
                 lp.ValueArg("ntargets_total", np.int32),
                 lp.ValueArg("ncenters_total", np.int32)]
-            + [lp.GlobalArg("strength_%d" % i, None,
+            + [lp.GlobalArg(f"strength_{i}", None,
                 shape="nsources", order="C")
             for i in range(self.strength_count)]
-            + [lp.GlobalArg("result_%d" % i, self.value_dtypes[i],
+            + [lp.GlobalArg(f"result_{i}", self.value_dtypes[i],
                 shape="ntargets_total", order="C")
             for i in range(len(self.kernels))])
 
@@ -113,7 +113,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                 centers_is_obj_array=is_obj_array_like(centers))
 
         for i, dens in enumerate(strengths):
-            kwargs["strength_%d" % i] = dens
+            kwargs[f"strength_{i}"] = dens
 
         return knl(queue, src=sources, tgt=targets, center=centers,
                 expansion_radii=expansion_radii, **kwargs)

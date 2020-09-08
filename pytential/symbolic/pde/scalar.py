@@ -45,7 +45,7 @@ class L2WeightedPDEOperator:
 
         if not use_l2_weighting:
             from warnings import warn
-            warn("should use L2 weighting in %s" % type(self).__name__,
+            warn("should use L2 weighting in {}".format(type(self).__name__),
                     stacklevel=3)
 
     def get_weight(self, dofdesc=None):
@@ -290,8 +290,7 @@ class NeumannOperator(L2WeightedPDEOperator):
             elif isinstance(knl, LaplaceKernel):
                 DpS0u = Dp0S0u  # noqa
             else:
-                raise ValueError("no improved operator for %s known"
-                        % self.kernel)
+                raise ValueError(f"no improved operator for '{self.kernel}' known")
 
         if self.is_unique_only_up_to_constant():
             # The interior Neumann operator in this representation

@@ -757,9 +757,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     queue=queue)
 
             if self.debug:
-                logger.debug(
-                        "find global qbx centers: using %d/%d centers"
-                        % (int(count.get()), self.ncenters))
+                logger.debug("find global qbx centers: using %d/%d centers",
+                        int(count.get()), self.ncenters)
 
             return result[:count.get()].with_queue(None)
 
@@ -1003,7 +1002,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                                 (ty, centers[1][tcenter]),
                                 ))
 
-            print("found a center for %d/%d targets" % (tccount, checked))
+            logger.info("found a center for %d/%d targets", tccount, checked)
 
             # }}}
 

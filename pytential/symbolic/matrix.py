@@ -149,8 +149,8 @@ class MatrixBuilderBase(EvaluationMapperBase):
                 sum_kind = term_kind
 
             if term_kind != sum_kind:
-                raise RuntimeError("encountered %s in sum of kind %s"
-                        % (term_kind, sum_kind))
+                raise RuntimeError(
+                        f"encountered '{term_kind}' in sum of kind '{sum_kind}'")
 
             result = result + rec_child
 
@@ -171,8 +171,8 @@ class MatrixBuilderBase(EvaluationMapperBase):
             elif isinstance(rec_child, np.ndarray):
                 if self.is_kind_matrix(rec_child):
                     if mat_result is not None:
-                        raise RuntimeError("expression is nonlinear in %s"
-                                % self.dep_expr)
+                        raise RuntimeError(
+                                f"expression is nonlinear in {self.dep_expr}")
                     else:
                         mat_result = rec_child
                 else:

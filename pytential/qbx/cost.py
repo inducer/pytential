@@ -151,7 +151,7 @@ def make_pde_aware_translation_cost_model(dim, nlevels):
     knowledge that the potential satisfies a PDE.
     """
     p_qbx = var("p_qbx")
-    p_fmm = np.array([var("p_fmm_lev%d" % i) for i in range(nlevels)])
+    p_fmm = np.array([var(f"p_fmm_lev{i}") for i in range(nlevels)])
 
     uses_point_and_shoot = False
 
@@ -172,7 +172,7 @@ def make_taylor_translation_cost_model(dim, nlevels):
     in Cartesian coordinates.
     """
     p_qbx = var("p_qbx")
-    p_fmm = np.array([var("p_fmm_lev%d" % i) for i in range(nlevels)])
+    p_fmm = np.array([var(f"p_fmm_lev{i}") for i in range(nlevels)])
 
     ncoeffs_fmm = (p_fmm + 1) ** dim
     ncoeffs_qbx = (p_qbx + 1) ** dim
@@ -336,7 +336,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         }
 
         for level in range(tree.nlevels):
-            metadata["p_fmm_lev%d" % level] = fmm_level_to_order[level]
+            metadata[f"p_fmm_lev{level}"] = fmm_level_to_order[level]
 
         return metadata
 
@@ -366,7 +366,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         params.update(dict(p_qbx=lpot_source.qbx_order))
 
         for ilevel in range(tree.nlevels):
-            params["p_fmm_lev%d" % ilevel] = fmm_level_to_order[ilevel]
+            params[f"p_fmm_lev{ilevel}"] = fmm_level_to_order[ilevel]
 
         # }}}
 
@@ -441,7 +441,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         params.update(dict(p_qbx=lpot_source.qbx_order))
 
         for ilevel in range(tree.nlevels):
-            params["p_fmm_lev%d" % ilevel] = fmm_level_to_order[ilevel]
+            params[f"p_fmm_lev{ilevel}"] = fmm_level_to_order[ilevel]
 
         # }}}
 
