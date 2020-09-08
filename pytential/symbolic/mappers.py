@@ -596,7 +596,7 @@ class StringifyMapper(BaseStringifyMapper):
         return "Ones[%s]" % stringify_where(expr.dofdesc)
 
     def map_inverse(self, expr, enclosing_prec):
-        return "Solve({} = {} {{{}}})".format(
+        return "Solve(%s = %s {%s})" % (
                 self.rec(expr.expression, PREC_NONE),
                 self.rec(expr.rhs, PREC_NONE),
                 ", ".join("{}={}".format(var_name, self.rec(var_expr, PREC_NONE))
