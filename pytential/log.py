@@ -41,11 +41,11 @@ class term_seq:  # noqa
 
 
 LEVEL_TO_COLOR = {
-    'WARNING': colors.YELLOW,
-    'INFO': colors.CYAN,
-    'DEBUG': colors.WHITE,
-    'CRITICAL': colors.YELLOW,
-    'ERROR': colors.RED
+    "WARNING": colors.YELLOW,
+    "INFO": colors.CYAN,
+    "DEBUG": colors.WHITE,
+    "CRITICAL": colors.YELLOW,
+    "ERROR": colors.RED
 }
 
 

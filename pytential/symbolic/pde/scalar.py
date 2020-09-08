@@ -390,7 +390,7 @@ class BiharmonicClampedPlateOperator:
         """
         Returns the two second kind integral equations.
         """
-        rep = self.representation(sigma, qbx_forced_limit='avg')
+        rep = self.representation(sigma, qbx_forced_limit="avg")
         rep_diff = sym.normal_derivative(2, rep)
         int_eq1 = sigma[0]/2 + rep
         int_eq2 = -sym.mean_curvature(2)*sigma[0] + sigma[1]/2 + rep_diff

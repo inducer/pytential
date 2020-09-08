@@ -25,8 +25,6 @@ THE SOFTWARE.
 
 from typing import Optional
 
-import six
-
 from pymbolic.mapper.evaluator import (
         EvaluationMapper as PymbolicEvaluationMapper)
 import numpy as np
@@ -183,7 +181,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                     for grp in discr.groups])
             return _reduce(element_knl(), result)
         else:
-            raise ValueError('unsupported granularity: %s' % granularity)
+            raise ValueError(f"unsupported granularity: {granularity}")
 
     def map_elementwise_sum(self, expr):
         return self._map_elementwise_reduction("sum", expr)

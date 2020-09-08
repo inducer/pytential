@@ -22,8 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.dof_array import flatten, unflatten, thaw
 import numpy as np

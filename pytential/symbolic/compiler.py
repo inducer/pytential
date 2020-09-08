@@ -25,7 +25,6 @@ import numpy as np  # noqa
 from pytools import Record, memoize_method
 from pymbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper
-import six
 from functools import reduce
 
 
@@ -193,7 +192,7 @@ class ComputePotentialInstruction(Instruction):
                 limit_str = "[(+)] "
             elif o.qbx_forced_limit == -2:
                 limit_str = "[(-)] "
-            elif o.qbx_forced_limit == 'avg':
+            elif o.qbx_forced_limit == "avg":
                 limit_str = "[avg] "
             elif o.qbx_forced_limit is None:
                 limit_str = ""
@@ -228,8 +227,8 @@ def dot_dataflow_graph(code, max_node_label_length=30,
     node_names = {}
 
     result = [
-            "initial [label=\"initial\"]"
-            "result [label=\"result\"]"]
+            'initial [label="initial"]'
+            'result [label="result"]']
 
     for num, insn in enumerate(code.instructions):
         node_name = "node%d" % num
@@ -246,8 +245,8 @@ def dot_dataflow_graph(code, max_node_label_length=30,
 
         node_label = node_label.replace("\n", "\\l") + "\\l"
 
-        result.append("%s [ label=\"p%d: %s\" shape=box ];" % (
-            node_name, insn.priority, node_label))
+        result.append(f"{node_name} [ "
+                f'label="p{insn.priority}: {node_label}" shape=box ];')
 
         for assignee in insn.get_assignees():
             origins[assignee] = node_name
@@ -260,8 +259,8 @@ def dot_dataflow_graph(code, max_node_label_length=30,
             return "initial"
 
     def gen_expr_arrow(expr, target_node):
-        result.append("%s -> %s [label=\"%s\"];"
-                % (get_orig_node(expr), target_node, expr))
+        orig_node = get_orig_node(expr)
+        result.append(f'{orig_node} -> {target_node} [label="{expr}"];')
 
     for insn in code.instructions:
         for dep in insn.get_dependencies():

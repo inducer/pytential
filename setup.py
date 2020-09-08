@@ -121,6 +121,4 @@ setup(name="pytential",
           "sumpy>=2020.2beta1",
           "cgen>=2013.1.2",
           "pyfmmlib>=2019.1.1",
-
-          "six",
           ])

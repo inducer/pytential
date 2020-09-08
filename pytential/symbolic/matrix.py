@@ -25,8 +25,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-import six
-from six.moves import intern
+from sys import intern
 
 from pytools import memoize_method
 from pytential.symbolic.mappers import EvaluationMapperBase

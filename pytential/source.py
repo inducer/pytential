@@ -20,9 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np  # noqa: F401
-import pyopencl as cl  # noqa: F401
-import six
+import numpy as np
+import pyopencl as cl
 from pytools import memoize_in
 from sumpy.fmm import UnableToCollectTimingData
 

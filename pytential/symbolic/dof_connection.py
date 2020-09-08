@@ -23,7 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 from meshmode.array_context import PyOpenCLArrayContext  # noqa
 from meshmode.dof_array import DOFArray
 import numpy as np
@@ -189,8 +188,7 @@ class DOFConnection:
         for conn in self.connections:
             if not isinstance(conn,
                     (DiscretizationConnection, GranularityConnection)):
-                raise ValueError('unsupported connection type: {}'
-                        .format(type(conn)))
+                raise ValueError("unsupported connection type: {type(conn)}")
 
         if self.connections:
             self.from_discr = self.connections[0].from_discr

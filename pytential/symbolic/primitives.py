@@ -20,10 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-from six.moves import intern
+from sys import intern
 from warnings import warn
-from functools import wraps
+from functools import wraps, partial
 
 import numpy as np
 from pymbolic.primitives import (  # noqa: F401,N813
@@ -35,8 +34,6 @@ from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
 from pytools.obj_array import make_obj_array, flat_obj_array  # noqa: F401
-
-from functools import partial
 
 
 __doc__ = """

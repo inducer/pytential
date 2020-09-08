@@ -68,11 +68,11 @@ def plot_partition_indices(actx, discr, indices, **kwargs):
 
         pt.figure(figsize=(10, 8), dpi=300)
         if indices.indices.shape[0] != discr.ndofs:
-            pt.plot(sources[0], sources[1], 'ko', alpha=0.5)
+            pt.plot(sources[0], sources[1], "ko", alpha=0.5)
 
         for i in range(indices.nblocks):
             isrc = indices.block_indices(i)
-            pt.plot(sources[0][isrc], sources[1][isrc], 'o')
+            pt.plot(sources[0][isrc], sources[1][isrc], "o")
 
         pt.xlim([-1.5, 1.5])
         pt.ylim([-1.5, 1.5])
@@ -109,7 +109,7 @@ PROXY_TEST_CASES = [
 
 
 @pytest.mark.skip(reason="only useful with visualize=True")
-@pytest.mark.parametrize("tree_kind", ['adaptive', None])
+@pytest.mark.parametrize("tree_kind", ["adaptive", None])
 @pytest.mark.parametrize("case", PROXY_TEST_CASES)
 def test_partition_points(ctx_factory, tree_kind, case, visualize=False):
     """Tests that the points are correctly partitioned (by visualization)."""
@@ -199,20 +199,20 @@ def test_proxy_generator(ctx_factory, case, index_sparsity_factor, visualize=Fal
                 pt.figure(figsize=(10, 8))
                 axis = pt.gca()
                 for j in isrc:
-                    c = pt.Circle(ci[:, j], r[j], color='k', alpha=0.1)
+                    c = pt.Circle(ci[:, j], r[j], color="k", alpha=0.1)
                     axis.add_artist(c)
-                    c = pt.Circle(ce[:, j], r[j], color='k', alpha=0.1)
+                    c = pt.Circle(ce[:, j], r[j], color="k", alpha=0.1)
                     axis.add_artist(c)
 
                 pt.plot(density_nodes[0], density_nodes[1],
-                        'ko', ms=2.0, alpha=0.5)
+                        "ko", ms=2.0, alpha=0.5)
                 pt.plot(density_nodes[0, srcindices.indices],
                         density_nodes[1, srcindices.indices],
-                        'o', ms=2.0)
+                        "o", ms=2.0)
                 pt.plot(density_nodes[0, isrc], density_nodes[1, isrc],
-                        'o', ms=2.0)
+                        "o", ms=2.0)
                 pt.plot(proxies[0, ipxy], proxies[1, ipxy],
-                        'o', ms=2.0)
+                        "o", ms=2.0)
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
 
@@ -315,16 +315,16 @@ def test_interaction_points(ctx_factory,
 
                 pt.figure(figsize=(10, 8))
                 pt.plot(density_nodes[0], density_nodes[1],
-                        'ko', ms=2.0, alpha=0.5)
+                        "ko", ms=2.0, alpha=0.5)
                 pt.plot(density_nodes[0][srcindices.indices],
                         density_nodes[1][srcindices.indices],
-                        'o', ms=2.0)
+                        "o", ms=2.0)
                 pt.plot(density_nodes[0][isrc], density_nodes[1][isrc],
-                        'o', ms=2.0)
+                        "o", ms=2.0)
                 pt.plot(density_nodes[0][inbr], density_nodes[1][inbr],
-                        'o', ms=2.0)
+                        "o", ms=2.0)
                 pt.plot(nodes[0][iall], nodes[1][iall],
-                        'x', ms=2.0)
+                        "x", ms=2.0)
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
 

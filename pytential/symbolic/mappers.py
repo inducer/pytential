@@ -20,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 from functools import reduce
 
 from pymbolic.mapper.stringifier import (
@@ -557,8 +556,8 @@ class QBXPreprocessor(IdentityMapper):
 
         if not is_self:
             # non-self evaluation
-            if expr.qbx_forced_limit in ['avg', 1, -1]:
-                raise ValueError("May not specify +/-1 or \"avg\" for "
+            if expr.qbx_forced_limit in ["avg", 1, -1]:
+                raise ValueError("May not specify +/-1 or 'avg' for "
                         "qbx_forced_limit for non-self evaluation. "
                         "Specify 'None' for automatic choice or +/-2 "
                         "to force a QBX side in the near-evaluation "
@@ -573,8 +572,7 @@ class QBXPreprocessor(IdentityMapper):
         if (isinstance(expr.qbx_forced_limit, int)
                 and abs(expr.qbx_forced_limit) == 2):
             raise ValueError("May not specify qbx_forced_limit == +/-2 "
-                    "for self-evaluation. "
-                    "Specify +/-1 or \"avg\" instead.")
+                    "for self-evaluation. Specify +/-1 or 'avg' instead.")
 
         if expr.qbx_forced_limit == "avg":
             return 0.5*(
@@ -703,7 +701,7 @@ class GraphvizMapper(GraphvizMapperBase):
 
     def map_pytential_leaf(self, expr):
         self.lines.append(
-                "{} [label=\"{}\", shape=box];".format(
+                '{} [label="{}", shape=box];'.format(
                     self.get_id(expr),
                     str(expr).replace("\\", "\\\\")))
 
@@ -714,7 +712,7 @@ class GraphvizMapper(GraphvizMapperBase):
 
     def map_map_node_sum(self, expr):
         self.lines.append(
-                "{} [label=\"{}\",shape=circle];".format(
+                '{} [label="{}",shape=circle];'.format(
                     self.get_id(expr), type(expr).__name__))
         if not self.visit(expr, node_printed=True):
             return
@@ -736,8 +734,7 @@ class GraphvizMapper(GraphvizMapperBase):
                 expr.kernel,
                 )
         self.lines.append(
-                "{} [label=\"{}\",shape=box];".format(
-                    self.get_id(expr), descr))
+                '{} [label="{}",shape=box];'.format(self.get_id(expr), descr))
         if not self.visit(expr, node_printed=True):
             return
 

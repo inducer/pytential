@@ -34,7 +34,6 @@ from mako.template import Template
 from pymbolic import var, evaluate
 from pytools import memoize_method
 from functools import partial
-import sys
 
 from boxtree.cost import (
     FMMTranslationCostModel, AbstractFMMCostModel as BaseAbstractFMMCostModel,

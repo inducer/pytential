@@ -964,7 +964,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     pt.text(cx, cy,
                             str(icenter), fontsize=8,
                             ha="left", va="center",
-                            bbox=dict(facecolor='white', alpha=0.5, lw=0))
+                            bbox=dict(facecolor="white", alpha=0.5, lw=0))
 
             # }}}
 
@@ -986,7 +986,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                         targets[1][itarget],
                         str(itarget), fontsize=8,
                         ha="left", va="center",
-                        bbox=dict(facecolor='white', alpha=0.5, lw=0))
+                        bbox=dict(facecolor="white", alpha=0.5, lw=0))
 
             tccount = 0
             checked = 0
