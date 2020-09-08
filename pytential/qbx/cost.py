@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2018 Matt Wala
@@ -26,7 +24,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range
 import numpy as np
 import pyopencl as cl
 import pyopencl.array  # noqa: F401
@@ -45,10 +42,7 @@ from boxtree.cost import (
 )
 from abc import abstractmethod
 
-if sys.version_info >= (3, 0):
-    Template = partial(Template, strict_undefined=True)
-else:
-    Template = partial(Template, strict_undefined=True, disable_unicode=True)
+Template = partial(Template, strict_undefined=True)
 
 import logging
 logger = logging.getLogger(__name__)

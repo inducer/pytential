@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2017 Natalie Beams"
 
 __license__ = """
@@ -261,7 +259,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
         print("@@@@@@@@")
         print("vel[0], err[0], rel_err[0] ***** vel[1], err[1], rel_err[1]: ")
         for i in range(len(vel[0])):
-            print("%15.8e, %15.8e, %15.8e ***** %15.8e, %15.8e, %15.8e\n" % (
+            print("{:15.8e}, {:15.8e}, {:15.8e} ***** {:15.8e}, {:15.8e}, {:15.8e}\n".format(
                              vel[0][i], err[0][i], rel_err[0][i],
                              vel[1][i], err[1][i], rel_err[1][i]))
 

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2013-2016 Andreas Kloeckner"
 
 __license__ = """
@@ -31,7 +29,6 @@ Second-Kind Waveguide
 """
 
 import numpy as np
-from six.moves import range
 
 from pytential import sym
 from pytools import memoize_method

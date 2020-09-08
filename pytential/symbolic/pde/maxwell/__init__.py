@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -187,7 +185,7 @@ class PECChargeCurrentMFIEOperator:
 
 # {{{ Charge-Current Mueller MFIE
 
-class MuellerAugmentedMFIEOperator(object):
+class MuellerAugmentedMFIEOperator:
     """
     ... warning:: currently untested
     """

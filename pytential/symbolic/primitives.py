@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -246,7 +244,7 @@ def _deprecate_kwargs(oldkey, newkey):
     return super_wrapper
 
 
-class _NoArgSentinel(object):
+class _NoArgSentinel:
     pass
 
 
@@ -296,7 +294,7 @@ class GRANULARITY_ELEMENT:  # noqa: N801
     pass
 
 
-class DOFDescriptor(object):
+class DOFDescriptor:
     """A data structure specifying the meaning of a vector of degrees of freedom
     that is handled by :mod:`pytential` (a "DOF vector"). In particular, using
     :attr:`geometry`, this data structure describes the geometric object on which
@@ -336,12 +334,12 @@ class DOFDescriptor(object):
                 or discr_stage == QBX_SOURCE_STAGE1
                 or discr_stage == QBX_SOURCE_STAGE2
                 or discr_stage == QBX_SOURCE_QUAD_STAGE2):
-            raise ValueError("unknown discr stage tag: '{}'".format(discr_stage))
+            raise ValueError(f"unknown discr stage tag: '{discr_stage}'")
 
         if not (granularity == GRANULARITY_NODE
                 or granularity == GRANULARITY_CENTER
                 or granularity == GRANULARITY_ELEMENT):
-            raise ValueError("unknown granularity: '{}'".format(granularity))
+            raise ValueError(f"unknown granularity: '{granularity}'")
 
         self.geometry = geometry
         self.discr_stage = discr_stage
@@ -1321,7 +1319,7 @@ class IterativeInverse(Expression):
     def get_hash(self):
         return hash((self.__class__,) + (self.expression,
             self.rhs, self.variable_name,
-            frozenset(six.iteritems(self.extra_vars)), self.dofdesc))
+            frozenset(self.extra_vars.items()), self.dofdesc))
 
     mapper_method = intern("map_inverse")
 
@@ -1390,7 +1388,7 @@ def laplace(ambient_dim, operand):
     d = Derivative()
     nabla = d.dnabla(ambient_dim)
     return d.resolve(nabla | d(
-        d.resolve((nabla * d(operand))))).as_scalar()
+        d.resolve(nabla * d(operand)))).as_scalar()
 
 
 # {{{ potentials
@@ -1492,11 +1490,11 @@ class IntG(Expression):
             raise ValueError("invalid value (%s) of qbx_forced_limit"
                     % qbx_forced_limit)
 
-        kernel_arg_names = set(
+        kernel_arg_names = {
                 karg.loopy_arg.name
                 for karg in (
                     kernel.get_args()
-                    + kernel.get_source_args()))
+                    + kernel.get_source_args())}
 
         kernel_arguments = kernel_arguments.copy()
         if kwargs:

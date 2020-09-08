@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = """
 Copyright (C) 2015 Andreas Kloeckner
 Copyright (C) 2018 Alexandru Fikl
@@ -51,7 +49,7 @@ def _get_layer_potential_args(mapper, expr, include_args=None):
     """
 
     kernel_args = {}
-    for arg_name, arg_expr in six.iteritems(expr.kernel_arguments):
+    for arg_name, arg_expr in expr.kernel_arguments.items():
         if (include_args is not None
                 and arg_name not in include_args):
             continue
@@ -84,7 +82,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
             for all the sources and targets the builder is expected to
             encounter.
         """
-        super(MatrixBuilderBase, self).__init__(context=context)
+        super().__init__(context=context)
 
         self.array_context = actx
         self.dep_expr = dep_expr
@@ -114,7 +112,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
         elif expr in self.other_dep_exprs:
             return 0
         else:
-            return super(MatrixBuilderBase, self).map_variable(expr)
+            return super().map_variable(expr)
 
     def map_subscript(self, expr):
         if expr == self.dep_expr:
@@ -122,7 +120,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
         elif expr in self.other_dep_exprs:
             return 0
         else:
-            return super(MatrixBuilderBase, self).map_subscript(expr)
+            return super().map_subscript(expr)
 
     def map_sum(self, expr):
         sum_kind = None
@@ -253,7 +251,7 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
             describing which blocks are going to be evaluated.
         """
 
-        super(MatrixBlockBuilderBase, self).__init__(actx,
+        super().__init__(actx,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, context)
         self.index_set = index_set
@@ -310,7 +308,7 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
 class MatrixBuilder(MatrixBuilderBase):
     def __init__(self, actx, dep_expr, other_dep_exprs,
             dep_source, dep_discr, places, context):
-        super(MatrixBuilder, self).__init__(
+        super().__init__(
                 actx, dep_expr, other_dep_exprs,
                 dep_source, dep_discr, places, context)
 
@@ -415,7 +413,7 @@ class MatrixBuilder(MatrixBuilderBase):
 class P2PMatrixBuilder(MatrixBuilderBase):
     def __init__(self, actx, dep_expr, other_dep_exprs,
             dep_source, dep_discr, places, context, exclude_self=True):
-        super(P2PMatrixBuilder, self).__init__(actx,
+        super().__init__(actx,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, context)
 
@@ -440,7 +438,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
         # get other kernel_args, e.g. normal vectors in a double layer
         kernel = expr.kernel.get_base_kernel()
         kernel_args = kernel.get_args() + kernel.get_source_args()
-        kernel_args = set(arg.loopy_arg.name for arg in kernel_args)
+        kernel_args = {arg.loopy_arg.name for arg in kernel_args}
 
         actx = self.array_context
         kernel_args = _get_layer_potential_args(self,
@@ -470,7 +468,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 class NearFieldBlockBuilder(MatrixBlockBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
             places, index_set, context):
-        super(NearFieldBlockBuilder, self).__init__(queue,
+        super().__init__(queue,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, index_set, context)
 
@@ -539,7 +537,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 class FarFieldBlockBuilder(MatrixBlockBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
             places, index_set, context, exclude_self=False):
-        super(FarFieldBlockBuilder, self).__init__(queue,
+        super().__init__(queue,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, index_set, context)
         self.exclude_self = exclude_self
@@ -572,7 +570,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         # get other kernel_args, e.g. normal vectors in a double layer
         kernel = expr.kernel.get_base_kernel()
         kernel_args = kernel.get_args() + kernel.get_source_args()
-        kernel_args = set(arg.loopy_arg.name for arg in kernel_args)
+        kernel_args = {arg.loopy_arg.name for arg in kernel_args}
 
         actx = self.array_context
         kernel_args = _get_layer_potential_args(self._mat_mapper,

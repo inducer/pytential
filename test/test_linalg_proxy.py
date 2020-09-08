@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2018 Alexandru Fikl"
 
 __license__ = """
@@ -330,7 +328,7 @@ def test_interaction_points(ctx_factory,
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
 
-                filename = "test_area_query_{}d_{:04}.png".format(ambient_dim, i)
+                filename = f"test_area_query_{ambient_dim}d_{i:04}.png"
                 pt.savefig(filename, dpi=300)
                 pt.clf()
         elif ambient_dim == 3:
@@ -350,7 +348,7 @@ def test_interaction_points(ctx_factory,
                 marker_dev = unflatten(actx, density_discr, actx.from_numpy(marker))
 
                 vis = make_visualizer(actx, density_discr, 10)
-                filename = "test_area_query_{}d_{:04}.vtu".format(ambient_dim, i)
+                filename = f"test_area_query_{ambient_dim}d_{i:04}.vtu"
                 vis.write_vtk_file(filename, [
                     ("marker", marker_dev),
                     ])

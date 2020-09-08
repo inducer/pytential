@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
 __license__ = """
@@ -36,7 +34,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
     default_name = "qbx_tgt_ctr_subset"
 
     def get_cache_key(self):
-        return super(LayerPotentialOnTargetAndCenterSubset, self).get_cache_key() + (
+        return super().get_cache_key() + (
                 PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):

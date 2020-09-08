@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import os
 from setuptools import setup, find_packages
@@ -27,8 +26,7 @@ def find_git_revision(tree_root):
     (git_rev, _) = p.communicate()
 
     import sys
-    if sys.version_info >= (3,):
-        git_rev = git_rev.decode()
+    git_rev = git_rev.decode()
 
     git_rev = git_rev.rstrip()
 
@@ -74,14 +72,14 @@ ext_modules = [
 version_dict = {}
 init_filename = "pytential/version.py"
 os.environ["AKPYTHON_EXEC_FROM_WITHIN_WITHIN_SETUP_PY"] = "1"
-exec(compile(open(init_filename, "r").read(), init_filename, "exec"),
+exec(compile(open(init_filename).read(), init_filename, "exec"),
         version_dict)
 
 setup(name="pytential",
       version=version_dict["VERSION_TEXT"],
       description="Evaluate layer and volume potentials accurately. "
       "Solve integral equations.",
-      long_description=open("README.rst", "rt").read(),
+      long_description=open("README.rst").read(),
       author="Andreas Kloeckner",
       author_email="inform@tiker.net",
       license="MIT",

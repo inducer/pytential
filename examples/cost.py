@@ -1,5 +1,3 @@
-from __future__ import division, print_function
-
 __copyright__ = """
     Copyright (C) 2018 Matt Wala
     Copyright (C) 2019 Hao Gao

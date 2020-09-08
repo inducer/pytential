@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -40,7 +38,7 @@ import numpy as np  # noqa
 
 # {{{ L^2 weighting
 
-class L2WeightedPDEOperator(object):
+class L2WeightedPDEOperator:
     def __init__(self, kernel, use_l2_weighting):
         self.kernel = kernel
         self.use_l2_weighting = use_l2_weighting

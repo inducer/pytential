@@ -750,7 +750,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential.utils import flatten_if_needed
         kernel_args = {}
-        for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
+        for arg_name, arg_expr in insn.kernel_arguments.items():
             kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
 
         waa = bind(bound_expr.places, sym.weights_and_area_elements(

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -36,7 +34,7 @@ def _debye_S0_surf_div(nxnxE):
             for i in range(3-1)])
 
 
-class DebyeOperatorBase(object):
+class DebyeOperatorBase:
     """
     See the `wiki page <http://wiki.tiker.net/HellsKitchen/GeneralizedDebyeRepresentation>`_
     for detailed documentation.

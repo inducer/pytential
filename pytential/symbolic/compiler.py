@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -28,7 +26,6 @@ from pytools import Record, memoize_method
 from pymbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper
 import six
-from six.moves import zip
 from functools import reduce
 
 
@@ -79,7 +76,7 @@ class Assign(Instruction):
                     for expr in self.exprs))
 
             from pymbolic.primitives import Variable
-            deps -= set(Variable(name) for name in self.names)
+            deps -= {Variable(name) for name in self.names}
 
             self._dependencies = deps
 
@@ -91,7 +88,7 @@ class Assign(Instruction):
             if comment:
                 comment = "/* %s */ " % comment
 
-            return "%s <- %s%s" % (self.names[0], comment, self.exprs[0])
+            return "{} <- {}{}".format(self.names[0], comment, self.exprs[0])
         else:
             if comment:
                 comment = " /* %s */" % comment
@@ -104,7 +101,7 @@ class Assign(Instruction):
                 else:
                     dnr_indicator = ""
 
-                lines.append("  %s <%s- %s" % (n, dnr_indicator, e))
+                lines.append(f"  {n} <{dnr_indicator}- {e}")
             lines.append("}")
             return "\n".join(lines)
 
@@ -162,7 +159,7 @@ class ComputePotentialInstruction(Instruction):
     """
 
     def get_assignees(self):
-        return set(o.name for o in self.outputs)
+        return {o.name for o in self.outputs}
 
     def get_dependencies(self):
         dep_mapper = self.dep_mapper_factory()
@@ -203,18 +200,18 @@ class ComputePotentialInstruction(Instruction):
             else:
                 raise ValueError("unrecognized limit value: %s" % o.qbx_forced_limit)
 
-            line = "%s%s <- %s%s" % (o.name, tgt_str, limit_str,
+            line = "{}{} <- {}{}".format(o.name, tgt_str, limit_str,
                     self.kernels[o.kernel_index])
 
             lines.append(line)
 
-        for arg_name, arg_expr in six.iteritems(self.kernel_arguments):
+        for arg_name, arg_expr in self.kernel_arguments.items():
             arg_expr_lines = strify(arg_expr).split("\n")
-            lines.append("  %s = %s" % (
+            lines.append("  {} = {}".format(
                 arg_name, arg_expr_lines[0]))
             lines.extend("  " + s for s in arg_expr_lines[1:])
 
-        return "{ /* Pot(%s) */\n  %s\n}" % (
+        return "{{ /* Pot({}) */\n  {}\n}}".format(
                 ", ".join(args), "\n  ".join(lines))
 
     def __hash__(self):
@@ -285,7 +282,7 @@ def dot_dataflow_graph(code, max_node_label_length=30,
 
 # {{{ code representation
 
-class Code(object):
+class Code:
     def __init__(self, instructions, result):
         self.instructions = instructions
         self.result = result
@@ -322,12 +319,12 @@ class Code(object):
         if not available_insns:
             raise self.NoInstructionAvailable
 
-        needed_vars = set([
+        needed_vars = {
             dep.name
             for insn in self.instructions
             if insn not in done_insns
             for dep in insn.get_dependencies()
-            ])
+            }
         discardable_vars = set(available_names) - needed_vars
 
         # {{{ make sure results do not get discarded
@@ -407,7 +404,7 @@ class Code(object):
                 print("     missing: ", ", ".join(
                         str(s) for s in
                         set(insn.get_dependencies())
-                        - set(var(v) for v in six.iterkeys(context))))
+                        - {var(v) for v in context.keys()}))
 
             raise RuntimeError("not all instructions are reachable"
                     "--did you forget to pass a value for a placeholder?")
@@ -579,10 +576,10 @@ class OperatorCompiler(IdentityMapper):
             group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
 
-            kernels = sorted(set(op.kernel for op in group), key=repr)
+            kernels = sorted({op.kernel for op in group}, key=repr)
 
-            kernel_to_index = dict(
-                    (kernel, i) for i, kernel in enumerate(kernels))
+            kernel_to_index = {
+                    kernel: i for i, kernel in enumerate(kernels)}
 
             from pytools import single_valued
             from sumpy.kernel import AxisTargetDerivativeRemover
@@ -593,9 +590,9 @@ class OperatorCompiler(IdentityMapper):
             for op in group:
                 assert op.qbx_forced_limit in [-2, -1, None, 1, 2]
 
-            kernel_arguments = dict(
-                    (arg_name, self.rec(arg_val))
-                    for arg_name, arg_val in six.iteritems(expr.kernel_arguments))
+            kernel_arguments = {
+                    arg_name: self.rec(arg_val)
+                    for arg_name, arg_val in expr.kernel_arguments.items()}
 
             outputs = [
                     PotentialOutput(

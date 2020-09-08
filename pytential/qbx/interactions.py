@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -26,7 +24,6 @@ import numpy as np
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from pytools import memoize_method
-from six.moves import range
 
 from sumpy.p2e import P2EBase
 from sumpy.e2e import E2EBase
@@ -41,7 +38,7 @@ class P2QBXLFromCSR(P2EBase):
     default_name = "p2qbxl_from_csr"
 
     def get_cache_key(self):
-        return super(P2QBXLFromCSR, self).get_cache_key() + (
+        return super().get_cache_key() + (
                 PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
@@ -145,7 +142,7 @@ class M2QBXL(E2EBase):
     default_name = "m2qbxl_from_csr"
 
     def get_cache_key(self):
-        return super(M2QBXL, self).get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         ncoeff_src = len(self.src_expansion)
@@ -253,7 +250,7 @@ class L2QBXL(E2EBase):
     default_name = "l2qbxl"
 
     def get_cache_key(self):
-        return super(L2QBXL, self).get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         ncoeff_src = len(self.src_expansion)
@@ -355,7 +352,7 @@ class QBXL2P(E2PBase):
     default_name = "qbx_potential_from_local"
 
     def get_cache_key(self):
-        return super(QBXL2P, self).get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
