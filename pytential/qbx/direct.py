@@ -34,8 +34,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
     default_name = "qbx_tgt_ctr_subset"
 
     def get_cache_key(self):
-        return super().get_cache_key() + (
-                PYTENTIAL_KERNEL_VERSION,)
+        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         loopy_insns, result_names = self.get_loopy_insns_and_result_names()

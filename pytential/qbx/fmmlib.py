@@ -227,8 +227,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         if isinstance(source_array, cl.array.Array):
             source_array = source_array.get(queue=self.queue)
 
-        return (super()
-                .reorder_sources(source_array))
+        return super().reorder_sources(source_array)
 
     def reorder_potentials(self, potentials):
         raise NotImplementedError("reorder_potentials should not "
@@ -632,9 +631,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return output
 
     def finalize_potentials(self, potential):
-        potential = super().finalize_potentials(
-                potential)
-
+        potential = super().finalize_potentials(potential)
         return cl.array.to_device(self.queue, potential)
 
 # }}}

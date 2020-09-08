@@ -253,8 +253,8 @@ def connection_from_dds(places, from_dd, to_dd):
                 sym.QBX_SOURCE_STAGE2: 2,
                 sym.QBX_SOURCE_QUAD_STAGE2: 3
                 }
-        stage_index_to_name_map = {i: name for name, i in
-                    stage_name_to_index_map.items()}
+        stage_index_to_name_map = {
+                i: name for name, i in stage_name_to_index_map.items()}
 
         from_stage = stage_name_to_index_map[from_dd.discr_stage]
         to_stage = stage_name_to_index_map[to_dd.discr_stage]

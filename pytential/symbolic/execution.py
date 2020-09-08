@@ -601,10 +601,8 @@ def _prepare_expr(places, expr, auto_where=None):
 # {{{ geometry collection
 
 def _is_valid_identifier(name):
-    is_identifier = name.isidentifier()
-
     import keyword
-    return is_identifier and not keyword.iskeyword(name)
+    return name.isidentifier() and not keyword.iskeyword(name)
 
 
 _GEOMETRY_COLLECTION_DISCR_CACHE_NAME = "refined_qbx_discrs"
@@ -690,7 +688,7 @@ class GeometryCollection:
             if not isinstance(name, str):
                 continue
             if not _is_valid_identifier(name):
-                raise ValueError(f"`{name}` is not a valid identifier")
+                raise ValueError(f"'{name}' is not a valid identifier")
 
         # check allowed types
         for p in self.places.values():
@@ -726,8 +724,8 @@ class GeometryCollection:
         key = (geometry, discr_stage)
 
         if key not in cache:
-            raise KeyError("cached discretization does not exist on `{}`"
-                    "for stage `{}`".format(geometry, discr_stage))
+            raise KeyError("cached discretization does not exist on '{}'"
+                    "for stage '{}'".format(geometry, discr_stage))
 
         return cache[key]
 
@@ -745,8 +743,8 @@ class GeometryCollection:
         key = (geometry, from_stage, to_stage)
 
         if key not in cache:
-            raise KeyError("cached connection does not exist on `{}` "
-                    "from `{}` to `{}`".format(geometry, from_stage, to_stage))
+            raise KeyError("cached connection does not exist on '{}' "
+                    "from '{}' to '{}'".format(geometry, from_stage, to_stage))
 
         return cache[key]
 

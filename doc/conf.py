@@ -46,7 +46,7 @@ master_doc = "index"
 project = "pytential"
 copyright = "2013, Andreas Kloeckner"
 
-# The version info for the project you"re documenting, acts as replacement for
+# The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #

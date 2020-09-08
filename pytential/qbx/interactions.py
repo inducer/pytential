@@ -38,8 +38,7 @@ class P2QBXLFromCSR(P2EBase):
     default_name = "p2qbxl_from_csr"
 
     def get_cache_key(self):
-        return super().get_cache_key() + (
-                PYTENTIAL_KERNEL_VERSION,)
+        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)

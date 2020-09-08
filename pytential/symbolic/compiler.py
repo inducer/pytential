@@ -197,17 +197,17 @@ class ComputePotentialInstruction(Instruction):
             elif o.qbx_forced_limit is None:
                 limit_str = ""
             else:
-                raise ValueError("unrecognized limit value: %s" % o.qbx_forced_limit)
+                raise ValueError(f"unrecognized limit value: {o.qbx_forced_limit}")
 
-            line = "{}{} <- {}{}".format(o.name, tgt_str, limit_str,
+            line = "{}{} <- {}{}".format(
+                    o.name, tgt_str, limit_str,
                     self.kernels[o.kernel_index])
 
             lines.append(line)
 
         for arg_name, arg_expr in self.kernel_arguments.items():
             arg_expr_lines = strify(arg_expr).split("\n")
-            lines.append("  {} = {}".format(
-                arg_name, arg_expr_lines[0]))
+            lines.append("  {} = {}".format(arg_name, arg_expr_lines[0]))
             lines.extend("  " + s for s in arg_expr_lines[1:])
 
         return "{{ /* Pot({}) */\n  {}\n}}".format(
@@ -371,7 +371,7 @@ class Code:
 
             try:
                 insn, discardable_vars = self.get_next_step(
-                        frozenset(list(context.keys())),
+                        frozenset(context.keys()),
                         frozenset(done_insns))
 
             except self.NoInstructionAvailable:
@@ -577,8 +577,7 @@ class OperatorCompiler(IdentityMapper):
 
             kernels = sorted({op.kernel for op in group}, key=repr)
 
-            kernel_to_index = {
-                    kernel: i for i, kernel in enumerate(kernels)}
+            kernel_to_index = {kernel: i for i, kernel in enumerate(kernels)}
 
             from pytools import single_valued
             from sumpy.kernel import AxisTargetDerivativeRemover
