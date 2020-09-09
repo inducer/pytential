@@ -24,7 +24,65 @@ THE SOFTWARE.
 import numpy as np
 
 from pytential import sym
-from sumpy.kernel import StokesletKernel, StressletKernel, LaplaceKernel
+from sumpy.symbolic import pymbolic_real_norm_2
+from pymbolic.primitives import make_sym_vector
+from pymbolic import var
+from sumpy.kernel import (StokesletKernel, StressletKernel, LaplaceKernel,
+    ExpressionKernel, AxisTargetDerivative, KernelArgument)
+import loopy as lp
+
+
+class StokesletKernelExperimental(ExpressionKernel):
+    init_arg_names = ("dim", "viscosity_mu_name")
+
+    def __init__(self, dim, viscosity_mu_name="mu"):
+        r"""
+        :arg viscosity_mu_name: The argument name to use for
+                dynamic viscosity :math:`\mu` the then generating functions to
+                evaluate this kernel.
+        """
+        mu = var(viscosity_mu_name)
+        d = make_sym_vector("d", dim)
+        r = pymbolic_real_norm_2(d)
+
+        if dim == 2:
+            expr = r**2*var("log")(r)/2 - 3*r**2/4
+            scaling = -1/(4*var("pi")*mu)
+        elif dim == 3:
+            expr = -r
+            scaling = -1/(8*var("pi")*mu)
+        elif dim is None:
+            expr = None
+            scaling = None
+        else:
+            raise RuntimeError("unsupported dimensionality")
+
+        self.viscosity_mu_name = viscosity_mu_name
+
+        super(StokesletKernelExperimental, self).__init__(
+                dim,
+                expression=expr,
+                global_scaling_const=scaling,
+                is_complex_valued=False)
+
+    def __getinitargs__(self):
+        return (self.dim, self.viscosity_mu_name)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_hash.update(type(self).__name__.encode())
+        key_builder.rec(key_hash,
+                (self.dim, self.viscosity_mu_name))
+
+    def __repr__(self):
+        return "StokesletKnl%dD" % (self.dim)
+
+    def get_args(self):
+        return [
+                KernelArgument(
+                    loopy_arg=lp.ValueArg(self.viscosity_mu_name, np.float64),
+                    )]
+
+    mapper_method = "map_stokeslet_kernel"
 
 
 class StokesletWrapper(object):
@@ -56,28 +114,39 @@ class StokesletWrapper(object):
        for the same kernel in a different ordering.
     """
 
-    def __init__(self, dim=None):
-
+    def __init__(self, dim=None, experimental=True):
+        self.experimental = experimental
         self.dim = dim
-        if dim == 2:
-            self.kernel_dict = {
-                        (2, 0): StokesletKernel(dim=2, icomp=0, jcomp=0),
-                        (1, 1): StokesletKernel(dim=2, icomp=0, jcomp=1),
-                        (0, 2): StokesletKernel(dim=2, icomp=1, jcomp=1)
-                               }
-
-        elif dim == 3:
-            self.kernel_dict = {
-                        (2, 0, 0): StokesletKernel(dim=3, icomp=0, jcomp=0),
-                        (1, 1, 0): StokesletKernel(dim=3, icomp=0, jcomp=1),
-                        (1, 0, 1): StokesletKernel(dim=3, icomp=0, jcomp=2),
-                        (0, 2, 0): StokesletKernel(dim=3, icomp=1, jcomp=1),
-                        (0, 1, 1): StokesletKernel(dim=3, icomp=1, jcomp=2),
-                        (0, 0, 2): StokesletKernel(dim=3, icomp=2, jcomp=2)
-                               }
-
-        else:
+        if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
+
+        self.kernel_dict = {}
+
+        if self.experimental:
+            self._kernel = StokesletKernelExperimental(dim=dim)
+            for i in range(dim):
+                kernel_d1 = AxisTargetDerivative(i, self._kernel)
+                for j in range(i, dim):
+                    self.kernel_dict[(i, j)] = AxisTargetDerivative(j, kernel_d1)
+        else:
+            for i in range(dim):
+                for j in range(i, dim):
+                    self.kernel_dict[(i, j)] = StokesletKernel(dim=dim, icomp=i,
+                                                               jcomp=j)
+
+        for i in range(dim):
+            for j in range(i):
+                self.kernel_dict[(i, j)] = self.kernel_dict[(j, i)]
+
+    def map_func_to_expr(self, idx, func):
+        if not self.experimental:
+            return func(self.kernel_dict[idx])
+
+        if idx[0] != idx[1]:
+            return func(self.kernel_dict[idx])
+
+        return -sum(func(self.kernel_dict[(i, i)]) for i
+                    in range(self.dim) if i != idx[0])
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """ Symbolic expressions for integrating Stokeslet kernel
@@ -94,29 +163,14 @@ class StokesletWrapper(object):
             for the average of the two one-sided boundary limits.
         """
 
-        sym_expr = np.empty((self.dim,), dtype=object)
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
         for comp in range(self.dim):
-
-            # Start variable count for kernel with 1 for the requested result
-            #  component
-            base_count = np.zeros(self.dim, dtype=np.int)
-            base_count[comp] += 1
-
             for i in range(self.dim):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i < 1:
-                    sym_expr[comp] = sym.IntG(
-                                     self.kernel_dict[ctr_key], density_vec_sym[i],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + sym.IntG(
-                                     self.kernel_dict[ctr_key], density_vec_sym[i],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
+                def func(knl):
+                    return sym.IntG(knl, density_vec_sym[i],
+                                    qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
+                sym_expr[comp] += self.map_func_to_expr((comp, i), func)
 
         return sym_expr
 
@@ -125,17 +179,12 @@ class StokesletWrapper(object):
 
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
+        sym_expr = 0
 
         for i in range(self.dim):
-
-            if i < 1:
-                sym_expr = DerivativeTaker(i).map_int_g(
-                                sym.S(kernel, density_vec_sym[i],
-                                qbx_forced_limit=qbx_forced_limit))
-            else:
-                sym_expr = sym_expr + (DerivativeTaker(i).map_int_g(
-                                sym.S(kernel, density_vec_sym[i],
-                                qbx_forced_limit=qbx_forced_limit)))
+            sym_expr += (DerivativeTaker(i).map_int_g(
+                         sym.S(kernel, density_vec_sym[i],
+                         qbx_forced_limit=qbx_forced_limit)))
 
         return sym_expr
 
@@ -159,34 +208,17 @@ class StokesletWrapper(object):
 
         from pytential.symbolic.mappers import DerivativeTaker
 
-        sym_expr = np.empty((self.dim,), dtype=object)
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
         for comp in range(self.dim):
-
-            # Start variable count for kernel with 1 for the requested result
-            #  component
-            base_count = np.zeros(self.dim, dtype=np.int)
-            base_count[comp] += 1
-
             for i in range(self.dim):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i < 1:
-                    sym_expr[comp] = DerivativeTaker(deriv_dir).map_int_g(
-                                         sym.IntG(self.kernel_dict[ctr_key],
-                                             density_vec_sym[i],
-                                             qbx_forced_limit=qbx_forced_limit,
-                                             mu=mu_sym))
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + DerivativeTaker(
-                                         deriv_dir).map_int_g(
-                                             sym.IntG(self.kernel_dict[ctr_key],
-                                             density_vec_sym[i],
-                                             qbx_forced_limit=qbx_forced_limit,
-                                             mu=mu_sym))
+                def func(knl):
+                    return DerivativeTaker(deriv_dir).map_int_g(
+                                sym.IntG(knl,
+                                density_vec_sym[i],
+                                qbx_forced_limit=qbx_forced_limit,
+                                mu=mu_sym))
+                sym_expr[comp] += self.map_func_to_expr((comp, i), func)
 
         return sym_expr
 
@@ -221,7 +253,7 @@ class StokesletWrapper(object):
 
         import itertools
 
-        sym_expr = np.empty((self.dim,), dtype=object)
+        sym_expr = np.zeros((self.dim,), dtype=object)
         stresslet_obj = StressletWrapper(dim=self.dim)
 
         for comp in range(self.dim):
@@ -237,18 +269,11 @@ class StokesletWrapper(object):
                 var_ctr[j] += 1
                 ctr_key = tuple(var_ctr)
 
-                if i + j < 1:
-                    sym_expr[comp] = dir_vec_sym[i] * sym.IntG(
-                                     stresslet_obj.kernel_dict[ctr_key],
-                                     density_vec_sym[j],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + dir_vec_sym[i] * sym.IntG(
-                                                stresslet_obj.kernel_dict[ctr_key],
-                                                density_vec_sym[j],
-                                                qbx_forced_limit=qbx_forced_limit,
-                                                mu=mu_sym)
+                sym_expr[comp] += dir_vec_sym[i] * sym.IntG(
+                                  stresslet_obj.kernel_dict[ctr_key],
+                                  density_vec_sym[j],
+                                  qbx_forced_limit=qbx_forced_limit,
+                                  mu=mu_sym)
 
         return sym_expr
 
