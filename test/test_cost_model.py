@@ -1,5 +1,3 @@
-from __future__ import division, print_function
-
 __copyright__ = """
     Copyright (C) 2018 Matt Wala
     Copyright (C) 2019 Hao Gao
@@ -138,7 +136,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     )
 
     queue.finish()
-    logger.info("OpenCL time for process_form_qbxl: {0}".format(
+    logger.info("OpenCL time for process_form_qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -155,7 +153,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
         python_ndirect_sources_per_target_box
     )
 
-    logger.info("Python time for process_form_qbxl: {0}".format(
+    logger.info("Python time for process_form_qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -173,7 +171,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     )
 
     queue.finish()
-    logger.info("OpenCL time for process_m2qbxl: {0}".format(
+    logger.info("OpenCL time for process_m2qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -183,7 +181,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
         queue, geo_data, python_cost_factors["m2qbxl_cost"]
     )
 
-    logger.info("Python time for process_m2qbxl: {0}".format(
+    logger.info("Python time for process_m2qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -201,7 +199,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     )
 
     queue.finish()
-    logger.info("OpenCL time for process_l2qbxl: {0}".format(
+    logger.info("OpenCL time for process_l2qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -211,7 +209,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
         queue, geo_data, python_cost_factors["l2qbxl_cost"]
     )
 
-    logger.info("Python time for process_l2qbxl: {0}".format(
+    logger.info("Python time for process_l2qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -229,7 +227,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     )
 
     queue.finish()
-    logger.info("OpenCL time for process_eval_qbxl: {0}".format(
+    logger.info("OpenCL time for process_eval_qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -239,7 +237,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
         queue, geo_data, python_cost_factors["qbxl2p_cost"]
     )
 
-    logger.info("Python time for process_eval_qbxl: {0}".format(
+    logger.info("Python time for process_eval_qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -258,7 +256,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
     )
 
     queue.finish()
-    logger.info("OpenCL time for eval_target_specific_qbxl: {0}".format(
+    logger.info("OpenCL time for eval_target_specific_qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -270,7 +268,7 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
             python_ndirect_sources_per_target_box
         )
 
-    logger.info("Python time for eval_target_specific_qbxl: {0}".format(
+    logger.info("Python time for eval_target_specific_qbxl: {}".format(
         str(time.time() - start_time)
     ))
 
@@ -659,7 +657,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
 # {{{ verify cost model
 
-class OpCountingTranslationCostModel(object):
+class OpCountingTranslationCostModel:
     """A translation cost model which assigns at cost of 1 to each operation."""
 
     def __init__(self, dim, nlevels):

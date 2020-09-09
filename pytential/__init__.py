@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -43,7 +41,7 @@ def _set_up_logging_from_environment():
             ("ERROR", logging.ERROR),
             ("CRITICAL", logging.CRITICAL)):
 
-        pytential_log_var = os.environ.get("PYTENTIAL_LOG_%s" % level_name)
+        pytential_log_var = os.environ.get(f"PYTENTIAL_LOG_{level_name}")
         if pytential_log_var is not None:
             set_up_logging(pytential_log_var.split(":"), level=level)
 
@@ -123,7 +121,7 @@ def norm(discr, x, p=2):
             return norm_res
 
     else:
-        raise ValueError("unsupported norm order: %s" % p)
+        raise ValueError(f"unsupported norm order: {p}")
 
 
 __all__ = ["sym", "bind", "GeometryCollection"]

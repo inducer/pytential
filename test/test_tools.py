@@ -1,5 +1,3 @@
-from __future__ import division
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -138,7 +136,7 @@ def test_geometry_collection_caching(ctx_factory):
     from pytential.qbx import QBXLayerPotentialSource
 
     lpots = []
-    sources = ["source_{}".format(k) for k in range(ngeometry)]
+    sources = [f"source_{k}" for k in range(ngeometry)]
     for k, density_discr in enumerate(discrs):
         qbx = QBXLayerPotentialSource(density_discr,
             fine_order=2 * target_order,

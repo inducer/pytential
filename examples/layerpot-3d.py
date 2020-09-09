@@ -7,7 +7,6 @@ from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 
 from pytential import bind, sym
-from six.moves import range
 
 target_order = 5
 qbx_order = 3

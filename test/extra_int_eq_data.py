@@ -117,7 +117,7 @@ class IntegralEquationTestCase(RecordWithoutPickling):
                 raise KeyError(f"unknown keyword argument '{k}'")
             members[k] = v
 
-        super(IntegralEquationTestCase, self).__init__(**members)
+        super().__init__(**members)
 
     # {{{ symbolic
 
@@ -149,7 +149,7 @@ class IntegralEquationTestCase(RecordWithoutPickling):
     @property
     @memoize_method
     def knl_sym_kwargs(self):
-        return dict((k, sym.var(k)) for k in self.knl_concrete_kwargs)
+        return {k: sym.var(k) for k in self.knl_concrete_kwargs}
 
     def get_operator(self, ambient_dim):
         sign = +1 if self.side in [+1, "scat"] else -1

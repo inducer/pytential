@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = """
 Copyright (C) 2016 Matt Wala
 Copyright (C) 2019 Alexandru Fikl
@@ -26,7 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 from meshmode.array_context import PyOpenCLArrayContext  # noqa
 from meshmode.dof_array import DOFArray
 import numpy as np
@@ -50,7 +46,7 @@ Connections
 
 # {{{ granularity connections
 
-class GranularityConnection(object):
+class GranularityConnection:
     """Abstract interface for transporting a DOF between different levels
     of granularity.
 
@@ -87,7 +83,7 @@ class CenterGranularityConnection(GranularityConnection):
     """
 
     def __init__(self, discr):
-        super(CenterGranularityConnection, self).__init__(discr)
+        super().__init__(discr)
 
     def _interleave_dof_arrays(self, ary1, ary2):
         if not isinstance(ary1, DOFArray) or not isinstance(ary2, DOFArray):
@@ -155,7 +151,7 @@ class CenterGranularityConnection(GranularityConnection):
 
 # {{{ dof connection
 
-class DOFConnection(object):
+class DOFConnection:
     """An interpolation operation for converting a DOF vector between
     different DOF types, as described by
     :class:`~pytential.symbolic.primitives.DOFDescriptor`.
@@ -192,8 +188,7 @@ class DOFConnection(object):
         for conn in self.connections:
             if not isinstance(conn,
                     (DiscretizationConnection, GranularityConnection)):
-                raise ValueError('unsupported connection type: {}'
-                        .format(type(conn)))
+                raise ValueError("unsupported connection type: {type(conn)}")
 
         if self.connections:
             self.from_discr = self.connections[0].from_discr
@@ -258,8 +253,8 @@ def connection_from_dds(places, from_dd, to_dd):
                 sym.QBX_SOURCE_STAGE2: 2,
                 sym.QBX_SOURCE_QUAD_STAGE2: 3
                 }
-        stage_index_to_name_map = dict([(i, name) for name, i in
-                    six.iteritems(stage_name_to_index_map)])
+        stage_index_to_name_map = {
+                i: name for name, i in stage_name_to_index_map.items()}
 
         from_stage = stage_name_to_index_map[from_dd.discr_stage]
         to_stage = stage_name_to_index_map[to_dd.discr_stage]
@@ -279,7 +274,7 @@ def connection_from_dds(places, from_dd, to_dd):
             raise ValueError("Creating a connection to element granularity "
                     "is not allowed. Use Elementwise{Max,Min,Sum}.")
         else:
-            raise ValueError("invalid to_dd granularity: %s" % to_dd.granularity)
+            raise ValueError(f"invalid to_dd granularity: {to_dd.granularity}")
 
     if from_dd.granularity is not to_dd.granularity:
         conn = DOFConnection(connections, from_dd=from_dd, to_dd=to_dd)

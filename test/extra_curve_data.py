@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = """Copyright (C) 2016 Matt Wala"""
 
 __license__ = """
@@ -26,7 +24,7 @@ import numpy as np
 import numpy.linalg as la
 
 
-class Curve(object):
+class Curve:
     def plot(self, npoints=50):
         import matplotlib.pyplot as plt
         x, y = self(np.linspace(0, 1, npoints))

@@ -1,4 +1,3 @@
-from __future__ import division
 import numpy as np
 import pyopencl as cl
 from sumpy.visualization import FieldPlotter
@@ -6,7 +5,6 @@ from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 
 import faulthandler
-from six.moves import range
 faulthandler.enable()
 
 import logging

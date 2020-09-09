@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import division, absolute_import
-
 __copyright__ = """
 Copyright (C) 2017 Matt Wala
 """
@@ -24,8 +21,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
 
 from meshmode.array_context import PyOpenCLArrayContext
 import numpy as np
@@ -146,7 +141,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.utils import flatten_if_needed
         from meshmode.dof_array import flatten, thaw, unflatten
 
-        for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
+        for arg_name, arg_expr in insn.kernel_arguments.items():
             kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
 
         from pytential import bind, sym
@@ -300,7 +295,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
 # {{{ fmm tools
 
-class _FMMGeometryDataCodeContainer(object):
+class _FMMGeometryDataCodeContainer:
 
     def __init__(self, actx, ambient_dim, debug):
         self.array_context = actx
@@ -358,7 +353,7 @@ class _TargetInfo(DeviceDataRecord):
     """
 
 
-class _FMMGeometryData(object):
+class _FMMGeometryData:
 
     def __init__(self, lpot_source, code_getter, target_discrs, debug=True):
         self.lpot_source = lpot_source

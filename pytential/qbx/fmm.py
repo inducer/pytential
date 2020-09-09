@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +21,6 @@ THE SOFTWARE.
 """
 
 
-from six.moves import range, zip
 import numpy as np  # noqa
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa
