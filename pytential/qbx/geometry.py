@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import zip
 
 import numpy as np
 import pyopencl as cl
@@ -760,9 +757,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     queue=queue)
 
             if self.debug:
-                logger.debug(
-                        "find global qbx centers: using %d/%d centers"
-                        % (int(count.get()), self.ncenters))
+                logger.debug("find global qbx centers: using %d/%d centers",
+                        int(count.get()), self.ncenters)
 
             return result[:count.get()].with_queue(None)
 
@@ -967,7 +963,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     pt.text(cx, cy,
                             str(icenter), fontsize=8,
                             ha="left", va="center",
-                            bbox=dict(facecolor='white', alpha=0.5, lw=0))
+                            bbox=dict(facecolor="white", alpha=0.5, lw=0))
 
             # }}}
 
@@ -989,7 +985,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                         targets[1][itarget],
                         str(itarget), fontsize=8,
                         ha="left", va="center",
-                        bbox=dict(facecolor='white', alpha=0.5, lw=0))
+                        bbox=dict(facecolor="white", alpha=0.5, lw=0))
 
             tccount = 0
             checked = 0
@@ -1006,7 +1002,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                                 (ty, centers[1][tcenter]),
                                 ))
 
-            print("found a center for %d/%d targets" % (tccount, checked))
+            logger.info("found a center for %d/%d targets", tccount, checked)
 
             # }}}
 

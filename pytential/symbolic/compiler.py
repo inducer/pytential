@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -27,8 +25,6 @@ import numpy as np  # noqa
 from pytools import Record, memoize_method
 from pymbolic.primitives import cse_scope
 from pytential.symbolic.mappers import IdentityMapper
-import six
-from six.moves import zip
 from functools import reduce
 
 
@@ -39,10 +35,10 @@ class Instruction(Record):
     priority = 0
 
     def get_assignees(self):
-        raise NotImplementedError("no get_assignees in %s" % self.__class__)
+        raise NotImplementedError(f"no get_assignees in {self.__class__}")
 
     def get_dependencies(self):
-        raise NotImplementedError("no get_dependencies in %s" % self.__class__)
+        raise NotImplementedError(f"no get_dependencies in {self.__class__}")
 
     def __str__(self):
         raise NotImplementedError
@@ -79,7 +75,7 @@ class Assign(Instruction):
                     for expr in self.exprs))
 
             from pymbolic.primitives import Variable
-            deps -= set(Variable(name) for name in self.names)
+            deps -= {Variable(name) for name in self.names}
 
             self._dependencies = deps
 
@@ -89,12 +85,12 @@ class Assign(Instruction):
         comment = self.comment
         if len(self.names) == 1:
             if comment:
-                comment = "/* %s */ " % comment
+                comment = f"/* {comment} */ "
 
-            return "%s <- %s%s" % (self.names[0], comment, self.exprs[0])
+            return "{} <- {}{}".format(self.names[0], comment, self.exprs[0])
         else:
             if comment:
-                comment = " /* %s */" % comment
+                comment = f" /* {comment} */"
 
             lines = []
             lines.append("{" + comment)
@@ -104,7 +100,7 @@ class Assign(Instruction):
                 else:
                     dnr_indicator = ""
 
-                lines.append("  %s <%s- %s" % (n, dnr_indicator, e))
+                lines.append(f"  {n} <{dnr_indicator}- {e}")
             lines.append("}")
             return "\n".join(lines)
 
@@ -162,7 +158,7 @@ class ComputePotentialInstruction(Instruction):
     """
 
     def get_assignees(self):
-        return set(o.name for o in self.outputs)
+        return {o.name for o in self.outputs}
 
     def get_dependencies(self):
         dep_mapper = self.dep_mapper_factory()
@@ -175,8 +171,7 @@ class ComputePotentialInstruction(Instruction):
         return result
 
     def __str__(self):
-        args = ["density=%s" % self.density,
-                "source=%s" % self.source]
+        args = [f"density={self.density}", f"source={self.source}"]
 
         from pytential.symbolic.mappers import StringifyMapper, stringify_where
         strify = StringifyMapper()
@@ -184,7 +179,7 @@ class ComputePotentialInstruction(Instruction):
         lines = []
         for o in self.outputs:
             if o.target_name != self.source:
-                tgt_str = " @ %s" % stringify_where(o.target_name)
+                tgt_str = " @ {}".format(stringify_where(o.target_name))
             else:
                 tgt_str = ""
 
@@ -196,25 +191,25 @@ class ComputePotentialInstruction(Instruction):
                 limit_str = "[(+)] "
             elif o.qbx_forced_limit == -2:
                 limit_str = "[(-)] "
-            elif o.qbx_forced_limit == 'avg':
+            elif o.qbx_forced_limit == "avg":
                 limit_str = "[avg] "
             elif o.qbx_forced_limit is None:
                 limit_str = ""
             else:
-                raise ValueError("unrecognized limit value: %s" % o.qbx_forced_limit)
+                raise ValueError(f"unrecognized limit value: {o.qbx_forced_limit}")
 
-            line = "%s%s <- %s%s" % (o.name, tgt_str, limit_str,
+            line = "{}{} <- {}{}".format(
+                    o.name, tgt_str, limit_str,
                     self.kernels[o.kernel_index])
 
             lines.append(line)
 
-        for arg_name, arg_expr in six.iteritems(self.kernel_arguments):
+        for arg_name, arg_expr in self.kernel_arguments.items():
             arg_expr_lines = strify(arg_expr).split("\n")
-            lines.append("  %s = %s" % (
-                arg_name, arg_expr_lines[0]))
+            lines.append("  {} = {}".format(arg_name, arg_expr_lines[0]))
             lines.extend("  " + s for s in arg_expr_lines[1:])
 
-        return "{ /* Pot(%s) */\n  %s\n}" % (
+        return "{{ /* Pot({}) */\n  {}\n}}".format(
                 ", ".join(args), "\n  ".join(lines))
 
     def __hash__(self):
@@ -231,11 +226,11 @@ def dot_dataflow_graph(code, max_node_label_length=30,
     node_names = {}
 
     result = [
-            "initial [label=\"initial\"]"
-            "result [label=\"result\"]"]
+            'initial [label="initial"]'
+            'result [label="result"]']
 
     for num, insn in enumerate(code.instructions):
-        node_name = "node%d" % num
+        node_name = f"node{num}"
         node_names[insn] = node_name
         node_label = str(insn)
 
@@ -249,8 +244,8 @@ def dot_dataflow_graph(code, max_node_label_length=30,
 
         node_label = node_label.replace("\n", "\\l") + "\\l"
 
-        result.append("%s [ label=\"p%d: %s\" shape=box ];" % (
-            node_name, insn.priority, node_label))
+        result.append(f"{node_name} [ "
+                f'label="p{insn.priority}: {node_label}" shape=box ];')
 
         for assignee in insn.get_assignees():
             origins[assignee] = node_name
@@ -263,8 +258,8 @@ def dot_dataflow_graph(code, max_node_label_length=30,
             return "initial"
 
     def gen_expr_arrow(expr, target_node):
-        result.append("%s -> %s [label=\"%s\"];"
-                % (get_orig_node(expr), target_node, expr))
+        orig_node = get_orig_node(expr)
+        result.append(f'{orig_node} -> {target_node} [label="{expr}"];')
 
     for insn in code.instructions:
         for dep in insn.get_dependencies():
@@ -285,7 +280,7 @@ def dot_dataflow_graph(code, max_node_label_length=30,
 
 # {{{ code representation
 
-class Code(object):
+class Code:
     def __init__(self, instructions, result):
         self.instructions = instructions
         self.result = result
@@ -322,12 +317,12 @@ class Code(object):
         if not available_insns:
             raise self.NoInstructionAvailable
 
-        needed_vars = set([
+        needed_vars = {
             dep.name
             for insn in self.instructions
             if insn not in done_insns
             for dep in insn.get_dependencies()
-            ])
+            }
         discardable_vars = set(available_names) - needed_vars
 
         # {{{ make sure results do not get discarded
@@ -358,7 +353,7 @@ class Code(object):
             return exec_mapper.exec_assign
         if isinstance(insn, ComputePotentialInstruction):
             return exec_mapper.exec_compute_potential_insn
-        raise ValueError("unknown instruction class: %s" % type(insn))
+        raise ValueError(f"unknown instruction class: {type(insn)}")
 
     def execute(self, exec_mapper, pre_assign_check=None):
         """Execute the instruction stream, make all scheduling decisions
@@ -375,7 +370,7 @@ class Code(object):
 
             try:
                 insn, discardable_vars = self.get_next_step(
-                        frozenset(list(context.keys())),
+                        frozenset(context.keys()),
                         frozenset(done_insns))
 
             except self.NoInstructionAvailable:
@@ -407,7 +402,7 @@ class Code(object):
                 print("     missing: ", ", ".join(
                         str(s) for s in
                         set(insn.get_dependencies())
-                        - set(var(v) for v in six.iterkeys(context))))
+                        - {var(v) for v in context.keys()}))
 
             raise RuntimeError("not all instructions are reachable"
                     "--did you forget to pass a value for a placeholder?")
@@ -494,7 +489,7 @@ class OperatorCompiler(IdentityMapper):
             yield ""
             i = 2
             while True:
-                yield "_%d" % i
+                yield f"_{i}"
                 i += 1
 
         def generate_plain_names():
@@ -579,10 +574,9 @@ class OperatorCompiler(IdentityMapper):
             group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
 
-            kernels = sorted(set(op.kernel for op in group), key=repr)
+            kernels = sorted({op.kernel for op in group}, key=repr)
 
-            kernel_to_index = dict(
-                    (kernel, i) for i, kernel in enumerate(kernels))
+            kernel_to_index = {kernel: i for i, kernel in enumerate(kernels)}
 
             from pytools import single_valued
             from sumpy.kernel import AxisTargetDerivativeRemover
@@ -593,9 +587,9 @@ class OperatorCompiler(IdentityMapper):
             for op in group:
                 assert op.qbx_forced_limit in [-2, -1, None, 1, 2]
 
-            kernel_arguments = dict(
-                    (arg_name, self.rec(arg_val))
-                    for arg_name, arg_val in six.iteritems(expr.kernel_arguments))
+            kernel_arguments = {
+                    arg_name: self.rec(arg_val)
+                    for arg_name, arg_val in expr.kernel_arguments.items()}
 
             outputs = [
                     PotentialOutput(

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -250,10 +248,9 @@ class ResidualPrinter:
         import sys
         if resid is not None:
             norm = np.sqrt(self.inner_product(resid, resid))
-            sys.stdout.write("IT %8d %g\n" % (
-                self.count, abs(norm)))
+            sys.stdout.write(f"IT {self.count:8d} {abs(norm):.8e}\n")
         else:
-            sys.stdout.write("IT %8d\n" % self.count)
+            sys.stdout.write(f"IT {self.count:8d}\n")
         self.count += 1
         sys.stdout.flush()
 
@@ -313,7 +310,7 @@ def lu(op, rhs, show_spectrum=False):
     from sumpy.tools import build_matrix
     mat = build_matrix(op)
 
-    print("condition number: %g" % la.cond(mat))
+    print(f"condition number: {la.cond(mat)}")
     if show_spectrum:
         ev = la.eigvals(mat)
         import matplotlib.pyplot as pt

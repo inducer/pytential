@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 from functools import reduce
 
 from pymbolic.mapper.stringifier import (
@@ -90,18 +87,18 @@ class IdentityMapper(IdentityMapperBase):
                 # will be processed once it's executed.
 
                 expr.expression, self.rec(expr.rhs), expr.variable_name,
-                dict([
-                    (name, self.rec(name_expr))
-                    for name, name_expr in six.iteritems(expr.extra_vars)]),
+                {
+                    name: self.rec(name_expr)
+                    for name, name_expr in expr.extra_vars.items()},
                 expr.dofdesc)
 
     def map_int_g(self, expr):
         return expr.copy(
                 density=self.rec(expr.density),
-                kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
+                kernel_arguments={
+                    name: self.rec(arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
-                    ))
+                    })
 
     def map_interpolation(self, expr):
         return type(expr)(expr.from_dd, expr.to_dd, self.rec(expr.operand))
@@ -129,7 +126,7 @@ class CombineMapper(CombineMapperBase):
         return self.combine([
             self.rec(expr.rhs)] + [
                 (self.rec(name_expr)
-                for name_expr in six.itervalues(expr.extra_vars))
+                for name_expr in expr.extra_vars.values())
                 ])
 
 
@@ -144,7 +141,7 @@ class Collector(CollectorBase, CombineMapper):
 
 class OperatorCollector(Collector):
     def map_int_g(self, expr):
-        return set([expr]) | Collector.map_int_g(self, expr)
+        return {expr} | Collector.map_int_g(self, expr)
 
 
 class DependencyMapper(DependencyMapperBase, Collector):
@@ -189,10 +186,10 @@ class EvaluationMapper(EvaluationMapperBase):
                         expr.kernel,
                         self.rec(subexpr),
                         expr.qbx_forced_limit, expr.source, expr.target,
-                        kernel_arguments=dict(
-                                (name, self.rec(arg_expr))
+                        kernel_arguments={
+                                name: self.rec(arg_expr)
                                 for name, arg_expr in expr.kernel_arguments.items()
-                                )),
+                                }),
                 expr.density)
 
     def map_common_subexpression(self, expr):
@@ -267,10 +264,10 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 expr.kernel,
                 self.operand_rec(expr.density),
                 expr.qbx_forced_limit, source, target,
-                kernel_arguments=dict(
-                    (name, self.operand_rec(arg_expr))
+                kernel_arguments={
+                    name: self.operand_rec(arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
-                    ))
+                    })
 
     def map_inverse(self, expr):
         dofdesc = expr.dofdesc
@@ -282,9 +279,9 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 # will be processed once it's executed.
 
                 expr.expression, self.rec(expr.rhs), expr.variable_name,
-                dict([
-                    (name, self.rec(name_expr))
-                    for name, name_expr in six.iteritems(expr.extra_vars)]),
+                {
+                    name: self.rec(name_expr)
+                    for name, name_expr in expr.extra_vars.items()},
                 dofdesc)
 
     def map_interpolation(self, expr):
@@ -339,7 +336,7 @@ class DiscretizationStageTagger(IdentityMapper):
         if not (discr_stage == prim.QBX_SOURCE_STAGE1
                 or discr_stage == prim.QBX_SOURCE_STAGE2
                 or discr_stage == prim.QBX_SOURCE_QUAD_STAGE2):
-            raise ValueError('unknown discr stage tag: "{}"'.format(discr_stage))
+            raise ValueError(f'unknown discr stage tag: "{discr_stage}"')
 
         self.discr_stage = discr_stage
 
@@ -446,10 +443,10 @@ class UnregularizedPreprocessor(IdentityMapper):
                 qbx_forced_limit=None,
                 kernel=expr.kernel,
                 density=self.rec(expr.density),
-                kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
+                kernel_arguments={
+                    name: self.rec(arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
-                    ))
+                    })
 
         return expr
 
@@ -512,10 +509,10 @@ class InterpolationPreprocessor(IdentityMapper):
         density = prim.interp(from_dd, to_dd, self.rec(expr.density))
 
         from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
-        kernel_arguments = dict(
-                (name, prim.interp(from_dd, to_dd,
-                    self.rec(self.tagger(arg_expr))))
-                for name, arg_expr in expr.kernel_arguments.items())
+        kernel_arguments = {
+                name: prim.interp(from_dd, to_dd,
+                    self.rec(self.tagger(arg_expr)))
+                for name, arg_expr in expr.kernel_arguments.items()}
 
         return expr.copy(
                 kernel=expr.kernel,
@@ -552,15 +549,15 @@ class QBXPreprocessor(IdentityMapper):
         expr = expr.copy(
                 kernel=expr.kernel,
                 density=self.rec(expr.density),
-                kernel_arguments=dict(
-                    (name, self.rec(arg_expr))
+                kernel_arguments={
+                    name: self.rec(arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
-                    ))
+                    })
 
         if not is_self:
             # non-self evaluation
-            if expr.qbx_forced_limit in ['avg', 1, -1]:
-                raise ValueError("May not specify +/-1 or \"avg\" for "
+            if expr.qbx_forced_limit in ["avg", 1, -1]:
+                raise ValueError("May not specify +/-1 or 'avg' for "
                         "qbx_forced_limit for non-self evaluation. "
                         "Specify 'None' for automatic choice or +/-2 "
                         "to force a QBX side in the near-evaluation "
@@ -575,8 +572,7 @@ class QBXPreprocessor(IdentityMapper):
         if (isinstance(expr.qbx_forced_limit, int)
                 and abs(expr.qbx_forced_limit) == 2):
             raise ValueError("May not specify qbx_forced_limit == +/-2 "
-                    "for self-evaluation. "
-                    "Specify +/-1 or \"avg\" instead.")
+                    "for self-evaluation. Specify +/-1 or 'avg' instead.")
 
         if expr.qbx_forced_limit == "avg":
             return 0.5*(
@@ -603,28 +599,28 @@ class StringifyMapper(BaseStringifyMapper):
         return "Solve(%s = %s {%s})" % (
                 self.rec(expr.expression, PREC_NONE),
                 self.rec(expr.rhs, PREC_NONE),
-                ", ".join("%s=%s" % (var_name, self.rec(var_expr, PREC_NONE))
-                    for var_name, var_expr in six.iteritems(expr.extra_vars)))
+                ", ".join("{}={}".format(var_name, self.rec(var_expr, PREC_NONE))
+                    for var_name, var_expr in expr.extra_vars.items()))
 
         from operator import or_
 
         return self.rec(expr.rhs) | reduce(or_,
                 (self.rec(name_expr)
-                for name_expr in six.itervalues(expr.extra_vars)),
+                for name_expr in expr.extra_vars.values()),
                 set())
 
     def map_elementwise_sum(self, expr, enclosing_prec):
-        return "ElwiseSum[%s](%s)" % (
+        return "ElwiseSum[{}]({})".format(
                 stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_elementwise_min(self, expr, enclosing_prec):
-        return "ElwiseMin[%s](%s)" % (
+        return "ElwiseMin[{}]({})".format(
                 stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
     def map_elementwise_max(self, expr, enclosing_prec):
-        return "ElwiseMax[%s](%s)" % (
+        return "ElwiseMax[{}]({})".format(
                 stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_NONE))
 
@@ -648,7 +644,7 @@ class StringifyMapper(BaseStringifyMapper):
                 "d/dr%d^%d" % (axis, mult)
                 for axis, mult in expr.ref_axes)
 
-        result = "%s[%s] %s" % (
+        result = "{}[{}] {}".format(
                 diff_op,
                 stringify_where(expr.dofdesc),
                 self.rec(expr.operand, PREC_PRODUCT),
@@ -670,11 +666,11 @@ class StringifyMapper(BaseStringifyMapper):
             return ""
         else:
             return "{%s}" % ", ".join(
-                    "%s: %s" % (name, self.rec(arg_expr, PREC_NONE))
+                    "{}: {}".format(name, self.rec(arg_expr, PREC_NONE))
                     for name, arg_expr in kernel_arguments.items())
 
     def map_int_g(self, expr, enclosing_prec):
-        return u"Int[%s->%s]@(%s)%s (%s * %s)" % (
+        return "Int[{}->{}]@({}){} ({} * {})".format(
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
@@ -684,7 +680,7 @@ class StringifyMapper(BaseStringifyMapper):
                 self.rec(expr.density, PREC_PRODUCT))
 
     def map_interpolation(self, expr, enclosing_prec):
-        return "Interp[%s->%s](%s)" % (
+        return "Interp[{}->{}]({})".format(
                 stringify_where(expr.from_dd),
                 stringify_where(expr.to_dd),
                 self.rec(expr.operand, PREC_PRODUCT))
@@ -701,11 +697,11 @@ class PrettyStringifyMapper(
 
 class GraphvizMapper(GraphvizMapperBase):
     def __init__(self):
-        super(GraphvizMapper, self).__init__()
+        super().__init__()
 
     def map_pytential_leaf(self, expr):
         self.lines.append(
-                "%s [label=\"%s\", shape=box];" % (
+                '{} [label="{}", shape=box];'.format(
                     self.get_id(expr),
                     str(expr).replace("\\", "\\\\")))
 
@@ -716,7 +712,7 @@ class GraphvizMapper(GraphvizMapperBase):
 
     def map_map_node_sum(self, expr):
         self.lines.append(
-                "%s [label=\"%s\",shape=circle];" % (
+                '{} [label="{}",shape=circle];'.format(
                     self.get_id(expr), type(expr).__name__))
         if not self.visit(expr, node_printed=True):
             return
@@ -731,15 +727,14 @@ class GraphvizMapper(GraphvizMapperBase):
     map_q_weight = map_pytential_leaf
 
     def map_int_g(self, expr):
-        descr = u"Int[%s->%s]@(%d) (%s)" % (
+        descr = "Int[%s->%s]@(%d) (%s)" % (
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
                 expr.kernel,
                 )
         self.lines.append(
-                "%s [label=\"%s\",shape=box];" % (
-                    self.get_id(expr), descr))
+                '{} [label="{}",shape=box];'.format(self.get_id(expr), descr))
         if not self.visit(expr, node_printed=True):
             return
 

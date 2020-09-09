@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2013-2016 Andreas Kloeckner"
 
 __license__ = """
@@ -31,7 +29,6 @@ Second-Kind Waveguide
 """
 
 import numpy as np
-from six.moves import range
 
 from pytential import sym
 from pytools import memoize_method
@@ -86,9 +83,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                     x**0.5)
 
         self.domain_K_exprs = [
-                sym.cse(
-                    upper_half_square_root(n_expr**2-ne**2),
-                    "K%d" % i)
+                sym.cse(upper_half_square_root(n_expr**2-ne**2), f"K{i}")
                 for i, n_expr in enumerate(self.domain_n_exprs)]
 
         from sumpy.kernel import HelmholtzKernel
@@ -158,8 +153,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                 continue
 
             beta = self.ne*k_v
-            k = sym.cse(k_v * self.domain_n_exprs[domi],
-                    "k%d" % domi)
+            k = sym.cse(k_v * self.domain_n_exprs[domi], f"k{domi}")
 
             jt = unknown[unk_idx["jz", i]]
             jz = unknown[unk_idx["jt", i]]

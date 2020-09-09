@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2018 Alexandru Fikl
@@ -26,9 +24,6 @@ THE SOFTWARE.
 """
 
 from typing import Optional
-
-import six
-from six.moves import zip
 
 from pymbolic.mapper.evaluator import (
         EvaluationMapper as PymbolicEvaluationMapper)
@@ -106,13 +101,13 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_max(self, expr):
         return self._map_minmax(
                 self.array_context.np.maximum,
-                super(EvaluationMapperBase, self).map_max,
+                super().map_max,
                 expr)
 
     def map_min(self, expr):
         return self._map_minmax(
                 self.array_context.np.minimum,
-                super(EvaluationMapperBase, self).map_min,
+                super().map_min,
                 expr)
 
     def map_node_sum(self, expr):
@@ -186,7 +181,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                     for grp in discr.groups])
             return _reduce(element_knl(), result)
         else:
-            raise ValueError('unsupported granularity: %s' % granularity)
+            raise ValueError(f"unsupported granularity: {granularity}")
 
     def map_elementwise_sum(self, expr):
         return self._map_elementwise_reduction("sum", expr)
@@ -237,8 +232,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             bound_op_cache[expr] = bound_op
 
         scipy_op = bound_op.scipy_op(expr.variable_name, expr.dofdesc,
-                **dict((var_name, self.rec(var_expr))
-                    for var_name, var_expr in six.iteritems(expr.extra_vars)))
+                **{var_name: self.rec(var_expr)
+                    for var_name, var_expr in expr.extra_vars.items()})
 
         from pytential.solve import gmres
         rhs = self.rec(expr.rhs)
@@ -318,7 +313,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 return getattr(self.array_context.np, expr.function.name)(*args)
 
         else:
-            return super(EvaluationMapperBase, self).map_call(expr)
+            return super().map_call(expr)
 
 # }}}
 
@@ -423,7 +418,7 @@ class CostModelMapper(EvaluationMapperBase):
 
 # {{{ scipy-like mat-vec op
 
-class MatVecOp(object):
+class MatVecOp:
     """A :class:`scipy.sparse.linalg.LinearOperator` work-alike.
     Exposes a :mod:`pytential` operator as a generic matrix operation,
     i.e., given :math:`x`, compute :math:`Ax`.
@@ -591,7 +586,7 @@ def _prepare_expr(places, expr, auto_where=None):
     expr = ToTargetTagger(auto_source, auto_target)(expr)
     expr = DerivativeBinder()(expr)
 
-    for name, place in six.iteritems(places.places):
+    for name, place in places.places.items():
         if isinstance(place, LayerPotentialSourceBase):
             expr = place.preprocess_optemplate(name, places, expr)
 
@@ -606,22 +601,15 @@ def _prepare_expr(places, expr, auto_where=None):
 # {{{ geometry collection
 
 def _is_valid_identifier(name):
-    if six.PY2:
-        # https://docs.python.org/2.7/reference/lexical_analysis.html#identifiers
-        import re
-        is_identifier = re.match(r"^[^\d\W]\w*\Z", name) is not None
-    else:
-        is_identifier = name.isidentifier()
-
     import keyword
-    return is_identifier and not keyword.iskeyword(name)
+    return name.isidentifier() and not keyword.iskeyword(name)
 
 
 _GEOMETRY_COLLECTION_DISCR_CACHE_NAME = "refined_qbx_discrs"
 _GEOMETRY_COLLECTION_CONNS_CACHE_NAME = "refined_qbx_conns"
 
 
-class GeometryCollection(object):
+class GeometryCollection:
     """A mapping from symbolic identifiers ("place IDs", typically strings)
     to 'geometries', where a geometry can be a
     :class:`pytential.source.PotentialSource`
@@ -700,17 +688,17 @@ class GeometryCollection(object):
             if not isinstance(name, str):
                 continue
             if not _is_valid_identifier(name):
-                raise ValueError("`{}` is not a valid identifier".format(name))
+                raise ValueError(f"'{name}' is not a valid identifier")
 
         # check allowed types
-        for p in six.itervalues(self.places):
+        for p in self.places.values():
             if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
                 raise TypeError("Values in 'places' must be discretization, targets "
                         "or layer potential sources.")
 
         # check ambient_dim
         from pytools import is_single_valued
-        ambient_dims = [p.ambient_dim for p in six.itervalues(self.places)]
+        ambient_dims = [p.ambient_dim for p in self.places.values()]
         if not is_single_valued(ambient_dims):
             raise RuntimeError("All 'places' must have the same ambient dimension.")
 
@@ -736,8 +724,8 @@ class GeometryCollection(object):
         key = (geometry, discr_stage)
 
         if key not in cache:
-            raise KeyError("cached discretization does not exist on `{}`"
-                    "for stage `{}`".format(geometry, discr_stage))
+            raise KeyError("cached discretization does not exist on '{}'"
+                    "for stage '{}'".format(geometry, discr_stage))
 
         return cache[key]
 
@@ -755,8 +743,8 @@ class GeometryCollection(object):
         key = (geometry, from_stage, to_stage)
 
         if key not in cache:
-            raise KeyError("cached connection does not exist on `{}` "
-                    "from `{}` to `{}`".format(geometry, from_stage, to_stage))
+            raise KeyError("cached connection does not exist on '{}' "
+                    "from '{}' to '{}'".format(geometry, from_stage, to_stage))
 
         return cache[key]
 
@@ -849,10 +837,10 @@ class GeometryCollection(object):
         return self.copy(places=new_places)
 
     def __repr__(self):
-        return "%s(%s)" % (type(self).__name__, repr(self.places))
+        return "{}({})".format(type(self).__name__, repr(self.places))
 
     def __str__(self):
-        return "%s(%s)" % (type(self).__name__, str(self.places))
+        return "{}({})".format(type(self).__name__, str(self.places))
 
 # }}}
 
@@ -900,7 +888,7 @@ def _find_array_context_from_args_in_context(context, supplied_array_context=Non
     return array_context
 
 
-class BoundExpression(object):
+class BoundExpression:
     """An expression readied for evaluation by binding it to a
     :class:`~pytential.GeometryCollection`.
 

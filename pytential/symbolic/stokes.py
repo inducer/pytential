@@ -1,4 +1,3 @@
-from __future__ import division, absolute_import
 __copyright__ = "Copyright (C) 2017 Natalie Beams"
 
 __license__ = """
@@ -27,7 +26,7 @@ from pytential import sym
 from sumpy.kernel import StokesletKernel, StressletKernel, LaplaceKernel
 
 
-class StokesletWrapper(object):
+class StokesletWrapper:
     """ Wrapper class for the Stokeslet kernel.
 
     This class is meant to shield the user from the messiness of writing
@@ -253,7 +252,7 @@ class StokesletWrapper(object):
         return sym_expr
 
 
-class StressletWrapper(object):
+class StressletWrapper:
     """ Wrapper class for the Stresslet kernel.
 
     This class is meant to shield the user from the messiness of writing

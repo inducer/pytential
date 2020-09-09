@@ -60,7 +60,7 @@ def main(mesh_name="torus", visualize=False):
             import matplotlib.pyplot as plt
             plt.show()
     else:
-        raise ValueError("unknown mesh name: {}".format(mesh_name))
+        raise ValueError(f"unknown mesh name: {mesh_name}")
 
     pre_density_discr = Discretization(
             actx, mesh,

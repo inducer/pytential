@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2017 Andreas Kloeckner"
 
 __license__ = """
@@ -23,9 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np  # noqa: F401
-import pyopencl as cl  # noqa: F401
-import six
+import numpy as np
+import pyopencl as cl
 from pytools import memoize_in
 from sumpy.fmm import UnableToCollectTimingData
 
@@ -37,7 +33,7 @@ __doc__ = """
 """
 
 
-class PotentialSource(object):
+class PotentialSource:
     """
     .. automethod:: preprocess_optemplate
 
@@ -65,7 +61,7 @@ class PotentialSource(object):
         raise NotImplementedError
 
 
-class _SumpyP2PMixin(object):
+class _SumpyP2PMixin:
 
     def get_p2p(self, actx, kernels):
         @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
@@ -155,7 +151,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         p2p = None
 
         kernel_args = {}
-        for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
+        for arg_name, arg_expr in insn.kernel_arguments.items():
             kernel_args[arg_name] = evaluate(arg_expr)
 
         strengths = evaluate(insn.density)

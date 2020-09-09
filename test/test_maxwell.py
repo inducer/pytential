@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2017 Andreas Kloeckner"
 
 __license__ = """
@@ -192,7 +190,7 @@ tc_plane_ext = ElliptiPlaneTestCase(k=2, is_interior=False, resolutions=[0.15],
         qbx_order=3, fmm_tolerance=1e-4)
 
 
-class EHField(object):
+class EHField:
     def __init__(self, eh_field):
         assert len(eh_field) == 6
         self.field = eh_field

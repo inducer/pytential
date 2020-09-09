@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 enable_mayavi = 0
 if enable_mayavi:
     from mayavi import mlab  # noqa
@@ -10,7 +8,6 @@ from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 
 from pytential import bind, sym
-from six.moves import range
 
 from meshmode.mesh.generation import starfish, ellipse, drop # noqa
 

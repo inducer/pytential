@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -22,10 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-from six.moves import intern
+from sys import intern
 from warnings import warn
-from functools import wraps
+from functools import wraps, partial
 
 import numpy as np
 from pymbolic.primitives import (  # noqa: F401,N813
@@ -37,8 +34,6 @@ from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
 from pytools.obj_array import make_obj_array, flat_obj_array  # noqa: F401
-
-from functools import partial
 
 
 __doc__ = """
@@ -246,7 +241,7 @@ def _deprecate_kwargs(oldkey, newkey):
     return super_wrapper
 
 
-class _NoArgSentinel(object):
+class _NoArgSentinel:
     pass
 
 
@@ -296,7 +291,7 @@ class GRANULARITY_ELEMENT:  # noqa: N801
     pass
 
 
-class DOFDescriptor(object):
+class DOFDescriptor:
     """A data structure specifying the meaning of a vector of degrees of freedom
     that is handled by :mod:`pytential` (a "DOF vector"). In particular, using
     :attr:`geometry`, this data structure describes the geometric object on which
@@ -336,12 +331,12 @@ class DOFDescriptor(object):
                 or discr_stage == QBX_SOURCE_STAGE1
                 or discr_stage == QBX_SOURCE_STAGE2
                 or discr_stage == QBX_SOURCE_QUAD_STAGE2):
-            raise ValueError("unknown discr stage tag: '{}'".format(discr_stage))
+            raise ValueError(f"unknown discr stage tag: '{discr_stage}'")
 
         if not (granularity == GRANULARITY_NODE
                 or granularity == GRANULARITY_CENTER
                 or granularity == GRANULARITY_ELEMENT):
-            raise ValueError("unknown granularity: '{}'".format(granularity))
+            raise ValueError(f"unknown granularity: '{granularity}'")
 
         self.geometry = geometry
         self.discr_stage = discr_stage
@@ -1321,7 +1316,7 @@ class IterativeInverse(Expression):
     def get_hash(self):
         return hash((self.__class__,) + (self.expression,
             self.rhs, self.variable_name,
-            frozenset(six.iteritems(self.extra_vars)), self.dofdesc))
+            frozenset(self.extra_vars.items()), self.dofdesc))
 
     mapper_method = intern("map_inverse")
 
@@ -1390,7 +1385,7 @@ def laplace(ambient_dim, operand):
     d = Derivative()
     nabla = d.dnabla(ambient_dim)
     return d.resolve(nabla | d(
-        d.resolve((nabla * d(operand))))).as_scalar()
+        d.resolve(nabla * d(operand)))).as_scalar()
 
 
 # {{{ potentials
@@ -1492,11 +1487,11 @@ class IntG(Expression):
             raise ValueError("invalid value (%s) of qbx_forced_limit"
                     % qbx_forced_limit)
 
-        kernel_arg_names = set(
+        kernel_arg_names = {
                 karg.loopy_arg.name
                 for karg in (
                     kernel.get_args()
-                    + kernel.get_source_args()))
+                    + kernel.get_source_args())}
 
         kernel_arguments = kernel_arguments.copy()
         if kwargs:

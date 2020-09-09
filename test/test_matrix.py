@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = """
 Copyright (C) 2015 Andreas Kloeckner
 Copyright (C) 2018 Alexandru Fikl
@@ -175,8 +173,8 @@ def test_build_matrix(ctx_factory, k, curve_fn, op_type, visualize=False):
         abs_err = la.norm(res_mat - res_matvec, np.inf)
         rel_err = abs_err / la.norm(res_matvec, np.inf)
 
-        logger.info("AbsErr {:.5e} RelErr {:.5e}".format(abs_err, rel_err))
-        assert rel_err < 1.0e-13, 'iteration: {}'.format(i)
+        logger.info(f"AbsErr {abs_err:.5e} RelErr {rel_err:.5e}")
+        assert rel_err < 1.0e-13, f"iteration: {i}"
 
     # }}}
 
@@ -303,7 +301,7 @@ def test_block_builder(ctx_factory, ambient_dim,
     # }}}
 
 
-@pytest.mark.parametrize(('source_discr_stage', 'target_discr_stage'), [
+@pytest.mark.parametrize(("source_discr_stage", "target_discr_stage"), [
     (sym.QBX_SOURCE_STAGE1, sym.QBX_SOURCE_STAGE1),
     (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE2),
     # (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE1),

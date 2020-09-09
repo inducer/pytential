@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = """
 Copyright (C) 2016 Matt Wala
 """

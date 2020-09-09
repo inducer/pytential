@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2010-2013 Andreas Kloeckner"
 
 __license__ = """
@@ -40,14 +38,14 @@ import numpy as np  # noqa
 
 # {{{ L^2 weighting
 
-class L2WeightedPDEOperator(object):
+class L2WeightedPDEOperator:
     def __init__(self, kernel, use_l2_weighting):
         self.kernel = kernel
         self.use_l2_weighting = use_l2_weighting
 
         if not use_l2_weighting:
             from warnings import warn
-            warn("should use L2 weighting in %s" % type(self).__name__,
+            warn("should use L2 weighting in {}".format(type(self).__name__),
                     stacklevel=3)
 
     def get_weight(self, dofdesc=None):
@@ -292,8 +290,7 @@ class NeumannOperator(L2WeightedPDEOperator):
             elif isinstance(knl, LaplaceKernel):
                 DpS0u = Dp0S0u  # noqa
             else:
-                raise ValueError("no improved operator for %s known"
-                        % self.kernel)
+                raise ValueError(f"no improved operator for '{self.kernel}' known")
 
         if self.is_unique_only_up_to_constant():
             # The interior Neumann operator in this representation
@@ -392,7 +389,7 @@ class BiharmonicClampedPlateOperator:
         """
         Returns the two second kind integral equations.
         """
-        rep = self.representation(sigma, qbx_forced_limit='avg')
+        rep = self.representation(sigma, qbx_forced_limit="avg")
         rep_diff = sym.normal_derivative(2, rep)
         int_eq1 = sigma[0]/2 + rep
         int_eq2 = -sym.mean_curvature(2)*sigma[0] + sigma[1]/2 + rep_diff
