@@ -24,65 +24,8 @@ THE SOFTWARE.
 import numpy as np
 
 from pytential import sym
-from sumpy.symbolic import pymbolic_real_norm_2
-from pymbolic.primitives import make_sym_vector
-from pymbolic import var
 from sumpy.kernel import (StokesletKernel, StressletKernel, LaplaceKernel,
-    ExpressionKernel, AxisTargetDerivative, KernelArgument)
-import loopy as lp
-
-
-class StokesletKernelExperimental(ExpressionKernel):
-    init_arg_names = ("dim", "viscosity_mu_name")
-
-    def __init__(self, dim, viscosity_mu_name="mu"):
-        r"""
-        :arg viscosity_mu_name: The argument name to use for
-                dynamic viscosity :math:`\mu` the then generating functions to
-                evaluate this kernel.
-        """
-        mu = var(viscosity_mu_name)
-        d = make_sym_vector("d", dim)
-        r = pymbolic_real_norm_2(d)
-
-        if dim == 2:
-            expr = r**2*var("log")(r)/2 - 3*r**2/4
-            scaling = -1/(4*var("pi")*mu)
-        elif dim == 3:
-            expr = -r
-            scaling = -1/(8*var("pi")*mu)
-        elif dim is None:
-            expr = None
-            scaling = None
-        else:
-            raise RuntimeError("unsupported dimensionality")
-
-        self.viscosity_mu_name = viscosity_mu_name
-
-        super(StokesletKernelExperimental, self).__init__(
-                dim,
-                expression=expr,
-                global_scaling_const=scaling,
-                is_complex_valued=False)
-
-    def __getinitargs__(self):
-        return (self.dim, self.viscosity_mu_name)
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        key_hash.update(type(self).__name__.encode())
-        key_builder.rec(key_hash,
-                (self.dim, self.viscosity_mu_name))
-
-    def __repr__(self):
-        return "StokesletKnl%dD" % (self.dim)
-
-    def get_args(self):
-        return [
-                KernelArgument(
-                    loopy_arg=lp.ValueArg(self.viscosity_mu_name, np.float64),
-                    )]
-
-    mapper_method = "map_stokeslet_kernel"
+    AxisTargetDerivative, BiharmonicKernel)
 
 
 class StokesletWrapper(object):
@@ -114,20 +57,26 @@ class StokesletWrapper(object):
        for the same kernel in a different ordering.
     """
 
-    def __init__(self, dim=None, experimental=True):
-        self.experimental = experimental
+    def __init__(self, dim=None, use_biharmonic=True):
+        self.use_biharmonic = use_biharmonic
+        self.const = 0
         self.dim = dim
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
 
         self.kernel_dict = {}
 
-        if self.experimental:
-            self._kernel = StokesletKernelExperimental(dim=dim)
+        if self.use_biharmonic:
+            # Note that for 3D, the following holds,
+            # $K_{i, j} = \nabla \nabla + \mathrm{I} \nabla^2 r $
+            # where $r$ is the fundamental solution to
+            _kernel = BiharmonicKernel(dim=dim)
             for i in range(dim):
-                kernel_d1 = AxisTargetDerivative(i, self._kernel)
+                kernel_d1 = AxisTargetDerivative(i, _kernel)
                 for j in range(i, dim):
                     self.kernel_dict[(i, j)] = AxisTargetDerivative(j, kernel_d1)
+            if dim == 2:
+                self.const = 3/2
         else:
             for i in range(dim):
                 for j in range(i, dim):
@@ -138,15 +87,24 @@ class StokesletWrapper(object):
             for j in range(i):
                 self.kernel_dict[(i, j)] = self.kernel_dict[(j, i)]
 
-    def map_func_to_expr(self, idx, func):
-        if not self.experimental:
-            return func(self.kernel_dict[idx])
+    def map_func_to_expr(self, idx, func, **kwargs):
+        if not self.use_biharmonic:
+            return func(self.kernel_dict[idx], **kwargs)
+
+        mu_sym = kwargs.pop("mu")
+
+        def _get_multiplier(mu_sym):
+            if self.dim == 2:
+                return -2 / mu_sym
+            else:
+                return 1 / mu_sym
 
         if idx[0] != idx[1]:
-            return func(self.kernel_dict[idx])
+            return _get_multiplier(mu_sym) * func(self.kernel_dict[idx], **kwargs)
 
-        return -sum(func(self.kernel_dict[(i, i)]) for i
-                    in range(self.dim) if i != idx[0])
+        return _get_multiplier(mu_sym) * \
+            -sum(func(self.kernel_dict[(i, i)], **kwargs) for i
+                 in range(self.dim) if i != idx[0])
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """ Symbolic expressions for integrating Stokeslet kernel
@@ -163,14 +121,14 @@ class StokesletWrapper(object):
             for the average of the two one-sided boundary limits.
         """
 
-        sym_expr = np.zeros((self.dim,), dtype=object)
+        sym_expr = np.full((self.dim,), self.const, dtype=object)
 
         for comp in range(self.dim):
             for i in range(self.dim):
-                def func(knl):
+                def func(knl, **kwargs):
                     return sym.IntG(knl, density_vec_sym[i],
-                                    qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-                sym_expr[comp] += self.map_func_to_expr((comp, i), func)
+                                    qbx_forced_limit=qbx_forced_limit, **kwargs)
+                sym_expr[comp] += self.map_func_to_expr((comp, i), func, mu=mu_sym)
 
         return sym_expr
 
@@ -212,13 +170,13 @@ class StokesletWrapper(object):
 
         for comp in range(self.dim):
             for i in range(self.dim):
-                def func(knl):
+                def func(knl, **kwargs):
                     return DerivativeTaker(deriv_dir).map_int_g(
                                 sym.IntG(knl,
                                 density_vec_sym[i],
                                 qbx_forced_limit=qbx_forced_limit,
-                                mu=mu_sym))
-                sym_expr[comp] += self.map_func_to_expr((comp, i), func)
+                                **kwargs))
+                sym_expr[comp] += self.map_func_to_expr((comp, i), func, mu=mu_sym)
 
         return sym_expr
 
