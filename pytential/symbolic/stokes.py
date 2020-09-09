@@ -58,6 +58,7 @@ class StokesletWrapper:
 
     def __init__(self, dim=None, use_biharmonic=True):
         self.use_biharmonic = use_biharmonic
+        self.const = 0
         self.dim = dim
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
@@ -73,6 +74,8 @@ class StokesletWrapper:
                 kernel_d1 = AxisTargetDerivative(i, _kernel)
                 for j in range(i, dim):
                     self.kernel_dict[(i, j)] = AxisTargetDerivative(j, kernel_d1)
+            if dim == 2:
+                self.const = 3/2
         else:
             for i in range(dim):
                 for j in range(i, dim):
@@ -83,13 +86,6 @@ class StokesletWrapper:
             for j in range(i):
                 self.kernel_dict[(i, j)] = self.kernel_dict[(j, i)]
 
-    def _get_const(self, mu_sym):
-        from pymbolic import var
-        from math import pi
-        if self.use_biharmonic and self.dim == 2:
-            return -3/(8*mu_sym*pi)
-        return 0
-
     def map_func_to_expr(self, idx, func, **kwargs):
         if not self.use_biharmonic:
             return func(self.kernel_dict[idx], **kwargs)
@@ -98,7 +94,7 @@ class StokesletWrapper:
 
         def _get_multiplier(mu_sym):
             if self.dim == 2:
-                return -1 / mu_sym
+                return -2 / mu_sym
             else:
                 return 1 / mu_sym
 
@@ -124,7 +120,7 @@ class StokesletWrapper:
             for the average of the two one-sided boundary limits.
         """
 
-        sym_expr = np.full((self.dim,), self._get_const(mu_sym), dtype=object)
+        sym_expr = np.full((self.dim,), self.const, dtype=object)
 
         for comp in range(self.dim):
             for i in range(self.dim):
