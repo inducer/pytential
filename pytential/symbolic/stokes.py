@@ -58,52 +58,53 @@ class StokesletWrapper:
 
     def __init__(self, dim=None, use_biharmonic=True):
         self.use_biharmonic = use_biharmonic
-        self.const = 0
         self.dim = dim
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
 
         self.kernel_dict = {}
 
-        if self.use_biharmonic:
-            # Note that for 3D, the following holds,
-            # $K_{i, j} = \nabla \nabla + \mathrm{I} \nabla^2 r $
-            # where $r$ is the fundamental solution to
-            _kernel = BiharmonicKernel(dim=dim)
-            for i in range(dim):
-                kernel_d1 = AxisTargetDerivative(i, _kernel)
-                for j in range(i, dim):
-                    self.kernel_dict[(i, j)] = AxisTargetDerivative(j, kernel_d1)
-            if dim == 2:
-                self.const = 3/2
-        else:
+        self.base_kernel = BiharmonicKernel(dim=dim)
+
+        if not use_biharmonic:
             for i in range(dim):
                 for j in range(i, dim):
                     self.kernel_dict[(i, j)] = StokesletKernel(dim=dim, icomp=i,
                                                                jcomp=j)
 
-        for i in range(dim):
-            for j in range(i):
-                self.kernel_dict[(i, j)] = self.kernel_dict[(j, i)]
+            for i in range(dim):
+                for j in range(i):
+                    self.kernel_dict[(i, j)] = self.kernel_dict[(j, i)]
 
-    def map_func_to_expr(self, idx, func, **kwargs):
+    def _get_stokeslet_int_g(self, icomp, jcomp, density, mu_sym, qbx_forced_limit,
+            deriv_dirs):
+
+        def func(knl):
+            for deriv_dir in deriv_dirs:
+                knl = AxisTargetDerivative(deriv_dir, knl)
+
+            res = sym.IntG(knl, density,
+                    qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
+
+            return res
+
+        deriv_dirs.extend([icomp, jcomp])
+
         if not self.use_biharmonic:
-            return func(self.kernel_dict[idx], **kwargs)
+            return func(self.base_kernel)
 
-        mu_sym = kwargs.pop("mu")
+        mult = -1 / mu_sym
 
-        def _get_multiplier(mu_sym):
-            if self.dim == 2:
-                return -2 / mu_sym
-            else:
-                return 1 / mu_sym
+        if icomp != jcomp:
+            return mult * func(self.base_kernel)
 
-        if idx[0] != idx[1]:
-            return _get_multiplier(mu_sym) * func(self.kernel_dict[idx], **kwargs)
+        const = 0
+        if self.dim == 2 and not deriv_dirs:
+            from math import pi
+            const = -3/(8*pi)
 
-        return _get_multiplier(mu_sym) * \
-            -sum(func(self.kernel_dict[(i, i)], **kwargs) for i
-                 in range(self.dim) if i != idx[0])
+        return -mult * (sum(func(self.base_kernel) for i
+                    in range(self.dim) if i != icomp) + const * density)
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """ Symbolic expressions for integrating Stokeslet kernel
@@ -120,14 +121,12 @@ class StokesletWrapper:
             for the average of the two one-sided boundary limits.
         """
 
-        sym_expr = np.full((self.dim,), self.const, dtype=object)
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
         for comp in range(self.dim):
             for i in range(self.dim):
-                def func(knl, **kwargs):
-                    return sym.IntG(knl, density_vec_sym[i],
-                                    qbx_forced_limit=qbx_forced_limit, **kwargs)
-                sym_expr[comp] += self.map_func_to_expr((comp, i), func, mu=mu_sym)
+                sym_expr[comp] += self._get_stokeslet_int_g(comp, i,
+                        density_vec_sym[i], mu_sym, qbx_forced_limit, deriv_dirs=[])
 
         return sym_expr
 
@@ -163,19 +162,13 @@ class StokesletWrapper:
             for the average of the two one-sided boundary limits.
         """
 
-        from pytential.symbolic.mappers import DerivativeTaker
-
-        sym_expr = np.zeros((self.dim,), dtype=object)
+        sym_expr = self.apply(density_vec_sym, mu_sym, qbx_forced_limit)
 
         for comp in range(self.dim):
             for i in range(self.dim):
-                def func(knl, **kwargs):
-                    return DerivativeTaker(deriv_dir).map_int_g(
-                                sym.IntG(knl,
-                                density_vec_sym[i],
-                                qbx_forced_limit=qbx_forced_limit,
-                                **kwargs))
-                sym_expr[comp] += self.map_func_to_expr((comp, i), func, mu=mu_sym)
+                sym_expr[comp] += self._get_stokeslet_int_g(comp, i,
+                        density_vec_sym[i], mu_sym, qbx_forced_limit,
+                        deriv_dirs=[deriv_dir])
 
         return sym_expr
 
