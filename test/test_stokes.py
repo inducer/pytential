@@ -299,7 +299,6 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     return h_max, l2_err
 
 
-@pytest.mark.slowtest
 def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
