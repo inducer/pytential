@@ -79,7 +79,7 @@ class StokesletWrapper:
     def _get_stokeslet_int_g(self, icomp, jcomp, density, mu_sym, qbx_forced_limit,
             deriv_dirs):
 
-        def func(knl):
+        def func(knl, deriv_dirs):
             for deriv_dir in deriv_dirs:
                 knl = AxisTargetDerivative(deriv_dir, knl)
 
@@ -88,23 +88,23 @@ class StokesletWrapper:
 
             return res
 
-        deriv_dirs.extend([icomp, jcomp])
-
         if not self.use_biharmonic:
-            return func(self.base_kernel)
+            return func(self.base_kernel, deriv_dirs=deriv_dirs)
 
         mult = -1 / mu_sym
 
         if icomp != jcomp:
-            return mult * func(self.base_kernel)
+            return mult * func(self.base_kernel,
+                deriv_dirs=(deriv_dirs + [icomp, jcomp]))
 
         const = 0
         if self.dim == 2 and not deriv_dirs:
             from math import pi
             const = -3/(8*pi)
 
-        return -mult * (sum(func(self.base_kernel) for i
-                    in range(self.dim) if i != icomp) + const * density)
+        return -mult * (sum(func(self.base_kernel,
+                deriv_dirs=(deriv_dirs + [i, i])) for i in range(self.dim)
+                if i != icomp) + const * density)
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """ Symbolic expressions for integrating Stokeslet kernel
