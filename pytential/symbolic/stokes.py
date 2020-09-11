@@ -79,17 +79,41 @@ class StokesletWrapper:
     def _get_stokeslet_int_g(self, icomp, jcomp, density, mu_sym, qbx_forced_limit,
             deriv_dirs):
 
+        """
+        Returns the Integral of the Stokeslet kernel given by `icomp` and `jcomp`
+        and its derivatives.
+        Note that,
+
+            Stokeslet(icomp, jcomp)
+                = -1/mu_sym d/(d x_icomp) d/(d x_jcomp) BiharmonicKernel
+
+        for icomp != jcomp. Also note that for 3D,
+
+            Stokeslet(i, i)
+                = -1/mu_sym sum(-d^2/(dx_j^2 BiharmonicKernel for j != i).
+
+        For 2D,
+
+            Stokeslet(i, i)
+                = -1/mu_sym (sum(d^2/dx_j^2 BiharmonicKernel for j != i)
+                             -3/(8*pi)).
+        """
+
+        if not self.use_biharmonic:
+            knl = self.kernel_dict[(icomp, jcomp)]
+            for deriv_dir in deriv_dirs:
+                knl = AxisTargetDerivative(deriv_dir, knl)
+            return sym.IntG(knl, density,
+                    qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
+
+
         def func(knl, deriv_dirs):
             for deriv_dir in deriv_dirs:
                 knl = AxisTargetDerivative(deriv_dir, knl)
 
             res = sym.IntG(knl, density,
-                    qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
+                    qbx_forced_limit=qbx_forced_limit)
             return res
-
-        if not self.use_biharmonic:
-            return func(self.base_kernel, deriv_dirs=deriv_dirs)
 
         mult = -1 / mu_sym
 
