@@ -106,7 +106,6 @@ class StokesletWrapper:
             return sym.IntG(knl, density,
                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
 
-
         def func(knl, deriv_dirs):
             for deriv_dir in deriv_dirs:
                 knl = AxisTargetDerivative(deriv_dir, knl)
@@ -124,11 +123,11 @@ class StokesletWrapper:
         const = 0
         if self.dim == 2 and not deriv_dirs:
             from math import pi
-            const = -3/(8*pi)
+            const = -3/(8*pi) * sym.integral(self.dim, self.dim-1, density)
 
         return -mult * (sum(func(self.base_kernel,
                 deriv_dirs=(deriv_dirs + [i, i])) for i in range(self.dim)
-                if i != icomp) + const * density)
+                if i != icomp) + const)
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """ Symbolic expressions for integrating Stokeslet kernel
