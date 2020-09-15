@@ -123,7 +123,9 @@ class StokesletWrapper:
         const = 0
         if self.dim == 2 and not deriv_dirs:
             from math import pi
-            const = -3/(8*pi) * sym.integral(self.dim, self.dim-1, density)
+            from pytential.symbolic.primitives import as_dofdesc, DEFAULT_SOURCE
+            const = -3/(8*pi) * sym.integral(self.dim, self.dim-1, density,
+                                             dofdesc=as_dofdesc(DEFAULT_SOURCE))
 
         return -mult * (sum(func(self.base_kernel,
                 deriv_dirs=(deriv_dirs + [i, i])) for i in range(self.dim)
