@@ -118,11 +118,13 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     # {{{ describe bvp
 
     from pytential.symbolic.stokes import StressletWrapper, StokesletWrapper
+    from pytential.symbolic.primitives import as_dofdesc, DEFAULT_SOURCE
     dim = 2
     cse = sym.cse
 
     sigma_sym = sym.make_sym_vector("sigma", dim)
-    meanless_sigma_sym = cse(sigma_sym - sym.mean(2, 1, sigma_sym))
+    meanless_sigma_sym = cse(sigma_sym -
+        sym.mean(2, 1, sigma_sym, dofdesc=as_dofdesc(DEFAULT_SOURCE)))
     int_sigma = sym.Ones() * sym.integral(2, 1, sigma_sym)
 
     nvec_sym = sym.make_sym_vector("normal", dim)
