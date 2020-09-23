@@ -23,7 +23,6 @@ THE SOFTWARE.
 
 import numpy as np
 import pyopencl as cl
-import pytest
 
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
@@ -123,8 +122,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     cse = sym.cse
 
     sigma_sym = sym.make_sym_vector("sigma", dim)
-    meanless_sigma_sym = cse(sigma_sym -
-        sym.mean(2, 1, sigma_sym, dofdesc=as_dofdesc(DEFAULT_SOURCE)))
+    meanless_sigma_sym = cse(sigma_sym
+        - sym.mean(2, 1, sigma_sym, dofdesc=as_dofdesc(DEFAULT_SOURCE)))
     int_sigma = sym.Ones() * sym.integral(2, 1, sigma_sym)
 
     nvec_sym = sym.make_sym_vector("normal", dim)
