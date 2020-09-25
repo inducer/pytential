@@ -204,7 +204,12 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_node_coordinate_component(self, expr):
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        return thaw(self.array_context, discr.nodes()[expr.ambient_axis])
+
+        x = discr.nodes()[expr.ambient_axis]
+        if isinstance(x, DOFArray):
+            return thaw(self.array_context, x)
+        else:
+            return self.array_context.thaw(x)
 
     def map_num_reference_derivative(self, expr):
         discr = self.places.get_discretization(
