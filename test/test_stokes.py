@@ -20,10 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import numpy as np
 import pyopencl as cl
-import pytest
 
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
@@ -33,14 +31,20 @@ from meshmode.discretization.poly_element import \
 from pytools.obj_array import make_obj_array
 from sumpy.visualization import FieldPlotter
 
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
-
-from pytential import bind, sym, norm  # noqa
+from pytential import bind, sym
 from pytential import GeometryCollection
 from pytential.solve import gmres
-import logging
 
+import pytest
+from pyopencl.tools import (  # noqa
+        pytest_generate_tests_for_pyopencl
+        as pytest_generate_tests)
+
+import logging
+logger = logging.getLogger(__name__)
+
+
+# {{{
 
 def run_exterior_stokes_2d(ctx_factory, nelements,
         mesh_order=4, target_order=4, qbx_order=4,
@@ -310,6 +314,143 @@ def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
 
     print(eoc_rec)
     assert eoc_rec.order_estimate() >= qbx_order - 1
+
+# }}}
+
+
+# {{{ test_exterior_stokes
+
+def run_exterior_stokes(ctx_factory, *,
+        ambient_dim, target_order, qbx_order, resolution,
+        fmm_order=False,    # FIXME: FMM is slower than direct evaluation
+        source_ovsmp=3,
+        radius=1.0,
+        mu=1.0,
+        visualize=False):
+    cl_ctx = cl.create_some_context()
+    queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
+
+    # {{{ geometry
+
+    places = {}
+
+    if ambient_dim == 2:
+        from meshmode.mesh.generation import make_curve_mesh, ellipse
+        mesh = make_curve_mesh(
+                lambda t: radius * ellipse(1.0, t),
+                np.linspace(0.0, 1.0, nelements + 1),
+                target_order + 1)
+    elif ambient_dim == 3:
+        from meshmode.mesh.generation import generate_icosphere
+        mesh = generate_icosphere(radius, target_order + 1,
+                uniform_refinement_rounds=resolution)
+    else:
+        raise ValueError(f"unsupported dimension: {ambient_dim}")
+
+    pre_density_discr = Discretization(actx, mesh,
+            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+
+    from pytential.qbx import QBXLayerPotentialSource
+    qbx = QBXLayerPotentialSource(pre_density_discr,
+            fine_order=source_ovsmp * target_order,
+            qbx_order=qbx_order,
+            fmm_order=fmm_order,
+            )
+    places["source"] = qbx
+
+    from extra_int_eq_data import make_source_and_target_points
+    point_source, point_target = make_source_and_target_points(
+            side=+1, inner_radius=0.5 * radius, outer_radius=2.0 * radius,
+            ambient_dim=ambient_dim)
+    places["point_source"] = point_source
+    places["point_target"] = point_target
+
+    if visualize:
+        from sumpy.visualization import make_field_plotter_from_bbox
+        from meshmode.mesh.processing import find_bounding_box
+        fplot = make_field_plotter_from_bbox(
+                find_bounding_box(mesh),
+                h=0.1, extend_factor=1.0)
+        mask = np.norm(fplot.points, p=2, axis=0) > radius
+
+        plot_target = PointsTarget(fplot.points[:, mask])
+        places["plot_target"] = plot_target
+
+    places = GeometryCollection(places, auto_where="source")
+
+    density_discr = places.get_discretization("source")
+    logger.info("ndofs:     %d", density_discr.ndofs)
+    logger.info("nelements: %d", density_discr.mesh.nelements)
+
+    # }}}
+
+    # {{{ symbolic
+
+    sym_normal = sym.make_sym_vector("normal", ambient_dim)
+    sym_omega = sym.make_sym_vector("omega", ambient_dim)
+    sym_mu = sym.var("mu")
+
+    if ambient_dim == 2:
+        from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
+        op = HsiaoKressExteriorStokesOperator(omega=sym_omega)
+    else:
+        from pytential.symbolic.stokes import HebekerExteriorStokesOperator
+        op = HebekerExteriorStokesOperator()
+
+    sym_sigma = op.get_density_var("sigma")
+    sym_bc = op.get_density_var("bc")
+
+    sym_op = op.operator(sym_sigma, normal=sym_normal, mu=sym_mu)
+    sym_rhs = op.prepare_rhs(sym_bc, mu=mu)
+
+    sym_velocity = op.velocity(sym_sigma, normal=sym_normal, mu=sym_mu)
+
+    # }}}
+
+    # {{{ boundary conditions
+
+
+    # }}}
+
+    # {{{ solve and check
+
+    normal = bind(places, sym.normal(ambient_dim).as_vector())(actx)
+
+    # }}}
+
+@pytest.mark.slowtest
+@pytest.mark.parametrize("ambient_dim", [2, 3])
+def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
+    from pytools.convergence import EOCRecorder
+    eoc = EOCRecorder()
+
+    target_order = 3
+    qbx_order = 3
+
+    if ambient_dim == 2:
+        resolutions = [20, 35, 50]
+    elif ambient_dim == 3:
+        resolutions = [0, 1, 2]
+    else:
+        raise ValueError(f"unsupported dimension: {ambient_dim}")
+
+    for resolution in resolutions:
+        h_max, err = run_exterior_stokes(ctx_factory,
+                ambient_dim=ambient_dim,
+                target_order=target_order,
+                qbx_order=qbx_order,
+                resolution=resolution,
+                visualize=visualize)
+
+        eoc.add_data_point(h_max, err)
+
+    if visualize:
+        print(eoc)
+
+    assert eoc.order_estimate() > target_order - 0.5
+
+# }}}
 
 
 # You can test individual routines by typing
