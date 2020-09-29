@@ -66,15 +66,22 @@ class StokesletWrapper:
 
         self.base_kernel = BiharmonicKernel(dim=dim)
 
-        if not use_biharmonic:
-            for i in range(dim):
-                for j in range(i, dim):
-                    self.kernel_dict[(i, j)] = StokesletKernel(dim=dim, icomp=i,
-                                                               jcomp=j)
+        for i in range(dim):
+            for j in range(i, dim):
+                self.kernel_dict[(i, j)] = StokesletKernel(dim=dim, icomp=i,
+                                                           jcomp=j)
 
-            for i in range(dim):
-                for j in range(i):
-                    self.kernel_dict[(i, j)] = self.kernel_dict[(j, i)]
+        for i in range(dim):
+            for j in range(i):
+                self.kernel_dict[(i, j)] = self.kernel_dict[(j, i)]
+
+        if self.use_biharmonic:
+            from pytential.symbolic.pde_system_utils import get_deriv_relation
+            results = get_deriv_relation(list(self.kernel_dict.values()),
+                                         self.base_kernel, tol=1e-10, order=2)
+            self.deriv_relation_dict = {}
+            for deriv_eq, (idx, knl) in zip(results, self.kernel_dict.items()):
+                self.deriv_relation_dict[idx] = deriv_eq
 
     def _get_stokeslet_int_g(self, icomp, jcomp, density, mu_sym, qbx_forced_limit,
             deriv_dirs):
@@ -114,22 +121,22 @@ class StokesletWrapper:
                     qbx_forced_limit=qbx_forced_limit)
             return res
 
-        mult = -1 / mu_sym
+        deriv_relation = self.deriv_relation_dict[(icomp, jcomp)]
+        from pytential.symbolic.primitives import as_dofdesc, DEFAULT_SOURCE
+        from sumpy.symbolic import SympyToPymbolicMapper
+        sympy_conv = SympyToPymbolicMapper()
+        const = sympy_conv(deriv_relation[0])
+        const *= sym.integral(self.dim, self.dim-1, density,
+                              dofdesc=as_dofdesc(DEFAULT_SOURCE))
 
-        if icomp != jcomp:
-            return mult * func(self.base_kernel,
-                deriv_dirs=(deriv_dirs + [icomp, jcomp]))
+        result = 0
+        for mi, coeff in deriv_relation[1]:
+            deriv_dirs = list(deriv_dirs)
+            for idx, val in enumerate(mi):
+                deriv_dirs.extend([idx]*val)
+            result += func(self.base_kernel, deriv_dirs) * sympy_conv(coeff)
 
-        const = 0
-        if self.dim == 2 and not deriv_dirs:
-            from math import pi
-            from pytential.symbolic.primitives import as_dofdesc, DEFAULT_SOURCE
-            const = -3/(8*pi) * sym.integral(self.dim, self.dim-1, density,
-                                             dofdesc=as_dofdesc(DEFAULT_SOURCE))
-
-        return -mult * (sum(func(self.base_kernel,
-                deriv_dirs=(deriv_dirs + [i, i])) for i in range(self.dim)
-                if i != icomp) + const)
+        return result
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """ Symbolic expressions for integrating Stokeslet kernel
