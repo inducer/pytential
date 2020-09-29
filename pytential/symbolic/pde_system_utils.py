@@ -1,7 +1,6 @@
 import numpy as np
 
-from sumpy.symbolic import Matrix, make_sym_vector, sym
-
+from sumpy.symbolic import Matrix, make_sym_vector, sym, SympyToPymbolicMapper
 from pytools import (
                 generate_nonnegative_integer_tuples_summing_to_at_most
                 as gnitstam)
@@ -43,6 +42,7 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=False):
     sym_vec = make_sym_vector("d", dim)
 
     base_expr = base_kernel.get_expression(sym_vec)
+    sympy_conv = SympyToPymbolicMapper()
 
     mat = []
     for rand_vec_idx in range(rand.shape[1]):
@@ -81,11 +81,11 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=False):
             if mis[i] != (-1, -1, -1):
                 coeff *= kernel.get_global_scaling_const()
                 coeff /= base_kernel.get_global_scaling_const()
-                result.append((mis[i], coeff))
+                result.append((mis[i], sympy_conv(coeff)))
                 if verbose:
                     print(f"{base_kernel}.diff({mis[i]})*{coeff}", end=" + ")
             else:
-                const = coeff * kernel.get_global_scaling_const()
+                const = sympy_conv(coeff * kernel.get_global_scaling_const())
         if verbose:
             print(const)
         res.append((const, result))
@@ -98,4 +98,4 @@ if __name__ == "__main__":
     base_kernel = BiharmonicKernel(2)
     kernels = [StokesletKernel(2, 0, 1), StokesletKernel(2, 0, 0)]
     kernels = [StressletKernel(2, 0, 1, 0)]
-    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=3)
+    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=3, verbose=True)

@@ -123,9 +123,7 @@ class StokesletWrapper:
 
         deriv_relation = self.deriv_relation_dict[(icomp, jcomp)]
         from pytential.symbolic.primitives import as_dofdesc, DEFAULT_SOURCE
-        from sumpy.symbolic import SympyToPymbolicMapper
-        sympy_conv = SympyToPymbolicMapper()
-        const = sympy_conv(deriv_relation[0])
+        const = deriv_relation[0]
         const *= sym.integral(self.dim, self.dim-1, density,
                               dofdesc=as_dofdesc(DEFAULT_SOURCE))
 
@@ -134,7 +132,7 @@ class StokesletWrapper:
             deriv_dirs = list(deriv_dirs)
             for idx, val in enumerate(mi):
                 deriv_dirs.extend([idx]*val)
-            result += func(self.base_kernel, deriv_dirs) * sympy_conv(coeff)
+            result += func(self.base_kernel, deriv_dirs) * coeff
 
         return result
 
