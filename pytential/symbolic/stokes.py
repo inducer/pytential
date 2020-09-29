@@ -125,7 +125,7 @@ class StokesletWrapper(StokesletWrapperBase):
                 self.kernel_dict[(i, j)] = self.kernel_dict[(j, i)]
 
         if self.use_biharmonic:
-            from pytential.symbolic.pde_system_utils import get_deriv_relation
+            from pytential.symbolic.pde.system_utils import get_deriv_relation
             results = get_deriv_relation(list(self.kernel_dict.values()),
                                          self.base_kernel, tol=1e-10, order=2)
             self.deriv_relation_dict = {}
@@ -228,7 +228,8 @@ class StokesletWrapper(StokesletWrapperBase):
         """
 
         sym_expr = np.zeros((self.dim,), dtype=object)
-        stresslet_obj = StressletWrapper(dim=self.dim)
+        stresslet_obj = StressletWrapper(dim=self.dim,
+                                         use_biharmonic=self.use_biharmonic)
 
         for comp in range(self.dim):
             for i in range(self.dim):
@@ -270,7 +271,7 @@ class StressletWrapper(StokesletWrapperBase):
 
     """
 
-    def __init__(self, dim=None, use_biharmonic=False):
+    def __init__(self, dim=None, use_biharmonic=True):
         self.use_biharmonic = use_biharmonic
         self.dim = dim
         if not (dim == 3 or dim == 2):
@@ -295,7 +296,7 @@ class StressletWrapper(StokesletWrapperBase):
                     self.kernel_dict[(i, j, k)] = self.kernel_dict[s]
 
         if self.use_biharmonic:
-            from pytential.symbolic.pde_system_utils import get_deriv_relation
+            from pytential.symbolic.pde.system_utils import get_deriv_relation
             results = get_deriv_relation(list(self.kernel_dict.values()),
                                          self.base_kernel, tol=1e-10, order=3)
             self.deriv_relation_dict = {}
