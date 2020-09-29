@@ -73,7 +73,7 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=False):
         result = []
         const = 0
         if verbose:
-            print(kernel, end=' = ')
+            print(kernel, end=" = ")
         for i, coeff in enumerate(mat.solve(vec)):
             coeff = _chop(coeff, tol)
             if coeff == 0:
