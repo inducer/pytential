@@ -33,7 +33,6 @@ from sumpy.visualization import FieldPlotter
 
 from pytential import bind, sym
 from pytential import GeometryCollection
-from pytential.solve import gmres
 
 import pytest
 from pyopencl.tools import (  # noqa
@@ -197,6 +196,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     bvp_rhs = bind(places,
             sym.make_sym_vector("bc", dim) + u_A_sym_bdry)(actx,
                     bc=bc, mu=mu, omega=omega)
+
+    from pytential.solve import gmres
     gmres_result = gmres(
             bound_op.scipy_op(actx, "sigma", np.float64, mu=mu, normal=normal),
             bvp_rhs,
@@ -326,7 +327,13 @@ def run_exterior_stokes(ctx_factory, *,
         source_ovsmp=3,
         radius=1.0,
         mu=1.0,
-        visualize=False):
+        visualize=False,
+
+        _target_association_tolerance=0.05,
+        _expansions_in_tree_have_extent=True,
+        ):
+    logging.basicConfig(level=logging.INFO)
+
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue)
@@ -339,7 +346,7 @@ def run_exterior_stokes(ctx_factory, *,
         from meshmode.mesh.generation import make_curve_mesh, ellipse
         mesh = make_curve_mesh(
                 lambda t: radius * ellipse(1.0, t),
-                np.linspace(0.0, 1.0, nelements + 1),
+                np.linspace(0.0, 1.0, resolution + 1),
                 target_order + 1)
     elif ambient_dim == 3:
         from meshmode.mesh.generation import generate_icosphere
@@ -356,6 +363,8 @@ def run_exterior_stokes(ctx_factory, *,
             fine_order=source_ovsmp * target_order,
             qbx_order=qbx_order,
             fmm_order=fmm_order,
+            target_association_tolerance=_target_association_tolerance,
+            _expansions_in_tree_have_extent=_expansions_in_tree_have_extent,
             )
     places["source"] = qbx
 
@@ -372,10 +381,13 @@ def run_exterior_stokes(ctx_factory, *,
         fplot = make_field_plotter_from_bbox(
                 find_bounding_box(mesh),
                 h=0.1, extend_factor=1.0)
-        mask = np.norm(fplot.points, p=2, axis=0) > radius
+        mask = np.linalg.norm(fplot.points, ord=2, axis=0) > (radius + 0.25)
 
-        plot_target = PointsTarget(fplot.points[:, mask])
+        from pytential.target import PointsTarget
+        plot_target = PointsTarget(fplot.points[:, mask].copy())
         places["plot_target"] = plot_target
+
+        del mask,
 
     places = GeometryCollection(places, auto_where="source")
 
@@ -388,11 +400,11 @@ def run_exterior_stokes(ctx_factory, *,
     # {{{ symbolic
 
     sym_normal = sym.make_sym_vector("normal", ambient_dim)
-    sym_omega = sym.make_sym_vector("omega", ambient_dim)
     sym_mu = sym.var("mu")
 
     if ambient_dim == 2:
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
+        sym_omega = sym.make_sym_vector("omega", ambient_dim)
         op = HsiaoKressExteriorStokesOperator(omega=sym_omega)
     else:
         from pytential.symbolic.stokes import HebekerExteriorStokesOperator
@@ -406,18 +418,92 @@ def run_exterior_stokes(ctx_factory, *,
 
     sym_velocity = op.velocity(sym_sigma, normal=sym_normal, mu=sym_mu)
 
+    sym_source_pot = op.stokeslet.apply(sym_sigma, sym_mu, qbx_forced_limit=None)
+
     # }}}
 
     # {{{ boundary conditions
 
-
-    # }}}
-
-    # {{{ solve and check
-
     normal = bind(places, sym.normal(ambient_dim).as_vector())(actx)
 
+    np.random.seed(42)
+    charges = make_obj_array([
+        actx.from_numpy(np.random.randn(point_source.ndofs))
+        for _ in range(ambient_dim)
+        ])
+
+    if ambient_dim == 2:
+        total_charge = make_obj_array([
+            cl.array.sum(c).get(queue)[()] for c in charges
+            ])
+        omega = bind(places, total_charge * sym.Ones())(actx)
+
+    if ambient_dim == 2:
+        bc_context = {"mu": mu, "omega": omega}
+        op_context = {"mu": mu, "omega": omega, "normal": normal}
+    else:
+        bc_context = {}
+        op_context = {"mu": mu, "normal": normal}
+
+    bc = bind(places, sym_source_pot,
+            auto_where=("point_source", "source"))(actx, sigma=charges, mu=mu)
+
+    rhs = bind(places, sym_rhs)(actx, bc=bc, **bc_context)
+    bound_op = bind(places, sym_op)
+
     # }}}
+
+    # {{{ solve
+
+    from pytential.solve import gmres
+    result = gmres(
+            bound_op.scipy_op(actx, "sigma", np.float, **op_context),
+            rhs,
+            x0=rhs,
+            tol=1.0e-9,
+            progress=True,
+            stall_iterations=0,
+            hard_failure=True)
+
+    sigma = result.solution
+
+    # }}}
+
+    # {{{{ check
+
+    def norm2(x):
+        return np.sqrt(cl.array.sum(x.dot(x)).get()[()])
+
+    ps_velocity = bind(places, sym_velocity,
+            auto_where=("source", "point_target"))(actx, sigma=sigma, **op_context)
+    ex_velocity = bind(places, sym_source_pot,
+            auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
+
+    v_error = norm2(ps_velocity - ex_velocity) / norm2(ex_velocity)
+    h_max = bind(places, sym.h_max(ambient_dim))(actx)
+
+    logger.info("resolution %4d h_max %.5e error %.5e",
+            resolution, h_max, v_error)
+
+    # }}}}
+
+    # {{{ visualize
+
+    if not visualize:
+        return h_max, v_error
+
+    from meshmode.discretization.visualization import make_visualizer
+    vis = make_visualizer(actx, density_discr, target_order)
+    vis.write_vtk_file(f"stokes_solution_{ambient_dim}d_{resolution}.vtu", [
+        ("density", sigma),
+        ("bc", bc),
+        ("rhs", rhs)
+        ], overwrite=True)
+
+    # }}}
+
+    return h_max, v_error
+
 
 @pytest.mark.slowtest
 @pytest.mark.parametrize("ambient_dim", [2, 3])

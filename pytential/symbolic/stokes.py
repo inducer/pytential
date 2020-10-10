@@ -515,6 +515,9 @@ class StokesOperator:
         self.ambient_dim = ambient_dim
         self.side = side
 
+        self.stresslet = StressletWrapper(dim=self.ambient_dim)
+        self.stokeslet = StokesletWrapper(dim=self.ambient_dim)
+
     @property
     def dim(self):
         return self.ambient_dim - 1
@@ -525,7 +528,7 @@ class StokesOperator:
         """
         return sym.make_sym_vector(name, self.ambient_dim)
 
-    def prepare_rhs(self, b):
+    def prepare_rhs(self, b, *, mu):
         """
         :returns: a (potentially) modified right-hand side *b* that matches
             requirements of the representation.
@@ -539,15 +542,15 @@ class StokesOperator:
         """
         raise NotImplementedError
 
-    def pressure(self, sigma):
+    def velocity(self, sigma, *, normal, mu, qbx_forced_limit=None):
         """
-        :returns: a representation of the pressure in the Stokes flow.
+        :returns: a representation of the velocity field in the Stokes flow.
         """
         raise NotImplementedError
 
-    def velocity(self, sigma):
+    def pressure(self, sigma, *, normal, mu, qbx_forced_limit=None):
         """
-        :returns: a representation of the velocity field in the Stokes flow.
+        :returns: a representation of the pressure in the Stokes flow.
         """
         raise NotImplementedError
 
@@ -592,18 +595,21 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         self.alpha = alpha
         self.eta = eta
 
-        self.stresslet = StressletWrapper(dim=self.ambient_dim)
-        self.stokeslet = StokesletWrapper(dim=self.ambient_dim)
-
     def _farfield(self, mu, qbx_forced_limit):
         length = sym.integral(self.ambient_dim, self.dim, 1)
-        return self.stokeslet.apply(self.omega/length, mu,
+        return self.stokeslet.apply(
+                self.omega / length,
+                mu,
                 qbx_forced_limit=qbx_forced_limit)
 
     def _operator(self, sigma, normal, mu, qbx_forced_limit):
-        meanless_sigma = sym.cse(sigma
-                - sym.mean(self.ambient_dim, self.dim, sigma))
-        int_sigma = sym.integral(self.ambient_dim, self.dim, sigma)
+        # NOTE: we set a dofdesc here to force the evaluation of this integral
+        # on the source instead of the target when using automatic tagging
+        # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
+        dd = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
+
+        int_sigma = sym.integral(self.ambient_dim, self.dim, sigma, dofdesc=dd)
+        meanless_sigma = sym.cse(sigma - sym.mean(self.ambient_dim, self.dim, sigma))
 
         op_k = self.stresslet.apply(sigma, normal, mu,
                 qbx_forced_limit=qbx_forced_limit)
@@ -629,8 +635,8 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
                 - self._operator(sigma, normal, mu, qbx_forced_limit)
                 )
 
-    def pressure(self, sigma, *, normal, mu):
-        # NOTE: H. K. 1985 Equation 2.17
+    def pressure(self, sigma, *, normal, mu, qbx_forced_limit=2):
+        # FIXME: H. K. 1985 Equation 2.17
         raise NotImplementedError
 
 
@@ -652,14 +658,14 @@ class HebekerExteriorStokesOperator(StokesOperator):
 
         super().__init__(ambient_dim=3, side=+1)
 
-        # NOTE: eta is chosen here based on [hebeker] Figure 1, which is
+        # NOTE: eta is chosen here based on H. 1986 Figure 1, which is
         # based on solving on the unit sphere
         if eta is None:
             eta = 0.5
 
         self.eta = eta
 
-    def _operator(self, sigma, *, normal, mu, qbx_forced_limit):
+    def _operator(self, sigma, normal, mu, qbx_forced_limit):
         op_w = self.stresslet.apply(sigma, normal, mu,
                 qbx_forced_limit=qbx_forced_limit)
         op_v = self.stokeslet.apply(sigma, mu,
@@ -667,15 +673,17 @@ class HebekerExteriorStokesOperator(StokesOperator):
 
         return op_w + self.eta * op_v
 
-    def operator(self, sigma):
-        # NOTE H. 1986 Equation 17
+    def operator(self, sigma, *, normal, mu):
+        # NOTE: H. 1986 Equation 17
         return -0.5 * self.side * sigma - self._operator(sigma, normal, mu, "avg")
 
     def velocity(self, sigma, *, normal, mu, qbx_forced_limit=2):
-        # NOTE H. 1986 Equation 16
+        # NOTE: H. 1986 Equation 16
         return -self._operator(sigma, normal, mu, qbx_forced_limit)
 
     def pressure(self, sigma, *, normal, mu, qbx_forced_limit=2):
+        # FIXME: not given in H. 1986, but should be easy to derive using the
+        # equivalent single-/double-layer pressure kernels
         raise NotImplementedError
 
 # }}}
