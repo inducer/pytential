@@ -42,6 +42,10 @@ from pyopencl.tools import (  # noqa
 import logging
 logger = logging.getLogger(__name__)
 
+import shutil
+linewidth = shutil.get_terminal_size((85, 20))[0] - 7
+np.set_printoptions(linewidth=linewidth)
+
 
 # {{{
 
@@ -324,14 +328,13 @@ def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
 def run_exterior_stokes(ctx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
         fmm_order=False,    # FIXME: FMM is slower than direct evaluation
-        source_ovsmp=3,
-        radius=1.0,
+        source_ovsmp=4,
+        radius=1.5,
         mu=1.0,
         visualize=False,
 
         _target_association_tolerance=0.05,
-        _expansions_in_tree_have_extent=True,
-        ):
+        _expansions_in_tree_have_extent=True):
     logging.basicConfig(level=logging.INFO)
 
     cl_ctx = cl.create_some_context()
@@ -347,7 +350,7 @@ def run_exterior_stokes(ctx_factory, *,
         mesh = make_curve_mesh(
                 lambda t: radius * ellipse(1.0, t),
                 np.linspace(0.0, 1.0, resolution + 1),
-                target_order + 1)
+                target_order)
     elif ambient_dim == 3:
         from meshmode.mesh.generation import generate_icosphere
         mesh = generate_icosphere(radius, target_order + 1,
@@ -364,14 +367,16 @@ def run_exterior_stokes(ctx_factory, *,
             qbx_order=qbx_order,
             fmm_order=fmm_order,
             target_association_tolerance=_target_association_tolerance,
-            _expansions_in_tree_have_extent=_expansions_in_tree_have_extent,
-            )
+            _expansions_in_tree_have_extent=_expansions_in_tree_have_extent)
     places["source"] = qbx
 
     from extra_int_eq_data import make_source_and_target_points
     point_source, point_target = make_source_and_target_points(
-            side=+1, inner_radius=0.5 * radius, outer_radius=2.0 * radius,
-            ambient_dim=ambient_dim)
+            side=+1,
+            inner_radius=0.5 * radius,
+            outer_radius=2.0 * radius,
+            ambient_dim=ambient_dim,
+            )
     places["point_source"] = point_source
     places["point_target"] = point_target
 
@@ -457,7 +462,7 @@ def run_exterior_stokes(ctx_factory, *,
 
     from pytential.solve import gmres
     result = gmres(
-            bound_op.scipy_op(actx, "sigma", np.float, **op_context),
+            bound_op.scipy_op(actx, "sigma", np.float64, **op_context),
             rhs,
             x0=rhs,
             tol=1.0e-9,
@@ -511,8 +516,8 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
     from pytools.convergence import EOCRecorder
     eoc = EOCRecorder()
 
-    target_order = 3
-    qbx_order = 3
+    target_order = 4
+    qbx_order = 4
 
     if ambient_dim == 2:
         resolutions = [20, 35, 50]

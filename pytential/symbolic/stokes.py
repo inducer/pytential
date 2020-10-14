@@ -489,6 +489,7 @@ class StressletWrapper:
 
 # }}}
 
+
 # {{{ base Stokes operator
 
 class StokesOperator:
@@ -499,8 +500,10 @@ class StokesOperator:
     .. automethod:: __init__
     .. automethod:: get_density_var
     .. automethod:: prepare_rhs
-    .. automethod:: representation
     .. automethod:: operator
+
+    .. automethod:: velocity
+    .. autoemthod:: pressure
     """
 
     def __init__(self, ambient_dim, side):
@@ -598,11 +601,15 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     def _farfield(self, mu, qbx_forced_limit):
         length = sym.integral(self.ambient_dim, self.dim, 1)
         return self.stokeslet.apply(
-                self.omega / length,
+                -self.omega / length,
                 mu,
                 qbx_forced_limit=qbx_forced_limit)
 
     def _operator(self, sigma, normal, mu, qbx_forced_limit):
+        slp_qbx_forced_limit = qbx_forced_limit
+        if slp_qbx_forced_limit == "avg":
+            slp_qbx_forced_limit = +1
+
         # NOTE: we set a dofdesc here to force the evaluation of this integral
         # on the source instead of the target when using automatic tagging
         # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
@@ -616,7 +623,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         op_s = (
                 self.alpha / (2.0 * np.pi) * int_sigma
                 - self.stokeslet.apply(meanless_sigma, mu,
-                    qbx_forced_limit=qbx_forced_limit)
+                    qbx_forced_limit=slp_qbx_forced_limit)
                 )
 
         return op_k + self.eta * op_s
@@ -631,7 +638,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     def velocity(self, sigma, *, normal, mu, qbx_forced_limit=2):
         # NOTE: H. K. 1985 Equation 2.16
         return (
-                self._farfield(mu, qbx_forced_limit)
+                -self._farfield(mu, qbx_forced_limit)
                 - self._operator(sigma, normal, mu, qbx_forced_limit)
                 )
 
@@ -661,15 +668,19 @@ class HebekerExteriorStokesOperator(StokesOperator):
         # NOTE: eta is chosen here based on H. 1986 Figure 1, which is
         # based on solving on the unit sphere
         if eta is None:
-            eta = 0.5
+            eta = 0.75
 
         self.eta = eta
 
     def _operator(self, sigma, normal, mu, qbx_forced_limit):
+        slp_qbx_forced_limit = qbx_forced_limit
+        if slp_qbx_forced_limit == "avg":
+            slp_qbx_forced_limit = self.side
+
         op_w = self.stresslet.apply(sigma, normal, mu,
                 qbx_forced_limit=qbx_forced_limit)
         op_v = self.stokeslet.apply(sigma, mu,
-                qbx_forced_limit=qbx_forced_limit)
+                qbx_forced_limit=slp_qbx_forced_limit)
 
         return op_w + self.eta * op_v
 
