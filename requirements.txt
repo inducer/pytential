@@ -8,5 +8,5 @@ git+https://github.com/inducer/islpy#egg=islpy
 git+https://github.com/inducer/loopy#egg=loo.py
 git+https://github.com/inducer/boxtree#egg=boxtree
 git+https://github.com/inducer/meshmode#egg=meshmode
-git+https://github.com/inducer/sumpy#egg=sumpy
+git+https://github.com/isuruf/sumpy@multi_p2e#egg=sumpy
 git+https://github.com/inducer/pyfmmlib#egg=pyfmmlib
