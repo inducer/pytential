@@ -394,7 +394,7 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
     :arg geo_data: A :class:`pytential.qbx.geometry.QBXFMMGeometryData` instance.
     :arg expansion_wrangler: An object exhibiting the
         :class:`boxtree.fmm.ExpansionWranglerInterface`.
-    :arg src_weights: Source 'density/weights/charges'.
+    :arg src_weights: A sequence of source 'density/weights/charges'.
         Passed unmodified to *expansion_wrangler*.
     :arg timing_data: Either *None* or a dictionary that collects
         timing data.
@@ -419,7 +419,7 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
 
     fmm_proc = ProcessLogger(logger, "qbx fmm")
 
-    src_weights = wrangler.reorder_sources(src_weights)
+    src_weights = [wrangler.reorder_sources(weight) for weight in src_weights]
 
     # {{{ construct local multipoles
 

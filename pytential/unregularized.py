@@ -266,7 +266,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from boxtree.fmm import drive_fmm
         all_potentials_on_every_tgt = drive_fmm(
-                geo_data.traversal(), wrangler, flat_strengths,
+                geo_data.traversal(), wrangler, (flat_strengths,),
                 timing_data=None)
 
         # {{{ postprocess fmm
