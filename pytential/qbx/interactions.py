@@ -103,7 +103,8 @@ class P2QBXLFromCSR(P2EBase):
 
                     """] + [f"""
                     qbx_expansions[tgt_icenter, {i}] = \
-                            simul_reduce(sum, (isrc_box, isrc), {self.get_result_expr(i)}) \
+                            simul_reduce(sum, (isrc_box, isrc), \
+                                         {self.get_result_expr(i)}) \
                             {{id_prefix=write_expn}}
                     """ for i in range(ncoeffs)] + ["""
 
