@@ -521,6 +521,8 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
                 "be called on a QBXExpansionWrangler")
 
     def form_global_qbx_locals(self, src_weights):
+        assert len(src_weights) == 1
+        src_weights = src_weights[0]
         local_exps = self.qbx_local_expansion_zeros()
         ops = 0
 
