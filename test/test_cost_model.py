@@ -607,6 +607,8 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         return output, self.timing_future(ops)
 
     def eval_target_specific_qbx_locals(self, src_weights):
+        assert len(src_weights) == 1
+        src_weights = src_weights[0]
         pot = self.full_output_zeros()
         ops = 0
 
