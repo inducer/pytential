@@ -230,7 +230,7 @@ non_qbx_box_target_lists`),
 
                 source_box_starts=starts,
                 source_box_lists=lists,
-                strengths=(src_weights,),
+                strengths=src_weights,
                 qbx_expansions=local_exps,
 
                 **kwargs)
