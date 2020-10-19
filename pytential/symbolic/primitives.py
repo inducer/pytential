@@ -1472,17 +1472,6 @@ class IntG(Expression):
         if isinstance(kernel_arguments, tuple):
             kernel_arguments = dict(kernel_arguments)
 
-        from sumpy.kernel import to_kernel_and_args
-        kernel, kernel_arguments_2 = to_kernel_and_args(kernel)
-
-        for name, val in kernel_arguments_2.items():
-            if name in kernel_arguments:
-                raise ValueError("'%s' already set in kernel_arguments"
-                        % name)
-            kernel_arguments[name] = val
-
-        del kernel_arguments_2
-
         if qbx_forced_limit not in [-1, +1, -2, +2, "avg", None]:
             raise ValueError("invalid value (%s) of qbx_forced_limit"
                     % qbx_forced_limit)
