@@ -1,4 +1,3 @@
-from __future__ import absolute_import, print_function
 import numpy as np  # noqa
 import pyopencl as cl
 import pyopencl.array  # noqa

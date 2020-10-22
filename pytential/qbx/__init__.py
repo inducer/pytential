@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -21,8 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
 
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.dof_array import flatten, unflatten, thaw
@@ -554,7 +550,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     out_kernels)
 
         else:
-            raise ValueError("invalid FMM backend: %s" % self.fmm_backend)
+            raise ValueError(f"invalid FMM backend: {self.fmm_backend}")
 
     def get_target_discrs_and_qbx_sides(self, insn, bound_expr):
         """Build the list of unique target discretizations used by the
@@ -750,7 +746,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         from pytential.utils import flatten_if_needed
         kernel_args = {}
-        for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
+        for arg_name, arg_expr in insn.kernel_arguments.items():
             kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
 
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
@@ -856,7 +852,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 tgt_subset_kwargs = kernel_args.copy()
                 for i, res_i in enumerate(output_for_each_kernel):
-                    tgt_subset_kwargs["result_%d" % i] = res_i
+                    tgt_subset_kwargs[f"result_{i}"] = res_i
 
                 if qbx_tgt_count:
                     lpot_applier_on_tgt_subset(

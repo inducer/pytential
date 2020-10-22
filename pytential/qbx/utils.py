@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import annotations
-
 __copyright__ = """
 Copyright (C) 2016 Matt Wala
 """
@@ -71,7 +68,7 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 
 # {{{ tree code container
 
-class TreeCodeContainer(object):
+class TreeCodeContainer:
 
     def __init__(self, actx: PyOpenCLArrayContext):
         self.array_context = actx
@@ -96,7 +93,7 @@ class TreeCodeContainer(object):
 
 # {{{ tree code container mixin
 
-class TreeCodeContainerMixin(object):
+class TreeCodeContainerMixin:
     """Forwards requests for tree-related code to an inner code container named
     self.tree_code_container.
     """
@@ -115,7 +112,7 @@ class TreeCodeContainerMixin(object):
 
 # {{{ tree wrangler base class
 
-class TreeWranglerBase(object):
+class TreeWranglerBase:
 
     def __init__(self, array_context: PyOpenCLArrayContext, code_container):
         self.code_container = code_container

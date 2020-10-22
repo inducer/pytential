@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2013-2017 Andreas Kloeckner"
 
 __license__ = """
@@ -73,7 +71,7 @@ def get_sphere_mesh(refinement_increment, target_order):
     return mesh
 
 
-class StarfishGeometry(object):
+class StarfishGeometry:
     def __init__(self, n_arms=5, amplitude=0.25):
         self.n_arms = n_arms
         self.amplitude = amplitude
@@ -95,7 +93,7 @@ class StarfishGeometry(object):
                 target_order)
 
 
-class WobblyCircleGeometry(object):
+class WobblyCircleGeometry:
     dim = 2
     mesh_name = "wobbly-circle"
 
@@ -108,7 +106,7 @@ class WobblyCircleGeometry(object):
                 target_order)
 
 
-class SphereGeometry(object):
+class SphereGeometry:
     mesh_name = "sphere"
     dim = 3
 
@@ -118,7 +116,7 @@ class SphereGeometry(object):
         return get_sphere_mesh(resolution, tgt_order)
 
 
-class GreenExpr(object):
+class GreenExpr:
     zero_op_name = "green"
 
     def get_zero_op(self, kernel, **knl_kwargs):
@@ -134,7 +132,7 @@ class GreenExpr(object):
     order_drop = 0
 
 
-class GradGreenExpr(object):
+class GradGreenExpr:
     zero_op_name = "grad_green"
 
     def get_zero_op(self, kernel, **knl_kwargs):
@@ -154,7 +152,7 @@ class GradGreenExpr(object):
     order_drop = 1
 
 
-class ZeroCalderonExpr(object):
+class ZeroCalderonExpr:
     zero_op_name = "calderon"
 
     def get_zero_op(self, kernel, **knl_kwargs):
@@ -176,7 +174,7 @@ class ZeroCalderonExpr(object):
     order_drop = 1
 
 
-class StaticTestCase(object):
+class StaticTestCase:
     def check(self):
         pass
 
@@ -221,7 +219,7 @@ class SphereGreenTest(StaticTestCase):
     fmm_backend = "fmmlib"
 
 
-class DynamicTestCase(object):
+class DynamicTestCase:
     fmm_backend = "sumpy"
 
     def __init__(self, geometry, expr, k, fmm_backend="sumpy"):

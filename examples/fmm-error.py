@@ -1,4 +1,3 @@
-from __future__ import division
 import numpy as np
 import pyopencl as cl
 from meshmode.array_context import PyOpenCLArrayContext

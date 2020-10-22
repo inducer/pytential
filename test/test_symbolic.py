@@ -1,5 +1,3 @@
-from __future__ import division, print_function
-
 __copyright__ = "Copyright (C) 2017 Matt Wala"
 
 __license__ = """
@@ -293,7 +291,7 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     elif name in ("stage2_center",):
         assert len(sigma_target_interp) == 2 * len(sigma_target)
     else:
-        raise ValueError("unknown test case name: {}".format(name))
+        raise ValueError(f"unknown test case name: {name}")
 
 # }}}
 

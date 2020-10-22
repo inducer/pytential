@@ -1,4 +1,3 @@
-
 # {{{ differential operators on layer potentials
 
 def grad_S(kernel, arg, dim):

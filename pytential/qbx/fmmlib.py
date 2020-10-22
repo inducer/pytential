@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2017 Andreas Kloeckner"
 
 __license__ = """
@@ -44,7 +42,7 @@ class P2QBXLInfo(Record):
     pass
 
 
-class QBXFMMLibExpansionWranglerCodeContainer(object):
+class QBXFMMLibExpansionWranglerCodeContainer:
     def __init__(self, cl_context,
             multipole_expansion_factory, local_expansion_factory,
             qbx_local_expansion_factory, out_kernels):
@@ -173,7 +171,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                         HelmholtzKernel(tree.dimensions),
                         frozenset([("k", helmholtz_k)]), tree, level)
 
-        super(QBXFMMLibExpansionWrangler, self).__init__(
+        super().__init__(
                 geo_data.tree(),
 
                 helmholtz_k=helmholtz_k,
@@ -229,8 +227,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         if isinstance(source_array, cl.array.Array):
             source_array = source_array.get(queue=self.queue)
 
-        return (super(QBXFMMLibExpansionWrangler, self)
-                .reorder_sources(source_array))
+        return super().reorder_sources(source_array)
 
     def reorder_potentials(self, potentials):
         raise NotImplementedError("reorder_potentials should not "
@@ -636,9 +633,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return output
 
     def finalize_potentials(self, potential):
-        potential = super(QBXFMMLibExpansionWrangler, self).finalize_potentials(
-                potential)
-
+        potential = super().finalize_potentials(potential)
         return cl.array.to_device(self.queue, potential)
 
 # }}}

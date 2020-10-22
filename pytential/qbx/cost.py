@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = """
 Copyright (C) 2013 Andreas Kloeckner
 Copyright (C) 2018 Matt Wala
@@ -26,7 +24,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range
 import numpy as np
 import pyopencl as cl
 import pyopencl.array  # noqa: F401
@@ -37,7 +34,6 @@ from mako.template import Template
 from pymbolic import var, evaluate
 from pytools import memoize_method
 from functools import partial
-import sys
 
 from boxtree.cost import (
     FMMTranslationCostModel, AbstractFMMCostModel as BaseAbstractFMMCostModel,
@@ -45,10 +41,7 @@ from boxtree.cost import (
 )
 from abc import abstractmethod
 
-if sys.version_info >= (3, 0):
-    Template = partial(Template, strict_undefined=True)
-else:
-    Template = partial(Template, strict_undefined=True, disable_unicode=True)
+Template = partial(Template, strict_undefined=True)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -158,7 +151,7 @@ def make_pde_aware_translation_cost_model(dim, nlevels):
     knowledge that the potential satisfies a PDE.
     """
     p_qbx = var("p_qbx")
-    p_fmm = np.array([var("p_fmm_lev%d" % i) for i in range(nlevels)])
+    p_fmm = np.array([var(f"p_fmm_lev{i}") for i in range(nlevels)])
 
     uses_point_and_shoot = False
 
@@ -179,7 +172,7 @@ def make_taylor_translation_cost_model(dim, nlevels):
     in Cartesian coordinates.
     """
     p_qbx = var("p_qbx")
-    p_fmm = np.array([var("p_fmm_lev%d" % i) for i in range(nlevels)])
+    p_fmm = np.array([var(f"p_fmm_lev{i}") for i in range(nlevels)])
 
     ncoeffs_fmm = (p_fmm + 1) ** dim
     ncoeffs_qbx = (p_qbx + 1) ** dim
@@ -343,7 +336,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         }
 
         for level in range(tree.nlevels):
-            metadata["p_fmm_lev%d" % level] = fmm_level_to_order[level]
+            metadata[f"p_fmm_lev{level}"] = fmm_level_to_order[level]
 
         return metadata
 
@@ -373,7 +366,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         params.update(dict(p_qbx=lpot_source.qbx_order))
 
         for ilevel in range(tree.nlevels):
-            params["p_fmm_lev%d" % ilevel] = fmm_level_to_order[ilevel]
+            params[f"p_fmm_lev{ilevel}"] = fmm_level_to_order[ilevel]
 
         # }}}
 
@@ -448,7 +441,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         params.update(dict(p_qbx=lpot_source.qbx_order))
 
         for ilevel in range(tree.nlevels):
-            params["p_fmm_lev%d" % ilevel] = fmm_level_to_order[ilevel]
+            params[f"p_fmm_lev{ilevel}"] = fmm_level_to_order[ilevel]
 
         # }}}
 
