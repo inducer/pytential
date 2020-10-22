@@ -520,9 +520,8 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         raise NotImplementedError("reorder_potentials should not "
                 "be called on a QBXExpansionWrangler")
 
-    def form_global_qbx_locals(self, src_weights):
-        assert len(src_weights) == 1
-        src_weights = src_weights[0]
+    def form_global_qbx_locals(self, src_weight_vecs):
+        src_weights, = src_weight_vecs
         local_exps = self.qbx_local_expansion_zeros()
         ops = 0
 
@@ -606,9 +605,8 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
         return output, self.timing_future(ops)
 
-    def eval_target_specific_qbx_locals(self, src_weights):
-        assert len(src_weights) == 1
-        src_weights = src_weights[0]
+    def eval_target_specific_qbx_locals(self, src_weight_vecs):
+        src_weights, = src_weight_vecs
         pot = self.full_output_zeros()
         ops = 0
 

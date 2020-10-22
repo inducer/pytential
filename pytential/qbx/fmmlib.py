@@ -287,9 +287,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
     @log_process(logger)
     @return_timing_data
-    def form_global_qbx_locals(self, src_weights):
-        assert len(src_weights) == 1
-        src_weights = src_weights[0]
+    def form_global_qbx_locals(self, src_weight_vecs):
+        src_weights, = src_weight_vecs
         if self.using_tsqbx:
             return self.qbx_local_expansion_zeros()
 
@@ -583,9 +582,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
     @log_process(logger)
     @return_timing_data
-    def eval_target_specific_qbx_locals(self, src_weights):
-        assert len(src_weights) == 1
-        src_weights = src_weights[0]
+    def eval_target_specific_qbx_locals(self, src_weight_vecs):
+        src_weights, = src_weight_vecs
         if not self.using_tsqbx:
             return self.full_output_zeros()
 
