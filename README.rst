@@ -21,20 +21,20 @@ for easy, self-contained installation instructions for Linux and macOS.
 
 It relies on
 
-* `numpy <http://pypi.python.org/pypi/numpy>`_ for arrays
-* `boxtree <http://pypi.python.org/pypi/boxtree>`_ for FMM tree building
-* `sumpy <http://pypi.python.org/pypi/sumpy>`_ for expansions and analytical routines
-* `modepy <http://pypi.python.org/pypi/modepy>`_ for modes and nodes on simplices
-* `meshmode <http://pypi.python.org/pypi/meshmode>`_ for high order discretizations
-* `loopy <http://pypi.python.org/pypi/loopy>`_ for fast array operations
-* `pytest <http://pypi.python.org/pypi/pytest>`_ for automated testing
+* `numpy <http://pypi.org/project/numpy>`_ for arrays
+* `boxtree <http://pypi.org/project/boxtree>`_ for FMM tree building
+* `sumpy <http://pypi.org/project/sumpy>`_ for expansions and analytical routines
+* `modepy <http://pypi.org/project/modepy>`_ for modes and nodes on simplices
+* `meshmode <http://pypi.org/project/meshmode>`_ for high order discretizations
+* `loopy <http://pypi.org/project/loopy>`_ for fast array operations
+* `pytest <http://pypi.org/project/pytest>`_ for automated testing
 
 and, indirectly,
 
-* `PyOpenCL <http://pypi.python.org/pypi/pyopencl>`_ as computational infrastructure
+* `PyOpenCL <http://pypi.org/project/pyopencl>`_ as computational infrastructure
 
 .. image:: https://badge.fury.io/py/pytential.png
-    :target: http://pypi.python.org/pypi/pytential
+    :target: http://pypi.org/project/pytential
 
 Resources:
 
