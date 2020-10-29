@@ -72,7 +72,7 @@ def surface_laplacian_S_squared(u, invertibility_scale=0):
     """
     :arg u: The field to which the surface Laplacian is applied.
     """
-    # http://wiki.tiker.net/HellsKitchen/SurfaceLaplacian
+    # https://wiki.tiker.net/HellsKitchen/SurfaceLaplacian
 
     Su = cse(S(0, u), "su_from_surflap")
 

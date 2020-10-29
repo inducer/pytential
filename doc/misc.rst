@@ -154,7 +154,7 @@ Frequently Asked Questions
 ==========================
 
 The FAQ is maintained collaboratively on the
-`Wiki FAQ page <http://wiki.tiker.net/Pytential/FrequentlyAskedQuestions>`_.
+`Wiki FAQ page <https://wiki.tiker.net/Pytential/FrequentlyAskedQuestions>`_.
 
 Acknowledgments
 ===============

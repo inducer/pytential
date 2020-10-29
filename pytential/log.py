@@ -24,7 +24,7 @@ import logging
 
 #
 # This file is based heavily on
-# http://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
+# https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
 #
 
 

@@ -102,7 +102,7 @@ class Arc(Curve):
         xs, ys = np.stack((start, mid, end), axis=1)
 
         # Get center and radius of circle containing the arc.
-        # http://math.stackexchange.com/a/1460096
+        # https://math.stackexchange.com/a/1460096
         c = np.array([xs**2 + ys**2, xs, ys, [1, 1, 1]])
         x0 = la.det(np.delete(c, 1, 0)) / (2 * la.det(np.delete(c, 0, 0)))
         y0 = -la.det(np.delete(c, 2, 0)) / (2 * la.det(np.delete(c, 0, 0)))

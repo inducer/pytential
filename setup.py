@@ -83,7 +83,7 @@ setup(name="pytential",
       author="Andreas Kloeckner",
       author_email="inform@tiker.net",
       license="MIT",
-      url="http://wiki.tiker.net/Pytential",
+      url="https://wiki.tiker.net/Pytential",
       classifiers=[
           'Development Status :: 3 - Alpha',
           'Intended Audience :: Developers',

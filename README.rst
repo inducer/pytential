@@ -21,24 +21,24 @@ for easy, self-contained installation instructions for Linux and macOS.
 
 It relies on
 
-* `numpy <http://pypi.org/project/numpy>`_ for arrays
-* `boxtree <http://pypi.org/project/boxtree>`_ for FMM tree building
-* `sumpy <http://pypi.org/project/sumpy>`_ for expansions and analytical routines
-* `modepy <http://pypi.org/project/modepy>`_ for modes and nodes on simplices
-* `meshmode <http://pypi.org/project/meshmode>`_ for high order discretizations
-* `loopy <http://pypi.org/project/loopy>`_ for fast array operations
-* `pytest <http://pypi.org/project/pytest>`_ for automated testing
+* `numpy <https://pypi.org/project/numpy>`_ for arrays
+* `boxtree <https://pypi.org/project/boxtree>`_ for FMM tree building
+* `sumpy <https://pypi.org/project/sumpy>`_ for expansions and analytical routines
+* `modepy <https://pypi.org/project/modepy>`_ for modes and nodes on simplices
+* `meshmode <https://pypi.org/project/meshmode>`_ for high order discretizations
+* `loopy <https://pypi.org/project/loopy>`_ for fast array operations
+* `pytest <https://pypi.org/project/pytest>`_ for automated testing
 
 and, indirectly,
 
-* `PyOpenCL <http://pypi.org/project/pyopencl>`_ as computational infrastructure
+* `PyOpenCL <https://pypi.org/project/pyopencl>`_ as computational infrastructure
 
 .. image:: https://badge.fury.io/py/pytential.png
-    :target: http://pypi.org/project/pytential
+    :target: https://pypi.org/project/pytential
 
 Resources:
 
 * `installation instructions <https://documen.tician.de/pytential/misc.html#installing-pytential>`_
-* `documentation <http://documen.tician.de/pytential>`_
-* `wiki home page <http://wiki.tiker.net/Pytential>`_
-* `source code via git <http://github.com/inducer/pytential>`_
+* `documentation <https://documen.tician.de/pytential>`_
+* `wiki home page <https://wiki.tiker.net/Pytential>`_
+* `source code via git <https://github.com/inducer/pytential>`_
