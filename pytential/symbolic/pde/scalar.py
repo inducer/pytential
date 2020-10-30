@@ -159,7 +159,7 @@ class DirichletOperator(L2WeightedPDEOperator):
             # to the desired solution separately. As is, this operator
             # returns a mean that is not well-specified.
             #
-            # See Hackbusch, http://books.google.com/books?id=Ssnf7SZB0ZMC
+            # See Hackbusch, https://books.google.com/books?id=Ssnf7SZB0ZMC
             # Theorem 8.2.18b
 
             amb_dim = self.kernel.dim

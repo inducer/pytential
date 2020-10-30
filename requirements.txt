@@ -5,7 +5,7 @@ sympy==1.1.1
 git+https://github.com/inducer/modepy#egg=modepy
 git+https://github.com/inducer/pyopencl#egg=pyopencl
 git+https://github.com/inducer/islpy#egg=islpy
-git+https://github.com/inducer/loopy#egg=loo.py
+git+https://github.com/inducer/loopy#egg=loopy
 git+https://github.com/inducer/boxtree#egg=boxtree
 git+https://github.com/inducer/meshmode#egg=meshmode
 git+https://github.com/inducer/sumpy#egg=sumpy
