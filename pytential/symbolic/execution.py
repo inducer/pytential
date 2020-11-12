@@ -502,6 +502,9 @@ class MatVecOp:
         elif isinstance(x, np.ndarray) and x.dtype.char == "O":
             flat = False
             host = False
+        elif isinstance(x, DOFArray):
+            flat = False
+            host = False
         else:
             raise ValueError("unsupported input type")
 
