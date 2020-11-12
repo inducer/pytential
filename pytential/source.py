@@ -191,6 +191,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 def _entry_dtype(ary):
     from meshmode.dof_array import DOFArray
     if isinstance(ary, DOFArray):
+        # the "normal case"
         return ary.entry_dtype
     elif isinstance(ary, np.ndarray):
         if ary.dtype.char == "O":
@@ -198,8 +199,11 @@ def _entry_dtype(ary):
             return single_valued(_entry_dtype(entry) for entry in ary.flat)
         else:
             return ary.dtype
+    elif isinstance(ary, cl.array.Array):
+        # for "unregularized" layer potential sources
+        return ary.dtype
     else:
-        raise TypeError(f"unexpected type '{type(ary).__name__}' in _entry_dtype")
+        raise TypeError(f"unexpected type '{type(ary)}' in _entry_dtype")
 
 
 class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
