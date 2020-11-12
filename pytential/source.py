@@ -247,7 +247,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         return fmm_kernel
 
     def get_fmm_output_and_expansion_dtype(self, base_kernel, strengths):
-        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
+        if base_kernel.is_complex_valued or strengths.entry_dtype.kind == "c":
             return self.complex_dtype
         else:
             return self.real_dtype
