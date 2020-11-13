@@ -17,7 +17,6 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
     enough.
 
 #.  Install your favorite variant of `miniforge <https://github.com/conda-forge/miniforge>`_.
-    (Both Python 2 and 3 should work. In the absence of other constraints, prefer Python 3.)
 
 #.  ``export CONDA=/WHERE/YOU/INSTALLED/miniforge3``
 
