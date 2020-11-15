@@ -42,9 +42,7 @@ And on macOS:
 
 #.  Type the following command::
 
-        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential;do CC=clang LDFLAGS="-mlinker-version=519" python -m pip install git+https://github.com/inducer/$i; done
-
-    (The `LDFLAGS` argument is due to a `bug <https://stackoverflow.com/q/60934005>`_.)
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential;do CC=clang python -m pip install git+https://github.com/inducer/$i; done
 
 Next time you want to use :mod:`pytential`, just run the following command::
 
