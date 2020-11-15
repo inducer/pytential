@@ -38,15 +38,7 @@ Then, on Linux:
 
 And on macOS:
 
-#.  ``conda install openmp clangdev cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
-
-#.  Ensure the Conda version of clang finds the system headers.  For Catalina
-    (10.15), you should set (`source <https://stackoverflow.com/a/60002595>`_)::
-
-      export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
-
-    Whereas for Mojave (10.14), you may need to follow `these steps
-    <https://stackoverflow.com/a/52530212>`_.
+#.  ``conda install compilers cython git pip pocl islpy pyopencl sympy pyfmmlib pytest``
 
 #.  Type the following command::
 
