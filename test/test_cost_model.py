@@ -518,7 +518,8 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         raise NotImplementedError("reorder_potentials should not "
                 "be called on a QBXExpansionWrangler")
 
-    def form_global_qbx_locals(self, src_weights):
+    def form_global_qbx_locals(self, src_weight_vecs):
+        src_weights, = src_weight_vecs
         local_exps = self.qbx_local_expansion_zeros()
         ops = 0
 
@@ -602,7 +603,8 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
         return output, self.timing_future(ops)
 
-    def eval_target_specific_qbx_locals(self, src_weights):
+    def eval_target_specific_qbx_locals(self, src_weight_vecs):
+        src_weights, = src_weight_vecs
         pot = self.full_output_zeros()
         ops = 0
 
@@ -756,7 +758,7 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     src_weights = np.ones(ndofs)
 
     timing_data = {}
-    potential = drive_fmm(wrangler, src_weights, timing_data,
+    potential = drive_fmm(wrangler, (src_weights,), timing_data,
             traversal=wrangler.trav)[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.

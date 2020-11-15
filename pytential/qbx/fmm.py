@@ -200,7 +200,7 @@ non_qbx_box_target_lists`),
     # {{{ qbx-related
 
     @log_process(logger)
-    def form_global_qbx_locals(self, src_weights):
+    def form_global_qbx_locals(self, src_weight_vecs):
         local_exps = self.qbx_local_expansion_zeros()
         events = []
 
@@ -227,7 +227,7 @@ non_qbx_box_target_lists`),
 
                 source_box_starts=starts,
                 source_box_lists=lists,
-                strengths=src_weights,
+                strengths=src_weight_vecs,
                 qbx_expansions=local_exps,
 
                 **kwargs)
@@ -374,7 +374,7 @@ non_qbx_box_target_lists`),
         return (pot, SumpyTimingFuture(self.queue, events))
 
     @log_process(logger)
-    def eval_target_specific_qbx_locals(self, src_weights):
+    def eval_target_specific_qbx_locals(self, src_weight_vecs):
         return (self.full_output_zeros(), SumpyTimingFuture(self.queue, events=()))
 
     # }}}
@@ -384,14 +384,14 @@ non_qbx_box_target_lists`),
 
 # {{{ FMM top-level
 
-def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
+def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None,
         traversal=None):
     """Top-level driver routine for the QBX fast multipole calculation.
 
     :arg geo_data: A :class:`pytential.qbx.geometry.QBXFMMGeometryData` instance.
     :arg expansion_wrangler: An object exhibiting the
         :class:`boxtree.fmm.ExpansionWranglerInterface`.
-    :arg src_weights: Source 'density/weights/charges'.
+    :arg src_weight_vecs: A sequence of source 'density/weights/charges'.
         Passed unmodified to *expansion_wrangler*.
     :arg timing_data: Either *None* or a dictionary that collects
         timing data.
@@ -416,14 +416,15 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
 
     fmm_proc = ProcessLogger(logger, "qbx fmm")
 
-    src_weights = wrangler.reorder_sources(src_weights)
+    src_weight_vecs = [wrangler.reorder_sources(weight)
+        for weight in src_weight_vecs]
 
     # {{{ construct local multipoles
 
     mpole_exps, timing_future = wrangler.form_multipoles(
             traversal.level_start_source_box_nrs,
             traversal.source_boxes,
-            src_weights)
+            src_weight_vecs)
 
     recorder.add("form_multipoles", timing_future)
 
@@ -446,7 +447,7 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
             traversal.target_boxes,
             traversal.neighbor_source_boxes_starts,
             traversal.neighbor_source_boxes_lists,
-            src_weights)
+            src_weight_vecs)
 
     recorder.add("eval_direct", timing_future)
 
@@ -491,7 +492,7 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
             traversal.target_or_target_parent_boxes,
             traversal.from_sep_bigger_starts,
             traversal.from_sep_bigger_lists,
-            src_weights)
+            src_weight_vecs)
 
     recorder.add("form_locals", timing_future)
 
@@ -533,7 +534,7 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
     # via unified List 1).  Which one is used depends on the wrangler. If one of
     # them is unused the corresponding output entries will be zero.
 
-    qbx_expansions, timing_future = wrangler.form_global_qbx_locals(src_weights)
+    qbx_expansions, timing_future = wrangler.form_global_qbx_locals(src_weight_vecs)
 
     recorder.add("form_global_qbx_locals", timing_future)
 
@@ -555,7 +556,8 @@ def drive_fmm(expansion_wrangler, src_weights, timing_data=None,
 
     recorder.add("eval_qbx_expansions", timing_future)
 
-    ts_result, timing_future = wrangler.eval_target_specific_qbx_locals(src_weights)
+    ts_result, timing_future = \
+        wrangler.eval_target_specific_qbx_locals(src_weight_vecs)
 
     qbx_potentials = qbx_potentials + ts_result
 

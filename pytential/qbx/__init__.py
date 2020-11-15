@@ -651,7 +651,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # Execute global QBX.
         all_potentials_on_every_target, extra_outputs = (
                 fmm_driver(
-                    wrangler, flat_strengths, geo_data,
+                    wrangler, (flat_strengths,), geo_data,
                     fmm_kernel, kernel_extra_kwargs))
 
         results = []

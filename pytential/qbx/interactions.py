@@ -48,7 +48,8 @@ class P2QBXLFromCSR(P2EBase):
                 [
                     lp.GlobalArg("sources", None, shape=(self.dim, "nsources"),
                         dim_tags="sep,c"),
-                    lp.GlobalArg("strengths", None, shape="nsources"),
+                    lp.GlobalArg("strengths", None, dim_tags="sep,c",
+                        shape="strength_count, nsources"),
                     lp.GlobalArg("qbx_center_to_target_box",
                         None, shape=None),
                     lp.GlobalArg("source_box_starts,source_box_lists",
@@ -92,25 +93,24 @@ class P2QBXLFromCSR(P2EBase):
                         for isrc
                             <> a[idim] = center[idim] - sources[idim, isrc] \
                                     {dup=idim}
-                            <> strength = strengths[isrc]
-
                             """] + self.get_loopy_instructions() + ["""
                         end
                     end
 
-                    """] + ["""
+                    """] + [f"""
                     qbx_expansions[tgt_icenter, {i}] = \
-                            simul_reduce(sum, (isrc_box, isrc), strength*coeff{i}) \
+                            simul_reduce(sum, (isrc_box, isrc), \
+                                         {self.get_result_expr(i)}) \
                             {{id_prefix=write_expn}}
-                    """.format(i=i)
-                        for i in range(ncoeffs)] + ["""
+                    """ for i in range(ncoeffs)] + ["""
 
                 end
                 """],
                 arguments,
                 name=self.name, assumptions="ntgt_centers>=1",
                 silenced_warnings="write_race(write_expn*)",
-                fixed_parameters=dict(dim=self.dim),
+                fixed_parameters=dict(dim=self.dim,
+                    strength_count=self.strength_count),
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
