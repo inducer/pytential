@@ -83,7 +83,7 @@ setup(name="pytential",
       author="Andreas Kloeckner",
       author_email="inform@tiker.net",
       license="MIT",
-      url="http://wiki.tiker.net/Pytential",
+      url="https://wiki.tiker.net/Pytential",
       classifiers=[
           'Development Status :: 3 - Alpha',
           'Intended Audience :: Developers',
@@ -108,16 +108,12 @@ setup(name="pytential",
       python_requires="~=3.6",
       install_requires=[
           "pytest>=2.3",
-          # FIXME leave out for now
-          # https://code.google.com/p/sympy/issues/detail?id=3874
-          #"sympy>=0.7.2",
-
           "pytools>=2018.2",
           "modepy>=2013.3",
           "pyopencl>=2013.1",
           "boxtree>=2019.1",
           "pymbolic>=2013.2",
-          "loo.py>=2017.2",
+          "loopy>=2020.2",
           "sumpy>=2020.2beta1",
           "cgen>=2013.1.2",
           "pyfmmlib>=2019.1.1",

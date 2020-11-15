@@ -36,7 +36,7 @@ def _debye_S0_surf_div(nxnxE):
 
 class DebyeOperatorBase:
     """
-    See the `wiki page <http://wiki.tiker.net/HellsKitchen/GeneralizedDebyeRepresentation>`_
+    See the `wiki page <https://wiki.tiker.net/HellsKitchen/GeneralizedDebyeRepresentation>`_
     for detailed documentation.
 
     j, m are the (non-physical) Debye currents

@@ -248,7 +248,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_interpolation(self, expr):
         operand = self.rec(expr.operand)
 
-        if isinstance(operand, (cl.array.Array, list, np.ndarray)):
+        if isinstance(operand, (cl.array.Array, list, np.ndarray, DOFArray)):
             conn = self.places.get_connection(expr.from_dd, expr.to_dd)
             return conn(operand)
         elif isinstance(operand, (int, float, complex, np.number)):
@@ -500,6 +500,9 @@ class MatVecOp:
             host = False
             assert x.shape == (self.total_dofs,)
         elif isinstance(x, np.ndarray) and x.dtype.char == "O":
+            flat = False
+            host = False
+        elif isinstance(x, DOFArray):
             flat = False
             host = False
         else:
