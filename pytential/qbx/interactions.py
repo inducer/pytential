@@ -64,7 +64,9 @@ class P2QBXLFromCSR(P2EBase):
                     lp.ValueArg("ncenters", np.int32),
                     lp.ValueArg("nsources", np.int32),
                     "..."
-                ] + gather_loopy_source_arguments([self.expansion]))
+                ] + gather_loopy_source_arguments(
+                        self.in_kernels + (self.expansion,))
+        )
 
         loopy_knl = lp.make_kernel(
                 [
