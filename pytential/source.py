@@ -130,8 +130,8 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
     def op_group_features(self, expr):
         from sumpy.kernel import AxisTargetDerivativeRemover
         result = (
-                expr.source, expr.density,
-                AxisTargetDerivativeRemover()(expr.kernel),
+                expr.source, expr.densities, expr.source_kernels,
+                AxisTargetDerivativeRemover()(expr.target_kernel),
                 )
 
         return result

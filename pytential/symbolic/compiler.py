@@ -574,15 +574,16 @@ class OperatorCompiler(IdentityMapper):
             group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
 
-            kernels = sorted({op.kernel for op in group}, key=repr)
+            target_kernels = sorted({op.target_kernel for op in group}, key=repr)
 
-            kernel_to_index = {kernel: i for i, kernel in enumerate(kernels)}
+            target_kernel_to_index = \
+                {kernel: i for i, kernel in enumerate(target_kernels)}
 
             from pytools import single_valued
             from sumpy.kernel import AxisTargetDerivativeRemover
             atdr = AxisTargetDerivativeRemover()
             base_kernel = single_valued(
-                    atdr(kernel) for kernel in kernels)
+                    atdr(kernel) for kernel in target_kernels)
 
             for op in group:
                 assert op.qbx_forced_limit in [-2, -1, None, 1, 2]
@@ -594,7 +595,7 @@ class OperatorCompiler(IdentityMapper):
             outputs = [
                     PotentialOutput(
                         name=name,
-                        kernel_index=kernel_to_index[op.kernel],
+                        kernel_index=kernel_to_index[op.target_kernel],
                         target_name=op.target,
                         qbx_forced_limit=op.qbx_forced_limit,
                         )
@@ -604,7 +605,7 @@ class OperatorCompiler(IdentityMapper):
             self.code.append(
                     ComputePotentialInstruction(
                         outputs=outputs,
-                        kernels=tuple(kernels),
+                        kernels=tuple(target_kernels),
                         kernel_arguments=kernel_arguments,
                         base_kernel=base_kernel,
                         density=density_var,

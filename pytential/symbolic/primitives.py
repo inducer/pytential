@@ -1409,30 +1409,17 @@ class IntG(Expression):
     where :math:`\sigma` is *density*.
     """
 
-    init_arg_names = ("kernel", "density", "qbx_forced_limit", "source", "target",
-                      "kernel_arguments")
+    init_arg_names = ("target_kernel", "source_kernels", "densities",
+                      "qbx_forced_limit", "source", "target", "kernel_arguments")
 
-    def __new__(cls, kernel=None, density=None, *args, **kwargs):
-        # If the constructor is handed a multivector object, return an
-        # object array of the operator applied to each of the
-        # coefficients in the multivector.
-
-        if isinstance(density, (np.ndarray, MultiVector)):
-            def make_op(operand_i):
-                return cls(kernel, operand_i, *args, **kwargs)
-
-            return componentwise(make_op, density)
-        else:
-            return Expression.__new__(cls)
-
-    def __init__(self, kernel, density,
+    def __init__(self, target_kernel, source_kernels, densities,
             qbx_forced_limit, source=None, target=None,
             kernel_arguments=None,
             **kwargs):
         """*target_derivatives* and later arguments should be considered
         keyword-only.
 
-        :arg kernel: an instance of :class:`sumpy.kernel.Kernel`.
+        :arg target_kernel: an instance of :class:`sumpy.kernel.Kernel`.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
             QBX center on the "+" side of the boundary. -1 for the other side.
             Evaluation at a target with a value of +/- 1 in *qbx_forced_limit*
@@ -1476,11 +1463,14 @@ class IntG(Expression):
             raise ValueError("invalid value (%s) of qbx_forced_limit"
                     % qbx_forced_limit)
 
-        kernel_arg_names = {
-                karg.loopy_arg.name
-                for karg in (
-                    kernel.get_args()
-                    + kernel.get_source_args())}
+        source_kernels = tuple(source_kernels)
+        densities = tuple(densities)
+        kernel_arg_names = set()
+
+        for source_kernel in list(source_kernels):
+            for karg in (target_kernel.get_args()
+                    + target_kernel.get_source_args())}
+                kernel_arg_names.add(karg.loopy_arg.name)
 
         kernel_arguments = kernel_arguments.copy()
         if kwargs:
@@ -1506,28 +1496,31 @@ class IntG(Expression):
             raise TypeError("kernel arguments '%s' not recognized"
                     % ", ".join(extraneous_args))
 
-        self.kernel = kernel
-        self.density = density
+        self.target_kernel = target_kernel
+        self.source_kernels = source_kernels
+        self.densities = densities
         self.qbx_forced_limit = qbx_forced_limit
         self.source = as_dofdesc(source)
         self.target = as_dofdesc(target)
         self.kernel_arguments = kernel_arguments
 
-    def copy(self, kernel=None, density=None, qbx_forced_limit=_NoArgSentinel,
-            source=None, target=None, kernel_arguments=None):
-        kernel = kernel or self.kernel
-        density = density or self.density
+    def copy(self, target_kernel=None, densities=None,
+            qbx_forced_limit=_NoArgSentinel, source=None, target=None,
+            kernel_arguments=None, source_kernels=None):
+        target_kernel = target_kernel or self.target_kernel
+        source_kernels = source_kernels or self.source_kernels
+        densities = densities or self.densities
         if qbx_forced_limit is _NoArgSentinel:
             qbx_forced_limit = self.qbx_forced_limit
         source = as_dofdesc(source or self.source)
         target = as_dofdesc(target or self.target)
         kernel_arguments = kernel_arguments or self.kernel_arguments
-        return type(self)(kernel, density, qbx_forced_limit, source, target,
-                kernel_arguments)
+        return type(self)(target_kernel, source_kernels, densities, qbx_forced_limit,
+                source, target, kernel_arguments)
 
     def __getinitargs__(self):
-        return (self.kernel, self.density, self.qbx_forced_limit,
-                self.source, self.target,
+        return (self.kernels, self.source_kernels, self.densities,
+                self.qbx_forced_limit, self.source, self.target,
                 hashable_kernel_args(self.kernel_arguments))
 
     def __setstate__(self, state):
@@ -1546,7 +1539,7 @@ def _insert_source_derivative_into_kernel(kernel):
     # kernel wrapping level.
     from sumpy.kernel import DirectionalSourceDerivative
 
-    if kernel.get_base_kernel() is kernel:
+    if kernel.get_target_kernel() is kernel:
         return DirectionalSourceDerivative(
                 kernel, dir_vec_name=_DIR_VEC_NAME)
     else:
@@ -1622,7 +1615,7 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
 
     density = cse(density)
     return (dsource*nabla).map(
-            lambda coeff: IntG(
+            lambda coeff: _create_int_g(
                 kernel,
                 density, qbx_forced_limit, source, target,
                 kernel_arguments=add_dir_vec_to_kernel_args(coeff),
@@ -1642,6 +1635,20 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
 class _unspecified:  # noqa: N801
     pass
 
+def _create_int_g(kernel, density, qbx_forced_limit, source, target,
+        kernel_arguments, **kwargs):
+    
+    def make_op(operand_i):
+        return IntG(target_kernel=kernel, densities=[operand_i],
+            source_kernels=[kernel],
+            qbx_forced_limit=qbx_forced_limit, source=source, target=target,
+            kernel_arguments=kernel_arguments, **kwargs)
+
+    if isinstance(density, (np.ndarray, MultiVector)):
+        return componentwise(make_op, density)
+    else:
+        return make_op(density)
+
 
 def S(kernel, density,
         qbx_forced_limit=_unspecified, source=None, target=None,
@@ -1652,7 +1659,7 @@ def S(kernel, density,
                 "defaulting to +1", stacklevel=2)
         qbx_forced_limit = +1
 
-    return IntG(kernel, density, qbx_forced_limit, source, target,
+    return _create_int_g(kernel, density, qbx_forced_limit, source, target,
             kernel_arguments, **kwargs)
 
 
