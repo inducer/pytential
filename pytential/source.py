@@ -188,6 +188,24 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
 # {{{ layer potential source
 
+def _entry_dtype(ary):
+    from meshmode.dof_array import DOFArray
+    if isinstance(ary, DOFArray):
+        # the "normal case"
+        return ary.entry_dtype
+    elif isinstance(ary, np.ndarray):
+        if ary.dtype.char == "O":
+            from pytools import single_valued
+            return single_valued(_entry_dtype(entry) for entry in ary.flat)
+        else:
+            return ary.dtype
+    elif isinstance(ary, cl.array.Array):
+        # for "unregularized" layer potential sources
+        return ary.dtype
+    else:
+        raise TypeError(f"unexpected type '{type(ary)}' in _entry_dtype")
+
+
 class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     """A discretization of a layer potential using panel-based geometry, with
     support for refinement and upsampling.
@@ -247,7 +265,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         return fmm_kernel
 
     def get_fmm_output_and_expansion_dtype(self, base_kernel, strengths):
-        if base_kernel.is_complex_valued or strengths.dtype.kind == "c":
+        if base_kernel.is_complex_valued or _entry_dtype(strengths).kind == "c":
             return self.complex_dtype
         else:
             return self.real_dtype

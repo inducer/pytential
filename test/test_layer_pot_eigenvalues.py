@@ -94,7 +94,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
     # [1] G. J. Rodin and O. Steinbach, "Boundary Element Preconditioners
     # for Problems Defined on Slender Domains", SIAM Journal on Scientific
     # Computing, Vol. 24, No. 4, pg. 1450, 2003.
-    # http://dx.doi.org/10.1137/S1064827500372067
+    # https://dx.doi.org/10.1137/S1064827500372067
 
     for nelements in nelements_values:
         mesh = make_curve_mesh(partial(ellipse, ellipse_aspect),
