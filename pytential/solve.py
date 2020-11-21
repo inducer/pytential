@@ -37,6 +37,7 @@ from numbers import Number
 import pyopencl as cl
 import pyopencl.array  # noqa
 from meshmode.dof_array import obj_or_dof_array_vectorize_n_args, DOFArray
+from pytools.obj_array import obj_array_vectorize_n_args
 
 
 def structured_vdot(x, y):
@@ -47,9 +48,9 @@ def structured_vdot(x, y):
         return np.vdot(x, y)
     elif isinstance(x, cl.array.Array):
         return cl.array.vdot(x, y).get()
-    else:
-        assert (isinstance(x, np.ndarray) and x.dtype.char == "O"
-                or isinstance(x, DOFArray))
+    elif isinstance(x, np.ndarray) and x.dtype.char == "O":
+        return np.sum(obj_array_vectorize_n_args(structured_vdot, x, y))
+    elif isinstance(x, DOFArray):
         return sum(obj_or_dof_array_vectorize_n_args(structured_vdot, x, y))
 
 
