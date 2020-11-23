@@ -29,6 +29,9 @@ from pytential.symbolic.execution import GeometryCollection
 from pytools import memoize_on_first_arg
 
 
+# comment
+
+
 def _set_up_logging_from_environment():
     import logging
     import os
