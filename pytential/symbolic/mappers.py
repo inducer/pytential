@@ -181,17 +181,12 @@ class EvaluationMapper(EvaluationMapperBase):
                 expr.operand)
 
     def map_int_g(self, expr):
-        return componentwise(
-                lambda subexpr: type(expr)(
-                        expr.target_kernel,
-                        expr.source_kernels,
-                        self.rec(subexpr),
-                        expr.qbx_forced_limit, expr.source, expr.target,
-                        kernel_arguments={
-                                name: self.rec(arg_expr)
-                                for name, arg_expr in expr.kernel_arguments.items()
-                                }),
-                expr.density)
+        return expr.copy(
+                    densities=[self.rec(density) for density in expr.densities],
+                    kernel_arguments={
+                        name: self.rec(arg_expr)
+                        for name, arg_expr in expr.kernel_arguments.items()
+                    })
 
     def map_common_subexpression(self, expr):
         return prim.cse(
