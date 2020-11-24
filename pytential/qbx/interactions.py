@@ -42,6 +42,8 @@ class P2QBXLFromCSR(P2EBase):
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
+        print(self.in_kernels)
+        print(self.expansion)
 
         from sumpy.tools import gather_loopy_source_arguments
         arguments = (
@@ -115,7 +117,8 @@ class P2QBXLFromCSR(P2EBase):
                     strength_count=self.strength_count),
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
-        loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
+        for knl in self.in_kernels:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
         return loopy_knl

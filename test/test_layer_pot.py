@@ -267,7 +267,7 @@ def test_unregularized_with_ones_kernel(ctx_factory):
 
     from sumpy.kernel import one_kernel_2d
     sigma_sym = sym.var("sigma")
-    op = sym.IntG(one_kernel_2d, sigma_sym, qbx_forced_limit=None)
+    op = sym.S(one_kernel_2d, sigma_sym, qbx_forced_limit=None)
 
     sigma = discr.zeros(actx) + 1
 

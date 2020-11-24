@@ -1467,9 +1467,8 @@ class IntG(Expression):
         densities = tuple(densities)
         kernel_arg_names = set()
 
-        for source_kernel in list(source_kernels):
-            for karg in (target_kernel.get_args()
-                    + target_kernel.get_source_args())}
+        for kernel in source_kernels + (target_kernel,):
+            for karg in (kernel.get_args() + kernel.get_source_args()):
                 kernel_arg_names.add(karg.loopy_arg.name)
 
         kernel_arguments = kernel_arguments.copy()
@@ -1498,7 +1497,7 @@ class IntG(Expression):
 
         self.target_kernel = target_kernel
         self.source_kernels = source_kernels
-        self.densities = densities
+        self.densities = tuple(densities)
         self.qbx_forced_limit = qbx_forced_limit
         self.source = as_dofdesc(source)
         self.target = as_dofdesc(target)
@@ -1519,7 +1518,7 @@ class IntG(Expression):
                 source, target, kernel_arguments)
 
     def __getinitargs__(self):
-        return (self.kernels, self.source_kernels, self.densities,
+        return (self.target_kernel, self.source_kernels, self.densities,
                 self.qbx_forced_limit, self.source, self.target,
                 hashable_kernel_args(self.kernel_arguments))
 
@@ -1539,7 +1538,7 @@ def _insert_source_derivative_into_kernel(kernel):
     # kernel wrapping level.
     from sumpy.kernel import DirectionalSourceDerivative
 
-    if kernel.get_target_kernel() is kernel:
+    if kernel.get_base_kernel() is kernel:
         return DirectionalSourceDerivative(
                 kernel, dir_vec_name=_DIR_VEC_NAME)
     else:
@@ -1635,12 +1634,19 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
 class _unspecified:  # noqa: N801
     pass
 
+
 def _create_int_g(kernel, density, qbx_forced_limit, source, target,
         kernel_arguments, **kwargs):
-    
+    from sumpy.kernel import SourceDerivativeRemover, TargetDerivativeRemover
+    sdr = SourceDerivativeRemover()
+    tdr = TargetDerivativeRemover()
+
+    target_kernel = sdr(kernel)
+    source_kernels = [tdr(kernel)]
+
     def make_op(operand_i):
-        return IntG(target_kernel=kernel, densities=[operand_i],
-            source_kernels=[kernel],
+        return IntG(target_kernel=target_kernel, densities=[operand_i],
+            source_kernels=source_kernels,
             qbx_forced_limit=qbx_forced_limit, source=source, target=target,
             kernel_arguments=kernel_arguments, **kwargs)
 

@@ -63,20 +63,21 @@ class PotentialSource:
 
 class _SumpyP2PMixin:
 
-    def get_p2p(self, actx, kernels):
+    def get_p2p(self, actx, out_kernels, in_kernels=None):
         @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
-        def p2p(kernels):
+        def p2p(out_kernels, in_kernels):
             from pytools import any
-            if any(knl.is_complex_valued for knl in kernels):
+            if any(knl.is_complex_valued for knl in out_kernels):
                 value_dtype = self.complex_dtype
             else:
                 value_dtype = self.real_dtype
 
             from sumpy.p2p import P2P
             return P2P(actx.context,
-                    kernels, exclude_self=False, value_dtypes=value_dtype)
+                    out_kernels, exclude_self=False, value_dtypes=value_dtype,
+                    in_kernels=in_kernels)
 
-        return p2p(kernels)
+        return p2p(out_kernels, in_kernels)
 
 
 # {{{ point potential source
@@ -154,7 +155,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         for arg_name, arg_expr in insn.kernel_arguments.items():
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        strengths = evaluate(insn.density)
+        strengths = [evaluate(density) for density in insn.densities]
 
         # FIXME: Do this all at once
         results = []
@@ -164,13 +165,14 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
             # no on-disk kernel caching
             if p2p is None:
-                p2p = self.get_p2p(actx, insn.kernels)
+                p2p = self.get_p2p(actx, in_kernels=insn.source_kernels,
+                out_kernels=insn.target_kernels)
 
             from pytential.utils import flatten_if_needed
             evt, output_for_each_kernel = p2p(actx.queue,
                     flatten_if_needed(actx, target_discr.nodes()),
                     self._nodes,
-                    [strengths], **kernel_args)
+                    strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
             result = output_for_each_kernel[o.kernel_index]
@@ -264,8 +266,9 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
 
         return fmm_kernel
 
-    def get_fmm_output_and_expansion_dtype(self, base_kernel, strengths):
-        if base_kernel.is_complex_valued or _entry_dtype(strengths).kind == "c":
+    def get_fmm_output_and_expansion_dtype(self, kernels, strengths):
+        if any(knl.is_complex_valued for knl in kernels) or \
+                _entry_dtype(strengths).kind == "c":
             return self.complex_dtype
         else:
             return self.real_dtype

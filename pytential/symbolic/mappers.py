@@ -94,7 +94,7 @@ class IdentityMapper(IdentityMapperBase):
 
     def map_int_g(self, expr):
         return expr.copy(
-                density=self.rec(expr.density),
+                densities=self.rec(expr.densities),
                 kernel_arguments={
                     name: self.rec(arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
@@ -118,7 +118,7 @@ class CombineMapper(CombineMapperBase):
 
     def map_int_g(self, expr):
         return self.combine(
-                [self.rec(expr.density)]
+                [self.rec(density) for density in expr.densities]
                 + [self.rec(arg_expr)
                     for arg_expr in expr.kernel_arguments.values()])
 
@@ -183,7 +183,8 @@ class EvaluationMapper(EvaluationMapperBase):
     def map_int_g(self, expr):
         return componentwise(
                 lambda subexpr: type(expr)(
-                        expr.kernel,
+                        expr.target_kernel,
+                        expr.source_kernels,
                         self.rec(subexpr),
                         expr.qbx_forced_limit, expr.source, expr.target,
                         kernel_arguments={
@@ -261,8 +262,9 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
             target = target.copy(geometry=self.default_where)
 
         return type(expr)(
-                expr.kernel,
-                self.operand_rec(expr.density),
+                expr.target_kernel,
+                expr.source_kernels,
+                self.operand_rec(expr.densities),
                 expr.qbx_forced_limit, source, target,
                 kernel_arguments={
                     name: self.operand_rec(arg_expr)
@@ -394,7 +396,8 @@ class DerivativeTaker(Mapper):
 
     def map_int_g(self, expr):
         from sumpy.kernel import AxisTargetDerivative
-        return expr.copy(kernel=AxisTargetDerivative(self.ambient_axis, expr.kernel))
+        return expr.copy(target_kernel=AxisTargetDerivative(self.ambient_axis,
+            expr.target_kernel))
 
 
 class DerivativeSourceAndNablaComponentCollector(
@@ -441,8 +444,7 @@ class UnregularizedPreprocessor(IdentityMapper):
 
         expr = expr.copy(
                 qbx_forced_limit=None,
-                kernel=expr.kernel,
-                density=self.rec(expr.density),
+                densities=self.rec(expr.densities),
                 kernel_arguments={
                     name: self.rec(arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
@@ -506,7 +508,8 @@ class InterpolationPreprocessor(IdentityMapper):
 
         from_dd = expr.source.to_stage1()
         to_dd = from_dd.to_quad_stage2()
-        density = prim.interp(from_dd, to_dd, self.rec(expr.density))
+        densities = [prim.interp(from_dd, to_dd, self.rec(density)) for
+            density in expr.densities]
 
         from_dd = from_dd.copy(discr_stage=self.from_discr_stage)
         kernel_arguments = {
@@ -515,8 +518,7 @@ class InterpolationPreprocessor(IdentityMapper):
                 for name, arg_expr in expr.kernel_arguments.items()}
 
         return expr.copy(
-                kernel=expr.kernel,
-                density=density,
+                densities=densities,
                 kernel_arguments=kernel_arguments,
                 source=to_dd)
 
@@ -547,8 +549,7 @@ class QBXPreprocessor(IdentityMapper):
         is_self = source_discr is target_discr
 
         expr = expr.copy(
-                kernel=expr.kernel,
-                density=self.rec(expr.density),
+                densities=self.rec(expr.densities),
                 kernel_arguments={
                     name: self.rec(arg_expr)
                     for name, arg_expr in expr.kernel_arguments.items()
@@ -670,14 +671,23 @@ class StringifyMapper(BaseStringifyMapper):
                     for name, arg_expr in kernel_arguments.items())
 
     def map_int_g(self, expr, enclosing_prec):
-        return "Int[{}->{}]@({}){} ({} * {})".format(
+        source_kernels_strs = [
+            "{} * {}".format(self.rec(density, PREC_PRODUCT), source_kernel)
+            for density, source_kernel in zip(self.source_kernel, self.densities)
+        ]
+        source_kernels_str = " + ".join(source_kernels_strs)
+        target_kernel_str = str(expr.target_kernel)
+        base_kernel_str = expr.target_kernel.get_base_kernel()
+        kernel_str = target_kernel_str.replace(base_kernel_str,
+            f"({source_kernels_str})")
+
+        return "Int[{}->{}]@({}){} {}".format(
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
                 self._stringify_kernel_args(
                     expr.kernel_arguments),
-                expr.kernel,
-                self.rec(expr.density, PREC_PRODUCT))
+                kernel_str)
 
     def map_interpolation(self, expr, enclosing_prec):
         return "Interp[{}->{}]({})".format(
@@ -731,14 +741,14 @@ class GraphvizMapper(GraphvizMapperBase):
                 stringify_where(expr.source),
                 stringify_where(expr.target),
                 expr.qbx_forced_limit,
-                expr.kernel,
+                expr.target_kernel,
                 )
         self.lines.append(
                 '{} [label="{}",shape=box];'.format(self.get_id(expr), descr))
         if not self.visit(expr, node_printed=True):
             return
 
-        self.rec(expr.density)
+        [self.rec(density) for density in expr.densities]
         for arg_expr in expr.kernel_arguments.values():
             self.rec(arg_expr)
 

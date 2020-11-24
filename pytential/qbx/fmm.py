@@ -51,10 +51,10 @@ __doc__ = """
 class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
     def __init__(self, cl_context,
             multipole_expansion_factory, local_expansion_factory,
-            qbx_local_expansion_factory, out_kernels):
+            qbx_local_expansion_factory, out_kernels, in_kernels):
         SumpyExpansionWranglerCodeContainer.__init__(self,
                 cl_context, multipole_expansion_factory, local_expansion_factory,
-                out_kernels)
+                out_kernels=out_kernels, in_kernels=in_kernels)
 
         self.qbx_local_expansion_factory = qbx_local_expansion_factory
 
@@ -65,7 +65,7 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
     @memoize_method
     def p2qbxl(self, order):
         return P2QBXLFromCSR(self.cl_context,
-                self.qbx_local_expansion(order))
+                self.qbx_local_expansion(order), kernels=self.in_kernels)
 
     @memoize_method
     def m2qbxl(self, source_order, target_order):

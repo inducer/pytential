@@ -23,7 +23,7 @@ THE SOFTWARE.
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.dof_array import flatten, unflatten, thaw
 import numpy as np
-from pytools import memoize_method, memoize_in
+from pytools import memoize_method, memoize_in, single_valued
 
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 from pytential.source import LayerPotentialSourceBase
@@ -421,10 +421,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return QBXPreprocessor(name, discretizations)(expr)
 
     def op_group_features(self, expr):
-        from sumpy.kernel import AxisTargetDerivativeRemover
         result = (
-                expr.source, expr.density,
-                AxisTargetDerivativeRemover()(expr.kernel),
+                expr.source, expr.densities,
+                expr.source_kernels,
                 )
 
         return result
@@ -522,16 +521,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, fmm_kernel, out_kernels):
-        mpole_expn_class = \
-                self.expansion_factory.get_multipole_expansion_class(fmm_kernel)
-        local_expn_class = \
-                self.expansion_factory.get_local_expansion_class(fmm_kernel)
-
+    def expansion_wrangler_code_container(self, source_kernels, target_kernels):
         from functools import partial
-        fmm_mpole_factory = partial(mpole_expn_class, fmm_kernel)
-        fmm_local_factory = partial(local_expn_class, fmm_kernel)
-        qbx_local_factory = partial(local_expn_class, fmm_kernel)
+        from sumpy.kernel import AxisTargetDerivative
+
+        base_kernel = single_valued(kernel.get_base_kernel() for
+            kernel in source_kernels)
+        mpole_expn_class = \
+                self.expansion_factory.get_multipole_expansion_class(base_kernel)
+        local_expn_class = \
+                self.expansion_factory.get_local_expansion_class(base_kernel)
+
+        fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
+        fmm_local_factory = partial(local_expn_class, base_kernel)
+        qbx_local_factory = partial(local_expn_class, base_kernel)
 
         if self.fmm_backend == "sumpy":
             from pytential.qbx.fmm import \
@@ -539,9 +542,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             return QBXSumpyExpansionWranglerCodeContainer(
                     self.cl_context,
                     fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
-                    out_kernels)
+                    out_kernels=target_kernels, in_kernels=source_kernels)
 
         elif self.fmm_backend == "fmmlib":
+            source_kernel, = source_kernels
+            out_kernels = []
+            for knl in target_kernels:
+                if isinstance(knl, AxisTargetDerivative):
+                    out_kernels.append(knl.replace_inner_kernel(source_kernel))
+                else:
+                    out_kernels.append(knl)
             from pytential.qbx.fmmlib import \
                     QBXFMMLibExpansionWranglerCodeContainer
             return QBXFMMLibExpansionWranglerCodeContainer(
@@ -612,21 +622,25 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim, dofdesc=insn.source))(actx)
-        density = evaluate(insn.density)
-        strengths = waa * density
-        flat_strengths = flatten(strengths)
+        densities = [evaluate(density) for density in insn.densities]
+        strengths = [waa * density for density in densities]
+        flat_strengths = tuple(flatten(strength) for strength in strengths)
 
-        out_kernels = tuple(knl for knl in insn.kernels)
-        fmm_kernel = self.get_fmm_kernel(out_kernels)
+        base_kernel = single_valued(knl.get_base_kernel() for
+            knl in insn.source_kernels)
+
         output_and_expansion_dtype = (
-                self.get_fmm_output_and_expansion_dtype(fmm_kernel, flat_strengths))
+                self.get_fmm_output_and_expansion_dtype(insn.source_kernels,
+                    flat_strengths[0]))
         kernel_extra_kwargs, source_extra_kwargs = (
                 self.get_fmm_expansion_wrangler_extra_kwargs(
-                    actx, out_kernels, geo_data.tree().user_source_ids,
+                    actx, insn.target_kernels + insn.source_kernels,
+                    geo_data.tree().user_source_ids,
                     insn.kernel_arguments, evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
-                fmm_kernel, out_kernels).get_wrangler(
+                target_kernels=insn.target_kernels,
+                source_kernels=insn.source_kernels).get_wrangler(
                         actx.queue, geo_data, output_and_expansion_dtype,
                         self.qbx_order,
                         self.fmm_level_to_order,
@@ -651,8 +665,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # Execute global QBX.
         all_potentials_on_every_target, extra_outputs = (
                 fmm_driver(
-                    wrangler, (flat_strengths,), geo_data,
-                    fmm_kernel, kernel_extra_kwargs))
+                    wrangler, flat_strengths, geo_data,
+                    base_kernel, kernel_extra_kwargs))
 
         results = []
 
@@ -679,38 +693,42 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ direct execution
 
     @memoize_method
-    def get_lpot_applier(self, kernels):
+    def get_lpot_applier(self, out_kernels, in_kernels):
         # needs to be separate method for caching
 
         from pytools import any
-        if any(knl.is_complex_valued for knl in kernels):
+        if any(knl.is_complex_valued for knl in out_kernels):
             value_dtype = self.density_discr.complex_dtype
         else:
             value_dtype = self.density_discr.real_dtype
+
+        base_kernel = single_valued(knl.get_base_kernel() for knl in in_kernels)
 
         from sumpy.qbx import LayerPotential
         from sumpy.expansion.local import LineTaylorLocalExpansion
         return LayerPotential(self.cl_context,
-                    [LineTaylorLocalExpansion(knl, self.qbx_order)
-                        for knl in kernels],
+                    expansion=LineTaylorLocalExpansion(base_kernel, self.qbx_order),
+                    out_kernels=out_kernels, in_kernels=in_kernels,
                     value_dtypes=value_dtype)
 
     @memoize_method
-    def get_lpot_applier_on_tgt_subset(self, kernels):
+    def get_lpot_applier_on_tgt_subset(self, out_kernels, in_kernels):
         # needs to be separate method for caching
 
         from pytools import any
-        if any(knl.is_complex_valued for knl in kernels):
+        if any(knl.is_complex_valued for knl in out_kernels):
             value_dtype = self.density_discr.complex_dtype
         else:
             value_dtype = self.density_discr.real_dtype
+
+        base_kernel = single_valued(knl.get_base_kernel() for knl in in_kernels)
 
         from pytential.qbx.direct import LayerPotentialOnTargetAndCenterSubset
         from sumpy.expansion.local import VolumeTaylorLocalExpansion
         return LayerPotentialOnTargetAndCenterSubset(
                 self.cl_context,
-                [VolumeTaylorLocalExpansion(knl, self.qbx_order)
-                    for knl in kernels],
+                expansion=VolumeTaylorLocalExpansion(base_kernel, self.qbx_order),
+                out_kernels=out_kernels, in_kernels=in_kernels,
                 value_dtypes=value_dtype)
 
     @memoize_method
@@ -740,7 +758,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     "Timing data collection not supported.",
                     category=UnableToCollectTimingData)
 
-        lpot_applier = self.get_lpot_applier(insn.kernels)
+        lpot_applier = self.get_lpot_applier(insn.target_kernels,
+            insn.source_kernels)
         p2p = None
         lpot_applier_on_tgt_subset = None
 
@@ -751,10 +770,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim, dofdesc=insn.source))(actx)
-        strengths = waa * evaluate(insn.density)
+        strength_vecs = [waa * evaluate(density) for density in insn.densities]
 
         from meshmode.discretization import Discretization
-        flat_strengths = flatten(strengths)
+        flat_strengths = [flatten(strength) for strength in strength_vecs]
 
         source_discr = bound_expr.places.get_discretization(
                 insn.source.geometry, insn.source.discr_stage)
@@ -785,7 +804,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         flatten(thaw(actx, target_discr.nodes())),
                         flatten(thaw(actx, source_discr.nodes())),
                         flatten(centers),
-                        [flat_strengths],
+                        flat_strengths,
                         expansion_radii=flatten(expansion_radii),
                         **kernel_args)
 
@@ -797,10 +816,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             else:
                 # no on-disk kernel caching
                 if p2p is None:
-                    p2p = self.get_p2p(actx, insn.kernels)
+                    p2p = self.get_p2p(actx, insn.target_kernels,
+                        insn.source_kernels)
                 if lpot_applier_on_tgt_subset is None:
                     lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
-                            insn.kernels)
+                            insn.target_kernels, insn.source_kernels)
 
                 queue = actx.queue
 
@@ -809,7 +829,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 evt, output_for_each_kernel = p2p(queue,
                         flat_targets, flat_sources,
-                        [flat_strengths], **kernel_args)
+                        flat_strengths, **kernel_args)
 
                 qbx_forced_limit = o.qbx_forced_limit
                 if qbx_forced_limit is None:
@@ -861,7 +881,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                             sources=flat_sources,
                             centers=geo_data.flat_centers(),
                             expansion_radii=geo_data.flat_expansion_radii(),
-                            strengths=[flat_strengths],
+                            strengths=flat_strengths,
                             qbx_tgt_numbers=qbx_tgt_numbers,
                             qbx_center_numbers=qbx_center_numbers,
                             **tgt_subset_kwargs)

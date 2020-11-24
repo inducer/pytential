@@ -147,8 +147,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim, dofdesc=insn.source))(actx)
-        strengths = waa * evaluate(insn.density)
-        flat_strengths = flatten(strengths)
+        strengths = [waa * evaluate(density) for density in insn.densities]
+        flat_strengths = [flatten(strength) for strength in strengths]
 
         results = []
         p2p = None
@@ -158,12 +158,13 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     o.target_name.geometry, o.target_name.discr_stage)
 
             if p2p is None:
-                p2p = self.get_p2p(actx, insn.kernels)
+                p2p = self.get_p2p(actx, in_kernels=insn.source_kernels,
+                    out_kernels=insn.target_kernels)
 
             evt, output_for_each_kernel = p2p(actx.queue,
                     flatten_if_needed(actx, target_discr.nodes()),
                     flatten(thaw(actx, self.density_discr.nodes())),
-                    [flat_strengths], **kernel_args)
+                    flat_strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
             result = output_for_each_kernel[o.kernel_index]
@@ -178,7 +179,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, fmm_kernel, out_kernels):
+    def expansion_wrangler_code_container(self, fmm_kernel, out_kernels, in_kernels):
         mpole_expn_class = \
                 self.expansion_factory.get_multipole_expansion_class(fmm_kernel)
         local_expn_class = \
@@ -193,7 +194,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 self.cl_context,
                 fmm_mpole_factory,
                 fmm_local_factory,
-                out_kernels)
+                out_kernels, in_kernels=in_kernels)
 
     @property
     def fmm_geometry_code_container(self):
@@ -234,22 +235,24 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim, dofdesc=insn.source))(actx)
-        strengths = waa * evaluate(insn.density)
+        strengths = [waa * evaluate(density) for density in insn.densities]
 
         from meshmode.dof_array import flatten
-        flat_strengths = flatten(strengths)
+        flat_strengths = [flatten(strength) for strength in strengths]
 
-        out_kernels = tuple(knl for knl in insn.kernels)
-        fmm_kernel = self.get_fmm_kernel(out_kernels)
+        fmm_kernel = self.get_fmm_kernel(insn.target_kernels)
         output_and_expansion_dtype = (
-                self.get_fmm_output_and_expansion_dtype(fmm_kernel, strengths))
+                self.get_fmm_output_and_expansion_dtype(insn.target_kernels,
+                    strengths[0]))
         kernel_extra_kwargs, source_extra_kwargs = (
                 self.get_fmm_expansion_wrangler_extra_kwargs(
-                    actx, out_kernels, geo_data.tree().user_source_ids,
-                    insn.kernel_arguments, evaluate))
+                    actx, insn.target_kernels + insn.source_kernels,
+                    geo_data.tree().user_source_ids, insn.kernel_arguments,
+                    evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
-                fmm_kernel, out_kernels).get_wrangler(
+                fmm_kernel, out_kernels=insn.target_kernels,
+                in_kernels=insn.source_kernels).get_wrangler(
                     actx.queue,
                     geo_data.tree(),
                     output_and_expansion_dtype,
@@ -261,7 +264,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from boxtree.fmm import drive_fmm
         all_potentials_on_every_tgt = drive_fmm(
-                geo_data.traversal(), wrangler, (flat_strengths,),
+                geo_data.traversal(), wrangler, flat_strengths,
                 timing_data=None)
 
         # {{{ postprocess fmm
