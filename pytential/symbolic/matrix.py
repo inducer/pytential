@@ -431,7 +431,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                 expr.target.geometry, expr.target.discr_stage)
 
         result = 0
-        for kernel, density in zip(expr.densities, expr.source_kernels):
+        for density, kernel in zip(expr.densities, expr.source_kernels):
             rec_density = self.rec(density)
             if is_zero(rec_density):
                 continue

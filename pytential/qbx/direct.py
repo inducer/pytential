@@ -85,6 +85,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                         {dup=idim}
                 <> rscale = expansion_radii[icenter]
             """]
+            + [f"<> strength_{i}_isrc = strength_{i}[isrc]" for i in range(self.strength_count)]
             + loopy_insns + kernel_exprs
             + ["""
                 result_{i}[itgt_overall] = knl_{i}_scaling * \
