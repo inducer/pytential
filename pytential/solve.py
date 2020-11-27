@@ -157,7 +157,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
         if callback is not None:
             callback(r)
 
-        if abs(norm_r) < tol*norm_b:
+        if norm_r < tol*norm_b or norm_r == 0:
             return GMRESResult(solution=x,
                     residual_norms=residual_norms,
                     iteration_count=iteration, success=True,
