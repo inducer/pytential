@@ -45,13 +45,13 @@ class P2QBXLInfo(Record):
 class QBXFMMLibExpansionWranglerCodeContainer:
     def __init__(self, cl_context,
             multipole_expansion_factory, local_expansion_factory,
-            qbx_local_expansion_factory, out_kernels):
+            qbx_local_expansion_factory, target_kernels):
         self.cl_context = cl_context
         self.multipole_expansion_factory = multipole_expansion_factory
         self.local_expansion_factory = local_expansion_factory
         self.qbx_local_expansion_factory = qbx_local_expansion_factory
 
-        self.out_kernels = out_kernels
+        self.target_kernels = target_kernels
 
     def get_wrangler(self, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
@@ -88,7 +88,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         self.geo_data = geo_data
         self.qbx_order = qbx_order
 
-        # {{{ digest out_kernels
+        # {{{ digest target_kernels
 
         ifgrad = False
         outputs = []
@@ -100,7 +100,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 # None means use by default if possible
                 or _use_target_specific_qbx is None)
 
-        for out_knl in self.code.out_kernels:
+        for out_knl in self.code.target_kernels:
             if not self.is_supported_helmknl_for_tsqbx(out_knl):
                 if _use_target_specific_qbx:
                     raise ValueError("not all kernels passed support TSQBX")

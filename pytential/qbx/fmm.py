@@ -51,10 +51,10 @@ __doc__ = """
 class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
     def __init__(self, cl_context,
             multipole_expansion_factory, local_expansion_factory,
-            qbx_local_expansion_factory, out_kernels, in_kernels):
+            qbx_local_expansion_factory, target_kernels, source_kernels):
         SumpyExpansionWranglerCodeContainer.__init__(self,
                 cl_context, multipole_expansion_factory, local_expansion_factory,
-                out_kernels=out_kernels, in_kernels=in_kernels)
+                target_kernels=target_kernels, source_kernels=source_kernels)
 
         self.qbx_local_expansion_factory = qbx_local_expansion_factory
 
@@ -65,7 +65,7 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
     @memoize_method
     def p2qbxl(self, order):
         return P2QBXLFromCSR(self.cl_context,
-                self.qbx_local_expansion(order), kernels=self.in_kernels)
+                self.qbx_local_expansion(order), kernels=self.source_kernels)
 
     @memoize_method
     def m2qbxl(self, source_order, target_order):
@@ -83,7 +83,7 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
     def qbxl2p(self, order):
         return QBXL2P(self.cl_context,
                 self.qbx_local_expansion_factory(order),
-                self.out_kernels)
+                self.target_kernels)
 
     def get_wrangler(self, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
@@ -148,7 +148,7 @@ non_qbx_box_target_lists`),
                     self.queue,
                     nqbtl.nfiltered_targets,
                     dtype=self.dtype)
-                for k in self.code.out_kernels])
+                for k in self.code.target_kernels])
 
     def full_output_zeros(self):
         # The superclass generates a full field of zeros, for all

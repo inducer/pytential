@@ -158,8 +158,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     o.target_name.geometry, o.target_name.discr_stage)
 
             if p2p is None:
-                p2p = self.get_p2p(actx, in_kernels=insn.source_kernels,
-                    out_kernels=insn.target_kernels)
+                p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
+                    target_kernels=insn.target_kernels)
 
             evt, output_for_each_kernel = p2p(actx.queue,
                     flatten_if_needed(actx, target_discr.nodes()),
@@ -179,7 +179,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, fmm_kernel, out_kernels, in_kernels):
+    def expansion_wrangler_code_container(self, fmm_kernel, target_kernels,
+            source_kernels):
         mpole_expn_class = \
                 self.expansion_factory.get_multipole_expansion_class(fmm_kernel)
         local_expn_class = \
@@ -194,7 +195,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 self.cl_context,
                 fmm_mpole_factory,
                 fmm_local_factory,
-                out_kernels, in_kernels=in_kernels)
+                target_kernels=target_kernels, source_kernels=source_kernels)
 
     @property
     def fmm_geometry_code_container(self):
@@ -251,8 +252,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
-                fmm_kernel, out_kernels=insn.target_kernels,
-                in_kernels=insn.source_kernels).get_wrangler(
+                fmm_kernel, target_kernels=insn.target_kernels,
+                source_kernels=insn.source_kernels).get_wrangler(
                     actx.queue,
                     geo_data.tree(),
                     output_and_expansion_dtype,

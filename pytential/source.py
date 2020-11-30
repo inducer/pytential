@@ -63,21 +63,21 @@ class PotentialSource:
 
 class _SumpyP2PMixin:
 
-    def get_p2p(self, actx, out_kernels, in_kernels=None):
+    def get_p2p(self, actx, target_kernels, source_kernels=None):
         @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
-        def p2p(out_kernels, in_kernels):
+        def p2p(target_kernels, source_kernels):
             from pytools import any
-            if any(knl.is_complex_valued for knl in out_kernels):
+            if any(knl.is_complex_valued for knl in target_kernels):
                 value_dtype = self.complex_dtype
             else:
                 value_dtype = self.real_dtype
 
             from sumpy.p2p import P2P
             return P2P(actx.context,
-                    out_kernels, exclude_self=False, value_dtypes=value_dtype,
-                    in_kernels=in_kernels)
+                    target_kernels, exclude_self=False, value_dtypes=value_dtype,
+                    source_kernels=source_kernels)
 
-        return p2p(out_kernels, in_kernels)
+        return p2p(target_kernels, source_kernels)
 
 
 # {{{ point potential source
@@ -165,8 +165,8 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
             # no on-disk kernel caching
             if p2p is None:
-                p2p = self.get_p2p(actx, in_kernels=insn.source_kernels,
-                out_kernels=insn.target_kernels)
+                p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
+                target_kernels=insn.target_kernels)
 
             from pytential.utils import flatten_if_needed
             evt, output_for_each_kernel = p2p(actx.queue,
@@ -274,7 +274,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
             return self.real_dtype
 
     def get_fmm_expansion_wrangler_extra_kwargs(
-            self, actx, out_kernels, tree_user_source_ids, arguments, evaluator):
+            self, actx, target_kernels, tree_user_source_ids, arguments, evaluator):
         # This contains things like the Helmholtz parameter k or
         # the normal directions for double layers.
 
@@ -300,7 +300,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
                 (gather_arguments, kernel_extra_kwargs),
                 (gather_source_arguments, source_extra_kwargs),
                 ]:
-            for arg in func(out_kernels):
+            for arg in func(target_kernels):
                 var_dict[arg.name] = obj_array_vectorize(
                         reorder_sources,
                         flatten_if_needed(actx, evaluator(arguments[arg.name])))

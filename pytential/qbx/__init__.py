@@ -542,22 +542,22 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             return QBXSumpyExpansionWranglerCodeContainer(
                     self.cl_context,
                     fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
-                    out_kernels=target_kernels, in_kernels=source_kernels)
+                    target_kernels=target_kernels, source_kernels=source_kernels)
 
         elif self.fmm_backend == "fmmlib":
             source_kernel, = source_kernels
-            out_kernels = []
+            target_kernels = []
             for knl in target_kernels:
                 if isinstance(knl, AxisTargetDerivative):
-                    out_kernels.append(knl.replace_inner_kernel(source_kernel))
+                    target_kernels.append(knl.replace_inner_kernel(source_kernel))
                 else:
-                    out_kernels.append(knl)
+                    target_kernels.append(knl)
             from pytential.qbx.fmmlib import \
                     QBXFMMLibExpansionWranglerCodeContainer
             return QBXFMMLibExpansionWranglerCodeContainer(
                     self.cl_context,
                     fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
-                    out_kernels)
+                    target_kernels)
 
         else:
             raise ValueError(f"invalid FMM backend: {self.fmm_backend}")
@@ -693,42 +693,42 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ direct execution
 
     @memoize_method
-    def get_lpot_applier(self, out_kernels, in_kernels):
+    def get_lpot_applier(self, target_kernels, source_kernels):
         # needs to be separate method for caching
 
         from pytools import any
-        if any(knl.is_complex_valued for knl in out_kernels):
+        if any(knl.is_complex_valued for knl in target_kernels):
             value_dtype = self.density_discr.complex_dtype
         else:
             value_dtype = self.density_discr.real_dtype
 
-        base_kernel = single_valued(knl.get_base_kernel() for knl in in_kernels)
+        base_kernel = single_valued(knl.get_base_kernel() for knl in source_kernels)
 
         from sumpy.qbx import LayerPotential
         from sumpy.expansion.local import LineTaylorLocalExpansion
         return LayerPotential(self.cl_context,
                     expansion=LineTaylorLocalExpansion(base_kernel, self.qbx_order),
-                    out_kernels=out_kernels, in_kernels=in_kernels,
+                    target_kernels=target_kernels, source_kernels=source_kernels,
                     value_dtypes=value_dtype)
 
     @memoize_method
-    def get_lpot_applier_on_tgt_subset(self, out_kernels, in_kernels):
+    def get_lpot_applier_on_tgt_subset(self, target_kernels, source_kernels):
         # needs to be separate method for caching
 
         from pytools import any
-        if any(knl.is_complex_valued for knl in out_kernels):
+        if any(knl.is_complex_valued for knl in target_kernels):
             value_dtype = self.density_discr.complex_dtype
         else:
             value_dtype = self.density_discr.real_dtype
 
-        base_kernel = single_valued(knl.get_base_kernel() for knl in in_kernels)
+        base_kernel = single_valued(knl.get_base_kernel() for knl in source_kernels)
 
         from pytential.qbx.direct import LayerPotentialOnTargetAndCenterSubset
         from sumpy.expansion.local import VolumeTaylorLocalExpansion
         return LayerPotentialOnTargetAndCenterSubset(
                 self.cl_context,
                 expansion=VolumeTaylorLocalExpansion(base_kernel, self.qbx_order),
-                out_kernels=out_kernels, in_kernels=in_kernels,
+                target_kernels=target_kernels, source_kernels=source_kernels,
                 value_dtypes=value_dtype)
 
     @memoize_method

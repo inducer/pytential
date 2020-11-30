@@ -378,8 +378,8 @@ class MatrixBuilder(MatrixBuilderBase):
 
             from sumpy.qbx import LayerPotentialMatrixGenerator
             mat_gen = LayerPotentialMatrixGenerator(actx.context,
-                expansion=local_expn, in_kernels=(kernel,),
-                out_kernels=(expr.target_kernel,))
+                expansion=local_expn, source_kernels=(kernel,),
+                target_kernels=(expr.target_kernel,))
 
             assert abs(expr.qbx_forced_limit) > 0
             from pytential import bind, sym
@@ -514,7 +514,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
             from sumpy.qbx import LayerPotentialMatrixBlockGenerator
             mat_gen = LayerPotentialMatrixBlockGenerator(actx.context, local_expn,
-                in_kernels=(kernel,), out_kernels=(expr.target_kernel,))
+                source_kernels=(kernel,), target_kernels=(expr.target_kernel,))
 
             assert abs(expr.qbx_forced_limit) > 0
             from pytential import bind, sym
@@ -593,8 +593,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
 
             from sumpy.p2p import P2PMatrixBlockGenerator
             mat_gen = P2PMatrixBlockGenerator(actx.context,
-                    in_kernels=(kernel,),
-                    out_kernels=(expr.target_kernel,),
+                    source_kernels=(kernel,),
+                    target_kernels=(expr.target_kernel,),
                     exclude_self=self.exclude_self)
 
             from meshmode.dof_array import flatten, thaw
