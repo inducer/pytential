@@ -546,18 +546,18 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         elif self.fmm_backend == "fmmlib":
             source_kernel, = source_kernels
-            target_kernels = []
+            target_kernels_new = []
             for knl in target_kernels:
                 if isinstance(knl, AxisTargetDerivative):
-                    target_kernels.append(knl.replace_inner_kernel(source_kernel))
+                    target_kernels_new.append(knl.replace_inner_kernel(source_kernel))
                 else:
-                    target_kernels.append(knl)
+                    target_kernels_new.append(knl)
             from pytential.qbx.fmmlib import \
                     QBXFMMLibExpansionWranglerCodeContainer
             return QBXFMMLibExpansionWranglerCodeContainer(
                     self.cl_context,
                     fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
-                    target_kernels)
+                    target_kernels=target_kernels_new)
 
         else:
             raise ValueError(f"invalid FMM backend: {self.fmm_backend}")
