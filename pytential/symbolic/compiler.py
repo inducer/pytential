@@ -173,7 +173,9 @@ class ComputePotentialInstruction(Instruction):
         return result
 
     def __str__(self):
-        args = [f"densities={self.densities}", f"source={self.source}"]
+        args = [f"source={self.source}"]
+        for i, density in enumerate(self.densities):
+            args.append(f"density{i}={density}")
 
         from pytential.symbolic.mappers import StringifyMapper, stringify_where
         strify = StringifyMapper()
@@ -200,9 +202,19 @@ class ComputePotentialInstruction(Instruction):
             else:
                 raise ValueError(f"unrecognized limit value: {o.qbx_forced_limit}")
 
+            source_kernels_strs = [
+                f"density{i} * {source_kernel}" for i, source_kernel in \
+                    enumerate(self.source_kernels)
+            ]
+            source_kernels_str = " + ".join(source_kernels_strs)
+            target_kernel = self.target_kernels[o.kernel_index]
+            target_kernel_str = str(target_kernel)
+            base_kernel_str = str(target_kernel.get_base_kernel())
+            kernel_str = target_kernel_str.replace(base_kernel_str,
+                f"({source_kernels_str})")
+
             line = "{}{} <- {}{}".format(
-                    o.name, tgt_str, limit_str,
-                    self.kernels[o.kernel_index])
+                    o.name, tgt_str, limit_str, kernel_str)
 
             lines.append(line)
 
