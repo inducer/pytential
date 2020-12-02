@@ -28,6 +28,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.mathjax",
     "sphinx.ext.viewcode",
+    "sphinx_copybutton",
     ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -44,7 +45,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "pytential"
-copyright = "2013, Andreas Kloeckner"
+copyright = "2013-20, Andreas Kloeckner and contributors"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -98,28 +99,10 @@ todo_include_todos = False
 
 # -- Options for HTML output ---------------------------------------------------
 
-html_theme = "alabaster"
+html_theme = "furo"
 
 html_theme_options = {
-        "extra_nav_links": {
-            "🚀 Github": "https://github.com/inducer/pytential",
-            "💾 Download Releases": "https://pypi.org/project/pytential",
-            }
         }
-
-html_sidebars = {
-    "**": [
-        "about.html",
-        "navigation.html",
-        "relations.html",
-        "searchbox.html",
-    ]
-}
-
-# Theme options are theme-specific and customize the look and feel of a theme
-# further.  For a list of options available for each theme, see the
-# documentation.
-#html_theme_options = {}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
