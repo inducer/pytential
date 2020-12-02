@@ -523,8 +523,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @memoize_method
     def expansion_wrangler_code_container(self, source_kernels, target_kernels):
         from functools import partial
-        from sumpy.kernel import AxisTargetDerivative, KernelWrapper
-
         base_kernel = single_valued(kernel.get_base_kernel() for
             kernel in source_kernels)
         mpole_expn_class = \
@@ -546,16 +544,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         elif self.fmm_backend == "fmmlib":
             source_kernel, = source_kernels
-            target_kernels_new = []
-            for knl in target_kernels:
-                if isinstance(knl, AxisTargetDerivative):
-                    if isinstance(knl.inner_kernel, KernelWrapper):
-                        raise ValueError("Not supported")
-                    target_kernels_new.append(knl.replace_inner_kernel(source_kernel))
-                elif not isinstance(knl, KernelWrapper):
-                    target_kernels_new.append(source_kernel)
-                else:
-                    raise ValueError("Not supported")
+            target_kernels_new = [
+                target_kernel.replace_base_kernel(source_kernel) for
+                target_kernel in target_kernels
+            ]
             from pytential.qbx.fmmlib import \
                     QBXFMMLibExpansionWranglerCodeContainer
             return QBXFMMLibExpansionWranglerCodeContainer(
