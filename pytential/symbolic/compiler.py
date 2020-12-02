@@ -203,8 +203,8 @@ class ComputePotentialInstruction(Instruction):
                 raise ValueError(f"unrecognized limit value: {o.qbx_forced_limit}")
 
             source_kernels_strs = [
-                f"density{i} * {source_kernel}" for i, source_kernel in \
-                    enumerate(self.source_kernels)
+                f"density{i} * {source_kernel}" for i, source_kernel in
+                enumerate(self.source_kernels)
             ]
             source_kernels_str = " + ".join(source_kernels_strs)
             target_kernel = self.target_kernels[o.kernel_index]
