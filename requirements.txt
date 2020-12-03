@@ -2,11 +2,11 @@ numpy
 git+git://github.com/inducer/pytools.git#egg=pytools
 git+git://github.com/inducer/pymbolic.git#egg=pymbolic
 sympy==1.1.1
-git+https://github.com/inducer/modepy.git#egg=modepy
+git+https://github.com/alexfikl/modepy.git@tensor-face-mass-matrix#egg=modepy
 git+https://github.com/inducer/pyopencl.git#egg=pyopencl
 git+https://github.com/inducer/islpy.git#egg=islpy
 git+https://github.com/inducer/loopy.git#egg=loopy
 git+https://github.com/inducer/boxtree.git#egg=boxtree
-git+https://github.com/inducer/meshmode.git#egg=meshmode
+git+https://github.com/alexfikl/meshmode.git@tensor-product-additions#egg=meshmode
 git+https://github.com/inducer/sumpy.git#egg=sumpy
 git+https://github.com/inducer/pyfmmlib.git#egg=pyfmmlib
