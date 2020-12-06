@@ -90,7 +90,8 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=False):
         expr = kernel.get_expression(sym_vec)
         vec = []
         for i in range(len(mis)):
-            vec.append(_n(expr.xreplace(dict((k, v) for k, v in zip(sym_vec, rand[:, i])))))
+            vec.append(_n(expr.xreplace(dict((k, v) for
+                k, v in zip(sym_vec, rand[:, i])))))
         vec = sym.Matrix(vec)
         result = []
         const = 0
