@@ -66,12 +66,12 @@ class StokesletWrapperBase:
         const *= sym.integral(self.dim, self.dim-1, density,
                               dofdesc=as_dofdesc(DEFAULT_SOURCE))
 
-        result = 0
+        result = const
         for mi, coeff in deriv_relation[1]:
-            deriv_dirs = list(deriv_dirs)
+            new_deriv_dirs = list(deriv_dirs)
             for idx, val in enumerate(mi):
-                deriv_dirs.extend([idx]*val)
-            result += func(self.base_kernel, deriv_dirs) * coeff
+                new_deriv_dirs.extend([idx]*val)
+            result += func(self.base_kernel, new_deriv_dirs) * coeff
 
         return result
 
