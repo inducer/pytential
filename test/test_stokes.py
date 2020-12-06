@@ -23,7 +23,6 @@ THE SOFTWARE.
 
 import numpy as np
 import pyopencl as cl
-import pytest
 
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
@@ -44,7 +43,7 @@ import logging
 
 def run_exterior_stokes_2d(ctx_factory, nelements,
         mesh_order=4, target_order=4, qbx_order=4,
-        fmm_order=False,  # FIXME: FMM is slower than direct eval
+        fmm_order=10,
         mu=1, circle_rad=1.5, visualize=False):
 
     # This program tests an exterior Stokes flow in 2D using the
@@ -118,11 +117,13 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     # {{{ describe bvp
 
     from pytential.symbolic.stokes import StressletWrapper, StokesletWrapper
+    from pytential.symbolic.primitives import as_dofdesc, DEFAULT_SOURCE
     dim = 2
     cse = sym.cse
 
     sigma_sym = sym.make_sym_vector("sigma", dim)
-    meanless_sigma_sym = cse(sigma_sym - sym.mean(2, 1, sigma_sym))
+    meanless_sigma_sym = cse(sigma_sym
+        - sym.mean(2, 1, sigma_sym, dofdesc=as_dofdesc(DEFAULT_SOURCE)))
     int_sigma = sym.Ones() * sym.integral(2, 1, sigma_sym)
 
     nvec_sym = sym.make_sym_vector("normal", dim)
@@ -299,7 +300,6 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     return h_max, l2_err
 
 
-@pytest.mark.slowtest
 def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()

@@ -23,10 +23,60 @@ THE SOFTWARE.
 import numpy as np
 
 from pytential import sym
-from sumpy.kernel import StokesletKernel, StressletKernel, LaplaceKernel
+from sumpy.kernel import (StokesletKernel, StressletKernel, LaplaceKernel,
+    AxisTargetDerivative, BiharmonicKernel)
 
 
-class StokesletWrapper:
+class StokesletWrapperMixin:
+    """A base class for StokesletWrapper and StressletWrapper
+
+    """
+    def get_int_g(self, idx, density, mu_sym, qbx_forced_limit,
+            deriv_dirs):
+
+        """
+        Returns the Integral of the Stokeslet/Stresslet kernel given by `icomp`
+        and `jcomp` and its derivatives.
+        For instance,
+
+            Stokeslet(icomp, jcomp)
+                = -1/mu_sym d/(d x_icomp) d/(d x_jcomp) BiharmonicKernel
+
+        for icomp != jcomp.
+        """
+
+        if not self.use_biharmonic:
+            knl = self.kernel_dict[idx]
+            for deriv_dir in deriv_dirs:
+                knl = AxisTargetDerivative(deriv_dir, knl)
+            return sym.IntG(knl, density,
+                    qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
+
+        def func(knl, deriv_dirs):
+            for deriv_dir in deriv_dirs:
+                knl = AxisTargetDerivative(deriv_dir, knl)
+
+            res = sym.IntG(knl, density,
+                    qbx_forced_limit=qbx_forced_limit)
+            return res
+
+        deriv_relation = self.deriv_relation_dict[idx]
+        from pytential.symbolic.primitives import as_dofdesc, DEFAULT_SOURCE
+        const = deriv_relation[0]
+        const *= sym.integral(self.dim, self.dim-1, density,
+                              dofdesc=as_dofdesc(DEFAULT_SOURCE))
+
+        result = const
+        for mi, coeff in deriv_relation[1]:
+            new_deriv_dirs = list(deriv_dirs)
+            for idx, val in enumerate(mi):
+                new_deriv_dirs.extend([idx]*val)
+            result += func(self.base_kernel, new_deriv_dirs) * coeff
+
+        return result
+
+
+class StokesletWrapper(StokesletWrapperMixin):
     """ Wrapper class for the Stokeslet kernel.
 
     This class is meant to shield the user from the messiness of writing
@@ -55,28 +105,32 @@ class StokesletWrapper:
        for the same kernel in a different ordering.
     """
 
-    def __init__(self, dim=None):
-
+    def __init__(self, dim=None, use_biharmonic=True):
+        self.use_biharmonic = use_biharmonic
         self.dim = dim
-        if dim == 2:
-            self.kernel_dict = {
-                        (2, 0): StokesletKernel(dim=2, icomp=0, jcomp=0),
-                        (1, 1): StokesletKernel(dim=2, icomp=0, jcomp=1),
-                        (0, 2): StokesletKernel(dim=2, icomp=1, jcomp=1)
-                               }
-
-        elif dim == 3:
-            self.kernel_dict = {
-                        (2, 0, 0): StokesletKernel(dim=3, icomp=0, jcomp=0),
-                        (1, 1, 0): StokesletKernel(dim=3, icomp=0, jcomp=1),
-                        (1, 0, 1): StokesletKernel(dim=3, icomp=0, jcomp=2),
-                        (0, 2, 0): StokesletKernel(dim=3, icomp=1, jcomp=1),
-                        (0, 1, 1): StokesletKernel(dim=3, icomp=1, jcomp=2),
-                        (0, 0, 2): StokesletKernel(dim=3, icomp=2, jcomp=2)
-                               }
-
-        else:
+        if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
+
+        self.kernel_dict = {}
+
+        self.base_kernel = BiharmonicKernel(dim=dim)
+
+        for i in range(dim):
+            for j in range(i, dim):
+                self.kernel_dict[(i, j)] = StokesletKernel(dim=dim, icomp=i,
+                                                           jcomp=j)
+
+        for i in range(dim):
+            for j in range(i):
+                self.kernel_dict[(i, j)] = self.kernel_dict[(j, i)]
+
+        if self.use_biharmonic:
+            from pytential.symbolic.pde.system_utils import get_deriv_relation
+            results = get_deriv_relation(list(self.kernel_dict.values()),
+                                         self.base_kernel, tol=1e-10, order=2)
+            self.deriv_relation_dict = {}
+            for deriv_eq, (idx, knl) in zip(results, self.kernel_dict.items()):
+                self.deriv_relation_dict[idx] = deriv_eq
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """ Symbolic expressions for integrating Stokeslet kernel
@@ -93,29 +147,12 @@ class StokesletWrapper:
             for the average of the two one-sided boundary limits.
         """
 
-        sym_expr = np.empty((self.dim,), dtype=object)
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
         for comp in range(self.dim):
-
-            # Start variable count for kernel with 1 for the requested result
-            #  component
-            base_count = np.zeros(self.dim, dtype=np.int)
-            base_count[comp] += 1
-
             for i in range(self.dim):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i < 1:
-                    sym_expr[comp] = sym.S(
-                                     self.kernel_dict[ctr_key], density_vec_sym[i],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + sym.S(
-                                     self.kernel_dict[ctr_key], density_vec_sym[i],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
+                sym_expr[comp] += self.get_int_g((comp, i),
+                        density_vec_sym[i], mu_sym, qbx_forced_limit, deriv_dirs=[])
 
         return sym_expr
 
@@ -124,17 +161,12 @@ class StokesletWrapper:
 
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
+        sym_expr = 0
 
         for i in range(self.dim):
-
-            if i < 1:
-                sym_expr = DerivativeTaker(i).map_int_g(
-                                sym.S(kernel, density_vec_sym[i],
-                                qbx_forced_limit=qbx_forced_limit))
-            else:
-                sym_expr = sym_expr + (DerivativeTaker(i).map_int_g(
-                                sym.S(kernel, density_vec_sym[i],
-                                qbx_forced_limit=qbx_forced_limit)))
+            sym_expr += (DerivativeTaker(i).map_int_g(
+                         sym.S(kernel, density_vec_sym[i],
+                         qbx_forced_limit=qbx_forced_limit)))
 
         return sym_expr
 
@@ -156,36 +188,13 @@ class StokesletWrapper:
             for the average of the two one-sided boundary limits.
         """
 
-        from pytential.symbolic.mappers import DerivativeTaker
-
-        sym_expr = np.empty((self.dim,), dtype=object)
+        sym_expr = self.apply(density_vec_sym, mu_sym, qbx_forced_limit)
 
         for comp in range(self.dim):
-
-            # Start variable count for kernel with 1 for the requested result
-            #  component
-            base_count = np.zeros(self.dim, dtype=np.int)
-            base_count[comp] += 1
-
             for i in range(self.dim):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i < 1:
-                    sym_expr[comp] = DerivativeTaker(deriv_dir).map_int_g(
-                                         sym.S(self.kernel_dict[ctr_key],
-                                             density_vec_sym[i],
-                                             qbx_forced_limit=qbx_forced_limit,
-                                             mu=mu_sym))
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + DerivativeTaker(
-                                         deriv_dir).map_int_g(
-                                             sym.S(self.kernel_dict[ctr_key],
-                                             density_vec_sym[i],
-                                             qbx_forced_limit=qbx_forced_limit,
-                                             mu=mu_sym))
+                sym_expr[comp] += self.get_int_g((comp, i),
+                        density_vec_sym[i], mu_sym, qbx_forced_limit,
+                        deriv_dirs=[deriv_dir])
 
         return sym_expr
 
@@ -218,41 +227,22 @@ class StokesletWrapper:
             for the average of the two one-sided boundary limits.
         """
 
-        import itertools
-
-        sym_expr = np.empty((self.dim,), dtype=object)
-        stresslet_obj = StressletWrapper(dim=self.dim)
+        sym_expr = np.zeros((self.dim,), dtype=object)
+        stresslet_obj = StressletWrapper(dim=self.dim,
+                                         use_biharmonic=self.use_biharmonic)
 
         for comp in range(self.dim):
-
-            # Start variable count for kernel with 1 for the requested result
-            #   component
-            base_count = np.zeros(self.dim, dtype=np.int)
-            base_count[comp] += 1
-
-            for i, j in itertools.product(range(self.dim), range(self.dim)):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                var_ctr[j] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i + j < 1:
-                    sym_expr[comp] = dir_vec_sym[i] * sym.S(
-                                     stresslet_obj.kernel_dict[ctr_key],
-                                     density_vec_sym[j],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + dir_vec_sym[i] * sym.S(
-                                                stresslet_obj.kernel_dict[ctr_key],
-                                                density_vec_sym[j],
-                                                qbx_forced_limit=qbx_forced_limit,
-                                                mu=mu_sym)
+            for i in range(self.dim):
+                for j in range(self.dim):
+                    sym_expr[comp] += dir_vec_sym[i] * \
+                        stresslet_obj.get_int_g((comp, i, j),
+                        density_vec_sym[j],
+                        mu_sym, qbx_forced_limit, deriv_dirs=[])
 
         return sym_expr
 
 
-class StressletWrapper:
+class StressletWrapper(StokesletWrapperMixin):
     """ Wrapper class for the Stresslet kernel.
 
     This class is meant to shield the user from the messiness of writing
@@ -281,33 +271,37 @@ class StressletWrapper:
 
     """
 
-    def __init__(self, dim=None):
-
+    def __init__(self, dim=None, use_biharmonic=True):
+        self.use_biharmonic = use_biharmonic
         self.dim = dim
-        if dim == 2:
-            self.kernel_dict = {
-                (3, 0): StressletKernel(dim=2, icomp=0, jcomp=0, kcomp=0),
-                (2, 1): StressletKernel(dim=2, icomp=0, jcomp=0, kcomp=1),
-                (1, 2): StressletKernel(dim=2, icomp=0, jcomp=1, kcomp=1),
-                (0, 3): StressletKernel(dim=2, icomp=1, jcomp=1, kcomp=1)
-                               }
+        if not (dim == 3 or dim == 2):
+            raise ValueError("unsupported dimension given to StokesletWrapper")
 
-        elif dim == 3:
-            self.kernel_dict = {
-                (3, 0, 0): StressletKernel(dim=3, icomp=0, jcomp=0, kcomp=0),
-                (2, 1, 0): StressletKernel(dim=3, icomp=0, jcomp=0, kcomp=1),
-                (2, 0, 1): StressletKernel(dim=3, icomp=0, jcomp=0, kcomp=2),
-                (1, 2, 0): StressletKernel(dim=3, icomp=0, jcomp=1, kcomp=1),
-                (1, 1, 1): StressletKernel(dim=3, icomp=0, jcomp=1, kcomp=2),
-                (1, 0, 2): StressletKernel(dim=3, icomp=0, jcomp=2, kcomp=2),
-                (0, 3, 0): StressletKernel(dim=3, icomp=1, jcomp=1, kcomp=1),
-                (0, 2, 1): StressletKernel(dim=3, icomp=1, jcomp=1, kcomp=2),
-                (0, 1, 2): StressletKernel(dim=3, icomp=1, jcomp=2, kcomp=2),
-                (0, 0, 3): StressletKernel(dim=3, icomp=2, jcomp=2, kcomp=2)
-                               }
+        self.kernel_dict = {}
 
-        else:
-            raise ValueError("unsupported dimension given to StressletWrapper")
+        self.base_kernel = BiharmonicKernel(dim=dim)
+
+        for i in range(dim):
+            for j in range(i, dim):
+                for k in range(j, dim):
+                    self.kernel_dict[(i, j, k)] = StressletKernel(dim=dim, icomp=i,
+                                                               jcomp=j, kcomp=k)
+
+        for i in range(dim):
+            for j in range(dim):
+                for k in range(dim):
+                    if (i, j, k) in self.kernel_dict:
+                        continue
+                    s = tuple(sorted([i, j, k]))
+                    self.kernel_dict[(i, j, k)] = self.kernel_dict[s]
+
+        if self.use_biharmonic:
+            from pytential.symbolic.pde.system_utils import get_deriv_relation
+            results = get_deriv_relation(list(self.kernel_dict.values()),
+                                         self.base_kernel, tol=1e-10, order=3)
+            self.deriv_relation_dict = {}
+            for deriv_eq, (idx, knl) in zip(results, self.kernel_dict.items()):
+                self.deriv_relation_dict[idx] = deriv_eq
 
     def apply(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
         """ Symbolic expressions for integrating stresslet kernel
@@ -325,35 +319,14 @@ class StressletWrapper:
             for the average of the two one-sided boundary limits.
         """
 
-        import itertools
-
-        sym_expr = np.empty((self.dim,), dtype=object)
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
         for comp in range(self.dim):
-
-            # Start variable count for kernel with 1 for the requested result
-            #   component
-            base_count = np.zeros(self.dim, dtype=np.int)
-            base_count[comp] += 1
-
-            for i, j in itertools.product(range(self.dim), range(self.dim)):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                var_ctr[j] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i + j < 1:
-                    sym_expr[comp] = sym.S(
-                                     self.kernel_dict[ctr_key],
-                                     dir_vec_sym[i] * density_vec_sym[j],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + sym.S(
-                                                self.kernel_dict[ctr_key],
-                                                dir_vec_sym[i] * density_vec_sym[j],
-                                                qbx_forced_limit=qbx_forced_limit,
-                                                mu=mu_sym)
+            for i in range(self.dim):
+                for j in range(self.dim):
+                    sym_expr[comp] += self.get_int_g((comp, i, j),
+                        dir_vec_sym[i] * density_vec_sym[j],
+                        mu_sym, qbx_forced_limit, deriv_dirs=[])
 
         return sym_expr
 
@@ -366,20 +339,14 @@ class StressletWrapper:
 
         factor = (2. * mu_sym)
 
-        for i, j in itertools.product(range(self.dim), range(self.dim)):
+        sym_expr = 0
 
-            if i + j < 1:
-                sym_expr = factor * DerivativeTaker(i).map_int_g(
-                             DerivativeTaker(j).map_int_g(
-                                 sym.S(kernel, density_vec_sym[i] * dir_vec_sym[j],
-                                 qbx_forced_limit=qbx_forced_limit)))
-            else:
-                sym_expr = sym_expr + (
-                               factor * DerivativeTaker(i).map_int_g(
+        for i, j in itertools.product(range(self.dim), range(self.dim)):
+            sym_expr += factor * DerivativeTaker(i).map_int_g(
                                    DerivativeTaker(j).map_int_g(
                                        sym.S(kernel,
                                              density_vec_sym[i] * dir_vec_sym[j],
-                                             qbx_forced_limit=qbx_forced_limit))))
+                                             qbx_forced_limit=qbx_forced_limit)))
 
         return sym_expr
 
@@ -402,37 +369,14 @@ class StressletWrapper:
             for the average of the two one-sided boundary limits.
         """
 
-        import itertools
-        from pytential.symbolic.mappers import DerivativeTaker
-
-        sym_expr = np.empty((self.dim,), dtype=object)
+        sym_expr = np.zeros((self.dim,), dtype=object)
 
         for comp in range(self.dim):
-
-            # Start variable count for kernel with 1 for the requested result
-            #   component
-            base_count = np.zeros(self.dim, dtype=np.int)
-            base_count[comp] += 1
-
-            for i, j in itertools.product(range(self.dim), range(self.dim)):
-                var_ctr = base_count.copy()
-                var_ctr[i] += 1
-                var_ctr[j] += 1
-                ctr_key = tuple(var_ctr)
-
-                if i + j < 1:
-                    sym_expr[comp] = DerivativeTaker(deriv_dir).map_int_g(
-                                     sym.S(self.kernel_dict[ctr_key],
-                                     dir_vec_sym[i] * density_vec_sym[j],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym))
-
-                else:
-                    sym_expr[comp] = sym_expr[comp] + DerivativeTaker(
-                                        deriv_dir).map_int_g(
-                                        sym.S(self.kernel_dict[ctr_key],
-                                        dir_vec_sym[i] * density_vec_sym[j],
-                                        qbx_forced_limit=qbx_forced_limit,
-                                        mu=mu_sym))
+            for i in range(self.dim):
+                for j in range(self.dim):
+                    sym_expr[comp] += self.get_int_g((comp, i, j),
+                        dir_vec_sym[i] * density_vec_sym[j],
+                        mu_sym, qbx_forced_limit, deriv_dirs=[deriv_dir])
 
         return sym_expr
 
