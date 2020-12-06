@@ -27,7 +27,7 @@ from sumpy.kernel import (StokesletKernel, StressletKernel, LaplaceKernel,
     AxisTargetDerivative, BiharmonicKernel)
 
 
-class StokesletWrapperBase:
+class StokesletWrapperMixin:
     """A base class for StokesletWrapper and StressletWrapper
 
     """
@@ -76,7 +76,7 @@ class StokesletWrapperBase:
         return result
 
 
-class StokesletWrapper(StokesletWrapperBase):
+class StokesletWrapper(StokesletWrapperMixin):
     """ Wrapper class for the Stokeslet kernel.
 
     This class is meant to shield the user from the messiness of writing
@@ -242,7 +242,7 @@ class StokesletWrapper(StokesletWrapperBase):
         return sym_expr
 
 
-class StressletWrapper(StokesletWrapperBase):
+class StressletWrapper(StokesletWrapperMixin):
     """ Wrapper class for the Stresslet kernel.
 
     This class is meant to shield the user from the messiness of writing

@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from sumpy.symbolic import Matrix, make_sym_vector, sym, SympyToPymbolicMapper
+from sumpy.symbolic import make_sym_vector, sym, SympyToPymbolicMapper
 from pytools import (
                 generate_nonnegative_integer_tuples_summing_to_at_most
                 as gnitstam)
@@ -83,15 +83,15 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=False):
         row.append(1)
         mat.append(row)
 
-    mat = Matrix(mat)
+    mat = sym.Matrix(mat)
     res = []
 
     for kernel in kernels:
         expr = kernel.get_expression(sym_vec)
         vec = []
-        for a in rand.T:
-            vec.append(_n(expr.xreplace(dict((k, v) for k, v in zip(sym_vec, a)))))
-        vec = Matrix(vec)
+        for i in range(len(mis)):
+            vec.append(_n(expr.xreplace(dict((k, v) for k, v in zip(sym_vec, rand[:, i])))))
+        vec = sym.Matrix(vec)
         result = []
         const = 0
         if verbose:
