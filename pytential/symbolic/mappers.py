@@ -668,11 +668,11 @@ class StringifyMapper(BaseStringifyMapper):
     def map_int_g(self, expr, enclosing_prec):
         source_kernels_strs = [
             "{} * {}".format(self.rec(density, PREC_PRODUCT), source_kernel)
-            for density, source_kernel in zip(expr.source_kernel, expr.densities)
+            for source_kernel, density in zip(expr.source_kernels, expr.densities)
         ]
         source_kernels_str = " + ".join(source_kernels_strs)
         target_kernel_str = str(expr.target_kernel)
-        base_kernel_str = expr.target_kernel.get_base_kernel()
+        base_kernel_str = str(expr.target_kernel.get_base_kernel())
         kernel_str = target_kernel_str.replace(base_kernel_str,
             f"({source_kernels_str})")
 
