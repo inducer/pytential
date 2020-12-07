@@ -35,30 +35,22 @@ class StokesletWrapperMixin:
             deriv_dirs):
 
         """
-        Returns the Integral of the Stokeslet/Stresslet kernel given by `icomp`
-        and `jcomp` and its derivatives.
-        For instance,
-
-            Stokeslet(icomp, jcomp)
-                = -1/mu_sym d/(d x_icomp) d/(d x_jcomp) BiharmonicKernel
-
-        for icomp != jcomp.
+        Returns the Integral of the Stokeslet/Stresslet kernel given by `idx`
+        and its derivatives. If `use_biharmonic` is set, Biharmonic Kernel
+        and its derivatives will be used instead of Stokeslet/Stresslet
         """
+
+        def create_int_g(knl, deriv_dirs, **kwargs):
+            for deriv_dir in deriv_dirs:
+                knl = AxisTargetDerivative(deriv_dir, knl)
+
+            res = sym.S(knl, density,
+                    qbx_forced_limit=qbx_forced_limit, **kwargs)
+            return res
 
         if not self.use_biharmonic:
             knl = self.kernel_dict[idx]
-            for deriv_dir in deriv_dirs:
-                knl = AxisTargetDerivative(deriv_dir, knl)
-            return sym.IntG(knl, density,
-                    qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
-
-        def func(knl, deriv_dirs):
-            for deriv_dir in deriv_dirs:
-                knl = AxisTargetDerivative(deriv_dir, knl)
-
-            res = sym.IntG(knl, density,
-                    qbx_forced_limit=qbx_forced_limit)
-            return res
+            return create_int_g(knl, deriv_dirs, mu=mu_sym)
 
         deriv_relation = self.deriv_relation_dict[idx]
         from pytential.symbolic.primitives import as_dofdesc, DEFAULT_SOURCE
@@ -71,7 +63,7 @@ class StokesletWrapperMixin:
             new_deriv_dirs = list(deriv_dirs)
             for idx, val in enumerate(mi):
                 new_deriv_dirs.extend([idx]*val)
-            result += func(self.base_kernel, new_deriv_dirs) * coeff
+            result += create_int_g(self.base_kernel, new_deriv_dirs) * coeff
 
         return result
 
