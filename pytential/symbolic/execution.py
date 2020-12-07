@@ -1058,7 +1058,9 @@ class BoundExpression:
             raise TypeError("More than one positional argument supplied. "
                     "None or an ArrayContext expected.")
 
-        return self.eval(kwargs, array_context=array_context)
+        timing_data = kwargs.pop('timing_data', None)
+        return self.eval(kwargs, array_context=array_context,
+            timing_data=timing_data)
 
 
 def bind(places, expr, auto_where=None):
