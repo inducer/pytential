@@ -66,7 +66,6 @@ class _SumpyP2PMixin:
     def get_p2p(self, actx, kernels):
         @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
         def p2p(kernels):
-            from pytools import any
             if any(knl.is_complex_valued for knl in kernels):
                 value_dtype = self.complex_dtype
             else:

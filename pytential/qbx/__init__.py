@@ -682,7 +682,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def get_lpot_applier(self, kernels):
         # needs to be separate method for caching
 
-        from pytools import any
         if any(knl.is_complex_valued for knl in kernels):
             value_dtype = self.density_discr.complex_dtype
         else:
@@ -699,7 +698,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def get_lpot_applier_on_tgt_subset(self, kernels):
         # needs to be separate method for caching
 
-        from pytools import any
         if any(knl.is_complex_valued for knl in kernels):
             value_dtype = self.density_discr.complex_dtype
         else:
