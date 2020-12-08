@@ -307,7 +307,7 @@ class Code:
 
     @memoize_method
     def get_next_step(self, available_names, done_insns):
-        from pytools import all, argmax2
+        from pytools import argmax2
         available_insns = [
                 (insn, insn.priority) for insn in self.instructions
                 if insn not in done_insns
