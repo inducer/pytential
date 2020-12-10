@@ -328,7 +328,7 @@ def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
 def run_exterior_stokes(ctx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
         fmm_order=False,    # FIXME: FMM is slower than direct evaluation
-        source_ovsmp=4,
+        source_ovsmp=None,
         radius=1.5,
         mu=1.0,
         visualize=False,
@@ -342,6 +342,9 @@ def run_exterior_stokes(ctx_factory, *,
     actx = PyOpenCLArrayContext(queue)
 
     # {{{ geometry
+
+    if source_ovsmp is None:
+        source_ovsmp = 4 if ambient_dim == 2 else 8
 
     places = {}
 
@@ -392,7 +395,7 @@ def run_exterior_stokes(ctx_factory, *,
         plot_target = PointsTarget(fplot.points[:, mask].copy())
         places["plot_target"] = plot_target
 
-        del mask,
+        del mask
 
     places = GeometryCollection(places, auto_where="source")
 
@@ -439,7 +442,7 @@ def run_exterior_stokes(ctx_factory, *,
 
     if ambient_dim == 2:
         total_charge = make_obj_array([
-            cl.array.sum(c).get(queue)[()] for c in charges
+            actx.np.sum(c) for c in charges
             ])
         omega = bind(places, total_charge * sym.Ones())(actx)
 
@@ -461,11 +464,12 @@ def run_exterior_stokes(ctx_factory, *,
     # {{{ solve
 
     from pytential.solve import gmres
+    gmres_tol = 1.0e-9
     result = gmres(
             bound_op.scipy_op(actx, "sigma", np.float64, **op_context),
             rhs,
             x0=rhs,
-            tol=1.0e-9,
+            tol=gmres_tol,
             progress=True,
             stall_iterations=0,
             hard_failure=True)
@@ -474,18 +478,42 @@ def run_exterior_stokes(ctx_factory, *,
 
     # }}}
 
-    # {{{{ check
+    # {{{ check velocity on surface
 
-    def norm2(x):
-        return np.sqrt(cl.array.sum(x.dot(x)).get()[()])
+    def rnorm2(x, y):
+        y_norm = actx.np.linalg.norm(y.dot(y), ord=2)
+        if y_norm < 1.0e-14:
+            y_norm = 1.0
+
+        d = x - y
+        return actx.np.linalg.norm(d.dot(d), ord=2) / y_norm
+
+    h_max = bind(places, sym.h_max(ambient_dim))(actx)
+
+    if ambient_dim == 3:
+        sym_surf_velocity = op.velocity(sym_sigma,
+                normal=sym_normal, mu=sym_mu,
+                qbx_forced_limit="avg")
+        sym_surf_velocity = -0.5 * op.side * sym_sigma + sym_surf_velocity
+
+        surf_velocity = bind(places, sym_surf_velocity)(actx,
+                sigma=sigma, **op_context)
+
+        s_error = rnorm2(surf_velocity, bc)
+        logger.info("resolution %4d h_max %.5e error %.5e",
+                resolution, h_max, s_error)
+        assert s_error < gmres_tol
+
+    # }}}
+
+    # {{{ check velocity at "point_target"
 
     ps_velocity = bind(places, sym_velocity,
             auto_where=("source", "point_target"))(actx, sigma=sigma, **op_context)
     ex_velocity = bind(places, sym_source_pot,
             auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
 
-    v_error = norm2(ps_velocity - ex_velocity) / norm2(ex_velocity)
-    h_max = bind(places, sym.h_max(ambient_dim))(actx)
+    v_error = rnorm2(ps_velocity, ex_velocity)
 
     logger.info("resolution %4d h_max %.5e error %.5e",
             resolution, h_max, v_error)
@@ -499,10 +527,14 @@ def run_exterior_stokes(ctx_factory, *,
 
     from meshmode.discretization.visualization import make_visualizer
     vis = make_visualizer(actx, density_discr, target_order)
-    vis.write_vtk_file(f"stokes_solution_{ambient_dim}d_{resolution}.vtu", [
+
+    filename = "stokes_solution_{}d_{}_ovsmp_{}.vtu".format(
+            ambient_dim, resolution, source_ovsmp)
+
+    vis.write_vtk_file(filename, [
         ("density", sigma),
         ("bc", bc),
-        ("rhs", rhs)
+        ("rhs", rhs),
         ], overwrite=True)
 
     # }}}
@@ -516,8 +548,8 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
     from pytools.convergence import EOCRecorder
     eoc = EOCRecorder()
 
-    target_order = 4
-    qbx_order = 4
+    target_order = 3
+    qbx_order = 3
 
     if ambient_dim == 2:
         resolutions = [20, 35, 50]
@@ -536,9 +568,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
 
         eoc.add_data_point(h_max, err)
 
-    if visualize:
-        print(eoc)
-
+    print(eoc)
     assert eoc.order_estimate() > target_order - 0.5
 
 # }}}
