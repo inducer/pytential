@@ -2,7 +2,7 @@ numpy
 git+git://github.com/inducer/pytools.git#egg=pytools
 git+git://github.com/inducer/pymbolic.git#egg=pymbolic
 sympy==1.1.1
-git+https://github.com/alexfikl/modepy.git@tensor-face-mass-matrix#egg=modepy
+git+https://github.com/inducer/modepy.git#egg=modepy
 git+https://github.com/inducer/pyopencl.git#egg=pyopencl
 git+https://github.com/inducer/islpy.git#egg=islpy
 git+https://github.com/inducer/loopy.git#egg=loopy
