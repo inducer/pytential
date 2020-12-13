@@ -571,6 +571,9 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
         eoc.add_data_point(h_max, err)
 
     print(eoc)
+    # This convergence data is not as clean as it could be. See
+    # https://github.com/inducer/pytential/pull/32
+    # for some discussion.
     assert eoc.order_estimate() > target_order - 0.5
 
 # }}}
