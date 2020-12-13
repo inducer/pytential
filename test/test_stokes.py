@@ -414,9 +414,11 @@ def run_exterior_stokes(ctx_factory, *,
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
         sym_omega = sym.make_sym_vector("omega", ambient_dim)
         op = HsiaoKressExteriorStokesOperator(omega=sym_omega)
-    else:
+    elif ambient_dim == 3:
         from pytential.symbolic.stokes import HebekerExteriorStokesOperator
         op = HebekerExteriorStokesOperator()
+    else:
+        assert False
 
     sym_sigma = op.get_density_var("sigma")
     sym_bc = op.get_density_var("bc")
