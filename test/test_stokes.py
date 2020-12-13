@@ -29,7 +29,6 @@ from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
 
 from pytools.obj_array import make_obj_array
-from sumpy.visualization import FieldPlotter
 
 from pytential import bind, sym
 from pytential import GeometryCollection
@@ -190,7 +189,7 @@ def run_exterior_stokes(ctx_factory, *,
             rhs,
             x0=rhs,
             tol=gmres_tol,
-            progress=True,
+            progress=visualize,
             stall_iterations=0,
             hard_failure=True)
 
@@ -243,8 +242,10 @@ def run_exterior_stokes(ctx_factory, *,
     return h_max, v_error
 
 
-@pytest.mark.slowtest
-@pytest.mark.parametrize("ambient_dim", [2, 3])
+@pytest.mark.parametrize("ambient_dim", [
+    2,
+    pytest.param(3, marks=pytest.mark.slowtest)
+    ])
 def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
@@ -255,6 +256,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
     target_order = 3
     qbx_order = 3
 
+    print(ambient_dim)
     if ambient_dim == 2:
         resolutions = [20, 35, 50]
     elif ambient_dim == 3:
@@ -273,6 +275,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
         eoc.add_data_point(h_max, err)
 
     print(eoc)
+
     # This convergence data is not as clean as it could be. See
     # https://github.com/inducer/pytential/pull/32
     # for some discussion.
@@ -282,7 +285,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
 
 
 # You can test individual routines by typing
-# $ python test_layer_pot.py 'test_routine()'
+# $ python test_stokes.py 'test_routine()'
 
 if __name__ == "__main__":
     import sys
