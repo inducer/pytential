@@ -25,11 +25,20 @@ import numpy as np
 from pytential import sym
 from sumpy.kernel import StokesletKernel, StressletKernel, LaplaceKernel
 
+__doc__ = """
+.. autoclass:: StokesletWrapper
+.. autoclass:: StressletWrapper
+
+.. autoclass:: StokesOperator
+.. autoclass:: HsiaoKressExteriorStokesOperator
+.. autoclass:: HebekerExteriorStokesOperator
+"""
+
 
 # {{{ StokesletWrapper
 
 class StokesletWrapper:
-    """Wrapper class for the Stokeslet kernel.
+    """Wrapper class for the :class:`~sumpy.kernel.StokesletKernel` kernel.
 
     This class is meant to shield the user from the messiness of writing
     out every term in the expansion of the double-indexed Stokeslet kernel
@@ -39,27 +48,33 @@ class StokesletWrapper:
     once when we solve for the density, and once when we want a symbolic
     representation for the solution, for example.
 
-    The apply() function returns the integral expressions needed for
+    The :meth:`apply` function returns the integral expressions needed for
     the vector velocity resulting from convolution with the vector density,
-    and is meant to work similarly to
-    calling S() (which is IntG()).
+    and is meant to work similarly to calling
+    :func:`~pytential.symbolic.primitives.S` (which is
+    :class:`~pytential.symbolic.primitives.IntG`).
 
     Similar functions are available for other useful things related to
-    the flow: apply_pressure, apply_derivative (target derivative),
-    apply_stress (applies symmetric viscous stress tensor in
+    the flow: :meth:`apply_pressure`, :meth:`apply_derivative` (target derivative),
+    :meth:`apply_stress` (applies symmetric viscous stress tensor in
     the requested direction).
 
-   .. attribute:: kernel_dict
+    .. attribute:: kernel_dict
 
-       The dictionary allows us to exploit symmetry -- that
-       StokesletKernel(icomp=0, jcomp=1) is identical to
-       StokesletKernel(icomp=1, jcomp=0) -- and avoid creating multiple expansions
-       for the same kernel in a different ordering.
+        The dictionary allows us to exploit symmetry -- that
+        :math:`S_{01}` is identical to :math:`S_{10}` -- and avoid creating
+        multiple expansions for the same kernel in a different ordering.
+
+    .. automethod:: __init__
+    .. automethod:: apply
+    .. automethod:: apply_pressure
+    .. automethod:: apply_derivative
+    .. automethod:: apply_stress
     """
 
     def __init__(self, dim=None):
-
         self.dim = dim
+
         if dim == 2:
             self.kernel_dict = {
                         (2, 0): StokesletKernel(dim=2, icomp=0, jcomp=0),
@@ -81,18 +96,16 @@ class StokesletWrapper:
             raise ValueError("unsupported dimension given to StokesletWrapper")
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
-        """ Symbolic expressions for integrating Stokeslet kernel
+        """Symbolic expressions for integrating Stokeslet kernel.
 
         Returns an object array of symbolic expressions for the vector
         resulting from integrating the dyadic Stokeslet kernel with
         variable *density_vec_sym*.
 
-        :arg density_vec_sym: a symbolic vector variable for the density vector
-        :arg mu_sym: a symbolic variable for the viscosity
-        :arg qbx_forced_limit: the qbx_forced_limit argument to be passed on
-            to IntG.  +/-1 for exterior/interior one-sided boundary limit,
-            +/-2 for exterior/interior off-boundary evaluation, and 'avg'
-            for the average of the two one-sided boundary limits.
+        :arg density_vec_sym: a symbolic vector variable for the density vector.
+        :arg mu_sym: a symbolic variable for the viscosity.
+        :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
+            to :class:`~pytential.symbolic.primitives.IntG`.
         """
 
         sym_expr = np.empty((self.dim,), dtype=object)
@@ -122,7 +135,7 @@ class StokesletWrapper:
         return sym_expr
 
     def apply_pressure(self, density_vec_sym, mu_sym, qbx_forced_limit):
-        """ Symbolic expression for pressure field associated with the Stokeslet"""
+        """Symbolic expression for pressure field associated with the Stokeslet."""
 
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
@@ -142,20 +155,17 @@ class StokesletWrapper:
 
     def apply_derivative(self, deriv_dir, density_vec_sym,
                              mu_sym, qbx_forced_limit):
-        """ Symbolic derivative of velocity from Stokeslet.
+        """Symbolic derivative of velocity from Stokeslet.
 
         Returns an object array of symbolic expressions for the vector
-        resulting from integrating the *deriv_dir* derivative of the
-        dyadic Stokeslet kernel (wrt target, not source) with
-        variable *density_vec_sym*.
+        resulting from integrating the *deriv_dir* target derivative of the
+        dyadic Stokeslet kernel with variable *density_vec_sym*.
 
-        :arg deriv_dir: which derivative we want: 0, 1, or 2 for x, y, z
-        :arg density_vec_sym: a symbolic vector variable for the density vector
-        :arg mu_sym: a symbolic variable for the viscosity
-        :arg qbx_forced_limit: the qbx_forced_limit argument to be passed
-            on to IntG.  +/-1 for exterior/interior one-sided boundary limit,
-            +/-2 for exterior/interior off-boundary evaluation, and 'avg'
-            for the average of the two one-sided boundary limits.
+        :arg deriv_dir: integer denoting the axis direction for the derivative.
+        :arg density_vec_sym: a symbolic vector variable for the density vector.
+        :arg mu_sym: a symbolic variable for the viscosity.
+        :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
+            to :class:`~pytential.symbolic.primitives.IntG`.
         """
 
         from pytential.symbolic.mappers import DerivativeTaker
@@ -193,31 +203,28 @@ class StokesletWrapper:
 
     def apply_stress(self, density_vec_sym, dir_vec_sym,
                         mu_sym, qbx_forced_limit):
-        """ Symbolic expression for viscous stress applied to direction
+        r"""Symbolic expression for viscous stress applied to a direction.
 
         Returns a vector of symbolic expressions for the force resulting
-        from the viscous stress:
-        -pressure * I + mu * ( grad U + (grad U).T)),
+        from the viscous stress
+
+        .. math::
+
+            -p \delta_{ij} + \mu (\nabla_i u_j + \nabla_j u_i)
+
         applied in the direction of *dir_vec_sym*.
 
         Note that this computation is very similar to computing
-        a double-layer potential with the stresslet kernel.
-        The difference is that here the direction vector is the
-        direction applied to the stress tensor and is applied
-        outside of the integration, whereas the stresslet calculation
-        uses the normal vectors at every source point.  As such, the
-        length of the argument passed in for the stresslet velocity
-        calculation (after binding) is the same length as the number
-        of source points/nodes; when calling this routine, the number
-        of direction vectors should be the same as the number of targets.
+        a double-layer potential with the Stresslet kernel in
+        :class:`StressletWrapper`. The difference is that here the direction
+        vector is applied at the target points, while in the Stresslet the
+        direction is applied at the source points.
 
-        :arg density_vec_sym: a symbolic vector variable for the density vector
-        :arg dir_vec_sym: a symbolic vector for the application direction
-        :arg mu_sym: a symbolic variable for the viscosity
-        :arg qbx_forced_limit: the qbx_forced_limit argument to be passed
-            on to IntG.  +/-1 for exterior/interior one-sided boundary limit,
-            +/-2 for exterior/interior off-boundary evaluation, and 'avg'
-            for the average of the two one-sided boundary limits.
+        :arg density_vec_sym: a symbolic vector variable for the density vector.
+        :arg dir_vec_sym: a symbolic vector for the application direction.
+        :arg mu_sym: a symbolic variable for the viscosity.
+        :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
+            to :class:`~pytential.symbolic.primitives.IntG`.
         """
 
         import itertools
@@ -259,7 +266,7 @@ class StokesletWrapper:
 # {{{ StressletWrapper
 
 class StressletWrapper:
-    """ Wrapper class for the Stresslet kernel.
+    """Wrapper class for the :class:`~sumpy.kernel.StressletKernel` kernel.
 
     This class is meant to shield the user from the messiness of writing
     out every term in the expansion of the triple-indexed Stresslet
@@ -269,27 +276,32 @@ class StressletWrapper:
     on the kernel -- say, once when we solve for the density, and once when
     we want a symbolic representation for the solution, for example.
 
-    The apply() function returns the integral expressions needed for convolving
-    the kernel with a vector density, and is meant to work similarly to
-    calling S() (which is IntG()).
+    The :meth:`apply` function returns the integral expressions needed for
+    convolving the kernel with a vector density, and is meant to work
+    similarly to :func:`~pytential.symbolic.primitives.S` (which is
+    :class:`~pytential.symbolic.primitives.IntG`).
 
     Similar functions are available for other useful things related to
-    the flow: apply_pressure, apply_derivative (target derivative),
-    apply_stress (applies symmetric viscous stress tensor in
+    the flow: :meth:`apply_pressure`, :meth:`apply_derivative` (target derivative),
+    :meth:`apply_stress` (applies symmetric viscous stress tensor in
     the requested direction).
 
     .. attribute:: kernel_dict
 
         The dictionary allows us to exploit symmetry -- that
-        StressletKernel(icomp=0, jcomp=1, kcomp=2) is identical to
-        StressletKernel(icomp=1, jcomp=2, kcomp=0) -- and avoid creating
+        :math:`T_{012}` is identical to :math:`T_{120}` -- and avoid creating
         multiple expansions for the same kernel in a different ordering.
 
+    .. automethod:: __init__
+    .. automethod:: apply
+    .. automethod:: apply_pressure
+    .. automethod:: apply_derivative
+    .. automethod:: apply_stress
     """
 
     def __init__(self, dim=None):
-
         self.dim = dim
+
         if dim == 2:
             self.kernel_dict = {
                 (3, 0): StressletKernel(dim=2, icomp=0, jcomp=0, kcomp=0),
@@ -316,19 +328,17 @@ class StressletWrapper:
             raise ValueError("unsupported dimension given to StressletWrapper")
 
     def apply(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
-        """ Symbolic expressions for integrating stresslet kernel
+        """Symbolic expressions for integrating Stresslet kernel.
 
         Returns an object array of symbolic expressions for the vector
-        resulting from integrating the dyadic stresslet kernel with
+        resulting from integrating the dyadic Stresslet kernel with
         variable *density_vec_sym* and source direction vectors *dir_vec_sym*.
 
-        :arg density_vec_sym: a symbolic vector variable for the density vector
-        :arg dir_vec_sym: a symbolic vector variable for the direction vector
-        :arg mu_sym: a symbolic variable for the viscosity
-        :arg qbx_forced_limit: the qbx_forced_limit argument to be passed
-            on to IntG.  +/-1 for exterior/interior one-sided boundary limit,
-            +/-2 for exterior/interior off-boundary evaluation, and 'avg'
-            for the average of the two one-sided boundary limits.
+        :arg density_vec_sym: a symbolic vector variable for the density vector.
+        :arg dir_vec_sym: a symbolic vector variable for the direction vector.
+        :arg mu_sym: a symbolic variable for the viscosity.
+        :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
+            to :class:`~pytential.symbolic.primitives.IntG`.
         """
 
         import itertools
@@ -364,7 +374,7 @@ class StressletWrapper:
         return sym_expr
 
     def apply_pressure(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
-        """ Symbolic expression for pressure field associated with the stresslet"""
+        """Symbolic expression for pressure field associated with the Stresslet."""
 
         import itertools
         from pytential.symbolic.mappers import DerivativeTaker
@@ -391,21 +401,19 @@ class StressletWrapper:
 
     def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
                              mu_sym, qbx_forced_limit):
-        """ Symbolic derivative of velocity from stresslet.
+        """Symbolic derivative of velocity from stresslet.
 
         Returns an object array of symbolic expressions for the vector
-        resulting from integrating the *deriv_dir* derivative of the
-        dyadic stresslet kernel (wrt target, not source) with
-        variable *density_vec_sym* and source direction vectors *dir_vec_sym*.
+        resulting from integrating the *deriv_dir* target derivative of the
+        dyadic Stresslet kernel with variable *density_vec_sym* and source
+        direction vectors *dir_vec_sym*.
 
-        :arg deriv_dir: which derivative we want: 0, 1, or 2 for x, y, z
-        :arg density_vec_sym: a symbolic vector variable for the density vector
-        :arg dir_vec_sym: a symbolic vector variable for the normal direction
-        :arg mu_sym: a symbolic variable for the viscosity
-        :arg qbx_forced_limit: the qbx_forced_limit argument to be passed
-            on to IntG.  +/-1 for exterior/interior one-sided boundary limit,
-            +/-2 for exterior/interior off-boundary evaluation, and 'avg'
-            for the average of the two one-sided boundary limits.
+        :arg deriv_dir: integer denoting the axis direction for the derivative.
+        :arg density_vec_sym: a symbolic vector variable for the density vector.
+        :arg dir_vec_sym: a symbolic vector variable for the normal direction.
+        :arg mu_sym: a symbolic variable for the viscosity.
+        :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
+            to :class:`~pytential.symbolic.primitives.IntG`.
         """
 
         import itertools
@@ -444,22 +452,24 @@ class StressletWrapper:
 
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
                         mu_sym, qbx_forced_limit):
-        """ Symbolic expression for viscous stress applied to direction
+        r"""Symbolic expression for viscous stress applied to a direction.
 
         Returns a vector of symbolic expressions for the force resulting
-        from the viscous stress:
-        -pressure * I + mu * ( grad U + (grad U).T)),
+        from the viscous stress
+
+        .. math::
+
+            -p \delta_{ij} + \mu (\nabla_i u_j + \nabla_j u_i)
+
         applied in the direction of *dir_vec_sym*.
 
-        :arg density_vec_sym: a symbolic vector variable for the density vector
+        :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg normal_vec_sym: a symbolic vector variable for the normal vectors
-            (outward facing normals at source locations)
-        :arg dir_vec_sym: a symbolic vector for the application direction
-        :arg mu_sym: a symbolic variable for the viscosity
-        :arg qbx_forced_limit: the qbx_forced_limit argument to be passed
-            on to IntG.  +/-1 for exterior/interior one-sided boundary limit,
-            +/-2 for exterior/interior off-boundary evaluation, and 'avg'
-            for the average of the two one-sided boundary limits.
+            (outward facing normals at source locations).
+        :arg dir_vec_sym: a symbolic vector for the application direction.
+        :arg mu_sym: a symbolic variable for the viscosity.
+        :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
+            to :class:`~pytential.symbolic.primitives.IntG`.
         """
 
         sym_expr = np.empty((self.dim,), dtype=object)
@@ -503,16 +513,16 @@ class StokesOperator:
     .. automethod:: operator
 
     .. automethod:: velocity
-    .. autoemthod:: pressure
+    .. automethod:: pressure
     """
 
     def __init__(self, ambient_dim, side):
         """
         :arg ambient_dim: dimension of the ambient space.
-        :arg side: :math:`+`` for exterior or :math:`-1` for interior.
+        :arg side: :math:`+1` for exterior or :math:`-1` for interior.
         """
 
-        if abs(side) != 1:
+        if side not in [+1, -1]:
             raise ValueError(f"invalid evaluation side: {side}")
 
         self.ambient_dim = ambient_dim
@@ -563,11 +573,14 @@ class StokesOperator:
 # {{{ exterior Stokes flow
 
 class HsiaoKressExteriorStokesOperator(StokesOperator):
-    """Representation for 2D Stokes Flow based on [hsiao-kress]_.
+    """Representation for 2D Stokes Flow based on [HsiaoKress1985]_.
 
-    .. [hsiao-kress] Hsiao & Kress, *On an Integral Equation for the
-        Two-Dimensional Exterior Stokes Problem*,
-        Applied Numerical Mathematics, Vol. 1, 1985.
+    Inherits from :class:`StokesOperator`.
+
+    .. [HsiaoKress1985] G. C. Hsiao and R. Kress, *On an Integral Equation for
+        the Two-Dimensional Exterior Stokes Problem*,
+        Applied Numerical Mathematics, Vol. 1, 1985,
+        `DOI <https://doi.org/10.1016/0168-9274(85)90029-7>`__.
 
     .. automethod:: __init__
     """
@@ -575,7 +588,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     def __init__(self, *, omega, alpha=None, eta=None):
         r"""
         :arg omega: farfield behaviour of the velocity field, as defined
-            by :math:`A` in [hsiao-kress]_ Equation 2.3.
+            by :math:`A` in [HsiaoKress1985]_ Equation 2.3.
         :arg alpha: real parameter :math:`\alpha > 0`.
         :arg eta: real parameter :math:`\eta > 0`. Choosing this parameter well
             can have a non-trivial effect on the conditioning.
@@ -648,11 +661,14 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
 
 
 class HebekerExteriorStokesOperator(StokesOperator):
-    """Representation for 3D Stokes Flow based on [hebeker]_.
+    """Representation for 3D Stokes Flow based on [Hebeker1986]_.
 
-    .. [hebeker] Hebeker, *Efficient Boundary Element Methods for
+    Inherits from :class:`StokesOperator`.
+
+    .. [Hebeker1986] F. C. Hebeker, *Efficient Boundary Element Methods for
         Three-Dimensional Exterior Viscous Flow*, Numerical Methods for
-        Partial Differential Equations, Vol. 2, 1986.
+        Partial Differential Equations, Vol. 2, 1986,
+        `DOI <https://doi.org/10.1002/num.1690020404>`__.
 
     .. automethod:: __init__
     """
