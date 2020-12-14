@@ -30,6 +30,11 @@ Maxwell's equations
 
 .. automodule:: pytential.symbolic.pde.maxwell
 
+Stokes' equations
+^^^^^^^^^^^^^^^^^
+
+.. automodule:: pytential.symbolic.stokes
+
 Internal affairs
 ----------------
 

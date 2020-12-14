@@ -307,7 +307,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
         density_discr = places.get_discretization(places.auto_source.geometry)
         nodes = thaw(actx, density_discr.nodes())
         r = actx.np.sqrt(nodes[0]*nodes[0] + nodes[1]*nodes[1] + nodes[2]*nodes[2])
-        phi = actx.np.acos(nodes[2]/r)
+        phi = actx.np.arccos(nodes[2]/r)
         theta = actx.np.arctan2(nodes[0], nodes[1])
 
         ymn = unflatten(actx, density_discr,

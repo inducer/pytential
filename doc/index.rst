@@ -22,8 +22,9 @@ Contents
     linalg
     tools
     misc
-
     qbx
+    🚀 Github <https://github.com/inducer/pytential>
+    💾 Download Releases <https://pypi.org/project/pytential>
 
 * :ref:`genindex`
 * :ref:`modindex`

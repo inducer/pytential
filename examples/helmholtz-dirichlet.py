@@ -26,7 +26,7 @@ k = 3
 
 def main(mesh_name="ellipse", visualize=False):
     import logging
-    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
+    logging.basicConfig(level=logging.INFO)  # INFO for more progress info
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
