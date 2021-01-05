@@ -742,7 +742,7 @@ class GraphvizMapper(GraphvizMapperBase):
         if not self.visit(expr, node_printed=True):
             return
 
-        [self.rec(density) for density in expr.densities]
+        self.rec(expr.densities)
         for arg_expr in expr.kernel_arguments.values():
             self.rec(arg_expr)
 
