@@ -136,7 +136,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         # kernels does not matter.
         result = (
                 expr.source,
-                *sort_arrays_together(expr.densities, expr.source_kernels),
+                *sort_arrays_together(expr.source_kernels, expr.densities),
                 expr.target_kernel,
                 )
 
