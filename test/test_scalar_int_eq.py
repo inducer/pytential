@@ -195,10 +195,9 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 
     # {{{ establish BCs
 
-    pot_src = sym.IntG(
+    pot_src = sym.int_g_vec(
         # FIXME: qbx_forced_limit--really?
-        target_kernel=knl, source_kernels=(knl,),
-        densities=(sym_charges,), qbx_forced_limit=None, **case.knl_sym_kwargs)
+        knl, sym_charges, qbx_forced_limit=None, **case.knl_sym_kwargs)
 
     test_direct = bind(places,
             pot_src,
