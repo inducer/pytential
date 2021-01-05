@@ -62,7 +62,7 @@ def flatten_to_numpy(actx, ary):
     return obj_array_vectorize(actx.to_numpy, result)
 
 
-def sort_arrays_together(*arys):
-    return zip(*sorted([x for x in zip(*arys)]))
+def sort_arrays_together(*arys, key=str):
+    return zip(*sorted([x for x in zip(*arys)], key=key))
 
 # vim: foldmethod=marker
