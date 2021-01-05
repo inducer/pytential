@@ -1644,7 +1644,7 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
 
     density = cse(density)
     return (dsource*nabla).map(
-            lambda coeff: _create_int_g(
+            lambda coeff: int_g_vec(
                 kernel,
                 density, qbx_forced_limit, source, target,
                 kernel_arguments=add_dir_vec_to_kernel_args(coeff),
@@ -1665,8 +1665,12 @@ class _unspecified:  # noqa: N801
     pass
 
 
-def _create_int_g(kernel, density, qbx_forced_limit, source, target,
-        kernel_arguments, **kwargs):
+def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
+        kernel_arguments=None, **kwargs):
+    """
+    Creates a vector of IntGs from one kernel with source and target derivatives
+    and maps a vector of densities into a vector of IntGs.
+    """
     from sumpy.kernel import SourceDerivativeRemover, TargetDerivativeRemover
     sdr = SourceDerivativeRemover()
     tdr = TargetDerivativeRemover()
@@ -1695,7 +1699,7 @@ def S(kernel, density,
                 "defaulting to +1", stacklevel=2)
         qbx_forced_limit = +1
 
-    return _create_int_g(kernel, density, qbx_forced_limit, source, target,
+    return int_g_vec(kernel, density, qbx_forced_limit, source, target,
             kernel_arguments, **kwargs)
 
 
