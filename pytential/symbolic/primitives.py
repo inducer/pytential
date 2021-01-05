@@ -1404,9 +1404,11 @@ class IntG(Expression):
     r"""
     .. math::
 
-        \int_\Gamma g_k(x-y) \sigma(y) dS_y
+        \int_\Gamma T (\sum S_k G(x-y) \sigma_k(y)) dS_y
 
-    where :math:`\sigma` is *density*.
+    where :math:`\sigma_k` is the k-th *density*, :math:`G` is a Green's
+    function, :math:`S_k` are source derivative operators and :math:`T` is a
+    target derivative operator.
     """
 
     init_arg_names = ("target_kernel", "source_kernels", "densities",
@@ -1419,7 +1421,14 @@ class IntG(Expression):
         """*target_derivatives* and later arguments should be considered
         keyword-only.
 
-        :arg target_kernel: an instance of :class:`sumpy.kernel.Kernel`.
+        :arg source_kernels: a tuple of instances of :class:`sumpy.kernel.Kernel`
+            with only source derivatives attached. k-th elements represents the
+            k-th source derivative operator above.
+        :arg target_kernel: an instance of :class:`sumpy.kernel.Kernel` with only
+            target dervatives attached. This represents the target derivative
+            operator :math:`T` above.
+        :arg densities: a tuple of density expressions. Length of this tuple
+            must match the length of the source_kernels arguments.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
             QBX center on the "+" side of the boundary. -1 for the other side.
             Evaluation at a target with a value of +/- 1 in *qbx_forced_limit*

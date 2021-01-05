@@ -42,8 +42,6 @@ class P2QBXLFromCSR(P2EBase):
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
-        print(self.source_kernels)
-        print(self.expansion)
 
         from sumpy.tools import gather_loopy_source_arguments
         arguments = (

@@ -148,10 +148,15 @@ class ComputePotentialInstruction(Instruction):
 
     .. attribute:: source_kernels
 
-        The common source kernels among :attr:`target_kernels`, with all the
-        layer potentials removed.
+        a list of :class:`sumpy.kernel.Kernel` instances with only source
+        derivatives and no target derivatives. See
+        :class:`pytential.symbolic.primitives.IntG` docstring for details.
 
     .. attribute:: densities
+
+        a list of densities with the same number of source_kernels.
+        See :class:`pytential.symbolic.primitives.IntG` docstring for details.
+
     .. attribute:: source
 
     .. attribute:: priority
@@ -202,11 +207,10 @@ class ComputePotentialInstruction(Instruction):
             else:
                 raise ValueError(f"unrecognized limit value: {o.qbx_forced_limit}")
 
-            source_kernels_strs = [
+            source_kernels_str = " + ".join([
                 f"density{i} * {source_kernel}" for i, source_kernel in
                 enumerate(self.source_kernels)
-            ]
-            source_kernels_str = " + ".join(source_kernels_strs)
+            ])
             target_kernel = self.target_kernels[o.kernel_index]
             target_kernel_str = str(target_kernel)
             base_kernel_str = str(target_kernel.get_base_kernel())
@@ -592,6 +596,8 @@ class OperatorCompiler(IdentityMapper):
             sorted_ops = sorted(group, key=lambda op: repr(op.target_kernel))
             target_kernels = [op.target_kernel for op in sorted_ops]
             from pytools import single_valued
+            # Each group was created with IntG expressions with the same
+            # source_kernels arguments.
             source_kernels = single_valued(op.source_kernels for op in sorted_ops)
 
             target_kernel_to_index = \
