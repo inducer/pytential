@@ -119,8 +119,10 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
     def op_group_features(self, expr):
         from sumpy.kernel import AxisTargetDerivativeRemover
+        from pytential.utils import sort_arrays_together
         result = (
-                expr.source, expr.densities, expr.source_kernels,
+                expr.source,
+                *sort_arrays_together(expr.densities, expr.source_kernels),
                 AxisTargetDerivativeRemover()(expr.target_kernel),
                 )
 

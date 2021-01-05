@@ -585,20 +585,19 @@ class OperatorCompiler(IdentityMapper):
         try:
             return self.expr_to_var[expr]
         except KeyError:
+            from pytential.utils import sort_arrays_together
+            densities, source_kernels = \
+                    *sort_arrays_together(expr.densities, expr.source_kernels)
             # make sure operator assignments stand alone and don't get muddled
             # up in vector arithmetic
             density_vars = [self.assign_to_new_var(self.rec(density)) for
-                density in expr.densities]
+                density in densities]
 
             group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
 
             sorted_ops = sorted(group, key=lambda op: repr(op.target_kernel))
             target_kernels = [op.target_kernel for op in sorted_ops]
-            from pytools import single_valued
-            # Each group was created with IntG expressions with the same
-            # source_kernels arguments.
-            source_kernels = single_valued(op.source_kernels for op in sorted_ops)
 
             target_kernel_to_index = \
                 {kernel: i for i, kernel in enumerate(target_kernels)}
