@@ -487,8 +487,20 @@ class EvalMapperFunction(Function):
     pass
 
 
-class CLMathFunction(Function):
+class NumpyMathFunction(Function):
+    """A math function named within the numpy naming convention and with
+    numpy-like semantics."""
     pass
+
+
+class CLMathFunction(NumpyMathFunction):
+    def __call__(self, *args, **kwargs):
+        from warnings import warn
+        warn("CLMathFunction '{name}' is deprecated. Use NumpyMathFunction instead. "
+                "CLMathFunction will go away in 2022.",
+                DeprecationWarning, stacklevel=2)
+
+        return super().__call__(*args, **kwargs)
 
 
 real = EvalMapperFunction("real")
@@ -496,27 +508,36 @@ imag = EvalMapperFunction("imag")
 conj = EvalMapperFunction("conj")
 abs = EvalMapperFunction("abs")
 
-sqrt = CLMathFunction("sqrt")
+sqrt = NumpyMathFunction("sqrt")
 
-sin = CLMathFunction("sin")
-cos = CLMathFunction("cos")
-tan = CLMathFunction("tan")
+sin = NumpyMathFunction("sin")
+cos = NumpyMathFunction("cos")
+tan = NumpyMathFunction("tan")
 
-asin = CLMathFunction("asin")
-acos = CLMathFunction("acos")
-atan = CLMathFunction("atan")
-atan2 = CLMathFunction("atan2")
+asin = CLMathFunction("arcsin")
+acos = CLMathFunction("arccos")
+atan = CLMathFunction("arctan")
+atan2 = CLMathFunction("arctan2")
 
-sinh = CLMathFunction("sinh")
-cosh = CLMathFunction("cosh")
-tanh = CLMathFunction("tanh")
+arcsin = NumpyMathFunction("arcsin")
+arccos = NumpyMathFunction("arccos")
+arctan = NumpyMathFunction("arctan")
+arctan2 = NumpyMathFunction("arctan2")
 
-asinh = CLMathFunction("asinh")
-acosh = CLMathFunction("acosh")
-atanh = CLMathFunction("atanh")
+sinh = NumpyMathFunction("sinh")
+cosh = NumpyMathFunction("cosh")
+tanh = NumpyMathFunction("tanh")
 
-exp = CLMathFunction("exp")
-log = CLMathFunction("log")
+asinh = CLMathFunction("arcsinh")
+acosh = CLMathFunction("arccosh")
+atanh = CLMathFunction("arctanh")
+
+arcsinh = NumpyMathFunction("arcsinh")
+arccosh = NumpyMathFunction("arccosh")
+arctanh = NumpyMathFunction("arctanh")
+
+exp = NumpyMathFunction("exp")
+log = NumpyMathFunction("log")
 
 
 class DiscretizationProperty(Expression):
