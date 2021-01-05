@@ -199,6 +199,94 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     direct_density_discr = places.get_discretization("direct_qbx")
     fmm_density_discr = places.get_discretization("fmm_qbx")
 
+    from pytential.qbx import QBXTargetAssociationFailedException
+    op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
+    try:
+        direct_sigma = direct_density_discr.zeros(actx) + 1
+        direct_fld_in_vol = bind(places, op,
+                auto_where=("direct_qbx", "target"))(
+                        actx, sigma=direct_sigma)
+    except QBXTargetAssociationFailedException as e:
+        fplot.show_scalar_in_matplotlib(
+            actx.to_numpy(actx.thaw(e.failed_target_flags)))
+        import matplotlib.pyplot as pt
+        pt.show()
+        raise
+
+    fmm_sigma = fmm_density_discr.zeros(actx) + 1
+    fmm_fld_in_vol = bind(places, op,
+            auto_where=("fmm_qbx", "target"))(
+                    actx, sigma=fmm_sigma)
+
+    err = actx.np.fabs(fmm_fld_in_vol - direct_fld_in_vol)
+    linf_err = actx.to_numpy(err).max()
+    print("l_inf error:", linf_err)
+
+    if do_plot:
+        #fplot.show_scalar_in_mayavi(0.1*.get(queue))
+        fplot.write_vtk_file("potential.vts", [
+            ("fmm_fld_in_vol", actx.to_numpy(fmm_fld_in_vol)),
+            ("direct_fld_in_vol", actx.to_numpy(direct_fld_in_vol))
+            ])
+
+    assert linf_err < 1e-3
+
+# }}}
+
+
+# {{{
+
+def test_single_plus_double_with_single_fmm(ctx_factory,  do_plot=False):
+    logging.basicConfig(level=logging.INFO)
+
+    cl_ctx = ctx_factory()
+    queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
+
+    # prevent cache 'splosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
+
+    nelements = 300
+    target_order = 8
+    qbx_order = 3
+
+    mesh = make_curve_mesh(WobblyCircle.random(8, seed=30),
+                np.linspace(0, 1, nelements+1),
+                target_order)
+
+    from pytential.qbx import QBXLayerPotentialSource
+    from meshmode.discretization import Discretization
+    from meshmode.discretization.poly_element import \
+            InterpolatoryQuadratureSimplexGroupFactory
+
+    pre_density_discr = Discretization(
+            actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
+    direct_qbx = QBXLayerPotentialSource(
+            pre_density_discr, 4*target_order, qbx_order,
+            fmm_order=False,
+            target_association_tolerance=0.05,
+            )
+    fmm_qbx = QBXLayerPotentialSource(
+            pre_density_discr, 4*target_order, qbx_order,
+            fmm_order=qbx_order + 3,
+            _expansions_in_tree_have_extent=True,
+            target_association_tolerance=0.05,
+            )
+
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
+    from pytential.target import PointsTarget
+    ptarget = PointsTarget(fplot.points)
+    from sumpy.kernel import LaplaceKernel
+
+    places = GeometryCollection({
+        "direct_qbx": direct_qbx,
+        "fmm_qbx": fmm_qbx,
+        "target": ptarget})
+
+    direct_density_discr = places.get_discretization("direct_qbx")
+    fmm_density_discr = places.get_discretization("fmm_qbx")
+
     knl = LaplaceKernel(2)
     from pytential.qbx import QBXTargetAssociationFailedException
     op_d = sym.D(knl, sym.var("sigma"), qbx_forced_limit=None)
@@ -247,8 +335,8 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
 
     assert linf_err < 1e-15
 
-# }}}
 
+# }}}
 
 # {{{ unregularized tests
 

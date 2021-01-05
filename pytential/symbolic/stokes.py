@@ -387,8 +387,9 @@ class StressletWrapper:
             if i + j < 1:
                 sym_expr = factor * DerivativeTaker(i).map_int_g(
                              DerivativeTaker(j).map_int_g(
-                                 sym.int_g_vec(kernel, density_vec_sym[i] * dir_vec_sym[j],
-                                 qbx_forced_limit=qbx_forced_limit)))
+                                 sym.int_g_vec(kernel,
+                                     density_vec_sym[i] * dir_vec_sym[j],
+                                     qbx_forced_limit=qbx_forced_limit)))
             else:
                 sym_expr = sym_expr + (
                                factor * DerivativeTaker(i).map_int_g(
@@ -437,16 +438,17 @@ class StressletWrapper:
                 if i + j < 1:
                     sym_expr[comp] = DerivativeTaker(deriv_dir).map_int_g(
                                      sym.int_g_vec(self.kernel_dict[ctr_key],
-                                     dir_vec_sym[i] * density_vec_sym[j],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym))
+                                        dir_vec_sym[i] * density_vec_sym[j],
+                                        qbx_forced_limit=qbx_forced_limit,
+                                        mu=mu_sym))
 
                 else:
                     sym_expr[comp] = sym_expr[comp] + DerivativeTaker(
                                         deriv_dir).map_int_g(
                                         sym.int_g_vec(self.kernel_dict[ctr_key],
-                                        dir_vec_sym[i] * density_vec_sym[j],
-                                        qbx_forced_limit=qbx_forced_limit,
-                                        mu=mu_sym))
+                                            dir_vec_sym[i] * density_vec_sym[j],
+                                            qbx_forced_limit=qbx_forced_limit,
+                                            mu=mu_sym))
 
         return sym_expr
 
