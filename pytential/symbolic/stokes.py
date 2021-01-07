@@ -24,7 +24,7 @@ import numpy as np
 
 from pytential import sym
 from sumpy.kernel import (StokesletKernel, StressletKernel, LaplaceKernel,
-    AxisTargetDerivative, BiharmonicKernel)
+    AxisTargetDerivative, AxisSourceDerivative, BiharmonicKernel)
 
 
 class StokesletWrapperMixin:
@@ -42,11 +42,21 @@ class StokesletWrapperMixin:
 
         def create_int_g(knl, deriv_dirs, **kwargs):
             for deriv_dir in deriv_dirs:
-                knl = AxisTargetDerivative(deriv_dir, knl)
+                knl = AxisSourceDerivative(deriv_dir, knl)
 
             res = sym.S(knl, density,
                     qbx_forced_limit=qbx_forced_limit, **kwargs)
-            return res
+            return res*(-1)**len(deriv_dirs)
+
+        def merge_int_gs(*int_gs):
+            int_gs = list(int_gs)
+            result = int_gs[0]
+            for int_g in int_gs[1:]:
+                result = result.copy(
+                    densities=result.densities + int_g.densities,
+                    source_kernels=result.source_kernels + int_g.source_kernels
+                )
+            return result
 
         if not self.use_biharmonic:
             knl = self.kernel_dict[idx]

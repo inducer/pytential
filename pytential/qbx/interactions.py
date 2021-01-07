@@ -42,8 +42,6 @@ class P2QBXLFromCSR(P2EBase):
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
-        print(self.source_kernels)
-        print(self.expansion)
 
         from sumpy.tools import gather_loopy_source_arguments
         arguments = (
@@ -97,14 +95,14 @@ class P2QBXLFromCSR(P2EBase):
                         for isrc
                             <> a[idim] = center[idim] - sources[idim, isrc] \
                                     {dup=idim}
-                            """] + self.get_loopy_instructions() + ["""
+                            """] + [f"<> strength_{i} = strengths[{i}, isrc]" for
+                                    i in set(self.strength_usage)] + self.get_loopy_instructions() + ["""
                         end
                     end
 
                     """] + [f"""
                     qbx_expansions[tgt_icenter, {i}] = \
-                            simul_reduce(sum, (isrc_box, isrc), \
-                                         {self.get_result_expr(i)}) \
+                            simul_reduce(sum, (isrc_box, isrc), coeff{i}) \
                             {{id_prefix=write_expn}}
                     """ for i in range(ncoeffs)] + ["""
 
@@ -220,8 +218,8 @@ class M2QBXL(E2EBase):
                 fixed_parameters=dict(dim=self.dim),
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
-        for expn in [self.src_expansion, self.tgt_expansion]:
-            loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
+        for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
@@ -322,8 +320,8 @@ class L2QBXL(E2EBase):
                 fixed_parameters=dict(dim=self.dim, nchildren=2**self.dim),
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
-        for expn in [self.src_expansion, self.tgt_expansion]:
-            loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
+        for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
@@ -421,7 +419,8 @@ class QBXL2P(E2PBase):
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
-        loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
+        for knl in self.kernels:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
 
         return loopy_knl
 
