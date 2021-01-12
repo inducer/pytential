@@ -4,6 +4,7 @@ channels:
 - nodefaults
 dependencies:
 - git
+- numpy=1.19.4
 - scipy
 - conda-forge::numpy
 - conda-forge::sympy
