@@ -121,7 +121,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.utils import sort_arrays_together
         result = (
                 expr.source,
-                *sort_arrays_together(expr.source_kernels, expr.densities),
+                *sort_arrays_together(expr.source_kernels, expr.densities, key=str),
                 expr.target_kernel,
                 )
 

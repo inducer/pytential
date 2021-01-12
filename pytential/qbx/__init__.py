@@ -424,7 +424,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.utils import sort_arrays_together
         result = (
                 expr.source, *sort_arrays_together(expr.source_kernels,
-                expr.densities)
+                expr.densities, key=str)
                 )
 
         return result

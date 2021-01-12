@@ -587,7 +587,7 @@ class OperatorCompiler(IdentityMapper):
         except KeyError:
             from pytential.utils import sort_arrays_together
             source_kernels, densities = \
-                    sort_arrays_together(expr.source_kernels, expr.densities)
+                sort_arrays_together(expr.source_kernels, expr.densities, key=str)
             # make sure operator assignments stand alone and don't get muddled
             # up in vector arithmetic
             density_vars = [self.assign_to_new_var(self.rec(density)) for
