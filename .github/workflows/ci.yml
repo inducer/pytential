@@ -106,4 +106,18 @@ jobs:
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
+    examples:
+        name: Examples
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            run: |
+                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                export EXTRA_INSTALL="pyvisfile matplotlib"
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                . ci-support.sh
+                build_py_project_in_conda_env
+                run_examples
+
 # vim: sw=4
