@@ -34,6 +34,7 @@ from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
 from pytools.obj_array import make_obj_array, flat_obj_array  # noqa: F401
+from pytools import single_valued
 
 
 __doc__ = """
@@ -196,6 +197,7 @@ Layer potentials
 
 .. autoclass:: IntG
 .. autofunction:: int_g_dsource
+.. autofunction:: int_g_vec
 
 .. autofunction:: S
 .. autofunction:: Sp
@@ -1447,7 +1449,11 @@ class IntG(Expression):
             k-th source derivative operator above.
         :arg target_kernel: an instance of :class:`sumpy.kernel.Kernel` with only
             target dervatives attached. This represents the target derivative
-            operator :math:`T` above.
+            operator :math:`T` above. Note that the term ``target_kernel`` is
+            bad as it's not a kernel and merely represents a target derivative
+            operator. This name will change once :mod:`sumpy` properly
+            supports derivative operators. This also means that the user has to
+            make sure that base kernels of all the kernels passed are the same.
         :arg densities: a tuple of density expressions. Length of this tuple
             must match the length of the source_kernels arguments.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
@@ -1500,6 +1506,9 @@ class IntG(Expression):
         for kernel in source_kernels + (target_kernel,):
             for karg in (kernel.get_args() + kernel.get_source_args()):
                 kernel_arg_names.add(karg.loopy_arg.name)
+
+        single_valued(kernel.get_base_kernel() for
+                kernel in source_kernels + (target_kernel,))
 
         kernel_arguments = kernel_arguments.copy()
         if kwargs:
@@ -1668,8 +1677,16 @@ class _unspecified:  # noqa: N801
 def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
         kernel_arguments=None, **kwargs):
     """
-    Creates a vector of IntGs from one kernel with source and target derivatives
-    and maps a vector of densities into a vector of IntGs.
+    Creates a vector of :class:`IntG` objects from one kernel with source and
+    target derivatives and maps a vector of densities into a vector of
+    :class:`IntG` objects.
+
+    Historically :class:`IntG` objects supported only one source kernel and
+    allowed multiple densities to get a vector of objects as a convenience
+    function. Now that :class:`IntG` objects supports multiple source kernels
+    with one density associated to each source kernel, previous interface
+    would lead to ambiguity. This function is intended to preserve the
+    interface of the constructor of :class:`IntG` for easy transition.
     """
     from sumpy.kernel import SourceDerivativeRemover, TargetDerivativeRemover
     sdr = SourceDerivativeRemover()
