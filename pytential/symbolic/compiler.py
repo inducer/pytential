@@ -118,7 +118,7 @@ class PotentialOutput(Record):
 
         the name of the variable to which the result is assigned
 
-    .. attribute:: kernel_index
+    .. attribute:: target_kernel_index
 
     .. attribute:: target_name
 
@@ -140,7 +140,7 @@ class ComputePotentialInstruction(Instruction):
     .. attribute:: target_kernels
 
         a list of :class:`sumpy.kernel.Kernel` instances, indexed by
-        :attr:`LayerPotentialOutput.kernel_index`.
+        :attr:`PotentialOutput.target_kernel_index`.
 
     .. attribute:: kernel_arguments
 
@@ -211,7 +211,7 @@ class ComputePotentialInstruction(Instruction):
                 f"density{i} * {source_kernel}" for i, source_kernel in
                 enumerate(self.source_kernels)
             ])
-            target_kernel = self.target_kernels[o.kernel_index]
+            target_kernel = self.target_kernels[o.target_kernel_index]
             target_kernel_str = str(target_kernel)
             base_kernel_str = str(target_kernel.get_base_kernel())
             kernel_str = target_kernel_str.replace(base_kernel_str,
@@ -610,14 +610,14 @@ class OperatorCompiler(IdentityMapper):
                     for arg_name, arg_val in expr.kernel_arguments.items()}
 
             outputs = [
-                    PotentialOutput(
-                        name=name,
-                        kernel_index=target_kernel_to_index[op.target_kernel],
-                        target_name=op.target,
-                        qbx_forced_limit=op.qbx_forced_limit,
-                        )
-                    for name, op in zip(names, group)
-                    ]
+                PotentialOutput(
+                    name=name,
+                    target_kernel_index=target_kernel_to_index[op.target_kernel],
+                    target_name=op.target,
+                    qbx_forced_limit=op.qbx_forced_limit,
+                    )
+                for name, op in zip(names, group)
+                ]
 
             self.code.append(
                     ComputePotentialInstruction(
