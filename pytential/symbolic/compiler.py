@@ -154,8 +154,9 @@ class ComputePotentialInstruction(Instruction):
 
     .. attribute:: densities
 
-        a list of densities with the same number of entries as :attr:`source_kernels`.
-        See :class:`pytential.symbolic.primitives.IntG` docstring for details.
+        a list of densities with the same number of entries as
+        :attr:`source_kernels`. See :class:`pytential.symbolic.primitives.IntG`
+        docstring for details.
 
     .. attribute:: source
 
