@@ -180,7 +180,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                     strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
-            result = output_for_each_kernel[o.kernel_index]
+            result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
                 from meshmode.dof_array import unflatten
                 result = unflatten(actx, target_discr, result)

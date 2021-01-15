@@ -674,7 +674,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             target_slice = slice(*geo_data.target_info().target_discr_starts[
                     target_side_number:target_side_number+2])
 
-            result = all_potentials_on_every_target[o.kernel_index][target_slice]
+            result = \
+                all_potentials_on_every_target[o.target_kernel_index][target_slice]
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
@@ -803,7 +804,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         expansion_radii=flatten(expansion_radii),
                         **kernel_args)
 
-                result = output_for_each_kernel[o.kernel_index]
+                result = output_for_each_kernel[o.target_kernel_index]
                 if isinstance(target_discr, Discretization):
                     result = unflatten(actx, target_discr, result)
 
@@ -881,7 +882,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                             qbx_center_numbers=qbx_center_numbers,
                             **tgt_subset_kwargs)
 
-                result = output_for_each_kernel[o.kernel_index]
+                result = output_for_each_kernel[o.target_kernel_index]
                 if isinstance(target_discr, Discretization):
                     result = unflatten(actx, target_discr, result)
 

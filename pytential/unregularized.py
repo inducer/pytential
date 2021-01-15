@@ -168,7 +168,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     flat_strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
-            result = output_for_each_kernel[o.kernel_index]
+            result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
                 result = unflatten(actx, target_discr, result)
 
@@ -279,7 +279,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     target_index:target_index+2])
             target_discr = targets[target_index]
 
-            result = all_potentials_on_every_tgt[o.kernel_index][target_slice]
+            result = all_potentials_on_every_tgt[o.target_kernel_index][target_slice]
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
