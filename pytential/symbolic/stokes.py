@@ -42,11 +42,17 @@ class StokesletWrapperMixin:
 
         def create_int_g(knl, deriv_dirs, **kwargs):
             for deriv_dir in deriv_dirs:
-                knl = AxisSourceDerivative(deriv_dir, knl)
+                if self.use_source:
+                    knl = AxisSourceDerivative(deriv_dir, knl)
+                else:
+                    knl = AxisTargetDerivative(deriv_dir, knl)
 
             res = sym.S(knl, density,
                     qbx_forced_limit=qbx_forced_limit, **kwargs)
-            return res*(-1)**len(deriv_dirs)
+            if self.use_source:
+                return res*(-1)**len(deriv_dirs)
+            else:
+                return res
 
         def merge_int_gs(*int_gs):
             int_gs = list(int_gs)
@@ -107,7 +113,7 @@ class StokesletWrapper(StokesletWrapperMixin):
        for the same kernel in a different ordering.
     """
 
-    def __init__(self, dim=None, use_biharmonic=True):
+    def __init__(self, dim=None, use_biharmonic=True, use_source=True):
         self.use_biharmonic = use_biharmonic
         self.dim = dim
         if not (dim == 3 or dim == 2):
@@ -116,6 +122,7 @@ class StokesletWrapper(StokesletWrapperMixin):
         self.kernel_dict = {}
 
         self.base_kernel = BiharmonicKernel(dim=dim)
+        self.use_source = use_source
 
         for i in range(dim):
             for j in range(i, dim):
@@ -273,7 +280,7 @@ class StressletWrapper(StokesletWrapperMixin):
 
     """
 
-    def __init__(self, dim=None, use_biharmonic=True):
+    def __init__(self, dim=None, use_biharmonic=True, use_source=True):
         self.use_biharmonic = use_biharmonic
         self.dim = dim
         if not (dim == 3 or dim == 2):
@@ -282,6 +289,7 @@ class StressletWrapper(StokesletWrapperMixin):
         self.kernel_dict = {}
 
         self.base_kernel = BiharmonicKernel(dim=dim)
+        self.use_source = use_source
 
         for i in range(dim):
             for j in range(i, dim):

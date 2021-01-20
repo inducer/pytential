@@ -27,6 +27,10 @@ from pytools import (
                 generate_nonnegative_integer_tuples_summing_to_at_most
                 as gnitstam)
 
+from pymbolic.mapper import CombineMapper
+from pymbolic.primitives import Sum, Product
+from pytential.symbolic.primitives import IntG
+
 
 def _chop(expr, tol):
     nums = expr.atoms(sym.Number)
@@ -115,6 +119,74 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=False):
 
     return res
 
+
+class HaveIntGs(CombineMapper):
+    def combine(self, values):
+        return sum(values)
+
+    def map_int_g(self, expr):
+        return 1
+
+    def map_constant(self, expr):
+        return 0
+
+    def map_variable(self, expr):
+        return 0
+
+    def handle_unsupported_expression(self, expr, *args, **kwargs):
+        return 0
+
+
+def process(expr):
+    have_int_g = HaveIntGs()
+    if have_int_g(expr) <= 1:
+        return expr
+    return sum(_process(expr))
+
+
+def _process(expr):
+    if isinstance(expr, Sum):
+        result_coeff = 0
+        result_int_g = 0
+        for c in expr.children:
+            coeff, int_g = _process(c)
+            result_coeff += coeff
+            if int_g == 0:
+                continue
+            if result_int_g == 0:
+                result_int_g = int_g
+                continue
+            assert result_int_g.source == int_g.source
+            assert result_int_g.target == int_g.target
+            assert result_int_g.qbx_forced_limit == int_g.qbx_forced_limit
+            assert result_int_g.kernel_arguments == int_g.kernel_arguments
+            assert result_int_g.target_kernel == int_g.target_kernel
+            result_int_g = result_int_g.copy(
+                source_kernels=(result_int_g.source_kernels + int_g.source_kernels),
+                densities=(result_int_g.densities + int_g.densities)
+            )
+        return result_coeff, result_int_g
+    elif isinstance(expr, Product):
+        mult = 1
+        found_int_g = None
+        have_int_g = HaveIntGs()
+        for c in expr.children:
+            if not have_int_g(c):
+                mult *= c
+            elif found_int_g:
+                raise RuntimeError("Not a linear expression.")
+            else:
+                found_int_g = c
+        if not found_int_g:
+            return expr, 0
+        else:
+            coeff, new_int_g = _process(found_int_g)
+            new_densities = (density * mult for density in new_int_g.densities)
+            return coeff*mult, new_int_g.copy(densities=new_densities)
+    elif isinstance(expr, IntG):
+        return 0, expr
+    else:
+        return expr, 0
 
 if __name__ == "__main__":
     from sumpy.kernel import StokesletKernel, BiharmonicKernel, StressletKernel
