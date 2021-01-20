@@ -42,9 +42,9 @@ import logging
 
 
 def run_exterior_stokes_2d(ctx_factory, nelements,
-        mesh_order=4, target_order=4, qbx_order=4,
-        fmm_order=10,
-        mu=1, circle_rad=1.5, visualize=False):
+        target_order=3, qbx_order=7,
+        fmm_order=13,
+        mu=1, circle_rad=1.5, visualize=False, use_biharmonic=True):
 
     # This program tests an exterior Stokes flow in 2D using the
     # compound representation given in Hsiao & Kress,
@@ -57,7 +57,7 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue)
 
-    ovsmp_target_order = 4*target_order
+    ovsmp_target_order = 8*target_order
 
     # {{{ geometries
 
@@ -133,8 +133,12 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     # +1 for exterior Dirichlet
     loc_sign = 1
 
-    stresslet_obj = StressletWrapper(dim=2)
-    stokeslet_obj = StokesletWrapper(dim=2)
+    stresslet_obj = StressletWrapper(dim=2, use_biharmonic=use_biharmonic)
+    stokeslet_obj = StokesletWrapper(dim=2, use_biharmonic=use_biharmonic)
+    #stresslet_obj = StressletWrapper(dim=2, use_biharmonic=False)
+    #stokeslet_obj = StokesletWrapper(dim=2, use_biharmonic=False)
+    #stresslet_obj = StressletWrapper(dim=2, use_biharmonic=True, use_source=False)
+    #stokeslet_obj = StokesletWrapper(dim=2, use_biharmonic=True, use_source=False)
     bdry_op_sym = (
             -loc_sign * 0.5 * sigma_sym
             - stresslet_obj.apply(sigma_sym, nvec_sym, mu_sym,
@@ -142,9 +146,14 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
             + stokeslet_obj.apply(meanless_sigma_sym, mu_sym,
                 qbx_forced_limit="avg") - (0.5/np.pi) * int_sigma)
 
+    from pytential.symbolic.pde.system_utils import process
+    if use_biharmonic:
+        bdry_op_sym = np.array([process(expr) for expr in bdry_op_sym])
+
     # }}}
 
     bound_op = bind(places, bdry_op_sym)
+    print(bound_op.code)
 
     # {{{ fix rhs and solve
 
@@ -192,8 +201,16 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
             ]))
 
     bvp_rhs = bind(places,
-            sym.make_sym_vector("bc", dim) + u_A_sym_bdry)(actx,
-                    bc=bc, mu=mu, omega=omega)
+            sym.make_sym_vector("bc", dim) + u_A_sym_bdry)(actx, bc=bc, mu=mu, omega=omega)
+    from time import time
+    scipy_op = bound_op.scipy_op(actx, "sigma", np.float64, mu=mu, normal=normal)
+    res = scipy_op.matvec(bvp_rhs)
+    print("start")
+    start = time()
+    res = scipy_op.matvec(bvp_rhs)
+    print(time()-start)
+    1/0
+    
     gmres_result = gmres(
             bound_op.scipy_op(actx, "sigma", np.float64, mu=mu, normal=normal),
             bvp_rhs,
@@ -212,6 +229,8 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     int_val = -int_val/(2 * np.pi)
     print("int_val = ", int_val)
 
+    #stresslet_obj = StressletWrapper(dim=2, use_biharmonic=True, use_source=False)
+    #stokeslet_obj = StokesletWrapper(dim=2, use_biharmonic=True, use_source=False)
     u_A_sym_vol = stokeslet_obj.apply(  # noqa: N806
             omega_sym, mu_sym, qbx_forced_limit=2)
     representation_sym = (
@@ -300,16 +319,25 @@ def run_exterior_stokes_2d(ctx_factory, nelements,
     return h_max, l2_err
 
 
-def test_exterior_stokes_2d(ctx_factory, qbx_order=3):
+def test_exterior_stokes_2d(ctx_factory, qbx_order=3, use_biharmonic=True):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
+    target_order = 3
+    fmm_order = 10
 
-    for nelements in [20, 50]:
-        h_max, l2_err = run_exterior_stokes_2d(ctx_factory, nelements)
+    for nelements in [100000]:
+        h_max, l2_err = run_exterior_stokes_2d(
+                ctx_factory, nelements,
+                qbx_order=qbx_order,
+                target_order=target_order,
+                fmm_order=fmm_order,
+                use_biharmonic=use_biharmonic
+        )
         eoc_rec.add_data_point(h_max, l2_err)
+        print(eoc_rec)
 
     print(eoc_rec)
-    assert eoc_rec.order_estimate() >= qbx_order - 1
+    assert eoc_rec.order_estimate() >= target_order - 0.5
 
 
 # You can test individual routines by typing
