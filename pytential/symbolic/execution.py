@@ -305,11 +305,12 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     # }}}
 
     def map_call(self, expr):
-        from pytential.symbolic.primitives import EvalMapperFunction, CLMathFunction
+        from pytential.symbolic.primitives import (
+                EvalMapperFunction, NumpyMathFunction)
 
         if isinstance(expr.function, EvalMapperFunction):
             return getattr(self, "apply_"+expr.function.name)(expr.parameters)
-        elif isinstance(expr.function, CLMathFunction):
+        elif isinstance(expr.function, NumpyMathFunction):
             args = [self.rec(arg) for arg in expr.parameters]
             from numbers import Number
             if all(isinstance(arg, Number) for arg in args):
