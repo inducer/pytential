@@ -150,7 +150,8 @@ def run_exterior_stokes(ctx_factory, *,
 
     sym_velocity = op.velocity(sym_sigma, normal=sym_normal, mu=sym_mu)
 
-    sym_source_pot = op.stokeslet.apply(sym_sigma, sym_mu, qbx_forced_limit=None)
+    from pytential.symbolic.stokes import StokesletWrapper
+    sym_source_pot = StokesletWrapper(ambient_dim, use_biharmonic=False).apply(sym_sigma, sym_mu, qbx_forced_limit=None)
 
     # }}}
 
@@ -177,16 +178,12 @@ def run_exterior_stokes(ctx_factory, *,
         bc_context = {}
         op_context = {"mu": mu, "normal": normal}
 
-    from meshmode.dof_array import unflatten, flatten, thaw
-    bc = bind(places, sym_source_pot,
-            auto_where=("point_source", "source"))(actx, sigma=charges, mu=mu)
+    bc_op = bind(places, sym_source_pot,
+            auto_where=("point_source", "source"))
+    bc = bc_op(actx, sigma=charges, mu=mu)
 
     rhs = bind(places, sym_rhs)(actx, bc=bc, **bc_context)
     bound_op = bind(places, sym_op)
-
-    from pytential.symbolic.pde.system_utils import process
-    if False:
-        bdry_op_sym = np.array([process(expr) for expr in bdry_op_sym])
 
     # }}}
 
@@ -197,7 +194,6 @@ def run_exterior_stokes(ctx_factory, *,
     start = time()
     res = scipy_op.matvec(rhs)
     print(time()-start)
-    1/0
     
     # {{{ solve
 
@@ -275,10 +271,11 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False, use_biharmon
     target_order = 3
     qbx_order = 3
 
-    print(ambient_dim)
     if ambient_dim == 2:
+        fmm_order = 10
         resolutions = [20, 35, 50]
     elif ambient_dim == 3:
+        fmm_order = 8
         resolutions = [0, 1, 2]
     else:
         raise ValueError(f"unsupported dimension: {ambient_dim}")
@@ -287,6 +284,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False, use_biharmon
         h_max, err = run_exterior_stokes(ctx_factory,
                 ambient_dim=ambient_dim,
                 target_order=target_order,
+                fmm_order=fmm_order,
                 qbx_order=qbx_order,
                 resolution=resolution,
                 visualize=visualize,

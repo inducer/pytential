@@ -137,19 +137,27 @@ class HaveIntGs(CombineMapper):
         return 0
 
 
-def process(expr):
+def merge_int_g_exprs(exprs):
+    return np.array([merge_int_g_expr(expr) for expr in exprs])
+
+
+def merge_int_g_expr(expr):
     have_int_g = HaveIntGs()
     if have_int_g(expr) <= 1:
         return expr
-    return sum(_process(expr))
+    try:
+        res = sum(_merge_int_g_expr(expr))
+        return res
+    except AssertionError:
+        return expr
 
 
-def _process(expr):
+def _merge_int_g_expr(expr):
     if isinstance(expr, Sum):
         result_coeff = 0
         result_int_g = 0
         for c in expr.children:
-            coeff, int_g = _process(c)
+            coeff, int_g = _merge_int_g_expr(c)
             result_coeff += coeff
             if int_g == 0:
                 continue
@@ -180,7 +188,7 @@ def _process(expr):
         if not found_int_g:
             return expr, 0
         else:
-            coeff, new_int_g = _process(found_int_g)
+            coeff, new_int_g = _merge_int_g_expr(found_int_g)
             new_densities = (density * mult for density in new_int_g.densities)
             return coeff*mult, new_int_g.copy(densities=new_densities)
     elif isinstance(expr, IntG):

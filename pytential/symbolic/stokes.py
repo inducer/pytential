@@ -23,6 +23,7 @@ THE SOFTWARE.
 import numpy as np
 
 from pytential import sym
+from pytential.symbolic.pde.system_utils import merge_int_g_exprs
 from sumpy.kernel import (StokesletKernel, StressletKernel, LaplaceKernel,
     AxisTargetDerivative, AxisSourceDerivative, BiharmonicKernel)
 
@@ -71,7 +72,12 @@ class StokesletWrapperMixin:
 
         deriv_relation = self.deriv_relation_dict[idx]
         const = deriv_relation[0]
-        const *= sym.integral(self.dim, self.dim-1, density, dofdesc=self.source_dofdesc)
+
+        # NOTE: we set a dofdesc here to force the evaluation of this integral
+        # on the source instead of the target when using automatic tagging
+        # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
+        dd = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
+        const *= sym.integral(self.dim, self.dim-1, density, dofdesc=dd)
 
         result = const
         for mi, coeff in deriv_relation[1]:
@@ -118,7 +124,7 @@ class StokesletWrapper(StokesletWrapperMixin):
     .. automethod:: apply_stress
     """
 
-    def __init__(self, dim=None, use_biharmonic=True, use_source=True, source_dofdesc=None):
+    def __init__(self, dim=None, use_biharmonic=True, use_source=True):
         self.use_biharmonic = use_biharmonic
         self.dim = dim
         if not (dim == 3 or dim == 2):
@@ -128,7 +134,6 @@ class StokesletWrapper(StokesletWrapperMixin):
 
         self.base_kernel = BiharmonicKernel(dim=dim)
         self.use_source = use_source
-        self.source_dofdesc = source_dofdesc
 
         for i in range(dim):
             for j in range(i, dim):
@@ -287,7 +292,7 @@ class StressletWrapper(StokesletWrapperMixin):
     .. automethod:: apply_stress
     """
 
-    def __init__(self, dim=None, use_biharmonic=True, use_source=True, source_dofdesc=None):
+    def __init__(self, dim=None, use_biharmonic=True, use_source=True):
         self.use_biharmonic = use_biharmonic
         self.dim = dim
         if not (dim == 3 or dim == 2):
@@ -297,7 +302,6 @@ class StressletWrapper(StokesletWrapperMixin):
 
         self.base_kernel = BiharmonicKernel(dim=dim)
         self.use_source = use_source
-        self.source_dofdesc = source_dofdesc
 
         for i in range(dim):
             for j in range(i, dim):
@@ -472,16 +476,8 @@ class StokesOperator:
         self.ambient_dim = ambient_dim
         self.side = side
 
-        # NOTE: we set a dofdesc here to force the evaluation of this integral
-        # on the source instead of the target when using automatic tagging
-        # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
-        self.source_dofdesc = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
-        from pytential.symbolic.primitives import as_dofdesc, DEFAULT_SOURCE
-        self.source_dofdesc = as_dofdesc(DEFAULT_SOURCE)
-        self.source_dofdesc = "source"
-
-        self.stresslet = StressletWrapper(dim=self.ambient_dim, use_biharmonic=use_biharmonic, source_dofdesc=self.source_dofdesc)
-        self.stokeslet = StokesletWrapper(dim=self.ambient_dim, use_biharmonic=use_biharmonic, source_dofdesc=self.source_dofdesc)
+        self.stresslet = StressletWrapper(dim=self.ambient_dim, use_biharmonic=use_biharmonic)
+        self.stokeslet = StokesletWrapper(dim=self.ambient_dim, use_biharmonic=use_biharmonic)
         self.use_biharmonic = use_biharmonic
         
 
@@ -566,7 +562,8 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         self.eta = eta
 
     def _farfield(self, mu, qbx_forced_limit):
-        length = sym.integral(self.ambient_dim, self.dim, 1)
+        source_dofdesc = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
+        length = sym.integral(self.ambient_dim, self.dim, 1, dofdesc=source_dofdesc)
         return self.stokeslet.apply(
                 -self.omega / length,
                 mu,
@@ -575,11 +572,15 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     def _operator(self, sigma, normal, mu, qbx_forced_limit):
         slp_qbx_forced_limit = qbx_forced_limit
         if slp_qbx_forced_limit == "avg":
-            slp_qbx_forced_limit = +1
+            slp_qbx_forced_limit = "avg"
 
-        int_sigma = sym.integral(self.ambient_dim, self.dim, sigma, dofdesc=self.source_dofdesc)
+        # NOTE: we set a dofdesc here to force the evaluation of this integral
+        # on the source instead of the target when using automatic tagging
+        # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
+        dd = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
+        int_sigma = sym.integral(self.ambient_dim, self.dim, sigma, dofdesc=dd)
     
-        meanless_sigma = sym.cse(sigma - sym.mean(self.ambient_dim, self.dim, sigma, dofdesc=self.source_dofdesc))
+        meanless_sigma = sym.cse(sigma - sym.mean(self.ambient_dim, self.dim, sigma, dofdesc=dd))
 
         op_k = self.stresslet.apply(sigma, normal, mu,
                 qbx_forced_limit=qbx_forced_limit)
@@ -596,11 +597,11 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
 
     def operator(self, sigma, *, normal, mu):
         # NOTE: H. K. 1985 Equation 2.18
-        return -0.5 * self.side * sigma - self._operator(sigma, normal, mu, "avg")
+        return merge_int_g_exprs(-0.5 * self.side * sigma - self._operator(sigma, normal, mu, "avg"))
 
     def velocity(self, sigma, *, normal, mu, qbx_forced_limit=2):
         # NOTE: H. K. 1985 Equation 2.16
-        return (
+        return merge_int_g_exprs(
                 -self._farfield(mu, qbx_forced_limit)
                 - self._operator(sigma, normal, mu, qbx_forced_limit)
                 )
@@ -652,11 +653,11 @@ class HebekerExteriorStokesOperator(StokesOperator):
 
     def operator(self, sigma, *, normal, mu):
         # NOTE: H. 1986 Equation 17
-        return -0.5 * self.side * sigma - self._operator(sigma, normal, mu, "avg")
+        return merge_int_g_exprs(-0.5 * self.side * sigma - self._operator(sigma, normal, mu, "avg"))
 
     def velocity(self, sigma, *, normal, mu, qbx_forced_limit=2):
         # NOTE: H. 1986 Equation 16
-        return -self._operator(sigma, normal, mu, qbx_forced_limit)
+        return merge_int_g_exprs(-self._operator(sigma, normal, mu, qbx_forced_limit))
 
     def pressure(self, sigma, *, normal, mu, qbx_forced_limit=2):
         # FIXME: not given in H. 1986, but should be easy to derive using the
