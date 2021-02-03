@@ -79,7 +79,7 @@ def partition_by_nodes(actx, discr,
         leaf_boxes, = (tree.box_flags
                        & box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
-        indices = np.empty(len(leaf_boxes), dtype=np.object)
+        indices = np.empty(len(leaf_boxes), dtype=object)
         for i, ibox in enumerate(leaf_boxes):
             box_start = tree.box_source_starts[ibox]
             box_end = box_start + tree.box_source_counts_cumul[ibox]
@@ -90,11 +90,11 @@ def partition_by_nodes(actx, discr,
                 )
         indices = actx.from_numpy(np.hstack(indices))
     else:
-        indices = actx.from_numpy(np.arange(0, discr.ndofs, dtype=np.int))
+        indices = actx.from_numpy(np.arange(0, discr.ndofs, dtype=np.int64))
         ranges = actx.from_numpy(np.arange(
             0,
             discr.ndofs + 1,
-            max_nodes_in_box, dtype=np.int))
+            max_nodes_in_box, dtype=np.int64))
 
     assert ranges[-1] == discr.ndofs
 
@@ -261,7 +261,7 @@ class ProxyGenerator:
                     shape=(self.ambient_dim, "nranges")),
                 lp.GlobalArg("proxy_radius", None,
                     shape="nranges"),
-                lp.ValueArg("nsources", np.int),
+                lp.ValueArg("nsources", np.int64),
                 "..."
             ],
             name="find_proxy_radii_knl",
@@ -328,7 +328,7 @@ class ProxyGenerator:
         from pytential.utils import flatten_to_numpy
         centers = flatten_to_numpy(actx, centers_dev)
         radii = flatten_to_numpy(actx, radii_dev)
-        proxies = np.empty(indices.nblocks, dtype=np.object)
+        proxies = np.empty(indices.nblocks, dtype=object)
         for i in range(indices.nblocks):
             proxies[i] = _affine_map(self.ref_points,
                     A=(radii[i] * np.eye(self.ambient_dim)),
@@ -406,7 +406,7 @@ def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
         ])
     pxyradii = actx.to_numpy(pxyradii)
 
-    nbrindices = np.empty(indices.nblocks, dtype=np.object)
+    nbrindices = np.empty(indices.nblocks, dtype=object)
     for iproxy in range(indices.nblocks):
         # get list of boxes intersecting the current ball
         istart = query.leaves_near_ball_starts[iproxy]
@@ -504,9 +504,9 @@ def gather_block_interaction_points(actx, places, source_dd, indices,
                     shape="nnbrindices"),
                 lp.GlobalArg("nodes", None,
                     shape=(lpot_source.ambient_dim, "nproxies + nnbrindices")),
-                lp.ValueArg("nsources", np.int),
-                lp.ValueArg("nproxies", np.int),
-                lp.ValueArg("nnbrindices", np.int),
+                lp.ValueArg("nsources", np.int64),
+                lp.ValueArg("nproxies", np.int64),
+                lp.ValueArg("nnbrindices", np.int64),
                 "..."
             ],
             name="concat_proxy_and_neighbors",
@@ -533,7 +533,7 @@ def gather_block_interaction_points(actx, places, source_dd, indices,
             max_nodes_in_box=max_nodes_in_box)
 
     from meshmode.dof_array import flatten, thaw
-    ranges = actx.zeros(indices.nblocks + 1, dtype=np.int)
+    ranges = actx.zeros(indices.nblocks + 1, dtype=np.int64)
     _, (nodes, ranges) = knl()(actx.queue,
             sources=flatten(thaw(actx, discr.nodes())),
             proxies=proxies,

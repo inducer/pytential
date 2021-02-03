@@ -50,8 +50,8 @@ def test_spherical_bessel_functions():
     nterms = 9
     z = 3j
     scale = 1
-    j = np.zeros(1 + nterms, dtype=np.complex)
-    jder = np.zeros(1 + nterms, dtype=np.complex)
+    j = np.zeros(1 + nterms, dtype=np.complex128)
+    jder = np.zeros(1 + nterms, dtype=np.complex128)
     ts.jfuns3d_wrapper(nterms, z, scale, j, jder)
 
     # Reference solution computed using scipy.special.spherical_jn
@@ -93,8 +93,8 @@ def test_spherical_hankel_functions():
     nterms = 9
     z = 2 + 3j
     scale = 1
-    h = np.zeros(1 + nterms, dtype=np.complex)
-    hder = np.zeros(1 + nterms, dtype=np.complex)
+    h = np.zeros(1 + nterms, dtype=np.complex128)
+    hder = np.zeros(1 + nterms, dtype=np.complex128)
     ts.h3dall_wrapper(nterms, z, scale, h, hder)
 
     # Reference solution computed using

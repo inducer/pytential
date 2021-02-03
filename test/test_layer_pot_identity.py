@@ -341,7 +341,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
         from meshmode.dof_array import thaw, flatten, unflatten
         nodes_host = [actx.to_numpy(axis)
                 for axis in flatten(thaw(actx, density_discr.nodes()))]
-        normal = bind(places, sym.normal(d))(actx).as_vector(np.object)
+        normal = bind(places, sym.normal(d))(actx).as_vector(object)
         normal_host = [actx.to_numpy(axis)for axis in flatten(normal)]
 
         if k != 0:
@@ -405,7 +405,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
             bdry_vis = make_visualizer(actx, density_discr, target_order)
 
             bdry_normals = bind(places, sym.normal(mesh.ambient_dim))(actx)\
-                    .as_vector(dtype=np.object)
+                    .as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
                 ("u", u_dev),

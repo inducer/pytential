@@ -438,7 +438,7 @@ class RefinerWrangler(TreeWranglerBase):
         """
         if isinstance(refine_flags, cl.array.Array):
             refine_flags = refine_flags.get(self.queue)
-        refine_flags = refine_flags.astype(np.bool)
+        refine_flags = refine_flags.astype(bool)
 
         with ProcessLogger(logger, "refine mesh"):
             refiner.refine(refine_flags)
@@ -510,7 +510,7 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
 
     assert len(flags) == discr.mesh.nelements
 
-    flags = flags.astype(np.bool)
+    flags = flags.astype(bool)
     nodes_flags = np.zeros(discr.ndofs)
     for grp in discr.groups:
         meg = grp.mesh_el_group
@@ -760,7 +760,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         conn = wrangler.refine(
                 stage2_density_discr,
                 refiner,
-                np.ones(stage2_density_discr.mesh.nelements, dtype=np.bool),
+                np.ones(stage2_density_discr.mesh.nelements, dtype=bool),
                 group_factory, debug)
         stage2_density_discr = conn.to_discr
         connections.append(conn)

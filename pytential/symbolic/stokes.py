@@ -114,7 +114,7 @@ class StokesletWrapper:
 
             # Start variable count for kernel with 1 for the requested result
             #  component
-            base_count = np.zeros(self.dim, dtype=np.int)
+            base_count = np.zeros(self.dim, dtype=np.int32)
             base_count[comp] += 1
 
             for i in range(self.dim):
@@ -176,7 +176,7 @@ class StokesletWrapper:
 
             # Start variable count for kernel with 1 for the requested result
             #  component
-            base_count = np.zeros(self.dim, dtype=np.int)
+            base_count = np.zeros(self.dim, dtype=np.int32)
             base_count[comp] += 1
 
             for i in range(self.dim):
@@ -236,7 +236,7 @@ class StokesletWrapper:
 
             # Start variable count for kernel with 1 for the requested result
             #   component
-            base_count = np.zeros(self.dim, dtype=np.int)
+            base_count = np.zeros(self.dim, dtype=np.int32)
             base_count[comp] += 1
 
             for i, j in itertools.product(range(self.dim), range(self.dim)):
@@ -349,7 +349,7 @@ class StressletWrapper:
 
             # Start variable count for kernel with 1 for the requested result
             #   component
-            base_count = np.zeros(self.dim, dtype=np.int)
+            base_count = np.zeros(self.dim, dtype=np.int32)
             base_count[comp] += 1
 
             for i, j in itertools.product(range(self.dim), range(self.dim)):
@@ -425,7 +425,7 @@ class StressletWrapper:
 
             # Start variable count for kernel with 1 for the requested result
             #   component
-            base_count = np.zeros(self.dim, dtype=np.int)
+            base_count = np.zeros(self.dim, dtype=np.int32)
             base_count[comp] += 1
 
             for i, j in itertools.product(range(self.dim), range(self.dim)):
