@@ -5,7 +5,7 @@ sympy
 git+https://github.com/inducer/modepy.git#egg=modepy
 git+https://github.com/inducer/pyopencl.git#egg=pyopencl
 git+https://github.com/inducer/islpy.git#egg=islpy
-git+https://github.com/inducer/loopy.git#egg=loopy
+git+https://github.com/inducer/loopy.git@fa1bda8ead922c93773c226e29c975df20c1be23#egg=loopy
 git+https://github.com/inducer/boxtree.git#egg=boxtree
 git+https://github.com/inducer/meshmode.git#egg=meshmode
 git+https://github.com/inducer/sumpy.git@3d99addef59a016e4a5802bab7e648cb8bf3006e#egg=sumpy
