@@ -5,7 +5,7 @@ channels:
 dependencies:
 - git
 - scipy
-- conda-forge::numpy < 1.20
+- conda-forge::numpy
 - conda-forge::sympy
 - pocl
 - islpy
