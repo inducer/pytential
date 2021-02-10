@@ -667,7 +667,7 @@ def reference_jacobian(func, output_dim, dim, dofdesc=None):
     """Return a :class:`numpy.ndarray` representing the Jacobian of a vector function
     with respect to the reference coordinates.
     """
-    jac = np.zeros((output_dim, dim), np.object)
+    jac = np.zeros((output_dim, dim), object)
 
     for i in range(output_dim):
         func_component = func[i]
@@ -1594,7 +1594,7 @@ def _get_dir_vec(dsource, ambient_dim):
 
     coeffs = _DSourceCoefficientFinder()(dsource)
 
-    dir_vec = np.zeros(ambient_dim, np.object)
+    dir_vec = np.zeros(ambient_dim, object)
     for i in range(ambient_dim):
         dir_vec[i] = coeffs.pop(NablaComponent(i, None), 0)
 

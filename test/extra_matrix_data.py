@@ -57,7 +57,7 @@ class MatrixTestCaseMixin:
         # randomly pick a subset of points
         indices = indices.get(actx.queue)
 
-        subset = np.empty(indices.nblocks, dtype=np.object)
+        subset = np.empty(indices.nblocks, dtype=object)
         for i in range(indices.nblocks):
             iidx = indices.block_indices(i)
             isize = int(self.index_sparsity_factor * len(iidx))

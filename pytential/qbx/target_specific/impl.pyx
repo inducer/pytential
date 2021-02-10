@@ -106,8 +106,8 @@ def h3dall_wrapper(nterms, z, scale, hs, hders):
         int nterms_, ifder
         double scale_
         double complex z_
-        double complex[:] hvec = np.empty(1 + nterms, np.complex)
-        double complex[:] hdervec = np.empty(1 + nterms, np.complex)
+        double complex[:] hvec = np.empty(1 + nterms, np.complex128)
+        double complex[:] hdervec = np.empty(1 + nterms, np.complex128)
 
     ifder = hders is not None
 
@@ -677,9 +677,9 @@ def eval_target_specific_qbx_locals(
     target = np.zeros((maxthreads, PADDING))
     center = np.zeros((maxthreads, PADDING))
     dipole = np.zeros((maxthreads, PADDING))
-    result_grad = np.zeros((maxthreads, PADDING), dtype=np.complex)
-    jvals = np.zeros((maxthreads, BUFSIZE + PADDING), dtype=np.complex)
-    jderivs = np.zeros((maxthreads, BUFSIZE + PADDING), dtype=np.complex)
+    result_grad = np.zeros((maxthreads, PADDING), dtype=np.complex128)
+    jvals = np.zeros((maxthreads, BUFSIZE + PADDING), dtype=np.complex128)
+    jderivs = np.zeros((maxthreads, BUFSIZE + PADDING), dtype=np.complex128)
 
     # TODO: Check that the order is not too high, since temporary
     # arrays in this module that are limited by BUFSIZE may overflow

@@ -294,7 +294,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     density_discr = places.get_discretization(dd.geometry)
 
     noise = actx.to_numpy(
-            rng.uniform(queue, density_discr.ndofs, dtype=np.float, a=0.01, b=1.0))
+            rng.uniform(queue, density_discr.ndofs, dtype=np.float64, a=0.01, b=1.0))
 
     tunnel_radius = dof_array_to_numpy(actx,
             bind(places, sym._close_target_tunnel_radii(
@@ -302,9 +302,9 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
 
     def targets_from_sources(sign, dist, dim=2):
         nodes = dof_array_to_numpy(actx,
-                bind(places, sym.nodes(dim, dofdesc=dd))(actx).as_vector(np.object))
+                bind(places, sym.nodes(dim, dofdesc=dd))(actx).as_vector(object))
         normals = dof_array_to_numpy(actx,
-                bind(places, sym.normal(dim, dofdesc=dd))(actx).as_vector(np.object))
+                bind(places, sym.normal(dim, dofdesc=dd))(actx).as_vector(object))
         return actx.from_numpy(nodes + normals * sign * dist)
 
     from pytential.target import PointsTarget

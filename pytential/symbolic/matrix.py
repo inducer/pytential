@@ -444,7 +444,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                 expr, include_args=kernel_args)
         if self.exclude_self:
             kernel_args["target_to_source"] = actx.from_numpy(
-                    np.arange(0, target_discr.ndofs, dtype=np.int)
+                    np.arange(0, target_discr.ndofs, dtype=np.int64)
                     )
 
         from sumpy.p2p import P2PMatrixGenerator
@@ -576,7 +576,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                 expr, include_args=kernel_args)
         if self.exclude_self:
             kernel_args["target_to_source"] = actx.from_numpy(
-                    np.arange(0, target_discr.ndofs, dtype=np.int)
+                    np.arange(0, target_discr.ndofs, dtype=np.int64)
                     )
 
         from sumpy.p2p import P2PMatrixBlockGenerator

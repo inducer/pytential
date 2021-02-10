@@ -329,7 +329,7 @@ def test_node_reduction(ctx_factory):
         el_nr_base += grp.nelements
 
     from meshmode.dof_array import DOFArray
-    ary = DOFArray.from_list(actx, ary)
+    ary = DOFArray(actx, tuple(ary))
 
     for func, expected in [
             (sym.NodeSum, nelements * (nelements + 1) // 2),

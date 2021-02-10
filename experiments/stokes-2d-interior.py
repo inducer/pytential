@@ -65,7 +65,7 @@ def main(nelements):
 
     # Get normal vectors for the density discretization -- used in integration with stresslet
     mv_normal = bind(density_discr, sym.normal(2))(queue)
-    normal = mv_normal.as_vector(np.object)
+    normal = mv_normal.as_vector(object)
 
 
     # {{{ describe bvp
