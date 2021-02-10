@@ -4,6 +4,13 @@ channels:
 - nodefaults
 dependencies:
 - git
+
+# https://github.com/inducer/pytential/pull/56/
+# https://github.com/illinois-ceesd/mirgecom/issues/212
+# https://github.com/inducer/ci-support/commit/d43151a5c956574abd5b0929373eb1ff424b7400
+# https://github.com/inducer/ci-support/commit/de3381c58f78a6f26ea0a1ce5be517083bc515ee
+- jemalloc
+
 - scipy
 - conda-forge::numpy
 - conda-forge::sympy
