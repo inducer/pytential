@@ -44,6 +44,11 @@ And on macOS:
 
         hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential;do CC=clang python -m pip install --editable "git+https://github.com/inducer/$i#egg=$i"; done
 
+.. note::
+
+    In each case, you may leave out the ``--editable`` flag if you would not like
+    a checkout of the source code.
+
 Next time you want to use :mod:`pytential`, just run the following command::
 
     source /WHERE/YOU/INSTALLED/miniforge3/bin/activate inteq
