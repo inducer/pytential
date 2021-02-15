@@ -176,9 +176,10 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             return _reduce(node_knl(),
                     discr.empty(self.array_context, dtype=dtype))
         elif granularity is sym.GRANULARITY_ELEMENT:
-            result = DOFArray.from_list(self.array_context, [
-                    self.array_context.empty((grp.nelements, 1), dtype=dtype)
-                    for grp in discr.groups])
+            result = DOFArray(self.array_context, tuple([
+                self.array_context.empty((grp.nelements, 1), dtype=dtype)
+                for grp in discr.groups
+                ]))
             return _reduce(element_knl(), result)
         else:
             raise ValueError(f"unsupported granularity: {granularity}")
@@ -1162,7 +1163,7 @@ def build_matrix(actx, places, exprs, input_exprs, domains=None,
     from pytential.symbolic.matrix import MatrixBuilder, is_zero
     nblock_rows = len(exprs)
     nblock_columns = len(input_exprs)
-    blocks = np.zeros((nblock_rows, nblock_columns), dtype=np.object)
+    blocks = np.zeros((nblock_rows, nblock_columns), dtype=object)
 
     dtypes = []
     for ibcol in range(nblock_columns):

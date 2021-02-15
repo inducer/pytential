@@ -98,7 +98,7 @@ def _norm_inf_op(discr, num_components):
 def norm(discr, x, p=2):
     from pymbolic.geometric_algebra import MultiVector
     if isinstance(x, MultiVector):
-        x = x.as_vector(np.object)
+        x = x.as_vector(object)
 
     from meshmode.dof_array import DOFArray
     num_components = None

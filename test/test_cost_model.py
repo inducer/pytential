@@ -718,7 +718,7 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
         from boxtree.tools import make_uniform_particle_array
         ntargets = 10 ** 3
         targets = PointsTarget(
-                make_uniform_particle_array(queue, ntargets, dim, np.float))
+                make_uniform_particle_array(queue, ntargets, dim, np.float64))
         target_discrs_and_qbx_sides = ((targets, 0),)
         qbx_forced_limit = None
     else:

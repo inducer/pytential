@@ -79,7 +79,7 @@ class P2QBXLFromCSR(P2EBase):
                 for itgt_center
                     <> tgt_icenter = global_qbx_centers[itgt_center]
 
-                    <> center[idim] = qbx_centers[idim, tgt_icenter] {dup=idim}
+                    <> center[idim] = qbx_centers[idim, tgt_icenter]
                     <> rscale = qbx_expansion_radii[tgt_icenter]
 
                     <> itgt_box = qbx_center_to_target_box[tgt_icenter]

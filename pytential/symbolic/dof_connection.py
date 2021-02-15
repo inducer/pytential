@@ -117,7 +117,7 @@ class CenterGranularityConnection(GranularityConnection):
                     prg(), src1=src1, src2=src2, dst=result,
                     nelements=grp.nelements, nunit_dofs=grp.nunit_dofs)
             results.append(result)
-        return DOFArray.from_list(self.array_context, results)
+        return DOFArray(self.array_context, tuple(results))
 
     def __call__(self, arys):
         r"""
