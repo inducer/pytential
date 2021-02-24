@@ -1684,9 +1684,10 @@ def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
     Historically :class:`IntG` objects supported only one source kernel and
     allowed multiple densities to get a vector of objects as a convenience
     function. Now that :class:`IntG` objects supports multiple source kernels
-    with one density associated to each source kernel, previous interface
+    with one density associated to each source kernel, the previous interface
     would lead to ambiguity. This function is intended to preserve the
-    interface of the constructor of :class:`IntG` for easy transition.
+    "vectorizing" behavior of of the constructor of :class:`IntG`
+    for use cases where that is preferred.
     """
     from sumpy.kernel import SourceDerivativeRemover, TargetDerivativeRemover
     sdr = SourceDerivativeRemover()
