@@ -64,7 +64,9 @@ class P2QBXLFromCSR(P2EBase):
                     lp.ValueArg("ncenters", np.int32),
                     lp.ValueArg("nsources", np.int32),
                     "..."
-                ] + gather_loopy_source_arguments([self.expansion]))
+                ] + gather_loopy_source_arguments(
+                        self.source_kernels + (self.expansion,))
+        )
 
         loopy_knl = lp.make_kernel(
                 [
@@ -113,7 +115,8 @@ class P2QBXLFromCSR(P2EBase):
                     strength_count=self.strength_count),
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
-        loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
+        for knl in self.source_kernels:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
         return loopy_knl
@@ -215,8 +218,8 @@ class M2QBXL(E2EBase):
                 fixed_parameters=dict(dim=self.dim),
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
-        for expn in [self.src_expansion, self.tgt_expansion]:
-            loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
+        for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
@@ -317,8 +320,8 @@ class L2QBXL(E2EBase):
                 fixed_parameters=dict(dim=self.dim, nchildren=2**self.dim),
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
-        for expn in [self.src_expansion, self.tgt_expansion]:
-            loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
+        for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
 
@@ -416,7 +419,8 @@ class QBXL2P(E2PBase):
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
-        loopy_knl = self.expansion.prepare_loopy_kernel(loopy_knl)
+        for knl in self.kernels:
+            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
 
         return loopy_knl
 

@@ -63,19 +63,20 @@ class PotentialSource:
 
 class _SumpyP2PMixin:
 
-    def get_p2p(self, actx, kernels):
+    def get_p2p(self, actx, target_kernels, source_kernels=None):
         @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
-        def p2p(kernels):
-            if any(knl.is_complex_valued for knl in kernels):
+        def p2p(target_kernels, source_kernels):
+            if any(knl.is_complex_valued for knl in target_kernels):
                 value_dtype = self.complex_dtype
             else:
                 value_dtype = self.real_dtype
 
             from sumpy.p2p import P2P
             return P2P(actx.context,
-                    kernels, exclude_self=False, value_dtypes=value_dtype)
+                    target_kernels, exclude_self=False, value_dtypes=value_dtype,
+                    source_kernels=source_kernels)
 
-        return p2p(kernels)
+        return p2p(target_kernels, source_kernels)
 
 
 # {{{ point potential source
@@ -127,10 +128,16 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         return self._nodes.shape[0]
 
     def op_group_features(self, expr):
-        from sumpy.kernel import AxisTargetDerivativeRemover
+        from pytential.utils import sort_arrays_together
+        # since IntGs with the same source kernels and densities calculations
+        # for P2E and E2E are the same and only differs in E2P depending on the
+        # target kernel, we group all IntGs with same source kernels and densities.
+        # sorting is done to avoid duplicates as the order of the sum of source
+        # kernels does not matter.
         result = (
-                expr.source, expr.density,
-                AxisTargetDerivativeRemover()(expr.kernel),
+                expr.source,
+                *sort_arrays_together(expr.source_kernels, expr.densities, key=str),
+                expr.target_kernel,
                 )
 
         return result
@@ -153,7 +160,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         for arg_name, arg_expr in insn.kernel_arguments.items():
             kernel_args[arg_name] = evaluate(arg_expr)
 
-        strengths = evaluate(insn.density)
+        strengths = [evaluate(density) for density in insn.densities]
 
         # FIXME: Do this all at once
         results = []
@@ -163,16 +170,17 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
             # no on-disk kernel caching
             if p2p is None:
-                p2p = self.get_p2p(actx, insn.kernels)
+                p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
+                target_kernels=insn.target_kernels)
 
             from pytential.utils import flatten_if_needed
             evt, output_for_each_kernel = p2p(actx.queue,
                     flatten_if_needed(actx, target_discr.nodes()),
                     self._nodes,
-                    [strengths], **kernel_args)
+                    strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
-            result = output_for_each_kernel[o.kernel_index]
+            result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
                 from meshmode.dof_array import unflatten
                 result = unflatten(actx, target_discr, result)
@@ -263,14 +271,15 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
 
         return fmm_kernel
 
-    def get_fmm_output_and_expansion_dtype(self, base_kernel, strengths):
-        if base_kernel.is_complex_valued or _entry_dtype(strengths).kind == "c":
+    def get_fmm_output_and_expansion_dtype(self, kernels, strengths):
+        if any(knl.is_complex_valued for knl in kernels) or \
+                _entry_dtype(strengths).kind == "c":
             return self.complex_dtype
         else:
             return self.real_dtype
 
     def get_fmm_expansion_wrangler_extra_kwargs(
-            self, actx, out_kernels, tree_user_source_ids, arguments, evaluator):
+            self, actx, target_kernels, tree_user_source_ids, arguments, evaluator):
         # This contains things like the Helmholtz parameter k or
         # the normal directions for double layers.
 
@@ -296,7 +305,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
                 (gather_arguments, kernel_extra_kwargs),
                 (gather_source_arguments, source_extra_kwargs),
                 ]:
-            for arg in func(out_kernels):
+            for arg in func(target_kernels):
                 var_dict[arg.name] = obj_array_vectorize(
                         reorder_sources,
                         flatten_if_needed(actx, evaluator(arguments[arg.name])))

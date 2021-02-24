@@ -42,7 +42,8 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
 
         from sumpy.tools import gather_loopy_source_arguments
         arguments = (
-            gather_loopy_source_arguments(self.kernels)
+            gather_loopy_source_arguments((self.expansion,)
+                + self.source_kernels + self.target_kernels)
             + [
                 lp.GlobalArg("src", None,
                     shape=(self.dim, "nsources"), order="C"),
@@ -65,7 +66,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
             for i in range(self.strength_count)]
             + [lp.GlobalArg(f"result_{i}", self.value_dtypes[i],
                 shape="ntargets_total", order="C")
-            for i in range(len(self.kernels))])
+            for i in range(len(self.target_kernels))])
 
         loopy_knl = lp.make_kernel([
             "{[itgt]: 0 <= itgt < ntargets}",
@@ -83,13 +84,15 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                         {dup=idim}
                 <> rscale = expansion_radii[icenter]
             """]
+            + [f"<> strength_{i}_isrc = strength_{i}[isrc]"
+                for i in range(self.strength_count)]
             + loopy_insns + kernel_exprs
             + ["""
                 result_{i}[itgt_overall] = knl_{i}_scaling * \
                     simul_reduce(sum, isrc, pair_result_{i})  \
                         {{inames=itgt}}
                 """.format(i=iknl)
-                for iknl in range(len(self.expansions))]
+                for iknl in range(len(self.target_kernels))]
             + ["end"],
             arguments,
             name=self.name,
@@ -98,7 +101,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
-        for expn in self.expansions:
+        for expn in self.source_kernels + self.target_kernels:
             loopy_knl = expn.prepare_loopy_kernel(loopy_knl)
 
         return loopy_knl

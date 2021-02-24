@@ -395,7 +395,7 @@ class CostModelMapper(EvaluationMapperBase):
     def exec_compute_potential_insn(
             self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         source = bound_expr.places.get_geometry(insn.source.geometry)
-        knls = frozenset(knl for knl in insn.kernels)
+        knls = frozenset(knl for knl in insn.target_kernels)
 
         if (isinstance(self.kernel_to_calibration_params, str)
                 and self.kernel_to_calibration_params == "constant_one"):

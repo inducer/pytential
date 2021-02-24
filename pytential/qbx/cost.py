@@ -554,7 +554,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
             for insn in real_cost:
                 assert (insn in model_cost)
 
-                knls = frozenset(knl for knl in insn.kernels)
+                knls = frozenset(knl for knl in insn.source_kernels)
 
                 if knls not in cost_per_kernel:
                     cost_per_kernel[knls] = {

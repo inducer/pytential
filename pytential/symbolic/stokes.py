@@ -123,12 +123,12 @@ class StokesletWrapper:
                 ctr_key = tuple(var_ctr)
 
                 if i < 1:
-                    sym_expr[comp] = sym.IntG(
+                    sym_expr[comp] = sym.int_g_vec(
                                      self.kernel_dict[ctr_key], density_vec_sym[i],
                                      qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
 
                 else:
-                    sym_expr[comp] = sym_expr[comp] + sym.IntG(
+                    sym_expr[comp] = sym_expr[comp] + sym.int_g_vec(
                                      self.kernel_dict[ctr_key], density_vec_sym[i],
                                      qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
 
@@ -144,11 +144,11 @@ class StokesletWrapper:
 
             if i < 1:
                 sym_expr = DerivativeTaker(i).map_int_g(
-                                sym.S(kernel, density_vec_sym[i],
+                                sym.int_g_vec(kernel, density_vec_sym[i],
                                 qbx_forced_limit=qbx_forced_limit))
             else:
                 sym_expr = sym_expr + (DerivativeTaker(i).map_int_g(
-                                sym.S(kernel, density_vec_sym[i],
+                                sym.int_g_vec(kernel, density_vec_sym[i],
                                 qbx_forced_limit=qbx_forced_limit)))
 
         return sym_expr
@@ -186,7 +186,7 @@ class StokesletWrapper:
 
                 if i < 1:
                     sym_expr[comp] = DerivativeTaker(deriv_dir).map_int_g(
-                                         sym.IntG(self.kernel_dict[ctr_key],
+                                         sym.int_g_vec(self.kernel_dict[ctr_key],
                                              density_vec_sym[i],
                                              qbx_forced_limit=qbx_forced_limit,
                                              mu=mu_sym))
@@ -194,7 +194,7 @@ class StokesletWrapper:
                 else:
                     sym_expr[comp] = sym_expr[comp] + DerivativeTaker(
                                          deriv_dir).map_int_g(
-                                             sym.IntG(self.kernel_dict[ctr_key],
+                                             sym.int_g_vec(self.kernel_dict[ctr_key],
                                              density_vec_sym[i],
                                              qbx_forced_limit=qbx_forced_limit,
                                              mu=mu_sym))
@@ -246,13 +246,13 @@ class StokesletWrapper:
                 ctr_key = tuple(var_ctr)
 
                 if i + j < 1:
-                    sym_expr[comp] = dir_vec_sym[i] * sym.IntG(
+                    sym_expr[comp] = dir_vec_sym[i] * sym.int_g_vec(
                                      stresslet_obj.kernel_dict[ctr_key],
                                      density_vec_sym[j],
                                      qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
 
                 else:
-                    sym_expr[comp] = sym_expr[comp] + dir_vec_sym[i] * sym.IntG(
+                    sym_expr[comp] = sym_expr[comp] + dir_vec_sym[i] * sym.int_g_vec(
                                                 stresslet_obj.kernel_dict[ctr_key],
                                                 density_vec_sym[j],
                                                 qbx_forced_limit=qbx_forced_limit,
@@ -359,13 +359,13 @@ class StressletWrapper:
                 ctr_key = tuple(var_ctr)
 
                 if i + j < 1:
-                    sym_expr[comp] = sym.IntG(
+                    sym_expr[comp] = sym.int_g_vec(
                                      self.kernel_dict[ctr_key],
                                      dir_vec_sym[i] * density_vec_sym[j],
                                      qbx_forced_limit=qbx_forced_limit, mu=mu_sym)
 
                 else:
-                    sym_expr[comp] = sym_expr[comp] + sym.IntG(
+                    sym_expr[comp] = sym_expr[comp] + sym.int_g_vec(
                                                 self.kernel_dict[ctr_key],
                                                 dir_vec_sym[i] * density_vec_sym[j],
                                                 qbx_forced_limit=qbx_forced_limit,
@@ -387,13 +387,14 @@ class StressletWrapper:
             if i + j < 1:
                 sym_expr = factor * DerivativeTaker(i).map_int_g(
                              DerivativeTaker(j).map_int_g(
-                                 sym.S(kernel, density_vec_sym[i] * dir_vec_sym[j],
-                                 qbx_forced_limit=qbx_forced_limit)))
+                                 sym.int_g_vec(kernel,
+                                     density_vec_sym[i] * dir_vec_sym[j],
+                                     qbx_forced_limit=qbx_forced_limit)))
             else:
                 sym_expr = sym_expr + (
                                factor * DerivativeTaker(i).map_int_g(
                                    DerivativeTaker(j).map_int_g(
-                                       sym.S(kernel,
+                                       sym.int_g_vec(kernel,
                                              density_vec_sym[i] * dir_vec_sym[j],
                                              qbx_forced_limit=qbx_forced_limit))))
 
@@ -436,17 +437,18 @@ class StressletWrapper:
 
                 if i + j < 1:
                     sym_expr[comp] = DerivativeTaker(deriv_dir).map_int_g(
-                                     sym.IntG(self.kernel_dict[ctr_key],
-                                     dir_vec_sym[i] * density_vec_sym[j],
-                                     qbx_forced_limit=qbx_forced_limit, mu=mu_sym))
+                                     sym.int_g_vec(self.kernel_dict[ctr_key],
+                                        dir_vec_sym[i] * density_vec_sym[j],
+                                        qbx_forced_limit=qbx_forced_limit,
+                                        mu=mu_sym))
 
                 else:
                     sym_expr[comp] = sym_expr[comp] + DerivativeTaker(
                                         deriv_dir).map_int_g(
-                                        sym.IntG(self.kernel_dict[ctr_key],
-                                        dir_vec_sym[i] * density_vec_sym[j],
-                                        qbx_forced_limit=qbx_forced_limit,
-                                        mu=mu_sym))
+                                        sym.int_g_vec(self.kernel_dict[ctr_key],
+                                            dir_vec_sym[i] * density_vec_sym[j],
+                                            qbx_forced_limit=qbx_forced_limit,
+                                            mu=mu_sym))
 
         return sym_expr
 

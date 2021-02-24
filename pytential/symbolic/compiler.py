@@ -118,7 +118,7 @@ class PotentialOutput(Record):
 
         the name of the variable to which the result is assigned
 
-    .. attribute:: kernel_index
+    .. attribute:: target_kernel_index
 
     .. attribute:: target_name
 
@@ -137,21 +137,27 @@ class ComputePotentialInstruction(Instruction):
         A list of :class:`PotentialOutput` instances
         The entries in the list correspond to :attr:`names`.
 
-    .. attribute:: kernels
+    .. attribute:: target_kernels
 
         a list of :class:`sumpy.kernel.Kernel` instances, indexed by
-        :attr:`LayerPotentialOutput.kernel_index`.
+        :attr:`PotentialOutput.target_kernel_index`.
 
     .. attribute:: kernel_arguments
 
         a dictionary mapping arg names to kernel arguments
 
-    .. attribute:: base_kernel
+    .. attribute:: source_kernels
 
-        The common base kernel among :attr:`kernels`, with all the
-        layer potentials removed.
+        a list of :class:`sumpy.kernel.Kernel` instances with only source
+        derivatives and no target derivatives. See
+        :class:`pytential.symbolic.primitives.IntG` docstring for details.
 
-    .. attribute:: density
+    .. attribute:: densities
+
+        a list of densities with the same number of entries as
+        :attr:`source_kernels`. See the :class:`pytential.symbolic.primitives.IntG`
+        docstring for details.
+
     .. attribute:: source
 
     .. attribute:: priority
@@ -163,7 +169,9 @@ class ComputePotentialInstruction(Instruction):
     def get_dependencies(self):
         dep_mapper = self.dep_mapper_factory()
 
-        result = dep_mapper(self.density)
+        result = dep_mapper(self.densities[0])
+        for density in self.densities[1:]:
+            result.update(dep_mapper(density))
 
         for arg_expr in self.kernel_arguments.values():
             result.update(dep_mapper(arg_expr))
@@ -171,7 +179,9 @@ class ComputePotentialInstruction(Instruction):
         return result
 
     def __str__(self):
-        args = [f"density={self.density}", f"source={self.source}"]
+        args = [f"source={self.source}"]
+        for i, density in enumerate(self.densities):
+            args.append(f"density{i}={density}")
 
         from pytential.symbolic.mappers import StringifyMapper, stringify_where
         strify = StringifyMapper()
@@ -198,9 +208,18 @@ class ComputePotentialInstruction(Instruction):
             else:
                 raise ValueError(f"unrecognized limit value: {o.qbx_forced_limit}")
 
+            source_kernels_str = " + ".join([
+                f"density{i} * {source_kernel}" for i, source_kernel in
+                enumerate(self.source_kernels)
+            ])
+            target_kernel = self.target_kernels[o.target_kernel_index]
+            target_kernel_str = str(target_kernel)
+            base_kernel_str = str(target_kernel.get_base_kernel())
+            kernel_str = target_kernel_str.replace(base_kernel_str,
+                f"({source_kernels_str})")
+
             line = "{}{} <- {}{}".format(
-                    o.name, tgt_str, limit_str,
-                    self.kernels[o.kernel_index])
+                    o.name, tgt_str, limit_str, kernel_str)
 
             lines.append(line)
 
@@ -567,22 +586,22 @@ class OperatorCompiler(IdentityMapper):
         try:
             return self.expr_to_var[expr]
         except KeyError:
+            from pytential.utils import sort_arrays_together
+            source_kernels, densities = \
+                sort_arrays_together(expr.source_kernels, expr.densities, key=str)
             # make sure operator assignments stand alone and don't get muddled
             # up in vector arithmetic
-            density_var = self.assign_to_new_var(self.rec(expr.density))
+            density_vars = [self.assign_to_new_var(self.rec(density)) for
+                density in densities]
 
             group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
 
-            kernels = sorted({op.kernel for op in group}, key=repr)
+            sorted_ops = sorted(group, key=lambda op: repr(op.target_kernel))
+            target_kernels = [op.target_kernel for op in sorted_ops]
 
-            kernel_to_index = {kernel: i for i, kernel in enumerate(kernels)}
-
-            from pytools import single_valued
-            from sumpy.kernel import AxisTargetDerivativeRemover
-            atdr = AxisTargetDerivativeRemover()
-            base_kernel = single_valued(
-                    atdr(kernel) for kernel in kernels)
+            target_kernel_to_index = \
+                {kernel: i for i, kernel in enumerate(target_kernels)}
 
             for op in group:
                 assert op.qbx_forced_limit in [-2, -1, None, 1, 2]
@@ -592,22 +611,22 @@ class OperatorCompiler(IdentityMapper):
                     for arg_name, arg_val in expr.kernel_arguments.items()}
 
             outputs = [
-                    PotentialOutput(
-                        name=name,
-                        kernel_index=kernel_to_index[op.kernel],
-                        target_name=op.target,
-                        qbx_forced_limit=op.qbx_forced_limit,
-                        )
-                    for name, op in zip(names, group)
-                    ]
+                PotentialOutput(
+                    name=name,
+                    target_kernel_index=target_kernel_to_index[op.target_kernel],
+                    target_name=op.target,
+                    qbx_forced_limit=op.qbx_forced_limit,
+                    )
+                for name, op in zip(names, group)
+                ]
 
             self.code.append(
                     ComputePotentialInstruction(
                         outputs=outputs,
-                        kernels=tuple(kernels),
+                        target_kernels=tuple(target_kernels),
                         kernel_arguments=kernel_arguments,
-                        base_kernel=base_kernel,
-                        density=density_var,
+                        source_kernels=source_kernels,
+                        densities=density_vars,
                         source=expr.source,
                         priority=max(getattr(op, "priority", 0) for op in group),
                         dep_mapper_factory=self.dep_mapper_factory))

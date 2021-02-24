@@ -118,10 +118,11 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         return func(actx, insn, bound_expr, evaluate_wrapper)
 
     def op_group_features(self, expr):
-        from sumpy.kernel import AxisTargetDerivativeRemover
+        from pytential.utils import sort_arrays_together
         result = (
-                expr.source, expr.density,
-                AxisTargetDerivativeRemover()(expr.kernel),
+                expr.source,
+                *sort_arrays_together(expr.source_kernels, expr.densities, key=str),
+                expr.target_kernel,
                 )
 
         return result
@@ -147,8 +148,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim, dofdesc=insn.source))(actx)
-        strengths = waa * evaluate(insn.density)
-        flat_strengths = flatten(strengths)
+        strengths = [waa * evaluate(density) for density in insn.densities]
+        flat_strengths = [flatten(strength) for strength in strengths]
 
         results = []
         p2p = None
@@ -158,15 +159,16 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     o.target_name.geometry, o.target_name.discr_stage)
 
             if p2p is None:
-                p2p = self.get_p2p(actx, insn.kernels)
+                p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
+                    target_kernels=insn.target_kernels)
 
             evt, output_for_each_kernel = p2p(actx.queue,
                     flatten_if_needed(actx, target_discr.nodes()),
                     flatten(thaw(actx, self.density_discr.nodes())),
-                    [flat_strengths], **kernel_args)
+                    flat_strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
-            result = output_for_each_kernel[o.kernel_index]
+            result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
                 result = unflatten(actx, target_discr, result)
 
@@ -178,7 +180,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, fmm_kernel, out_kernels):
+    def expansion_wrangler_code_container(self, fmm_kernel, target_kernels,
+            source_kernels):
         mpole_expn_class = \
                 self.expansion_factory.get_multipole_expansion_class(fmm_kernel)
         local_expn_class = \
@@ -193,7 +196,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 self.cl_context,
                 fmm_mpole_factory,
                 fmm_local_factory,
-                out_kernels)
+                target_kernels=target_kernels, source_kernels=source_kernels)
 
     @property
     def fmm_geometry_code_container(self):
@@ -234,22 +237,24 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim, dofdesc=insn.source))(actx)
-        strengths = waa * evaluate(insn.density)
+        strengths = [waa * evaluate(density) for density in insn.densities]
 
         from meshmode.dof_array import flatten
-        flat_strengths = flatten(strengths)
+        flat_strengths = [flatten(strength) for strength in strengths]
 
-        out_kernels = tuple(knl for knl in insn.kernels)
-        fmm_kernel = self.get_fmm_kernel(out_kernels)
+        fmm_kernel = self.get_fmm_kernel(insn.target_kernels)
         output_and_expansion_dtype = (
-                self.get_fmm_output_and_expansion_dtype(fmm_kernel, strengths))
+                self.get_fmm_output_and_expansion_dtype(insn.target_kernels,
+                    strengths[0]))
         kernel_extra_kwargs, source_extra_kwargs = (
                 self.get_fmm_expansion_wrangler_extra_kwargs(
-                    actx, out_kernels, geo_data.tree().user_source_ids,
-                    insn.kernel_arguments, evaluate))
+                    actx, insn.target_kernels + insn.source_kernels,
+                    geo_data.tree().user_source_ids, insn.kernel_arguments,
+                    evaluate))
 
         wrangler = self.expansion_wrangler_code_container(
-                fmm_kernel, out_kernels).get_wrangler(
+                fmm_kernel, target_kernels=insn.target_kernels,
+                source_kernels=insn.source_kernels).get_wrangler(
                     actx.queue,
                     geo_data.tree(),
                     output_and_expansion_dtype,
@@ -261,7 +266,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from boxtree.fmm import drive_fmm
         all_potentials_on_every_tgt = drive_fmm(
-                geo_data.traversal(), wrangler, (flat_strengths,),
+                geo_data.traversal(), wrangler, flat_strengths,
                 timing_data=None)
 
         # {{{ postprocess fmm
@@ -274,7 +279,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     target_index:target_index+2])
             target_discr = targets[target_index]
 
-            result = all_potentials_on_every_tgt[o.kernel_index][target_slice]
+            result = all_potentials_on_every_tgt[o.target_kernel_index][target_slice]
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):

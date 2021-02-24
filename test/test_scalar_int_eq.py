@@ -195,7 +195,7 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 
     # {{{ establish BCs
 
-    pot_src = sym.IntG(
+    pot_src = sym.int_g_vec(
         # FIXME: qbx_forced_limit--really?
         knl, sym_charges, qbx_forced_limit=None, **case.knl_sym_kwargs)
 
