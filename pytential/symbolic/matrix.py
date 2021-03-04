@@ -453,7 +453,9 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                         )
 
             from sumpy.p2p import P2PMatrixGenerator
-            mat_gen = P2PMatrixGenerator(actx.context, (kernel,),
+            mat_gen = P2PMatrixGenerator(actx.context,
+                    source_kernels=(kernel,),
+                    target_kernels=(expr.target_kernel,),
                     exclude_self=self.exclude_self)
 
             from meshmode.dof_array import flatten, thaw
