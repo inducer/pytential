@@ -536,15 +536,17 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
 
 
 def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
-    from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            QuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+            OrderAndTypeBasedGroupFactory,
+            QuadratureSimplexElementGroup,
+            GaussLegendreTensorProductElementGroup)
 
-    return Discretization(
-            lpot_source._setup_actx,
-            stage2_density_discr.mesh,
-            QuadratureSimplexGroupFactory(lpot_source.fine_order),
-            lpot_source.real_dtype)
+    return stage2_density_discr.copy(
+            group_factory=OrderAndTypeBasedGroupFactory(
+                lpot_source.fine_order,
+                simplex_group_class=QuadratureSimplexElementGroup,
+                tensor_product_group_class=GaussLegendreTensorProductElementGroup),
+            )
 
 
 def _make_temporary_collection(lpot_source,
