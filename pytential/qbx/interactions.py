@@ -126,6 +126,7 @@ class P2QBXLFromCSR(P2EBase):
         # FIXME
         knl = self.get_kernel()
         knl = lp.split_iname(knl, "itgt_center", 16, outer_tag="g.0")
+        knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
     def __call__(self, queue, **kwargs):
@@ -230,6 +231,7 @@ class M2QBXL(E2EBase):
         # FIXME
         knl = self.get_kernel()
         knl = lp.split_iname(knl, "icenter", 16, outer_tag="g.0")
+        knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
     def __call__(self, queue, **kwargs):
@@ -332,6 +334,7 @@ class L2QBXL(E2EBase):
         # FIXME
         knl = self.get_kernel()
         knl = lp.split_iname(knl, "icenter", 16, outer_tag="g.0")
+        knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
     def __call__(self, queue, **kwargs):
@@ -429,6 +432,7 @@ class QBXL2P(E2PBase):
         # FIXME
         knl = self.get_kernel()
         knl = lp.tag_inames(knl, dict(iglobal_center="g.0"))
+        knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
     def __call__(self, queue, **kwargs):
