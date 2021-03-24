@@ -95,14 +95,14 @@ class P2QBXLFromCSR(P2EBase):
                         for isrc
                             <> a[idim] = center[idim] - sources[idim, isrc] \
                                     {dup=idim}
-                            """] + self.get_loopy_instructions() + ["""
+                            """] + [f"<> strength_{i} = strengths[{i}, isrc]" for
+                            i in set(self.strength_usage)] + self.get_loopy_instructions() + ["""
                         end
                     end
 
                     """] + [f"""
                     qbx_expansions[tgt_icenter, {i}] = \
-                            simul_reduce(sum, (isrc_box, isrc), \
-                                         {self.get_result_expr(i)}) \
+                            simul_reduce(sum, (isrc_box, isrc), coeff{i}) \
                             {{id_prefix=write_expn}}
                     """ for i in range(ncoeffs)] + ["""
 
