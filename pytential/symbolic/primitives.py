@@ -509,6 +509,7 @@ real = EvalMapperFunction("real")
 imag = EvalMapperFunction("imag")
 conj = EvalMapperFunction("conj")
 abs = EvalMapperFunction("abs")
+flatten = EvalMapperFunction("flatten")
 
 sqrt = NumpyMathFunction("sqrt")
 
@@ -1119,6 +1120,28 @@ def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
     return cse(area * QWeight(dofdesc=dofdesc),
             "weights_area_elements",
             cse_scope.DISCRETIZATION)
+
+# }}}
+
+
+# {{{ flattened quantities
+
+def _flat_nodes(ambient_dim, dofdesc=None):
+    return cse(
+            flatten(nodes(ambient_dim, dofdesc=dofdesc).as_vector()),
+            scope=cse_scope.DISCRETIZATION)
+
+
+def _flat_expansion_radii(ambient_dim, dim=None, dofdesc=None):
+    return cse(
+            flatten(expansion_radii(ambient_dim, dim=dim, dofdesc=dofdesc)),
+            scope=cse_scope.DISCRETIZATION)
+
+
+def _flat_expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
+    return cse(
+            flatten(expansion_centers(ambient_dim, side, dim=dim, dofdesc=dofdesc)),
+            scope=cse_scope.DISCRETIZATION)
 
 # }}}
 

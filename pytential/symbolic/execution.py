@@ -303,6 +303,11 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         arg, = args
         return abs(self.rec(arg))
 
+    def apply_flatten(self, args):
+        from pytential.utils import flatten_if_needed
+        arg, = args
+        return flatten_if_needed(self.array_context, self.rec(arg))
+
     # }}}
 
     def map_call(self, expr):
@@ -310,7 +315,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 EvalMapperFunction, NumpyMathFunction)
 
         if isinstance(expr.function, EvalMapperFunction):
-            return getattr(self, "apply_"+expr.function.name)(expr.parameters)
+            return getattr(self, f"apply_{expr.function.name}")(expr.parameters)
         elif isinstance(expr.function, NumpyMathFunction):
             args = [self.rec(arg) for arg in expr.parameters]
             from numbers import Number
