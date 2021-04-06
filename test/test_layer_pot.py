@@ -119,7 +119,7 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
 
     from pytential.target import PointsTarget
     fplot = FieldPlotter(np.zeros(2), extent=0.54, npoints=30)
-    targets = PointsTarget(fplot.points)
+    targets = PointsTarget(actx.freeze(actx.from_numpy(fplot.points)))
 
     places = GeometryCollection((qbx, targets))
     density_discr = places.get_discretization(places.auto_source.geometry)
@@ -188,7 +188,7 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
 
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
     from pytential.target import PointsTarget
-    ptarget = PointsTarget(fplot.points)
+    ptarget = PointsTarget(actx.freeze(actx.from_numpy(fplot.points)))
     from sumpy.kernel import LaplaceKernel
 
     places = GeometryCollection({
@@ -276,7 +276,7 @@ def test_single_plus_double_with_single_fmm(ctx_factory,  do_plot=False):
 
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=500)
     from pytential.target import PointsTarget
-    ptarget = PointsTarget(fplot.points)
+    ptarget = PointsTarget(actx.freeze(actx.from_numpy(fplot.points)))
     from sumpy.kernel import LaplaceKernel
 
     places = GeometryCollection({

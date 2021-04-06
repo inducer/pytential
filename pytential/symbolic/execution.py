@@ -210,7 +210,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         if isinstance(x, DOFArray):
             return thaw(self.array_context, x)
         else:
-            return self.array_context.thaw(x)
+            return self.array_context.thaw(x).copy()
 
     def map_num_reference_derivative(self, expr):
         discr = self.places.get_discretization(

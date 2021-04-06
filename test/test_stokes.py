@@ -92,6 +92,7 @@ def run_exterior_stokes(ctx_factory, *,
 
     from extra_int_eq_data import make_source_and_target_points
     point_source, point_target = make_source_and_target_points(
+            actx,
             side=+1,
             inner_radius=0.5 * radius,
             outer_radius=2.0 * radius,

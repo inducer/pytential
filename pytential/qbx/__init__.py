@@ -860,9 +860,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     target_name)(actx)
 
             evt, output_for_each_kernel = p2p(queue,
-                    targts=flat_target_nodes,
+                    targets=flat_target_nodes,
                     sources=flat_source_nodes,
-                    strengths=flat_strengths,
+                    strength=flat_strengths,
                     **kernel_args)
 
             target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)

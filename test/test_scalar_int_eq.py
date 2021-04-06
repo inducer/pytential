@@ -73,7 +73,7 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
     # {{{ construct geometries
 
     qbx = case.get_layer_potential(actx, resolution, case.target_order)
-    point_source, point_target = inteq.make_source_and_target_points(
+    point_source, point_target = inteq.make_source_and_target_points(actx,
             case.side, case.inner_radius, case.outer_radius, qbx.ambient_dim)
 
     places = {
