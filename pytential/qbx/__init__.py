@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import flatten, unflatten, thaw
+from meshmode.dof_array import unflatten
 import numpy as np
 from pytools import memoize_method, memoize_in, single_valued
 
@@ -616,12 +616,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # FIXME don't compute *all* output kernels on all targets--respect that
         # some target discretizations may only be asking for derivatives (e.g.)
 
-        from pytential import bind, sym
-        waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim, dofdesc=insn.source))(actx)
-        densities = [evaluate(density) for density in insn.densities]
-        strengths = [waa * density for density in densities]
-        flat_strengths = tuple(flatten(strength) for strength in strengths)
+        flat_strengths = _get_flat_strengths_from_densities(
+                actx, bound_expr.places, evaluate, insn.densities,
+                dofdesc=insn.source)
 
         base_kernel = single_valued(knl.get_base_kernel() for
             knl in insn.source_kernels)
@@ -679,7 +676,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
-                from meshmode.dof_array import unflatten
                 result = unflatten(actx, target_discr, result)
 
             results.append((o.name, result))
@@ -748,7 +744,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             return_timing_data):
         # {{{ setup
 
-        from pytential import bind, sym
+        from meshmode.discretization import Discretization
         if return_timing_data:
             from pytential.source import UnableToCollectTimingData
             from warnings import warn
@@ -763,34 +759,24 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        # {{{ evaluate and flatten kernel arguments
+        # {{{ evaluate and flatten inputs
+
+        from pytential.symbolic.execution import _bind_tagged_expr as bind
+        from pytential.symbolic.primitives import (
+                _flat_nodes, _flat_expansion_radii, _flat_expansion_centers)
 
         from pytential.utils import flatten_if_needed
         kernel_args = {}
         for arg_name, arg_expr in insn.kernel_arguments.items():
             kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
 
-        # }}}
-
-        # {{{ preprocess and flatten densities
-
-        waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim, dofdesc=insn.source))(actx)
-        strength_vecs = [waa * evaluate(density) for density in insn.densities]
-
-        from meshmode.discretization import Discretization
-        flat_strengths = [flatten(strength) for strength in strength_vecs]
-
-        # }}}
-
-        # {{{ flatten source nodes
-
-        from pytential.symbolic.primitives import (
-                _flat_nodes, _flat_expansion_radii, _flat_expansion_centers)
+        flat_strengths = _get_flat_strengths_from_densities(
+                actx, bound_expr.places, evaluate, insn.densities,
+                dofdesc=insn.source)
 
         flat_source_nodes = bind(bound_expr.places,
                 _flat_nodes(self.ambient_dim, dofdesc=insn.source),
-                auto_where=insn.source)(actx)
+                insn.source)(actx)
 
         # }}}
 
@@ -808,7 +794,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             flat_target_nodes = bind(bound_expr.places,
                     _flat_nodes(self.ambient_dim, dofdesc=o.target_name),
-                    auto_where=o.target_name)(actx)
+                    o.target_name)(actx)
 
             is_self = density_discr is target_discr
             if is_self:
@@ -819,12 +805,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 flat_expansion_radii = bind(bound_expr.places,
                             _flat_expansion_radii(
                                 self.ambient_dim, dofdesc=o.target_name),
-                            auto_where=o.target_name)(actx)
+                            o.target_name)(actx)
                 flat_centers = bind(bound_expr.places,
                             _flat_expansion_centers(
                                 self.ambient_dim, o.qbx_forced_limit,
                                 dofdesc=o.target_name),
-                            auto_where=o.target_name)(actx)
+                            o.target_name)(actx)
 
                 evt, output_for_each_kernel = lpot_applier(queue,
                         targets=flat_target_nodes,
@@ -921,6 +907,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
     # }}}
+
+
+def _get_flat_strengths_from_densities(
+        actx, places, evaluate, densities, dofdesc=None):
+    from pytential import sym
+    from pytential.symbolic.execution import _bind_tagged_expr as bind
+
+    waa = bind(places,
+            sym.weights_and_area_elements(places.ambient_dim, dofdesc=dofdesc),
+            dofdesc)(actx)
+    strength_vecs = [waa * evaluate(density) for density in densities]
+
+    from meshmode.dof_array import flatten
+    return [flatten(strength) for strength in strength_vecs]
 
 # }}}
 
