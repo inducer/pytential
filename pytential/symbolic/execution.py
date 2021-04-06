@@ -36,7 +36,7 @@ import pyopencl.clmath  # noqa
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.dof_array import DOFArray, thaw
 
-from pytools import memoize_in
+from pytools import memoize_in, memoize_method
 from pytential.qbx.cost import AbstractQBXCostModel
 
 from pytential import sym
@@ -922,8 +922,11 @@ class BoundExpression:
         self.sym_op_expr = sym_op_expr
         self.caches = {}
 
+    @property
+    @memoize_method
+    def code(self):
         from pytential.symbolic.compiler import OperatorCompiler
-        self.code = OperatorCompiler(self.places)(sym_op_expr)
+        return OperatorCompiler(self.places)(self.sym_op_expr)
 
     def _get_cache(self, name):
         return self.caches.setdefault(name, {})
@@ -1034,6 +1037,15 @@ class BoundExpression:
 
         if context is None:
             context = {}
+
+        # NOTE: avoid compiling any code if the expression is long lived
+        # and already nicely cached in the collection from a previous run
+        import pymbolic.primitives as prim
+        if isinstance(self.sym_op_expr, prim.CommonSubexpression) \
+                and self.sym_op_expr.scope == sym.cse_scope.DISCRETIZATION:
+            cache = self.places._get_cache("cse")
+            if self.sym_op_expr.child in cache:
+                return cache[self.sym_op_expr.child]
 
         array_context = _find_array_context_from_args_in_context(
                 context, array_context)
