@@ -742,8 +742,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     def exec_compute_potential_insn_direct(self, actx, insn, bound_expr, evaluate,
             return_timing_data):
-        # {{{ setup
-
         from meshmode.discretization import Discretization
         if return_timing_data:
             from pytential.source import UnableToCollectTimingData
@@ -751,13 +749,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             warn(
                     "Timing data collection not supported.",
                     category=UnableToCollectTimingData)
-
-        lpot_applier = self.get_lpot_applier(insn.target_kernels,
-            insn.source_kernels)
-        p2p = None
-        lpot_applier_on_tgt_subset = None
-
-        # }}}
 
         # {{{ evaluate and flatten inputs
 
@@ -780,126 +771,156 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        # FIXME: Do this all at once
+        # {{{ partition interactions in target kernels
 
-        queue = actx.queue
-        results = []
+        from collections import defaultdict
+        self_outputs = defaultdict(list)
+        other_outputs = defaultdict(list)
 
-        for o in insn.outputs:
+        for i, o in enumerate(insn.outputs):
             source_dd = insn.source.copy(discr_stage=o.target_name.discr_stage)
+
             target_discr = bound_expr.places.get_discretization(
                     o.target_name.geometry, o.target_name.discr_stage)
             density_discr = bound_expr.places.get_discretization(
                     source_dd.geometry, source_dd.discr_stage)
 
-            flat_target_nodes = bind(bound_expr.places,
-                    _flat_nodes(self.ambient_dim, dofdesc=o.target_name),
-                    o.target_name)(actx)
-
-            is_self = density_discr is target_discr
-            if is_self:
-                # QBXPreprocessor is supposed to have taken care of this
+            if target_discr is density_discr:
+                # NOTE: QBXPreprocessor is supposed to have taken care of this
                 assert o.qbx_forced_limit is not None
                 assert abs(o.qbx_forced_limit) > 0
 
-                flat_expansion_radii = bind(bound_expr.places,
-                            _flat_expansion_radii(
-                                self.ambient_dim, dofdesc=o.target_name),
-                            o.target_name)(actx)
-                flat_centers = bind(bound_expr.places,
-                            _flat_expansion_centers(
-                                self.ambient_dim, o.qbx_forced_limit,
-                                dofdesc=o.target_name),
-                            o.target_name)(actx)
-
-                evt, output_for_each_kernel = lpot_applier(queue,
-                        targets=flat_target_nodes,
-                        sources=flat_source_nodes,
-                        centers=flat_centers,
-                        strengths=flat_strengths,
-                        expansion_radii=flat_expansion_radii,
-                        **kernel_args)
-
-                result = output_for_each_kernel[o.target_kernel_index]
-                if isinstance(target_discr, Discretization):
-                    result = unflatten(actx, target_discr, result)
-
-                results.append((o.name, result))
+                self_outputs[(o.target_name, o.qbx_forced_limit)].append((i, o))
             else:
-                # no on-disk kernel caching
-                if p2p is None:
-                    p2p = self.get_p2p(actx, insn.target_kernels,
-                        insn.source_kernels)
-                if lpot_applier_on_tgt_subset is None:
-                    lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
-                            insn.target_kernels, insn.source_kernels)
-
-                evt, output_for_each_kernel = p2p(queue,
-                        targts=flat_target_nodes,
-                        sources=flat_source_nodes,
-                        strengths=flat_strengths,
-                        **kernel_args)
-
                 qbx_forced_limit = o.qbx_forced_limit
                 if qbx_forced_limit is None:
                     qbx_forced_limit = 0
 
-                target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
-                geo_data = self.qbx_fmm_geometry_data(
-                        bound_expr.places,
-                        insn.source.geometry,
-                        target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
+                other_outputs[(o.target_name, qbx_forced_limit)].append((i, o))
 
-                # center-related info is independent of targets
+        queue = actx.queue
+        results = [None] * len(insn.outputs)
 
-                # First ncenters targets are the centers
-                tgt_to_qbx_center = (
-                        geo_data.user_target_to_center()[geo_data.ncenters:]
-                        .copy(queue=queue)
-                        .with_queue(queue))
+        # }}}
 
-                qbx_tgt_numberer = self.get_qbx_target_numberer(
-                        tgt_to_qbx_center.dtype)
-                qbx_tgt_count = cl.array.empty(queue, (), np.int32)
-                qbx_tgt_numbers = cl.array.empty_like(tgt_to_qbx_center)
+        # {{{ self interactions
 
-                qbx_tgt_numberer(
-                        tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,
-                        queue=queue)
+        # FIXME: Do this all at once
 
-                qbx_tgt_count = int(qbx_tgt_count.get())
+        lpot_applier = self.get_lpot_applier(
+                insn.target_kernels, insn.source_kernels)
 
-                if (o.qbx_forced_limit is not None
-                        and abs(o.qbx_forced_limit) == 1
-                        and qbx_tgt_count < target_discr.ndofs):
-                    raise RuntimeError("Did not find a matching QBX center "
-                            "for some targets")
+        for (target_name, qbx_forced_limit), outputs in self_outputs.items():
+            target_discr = bound_expr.places.get_discretization(
+                    target_name.geometry, target_name.discr_stage)
+            flat_target_nodes = bind(bound_expr.places,
+                    _flat_nodes(self.ambient_dim, dofdesc=target_name),
+                    target_name)(actx)
 
-                qbx_tgt_numbers = qbx_tgt_numbers[:qbx_tgt_count]
-                qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
-                qbx_center_numbers.finish()
+            flat_expansion_radii = bind(bound_expr.places,
+                        _flat_expansion_radii(
+                            self.ambient_dim, dofdesc=target_name),
+                        target_name)(actx)
+            flat_centers = bind(bound_expr.places,
+                        _flat_expansion_centers(
+                            self.ambient_dim, qbx_forced_limit,
+                            dofdesc=target_name),
+                        target_name)(actx)
 
-                tgt_subset_kwargs = kernel_args.copy()
-                for i, res_i in enumerate(output_for_each_kernel):
-                    tgt_subset_kwargs[f"result_{i}"] = res_i
+            evt, output_for_each_kernel = lpot_applier(queue,
+                    targets=flat_target_nodes,
+                    sources=flat_source_nodes,
+                    centers=flat_centers,
+                    strengths=flat_strengths,
+                    expansion_radii=flat_expansion_radii,
+                    **kernel_args)
 
-                if qbx_tgt_count:
-                    lpot_applier_on_tgt_subset(
-                            queue,
-                            targets=flat_target_nodes,
-                            sources=flat_source_nodes,
-                            centers=geo_data.flat_centers(),
-                            expansion_radii=geo_data.flat_expansion_radii(),
-                            strengths=flat_strengths,
-                            qbx_tgt_numbers=qbx_tgt_numbers,
-                            qbx_center_numbers=qbx_center_numbers,
-                            **tgt_subset_kwargs)
-
+            for i, o in outputs:
                 result = output_for_each_kernel[o.target_kernel_index]
                 if isinstance(target_discr, Discretization):
                     result = unflatten(actx, target_discr, result)
 
-                results.append((o.name, result))
+                results[i] = (o.name, result)
+
+        # }}}
+
+        # {{{ off-surface interactions
+
+        if len(other_outputs) > 0:
+            p2p = self.get_p2p(actx, insn.target_kernels, insn.source_kernels)
+            lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
+                    insn.target_kernels, insn.source_kernels)
+
+        for (target_name, qbx_forced_limit), outputs in other_outputs.items():
+            target_discr = bound_expr.places.get_discretization(
+                    target_name.geometry, target_name.discr_stage)
+
+            flat_target_nodes = bind(bound_expr.places,
+                    _flat_nodes(self.ambient_dim, dofdesc=target_name),
+                    target_name)(actx)
+
+            evt, output_for_each_kernel = p2p(queue,
+                    targts=flat_target_nodes,
+                    sources=flat_source_nodes,
+                    strengths=flat_strengths,
+                    **kernel_args)
+
+            target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
+            geo_data = self.qbx_fmm_geometry_data(
+                    bound_expr.places,
+                    insn.source.geometry,
+                    target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
+
+            # center-related info is independent of targets
+
+            # First ncenters targets are the centers
+            tgt_to_qbx_center = (
+                    geo_data.user_target_to_center()[geo_data.ncenters:]
+                    .copy(queue=queue)
+                    .with_queue(queue))
+
+            qbx_tgt_numberer = self.get_qbx_target_numberer(
+                    tgt_to_qbx_center.dtype)
+            qbx_tgt_count = cl.array.empty(queue, (), np.int32)
+            qbx_tgt_numbers = cl.array.empty_like(tgt_to_qbx_center)
+
+            qbx_tgt_numberer(
+                    tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,
+                    queue=queue)
+
+            qbx_tgt_count = int(qbx_tgt_count.get())
+            if (abs(qbx_forced_limit) == 1 and qbx_tgt_count < target_discr.ndofs):
+                raise RuntimeError(
+                        "Did not find a matching QBX center for some targets")
+
+            qbx_tgt_numbers = qbx_tgt_numbers[:qbx_tgt_count]
+            qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
+            qbx_center_numbers.finish()
+
+            tgt_subset_kwargs = kernel_args.copy()
+            for i, res_i in enumerate(output_for_each_kernel):
+                tgt_subset_kwargs[f"result_{i}"] = res_i
+
+            if qbx_tgt_count:
+                lpot_applier_on_tgt_subset(
+                        queue,
+                        targets=flat_target_nodes,
+                        sources=flat_source_nodes,
+                        centers=geo_data.flat_centers(),
+                        expansion_radii=geo_data.flat_expansion_radii(),
+                        strengths=flat_strengths,
+                        qbx_tgt_numbers=qbx_tgt_numbers,
+                        qbx_center_numbers=qbx_center_numbers,
+                        **tgt_subset_kwargs)
+
+            for i, o in outputs:
+                result = output_for_each_kernel[o.target_kernel_index]
+                if isinstance(target_discr, Discretization):
+                    result = unflatten(actx, target_discr, result)
+
+                results[i] = (o.name, result)
+
+        # }}}
 
         timing_data = {}
         return results, timing_data
