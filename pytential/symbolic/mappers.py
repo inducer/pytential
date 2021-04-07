@@ -115,6 +115,7 @@ class CombineMapper(CombineMapperBase):
     map_elementwise_min = map_node_sum
     map_elementwise_max = map_node_sum
     map_interpolation = map_node_sum
+    map_flatten = map_node_sum
 
     def map_int_g(self, expr):
         return self.combine(

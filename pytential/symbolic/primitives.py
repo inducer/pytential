@@ -509,7 +509,6 @@ real = EvalMapperFunction("real")
 imag = EvalMapperFunction("imag")
 conj = EvalMapperFunction("conj")
 abs = EvalMapperFunction("abs")
-flatten = EvalMapperFunction("flatten")
 
 sqrt = NumpyMathFunction("sqrt")
 
@@ -566,6 +565,27 @@ class DiscretizationProperty(Expression):
 
     def __getinitargs__(self):
         return (self.dofdesc,)
+
+
+class _Flatten(Expression):
+    """Represents a flattened quantity, in the sense of
+    :func:`meshmode.dof_array.flatten`.
+    """
+    init_arg_names = ("operand",)
+
+    def __new__(cls, operand):
+        if isinstance(operand, np.ndarray):
+            return componentwise(lambda op: cls(op), operand)
+        else:
+            return Expression.__new__(cls)
+
+    def __init__(self, operand):
+        self.operand = operand
+
+    def __getinitargs__(self):
+        return (self.operand,)
+
+    mapper_method = intern("map_flatten")
 
 
 # {{{ discretization properties
@@ -1128,19 +1148,19 @@ def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
 
 def _flat_nodes(ambient_dim, dofdesc=None):
     return cse(
-            flatten(nodes(ambient_dim, dofdesc=dofdesc).as_vector()),
+            _Flatten(nodes(ambient_dim, dofdesc=dofdesc).as_vector()),
             scope=cse_scope.DISCRETIZATION)
 
 
 def _flat_expansion_radii(ambient_dim, dim=None, dofdesc=None):
     return cse(
-            flatten(expansion_radii(ambient_dim, dim=dim, dofdesc=dofdesc)),
+            _Flatten(expansion_radii(ambient_dim, dim=dim, dofdesc=dofdesc)),
             scope=cse_scope.DISCRETIZATION)
 
 
 def _flat_expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
     return cse(
-            flatten(expansion_centers(ambient_dim, side, dim=dim, dofdesc=dofdesc)),
+            _Flatten(expansion_centers(ambient_dim, side, dim=dim, dofdesc=dofdesc)),
             scope=cse_scope.DISCRETIZATION)
 
 # }}}

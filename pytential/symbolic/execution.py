@@ -257,6 +257,10 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         else:
             raise TypeError("cannot interpolate `{}`".format(type(operand)))
 
+    def map_flatten(self, expr):
+        from pytential.utils import flatten_if_needed
+        return flatten_if_needed(self.array_context, self.rec(expr.operand))
+
     def map_common_subexpression(self, expr):
         if expr.scope == sym.cse_scope.EXPRESSION:
             cache = self.bound_expr._get_cache("cse")
@@ -302,11 +306,6 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def apply_abs(self, args):
         arg, = args
         return abs(self.rec(arg))
-
-    def apply_flatten(self, args):
-        from pytential.utils import flatten_if_needed
-        arg, = args
-        return flatten_if_needed(self.array_context, self.rec(arg))
 
     # }}}
 
