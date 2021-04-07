@@ -325,7 +325,8 @@ class DOFDescriptor:
         :class:`GRANULARITY_ELEMENT` (one DOF per element).
     """
 
-    def __init__(self, geometry=None, discr_stage=None, granularity=None):
+    def __init__(self, geometry=None,
+            discr_stage=None, granularity=None, _is_flattened=False):
         if granularity is None:
             granularity = GRANULARITY_NODE
 
@@ -344,7 +345,11 @@ class DOFDescriptor:
         self.discr_stage = discr_stage
         self.granularity = granularity
 
-    def copy(self, geometry=None, discr_stage=_NoArgSentinel, granularity=None):
+        self._is_flattened = _is_flattened
+
+    def copy(self, geometry=None,
+            discr_stage=_NoArgSentinel,
+            granularity=None, _is_flattened=None):
         if isinstance(geometry, DOFDescriptor):
             discr_stage = geometry.discr_stage \
                     if discr_stage is _NoArgSentinel else discr_stage
@@ -356,7 +361,9 @@ class DOFDescriptor:
                 granularity=(self.granularity
                     if granularity is None else granularity),
                 discr_stage=(self.discr_stage
-                    if discr_stage is _NoArgSentinel else discr_stage))
+                    if discr_stage is _NoArgSentinel else discr_stage),
+                _is_flattened=(self._is_flattened
+                    if _is_flattened is None else _is_flattened))
 
     def to_stage1(self):
         return self.copy(discr_stage=QBX_SOURCE_STAGE1)
@@ -571,19 +578,20 @@ class _Flatten(Expression):
     """Represents a flattened quantity, in the sense of
     :func:`meshmode.dof_array.flatten`.
     """
-    init_arg_names = ("operand",)
+    init_arg_names = ("operand", "dofdesc")
 
-    def __new__(cls, operand):
+    def __new__(cls, operand, dofdesc):
         if isinstance(operand, np.ndarray):
-            return componentwise(lambda op: cls(op), operand)
+            return componentwise(lambda op: cls(op, dofdesc), operand)
         else:
             return Expression.__new__(cls)
 
-    def __init__(self, operand):
+    def __init__(self, operand, dofdesc):
         self.operand = operand
+        self.dofdesc = as_dofdesc(dofdesc).copy(_is_flattened=True)
 
     def __getinitargs__(self):
-        return (self.operand,)
+        return (self.operand, self.dofdesc)
 
     mapper_method = intern("map_flatten")
 
@@ -1148,19 +1156,25 @@ def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
 
 def _flat_nodes(ambient_dim, dofdesc=None):
     return cse(
-            _Flatten(nodes(ambient_dim, dofdesc=dofdesc).as_vector()),
+            _Flatten(
+                nodes(ambient_dim, dofdesc=dofdesc).as_vector(),
+                dofdesc),
             scope=cse_scope.DISCRETIZATION)
 
 
 def _flat_expansion_radii(ambient_dim, dim=None, dofdesc=None):
     return cse(
-            _Flatten(expansion_radii(ambient_dim, dim=dim, dofdesc=dofdesc)),
+            _Flatten(
+                expansion_radii(ambient_dim, dim=dim, dofdesc=dofdesc),
+                dofdesc),
             scope=cse_scope.DISCRETIZATION)
 
 
 def _flat_expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
     return cse(
-            _Flatten(expansion_centers(ambient_dim, side, dim=dim, dofdesc=dofdesc)),
+            _Flatten(
+                expansion_centers(ambient_dim, side, dim=dim, dofdesc=dofdesc),
+                dofdesc),
             scope=cse_scope.DISCRETIZATION)
 
 # }}}
