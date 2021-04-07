@@ -64,6 +64,7 @@ class IdentityMapper(IdentityMapperBase):
 
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum
+    map_flatten = map_elementwise_sum
 
     def map_num_reference_derivative(self, expr):
         return type(expr)(expr.ref_axes, self.rec(expr.operand),
