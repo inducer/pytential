@@ -752,10 +752,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # {{{ evaluate and flatten inputs
 
-        from pytential.symbolic.execution import _bind_tagged_expr as bind
-        from pytential.symbolic.primitives import (
-                _flat_nodes, _flat_expansion_radii, _flat_expansion_centers)
-
         from pytential.utils import flatten_if_needed
         kernel_args = {}
         for arg_name, arg_expr in insn.kernel_arguments.items():
@@ -765,9 +761,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 actx, bound_expr.places, evaluate, insn.densities,
                 dofdesc=insn.source)
 
-        flat_source_nodes = bind(bound_expr.places,
-                _flat_nodes(self.ambient_dim, dofdesc=insn.source),
-                insn.source)(actx)
+        source_discr = bound_expr.places.get_discretization(
+                insn.source.geometry, insn.source.discr_stage)
+        flat_source_nodes = flatten_if_needed(actx, source_discr.nodes())
 
         # }}}
 
@@ -813,19 +809,23 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         for (target_name, qbx_forced_limit), outputs in self_outputs.items():
             target_discr = bound_expr.places.get_discretization(
                     target_name.geometry, target_name.discr_stage)
-            flat_target_nodes = bind(bound_expr.places,
-                    _flat_nodes(self.ambient_dim, dofdesc=target_name),
-                    target_name)(actx)
+            flat_target_nodes = flatten_if_needed(actx, target_discr.nodes())
 
-            flat_expansion_radii = bind(bound_expr.places,
-                        _flat_expansion_radii(
+            from pytential import sym
+            from pytential.symbolic.execution import _bind_tagged_expr as bind
+            flat_expansion_radii = flatten_if_needed(actx,
+                    bind(bound_expr.places,
+                        sym.expansion_radii(
                             self.ambient_dim, dofdesc=target_name),
                         target_name)(actx)
-            flat_centers = bind(bound_expr.places,
-                        _flat_expansion_centers(
+                    )
+            flat_centers = flatten_if_needed(actx,
+                    bind(bound_expr.places,
+                        sym.expansion_centers(
                             self.ambient_dim, qbx_forced_limit,
                             dofdesc=target_name),
                         target_name)(actx)
+                    )
 
             evt, output_for_each_kernel = lpot_applier(queue,
                     targets=flat_target_nodes,
@@ -854,10 +854,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         for (target_name, qbx_forced_limit), outputs in other_outputs.items():
             target_discr = bound_expr.places.get_discretization(
                     target_name.geometry, target_name.discr_stage)
-
-            flat_target_nodes = bind(bound_expr.places,
-                    _flat_nodes(self.ambient_dim, dofdesc=target_name),
-                    target_name)(actx)
+            flat_target_nodes = flatten_if_needed(actx, target_discr.nodes())
 
             evt, output_for_each_kernel = p2p(queue,
                     targets=flat_target_nodes,
