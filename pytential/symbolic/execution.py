@@ -1095,22 +1095,6 @@ def bind(places, expr, auto_where=None):
 
     return BoundExpression(places, expr)
 
-
-def _bind_tagged_expr(places, expr, dofdesc):
-    """This is meant to bind simple expressions (that do not contain
-    :class:`~pytential.symbolic.primitives.IntG`) that have already been
-    tagged.
-    """
-    if dofdesc is None:
-        dofdesc = places.auto_source
-    dofdesc = sym.as_dofdesc(dofdesc)
-
-    if dofdesc.discr_stage is sym.QBX_SOURCE_QUAD_STAGE2:
-        from pytential.symbolic.mappers import InterpolationPreprocessor
-        expr = InterpolationPreprocessor(places)(expr)
-
-    return BoundExpression(places, expr)
-
 # }}}
 
 
