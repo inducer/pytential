@@ -744,6 +744,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             return_timing_data):
         from pytential import bind, sym
         from meshmode.discretization import Discretization
+        from pytools.obj_array import obj_array_vectorize
 
         if return_timing_data:
             from pytential.source import UnableToCollectTimingData
@@ -759,22 +760,27 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         def _flat_nodes(dofdesc):
             discr = bound_expr.places.get_discretization(
                     dofdesc.geometry, dofdesc.discr_stage)
-            return flatten_if_needed(actx, discr.nodes())
+            return obj_array_vectorize(actx.freeze,
+                    flatten_if_needed(actx, discr.nodes())
+                    )
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_expansion_radii"))
         def _flat_expansion_radii(dofdesc):
-            return flatten_if_needed(actx, bind(bound_expr.places,
-                sym.expansion_radii(self.ambient_dim, dofdesc=dofdesc),
-                )(actx))
+            radii = bind(
+                    bound_expr.places,
+                    sym.expansion_radii(self.ambient_dim, dofdesc=dofdesc),
+                    )(actx)
+            return obj_array_vectorize(actx.freeze, flatten_if_needed(actx, radii))
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_centers"))
         def _flat_centers(dofdesc, qbx_forced_limit):
-            return flatten_if_needed(actx, bind(bound_expr.places,
-                sym.expansion_centers(
-                    self.ambient_dim, qbx_forced_limit, dofdesc=dofdesc),
-                )(actx))
+            centers = bind(bound_expr.places,
+                    sym.expansion_centers(
+                        self.ambient_dim, qbx_forced_limit, dofdesc=dofdesc),
+                    )(actx)
+            return obj_array_vectorize(actx.freeze, flatten_if_needed(actx, centers))
 
         from pytential.utils import flatten_if_needed
         kernel_args = {}
