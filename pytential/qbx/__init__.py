@@ -860,7 +860,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # {{{ off-surface interactions
 
-        if len(other_outputs) > 0:
+        if other_outputs:
             p2p = self.get_p2p(actx, insn.target_kernels, insn.source_kernels)
             lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
                     insn.target_kernels, insn.source_kernels)
