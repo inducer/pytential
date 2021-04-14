@@ -802,6 +802,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         other_outputs = defaultdict(list)
 
         for i, o in enumerate(insn.outputs):
+            # For purposes of figuring out whether this is a self-interaction,
+            # disregard discr_stage.
             source_dd = insn.source.copy(discr_stage=o.target_name.discr_stage)
 
             target_discr = bound_expr.places.get_discretization(
@@ -868,6 +870,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     target_name.geometry, target_name.discr_stage)
             flat_target_nodes = _flat_nodes(target_name)
 
+            # FIXME: (Somewhat wastefully) compute P2P for all targets
             evt, output_for_each_kernel = p2p(queue,
                     targets=flat_target_nodes,
                     sources=flat_source_nodes,
