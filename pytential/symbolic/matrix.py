@@ -329,7 +329,7 @@ class MatrixBuilder(MatrixBuilderBase):
             operand = unflatten_from_numpy(actx, discr, operand)
             return flatten_to_numpy(actx, conn(operand))
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
-            cache = self.places._get_cache("direct_resampler")
+            cache = self.places._get_cache((MatrixBuilder, "direct_resampler"))
             key = (expr.from_dd.geometry,
                     expr.from_dd.discr_stage,
                     expr.to_dd.discr_stage)

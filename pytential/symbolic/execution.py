@@ -226,7 +226,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return thaw(self.array_context, discr.quad_weights())
 
     def map_inverse(self, expr):
-        bound_op_cache = self.bound_expr.places._get_cache("bound_op")
+        bound_op_cache = self.bound_expr.places._get_cache(
+                (EvaluationMapperBase, "bound_op"))
 
         try:
             bound_op = bound_op_cache[expr]
@@ -259,9 +260,9 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     def map_common_subexpression(self, expr):
         if expr.scope == sym.cse_scope.EXPRESSION:
-            cache = self.bound_expr._get_cache("cse")
+            cache = self.bound_expr._get_cache((EvaluationMapperBase, "cse"))
         elif expr.scope == sym.cse_scope.DISCRETIZATION:
-            cache = self.places._get_cache("cse")
+            cache = self.places._get_cache((EvaluationMapperBase, "cse"))
         else:
             return self.rec(expr.child)
 
@@ -615,10 +616,6 @@ def _is_valid_identifier(name):
     return name.isidentifier() and not keyword.iskeyword(name)
 
 
-_GEOMETRY_COLLECTION_DISCR_CACHE_NAME = "refined_qbx_discrs"
-_GEOMETRY_COLLECTION_CONNS_CACHE_NAME = "refined_qbx_conns"
-
-
 class GeometryCollection:
     """A mapping from symbolic identifiers ("place IDs", typically strings)
     to 'geometries', where a geometry can be a
@@ -730,7 +727,7 @@ class GeometryCollection:
         return self.caches.setdefault(name, {})
 
     def _get_discr_from_cache(self, geometry, discr_stage):
-        cache = self._get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
+        cache = self._get_cache((GeometryCollection, "discrs"))
         key = (geometry, discr_stage)
 
         if key not in cache:
@@ -740,7 +737,7 @@ class GeometryCollection:
         return cache[key]
 
     def _add_discr_to_cache(self, discr, geometry, discr_stage):
-        cache = self._get_cache(_GEOMETRY_COLLECTION_DISCR_CACHE_NAME)
+        cache = self._get_cache((GeometryCollection, "discrs"))
         key = (geometry, discr_stage)
 
         if key in cache:
@@ -749,7 +746,7 @@ class GeometryCollection:
         cache[key] = discr
 
     def _get_conn_from_cache(self, geometry, from_stage, to_stage):
-        cache = self._get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+        cache = self._get_cache((GeometryCollection, "conns"))
         key = (geometry, from_stage, to_stage)
 
         if key not in cache:
@@ -759,7 +756,7 @@ class GeometryCollection:
         return cache[key]
 
     def _add_conn_to_cache(self, conn, geometry, from_stage, to_stage):
-        cache = self._get_cache(_GEOMETRY_COLLECTION_CONNS_CACHE_NAME)
+        cache = self._get_cache((GeometryCollection, "conns"))
         key = (geometry, from_stage, to_stage)
 
         if key in cache:
@@ -1038,7 +1035,10 @@ class BoundExpression:
         import pymbolic.primitives as prim
         if isinstance(self.sym_op_expr, prim.CommonSubexpression) \
                 and self.sym_op_expr.scope == sym.cse_scope.DISCRETIZATION:
-            cache = self.places._get_cache("cse")
+            # NOTE: the cache name must be kept in sync with the one in
+            #   EvaluationMapperBase.map_common_subexpression
+            cache = self.places._get_cache((EvaluationMapperBase, "cse"))
+
             if self.sym_op_expr.child in cache:
                 return cache[self.sym_op_expr.child]
 
