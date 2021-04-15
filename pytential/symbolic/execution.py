@@ -54,13 +54,13 @@ __doc__ = """
 
 class EvaluationMapperCSECacheKey:
     """Serves as a unique key for the common subexpression cache in
-    :func:`GeometryCollection._get_cache`.
+    :meth:`GeometryCollection._get_cache`.
     """
 
 
 class EvaluationMapperBoundOpCacheKey:
     """Serves as a unique key for the bound operator cache in
-    :func:`GeometryCollection._get_cache`.
+    :meth:`GeometryCollection._get_cache`.
     """
 
 
@@ -630,13 +630,13 @@ def _is_valid_identifier(name):
 
 class _GeometryCollectionDiscretizationCacheKey:
     """Serves as a unique key for the discretization cache in
-    :func:`GeometryCollection._get_cache`.
+    :meth:`GeometryCollection._get_cache`.
     """
 
 
 class _GeometryCollectionConnectionCacheKey:
     """Serves as a unique key for the connection cache in
-    :func:`GeometryCollection._get_cache`.
+    :meth:`GeometryCollection._get_cache`.
     """
 
 
