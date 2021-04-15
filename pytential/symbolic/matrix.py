@@ -304,6 +304,12 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
 # FIXME: PyOpenCL doesn't do all the required matrix math yet.
 # We'll cheat and build the matrix on the host.
 
+class MatrixBuilderDirectResamplerCacheKey:
+    """Serves as a unique key for the resampler cache in
+    :meth:`pytential.symbolic.execution.GeometryCollection._get_cache`.
+    """
+
+
 class MatrixBuilder(MatrixBuilderBase):
     def __init__(self, actx, dep_expr, other_dep_exprs,
             dep_source, dep_discr, places, context):
@@ -329,7 +335,7 @@ class MatrixBuilder(MatrixBuilderBase):
             operand = unflatten_from_numpy(actx, discr, operand)
             return flatten_to_numpy(actx, conn(operand))
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
-            cache = self.places._get_cache("direct_resampler")
+            cache = self.places._get_cache(MatrixBuilderDirectResamplerCacheKey)
             key = (expr.from_dd.geometry,
                     expr.from_dd.discr_stage,
                     expr.to_dd.discr_stage)

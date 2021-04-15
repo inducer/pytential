@@ -356,7 +356,8 @@ class DOFDescriptor:
                 granularity=(self.granularity
                     if granularity is None else granularity),
                 discr_stage=(self.discr_stage
-                    if discr_stage is _NoArgSentinel else discr_stage))
+                    if discr_stage is _NoArgSentinel else discr_stage),
+                )
 
     def to_stage1(self):
         return self.copy(discr_stage=QBX_SOURCE_STAGE1)
