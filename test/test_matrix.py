@@ -179,6 +179,96 @@ def test_build_matrix(ctx_factory, k, curve_fn, op_type, visualize=False):
     # }}}
 
 
+@pytest.mark.parametrize("side", [+1, -1])
+@pytest.mark.parametrize("op_type", ["single", "double"])
+def test_build_matrix_conditioning(ctx_factory, side, op_type, visualize=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    actx = PyOpenCLArrayContext(queue)
+
+    # prevent cache explosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
+
+    case = extra.CurveTestCase(
+            name="ellipse",
+            curve_fn=lambda t: ellipse(3.0, t),
+            target_order=16,
+            source_ovsmp=1,
+            qbx_order=4,
+            resolutions=[64],
+            op_type=op_type,
+            side=side,
+            )
+    logger.info("\n%s", case)
+
+    # {{{ geometry
+
+    qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
+
+    from pytential.qbx.refinement import refine_geometry_collection
+    places = GeometryCollection(qbx, auto_where=case.name)
+    places = refine_geometry_collection(places,
+            refine_discr_stage=sym.QBX_SOURCE_QUAD_STAGE2)
+
+    dd = places.auto_source.to_stage1()
+    density_discr = places.get_discretization(dd.geometry)
+
+    logger.info("nelements:     %d", density_discr.mesh.nelements)
+    logger.info("ndofs:         %d", density_discr.ndofs)
+
+    # }}}
+
+    # {{{ check matrix
+
+    from pytential.symbolic.execution import build_matrix
+    sym_u, sym_op = case.get_operator(
+            places.ambient_dim,
+            qbx_forced_limit="avg")
+
+    mat = actx.to_numpy(build_matrix(
+        actx, places, sym_op, sym_u,
+        context=case.knl_concrete_kwargs
+        ))
+
+    kappa = la.cond(mat)
+    _, sigma, _ = la.svd(mat)
+
+    logger.info("cond: %.5e sigma_max %.5e", kappa, sigma[0])
+
+    # NOTE: exterior Laplace has a nullspace
+    if side == +1 and op_type == "double":
+        assert kappa > 1.0e+9
+        assert sigma[-1] < 1.0e-9
+    else:
+        assert kappa < 1.0e+1
+        assert sigma[-1] > 1.0e-2
+
+    # }}}
+
+    # {{{ plot
+
+    if not visualize:
+        return
+
+    side = "int" if side == -1 else "ext"
+
+    import matplotlib.pyplot as plt
+    plt.imshow(mat)
+    plt.colorbar()
+    plt.title(fr"$\kappa(A) = {kappa:.5e}$")
+    plt.savefig(f"test_cond_{op_type}_{side}_mat")
+    plt.clf()
+
+    plt.plot(sigma)
+    plt.ylabel(r"$\sigma$")
+    plt.grid()
+    plt.savefig(f"test_cond_{op_type}_{side}_svd")
+    plt.clf()
+
+    # }}}
+
+
 @pytest.mark.parametrize("ambient_dim", [2, 3])
 @pytest.mark.parametrize("block_builder_type", ["qbx", "p2p"])
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
