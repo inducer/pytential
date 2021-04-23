@@ -182,6 +182,11 @@ def test_build_matrix(ctx_factory, k, curve_fn, op_type, visualize=False):
 @pytest.mark.parametrize("side", [+1, -1])
 @pytest.mark.parametrize("op_type", ["single", "double"])
 def test_build_matrix_conditioning(ctx_factory, side, op_type, visualize=False):
+    """Checks that :math:`I + K`, where :math:`K` is compact gives a
+    well-conditioned operator when it should. For example, the exterior Laplace
+    problem has a nullspace, so we check that and remove it.
+    """
+
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     actx = PyOpenCLArrayContext(queue)
@@ -243,6 +248,19 @@ def test_build_matrix_conditioning(ctx_factory, side, op_type, visualize=False):
     else:
         assert kappa < 1.0e+1
         assert sigma[-1] > 1.0e-2
+
+    # remove the nullspace and check that it worked
+    if side == +1 and op_type == "double":
+        # NOTE: this adds the "mean" to remove the nullspace for the operator
+        # See `pytential.symbolic.pde.scalar` for the equivalent formulation
+        from pytential.utils import flatten_to_numpy
+        w = flatten_to_numpy(actx,
+                bind(places, sym.sqrt_jac_q_weight(places.ambient_dim)**2)(actx)
+                )
+        w = np.tile(w.reshape(-1, 1), w.size).T
+        kappa = la.cond(mat + w)
+
+        assert kappa < 1.0e+2
 
     # }}}
 
