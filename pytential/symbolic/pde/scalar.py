@@ -27,19 +27,34 @@ __doc__ = """
 .. autoclass:: BiharmonicClampedPlateOperator
 """
 
+from numbers import Number
+from typing import Any, Dict, Optional
+
+import numpy as np
 
 from pytential import sym
-from pytential.symbolic.primitives import (
-        cse,
-        sqrt_jac_q_weight, QWeight, area_element)
+
+from sumpy.kernel import Kernel
 from sumpy.kernel import DirectionalSourceDerivative
-import numpy as np  # noqa
 
 
 # {{{ L^2 weighting
 
 class L2WeightedPDEOperator:
-    def __init__(self, kernel, use_l2_weighting):
+    """
+    .. automethod:: get_weight
+    .. automethod:: get_sqrt_weight
+
+    .. automethod:: get_density_var
+    .. automethod:: prepare_rhs
+
+    .. automethod:: representation
+    .. automethod:: operator
+
+    .. automethod:: __init__
+    """
+
+    def __init__(self, kernel: Kernel, use_l2_weighting: bool):
         self.kernel = kernel
         self.use_l2_weighting = use_l2_weighting
 
@@ -48,28 +63,39 @@ class L2WeightedPDEOperator:
             warn("should use L2 weighting in {}".format(type(self).__name__),
                     stacklevel=3)
 
+    @property
+    def dim(self):
+        return self.kernel.dim
+
     def get_weight(self, dofdesc=None):
         if self.use_l2_weighting:
-            return cse(area_element(self.kernel.dim, dofdesc=dofdesc)
-                    * QWeight(dofdesc=dofdesc))
+            return sym.cse(
+                    sym.area_element(self.dim, dofdesc=dofdesc)
+                    * sym.QWeight(dofdesc=dofdesc))
         else:
             return 1
 
     def get_sqrt_weight(self, dofdesc=None):
         if self.use_l2_weighting:
-            return sqrt_jac_q_weight(self.kernel.dim, dofdesc=dofdesc)
+            return sym.sqrt_jac_q_weight(self.dim, dofdesc=dofdesc)
         else:
             return 1
 
     def prepare_rhs(self, b):
-        return self.get_sqrt_weight()*b
+        return self.get_sqrt_weight() * b
 
-    def get_density_var(self, name):
+    def get_density_var(self, name: str):
         """
-        Returns a symbolic variable/array corresponding to the density with the
-        given name.
+        :returns: a symbolic variable/array corresponding to the density
+            with the given *name*.
         """
         return sym.var(name)
+
+    def representation(self, u, qbx_forced_limit=None):
+        raise NotImplementedError
+
+    def operator(self, u):
+        raise NotImplementedError
 
 # }}}
 
@@ -78,47 +104,47 @@ class L2WeightedPDEOperator:
 
 class DirichletOperator(L2WeightedPDEOperator):
     """IE operator and field representation for solving Dirichlet boundary
-    value problems with scalar kernels (e.g.
-    :class:`sumpy.kernel.LaplaceKernel`,
-    :class:`sumpy.kernel.HelmholtzKernel`, :class:`sumpy.kernel.YukawaKernel`)
+    value problems with scalar kernels (e.g. :class:`~sumpy.kernel.LaplaceKernel`,
+    :class:`~sumpy.kernel.HelmholtzKernel`, :class:`~sumpy.kernel.YukawaKernel`)
 
     .. note ::
 
         When testing this as a potential matcher, note that it can only
         access potentials that come from charge distributions having *no* net
-        charge. (This is true at least in 2D.)
+        charge. (This is true at least in 2D)
+
+    Inherits from :class:`L2WeightedPDEOperator`.
 
     .. automethod:: is_unique_only_up_to_constant
-    .. automethod:: representation
-    .. automethod:: operator
     """
 
-    def __init__(self, kernel, loc_sign, alpha=None, use_l2_weighting=False,
-            kernel_arguments=None):
+    def __init__(self, kernel: Kernel, loc_sign: int, *,
+            alpha: Optional[Number] = None,
+            use_l2_weighting: bool = False,
+            kernel_arguments: Optional[Dict[str, Any]] = None):
         """
-        :arg loc_sign: +1 for exterior, -1 for interior
-        :arg alpha: the coefficient for the combined-field representation
+        :param loc_sign: :math:`+1` for exterior or :math:`-1` for interior
+            problems.
+        :param alpha: the coefficient for the combined-field representation
             Set to 0 for Laplace.
         """
         assert loc_sign in [-1, 1]
-
-        from sumpy.kernel import Kernel, LaplaceKernel
         assert isinstance(kernel, Kernel)
 
         if kernel_arguments is None:
             kernel_arguments = {}
-        self.kernel_arguments = kernel_arguments
-
-        self.loc_sign = loc_sign
-
-        L2WeightedPDEOperator.__init__(self, kernel, use_l2_weighting)
 
         if alpha is None:
+            from sumpy.kernel import LaplaceKernel
             if isinstance(self.kernel, LaplaceKernel):
                 alpha = 0
             else:
                 alpha = 1j
 
+        super().__init__(kernel, use_l2_weighting)
+
+        self.kernel_arguments = kernel_arguments
+        self.loc_sign = loc_sign
         self.alpha = alpha
 
     def is_unique_only_up_to_constant(self):
@@ -126,32 +152,43 @@ class DirichletOperator(L2WeightedPDEOperator):
         from sumpy.kernel import LaplaceKernel
         return isinstance(self.kernel, LaplaceKernel) and self.loc_sign > 0
 
-    def representation(self,
-            u, map_potentials=None, qbx_forced_limit=None):
+    def representation(self, u,
+            map_potentials=None, qbx_forced_limit=None, **kwargs):
+        """
+        :param u: symbolic variable for the density.
+        :param map_potentials: a :class:`Callable` that can be used to apply
+            additional transformations on all the layer potentials in the
+            representation, e.g. to take a target derivative.
+        :param kwargs: additional keyword arguments passed on to the layer
+            potential constructor.
+        """
         sqrt_w = self.get_sqrt_weight()
-        inv_sqrt_w_u = cse(u/sqrt_w)
+        inv_sqrt_w_u = sym.cse(u/sqrt_w)
 
         if map_potentials is None:
             def map_potentials(x):  # pylint:disable=function-redefined
                 return x
 
-        def S(density):  # noqa
-            return sym.S(self.kernel, density,
-                    kernel_arguments=self.kernel_arguments,
-                    qbx_forced_limit=qbx_forced_limit)
-
-        def D(density):  # noqa
-            return sym.D(self.kernel, density,
-                    kernel_arguments=self.kernel_arguments,
-                    qbx_forced_limit=qbx_forced_limit)
+        kwargs["kernel_arguments"] = self.kernel_arguments
+        kwargs["qbx_forced_limit"] = qbx_forced_limit
 
         return (
-                self.alpha*map_potentials(S(inv_sqrt_w_u))
-                - map_potentials(D(inv_sqrt_w_u)))
+                self.alpha * map_potentials(
+                    sym.S(self.kernel, inv_sqrt_w_u, **kwargs)
+                    )
+                - map_potentials(
+                    sym.D(self.kernel, inv_sqrt_w_u, **kwargs)
+                    )
+                )
 
-    def operator(self, u):
+    def operator(self, u, **kwargs):
+        """
+        :param u: symbolic variable for the density.
+        :param kwargs: additional keyword arguments passed on to the layer
+            potential constructor.
+        """
         sqrt_w = self.get_sqrt_weight()
-        inv_sqrt_w_u = cse(u/sqrt_w)
+        inv_sqrt_w_u = sym.cse(u/sqrt_w)
 
         if self.is_unique_only_up_to_constant():
             # The exterior Dirichlet operator in this representation
@@ -162,20 +199,28 @@ class DirichletOperator(L2WeightedPDEOperator):
             # See Hackbusch, https://books.google.com/books?id=Ssnf7SZB0ZMC
             # Theorem 8.2.18b
 
-            amb_dim = self.kernel.dim
             ones_contribution = (
-                    sym.Ones() * sym.mean(amb_dim, amb_dim-1, inv_sqrt_w_u))
+                    sym.Ones() * sym.mean(self.dim, self.dim - 1, inv_sqrt_w_u))
         else:
             ones_contribution = 0
 
-        return (-self.loc_sign*0.5*u
-                + sqrt_w*(
-                    self.alpha*sym.S(self.kernel, inv_sqrt_w_u,
-                        qbx_forced_limit=+1, kernel_arguments=self.kernel_arguments)
-                    - sym.D(self.kernel, inv_sqrt_w_u,
-                        qbx_forced_limit="avg",
-                        kernel_arguments=self.kernel_arguments)
-                    + ones_contribution))
+        def S(density):  # noqa
+            return sym.S(self.kernel, density,
+                    kernel_arguments=self.kernel_arguments,
+                    qbx_forced_limit=+1, **kwargs)
+
+        def D(density):  # noqa
+            return sym.D(self.kernel, density,
+                    kernel_arguments=self.kernel_arguments,
+                    qbx_forced_limit="avg", **kwargs)
+
+        return (
+                -0.5 * self.loc_sign * u + sqrt_w * (
+                    self.alpha * S(inv_sqrt_w_u)
+                    - D(inv_sqrt_w_u)
+                    + ones_contribution
+                    )
+                )
 
 # }}}
 
@@ -183,53 +228,51 @@ class DirichletOperator(L2WeightedPDEOperator):
 # {{{ neumann
 
 class NeumannOperator(L2WeightedPDEOperator):
-    """IE operator and field representation for solving Dirichlet boundary
-    value problems with scalar kernels (e.g.
-    :class:`sumpy.kernel.LaplaceKernel`,
-    :class:`sumpy.kernel.HelmholtzKernel`, :class:`sumpy.kernel.YukawaKernel`)
+    """IE operator and field representation for solving Neumann boundary
+    value problems with scalar kernels (e.g. :class:`~sumpy.kernel.LaplaceKernel`,
+    :class:`~sumpy.kernel.HelmholtzKernel`, :class:`~sumpy.kernel.YukawaKernel`)
 
     .. note ::
 
         When testing this as a potential matcher, note that it can only
         access potentials that come from charge distributions having *no* net
-        charge. (This is true at least in 2D.)
+        charge. (This is true at least in 2D)
 
     .. automethod:: is_unique_only_up_to_constant
-    .. automethod:: representation
-    .. automethod:: operator
     """
 
-    def __init__(self, kernel, loc_sign, alpha=None,
-            use_improved_operator=True,
-            laplace_kernel=0, use_l2_weighting=False,
-            kernel_arguments=None):
+    def __init__(self, kernel: Kernel, loc_sign: int, *,
+            alpha: Optional[Number] = None,
+            use_improved_operator: bool = True,
+            use_l2_weighting: bool = False,
+            kernel_arguments: Optional[Dict[str, Any]] = None):
         """
-        :arg loc_sign: +1 for exterior, -1 for interior
-        :arg alpha: the coefficient for the combined-field representation
+        :param loc_sign: :math:`+1` for exterior or :math:`-1` for interior
+            problems.
+        :param alpha: the coefficient for the combined-field representation
             Set to 0 for Laplace.
-        :arg use_improved_operator: Whether to use the least singular
-            operator available
+        :param use_improved_operator: if *True* use the least singular
+            operator available.
         """
 
         assert loc_sign in [-1, 1]
-
-        from sumpy.kernel import Kernel, LaplaceKernel
         assert isinstance(kernel, Kernel)
 
         if kernel_arguments is None:
             kernel_arguments = {}
-        self.kernel_arguments = kernel_arguments
 
-        self.loc_sign = loc_sign
-        self.laplace_kernel = LaplaceKernel(kernel.dim)
-
-        L2WeightedPDEOperator.__init__(self, kernel, use_l2_weighting)
-
+        from sumpy.kernel import LaplaceKernel
         if alpha is None:
-            if isinstance(self.kernel, LaplaceKernel):
+            if isinstance(kernel, LaplaceKernel):
                 alpha = 0
             else:
                 alpha = 1j
+
+        super().__init__(kernel, use_l2_weighting)
+
+        self.kernel_arguments = kernel_arguments
+        self.loc_sign = loc_sign
+        self.laplace_kernel = LaplaceKernel(kernel.dim)
 
         self.alpha = alpha
         self.use_improved_operator = use_improved_operator
@@ -238,10 +281,17 @@ class NeumannOperator(L2WeightedPDEOperator):
         from sumpy.kernel import LaplaceKernel
         return isinstance(self.kernel, LaplaceKernel) and self.loc_sign < 0
 
-    def representation(self, u, map_potentials=None, qbx_forced_limit=None,
-            **kwargs):
+    def representation(self, u,
+            map_potentials=None, qbx_forced_limit=None, **kwargs):
+        """
+        :param u: symbolic variable for the density.
+        :param map_potentials: a :class:`Callable` that can be used to apply
+            additional transformations on all the layer potentials in the
+            representation, e.g. to take a target derivative.
+        """
         sqrt_w = self.get_sqrt_weight()
-        inv_sqrt_w_u = cse(u/sqrt_w)
+        inv_sqrt_w_u = sym.cse(u/sqrt_w)
+        laplace_s_inv_sqrt_w_u = sym.cse(sym.S(self.laplace_kernel, inv_sqrt_w_u))
 
         if map_potentials is None:
             def map_potentials(x):  # pylint:disable=function-redefined
@@ -252,45 +302,49 @@ class NeumannOperator(L2WeightedPDEOperator):
 
         return (
                 map_potentials(
-                    sym.S(self.kernel, inv_sqrt_w_u, **kwargs))
-                - self.alpha
-                * map_potentials(
-                    sym.D(self.kernel,
-                        sym.S(self.laplace_kernel, inv_sqrt_w_u),
-                        **kwargs)))
+                    sym.S(self.kernel, inv_sqrt_w_u, **kwargs)
+                    )
+                - self.alpha * map_potentials(
+                    sym.D(self.kernel, laplace_s_inv_sqrt_w_u, **kwargs)
+                    )
+                )
 
-    def operator(self, u):
-        from sumpy.kernel import HelmholtzKernel, LaplaceKernel
-
+    def operator(self, u, **kwargs):
+        """
+        :param u: symbolic variable for the density.
+        :param kwargs: additional keyword arguments passed on to the layer
+            potential constructor.
+        """
         sqrt_w = self.get_sqrt_weight()
-        inv_sqrt_w_u = cse(u/sqrt_w)
+        inv_sqrt_w_u = sym.cse(u/sqrt_w)
+        laplace_s_inv_sqrt_w_u = sym.cse(
+                sym.S(self.laplace_kernel, inv_sqrt_w_u, qbx_forced_limit=+1)
+                )
 
-        knl = self.kernel
-        lknl = self.laplace_kernel
-
-        knl_kwargs = {}
-        knl_kwargs["kernel_arguments"] = self.kernel_arguments
-
-        DpS0u = sym.Dp(knl,  # noqa
-                cse(sym.S(lknl, inv_sqrt_w_u)),
-                **knl_kwargs)
+        kwargs["kernel_arguments"] = self.kernel_arguments
 
         if self.use_improved_operator:
-            Dp0S0u = -0.25*u + sym.Sp(  # noqa
-                    lknl,  # noqa
-                    sym.Sp(lknl, inv_sqrt_w_u, qbx_forced_limit="avg"),
-                    qbx_forced_limit="avg")
+            def Sp(density):
+                return sym.Sp(self.laplace_kernel,
+                        density,
+                        qbx_forced_limit="avg")
 
+            Dp0S0u = -0.25 * u + Sp(Sp(inv_sqrt_w_u))
+
+            from sumpy.kernel import HelmholtzKernel, LaplaceKernel
             if isinstance(self.kernel, HelmholtzKernel):
                 DpS0u = (  # noqa
-                        sym.Dp(knl - lknl,  # noqa
-                            cse(sym.S(lknl, inv_sqrt_w_u, qbx_forced_limit=+1)),
-                            qbx_forced_limit=+1, **knl_kwargs)
+                        sym.Dp(
+                            self.kernel - self.laplace_kernel,
+                            laplace_s_inv_sqrt_w_u,
+                            qbx_forced_limit=+1, **kwargs)
                         + Dp0S0u)
-            elif isinstance(knl, LaplaceKernel):
-                DpS0u = Dp0S0u  # noqa
+            elif isinstance(self.kernel, LaplaceKernel):
+                DpS0u = Dp0S0u
             else:
                 raise ValueError(f"no improved operator for '{self.kernel}' known")
+        else:
+            DpS0u = sym.Dp(self.kernel, laplace_s_inv_sqrt_w_u, **kwargs)
 
         if self.is_unique_only_up_to_constant():
             # The interior Neumann operator in this representation
@@ -298,18 +352,20 @@ class NeumannOperator(L2WeightedPDEOperator):
             # to the desired solution separately. As is, this operator
             # returns a mean that is not well-specified.
 
-            amb_dim = self.kernel.dim
             ones_contribution = (
-                    sym.Ones() * sym.mean(amb_dim, amb_dim-1, inv_sqrt_w_u))
+                    sym.Ones() * sym.mean(self.dim, self.dim - 1, inv_sqrt_w_u))
         else:
             ones_contribution = 0
 
-        return (-self.loc_sign*0.5*u
-                + sqrt_w*(
-                    sym.Sp(knl, inv_sqrt_w_u, qbx_forced_limit="avg", **knl_kwargs)
-                    - self.alpha*DpS0u
+        kwargs["qbx_forced_limit"] = "avg"
+        return (
+                -0.5 * self.loc_sign * u
+                + sqrt_w * (
+                    sym.Sp(self.kernel, inv_sqrt_w_u, **kwargs)
+                    - self.alpha * DpS0u
                     + ones_contribution
-                    ))
+                    )
+                )
 
 
 class BiharmonicClampedPlateOperator:
