@@ -42,6 +42,9 @@ from sumpy.kernel import DirectionalSourceDerivative
 
 class L2WeightedPDEOperator:
     """
+    .. attribute:: kernel
+    .. attribute:: use_l2_weighting
+
     .. automethod:: get_weight
     .. automethod:: get_sqrt_weight
 
@@ -68,6 +71,11 @@ class L2WeightedPDEOperator:
         return self.kernel.dim
 
     def get_weight(self, dofdesc=None):
+        """
+        :returns: a symbolic expression for the weights (quadrature weights
+            and area elements) on *dofdesc* if :attr:`use_l2_weighting` is
+            *True* and ``1`` otherwise.
+        """
         if self.use_l2_weighting:
             return sym.cse(
                     sym.area_element(self.dim, dofdesc=dofdesc)
@@ -76,25 +84,42 @@ class L2WeightedPDEOperator:
             return 1
 
     def get_sqrt_weight(self, dofdesc=None):
+        """
+        :returns: the square root of :meth:`get_weight`.
+        """
         if self.use_l2_weighting:
             return sym.sqrt_jac_q_weight(self.dim, dofdesc=dofdesc)
         else:
             return 1
 
     def prepare_rhs(self, b):
+        """Modify the right-hand side (e.g. boundary conditions) to match the
+        operator constructed in :meth:`operator`.
+        """
         return self.get_sqrt_weight() * b
 
     def get_density_var(self, name: str):
         """
-        :returns: a symbolic variable/array corresponding to the density
-            with the given *name*.
+        :param name: a string name for the density.
+        :returns: a symbolic variable or array (problem dependent)
+            corresponding to the density with the given *name*.
         """
         return sym.var(name)
 
-    def representation(self, u, qbx_forced_limit=None):
+    def representation(self, u, qbx_forced_limit=None, **kwargs):
+        """
+        :returns: a representation for the unknowns based on an integral
+            equation with density *u*. If *qbx_forced_limit* denotes an
+            on-surface evaluation, the corresponding jump relations are not
+            added to the representation.
+        """
         raise NotImplementedError
 
-    def operator(self, u):
+    def operator(self, u, **kwargs):
+        """
+        :returns: a boundary integral operator with corresponding jump
+            relations that can be used to solve for the density *u*.
+        """
         raise NotImplementedError
 
 # }}}
@@ -116,6 +141,9 @@ class DirichletOperator(L2WeightedPDEOperator):
     Inherits from :class:`L2WeightedPDEOperator`.
 
     .. automethod:: is_unique_only_up_to_constant
+    .. automethod:: representation
+    .. automethod:: operator
+    .. automethod:: __init__
     """
 
     def __init__(self, kernel: Kernel, loc_sign: int, *,
@@ -136,7 +164,7 @@ class DirichletOperator(L2WeightedPDEOperator):
 
         if alpha is None:
             from sumpy.kernel import LaplaceKernel
-            if isinstance(self.kernel, LaplaceKernel):
+            if isinstance(kernel, LaplaceKernel):
                 alpha = 0
             else:
                 alpha = 1j
@@ -156,7 +184,7 @@ class DirichletOperator(L2WeightedPDEOperator):
             map_potentials=None, qbx_forced_limit=None, **kwargs):
         """
         :param u: symbolic variable for the density.
-        :param map_potentials: a :class:`Callable` that can be used to apply
+        :param map_potentials: a callable that can be used to apply
             additional transformations on all the layer potentials in the
             representation, e.g. to take a target derivative.
         :param kwargs: additional keyword arguments passed on to the layer
@@ -238,7 +266,12 @@ class NeumannOperator(L2WeightedPDEOperator):
         access potentials that come from charge distributions having *no* net
         charge. (This is true at least in 2D)
 
+    Inherits from :class:`L2WeightedPDEOperator`.
+
     .. automethod:: is_unique_only_up_to_constant
+    .. automethod:: representation
+    .. automethod:: operator
+    .. automethod:: __init__
     """
 
     def __init__(self, kernel: Kernel, loc_sign: int, *,
@@ -285,7 +318,7 @@ class NeumannOperator(L2WeightedPDEOperator):
             map_potentials=None, qbx_forced_limit=None, **kwargs):
         """
         :param u: symbolic variable for the density.
-        :param map_potentials: a :class:`Callable` that can be used to apply
+        :param map_potentials: a callable that can be used to apply
             additional transformations on all the layer potentials in the
             representation, e.g. to take a target derivative.
         """
@@ -373,43 +406,68 @@ class BiharmonicClampedPlateOperator:
     equation where,
 
     .. math::
-      \begin{align*}
-      \Delta^2 u &= 0 \text{ on } D \\
-      u &= g_1 \text{ on } \delta D \\
-      \frac{\partial u}{\partial \nu} &= g_2 \text{ on } \delta D.
-      \end{align*}
+      \begin{cases}
+      \Delta^2 u = 0,   & \quad \text{ on } D, \\
+      u = g_1,          & \quad \text{ on } \partial D, \\
+      \mathbf{n} \cdot \nabla u = g_2, & \quad \text{ on } \partial D.
+      \end{cases}
 
-    This operator assumes that the boundary data :math:`g_1, g_2` are
-    represented as column vectors and vertically stacked.
+    This operator assumes that the boundary data :math:`(g_1, g_2)` are
+    represented as column vectors and vertically stacked. For details on the
+    formulation see Problem C in [Farkas1990]_.
 
     .. note :: This operator supports only interior problem.
 
-    Ref: Farkas, Peter. Mathematical foundations for fast algorithms for the
-    biharmonic equation. Technical Report 765, Department of Computer Science,
-    Yale University, 1990.
+    .. [Farkas1990] Farkas, Peter, *Mathematical foundations for fast
+        algorithms for the biharmonic equation*,
+        Technical Report 765, Department of Computer Science,
+        Yale University, 1990,
+        `PDF <https://cpsc.yale.edu/sites/default/files/files/tr765.pdf>`__.
 
     .. automethod:: representation
     .. automethod:: operator
+    .. automethod:: __init__
     """
 
-    def __init__(self, knl, loc_sign):
-        self.knl = knl
-        self.loc_sign = loc_sign
+    def __init__(self, kernel: Kernel, loc_sign: int):
+        """
+        :param loc_sign: :math:`+1` for exterior or :math:`-1` for interior
+            problems.
+        """
+
         if loc_sign != -1:
-            raise ValueError("loc_sign!=-1 is not supported.")
+            raise ValueError("only interior problems (loc_sign == -1) are supported")
+
+        if kernel.dim != 2:
+            raise ValueError("unsupported dimension: {kernel.ambient_dim}")
+
+        self.kernel = kernel
+        self.loc_sign = loc_sign
+
+    @property
+    def dim(self):
+        return self.kernel.dim
 
     def prepare_rhs(self, b):
         return b
 
-    def get_density_var(self, name):
+    def get_density_var(self, name: str):
         """
-        Returns a symbolic variable of length 2 corresponding to the density with
-        the given name.
+        :returns: a symbolic array corresponding to the density
+            with the given *name*.
         """
         return sym.make_sym_vector(name, 2)
 
-    def representation(self,
-            sigma, map_potentials=None, qbx_forced_limit=None):
+    def representation(self, sigma,
+            map_potentials=None, qbx_forced_limit=None, **kwargs):
+        """
+        :param sigma: symbolic variable for the density.
+        :param map_potentials: a callable that can be used to apply
+            additional transformations on all the layer potentials in the
+            representation, e.g. to take a target derivative.
+        :param kwargs: additional keyword arguments passed on to the layer
+            potential constructor.
+        """
 
         if map_potentials is None:
             def map_potentials(x):  # pylint:disable=function-redefined
@@ -421,34 +479,55 @@ class BiharmonicClampedPlateOperator:
         def dt(knl):
             return DirectionalSourceDerivative(knl, "tangent_dir")
 
-        normal_dir = sym.normal(2).as_vector()
+        normal_dir = sym.normal(self.dim).as_vector()
         tangent_dir = np.array([-normal_dir[1], normal_dir[0]])
+        kwargs["qbx_forced_limit"] = qbx_forced_limit
 
-        k1 = map_potentials(sym.S(dv(dv(dv(self.knl))), sigma[0],
-                    kernel_arguments={"normal_dir": normal_dir},
-                    qbx_forced_limit=qbx_forced_limit)) + \
-             3*map_potentials(sym.S(dv(dt(dt(self.knl))), sigma[0],
-                    kernel_arguments={"normal_dir": normal_dir,
-                                      "tangent_dir": tangent_dir},
-                    qbx_forced_limit=qbx_forced_limit))
+        k1 = (
+                map_potentials(
+                    sym.S(dv(dv(dv(self.kernel))), sigma[0],
+                        kernel_arguments={"normal_dir": normal_dir},
+                        **kwargs)
+                    )
+                + 3 * map_potentials(
+                    sym.S(dv(dt(dt(self.kernel))), sigma[0],
+                        kernel_arguments={
+                            "normal_dir": normal_dir, "tangent_dir": tangent_dir
+                            },
+                        **kwargs)
+                    )
+                )
 
-        k2 = -map_potentials(sym.S(dv(dv(self.knl)), sigma[1],
-                    kernel_arguments={"normal_dir": normal_dir},
-                    qbx_forced_limit=qbx_forced_limit)) + \
-             map_potentials(sym.S(dt(dt(self.knl)), sigma[1],
-                    kernel_arguments={"tangent_dir": tangent_dir},
-                    qbx_forced_limit=qbx_forced_limit))
+        k2 = (
+                -map_potentials(
+                    sym.S(dv(dv(self.kernel)), sigma[1],
+                        kernel_arguments={"normal_dir": normal_dir},
+                        **kwargs)
+                    )
+                + map_potentials(
+                    sym.S(dt(dt(self.kernel)), sigma[1],
+                        kernel_arguments={"tangent_dir": tangent_dir},
+                        **kwargs)
+                    )
+                )
 
         return k1 + k2
 
-    def operator(self, sigma):
+    def operator(self, sigma, **kwargs):
         """
-        Returns the two second kind integral equations.
+        :param u: symbolic variable for the density.
+        :param kwargs: additional keyword arguments passed on to the layer
+            potential constructor.
+
+        :returns: the second kind integral operator for the clamped plate
+            problem from [Farkas1990]_.
         """
-        rep = self.representation(sigma, qbx_forced_limit="avg")
-        rep_diff = sym.normal_derivative(2, rep)
-        int_eq1 = sigma[0]/2 + rep
-        int_eq2 = -sym.mean_curvature(2)*sigma[0] + sigma[1]/2 + rep_diff
+        rep = self.representation(sigma, qbx_forced_limit="avg", **kwargs)
+        drep_dn = sym.normal_derivative(self.dim, rep)
+
+        int_eq1 = sigma[0] / 2 + rep
+        int_eq2 = -sym.mean_curvature(self.dim) * sigma[0] + sigma[1] / 2 + drep_dn
+
         return np.array([int_eq1, int_eq2])
 
 # }}}
