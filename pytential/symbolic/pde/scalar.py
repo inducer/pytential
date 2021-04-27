@@ -153,8 +153,10 @@ class DirichletOperator(L2WeightedPDEOperator):
         """
         :param loc_sign: :math:`+1` for exterior or :math:`-1` for interior
             problems.
-        :param alpha: the coefficient for the combined-field representation
-            Set to 0 for Laplace.
+        :param alpha: a complex coefficient with positive imaginary part for
+            the combined-field integral representation (CFIE) for the
+            Helmholtz equation (based on Brakhage and Werner).
+            For other kernels, it does does not offer any benefits.
         """
         assert loc_sign in [-1, 1]
         assert isinstance(kernel, Kernel)
@@ -163,11 +165,12 @@ class DirichletOperator(L2WeightedPDEOperator):
             kernel_arguments = {}
 
         if alpha is None:
-            from sumpy.kernel import LaplaceKernel
-            if isinstance(kernel, LaplaceKernel):
-                alpha = 0
-            else:
+            # See Culton and Kress Chapter 3 for an explanation
+            from sumpy.kernel import HelmholtzKernel
+            if isinstance(kernel, HelmholtzKernel):
                 alpha = 1j
+            else:
+                alpha = 0
 
         super().__init__(kernel, use_l2_weighting)
 
@@ -282,8 +285,10 @@ class NeumannOperator(L2WeightedPDEOperator):
         """
         :param loc_sign: :math:`+1` for exterior or :math:`-1` for interior
             problems.
-        :param alpha: the coefficient for the combined-field representation
-            Set to 0 for Laplace.
+        :param alpha: a complex coefficient with positive imaginary part for
+            the combined-field integral representation (CFIE) for the
+            Helmholtz equation (based on Brakhage and Werner).
+            For other kernels, it does does not offer any benefits.
         :param use_improved_operator: if *True* use the least singular
             operator available.
         """
@@ -294,15 +299,17 @@ class NeumannOperator(L2WeightedPDEOperator):
         if kernel_arguments is None:
             kernel_arguments = {}
 
-        from sumpy.kernel import LaplaceKernel
         if alpha is None:
-            if isinstance(kernel, LaplaceKernel):
-                alpha = 0
-            else:
+            # See Culton and Kress Chapter 3 for an explanation
+            from sumpy.kernel import HelmholtzKernel
+            if isinstance(kernel, HelmholtzKernel):
                 alpha = 1j
+            else:
+                alpha = 0
 
         super().__init__(kernel, use_l2_weighting)
 
+        from sumpy.kernel import LaplaceKernel
         self.kernel_arguments = kernel_arguments
         self.loc_sign = loc_sign
         self.laplace_kernel = LaplaceKernel(kernel.dim)
