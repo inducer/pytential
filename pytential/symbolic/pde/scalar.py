@@ -290,7 +290,7 @@ class NeumannOperator(L2WeightedPDEOperator):
             Helmholtz equation (based on Brakhage and Werner).
             For other kernels, it does does not offer any benefits.
         :param use_improved_operator: if *True* use the least singular
-            operator available.
+            operator available. Only used when *alpha* is not :math:`0`.
         """
 
         assert loc_sign in [-1, 1]
@@ -363,17 +363,25 @@ class NeumannOperator(L2WeightedPDEOperator):
 
         kwargs["kernel_arguments"] = self.kernel_arguments
 
+        # NOTE: the improved operator here is based on right-precondioning
+        # by a single layer and then using some Calderon identities to simplify
+        # the result. The integral equation we start with for Neumann is
+        #       I + S' + alpha D' = g
+        # where D' is hypersingular
+
         if self.use_improved_operator:
             def Sp(density):
                 return sym.Sp(self.laplace_kernel,
                         density,
                         qbx_forced_limit="avg")
 
+            # NOTE: using the Calderon identity
+            #   D' S = -u/4 + S'^2
             Dp0S0u = -0.25 * u + Sp(Sp(inv_sqrt_w_u))
 
             from sumpy.kernel import HelmholtzKernel, LaplaceKernel
             if isinstance(self.kernel, HelmholtzKernel):
-                DpS0u = (  # noqa
+                DpS0u = (
                         sym.Dp(
                             self.kernel - self.laplace_kernel,
                             laplace_s_inv_sqrt_w_u,
