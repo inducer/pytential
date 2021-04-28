@@ -41,7 +41,16 @@ from sumpy.kernel import DirectionalSourceDerivative
 # {{{ L^2 weighting
 
 class L2WeightedPDEOperator:
-    """
+    r""":math:`L^2`-weighting for scalar IEs.
+
+    :math:`L^2`-weighting is performed to help with the solution of IEs that
+    yield locally singular densities. It does this by matching the
+    :math:`\ell^2`-norm used by the iterative method (e.g. GMRES) with the
+    (approximate) :math:`L^2`-norm. Clearly, singular densities might not have
+    finite :math:`\ell^2`-norm, hampering convergence of the iterative method.
+    See `Bremer, J. On the Nyström discretization of integral equations on planar
+    curves with corners. ACHA, 2011. <https://doi.org/10.1016/j.acha.2011.03.002>`__.
+
     .. attribute:: kernel
     .. attribute:: use_l2_weighting
 
@@ -55,13 +64,6 @@ class L2WeightedPDEOperator:
     .. automethod:: operator
 
     .. automethod:: __init__
-    :math:`L^2`-weighting is performed to help with the solution of IEs that yield
-    locally singular densities. It does this by matching the :math:`\ell^2`-norm used
-    by the iterative method (e.g. GMRES) with the (approximate) :math:`L^2`-norm.
-    Clearly, singular densities might not have finite :math:`\ell^2`-norm, hampering
-    convergence of the iterative method. See
-    `Bremer, J. On the Nyström discretization of integral equations on planar
-    curves with corners. ACHA, 2011. <https://doi.org/10.1016/j.acha.2011.03.002>`__
     """
 
     def __init__(self, kernel: Kernel, use_l2_weighting: bool):
@@ -180,7 +182,7 @@ class DirichletOperator(L2WeightedPDEOperator):
             #    Über das Dirichletsche Außenraumproblem für die
             #    Helmholtzsche Schwingungsgleichung.
             #    https://doi.org/10.1007/BF01220037
-            # - Coulton and Kress, Chapter 3
+            # - Colton and Kress, Chapter 3
             from sumpy.kernel import HelmholtzKernel
             if isinstance(kernel, HelmholtzKernel):
                 alpha = 1j
@@ -315,7 +317,7 @@ class NeumannOperator(L2WeightedPDEOperator):
             kernel_arguments = {}
 
         if alpha is None:
-            # See Culton and Kress Chapter 3 for an explanation
+            # Brakhage-Werner trick for Helmholtz (see DirichletOperator)
             from sumpy.kernel import HelmholtzKernel
             if isinstance(kernel, HelmholtzKernel):
                 alpha = 1j
