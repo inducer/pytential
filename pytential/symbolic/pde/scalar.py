@@ -172,7 +172,15 @@ class DirichletOperator(L2WeightedPDEOperator):
             kernel_arguments = {}
 
         if alpha is None:
-            # See Culton and Kress Chapter 3 for an explanation
+            # Use a combined-field/Brakhage-Werner representation
+            # (alpha != 0) to avoid spurious resonances (mainly for
+            # the exterior problem)
+            # See:
+            # - Brakhage and Werner.
+            #    Über das Dirichletsche Außenraumproblem für die
+            #    Helmholtzsche Schwingungsgleichung.
+            #    https://doi.org/10.1007/BF01220037
+            # - Coulton and Kress, Chapter 3
             from sumpy.kernel import HelmholtzKernel
             if isinstance(kernel, HelmholtzKernel):
                 alpha = 1j
