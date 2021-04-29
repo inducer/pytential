@@ -118,10 +118,10 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         return func(actx, insn, bound_expr, evaluate_wrapper)
 
     def op_group_features(self, expr):
-        from sumpy.kernel import AxisTargetDerivativeRemover
+        from sumpy.kernel import TargetTransformationRemover
         result = (
                 expr.source, expr.densities, expr.source_kernels,
-                AxisTargetDerivativeRemover()(expr.target_kernel),
+                TargetTransformationRemover()(expr.target_kernel),
                 )
 
         return result

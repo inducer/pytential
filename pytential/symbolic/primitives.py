@@ -1658,9 +1658,9 @@ class _unspecified:  # noqa: N801
 
 def _create_int_g(kernel, density, qbx_forced_limit, source, target,
         kernel_arguments, **kwargs):
-    from sumpy.kernel import SourceDerivativeRemover, TargetDerivativeRemover
-    sdr = SourceDerivativeRemover()
-    tdr = TargetDerivativeRemover()
+    from sumpy.kernel import SourceTransformationRemover, TargetTransformationRemover
+    sdr = SourceTransformationRemover()
+    tdr = TargetTransformationRemover()
 
     target_kernel = sdr(kernel)
     source_kernels = [tdr(kernel)]

@@ -128,10 +128,10 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         return self._nodes.shape[0]
 
     def op_group_features(self, expr):
-        from sumpy.kernel import AxisTargetDerivativeRemover
+        from sumpy.kernel import TargetTransformationRemover
         result = (
                 expr.source, expr.densities, expr.source_kernels,
-                AxisTargetDerivativeRemover()(expr.target_kernel),
+                TargetTransformationRemover()(expr.target_kernel),
                 )
 
         return result
@@ -254,9 +254,9 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     def get_fmm_kernel(self, kernels):
         fmm_kernel = None
 
-        from sumpy.kernel import AxisTargetDerivativeRemover
+        from sumpy.kernel import TargetTransformationRemover
         for knl in kernels:
-            candidate_fmm_kernel = AxisTargetDerivativeRemover()(knl)
+            candidate_fmm_kernel = TargetTransformationRemover()(knl)
 
             if fmm_kernel is None:
                 fmm_kernel = candidate_fmm_kernel
