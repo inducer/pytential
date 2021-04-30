@@ -86,12 +86,18 @@ def test_target_derivative_sumpy(ctx_factory):
             qbx_forced_limit="avg", **case.knl_sym_kwargs)
 
     from pytential.symbolic.execution import build_matrix
-    mat = build_matrix(
-            actx, places, sym_op, sym_u,
-            context=case.knl_concrete_kwargs,
-            )
+    with pytest.raises(ValueError):
+        build_matrix(
+                actx, places, sym_op, sym_u,
+                context=case.knl_concrete_kwargs,
+                )
 
-    assert mat is not None
+    from meshmode.dof_array import thaw
+    with pytest.raises(ValueError):
+        density_discr = places.get_discretization(case.name)
+        u = thaw(actx, density_discr.nodes()[0])
+
+        bind(places, sym_op)(actx, u=u)
 
     # }}}
 
