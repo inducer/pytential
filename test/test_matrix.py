@@ -51,6 +51,51 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
+def test_target_derivative_sumpy(ctx_factory):
+    cl_ctx = ctx_factory()
+    queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
+
+    # prevent cache explosion
+    from sympy.core.cache import clear_cache
+    clear_cache()
+
+    case = extra.CurveTestCase(
+            name="ellipse",
+            curve_fn=lambda t: ellipse(3.0, t),
+            target_order=4,
+            qbx_order=4,
+            resolutions=[64],
+            )
+    logger.info("\n%s", case)
+
+    # {{{ check
+
+    qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
+
+    from pytential.qbx.refinement import refine_geometry_collection
+    places = GeometryCollection(qbx, auto_where=case.name)
+    places = refine_geometry_collection(places,
+            refine_discr_stage=sym.QBX_SOURCE_QUAD_STAGE2)
+
+    from sumpy.kernel import LaplaceKernel
+    knl = LaplaceKernel(places.ambient_dim)
+
+    sym_u = sym.var("u")
+    sym_op = 0.5 * sym_u + sym.Sp(knl, sym_u,
+            qbx_forced_limit="avg", **case.knl_sym_kwargs)
+
+    from pytential.symbolic.execution import build_matrix
+    mat = build_matrix(
+            actx, places, sym_op, sym_u,
+            context=case.knl_concrete_kwargs,
+            )
+
+    assert mat is not None
+
+    # }}}
+
+
 @pytest.mark.skipif(USE_SYMENGINE,
         reason="https://gitlab.tiker.net/inducer/sumpy/issues/25")
 @pytest.mark.parametrize("k", [0, 42])
