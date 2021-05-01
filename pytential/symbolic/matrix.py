@@ -377,10 +377,8 @@ class MatrixBuilder(MatrixBuilderBase):
 
             actx = self.array_context
             kernel_args = _get_layer_potential_args(self, expr)
-
-            from sumpy.expansion.local import LineTaylorLocalExpansion
-            local_expn = LineTaylorLocalExpansion(
-                expr.target_kernel.get_base_kernel(), lpot_source.qbx_order)
+            local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
+                    kernel.get_base_kernel(), (expr.target_kernel,))
 
             from sumpy.qbx import LayerPotentialMatrixGenerator
             mat_gen = LayerPotentialMatrixGenerator(actx.context,
@@ -515,10 +513,8 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
             actx = self.array_context
             kernel_args = _get_layer_potential_args(self._mat_mapper, expr)
-
-            from sumpy.expansion.local import LineTaylorLocalExpansion
-            local_expn = LineTaylorLocalExpansion(
-                expr.target_kernel.get_base_kernel(), lpot_source.qbx_order)
+            local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
+                    kernel.get_base_kernel(), (expr.target_kernel,))
 
             from sumpy.qbx import LayerPotentialMatrixBlockGenerator
             mat_gen = LayerPotentialMatrixBlockGenerator(actx.context, local_expn,
