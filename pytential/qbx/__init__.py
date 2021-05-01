@@ -687,6 +687,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ direct execution
 
     @memoize_method
+    def get_expansion_for_qbx_direct_eval(self, base_kernel, target_kernels):
+        from sumpy.expansion.local import LineTaylorLocalExpansion
+        from sumpy.kernel import TargetDerivativeRemover
+
+        # line Taylor cannot support target derivatives
+        tdr = TargetDerivativeRemover()
+        if any(knl != tdr(knl) for knl in target_kernels):
+            return self.expansion_factory.get_local_expansion_class(
+                    base_kernel)(base_kernel, self.qbx_order)
+        else:
+            return LineTaylorLocalExpansion(base_kernel, self.qbx_order)
+
+    @memoize_method
     def get_lpot_applier(self, target_kernels, source_kernels):
         # needs to be separate method for caching
 
@@ -698,20 +711,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         base_kernel = single_valued(knl.get_base_kernel() for knl in source_kernels)
 
         from sumpy.qbx import LayerPotential
-        from sumpy.expansion.local import LineTaylorLocalExpansion
-        from sumpy.kernel import TargetDerivativeRemover
-
-        tdr = TargetDerivativeRemover()
-        # line Taylor cannot support target derivatives
-        if any(knl != tdr(knl) for knl in target_kernels):
-            local_expn = \
-                    self.expansion_factory.get_local_expansion_class(base_kernel)(
-                            base_kernel, self.qbx_order)
-        else:
-            local_expn = LineTaylorLocalExpansion(base_kernel, self.qbx_order)
-
         return LayerPotential(self.cl_context,
-                    expansion=local_expn,
+                    expansion=self.get_expansion_for_qbx_direct_eval(
+                        base_kernel, target_kernels),
                     target_kernels=target_kernels, source_kernels=source_kernels,
                     value_dtypes=value_dtype)
 
