@@ -699,8 +699,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         from sumpy.qbx import LayerPotential
         from sumpy.expansion.local import LineTaylorLocalExpansion
+        from sumpy.kernel import TargetDerivativeRemover
+
+        tdr = TargetDerivativeRemover()
+        # line Taylor cannot support target derivatives
+        if any(knl != tdr(knl) for knl in target_kernels):
+            local_expn = \
+                    self.expansion_factory.get_local_expansion_class(base_kernel)(
+                            base_kernel, self.qbx_order)
+        else:
+            local_expn = LineTaylorLocalExpansion(base_kernel, self.qbx_order)
+
         return LayerPotential(self.cl_context,
-                    expansion=LineTaylorLocalExpansion(base_kernel, self.qbx_order),
+                    expansion=local_expn,
                     target_kernels=target_kernels, source_kernels=source_kernels,
                     value_dtypes=value_dtype)
 
