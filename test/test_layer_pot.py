@@ -152,14 +152,14 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
     cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
+    queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue)
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
     clear_cache()
 
-    nelements = 30000*3
+    nelements = 300
     target_order = 8
     qbx_order = 3
 
@@ -177,13 +177,11 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     direct_qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=False,
-            fmm_backend="sumpy",
             target_association_tolerance=0.05,
             )
     fmm_qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order + 3,
-            fmm_backend="sumpy",
             _expansions_in_tree_have_extent=True,
             target_association_tolerance=0.05,
             )
@@ -208,9 +206,9 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     op = op_d + op_s * 0.5
     try:
         direct_sigma = direct_density_discr.zeros(actx) + 1
-        direct_fld_in_vol = 0 #bind(places, op,
-        #        auto_where=("direct_qbx", "target"))(
-        #                actx, sigma=direct_sigma)
+        direct_fld_in_vol = bind(places, op,
+                auto_where=("direct_qbx", "target"))(
+                        actx, sigma=direct_sigma)
     except QBXTargetAssociationFailedException as e:
         fplot.show_scalar_in_matplotlib(
             actx.to_numpy(actx.thaw(e.failed_target_flags)))
@@ -220,21 +218,10 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
 
     fmm_sigma = fmm_density_discr.zeros(actx) + 1
     fmm_bound_op = bind(places, op, auto_where=("fmm_qbx", "target"))
-    #print(fmm_bound_op.code)
-    fmm_timing_data = {}
-    fmm_fld_in_vol = fmm_bound_op.eval({"sigma": fmm_sigma}, array_context=actx, timing_data=fmm_timing_data)
+    print(fmm_bound_op.code)
+    fmm_fld_in_vol = fmm_bound_op(actx, sigma=fmm_sigma)
+
     err = actx.np.fabs(fmm_fld_in_vol - direct_fld_in_vol)
-
-    def print_timing_data(timing_data):
-        timings = list(fmm_timing_data.values())
-        result = {k: 0 for k in timings[0].keys()}
-        for timing in timings:
-            for k, v in timing.items():
-                result[k] += v['wall_elapsed']
-        print(result)
-
-    print_timing_data(fmm_timing_data)
-
     linf_err = actx.to_numpy(err).max()
     print("l_inf error:", linf_err)
 
@@ -245,18 +232,16 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
             ("direct_fld_in_vol", actx.to_numpy(direct_fld_in_vol))
             ])
 
-    #assert linf_err < 1e-3
+    assert linf_err < 1e-3
 
     # check that using one FMM works
     op = op_d.copy(source_kernels=op_d.source_kernels + (knl,),
         densities=op_d.densities + (sym.var("sigma")*0.5,))
     single_fmm_bound_op = bind(places, op, auto_where=("fmm_qbx", "target"))
-    fmm_timing_data = {}
-    single_fmm_fld_in_vol = single_fmm_bound_op.eval({"sigma": fmm_sigma}, array_context=actx, timing_data=fmm_timing_data)
-    err = actx.np.fabs(single_fmm_fld_in_vol - direct_fld_in_vol)
+    print(single_fmm_bound_op.code)
+    single_fmm_fld_in_vol = fmm_bound_op(actx, sigma=fmm_sigma)
 
-    print_timing_data(fmm_timing_data)
-
+    err = actx.np.fabs(fmm_fld_in_vol - single_fmm_fld_in_vol)
     linf_err = actx.to_numpy(err).max()
     print("l_inf error:", linf_err)
 
