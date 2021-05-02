@@ -262,11 +262,12 @@ def run_exterior_stokes(ctx_factory, *,
     return h_max, v_error
 
 
+@pytest.mark.parametrize("method", ["naive", "biharmonic"])
 @pytest.mark.parametrize("ambient_dim", [
     2,
     pytest.param(3, marks=pytest.mark.slowtest)
     ])
-def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False, method="naive"):
+def test_exterior_stokes(ctx_factory, ambient_dim, method="naive", visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
