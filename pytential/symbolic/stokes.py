@@ -533,7 +533,6 @@ class StokesletWrapperUsingLaplace(StokesletWrapperBase, StokesletWrapperMixin):
                     common_expr_density, qbx_forced_limit=qbx_forced_limit)
             sym_expr[i] *= -0.5*(mu_sym**(-1))
 
-        print(sym_expr[0])
         return sym_expr
 
 
