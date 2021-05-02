@@ -23,6 +23,8 @@ THE SOFTWARE.
 import numpy as np
 
 from sumpy.symbolic import make_sym_vector, sym, SympyToPymbolicMapper
+from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
+    DirectionalSourceDerivative)
 from pytools import (
                 generate_nonnegative_integer_tuples_summing_to_at_most
                 as gnitstam)
@@ -100,9 +102,9 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=False):
         result = []
         const = 0
         if verbose:
-            print(kernel, end=" = ")
+            print(kernel, end=" = ", flush=True)
         for i, coeff in enumerate(mat.solve(vec)):
-            coeff = _chop(coeff, tol)
+            coeff = _chop(coeff.expand(), tol)
             if coeff == 0:
                 continue
             if mis[i] != (-1, -1, -1):
@@ -141,15 +143,81 @@ def merge_int_g_exprs(exprs):
     return np.array([merge_int_g_expr(expr) for expr in exprs])
 
 
+def _convert_target_deriv_to_source(int_g):
+    knl = int_g.target_kernel
+    source_kernels = list(int_g.source_kernels)
+    coeff = 1
+    while isinstance(knl, AxisTargetDerivative):
+        coeff *= 1
+        source_kernels = [AxisSourceDerivative(knl.axis, source_knl) for
+                source_knl in source_kernels]
+        knl = knl.inner_kernel
+    return coeff * int_g.copy(target_kernel=knl,
+                        source_kernels=tuple(source_kernels))
+
+
+def _convert_axis_source_to_directional_source(int_g):
+    if not isinstance(int_g, IntG):
+        return int_g
+    knls = list(int_g.source_kernels)
+    dim = knls[0].dim
+    if len(knls) != dim:
+        return int_g
+    if not any(isinstance(knl, AxisSourceDerivative) for knl in knls):
+        return int_g
+    # TODO: sort
+    axes = [knl.axis for knl in knls]
+    if axes != list(range(dim)):
+        return int_g
+    base_knls = set(knl.inner_kernel for knl in knls)
+    if len(base_knls) > 1:
+        return int_g
+    base_knl = base_knls.pop()
+    kernel_arguments = int_g.kernel_arguments.copy()
+    name = "generated_dir_vec"
+    kernel_arguments[name] = \
+            np.array(int_g.densities, dtype=np.object)
+    res = int_g.copy(
+            source_kernels=(
+                DirectionalSourceDerivative(base_knl, dir_vec_name=name),),
+            densities=(1,),
+            kernel_arguments=kernel_arguments)
+    return res
+
+
 def merge_int_g_expr(expr):
     have_int_g = HaveIntGs()
     if have_int_g(expr) <= 1:
         return expr
     try:
-        res = sum(_merge_int_g_expr(expr))
-        return res
+        result_coeff, result_int_g = _merge_int_g_expr(expr)
+        result_int_g = _convert_axis_source_to_directional_source(result_int_g)
+        return result_coeff + result_int_g
     except AssertionError:
         return expr
+
+
+def _merge_source_kernel_duplicates(source_kernels, densities):
+    new_source_kernels = []
+    new_densities = []
+    for knl, density in zip(source_kernels, densities):
+        if knl not in new_source_kernels:
+            new_source_kernels.append(knl)
+            new_densities.append(density)
+        else:
+            idx = new_source_kernels.index(knl)
+            new_densities[idx] += density
+    return new_source_kernels, new_densities
+
+
+def _merge_kernel_arguments(x, y):
+    res = x.copy()
+    for k, v in y.items():
+        if k in res:
+            assert res[k] == v
+        else:
+            res[k] = v
+    return res
 
 
 def _merge_int_g_expr(expr):
@@ -167,11 +235,17 @@ def _merge_int_g_expr(expr):
             assert result_int_g.source == int_g.source
             assert result_int_g.target == int_g.target
             assert result_int_g.qbx_forced_limit == int_g.qbx_forced_limit
-            assert result_int_g.kernel_arguments == int_g.kernel_arguments
             assert result_int_g.target_kernel == int_g.target_kernel
+            kernel_arguments = _merge_kernel_arguments(result_int_g.kernel_arguments,
+                    int_g.kernel_arguments)
+            source_kernels = result_int_g.source_kernels + int_g.source_kernels
+            densities = result_int_g.densities + int_g.densities
+            new_source_kernels, new_densities = \
+                    _merge_source_kernel_duplicates(source_kernels, densities)
             result_int_g = result_int_g.copy(
-                source_kernels=(result_int_g.source_kernels + int_g.source_kernels),
-                densities=(result_int_g.densities + int_g.densities)
+                source_kernels=tuple(new_source_kernels),
+                densities=tuple(new_densities),
+                kernel_arguments=kernel_arguments,
             )
         return result_coeff, result_int_g
     elif isinstance(expr, Product):
@@ -192,13 +266,15 @@ def _merge_int_g_expr(expr):
             new_densities = (density * mult for density in new_int_g.densities)
             return coeff*mult, new_int_g.copy(densities=new_densities)
     elif isinstance(expr, IntG):
-        return 0, expr
+        return 0, _convert_target_deriv_to_source(expr)
     else:
         return expr, 0
 
+
 if __name__ == "__main__":
     from sumpy.kernel import StokesletKernel, BiharmonicKernel, StressletKernel
-    base_kernel = BiharmonicKernel(2)
-    kernels = [StokesletKernel(2, 0, 1), StokesletKernel(2, 0, 0)]
-    kernels = [StressletKernel(2, 0, 1, 0)]
-    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=3, verbose=True)
+    base_kernel = BiharmonicKernel(3)
+    kernels = [StokesletKernel(3, 0, 1), StokesletKernel(3, 0, 0)]
+    kernels = [StressletKernel(3, 0, 1, 0), StressletKernel(3, 0, 0, 0),
+            StressletKernel(3, 0, 1, 2)]
+    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=2, verbose=True)

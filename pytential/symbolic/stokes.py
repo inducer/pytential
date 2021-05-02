@@ -25,7 +25,8 @@ import numpy as np
 from pytential import sym
 from pytential.symbolic.pde.system_utils import merge_int_g_exprs
 from sumpy.kernel import (StokesletKernel, StressletKernel, LaplaceKernel,
-    AxisTargetDerivative, AxisSourceDerivative, BiharmonicKernel)
+    AxisTargetDerivative, AxisSourceDerivative, BiharmonicKernel,
+    TargetPointMultiplier)
 
 __doc__ = """
 .. autoclass:: StokesletWrapper
@@ -66,6 +67,8 @@ class StokesletWrapperBase:
     .. automethod:: apply_derivative
     .. automethod:: apply_stress
     """
+    def __init__(self, dim):
+        self.dim = dim
 
     def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """Symbolic expressions for integrating Stokeslet kernel.
@@ -83,7 +86,16 @@ class StokesletWrapperBase:
 
     def apply_pressure(self, density_vec_sym, mu_sym, qbx_forced_limit):
         """Symbolic expression for pressure field associated with the Stokeslet."""
-        raise NotImplementedError
+        from pytential.symbolic.mappers import DerivativeTaker
+        kernel = LaplaceKernel(dim=self.dim)
+        sym_expr = 0
+
+        for i in range(self.dim):
+            sym_expr += (DerivativeTaker(i).map_int_g(
+                         sym.S(kernel, density_vec_sym[i],
+                         qbx_forced_limit=qbx_forced_limit)))
+
+        return sym_expr
 
     def apply_derivative(self, deriv_dir, density_vec_sym,
                              mu_sym, qbx_forced_limit):
@@ -155,6 +167,8 @@ class StressletWrapperBase:
     .. automethod:: apply_derivative
     .. automethod:: apply_stress
     """
+    def __init__(self, dim):
+        self.dim = dim
 
     def apply(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
         """Symbolic expressions for integrating Stresslet kernel.
@@ -173,7 +187,22 @@ class StressletWrapperBase:
 
     def apply_pressure(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
         """Symbolic expression for pressure field associated with the Stresslet."""
-        raise NotImplementedError
+        import itertools
+        from pytential.symbolic.mappers import DerivativeTaker
+        kernel = LaplaceKernel(dim=self.dim)
+
+        factor = (2. * mu_sym)
+
+        sym_expr = 0
+
+        for i, j in itertools.product(range(self.dim), range(self.dim)):
+            sym_expr += factor * DerivativeTaker(i).map_int_g(
+                                   DerivativeTaker(j).map_int_g(
+                                       sym.S(kernel,
+                                             density_vec_sym[i] * dir_vec_sym[j],
+                                             qbx_forced_limit=qbx_forced_limit)))
+
+        return sym_expr
 
     def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
                              mu_sym, qbx_forced_limit):
@@ -269,7 +298,7 @@ class StokesletWrapperMixin:
 
 class StokesletWrapper(StokesletWrapperBase, StokesletWrapperMixin):
     def __init__(self, dim=None, use_biharmonic=True, use_source=True):
-        self.dim = dim
+        super().__init__(dim)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
 
@@ -308,19 +337,6 @@ class StokesletWrapper(StokesletWrapperBase, StokesletWrapperMixin):
             for i in range(self.dim):
                 sym_expr[comp] += self.get_int_g((comp, i),
                         density_vec_sym[i], mu_sym, qbx_forced_limit, deriv_dirs=[])
-
-        return sym_expr
-
-    def apply_pressure(self, density_vec_sym, mu_sym, qbx_forced_limit):
-
-        from pytential.symbolic.mappers import DerivativeTaker
-        kernel = LaplaceKernel(dim=self.dim)
-        sym_expr = 0
-
-        for i in range(self.dim):
-            sym_expr += (DerivativeTaker(i).map_int_g(
-                         sym.S(kernel, density_vec_sym[i],
-                         qbx_forced_limit=qbx_forced_limit)))
 
         return sym_expr
 
@@ -388,11 +404,11 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
     """
 
     def __init__(self, dim=None, use_biharmonic=True, use_source=True):
-        self.use_biharmonic = use_biharmonic
-        self.dim = dim
+        super().__init__(dim)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
 
+        self.use_biharmonic = use_biharmonic
         self.kernel_dict = {}
 
         self.base_kernel = BiharmonicKernel(dim=dim)
@@ -433,25 +449,6 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
                     sym_expr[comp] += self.get_int_g((comp, i, j),
                         dir_vec_sym[i] * density_vec_sym[j],
                         mu_sym, qbx_forced_limit, deriv_dirs=[])
-
-        return sym_expr
-
-    def apply_pressure(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
-
-        import itertools
-        from pytential.symbolic.mappers import DerivativeTaker
-        kernel = LaplaceKernel(dim=self.dim)
-
-        factor = (2. * mu_sym)
-
-        sym_expr = 0
-
-        for i, j in itertools.product(range(self.dim), range(self.dim)):
-            sym_expr += factor * DerivativeTaker(i).map_int_g(
-                                   DerivativeTaker(j).map_int_g(
-                                       sym.S(kernel,
-                                             density_vec_sym[i] * dir_vec_sym[j],
-                                             qbx_forced_limit=qbx_forced_limit)))
 
         return sym_expr
 
@@ -500,6 +497,110 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
 # }}}
 
 
+# {{{ Stokeslet/Stresslet using Laplace
+
+class StokesletWrapperUsingLaplace(StokesletWrapperBase, StokesletWrapperMixin):
+    """Stokeslet Wrapper using Tornberg and Greengard's method which uses
+    Laplace derivatives.
+
+    [1] Tornberg, A. K., & Greengard, L. (2008). A fast multipole method for the
+        three-dimensional Stokes equations.
+        Journal of Computational Physics, 227(3), 1613-1619.
+    """
+    def __init__(self, dim=None):
+        self.dim = dim
+        if dim != 3:
+            raise ValueError("unsupported dimension given to StokesletWrapper")
+        self.kernel = LaplaceKernel(dim=self.dim)
+
+    def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
+
+        sym_expr = np.zeros((self.dim,), dtype=object)
+
+        source = [sym.NodeCoordinateComponent(d) for d in range(self.dim)]
+        common_expr_density = sum(source[k]*density_vec_sym[k] for
+                k in range(self.dim))
+
+        for i in range(self.dim):
+            for j in range(self.dim):
+                knl = TargetPointMultiplier(j, AxisTargetDerivative(i, self.kernel))
+                sym_expr[i] -= sym.S(knl, density_vec_sym[j],
+                        qbx_forced_limit=qbx_forced_limit)
+                if i == j:
+                    sym_expr[i] += sym.S(self.kernel, density_vec_sym[j],
+                        qbx_forced_limit=qbx_forced_limit)
+            sym_expr[i] += sym.S(AxisTargetDerivative(i, self.kernel),
+                    common_expr_density, qbx_forced_limit=qbx_forced_limit)
+            sym_expr[i] *= -0.5*(mu_sym**(-1))
+
+        print(sym_expr[0])
+        return sym_expr
+
+
+class StressletWrapperUsingLaplace(StokesletWrapperBase, StokesletWrapperMixin):
+    """Stresslet Wrapper using Tornberg and Greengard's method which uses
+    Laplace derivatives.
+
+    [1] Tornberg, A. K., & Greengard, L. (2008). A fast multipole method for the
+        three-dimensional Stokes equations.
+        Journal of Computational Physics, 227(3), 1613-1619.
+    """
+    def __init__(self, dim=None):
+        self.dim = dim
+        if dim != 3:
+            raise ValueError("unsupported dimension given to StressletWrapper")
+        self.kernel = LaplaceKernel(dim=self.dim)
+
+    def apply(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
+
+        sym_expr = np.zeros((self.dim,), dtype=object)
+
+        source = [sym.NodeCoordinateComponent(d) for d in range(self.dim)]
+
+        for i in range(self.dim):
+            for j in range(self.dim):
+                source_kernels = [AxisSourceDerivative(k, self.kernel) for
+                        k in range(self.dim)]
+                densities = [density_vec_sym[k] * dir_vec_sym[j]
+                            + density_vec_sym[j] * dir_vec_sym[k]
+                            for k in range(self.dim)]
+                target_kernel = TargetPointMultiplier(j,
+                        AxisTargetDerivative(i, self.kernel))
+                sym_expr[i] -= sym.IntG(target_kernel=target_kernel,
+                    source_kernels=source_kernels,
+                    densities=densities,
+                    qbx_forced_limit=qbx_forced_limit)
+
+                if i == j:
+                    sym_expr[i] += sym.IntG(target_kernel=self.kernel,
+                        source_kernels=source_kernels,
+                        densities=densities,
+                        qbx_forced_limit=qbx_forced_limit)
+
+            common_density0 = sum(source[k] * density_vec_sym[k] for
+                    k in range(self.dim))
+            common_density1 = sum(source[k] * dir_vec_sym[k] for
+                    k in range(self.dim))
+            source_kernels = [AxisSourceDerivative(k, self.kernel) for
+                    k in range(self.dim)]
+            densities = [common_density0 * dir_vec_sym[k]
+                    + common_density1 * density_vec_sym[k] for
+                    k in range(self.dim)]
+
+            target_kernel = AxisTargetDerivative(i, self.kernel)
+            sym_expr[i] += sym.IntG(target_kernel=target_kernel,
+                source_kernels=source_kernels,
+                densities=densities,
+                qbx_forced_limit=qbx_forced_limit)
+
+            sym_expr[i] *= 3.0/6
+
+        return sym_expr
+
+
+# }}}
+
+
 # {{{ base Stokes operator
 
 class StokesOperator:
@@ -516,7 +617,7 @@ class StokesOperator:
     .. automethod:: pressure
     """
 
-    def __init__(self, ambient_dim, side, use_biharmonic):
+    def __init__(self, ambient_dim, side, method="naive"):
         """
         :arg ambient_dim: dimension of the ambient space.
         :arg side: :math:`+1` for exterior or :math:`-1` for interior.
@@ -528,11 +629,18 @@ class StokesOperator:
         self.ambient_dim = ambient_dim
         self.side = side
 
-        self.stresslet = StressletWrapper(dim=self.ambient_dim,
+        if method == "laplace":
+            self.stresslet = StressletWrapperUsingLaplace(dim=self.ambient_dim)
+            self.stokeslet = StokesletWrapperUsingLaplace(dim=self.ambient_dim)
+        elif method == "biharmonic" or method == "naive":
+            use_biharmonic = (method == "biharmonic")
+            self.stresslet = StressletWrapper(dim=self.ambient_dim,
                 use_biharmonic=use_biharmonic)
-        self.stokeslet = StokesletWrapper(dim=self.ambient_dim,
+            self.stokeslet = StokesletWrapper(dim=self.ambient_dim,
                 use_biharmonic=use_biharmonic)
-        self.use_biharmonic = use_biharmonic
+        else:
+            raise ValueError(f"invalid method: {method}."
+                    "Needs to be one of naive, laplace, biharmonic")
 
     @property
     def dim(self):
@@ -588,7 +696,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, omega, alpha=None, eta=None, use_biharmonic=False):
+    def __init__(self, *, omega, alpha=None, eta=None, method="naive"):
         r"""
         :arg omega: farfield behaviour of the velocity field, as defined
             by :math:`A` in [HsiaoKress1985]_ Equation 2.3.
@@ -596,7 +704,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         :arg eta: real parameter :math:`\eta > 0`. Choosing this parameter well
             can have a non-trivial effect on the conditioning.
         """
-        super().__init__(ambient_dim=2, side=+1, use_biharmonic=use_biharmonic)
+        super().__init__(ambient_dim=2, side=+1, method=method)
 
         # NOTE: in [hsiao-kress], there is an analysis on a circle, which
         # recommends values in
@@ -679,13 +787,13 @@ class HebekerExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, eta=None, use_biharmonic=False):
+    def __init__(self, *, eta=None, method="naive"):
         r"""
         :arg eta: a parameter :math:`\eta > 0`. Choosing this parameter well
             can have a non-trivial effect on the conditioning of the operator.
         """
 
-        super().__init__(ambient_dim=3, side=+1, use_biharmonic=use_biharmonic)
+        super().__init__(ambient_dim=3, side=+1, method=method)
 
         # NOTE: eta is chosen here based on H. 1986 Figure 1, which is
         # based on solving on the unit sphere

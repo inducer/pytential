@@ -46,17 +46,18 @@ logger = logging.getLogger(__name__)
 
 def run_exterior_stokes(ctx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
-        fmm_order=False,    # FIXME: FMM is slower than direct evaluation
+        fmm_order=None,    # FIXME: FMM is slower than direct evaluation
         source_ovsmp=None,
         radius=1.5,
         mu=1.0,
         visualize=False,
-        use_biharmonic=False,
+        method="naive",
 
         _target_association_tolerance=0.05,
         _expansions_in_tree_have_extent=True):
     cl_ctx = cl.create_some_context()
-    queue = cl.CommandQueue(cl_ctx)
+    queue = cl.CommandQueue(cl_ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
     actx = PyOpenCLArrayContext(queue)
 
     # {{{ geometry
@@ -135,10 +136,10 @@ def run_exterior_stokes(ctx_factory, *,
     if ambient_dim == 2:
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
         sym_omega = sym.make_sym_vector("omega", ambient_dim)
-        op = HsiaoKressExteriorStokesOperator(omega=sym_omega, use_biharmonic=use_biharmonic)
+        op = HsiaoKressExteriorStokesOperator(omega=sym_omega, method=method)
     elif ambient_dim == 3:
         from pytential.symbolic.stokes import HebekerExteriorStokesOperator
-        op = HebekerExteriorStokesOperator(use_biharmonic=use_biharmonic)
+        op = HebekerExteriorStokesOperator(method=method)
     else:
         assert False
 
@@ -151,7 +152,8 @@ def run_exterior_stokes(ctx_factory, *,
     sym_velocity = op.velocity(sym_sigma, normal=sym_normal, mu=sym_mu)
 
     from pytential.symbolic.stokes import StokesletWrapper
-    sym_source_pot = StokesletWrapper(ambient_dim, use_biharmonic=False).apply(sym_sigma, sym_mu, qbx_forced_limit=None)
+    sym_source_pot = StokesletWrapper(ambient_dim,
+            use_biharmonic=False).apply(sym_sigma, sym_mu, qbx_forced_limit=None)
 
     # }}}
 
@@ -187,14 +189,18 @@ def run_exterior_stokes(ctx_factory, *,
 
     # }}}
 
-    from time import time
-    scipy_op = bound_op.scipy_op(actx, "sigma", np.float64, **op_context)
-    res = scipy_op.matvec(rhs)
-    print("start")
-    start = time()
-    res = scipy_op.matvec(rhs)
-    print(time()-start)
-    
+    fmm_timing_data = {}
+    bound_op.eval({"sigma": rhs, **op_context}, array_context=actx,
+            timing_data=fmm_timing_data)
+
+    def print_timing_data(timings, name):
+        result = {k: 0 for k in list(timings.values())[0].keys()}
+        for k, timing in timings.items():
+            for k, v in timing.items():
+                result[k] += v['wall_elapsed']
+        print(f"{name}={result}")
+
+    print_timing_data(fmm_timing_data, method)
     # {{{ solve
 
     from pytential.solve import gmres
@@ -207,7 +213,6 @@ def run_exterior_stokes(ctx_factory, *,
             progress=visualize,
             stall_iterations=0,
             hard_failure=True)
-
     sigma = result.solution
 
     # }}}
@@ -261,7 +266,7 @@ def run_exterior_stokes(ctx_factory, *,
     2,
     pytest.param(3, marks=pytest.mark.slowtest)
     ])
-def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False, use_biharmonic=False):
+def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False, method="naive"):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -288,7 +293,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False, use_biharmon
                 qbx_order=qbx_order,
                 resolution=resolution,
                 visualize=visualize,
-                use_biharmonic=use_biharmonic)
+                method=method)
 
         eoc.add_data_point(h_max, err)
 
