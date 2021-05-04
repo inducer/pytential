@@ -118,9 +118,10 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         return func(actx, insn, bound_expr, evaluate_wrapper)
 
     def op_group_features(self, expr):
-        from sumpy.kernel import TargetTransformationRemover
+        from pytential.utils import sort_arrays_together
         result = (
-                expr.source, expr.densities, expr.source_kernels,
+                expr.source,
+                *sort_arrays_together(expr.source_kernels, expr.densities, key=str),
                 TargetTransformationRemover()(expr.target_kernel),
                 )
 
@@ -167,7 +168,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     flat_strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
-            result = output_for_each_kernel[o.kernel_index]
+            result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
                 result = unflatten(actx, target_discr, result)
 
@@ -278,7 +279,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     target_index:target_index+2])
             target_discr = targets[target_index]
 
-            result = all_potentials_on_every_tgt[o.kernel_index][target_slice]
+            result = all_potentials_on_every_tgt[o.target_kernel_index][target_slice]
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):

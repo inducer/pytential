@@ -27,7 +27,7 @@ THE SOFTWARE.
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import flatten
+from meshmode.dof_array import flatten, DOFArray
 import numpy as np
 import pyopencl as cl
 
@@ -438,7 +438,7 @@ class RefinerWrangler(TreeWranglerBase):
         """
         if isinstance(refine_flags, cl.array.Array):
             refine_flags = refine_flags.get(self.queue)
-        refine_flags = refine_flags.astype(np.bool)
+        refine_flags = refine_flags.astype(bool)
 
         with ProcessLogger(logger, "refine mesh"):
             refiner.refine(refine_flags)
@@ -510,14 +510,18 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
 
     assert len(flags) == discr.mesh.nelements
 
-    flags = flags.astype(np.bool)
-    nodes_flags = np.zeros(discr.ndofs)
+    flags = flags.astype(bool)
+    nodes_flags_template = discr.zeros(actx)
+    nodes_flags = []
     for grp in discr.groups:
         meg = grp.mesh_el_group
-        grp.view(nodes_flags)[
+        nodes_flags_grp = actx.to_numpy(nodes_flags_template[grp.index])
+        nodes_flags_grp[
                 flags[meg.element_nr_base:meg.nelements+meg.element_nr_base]] = 1
+        nodes_flags.append(actx.from_numpy(nodes_flags_grp))
 
-    nodes_flags = actx.from_numpy(nodes_flags)
+    nodes_flags = DOFArray(actx, tuple(nodes_flags))
+
     vis_data = [
         ("refine_flags", nodes_flags),
         ]
@@ -532,15 +536,17 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
 
 
 def _make_quad_stage2_discr(lpot_source, stage2_density_discr):
-    from meshmode.discretization import Discretization
-    from meshmode.discretization.poly_element import \
-            QuadratureSimplexGroupFactory
+    from meshmode.discretization.poly_element import (
+            OrderAndTypeBasedGroupFactory,
+            QuadratureSimplexElementGroup,
+            GaussLegendreTensorProductElementGroup)
 
-    return Discretization(
-            lpot_source._setup_actx,
-            stage2_density_discr.mesh,
-            QuadratureSimplexGroupFactory(lpot_source.fine_order),
-            lpot_source.real_dtype)
+    return stage2_density_discr.copy(
+            group_factory=OrderAndTypeBasedGroupFactory(
+                lpot_source.fine_order,
+                simplex_group_class=QuadratureSimplexElementGroup,
+                tensor_product_group_class=GaussLegendreTensorProductElementGroup),
+            )
 
 
 def _make_temporary_collection(lpot_source,
@@ -642,7 +648,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
                 if violates_scaled_max_curv:
                     iter_violated_criteria.append("curvature")
-                    _visualize_refinement(wrangler.queue, stage1_density_discr,
+                    _visualize_refinement(actx, stage1_density_discr,
                             niter, 1, "curvature", refine_flags,
                             visualize=visualize)
 
@@ -665,7 +671,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                             refine_flags, debug)
             if has_disturbed_expansions:
                 iter_violated_criteria.append("disturbed expansions")
-                _visualize_refinement(wrangler.queue, stage1_density_discr,
+                _visualize_refinement(actx, stage1_density_discr,
                         niter, 1, "disturbed-expansions", refine_flags,
                         visualize=visualize)
 
@@ -739,7 +745,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
                         debug)
         if has_insufficient_quad_resolution:
             iter_violated_criteria.append("insufficient quadrature resolution")
-            _visualize_refinement(wrangler.queue, stage2_density_discr,
+            _visualize_refinement(wrangler.array_context, stage2_density_discr,
                     niter, 2, "quad-resolution", refine_flags,
                     visualize=visualize)
 
@@ -760,7 +766,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         conn = wrangler.refine(
                 stage2_density_discr,
                 refiner,
-                np.ones(stage2_density_discr.mesh.nelements, dtype=np.bool),
+                np.ones(stage2_density_discr.mesh.nelements, dtype=bool),
                 group_factory, debug)
         stage2_density_discr = conn.to_discr
         connections.append(conn)

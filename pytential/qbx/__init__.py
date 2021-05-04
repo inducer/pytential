@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import flatten, unflatten, thaw
+from meshmode.dof_array import unflatten
 import numpy as np
 from pytools import memoize_method, memoize_in, single_valued
 
@@ -421,9 +421,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         return QBXPreprocessor(name, discretizations)(expr)
 
     def op_group_features(self, expr):
+        from pytential.utils import sort_arrays_together
         result = (
-                expr.source, expr.densities,
-                expr.source_kernels,
+                expr.source, *sort_arrays_together(expr.source_kernels,
+                expr.densities, key=str)
                 )
 
         return result
@@ -615,12 +616,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # FIXME don't compute *all* output kernels on all targets--respect that
         # some target discretizations may only be asking for derivatives (e.g.)
 
-        from pytential import bind, sym
-        waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim, dofdesc=insn.source))(actx)
-        densities = [evaluate(density) for density in insn.densities]
-        strengths = [waa * density for density in densities]
-        flat_strengths = tuple(flatten(strength) for strength in strengths)
+        flat_strengths = _get_flat_strengths_from_densities(
+                actx, bound_expr.places, evaluate, insn.densities,
+                dofdesc=insn.source)
 
         base_kernel = single_valued(knl.get_base_kernel() for
             knl in insn.source_kernels)
@@ -673,11 +671,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             target_slice = slice(*geo_data.target_info().target_discr_starts[
                     target_side_number:target_side_number+2])
 
-            result = all_potentials_on_every_target[o.kernel_index][target_slice]
+            result = \
+                all_potentials_on_every_target[o.target_kernel_index][target_slice]
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
-                from meshmode.dof_array import unflatten
                 result = unflatten(actx, target_discr, result)
 
             results.append((o.name, result))
@@ -687,6 +685,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
     # {{{ direct execution
+
+    @memoize_method
+    def get_expansion_for_qbx_direct_eval(self, base_kernel, target_kernels):
+        from sumpy.expansion.local import LineTaylorLocalExpansion
+        from sumpy.kernel import TargetDerivativeRemover
+
+        # line Taylor cannot support target derivatives
+        tdr = TargetDerivativeRemover()
+        if any(knl != tdr(knl) for knl in target_kernels):
+            return self.expansion_factory.get_local_expansion_class(
+                    base_kernel)(base_kernel, self.qbx_order)
+        else:
+            return LineTaylorLocalExpansion(base_kernel, self.qbx_order)
 
     @memoize_method
     def get_lpot_applier(self, target_kernels, source_kernels):
@@ -700,9 +711,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         base_kernel = single_valued(knl.get_base_kernel() for knl in source_kernels)
 
         from sumpy.qbx import LayerPotential
-        from sumpy.expansion.local import LineTaylorLocalExpansion
         return LayerPotential(self.cl_context,
-                    expansion=LineTaylorLocalExpansion(base_kernel, self.qbx_order),
+                    expansion=self.get_expansion_for_qbx_direct_eval(
+                        base_kernel, target_kernels),
                     target_kernels=target_kernels, source_kernels=source_kernels,
                     value_dtypes=value_dtype)
 
@@ -745,6 +756,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     def exec_compute_potential_insn_direct(self, actx, insn, bound_expr, evaluate,
             return_timing_data):
         from pytential import bind, sym
+        from meshmode.discretization import Discretization
+        from pytools.obj_array import obj_array_vectorize
+
         if return_timing_data:
             from pytential.source import UnableToCollectTimingData
             from warnings import warn
@@ -752,139 +766,186 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     "Timing data collection not supported.",
                     category=UnableToCollectTimingData)
 
-        lpot_applier = self.get_lpot_applier(insn.target_kernels,
-            insn.source_kernels)
-        p2p = None
-        lpot_applier_on_tgt_subset = None
+        # {{{ evaluate and flatten inputs
+
+        @memoize_in(bound_expr.places,
+                (QBXLayerPotentialSource, "flat_nodes"))
+        def _flat_nodes(dofdesc):
+            discr = bound_expr.places.get_discretization(
+                    dofdesc.geometry, dofdesc.discr_stage)
+            return obj_array_vectorize(actx.freeze,
+                    flatten_if_needed(actx, discr.nodes())
+                    )
+
+        @memoize_in(bound_expr.places,
+                (QBXLayerPotentialSource, "flat_expansion_radii"))
+        def _flat_expansion_radii(dofdesc):
+            radii = bind(
+                    bound_expr.places,
+                    sym.expansion_radii(self.ambient_dim, dofdesc=dofdesc),
+                    )(actx)
+            return obj_array_vectorize(actx.freeze, flatten_if_needed(actx, radii))
+
+        @memoize_in(bound_expr.places,
+                (QBXLayerPotentialSource, "flat_centers"))
+        def _flat_centers(dofdesc, qbx_forced_limit):
+            centers = bind(bound_expr.places,
+                    sym.expansion_centers(
+                        self.ambient_dim, qbx_forced_limit, dofdesc=dofdesc),
+                    )(actx)
+            return obj_array_vectorize(actx.freeze, flatten_if_needed(actx, centers))
 
         from pytential.utils import flatten_if_needed
         kernel_args = {}
         for arg_name, arg_expr in insn.kernel_arguments.items():
             kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
 
-        waa = bind(bound_expr.places, sym.weights_and_area_elements(
-            self.ambient_dim, dofdesc=insn.source))(actx)
-        strength_vecs = [waa * evaluate(density) for density in insn.densities]
+        flat_strengths = _get_flat_strengths_from_densities(
+                actx, bound_expr.places, evaluate, insn.densities,
+                dofdesc=insn.source)
 
-        from meshmode.discretization import Discretization
-        flat_strengths = [flatten(strength) for strength in strength_vecs]
+        flat_source_nodes = _flat_nodes(insn.source)
 
-        source_discr = bound_expr.places.get_discretization(
-                insn.source.geometry, insn.source.discr_stage)
+        # }}}
 
-        # FIXME: Do this all at once
-        results = []
-        for o in insn.outputs:
+        # {{{ partition interactions in target kernels
+
+        from collections import defaultdict
+        self_outputs = defaultdict(list)
+        other_outputs = defaultdict(list)
+
+        for i, o in enumerate(insn.outputs):
+            # For purposes of figuring out whether this is a self-interaction,
+            # disregard discr_stage.
             source_dd = insn.source.copy(discr_stage=o.target_name.discr_stage)
+
             target_discr = bound_expr.places.get_discretization(
                     o.target_name.geometry, o.target_name.discr_stage)
             density_discr = bound_expr.places.get_discretization(
                     source_dd.geometry, source_dd.discr_stage)
 
-            is_self = density_discr is target_discr
-            if is_self:
-                # QBXPreprocessor is supposed to have taken care of this
+            if target_discr is density_discr:
+                # NOTE: QBXPreprocessor is supposed to have taken care of this
                 assert o.qbx_forced_limit is not None
                 assert abs(o.qbx_forced_limit) > 0
 
-                expansion_radii = bind(bound_expr.places, sym.expansion_radii(
-                    self.ambient_dim, dofdesc=o.target_name))(actx)
-                centers = bind(bound_expr.places, sym.expansion_centers(
-                    self.ambient_dim, o.qbx_forced_limit,
-                    dofdesc=o.target_name))(actx)
-
-                evt, output_for_each_kernel = lpot_applier(
-                        actx.queue,
-                        flatten(thaw(actx, target_discr.nodes())),
-                        flatten(thaw(actx, source_discr.nodes())),
-                        flatten(centers),
-                        flat_strengths,
-                        expansion_radii=flatten(expansion_radii),
-                        **kernel_args)
-
-                result = output_for_each_kernel[o.kernel_index]
-                if isinstance(target_discr, Discretization):
-                    result = unflatten(actx, target_discr, result)
-
-                results.append((o.name, result))
+                self_outputs[(o.target_name, o.qbx_forced_limit)].append((i, o))
             else:
-                # no on-disk kernel caching
-                if p2p is None:
-                    p2p = self.get_p2p(actx, insn.target_kernels,
-                        insn.source_kernels)
-                if lpot_applier_on_tgt_subset is None:
-                    lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
-                            insn.target_kernels, insn.source_kernels)
-
-                queue = actx.queue
-
-                flat_targets = flatten_if_needed(actx, target_discr.nodes())
-                flat_sources = flatten(thaw(actx, source_discr.nodes()))
-
-                evt, output_for_each_kernel = p2p(queue,
-                        flat_targets, flat_sources,
-                        flat_strengths, **kernel_args)
-
                 qbx_forced_limit = o.qbx_forced_limit
                 if qbx_forced_limit is None:
                     qbx_forced_limit = 0
 
-                target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
-                geo_data = self.qbx_fmm_geometry_data(
-                        bound_expr.places,
-                        insn.source.geometry,
-                        target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
+                other_outputs[(o.target_name, qbx_forced_limit)].append((i, o))
 
-                # center-related info is independent of targets
+        queue = actx.queue
+        results = [None] * len(insn.outputs)
 
-                # First ncenters targets are the centers
-                tgt_to_qbx_center = (
-                        geo_data.user_target_to_center()[geo_data.ncenters:]
-                        .copy(queue=queue)
-                        .with_queue(queue))
+        # }}}
 
-                qbx_tgt_numberer = self.get_qbx_target_numberer(
-                        tgt_to_qbx_center.dtype)
-                qbx_tgt_count = cl.array.empty(queue, (), np.int32)
-                qbx_tgt_numbers = cl.array.empty_like(tgt_to_qbx_center)
+        # {{{ self interactions
 
-                qbx_tgt_numberer(
-                        tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,
-                        queue=queue)
+        # FIXME: Do this all at once
 
-                qbx_tgt_count = int(qbx_tgt_count.get())
+        lpot_applier = self.get_lpot_applier(
+                insn.target_kernels, insn.source_kernels)
 
-                if (o.qbx_forced_limit is not None
-                        and abs(o.qbx_forced_limit) == 1
-                        and qbx_tgt_count < target_discr.ndofs):
-                    raise RuntimeError("Did not find a matching QBX center "
-                            "for some targets")
+        for (target_name, qbx_forced_limit), outputs in self_outputs.items():
+            target_discr = bound_expr.places.get_discretization(
+                    target_name.geometry, target_name.discr_stage)
+            flat_target_nodes = _flat_nodes(target_name)
 
-                qbx_tgt_numbers = qbx_tgt_numbers[:qbx_tgt_count]
-                qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
-                qbx_center_numbers.finish()
+            evt, output_for_each_kernel = lpot_applier(queue,
+                    targets=flat_target_nodes,
+                    sources=flat_source_nodes,
+                    centers=_flat_centers(target_name, qbx_forced_limit),
+                    strengths=flat_strengths,
+                    expansion_radii=_flat_expansion_radii(target_name),
+                    **kernel_args)
 
-                tgt_subset_kwargs = kernel_args.copy()
-                for i, res_i in enumerate(output_for_each_kernel):
-                    tgt_subset_kwargs[f"result_{i}"] = res_i
-
-                if qbx_tgt_count:
-                    lpot_applier_on_tgt_subset(
-                            queue,
-                            targets=flat_targets,
-                            sources=flat_sources,
-                            centers=geo_data.flat_centers(),
-                            expansion_radii=geo_data.flat_expansion_radii(),
-                            strengths=flat_strengths,
-                            qbx_tgt_numbers=qbx_tgt_numbers,
-                            qbx_center_numbers=qbx_center_numbers,
-                            **tgt_subset_kwargs)
-
-                result = output_for_each_kernel[o.kernel_index]
+            for i, o in outputs:
+                result = output_for_each_kernel[o.target_kernel_index]
                 if isinstance(target_discr, Discretization):
                     result = unflatten(actx, target_discr, result)
 
-                results.append((o.name, result))
+                results[i] = (o.name, result)
+
+        # }}}
+
+        # {{{ off-surface interactions
+
+        if other_outputs:
+            p2p = self.get_p2p(actx, insn.target_kernels, insn.source_kernels)
+            lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
+                    insn.target_kernels, insn.source_kernels)
+
+        for (target_name, qbx_forced_limit), outputs in other_outputs.items():
+            target_discr = bound_expr.places.get_discretization(
+                    target_name.geometry, target_name.discr_stage)
+            flat_target_nodes = _flat_nodes(target_name)
+
+            # FIXME: (Somewhat wastefully) compute P2P for all targets
+            evt, output_for_each_kernel = p2p(queue,
+                    targets=flat_target_nodes,
+                    sources=flat_source_nodes,
+                    strength=flat_strengths,
+                    **kernel_args)
+
+            target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
+            geo_data = self.qbx_fmm_geometry_data(
+                    bound_expr.places,
+                    insn.source.geometry,
+                    target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
+
+            # center-related info is independent of targets
+
+            # First ncenters targets are the centers
+            tgt_to_qbx_center = (
+                    geo_data.user_target_to_center()[geo_data.ncenters:]
+                    .copy(queue=queue)
+                    .with_queue(queue))
+
+            qbx_tgt_numberer = self.get_qbx_target_numberer(
+                    tgt_to_qbx_center.dtype)
+            qbx_tgt_count = cl.array.empty(queue, (), np.int32)
+            qbx_tgt_numbers = cl.array.empty_like(tgt_to_qbx_center)
+
+            qbx_tgt_numberer(
+                    tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,
+                    queue=queue)
+
+            qbx_tgt_count = int(qbx_tgt_count.get())
+            if (abs(qbx_forced_limit) == 1 and qbx_tgt_count < target_discr.ndofs):
+                raise RuntimeError(
+                        "Did not find a matching QBX center for some targets")
+
+            qbx_tgt_numbers = qbx_tgt_numbers[:qbx_tgt_count]
+            qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
+            qbx_center_numbers.finish()
+
+            tgt_subset_kwargs = kernel_args.copy()
+            for i, res_i in enumerate(output_for_each_kernel):
+                tgt_subset_kwargs[f"result_{i}"] = res_i
+
+            if qbx_tgt_count:
+                lpot_applier_on_tgt_subset(
+                        queue,
+                        targets=flat_target_nodes,
+                        sources=flat_source_nodes,
+                        centers=geo_data.flat_centers(),
+                        expansion_radii=geo_data.flat_expansion_radii(),
+                        strengths=flat_strengths,
+                        qbx_tgt_numbers=qbx_tgt_numbers,
+                        qbx_center_numbers=qbx_center_numbers,
+                        **tgt_subset_kwargs)
+
+            for i, o in outputs:
+                result = output_for_each_kernel[o.target_kernel_index]
+                if isinstance(target_discr, Discretization):
+                    result = unflatten(actx, target_discr, result)
+
+                results[i] = (o.name, result)
+
+        # }}}
 
         timing_data = {}
         return results, timing_data
@@ -892,6 +953,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
     # }}}
+
+
+def _get_flat_strengths_from_densities(
+        actx, places, evaluate, densities, dofdesc=None):
+    from pytential import bind, sym
+    waa = bind(
+            places,
+            sym.weights_and_area_elements(places.ambient_dim, dofdesc=dofdesc),
+            )(actx)
+    strength_vecs = [waa * evaluate(density) for density in densities]
+
+    from meshmode.dof_array import flatten
+    return [flatten(strength) for strength in strength_vecs]
 
 # }}}
 

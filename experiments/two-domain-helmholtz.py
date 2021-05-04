@@ -118,7 +118,7 @@ def main():
 
     sqrt_w = bind(density_discr, sym.sqrt_jac_q_weight())(queue)
 
-    bvp_rhs = np.zeros(len(pde_op.bcs), dtype=np.object)
+    bvp_rhs = np.zeros(len(pde_op.bcs), dtype=object)
     for i_bc, terms in enumerate(pde_op.bcs):
         for term in terms:
             assert term.i_interface == 0

@@ -34,6 +34,7 @@ from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
 from pytools.obj_array import make_obj_array, flat_obj_array  # noqa: F401
+from pytools import single_valued
 
 
 __doc__ = """
@@ -196,6 +197,7 @@ Layer potentials
 
 .. autoclass:: IntG
 .. autofunction:: int_g_dsource
+.. autofunction:: int_g_vec
 
 .. autofunction:: S
 .. autofunction:: Sp
@@ -354,7 +356,8 @@ class DOFDescriptor:
                 granularity=(self.granularity
                     if granularity is None else granularity),
                 discr_stage=(self.discr_stage
-                    if discr_stage is _NoArgSentinel else discr_stage))
+                    if discr_stage is _NoArgSentinel else discr_stage),
+                )
 
     def to_stage1(self):
         return self.copy(discr_stage=QBX_SOURCE_STAGE1)
@@ -667,7 +670,7 @@ def reference_jacobian(func, output_dim, dim, dofdesc=None):
     """Return a :class:`numpy.ndarray` representing the Jacobian of a vector function
     with respect to the reference coordinates.
     """
-    jac = np.zeros((output_dim, dim), np.object)
+    jac = np.zeros((output_dim, dim), object)
 
     for i in range(output_dim):
         func_component = func[i]
@@ -1425,9 +1428,11 @@ class IntG(Expression):
     r"""
     .. math::
 
-        \int_\Gamma g_k(x-y) \sigma(y) dS_y
+        \int_\Gamma T (\sum S_k G(x-y) \sigma_k(y)) dS_y
 
-    where :math:`\sigma` is *density*.
+    where :math:`\sigma_k` is the k-th *density*, :math:`G` is a Green's
+    function, :math:`S_k` are source derivative operators and :math:`T` is a
+    target derivative operator.
     """
 
     init_arg_names = ("target_kernel", "source_kernels", "densities",
@@ -1440,7 +1445,18 @@ class IntG(Expression):
         """*target_derivatives* and later arguments should be considered
         keyword-only.
 
-        :arg target_kernel: an instance of :class:`sumpy.kernel.Kernel`.
+        :arg source_kernels: a tuple of instances of :class:`sumpy.kernel.Kernel`
+            with only source derivatives attached. k-th elements represents the
+            k-th source derivative operator above.
+        :arg target_kernel: an instance of :class:`sumpy.kernel.Kernel` with only
+            target dervatives attached. This represents the target derivative
+            operator :math:`T` above. Note that the term ``target_kernel`` is
+            bad as it's not a kernel and merely represents a target derivative
+            operator. This name will change once :mod:`sumpy` properly
+            supports derivative operators. This also means that the user has to
+            make sure that base kernels of all the kernels passed are the same.
+        :arg densities: a tuple of density expressions. Length of this tuple
+            must match the length of the source_kernels arguments.
         :arg qbx_forced_limit: +1 if the output is required to originate from a
             QBX center on the "+" side of the boundary. -1 for the other side.
             Evaluation at a target with a value of +/- 1 in *qbx_forced_limit*
@@ -1491,6 +1507,9 @@ class IntG(Expression):
         for kernel in source_kernels + (target_kernel,):
             for karg in (kernel.get_args() + kernel.get_source_args()):
                 kernel_arg_names.add(karg.loopy_arg.name)
+
+        single_valued(kernel.get_base_kernel() for
+                kernel in source_kernels + (target_kernel,))
 
         kernel_arguments = kernel_arguments.copy()
         if kwargs:
@@ -1586,7 +1605,7 @@ def _get_dir_vec(dsource, ambient_dim):
 
     coeffs = _DSourceCoefficientFinder()(dsource)
 
-    dir_vec = np.zeros(ambient_dim, np.object)
+    dir_vec = np.zeros(ambient_dim, object)
     for i in range(ambient_dim):
         dir_vec[i] = coeffs.pop(NablaComponent(i, None), 0)
 
@@ -1635,7 +1654,7 @@ def int_g_dsource(ambient_dim, dsource, kernel, density,
 
     density = cse(density)
     return (dsource*nabla).map(
-            lambda coeff: _create_int_g(
+            lambda coeff: int_g_vec(
                 kernel,
                 density, qbx_forced_limit, source, target,
                 kernel_arguments=add_dir_vec_to_kernel_args(coeff),
@@ -1656,8 +1675,21 @@ class _unspecified:  # noqa: N801
     pass
 
 
-def _create_int_g(kernel, density, qbx_forced_limit, source, target,
-        kernel_arguments, **kwargs):
+def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
+        kernel_arguments=None, **kwargs):
+    """
+    Creates a vector of :class:`IntG` objects from one kernel with source and
+    target derivatives and maps a vector of densities into a vector of
+    :class:`IntG` objects.
+
+    Historically :class:`IntG` objects supported only one source kernel and
+    allowed multiple densities to get a vector of objects as a convenience
+    function. Now that :class:`IntG` objects supports multiple source kernels
+    with one density associated to each source kernel, the previous interface
+    would lead to ambiguity. This function is intended to preserve the
+    "vectorizing" behavior of of the constructor of :class:`IntG`
+    for use cases where that is preferred.
+    """
     from sumpy.kernel import SourceTransformationRemover, TargetTransformationRemover
     sdr = SourceTransformationRemover()
     tdr = TargetTransformationRemover()
@@ -1686,7 +1718,7 @@ def S(kernel, density,
                 "defaulting to +1", stacklevel=2)
         qbx_forced_limit = +1
 
-    return _create_int_g(kernel, density, qbx_forced_limit, source, target,
+    return int_g_vec(kernel, density, qbx_forced_limit, source, target,
             kernel_arguments, **kwargs)
 
 

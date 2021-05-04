@@ -182,7 +182,7 @@ class EvaluationMapper(EvaluationMapperBase):
 
     def map_int_g(self, expr):
         return expr.copy(
-                    densities=[self.rec(density) for density in expr.densities],
+                    densities=self.rec(expr.densities),
                     kernel_arguments={
                         name: self.rec(arg_expr)
                         for name, arg_expr in expr.kernel_arguments.items()
@@ -666,11 +666,10 @@ class StringifyMapper(BaseStringifyMapper):
                     for name, arg_expr in kernel_arguments.items())
 
     def map_int_g(self, expr, enclosing_prec):
-        source_kernels_strs = [
+        source_kernels_str = " + ".join([
             "{} * {}".format(self.rec(density, PREC_PRODUCT), source_kernel)
             for source_kernel, density in zip(expr.source_kernels, expr.densities)
-        ]
-        source_kernels_str = " + ".join(source_kernels_strs)
+        ])
         target_kernel_str = str(expr.target_kernel)
         base_kernel_str = str(expr.target_kernel.get_base_kernel())
         kernel_str = target_kernel_str.replace(base_kernel_str,
@@ -743,7 +742,7 @@ class GraphvizMapper(GraphvizMapperBase):
         if not self.visit(expr, node_printed=True):
             return
 
-        [self.rec(density) for density in expr.densities]
+        self.rec(expr.densities)
         for arg_expr in expr.kernel_arguments.values():
             self.rec(arg_expr)
 

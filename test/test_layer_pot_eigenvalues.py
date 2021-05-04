@@ -124,7 +124,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
             centers = bind(places,
                     sym.expansion_centers(qbx.ambient_dim, +1))(actx)
             normals = bind(places,
-                    sym.normal(qbx.ambient_dim))(actx).as_vector(np.object)
+                    sym.normal(qbx.ambient_dim))(actx).as_vector(object)
 
             nodes_h = np.array([actx.to_numpy(axis) for axis in flatten(nodes)])
             centers_h = np.array([actx.to_numpy(axis) for axis in flatten(centers)])

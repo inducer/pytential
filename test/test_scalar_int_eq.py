@@ -73,7 +73,7 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
     # {{{ construct geometries
 
     qbx = case.get_layer_potential(actx, resolution, case.target_order)
-    point_source, point_target = inteq.make_source_and_target_points(
+    point_source, point_target = inteq.make_source_and_target_points(actx,
             case.side, case.inner_radius, case.outer_radius, qbx.ambient_dim)
 
     places = {
@@ -195,7 +195,7 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 
     # {{{ establish BCs
 
-    pot_src = sym.S(
+    pot_src = sym.int_g_vec(
         # FIXME: qbx_forced_limit--really?
         knl, sym_charges, qbx_forced_limit=None, **case.knl_sym_kwargs)
 

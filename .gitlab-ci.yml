@@ -10,7 +10,7 @@ Python 3 POCL:
   - export PYOPENCL_TEST=portable:pthread
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
   - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3
@@ -29,7 +29,7 @@ Python 3 Intel:
   - export PYOPENCL_TEST="intel(r):pu"
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
   - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3
@@ -47,7 +47,7 @@ Python 3 POCL Examples:
   - export PY_EXE=python3
   - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="Cython pybind11 numpy mako git+git://github.com/inducer/pytools pyvisfile matplotlib"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-py-project-and-run-examples.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-py-project-and-run-examples.sh
   - ". ./build-py-project-and-run-examples.sh"
   tags:
   - python3
@@ -62,7 +62,7 @@ Python 3 Conda:
   - export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
   - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
 
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
   tags:
   - linux
@@ -77,7 +77,7 @@ Python 3 Conda:
 Documentation:
   script:
   - EXTRA_INSTALL="Cython pybind11 numpy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-docs.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-docs.sh
   - ". ./build-docs.sh"
   tags:
   - python3
@@ -89,7 +89,7 @@ Pylint:
   - PROJECT_INSTALL_FLAGS="--editable"
   - export PY_EXE=python3
   - EXTRA_INSTALL="Cython pybind11 numpy mako matplotlib"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
   - ". ./prepare-and-run-pylint.sh pytential test/test_*.py"
   tags:
   - python3
@@ -98,7 +98,7 @@ Pylint:
 
 Flake8:
   script:
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
   - ". ./prepare-and-run-flake8.sh pytential test examples"
   tags:
   - python3

@@ -198,7 +198,7 @@ class StressletWrapperBase:
         for i, j in itertools.product(range(self.dim), range(self.dim)):
             sym_expr += factor * DerivativeTaker(i).map_int_g(
                                    DerivativeTaker(j).map_int_g(
-                                       sym.S(kernel,
+                                       sym.int_g_vec(kernel,
                                              density_vec_sym[i] * dir_vec_sym[j],
                                              qbx_forced_limit=qbx_forced_limit)))
 

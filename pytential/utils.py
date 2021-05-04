@@ -61,4 +61,14 @@ def flatten_to_numpy(actx, ary):
     from pytools.obj_array import obj_array_vectorize
     return obj_array_vectorize(actx.to_numpy, result)
 
+
+def sort_arrays_together(*arys, key=None):
+    """Sort a sequence of arrays by considering them
+    as an array of sequences using the given sorting key
+
+    :param key: a function that takes in a tuple of values
+                and returns a value to compare.
+    """
+    return zip(*sorted([x for x in zip(*arys)], key=key))
+
 # vim: foldmethod=marker

@@ -40,7 +40,8 @@ def make_circular_point_group(ambient_dim, npoints, radius,
     return result
 
 
-def make_source_and_target_points(side, inner_radius, outer_radius, ambient_dim,
+def make_source_and_target_points(
+        actx, side, inner_radius, outer_radius, ambient_dim,
         nsources=10, ntargets=20):
     if side == -1:
         test_src_geo_radius = outer_radius
@@ -58,12 +59,14 @@ def make_source_and_target_points(side, inner_radius, outer_radius, ambient_dim,
     point_sources = make_circular_point_group(
             ambient_dim, nsources, test_src_geo_radius,
             func=lambda x: x**1.5)
-    point_source = PointPotentialSource(point_sources)
+    point_source = PointPotentialSource(
+            actx.freeze(actx.from_numpy(point_sources)))
 
     from pytential.target import PointsTarget
     test_targets = make_circular_point_group(
             ambient_dim, ntargets, test_tgt_geo_radius)
-    point_target = PointsTarget(test_targets)
+    point_target = PointsTarget(
+        actx.freeze(actx.from_numpy(test_targets)))
 
     return point_source, point_target
 

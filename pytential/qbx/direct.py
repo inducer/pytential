@@ -79,8 +79,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                 <> icenter = qbx_center_numbers[itgt]
                 <> itgt_overall = qbx_tgt_numbers[itgt]
 
-                <> a[idim] = center[idim, icenter] - src[idim, isrc] \
-                        {dup=idim}
+                <> a[idim] = center[idim, icenter] - src[idim, isrc]
                 <> b[idim] = tgt[idim, itgt_overall] - center[idim, icenter] \
                         {dup=idim}
                 <> rscale = expansion_radii[icenter]
@@ -118,7 +117,6 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
         for i, dens in enumerate(strengths):
             kwargs[f"strength_{i}"] = dens
 
-        print(knl)
         return knl(queue, src=sources, tgt=targets, center=centers,
                 expansion_radii=expansion_radii, **kwargs)
 

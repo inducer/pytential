@@ -118,7 +118,7 @@ class PotentialOutput(Record):
 
         the name of the variable to which the result is assigned
 
-    .. attribute:: kernel_index
+    .. attribute:: target_kernel_index
 
     .. attribute:: target_name
 
@@ -140,7 +140,7 @@ class ComputePotentialInstruction(Instruction):
     .. attribute:: target_kernels
 
         a list of :class:`sumpy.kernel.Kernel` instances, indexed by
-        :attr:`LayerPotentialOutput.kernel_index`.
+        :attr:`PotentialOutput.target_kernel_index`.
 
     .. attribute:: kernel_arguments
 
@@ -148,10 +148,16 @@ class ComputePotentialInstruction(Instruction):
 
     .. attribute:: source_kernels
 
-        The common source kernels among :attr:`target_kernels`, with all the
-        layer potentials removed.
+        a list of :class:`sumpy.kernel.Kernel` instances with only source
+        derivatives and no target derivatives. See
+        :class:`pytential.symbolic.primitives.IntG` docstring for details.
 
     .. attribute:: densities
+
+        a list of densities with the same number of entries as
+        :attr:`source_kernels`. See the :class:`pytential.symbolic.primitives.IntG`
+        docstring for details.
+
     .. attribute:: source
 
     .. attribute:: priority
@@ -202,12 +208,11 @@ class ComputePotentialInstruction(Instruction):
             else:
                 raise ValueError(f"unrecognized limit value: {o.qbx_forced_limit}")
 
-            source_kernels_strs = [
+            source_kernels_str = " + ".join([
                 f"density{i} * {source_kernel}" for i, source_kernel in
                 enumerate(self.source_kernels)
-            ]
-            source_kernels_str = " + ".join(source_kernels_strs)
-            target_kernel = self.target_kernels[o.kernel_index]
+            ])
+            target_kernel = self.target_kernels[o.target_kernel_index]
             target_kernel_str = str(target_kernel)
             base_kernel_str = str(target_kernel.get_base_kernel())
             kernel_str = target_kernel_str.replace(base_kernel_str,
@@ -581,18 +586,19 @@ class OperatorCompiler(IdentityMapper):
         try:
             return self.expr_to_var[expr]
         except KeyError:
+            from pytential.utils import sort_arrays_together
+            source_kernels, densities = \
+                sort_arrays_together(expr.source_kernels, expr.densities, key=str)
             # make sure operator assignments stand alone and don't get muddled
             # up in vector arithmetic
             density_vars = [self.assign_to_new_var(self.rec(density)) for
-                density in expr.densities]
+                density in densities]
 
             group = self.group_to_operators[self.op_group_features(expr)]
             names = [self.get_var_name() for op in group]
 
             sorted_ops = sorted(group, key=lambda op: repr(op.target_kernel))
             target_kernels = [op.target_kernel for op in sorted_ops]
-            from pytools import single_valued
-            source_kernels = single_valued(op.source_kernels for op in sorted_ops)
 
             target_kernel_to_index = \
                 {kernel: i for i, kernel in enumerate(target_kernels)}
@@ -605,14 +611,14 @@ class OperatorCompiler(IdentityMapper):
                     for arg_name, arg_val in expr.kernel_arguments.items()}
 
             outputs = [
-                    PotentialOutput(
-                        name=name,
-                        kernel_index=target_kernel_to_index[op.target_kernel],
-                        target_name=op.target,
-                        qbx_forced_limit=op.qbx_forced_limit,
-                        )
-                    for name, op in zip(names, group)
-                    ]
+                PotentialOutput(
+                    name=name,
+                    target_kernel_index=target_kernel_to_index[op.target_kernel],
+                    target_name=op.target,
+                    qbx_forced_limit=op.qbx_forced_limit,
+                    )
+                for name, op in zip(names, group)
+                ]
 
             self.code.append(
                     ComputePotentialInstruction(

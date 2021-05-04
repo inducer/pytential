@@ -222,7 +222,7 @@ class SphereGreenTest(StaticTestCase):
 class DynamicTestCase:
     fmm_backend = "sumpy"
 
-    def __init__(self, geometry, expr, k, fmm_backend="sumpy"):
+    def __init__(self, geometry, expr, k, fmm_backend="sumpy", fmm_order=None):
         self.geometry = geometry
         self.expr = expr
         self.k = k
@@ -234,7 +234,10 @@ class DynamicTestCase:
         elif geometry.dim == 3:
             order_bump = 8
 
-        self.fmm_order = self.qbx_order + order_bump
+        if fmm_order is None:
+            self.fmm_order = self.qbx_order + order_bump
+        else:
+            self.fmm_order = fmm_order
 
     def check(self):
         if (self.geometry.mesh_name == "sphere"
@@ -266,6 +269,8 @@ def test_identity_convergence_slow(ctx_factory, case):
         DynamicTestCase(StarfishGeometry(), GradGreenExpr(), 0),
         DynamicTestCase(StarfishGeometry(), GradGreenExpr(), 1.2),
         DynamicTestCase(StarfishGeometry(), ZeroCalderonExpr(), 0),
+        # test target derivatives with direct evaluation
+        DynamicTestCase(StarfishGeometry(), ZeroCalderonExpr(), 0, fmm_order=False),
         DynamicTestCase(StarfishGeometry(), GreenExpr(), 0, fmm_backend="fmmlib"),
         DynamicTestCase(StarfishGeometry(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
         # 3d
@@ -341,7 +346,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
         from meshmode.dof_array import thaw, flatten, unflatten
         nodes_host = [actx.to_numpy(axis)
                 for axis in flatten(thaw(actx, density_discr.nodes()))]
-        normal = bind(places, sym.normal(d))(actx).as_vector(np.object)
+        normal = bind(places, sym.normal(d))(actx).as_vector(object)
         normal_host = [actx.to_numpy(axis)for axis in flatten(normal)]
 
         if k != 0:
@@ -405,7 +410,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
             bdry_vis = make_visualizer(actx, density_discr, target_order)
 
             bdry_normals = bind(places, sym.normal(mesh.ambient_dim))(actx)\
-                    .as_vector(dtype=np.object)
+                    .as_vector(dtype=object)
 
             bdry_vis.write_vtk_file("source-%s.vtu" % resolution, [
                 ("u", u_dev),

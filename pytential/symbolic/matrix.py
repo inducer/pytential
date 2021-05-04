@@ -304,6 +304,12 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
 # FIXME: PyOpenCL doesn't do all the required matrix math yet.
 # We'll cheat and build the matrix on the host.
 
+class MatrixBuilderDirectResamplerCacheKey:
+    """Serves as a unique key for the resampler cache in
+    :meth:`pytential.symbolic.execution.GeometryCollection._get_cache`.
+    """
+
+
 class MatrixBuilder(MatrixBuilderBase):
     def __init__(self, actx, dep_expr, other_dep_exprs,
             dep_source, dep_discr, places, context):
@@ -329,7 +335,7 @@ class MatrixBuilder(MatrixBuilderBase):
             operand = unflatten_from_numpy(actx, discr, operand)
             return flatten_to_numpy(actx, conn(operand))
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
-            cache = self.places._get_cache("direct_resampler")
+            cache = self.places._get_cache(MatrixBuilderDirectResamplerCacheKey)
             key = (expr.from_dd.geometry,
                     expr.from_dd.discr_stage,
                     expr.to_dd.discr_stage)
@@ -371,10 +377,8 @@ class MatrixBuilder(MatrixBuilderBase):
 
             actx = self.array_context
             kernel_args = _get_layer_potential_args(self, expr)
-
-            from sumpy.expansion.local import LineTaylorLocalExpansion
-            local_expn = LineTaylorLocalExpansion(
-                expr.target_kernel.get_base_kernel(), lpot_source.qbx_order)
+            local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
+                    kernel.get_base_kernel(), (expr.target_kernel,))
 
             from sumpy.qbx import LayerPotentialMatrixGenerator
             mat_gen = LayerPotentialMatrixGenerator(actx.context,
@@ -449,11 +453,13 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                     expr, include_args=kernel_args)
             if self.exclude_self:
                 kernel_args["target_to_source"] = actx.from_numpy(
-                        np.arange(0, target_discr.ndofs, dtype=np.int)
+                        np.arange(0, target_discr.ndofs, dtype=np.int64)
                         )
 
             from sumpy.p2p import P2PMatrixGenerator
-            mat_gen = P2PMatrixGenerator(actx.context, (kernel,),
+            mat_gen = P2PMatrixGenerator(actx.context,
+                    source_kernels=(kernel,),
+                    target_kernels=(expr.target_kernel,),
                     exclude_self=self.exclude_self)
 
             from meshmode.dof_array import flatten, thaw
@@ -507,10 +513,8 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
             actx = self.array_context
             kernel_args = _get_layer_potential_args(self._mat_mapper, expr)
-
-            from sumpy.expansion.local import LineTaylorLocalExpansion
-            local_expn = LineTaylorLocalExpansion(
-                expr.target_kernel.get_base_kernel(), lpot_source.qbx_order)
+            local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
+                    kernel.get_base_kernel(), (expr.target_kernel,))
 
             from sumpy.qbx import LayerPotentialMatrixBlockGenerator
             mat_gen = LayerPotentialMatrixBlockGenerator(actx.context, local_expn,
@@ -588,7 +592,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                     expr, include_args=kernel_args)
             if self.exclude_self:
                 kernel_args["target_to_source"] = actx.from_numpy(
-                        np.arange(0, target_discr.ndofs, dtype=np.int)
+                        np.arange(0, target_discr.ndofs, dtype=np.int64)
                         )
 
             from sumpy.p2p import P2PMatrixBlockGenerator

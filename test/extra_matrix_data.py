@@ -57,7 +57,7 @@ class MatrixTestCaseMixin:
         # randomly pick a subset of points
         indices = indices.get(actx.queue)
 
-        subset = np.empty(indices.nblocks, dtype=np.object)
+        subset = np.empty(indices.nblocks, dtype=object)
         for i in range(indices.nblocks):
             iidx = indices.block_indices(i)
             isize = int(self.index_sparsity_factor * len(iidx))
@@ -80,9 +80,12 @@ class MatrixTestCaseMixin:
         kwargs = self.knl_sym_kwargs.copy()
         kwargs["qbx_forced_limit"] = qbx_forced_limit
 
-        if self.op_type == "scalar":
+        if self.op_type in ("scalar", "single"):
             sym_u = sym.var("u")
             sym_op = sym.S(knl, sym_u, **kwargs)
+        elif self.op_type == "double":
+            sym_u = sym.var("u")
+            sym_op = sym.D(knl, sym_u, **kwargs)
         elif self.op_type == "scalar_mixed":
             sym_u = sym.var("u")
             sym_op = sym.S(knl, 0.3 * sym_u, **kwargs) \
@@ -99,7 +102,9 @@ class MatrixTestCaseMixin:
         else:
             raise ValueError(f"unknown operator type: '{self.op_type}'")
 
-        sym_op = 0.5 * sym_u + sym_op
+        if self.side is not None:
+            sym_op = 0.5 * self.side * sym_u + sym_op
+
         return sym_u, sym_op
 
 

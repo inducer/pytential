@@ -473,7 +473,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         nlevels = geo_data.tree().nlevels
 
-        box_to_rscale = np.empty(geo_data.tree().nboxes, dtype=np.float)
+        box_to_rscale = np.empty(geo_data.tree().nboxes, dtype=np.float64)
         for isrc_level in range(nlevels):
             lev_box_start, lev_box_stop = self.tree.level_start_box_nrs[
                     isrc_level:isrc_level+2]
@@ -598,9 +598,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         ifgrad = self.ifgrad
 
         # Create temporary output arrays for potential / gradient.
-        pot = np.zeros(self.tree.ntargets, np.complex) if ifpot else None
+        pot = np.zeros(self.tree.ntargets, np.complex128) if ifpot else None
         grad = (
-                np.zeros((self.dim, self.tree.ntargets), np.complex)
+                np.zeros((self.dim, self.tree.ntargets), np.complex128)
                 if ifgrad else None)
 
         ts.eval_target_specific_qbx_locals(

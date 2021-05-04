@@ -34,7 +34,7 @@ Then, on Linux:
 
 #.  Type the following command::
 
-        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install git+https://github.com/inducer/$i; done
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install --editable "git+https://github.com/inducer/$i#egg=$i"; done
 
 And on macOS:
 
@@ -42,7 +42,12 @@ And on macOS:
 
 #.  Type the following command::
 
-        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential;do CC=clang python -m pip install git+https://github.com/inducer/$i; done
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential;do CC=clang python -m pip install --editable "git+https://github.com/inducer/$i#egg=$i"; done
+
+.. note::
+
+    In each case, you may leave out the ``--editable`` flag if you would not like
+    a checkout of the source code.
 
 Next time you want to use :mod:`pytential`, just run the following command::
 
