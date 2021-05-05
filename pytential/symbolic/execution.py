@@ -899,7 +899,7 @@ def _find_array_context_from_args_in_context(context, supplied_array_context=Non
         else:
             pass
 
-    for key, val in context.items():
+    for val in context.values():
         look_for_array_contexts(val)
 
     if array_contexts:

@@ -1319,8 +1319,10 @@ class IterativeInverse(Expression):
     init_arg_names = ("expression", "rhs", "variable_name", "extra_vars", "dofdesc")
 
     @_deprecate_kwargs("where", "dofdesc")
-    def __init__(self, expression, rhs, variable_name, extra_vars={},
+    def __init__(self, expression, rhs, variable_name, extra_vars=None,
             dofdesc=None):
+        if extra_vars is None:
+            extra_vars = {}
         self.expression = expression
         self.rhs = rhs
         self.variable_name = variable_name

@@ -162,7 +162,7 @@ def test_tangential_onb(ctx_factory):
 
     from meshmode.dof_array import flatten
     orth_check = flatten(orth_check)
-    for i, orth_i in enumerate(orth_check):
+    for orth_i in orth_check:
         assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
 
     # make sure tangential_onb is orthogonal to normal
@@ -172,7 +172,7 @@ def test_tangential_onb(ctx_factory):
         )(actx)
 
     orth_check = flatten(orth_check)
-    for i, orth_i in enumerate(orth_check):
+    for orth_i in orth_check:
         assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
 
 # }}}

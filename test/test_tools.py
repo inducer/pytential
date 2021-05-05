@@ -135,14 +135,14 @@ def test_geometry_collection_caching(ctx_factory):
     # construct qbx source
     from pytential.qbx import QBXLayerPotentialSource
 
-    lpots = []
-    sources = [f"source_{k}" for k in range(ngeometry)]
-    for k, density_discr in enumerate(discrs):
-        qbx = QBXLayerPotentialSource(density_discr,
+    lpots = [
+        QBXLayerPotentialSource(density_discr,
             fine_order=2 * target_order,
             qbx_order=qbx_order,
             fmm_order=False)
-        lpots.append(qbx)
+        for density_discr in discrs
+        ]
+    sources = [f"source_{k}" for k in range(ngeometry)]
 
     # construct a geometry collection
     from pytential import GeometryCollection

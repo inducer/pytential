@@ -88,7 +88,7 @@ def main(mesh_name="ellipsoid"):
         from meshmode.dof_array import flatten, unflatten
         sigma = flatten(0 * angle)
         from random import randrange
-        for i in range(5):
+        for _ in range(5):
             sigma[randrange(len(sigma))] = 1
         sigma = unflatten(actx, density_discr, sigma)
 
