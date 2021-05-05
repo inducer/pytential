@@ -32,7 +32,9 @@ logger = logging.getLogger(__name__)
 # {{{ make_circular_point_group
 
 def make_circular_point_group(ambient_dim, npoints, radius,
-        center=np.array([0., 0.]), func=lambda x: x):
+        center=None, func=lambda x: x):
+    if center is None:
+        center = np.array([0., 0.])
     t = func(np.linspace(0, 1, npoints, endpoint=False)) * (2 * np.pi)
     center = np.asarray(center)
     result = np.zeros((ambient_dim, npoints))

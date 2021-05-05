@@ -136,7 +136,7 @@ def run_exterior_stokes(ctx_factory, *,
         from pytential.symbolic.stokes import HebekerExteriorStokesOperator
         op = HebekerExteriorStokesOperator()
     else:
-        assert False
+        raise AssertionError()
 
     sym_sigma = op.get_density_var("sigma")
     sym_bc = op.get_density_var("bc")

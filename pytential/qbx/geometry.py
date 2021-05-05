@@ -470,7 +470,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         ntargets = self.ncenters
         target_discr_starts = []
 
-        for target_discr, qbx_side in self.target_discrs_and_qbx_sides:
+        for target_discr, _qbx_side in self.target_discrs_and_qbx_sides:
             target_discr_starts.append(ntargets)
             ntargets += target_discr.ndofs
 
@@ -952,14 +952,14 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
             ax = pt.gca()
 
             if draw_circles:
-                for icenter, (cx, cy, r) in enumerate(zip(
+                for cx, cy, r in zip(
                         centers[0], centers[1],
-                        self.flat_expansion_radii().get(queue))):
+                        self.flat_expansion_radii().get(queue)):
                     ax.add_artist(
                             pt.Circle((cx, cy), r, fill=False, ls="dotted", lw=1))
 
             if draw_center_numbers:
-                for icenter, (cx, cy, r) in enumerate(zip(centers[0], centers[1])):
+                for icenter, (cx, cy) in enumerate(zip(centers[0], centers[1])):
                     pt.text(cx, cy,
                             str(icenter), fontsize=8,
                             ha="left", va="center",

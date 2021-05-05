@@ -217,7 +217,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
         # Check wavenumber to panel size ratio.
         assert quad_res[panel.element_nr] * helmholtz_k <= 5
 
-    for i, panel_1 in enumerate(iter_elements(stage1_density_discr)):
+    for panel_1 in iter_elements(stage1_density_discr):
         for panel_2 in iter_elements(stage1_density_discr):
             check_disk_undisturbed_by_sources(panel_1, panel_2)
         for panel_2 in iter_elements(quad_stage2_density_discr):

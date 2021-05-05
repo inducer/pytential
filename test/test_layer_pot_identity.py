@@ -63,7 +63,7 @@ def get_sphere_mesh(refinement_increment, target_order):
     from meshmode.mesh.refinement import Refiner
 
     refiner = Refiner(mesh)
-    for i in range(refinement_increment):
+    for _ in range(refinement_increment):
         flags = np.ones(mesh.nelements, dtype=bool)
         refiner.refine(flags)
         mesh = refiner.get_current_mesh()
@@ -375,7 +375,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                 u = 1/dist
                 grad_u = -diff/dist**3
             else:
-                assert False
+                raise AssertionError()
 
         dn_u = 0
         for i in range(d):

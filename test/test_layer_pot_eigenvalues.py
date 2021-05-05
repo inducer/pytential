@@ -287,7 +287,7 @@ def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
         from meshmode.mesh.refinement import Refiner
 
         refiner = Refiner(mesh)
-        for i in range(nrefinements):
+        for _ in range(nrefinements):
             flags = np.ones(mesh.nelements, dtype=bool)
             refiner.refine(flags)
             mesh = refiner.get_current_mesh()
