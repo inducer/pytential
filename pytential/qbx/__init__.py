@@ -695,7 +695,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         tdr = TargetDerivativeRemover()
         if any(knl != tdr(knl) for knl in target_kernels):
             return self.expansion_factory.get_local_expansion_class(
-                    base_kernel)(base_kernel, self.qbx_order)
+                    base_kernel)(base_kernel, self.qbx_order, use_rscale=False)
         else:
             return LineTaylorLocalExpansion(base_kernel, self.qbx_order)
 
