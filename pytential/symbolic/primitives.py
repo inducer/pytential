@@ -1693,7 +1693,7 @@ def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
     for use cases where that is preferred.
     """
     from sumpy.kernel import (SourceTransformationRemover,
-            TargetTrasnformationRemover)
+            TargetTransformationRemover)
     sdr = SourceTransformationRemover()
     tdr = TargetTransformationRemover()
 
