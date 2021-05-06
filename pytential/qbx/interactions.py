@@ -384,9 +384,9 @@ class QBXL2P(E2PBase):
 
                     for icenter_tgt
 
-                        <> center_itgt = center_to_targets_lists[icenter_tgt]
+                        <> itgt = center_to_targets_lists[icenter_tgt]
 
-                        <> b[idim] = targets[idim, center_itgt] - center[idim]
+                        <> b[idim] = targets[idim, itgt] - center[idim]
 
                         """] + ["""
                         <> coeff{i} = qbx_expansions[src_icenter, {i}]
