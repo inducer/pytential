@@ -119,7 +119,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
 
         return knl(queue, sources=sources, targets=targets, center=centers,
                 expansion_radii=expansion_radii, **kwargs)
-    
+
     def get_optimized_kernel(self,
             targets_is_obj_array, sources_is_obj_array, centers_is_obj_array):
         return LayerPotentialBase.get_optimized_kernel(targets_is_obj_array,
