@@ -394,7 +394,7 @@ class QBXL2P(E2PBase):
 
                         ] + loopy_insns + ["""
 
-                        result[{i},center_itgt] = kernel_scaling * result_{i}_p \
+                        result[{i},itgt] = kernel_scaling * result_{i}_p \
                                 {{id_prefix=write_result}}
                         """.format(i=i)
                             for i in range(len(result_names))] + ["""
