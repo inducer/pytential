@@ -122,7 +122,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
 
     def get_optimized_kernel(self,
             targets_is_obj_array, sources_is_obj_array, centers_is_obj_array):
-        return LayerPotentialBase.get_optimized_kernel(targets_is_obj_array,
+        return LayerPotentialBase.get_optimized_kernel(self, targets_is_obj_array,
                 sources_is_obj_array, centers_is_obj_array, itgt_name="itgt_local")
 
 # }}}
