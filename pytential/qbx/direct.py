@@ -45,9 +45,9 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
             gather_loopy_source_arguments((self.expansion,)
                 + self.source_kernels + self.target_kernels)
             + [
-                lp.GlobalArg("src", None,
+                lp.GlobalArg("sources", None,
                     shape=(self.dim, "nsources"), order="C"),
-                lp.GlobalArg("tgt", None,
+                lp.GlobalArg("targets", None,
                     shape=(self.dim, "ntargets_total"), order="C"),
                 lp.GlobalArg("center", None,
                     shape=(self.dim, "ncenters_total"), dim_tags="sep,C"),
@@ -69,18 +69,18 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
             for i in range(len(self.target_kernels))])
 
         loopy_knl = lp.make_kernel([
-            "{[itgt]: 0 <= itgt < ntargets}",
+            "{[itgt_local]: 0 <= itgt_local < ntargets}",
             "{[isrc]: 0 <= isrc < nsources}",
             "{[idim]: 0 <= idim < dim}"
             ],
             self.get_kernel_scaling_assignments()
-            + ["for itgt, isrc"]
+            + ["for itgt_local, isrc"]
             + ["""
-                <> icenter = qbx_center_numbers[itgt]
-                <> itgt_overall = qbx_tgt_numbers[itgt]
+                <> icenter = qbx_center_numbers[itgt_local]
+                <> itgt = qbx_tgt_numbers[itgt_local]
 
-                <> a[idim] = center[idim, icenter] - src[idim, isrc]
-                <> b[idim] = tgt[idim, itgt_overall] - center[idim, icenter] \
+                <> a[idim] = center[idim, icenter] - sources[idim, isrc]
+                <> b[idim] = targets[idim, itgt] - center[idim, icenter] \
                         {dup=idim}
                 <> rscale = expansion_radii[icenter]
             """]
@@ -88,9 +88,9 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                 for i in range(self.strength_count)]
             + loopy_insns + kernel_exprs
             + ["""
-                result_{i}[itgt_overall] = knl_{i}_scaling * \
+                result_{i}[itgt] = knl_{i}_scaling * \
                     simul_reduce(sum, isrc, pair_result_{i})  \
-                        {{inames=itgt}}
+                        {{inames=itgt_local}}
                 """.format(i=iknl)
                 for iknl in range(len(self.target_kernels))]
             + ["end"],
