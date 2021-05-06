@@ -117,7 +117,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
         for i, dens in enumerate(strengths):
             kwargs[f"strength_{i}"] = dens
 
-        return knl(queue, src=sources, tgt=targets, center=centers,
+        return knl(queue, sources=sources, targets=targets, center=centers,
                 expansion_radii=expansion_radii, **kwargs)
 
 # }}}
