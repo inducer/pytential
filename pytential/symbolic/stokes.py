@@ -25,8 +25,9 @@ import numpy as np
 from pytential import sym
 from pytential.symbolic.pde.system_utils import merge_int_g_exprs
 from sumpy.kernel import (StokesletKernel, StressletKernel, LaplaceKernel,
-    AxisTargetDerivative, AxisSourceDerivative, BiharmonicKernel,
-    TargetPointMultiplier)
+    ElasticityKernel, BiharmonicKernel,
+    AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
+from pymbolic import var
 
 __doc__ = """
 .. autoclass:: StokesletWrapper
@@ -67,10 +68,12 @@ class StokesletWrapperBase:
     .. automethod:: apply_derivative
     .. automethod:: apply_stress
     """
-    def __init__(self, dim):
+    def __init__(self, dim, mu_sym, nu_sym):
         self.dim = dim
+        self.mu = mu_sym
+        self.nu = nu_sym
 
-    def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, qbx_forced_limit):
         """Symbolic expressions for integrating Stokeslet kernel.
 
         Returns an object array of symbolic expressions for the vector
@@ -78,13 +81,12 @@ class StokesletWrapperBase:
         variable *density_vec_sym*.
 
         :arg density_vec_sym: a symbolic vector variable for the density vector.
-        :arg mu_sym: a symbolic variable for the viscosity.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
         raise NotImplementedError
 
-    def apply_pressure(self, density_vec_sym, mu_sym, qbx_forced_limit):
+    def apply_pressure(self, density_vec_sym, qbx_forced_limit):
         """Symbolic expression for pressure field associated with the Stokeslet."""
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
@@ -97,8 +99,7 @@ class StokesletWrapperBase:
 
         return sym_expr
 
-    def apply_derivative(self, deriv_dir, density_vec_sym,
-                             mu_sym, qbx_forced_limit):
+    def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
         """Symbolic derivative of velocity from Stokeslet.
 
         Returns an object array of symbolic expressions for the vector
@@ -107,14 +108,12 @@ class StokesletWrapperBase:
 
         :arg deriv_dir: integer denoting the axis direction for the derivative.
         :arg density_vec_sym: a symbolic vector variable for the density vector.
-        :arg mu_sym: a symbolic variable for the viscosity.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
         raise NotImplementedError
 
-    def apply_stress(self, density_vec_sym, dir_vec_sym,
-                        mu_sym, qbx_forced_limit):
+    def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
         r"""Symbolic expression for viscous stress applied to a direction.
 
         Returns a vector of symbolic expressions for the force resulting
@@ -134,7 +133,6 @@ class StokesletWrapperBase:
 
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg dir_vec_sym: a symbolic vector for the application direction.
-        :arg mu_sym: a symbolic variable for the viscosity.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
@@ -167,10 +165,12 @@ class StressletWrapperBase:
     .. automethod:: apply_derivative
     .. automethod:: apply_stress
     """
-    def __init__(self, dim):
+    def __init__(self, dim, mu_sym, nu_sym):
         self.dim = dim
+        self.mu = mu_sym
+        self.nu = nu_sym
 
-    def apply(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
         """Symbolic expressions for integrating Stresslet kernel.
 
         Returns an object array of symbolic expressions for the vector
@@ -179,19 +179,18 @@ class StressletWrapperBase:
 
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg dir_vec_sym: a symbolic vector variable for the direction vector.
-        :arg mu_sym: a symbolic variable for the viscosity.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
         raise NotImplementedError
 
-    def apply_pressure(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
+    def apply_pressure(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
         """Symbolic expression for pressure field associated with the Stresslet."""
         import itertools
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
 
-        factor = (2. * mu_sym)
+        factor = (2. * self.mu)
 
         sym_expr = 0
 
@@ -205,7 +204,7 @@ class StressletWrapperBase:
         return sym_expr
 
     def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
-                             mu_sym, qbx_forced_limit):
+            qbx_forced_limit):
         """Symbolic derivative of velocity from stresslet.
 
         Returns an object array of symbolic expressions for the vector
@@ -216,14 +215,13 @@ class StressletWrapperBase:
         :arg deriv_dir: integer denoting the axis direction for the derivative.
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg dir_vec_sym: a symbolic vector variable for the normal direction.
-        :arg mu_sym: a symbolic variable for the viscosity.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
         raise NotImplementedError
 
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
-                        mu_sym, qbx_forced_limit):
+                        qbx_forced_limit):
         r"""Symbolic expression for viscous stress applied to a direction.
 
         Returns a vector of symbolic expressions for the force resulting
@@ -239,7 +237,6 @@ class StressletWrapperBase:
         :arg normal_vec_sym: a symbolic vector variable for the normal vectors
             (outward facing normals at source locations).
         :arg dir_vec_sym: a symbolic vector for the application direction.
-        :arg mu_sym: a symbolic variable for the viscosity.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
@@ -250,7 +247,7 @@ class StokesletWrapperMixin:
     """A base class for StokesletWrapper and StressletWrapper
     to create IntG instances
     """
-    def get_int_g(self, idx, density, mu_sym, qbx_forced_limit,
+    def get_int_g(self, idx, density, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
 
         """
@@ -261,21 +258,20 @@ class StokesletWrapperMixin:
 
         def create_int_g(knl, deriv_dirs, **kwargs):
             for deriv_dir in deriv_dirs:
-                if self.use_source:
-                    knl = AxisSourceDerivative(deriv_dir, knl)
-                else:
-                    knl = AxisTargetDerivative(deriv_dir, knl)
+                knl = AxisSourceDerivative(deriv_dir, knl)
 
-            res = sym.S(knl, density,
+            args = [arg.loopy_arg.name for arg in knl.get_args()]
+            for arg in args:
+                kwargs[arg] = var(arg)
+
+            res = sym.S(knl, density*dir_vec_sym[idx[-1]],
                     qbx_forced_limit=qbx_forced_limit, **kwargs)
-            if self.use_source:
-                return res*(-1)**len(deriv_dirs)
-            else:
-                return res
+
+            return res*(-1)**len(deriv_dirs)
 
         if not self.use_biharmonic:
             knl = self.kernel_dict[idx]
-            return create_int_g(knl, deriv_dirs, mu=mu_sym)
+            return create_int_g(knl, deriv_dirs)
 
         deriv_relation = self.deriv_relation_dict[idx]
         const = deriv_relation[0]
@@ -284,21 +280,22 @@ class StokesletWrapperMixin:
         # on the source instead of the target when using automatic tagging
         # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
         dd = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
-        const *= sym.integral(self.dim, self.dim-1, density, dofdesc=dd)
+        const *= sym.integral(self.dim, self.dim-1, density*dir_vec_sym[idx[-1]],
+                dofdesc=dd)
 
         result = const
         for mi, coeff in deriv_relation[1]:
             new_deriv_dirs = list(deriv_dirs)
-            for idx, val in enumerate(mi):
-                new_deriv_dirs.extend([idx]*val)
+            for i, val in enumerate(mi):
+                new_deriv_dirs.extend([i]*val)
             result += create_int_g(self.base_kernel, new_deriv_dirs) * coeff
 
         return result
 
 
 class StokesletWrapper(StokesletWrapperBase, StokesletWrapperMixin):
-    def __init__(self, dim=None, use_biharmonic=True, use_source=True):
-        super().__init__(dim)
+    def __init__(self, dim=None, use_biharmonic=True, mu_sym=var("mu"), nu_sym=0.5):
+        super().__init__(dim, mu_sym, nu_sym)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
 
@@ -307,12 +304,11 @@ class StokesletWrapper(StokesletWrapperBase, StokesletWrapperMixin):
         self.kernel_dict = {}
 
         self.base_kernel = BiharmonicKernel(dim=dim)
-        self.use_source = use_source
 
         for i in range(dim):
             for j in range(i, dim):
-                self.kernel_dict[(i, j)] = StokesletKernel(dim=dim, icomp=i,
-                                                           jcomp=j)
+                self.kernel_dict[(i, j)] = ElasticityKernel(dim=dim, icomp=i,
+                    jcomp=j, viscosity_mu=mu_sym, poisson_ratio=nu_sym)
 
         # The dictionary allows us to exploit symmetry -- that
         # :math:`T_{01}` is identical to :math:`T_{10}` -- and avoid creating
@@ -329,44 +325,50 @@ class StokesletWrapper(StokesletWrapperBase, StokesletWrapperMixin):
             for deriv_eq, (idx, knl) in zip(results, self.kernel_dict.items()):
                 self.deriv_relation_dict[idx] = deriv_eq
 
-    def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
+        # For stokeslet, there's no direction vector involved
+        # passing a list of ones instead to remove its usage.
         for comp in range(self.dim):
             for i in range(self.dim):
                 sym_expr[comp] += self.get_int_g((comp, i),
-                        density_vec_sym[i], mu_sym, qbx_forced_limit, deriv_dirs=[])
+                        density_vec_sym[i], [1]*self.dim,
+                        qbx_forced_limit, deriv_dirs=[])
 
         return sym_expr
 
-    def apply_derivative(self, deriv_dir, density_vec_sym,
-                             mu_sym, qbx_forced_limit):
+    def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
 
-        sym_expr = self.apply(density_vec_sym, mu_sym, qbx_forced_limit)
+        sym_expr = self.apply(density_vec_sym, qbx_forced_limit)
 
+        # For stokeslet, there's no direction vector involved
+        # passing a list of ones instead to remove its usage.
         for comp in range(self.dim):
             for i in range(self.dim):
                 sym_expr[comp] += self.get_int_g((comp, i),
-                        density_vec_sym[i], mu_sym, qbx_forced_limit,
-                        deriv_dirs=[deriv_dir])
+                        density_vec_sym[i], [1]*self.dim,
+                        qbx_forced_limit, deriv_dirs=[deriv_dir])
 
         return sym_expr
 
-    def apply_stress(self, density_vec_sym, dir_vec_sym,
-                        mu_sym, qbx_forced_limit):
+    def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
         stresslet_obj = StressletWrapper(dim=self.dim,
-                                         use_biharmonic=self.use_biharmonic)
+                                         use_biharmonic=self.use_biharmonic,
+                                         mu_sym=self.mu, nu_sym=self.nu)
 
+        # For stokeslet, there's no direction vector involved
+        # passing a list of ones instead to remove its usage.
         for comp in range(self.dim):
             for i in range(self.dim):
                 for j in range(self.dim):
                     sym_expr[comp] += dir_vec_sym[i] * \
                         stresslet_obj.get_int_g((comp, i, j),
-                        density_vec_sym[j],
-                        mu_sym, qbx_forced_limit, deriv_dirs=[])
+                        density_vec_sym[j], [1]*self.dim,
+                        qbx_forced_limit, deriv_dirs=[])
 
         return sym_expr
 
@@ -403,8 +405,8 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
     .. automethod:: apply_stress
     """
 
-    def __init__(self, dim=None, use_biharmonic=True, use_source=True):
-        super().__init__(dim)
+    def __init__(self, dim=None, use_biharmonic=True, mu_sym=var("mu"), nu_sym=0.5):
+        super().__init__(dim, mu_sym, nu_sym)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
 
@@ -412,13 +414,12 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
         self.kernel_dict = {}
 
         self.base_kernel = BiharmonicKernel(dim=dim)
-        self.use_source = use_source
 
         for i in range(dim):
             for j in range(i, dim):
                 for k in range(j, dim):
                     self.kernel_dict[(i, j, k)] = StressletKernel(dim=dim, icomp=i,
-                                                               jcomp=j, kcomp=k)
+                                                                  jcomp=j, kcomp=k)
 
         # The dictionary allows us to exploit symmetry -- that
         # :math:`T_{012}` is identical to :math:`T_{120}` -- and avoid creating
@@ -439,7 +440,7 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
             for deriv_eq, (idx, knl) in zip(results, self.kernel_dict.items()):
                 self.deriv_relation_dict[idx] = deriv_eq
 
-    def apply(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -447,13 +448,13 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
             for i in range(self.dim):
                 for j in range(self.dim):
                     sym_expr[comp] += self.get_int_g((comp, i, j),
-                        dir_vec_sym[i] * density_vec_sym[j],
-                        mu_sym, qbx_forced_limit, deriv_dirs=[])
+                        dir_vec_sym[i], density_vec_sym,
+                        qbx_forced_limit, deriv_dirs=[])
 
         return sym_expr
 
     def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
-                             mu_sym, qbx_forced_limit):
+                             qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -461,13 +462,13 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
             for i in range(self.dim):
                 for j in range(self.dim):
                     sym_expr[comp] += self.get_int_g((comp, i, j),
-                        dir_vec_sym[i] * density_vec_sym[j],
-                        mu_sym, qbx_forced_limit, deriv_dirs=[deriv_dir])
+                        dir_vec_sym[i], density_vec_sym,
+                        qbx_forced_limit, deriv_dirs=[deriv_dir])
 
         return sym_expr
 
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
-                        mu_sym, qbx_forced_limit):
+                        qbx_forced_limit):
 
         sym_expr = np.empty((self.dim,), dtype=object)
 
@@ -475,19 +476,19 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
         sym_grad_matrix = np.empty((self.dim, self.dim), dtype=object)
         for i in range(self.dim):
             sym_grad_matrix[:, i] = self.apply_derivative(i, density_vec_sym,
-                                     normal_vec_sym, mu_sym, qbx_forced_limit)
+                                     normal_vec_sym, qbx_forced_limit)
 
         for comp in range(self.dim):
 
             # First, add the pressure term:
             sym_expr[comp] = - dir_vec_sym[comp] * self.apply_pressure(
                                             density_vec_sym, normal_vec_sym,
-                                            mu_sym, qbx_forced_limit)
+                                            qbx_forced_limit)
 
             # Now add the velocity derivative components
             for j in range(self.dim):
                 sym_expr[comp] = sym_expr[comp] + (
-                                    dir_vec_sym[j] * mu_sym * (
+                                    dir_vec_sym[j] * self.mu * (
                                         sym_grad_matrix[comp][j]
                                         + sym_grad_matrix[j][comp])
                                         )
@@ -507,13 +508,15 @@ class StokesletWrapperUsingLaplace(StokesletWrapperBase, StokesletWrapperMixin):
         three-dimensional Stokes equations.
         Journal of Computational Physics, 227(3), 1613-1619.
     """
-    def __init__(self, dim=None):
+    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to StokesletWrapper")
         self.kernel = LaplaceKernel(dim=self.dim)
+        self.mu = mu_sym
+        self.nu = nu_sym
 
-    def apply(self, density_vec_sym, mu_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -531,7 +534,7 @@ class StokesletWrapperUsingLaplace(StokesletWrapperBase, StokesletWrapperMixin):
                         qbx_forced_limit=qbx_forced_limit)
             sym_expr[i] += sym.S(AxisTargetDerivative(i, self.kernel),
                     common_expr_density, qbx_forced_limit=qbx_forced_limit)
-            sym_expr[i] *= -0.5*(mu_sym**(-1))
+            sym_expr[i] *= -0.5*(self.mu*(-1))
 
         return sym_expr
 
@@ -544,13 +547,15 @@ class StressletWrapperUsingLaplace(StokesletWrapperBase, StokesletWrapperMixin):
         three-dimensional Stokes equations.
         Journal of Computational Physics, 227(3), 1613-1619.
     """
-    def __init__(self, dim=None):
+    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to StressletWrapper")
         self.kernel = LaplaceKernel(dim=self.dim)
+        self.mu = mu_sym
+        self.nu = nu_sym
 
-    def apply(self, density_vec_sym, dir_vec_sym, mu_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -616,7 +621,7 @@ class StokesOperator:
     .. automethod:: pressure
     """
 
-    def __init__(self, ambient_dim, side, method="naive"):
+    def __init__(self, ambient_dim, side, method, mu_sym, nu_sym):
         """
         :arg ambient_dim: dimension of the ambient space.
         :arg side: :math:`+1` for exterior or :math:`-1` for interior.
@@ -627,16 +632,20 @@ class StokesOperator:
 
         self.ambient_dim = ambient_dim
         self.side = side
+        self.mu = mu_sym
+        self.nu = nu_sym
 
         if method == "laplace":
-            self.stresslet = StressletWrapperUsingLaplace(dim=self.ambient_dim)
-            self.stokeslet = StokesletWrapperUsingLaplace(dim=self.ambient_dim)
+            self.stresslet = StressletWrapperUsingLaplace(dim=self.ambient_dim,
+                    mu_sym=mu_sym, nu_sym=nu_sym)
+            self.stokeslet = StokesletWrapperUsingLaplace(dim=self.ambient_dim,
+                    mu_sym=mu_sym, nu_sym=nu_sym)
         elif method == "biharmonic" or method == "naive":
             use_biharmonic = (method == "biharmonic")
             self.stresslet = StressletWrapper(dim=self.ambient_dim,
-                use_biharmonic=use_biharmonic)
+                use_biharmonic=use_biharmonic, mu_sym=mu_sym, nu_sym=nu_sym)
             self.stokeslet = StokesletWrapper(dim=self.ambient_dim,
-                use_biharmonic=use_biharmonic)
+                use_biharmonic=use_biharmonic, mu_sym=mu_sym, nu_sym=nu_sym)
         else:
             raise ValueError(f"invalid method: {method}."
                     "Needs to be one of naive, laplace, biharmonic")
@@ -651,7 +660,7 @@ class StokesOperator:
         """
         return sym.make_sym_vector(name, self.ambient_dim)
 
-    def prepare_rhs(self, b, *, mu):
+    def prepare_rhs(self, b):
         """
         :returns: a (potentially) modified right-hand side *b* that matches
             requirements of the representation.
@@ -665,13 +674,13 @@ class StokesOperator:
         """
         raise NotImplementedError
 
-    def velocity(self, sigma, *, normal, mu, qbx_forced_limit=None):
+    def velocity(self, sigma, *, normal, qbx_forced_limit=None):
         """
         :returns: a representation of the velocity field in the Stokes flow.
         """
         raise NotImplementedError
 
-    def pressure(self, sigma, *, normal, mu, qbx_forced_limit=None):
+    def pressure(self, sigma, *, normal, qbx_forced_limit=None):
         """
         :returns: a representation of the pressure in the Stokes flow.
         """
@@ -695,7 +704,8 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, omega, alpha=None, eta=None, method="naive"):
+    def __init__(self, *, omega, alpha=None, eta=None, method="naive",
+            mu_sym=var("mu"), nu_sym=0.5):
         r"""
         :arg omega: farfield behaviour of the velocity field, as defined
             by :math:`A` in [HsiaoKress1985]_ Equation 2.3.
@@ -703,7 +713,8 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         :arg eta: real parameter :math:`\eta > 0`. Choosing this parameter well
             can have a non-trivial effect on the conditioning.
         """
-        super().__init__(ambient_dim=2, side=+1, method=method)
+        super().__init__(ambient_dim=2, side=+1, method=method,
+                mu_sym=mu_sym, nu_sym=nu_sym)
 
         # NOTE: in [hsiao-kress], there is an analysis on a circle, which
         # recommends values in
@@ -721,15 +732,14 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         self.alpha = alpha
         self.eta = eta
 
-    def _farfield(self, mu, qbx_forced_limit):
+    def _farfield(self, qbx_forced_limit):
         source_dofdesc = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
         length = sym.integral(self.ambient_dim, self.dim, 1, dofdesc=source_dofdesc)
         return self.stokeslet.apply(
                 -self.omega / length,
-                mu,
                 qbx_forced_limit=qbx_forced_limit)
 
-    def _operator(self, sigma, normal, mu, qbx_forced_limit):
+    def _operator(self, sigma, normal, qbx_forced_limit):
         slp_qbx_forced_limit = qbx_forced_limit
         if slp_qbx_forced_limit == "avg":
             slp_qbx_forced_limit = "avg"
@@ -743,32 +753,32 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         meanless_sigma = sym.cse(sigma - sym.mean(self.ambient_dim,
             self.dim, sigma, dofdesc=dd))
 
-        op_k = self.stresslet.apply(sigma, normal, mu,
-                qbx_forced_limit=qbx_forced_limit)
+        op_k = self.stresslet.apply(sigma, normal,
+                    qbx_forced_limit=qbx_forced_limit)
         op_s = (
                 self.alpha / (2.0 * np.pi) * int_sigma
-                - self.stokeslet.apply(meanless_sigma, mu,
+                - self.stokeslet.apply(meanless_sigma,
                     qbx_forced_limit=slp_qbx_forced_limit)
                 )
 
         return op_k + self.eta * op_s
 
-    def prepare_rhs(self, b, *, mu):
-        return b + self._farfield(mu, qbx_forced_limit=+1)
+    def prepare_rhs(self, b):
+        return b + self._farfield(qbx_forced_limit=+1)
 
-    def operator(self, sigma, *, normal, mu):
+    def operator(self, sigma, *, normal):
         # NOTE: H. K. 1985 Equation 2.18
         return merge_int_g_exprs(-0.5 * self.side * sigma - self._operator(
-            sigma, normal, mu, "avg"))
+            sigma, normal, "avg"))
 
-    def velocity(self, sigma, *, normal, mu, qbx_forced_limit=2):
+    def velocity(self, sigma, *, normal, qbx_forced_limit=2):
         # NOTE: H. K. 1985 Equation 2.16
         return merge_int_g_exprs(
-                -self._farfield(mu, qbx_forced_limit)
-                - self._operator(sigma, normal, mu, qbx_forced_limit)
+                -self._farfield(qbx_forced_limit)
+                - self._operator(sigma, normal, qbx_forced_limit)
                 )
 
-    def pressure(self, sigma, *, normal, mu, qbx_forced_limit=2):
+    def pressure(self, sigma, *, normal, qbx_forced_limit=2):
         # FIXME: H. K. 1985 Equation 2.17
         raise NotImplementedError
 
@@ -786,13 +796,14 @@ class HebekerExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, eta=None, method="naive"):
+    def __init__(self, *, eta=None, method="naive", mu_sym=var("mu"), nu_sym=0.5):
         r"""
         :arg eta: a parameter :math:`\eta > 0`. Choosing this parameter well
             can have a non-trivial effect on the conditioning of the operator.
         """
 
-        super().__init__(ambient_dim=3, side=+1, method=method)
+        super().__init__(ambient_dim=3, side=+1, method=method,
+                mu_sym=mu_sym, nu_sym=nu_sym)
 
         # NOTE: eta is chosen here based on H. 1986 Figure 1, which is
         # based on solving on the unit sphere
@@ -801,29 +812,28 @@ class HebekerExteriorStokesOperator(StokesOperator):
 
         self.eta = eta
 
-    def _operator(self, sigma, normal, mu, qbx_forced_limit):
+    def _operator(self, sigma, normal, qbx_forced_limit):
         slp_qbx_forced_limit = qbx_forced_limit
         # if slp_qbx_forced_limit == "avg":
         #    slp_qbx_forced_limit = self.side
 
-        op_w = self.stresslet.apply(sigma, normal, mu,
+        op_w = self.stresslet.apply(sigma, normal,
                 qbx_forced_limit=qbx_forced_limit)
-        op_v = self.stokeslet.apply(sigma, mu,
-                qbx_forced_limit=slp_qbx_forced_limit)
+        op_v = self.stokeslet.apply(sigma, qbx_forced_limit=slp_qbx_forced_limit)
 
         return op_w + self.eta * op_v
 
-    def operator(self, sigma, *, normal, mu):
+    def operator(self, sigma, *, normal):
         # NOTE: H. 1986 Equation 17
         return merge_int_g_exprs(-0.5 * self.side * sigma - self._operator(sigma,
-            normal, mu, "avg"))
+            normal, "avg"))
 
-    def velocity(self, sigma, *, normal, mu, qbx_forced_limit=2):
+    def velocity(self, sigma, *, normal, qbx_forced_limit=2):
         # NOTE: H. 1986 Equation 16
-        return merge_int_g_exprs(-self._operator(sigma, normal, mu,
+        return merge_int_g_exprs(-self._operator(sigma, normal,
             qbx_forced_limit))
 
-    def pressure(self, sigma, *, normal, mu, qbx_forced_limit=2):
+    def pressure(self, sigma, *, normal, qbx_forced_limit=2):
         # FIXME: not given in H. 1986, but should be easy to derive using the
         # equivalent single-/double-layer pressure kernels
         raise NotImplementedError

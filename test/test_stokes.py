@@ -88,6 +88,7 @@ def run_exterior_stokes(ctx_factory, *,
             fine_order=source_ovsmp * target_order,
             qbx_order=qbx_order,
             fmm_order=fmm_order,
+            _max_leaf_refine_weight=64,
             target_association_tolerance=_target_association_tolerance,
             _expansions_in_tree_have_extent=_expansions_in_tree_have_extent)
     places["source"] = qbx
@@ -136,25 +137,25 @@ def run_exterior_stokes(ctx_factory, *,
 
     if ambient_dim == 2:
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
-        sym_omega = sym.make_sym_vector("omega", ambient_dim)
+        sym_omega = sym.make_sym_vector("omega", ambient_dim, mu_sym=sym_mu)
         op = HsiaoKressExteriorStokesOperator(omega=sym_omega, method=method)
     elif ambient_dim == 3:
         from pytential.symbolic.stokes import HebekerExteriorStokesOperator
-        op = HebekerExteriorStokesOperator(method=method)
+        op = HebekerExteriorStokesOperator(method=method, mu_sym=sym_mu)
     else:
         assert False
 
     sym_sigma = op.get_density_var("sigma")
     sym_bc = op.get_density_var("bc")
 
-    sym_op = op.operator(sym_sigma, normal=sym_normal, mu=sym_mu)
-    sym_rhs = op.prepare_rhs(sym_bc, mu=mu)
+    sym_op = op.operator(sym_sigma, normal=sym_normal)
+    sym_rhs = op.prepare_rhs(sym_bc)
 
-    sym_velocity = op.velocity(sym_sigma, normal=sym_normal, mu=sym_mu)
+    sym_velocity = op.velocity(sym_sigma, normal=sym_normal)
 
     from pytential.symbolic.stokes import StokesletWrapper
     sym_source_pot = StokesletWrapper(ambient_dim,
-            use_biharmonic=False).apply(sym_sigma, sym_mu, qbx_forced_limit=None)
+            use_biharmonic=False).apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
 
@@ -282,7 +283,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, method="naive", visualize=Fal
         fmm_order = 10
         resolutions = [20, 35, 50]
     elif ambient_dim == 3:
-        fmm_order = 8
+        fmm_order = 6
         resolutions = [0, 1, 2]
     else:
         raise ValueError(f"unsupported dimension: {ambient_dim}")
@@ -298,8 +299,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, method="naive", visualize=Fal
                 method=method)
 
         eoc.add_data_point(h_max, err)
-
-    print(eoc)
+        print(eoc)
 
     # This convergence data is not as clean as it could be. See
     # https://github.com/inducer/pytential/pull/32

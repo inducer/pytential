@@ -272,9 +272,11 @@ def _merge_int_g_expr(expr):
 
 
 if __name__ == "__main__":
-    from sumpy.kernel import StokesletKernel, BiharmonicKernel, StressletKernel
+    from sumpy.kernel import (StokesletKernel, BiharmonicKernel, StressletKernel,
+            ElasticityKernel)
     base_kernel = BiharmonicKernel(3)
     kernels = [StokesletKernel(3, 0, 1), StokesletKernel(3, 0, 0)]
     kernels = [StressletKernel(3, 0, 1, 0), StressletKernel(3, 0, 0, 0),
             StressletKernel(3, 0, 1, 2)]
+    kernels = [ElasticityKernel(3, 0, 1), ElasticityKernel(3, 0, 0)]
     get_deriv_relation(kernels, base_kernel, tol=1e-10, order=2, verbose=True)
