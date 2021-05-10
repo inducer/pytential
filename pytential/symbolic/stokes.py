@@ -247,7 +247,7 @@ class StokesletWrapperMixin:
     """A base class for StokesletWrapper and StressletWrapper
     to create IntG instances
     """
-    def get_int_g(self, idx, density, dir_vec_sym, qbx_forced_limit,
+    def get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
 
         """
@@ -256,39 +256,80 @@ class StokesletWrapperMixin:
         and its derivatives will be used instead of Stokeslet/Stresslet
         """
 
-        def create_int_g(knl, deriv_dirs, **kwargs):
+        def create_int_g(knl, deriv_dirs, density, use_source_deriv=True, **kwargs):
             for deriv_dir in deriv_dirs:
-                knl = AxisSourceDerivative(deriv_dir, knl)
+                if use_source_deriv:
+                    knl = AxisSourceDerivative(deriv_dir, knl)
+                else:
+                    knl = AxisTargetDerivative(deriv_dir, knl)
 
             args = [arg.loopy_arg.name for arg in knl.get_args()]
             for arg in args:
                 kwargs[arg] = var(arg)
 
-            res = sym.S(knl, density*dir_vec_sym[idx[-1]],
+            res = sym.S(knl, density,
                     qbx_forced_limit=qbx_forced_limit, **kwargs)
 
-            return res*(-1)**len(deriv_dirs)
+            if use_source_deriv:
+                return res*(-1)**len(deriv_dirs)
+            else:
+                return res
+
+        is_stresslet = (len(idx) == 3)
+        nu = self.nu
 
         if not self.use_biharmonic:
             knl = self.kernel_dict[idx]
-            return create_int_g(knl, deriv_dirs)
+            result = create_int_g(knl, deriv_dirs,
+                    density=density_sym*dir_vec_sym[idx[-1]], use_source_deriv=False)
+            if not is_stresslet:
+                return result
+            lknl = self.kernel_dict['laplace']
+            lresult = 0
+            lresult += create_int_g(lknl, deriv_dirs + [idx[0]],
+                    density=density_sym*dir_vec_sym[idx[1]], use_source_deriv=False)
+            lresult -= create_int_g(lknl, deriv_dirs + [idx[1]],
+                    density=density_sym*dir_vec_sym[idx[0]], use_source_deriv=False)
+            if idx[0] == idx[1]:
+                lresult -= create_int_g(lknl, deriv_dirs + [idx[2]],
+                    density=density_sym*dir_vec_sym[idx[2]], use_source_deriv=False)
+            result = (result + lresult*(1 - 2*nu))/(2*(1 - nu))
+            return result
 
-        deriv_relation = self.deriv_relation_dict[idx]
-        const = deriv_relation[0]
+        kernel_indices = [idx]
+        dir_vec_indices = [idx[-1]]
+        coeffs = [1]
+        extra_deriv_dirs_vec = [[]]
 
-        # NOTE: we set a dofdesc here to force the evaluation of this integral
-        # on the source instead of the target when using automatic tagging
-        # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
-        dd = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
-        const *= sym.integral(self.dim, self.dim-1, density*dir_vec_sym[idx[-1]],
-                dofdesc=dd)
+        if is_stresslet:
+            kernel_indices.extend(['laplace', 'laplace', 'laplace'])
+            dir_vec_indices.extend([idx[1], idx[0], idx[2]])
+            coeffs.extend([1 - 2*nu, -(1 - 2*nu), -(1 - 2*nu)])
+            extra_deriv_dirs_vec.extend([[idx[0]], [idx[1]], [idx[2]]])
+            if idx[0] != idx[1]:
+                coeffs[-1] = 0
 
-        result = const
-        for mi, coeff in deriv_relation[1]:
-            new_deriv_dirs = list(deriv_dirs)
-            for i, val in enumerate(mi):
-                new_deriv_dirs.extend([i]*val)
-            result += create_int_g(self.base_kernel, new_deriv_dirs) * coeff
+        result = 0
+        for kernel_idx, dir_vec_idx, coeff, extra_deriv_dirs in \
+                zip(kernel_indices, dir_vec_indices, coeffs, extra_deriv_dirs_vec):
+            deriv_relation = self.deriv_relation_dict[kernel_idx]
+            const = deriv_relation[0]
+
+            # NOTE: we set a dofdesc here to force the evaluation of this integral
+            # on the source instead of the target when using automatic tagging
+            # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
+            dd = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
+            const *= sym.integral(self.dim, self.dim-1,
+                    density_sym*dir_vec_sym[dir_vec_idx], dofdesc=dd)
+
+            if not extra_deriv_dirs:
+                result += const
+            for mi, c in deriv_relation[1]:
+                new_deriv_dirs = deriv_dirs + extra_deriv_dirs
+                for i, val in enumerate(mi):
+                    new_deriv_dirs.extend([i]*val)
+                result += create_int_g(self.base_kernel, new_deriv_dirs,
+                        density=density_sym*dir_vec_sym[dir_vec_idx]) * c * coeff
 
         return result
 
@@ -308,7 +349,7 @@ class StokesletWrapper(StokesletWrapperBase, StokesletWrapperMixin):
         for i in range(dim):
             for j in range(i, dim):
                 self.kernel_dict[(i, j)] = ElasticityKernel(dim=dim, icomp=i,
-                    jcomp=j, viscosity_mu=mu_sym, poisson_ratio=nu_sym)
+                    jcomp=j, viscosity_mu=str(mu_sym), poisson_ratio=str(nu_sym))
 
         # The dictionary allows us to exploit symmetry -- that
         # :math:`T_{01}` is identical to :math:`T_{10}` -- and avoid creating
@@ -322,7 +363,7 @@ class StokesletWrapper(StokesletWrapperBase, StokesletWrapperMixin):
             results = get_deriv_relation(list(self.kernel_dict.values()),
                                          self.base_kernel, tol=1e-10, order=2)
             self.deriv_relation_dict = {}
-            for deriv_eq, (idx, knl) in zip(results, self.kernel_dict.items()):
+            for deriv_eq, idx in zip(results, self.kernel_dict.keys()):
                 self.deriv_relation_dict[idx] = deriv_eq
 
     def apply(self, density_vec_sym, qbx_forced_limit):
@@ -432,10 +473,13 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
                     s = tuple(sorted([i, j, k]))
                     self.kernel_dict[(i, j, k)] = self.kernel_dict[s]
 
+        # For elasticity (nu != 0.5), we need the LaplaceKernel
+        self.kernel_dict['laplace'] = LaplaceKernel(self.dim)
+
         if self.use_biharmonic:
             from pytential.symbolic.pde.system_utils import get_deriv_relation
             results = get_deriv_relation(list(self.kernel_dict.values()),
-                                         self.base_kernel, tol=1e-10, order=3)
+                                         self.base_kernel, tol=1e-10, order=3, verbose=True)
             self.deriv_relation_dict = {}
             for deriv_eq, (idx, knl) in zip(results, self.kernel_dict.items()):
                 self.deriv_relation_dict[idx] = deriv_eq
@@ -448,7 +492,7 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
             for i in range(self.dim):
                 for j in range(self.dim):
                     sym_expr[comp] += self.get_int_g((comp, i, j),
-                        dir_vec_sym[i], density_vec_sym,
+                        density_vec_sym[i], dir_vec_sym,
                         qbx_forced_limit, deriv_dirs=[])
 
         return sym_expr
@@ -462,7 +506,7 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
             for i in range(self.dim):
                 for j in range(self.dim):
                     sym_expr[comp] += self.get_int_g((comp, i, j),
-                        dir_vec_sym[i], density_vec_sym,
+                        density_vec_sym[i], dir_vec_sym,
                         qbx_forced_limit, deriv_dirs=[deriv_dir])
 
         return sym_expr
@@ -643,9 +687,11 @@ class StokesOperator:
         elif method == "biharmonic" or method == "naive":
             use_biharmonic = (method == "biharmonic")
             self.stresslet = StressletWrapper(dim=self.ambient_dim,
-                use_biharmonic=use_biharmonic, mu_sym=mu_sym, nu_sym=nu_sym)
+                use_biharmonic=use_biharmonic,
+                mu_sym=mu_sym, nu_sym=nu_sym)
             self.stokeslet = StokesletWrapper(dim=self.ambient_dim,
-                use_biharmonic=use_biharmonic, mu_sym=mu_sym, nu_sym=nu_sym)
+                use_biharmonic=use_biharmonic,
+                mu_sym=mu_sym, nu_sym=nu_sym)
         else:
             raise ValueError(f"invalid method: {method}."
                     "Needs to be one of naive, laplace, biharmonic")
