@@ -277,25 +277,6 @@ class StokesletWrapperMixin:
 
         is_stresslet = (len(idx) == 3)
         nu = self.nu
-
-        if not self.use_biharmonic:
-            knl = self.kernel_dict[idx]
-            result = create_int_g(knl, deriv_dirs,
-                    density=density_sym*dir_vec_sym[idx[-1]], use_source_deriv=False)
-            if not is_stresslet:
-                return result
-            lknl = self.kernel_dict['laplace']
-            lresult = 0
-            lresult += create_int_g(lknl, deriv_dirs + [idx[0]],
-                    density=density_sym*dir_vec_sym[idx[1]], use_source_deriv=False)
-            lresult -= create_int_g(lknl, deriv_dirs + [idx[1]],
-                    density=density_sym*dir_vec_sym[idx[0]], use_source_deriv=False)
-            if idx[0] == idx[1]:
-                lresult -= create_int_g(lknl, deriv_dirs + [idx[2]],
-                    density=density_sym*dir_vec_sym[idx[2]], use_source_deriv=False)
-            result = (result + lresult*(1 - 2*nu))/(2*(1 - nu))
-            return result
-
         kernel_indices = [idx]
         dir_vec_indices = [idx[-1]]
         coeffs = [1]
@@ -308,6 +289,17 @@ class StokesletWrapperMixin:
             extra_deriv_dirs_vec.extend([[idx[0]], [idx[1]], [idx[2]]])
             if idx[0] != idx[1]:
                 coeffs[-1] = 0
+
+        if not self.use_biharmonic:
+            result = 0
+            for kernel_idx, dir_vec_idx, coeff, extra_deriv_dirs in \
+                    zip(kernel_indices, dir_vec_indices, coeffs,
+                            extra_deriv_dirs_vec):
+                knl = self.kernel_dict[idx]
+                result += create_int_g(knl, deriv_dirs + extra_deriv_dirs,
+                        density=density_sym*dir_vec_sym[dir_vec_idx],
+                        use_source_deriv=False) * coeff
+            return result/(2*(1 - nu))
 
         result = 0
         for kernel_idx, dir_vec_idx, coeff, extra_deriv_dirs in \
@@ -331,7 +323,7 @@ class StokesletWrapperMixin:
                 result += create_int_g(self.base_kernel, new_deriv_dirs,
                         density=density_sym*dir_vec_sym[dir_vec_idx]) * c * coeff
 
-        return result
+        return result/(2*(1 - nu))
 
 
 class StokesletWrapper(StokesletWrapperBase, StokesletWrapperMixin):
@@ -479,7 +471,7 @@ class StressletWrapper(StressletWrapperBase, StokesletWrapperMixin):
         if self.use_biharmonic:
             from pytential.symbolic.pde.system_utils import get_deriv_relation
             results = get_deriv_relation(list(self.kernel_dict.values()),
-                                         self.base_kernel, tol=1e-10, order=3, verbose=True)
+                                         self.base_kernel, tol=1e-10, order=3, verbose=False)
             self.deriv_relation_dict = {}
             for deriv_eq, (idx, knl) in zip(results, self.kernel_dict.items()):
                 self.deriv_relation_dict[idx] = deriv_eq
