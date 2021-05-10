@@ -30,7 +30,7 @@ from pytools import (
                 as gnitstam)
 
 from pymbolic.mapper import CombineMapper
-from pymbolic.primitives import Sum, Product
+from pymbolic.primitives import Sum, Product, Quotient
 from pytential.symbolic.primitives import IntG
 
 
@@ -267,6 +267,12 @@ def _merge_int_g_expr(expr):
             return coeff*mult, new_int_g.copy(densities=new_densities)
     elif isinstance(expr, IntG):
         return 0, _convert_target_deriv_to_source(expr)
+    elif isinstance(expr, Quotient):
+        mult = 1/expr.denominator
+        coeff, new_int_g = _merge_int_g_expr(expr.numerator)
+        new_densities = (density * mult for \
+                density in new_int_g.densities)
+        return coeff*mult, new_int_g.copy(densities=new_densities)
     else:
         return expr, 0
 
@@ -278,5 +284,5 @@ if __name__ == "__main__":
     kernels = [StokesletKernel(3, 0, 1), StokesletKernel(3, 0, 0)]
     kernels = [StressletKernel(3, 0, 1, 0), StressletKernel(3, 0, 0, 0),
             StressletKernel(3, 0, 1, 2)]
-    kernels = [ElasticityKernel(3, 0, 1), ElasticityKernel(3, 0, 0)]
+    kernels = [ElasticityKernel(3, 0, 1, poisson_ratio="0.4"), ElasticityKernel(3, 0, 0, poisson_ratio="0.4")]
     get_deriv_relation(kernels, base_kernel, tol=1e-10, order=2, verbose=True)
