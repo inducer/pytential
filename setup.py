@@ -117,15 +117,15 @@ setup(
     ext_modules=cythonize(ext_modules),
     python_requires="~=3.6",
     install_requires=[
-        "pytest>=2.3",
         "pytools>=2018.2",
         "modepy>=2013.3",
         "pyopencl>=2013.1",
         "boxtree>=2019.1",
         "pymbolic>=2013.2",
         "loopy>=2020.2",
+        "arraycontext>=2021.1",
+        "meshmode>=2021.2",
         "sumpy>=2020.2beta1",
-        "cgen>=2013.1.2",
         "pyfmmlib>=2019.1.1",
     ],
 )

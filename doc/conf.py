@@ -56,6 +56,7 @@ intersphinx_mapping = {
     "https://documen.tician.de/boxtree/": None,
     "https://numpy.org/doc/stable/": None,
     "https://docs.scipy.org/doc/scipy/reference/": None,
+    "https://documen.tician.de/arraycontext/": None,
     "https://documen.tician.de/meshmode/": None,
     "https://documen.tician.de/modepy/": None,
     "https://documen.tician.de/pyopencl/": None,
