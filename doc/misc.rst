@@ -16,7 +16,13 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
     Everywhere else, just making sure you have the ``g++`` package should be
     enough.
 
-#.  Install your favorite variant of `miniforge <https://github.com/conda-forge/miniforge>`_.
+#.  Install your favorite variant of `miniforge <https://github.com/conda-forge/miniforge>`_:
+
+        # pick one
+        curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+        curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh
+        curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh
+        bash ./Miniforge3-OS-CPU.sh
 
 #.  ``export CONDA=/WHERE/YOU/INSTALLED/miniforge3``
 
@@ -34,7 +40,7 @@ Then, on Linux:
 
 #.  Type the following command::
 
-        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential; do python -m pip install --editable "git+https://github.com/inducer/$i#egg=$i"; done
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy arraycontext meshmode pytential; do python -m pip install --editable "git+https://github.com/inducer/$i#egg=$i"; done
 
 And on macOS:
 
@@ -42,7 +48,7 @@ And on macOS:
 
 #.  Type the following command::
 
-        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy meshmode pytential;do CC=clang python -m pip install --editable "git+https://github.com/inducer/$i#egg=$i"; done
+        hash -r; for i in pymbolic cgen genpy gmsh_interop modepy pyvisfile loopy boxtree sumpy arraycontext meshmode pytential;do CC=clang python -m pip install --editable "git+https://github.com/inducer/$i#egg=$i"; done
 
 .. note::
 
