@@ -16,7 +16,7 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
     Everywhere else, just making sure you have the ``g++`` package should be
     enough.
 
-#.  Install `miniforge <https://github.com/conda-forge/miniforge>`_:
+#.  Install `miniforge <https://github.com/conda-forge/miniforge>`_::
 
         curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh
         bash ./Miniforge3-*.sh
