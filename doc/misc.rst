@@ -22,6 +22,9 @@ This set of instructions is intended for 64-bit Linux and macOS computers.
         curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
         curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh
         curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh
+        # (more options available at link)
+
+        # then run
         bash ./Miniforge3-OS-CPU.sh
 
 #.  ``export CONDA=/WHERE/YOU/INSTALLED/miniforge3``
