@@ -1045,7 +1045,7 @@ class BoundExpression:
             (experimental)
         :arg array_context: only needs to be supplied if no instances of
             :class:`~meshmode.dof_array.DOFArray` with a
-            :class:`~meshmode.array_context.PyOpenCLArrayContext`
+            :class:`~arraycontext.PyOpenCLArrayContext`
             are supplied as part of *context*.
         :returns: the value of the expression, as a scalar,
             :class:`pyopencl.array.Array`, or an object array of these.
