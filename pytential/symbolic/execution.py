@@ -224,12 +224,14 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return thaw(x, self.array_context)
 
     def map_num_reference_derivative(self, expr):
+        from pytools import flatten
+        ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
+
+        from meshmode.discretization import num_reference_derivative
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
 
-        from pytools import flatten
-        ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
-        return discr.num_reference_derivative(ref_axes, self.rec(expr.operand))
+        return num_reference_derivative(discr, ref_axes, self.rec(expr.operand))
 
     def map_q_weight(self, expr):
         from arraycontext import thaw
