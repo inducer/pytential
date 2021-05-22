@@ -30,7 +30,7 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 from functools import partial
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         NArmedStarfish,
@@ -343,9 +343,9 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
 
         density_discr = places.get_discretization(places.auto_source.geometry)
 
-        from meshmode.dof_array import thaw, flatten, unflatten
+        from meshmode.dof_array import flatten, unflatten
         nodes_host = [actx.to_numpy(axis)
-                for axis in flatten(thaw(actx, density_discr.nodes()))]
+                for axis in flatten(thaw(density_discr.nodes(), actx))]
         normal = bind(places, sym.normal(d))(actx).as_vector(object)
         normal_host = [actx.to_numpy(axis)for axis in flatten(normal)]
 
