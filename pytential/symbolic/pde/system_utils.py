@@ -66,11 +66,11 @@ def _get_base_kernel_matrix(base_kernel, order=None, verbose=False):
 
     pde = base_kernel.get_pde_as_diff_op()
     if order is None:
-        order = pde.degree
+        order = pde.order
 
-    if order > pde.degree:
+    if order > pde.order:
         raise NotImplementedError(f"order ({order}) cannot be greater than the order"
-                         f"of the PDE ({pde.degree}) yet.")
+                         f"of the PDE ({pde.order}) yet.")
 
     mis = sorted(gnitstam(order, dim), key=sum)
     # (-1, -1, -1) represent a constant
