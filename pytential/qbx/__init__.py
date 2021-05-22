@@ -23,7 +23,7 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 
-from arraycontext import ArrayContext
+from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import unflatten
 
 from pytools import memoize_method, memoize_in, single_valued
@@ -588,7 +588,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
-    def exec_compute_potential_insn_fmm(self, actx: ArrayContext,
+    def exec_compute_potential_insn_fmm(self, actx: PyOpenCLArrayContext,
             insn, bound_expr, evaluate, fmm_driver):
         """
         :arg fmm_driver: A function that accepts four arguments:

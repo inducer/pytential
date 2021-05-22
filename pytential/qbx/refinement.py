@@ -29,7 +29,7 @@ import pyopencl as cl
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
-from arraycontext import ArrayContext
+from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import flatten, DOFArray
 
 from pytools import memoize_method
@@ -219,7 +219,7 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
 
 class RefinerCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, actx: ArrayContext, tree_code_container):
+    def __init__(self, actx: PyOpenCLArrayContext, tree_code_container):
         self.array_context = actx
         self.tree_code_container = tree_code_container
 
@@ -494,7 +494,7 @@ def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
             RefinerNotConvergedWarning)
 
 
-def _visualize_refinement(actx: ArrayContext, discr,
+def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
         niter, stage_nr, stage_name, flags, visualize=False):
     if not visualize:
         return

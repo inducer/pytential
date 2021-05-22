@@ -284,7 +284,7 @@ class ProxyGenerator:
         """Generate proxy points for each given range of source points in
         the discretization in *source_dd*.
 
-        :arg actx: a :class:`~arraycontext.ArrayContext`.
+        :arg actx: a :class:`~arraycontext.PyOpenCLArrayContext`.
         :arg source_dd: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
             for the discretization on which the proxy points are to be
             generated.

@@ -30,7 +30,7 @@ import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_method
-from arraycontext import ArrayContext
+from arraycontext import PyOpenCLArrayContext
 
 from boxtree.tools import DeviceDataRecord
 from pytential.source import LayerPotentialSourceBase
@@ -96,7 +96,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 density_discr=density_discr or self.density_discr,
                 debug=debug if debug is not None else self.debug)
 
-    def exec_compute_potential_insn(self, actx: ArrayContext,
+    def exec_compute_potential_insn(self, actx: PyOpenCLArrayContext,
             insn, bound_expr, evaluate, return_timing_data):
         if return_timing_data:
             from warnings import warn
@@ -136,7 +136,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.symbolic.mappers import UnregularizedPreprocessor
         return UnregularizedPreprocessor(name, discretizations)(expr)
 
-    def exec_compute_potential_insn_direct(self, actx: ArrayContext,
+    def exec_compute_potential_insn_direct(self, actx: PyOpenCLArrayContext,
             insn, bound_expr, evaluate):
         kernel_args = {}
 
@@ -212,7 +212,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 targets,
                 self.debug)
 
-    def exec_compute_potential_insn_fmm(self, actx: ArrayContext,
+    def exec_compute_potential_insn_fmm(self, actx: PyOpenCLArrayContext,
             insn, bound_expr, evaluate):
         # {{{ gather unique target discretizations used
 

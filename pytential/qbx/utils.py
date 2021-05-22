@@ -27,7 +27,7 @@ import pyopencl as cl
 import pyopencl.array # noqa
 
 from pytools import memoize_method, log_process
-from arraycontext import ArrayContext
+from arraycontext import PyOpenCLArrayContext
 
 from boxtree.tree import Tree
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
@@ -69,7 +69,7 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 
 class TreeCodeContainer:
 
-    def __init__(self, actx: ArrayContext):
+    def __init__(self, actx: PyOpenCLArrayContext):
         self.array_context = actx
 
     @memoize_method
@@ -113,7 +113,7 @@ class TreeCodeContainerMixin:
 
 class TreeWranglerBase:
 
-    def __init__(self, array_context: ArrayContext, code_container):
+    def __init__(self, array_context: PyOpenCLArrayContext, code_container):
         self.code_container = code_container
         self.array_context = array_context
 
@@ -227,7 +227,7 @@ MAX_REFINE_WEIGHT = 64
 
 
 @log_process(logger)
-def build_tree_with_qbx_metadata(actx: ArrayContext,
+def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
         places, tree_builder, particle_list_filter,
         sources_list=(), targets_list=(),
         use_stage2_discr=False):
@@ -241,7 +241,7 @@ def build_tree_with_qbx_metadata(actx: ArrayContext,
          :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`.
        * targets from ``targets_list``.
 
-    :arg actx: A :class:`ArrayContext`
+    :arg actx: A :class:`PyOpenCLArrayContext`
     :arg places: An instance of
         :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg targets_list: A list of :class:`pytential.target.TargetBase`

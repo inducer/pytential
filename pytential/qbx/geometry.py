@@ -28,7 +28,7 @@ import pyopencl.array  # noqa
 from pytools import memoize_method, log_process
 from pytools.obj_array import obj_array_vectorize
 
-from arraycontext import ArrayContext
+from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import flatten
 
 from boxtree.tools import DeviceDataRecord
@@ -111,7 +111,7 @@ class target_state(Enum):  # noqa
 
 
 class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
-    def __init__(self, actx: ArrayContext, ambient_dim,
+    def __init__(self, actx: PyOpenCLArrayContext, ambient_dim,
             tree_code_container, debug,
             _well_sep_is_n_away, _from_sep_smaller_crit):
         self.array_context = actx

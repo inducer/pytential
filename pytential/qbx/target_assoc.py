@@ -33,7 +33,7 @@ from boxtree.tools import InlineBinarySearch
 
 from cgen import Enum
 
-from arraycontext import ArrayContext
+from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import flatten
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
@@ -443,7 +443,7 @@ class QBXTargetAssociation(DeviceDataRecord):
 
 class TargetAssociationCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, actx: ArrayContext, tree_code_container):
+    def __init__(self, actx: PyOpenCLArrayContext, tree_code_container):
         self.array_context = actx
         self.tree_code_container = tree_code_container
 
@@ -492,7 +492,7 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
         from boxtree.area_query import SpaceInvaderQueryBuilder
         return SpaceInvaderQueryBuilder(self.cl_context)
 
-    def get_wrangler(self, actx: ArrayContext):
+    def get_wrangler(self, actx: PyOpenCLArrayContext):
         return TargetAssociationWrangler(actx, code_container=self)
 
 
