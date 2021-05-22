@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 from functools import partial
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 import pytest
 
 import numpy as np
@@ -83,8 +83,7 @@ def test_interpolatory_error_reporting(ctx_factory):
     vol_discr = Discretization(actx, mesh,
             QuadratureSimplexGroupFactory(5))
 
-    from meshmode.dof_array import thaw
-    vol_x = thaw(actx, vol_discr.nodes())
+    vol_x = thaw(vol_discr.nodes(), actx)
 
     # }}}
 

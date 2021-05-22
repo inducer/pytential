@@ -22,17 +22,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from meshmode.array_context import PyOpenCLArrayContext
 import numpy as np
-import loopy as lp
-
-from boxtree.tools import DeviceDataRecord
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-from pytential.source import LayerPotentialSourceBase
-from pytools import memoize_method
-
 import pyopencl as cl
 import pyopencl.array  # noqa
+
+import loopy as lp
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION
+
+from pytools import memoize_method
+from arraycontext import PyOpenCLArrayContext
+
+from boxtree.tools import DeviceDataRecord
+from pytential.source import LayerPotentialSourceBase
 
 import logging
 logger = logging.getLogger(__name__)
@@ -140,7 +141,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         kernel_args = {}
 
         from pytential.utils import flatten_if_needed
-        from meshmode.dof_array import flatten, thaw, unflatten
+        from meshmode.dof_array import flatten, unflatten
+        from arraycontext import thaw
 
         for arg_name, arg_expr in insn.kernel_arguments.items():
             kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
@@ -164,7 +166,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             evt, output_for_each_kernel = p2p(actx.queue,
                     flatten_if_needed(actx, target_discr.nodes()),
-                    flatten(thaw(actx, self.density_discr.nodes())),
+                    flatten(thaw(self.density_discr.nodes(), actx)),
                     flat_strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
@@ -413,11 +415,12 @@ class _FMMGeometryData:
 
         MAX_LEAF_REFINE_WEIGHT = 32  # noqa
 
-        from meshmode.dof_array import thaw, flatten
+        from arraycontext import thaw
+        from meshmode.dof_array import flatten
 
         tree, _ = code_getter.build_tree(queue,
                 particles=flatten(
-                    thaw(self.array_context, lpot_src.density_discr.nodes())),
+                    thaw(lpot_src.density_discr.nodes(), self.array_context)),
                 targets=target_info.targets,
                 max_leaf_refine_weight=MAX_LEAF_REFINE_WEIGHT,
                 refine_weights=refine_weights,

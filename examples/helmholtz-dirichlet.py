@@ -3,7 +3,7 @@ import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -122,8 +122,7 @@ def main(mesh_name="ellipse", visualize=False):
 
     # {{{ fix rhs and solve
 
-    from meshmode.dof_array import thaw
-    nodes = thaw(actx, density_discr.nodes())
+    nodes = thaw(density_discr.nodes(), actx)
     k_vec = np.array([2, 1])
     k_vec = k * k_vec / la.norm(k_vec, 2)
 

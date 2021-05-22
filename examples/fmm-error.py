@@ -1,9 +1,10 @@
 import numpy as np
 import pyopencl as cl
-from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import thaw
+
+from arraycontext import PyOpenCLArrayContext, thaw
 from meshmode.mesh.generation import (  # noqa
         make_curve_mesh, starfish, ellipse, drop)
+
 from sumpy.visualization import FieldPlotter
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
@@ -59,7 +60,7 @@ def main():
         })
     density_discr = places.get_discretization("unaccel_qbx")
 
-    nodes = thaw(actx, density_discr.nodes())
+    nodes = thaw(density_discr.nodes(), actx)
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     from pytential import bind, sym

@@ -23,12 +23,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from meshmode.array_context import PyOpenCLArrayContext  # noqa
-from meshmode.dof_array import DOFArray
 import numpy as np  # noqa: F401
-from pytools import memoize_in
-
 import loopy as lp
+
+from pytools import memoize_in
+from meshmode.dof_array import DOFArray
 
 
 __doc__ = """
@@ -92,7 +91,7 @@ class CenterGranularityConnection(GranularityConnection):
         @memoize_in(self.array_context,
                  (CenterGranularityConnection, "interleave"))
         def prg():
-            from meshmode.array_context import make_loopy_program
+            from arraycontext import make_loopy_program
             return make_loopy_program(
                     """{[iel, idof]: 0<=iel<nelements and 0<=idof<nunit_dofs}""",
                     """

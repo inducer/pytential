@@ -37,7 +37,7 @@ from pytools.obj_array import make_obj_array
 from pytential import bind, sym
 from pytential import GeometryCollection
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext
 from meshmode.mesh.generation import ellipse, NArmedStarfish
 
 import pytest

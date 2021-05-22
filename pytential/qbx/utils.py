@@ -22,19 +22,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import numpy as np
-from boxtree.tree import Tree
-from meshmode.array_context import PyOpenCLArrayContext
 import pyopencl as cl
 import pyopencl.array # noqa
-from pytools import memoize_method
+
+from pytools import memoize_method, log_process
+from arraycontext import PyOpenCLArrayContext
+
+from boxtree.tree import Tree
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 
 import logging
 logger = logging.getLogger(__name__)
-
-from pytools import log_process
 
 
 # {{{ c and mako snippets
@@ -281,9 +280,10 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     stage1_density_discr = stage1_density_discrs[0]
     density_discr = density_discrs[0]
 
-    from meshmode.dof_array import flatten, thaw
+    from arraycontext import thaw
+    from meshmode.dof_array import flatten
     from pytential.utils import flatten_if_needed
-    sources = flatten(thaw(actx, density_discr.nodes()))
+    sources = flatten(thaw(density_discr.nodes(), actx))
     centers = flatten(_make_centers(stage1_density_discr))
     targets = [
             flatten_if_needed(actx, tgt.nodes())

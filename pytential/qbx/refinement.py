@@ -23,13 +23,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import numpy as np
+import pyopencl as cl
 
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-from meshmode.array_context import PyOpenCLArrayContext
+
+from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import flatten, DOFArray
-import numpy as np
-import pyopencl as cl
 
 from pytools import memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate

@@ -2,7 +2,7 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -122,8 +122,7 @@ def timing_run(nx, ny, visualize=False):
 
     mode_nr = 3
 
-    from meshmode.dof_array import thaw
-    nodes = thaw(actx, density_discr.nodes())
+    nodes = thaw(density_discr.nodes(), actx)
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     sigma = actx.np.cos(mode_nr*angle)

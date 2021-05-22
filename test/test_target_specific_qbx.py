@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 import numpy as np
 import numpy.linalg as la  # noqa
 import pyopencl as cl
@@ -177,8 +177,7 @@ def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
             kernel_length_scale=kernel_length_scale)
 
     density_discr = places.get_discretization("qbx")
-    from meshmode.dof_array import thaw
-    nodes = thaw(actx, density_discr.nodes())
+    nodes = thaw(density_discr.nodes(), actx)
     u_dev = actx.np.sin(nodes[0])
 
     if helmholtz_k == 0:

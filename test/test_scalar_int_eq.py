@@ -25,7 +25,7 @@ import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext
 from meshmode.discretization.visualization import make_visualizer
 
 from sumpy.symbolic import USE_SYMENGINE

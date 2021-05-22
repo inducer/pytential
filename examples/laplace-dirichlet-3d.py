@@ -3,7 +3,7 @@ import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -111,8 +111,8 @@ def main(mesh_name="torus", visualize=False):
 
     # {{{ fix rhs and solve
 
-    from meshmode.dof_array import thaw, flatten, unflatten
-    nodes = thaw(actx, density_discr.nodes())
+    from meshmode.dof_array import flatten, unflatten
+    nodes = thaw(density_discr.nodes(), actx)
     source = np.array([rout, 0, 0])
 
     def u_incoming_func(x):
