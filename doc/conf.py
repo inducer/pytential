@@ -50,7 +50,6 @@ todo_include_todos = False
 
 html_theme = "furo"
 
-
 intersphinx_mapping = {
     "https://docs.python.org/3/": None,
     "https://documen.tician.de/boxtree/": None,
@@ -67,5 +66,3 @@ intersphinx_mapping = {
     }
 
 autoclass_content = "class"
-autodoc_typehints = "description"
-
