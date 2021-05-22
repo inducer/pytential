@@ -20,15 +20,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import unflatten
 import numpy as np
-from pytools import memoize_method, memoize_in, single_valued
+import pyopencl as cl
 
+from arraycontext import ArrayContext
+from meshmode.dof_array import unflatten
+
+from pytools import memoize_method, memoize_in, single_valued
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 from pytential.source import LayerPotentialSourceBase
-
-import pyopencl as cl
 
 import logging
 logger = logging.getLogger(__name__)
@@ -588,7 +588,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         return target_name_and_side_to_number, tuple(target_discrs_and_qbx_sides)
 
-    def exec_compute_potential_insn_fmm(self, actx: PyOpenCLArrayContext,
+    def exec_compute_potential_insn_fmm(self, actx: ArrayContext,
             insn, bound_expr, evaluate, fmm_driver):
         """
         :arg fmm_driver: A function that accepts four arguments:

@@ -33,8 +33,8 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
-from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import DOFArray, thaw
+from arraycontext import ArrayContext
+from meshmode.dof_array import DOFArray
 
 from pytools import memoize_in, memoize_method
 from pytential.qbx.cost import AbstractQBXCostModel
@@ -83,7 +83,7 @@ def mesh_el_view(mesh, group_nr, global_array):
 
 
 class EvaluationMapperBase(PymbolicEvaluationMapper):
-    def __init__(self, bound_expr, actx: PyOpenCLArrayContext, context=None,
+    def __init__(self, bound_expr, actx: ArrayContext, context=None,
             target_geometry=None,
             target_points=None, target_normals=None, target_tangents=None):
         if context is None:
@@ -94,6 +94,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         self.places = bound_expr.places
         self.array_context = actx
 
+        from arraycontext import PyOpenCLArrayContext
         if not isinstance(actx, PyOpenCLArrayContext):
             raise NotImplementedError("evaluation with non-PyOpenCL array context")
 
@@ -146,7 +147,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def _map_elementwise_reduction(self, reduction_name, expr):
         @memoize_in(self.places, "elementwise_node_"+reduction_name)
         def node_knl():
-            from meshmode.array_context import make_loopy_program
+            from arraycontext import make_loopy_program
             return make_loopy_program(
                     """{[iel, idof, jdof]:
                         0<=iel<nelements and
@@ -158,7 +159,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         @memoize_in(self.places, "elementwise_"+reduction_name)
         def element_knl():
-            from meshmode.array_context import make_loopy_program
+            from arraycontext import make_loopy_program
             return make_loopy_program(
                     """{[iel, jdof]:
                         0<=iel<nelements and
@@ -218,11 +219,9 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
 
+        from arraycontext import thaw
         x = discr.nodes()[expr.ambient_axis]
-        if isinstance(x, DOFArray):
-            return thaw(self.array_context, x)
-        else:
-            return self.array_context.thaw(x)
+        return thaw(x, self.array_context)
 
     def map_num_reference_derivative(self, expr):
         discr = self.places.get_discretization(
@@ -233,9 +232,10 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return discr.num_reference_derivative(ref_axes, self.rec(expr.operand))
 
     def map_q_weight(self, expr):
+        from arraycontext import thaw
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        return thaw(self.array_context, discr.quad_weights())
+        return thaw(discr.quad_weights(), self.array_context)
 
     def map_inverse(self, expr):
         bound_op_cache = self.bound_expr.places._get_cache(
@@ -288,12 +288,12 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     # }}}
 
-    def exec_assign(self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
+    def exec_assign(self, actx: ArrayContext, insn, bound_expr, evaluate):
         return [(name, evaluate(expr))
                 for name, expr in zip(insn.names, insn.exprs)]
 
     def exec_compute_potential_insn(
-            self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
+            self, actx: ArrayContext, insn, bound_expr, evaluate):
         raise NotImplementedError
 
     # {{{ functions
@@ -348,7 +348,7 @@ class EvaluationMapper(EvaluationMapperBase):
         self.timing_data = timing_data
 
     def exec_compute_potential_insn(
-            self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
+            self, actx: ArrayContext, insn, bound_expr, evaluate):
         source = bound_expr.places.get_geometry(insn.source.geometry)
 
         return_timing_data = self.timing_data is not None
@@ -406,7 +406,7 @@ class CostModelMapper(EvaluationMapperBase):
         self.per_box = per_box
 
     def exec_compute_potential_insn(
-            self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
+            self, actx: ArrayContext, insn, bound_expr, evaluate):
         source = bound_expr.places.get_geometry(insn.source.geometry)
         knls = frozenset(knl for knl in insn.target_kernels)
 
@@ -449,7 +449,7 @@ class MatVecOp:
     """
 
     def __init__(self,
-            bound_expr, actx: PyOpenCLArrayContext,
+            bound_expr, actx: ArrayContext,
             arg_name, dtype, total_dofs, discrs, starts_and_ends, extra_args):
         self.bound_expr = bound_expr
         self.array_context = actx
@@ -879,12 +879,13 @@ class GeometryCollection:
 # {{{ bound expression
 
 def _find_array_context_from_args_in_context(context, supplied_array_context=None):
+    from arraycontext import PyOpenCLArrayContext
     array_contexts = []
     if supplied_array_context is not None:
         if not isinstance(supplied_array_context, PyOpenCLArrayContext):
             raise TypeError(
-                    "first argument (if supplied) must be a "
-                    "PyOpenCLArrayContext")
+                    "first argument (if supplied) must be a PyOpenCLArrayContext, "
+                    f"got '{type(supplied_array_context).__name__}'")
 
         array_contexts.append(supplied_array_context)
     del supplied_array_context
@@ -914,7 +915,7 @@ def _find_array_context_from_args_in_context(context, supplied_array_context=Non
     if not isinstance(array_context, PyOpenCLArrayContext):
         raise TypeError(
                 "array context (derived from arguments) is not a "
-                "PyOpenCLArrayContext")
+                f"PyOpenCLArrayContext: '{type(array_context).__name__}'")
 
     return array_context
 
@@ -988,7 +989,7 @@ class BoundExpression:
         return cost_model_mapper.get_modeled_cost()
 
     def scipy_op(
-            self, actx: PyOpenCLArrayContext, arg_name, dtype,
+            self, actx: ArrayContext, arg_name, dtype,
             domains=None, **extra_args):
         """
         :arg domains: a list of discretization identifiers or
@@ -1035,7 +1036,7 @@ class BoundExpression:
                 arg_name, dtype, total_dofs, discrs, starts_and_ends, extra_args)
 
     def eval(self, context=None, timing_data=None,
-            array_context: Optional[PyOpenCLArrayContext] = None):
+            array_context: Optional[ArrayContext] = None):
         """Evaluate the expression in *self*, using the
         :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
@@ -1045,7 +1046,7 @@ class BoundExpression:
             (experimental)
         :arg array_context: only needs to be supplied if no instances of
             :class:`~meshmode.dof_array.DOFArray` with a
-            :class:`~arraycontext.PyOpenCLArrayContext`
+            :class:`~arraycontext.ArrayContext`
             are supplied as part of *context*.
         :returns: the value of the expression, as a scalar,
             :class:`pyopencl.array.Array`, or an object array of these.
@@ -1083,9 +1084,10 @@ class BoundExpression:
         array_context = None
         if len(args) == 1:
             array_context, = args
-            if not isinstance(array_context, PyOpenCLArrayContext):
-                raise TypeError("first positional argument (if given) "
-                        "must be of type PyOpenCLArrayContext")
+            if not isinstance(array_context, ArrayContext):
+                raise TypeError(
+                        "first positional argument (if given) must be of "
+                        f"type ArrayContext: got {type(array_context).__name__}")
 
         elif not args:
             pass
@@ -1155,7 +1157,7 @@ def _bmat(blocks, dtypes):
 def build_matrix(actx, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
-    :arg actx: a :class:`~meshmode.array_context.ArrayContext`.
+    :arg actx: a :class:`~arraycontext.ArrayContext`.
     :arg places: a :class:`pytential.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.

@@ -22,19 +22,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import numpy as np
-from boxtree.tree import Tree
-from meshmode.array_context import PyOpenCLArrayContext
 import pyopencl as cl
 import pyopencl.array # noqa
-from pytools import memoize_method
+
+from pytools import memoize_method, log_process
+from arraycontext import ArrayContext
+
+from boxtree.tree import Tree
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 
 import logging
 logger = logging.getLogger(__name__)
-
-from pytools import log_process
 
 
 # {{{ c and mako snippets
@@ -70,7 +69,7 @@ QBX_TREE_MAKO_DEFS = r"""//CL:mako//
 
 class TreeCodeContainer:
 
-    def __init__(self, actx: PyOpenCLArrayContext):
+    def __init__(self, actx: ArrayContext):
         self.array_context = actx
 
     @memoize_method
@@ -114,7 +113,7 @@ class TreeCodeContainerMixin:
 
 class TreeWranglerBase:
 
-    def __init__(self, array_context: PyOpenCLArrayContext, code_container):
+    def __init__(self, array_context: ArrayContext, code_container):
         self.code_container = code_container
         self.array_context = array_context
 
@@ -228,7 +227,7 @@ MAX_REFINE_WEIGHT = 64
 
 
 @log_process(logger)
-def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
+def build_tree_with_qbx_metadata(actx: ArrayContext,
         places, tree_builder, particle_list_filter,
         sources_list=(), targets_list=(),
         use_stage2_discr=False):
@@ -242,7 +241,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
          :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`.
        * targets from ``targets_list``.
 
-    :arg actx: A :class:`PyOpenCLArrayContext`
+    :arg actx: A :class:`ArrayContext`
     :arg places: An instance of
         :class:`~pytential.symbolic.execution.GeometryCollection`.
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
@@ -281,9 +280,10 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     stage1_density_discr = stage1_density_discrs[0]
     density_discr = density_discrs[0]
 
-    from meshmode.dof_array import flatten, thaw
+    from arraycontext import thaw
+    from meshmode.dof_array import flatten
     from pytential.utils import flatten_if_needed
-    sources = flatten(thaw(actx, density_discr.nodes()))
+    sources = flatten(thaw(density_discr.nodes(), actx))
     centers = flatten(_make_centers(stage1_density_discr))
     targets = [
             flatten_if_needed(actx, tgt.nodes())

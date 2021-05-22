@@ -23,13 +23,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import numpy as np
+import pyopencl as cl
 
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-from meshmode.array_context import PyOpenCLArrayContext
+
+from arraycontext import ArrayContext
 from meshmode.dof_array import flatten, DOFArray
-import numpy as np
-import pyopencl as cl
 
 from pytools import memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate
@@ -218,7 +219,7 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
 
 class RefinerCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, actx: PyOpenCLArrayContext, tree_code_container):
+    def __init__(self, actx: ArrayContext, tree_code_container):
         self.array_context = actx
         self.tree_code_container = tree_code_container
 
@@ -493,7 +494,7 @@ def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
             RefinerNotConvergedWarning)
 
 
-def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
+def _visualize_refinement(actx: ArrayContext, discr,
         niter, stage_nr, stage_name, flags, visualize=False):
     if not visualize:
         return

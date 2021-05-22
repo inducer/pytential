@@ -69,9 +69,10 @@ def partition_by_nodes(actx, discr,
 
         builder = TreeBuilder(actx.context)
 
-        from meshmode.dof_array import flatten, thaw
+        from arraycontext import thaw
+        from meshmode.dof_array import flatten
         tree, _ = builder(actx.queue,
-                flatten(thaw(actx, discr.nodes())),
+                flatten(thaw(discr.nodes(), actx)),
                 max_particles_in_box=max_nodes_in_box,
                 kind=tree_kind)
 
@@ -315,10 +316,11 @@ class ProxyGenerator:
         center_ext = bind(self.places, sym.expansion_centers(
             self.ambient_dim, +1, dofdesc=source_dd))(actx)
 
-        from meshmode.dof_array import flatten, thaw
+        from arraycontext import thaw
+        from meshmode.dof_array import flatten
         knl = self.get_kernel()
         _, (centers_dev, radii_dev,) = knl(actx.queue,
-            sources=flatten(thaw(actx, discr.nodes())),
+            sources=flatten(thaw(discr.nodes(), actx)),
             center_int=flatten(center_int),
             center_ext=flatten(center_ext),
             expansion_radii=flatten(radii),
@@ -532,10 +534,11 @@ def gather_block_interaction_points(actx, places, source_dd, indices,
             indices, pxycenters, pxyradii,
             max_nodes_in_box=max_nodes_in_box)
 
-    from meshmode.dof_array import flatten, thaw
+    from arraycontext import thaw
+    from meshmode.dof_array import flatten
     ranges = actx.zeros(indices.nblocks + 1, dtype=np.int64)
     _, (nodes, ranges) = knl()(actx.queue,
-            sources=flatten(thaw(actx, discr.nodes())),
+            sources=flatten(thaw(discr.nodes(), actx)),
             proxies=proxies,
             pxyranges=pxyranges,
             nbrindices=neighbors.indices,

@@ -23,12 +23,14 @@ THE SOFTWARE.
 """
 
 import numpy as np
-from meshmode.array_context import PyOpenCLArrayContext
+
+from arraycontext import ArrayContext
 
 
-def flatten_if_needed(actx: PyOpenCLArrayContext, ary: np.ndarray):
+def flatten_if_needed(actx: ArrayContext, ary: np.ndarray):
     from pytools.obj_array import obj_array_vectorize_n_args
-    from meshmode.dof_array import DOFArray, thaw, flatten
+    from meshmode.dof_array import DOFArray, flatten
+    from arraycontext import thaw
 
     if (isinstance(ary, np.ndarray)
             and ary.dtype.char == "O"
@@ -39,7 +41,7 @@ def flatten_if_needed(actx: PyOpenCLArrayContext, ary: np.ndarray):
         return ary
 
     if ary.array_context is None:
-        ary = thaw(actx, ary)
+        ary = thaw(ary, actx)
 
     return flatten(ary)
 

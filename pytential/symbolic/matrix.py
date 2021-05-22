@@ -395,10 +395,11 @@ class MatrixBuilder(MatrixBuilderBase):
                 expr.qbx_forced_limit,
                 dofdesc=expr.target))(actx)
 
-            from meshmode.dof_array import flatten, thaw
+            from arraycontext import thaw
+            from meshmode.dof_array import flatten
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(actx, target_discr.nodes())),
-                    sources=flatten(thaw(actx, source_discr.nodes())),
+                    targets=flatten(thaw(target_discr.nodes(), actx)),
+                    sources=flatten(thaw(source_discr.nodes(), actx)),
                     centers=flatten(centers),
                     expansion_radii=flatten(radii),
                     **kernel_args)
@@ -462,10 +463,11 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                     target_kernels=(expr.target_kernel,),
                     exclude_self=self.exclude_self)
 
-            from meshmode.dof_array import flatten, thaw
+            from arraycontext import thaw
+            from meshmode.dof_array import flatten
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(actx, target_discr.nodes())),
-                    sources=flatten(thaw(actx, source_discr.nodes())),
+                    targets=flatten(thaw(target_discr.nodes(), actx)),
+                    sources=flatten(thaw(source_discr.nodes(), actx)),
                     **kernel_args)
 
             result += actx.to_numpy(mat).dot(rec_density)
@@ -530,10 +532,11 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 expr.qbx_forced_limit,
                 dofdesc=expr.target))(actx)
 
-            from meshmode.dof_array import flatten, thaw
+            from arraycontext import thaw
+            from meshmode.dof_array import flatten
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(actx, target_discr.nodes())),
-                    sources=flatten(thaw(actx, source_discr.nodes())),
+                    targets=flatten(thaw(target_discr.nodes(), actx)),
+                    sources=flatten(thaw(source_discr.nodes(), actx)),
                     centers=flatten(centers),
                     expansion_radii=flatten(radii),
                     index_set=self.index_set,
@@ -601,10 +604,11 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                     target_kernels=(expr.target_kernel,),
                     exclude_self=self.exclude_self)
 
-            from meshmode.dof_array import flatten, thaw
+            from arraycontext import thaw
+            from meshmode.dof_array import flatten
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(actx, target_discr.nodes())),
-                    sources=flatten(thaw(actx, source_discr.nodes())),
+                    targets=flatten(thaw(target_discr.nodes(), actx)),
+                    sources=flatten(thaw(source_discr.nodes(), actx)),
                     index_set=self.index_set,
                     **kernel_args)
 

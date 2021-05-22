@@ -24,20 +24,21 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 import pyopencl.array  # noqa
-from pytools import memoize_method
+
+from pytools import memoize_method, log_process
 from pytools.obj_array import obj_array_vectorize
-from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import flatten, thaw
+
+from arraycontext import ArrayContext
+from meshmode.dof_array import flatten
+
 from boxtree.tools import DeviceDataRecord
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
+
+from cgen import Enum
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-from cgen import Enum
-
 
 from pytential.qbx.utils import TreeCodeContainerMixin
-
-from pytools import log_process
 
 import logging
 logger = logging.getLogger(__name__)
@@ -110,7 +111,7 @@ class target_state(Enum):  # noqa
 
 
 class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
-    def __init__(self, actx: PyOpenCLArrayContext, ambient_dim,
+    def __init__(self, actx: ArrayContext, ambient_dim,
             tree_code_container, debug,
             _well_sep_is_n_away, _from_sep_smaller_crit):
         self.array_context = actx
@@ -565,9 +566,10 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         refine_weights.finish()
 
+        from arraycontext import thaw
         tree, _ = code_getter.build_tree()(queue,
                 particles=flatten(thaw(
-                    self.array_context, quad_stage2_discr.nodes())),
+                    quad_stage2_discr.nodes(), self.array_context)),
                 targets=target_info.targets,
                 target_radii=target_radii,
                 max_leaf_refine_weight=lpot_source._max_leaf_refine_weight,

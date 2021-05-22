@@ -22,18 +22,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import numpy as np
-from pytools import memoize_method
-
 import pyopencl as cl
 import pyopencl.array # noqa
 
+from pytools import memoize_method
 from boxtree.tools import DeviceDataRecord
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
+
 from cgen import Enum
-from meshmode.array_context import PyOpenCLArrayContext
+
+from arraycontext import ArrayContext
 from meshmode.dof_array import flatten
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
@@ -443,7 +443,7 @@ class QBXTargetAssociation(DeviceDataRecord):
 
 class TargetAssociationCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, actx: PyOpenCLArrayContext, tree_code_container):
+    def __init__(self, actx: ArrayContext, tree_code_container):
         self.array_context = actx
         self.tree_code_container = tree_code_container
 
@@ -492,7 +492,7 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
         from boxtree.area_query import SpaceInvaderQueryBuilder
         return SpaceInvaderQueryBuilder(self.cl_context)
 
-    def get_wrangler(self, actx: PyOpenCLArrayContext):
+    def get_wrangler(self, actx: ArrayContext):
         return TargetAssociationWrangler(actx, code_container=self)
 
 
