@@ -1,7 +1,7 @@
-from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import thaw
 import numpy as np
 import pyopencl as cl
+
+from arraycontext import PyOpenCLArrayContext, thaw
 
 from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
@@ -71,7 +71,7 @@ def main(mesh_name="ellipsoid"):
         }, auto_where="qbx")
     density_discr = places.get_discretization("qbx")
 
-    nodes = thaw(actx, density_discr.nodes())
+    nodes = thaw(density_discr.nodes(), actx)
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
