@@ -408,7 +408,7 @@ class StressletWrapper(StressletWrapperBase):
 
         kernel_indices = [idx, 'laplace', 'laplace', 'laplace']
         dir_vec_indices = [idx[-1], idx[1], idx[0], idx[2]]
-        coeffs = [1, 1 - 2*nu, -(1 - 2*nu), -(1 - 2*nu)]
+        coeffs = [1, (1 - 2*nu)/self.dim, -(1 - 2*nu)/self.dim, -(1 - 2*nu)]
         extra_deriv_dirs_vec=[[], [idx[0]], [idx[1]], [idx[2]]]
         if idx[0] != idx[1]:
             coeffs[-1] = 0
