@@ -362,7 +362,7 @@ def test_unregularized_with_ones_kernel(ctx_factory):
     from pytential.unregularized import UnregularizedLayerPotentialSource
     lpot_source = UnregularizedLayerPotentialSource(discr)
     from pytential.target import PointsTarget
-    targets = PointsTarget(np.zeros((2, 1), dtype=float))
+    targets = PointsTarget(actx.from_numpy(np.zeros((2, 1), dtype=np.float64)))
 
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: lpot_source,
@@ -420,7 +420,7 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
 
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=100)
     from pytential.target import PointsTarget
-    ptarget = PointsTarget(fplot.points)
+    ptarget = PointsTarget(actx.from_numpy(fplot.points))
 
     from pytential import GeometryCollection
     places = GeometryCollection({

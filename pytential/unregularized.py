@@ -30,7 +30,7 @@ import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_method
-from arraycontext import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 
 from boxtree.tools import DeviceDataRecord
 from pytential.source import LayerPotentialSourceBase
@@ -140,12 +140,10 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             insn, bound_expr, evaluate):
         kernel_args = {}
 
-        from pytential.utils import flatten_if_needed
         from meshmode.dof_array import flatten, unflatten
-        from arraycontext import thaw
 
         for arg_name, arg_expr in insn.kernel_arguments.items():
-            kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
+            kernel_args[arg_name] = flatten(evaluate(arg_expr))
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
@@ -165,7 +163,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     target_kernels=insn.target_kernels)
 
             evt, output_for_each_kernel = p2p(actx.queue,
-                    flatten_if_needed(actx, target_discr.nodes()),
+                    flatten(thaw(target_discr.nodes(), actx)),
                     flatten(thaw(self.density_discr.nodes(), actx)),
                     flat_strengths, **kernel_args)
 
@@ -415,9 +413,7 @@ class _FMMGeometryData:
 
         MAX_LEAF_REFINE_WEIGHT = 32  # noqa
 
-        from arraycontext import thaw
         from meshmode.dof_array import flatten
-
         tree, _ = code_getter.build_tree(queue,
                 particles=flatten(
                     thaw(lpot_src.density_discr.nodes(), self.array_context)),
@@ -448,13 +444,13 @@ class _FMMGeometryData:
                 (lpot_src.ambient_dim, ntargets),
                 self.coord_dtype)
 
-        from pytential.utils import flatten_if_needed
+        from meshmode.dof_array import flatten
         for start, target_discr in zip(target_discr_starts, target_discrs):
             code_getter.copy_targets_kernel()(
                     self.array_context.queue,
                     targets=targets[:, start:start+target_discr.ndofs],
-                    points=flatten_if_needed(
-                        self.array_context, target_discr.nodes()))
+                    points=flatten(thaw(target_discr.nodes(), self.array_context))
+                    )
 
         return _TargetInfo(
                 targets=targets,

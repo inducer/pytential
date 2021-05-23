@@ -28,7 +28,7 @@ import pyopencl.array  # noqa
 from pytools import memoize_method, log_process
 from pytools.obj_array import obj_array_vectorize
 
-from arraycontext import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 from meshmode.dof_array import flatten
 
 from boxtree.tools import DeviceDataRecord
@@ -464,8 +464,6 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
     def target_info(self):
         """Return a :class:`TargetInfo`. |cached|"""
 
-        from pytential.utils import flatten_if_needed
-
         code_getter = self.code_getter
         queue = self.array_context.queue
         ntargets = self.ncenters
@@ -491,9 +489,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     queue,
                     targets=targets[:,
                         start:start+target_discr.ndofs],
-                    points=flatten_if_needed(
-                        self.array_context,
-                        target_discr.nodes()))
+                    points=flatten(thaw(target_discr.nodes(), self.array_context))
+                    )
 
         return TargetInfo(
                 targets=targets,
@@ -566,7 +563,6 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         refine_weights.finish()
 
-        from arraycontext import thaw
         tree, _ = code_getter.build_tree()(queue,
                 particles=flatten(thaw(
                     quad_stage2_discr.nodes(), self.array_context)),

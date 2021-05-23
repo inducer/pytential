@@ -27,13 +27,13 @@ import pyopencl.clmath  # noqa
 
 from arraycontext import PyOpenCLArrayContext
 from meshmode.discretization.visualization import make_visualizer
+from meshmode.dof_array import flatten_to_numpy
 
 from sumpy.symbolic import USE_SYMENGINE
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel, BiharmonicKernel
 
 from pytential import bind, sym
 from pytential import GeometryCollection
-from pytential.utils import flatten_to_numpy
 from pytools.obj_array import flat_obj_array
 
 import extra_int_eq_data as inteq

@@ -152,7 +152,7 @@ def test_build_matrix(ctx_factory, k, curve_fn, op_type, visualize=False):
 
     # {{{ check
 
-    from pytential.utils import unflatten_from_numpy, flatten_to_numpy
+    from meshmode.dof_array import unflatten_from_numpy, flatten_to_numpy
 
     np.random.seed(12)
     for i in range(5):
@@ -253,7 +253,7 @@ def test_build_matrix_conditioning(ctx_factory, side, op_type, visualize=False):
     if side == +1 and op_type == "double":
         # NOTE: this adds the "mean" to remove the nullspace for the operator
         # See `pytential.symbolic.pde.scalar` for the equivalent formulation
-        from pytential.utils import flatten_to_numpy
+        from meshmode.dof_array import flatten_to_numpy
         w = flatten_to_numpy(actx,
                 bind(places, sym.sqrt_jac_q_weight(places.ambient_dim)**2)(actx)
                 )

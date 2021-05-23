@@ -327,7 +327,7 @@ class ProxyGenerator:
             srcindices=indices.indices,
             srcranges=indices.ranges, **kwargs)
 
-        from pytential.utils import flatten_to_numpy
+        from meshmode.dof_array import flatten_to_numpy
         centers = flatten_to_numpy(actx, centers_dev)
         radii = flatten_to_numpy(actx, radii_dev)
         proxies = np.empty(indices.nblocks, dtype=object)
@@ -382,7 +382,7 @@ def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
     #   * `srcindices` may reorder the array returned by nodes(), so this
     #   makes sure that we have the same order in tree.user_source_ids
     #   and friends
-    from pytential.utils import flatten_to_numpy
+    from meshmode.dof_array import flatten_to_numpy
     sources = flatten_to_numpy(actx, discr.nodes())
     sources = make_obj_array([
         actx.from_numpy(sources[idim][indices.indices])

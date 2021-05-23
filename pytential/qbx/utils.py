@@ -282,12 +282,9 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
     from arraycontext import thaw
     from meshmode.dof_array import flatten
-    from pytential.utils import flatten_if_needed
     sources = flatten(thaw(density_discr.nodes(), actx))
     centers = flatten(_make_centers(stage1_density_discr))
-    targets = [
-            flatten_if_needed(actx, tgt.nodes())
-            for tgt in targets_list]
+    targets = [flatten(thaw(tgt.nodes(), actx)) for tgt in targets_list]
 
     queue = actx.queue
     particles = tuple(
