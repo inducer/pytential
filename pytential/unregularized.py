@@ -163,7 +163,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     target_kernels=insn.target_kernels)
 
             evt, output_for_each_kernel = p2p(actx.queue,
-                    flatten(thaw(target_discr.nodes(), actx)),
+                    flatten(thaw(target_discr.nodes(), actx), strict=False),
                     flatten(thaw(self.density_discr.nodes(), actx)),
                     flat_strengths, **kernel_args)
 
@@ -449,7 +449,9 @@ class _FMMGeometryData:
             code_getter.copy_targets_kernel()(
                     self.array_context.queue,
                     targets=targets[:, start:start+target_discr.ndofs],
-                    points=flatten(thaw(target_discr.nodes(), self.array_context))
+                    points=flatten(
+                        thaw(target_discr.nodes(), self.array_context),
+                        strict=False)
                     )
 
         return _TargetInfo(

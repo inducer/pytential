@@ -328,8 +328,8 @@ class ProxyGenerator:
             srcranges=indices.ranges, **kwargs)
 
         from meshmode.dof_array import flatten_to_numpy
-        centers = flatten_to_numpy(actx, centers_dev)
-        radii = flatten_to_numpy(actx, radii_dev)
+        centers = flatten_to_numpy(actx, centers_dev, strict=False)
+        radii = flatten_to_numpy(actx, radii_dev, strict=False)
         proxies = np.empty(indices.nblocks, dtype=object)
         for i in range(indices.nblocks):
             proxies[i] = _affine_map(self.ref_points,

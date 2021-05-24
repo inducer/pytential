@@ -772,7 +772,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         def _flat_nodes(dofdesc):
             discr = bound_expr.places.get_discretization(
                     dofdesc.geometry, dofdesc.discr_stage)
-            return freeze(flatten(thaw(discr.nodes(), actx)), actx)
+            return freeze(flatten(thaw(discr.nodes(), actx), strict=False), actx)
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_expansion_radii"))
@@ -794,7 +794,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         kernel_args = {}
         for arg_name, arg_expr in insn.kernel_arguments.items():
-            kernel_args[arg_name] = flatten(evaluate(arg_expr))
+            kernel_args[arg_name] = flatten(evaluate(arg_expr), strict=False)
 
         flat_strengths = _get_flat_strengths_from_densities(
                 actx, bound_expr.places, evaluate, insn.densities,

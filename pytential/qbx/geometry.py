@@ -489,7 +489,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     queue,
                     targets=targets[:,
                         start:start+target_discr.ndofs],
-                    points=flatten(thaw(target_discr.nodes(), self.array_context))
+                    points=flatten(
+                        thaw(target_discr.nodes(), self.array_context),
+                        strict=False)
                     )
 
         return TargetInfo(

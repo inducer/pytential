@@ -178,7 +178,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
             from arraycontext import thaw
             evt, output_for_each_kernel = p2p(actx.queue,
-                    flatten(thaw(target_discr.nodes(), actx)),
+                    flatten(thaw(target_discr.nodes(), actx), strict=False),
                     self._nodes,
                     strengths, **kernel_args)
 
@@ -310,7 +310,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
             for arg in func(target_kernels):
                 var_dict[arg.name] = obj_array_vectorize(
                         reorder_sources,
-                        flatten(evaluator(arguments[arg.name])))
+                        flatten(evaluator(arguments[arg.name]), strict=False))
 
         return kernel_extra_kwargs, source_extra_kwargs
 

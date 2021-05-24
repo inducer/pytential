@@ -225,9 +225,10 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if isinstance(rec_arg, Number):
             return getattr(np, expr.function.name)(rec_arg)
         else:
-            rec_arg = unflatten_from_numpy(self.array_context, None, rec_arg)
+            from arraycontext import from_numpy
+            rec_arg = from_numpy(self.array_context, rec_arg)
             result = getattr(self.array_context.np, expr.function.name)(rec_arg)
-            return flatten_to_numpy(self.array_context, result)
+            return flatten_to_numpy(self.array_context, result, strict=False)
 
     # }}}
 

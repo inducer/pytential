@@ -286,9 +286,9 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 
         err = test_via_bdry - test_direct
 
-        err = flatten_to_numpy(actx, err)
-        test_direct = flatten_to_numpy(actx, test_direct)
-        test_via_bdry = flatten_to_numpy(actx, test_via_bdry)
+        err = flatten_to_numpy(actx, err, strict=False)
+        test_direct = flatten_to_numpy(actx, test_direct, strict=False)
+        test_via_bdry = flatten_to_numpy(actx, test_via_bdry, strict=False)
 
         # {{{ remove effect of net source charge
 
