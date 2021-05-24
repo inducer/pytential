@@ -54,7 +54,7 @@ def _get_layer_potential_args(mapper, expr, include_args=None):
                 and arg_name not in include_args):
             continue
 
-        kernel_args[arg_name] = flatten(mapper.rec(arg_expr))
+        kernel_args[arg_name] = mapper.rec(arg_expr)
 
     return kernel_args
 
