@@ -76,7 +76,7 @@ def _get_base_kernel_matrix(base_kernel, order=None, verbose=False):
     # (-1, -1, -1) represent a constant
     mis.append((-1, -1, -1))
 
-    if order == pde.degree:
+    if order == pde.order:
         pde_mis = [ident.mi for eq in pde.eqs for ident in eq.keys()]
         pde_mis = [mi for mi in pde_mis if sum(mi) == order]
         if verbose:
