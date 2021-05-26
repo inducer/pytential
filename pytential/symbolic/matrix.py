@@ -226,7 +226,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
             return getattr(np, expr.function.name)(rec_arg)
         else:
             from arraycontext import from_numpy
-            rec_arg = from_numpy(self.array_context, rec_arg)
+            rec_arg = from_numpy(rec_arg, self.array_context)
             result = getattr(self.array_context.np, expr.function.name)(rec_arg)
             return flatten_to_numpy(self.array_context, result, strict=False)
 
