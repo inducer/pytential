@@ -117,7 +117,7 @@ def main(curve_fn=starfish, visualize=True):
     if enable_mayavi:
         # {{{ plot boundary field
 
-        from pytential.utils import flatten_to_numpy
+        from meshmode.dof_array import flatten_to_numpy
 
         fld_on_bdry = flatten_to_numpy(
                 actx, bound_bdry_op(actx, sigma=sigma, k=k))

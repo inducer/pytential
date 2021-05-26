@@ -22,7 +22,10 @@ THE SOFTWARE.
 
 import numpy as np
 import pyopencl as cl
+
 from pytools import memoize_in
+
+from meshmode.dof_array import flatten
 from sumpy.fmm import UnableToCollectTimingData
 
 
@@ -173,9 +176,9 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                 target_kernels=insn.target_kernels)
 
-            from pytential.utils import flatten_if_needed
+            from arraycontext import thaw
             evt, output_for_each_kernel = p2p(actx.queue,
-                    flatten_if_needed(actx, target_discr.nodes()),
+                    flatten(thaw(target_discr.nodes(), actx), strict=False),
                     self._nodes,
                     strengths, **kernel_args)
 
@@ -299,7 +302,6 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
 
         from sumpy.tools import gather_arguments, gather_source_arguments
         from pytools.obj_array import obj_array_vectorize
-        from pytential.utils import flatten_if_needed
 
         for func, var_dict in [
                 (gather_arguments, kernel_extra_kwargs),
@@ -308,7 +310,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
             for arg in func(target_kernels):
                 var_dict[arg.name] = obj_array_vectorize(
                         reorder_sources,
-                        flatten_if_needed(actx, evaluator(arguments[arg.name])))
+                        flatten(evaluator(arguments[arg.name]), strict=False))
 
         return kernel_extra_kwargs, source_extra_kwargs
 

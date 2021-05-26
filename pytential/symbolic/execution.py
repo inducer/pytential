@@ -33,8 +33,8 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
-from arraycontext import PyOpenCLArrayContext
-from meshmode.dof_array import DOFArray
+from arraycontext import PyOpenCLArrayContext, thaw
+from meshmode.dof_array import DOFArray, flatten
 
 from pytools import memoize_in, memoize_method
 from pytential.qbx.cost import AbstractQBXCostModel
@@ -477,9 +477,8 @@ class MatVecOp:
             ary = [ary]
 
         result = self.array_context.empty(self.total_dofs, self.dtype)
-        from pytential.utils import flatten_if_needed
         for res_i, (start, end) in zip(ary, self.starts_and_ends):
-            result[start:end] = flatten_if_needed(self.array_context, res_i)
+            result[start:end] = flatten(thaw(res_i, self.array_context))
         return result
 
     def unflatten(self, ary):

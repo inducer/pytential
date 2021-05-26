@@ -62,8 +62,8 @@ def plot_partition_indices(actx, discr, indices, **kwargs):
     pt.savefig("test_partition_{1}_{3}d_ranges_{2}.png".format(*args))
     pt.clf()
 
-    from pytential.utils import flatten_to_numpy
     if discr.ambient_dim == 2:
+        from meshmode.dof_array import flatten_to_numpy
         sources = flatten_to_numpy(actx, discr.nodes())
 
         pt.figure(figsize=(10, 8), dpi=300)
@@ -183,7 +183,7 @@ def test_proxy_generator(ctx_factory, case, index_sparsity_factor, visualize=Fal
         if ambient_dim == 2:
             import matplotlib.pyplot as pt
 
-            from pytential.utils import flatten_to_numpy
+            from meshmode.dof_array import flatten_to_numpy
             density_nodes = np.vstack(flatten_to_numpy(actx, density_discr.nodes()))
             ci = bind(places, sym.expansion_centers(ambient_dim, -1))(actx)
             ci = np.vstack(flatten_to_numpy(actx, ci))
@@ -299,8 +299,9 @@ def test_interaction_points(ctx_factory,
 
     # {{{ visualize
 
-    from pytential.utils import flatten_to_numpy
     if visualize:
+        from meshmode.dof_array import flatten_to_numpy
+
         ambient_dim = places.ambient_dim
         if ambient_dim == 2:
             import matplotlib.pyplot as pt

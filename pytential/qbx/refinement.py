@@ -410,9 +410,7 @@ class RefinerWrangler(TreeWranglerBase):
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
-        from pytential.utils import flatten_if_needed
-        element_property = flatten_if_needed(
-                self.array_context, element_property)
+        element_property = flatten(element_property)
 
         evt, out = knl(self.queue,
                        element_property=element_property,

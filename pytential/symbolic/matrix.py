@@ -27,10 +27,11 @@ import numpy as np
 
 from sys import intern
 
+from arraycontext import thaw
 from pytools import memoize_method
+from meshmode.dof_array import flatten, flatten_to_numpy, unflatten_from_numpy
+
 from pytential.symbolic.mappers import EvaluationMapperBase
-from pytential.utils import (
-        flatten_if_needed, flatten_to_numpy, unflatten_from_numpy)
 
 
 # {{{ helpers
@@ -53,9 +54,7 @@ def _get_layer_potential_args(mapper, expr, include_args=None):
                 and arg_name not in include_args):
             continue
 
-        kernel_args[arg_name] = flatten_if_needed(mapper.array_context,
-                mapper.rec(arg_expr)
-                )
+        kernel_args[arg_name] = mapper.rec(arg_expr)
 
     return kernel_args
 
@@ -226,9 +225,10 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if isinstance(rec_arg, Number):
             return getattr(np, expr.function.name)(rec_arg)
         else:
-            rec_arg = unflatten_from_numpy(self.array_context, None, rec_arg)
+            from arraycontext import from_numpy
+            rec_arg = from_numpy(rec_arg, self.array_context)
             result = getattr(self.array_context.np, expr.function.name)(rec_arg)
-            return flatten_to_numpy(self.array_context, result)
+            return flatten_to_numpy(self.array_context, result, strict=False)
 
     # }}}
 
@@ -395,8 +395,6 @@ class MatrixBuilder(MatrixBuilderBase):
                 expr.qbx_forced_limit,
                 dofdesc=expr.target))(actx)
 
-            from arraycontext import thaw
-            from meshmode.dof_array import flatten
             _, (mat,) = mat_gen(actx.queue,
                     targets=flatten(thaw(target_discr.nodes(), actx)),
                     sources=flatten(thaw(source_discr.nodes(), actx)),
@@ -463,8 +461,6 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                     target_kernels=(expr.target_kernel,),
                     exclude_self=self.exclude_self)
 
-            from arraycontext import thaw
-            from meshmode.dof_array import flatten
             _, (mat,) = mat_gen(actx.queue,
                     targets=flatten(thaw(target_discr.nodes(), actx)),
                     sources=flatten(thaw(source_discr.nodes(), actx)),
@@ -532,8 +528,6 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 expr.qbx_forced_limit,
                 dofdesc=expr.target))(actx)
 
-            from arraycontext import thaw
-            from meshmode.dof_array import flatten
             _, (mat,) = mat_gen(actx.queue,
                     targets=flatten(thaw(target_discr.nodes(), actx)),
                     sources=flatten(thaw(source_discr.nodes(), actx)),
@@ -604,8 +598,6 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                     target_kernels=(expr.target_kernel,),
                     exclude_self=self.exclude_self)
 
-            from arraycontext import thaw
-            from meshmode.dof_array import flatten
             _, (mat,) = mat_gen(actx.queue,
                     targets=flatten(thaw(target_discr.nodes(), actx)),
                     sources=flatten(thaw(source_discr.nodes(), actx)),

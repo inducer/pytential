@@ -67,7 +67,7 @@ def main(mesh_name="ellipsoid"):
     from pytential import GeometryCollection
     places = GeometryCollection({
         "qbx": qbx,
-        "targets": PointsTarget(fplot.points)
+        "targets": PointsTarget(actx.from_numpy(fplot.points))
         }, auto_where="qbx")
     density_discr = places.get_discretization("qbx")
 
