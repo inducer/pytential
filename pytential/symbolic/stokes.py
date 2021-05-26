@@ -24,7 +24,7 @@ import numpy as np
 
 from pytential import sym
 from pytential.symbolic.pde.system_utils import merge_int_g_exprs
-from sumpy.kernel import (StokesletKernel, StressletKernel, LaplaceKernel,
+from sumpy.kernel import (StressletKernel, LaplaceKernel,
     ElasticityKernel, BiharmonicKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
 from pymbolic import var
@@ -281,7 +281,6 @@ class StokesletWrapper(StokesletWrapperBase):
         Returns the Integral of the Stokeslet/Stresslet kernel given by `idx`
         and its derivatives.
         """
-        knl = self.kernel_dict[idx]
         return _create_int_g(self.kernel_dict[idx], deriv_dirs,
                     density=density_sym*dir_vec_sym[idx[-1]],
                     qbx_forced_limit=qbx_forced_limit)/(2*(1-self.nu))
@@ -399,7 +398,6 @@ class StressletWrapper(StressletWrapperBase):
         and its derivatives.
         """
 
-        is_stresslet = (len(idx) == 3)
         nu = self.nu
         kernel_indices = [idx]
         dir_vec_indices = [idx[-1]]
@@ -409,7 +407,7 @@ class StressletWrapper(StressletWrapperBase):
         kernel_indices = [idx, 'laplace', 'laplace', 'laplace']
         dir_vec_indices = [idx[-1], idx[1], idx[0], idx[2]]
         coeffs = [1, (1 - 2*nu)/self.dim, -(1 - 2*nu)/self.dim, -(1 - 2*nu)]
-        extra_deriv_dirs_vec=[[], [idx[0]], [idx[1]], [idx[2]]]
+        extra_deriv_dirs_vec = [[], [idx[0]], [idx[1]], [idx[2]]]
         if idx[0] != idx[1]:
             coeffs[-1] = 0
 
@@ -422,7 +420,6 @@ class StressletWrapper(StressletWrapperBase):
                     density=density_sym*dir_vec_sym[dir_vec_idx],
                     qbx_forced_limit=qbx_forced_limit) * coeff
         return result/(2*(1 - nu))
-
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
@@ -484,7 +481,7 @@ class StressletWrapper(StressletWrapperBase):
 
 # {{{ Stokeslet/Stresslet using Laplace
 
-class StokesletWrapperUsingLaplace(StokesletWrapperBase):
+class StokesletWrapperTornberg(StokesletWrapperBase):
     """Stokeslet Wrapper using Tornberg and Greengard's method which uses
     Laplace derivatives.
 
@@ -514,16 +511,16 @@ class StokesletWrapperUsingLaplace(StokesletWrapperBase):
                 sym_expr[i] -= sym.S(knl, density_vec_sym[j],
                         qbx_forced_limit=qbx_forced_limit)
                 if i == j:
-                    sym_expr[i] += sym.S(self.kernel, density_vec_sym[j],
-                        qbx_forced_limit=qbx_forced_limit)
+                    sym_expr[i] += (3 - 4 * self.nu)*sym.S(self.kernel,
+                        density_vec_sym[j], qbx_forced_limit=qbx_forced_limit)
             sym_expr[i] += sym.S(AxisTargetDerivative(i, self.kernel),
                     common_expr_density, qbx_forced_limit=qbx_forced_limit)
-            sym_expr[i] *= -0.5*(self.mu*(-1))
+            sym_expr[i] *= -0.25*((self.mu*(1 - self.nu_sym))**(-1))
 
         return sym_expr
 
 
-class StressletWrapperUsingLaplace(StokesletWrapperBase):
+class StressletWrapperTornberg(StokesletWrapperBase):
     """Stresslet Wrapper using Tornberg and Greengard's method which uses
     Laplace derivatives.
 
@@ -544,24 +541,24 @@ class StressletWrapperUsingLaplace(StokesletWrapperBase):
         sym_expr = np.zeros((self.dim,), dtype=object)
 
         source = [sym.NodeCoordinateComponent(d) for d in range(self.dim)]
+        common_source_kernels = tuple([AxisSourceDerivative(k, self.kernel) for
+                k in range(self.dim)])
+        coeff = 3.0/6
 
         for i in range(self.dim):
             for j in range(self.dim):
-                source_kernels = [AxisSourceDerivative(k, self.kernel) for
-                        k in range(self.dim)]
-                densities = [density_vec_sym[k] * dir_vec_sym[j]
-                            + density_vec_sym[j] * dir_vec_sym[k]
-                            for k in range(self.dim)]
+                densities = [coeff*(density_vec_sym[k] * dir_vec_sym[j]
+                    + density_vec_sym[j] * dir_vec_sym[k]) for k in range(self.dim)]
                 target_kernel = TargetPointMultiplier(j,
                         AxisTargetDerivative(i, self.kernel))
                 sym_expr[i] -= sym.IntG(target_kernel=target_kernel,
-                    source_kernels=source_kernels,
-                    densities=densities,
+                    source_kernels=common_source_kernels,
+                    densities=tuple(densities),
                     qbx_forced_limit=qbx_forced_limit)
 
                 if i == j:
                     sym_expr[i] += sym.IntG(target_kernel=self.kernel,
-                        source_kernels=source_kernels,
+                        source_kernels=common_source_kernels,
                         densities=densities,
                         qbx_forced_limit=qbx_forced_limit)
 
@@ -569,19 +566,38 @@ class StressletWrapperUsingLaplace(StokesletWrapperBase):
                     k in range(self.dim))
             common_density1 = sum(source[k] * dir_vec_sym[k] for
                     k in range(self.dim))
-            source_kernels = [AxisSourceDerivative(k, self.kernel) for
+            densities = [coeff*(common_density0 * dir_vec_sym[k]
+                    + common_density1 * density_vec_sym[k]) for
                     k in range(self.dim)]
-            densities = [common_density0 * dir_vec_sym[k]
-                    + common_density1 * density_vec_sym[k] for
-                    k in range(self.dim)]
+            source_kernels = list(common_source_kernels)
 
-            target_kernel = AxisTargetDerivative(i, self.kernel)
+            if self.nu != 0.5:
+                sigma_normal = [density_vec_sym[k]*dir_vec_sym[k] for
+                        k in range(self.dim)]
+                densities.append((1 - 2 * self.nu)*(
+                        sum(sigma_normal) - 2 * sigma_normal[i]))
+                source_kernels.append(self.kernel)
+
             sym_expr[i] += sym.IntG(target_kernel=target_kernel,
-                source_kernels=source_kernels,
-                densities=densities,
+                source_kernels=tuple(source_kernels),
+                densities=tuple(densities),
                 qbx_forced_limit=qbx_forced_limit)
 
-            sym_expr[i] *= 3.0/6
+            for j in range(self.dim):
+                if self.nu != 0.5 and i != j:
+                    i0, j0 = min(i, j), max(i, j)
+                    densities = ((1 - 2*self.nu)*(-1)*(
+                        dir_vec_sym[i0]*density_vec_sym[j0]
+                        + dir_vec_sym[j0]*density_vec_sym[i0]),)
+                    source_kernels = (self.kernel,)
+                    target_kernel = AxisTargetDerivative(j, self.kernel)
+
+                    sym_expr[i] += sym.IntG(target_kernel=target_kernel,
+                        source_kernels=tuple(source_kernels),
+                        densities=tuple(densities),
+                        qbx_forced_limit=qbx_forced_limit)
+
+            sym_expr *= 1/(2*(1 - self.nu))
 
         return sym_expr
 
@@ -620,9 +636,9 @@ class StokesOperator:
         self.nu = nu_sym
 
         if method == "laplace":
-            self.stresslet = StressletWrapperUsingLaplace(dim=self.ambient_dim,
+            self.stresslet = StressletWrapperTornberg(dim=self.ambient_dim,
                     mu_sym=mu_sym, nu_sym=nu_sym)
-            self.stokeslet = StokesletWrapperUsingLaplace(dim=self.ambient_dim,
+            self.stokeslet = StokesletWrapperTornberg(dim=self.ambient_dim,
                     mu_sym=mu_sym, nu_sym=nu_sym)
         elif method == "biharmonic" or method == "naive":
             self.stresslet = StressletWrapper(dim=self.ambient_dim,
@@ -827,5 +843,5 @@ class HebekerExteriorStokesOperator(StokesOperator):
         # FIXME: not given in H. 1986, but should be easy to derive using the
         # equivalent single-/double-layer pressure kernels
         raise NotImplementedError
-    
+
 # }}}
