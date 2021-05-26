@@ -35,6 +35,16 @@ from pytential.symbolic.primitives import NodeCoordinateComponent
 
 
 class KelvinOperator:
+    """Representation for free space Green's function for elasticity commonly
+    known as the Kelvin solution [1] given by Lord Kelvin.
+
+    [1] Gimbutas, Z., & Greengard, L. (2016). A fast multipole method for the
+        evaluation of elastostatic fields in a half-space with zero normal stress.
+        Advances in Computational Mathematics, 42(1), 175-198.
+
+    .. automethod:: __init__
+    .. automethod:: operator
+    """
 
     def __init__(self, method, mu_sym, nu_sym):
         if nu_sym == 0.5:
@@ -72,16 +82,20 @@ class KelvinOperator:
 
 
 class MindlinOperator:
-    """Representation for 3D Stokes Flow based on [Hebeker1986]_.
+    """Representation for elasticity in a half-space with zero normal stress which
+    is based on Mindlin's explicit solution. See [1] and [2].
 
-    Inherits from :class:`StokesOperator`.
+    [1] Mindlin, R. D. (1936). Force at a point in the interior of a semi‐infinite
+        solid. Physics, 7(5), 195-202.
 
-    .. [Hebeker1986] F. C. Hebeker, *Efficient Boundary Element Methods for
-        Three-Dimensional Exterior Viscous Flow*, Numerical Methods for
-        Partial Differential Equations, Vol. 2, 1986,
-        `DOI <https://doi.org/10.1002/num.1690020404>`__.
+    [2] Gimbutas, Z., & Greengard, L. (2016). A fast multipole method for the
+        evaluation of elastostatic fields in a half-space with zero normal stress.
+        Advances in Computational Mathematics, 42(1), 175-198.
 
     .. automethod:: __init__
+    .. automethod:: operator
+    .. automethod:: free_space_operator
+    .. automethod:: get_density_var
     """
 
     def __init__(self, *, method="biharmonic", mu_sym=var("mu"), nu_sym=var("nu")):
