@@ -26,15 +26,14 @@ from pytential import sym
 from pytential.symbolic.pde.system_utils import merge_int_g_exprs
 from sumpy.kernel import (LineOfCompressionKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier,
-    LaplaceKernel, BiharmonicKernel)
+    LaplaceKernel)
 from pymbolic import var
-from pytential.symbolic.stokes import (
-    StokesletWrapperTornberg, StressletWrapper, StokesletWrapper,
-    StokesletWrapperBase)
+from pytential.symbolic.stokes import (StokesletWrapperTornberg,
+    StokesletWrapperBase, HebekerExteriorStokesOperator)
 from pytential.symbolic.primitives import NodeCoordinateComponent
 
 
-class KelvinOperator:
+class KelvinOperator(HebekerExteriorStokesOperator):
     """Representation for free space Green's function for elasticity commonly
     known as the Kelvin solution [1] given by Lord Kelvin.
 
@@ -46,34 +45,20 @@ class KelvinOperator:
     .. automethod:: operator
     """
 
-    def __init__(self, method, mu_sym, nu_sym):
+    def __init__(self, method="native", mu_sym=var("mu"), nu_sym=0.5):
         if nu_sym == 0.5:
             raise ValueError("poisson's ratio cannot be 0.5")
 
-        self.dim = 3
-        self.mu = mu_sym
-        self.nu = nu_sym
-
+        super().__init__(eta=0, method="biharmonic", mu_sym=mu_sym, nu_sym=nu_sym)
         if method == "laplace":
-            self.stresslet = StressletWrapperYoshida(dim=self.dim,
+            self.stresslet = StressletWrapperYoshida(dim=3,
                     mu_sym=mu_sym, nu_sym=nu_sym)
-            self.stokeslet = StokesletWrapperTornberg(dim=self.dim,
+            self.stokeslet = StokesletWrapperTornberg(dim=3,
                     mu_sym=mu_sym, nu_sym=nu_sym)
-        elif method == "biharmonic":
-            self.stresslet = StressletWrapper(dim=self.dim,
-                mu_sym=mu_sym, nu_sym=nu_sym)
-            self.stokeslet = StokesletWrapper(dim=self.dim,
-                mu_sym=mu_sym, nu_sym=nu_sym)
-        else:
-            raise ValueError(f"invalid method: {method}."
-                    "Needs to be one of naive, laplace, biharmonic")
-
-        if method == "biharmonic":
-            self.base_kernel = BiharmonicKernel(dim=self.dim)
-        else:
             self.base_kernel = None
-
-        self.laplace_kernel = LaplaceKernel(dim=self.dim)
+        elif method != "biharmonic":
+            raise ValueError(f"invalid method: {method}."
+                    "Needs to be one of laplace or biharmonic")
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         return merge_int_g_exprs(self.stresslet.apply(sigma, normal,
@@ -110,8 +95,8 @@ class MindlinOperator:
                 nu_sym=nu_sym)
         self.modified_free_space_op = KelvinOperator(
                 method=method, mu_sym=mu_sym + 4*nu_sym, nu_sym=-nu_sym)
-        self.dim = 3
-        self.compression_knl = LineOfCompressionKernel(self.dim, 2, mu_sym, nu_sym)
+        self.compression_knl = LineOfCompressionKernel(3, 2, mu_sym, nu_sym)
+        self.ambient_dim = 3
 
     def K(self, sigma, normal, qbx_forced_limit):
         return merge_int_g_exprs(self.free_space_op.stresslet.apply(sigma, normal,
@@ -125,7 +110,7 @@ class MindlinOperator:
         int_g = sym.S(self.free_space_op.laplace_kernel, new_density,
             qbx_forced_limit=qbx_forced_limit)
 
-        for i in range(self.dim):
+        for i in range(3):
             temp = 2*int_g.copy(
                     target_kernel=AxisTargetDerivative(i, int_g.target_kernel))
             if i == 2:
@@ -149,7 +134,7 @@ class MindlinOperator:
         return res
 
     def B(self, sigma, normal, qbx_forced_limit):
-        sym_expr = np.zeros((self.dim,), dtype=object)
+        sym_expr = np.zeros((3,), dtype=object)
         mu = self.mu
         nu = self.nu
         lam = 2*nu*mu/(1-2*nu)
@@ -176,19 +161,19 @@ class MindlinOperator:
                 target_kernel=self.compression_knl, densities=tuple(densities),
                 **kwargs)
 
-        for i in range(self.dim):
+        for i in range(3):
             sym_expr[i] = int_g.copy(target_kernel=AxisTargetDerivative(
                 i, int_g.target_kernel))
 
         return sym_expr
 
     def C(self, sigma, normal, qbx_forced_limit):
-        result = np.zeros((self.dim,), dtype=object)
+        result = np.zeros((3,), dtype=object)
         mu = self.mu
         nu = self.nu
         lam = 2*nu*mu/(1-2*nu)
         alpha = (lam + mu)/(lam + 2*mu)
-        y = [NodeCoordinateComponent(i) for i in range(self.dim)]
+        y = [NodeCoordinateComponent(i) for i in range(3)]
         sigma_normal_product = sum(a*b for a, b in zip(sigma, normal))
 
         laplace_kernel = self.free_space_op.laplace_kernel
@@ -224,7 +209,7 @@ class MindlinOperator:
                 target_kernel=laplace_kernel, densities=tuple(densities),
                 qbx_forced_limit=qbx_forced_limit)
 
-        for i in range(self.dim):
+        for i in range(3):
             result[i] = int_g.copy(target_kernel=AxisTargetDerivative(
                 i, int_g.target_kernel))
 
@@ -259,16 +244,16 @@ class MindlinOperator:
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         resultA = self.A(sigma, normal=normal, qbx_forced_limit=qbx_forced_limit)
-        resultB = self.C(sigma, normal=normal, qbx_forced_limit=qbx_forced_limit)
-        resultC = self.B(sigma, normal=normal, qbx_forced_limit=qbx_forced_limit)
+        resultC = self.C(sigma, normal=normal, qbx_forced_limit=qbx_forced_limit)
+        resultB = self.B(sigma, normal=normal, qbx_forced_limit=qbx_forced_limit)
 
         if self.method == "biharmonic":
             # A and C are both derivatives of Biharmonic Green's function
             # TODO: make merge_int_g_exprs smart enough to merge two different
             # kernels into two separate IntGs.
-            result = merge_int_g_exprs(resultA + resultB,
+            result = merge_int_g_exprs(resultA + resultC,
                 base_kernel=self.free_space_op.base_kernel)
-            result += merge_int_g_exprs(resultC, base_kernel=self.compression_knl)
+            result += merge_int_g_exprs(resultB, base_kernel=self.compression_knl)
             return result
         else:
             return resultA + resultB + resultC
@@ -277,7 +262,7 @@ class MindlinOperator:
         """
         :returns: a symbolic vector corresponding to the density.
         """
-        return sym.make_sym_vector(name, self.dim)
+        return sym.make_sym_vector(name, 3)
 
 
 class StressletWrapperYoshida(StokesletWrapperBase):
@@ -291,11 +276,10 @@ class StressletWrapperYoshida(StokesletWrapperBase):
     """
 
     def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
-        self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "
                 "StressletWrapperYoshida")
-        self.kernel = LaplaceKernel(dim=self.dim)
+        self.kernel = LaplaceKernel(dim=3)
         self.mu = mu_sym
         self.nu = nu_sym
 
@@ -327,10 +311,10 @@ class StressletWrapperYoshida(StokesletWrapperBase):
                 int_g.target_kernel))
             return res / (4*mu*(1 - nu))
 
-        sym_expr = np.zeros((self.dim,), dtype=object)
+        sym_expr = np.zeros((3,), dtype=object)
 
         kernel = self.kernel
-        source = [sym.NodeCoordinateComponent(d) for d in range(self.dim)]
+        source = [sym.NodeCoordinateComponent(d) for d in range(3)]
         normal = dir_vec_sym
         sigma = density_vec_sym
 
