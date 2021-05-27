@@ -532,8 +532,6 @@ class StressletWrapperTornberg(StokesletWrapperBase):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to StressletWrapper")
-        if nu_sym != 0.5:
-            raise ValueError("nu != 0.5 is not supported")
         self.kernel = LaplaceKernel(dim=self.dim)
         self.mu = mu_sym
         self.nu = nu_sym
@@ -573,10 +571,33 @@ class StressletWrapperTornberg(StokesletWrapperBase):
                     k in range(self.dim)]
             source_kernels = list(common_source_kernels)
 
+            if self.nu != 0.5:
+                sigma_normal = [density_vec_sym[k]*dir_vec_sym[k] for
+                        k in range(self.dim)]
+                densities.append((1 - 2 * self.nu)*(
+                        sum(sigma_normal) - 2 * sigma_normal[i]))
+                source_kernels.append(self.kernel)
+
             sym_expr[i] += sym.IntG(target_kernel=target_kernel,
                 source_kernels=tuple(source_kernels),
                 densities=tuple(densities),
                 qbx_forced_limit=qbx_forced_limit)
+
+            for j in range(self.dim):
+                if self.nu != 0.5 and i != j:
+                    i0, j0 = min(i, j), max(i, j)
+                    densities = ((1 - 2*self.nu)*(-1)*(
+                        dir_vec_sym[i0]*density_vec_sym[j0]
+                        + dir_vec_sym[j0]*density_vec_sym[i0]),)
+                    source_kernels = (self.kernel,)
+                    target_kernel = AxisTargetDerivative(j, self.kernel)
+
+                    sym_expr[i] += sym.IntG(target_kernel=target_kernel,
+                        source_kernels=tuple(source_kernels),
+                        densities=tuple(densities),
+                        qbx_forced_limit=qbx_forced_limit)
+
+            sym_expr *= 1/(2*(1 - self.nu))
 
         return sym_expr
 
