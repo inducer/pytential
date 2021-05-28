@@ -50,6 +50,7 @@ def run_exterior_stokes(ctx_factory, *,
         source_ovsmp=None,
         radius=1.5,
         mu=1.0,
+        nu=0.4,
         visualize=False,
         method="naive",
 
@@ -135,13 +136,20 @@ def run_exterior_stokes(ctx_factory, *,
     sym_normal = sym.make_sym_vector("normal", ambient_dim)
     sym_mu = sym.var("mu")
 
+    if nu == 0.5:
+        sym_nu = 0.5
+    else:
+        sym_nu = sym.var("nu")
+
     if ambient_dim == 2:
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
-        sym_omega = sym.make_sym_vector("omega", ambient_dim, mu_sym=sym_mu)
-        op = HsiaoKressExteriorStokesOperator(omega=sym_omega, method=method)
+        sym_omega = sym.make_sym_vector("omega", ambient_dim)
+        op = HsiaoKressExteriorStokesOperator(omega=sym_omega, method=method,
+                mu_sym=sym_mu, nu_sym=sym_nu)
     elif ambient_dim == 3:
         from pytential.symbolic.stokes import HebekerExteriorStokesOperator
-        op = HebekerExteriorStokesOperator(method=method, mu_sym=sym_mu)
+        op = HebekerExteriorStokesOperator(method=method,
+                mu_sym=sym_mu, nu_sym=sym_nu)
     else:
         assert False
 
@@ -155,7 +163,7 @@ def run_exterior_stokes(ctx_factory, *,
 
     from pytential.symbolic.stokes import StokesletWrapper
     sym_source_pot = StokesletWrapper(ambient_dim,
-            use_biharmonic=False).apply(sym_sigma, qbx_forced_limit=None)
+            nu_sym=sym_nu).apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
 
@@ -181,10 +189,16 @@ def run_exterior_stokes(ctx_factory, *,
     else:
         bc_context = {}
         op_context = {"mu": mu, "normal": normal}
+    direct_context = {"mu": mu}
+
+    if sym_nu != 0.5:
+        bc_context["nu"] = nu
+        op_context["nu"] = nu
+        direct_context["nu"] = nu
 
     bc_op = bind(places, sym_source_pot,
             auto_where=("point_source", "source"))
-    bc = bc_op(actx, sigma=charges, mu=mu)
+    bc = bc_op(actx, sigma=charges, **direct_context)
 
     rhs = bind(places, sym_rhs)(actx, bc=bc, **bc_context)
     bound_op = bind(places, sym_op)
@@ -197,9 +211,12 @@ def run_exterior_stokes(ctx_factory, *,
 
     def print_timing_data(timings, name):
         result = {k: 0 for k in list(timings.values())[0].keys()}
+        total = 0
         for k, timing in timings.items():
             for k, v in timing.items():
                 result[k] += v['wall_elapsed']
+                total += v['wall_elapsed']
+        result['total'] = total
         print(f"{name}={result}")
 
     print_timing_data(fmm_timing_data, method)
@@ -232,7 +249,8 @@ def run_exterior_stokes(ctx_factory, *,
     ps_velocity = bind(places, sym_velocity,
             auto_where=("source", "point_target"))(actx, sigma=sigma, **op_context)
     ex_velocity = bind(places, sym_source_pot,
-            auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
+            auto_where=("point_source", "point_target"))(actx, sigma=charges,
+                    **direct_context)
 
     v_error = rnorm2(ps_velocity, ex_velocity)
     h_max = bind(places, sym.h_max(ambient_dim))(actx)
@@ -263,13 +281,18 @@ def run_exterior_stokes(ctx_factory, *,
 
     return h_max, v_error
 
+@pytest.mark.parametrize("ambient_dim, method, nu", [
+    (2, "naive", 0.5),
+    (2, "biharmonic", 0.5),
+    pytest.param(3, "naive", 0.5, marks=pytest.mark.slowtest),
+    (3, "biharmonic", 0.5),
+    (3, "laplace", 0.5),
 
-@pytest.mark.parametrize("method", ["naive", "biharmonic"])
-@pytest.mark.parametrize("ambient_dim", [
-    2,
-    pytest.param(3, marks=pytest.mark.slowtest)
+    (2, "biharmonic", 0.4),
+    (3, "biharmonic", 0.4),
+    (3, "laplace", 0.4),
     ])
-def test_exterior_stokes(ctx_factory, ambient_dim, method="naive", visualize=False):
+def test_exterior_stokes(ctx_factory, ambient_dim, method, nu, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -296,6 +319,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, method="naive", visualize=Fal
                 qbx_order=qbx_order,
                 resolution=resolution,
                 visualize=visualize,
+                nu=nu,
                 method=method)
 
         eoc.add_data_point(h_max, err)

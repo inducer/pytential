@@ -515,7 +515,7 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
                         density_vec_sym[j], qbx_forced_limit=qbx_forced_limit)
             sym_expr[i] += sym.S(AxisTargetDerivative(i, self.kernel),
                     common_expr_density, qbx_forced_limit=qbx_forced_limit)
-            sym_expr[i] *= -0.25*((self.mu*(1 - self.nu_sym))**(-1))
+            sym_expr[i] *= -0.25*((self.mu*(1 - self.nu))**(-1))
 
         return sym_expr
 
@@ -573,6 +573,7 @@ class StressletWrapperTornberg(StokesletWrapperBase):
                     k in range(self.dim)]
             source_kernels = list(common_source_kernels)
 
+            target_kernel = AxisTargetDerivative(i, self.kernel)
             sym_expr[i] += sym.IntG(target_kernel=target_kernel,
                 source_kernels=tuple(source_kernels),
                 densities=tuple(densities),
@@ -605,6 +606,7 @@ class StokesOperator:
         :arg ambient_dim: dimension of the ambient space.
         :arg side: :math:`+1` for exterior or :math:`-1` for interior.
         """
+        from pytential.symbolic.elasticity import StressletWrapperYoshida
 
         if side not in [+1, -1]:
             raise ValueError(f"invalid evaluation side: {side}")
@@ -615,7 +617,11 @@ class StokesOperator:
         self.nu = nu_sym
 
         if method == "laplace":
-            self.stresslet = StressletWrapperTornberg(dim=self.ambient_dim,
+            if nu_sym == 0.5:
+                self.stresslet = StressletWrapperTornberg(dim=self.ambient_dim,
+                    mu_sym=mu_sym, nu_sym=nu_sym)
+            else:
+                self.stresslet = StressletWrapperYoshida(dim=self.ambient_dim,
                     mu_sym=mu_sym, nu_sym=nu_sym)
             self.stokeslet = StokesletWrapperTornberg(dim=self.ambient_dim,
                     mu_sym=mu_sym, nu_sym=nu_sym)

@@ -29,11 +29,11 @@ from sumpy.kernel import (LineOfCompressionKernel,
     LaplaceKernel)
 from pymbolic import var
 from pytential.symbolic.stokes import (StokesletWrapperTornberg,
-    StokesletWrapperBase, HebekerExteriorStokesOperator)
+    StokesletWrapperBase, StokesOperator)
 from pytential.symbolic.primitives import NodeCoordinateComponent
 
 
-class KelvinOperator(HebekerExteriorStokesOperator):
+class KelvinOperator(StokesOperator):
     """Representation for free space Green's function for elasticity commonly
     known as the Kelvin solution [1] given by Lord Kelvin.
 
@@ -45,25 +45,27 @@ class KelvinOperator(HebekerExteriorStokesOperator):
     .. automethod:: operator
     """
 
-    def __init__(self, method="native", mu_sym=var("mu"), nu_sym=0.5):
+    def __init__(self, method="laplace", mu_sym=var("mu"), nu_sym=0.5):
         if nu_sym == 0.5:
             raise ValueError("poisson's ratio cannot be 0.5")
 
-        super().__init__(eta=0, method="biharmonic", mu_sym=mu_sym, nu_sym=nu_sym)
-        if method == "laplace":
-            self.stresslet = StressletWrapperYoshida(dim=3,
-                    mu_sym=mu_sym, nu_sym=nu_sym)
-            self.stokeslet = StokesletWrapperTornberg(dim=3,
-                    mu_sym=mu_sym, nu_sym=nu_sym)
-            self.base_kernel = None
-        elif method != "biharmonic":
-            raise ValueError(f"invalid method: {method}."
+        if method not in ["laplace", "biharmonic"]:
+            raise ValueError(f"invalid method: {method}. "
                     "Needs to be one of laplace or biharmonic")
+        super().__init__(ambient_dim=3, side=+1, method=method,
+                mu_sym=mu_sym, nu_sym=nu_sym)
+        self.laplace_kernel = LaplaceKernel(3)
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         return merge_int_g_exprs(self.stresslet.apply(sigma, normal,
             qbx_forced_limit=qbx_forced_limit),
             base_kernel=self.base_kernel)
+
+    def get_density_var(self, name="sigma"):
+        """
+        :returns: a symbolic vector corresponding to the density.
+        """
+        return sym.make_sym_vector(name, 3)
 
 
 class MindlinOperator:
@@ -331,7 +333,7 @@ class StressletWrapperYoshida(StokesletWrapperBase):
                     source_kernels=tuple(source_kernels),
                     densities=tuple(densities),
                     qbx_forced_limit=qbx_forced_limit)
-                sym_expr[i] += P(i, j, int_g)
+                sym_expr[i] += P(i, k, int_g)
 
             source_kernels = [None]*4
             densities = [0]*4
