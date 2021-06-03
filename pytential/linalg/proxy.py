@@ -30,7 +30,7 @@ from arraycontext import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 
 from pytools.obj_array import make_obj_array
-from pytools import memoize_method
+from pytools import memoize_in
 from sumpy.tools import BlockIndexRanges
 
 import loopy as lp
@@ -227,6 +227,57 @@ class BlockProxyPoints:
                 radii=to_numpy(self.radii, actx))
 
 
+def make_compute_block_centers_knl(
+        actx: PyOpenCLArrayContext, ndim: int, norm_type: str):
+    @memoize_in(actx, (make_compute_block_centers_knl, ndim, norm_type))
+    def prg():
+        if norm_type == "l2":
+            insns = """
+            proxy_center[idim, irange] = 1.0 / npoints \
+                    * simul_reduce(sum, i, sources[idim, srcindices[i + ioffset]])
+            """
+        elif norm_type == "linf":
+            insns = """
+            <> bbox_max = \
+                    simul_reduce(max, i, sources[idim, srcindices[i + ioffset]])
+            <> bbox_min = \
+                    simul_reduce(min, i, sources[idim, srcindices[i + ioffset]])
+
+            proxy_center[idim, irange] = (bbox_max + bbox_min) / 2.0
+            """
+        else:
+            raise ValueError(f"unknown norm type: '{norm_type}'")
+
+        knl = lp.make_kernel([
+            "{[irange]: 0 <= irange < nranges}",
+            "{[i]: 0 <= i < npoints}",
+            "{[idim]: 0 <= idim < ndim}"
+            ],
+            """
+            <> ioffset = srcranges[irange]
+            <> npoints = srcranges[irange + 1] - srcranges[irange]
+
+            %(insns)s
+            """ % dict(insns=insns), [
+                lp.GlobalArg("sources", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.ValueArg("nsources", np.int64),
+                ...
+                ],
+            name="compute_block_centers_knl",
+            assumptions="ndim>=1 and nranges>=1",
+            fixed_parameters=dict(ndim=ndim),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            )
+
+        knl = lp.tag_inames(knl, "idim*:unr")
+        knl = lp.split_iname(knl, "irange", 64, outer_tag="g.0")
+
+        return knl
+
+    return prg()
+
+
 class ProxyGeneratorBase:
     r"""
     .. attribute:: nproxy
@@ -275,88 +326,11 @@ class ProxyGeneratorBase:
     def nproxy(self):
         return self.ref_points.shape[1]
 
-    def _proxy_center_insns(self):
-        if self.norm_type == "l2":
-            return """
-            proxy_center[idim, irange] = 1.0 / npoints \
-                    * simul_reduce(sum, i, sources[idim, srcindices[i + ioffset]])
-            """
-        elif self.norm_type == "linf":
-            return """
-            <> bbox_max = \
-                    simul_reduce(max, i, sources[idim, srcindices[i + ioffset]])
-            <> bbox_min = \
-                    simul_reduce(min, i, sources[idim, srcindices[i + ioffset]])
+    def get_centers_knl(self, actx):
+        return make_compute_block_centers_knl(actx, self.ambient_dim, self.norm_type)
 
-            proxy_center[idim, irange] = (bbox_max + bbox_min) / 2.0
-            """
-        else:
-            raise ValueError(f"unknown norm type: '{self.norm_type}'")
-
-    def _proxy_radius_isns(self):
+    def get_radii_knl(self, actx):
         raise NotImplementedError
-
-    def _extra_kernel_arguments(self):
-        raise NotImplementedError
-
-    def get_kernel(self):
-        knl = lp.make_kernel([
-            "{[irange]: 0 <= irange < nranges}",
-            "{[i, j]: 0 <= i, j < npoints}",
-            "{[idim]: 0 <= idim < ndim}"
-            ],
-            """
-            for irange
-                <> ioffset = srcranges[irange]
-                <> npoints = srcranges[irange + 1] - srcranges[irange]
-
-                for idim
-                    %(centers)s
-                end
-
-                ... gbarrier {dep=center}
-                %(radius)s
-            end
-            """ % dict(
-                centers=self._proxy_center_insns(),
-                radius=self._proxy_radius_insns(),
-                ), self._extra_kernel_arguments() + [
-                    lp.GlobalArg("sources", None,
-                        shape=(self.ambient_dim, "nsources"), dim_tags="sep,C"),
-                    lp.ValueArg("nsources", np.int64),
-                    ...
-                    ],
-            name="find_proxy_centers_and_radii_knl",
-            assumptions="ndim>=1 and nranges>=1",
-            fixed_parameters=dict(ndim=self.ambient_dim),
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
-
-        knl = lp.tag_inames(knl, "idim*:unr")
-        return knl
-
-    @memoize_method
-    def get_optimized_kernel(self):
-        knl = self.get_kernel()
-        knl = lp.split_iname(knl, "irange", 128, outer_tag="g.0")
-
-        return knl
-
-    def _get_proxy_centers_and_radii(self, actx, source_dd, indices, **kwargs):
-        from pytential import sym
-        source_dd = sym.as_dofdesc(source_dd)
-        discr = self.places.get_discretization(
-                source_dd.geometry, source_dd.discr_stage)
-        knl = self.get_optimized_kernel()
-
-        from arraycontext import thaw
-        from meshmode.dof_array import flatten
-        _, (centers, radii,) = knl(actx.queue,
-                sources=flatten(thaw(discr.nodes(), actx)),
-                srcindices=indices.indices,
-                srcranges=indices.ranges,
-                **kwargs)
-
-        return centers, radii
 
     def __call__(self,
             actx: PyOpenCLArrayContext,
@@ -371,9 +345,31 @@ class ProxyGeneratorBase:
         """
         from pytential import sym
         source_dd = sym.as_dofdesc(source_dd)
+        discr = self.places.get_discretization(
+                source_dd.geometry, source_dd.discr_stage)
 
-        centers_dev, radii_dev = self._get_proxy_centers_and_radii(
-                actx, source_dd, indices, **kwargs)
+        # {{{ get proxy centers and radii
+
+        from arraycontext import thaw
+        from meshmode.dof_array import flatten
+        sources = flatten(thaw(discr.nodes(), actx))
+
+        knl = self.get_centers_knl(actx)
+        _, (centers_dev,) = knl(actx.queue,
+                sources=sources,
+                srcindices=indices.indices,
+                srcranges=indices.ranges)
+
+        knl = self.get_radii_knl(actx)
+        _, (radii_dev,) = knl(actx.queue,
+                sources=sources,
+                srcindices=indices.indices,
+                srcranges=indices.ranges,
+                radius_factor=self.radius_factor,
+                proxy_centers=centers_dev,
+                **kwargs)
+
+        # }}}
 
         # {{{ build proxy points for each block
 
@@ -406,59 +402,119 @@ class ProxyGeneratorBase:
                 )
 
 
+def make_compute_block_radii_knl(actx: PyOpenCLArrayContext, ndim: int):
+    @memoize_in(actx, (make_compute_block_radii_knl, ndim))
+    def prg():
+        knl = lp.make_kernel([
+            "{[irange]: 0 <= irange < nranges}",
+            "{[i]: 0 <= i < npoints}",
+            "{[idim]: 0 <= idim < ndim}"
+            ],
+            """
+            <> ioffset = srcranges[irange]
+            <> npoints = srcranges[irange + 1] - srcranges[irange]
+            <> rblk = reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                    (proxy_centers[idim, irange]
+                    - sources[idim, srcindices[i + ioffset]]) ** 2)
+                    ))
+
+            proxy_radius[irange] = radius_factor * rblk
+            """, [
+                lp.GlobalArg("sources", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.ValueArg("nsources", np.int64),
+                lp.ValueArg("radius_factor", np.float64),
+                ...
+                ],
+            name="compute_block_radii_knl",
+            assumptions="ndim>=1 and nranges>=1",
+            fixed_parameters=dict(ndim=ndim),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            )
+
+        knl = lp.tag_inames(knl, "idim*:unr")
+        knl = lp.split_iname(knl, "irange", 64, outer_tag="g.0")
+
+        return knl
+
+    return prg()
+
+
 class ProxyGenerator(ProxyGeneratorBase):
     """A proxy point generator that only considers the points in the current
     block when determining the radius of the proxy ball.
     """
-    def _proxy_radius_insns(self):
-        return """
-        <> rblk = reduce(max, j, sqrt(simul_reduce(sum, idim, \
-                (proxy_center[idim, irange]
-                - sources[idim, srcindices[j + ioffset]]) ** 2)
-                  )) {dup=idim}
+    def get_radii_knl(self, actx):
+        return make_compute_block_radii_knl(actx, self.ambient_dim)
 
-        proxy_radius[irange] = %s * rblk
-        """ % self.radius_factor
 
-    def _extra_kernel_arguments(self):
-        return []
+def make_compute_block_qbx_radii_knl(actx: PyOpenCLArrayContext, ndim: int):
+    @memoize_in(actx, (make_compute_block_qbx_radii_knl, ndim))
+    def prg():
+        knl = lp.make_kernel([
+            "{[irange]: 0 <= irange < nranges}",
+            "{[i]: 0 <= i < npoints}",
+            "{[idim]: 0 <= idim < ndim}"
+            ],
+            """
+            <> ioffset = srcranges[irange]
+            <> npoints = srcranges[irange + 1] - srcranges[irange]
+            <> rblk = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                    (proxy_centers[idim, irange] -
+                     sources[idim, srcindices[i + ioffset]]) ** 2))) \
+                    {dup=idim}
+            <> rqbx_int = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                    (proxy_centers[idim, irange] -
+                     center_int[idim, srcindices[i + ioffset]]) ** 2)) + \
+                     expansion_radii[srcindices[i + ioffset]]) \
+                     {dup=idim}
+            <> rqbx_ext = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                    (proxy_centers[idim, irange] -
+                     center_ext[idim, srcindices[i + ioffset]]) ** 2)) + \
+                     expansion_radii[srcindices[i + ioffset]]) \
+                     {dup=idim}
+            <> rqbx = rqbx_int if rqbx_ext < rqbx_int else rqbx_ext
+
+            proxy_radius[irange] = radius_factor * rblk
+            """, [
+                lp.GlobalArg("sources", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.GlobalArg("center_int", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.GlobalArg("center_ext", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.ValueArg("nsources", np.int64),
+                lp.ValueArg("radius_factor", np.float64),
+                ...
+                ],
+            name="compute_block_qbx_radii_knl",
+            assumptions="ndim>=1 and nranges>=1",
+            fixed_parameters=dict(ndim=ndim),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            )
+
+        knl = lp.tag_inames(knl, "idim*:unr")
+        knl = lp.split_iname(knl, "irange", 64, outer_tag="g.0")
+
+        return knl
+
+    return prg()
 
 
 class QBXProxyGenerator(ProxyGeneratorBase):
     """A proxy point generator that also considers the QBX expansion
     when determining the radius of the proxy ball.
     """
+    def get_radii_knl(self, actx):
+        return make_compute_block_qbx_radii_knl(actx, self.ambient_dim)
 
-    def _proxy_radius_insns(self):
-        return """
-        <> rblk = simul_reduce(max, j, sqrt(simul_reduce(sum, idim, \
-                (proxy_center[idim, irange] -
-                 sources[idim, srcindices[j + ioffset]]) ** 2))) \
-                {dup=idim}
-        <> rqbx_int = simul_reduce(max, j, sqrt(simul_reduce(sum, idim, \
-                (proxy_center[idim, irange] -
-                 center_int[idim, srcindices[j + ioffset]]) ** 2)) + \
-                 expansion_radii[srcindices[j + ioffset]]) \
-                 {dup=idim}
-        <> rqbx_ext = simul_reduce(max, j, sqrt(simul_reduce(sum, idim, \
-                (proxy_center[idim, irange] -
-                 center_ext[idim, srcindices[j + ioffset]]) ** 2)) + \
-                 expansion_radii[srcindices[j + ioffset]]) \
-                 {dup=idim}
-        <> rqbx = rqbx_int if rqbx_ext < rqbx_int else rqbx_ext
+    def __call__(self,
+            actx: PyOpenCLArrayContext,
+            source_dd,
+            indices: BlockIndexRanges, **kwargs) -> BlockProxyPoints:
+        from pytential import sym
+        source_dd = sym.as_dofdesc(source_dd)
 
-        proxy_radius[irange] = %s * rqbx
-        """ % self.radius_factor
-
-    def _extra_kernel_arguments(self):
-        return [
-                lp.GlobalArg("center_int", None,
-                    shape=(self.ambient_dim, "nsources"), dim_tags="sep,C"),
-                lp.GlobalArg("center_ext", None,
-                    shape=(self.ambient_dim, "nsources"), dim_tags="sep,C"),
-                ]
-
-    def _get_proxy_centers_and_radii(self, actx, source_dd, indices, **kwargs):
         from pytential import bind, sym
         radii = bind(self.places, sym.expansion_radii(
             self.ambient_dim, dofdesc=source_dd))(actx)
@@ -468,12 +524,11 @@ class QBXProxyGenerator(ProxyGeneratorBase):
             self.ambient_dim, +1, dofdesc=source_dd))(actx)
 
         from meshmode.dof_array import flatten
-        return super()._get_proxy_centers_and_radii(
-                actx, source_dd, indices,
+        return super().__call__(actx, source_dd, indices,
                 expansion_radii=flatten(radii),
                 center_int=flatten(center_int),
                 center_ext=flatten(center_ext),
-                )
+                **kwargs)
 
 # }}}
 
