@@ -314,6 +314,7 @@ class ProxyGeneratorBase:
                     %(centers)s
                 end
 
+                ... gbarrier {dep=center}
                 %(radius)s
             end
             """ % dict(
@@ -341,7 +342,21 @@ class ProxyGeneratorBase:
         return knl
 
     def _get_proxy_centers_and_radii(self, actx, source_dd, indices, **kwargs):
-        raise NotImplementedError
+        from pytential import sym
+        source_dd = sym.as_dofdesc(source_dd)
+        discr = self.places.get_discretization(
+                source_dd.geometry, source_dd.discr_stage)
+        knl = self.get_optimized_kernel()
+
+        from arraycontext import thaw
+        from meshmode.dof_array import flatten
+        _, (centers, radii,) = knl(actx.queue,
+                sources=flatten(thaw(discr.nodes(), actx)),
+                srcindices=indices.indices,
+                srcranges=indices.ranges,
+                **kwargs)
+
+        return centers, radii
 
     def __call__(self,
             actx: PyOpenCLArrayContext,
@@ -354,6 +369,8 @@ class ProxyGeneratorBase:
             for the discretization on which the proxy points are to be
             generated.
         """
+        from pytential import sym
+        source_dd = sym.as_dofdesc(source_dd)
 
         centers_dev, radii_dev = self._get_proxy_centers_and_radii(
                 actx, source_dd, indices, **kwargs)
@@ -406,23 +423,6 @@ class ProxyGenerator(ProxyGeneratorBase):
     def _extra_kernel_arguments(self):
         return []
 
-    def _get_proxy_centers_and_radii(self, actx, source_dd, indices, **kwargs):
-        from pytential import sym
-        source_dd = sym.as_dofdesc(source_dd)
-        discr = self.places.get_discretization(
-                source_dd.geometry, source_dd.discr_stage)
-        knl = self.get_kernel()
-
-        from arraycontext import thaw
-        from meshmode.dof_array import flatten
-        _, (centers, radii,) = knl(actx.queue,
-                sources=flatten(thaw(discr.nodes(), actx)),
-                srcindices=indices.indices,
-                srcranges=indices.ranges,
-                **kwargs)
-
-        return centers, radii
-
 
 class QBXProxyGenerator(ProxyGeneratorBase):
     """A proxy point generator that also considers the QBX expansion
@@ -460,13 +460,6 @@ class QBXProxyGenerator(ProxyGeneratorBase):
 
     def _get_proxy_centers_and_radii(self, actx, source_dd, indices, **kwargs):
         from pytential import bind, sym
-        source_dd = sym.as_dofdesc(source_dd)
-        discr = self.places.get_discretization(
-                source_dd.geometry, source_dd.discr_stage)
-
-        knl = self.get_kernel()
-
-        from meshmode.dof_array import flatten
         radii = bind(self.places, sym.expansion_radii(
             self.ambient_dim, dofdesc=source_dd))(actx)
         center_int = bind(self.places, sym.expansion_centers(
@@ -474,17 +467,13 @@ class QBXProxyGenerator(ProxyGeneratorBase):
         center_ext = bind(self.places, sym.expansion_centers(
             self.ambient_dim, +1, dofdesc=source_dd))(actx)
 
-        from arraycontext import thaw
-        _, (centers, radii,) = knl(actx.queue,
-                sources=flatten(thaw(discr.nodes(), actx)),
-                srcindices=indices.indices,
-                srcranges=indices.ranges,
+        from meshmode.dof_array import flatten
+        return super()._get_proxy_centers_and_radii(
+                actx, source_dd, indices,
                 expansion_radii=flatten(radii),
                 center_int=flatten(center_int),
                 center_ext=flatten(center_ext),
-                **kwargs)
-
-        return centers, radii
+                )
 
 # }}}
 
