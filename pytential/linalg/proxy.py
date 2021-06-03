@@ -40,6 +40,7 @@ __doc__ = """
 Proxy Point Generation
 ~~~~~~~~~~~~~~~~~~~~~~
 
+.. autoclass:: BlockProxyPoints
 .. autoclass:: ProxyGeneratorBase
 .. autoclass:: ProxyGenerator
 .. autoclass:: QBXProxyGenerator
@@ -442,7 +443,10 @@ def make_compute_block_radii_knl(actx: PyOpenCLArrayContext, ndim: int):
 class ProxyGenerator(ProxyGeneratorBase):
     """A proxy point generator that only considers the points in the current
     block when determining the radius of the proxy ball.
+
+    Inherits from :class:`ProxyGeneratorBase`.
     """
+
     def get_radii_knl(self, actx):
         return make_compute_block_radii_knl(actx, self.ambient_dim)
 
@@ -503,7 +507,10 @@ def make_compute_block_qbx_radii_knl(actx: PyOpenCLArrayContext, ndim: int):
 class QBXProxyGenerator(ProxyGeneratorBase):
     """A proxy point generator that also considers the QBX expansion
     when determining the radius of the proxy ball.
+
+    Inherits from :class:`ProxyGeneratorBase`.
     """
+
     def get_radii_knl(self, actx):
         return make_compute_block_qbx_radii_knl(actx, self.ambient_dim)
 
