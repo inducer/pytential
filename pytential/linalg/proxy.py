@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -168,59 +169,105 @@ def _generate_unit_sphere(ambient_dim, approx_npoints):
     return points
 
 
+@dataclass(frozen=True)
+class BlockProxyPoints:
+    """
+    .. attribute:: srcindices
+
+        A :class:`~sumpy.tools.BlockIndexRanges` describing which block of
+        points each proxy ball was created from.
+
+    .. attribute:: indices
+
+        A :class:`~sumpy.tools.BlockIndexRanges` describing which proxies
+        belong to which block.
+
+    .. attribute:: points
+
+        A concatenated list of all the proxy points. Can be sliced into
+        using :attr:`indices` (shape ``(dim, nproxies * nblocks)``).
+
+    .. attribute:: centers
+
+        A list of all the proxy ball centers (shape ``(dim, nblocks)``).
+
+    .. attribute:: radii
+
+        A list of all the proxy ball radii (shape ``(nblocks,)``).
+
+    .. attribute:: nblocks
+    .. attribute:: nproxy_per_block
+    .. automethod:: to_numpy
+    """
+
+    srcindices: BlockIndexRanges
+    indices: BlockIndexRanges
+    points: np.ndarray
+    centers: np.ndarray
+    radii: np.ndarray
+
+    @property
+    def nblocks(self):
+        return self.srcindices.nblocks
+
+    @property
+    def nproxy_per_block(self):
+        return self.points[0].shape[0] // self.nblocks
+
+    def to_numpy(self, actx):
+        from arraycontext import to_numpy
+        from dataclasses import replace
+        return replace(self,
+                srcindices=self.srcindices.get(actx.queue),
+                indices=self.indices.get(actx.queue),
+                points=to_numpy(actx, self.points),
+                centers=to_numpy(actx, self.centers),
+                radii=to_numpy(actx, self.radii))
+
+
 class ProxyGenerator:
     r"""
-    .. attribute:: places
-
-        A :class:`~pytential.GeometryCollection`
-        containing the geometry on which the proxy balls are generated.
-
     .. attribute:: nproxy
 
         Number of proxy points in a single proxy ball.
 
     .. attribute:: radius_factor
 
-        A factor used to compute the proxy ball radius. The radius
-        is computed in the :math:`\ell^2` norm, resulting in a circle or
-        sphere of proxy points. For QBX, we have two radii of interest
-        for a set of points: the radius :math:`r_{block}` of the
-        smallest ball containing all the points and the radius
-        :math:`r_{qbx}` of the smallest ball containing all the QBX
-        expansion balls in the block. If the factor :math:`\theta \in
-        [0, 1]`, then the radius of the proxy ball is
+        Factor multiplying the block radius (i.e radius of the bounding box)
+        to get the proxy ball radius.
 
-        .. math::
-
-            r = (1 - \theta) r_{block} + \theta r_{qbx}.
-
-        If the factor :math:`\theta > 1`, the the radius is simply
-
-        .. math::
-
-            r = \theta r_{qbx}.
-
-    .. attribute:: ref_points
-
-        Reference points on a unit ball. Can be used to construct the points
-        of a proxy ball :math:`i` by translating them to ``center[i]`` and
-        scaling by ``radii[i]``, as obtained by :meth:`__call__`.
-
+    .. automethod:: __init__
     .. automethod:: __call__
     """
 
-    def __init__(self, places, approx_nproxy=None, radius_factor=None):
+    def __init__(self, places,
+            approx_nproxy: Optional[int] = None,
+            radius_factor: Optional[float] = None,
+            norm_type: str = "linf"):
+        """
+        :param approx_nproxy: desired number of proxy points. In higher
+            dimensions, it is not always possible to construct a proxy ball
+            with exactly this number of proxy points. The exact number of
+            proxy points can be retrieved with :attr:`nproxy`.
+        :param radius_factor: Factor multiplying the block radius (i.e radius
+            of the bounding box) to get the proxy ball radius.
+        :param norm_type: type of the norm used to compute the centers of
+            each block. Supported values are ``"linf"`` and ``"l2"``.
+        """
         from pytential import GeometryCollection
         if not isinstance(places, GeometryCollection):
             places = GeometryCollection(places)
 
         self.places = places
-        self.ambient_dim = places.ambient_dim
         self.radius_factor = 1.1 if radius_factor is None else radius_factor
+        self.norm_type = norm_type
 
         approx_nproxy = 32 if approx_nproxy is None else approx_nproxy
-        self.ref_points = \
-                _generate_unit_sphere(self.ambient_dim, approx_nproxy)
+        self.ref_points = _generate_unit_sphere(self.ambient_dim, approx_nproxy)
+
+    @property
+    def ambient_dim(self):
+        return self.places.ambient_dim
 
     @property
     def nproxy(self):
