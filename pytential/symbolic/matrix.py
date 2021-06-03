@@ -398,9 +398,8 @@ class MatrixBuilder(MatrixBuilderBase):
                 source_discr.ambient_dim,
                 dofdesc=expr.source))(actx)
             mat[:, :] *= flatten_to_numpy(actx, waa)
-            mat = mat.dot(rec_density)
 
-            result += mat
+            result += mat @ rec_density
 
         return result
 
@@ -411,12 +410,14 @@ class MatrixBuilder(MatrixBuilderBase):
 
 class P2PMatrixBuilder(MatrixBuilderBase):
     def __init__(self, actx, dep_expr, other_dep_exprs,
-            dep_source, dep_discr, places, context, exclude_self=True):
+            dep_source, dep_discr, places, context,
+            weighted=False, exclude_self=True):
         super().__init__(actx,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, context)
 
         self.exclude_self = exclude_self
+        self.weighted = weighted
 
     def map_int_g(self, expr):
         source_discr = self.places.get_discretization(
@@ -458,8 +459,18 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                     targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
                     sources=flatten(thaw(source_discr.nodes(), actx), strict=False),
                     **kernel_args)
+            mat = actx.to_numpy(mat)
 
-            result += actx.to_numpy(mat).dot(rec_density)
+            from meshmode.discretization import Discretization
+            if self.weighted and isinstance(source_discr, Discretization):
+                from pytential import bind, sym
+                waa = bind(self.places, sym.weights_and_area_elements(
+                    source_discr.ambient_dim,
+                    dofdesc=expr.source))(actx)
+
+                mat[:, :] *= flatten_to_numpy(actx, waa)
+
+            result += mat @ rec_density
 
         return result
 
@@ -493,7 +504,6 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             raise NotImplementedError
 
         result = 0
-
         for kernel, density in zip(expr.source_kernels, expr.densities):
             rec_density = self._blk_mapper.rec(density)
             if is_zero(rec_density):
@@ -536,18 +546,21 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             waa = flatten(waa)
 
             mat *= waa[self.index_set.linear_col_indices]
-            result += rec_density * actx.to_numpy(mat)
+            result += actx.to_numpy(mat) * rec_density
 
         return result
 
 
 class FarFieldBlockBuilder(MatrixBlockBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, index_set, context, exclude_self=False):
+            places, index_set, context,
+            weighted=False, exclude_self=False):
         super().__init__(queue,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, index_set, context)
+
         self.exclude_self = exclude_self
+        self.weighted = weighted
 
     def get_dep_variable(self):
         queue = self.array_context.queue
@@ -600,7 +613,17 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                     index_set=self.index_set,
                     **kernel_args)
 
-            result += rec_density * actx.to_numpy(mat)
+            from meshmode.discretization import Discretization
+            if self.weighted and isinstance(source_discr, Discretization):
+                from pytential import bind, sym
+                waa = bind(self.places, sym.weights_and_area_elements(
+                    source_discr.ambient_dim,
+                    dofdesc=expr.source))(actx)
+                waa = flatten(waa)
+
+                mat *= waa[self.index_set.linear_col_indices]
+
+            result += actx.to_numpy(mat) * rec_density
 
         return result
 
