@@ -116,8 +116,8 @@ def partition_by_nodes(
         nblocks = max(discr.ndofs // max_particles_in_box, 2)
         indices = np.arange(0, discr.ndofs, dtype=np.int64)
         ranges = np.linspace(0, discr.ndofs, nblocks + 1, dtype=np.int64)
+        assert ranges[-1] == discr.ndofs
 
-    assert ranges[-1] == discr.ndofs
     return make_block_index(actx, indices, ranges=ranges)
 
 # }}}
@@ -222,9 +222,9 @@ class BlockProxyPoints:
         return replace(self,
                 srcindices=self.srcindices.get(actx.queue),
                 indices=self.indices.get(actx.queue),
-                points=to_numpy(actx, self.points),
-                centers=to_numpy(actx, self.centers),
-                radii=to_numpy(actx, self.radii))
+                points=to_numpy(self.points, actx),
+                centers=to_numpy(self.centers, actx),
+                radii=to_numpy(self.radii, actx))
 
 
 class ProxyGeneratorBase:
@@ -278,7 +278,7 @@ class ProxyGeneratorBase:
     def _proxy_center_insns(self):
         if self.norm_type == "l2":
             return """
-            pxycenter = 1.0 / npoints \
+            proxy_center[idim, irange] = 1.0 / npoints \
                     * simul_reduce(sum, i, sources[idim, srcindices[i + ioffset]])
             """
         elif self.norm_type == "linf":
@@ -288,7 +288,7 @@ class ProxyGeneratorBase:
             <> bbox_min = \
                     simul_reduce(min, i, sources[idim, srcindices[i + ioffset]])
 
-            pxycenter = (bbox_max + bbox_min) / 2.0
+            proxy_center[idim, irange] = (bbox_max + bbox_min) / 2.0
             """
         else:
             raise ValueError(f"unknown norm type: '{self.norm_type}'")
@@ -312,11 +312,9 @@ class ProxyGeneratorBase:
 
                 for idim
                     %(centers)s
-                    proxy_center[idim, irange] = pycenter
                 end
 
                 %(radius)s
-                proxy_radius[irange] = pxyradius
             end
             """ % dict(
                 centers=self._proxy_center_insns(),
@@ -385,9 +383,9 @@ class ProxyGeneratorBase:
         return BlockProxyPoints(
                 srcindices=indices,
                 indices=make_block_index(actx, pxyindices, pxyranges),
-                points=freeze(from_numpy(proxies)),
-                centers=freeze(centers_dev),
-                radii=actx.freeze(radii_dev),
+                points=freeze(from_numpy(proxies, actx), actx),
+                centers=freeze(centers_dev, actx),
+                radii=freeze(radii_dev, actx),
                 )
 
 
@@ -401,7 +399,8 @@ class ProxyGenerator(ProxyGeneratorBase):
                 (proxy_center[idim, irange]
                 - sources[idim, srcindices[j + ioffset]]) ** 2)
                   )) {dup=idim}
-        <> pxyradius = %s * rblk
+
+        proxy_radius[irange] = %s * rblk
         """ % self.radius_factor
 
     def _extra_kernel_arguments(self):
@@ -412,7 +411,7 @@ class ProxyGenerator(ProxyGeneratorBase):
         source_dd = sym.as_dofdesc(source_dd)
         discr = self.places.get_discretization(
                 source_dd.geometry, source_dd.discr_stage)
-        knl = self.get_optimized_kernel()
+        knl = self.get_kernel()
 
         from arraycontext import thaw
         from meshmode.dof_array import flatten
@@ -448,8 +447,8 @@ class QBXProxyGenerator(ProxyGeneratorBase):
                  {dup=idim}
         <> rqbx = rqbx_int if rqbx_ext < rqbx_int else rqbx_ext
 
-        <> pxyradius = {self.radius_factor} * rqbx
-        """
+        proxy_radius[irange] = %s * rqbx
+        """ % self.radius_factor
 
     def _extra_kernel_arguments(self):
         return [
@@ -492,19 +491,19 @@ class QBXProxyGenerator(ProxyGeneratorBase):
 
 # {{{ gather_block_neighbor_points
 
-def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
-        max_particles_in_box=None):
+def gather_block_neighbor_points(
+        actx: PyOpenCLArrayContext,
+        discr: Discretization,
+        indices: BlockIndexRanges,
+        pxycenters: np.ndarray, pxyradii: np.ndarray,
+        max_particles_in_box: Optional[int] = None) -> BlockIndexRanges:
     """Generate a set of neighboring points for each range of points in
     *discr*. Neighboring points of a range :math:`i` are defined
     as all the points inside the proxy ball :math:`i` that do not also
     belong to the range itself.
 
-    :arg discr: a :class:`meshmode.discretization.Discretization`.
-    :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
     :arg pxycenters: an array containing the center of each proxy ball.
     :arg pxyradii: an array containing the radius of each proxy ball.
-
-    :return: a :class:`sumpy.tools.BlockIndexRanges`.
     """
 
     if max_particles_in_box is None:
@@ -513,18 +512,13 @@ def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
 
     indices = indices.get(actx.queue)
 
-    # NOTE: this is constructed for multiple reasons:
-    #   * TreeBuilder takes object arrays
-    #   * `srcindices` can be a small subset of nodes, so this will save
-    #   some work
-    #   * `srcindices` may reorder the array returned by nodes(), so this
-    #   makes sure that we have the same order in tree.user_source_ids
-    #   and friends
+    # FIXME: going to_numpy -> from_numpy seems very inefficient here
     from meshmode.dof_array import flatten_to_numpy
     sources = flatten_to_numpy(actx, discr.nodes())
     sources = make_obj_array([
         actx.from_numpy(sources[idim][indices.indices])
-        for idim in range(discr.ambient_dim)])
+        for idim in range(discr.ambient_dim)
+        ])
 
     # construct tree
     from boxtree import TreeBuilder
@@ -540,11 +534,9 @@ def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
     tree = tree.get(actx.queue)
     query = query.get(actx.queue)
 
-    pxycenters = np.vstack([
-        actx.to_numpy(pxycenters[idim])
-        for idim in range(discr.ambient_dim)
-        ])
-    pxyradii = actx.to_numpy(pxyradii)
+    from arraycontext import to_numpy
+    pxycenters = to_numpy(pxycenters, actx)
+    pxyradii = to_numpy(pxyradii, actx)
 
     nbrindices = np.empty(indices.nblocks, dtype=object)
     for iproxy in range(indices.nblocks):

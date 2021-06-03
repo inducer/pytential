@@ -29,6 +29,7 @@ import pyopencl as cl
 
 from pytential import bind, sym
 from pytential import GeometryCollection
+from pytential.linalg.proxy import ProxyGenerator, QBXProxyGenerator
 
 from arraycontext import PyOpenCLArrayContext
 from meshmode.mesh.generation import ellipse
@@ -135,9 +136,13 @@ def test_partition_points(ctx_factory, tree_kind, case, visualize=False):
     # }}}
 
 
+@pytest.mark.parametrize("proxy_generator_cls", [
+    ProxyGenerator, QBXProxyGenerator,
+    ])
 @pytest.mark.parametrize("case", PROXY_TEST_CASES)
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
-def test_proxy_generator(ctx_factory, case, index_sparsity_factor, visualize=False):
+def test_proxy_generator(ctx_factory,
+        proxy_generator_cls, case, index_sparsity_factor, visualize=False):
     """Tests that the proxies generated are all at the correct radius from the
     points in the cluster, etc.
     """
@@ -157,21 +162,18 @@ def test_proxy_generator(ctx_factory, case, index_sparsity_factor, visualize=Fal
     density_discr = places.get_discretization(case.name)
     srcindices = case.get_block_indices(actx, density_discr, matrix_indices=False)
 
-    from pytential.linalg.proxy import ProxyGenerator
-    generator = ProxyGenerator(places)
-    proxies, pxyranges, pxycenters, pxyradii = \
-            generator(actx, places.auto_source, srcindices)
+    generator = proxy_generator_cls(places)
+    pxy = generator(actx, places.auto_source, srcindices).to_numpy(actx)
 
-    proxies = np.vstack([actx.to_numpy(p) for p in proxies])
-    pxyranges = actx.to_numpy(pxyranges)
-    pxycenters = np.vstack([actx.to_numpy(c) for c in pxycenters])
-    pxyradii = actx.to_numpy(pxyradii)
+    proxies = np.stack(pxy.points)
+    pxycenters = np.stack(pxy.centers)
+    pxyranges = pxy.indices.ranges
 
     for i in range(srcindices.nblocks):
         ipxy = np.s_[pxyranges[i]:pxyranges[i + 1]]
 
         r = la.norm(proxies[:, ipxy] - pxycenters[:, i].reshape(-1, 1), axis=0)
-        assert np.allclose(r - pxyradii[i], 0.0, atol=1.0e-14)
+        assert np.allclose(r - pxy.radii[i], 0.0, atol=1.0e-14)
 
     # }}}
 
@@ -234,7 +236,7 @@ def test_proxy_generator(ctx_factory, case, index_sparsity_factor, visualize=Fal
             # NOTE: this does not plot the actual proxy points
             for i in range(srcindices.nblocks):
                 mesh = affine_map(ref_mesh,
-                    A=(pxyradii[i] * np.eye(ambient_dim)),
+                    A=pxy.radii[i],
                     b=pxycenters[:, i].reshape(-1))
 
                 mesh = merge_disjoint_meshes([mesh, density_discr.mesh])
@@ -249,10 +251,13 @@ def test_proxy_generator(ctx_factory, case, index_sparsity_factor, visualize=Fal
     # }}}
 
 
+@pytest.mark.parametrize("proxy_generator_cls", [
+    ProxyGenerator, QBXProxyGenerator,
+    ])
 @pytest.mark.parametrize("case", PROXY_TEST_CASES)
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
 def test_interaction_points(ctx_factory,
-        case, index_sparsity_factor, visualize=False):
+        proxy_generator_cls, case, index_sparsity_factor, visualize=False):
     """Test that neighboring points (inside the proxy balls, but outside the
     current block/cluster) are actually inside.
     """
@@ -273,14 +278,13 @@ def test_interaction_points(ctx_factory,
     srcindices = case.get_block_indices(actx, density_discr, matrix_indices=False)
 
     # generate proxy points
-    from pytential.linalg.proxy import ProxyGenerator
-    generator = ProxyGenerator(places)
-    _, _, pxycenters, pxyradii = generator(actx, places.auto_source, srcindices)
+    generator = proxy_generator_cls(places)
+    pxy = generator(actx, places.auto_source, srcindices)
 
     # get neighboring points
     from pytential.linalg.proxy import gather_block_neighbor_points
     nbrindices = gather_block_neighbor_points(actx, density_discr,
-            srcindices, pxycenters, pxyradii)
+            srcindices, pxy.centers, pxy.radii)
 
     srcindices = srcindices.get(queue)
     nbrindices = nbrindices.get(queue)
