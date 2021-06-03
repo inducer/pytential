@@ -20,9 +20,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Optional
 
 import numpy as np
 import numpy.linalg as la
+
+from arraycontext import PyOpenCLArrayContext
+from meshmode.discretization import Discretization
 
 from pytools.obj_array import make_obj_array
 from pytools import memoize_method
@@ -45,17 +49,34 @@ Proxy Point Generation
 
 # {{{ point index partitioning
 
-def partition_by_nodes(actx, discr,
-        tree_kind="adaptive-level-restricted", max_nodes_in_box=None):
+def make_block_index(
+        actx: PyOpenCLArrayContext,
+        indices: np.ndarray,
+        ranges: Optional[np.ndarray] = None) -> BlockIndexRanges:
+    """Wrap a ``(indices, ranges)`` tuple into a ``BlockIndexRanges``.
+
+    :param ranges: if *None*, then *indices* is expected to be an object
+        array of indices, so that the ranges can be reconstructed.
+    """
+    if ranges is None:
+        ranges = np.cumsum([0] + [r.size for r in indices])
+        indices = np.hstack(indices)
+
+    return BlockIndexRanges(actx.context,
+            actx.freeze(actx.from_numpy(indices)),
+            actx.freeze(actx.from_numpy(ranges)))
+
+
+def partition_by_nodes(
+        actx: PyOpenCLArrayContext, discr: Discretization, *,
+        tree_kind: Optional[str] = "adaptive-level-restricted",
+        max_nodes_in_box: Optional[int] = None) -> BlockIndexRanges:
     """Generate equally sized ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
     of points, but will split elements across different ranges.
 
-    :arg discr: a :class:`meshmode.discretization.Discretization`.
     :arg tree_kind: if not *None*, it is passed to :class:`boxtree.TreeBuilder`.
     :arg max_nodes_in_box: passed to :class:`boxtree.TreeBuilder`.
-
-    :return: a :class:`sumpy.tools.BlockIndexRanges`.
     """
 
     if max_nodes_in_box is None:
@@ -76,30 +97,25 @@ def partition_by_nodes(actx, discr,
                 kind=tree_kind)
 
         tree = tree.get(actx.queue)
-        leaf_boxes, = (tree.box_flags
-                       & box_flags_enum.HAS_CHILDREN == 0).nonzero()
+        leaf_boxes, = (tree.box_flags & box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
         indices = np.empty(len(leaf_boxes), dtype=object)
+        ranges = None
+
         for i, ibox in enumerate(leaf_boxes):
             box_start = tree.box_source_starts[ibox]
             box_end = box_start + tree.box_source_counts_cumul[ibox]
             indices[i] = tree.user_source_ids[box_start:box_end]
-
-        ranges = actx.from_numpy(
-                np.cumsum([0] + [box.shape[0] for box in indices])
-                )
-        indices = actx.from_numpy(np.hstack(indices))
     else:
-        indices = actx.from_numpy(np.arange(0, discr.ndofs, dtype=np.int64))
-        ranges = actx.from_numpy(np.arange(
-            0,
-            discr.ndofs + 1,
-            max_nodes_in_box, dtype=np.int64))
+        if discr.ambient_dim != 2 and discr.dim == 1:
+            raise ValueError("only curves are supported for 'tree_kind=None'")
+
+        nblocks = max(discr.ndofs // max_nodes_in_box, 2)
+        indices = np.arange(0, discr.ndofs, dtype=np.int64)
+        ranges = np.linspace(0, discr.ndofs, nblocks + 1, dtype=np.int64)
 
     assert ranges[-1] == discr.ndofs
-
-    return BlockIndexRanges(actx.context,
-        actx.freeze(indices), actx.freeze(ranges))
+    return make_block_index(actx, indices, ranges=ranges)
 
 # }}}
 
