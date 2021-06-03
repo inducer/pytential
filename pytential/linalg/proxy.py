@@ -535,18 +535,12 @@ class QBXProxyGenerator(ProxyGeneratorBase):
 # {{{ gather_block_neighbor_points
 
 def gather_block_neighbor_points(
-        actx: PyOpenCLArrayContext,
-        discr: Discretization,
-        indices: BlockIndexRanges,
-        pxycenters: np.ndarray, pxyradii: np.ndarray,
+        actx: PyOpenCLArrayContext, discr: Discretization, pxy: BlockProxyPoints,
         max_particles_in_box: Optional[int] = None) -> BlockIndexRanges:
     """Generate a set of neighboring points for each range of points in
     *discr*. Neighboring points of a range :math:`i` are defined
     as all the points inside the proxy ball :math:`i` that do not also
     belong to the range itself.
-
-    :arg pxycenters: an array containing the center of each proxy ball.
-    :arg pxyradii: an array containing the radius of each proxy ball.
     """
 
     if max_particles_in_box is None:
@@ -582,7 +576,7 @@ def gather_block_neighbor_points(
     from meshmode.dof_array import flatten
     _, (sources,) = prg()(actx.queue,
             ary=flatten(thaw(discr.nodes(), actx)),
-            srcindices=indices.indices)
+            srcindices=pxy.srcindices.indices)
 
     # }}}
 
@@ -595,7 +589,7 @@ def gather_block_neighbor_points(
 
     from boxtree.area_query import AreaQueryBuilder
     builder = AreaQueryBuilder(actx.context)
-    query, _ = builder(actx.queue, tree, pxycenters, pxyradii)
+    query, _ = builder(actx.queue, tree, pxy.centers, pxy.radii)
 
     # find nodes inside each proxy ball
     tree = tree.get(actx.queue)
@@ -606,9 +600,9 @@ def gather_block_neighbor_points(
     # {{{ retrieve results
 
     from arraycontext import to_numpy
-    pxycenters = to_numpy(pxycenters, actx)
-    pxyradii = to_numpy(pxyradii, actx)
-    indices = indices.get(actx.queue)
+    pxycenters = to_numpy(pxy.centers, actx)
+    pxyradii = to_numpy(pxy.radii, actx)
+    indices = pxy.srcindices.get(actx.queue)
 
     nbrindices = np.empty(indices.nblocks, dtype=object)
     for iproxy in range(indices.nblocks):
@@ -637,11 +631,7 @@ def gather_block_neighbor_points(
 
     # }}}
 
-    nbrranges = actx.from_numpy(np.cumsum([0] + [n.shape[0] for n in nbrindices]))
-    nbrindices = actx.from_numpy(np.hstack(nbrindices))
-
-    return BlockIndexRanges(actx.context,
-            actx.freeze(nbrindices), actx.freeze(nbrranges))
+    return make_block_index(actx, indices=nbrindices)
 
 # }}}
 
