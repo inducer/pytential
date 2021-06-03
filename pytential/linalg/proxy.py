@@ -71,18 +71,18 @@ def make_block_index(
 def partition_by_nodes(
         actx: PyOpenCLArrayContext, discr: Discretization, *,
         tree_kind: Optional[str] = "adaptive-level-restricted",
-        max_nodes_in_box: Optional[int] = None) -> BlockIndexRanges:
+        max_particles_in_box: Optional[int] = None) -> BlockIndexRanges:
     """Generate equally sized ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
     of points, but will split elements across different ranges.
 
     :arg tree_kind: if not *None*, it is passed to :class:`boxtree.TreeBuilder`.
-    :arg max_nodes_in_box: passed to :class:`boxtree.TreeBuilder`.
+    :arg max_particles_in_box: passed to :class:`boxtree.TreeBuilder`.
     """
 
-    if max_nodes_in_box is None:
+    if max_particles_in_box is None:
         # FIXME: this is just an arbitrary value
-        max_nodes_in_box = 32
+        max_particles_in_box = 32
 
     if tree_kind is not None:
         from boxtree import box_flags_enum
@@ -94,7 +94,7 @@ def partition_by_nodes(
         from meshmode.dof_array import flatten
         tree, _ = builder(actx.queue,
                 flatten(thaw(discr.nodes(), actx)),
-                max_particles_in_box=max_nodes_in_box,
+                max_particles_in_box=max_particles_in_box,
                 kind=tree_kind)
 
         tree = tree.get(actx.queue)
@@ -111,7 +111,7 @@ def partition_by_nodes(
         if discr.ambient_dim != 2 and discr.dim == 1:
             raise ValueError("only curves are supported for 'tree_kind=None'")
 
-        nblocks = max(discr.ndofs // max_nodes_in_box, 2)
+        nblocks = max(discr.ndofs // max_particles_in_box, 2)
         indices = np.arange(0, discr.ndofs, dtype=np.int64)
         ranges = np.linspace(0, discr.ndofs, nblocks + 1, dtype=np.int64)
 
@@ -417,7 +417,7 @@ class ProxyGenerator:
 
 
 def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
-        max_nodes_in_box=None):
+        max_particles_in_box=None):
     """Generate a set of neighboring points for each range of points in
     *discr*. Neighboring points of a range :math:`i` are defined
     as all the points inside the proxy ball :math:`i` that do not also
@@ -431,9 +431,9 @@ def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
     :return: a :class:`sumpy.tools.BlockIndexRanges`.
     """
 
-    if max_nodes_in_box is None:
+    if max_particles_in_box is None:
         # FIXME: this is a fairly arbitrary value
-        max_nodes_in_box = 32
+        max_particles_in_box = 32
 
     indices = indices.get(actx.queue)
 
@@ -454,7 +454,7 @@ def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
     from boxtree import TreeBuilder
     builder = TreeBuilder(actx.context)
     tree, _ = builder(actx.queue, sources,
-            max_particles_in_box=max_nodes_in_box)
+            max_particles_in_box=max_particles_in_box)
 
     from boxtree.area_query import AreaQueryBuilder
     builder = AreaQueryBuilder(actx.context)
