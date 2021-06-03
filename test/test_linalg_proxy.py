@@ -45,6 +45,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
+# {{{ visualize proxy geometry
+
 def plot_proxy_geometry(
         actx, places, indices, pxy=None, nbrindices=None, with_qbx_centers=False,
         suffix=None):
@@ -165,6 +167,8 @@ def plot_proxy_geometry(
     else:
         raise ValueError
 
+# }}}
+
 
 PROXY_TEST_CASES = [
         extra.CurveTestCase(
@@ -181,6 +185,8 @@ PROXY_TEST_CASES = [
             resolutions=[0])
         ]
 
+
+# {{{ test_partition_points
 
 @pytest.mark.parametrize("tree_kind", ["adaptive", None])
 @pytest.mark.parametrize("case", PROXY_TEST_CASES)
@@ -218,6 +224,10 @@ def test_partition_points(ctx_factory, tree_kind, case, visualize=True):
     plot_proxy_geometry(actx, places, indices,
             suffix=f"{tree_kind}_{case.ambient_dim}d".lower())
 
+# }}}
+
+
+# {{{ test_proxy_generator
 
 @pytest.mark.parametrize("proxy_generator_cls", [
     ProxyGenerator, QBXProxyGenerator,
@@ -268,6 +278,10 @@ def test_proxy_generator(ctx_factory,
             suffix=f"generator_{index_sparsity_factor:.2f}",
             )
 
+# }}}
+
+
+# {{{ test_neighbor_points
 
 @pytest.mark.parametrize("proxy_generator_cls", [
     ProxyGenerator, QBXProxyGenerator,
@@ -321,6 +335,8 @@ def test_neighbor_points(ctx_factory,
             actx, places, srcindices, nbrindices=nbrindices,
             suffix=f"neighbor_{index_sparsity_factor:.2f}",
             )
+
+# }}}
 
 
 if __name__ == "__main__":
