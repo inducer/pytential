@@ -33,6 +33,10 @@ class MatrixTestCaseMixin:
     tree_kind = "adaptive-level-restricted"
     index_sparsity_factor = 1.0
 
+    # proxy
+    proxy_radius_factor = 1.1
+    proxy_approx_count = 32
+
     # operators
     op_type = "scalar"
 
