@@ -261,20 +261,6 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
 
     @property
     @memoize_method
-    def _mat_mapper(self):
-        # mat_mapper is used to compute any kernel arguments that needs to
-        # be computed on the full discretization, ignoring our index_set,
-        # e.g the normal in a double layer potential
-
-        return MatrixBuilderBase(self.array_context,
-                self.dep_expr,
-                self.other_dep_exprs,
-                self.dep_source,
-                self.dep_discr,
-                self.places, self.context)
-
-    @property
-    @memoize_method
     def _blk_mapper(self):
         # blk_mapper is used to recursively compute the density to
         # a layer potential operator to ensure there is no composition
@@ -449,7 +435,8 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                 raise NotImplementedError("layer potentials on non-variables")
 
             # NOTE: copied from pytential.symbolic.primitives.IntG
-            kernel_args = kernel.get_args() + kernel.get_source_args()
+            base_kernel = kernel.get_base_kernel()
+            kernel_args = base_kernel.get_args() + base_kernel.get_source_args()
             kernel_args = {arg.loopy_arg.name for arg in kernel_args}
 
             actx = self.array_context
@@ -463,8 +450,8 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 
             from sumpy.p2p import P2PMatrixGenerator
             mat_gen = P2PMatrixGenerator(actx.context,
-                    source_kernels=(kernel,),
-                    target_kernels=(expr.target_kernel,),
+                    source_kernels=(base_kernel,),
+                    target_kernels=(expr.target_kernel.get_base_kernel(),),
                     exclude_self=self.exclude_self)
 
             _, (mat,) = mat_gen(actx.queue,
@@ -588,7 +575,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                 raise NotImplementedError
 
             # NOTE: copied from pytential.symbolic.primitives.IntG
-            kernel_args = kernel.get_args() + kernel.get_source_args()
+            base_kernel = kernel.get_base_kernel()
+            kernel_args = base_kernel.get_args() + base_kernel.get_source_args()
             kernel_args = {arg.loopy_arg.name for arg in kernel_args}
 
             actx = self.array_context
@@ -602,8 +590,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
 
             from sumpy.p2p import P2PMatrixBlockGenerator
             mat_gen = P2PMatrixBlockGenerator(actx.context,
-                    source_kernels=(kernel,),
-                    target_kernels=(expr.target_kernel,),
+                    source_kernels=(base_kernel,),
+                    target_kernels=(expr.target_kernel.get_base_kernel(),),
                     exclude_self=self.exclude_self)
 
             _, (mat,) = mat_gen(actx.queue,
