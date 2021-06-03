@@ -256,7 +256,7 @@ def test_proxy_generator(ctx_factory,
     ])
 @pytest.mark.parametrize("case", PROXY_TEST_CASES)
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
-def test_interaction_points(ctx_factory,
+def test_neighbor_points(ctx_factory,
         proxy_generator_cls, case, index_sparsity_factor, visualize=False):
     """Test that neighboring points (inside the proxy balls, but outside the
     current block/cluster) are actually inside.
@@ -283,8 +283,7 @@ def test_interaction_points(ctx_factory,
 
     # get neighboring points
     from pytential.linalg.proxy import gather_block_neighbor_points
-    nbrindices = gather_block_neighbor_points(actx, density_discr,
-            srcindices, pxy.centers, pxy.radii)
+    nbrindices = gather_block_neighbor_points(actx, density_discr, pxy)
 
     srcindices = srcindices.get(queue)
     nbrindices = nbrindices.get(queue)
