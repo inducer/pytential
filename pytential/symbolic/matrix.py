@@ -40,21 +40,25 @@ def is_zero(x):
     return isinstance(x, (int, float, complex, np.number)) and x == 0
 
 
-def _get_layer_potential_args(mapper, expr, include_args=None):
+def _get_layer_potential_args(actx, places, expr, context=None, include_args=None):
     """
     :arg mapper: a :class:`~pytential.symbolic.matrix.MatrixBuilderBase`.
     :arg expr: symbolic layer potential expression.
 
     :return: a mapping of kernel arguments evaluated by the *mapper*.
     """
+    from pytential import bind
+    if context is None:
+        context = {}
 
     kernel_args = {}
     for arg_name, arg_expr in expr.kernel_arguments.items():
-        if (include_args is not None
-                and arg_name not in include_args):
+        if include_args is not None and arg_name not in include_args:
             continue
 
-        kernel_args[arg_name] = mapper.rec(arg_expr)
+        kernel_args[arg_name] = flatten(
+                bind(places, arg_expr)(actx, **context),
+                strict=False)
 
     return kernel_args
 
@@ -376,7 +380,8 @@ class MatrixBuilder(MatrixBuilderBase):
                 raise NotImplementedError("layer potentials on non-variables")
 
             actx = self.array_context
-            kernel_args = _get_layer_potential_args(self, expr)
+            kernel_args = _get_layer_potential_args(
+                    actx, self.places, expr, context=self.context)
             local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
                     kernel.get_base_kernel(), (expr.target_kernel,))
 
@@ -448,8 +453,9 @@ class P2PMatrixBuilder(MatrixBuilderBase):
             kernel_args = {arg.loopy_arg.name for arg in kernel_args}
 
             actx = self.array_context
-            kernel_args = _get_layer_potential_args(self,
-                    expr, include_args=kernel_args)
+            kernel_args = _get_layer_potential_args(
+                    actx, self.places, expr, context=self.context,
+                    include_args=kernel_args)
             if self.exclude_self:
                 kernel_args["target_to_source"] = actx.from_numpy(
                         np.arange(0, target_discr.ndofs, dtype=np.int64)
@@ -510,7 +516,8 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 raise NotImplementedError
 
             actx = self.array_context
-            kernel_args = _get_layer_potential_args(self._mat_mapper, expr)
+            kernel_args = _get_layer_potential_args(
+                    actx, self.places, expr, context=self.context)
             local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
                     kernel.get_base_kernel(), (expr.target_kernel,))
 
@@ -585,8 +592,9 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
             kernel_args = {arg.loopy_arg.name for arg in kernel_args}
 
             actx = self.array_context
-            kernel_args = _get_layer_potential_args(self._mat_mapper,
-                    expr, include_args=kernel_args)
+            kernel_args = _get_layer_potential_args(
+                    actx, self.places, expr, context=self.context,
+                    include_args=kernel_args)
             if self.exclude_self:
                 kernel_args["target_to_source"] = actx.from_numpy(
                         np.arange(0, target_discr.ndofs, dtype=np.int64)
