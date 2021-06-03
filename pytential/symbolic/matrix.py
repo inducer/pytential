@@ -575,9 +575,6 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
         target_discr = self.places.get_discretization(
                 expr.target.geometry, expr.target.discr_stage)
 
-        if source_discr is not target_discr:
-            raise NotImplementedError
-
         result = 0
         for kernel, density in zip(expr.source_kernels, expr.densities):
             rec_density = self._blk_mapper.rec(density)
