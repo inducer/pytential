@@ -25,7 +25,7 @@ import numpy as np
 import numpy.linalg as la
 
 from pytools.obj_array import make_obj_array
-from pytools import memoize_method, memoize_in
+from pytools import memoize_method
 from sumpy.tools import BlockIndexRanges
 
 import loopy as lp
@@ -37,10 +37,9 @@ Proxy Point Generation
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ProxyGenerator
-.. autofunction:: partition_by_nodes
 
+.. autofunction:: partition_by_nodes
 .. autofunction:: gather_block_neighbor_points
-.. autofunction:: gather_block_interaction_points
 """
 
 
@@ -438,114 +437,6 @@ def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
 
     return BlockIndexRanges(actx.context,
             actx.freeze(nbrindices), actx.freeze(nbrranges))
-
-
-def gather_block_interaction_points(actx, places, source_dd, indices,
-        radius_factor=None,
-        approx_nproxy=None,
-        max_nodes_in_box=None):
-    """Generate sets of interaction points for each given range of indices
-    in the *source* discretization. For each input range of indices,
-    the corresponding output range of points is consists of:
-
-    - a set of proxy points (or balls) around the range, which
-      model farfield interactions. These are constructed using
-      :class:`ProxyGenerator`.
-
-    - a set of neighboring points that are inside the proxy balls, but
-      do not belong to the given range, which model nearby interactions.
-      These are constructed with :func:`gather_block_neighbor_points`.
-
-    :arg places: a :class:`~pytential.GeometryCollection`.
-    :arg source_dd: geometry in *places* for which to generate the
-        interaction points. This is a
-        :class:`~pytential.symbolic.primitives.DOFDescriptor` describing
-        the exact discretization.
-    :arg indices: a :class:`sumpy.tools.BlockIndexRanges` on the
-        discretization described by *source_dd*.
-
-    :return: a tuple ``(nodes, ranges)``, where each value is a
-        :class:`pyopencl.array.Array`. For a range :math:`i`, we can
-        get the slice using ``nodes[ranges[i]:ranges[i + 1]]``.
-    """
-
-    @memoize_in(places, "concat_proxy_and_neighbors")
-    def knl():
-        loopy_knl = lp.make_kernel([
-            "{[irange, idim]: 0 <= irange < nranges and \
-                              0 <= idim < dim}",
-            "{[ipxy, ingb]: 0 <= ipxy < npxyblock and \
-                            0 <= ingb < nngbblock}"
-            ],
-            """
-            for irange
-                <> pxystart = pxyranges[irange]
-                <> pxyend = pxyranges[irange + 1]
-                <> npxyblock = pxyend - pxystart
-
-                <> ngbstart = nbrranges[irange]
-                <> ngbend = nbrranges[irange + 1]
-                <> nngbblock = ngbend - ngbstart
-
-                <> istart = pxyranges[irange] + nbrranges[irange]
-                nodes[idim, istart + ipxy] = \
-                    proxies[idim, pxystart + ipxy] \
-                    {id_prefix=write_pxy,nosync=write_ngb}
-                nodes[idim, istart + npxyblock + ingb] = \
-                    sources[idim, nbrindices[ngbstart + ingb]] \
-                    {id_prefix=write_ngb,nosync=write_pxy}
-                ranges[irange + 1] = ranges[irange] + npxyblock + nngbblock
-            end
-            """,
-            [
-                lp.GlobalArg("sources", None,
-                    shape=(lpot_source.ambient_dim, "nsources"), dim_tags="sep,C"),
-                lp.GlobalArg("proxies", None,
-                    shape=(lpot_source.ambient_dim, "nproxies"), dim_tags="sep,C"),
-                lp.GlobalArg("nbrindices", None,
-                    shape="nnbrindices"),
-                lp.GlobalArg("nodes", None,
-                    shape=(lpot_source.ambient_dim, "nproxies + nnbrindices")),
-                lp.ValueArg("nsources", np.int64),
-                lp.ValueArg("nproxies", np.int64),
-                lp.ValueArg("nnbrindices", np.int64),
-                "..."
-            ],
-            name="concat_proxy_and_neighbors",
-            default_offset=lp.auto,
-            silenced_warnings="write_race(write_*)",
-            fixed_parameters=dict(dim=lpot_source.ambient_dim),
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
-
-        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
-        loopy_knl = lp.split_iname(loopy_knl, "irange", 128, outer_tag="g.0")
-
-        return loopy_knl
-
-    lpot_source = places.get_geometry(source_dd.geometry)
-    generator = ProxyGenerator(places,
-            radius_factor=radius_factor,
-            approx_nproxy=approx_nproxy)
-    proxies, pxyranges, pxycenters, pxyradii = \
-            generator(actx, source_dd, indices)
-
-    discr = places.get_discretization(source_dd.geometry, source_dd.discr_stage)
-    neighbors = gather_block_neighbor_points(actx, discr,
-            indices, pxycenters, pxyradii,
-            max_nodes_in_box=max_nodes_in_box)
-
-    from arraycontext import thaw
-    from meshmode.dof_array import flatten
-    ranges = actx.zeros(indices.nblocks + 1, dtype=np.int64)
-    _, (nodes, ranges) = knl()(actx.queue,
-            sources=flatten(thaw(discr.nodes(), actx)),
-            proxies=proxies,
-            pxyranges=pxyranges,
-            nbrindices=neighbors.indices,
-            nbrranges=neighbors.ranges,
-            ranges=ranges)
-
-    return actx.freeze(nodes), actx.freeze(ranges)
 
 # }}}
 

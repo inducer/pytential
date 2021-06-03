@@ -278,13 +278,9 @@ def test_interaction_points(ctx_factory,
     _, _, pxycenters, pxyradii = generator(actx, places.auto_source, srcindices)
 
     # get neighboring points
-    from pytential.linalg.proxy import (  # noqa
-            gather_block_neighbor_points,
-            gather_block_interaction_points)
+    from pytential.linalg.proxy import gather_block_neighbor_points
     nbrindices = gather_block_neighbor_points(actx, density_discr,
             srcindices, pxycenters, pxyradii)
-    nodes, ranges = gather_block_interaction_points(actx,
-            places, places.auto_source, srcindices)
 
     srcindices = srcindices.get(queue)
     nbrindices = nbrindices.get(queue)
@@ -305,27 +301,18 @@ def test_interaction_points(ctx_factory,
         ambient_dim = places.ambient_dim
         if ambient_dim == 2:
             import matplotlib.pyplot as pt
-            density_nodes = flatten_to_numpy(actx, density_discr.nodes())
-            nodes = flatten_to_numpy(actx, nodes)
-            ranges = actx.to_numpy(ranges)
+            nodes = flatten_to_numpy(actx, density_discr.nodes())
+            iall = srcindices.indices
 
             for i in range(srcindices.nblocks):
                 isrc = srcindices.block_indices(i)
                 inbr = nbrindices.block_indices(i)
-                iall = np.s_[ranges[i]:ranges[i + 1]]
 
                 pt.figure(figsize=(10, 8))
-                pt.plot(density_nodes[0], density_nodes[1],
-                        "ko", ms=2.0, alpha=0.5)
-                pt.plot(density_nodes[0][srcindices.indices],
-                        density_nodes[1][srcindices.indices],
-                        "o", ms=2.0)
-                pt.plot(density_nodes[0][isrc], density_nodes[1][isrc],
-                        "o", ms=2.0)
-                pt.plot(density_nodes[0][inbr], density_nodes[1][inbr],
-                        "o", ms=2.0)
-                pt.plot(nodes[0][iall], nodes[1][iall],
-                        "x", ms=2.0)
+                pt.plot(nodes[0], nodes[1], "ko", ms=2.0, alpha=0.5)
+                pt.plot(nodes[0][iall], nodes[1][iall], "o", ms=2.0)
+                pt.plot(nodes[0][isrc], nodes[1][isrc], "o", ms=2.0)
+                pt.plot(nodes[0][inbr], nodes[1][inbr], "o", ms=2.0)
                 pt.xlim([-1.5, 1.5])
                 pt.ylim([-1.5, 1.5])
 
