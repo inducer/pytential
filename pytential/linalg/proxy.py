@@ -29,7 +29,6 @@ import numpy.linalg as la
 from arraycontext import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 
-from pytools.obj_array import make_obj_array
 from pytools import memoize_in
 from sumpy.tools import BlockIndexRanges
 
@@ -554,17 +553,41 @@ def gather_block_neighbor_points(
         # FIXME: this is a fairly arbitrary value
         max_particles_in_box = 32
 
-    indices = indices.get(actx.queue)
+    # {{{ get only sources in indices
 
-    # FIXME: going to_numpy -> from_numpy seems very inefficient here
-    from meshmode.dof_array import flatten_to_numpy
-    sources = flatten_to_numpy(actx, discr.nodes())
-    sources = make_obj_array([
-        actx.from_numpy(sources[idim][indices.indices])
-        for idim in range(discr.ambient_dim)
-        ])
+    @memoize_in(actx,
+            (gather_block_neighbor_points, discr.ambient_dim, "picker_knl"))
+    def prg():
+        knl = lp.make_kernel(
+            "{[idim, i]: 0 <= idim < ndim and 0 <= i < npoints}",
+            """
+            result[idim, i] = ary[idim, srcindices[i]]
+            """, [
+                lp.GlobalArg("ary", None,
+                    shape=(discr.ambient_dim, "ndofs"), dim_tags="sep,C"),
+                lp.ValueArg("ndofs", np.int64),
+                ...],
+            name="picker_knl",
+            assumptions="ndim>=1 and npoints>=1",
+            fixed_parameters=dict(ndim=discr.ambient_dim),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            )
 
-    # construct tree
+        knl = lp.tag_inames(knl, "idim*:unr")
+        knl = lp.split_iname(knl, "i", 64, outer_tag="g.0")
+
+        return knl
+
+    from arraycontext import thaw
+    from meshmode.dof_array import flatten
+    _, (sources,) = prg()(actx.queue,
+            ary=flatten(thaw(discr.nodes(), actx)),
+            srcindices=indices.indices)
+
+    # }}}
+
+    # {{{ perform area query
+
     from boxtree import TreeBuilder
     builder = TreeBuilder(actx.context)
     tree, _ = builder(actx.queue, sources,
@@ -578,9 +601,14 @@ def gather_block_neighbor_points(
     tree = tree.get(actx.queue)
     query = query.get(actx.queue)
 
+    # }}}
+
+    # {{{ retrieve results
+
     from arraycontext import to_numpy
     pxycenters = to_numpy(pxycenters, actx)
     pxyradii = to_numpy(pxyradii, actx)
+    indices = indices.get(actx.queue)
 
     nbrindices = np.empty(indices.nblocks, dtype=object)
     for iproxy in range(indices.nblocks):
@@ -606,6 +634,8 @@ def gather_block_neighbor_points(
                     | (indices.ranges[iproxy + 1] <= isources)))
 
         nbrindices[iproxy] = indices.indices[isources[mask]]
+
+    # }}}
 
     nbrranges = actx.from_numpy(np.cumsum([0] + [n.shape[0] for n in nbrindices]))
     nbrindices = actx.from_numpy(np.hstack(nbrindices))
