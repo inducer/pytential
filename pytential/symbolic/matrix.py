@@ -401,7 +401,7 @@ class MatrixBuilder(MatrixBuilderBase):
                 dofdesc=expr.target))(actx)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(target_discr.nodes(), actx)),
+                    targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
                     sources=flatten(thaw(source_discr.nodes(), actx)),
                     centers=flatten(centers),
                     expansion_radii=flatten(radii),
@@ -411,7 +411,7 @@ class MatrixBuilder(MatrixBuilderBase):
             waa = bind(self.places, sym.weights_and_area_elements(
                 source_discr.ambient_dim,
                 dofdesc=expr.source))(actx)
-            mat[:, :] *= actx.to_numpy(flatten(waa))
+            mat[:, :] *= flatten_to_numpy(actx, waa)
             mat = mat.dot(rec_density)
 
             result += mat
@@ -468,8 +468,8 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                     exclude_self=self.exclude_self)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(target_discr.nodes(), actx)),
-                    sources=flatten(thaw(source_discr.nodes(), actx)),
+                    targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
+                    sources=flatten(thaw(source_discr.nodes(), actx), strict=False),
                     **kernel_args)
 
             result += actx.to_numpy(mat).dot(rec_density)
@@ -536,7 +536,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 dofdesc=expr.target))(actx)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(target_discr.nodes(), actx)),
+                    targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
                     sources=flatten(thaw(source_discr.nodes(), actx)),
                     centers=flatten(centers),
                     expansion_radii=flatten(radii),
@@ -607,8 +607,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                     exclude_self=self.exclude_self)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(target_discr.nodes(), actx)),
-                    sources=flatten(thaw(source_discr.nodes(), actx)),
+                    targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
+                    sources=flatten(thaw(source_discr.nodes(), actx), strict=False),
                     index_set=self.index_set,
                     **kernel_args)
 
