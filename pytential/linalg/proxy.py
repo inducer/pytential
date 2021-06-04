@@ -125,7 +125,7 @@ def partition_by_nodes(
 
 # {{{ proxy point generator
 
-def _generate_unit_sphere(ambient_dim, approx_npoints):
+def _generate_unit_sphere(ambient_dim: int, approx_npoints: int) -> np.ndarray:
     """Generate uniform points on a unit sphere.
 
     :arg ambient_dim: dimension of the ambient space.
@@ -187,7 +187,7 @@ class BlockProxyPoints:
     .. attribute:: points
 
         A concatenated list of all the proxy points. Can be sliced into
-        using :attr:`indices` (shape ``(dim, nproxies * nblocks)``).
+        using :attr:`indices` (shape ``(dim, nproxy_per_block * nblocks)``).
 
     .. attribute:: centers
 
@@ -209,14 +209,14 @@ class BlockProxyPoints:
     radii: np.ndarray
 
     @property
-    def nblocks(self):
+    def nblocks(self) -> int:
         return self.srcindices.nblocks
 
     @property
-    def nproxy_per_block(self):
+    def nproxy_per_block(self) -> int:
         return self.points[0].shape[0] // self.nblocks
 
-    def to_numpy(self, actx):
+    def to_numpy(self, actx: PyOpenCLArrayContext) -> "BlockProxyPoints":
         from arraycontext import to_numpy
         from dataclasses import replace
         return replace(self,
@@ -228,7 +228,7 @@ class BlockProxyPoints:
 
 
 def make_compute_block_centers_knl(
-        actx: PyOpenCLArrayContext, ndim: int, norm_type: str):
+        actx: PyOpenCLArrayContext, ndim: int, norm_type: str) -> lp.LoopKernel:
     @memoize_in(actx, (make_compute_block_centers_knl, ndim, norm_type))
     def prg():
         if norm_type == "l2":
@@ -284,11 +284,6 @@ class ProxyGeneratorBase:
 
         Number of proxy points in a single proxy ball.
 
-    .. attribute:: radius_factor
-
-        Factor multiplying the block radius (i.e radius of the bounding box)
-        to get the proxy ball radius.
-
     .. automethod:: __init__
     .. automethod:: __call__
     """
@@ -319,25 +314,25 @@ class ProxyGeneratorBase:
         self.ref_points = _generate_unit_sphere(self.ambient_dim, approx_nproxy)
 
     @property
-    def ambient_dim(self):
+    def ambient_dim(self) -> int:
         return self.places.ambient_dim
 
     @property
-    def nproxy(self):
+    def nproxy(self) -> int:
         return self.ref_points.shape[1]
 
-    def get_centers_knl(self, actx):
+    def get_centers_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
         return make_compute_block_centers_knl(actx, self.ambient_dim, self.norm_type)
 
-    def get_radii_knl(self, actx):
+    def get_radii_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
         raise NotImplementedError
 
     def __call__(self,
             actx: PyOpenCLArrayContext,
             source_dd,
             indices: BlockIndexRanges, **kwargs) -> BlockProxyPoints:
-        """Generate proxy points for each given range of source points in
-        the discretization in *source_dd*.
+        """Generate proxy points for each block in *indices* with nodes in
+        the discretization *source_dd*.
 
         :arg source_dd: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
             for the discretization on which the proxy points are to be
@@ -402,7 +397,8 @@ class ProxyGeneratorBase:
                 )
 
 
-def make_compute_block_radii_knl(actx: PyOpenCLArrayContext, ndim: int):
+def make_compute_block_radii_knl(
+        actx: PyOpenCLArrayContext, ndim: int) -> lp.LoopKernel:
     @memoize_in(actx, (make_compute_block_radii_knl, ndim))
     def prg():
         knl = lp.make_kernel([
@@ -447,11 +443,12 @@ class ProxyGenerator(ProxyGeneratorBase):
     Inherits from :class:`ProxyGeneratorBase`.
     """
 
-    def get_radii_knl(self, actx):
+    def get_radii_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
         return make_compute_block_radii_knl(actx, self.ambient_dim)
 
 
-def make_compute_block_qbx_radii_knl(actx: PyOpenCLArrayContext, ndim: int):
+def make_compute_block_qbx_radii_knl(
+        actx: PyOpenCLArrayContext, ndim: int) -> lp.LoopKernel:
     @memoize_in(actx, (make_compute_block_qbx_radii_knl, ndim))
     def prg():
         knl = lp.make_kernel([
@@ -511,17 +508,16 @@ class QBXProxyGenerator(ProxyGeneratorBase):
     Inherits from :class:`ProxyGeneratorBase`.
     """
 
-    def get_radii_knl(self, actx):
+    def get_radii_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
         return make_compute_block_qbx_radii_knl(actx, self.ambient_dim)
 
     def __call__(self,
             actx: PyOpenCLArrayContext,
             source_dd,
             indices: BlockIndexRanges, **kwargs) -> BlockProxyPoints:
-        from pytential import sym
+        from pytential import bind, sym
         source_dd = sym.as_dofdesc(source_dd)
 
-        from pytential import bind, sym
         radii = bind(self.places, sym.expansion_radii(
             self.ambient_dim, dofdesc=source_dd))(actx)
         center_int = bind(self.places, sym.expansion_centers(

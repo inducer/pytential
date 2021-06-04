@@ -42,7 +42,6 @@ from pyopencl.tools import (  # noqa
 import extra_matrix_data as extra
 import logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 # {{{ visualize proxy geometry
