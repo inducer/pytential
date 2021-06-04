@@ -1694,11 +1694,11 @@ def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
     """
     from sumpy.kernel import (SourceTransformationRemover,
             TargetTransformationRemover)
-    sdr = SourceTransformationRemover()
-    tdr = TargetTransformationRemover()
+    sxr = SourceTransformationRemover()
+    txr = TargetTransformationRemover()
 
-    target_kernel = sdr(kernel)
-    source_kernels = [tdr(kernel)]
+    target_kernel = sxr(kernel)
+    source_kernels = [txr(kernel)]
 
     def make_op(operand_i):
         return IntG(target_kernel=target_kernel, densities=[operand_i],
