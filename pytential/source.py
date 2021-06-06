@@ -263,9 +263,9 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     def get_fmm_kernel(self, kernels):
         fmm_kernel = None
 
-        from sumpy.kernel import AxisTargetDerivativeRemover
+        from sumpy.kernel import TargetTransformationRemover
         for knl in kernels:
-            candidate_fmm_kernel = AxisTargetDerivativeRemover()(knl)
+            candidate_fmm_kernel = TargetTransformationRemover()(knl)
 
             if fmm_kernel is None:
                 fmm_kernel = candidate_fmm_kernel

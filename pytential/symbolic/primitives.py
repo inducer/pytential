@@ -1692,12 +1692,13 @@ def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
     "vectorizing" behavior of of the constructor of :class:`IntG`
     for use cases where that is preferred.
     """
-    from sumpy.kernel import SourceDerivativeRemover, TargetDerivativeRemover
-    sdr = SourceDerivativeRemover()
-    tdr = TargetDerivativeRemover()
+    from sumpy.kernel import (SourceTransformationRemover,
+            TargetTransformationRemover)
+    sxr = SourceTransformationRemover()
+    txr = TargetTransformationRemover()
 
-    target_kernel = sdr(kernel)
-    source_kernels = [tdr(kernel)]
+    target_kernel = sxr(kernel)
+    source_kernels = [txr(kernel)]
 
     def make_op(operand_i):
         return IntG(target_kernel=target_kernel, densities=[operand_i],

@@ -692,8 +692,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from sumpy.kernel import TargetDerivativeRemover
 
         # line Taylor cannot support target derivatives
-        tdr = TargetDerivativeRemover()
-        if any(knl != tdr(knl) for knl in target_kernels):
+        txr = TargetDerivativeRemover()
+        if any(knl != txr(knl) for knl in target_kernels):
             return self.expansion_factory.get_local_expansion_class(
                     base_kernel)(base_kernel, self.qbx_order)
         else:
