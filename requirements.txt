@@ -9,5 +9,5 @@ git+https://github.com/inducer/loopy.git#egg=loopy
 git+https://github.com/inducer/boxtree.git#egg=boxtree
 git+https://github.com/inducer/arraycontext.git#egg=arraycontext
 git+https://github.com/inducer/meshmode.git#egg=meshmode
-git+https://github.com/isuruf/sumpy.git@multiplier#egg=sumpy
+git+https://github.com/inducer/sumpy.git#egg=sumpy
 git+https://github.com/inducer/pyfmmlib.git#egg=pyfmmlib
