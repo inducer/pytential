@@ -33,6 +33,10 @@ class MatrixTestCaseMixin:
     tree_kind = "adaptive-level-restricted"
     index_sparsity_factor = 1.0
 
+    # proxy
+    proxy_radius_factor = 1.1
+    proxy_approx_count = 32
+
     # operators
     op_type = "scalar"
 
@@ -47,7 +51,7 @@ class MatrixTestCaseMixin:
         from pytential.linalg.proxy import partition_by_nodes
         indices = partition_by_nodes(actx, discr,
                 tree_kind=self.tree_kind,
-                max_nodes_in_box=max_particles_in_box)
+                max_particles_in_box=max_particles_in_box)
 
         if abs(self.index_sparsity_factor - 1.0) < 1.0e-14:
             if not matrix_indices:

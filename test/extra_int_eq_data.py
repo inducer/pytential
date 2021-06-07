@@ -250,6 +250,8 @@ class IntegralEquationTestCase(RecordWithoutPickling):
 # {{{ 2d curves
 
 class CurveTestCase(IntegralEquationTestCase):
+    ambient_dim = 2
+
     # qbx
     qbx_order = 5
     target_order = 5
@@ -295,6 +297,8 @@ class CircleTestCase(EllipseTestCase):
 # {{{ 3d surfaces
 
 class Helmholtz3DTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
+
     # qbx
     use_refinement = False
 
@@ -335,6 +339,7 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
 
 
 class SphereTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
     name = "sphere"
 
     # qbx
@@ -363,6 +368,7 @@ class SphereTestCase(IntegralEquationTestCase):
 
 
 class TorusTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
     name = "torus"
 
     # qbx
@@ -457,6 +463,7 @@ class ManyEllipsoidTestCase(Helmholtz3DTestCase):
 # {{{ fancy geometries
 
 class EllipticPlaneTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
     name = "elliptic_plane"
 
     # qbx
@@ -504,6 +511,7 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
 
 
 class BetterPlaneTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
     name = "better_plane"
 
     # qbx
