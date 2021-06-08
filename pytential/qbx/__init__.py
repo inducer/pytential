@@ -689,15 +689,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     @memoize_method
     def get_expansion_for_qbx_direct_eval(self, base_kernel, target_kernels):
         from sumpy.expansion.local import LineTaylorLocalExpansion
-        from sumpy.kernel import TargetDerivativeRemover
-
-        # line Taylor cannot support target derivatives
-        txr = TargetDerivativeRemover()
-        if any(knl != txr(knl) for knl in target_kernels):
-            return self.expansion_factory.get_local_expansion_class(
-                    base_kernel)(base_kernel, self.qbx_order)
-        else:
-            return LineTaylorLocalExpansion(base_kernel, self.qbx_order)
+        return LineTaylorLocalExpansion(base_kernel, self.qbx_order)
 
     @memoize_method
     def get_lpot_applier(self, target_kernels, source_kernels):

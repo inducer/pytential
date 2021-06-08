@@ -131,6 +131,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         return self._nodes.shape[0]
 
     def op_group_features(self, expr):
+        from sumpy.kernel import TargetTransformationRemover
         from pytential.utils import sort_arrays_together
         # since IntGs with the same source kernels and densities calculations
         # for P2E and E2E are the same and only differs in E2P depending on the
@@ -140,7 +141,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         result = (
                 expr.source,
                 *sort_arrays_together(expr.source_kernels, expr.densities, key=str),
-                expr.target_kernel,
+                TargetTransformationRemover()(expr.target_kernel),
                 )
 
         return result

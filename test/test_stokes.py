@@ -46,16 +46,19 @@ logger = logging.getLogger(__name__)
 
 def run_exterior_stokes(ctx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
-        fmm_order=False,    # FIXME: FMM is slower than direct evaluation
+        fmm_order=None,    # FIXME: FMM is slower than direct evaluation
         source_ovsmp=None,
         radius=1.5,
         mu=1.0,
+        nu=0.4,
         visualize=False,
+        method="naive",
 
         _target_association_tolerance=0.05,
         _expansions_in_tree_have_extent=True):
     cl_ctx = cl.create_some_context()
-    queue = cl.CommandQueue(cl_ctx)
+    queue = cl.CommandQueue(cl_ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
     actx = PyOpenCLArrayContext(queue)
 
     # {{{ geometry
@@ -86,6 +89,7 @@ def run_exterior_stokes(ctx_factory, *,
             fine_order=source_ovsmp * target_order,
             qbx_order=qbx_order,
             fmm_order=fmm_order,
+            _max_leaf_refine_weight=64,
             target_association_tolerance=_target_association_tolerance,
             _expansions_in_tree_have_extent=_expansions_in_tree_have_extent)
     places["source"] = qbx
@@ -115,8 +119,12 @@ def run_exterior_stokes(ctx_factory, *,
 
         del mask
 
+    #places[sym.DEFAULT_SOURCE] = qbx
+    #places[sym.DEFAULT_TARGET] = qbx.density_discr
+    #places = GeometryCollection(places)
     places = GeometryCollection(places, auto_where="source")
 
+    #density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
     density_discr = places.get_discretization("source")
     logger.info("ndofs:     %d", density_discr.ndofs)
     logger.info("nelements: %d", density_discr.mesh.nelements)
@@ -128,25 +136,34 @@ def run_exterior_stokes(ctx_factory, *,
     sym_normal = sym.make_sym_vector("normal", ambient_dim)
     sym_mu = sym.var("mu")
 
+    if nu == 0.5:
+        sym_nu = 0.5
+    else:
+        sym_nu = sym.var("nu")
+
     if ambient_dim == 2:
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
         sym_omega = sym.make_sym_vector("omega", ambient_dim)
-        op = HsiaoKressExteriorStokesOperator(omega=sym_omega)
+        op = HsiaoKressExteriorStokesOperator(omega=sym_omega, method=method,
+                mu_sym=sym_mu, nu_sym=sym_nu)
     elif ambient_dim == 3:
         from pytential.symbolic.stokes import HebekerExteriorStokesOperator
-        op = HebekerExteriorStokesOperator()
+        op = HebekerExteriorStokesOperator(method=method,
+                mu_sym=sym_mu, nu_sym=sym_nu)
     else:
         raise AssertionError()
 
     sym_sigma = op.get_density_var("sigma")
     sym_bc = op.get_density_var("bc")
 
-    sym_op = op.operator(sym_sigma, normal=sym_normal, mu=sym_mu)
-    sym_rhs = op.prepare_rhs(sym_bc, mu=mu)
+    sym_op = op.operator(sym_sigma, normal=sym_normal)
+    sym_rhs = op.prepare_rhs(sym_bc)
 
-    sym_velocity = op.velocity(sym_sigma, normal=sym_normal, mu=sym_mu)
+    sym_velocity = op.velocity(sym_sigma, normal=sym_normal)
 
-    sym_source_pot = op.stokeslet.apply(sym_sigma, sym_mu, qbx_forced_limit=None)
+    from pytential.symbolic.stokes import StokesletWrapper
+    sym_source_pot = StokesletWrapper(ambient_dim,
+            nu_sym=sym_nu).apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
 
@@ -172,15 +189,37 @@ def run_exterior_stokes(ctx_factory, *,
     else:
         bc_context = {}
         op_context = {"mu": mu, "normal": normal}
+    direct_context = {"mu": mu}
 
-    bc = bind(places, sym_source_pot,
-            auto_where=("point_source", "source"))(actx, sigma=charges, mu=mu)
+    if sym_nu != 0.5:
+        bc_context["nu"] = nu
+        op_context["nu"] = nu
+        direct_context["nu"] = nu
+
+    bc_op = bind(places, sym_source_pot,
+            auto_where=("point_source", "source"))
+    bc = bc_op(actx, sigma=charges, **direct_context)
 
     rhs = bind(places, sym_rhs)(actx, bc=bc, **bc_context)
     bound_op = bind(places, sym_op)
 
     # }}}
 
+    fmm_timing_data = {}
+    bound_op.eval({"sigma": rhs, **op_context}, array_context=actx,
+            timing_data=fmm_timing_data)
+
+    def print_timing_data(timings, name):
+        result = {k: 0 for k in list(timings.values())[0].keys()}
+        total = 0
+        for k, timing in timings.items():
+            for k, v in timing.items():
+                result[k] += v['wall_elapsed']
+                total += v['wall_elapsed']
+        result['total'] = total
+        print(f"{name}={result}")
+
+    print_timing_data(fmm_timing_data, method)
     # {{{ solve
 
     from pytential.solve import gmres
@@ -193,7 +232,6 @@ def run_exterior_stokes(ctx_factory, *,
             progress=visualize,
             stall_iterations=0,
             hard_failure=True)
-
     sigma = result.solution
 
     # }}}
@@ -211,7 +249,8 @@ def run_exterior_stokes(ctx_factory, *,
     ps_velocity = bind(places, sym_velocity,
             auto_where=("source", "point_target"))(actx, sigma=sigma, **op_context)
     ex_velocity = bind(places, sym_source_pot,
-            auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
+            auto_where=("point_source", "point_target"))(actx, sigma=charges,
+                    **direct_context)
 
     v_error = rnorm2(ps_velocity, ex_velocity)
     h_max = bind(places, sym.h_max(ambient_dim))(actx)
@@ -242,12 +281,18 @@ def run_exterior_stokes(ctx_factory, *,
 
     return h_max, v_error
 
+@pytest.mark.parametrize("ambient_dim, method, nu", [
+    (2, "naive", 0.5),
+    (2, "biharmonic", 0.5),
+    pytest.param(3, "naive", 0.5, marks=pytest.mark.slowtest),
+    (3, "biharmonic", 0.5),
+    (3, "laplace", 0.5),
 
-@pytest.mark.parametrize("ambient_dim", [
-    2,
-    pytest.param(3, marks=pytest.mark.slowtest)
+    (2, "biharmonic", 0.4),
+    (3, "biharmonic", 0.4),
+    (3, "laplace", 0.4),
     ])
-def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
+def test_exterior_stokes(ctx_factory, ambient_dim, method, nu, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -257,10 +302,11 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
     target_order = 3
     qbx_order = 3
 
-    print(ambient_dim)
     if ambient_dim == 2:
+        fmm_order = 10
         resolutions = [20, 35, 50]
     elif ambient_dim == 3:
+        fmm_order = 6
         resolutions = [0, 1, 2]
     else:
         raise ValueError(f"unsupported dimension: {ambient_dim}")
@@ -269,13 +315,15 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
         h_max, err = run_exterior_stokes(ctx_factory,
                 ambient_dim=ambient_dim,
                 target_order=target_order,
+                fmm_order=fmm_order,
                 qbx_order=qbx_order,
                 resolution=resolution,
-                visualize=visualize)
+                visualize=visualize,
+                nu=nu,
+                method=method)
 
         eoc.add_data_point(h_max, err)
-
-    print(eoc)
+        print(eoc)
 
     # This convergence data is not as clean as it could be. See
     # https://github.com/inducer/pytential/pull/32
