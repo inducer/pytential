@@ -434,6 +434,21 @@ class StressletWrapper(StressletWrapperBase):
 
         return sym_expr
 
+    def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
+            stresslet_density_vec_sym, dir_vec_sym,
+            qbx_forced_limit, stokeslet_weight, stresslet_weight):
+
+        stokeslet_obj = StokesletWrapper(dim=self.dim,
+                                         mu_sym=self.mu, nu_sym=self.nu)
+
+        sym_expr = self.apply(stresslet_density_vec_sym, dir_vec_sym,
+                qbx_forced_limit) * stresslet_weight
+        sym_expr += stokeslet_obj.apply(stokeslet_density_vec_sym,
+                qbx_forced_limit) * stokeslet_weight
+
+        return sym_expr
+
+
     def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
                              qbx_forced_limit):
 
@@ -481,48 +496,9 @@ class StressletWrapper(StressletWrapperBase):
 
 # {{{ Stokeslet/Stresslet using Laplace
 
-class StokesletWrapperTornberg(StokesletWrapperBase):
-    """Stokeslet Wrapper using Tornberg and Greengard's method which uses
-    Laplace derivatives.
-
-    [1] Tornberg, A. K., & Greengard, L. (2008). A fast multipole method for the
-        three-dimensional Stokes equations.
-        Journal of Computational Physics, 227(3), 1613-1619.
-    """
-    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
-        self.dim = dim
-        if dim != 3:
-            raise ValueError("unsupported dimension given to StokesletWrapper")
-        self.kernel = LaplaceKernel(dim=self.dim)
-        self.mu = mu_sym
-        self.nu = nu_sym
-
-    def apply(self, density_vec_sym, qbx_forced_limit):
-
-        sym_expr = np.zeros((self.dim,), dtype=object)
-
-        source = [sym.NodeCoordinateComponent(d) for d in range(self.dim)]
-        common_expr_density = sum(source[k]*density_vec_sym[k] for
-                k in range(self.dim))
-
-        for i in range(self.dim):
-            for j in range(self.dim):
-                knl = TargetPointMultiplier(j, AxisTargetDerivative(i, self.kernel))
-                sym_expr[i] -= sym.S(knl, density_vec_sym[j],
-                        qbx_forced_limit=qbx_forced_limit)
-                if i == j:
-                    sym_expr[i] += (3 - 4 * self.nu)*sym.S(self.kernel,
-                        density_vec_sym[j], qbx_forced_limit=qbx_forced_limit)
-            sym_expr[i] += sym.S(AxisTargetDerivative(i, self.kernel),
-                    common_expr_density, qbx_forced_limit=qbx_forced_limit)
-            sym_expr[i] *= -0.25*((self.mu*(1 - self.nu))**(-1))
-
-        return sym_expr
-
-
 class StressletWrapperTornberg(StokesletWrapperBase):
-    """Stresslet Wrapper using Tornberg and Greengard's method which uses
-    Laplace derivatives.
+    """A Stresslet wrapper using Tornberg and Greengard's method which
+    uses Laplace derivatives.
 
     [1] Tornberg, A. K., & Greengard, L. (2008). A fast multipole method for the
         three-dimensional Stokes equations.
@@ -539,22 +515,34 @@ class StressletWrapperTornberg(StokesletWrapperBase):
         self.nu = nu_sym
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
+        return self.apply_stokeslet_and_stresslet([0]*self.dim,
+            density_vec_sym, dir_vec_sym, qbx_forced_limit, 0, 1)
+
+    def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
+            stresslet_density_vec_sym, dir_vec_sym,
+            qbx_forced_limit, stokeslet_weight, stresslet_weight):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
         source = [sym.NodeCoordinateComponent(d) for d in range(self.dim)]
-        common_source_kernels = tuple([AxisSourceDerivative(k, self.kernel) for
-                k in range(self.dim)])
-        coeff = 3.0/6
+        common_source_kernels = [AxisSourceDerivative(k, self.kernel) for
+                k in range(self.dim)]
+        common_source_kernels.append(self.kernel)
+
+        stokeslet_weight *= 3.0/6
+        stresslet_weight *= -0.5*self.mu**(-1)
 
         for i in range(self.dim):
             for j in range(self.dim):
-                densities = [coeff*(density_vec_sym[k] * dir_vec_sym[j]
-                    + density_vec_sym[j] * dir_vec_sym[k]) for k in range(self.dim)]
+                densities = [stresslet_weight*(
+                    stresslet_density_vec_sym[k] * dir_vec_sym[j]
+                    + stresslet_density_vec_sym[j] * dir_vec_sym[k]) \
+                            for k in range(self.dim)]
+                densities.append(stokeslet_weight*stokeslet_density_vec_sym[j])
                 target_kernel = TargetPointMultiplier(j,
                         AxisTargetDerivative(i, self.kernel))
                 sym_expr[i] -= sym.IntG(target_kernel=target_kernel,
-                    source_kernels=common_source_kernels,
+                    source_kernels=tuple(common_source_kernels),
                     densities=tuple(densities),
                     qbx_forced_limit=qbx_forced_limit)
 
@@ -564,18 +552,20 @@ class StressletWrapperTornberg(StokesletWrapperBase):
                         densities=densities,
                         qbx_forced_limit=qbx_forced_limit)
 
-            common_density0 = sum(source[k] * density_vec_sym[k] for
+            common_density0 = sum(source[k] * stresslet_density_vec_sym[k] for
                     k in range(self.dim))
             common_density1 = sum(source[k] * dir_vec_sym[k] for
                     k in range(self.dim))
-            densities = [coeff*(common_density0 * dir_vec_sym[k]
-                    + common_density1 * density_vec_sym[k]) for
+            common_density2 = sum(source[k] * stokeslet_density_vec_sym[k] for
+                    k in range(self.dim))
+            densities = [stresslet_weight*(common_density0 * dir_vec_sym[k]
+                    + common_density1 * stresslet_density_vec_sym[k]) for
                     k in range(self.dim)]
-            source_kernels = list(common_source_kernels)
+            densities.append(common_density2)
 
             target_kernel = AxisTargetDerivative(i, self.kernel)
             sym_expr[i] += sym.IntG(target_kernel=target_kernel,
-                source_kernels=tuple(source_kernels),
+                source_kernels=tuple(common_source_kernels),
                 densities=tuple(densities),
                 qbx_forced_limit=qbx_forced_limit)
 
@@ -623,12 +613,8 @@ class StokesOperator:
             else:
                 self.stresslet = StressletWrapperYoshida(dim=self.ambient_dim,
                     mu_sym=mu_sym, nu_sym=nu_sym)
-            self.stokeslet = StokesletWrapperTornberg(dim=self.ambient_dim,
-                    mu_sym=mu_sym, nu_sym=nu_sym)
         elif method == "biharmonic" or method == "naive":
             self.stresslet = StressletWrapper(dim=self.ambient_dim,
-                mu_sym=mu_sym, nu_sym=nu_sym)
-            self.stokeslet = StokesletWrapper(dim=self.ambient_dim,
                 mu_sym=mu_sym, nu_sym=nu_sym)
         else:
             raise ValueError(f"invalid method: {method}."
@@ -724,9 +710,9 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     def _farfield(self, qbx_forced_limit):
         source_dofdesc = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
         length = sym.integral(self.ambient_dim, self.dim, 1, dofdesc=source_dofdesc)
-        return self.stokeslet.apply(
-                -self.omega / length,
-                qbx_forced_limit=qbx_forced_limit)
+        return self.stresslet.apply(
+                -self.omega / length, [0]*self.dim, [0]*self.dim,
+                qbx_forced_limit, 1, 0)
 
     def _operator(self, sigma, normal, qbx_forced_limit):
         slp_qbx_forced_limit = qbx_forced_limit
@@ -742,15 +728,11 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         meanless_sigma = sym.cse(sigma - sym.mean(self.ambient_dim,
             self.dim, sigma, dofdesc=dd))
 
-        op_k = self.stresslet.apply(sigma, normal,
-                    qbx_forced_limit=qbx_forced_limit)
-        op_s = (
-                self.alpha / (2.0 * np.pi) * int_sigma
-                - self.stokeslet.apply(meanless_sigma,
-                    qbx_forced_limit=slp_qbx_forced_limit)
-                )
+        result = self.eta * self.alpha / (2.0 * np.pi) * int_sigma
+        result += self.stresslet.apply_stokeslet_and_stresslet(meanless_sigma,
+                sigma, normal, qbx_forced_limit, -self.eta, 1)
 
-        return op_k + self.eta * op_s
+        return result
 
     def prepare_rhs(self, b):
         return merge_int_g_exprs(b + self._farfield(qbx_forced_limit=+1),
@@ -804,15 +786,8 @@ class HebekerExteriorStokesOperator(StokesOperator):
         self.laplace_kernel = LaplaceKernel(3)
 
     def _operator(self, sigma, normal, qbx_forced_limit):
-        slp_qbx_forced_limit = qbx_forced_limit
-        # if slp_qbx_forced_limit == "avg":
-        #    slp_qbx_forced_limit = self.side
-
-        op_w = self.stresslet.apply(sigma, normal,
-                qbx_forced_limit=qbx_forced_limit)
-        op_v = self.stokeslet.apply(sigma, qbx_forced_limit=slp_qbx_forced_limit)
-
-        return op_w + self.eta * op_v
+        return self.stresslet.apply_stokeslet_and_stresslet(sigma,
+                sigma, normal, qbx_forced_limit, self.eta, 1)
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         # NOTE: H. 1986 Equation 17

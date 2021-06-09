@@ -1500,8 +1500,11 @@ class IntG(Expression):
             raise ValueError("invalid value (%s) of qbx_forced_limit"
                     % qbx_forced_limit)
 
-        source_kernels = tuple(source_kernels)
-        densities = tuple(densities)
+        densities = list(densities)
+        source_kernels = tuple([source_kernels[i] for i in range(len(densities)) \
+                if densities[i] != 0])
+        densities = tuple([density for density in densities if density != 0])
+
         kernel_arg_names = set()
 
         for kernel in source_kernels + (target_kernel,):

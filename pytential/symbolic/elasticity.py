@@ -28,8 +28,7 @@ from sumpy.kernel import (LineOfCompressionKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier,
     LaplaceKernel)
 from pymbolic import var
-from pytential.symbolic.stokes import (StokesletWrapperTornberg,
-    StokesletWrapperBase, StokesOperator)
+from pytential.symbolic.stokes import StokesletWrapperBase, StokesOperator
 from pytential.symbolic.primitives import NodeCoordinateComponent
 
 
@@ -85,7 +84,8 @@ class MindlinOperator:
     .. automethod:: get_density_var
     """
 
-    def __init__(self, *, method="biharmonic", mu_sym=var("mu"), nu_sym=var("nu")):
+    def __init__(self, *, method="biharmonic", mu_sym=var("mu"), nu_sym=var("nu"),
+            line_of_compression_tol=0):
         if method not in ["biharmonic", "laplace"]:
             raise ValueError(f"invalid method: {method}."
                     "Needs to be one of laplace, biharmonic")
@@ -97,7 +97,8 @@ class MindlinOperator:
                 nu_sym=nu_sym)
         self.modified_free_space_op = KelvinOperator(
                 method=method, mu_sym=mu_sym + 4*nu_sym, nu_sym=-nu_sym)
-        self.compression_knl = LineOfCompressionKernel(3, 2, mu_sym, nu_sym)
+        self.compression_knl = LineOfCompressionKernel(3, 2, mu_sym, nu_sym,
+                tol=line_of_compression_tol)
         self.ambient_dim = 3
 
     def K(self, sigma, normal, qbx_forced_limit):
@@ -286,6 +287,12 @@ class StressletWrapperYoshida(StokesletWrapperBase):
         self.nu = nu_sym
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
+        return self.apply_stokeslet_and_stresslet([0]*self.dim,
+            density_vec_sym, dir_vec_sym, qbx_forced_limit, 0, 1)
+
+    def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
+            stresslet_density_vec_sym, dir_vec_sym,
+            qbx_forced_limit, stokeslet_weight, stresslet_weight):
 
         mu = self.mu
         nu = self.nu
@@ -299,7 +306,7 @@ class StressletWrapperYoshida(StokesletWrapperBase):
                 res += mu
             if i == l and j == k:
                 res += mu
-            return res
+            return res * stresslet_weight
 
         def P(i, j, int_g):
             res = -int_g.copy(target_kernel=TargetPointMultiplier(j,
@@ -318,28 +325,27 @@ class StressletWrapperYoshida(StokesletWrapperBase):
         kernel = self.kernel
         source = [sym.NodeCoordinateComponent(d) for d in range(3)]
         normal = dir_vec_sym
-        sigma = density_vec_sym
+        sigma = stresslet_density_vec_sym
+
+        source_kernels = [None]*4
+        densities = [0]*4
+        for i in range(3):
+            source_kernels[i] = AxisSourceDerivative(i, kernel)
+        source_kernels[3] = kernel
 
         for i in range(3):
             for k in range(3):
-                source_kernels = [None]*3
-                densities = [0]*3
+                densities = [0]*4
                 for l in range(3):   # noqa: E741
-                    source_kernels[l] = AxisSourceDerivative(l, kernel)
                     for j in range(3):
                         for m in range(3):
                             densities[l] += C(k, l, m, j)*normal[m]*sigma[j]
+                densities[3] += stokeslet_weight * stokeslet_density_vec_sym[k]
                 int_g = sym.IntG(target_kernel=kernel,
                     source_kernels=tuple(source_kernels),
                     densities=tuple(densities),
                     qbx_forced_limit=qbx_forced_limit)
                 sym_expr[i] += P(i, k, int_g)
-
-            source_kernels = [None]*4
-            densities = [0]*4
-            for l in range(3):   # noqa: E741
-                source_kernels[l] = AxisSourceDerivative(l, kernel)
-            source_kernels[3] = kernel
 
             for k in range(3):
                 for m in range(3):
@@ -350,6 +356,8 @@ class StressletWrapperYoshida(StokesletWrapperBase):
                             if k == l:
                                 densities[3] += \
                                         C(k, l, m, j)*normal[m]*sigma[j]
+                densities[3] += stokeslet_weight * source[k] \
+                        * stokeslet_density_vec_sym[k]
             int_g = sym.IntG(target_kernel=kernel,
                 source_kernels=tuple(source_kernels),
                 densities=tuple(densities),
