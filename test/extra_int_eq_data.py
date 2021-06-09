@@ -28,6 +28,8 @@ import numpy as np
 from pytential import sym
 from pytools import memoize_method
 from sumpy.kernel import Kernel
+from meshmode.mesh import MeshElementGroup, SimplexElementGroup
+from meshmode.discretization import ElementGroupFactory
 from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
 
 import logging
@@ -98,7 +100,8 @@ class IntegralEquationTestCase:
     source_ovsmp: int = 4
     target_order: Optional[int] = None
     use_refinement: bool = True
-    group_factory_cls: type = InterpolatoryQuadratureGroupFactory
+    group_cls: Type[MeshElementGroup] = SimplexElementGroup
+    group_factory_cls: ElementGroupFactory = InterpolatoryQuadratureGroupFactory
 
     # fmm
     fmm_backend: str = "sumpy"
@@ -183,7 +186,9 @@ class IntegralEquationTestCase:
 
     def get_discretization(self, actx, resolution, mesh_order):
         mesh = self.get_mesh(resolution, mesh_order)
+        return self._get_discretization(actx, mesh)
 
+    def _get_discretization(self, actx, mesh):
         from meshmode.discretization import Discretization
         return Discretization(actx, mesh,
                 self.group_factory_cls(self.target_order))
@@ -395,7 +400,8 @@ class SphereTestCase(IntegralEquationTestCase):
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.generation import generate_sphere
         return generate_sphere(self.radius, mesh_order,
-                uniform_refinement_rounds=resolution)
+                uniform_refinement_rounds=resolution,
+                group_cls=self.group_cls)
 
 
 @dataclass
@@ -432,6 +438,52 @@ class QuadSpheroidTestCase(SphereTestCase):
 
 
 @dataclass
+class GMSHSphereTestCase(SphereTestCase):
+    name: str = "gmsphere"
+
+    radius: float = 1.5
+    resolutions: List[float] = [0.4]
+
+    def get_mesh(self, resolution, mesh_order):
+        from meshmode.mesh.io import ScriptSource
+        from meshmode.mesh import SimplexElementGroup, TensorProductElementGroup
+        if issubclass(self.group_cls, SimplexElementGroup):
+            script = ScriptSource(
+                """
+                Mesh.CharacteristicLengthMax = %(length)g;
+                Mesh.HighOrderOptimize = 1;
+                Mesh.Algorithm = 1;
+
+                SetFactory("OpenCASCADE");
+                Sphere(1) = {0, 0, 0, %(radius)g};
+                """ % {"length": resolution, "radius": self.radius},
+                "geo")
+        elif issubclass(self.group_cls, TensorProductElementGroup):
+            script = ScriptSource(
+                """
+                Mesh.CharacteristicLengthMax = %(length)g;
+                Mesh.HighOrderOptimize = 1;
+                Mesh.Algorithm = 6;
+
+                SetFactory("OpenCASCADE");
+                Sphere(1) = {0, 0, 0, %(radius)g};
+                Recombine Surface "*" = 0.0001;
+                """ % {"length": resolution, "radius": self.radius},
+                "geo")
+        else:
+            raise TypeError
+
+        from meshmode.mesh.io import generate_gmsh
+        return generate_gmsh(
+                script,
+                order=mesh_order,
+                dimensions=2,
+                force_ambient_dim=3,
+                target_unit="MM",
+                )
+
+
+@dataclass
 class TorusTestCase(IntegralEquationTestCase):
     name: str = "torus"
     ambient_dim: int = 3
@@ -450,7 +502,8 @@ class TorusTestCase(IntegralEquationTestCase):
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.generation import generate_torus
-        mesh = generate_torus(self.r_major, self.r_minor, order=mesh_order)
+        mesh = generate_torus(self.r_major, self.r_minor, order=mesh_order,
+                              group_cls=self.group_cls)
 
         from meshmode.mesh.refinement import refine_uniformly
         return refine_uniformly(mesh, resolution)

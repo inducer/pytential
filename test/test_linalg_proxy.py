@@ -104,6 +104,7 @@ def plot_proxy_geometry(
             if pxy is not None:
                 ipxy = np.s_[pxystarts[i]:pxystarts[i + 1]]
                 pt.plot(proxies[0, ipxy], proxies[1, ipxy], "o", ms=2.0)
+                pt.text(*pxycenters[:, i], f"{i}", fontsize=18)
 
             if nbrindex is not None:
                 inbr = nbrindex.cluster_indices(i)
