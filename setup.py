@@ -33,10 +33,7 @@ def find_git_revision(tree_root):
     )
     (git_rev, _) = p.communicate()
 
-    import sys
-
     git_rev = git_rev.decode()
-
     git_rev = git_rev.rstrip()
 
     retcode = p.returncode
@@ -128,6 +125,8 @@ setup(
         "sumpy>=2020.2beta1",
         "pyfmmlib>=2019.1.1",
 
+        "dataclasses; python_version<'3.7'",
+        "scipy>=1.2.0",
         "immutables",
     ],
 )

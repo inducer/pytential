@@ -322,10 +322,12 @@ class MatrixBuilderDirectResamplerCacheKey:
 
 class MatrixBuilder(MatrixBuilderBase):
     def __init__(self, actx, dep_expr, other_dep_exprs,
-            dep_source, dep_discr, places, context):
+            dep_source, dep_discr, places, context, _weighted=True):
         super().__init__(
                 actx, dep_expr, other_dep_exprs,
                 dep_source, dep_discr, places, context)
+
+        self.weighted = _weighted
 
     def map_interpolation(self, expr):
         from pytential import sym
@@ -424,10 +426,11 @@ class MatrixBuilder(MatrixBuilderBase):
                     **kernel_args)
             mat = actx.to_numpy(mat)
 
-            waa = bind(self.places, sym.weights_and_area_elements(
-                source_discr.ambient_dim,
-                dofdesc=expr.source))(actx)
-            mat[:, :] *= actx.to_numpy(flatten(waa, actx))
+            if self.weighted:
+                waa = bind(self.places, sym.weights_and_area_elements(
+                    source_discr.ambient_dim,
+                    dofdesc=expr.source))(actx)
+                mat[:, :] *= actx.to_numpy(flatten(waa, actx))
 
             result += mat @ rec_density
 
@@ -441,13 +444,13 @@ class MatrixBuilder(MatrixBuilderBase):
 class P2PMatrixBuilder(MatrixBuilderBase):
     def __init__(self, actx, dep_expr, other_dep_exprs,
             dep_source, dep_discr, places, context,
-            weighted=False, exclude_self=True):
+            exclude_self=True, _weighted=False):
         super().__init__(actx,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, context)
 
-        self.weighted = weighted
         self.exclude_self = exclude_self
+        self.weighted = _weighted
 
     def map_int_g(self, expr):
         source_discr = self.places.get_discretization(
@@ -511,10 +514,12 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 
 class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, tgt_src_index, context):
+            places, tgt_src_index, context, _weighted=True, **kwargs):
         super().__init__(queue,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, tgt_src_index, context)
+
+        self.weighted = _weighted
 
     def map_int_g(self, expr):
         lpot_source = self.places.get_geometry(expr.source.geometry)
@@ -523,7 +528,7 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
         target_discr = self.places.get_discretization(
                 expr.target.geometry, expr.target.discr_stage)
 
-        if source_discr is not target_discr:
+        if self.weighted and source_discr is not target_discr:
             raise NotImplementedError
 
         result = 0
@@ -536,8 +541,6 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
                 raise NotImplementedError
 
             actx = self.array_context
-            kernel_args = _get_layer_potential_args(
-                    actx, self.places, expr, context=self.context)
             local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
                     kernel.get_base_kernel(), (expr.target_kernel,))
 
@@ -545,19 +548,37 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
             tgtindices, srcindices = make_index_cluster_cartesian_product(
                     actx, self.tgt_src_index)
 
+            from meshmode.discretization import Discretization
+            if isinstance(target_discr, Discretization):
+                assert abs(expr.qbx_forced_limit) > 0
+
+                from pytential import bind, sym
+                radii = bind(self.places, sym.expansion_radii(
+                    source_discr.ambient_dim,
+                    dofdesc=expr.target))(actx)
+                centers = bind(self.places, sym.expansion_centers(
+                    source_discr.ambient_dim,
+                    expr.qbx_forced_limit,
+                    dofdesc=expr.target))(actx)
+
+                radii = flatten(radii, actx)
+                centers = flatten(centers, actx, leaf_class=DOFArray)
+            else:
+                raise TypeError("unsupported target type: "
+                        f"'{type(target_discr).__name__}'")
+
+            if not isinstance(source_discr, Discretization):
+                expr = expr.copy(kernel_arguments={
+                    k: (sym.var(k) if k in self.context else v)
+                    for k, v in expr.kernel_arguments.items()
+                    })
+
             from sumpy.qbx import LayerPotentialMatrixSubsetGenerator
             mat_gen = LayerPotentialMatrixSubsetGenerator(actx.context, local_expn,
                 source_kernels=(kernel,), target_kernels=(expr.target_kernel,))
 
-            assert abs(expr.qbx_forced_limit) > 0
-            from pytential import bind, sym
-            radii = bind(self.places, sym.expansion_radii(
-                source_discr.ambient_dim,
-                dofdesc=expr.target))(actx)
-            centers = bind(self.places, sym.expansion_centers(
-                source_discr.ambient_dim,
-                expr.qbx_forced_limit,
-                dofdesc=expr.target))(actx)
+            kernel_args = _get_layer_potential_args(
+                    actx, self.places, expr, context=self.context)
 
             _, (mat,) = mat_gen(actx.queue,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
@@ -568,13 +589,14 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
                     srcindices=srcindices,
                     **kernel_args)
 
-            waa = flatten(
-                    bind(self.places,
-                        sym.weights_and_area_elements(
-                            source_discr.ambient_dim,
-                            dofdesc=expr.source))(actx),
-                    actx)
-            mat *= waa[srcindices]
+            if self.weighted:
+                waa = flatten(
+                        bind(self.places,
+                            sym.weights_and_area_elements(
+                                source_discr.ambient_dim,
+                                dofdesc=expr.source))(actx),
+                        actx)
+                mat *= waa[srcindices]
 
             result += actx.to_numpy(mat) * rec_density
 
@@ -584,13 +606,13 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
 class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
             places, tgt_src_index, context,
-            weighted=False, exclude_self=False):
+            exclude_self=False, _weighted=False, **kwargs):
         super().__init__(queue,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, tgt_src_index, context)
 
-        self.weighted = weighted
         self.exclude_self = exclude_self
+        self.weighted = _weighted
 
     def map_int_g(self, expr):
         source_discr = self.places.get_discretization(

@@ -235,6 +235,10 @@ def test_build_matrix_conditioning(actx_factory, side, op_type, visualize=False)
             places.ambient_dim,
             qbx_forced_limit="avg")
 
+    if case.op_type == "single":
+        # NOTE: add identity to make sure this is well-conditioned too
+        sym_op = 0.5 * case.side * sym_u + sym_op
+
     mat = actx.to_numpy(build_matrix(
         actx, places, sym_op, sym_u,
         context=case.knl_concrete_kwargs
@@ -496,6 +500,7 @@ def test_build_matrix_fixed_stage(actx_factory,
 
     # qbx
     from pytential.symbolic import matrix
+
     mat = matrix.MatrixBuilder(
             actx, **kwargs)(sym_prep_op)
     flat_cluster_mat = matrix.QBXClusterMatrixBuilder(

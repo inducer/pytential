@@ -1,19 +1,29 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 
 from pytools.obj_array import make_obj_array
 
 from pytential import sym
+from pytential.symbolic.dof_desc import DOFGranularities
 
 import extra_int_eq_data as extra
 
 
 # {{{ MatrixTestCase
 
+class _NoArgSentinel:
+    pass
+
+
 @dataclass
 class MatrixTestCaseMixin:
+    # operators
+    op_type = "scalar"
+    # disable fmm for matrix tests
+    fmm_backend: Optional[str] = None
+
     # partitioning
     approx_cluster_count: int = 10
     max_particles_in_box: Optional[int] = None
@@ -21,14 +31,20 @@ class MatrixTestCaseMixin:
     index_sparsity_factor: float = 1.0
 
     # proxy
-    proxy_radius_factor: float = 1.1
-    proxy_approx_count: float = 32
+    proxy_radius_factor: float = 1.0
+    proxy_approx_count: Optional[float] = None
 
-    # operators
-    op_type: str = "scalar"
+    # skeletonization
+    id_eps: float = 1.0e-8
+    skel_discr_stage: DOFGranularities = sym.QBX_SOURCE_STAGE2
 
     # disable fmm for matrix tests
     fmm_backend: Optional[str] = None
+
+    weighted_farfield: Optional[bool] = None
+    farfield_source_cluster_builder: Callable[..., Any] = None
+    farfield_target_cluster_builder: Callable[..., Any] = None
+    nearfield_cluster_builder: Callable[..., Any] = None
 
     def get_cluster_index(self, actx, places, dofdesc=None):
         if dofdesc is None:
@@ -68,35 +84,53 @@ class MatrixTestCaseMixin:
         cindex = self.get_cluster_index(actx, places, dofdesc=dofdesc)
         return TargetAndSourceClusterList(cindex, cindex)
 
-    def get_operator(self, ambient_dim, qbx_forced_limit="avg"):
+    def get_operator(self, ambient_dim, qbx_forced_limit=_NoArgSentinel):
         knl = self.knl_class(ambient_dim)
-        kwargs = self.knl_sym_kwargs.copy()
-        kwargs["qbx_forced_limit"] = qbx_forced_limit
+
+        single_kwargs = self.knl_sym_kwargs.copy()
+        single_kwargs["qbx_forced_limit"] = (
+                +1 if qbx_forced_limit is _NoArgSentinel else qbx_forced_limit)
+        double_kwargs = self.knl_sym_kwargs.copy()
+        double_kwargs["qbx_forced_limit"] = (
+                "avg" if qbx_forced_limit is _NoArgSentinel else qbx_forced_limit)
 
         if self.op_type in ("scalar", "single"):
             sym_u = sym.var("u")
-            sym_op = sym.S(knl, sym_u, **kwargs)
+            sym_op = sym.S(knl, sym_u, **single_kwargs)
+
         elif self.op_type == "double":
             sym_u = sym.var("u")
-            sym_op = sym.D(knl, sym_u, **kwargs)
+            sym_op = sym.D(knl, sym_u, **double_kwargs)
+
+            if double_kwargs["qbx_forced_limit"] == "avg":
+                sym_op = 0.5 * self.side * sym_u + sym_op
+
         elif self.op_type == "scalar_mixed":
             sym_u = sym.var("u")
-            sym_op = sym.S(knl, 0.3 * sym_u, **kwargs) \
-                    + sym.D(knl, 0.5 * sym_u, **kwargs)
+            sym_op = (
+                    sym.S(knl, 0.3 * sym_u, **single_kwargs)
+                    + sym.D(knl, 0.5 * sym_u, **double_kwargs))
+
+            if double_kwargs["qbx_forced_limit"] == "avg":
+                sym_op = 0.25 * self.side * sym_u + sym_op
+
         elif self.op_type == "vector":
             sym_u = sym.make_sym_vector("u", ambient_dim)
-
             sym_op = make_obj_array([
-                sym.Sp(knl, sym_u[0], **kwargs)
-                + sym.D(knl, sym_u[1], **kwargs),
-                sym.S(knl, 0.4 * sym_u[0], **kwargs)
-                + 0.3 * sym.D(knl, sym_u[0], **kwargs)
+                sym.Sp(knl, sym_u[0], **double_kwargs)
+                + sym.D(knl, sym_u[1], **double_kwargs),
+                sym.S(knl, 0.4 * sym_u[0], **single_kwargs)
+                + 0.3 * sym.D(knl, sym_u[0], **double_kwargs)
                 ])
+
+            if double_kwargs["qbx_forced_limit"] == "avg":
+                sym_op = 0.5 * self.side * make_obj_array([
+                    -sym_u[0] + sym_u[1],
+                    0.3 * sym_u[0]
+                    ]) + sym_op
+
         else:
             raise ValueError(f"unknown operator type: '{self.op_type}'")
-
-        if self.side is not None:
-            sym_op = 0.5 * self.side * sym_u + sym_op
 
         return sym_u, sym_op
 
@@ -108,6 +142,10 @@ class CurveTestCase(MatrixTestCaseMixin, extra.CurveTestCase):
 
 @dataclass
 class TorusTestCase(MatrixTestCaseMixin, extra.TorusTestCase):
+    pass
+
+
+class GMSHSphereTestCase(MatrixTestCaseMixin, extra.GMSHSphereTestCase):
     pass
 
 # }}}

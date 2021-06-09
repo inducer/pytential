@@ -1,4 +1,4 @@
-__copyright__ = "Copyright (C) 2018-2021 Alexandru Fikl"
+__copyright__ = "Copyright (C) 2018-2022 Alexandru Fikl"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,12 +21,17 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
+import numpy.linalg as la
 
 from arraycontext import PyOpenCLArrayContext, Array
 from pytools import memoize_in, memoize_method
+
+if TYPE_CHECKING:
+    from pytential.linalg.skeletonization import SkeletonizationResult
+
 
 __doc__ = """
 Misc
@@ -307,11 +312,127 @@ def make_flat_cluster_diag(
         diagonal element :math:`(i, i)` is the reshaped slice of *mat* that
         corresponds to the cluster :math:`i`.
     """
-    block_mat = np.full((mindex.nclusters, mindex.nclusters), 0, dtype=object)
+    cluster_mat = np.full((mindex.nclusters, mindex.nclusters), 0, dtype=object)
     for i in range(mindex.nclusters):
         shape = mindex.cluster_shape(i, i)
-        block_mat[i, i] = mindex.flat_cluster_take(mat, i).reshape(*shape)
+        cluster_mat[i, i] = mindex.flat_cluster_take(mat, i).reshape(*shape)
 
-    return block_mat
+    return cluster_mat
+
+# }}}
+
+
+# {{{ interpolative decomposition
+
+def interp_decomp(
+        A: np.ndarray, rank: Optional[int], eps: Optional[float],
+        ) -> Tuple[int, np.ndarray, np.ndarray]:
+    """Wrapper for :func:`~scipy.linalg.interpolative.interp_decomp` that
+    always has the same output signature.
+
+    :return: a tuple ``(k, idx, interp)`` containing the numerical rank,
+        the column indices and the resulting interpolation matrix.
+    """
+
+    import scipy.linalg.interpolative as sli    # pylint:disable=no-name-in-module
+    if rank is None:
+        k, idx, proj = sli.interp_decomp(A, eps)
+    else:
+        idx, proj = sli.interp_decomp(A, rank)
+        k = rank
+
+    interp = sli.reconstruct_interp_matrix(idx, proj)
+    return k, idx, interp
+
+# }}}
+
+
+# {{{ cluster matrix errors
+
+def cluster_skeletonization_error(
+        mat: np.ndarray, skeleton: "SkeletonizationResult", *,
+        ord: Optional[float] = None,
+        relative: bool = False) -> np.ndarray:
+    from itertools import product
+
+    L = skeleton.L
+    R = skeleton.R
+    skel_tgt_src_index = skeleton.skel_tgt_src_index
+    tgt_src_index = skeleton.tgt_src_index
+    nclusters = skeleton.nclusters
+
+    def mnorm(x: np.ndarray, y: np.ndarray) -> float:
+        result = la.norm(x - y, ord=ord)
+        if relative:
+            result = result / la.norm(x, ord=ord)
+
+        return result
+
+    # {{{ compute cluster-wise errors
+
+    tgt_error = np.zeros((nclusters, nclusters))
+    src_error = np.zeros((nclusters, nclusters))
+
+    for i, j in product(range(nclusters), repeat=2):
+        if i == j:
+            continue
+
+        # full matrix indices
+        f_tgt = tgt_src_index.targets.cluster_indices(i)
+        f_src = tgt_src_index.sources.cluster_indices(j)
+        A = mat[np.ix_(f_tgt, f_src)]
+
+        # skeleton matrix indices
+        s_tgt = skel_tgt_src_index.targets.cluster_indices(i)
+        s_src = skel_tgt_src_index.sources.cluster_indices(j)
+
+        # compute cluster-wise errors
+        S = mat[np.ix_(s_tgt, f_src)]
+        tgt_error[i, j] = mnorm(A, L[i, i] @ S)
+
+        S = mat[np.ix_(f_tgt, s_src)]
+        src_error[i, j] = mnorm(A, S @ R[j, j])
+
+    # }}}
+
+    return tgt_error, src_error
+
+
+def skeletonization_error(
+        mat: np.ndarray, skeleton: "SkeletonizationResult", *,
+        ord: Optional[float] = None,
+        relative: bool = False) -> np.ndarray:
+    L = skeleton.L
+    R = skeleton.R
+    tgt_src_index = skeleton.tgt_src_index
+    skel_tgt_src_index = skeleton.skel_tgt_src_index
+
+    # {{{ contruct matrices
+
+    # NOTE: the diagonal should be the same by definition
+    skl = mat.copy()
+
+    from itertools import product
+    for i, j in product(range(skeleton.nclusters), repeat=2):
+        if i == j:
+            continue
+
+        # full matrix indices
+        f_tgt = tgt_src_index.targets.cluster_indices(i)
+        f_src = tgt_src_index.sources.cluster_indices(j)
+        # skeleton matrix indices
+        s_tgt = skel_tgt_src_index.targets.cluster_indices(i)
+        s_src = skel_tgt_src_index.sources.cluster_indices(j)
+
+        S = mat[np.ix_(s_tgt, s_src)]
+        skl[np.ix_(f_tgt, f_src)] = L[i, i] @ S @ R[j, j]
+
+    # }}}
+
+    result = la.norm(mat - skl, ord=ord)
+    if relative:
+        result = result / la.norm(mat, ord=ord)
+
+    return result
 
 # }}}
