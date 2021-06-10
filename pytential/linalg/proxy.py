@@ -254,10 +254,12 @@ def make_compute_block_centers_knl(
             "{[idim]: 0 <= idim < ndim}"
             ],
             """
-            <> ioffset = srcranges[irange]
-            <> npoints = srcranges[irange + 1] - srcranges[irange]
+            for irange
+                <> ioffset = srcranges[irange]
+                <> npoints = srcranges[irange + 1] - srcranges[irange]
 
-            %(insns)s
+                %(insns)s
+            end
             """ % dict(insns=insns), [
                 lp.GlobalArg("sources", None,
                     shape=(ndim, "nsources"), dim_tags="sep,C"),
@@ -407,14 +409,16 @@ def make_compute_block_radii_knl(
             "{[idim]: 0 <= idim < ndim}"
             ],
             """
-            <> ioffset = srcranges[irange]
-            <> npoints = srcranges[irange + 1] - srcranges[irange]
-            <> rblk = reduce(max, i, sqrt(simul_reduce(sum, idim, \
-                    (proxy_centers[idim, irange]
-                    - sources[idim, srcindices[i + ioffset]]) ** 2)
-                    ))
+            for irange
+                <> ioffset = srcranges[irange]
+                <> npoints = srcranges[irange + 1] - srcranges[irange]
+                <> rblk = reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                        (proxy_centers[idim, irange]
+                        - sources[idim, srcindices[i + ioffset]]) ** 2)
+                        ))
 
-            proxy_radius[irange] = radius_factor * rblk
+                proxy_radius[irange] = radius_factor * rblk
+            end
             """, [
                 lp.GlobalArg("sources", None,
                     shape=(ndim, "nsources"), dim_tags="sep,C"),
@@ -457,25 +461,26 @@ def make_compute_block_qbx_radii_knl(
             "{[idim]: 0 <= idim < ndim}"
             ],
             """
-            <> ioffset = srcranges[irange]
-            <> npoints = srcranges[irange + 1] - srcranges[irange]
-            <> rblk = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
-                    (proxy_centers[idim, irange] -
-                     sources[idim, srcindices[i + ioffset]]) ** 2))) \
-                    {dup=idim}
-            <> rqbx_int = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
-                    (proxy_centers[idim, irange] -
-                     center_int[idim, srcindices[i + ioffset]]) ** 2)) + \
-                     expansion_radii[srcindices[i + ioffset]]) \
-                     {dup=idim}
-            <> rqbx_ext = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
-                    (proxy_centers[idim, irange] -
-                     center_ext[idim, srcindices[i + ioffset]]) ** 2)) + \
-                     expansion_radii[srcindices[i + ioffset]]) \
-                     {dup=idim}
-            <> rqbx = rqbx_int if rqbx_ext < rqbx_int else rqbx_ext
+            for irange
+                <> ioffset = srcranges[irange]
+                <> npoints = srcranges[irange + 1] - srcranges[irange]
+                <> rblk = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                        (proxy_centers[idim, irange] -
+                         sources[idim, srcindices[i + ioffset]]) ** 2)))
+                <> rqbx_int = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                        (proxy_centers[idim, irange] -
+                         center_int[idim, srcindices[i + ioffset]]) ** 2)) + \
+                         expansion_radii[srcindices[i + ioffset]]) \
+                         {dup=idim}
+                <> rqbx_ext = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                        (proxy_centers[idim, irange] -
+                         center_ext[idim, srcindices[i + ioffset]]) ** 2)) + \
+                         expansion_radii[srcindices[i + ioffset]]) \
+                         {dup=idim}
+                <> rqbx = rqbx_int if rqbx_ext < rqbx_int else rqbx_ext
 
-            proxy_radius[irange] = radius_factor * rblk
+                proxy_radius[irange] = radius_factor * rblk
+            end
             """, [
                 lp.GlobalArg("sources", None,
                     shape=(ndim, "nsources"), dim_tags="sep,C"),
