@@ -302,6 +302,7 @@ class StressletWrapperYoshida(StressletWrapperBase):
         mu = self.mu
         nu = self.nu
         lam = 2*nu*mu/(1-2*nu)
+        stokeslet_weight *= -1
 
         def C(i, j, k, l):   # noqa: E741
             res = 0
@@ -340,7 +341,6 @@ class StressletWrapperYoshida(StressletWrapperBase):
         sigma = stresslet_density_vec_sym
 
         source_kernels = [None]*4
-        densities = [0]*4
         for i in range(3):
             source_kernels[i] = AxisSourceDerivative(i, kernel)
         source_kernels[3] = kernel
@@ -359,6 +359,7 @@ class StressletWrapperYoshida(StressletWrapperBase):
                     qbx_forced_limit=qbx_forced_limit)
                 sym_expr[i] += P(i, k, int_g)
 
+            densities = [0]*4
             for k in range(3):
                 for m in range(3):
                     for j in range(3):
@@ -398,8 +399,7 @@ class StokesletWrapperYoshida(StokesletWrapperBase):
         self.mu = mu_sym
         self.nu = nu_sym
 
-    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
-            extra_deriv_dirs=[]):
+    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
         stresslet = StressletWrapperYoshida(3, self.mu, self.nu)
         return self.apply_stokeslet_and_stresslet(density_vec_sym,
             [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,

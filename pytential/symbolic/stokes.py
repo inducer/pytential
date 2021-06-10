@@ -75,7 +75,8 @@ class StokesletWrapperBase:
         self.nu = nu_sym
 
         args = list(get_all_variables(self.mu)) + list(get_all_variables(self.nu))
-        self.extra_kwargs = {arg.name: arg for arg in args}
+        #self.extra_kwargs = {arg.name: arg for arg in args}
+        self.extra_kwargs = {}
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
         """Symbolic expressions for integrating Stokeslet kernel.
@@ -175,7 +176,8 @@ class StressletWrapperBase:
         self.nu = nu_sym
 
         args = list(get_all_variables(self.nu))
-        self.extra_kwargs = {arg.name: arg for arg in args}
+        #self.extra_kwargs = {arg.name: arg for arg in args}
+        self.extra_kwargs = {}
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
         """Symbolic expressions for integrating Stresslet kernel.
@@ -279,10 +281,11 @@ class StokesletWrapper(StokesletWrapperBase):
         Returns the Integral of the Stokeslet/Stresslet kernel given by `idx`
         and its derivatives.
         """
-        return _create_int_g(self.kernel_dict[idx], deriv_dirs,
+        res = _create_int_g(self.kernel_dict[idx], deriv_dirs,
                     density=density_sym*dir_vec_sym[idx[-1]],
                     qbx_forced_limit=qbx_forced_limit,
                     **self.extra_kwargs)/(2*(1-self.nu))
+        return res
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
 
@@ -487,8 +490,8 @@ class StressletWrapperTornberg(StressletWrapperBase):
                 k in range(self.dim)]
         common_source_kernels.append(self.kernel)
 
-        stokeslet_weight *= 3.0/6
-        stresslet_weight *= -0.5*self.mu**(-1)
+        stresslet_weight *= 3.0/6
+        stokeslet_weight *= -0.5*self.mu**(-1)
 
         for i in range(self.dim):
             for j in range(self.dim):
@@ -521,7 +524,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
             densities = [stresslet_weight*(common_density0 * dir_vec_sym[k]
                     + common_density1 * stresslet_density_vec_sym[k]) for
                     k in range(self.dim)]
-            densities.append(common_density2)
+            densities.append(stokeslet_weight * common_density2)
 
             target_kernel = AxisTargetDerivative(i, self.kernel)
             for deriv_dir in extra_deriv_dirs:
@@ -554,8 +557,7 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
         self.mu = mu_sym
         self.nu = nu_sym
 
-    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
-            extra_deriv_dirs=[]):
+    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
         stresslet = StressletWrapperTornberg(3, self.mu, self.nu)
         return stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
             [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
