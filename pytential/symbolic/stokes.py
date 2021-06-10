@@ -73,7 +73,7 @@ class StokesletWrapperBase:
         self.mu = mu_sym
         self.nu = nu_sym
 
-    def apply(self, density_vec_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
         """Symbolic expressions for integrating Stokeslet kernel.
 
         Returns an object array of symbolic expressions for the vector
@@ -97,7 +97,7 @@ class StokesletWrapperBase:
                          sym.S(kernel, density_vec_sym[i],
                          qbx_forced_limit=qbx_forced_limit)))
 
-        return sym_expr
+        return merge_int_g_exprs(sym_expr)
 
     def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
         """Symbolic derivative of velocity from Stokeslet.
@@ -111,7 +111,7 @@ class StokesletWrapperBase:
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
-        raise NotImplementedError
+        return self.apply(density_vec_sym, qbx_forced_limit, [deriv_dir])
 
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
         r"""Symbolic expression for viscous stress applied to a direction.
@@ -170,7 +170,7 @@ class StressletWrapperBase:
         self.mu = mu_sym
         self.nu = nu_sym
 
-    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
         """Symbolic expressions for integrating Stresslet kernel.
 
         Returns an object array of symbolic expressions for the vector
@@ -201,24 +201,7 @@ class StressletWrapperBase:
                                              density_vec_sym[i] * dir_vec_sym[j],
                                              qbx_forced_limit=qbx_forced_limit)))
 
-        return sym_expr
-
-    def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
-            qbx_forced_limit):
-        """Symbolic derivative of velocity from stresslet.
-
-        Returns an object array of symbolic expressions for the vector
-        resulting from integrating the *deriv_dir* target derivative of the
-        dyadic Stresslet kernel with variable *density_vec_sym* and source
-        direction vectors *dir_vec_sym*.
-
-        :arg deriv_dir: integer denoting the axis direction for the derivative.
-        :arg density_vec_sym: a symbolic vector variable for the density vector.
-        :arg dir_vec_sym: a symbolic vector variable for the normal direction.
-        :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
-            to :class:`~pytential.symbolic.primitives.IntG`.
-        """
-        raise NotImplementedError
+        return merge_int_g_exprs(sym_expr)
 
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
                         qbx_forced_limit):
@@ -285,7 +268,7 @@ class StokesletWrapper(StokesletWrapperBase):
                     density=density_sym*dir_vec_sym[idx[-1]],
                     qbx_forced_limit=qbx_forced_limit)/(2*(1-self.nu))
 
-    def apply(self, density_vec_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -295,21 +278,7 @@ class StokesletWrapper(StokesletWrapperBase):
             for i in range(self.dim):
                 sym_expr[comp] += self.get_int_g((comp, i),
                         density_vec_sym[i], [1]*self.dim,
-                        qbx_forced_limit, deriv_dirs=[])
-
-        return sym_expr
-
-    def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
-
-        sym_expr = self.apply(density_vec_sym, qbx_forced_limit)
-
-        # For stokeslet, there's no direction vector involved
-        # passing a list of ones instead to remove its usage.
-        for comp in range(self.dim):
-            for i in range(self.dim):
-                sym_expr[comp] += self.get_int_g((comp, i),
-                        density_vec_sym[i], [1]*self.dim,
-                        qbx_forced_limit, deriv_dirs=[deriv_dir])
+                        qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
         return sym_expr
 
@@ -421,7 +390,8 @@ class StressletWrapper(StressletWrapperBase):
                     qbx_forced_limit=qbx_forced_limit) * coeff
         return result/(2*(1 - nu))
 
-    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
+            extra_deriv_dirs=[]):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -430,38 +400,25 @@ class StressletWrapper(StressletWrapperBase):
                 for j in range(self.dim):
                     sym_expr[comp] += self.get_int_g((comp, i, j),
                         density_vec_sym[i], dir_vec_sym,
-                        qbx_forced_limit, deriv_dirs=[])
+                        qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
         return sym_expr
 
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
-            qbx_forced_limit, stokeslet_weight, stresslet_weight):
+            qbx_forced_limit, stokeslet_weight, stresslet_weight,
+            extra_deriv_dirs=[]):
 
         stokeslet_obj = StokesletWrapper(dim=self.dim,
                                          mu_sym=self.mu, nu_sym=self.nu)
 
         sym_expr = self.apply(stresslet_density_vec_sym, dir_vec_sym,
-                qbx_forced_limit) * stresslet_weight
+                qbx_forced_limit, extra_deriv_dirs) * stresslet_weight
         sym_expr += stokeslet_obj.apply(stokeslet_density_vec_sym,
-                qbx_forced_limit) * stokeslet_weight
+                qbx_forced_limit, extra_deriv_dirs) * stokeslet_weight
 
         return sym_expr
 
-
-    def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
-                             qbx_forced_limit):
-
-        sym_expr = np.zeros((self.dim,), dtype=object)
-
-        for comp in range(self.dim):
-            for i in range(self.dim):
-                for j in range(self.dim):
-                    sym_expr[comp] += self.get_int_g((comp, i, j),
-                        density_vec_sym[i], dir_vec_sym,
-                        qbx_forced_limit, deriv_dirs=[deriv_dir])
-
-        return sym_expr
 
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
                         qbx_forced_limit):
@@ -514,13 +471,15 @@ class StressletWrapperTornberg(StokesletWrapperBase):
         self.mu = mu_sym
         self.nu = nu_sym
 
-    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
+            extra_deriv_dirs=[]):
         return self.apply_stokeslet_and_stresslet([0]*self.dim,
-            density_vec_sym, dir_vec_sym, qbx_forced_limit, 0, 1)
+            density_vec_sym, dir_vec_sym, qbx_forced_limit, 0, 1, extra_deriv_dirs)
 
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
-            qbx_forced_limit, stokeslet_weight, stresslet_weight):
+            qbx_forced_limit, stokeslet_weight, stresslet_weight,
+            extra_deriv_dirs):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -541,6 +500,8 @@ class StressletWrapperTornberg(StokesletWrapperBase):
                 densities.append(stokeslet_weight*stokeslet_density_vec_sym[j])
                 target_kernel = TargetPointMultiplier(j,
                         AxisTargetDerivative(i, self.kernel))
+                for deriv_dir in extra_deriv_dirs:
+                    target_kernel = AxisTargetDerivative(deriv_dir, target_kernel)
                 sym_expr[i] -= sym.IntG(target_kernel=target_kernel,
                     source_kernels=tuple(common_source_kernels),
                     densities=tuple(densities),
@@ -564,6 +525,8 @@ class StressletWrapperTornberg(StokesletWrapperBase):
             densities.append(common_density2)
 
             target_kernel = AxisTargetDerivative(i, self.kernel)
+            for deriv_dir in extra_deriv_dirs:
+                target_kernel = AxisTargetDerivative(deriv_dir, targer_kernel)
             sym_expr[i] += sym.IntG(target_kernel=target_kernel,
                 source_kernels=tuple(common_source_kernels),
                 densities=tuple(densities),

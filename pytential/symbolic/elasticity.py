@@ -286,13 +286,16 @@ class StressletWrapperYoshida(StokesletWrapperBase):
         self.mu = mu_sym
         self.nu = nu_sym
 
-    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
+            extra_deriv_dirs=[]):
         return self.apply_stokeslet_and_stresslet([0]*self.dim,
-            density_vec_sym, dir_vec_sym, qbx_forced_limit, 0, 1)
+            density_vec_sym, dir_vec_sym, qbx_forced_limit, 0, 1,
+            extra_deriv_dirs)
 
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
-            qbx_forced_limit, stokeslet_weight, stresslet_weight):
+            qbx_forced_limit, stokeslet_weight, stresslet_weight,
+            extra_deriv_dirs):
 
         mu = self.mu
         nu = self.nu
@@ -308,16 +311,23 @@ class StressletWrapperYoshida(StokesletWrapperBase):
                 res += mu
             return res * stresslet_weight
 
+        def add_extra_deriv_dirs(target_kernel):
+            for deriv_dir in extra_deriv_dirs:
+                target_kernel = AxisTargetDerivative(deriv_dir, target_kernel)
+            return target_kernel
+
         def P(i, j, int_g):
+            int_g = int_g.copy(target_kernel=add_extra_deriv_dirs(
+                int_g.target_kernel))
             res = -int_g.copy(target_kernel=TargetPointMultiplier(j,
-                AxisTargetDerivative(i, int_g.target_kernel)))
+                    AxisTargetDerivative(i, int_g.target_kernel)))
             if i == j:
                 res += (3 - 4*nu)*int_g
             return res / (4*mu*(1 - nu))
 
         def Q(i, int_g):
-            res = int_g.copy(target_kernel=AxisTargetDerivative(i,
-                int_g.target_kernel))
+            res = int_g.copy(target_kernel=add_extra_deriv_dirs(
+                AxisTargetDerivative(i, int_g.target_kernel))
             return res / (4*mu*(1 - nu))
 
         sym_expr = np.zeros((3,), dtype=object)
