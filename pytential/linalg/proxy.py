@@ -20,12 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import numpy.linalg as la
 
-from pytools.obj_array import make_obj_array
-from pytools import memoize_method, memoize_in
+from arraycontext import PyOpenCLArrayContext
+from meshmode.discretization import Discretization
+
+from pytools import memoize_in
 from sumpy.tools import BlockIndexRanges
 
 import loopy as lp
@@ -36,32 +40,51 @@ __doc__ = """
 Proxy Point Generation
 ~~~~~~~~~~~~~~~~~~~~~~
 
+.. autoclass:: BlockProxyPoints
+.. autoclass:: ProxyGeneratorBase
 .. autoclass:: ProxyGenerator
-.. autofunction:: partition_by_nodes
+.. autoclass:: QBXProxyGenerator
 
+.. autofunction:: partition_by_nodes
 .. autofunction:: gather_block_neighbor_points
-.. autofunction:: gather_block_interaction_points
 """
 
 
 # {{{ point index partitioning
 
-def partition_by_nodes(actx, discr,
-        tree_kind="adaptive-level-restricted", max_nodes_in_box=None):
+def make_block_index(
+        actx: PyOpenCLArrayContext,
+        indices: np.ndarray,
+        ranges: Optional[np.ndarray] = None) -> BlockIndexRanges:
+    """Wrap a ``(indices, ranges)`` tuple into a ``BlockIndexRanges``.
+
+    :param ranges: if *None*, then *indices* is expected to be an object
+        array of indices, so that the ranges can be reconstructed.
+    """
+    if ranges is None:
+        ranges = np.cumsum([0] + [r.size for r in indices])
+        indices = np.hstack(indices)
+
+    return BlockIndexRanges(actx.context,
+            actx.freeze(actx.from_numpy(indices)),
+            actx.freeze(actx.from_numpy(ranges)))
+
+
+def partition_by_nodes(
+        actx: PyOpenCLArrayContext, discr: Discretization, *,
+        tree_kind: Optional[str] = "adaptive-level-restricted",
+        max_particles_in_box: Optional[int] = None) -> BlockIndexRanges:
     """Generate equally sized ranges of nodes. The partition is created at the
     lowest level of granularity, i.e. nodes. This results in balanced ranges
     of points, but will split elements across different ranges.
 
-    :arg discr: a :class:`meshmode.discretization.Discretization`.
     :arg tree_kind: if not *None*, it is passed to :class:`boxtree.TreeBuilder`.
-    :arg max_nodes_in_box: passed to :class:`boxtree.TreeBuilder`.
-
-    :return: a :class:`sumpy.tools.BlockIndexRanges`.
+    :arg max_particles_in_box: passed to :class:`boxtree.TreeBuilder`.
     """
 
-    if max_nodes_in_box is None:
+    if max_particles_in_box is None:
         # FIXME: this is just an arbitrary value
-        max_nodes_in_box = 32
+        max_particles_in_box = 32
 
     if tree_kind is not None:
         from boxtree import box_flags_enum
@@ -69,44 +92,40 @@ def partition_by_nodes(actx, discr,
 
         builder = TreeBuilder(actx.context)
 
-        from meshmode.dof_array import flatten, thaw
+        from arraycontext import thaw
+        from meshmode.dof_array import flatten
         tree, _ = builder(actx.queue,
-                flatten(thaw(actx, discr.nodes())),
-                max_particles_in_box=max_nodes_in_box,
+                flatten(thaw(discr.nodes(), actx)),
+                max_particles_in_box=max_particles_in_box,
                 kind=tree_kind)
 
         tree = tree.get(actx.queue)
-        leaf_boxes, = (tree.box_flags
-                       & box_flags_enum.HAS_CHILDREN == 0).nonzero()
+        leaf_boxes, = (tree.box_flags & box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
         indices = np.empty(len(leaf_boxes), dtype=object)
+        ranges = None
+
         for i, ibox in enumerate(leaf_boxes):
             box_start = tree.box_source_starts[ibox]
             box_end = box_start + tree.box_source_counts_cumul[ibox]
             indices[i] = tree.user_source_ids[box_start:box_end]
-
-        ranges = actx.from_numpy(
-                np.cumsum([0] + [box.shape[0] for box in indices])
-                )
-        indices = actx.from_numpy(np.hstack(indices))
     else:
-        indices = actx.from_numpy(np.arange(0, discr.ndofs, dtype=np.int64))
-        ranges = actx.from_numpy(np.arange(
-            0,
-            discr.ndofs + 1,
-            max_nodes_in_box, dtype=np.int64))
+        if discr.ambient_dim != 2 and discr.dim == 1:
+            raise ValueError("only curves are supported for 'tree_kind=None'")
 
-    assert ranges[-1] == discr.ndofs
+        nblocks = max(discr.ndofs // max_particles_in_box, 2)
+        indices = np.arange(0, discr.ndofs, dtype=np.int64)
+        ranges = np.linspace(0, discr.ndofs, nblocks + 1, dtype=np.int64)
+        assert ranges[-1] == discr.ndofs
 
-    return BlockIndexRanges(actx.context,
-        actx.freeze(indices), actx.freeze(ranges))
+    return make_block_index(actx, indices, ranges=ranges)
 
 # }}}
 
 
 # {{{ proxy point generator
 
-def _generate_unit_sphere(ambient_dim, approx_npoints):
+def _generate_unit_sphere(ambient_dim: int, approx_npoints: int) -> np.ndarray:
     """Generate uniform points on a unit sphere.
 
     :arg ambient_dim: dimension of the ambient space.
@@ -152,161 +171,352 @@ def _generate_unit_sphere(ambient_dim, approx_npoints):
     return points
 
 
-class ProxyGenerator:
+@dataclass(frozen=True)
+class BlockProxyPoints:
+    """
+    .. attribute:: srcindices
+
+        A :class:`~sumpy.tools.BlockIndexRanges` describing which block of
+        points each proxy ball was created from.
+
+    .. attribute:: indices
+
+        A :class:`~sumpy.tools.BlockIndexRanges` describing which proxies
+        belong to which block.
+
+    .. attribute:: points
+
+        A concatenated list of all the proxy points. Can be sliced into
+        using :attr:`indices` (shape ``(dim, nproxy_per_block * nblocks)``).
+
+    .. attribute:: centers
+
+        A list of all the proxy ball centers (shape ``(dim, nblocks)``).
+
+    .. attribute:: radii
+
+        A list of all the proxy ball radii (shape ``(nblocks,)``).
+
+    .. attribute:: nblocks
+    .. attribute:: nproxy_per_block
+    .. automethod:: to_numpy
+    """
+
+    srcindices: BlockIndexRanges
+    indices: BlockIndexRanges
+    points: np.ndarray
+    centers: np.ndarray
+    radii: np.ndarray
+
+    @property
+    def nblocks(self) -> int:
+        return self.srcindices.nblocks
+
+    @property
+    def nproxy_per_block(self) -> int:
+        return self.points[0].shape[0] // self.nblocks
+
+    def to_numpy(self, actx: PyOpenCLArrayContext) -> "BlockProxyPoints":
+        from arraycontext import to_numpy
+        from dataclasses import replace
+        return replace(self,
+                srcindices=self.srcindices.get(actx.queue),
+                indices=self.indices.get(actx.queue),
+                points=to_numpy(self.points, actx),
+                centers=to_numpy(self.centers, actx),
+                radii=to_numpy(self.radii, actx))
+
+
+def make_compute_block_centers_knl(
+        actx: PyOpenCLArrayContext, ndim: int, norm_type: str) -> lp.LoopKernel:
+    @memoize_in(actx, (make_compute_block_centers_knl, ndim, norm_type))
+    def prg():
+        if norm_type == "l2":
+            insns = """
+            proxy_center[idim, irange] = 1.0 / npoints \
+                    * simul_reduce(sum, i, sources[idim, srcindices[i + ioffset]])
+            """
+        elif norm_type == "linf":
+            insns = """
+            <> bbox_max = \
+                    simul_reduce(max, i, sources[idim, srcindices[i + ioffset]])
+            <> bbox_min = \
+                    simul_reduce(min, i, sources[idim, srcindices[i + ioffset]])
+
+            proxy_center[idim, irange] = (bbox_max + bbox_min) / 2.0
+            """
+        else:
+            raise ValueError(f"unknown norm type: '{norm_type}'")
+
+        knl = lp.make_kernel([
+            "{[irange]: 0 <= irange < nranges}",
+            "{[i]: 0 <= i < npoints}",
+            "{[idim]: 0 <= idim < ndim}"
+            ],
+            """
+            <> ioffset = srcranges[irange]
+            <> npoints = srcranges[irange + 1] - srcranges[irange]
+
+            %(insns)s
+            """ % dict(insns=insns), [
+                lp.GlobalArg("sources", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.ValueArg("nsources", np.int64),
+                ...
+                ],
+            name="compute_block_centers_knl",
+            assumptions="ndim>=1 and nranges>=1",
+            fixed_parameters=dict(ndim=ndim),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            )
+
+        knl = lp.tag_inames(knl, "idim*:unr")
+        knl = lp.split_iname(knl, "irange", 64, outer_tag="g.0")
+
+        return knl
+
+    return prg()
+
+
+class ProxyGeneratorBase:
     r"""
-    .. attribute:: places
-
-        A :class:`~pytential.GeometryCollection`
-        containing the geometry on which the proxy balls are generated.
-
     .. attribute:: nproxy
 
         Number of proxy points in a single proxy ball.
 
-    .. attribute:: radius_factor
-
-        A factor used to compute the proxy ball radius. The radius
-        is computed in the :math:`\ell^2` norm, resulting in a circle or
-        sphere of proxy points. For QBX, we have two radii of interest
-        for a set of points: the radius :math:`r_{block}` of the
-        smallest ball containing all the points and the radius
-        :math:`r_{qbx}` of the smallest ball containing all the QBX
-        expansion balls in the block. If the factor :math:`\theta \in
-        [0, 1]`, then the radius of the proxy ball is
-
-        .. math::
-
-            r = (1 - \theta) r_{block} + \theta r_{qbx}.
-
-        If the factor :math:`\theta > 1`, the the radius is simply
-
-        .. math::
-
-            r = \theta r_{qbx}.
-
-    .. attribute:: ref_points
-
-        Reference points on a unit ball. Can be used to construct the points
-        of a proxy ball :math:`i` by translating them to ``center[i]`` and
-        scaling by ``radii[i]``, as obtained by :meth:`__call__`.
-
+    .. automethod:: __init__
     .. automethod:: __call__
     """
 
-    def __init__(self, places, approx_nproxy=None, radius_factor=None):
+    def __init__(self, places,
+            approx_nproxy: Optional[int] = None,
+            radius_factor: Optional[float] = None,
+            norm_type: str = "linf"):
+        """
+        :param approx_nproxy: desired number of proxy points. In higher
+            dimensions, it is not always possible to construct a proxy ball
+            with exactly this number of proxy points. The exact number of
+            proxy points can be retrieved with :attr:`nproxy`.
+        :param radius_factor: Factor multiplying the block radius (i.e radius
+            of the bounding box) to get the proxy ball radius.
+        :param norm_type: type of the norm used to compute the centers of
+            each block. Supported values are ``"linf"`` and ``"l2"``.
+        """
         from pytential import GeometryCollection
         if not isinstance(places, GeometryCollection):
             places = GeometryCollection(places)
 
         self.places = places
-        self.ambient_dim = places.ambient_dim
         self.radius_factor = 1.1 if radius_factor is None else radius_factor
+        self.norm_type = norm_type
 
         approx_nproxy = 32 if approx_nproxy is None else approx_nproxy
-        self.ref_points = \
-                _generate_unit_sphere(self.ambient_dim, approx_nproxy)
+        self.ref_points = _generate_unit_sphere(self.ambient_dim, approx_nproxy)
 
     @property
-    def nproxy(self):
+    def ambient_dim(self) -> int:
+        return self.places.ambient_dim
+
+    @property
+    def nproxy(self) -> int:
         return self.ref_points.shape[1]
 
-    @memoize_method
-    def get_kernel(self):
-        if self.radius_factor < 1.0:
-            radius_expr = "(1.0 - {f}) * rblk + {f} * rqbx"
-        else:
-            radius_expr = "{f} * rqbx"
-        radius_expr = radius_expr.format(f=self.radius_factor)
+    def get_centers_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
+        return make_compute_block_centers_knl(actx, self.ambient_dim, self.norm_type)
 
-        # NOTE: centers of mass are computed using a second-order approximation
-        knl = lp.make_kernel([
-            "{[irange]: 0 <= irange < nranges}",
-            "{[i]: 0 <= i < npoints}",
-            "{[idim]: 0 <= idim < dim}"
-            ],
-            ["""
-            for irange
-                <> ioffset = srcranges[irange]
-                <> npoints = srcranges[irange + 1] - srcranges[irange]
+    def get_radii_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
+        raise NotImplementedError
 
-                proxy_center[idim, irange] = 1.0 / npoints * \
-                    reduce(sum, i, sources[idim, srcindices[i + ioffset]]) \
-                        {{dup=idim:i}}
+    def __call__(self,
+            actx: PyOpenCLArrayContext,
+            source_dd,
+            indices: BlockIndexRanges, **kwargs) -> BlockProxyPoints:
+        """Generate proxy points for each block in *indices* with nodes in
+        the discretization *source_dd*.
 
-                <> rblk = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
-                        (proxy_center[idim, irange] -
-                         sources[idim, srcindices[i + ioffset]]) ** 2)))
-
-                <> rqbx_int = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
-                        (proxy_center[idim, irange] -
-                         center_int[idim, srcindices[i + ioffset]]) ** 2)) + \
-                         expansion_radii[srcindices[i + ioffset]])
-                <> rqbx_ext = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
-                        (proxy_center[idim, irange] -
-                         center_ext[idim, srcindices[i + ioffset]]) ** 2)) + \
-                         expansion_radii[srcindices[i + ioffset]])
-                <> rqbx = rqbx_int if rqbx_ext < rqbx_int else rqbx_ext
-
-                proxy_radius[irange] = {radius_expr}
-            end
-            """.format(radius_expr=radius_expr)],
-            [
-                lp.GlobalArg("sources", None,
-                    shape=(self.ambient_dim, "nsources"), dim_tags="sep,C"),
-                lp.GlobalArg("center_int", None,
-                    shape=(self.ambient_dim, "nsources"), dim_tags="sep,C"),
-                lp.GlobalArg("center_ext", None,
-                    shape=(self.ambient_dim, "nsources"), dim_tags="sep,C"),
-                lp.GlobalArg("proxy_center", None,
-                    shape=(self.ambient_dim, "nranges")),
-                lp.GlobalArg("proxy_radius", None,
-                    shape="nranges"),
-                lp.ValueArg("nsources", np.int64),
-                "..."
-            ],
-            name="find_proxy_radii_knl",
-            assumptions="dim>=1 and nranges>=1",
-            fixed_parameters=dict(dim=self.ambient_dim),
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
-
-        knl = lp.tag_inames(knl, "idim*:unr")
-        return knl
-
-    @memoize_method
-    def get_optimized_kernel(self):
-        knl = self.get_kernel()
-        knl = lp.split_iname(knl, "irange", 128, outer_tag="g.0")
-
-        return knl
-
-    def __call__(self, actx, source_dd, indices, **kwargs):
-        """Generate proxy points for each given range of source points in
-        the discretization in *source_dd*.
-
-        :arg actx: a :class:`~meshmode.array_context.ArrayContext`.
         :arg source_dd: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
             for the discretization on which the proxy points are to be
             generated.
-        :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
-
-        :return: a tuple of ``(proxies, pxyranges, pxycenters, pxyranges)``,
-            where each element is a :class:`pyopencl.array.Array`. The
-            sizes of the arrays are as follows: ``pxycenters`` is of size
-            ``(2, nranges)``, ``pxyradii`` is of size ``(nranges,)``,
-            ``pxyranges`` is of size ``(nranges + 1,)`` and ``proxies`` is
-            of size ``(2, nranges * nproxy)``. The proxy points in a range
-            :math:`i` can be obtained by a slice
-            ``proxies[pxyranges[i]:pxyranges[i + 1]]`` and are all at a
-            distance ``pxyradii[i]`` from the range center ``pxycenters[i]``.
         """
-
-        def _affine_map(v, A, b):
-            return np.dot(A, v) + b
-
-        from pytential import bind, sym
+        from pytential import sym
         source_dd = sym.as_dofdesc(source_dd)
         discr = self.places.get_discretization(
                 source_dd.geometry, source_dd.discr_stage)
+
+        # {{{ get proxy centers and radii
+
+        from arraycontext import thaw
+        from meshmode.dof_array import flatten
+        sources = flatten(thaw(discr.nodes(), actx))
+
+        knl = self.get_centers_knl(actx)
+        _, (centers_dev,) = knl(actx.queue,
+                sources=sources,
+                srcindices=indices.indices,
+                srcranges=indices.ranges)
+
+        knl = self.get_radii_knl(actx)
+        _, (radii_dev,) = knl(actx.queue,
+                sources=sources,
+                srcindices=indices.indices,
+                srcranges=indices.ranges,
+                radius_factor=self.radius_factor,
+                proxy_centers=centers_dev,
+                **kwargs)
+
+        # }}}
+
+        # {{{ build proxy points for each block
+
+        from arraycontext import to_numpy
+        centers = np.vstack(to_numpy(centers_dev, actx))
+        radii = to_numpy(radii_dev, actx)
+
+        nproxy = self.nproxy * indices.nblocks
+        proxies = np.empty((self.ambient_dim, nproxy), dtype=centers.dtype)
+        pxy_nr_base = 0
+
+        for i in range(indices.nblocks):
+            bball = radii[i] * self.ref_points + centers[:, i].reshape(-1, 1)
+            proxies[:, pxy_nr_base:pxy_nr_base + self.nproxy] = bball
+
+            pxy_nr_base += self.nproxy
+
+        # }}}
+
+        pxyindices = np.arange(0, nproxy, dtype=indices.indices.dtype)
+        pxyranges = np.arange(0, nproxy + 1, self.nproxy)
+
+        from arraycontext import freeze, from_numpy
+        return BlockProxyPoints(
+                srcindices=indices,
+                indices=make_block_index(actx, pxyindices, pxyranges),
+                points=freeze(from_numpy(proxies, actx), actx),
+                centers=freeze(centers_dev, actx),
+                radii=freeze(radii_dev, actx),
+                )
+
+
+def make_compute_block_radii_knl(
+        actx: PyOpenCLArrayContext, ndim: int) -> lp.LoopKernel:
+    @memoize_in(actx, (make_compute_block_radii_knl, ndim))
+    def prg():
+        knl = lp.make_kernel([
+            "{[irange]: 0 <= irange < nranges}",
+            "{[i]: 0 <= i < npoints}",
+            "{[idim]: 0 <= idim < ndim}"
+            ],
+            """
+            <> ioffset = srcranges[irange]
+            <> npoints = srcranges[irange + 1] - srcranges[irange]
+            <> rblk = reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                    (proxy_centers[idim, irange]
+                    - sources[idim, srcindices[i + ioffset]]) ** 2)
+                    ))
+
+            proxy_radius[irange] = radius_factor * rblk
+            """, [
+                lp.GlobalArg("sources", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.ValueArg("nsources", np.int64),
+                lp.ValueArg("radius_factor", np.float64),
+                ...
+                ],
+            name="compute_block_radii_knl",
+            assumptions="ndim>=1 and nranges>=1",
+            fixed_parameters=dict(ndim=ndim),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            )
+
+        knl = lp.tag_inames(knl, "idim*:unr")
+        knl = lp.split_iname(knl, "irange", 64, outer_tag="g.0")
+
+        return knl
+
+    return prg()
+
+
+class ProxyGenerator(ProxyGeneratorBase):
+    """A proxy point generator that only considers the points in the current
+    block when determining the radius of the proxy ball.
+
+    Inherits from :class:`ProxyGeneratorBase`.
+    """
+
+    def get_radii_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
+        return make_compute_block_radii_knl(actx, self.ambient_dim)
+
+
+def make_compute_block_qbx_radii_knl(
+        actx: PyOpenCLArrayContext, ndim: int) -> lp.LoopKernel:
+    @memoize_in(actx, (make_compute_block_qbx_radii_knl, ndim))
+    def prg():
+        knl = lp.make_kernel([
+            "{[irange]: 0 <= irange < nranges}",
+            "{[i]: 0 <= i < npoints}",
+            "{[idim]: 0 <= idim < ndim}"
+            ],
+            """
+            <> ioffset = srcranges[irange]
+            <> npoints = srcranges[irange + 1] - srcranges[irange]
+            <> rblk = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                    (proxy_centers[idim, irange] -
+                     sources[idim, srcindices[i + ioffset]]) ** 2))) \
+                    {dup=idim}
+            <> rqbx_int = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                    (proxy_centers[idim, irange] -
+                     center_int[idim, srcindices[i + ioffset]]) ** 2)) + \
+                     expansion_radii[srcindices[i + ioffset]]) \
+                     {dup=idim}
+            <> rqbx_ext = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
+                    (proxy_centers[idim, irange] -
+                     center_ext[idim, srcindices[i + ioffset]]) ** 2)) + \
+                     expansion_radii[srcindices[i + ioffset]]) \
+                     {dup=idim}
+            <> rqbx = rqbx_int if rqbx_ext < rqbx_int else rqbx_ext
+
+            proxy_radius[irange] = radius_factor * rblk
+            """, [
+                lp.GlobalArg("sources", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.GlobalArg("center_int", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.GlobalArg("center_ext", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.ValueArg("nsources", np.int64),
+                lp.ValueArg("radius_factor", np.float64),
+                ...
+                ],
+            name="compute_block_qbx_radii_knl",
+            assumptions="ndim>=1 and nranges>=1",
+            fixed_parameters=dict(ndim=ndim),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            )
+
+        knl = lp.tag_inames(knl, "idim*:unr")
+        knl = lp.split_iname(knl, "irange", 64, outer_tag="g.0")
+
+        return knl
+
+    return prg()
+
+
+class QBXProxyGenerator(ProxyGeneratorBase):
+    """A proxy point generator that also considers the QBX expansion
+    when determining the radius of the proxy ball.
+
+    Inherits from :class:`ProxyGeneratorBase`.
+    """
+
+    def get_radii_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
+        return make_compute_block_qbx_radii_knl(actx, self.ambient_dim)
+
+    def __call__(self,
+            actx: PyOpenCLArrayContext,
+            source_dd,
+            indices: BlockIndexRanges, **kwargs) -> BlockProxyPoints:
+        from pytential import bind, sym
+        source_dd = sym.as_dofdesc(source_dd)
 
         radii = bind(self.places, sym.expansion_radii(
             self.ambient_dim, dofdesc=source_dd))(actx)
@@ -315,96 +525,87 @@ class ProxyGenerator:
         center_ext = bind(self.places, sym.expansion_centers(
             self.ambient_dim, +1, dofdesc=source_dd))(actx)
 
-        from meshmode.dof_array import flatten, thaw
-        knl = self.get_kernel()
-        _, (centers_dev, radii_dev,) = knl(actx.queue,
-            sources=flatten(thaw(actx, discr.nodes())),
-            center_int=flatten(center_int),
-            center_ext=flatten(center_ext),
-            expansion_radii=flatten(radii),
-            srcindices=indices.indices,
-            srcranges=indices.ranges, **kwargs)
+        from meshmode.dof_array import flatten
+        return super().__call__(actx, source_dd, indices,
+                expansion_radii=flatten(radii),
+                center_int=flatten(center_int),
+                center_ext=flatten(center_ext),
+                **kwargs)
 
-        from pytential.utils import flatten_to_numpy
-        centers = flatten_to_numpy(actx, centers_dev)
-        radii = flatten_to_numpy(actx, radii_dev)
-        proxies = np.empty(indices.nblocks, dtype=object)
-        for i in range(indices.nblocks):
-            proxies[i] = _affine_map(self.ref_points,
-                    A=(radii[i] * np.eye(self.ambient_dim)),
-                    b=centers[:, i].reshape(-1, 1))
-
-        pxyranges = actx.from_numpy(np.arange(
-            0,
-            proxies.shape[0] * proxies[0].shape[1] + 1,
-            proxies[0].shape[1],
-            dtype=indices.ranges.dtype))
-        proxies = make_obj_array([
-            actx.freeze(actx.from_numpy(np.hstack([p[idim] for p in proxies])))
-            for idim in range(self.ambient_dim)
-            ])
-        centers = make_obj_array([
-            actx.freeze(centers_dev[idim])
-            for idim in range(self.ambient_dim)
-            ])
-
-        assert pxyranges[-1] == proxies[0].shape[0]
-        return proxies, actx.freeze(pxyranges), centers, actx.freeze(radii_dev)
+# }}}
 
 
-def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
-        max_nodes_in_box=None):
+# {{{ gather_block_neighbor_points
+
+def gather_block_neighbor_points(
+        actx: PyOpenCLArrayContext, discr: Discretization, pxy: BlockProxyPoints,
+        max_particles_in_box: Optional[int] = None) -> BlockIndexRanges:
     """Generate a set of neighboring points for each range of points in
     *discr*. Neighboring points of a range :math:`i` are defined
     as all the points inside the proxy ball :math:`i` that do not also
     belong to the range itself.
-
-    :arg discr: a :class:`meshmode.discretization.Discretization`.
-    :arg indices: a :class:`sumpy.tools.BlockIndexRanges`.
-    :arg pxycenters: an array containing the center of each proxy ball.
-    :arg pxyradii: an array containing the radius of each proxy ball.
-
-    :return: a :class:`sumpy.tools.BlockIndexRanges`.
     """
 
-    if max_nodes_in_box is None:
+    if max_particles_in_box is None:
         # FIXME: this is a fairly arbitrary value
-        max_nodes_in_box = 32
+        max_particles_in_box = 32
 
-    indices = indices.get(actx.queue)
+    # {{{ get only sources in indices
 
-    # NOTE: this is constructed for multiple reasons:
-    #   * TreeBuilder takes object arrays
-    #   * `srcindices` can be a small subset of nodes, so this will save
-    #   some work
-    #   * `srcindices` may reorder the array returned by nodes(), so this
-    #   makes sure that we have the same order in tree.user_source_ids
-    #   and friends
-    from pytential.utils import flatten_to_numpy
-    sources = flatten_to_numpy(actx, discr.nodes())
-    sources = make_obj_array([
-        actx.from_numpy(sources[idim][indices.indices])
-        for idim in range(discr.ambient_dim)])
+    @memoize_in(actx,
+            (gather_block_neighbor_points, discr.ambient_dim, "picker_knl"))
+    def prg():
+        knl = lp.make_kernel(
+            "{[idim, i]: 0 <= idim < ndim and 0 <= i < npoints}",
+            """
+            result[idim, i] = ary[idim, srcindices[i]]
+            """, [
+                lp.GlobalArg("ary", None,
+                    shape=(discr.ambient_dim, "ndofs"), dim_tags="sep,C"),
+                lp.ValueArg("ndofs", np.int64),
+                ...],
+            name="picker_knl",
+            assumptions="ndim>=1 and npoints>=1",
+            fixed_parameters=dict(ndim=discr.ambient_dim),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            )
 
-    # construct tree
+        knl = lp.tag_inames(knl, "idim*:unr")
+        knl = lp.split_iname(knl, "i", 64, outer_tag="g.0")
+
+        return knl
+
+    from arraycontext import thaw
+    from meshmode.dof_array import flatten
+    _, (sources,) = prg()(actx.queue,
+            ary=flatten(thaw(discr.nodes(), actx)),
+            srcindices=pxy.srcindices.indices)
+
+    # }}}
+
+    # {{{ perform area query
+
     from boxtree import TreeBuilder
     builder = TreeBuilder(actx.context)
     tree, _ = builder(actx.queue, sources,
-            max_particles_in_box=max_nodes_in_box)
+            max_particles_in_box=max_particles_in_box)
 
     from boxtree.area_query import AreaQueryBuilder
     builder = AreaQueryBuilder(actx.context)
-    query, _ = builder(actx.queue, tree, pxycenters, pxyradii)
+    query, _ = builder(actx.queue, tree, pxy.centers, pxy.radii)
 
     # find nodes inside each proxy ball
     tree = tree.get(actx.queue)
     query = query.get(actx.queue)
 
-    pxycenters = np.vstack([
-        actx.to_numpy(pxycenters[idim])
-        for idim in range(discr.ambient_dim)
-        ])
-    pxyradii = actx.to_numpy(pxyradii)
+    # }}}
+
+    # {{{ retrieve results
+
+    from arraycontext import to_numpy
+    pxycenters = to_numpy(pxy.centers, actx)
+    pxyradii = to_numpy(pxy.radii, actx)
+    indices = pxy.srcindices.get(actx.queue)
 
     nbrindices = np.empty(indices.nblocks, dtype=object)
     for iproxy in range(indices.nblocks):
@@ -431,118 +632,9 @@ def gather_block_neighbor_points(actx, discr, indices, pxycenters, pxyradii,
 
         nbrindices[iproxy] = indices.indices[isources[mask]]
 
-    nbrranges = actx.from_numpy(np.cumsum([0] + [n.shape[0] for n in nbrindices]))
-    nbrindices = actx.from_numpy(np.hstack(nbrindices))
+    # }}}
 
-    return BlockIndexRanges(actx.context,
-            actx.freeze(nbrindices), actx.freeze(nbrranges))
-
-
-def gather_block_interaction_points(actx, places, source_dd, indices,
-        radius_factor=None,
-        approx_nproxy=None,
-        max_nodes_in_box=None):
-    """Generate sets of interaction points for each given range of indices
-    in the *source* discretization. For each input range of indices,
-    the corresponding output range of points is consists of:
-
-    - a set of proxy points (or balls) around the range, which
-      model farfield interactions. These are constructed using
-      :class:`ProxyGenerator`.
-
-    - a set of neighboring points that are inside the proxy balls, but
-      do not belong to the given range, which model nearby interactions.
-      These are constructed with :func:`gather_block_neighbor_points`.
-
-    :arg places: a :class:`~pytential.GeometryCollection`.
-    :arg source_dd: geometry in *places* for which to generate the
-        interaction points. This is a
-        :class:`~pytential.symbolic.primitives.DOFDescriptor` describing
-        the exact discretization.
-    :arg indices: a :class:`sumpy.tools.BlockIndexRanges` on the
-        discretization described by *source_dd*.
-
-    :return: a tuple ``(nodes, ranges)``, where each value is a
-        :class:`pyopencl.array.Array`. For a range :math:`i`, we can
-        get the slice using ``nodes[ranges[i]:ranges[i + 1]]``.
-    """
-
-    @memoize_in(places, "concat_proxy_and_neighbors")
-    def knl():
-        loopy_knl = lp.make_kernel([
-            "{[irange, idim]: 0 <= irange < nranges and \
-                              0 <= idim < dim}",
-            "{[ipxy, ingb]: 0 <= ipxy < npxyblock and \
-                            0 <= ingb < nngbblock}"
-            ],
-            """
-            for irange
-                <> pxystart = pxyranges[irange]
-                <> pxyend = pxyranges[irange + 1]
-                <> npxyblock = pxyend - pxystart
-
-                <> ngbstart = nbrranges[irange]
-                <> ngbend = nbrranges[irange + 1]
-                <> nngbblock = ngbend - ngbstart
-
-                <> istart = pxyranges[irange] + nbrranges[irange]
-                nodes[idim, istart + ipxy] = \
-                    proxies[idim, pxystart + ipxy] \
-                    {id_prefix=write_pxy,nosync=write_ngb}
-                nodes[idim, istart + npxyblock + ingb] = \
-                    sources[idim, nbrindices[ngbstart + ingb]] \
-                    {id_prefix=write_ngb,nosync=write_pxy}
-                ranges[irange + 1] = ranges[irange] + npxyblock + nngbblock
-            end
-            """,
-            [
-                lp.GlobalArg("sources", None,
-                    shape=(lpot_source.ambient_dim, "nsources"), dim_tags="sep,C"),
-                lp.GlobalArg("proxies", None,
-                    shape=(lpot_source.ambient_dim, "nproxies"), dim_tags="sep,C"),
-                lp.GlobalArg("nbrindices", None,
-                    shape="nnbrindices"),
-                lp.GlobalArg("nodes", None,
-                    shape=(lpot_source.ambient_dim, "nproxies + nnbrindices")),
-                lp.ValueArg("nsources", np.int64),
-                lp.ValueArg("nproxies", np.int64),
-                lp.ValueArg("nnbrindices", np.int64),
-                "..."
-            ],
-            name="concat_proxy_and_neighbors",
-            default_offset=lp.auto,
-            silenced_warnings="write_race(write_*)",
-            fixed_parameters=dict(dim=lpot_source.ambient_dim),
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
-
-        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
-        loopy_knl = lp.split_iname(loopy_knl, "irange", 128, outer_tag="g.0")
-
-        return loopy_knl
-
-    lpot_source = places.get_geometry(source_dd.geometry)
-    generator = ProxyGenerator(places,
-            radius_factor=radius_factor,
-            approx_nproxy=approx_nproxy)
-    proxies, pxyranges, pxycenters, pxyradii = \
-            generator(actx, source_dd, indices)
-
-    discr = places.get_discretization(source_dd.geometry, source_dd.discr_stage)
-    neighbors = gather_block_neighbor_points(actx, discr,
-            indices, pxycenters, pxyradii,
-            max_nodes_in_box=max_nodes_in_box)
-
-    from meshmode.dof_array import flatten, thaw
-    ranges = actx.zeros(indices.nblocks + 1, dtype=np.int64)
-    _, (nodes, ranges) = knl()(actx.queue,
-            sources=flatten(thaw(actx, discr.nodes())),
-            proxies=proxies,
-            pxyranges=pxyranges,
-            nbrindices=neighbors.indices,
-            nbrranges=neighbors.ranges,
-            ranges=ranges)
-
-    return actx.freeze(nodes), actx.freeze(ranges)
+    return make_block_index(actx, indices=nbrindices)
 
 # }}}
 

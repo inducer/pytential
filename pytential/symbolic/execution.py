@@ -33,8 +33,8 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
-from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import DOFArray, thaw
+from arraycontext import PyOpenCLArrayContext, thaw
+from meshmode.dof_array import DOFArray, flatten
 
 from pytools import memoize_in, memoize_method
 from pytential.qbx.cost import AbstractQBXCostModel
@@ -94,6 +94,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         self.places = bound_expr.places
         self.array_context = actx
 
+        from arraycontext import PyOpenCLArrayContext
         if not isinstance(actx, PyOpenCLArrayContext):
             raise NotImplementedError("evaluation with non-PyOpenCL array context")
 
@@ -146,7 +147,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def _map_elementwise_reduction(self, reduction_name, expr):
         @memoize_in(self.places, "elementwise_node_"+reduction_name)
         def node_knl():
-            from meshmode.array_context import make_loopy_program
+            from arraycontext import make_loopy_program
             return make_loopy_program(
                     """{[iel, idof, jdof]:
                         0<=iel<nelements and
@@ -158,7 +159,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         @memoize_in(self.places, "elementwise_"+reduction_name)
         def element_knl():
-            from meshmode.array_context import make_loopy_program
+            from arraycontext import make_loopy_program
             return make_loopy_program(
                     """{[iel, jdof]:
                         0<=iel<nelements and
@@ -218,24 +219,25 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
 
+        from arraycontext import thaw
         x = discr.nodes()[expr.ambient_axis]
-        if isinstance(x, DOFArray):
-            return thaw(self.array_context, x)
-        else:
-            return self.array_context.thaw(x)
+        return thaw(x, self.array_context)
 
     def map_num_reference_derivative(self, expr):
-        discr = self.places.get_discretization(
-                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-
         from pytools import flatten
         ref_axes = flatten([axis] * mult for axis, mult in expr.ref_axes)
-        return discr.num_reference_derivative(ref_axes, self.rec(expr.operand))
 
-    def map_q_weight(self, expr):
+        from meshmode.discretization import num_reference_derivative
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        return thaw(self.array_context, discr.quad_weights())
+
+        return num_reference_derivative(discr, ref_axes, self.rec(expr.operand))
+
+    def map_q_weight(self, expr):
+        from arraycontext import thaw
+        discr = self.places.get_discretization(
+                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
+        return thaw(discr.quad_weights(), self.array_context)
 
     def map_inverse(self, expr):
         bound_op_cache = self.bound_expr.places._get_cache(
@@ -475,9 +477,8 @@ class MatVecOp:
             ary = [ary]
 
         result = self.array_context.empty(self.total_dofs, self.dtype)
-        from pytential.utils import flatten_if_needed
         for res_i, (start, end) in zip(ary, self.starts_and_ends):
-            result[start:end] = flatten_if_needed(self.array_context, res_i)
+            result[start:end] = flatten(thaw(res_i, self.array_context))
         return result
 
     def unflatten(self, ary):
@@ -879,12 +880,13 @@ class GeometryCollection:
 # {{{ bound expression
 
 def _find_array_context_from_args_in_context(context, supplied_array_context=None):
+    from arraycontext import PyOpenCLArrayContext
     array_contexts = []
     if supplied_array_context is not None:
         if not isinstance(supplied_array_context, PyOpenCLArrayContext):
             raise TypeError(
-                    "first argument (if supplied) must be a "
-                    "PyOpenCLArrayContext")
+                    "first argument (if supplied) must be a PyOpenCLArrayContext, "
+                    f"got '{type(supplied_array_context).__name__}'")
 
         array_contexts.append(supplied_array_context)
     del supplied_array_context
@@ -899,7 +901,7 @@ def _find_array_context_from_args_in_context(context, supplied_array_context=Non
         else:
             pass
 
-    for key, val in context.items():
+    for val in context.values():
         look_for_array_contexts(val)
 
     if array_contexts:
@@ -914,7 +916,7 @@ def _find_array_context_from_args_in_context(context, supplied_array_context=Non
     if not isinstance(array_context, PyOpenCLArrayContext):
         raise TypeError(
                 "array context (derived from arguments) is not a "
-                "PyOpenCLArrayContext")
+                f"PyOpenCLArrayContext: '{type(array_context).__name__}'")
 
     return array_context
 
@@ -1045,7 +1047,7 @@ class BoundExpression:
             (experimental)
         :arg array_context: only needs to be supplied if no instances of
             :class:`~meshmode.dof_array.DOFArray` with a
-            :class:`~meshmode.array_context.PyOpenCLArrayContext`
+            :class:`~arraycontext.PyOpenCLArrayContext`
             are supplied as part of *context*.
         :returns: the value of the expression, as a scalar,
             :class:`pyopencl.array.Array`, or an object array of these.
@@ -1084,15 +1086,16 @@ class BoundExpression:
         if len(args) == 1:
             array_context, = args
             if not isinstance(array_context, PyOpenCLArrayContext):
-                raise TypeError("first positional argument (if given) "
-                        "must be of type PyOpenCLArrayContext")
+                raise TypeError(
+                        "first positional argument (if given) must be a "
+                        f"PyOpenCLArrayContext: '{type(array_context).__name__}'")
 
         elif not args:
             pass
 
         else:
             raise TypeError("More than one positional argument supplied. "
-                    "None or an ArrayContext expected.")
+                    "None or an PyOpenCLArrayContext expected.")
 
         timing_data = kwargs.pop('timing_data', None)
         return self.eval(kwargs, array_context=array_context,
@@ -1157,7 +1160,7 @@ def _bmat(blocks, dtypes):
 def build_matrix(actx, places, exprs, input_exprs, domains=None,
         auto_where=None, context=None):
     """
-    :arg actx: a :class:`~meshmode.array_context.ArrayContext`.
+    :arg actx: a :class:`~arraycontext.PyOpenCLArrayContext`.
     :arg places: a :class:`pytential.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
         constructor can also be used.

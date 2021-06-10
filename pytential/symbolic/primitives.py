@@ -1319,8 +1319,10 @@ class IterativeInverse(Expression):
     init_arg_names = ("expression", "rhs", "variable_name", "extra_vars", "dofdesc")
 
     @_deprecate_kwargs("where", "dofdesc")
-    def __init__(self, expression, rhs, variable_name, extra_vars={},
+    def __init__(self, expression, rhs, variable_name, extra_vars=None,
             dofdesc=None):
+        if extra_vars is None:
+            extra_vars = {}
         self.expression = expression
         self.rhs = rhs
         self.variable_name = variable_name
@@ -1693,12 +1695,13 @@ def int_g_vec(kernel, density, qbx_forced_limit, source=None, target=None,
     "vectorizing" behavior of of the constructor of :class:`IntG`
     for use cases where that is preferred.
     """
-    from sumpy.kernel import SourceTransformationRemover, TargetTransformationRemover
-    sdr = SourceTransformationRemover()
-    tdr = TargetTransformationRemover()
+    from sumpy.kernel import (SourceTransformationRemover,
+            TargetTransformationRemover)
+    sxr = SourceTransformationRemover()
+    txr = TargetTransformationRemover()
 
-    target_kernel = sdr(kernel)
-    source_kernels = [tdr(kernel)]
+    target_kernel = sxr(kernel)
+    source_kernels = [txr(kernel)]
 
     def make_op(operand_i):
         return IntG(target_kernel=target_kernel, densities=[operand_i],

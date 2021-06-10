@@ -22,18 +22,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import numpy as np
-from pytools import memoize_method
-
 import pyopencl as cl
 import pyopencl.array # noqa
 
+from pytools import memoize_method
 from boxtree.tools import DeviceDataRecord
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
+
 from cgen import Enum
-from meshmode.array_context import PyOpenCLArrayContext
+
+from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import flatten
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,

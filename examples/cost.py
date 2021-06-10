@@ -25,10 +25,10 @@ THE SOFTWARE.
 
 """Calibrates a cost model and reports on the accuracy."""
 
-import pyopencl as cl
 import numpy as np
-from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import thaw
+import pyopencl as cl
+
+from arraycontext import PyOpenCLArrayContext, thaw
 
 from pytential import sym, bind
 from pytential.qbx.cost import QBXCostModel
@@ -108,7 +108,7 @@ def get_bound_op(places):
 
 
 def get_test_density(actx, density_discr):
-    nodes = thaw(actx, density_discr.nodes())
+    nodes = thaw(density_discr.nodes(), actx)
     sigma = actx.np.sin(10 * nodes[0])
     return sigma
 

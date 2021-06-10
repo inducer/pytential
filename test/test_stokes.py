@@ -23,7 +23,7 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -151,7 +151,7 @@ def run_exterior_stokes(ctx_factory, *,
         op = HebekerExteriorStokesOperator(method=method,
                 mu_sym=sym_mu, nu_sym=sym_nu)
     else:
-        assert False
+        raise AssertionError()
 
     sym_sigma = op.get_density_var("sigma")
     sym_bc = op.get_density_var("bc")

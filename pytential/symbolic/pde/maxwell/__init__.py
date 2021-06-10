@@ -135,7 +135,9 @@ class PECChargeCurrentMFIEOperator:
     .. automethod:: scattered_volume_field
     """
 
-    def __init__(self, k=sym.var("k")):
+    def __init__(self, k=None):
+        if k is None:
+            k = sym.var("k")
         from sumpy.kernel import HelmholtzKernel
         self.kernel = HelmholtzKernel(3)
         self.k = k

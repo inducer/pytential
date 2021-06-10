@@ -1,7 +1,7 @@
-from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import thaw
 import numpy as np
 import pyopencl as cl
+
+from arraycontext import PyOpenCLArrayContext, thaw
 
 from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
@@ -67,11 +67,11 @@ def main(mesh_name="ellipsoid"):
     from pytential import GeometryCollection
     places = GeometryCollection({
         "qbx": qbx,
-        "targets": PointsTarget(fplot.points)
+        "targets": PointsTarget(actx.from_numpy(fplot.points))
         }, auto_where="qbx")
     density_discr = places.get_discretization("qbx")
 
-    nodes = thaw(actx, density_discr.nodes())
+    nodes = thaw(density_discr.nodes(), actx)
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
@@ -88,7 +88,7 @@ def main(mesh_name="ellipsoid"):
         from meshmode.dof_array import flatten, unflatten
         sigma = flatten(0 * angle)
         from random import randrange
-        for i in range(5):
+        for _ in range(5):
             sigma[randrange(len(sigma))] = 1
         sigma = unflatten(actx, density_discr, sigma)
 

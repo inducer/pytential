@@ -847,7 +847,7 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
         traversal = geo_data.traversal()
 
         neval_tsqbx = np.zeros(len(traversal.target_boxes), dtype=np.float64)
-        for itgt_center, tgt_icenter in enumerate(global_qbx_centers):
+        for tgt_icenter in global_qbx_centers:
             start, end = center_to_targets_starts[tgt_icenter:tgt_icenter + 2]
             itgt_box = qbx_center_to_target_box[tgt_icenter]
             neval_tsqbx[itgt_box] += (

@@ -35,7 +35,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 from pytential.qbx import QBXLayerPotentialSource
 
 from functools import partial
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
         make_curve_mesh, generate_icosphere, generate_torus)
@@ -132,15 +132,14 @@ def run_source_refinement_test(ctx_factory, mesh, order,
 
     dd = places.auto_source
     stage1_density_discr = places.get_discretization(dd.geometry)
-    from meshmode.dof_array import thaw
 
     stage1_density_nodes = dof_array_to_numpy(actx,
-            thaw(actx, stage1_density_discr.nodes()))
+            thaw(stage1_density_discr.nodes(), actx))
 
     quad_stage2_density_discr = places.get_discretization(
             dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
     quad_stage2_density_nodes = dof_array_to_numpy(actx,
-            thaw(actx, quad_stage2_density_discr.nodes()))
+            thaw(quad_stage2_density_discr.nodes(), actx))
 
     int_centers = dof_array_to_numpy(actx,
             bind(places,
@@ -217,7 +216,7 @@ def run_source_refinement_test(ctx_factory, mesh, order,
         # Check wavenumber to panel size ratio.
         assert quad_res[panel.element_nr] * helmholtz_k <= 5
 
-    for i, panel_1 in enumerate(iter_elements(stage1_density_discr)):
+    for panel_1 in iter_elements(stage1_density_discr):
         for panel_2 in iter_elements(stage1_density_discr):
             check_disk_undisturbed_by_sources(panel_1, panel_2)
         for panel_2 in iter_elements(quad_stage2_density_discr):
@@ -358,8 +357,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
             bind(places, sym.expansion_radii(
                 lpot_source.ambient_dim,
                 granularity=sym.GRANULARITY_CENTER))(actx))
-    from meshmode.dof_array import thaw
-    surf_targets = dof_array_to_numpy(actx, thaw(actx, density_discr.nodes()))
+    surf_targets = dof_array_to_numpy(actx, thaw(density_discr.nodes(), actx))
     int_targets = actx.to_numpy(int_targets.nodes())
     ext_targets = actx.to_numpy(ext_targets.nodes())
 

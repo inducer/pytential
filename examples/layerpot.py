@@ -4,6 +4,8 @@ if enable_mayavi:
 
 import numpy as np
 import pyopencl as cl
+
+from arraycontext import PyOpenCLArrayContext, thaw
 from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
 
@@ -25,6 +27,7 @@ def main(curve_fn=starfish, visualize=True):
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
+    actx = PyOpenCLArrayContext(queue)
 
     from meshmode.mesh.generation import make_curve_mesh
     mesh = make_curve_mesh(
@@ -33,12 +36,9 @@ def main(curve_fn=starfish, visualize=True):
             target_order)
 
     from pytential.qbx import QBXLayerPotentialSource
-    from meshmode.array_context import PyOpenCLArrayContext
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
-
-    actx = PyOpenCLArrayContext(queue)
 
     pre_density_discr = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
@@ -59,8 +59,7 @@ def main(curve_fn=starfish, visualize=True):
 
     density_discr = places.get_discretization("qbx")
 
-    from meshmode.dof_array import thaw
-    nodes = thaw(actx, density_discr.nodes())
+    nodes = thaw(density_discr.nodes(), actx)
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
@@ -82,7 +81,7 @@ def main(curve_fn=starfish, visualize=True):
         from meshmode.dof_array import flatten, unflatten
         sigma = flatten(0 * angle)
         from random import randrange
-        for i in range(5):
+        for _ in range(5):
             sigma[randrange(len(sigma))] = 1
         sigma = unflatten(actx, density_discr, sigma)
 
@@ -118,7 +117,7 @@ def main(curve_fn=starfish, visualize=True):
     if enable_mayavi:
         # {{{ plot boundary field
 
-        from pytential.utils import flatten_to_numpy
+        from meshmode.dof_array import flatten_to_numpy
 
         fld_on_bdry = flatten_to_numpy(
                 actx, bound_bdry_op(actx, sigma=sigma, k=k))

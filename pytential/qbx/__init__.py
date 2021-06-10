@@ -20,15 +20,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from meshmode.array_context import PyOpenCLArrayContext
-from meshmode.dof_array import unflatten
 import numpy as np
-from pytools import memoize_method, memoize_in, single_valued
+import pyopencl as cl
 
+from arraycontext import PyOpenCLArrayContext, freeze, thaw
+from meshmode.dof_array import flatten, unflatten
+
+from pytools import memoize_method, memoize_in, single_valued
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 from pytential.source import LayerPotentialSourceBase
-
-import pyopencl as cl
 
 import logging
 logger = logging.getLogger(__name__)
@@ -749,7 +749,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             return_timing_data):
         from pytential import bind, sym
         from meshmode.discretization import Discretization
-        from pytools.obj_array import obj_array_vectorize
 
         if return_timing_data:
             from pytential.source import UnableToCollectTimingData
@@ -765,9 +764,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         def _flat_nodes(dofdesc):
             discr = bound_expr.places.get_discretization(
                     dofdesc.geometry, dofdesc.discr_stage)
-            return obj_array_vectorize(actx.freeze,
-                    flatten_if_needed(actx, discr.nodes())
-                    )
+            return freeze(flatten(thaw(discr.nodes(), actx), strict=False), actx)
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_expansion_radii"))
@@ -776,7 +773,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     bound_expr.places,
                     sym.expansion_radii(self.ambient_dim, dofdesc=dofdesc),
                     )(actx)
-            return obj_array_vectorize(actx.freeze, flatten_if_needed(actx, radii))
+            return freeze(flatten(radii), actx)
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_centers"))
@@ -785,12 +782,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     sym.expansion_centers(
                         self.ambient_dim, qbx_forced_limit, dofdesc=dofdesc),
                     )(actx)
-            return obj_array_vectorize(actx.freeze, flatten_if_needed(actx, centers))
+            return freeze(flatten(centers), actx)
 
-        from pytential.utils import flatten_if_needed
         kernel_args = {}
         for arg_name, arg_expr in insn.kernel_arguments.items():
-            kernel_args[arg_name] = flatten_if_needed(actx, evaluate(arg_expr))
+            kernel_args[arg_name] = flatten(evaluate(arg_expr), strict=False)
 
         flat_strengths = _get_flat_strengths_from_densities(
                 actx, bound_expr.places, evaluate, insn.densities,

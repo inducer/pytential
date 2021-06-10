@@ -638,7 +638,7 @@ class OperatorCompiler(IdentityMapper):
             return self.expr_to_var[expr]
 
     def map_int_g_ds(self, op):
-        assert False
+        raise AssertionError()
 
     # }}}
 

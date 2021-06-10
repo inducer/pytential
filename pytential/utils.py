@@ -22,45 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-from meshmode.array_context import PyOpenCLArrayContext
-
-
-def flatten_if_needed(actx: PyOpenCLArrayContext, ary: np.ndarray):
-    from pytools.obj_array import obj_array_vectorize_n_args
-    from meshmode.dof_array import DOFArray, thaw, flatten
-
-    if (isinstance(ary, np.ndarray)
-            and ary.dtype.char == "O"
-            and not isinstance(ary, DOFArray)):
-        return obj_array_vectorize_n_args(flatten_if_needed, actx, ary)
-
-    if not isinstance(ary, DOFArray):
-        return ary
-
-    if ary.array_context is None:
-        ary = thaw(actx, ary)
-
-    return flatten(ary)
-
-
-def unflatten_from_numpy(actx, discr, ary):
-    from pytools.obj_array import obj_array_vectorize
-    from meshmode.dof_array import unflatten
-
-    ary = obj_array_vectorize(actx.from_numpy, ary)
-    if discr is None:
-        return ary
-    else:
-        return unflatten(actx, discr, ary)
-
-
-def flatten_to_numpy(actx, ary):
-    result = flatten_if_needed(actx, ary)
-
-    from pytools.obj_array import obj_array_vectorize
-    return obj_array_vectorize(actx.to_numpy, result)
-
 
 def sort_arrays_together(*arys, key=None):
     """Sort a sequence of arrays by considering them

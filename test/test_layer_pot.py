@@ -29,7 +29,7 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 from functools import partial
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh, NArmedStarfish)
@@ -362,7 +362,7 @@ def test_unregularized_with_ones_kernel(ctx_factory):
     from pytential.unregularized import UnregularizedLayerPotentialSource
     lpot_source = UnregularizedLayerPotentialSource(discr)
     from pytential.target import PointsTarget
-    targets = PointsTarget(np.zeros((2, 1), dtype=float))
+    targets = PointsTarget(actx.from_numpy(np.zeros((2, 1), dtype=np.float64)))
 
     places = GeometryCollection({
         sym.DEFAULT_SOURCE: lpot_source,
@@ -420,7 +420,7 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
 
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=100)
     from pytential.target import PointsTarget
-    ptarget = PointsTarget(fplot.points)
+    ptarget = PointsTarget(actx.from_numpy(fplot.points))
 
     from pytential import GeometryCollection
     places = GeometryCollection({
@@ -506,8 +506,7 @@ def test_3d_jump_relations(ctx_factory, relation, visualize=False):
                 sym.cse(sym.tangential_to_xyz(density_sym), "jxyz"),
                 qbx_forced_limit=qbx_forced_limit)))
 
-        from meshmode.dof_array import thaw
-        x, y, z = thaw(actx, density_discr.nodes())
+        x, y, z = thaw(density_discr.nodes(), actx)
         m = actx.np
 
         if relation == "nxcurls":

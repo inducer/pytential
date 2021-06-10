@@ -32,7 +32,9 @@ logger = logging.getLogger(__name__)
 # {{{ make_circular_point_group
 
 def make_circular_point_group(ambient_dim, npoints, radius,
-        center=np.array([0., 0.]), func=lambda x: x):
+        center=None, func=lambda x: x):
+    if center is None:
+        center = np.array([0., 0.])
     t = func(np.linspace(0, 1, npoints, endpoint=False)) * (2 * np.pi)
     center = np.asarray(center)
     result = np.zeros((ambient_dim, npoints))
@@ -248,6 +250,8 @@ class IntegralEquationTestCase(RecordWithoutPickling):
 # {{{ 2d curves
 
 class CurveTestCase(IntegralEquationTestCase):
+    ambient_dim = 2
+
     # qbx
     qbx_order = 5
     target_order = 5
@@ -293,6 +297,8 @@ class CircleTestCase(EllipseTestCase):
 # {{{ 3d surfaces
 
 class Helmholtz3DTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
+
     # qbx
     use_refinement = False
 
@@ -333,6 +339,7 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
 
 
 class SphereTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
     name = "sphere"
 
     # qbx
@@ -361,6 +368,7 @@ class SphereTestCase(IntegralEquationTestCase):
 
 
 class TorusTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
     name = "torus"
 
     # qbx
@@ -455,6 +463,7 @@ class ManyEllipsoidTestCase(Helmholtz3DTestCase):
 # {{{ fancy geometries
 
 class EllipticPlaneTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
     name = "elliptic_plane"
 
     # qbx
@@ -502,6 +511,7 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
 
 
 class BetterPlaneTestCase(IntegralEquationTestCase):
+    ambient_dim = 3
     name = "better_plane"
 
     # qbx

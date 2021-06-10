@@ -25,15 +25,15 @@ import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext
 from meshmode.discretization.visualization import make_visualizer
+from meshmode.dof_array import flatten_to_numpy
 
 from sumpy.symbolic import USE_SYMENGINE
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel, BiharmonicKernel
 
 from pytential import bind, sym
 from pytential import GeometryCollection
-from pytential.utils import flatten_to_numpy
 from pytools.obj_array import flat_obj_array
 
 import extra_int_eq_data as inteq
@@ -286,9 +286,9 @@ def run_int_eq_test(actx: PyOpenCLArrayContext,
 
         err = test_via_bdry - test_direct
 
-        err = flatten_to_numpy(actx, err)
-        test_direct = flatten_to_numpy(actx, test_direct)
-        test_via_bdry = flatten_to_numpy(actx, test_via_bdry)
+        err = flatten_to_numpy(actx, err, strict=False)
+        test_direct = flatten_to_numpy(actx, test_direct, strict=False)
+        test_via_bdry = flatten_to_numpy(actx, test_via_bdry, strict=False)
 
         # {{{ remove effect of net source charge
 

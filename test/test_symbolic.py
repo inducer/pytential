@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 from meshmode.mesh.generation import (  # noqa
         ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
         make_curve_mesh)
@@ -60,8 +60,7 @@ def get_ellipse_with_ref_mean_curvature(actx, nelements, aspect=1):
     discr = Discretization(actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    from meshmode.dof_array import thaw
-    nodes = thaw(actx, discr.nodes())
+    nodes = thaw(discr.nodes(), actx)
 
     a = 1
     b = 1/aspect
@@ -81,8 +80,7 @@ def get_torus_with_ref_mean_curvature(actx, h):
     discr = Discretization(actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    from meshmode.dof_array import thaw
-    nodes = thaw(actx, discr.nodes())
+    nodes = thaw(discr.nodes(), actx)
 
     # copied from meshmode.mesh.generation.generate_torus
     a = r_major
@@ -162,7 +160,7 @@ def test_tangential_onb(ctx_factory):
 
     from meshmode.dof_array import flatten
     orth_check = flatten(orth_check)
-    for i, orth_i in enumerate(orth_check):
+    for orth_i in orth_check:
         assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
 
     # make sure tangential_onb is orthogonal to normal
@@ -172,7 +170,7 @@ def test_tangential_onb(ctx_factory):
         )(actx)
 
     orth_check = flatten(orth_check)
-    for i, orth_i in enumerate(orth_check):
+    for orth_i in orth_check:
         assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
 
 # }}}
@@ -268,13 +266,13 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
     op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
     bound_op = bind(places, op_sym, auto_where=where)
 
-    from meshmode.dof_array import thaw, flatten, unflatten
+    from meshmode.dof_array import flatten, unflatten
 
     def discr_and_nodes(stage):
         density_discr = places.get_discretization(where.geometry, stage)
         return density_discr, np.array([
                 actx.to_numpy(flatten(axis))
-                for axis in thaw(actx, density_discr.nodes())])
+                for axis in thaw(density_discr.nodes(), actx)])
 
     _, target_nodes = discr_and_nodes(sym.QBX_SOURCE_QUAD_STAGE2)
     source_discr, source_nodes = discr_and_nodes(source_discr_stage)

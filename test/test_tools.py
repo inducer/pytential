@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 from functools import partial
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, thaw
 import pytest
 
 import numpy as np
@@ -83,8 +83,7 @@ def test_interpolatory_error_reporting(ctx_factory):
     vol_discr = Discretization(actx, mesh,
             QuadratureSimplexGroupFactory(5))
 
-    from meshmode.dof_array import thaw
-    vol_x = thaw(actx, vol_discr.nodes())
+    vol_x = thaw(vol_discr.nodes(), actx)
 
     # }}}
 
@@ -135,14 +134,14 @@ def test_geometry_collection_caching(ctx_factory):
     # construct qbx source
     from pytential.qbx import QBXLayerPotentialSource
 
-    lpots = []
-    sources = [f"source_{k}" for k in range(ngeometry)]
-    for k, density_discr in enumerate(discrs):
-        qbx = QBXLayerPotentialSource(density_discr,
+    lpots = [
+        QBXLayerPotentialSource(density_discr,
             fine_order=2 * target_order,
             qbx_order=qbx_order,
             fmm_order=False)
-        lpots.append(qbx)
+        for density_discr in discrs
+        ]
+    sources = [f"source_{k}" for k in range(ngeometry)]
 
     # construct a geometry collection
     from pytential import GeometryCollection

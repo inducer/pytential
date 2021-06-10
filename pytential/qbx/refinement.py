@@ -23,13 +23,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import numpy as np
+import pyopencl as cl
 
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-from meshmode.array_context import PyOpenCLArrayContext
+
+from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import flatten, DOFArray
-import numpy as np
-import pyopencl as cl
 
 from pytools import memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate
@@ -409,9 +410,7 @@ class RefinerWrangler(TreeWranglerBase):
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
-        from pytential.utils import flatten_if_needed
-        element_property = flatten_if_needed(
-                self.array_context, element_property)
+        element_property = flatten(element_property)
 
         evt, out = knl(self.queue,
                        element_property=element_property,

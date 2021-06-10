@@ -29,7 +29,7 @@ import pytest
 
 from pytential import bind, sym, norm
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext
 from sumpy.visualization import make_field_plotter_from_bbox  # noqa
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
 from sumpy.tools import vector_from_device

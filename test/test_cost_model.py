@@ -27,7 +27,7 @@ import pytest
 from pyopencl.tools import (  # noqa
     pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
-from meshmode.array_context import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext
 
 import numpy as np
 import pyopencl as cl
@@ -332,8 +332,8 @@ def get_lpot_source(actx: PyOpenCLArrayContext, dim):
 
 
 def get_density(actx, discr):
-    from meshmode.dof_array import thaw
-    nodes = thaw(actx, discr.nodes())
+    from arraycontext import thaw
+    nodes = thaw(discr.nodes(), actx)
     return actx.np.sin(10 * nodes[0])
 
 # }}}
