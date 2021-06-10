@@ -561,7 +561,8 @@ class StokesOperator:
         :arg ambient_dim: dimension of the ambient space.
         :arg side: :math:`+1` for exterior or :math:`-1` for interior.
         """
-        from pytential.symbolic.elasticity import StressletWrapperYoshida
+        from pytential.symbolic.elasticity import (StressletWrapperYoshida,
+            StokesletWrapperYoshida)
 
         if side not in [+1, -1]:
             raise ValueError(f"invalid evaluation side: {side}")
@@ -575,11 +576,17 @@ class StokesOperator:
             if nu_sym == 0.5:
                 self.stresslet = StressletWrapperTornberg(dim=self.ambient_dim,
                     mu_sym=mu_sym, nu_sym=nu_sym)
+                self.stokeslet = StokesletWrapperTornberg(dim=self.ambient_dim,
+                    mu_sym=mu_sym, nu_sym=nu_sym)
             else:
                 self.stresslet = StressletWrapperYoshida(dim=self.ambient_dim,
                     mu_sym=mu_sym, nu_sym=nu_sym)
+                self.stokeslet = StokesletWrapperYoshida(dim=self.ambient_dim,
+                    mu_sym=mu_sym, nu_sym=nu_sym)
         elif method == "biharmonic" or method == "naive":
             self.stresslet = StressletWrapper(dim=self.ambient_dim,
+                mu_sym=mu_sym, nu_sym=nu_sym)
+            self.stokeslet = StokesletWrapper(dim=self.ambient_dim,
                 mu_sym=mu_sym, nu_sym=nu_sym)
         else:
             raise ValueError(f"invalid method: {method}."
