@@ -21,6 +21,8 @@ ovsmp_target_order = 4*target_order
 qbx_order = 2
 fmm_order = 7
 mu = 3
+# method has to be one of biharmonic/naive for 2D
+method = "biharmonic"
 
 # Test solution type -- either 'fundamental' or 'couette' (default is couette)
 soln_type = 'couette'
@@ -87,7 +89,7 @@ def main(nelements):
     loc_sign = -1
 
     # Create stresslet object
-    stresslet_obj = StressletWrapper(dim=2, mu_sym=mu_sym)
+    stresslet_obj = StressletWrapper(dim=2, mu_sym=mu_sym, method=method)
 
     # Describe boundary operator
     bdry_op_sym = loc_sign * 0.5 * sigma_sym + sqrt_w * stresslet_obj.apply(inv_sqrt_w_sigma, nvec_sym, qbx_forced_limit='avg')
