@@ -679,7 +679,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, omega, alpha=None, eta=None, method="naive",
+    def __init__(self, *, omega, alpha=None, eta=None, method="laplace",
             mu_sym=var("mu"), nu_sym=0.5):
         r"""
         :arg omega: farfield behaviour of the velocity field, as defined
@@ -768,7 +768,7 @@ class HebekerExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, eta=None, method="naive", mu_sym=var("mu"), nu_sym=0.5):
+    def __init__(self, *, eta=None, method="laplace", mu_sym=var("mu"), nu_sym=0.5):
         r"""
         :arg eta: a parameter :math:`\eta > 0`. Choosing this parameter well
             can have a non-trivial effect on the conditioning of the operator.
