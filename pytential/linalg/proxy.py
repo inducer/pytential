@@ -52,24 +52,6 @@ Proxy Point Generation
 
 # {{{ point index partitioning
 
-def make_block_index(
-        actx: PyOpenCLArrayContext,
-        indices: np.ndarray,
-        ranges: Optional[np.ndarray] = None) -> BlockIndexRanges:
-    """Wrap a ``(indices, ranges)`` tuple into a ``BlockIndexRanges``.
-
-    :param ranges: if *None*, then *indices* is expected to be an object
-        array of indices, so that the ranges can be reconstructed.
-    """
-    if ranges is None:
-        ranges = np.cumsum([0] + [r.size for r in indices])
-        indices = np.hstack(indices)
-
-    return BlockIndexRanges(actx.context,
-            actx.freeze(actx.from_numpy(indices)),
-            actx.freeze(actx.from_numpy(ranges)))
-
-
 def partition_by_nodes(
         actx: PyOpenCLArrayContext, discr: Discretization, *,
         tree_kind: Optional[str] = "adaptive-level-restricted",
@@ -118,7 +100,8 @@ def partition_by_nodes(
         ranges = np.linspace(0, discr.ndofs, nblocks + 1, dtype=np.int64)
         assert ranges[-1] == discr.ndofs
 
-    return make_block_index(actx, indices, ranges=ranges)
+    from pytential.linalg.utils import make_block_index_from_array
+    return make_block_index_from_array(indices, ranges=ranges)
 
 # }}}
 
@@ -390,9 +373,10 @@ class ProxyGeneratorBase:
         pxyranges = np.arange(0, nproxy + 1, self.nproxy)
 
         from arraycontext import freeze, from_numpy
+        from pytential.linalg.utils import make_block_index_from_array
         return BlockProxyPoints(
                 srcindices=indices,
-                indices=make_block_index(actx, pxyindices, pxyranges),
+                indices=make_block_index_from_array(pxyindices, pxyranges),
                 points=freeze(from_numpy(proxies, actx), actx),
                 centers=freeze(centers_dev, actx),
                 radii=freeze(radii_dev, actx),
@@ -639,7 +623,8 @@ def gather_block_neighbor_points(
 
     # }}}
 
-    return make_block_index(actx, indices=nbrindices)
+    from pytential.linalg.utils import make_block_index_from_array
+    return make_block_index_from_array(indices=nbrindices)
 
 # }}}
 

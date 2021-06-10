@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 import numpy as np
 
@@ -141,6 +141,25 @@ class MatrixBlockIndexRanges:
         """
         irow, icol = self.block_indices(i, j)
         return x[np.ix_(irow, icol)]
+
+
+def make_block_index_from_array(
+        indices: np.ndarray,
+        ranges: Optional[np.ndarray] = None) -> BlockIndexRanges:
+    """Wrap a ``(indices, ranges)`` tuple into a ``BlockIndexRanges``.
+
+    :param ranges: if *None*, then *indices* is expected to be an object
+        array of indices, so that the ranges can be reconstructed.
+    """
+    if ranges is None:
+        ranges = np.cumsum([0] + [r.size for r in indices])
+        indices = np.hstack(indices)
+    else:
+        if ranges[-1] != indices.size:
+            raise ValueError("size of 'indices' does not match 'ranges' endpoint; "
+                    f"expected {indices.size}, but got {ranges[-1]}")
+
+    return BlockIndexRanges(indices=indices, ranges=ranges)
 
 
 def make_index_blockwise_product(
