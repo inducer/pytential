@@ -28,7 +28,8 @@ from sumpy.kernel import (LineOfCompressionKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier,
     LaplaceKernel)
 from pymbolic import var
-from pytential.symbolic.stokes import StokesletWrapperBase, StokesOperator
+from pytential.symbolic.stokes import (StressletWrapperBase, StokesletWrapperBase,
+    StokesOperator)
 from pytential.symbolic.primitives import NodeCoordinateComponent
 
 
@@ -268,7 +269,7 @@ class MindlinOperator:
         return sym.make_sym_vector(name, 3)
 
 
-class StressletWrapperYoshida(StokesletWrapperBase):
+class StressletWrapperYoshida(StressletWrapperBase):
     """Stresslet Wrapper using Yoshida et al's method [1] which uses Laplace
     derivatives.
 
@@ -279,6 +280,7 @@ class StressletWrapperYoshida(StokesletWrapperBase):
     """
 
     def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
+        self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "
                 "StressletWrapperYoshida")
@@ -375,3 +377,31 @@ class StressletWrapperYoshida(StokesletWrapperBase):
             sym_expr[i] += Q(i, int_g)
 
         return sym_expr
+
+
+class StokesletWrapperYoshida(StokesletWrapperBase):
+    """Stokeslet Wrapper using Yoshida et al's method [1] which uses Laplace
+    derivatives.
+
+    [1] Yoshida, K. I., Nishimura, N., & Kobayashi, S. (2001). Application of
+        fast multipole Galerkin boundary integral equation method to elastostatic
+        crack problems in 3D.
+        International Journal for Numerical Methods in Engineering, 50(3), 525-547.
+    """
+
+    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
+        self.dim = dim
+        if dim != 3:
+            raise ValueError("unsupported dimension given to "
+                "StokesletWrapperYoshida")
+        self.kernel = LaplaceKernel(dim=3)
+        self.mu = mu_sym
+        self.nu = nu_sym
+
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
+            extra_deriv_dirs=[]):
+        stresslet = StressletWrapperYoshida(dim=3, self.mu, self.nu)
+        return self.apply_stokeslet_and_stresslet(density_vec_sym,
+            [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
+            extra_deriv_dirs)
+

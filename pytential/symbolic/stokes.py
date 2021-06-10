@@ -306,33 +306,6 @@ class StokesletWrapper(StokesletWrapperBase):
 # {{{ StressletWrapper
 
 class StressletWrapper(StressletWrapperBase):
-    """Wrapper class for the :class:`~sumpy.kernel.StressletKernel` kernel.
-
-    This class is meant to shield the user from the messiness of writing
-    out every term in the expansion of the triple-indexed Stresslet
-    kernel applied to both a normal vector and the density vector.
-    The object is created to do some of the set-up and bookkeeping once,
-    rather than every time we want to create a symbolic expression based
-    on the kernel -- say, once when we solve for the density, and once when
-    we want a symbolic representation for the solution, for example.
-
-    The :meth:`apply` function returns the integral expressions needed for
-    convolving the kernel with a vector density, and is meant to work
-    similarly to :func:`~pytential.symbolic.primitives.S` (which is
-    :class:`~pytential.symbolic.primitives.IntG`).
-
-    Similar functions are available for other useful things related to
-    the flow: :meth:`apply_pressure`, :meth:`apply_derivative` (target derivative),
-    :meth:`apply_stress` (applies symmetric viscous stress tensor in
-    the requested direction).
-
-    .. automethod:: __init__
-    .. automethod:: apply
-    .. automethod:: apply_pressure
-    .. automethod:: apply_derivative
-    .. automethod:: apply_stress
-    """
-
     def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
         super().__init__(dim, mu_sym, nu_sym)
         if not (dim == 3 or dim == 2):
@@ -453,7 +426,7 @@ class StressletWrapper(StressletWrapperBase):
 
 # {{{ Stokeslet/Stresslet using Laplace
 
-class StressletWrapperTornberg(StokesletWrapperBase):
+class StressletWrapperTornberg(StressletWrapperBase):
     """A Stresslet wrapper using Tornberg and Greengard's method which
     uses Laplace derivatives.
 
@@ -464,7 +437,8 @@ class StressletWrapperTornberg(StokesletWrapperBase):
     def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
         self.dim = dim
         if dim != 3:
-            raise ValueError("unsupported dimension given to StressletWrapper")
+            raise ValueError("unsupported dimension given to "
+                             "StressletWrapperTornberg")
         if nu_sym != 0.5:
             raise ValueError("nu != 0.5 is not supported")
         self.kernel = LaplaceKernel(dim=self.dim)
@@ -533,6 +507,34 @@ class StressletWrapperTornberg(StokesletWrapperBase):
                 qbx_forced_limit=qbx_forced_limit)
 
         return sym_expr
+
+
+class StokesletWrapperTornberg(StokesletWrapperBase):
+    """A Stresslet wrapper using Tornberg and Greengard's method which
+    uses Laplace derivatives.
+
+    [1] Tornberg, A. K., & Greengard, L. (2008). A fast multipole method for the
+        three-dimensional Stokes equations.
+        Journal of Computational Physics, 227(3), 1613-1619.
+    """
+
+    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
+        self.dim = dim
+        if dim != 3:
+            raise ValueError("unsupported dimension given to "
+                             "StokesletWrapperTornberg")
+        if nu_sym != 0.5:
+            raise ValueError("nu != 0.5 is not supported")
+        self.kernel = LaplaceKernel(dim=self.dim)
+        self.mu = mu_sym
+        self.nu = nu_sym
+
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
+            extra_deriv_dirs=[]):
+        stresslet = StressletWrapperTornberg(dim=3, self.mu, self.nu)
+        return stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
+            [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
+            extra_deriv_dirs)
 
 
 # }}}
@@ -642,7 +644,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, omega, alpha=None, eta=None, method="laplace",
+    def __init__(self, *, omega, alpha=None, eta=None, method="biharmonic",
             mu_sym=var("mu"), nu_sym=0.5):
         r"""
         :arg omega: farfield behaviour of the velocity field, as defined
