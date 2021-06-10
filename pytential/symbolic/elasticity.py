@@ -297,7 +297,7 @@ class StressletWrapperYoshida(StressletWrapperBase):
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
             qbx_forced_limit, stokeslet_weight, stresslet_weight,
-            extra_deriv_dirs):
+            extra_deriv_dirs=[]):
 
         mu = self.mu
         nu = self.nu
@@ -329,7 +329,7 @@ class StressletWrapperYoshida(StressletWrapperBase):
 
         def Q(i, int_g):
             res = int_g.copy(target_kernel=add_extra_deriv_dirs(
-                AxisTargetDerivative(i, int_g.target_kernel))
+                AxisTargetDerivative(i, int_g.target_kernel)))
             return res / (4*mu*(1 - nu))
 
         sym_expr = np.zeros((3,), dtype=object)
@@ -400,7 +400,7 @@ class StokesletWrapperYoshida(StokesletWrapperBase):
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=[]):
-        stresslet = StressletWrapperYoshida(dim=3, self.mu, self.nu)
+        stresslet = StressletWrapperYoshida(3, self.mu, self.nu)
         return self.apply_stokeslet_and_stresslet(density_vec_sym,
             [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
             extra_deriv_dirs)

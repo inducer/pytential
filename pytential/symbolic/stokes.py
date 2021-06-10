@@ -27,6 +27,7 @@ from pytential.symbolic.pde.system_utils import merge_int_g_exprs
 from sumpy.kernel import (StressletKernel, LaplaceKernel,
     ElasticityKernel, BiharmonicKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
+from sumpy.tools import get_all_variables
 from pymbolic import var
 
 __doc__ = """
@@ -72,6 +73,9 @@ class StokesletWrapperBase:
         self.dim = dim
         self.mu = mu_sym
         self.nu = nu_sym
+
+        args = list(get_all_variables(self.mu)) + list(get_all_variables(self.nu))
+        self.extra_kwargs = {arg.name: arg for arg in args}
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
         """Symbolic expressions for integrating Stokeslet kernel.
@@ -170,6 +174,9 @@ class StressletWrapperBase:
         self.mu = mu_sym
         self.nu = nu_sym
 
+        args = list(get_all_variables(self.nu))
+        self.extra_kwargs = {arg.name: arg for arg in args}
+
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
         """Symbolic expressions for integrating Stresslet kernel.
 
@@ -239,10 +246,18 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
 
 
 class StokesletWrapper(StokesletWrapperBase):
-    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
+    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5, method="biharmonic"):
         super().__init__(dim, mu_sym, nu_sym)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
+
+        self.method = method
+        if method == "biharmonic":
+            self.base_kernel = BiharmonicKernel(dim)
+        elif method == "naive":
+            self.base_kernel = None
+        else:
+            raise ValueError("method has to be one of biharmonic/naive")
 
         self.kernel_dict = {}
 
@@ -266,7 +281,8 @@ class StokesletWrapper(StokesletWrapperBase):
         """
         return _create_int_g(self.kernel_dict[idx], deriv_dirs,
                     density=density_sym*dir_vec_sym[idx[-1]],
-                    qbx_forced_limit=qbx_forced_limit)/(2*(1-self.nu))
+                    qbx_forced_limit=qbx_forced_limit,
+                    **self.extra_kwargs)/(2*(1-self.nu))
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
 
@@ -280,13 +296,13 @@ class StokesletWrapper(StokesletWrapperBase):
                         density_vec_sym[i], [1]*self.dim,
                         qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
-        return sym_expr
+        return merge_int_g_exprs(sym_expr, base_kernel=self.base_kernel)
 
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
         stresslet_obj = StressletWrapper(dim=self.dim,
-                                         mu_sym=self.mu, nu_sym=self.nu)
+            mu_sym=self.mu, nu_sym=self.nu, method=self.method)
 
         # For stokeslet, there's no direction vector involved
         # passing a list of ones instead to remove its usage.
@@ -306,10 +322,18 @@ class StokesletWrapper(StokesletWrapperBase):
 # {{{ StressletWrapper
 
 class StressletWrapper(StressletWrapperBase):
-    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
+    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5, method="biharmonic"):
         super().__init__(dim, mu_sym, nu_sym)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
+
+        self.method = method
+        if method == "biharmonic":
+            self.base_kernel = BiharmonicKernel(dim)
+        elif method == "naive":
+            self.base_kernel = None
+        else:
+            raise ValueError("method has to be one of biharmonic/naive")
 
         self.kernel_dict = {}
 
@@ -360,7 +384,8 @@ class StressletWrapper(StressletWrapperBase):
             knl = self.kernel_dict[kernel_idx]
             result += _create_int_g(knl, deriv_dirs + extra_deriv_dirs,
                     density=density_sym*dir_vec_sym[dir_vec_idx],
-                    qbx_forced_limit=qbx_forced_limit) * coeff
+                    qbx_forced_limit=qbx_forced_limit,
+                    **self.extra_kwargs) * coeff
         return result/(2*(1 - nu))
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
@@ -375,7 +400,7 @@ class StressletWrapper(StressletWrapperBase):
                         density_vec_sym[i], dir_vec_sym,
                         qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
-        return sym_expr
+        return merge_int_g_exprs(sym_expr, base_kernel=self.base_kernel)
 
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
@@ -383,14 +408,14 @@ class StressletWrapper(StressletWrapperBase):
             extra_deriv_dirs=[]):
 
         stokeslet_obj = StokesletWrapper(dim=self.dim,
-                                         mu_sym=self.mu, nu_sym=self.nu)
+            mu_sym=self.mu, nu_sym=self.nu, method=self.method)
 
         sym_expr = self.apply(stresslet_density_vec_sym, dir_vec_sym,
                 qbx_forced_limit, extra_deriv_dirs) * stresslet_weight
         sym_expr += stokeslet_obj.apply(stokeslet_density_vec_sym,
                 qbx_forced_limit, extra_deriv_dirs) * stokeslet_weight
 
-        return sym_expr
+        return merge_int_g_exprs(sym_expr)
 
 
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
@@ -453,7 +478,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
             qbx_forced_limit, stokeslet_weight, stresslet_weight,
-            extra_deriv_dirs):
+            extra_deriv_dirs=[]):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -531,7 +556,7 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=[]):
-        stresslet = StressletWrapperTornberg(dim=3, self.mu, self.nu)
+        stresslet = StressletWrapperTornberg(3, self.mu, self.nu)
         return stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
             [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
             extra_deriv_dirs)
@@ -585,17 +610,12 @@ class StokesOperator:
                     mu_sym=mu_sym, nu_sym=nu_sym)
         elif method == "biharmonic" or method == "naive":
             self.stresslet = StressletWrapper(dim=self.ambient_dim,
-                mu_sym=mu_sym, nu_sym=nu_sym)
+                mu_sym=mu_sym, nu_sym=nu_sym, method=method)
             self.stokeslet = StokesletWrapper(dim=self.ambient_dim,
-                mu_sym=mu_sym, nu_sym=nu_sym)
+                mu_sym=mu_sym, nu_sym=nu_sym, method=method)
         else:
             raise ValueError(f"invalid method: {method}."
                     "Needs to be one of naive, laplace, biharmonic")
-
-        if method == "biharmonic":
-            self.base_kernel = BiharmonicKernel(dim=ambient_dim)
-        else:
-            self.base_kernel = None
 
     @property
     def dim(self):
@@ -707,20 +727,18 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         return result
 
     def prepare_rhs(self, b):
-        return merge_int_g_exprs(b + self._farfield(qbx_forced_limit=+1),
-                base_kernel=self.base_kernel)
+        return b + self._farfield(qbx_forced_limit=+1)
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         # NOTE: H. K. 1985 Equation 2.18
         return merge_int_g_exprs(-0.5 * self.side * sigma - self._operator(
-            sigma, normal, qbx_forced_limit), base_kernel=self.base_kernel)
+            sigma, normal, qbx_forced_limit))
 
     def velocity(self, sigma, *, normal, qbx_forced_limit=2):
         # NOTE: H. K. 1985 Equation 2.16
         return merge_int_g_exprs(
                 -self._farfield(qbx_forced_limit)
-                - self._operator(sigma, normal, qbx_forced_limit),
-                base_kernel=self.base_kernel)
+                - self._operator(sigma, normal, qbx_forced_limit))
 
     def pressure(self, sigma, *, normal, qbx_forced_limit=2):
         # FIXME: H. K. 1985 Equation 2.17
@@ -759,17 +777,17 @@ class HebekerExteriorStokesOperator(StokesOperator):
 
     def _operator(self, sigma, normal, qbx_forced_limit):
         return self.stresslet.apply_stokeslet_and_stresslet(sigma,
-                sigma, normal, qbx_forced_limit, self.eta, 1)
+                sigma, normal, qbx_forced_limit, self.eta, 1, [])
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         # NOTE: H. 1986 Equation 17
         return merge_int_g_exprs(-0.5 * self.side * sigma - self._operator(sigma,
-            normal, qbx_forced_limit), base_kernel=self.base_kernel, verbose=True)
+            normal, qbx_forced_limit))
 
     def velocity(self, sigma, *, normal, qbx_forced_limit=2):
         # NOTE: H. 1986 Equation 16
         return merge_int_g_exprs(-self._operator(sigma, normal,
-            qbx_forced_limit), base_kernel=self.base_kernel)
+            qbx_forced_limit))
 
     def pressure(self, sigma, *, normal, qbx_forced_limit=2):
         # FIXME: not given in H. 1986, but should be easy to derive using the

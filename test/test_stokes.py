@@ -161,9 +161,7 @@ def run_exterior_stokes(ctx_factory, *,
 
     sym_velocity = op.velocity(sym_sigma, normal=sym_normal)
 
-    from pytential.symbolic.stokes import StokesletWrapper
-    sym_source_pot = StokesletWrapper(ambient_dim,
-            nu_sym=sym_nu).apply(sym_sigma, qbx_forced_limit=None)
+    sym_source_pot = op.stokeslet.apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
 
