@@ -245,7 +245,7 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
                 knl = AxisSourceDerivative(d, knl)
                 c *= -1
         result += int_g.copy(target_kernel=base_kernel, source_kernels=(knl,),
-                densities=(density,)) * c
+                densities=(density,), kernel_arguments=None) * c
     return result
 
 
@@ -283,7 +283,7 @@ def _convert_target_multiplier_to_source(int_g):
     new_densities = [density*NodeCoordinateComponent(tgt_knl.axis)
             for density in int_g.densities]
     result.append(int_g.copy(target_kernel=tgt_knl.inner_kernel,
-                densities=tuple(new_densities)))
+                densities=tuple(new_densities), kernel_arguments=None))
 
     # create a new expression kernel for (x - y)*G
     sym_d = make_sym_vector("d", tgt_knl.dim)
@@ -297,7 +297,7 @@ def _convert_target_multiplier_to_source(int_g):
                 knl.is_complex_valued)
         result.append(int_g.copy(target_kernel=new_knl,
             densities=(density,),
-            source_kernels=(new_knl,)))
+            source_kernels=(new_knl,), kernel_arguments=None))
     return result
 
 

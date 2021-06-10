@@ -1550,7 +1550,7 @@ class IntG(Expression):
 
     def copy(self, target_kernel=None, densities=None,
             qbx_forced_limit=_NoArgSentinel, source=None, target=None,
-            kernel_arguments=None, source_kernels=None):
+            kernel_arguments=_NoArgSentinel, source_kernels=None):
         target_kernel = target_kernel or self.target_kernel
         source_kernels = source_kernels or self.source_kernels
         densities = densities or self.densities
@@ -1558,7 +1558,8 @@ class IntG(Expression):
             qbx_forced_limit = self.qbx_forced_limit
         source = as_dofdesc(source or self.source)
         target = as_dofdesc(target or self.target)
-        kernel_arguments = kernel_arguments or self.kernel_arguments
+        if kernel_arguments is _NoArgSentinel:
+            kernel_arguments = self.kernel_arguments
         return type(self)(target_kernel, source_kernels, densities, qbx_forced_limit,
                 source, target, kernel_arguments)
 
