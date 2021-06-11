@@ -280,11 +280,19 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         else:
             return self.rec(expr.child)
 
+        from numbers import Number
         try:
-            rec = thaw(cache[expr.child], self.array_context)
+            rec = cache[expr.child]
+            if (expr.scope == sym.cse_scope.DISCRETIZATION
+                    and not isinstance(rec, Number)):
+                rec = thaw(rec, self.array_context)
         except KeyError:
-            rec = self.rec(expr.child)
-            cache[expr.child] = freeze(rec, self.array_context)
+            cached_rec = rec = self.rec(expr.child)
+            if (expr.scope == sym.cse_scope.DISCRETIZATION
+                    and not isinstance(rec, Number)):
+                cached_rec = freeze(cached_rec, self.array_context)
+
+            cache[expr.child] = cached_rec
 
         return rec
 
@@ -1063,8 +1071,15 @@ class BoundExpression:
                 and self.sym_op_expr.scope == sym.cse_scope.DISCRETIZATION:
             cache = self.places._get_cache(EvaluationMapperCSECacheKey)
 
-            if self.sym_op_expr.child in cache:
-                return thaw(cache[self.sym_op_expr.child], array_context)
+            from numbers import Number
+            expr = self.sym_op_expr
+            if expr.child in cache:
+                value = cache[expr.child]
+                if (expr.scope == sym.cse_scope.DISCRETIZATION
+                        and not isinstance(value, Number)):
+                    value = thaw(value, array_context)
+
+                return value
 
         array_context = _find_array_context_from_args_in_context(
                 context, array_context)
