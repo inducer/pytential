@@ -165,9 +165,31 @@ def make_block_index_from_array(
 def make_index_blockwise_product(
         actx: PyOpenCLArrayContext,
         idx: MatrixBlockIndexRanges) -> Tuple[Any, Any]:
-    """Constructs a Cartesian product of all the indices in *idx* block by block.
+    """Constructs a block by block Cartesian product of all the indices in *idx*.
 
     The indices in the resulting arrays are laid out in *C* order. Retrieving
+    two-dimensional data for a block diagonal :math:`i` using the resulting
+    index arrays can be done as follows
+
+    .. code:: python
+
+        offsets = np.cumsum([0] + [
+            idx.row.block_size(i) * idx.col.block_size(i)
+            for i in range(idx.nblocks)
+            ])
+        istart = offsets[i]
+        iend = offsets[i + 1]
+
+        block_1d = x[rowindices[istart:iend], colindices[istart:iend]]
+        block_2d = block_1d.reshape(*idx.block_shape(i, i))
+
+        assert np.allclose(block_2d, idx.block_take(x, i, i))
+
+    The result is equivalent to :meth:`~MatrixBlockIndexRanges.block_take`,
+    which takes the Cartesian product as well.
+
+    :returns: a :class:`tuple` containing ``(rowindices, colindices)``, where
+        the type of the arrays is the base array type of *actx*.
     """
     @memoize_in(actx, (make_index_blockwise_product, "index_set_product_knl"))
     def prg():
@@ -182,21 +204,21 @@ def make_index_blockwise_product(
             for irange
                 <> nrows = rowranges[irange + 1] - rowranges[irange]
                 <> ncols = colranges[irange + 1] - colranges[irange]
-                <> offset = rowranges[irange] * colranges[irange]
 
                 for i, j
-                    rowindices[offset + ncols * i + j] = \
+                    rowproduct[offsets[irange] + ncols * i + j] = \
                             rowindices[rowranges[irange] + i] \
                             {id_prefix=write_index}
-                    colindices[offset + ncols * i + j] = \
+                    colproduct[offsets[irange] + ncols * i + j] = \
                             colindices[colranges[irange] + j] \
                             {id_prefix=write_index}
                 end
             end
             """, [
-                lp.GlobalArg("rowindices", None, shape="nresults"),
-                lp.GlobalArg("colindices", None, shape="nresults"),
-                lp.ValueArg("nresults", None),
+                lp.GlobalArg("offsets", None, shape="nranges + 1"),
+                lp.GlobalArg("rowproduct", None, shape="nresults"),
+                lp.GlobalArg("colproduct", None, shape="nresults"),
+                lp.ValueArg("nresults", np.int64),
                 ...
                 ],
             name="index_set_product_knl",
@@ -209,17 +231,22 @@ def make_index_blockwise_product(
         return knl
 
     @memoize_in(idx, (make_index_blockwise_product, "index_set_product"))
-    def _make_product():
+    def _product():
+        offsets = np.cumsum([0] + [
+            idx.row.block_size(i) * idx.col.block_size(i) for i in range(idx.nblocks)
+            ])
+
         _, (rowindices, colindices) = prg()(actx.queue,
                 rowindices=actx.from_numpy(idx.row.indices),
                 rowranges=actx.from_numpy(idx.row.ranges),
                 colindices=actx.from_numpy(idx.col.indices),
                 colranges=actx.from_numpy(idx.col.ranges),
-                nresults=idx.row.indices.size * idx.col.indices.size,
+                offsets=actx.from_numpy(offsets),
+                nresults=offsets[-1],
                 )
 
         return actx.freeze(rowindices), actx.freeze(colindices)
 
-    return _make_product()
+    return _product()
 
 # }}}
