@@ -53,7 +53,7 @@ def test_matrix_block_index(ctx_factory):
     rng = np.random.default_rng()
     mat = rng.random(size=(npoints, npoints))
 
-    from pytential.linalg.utils import BlockIndexRanges, MatrixBlockIndexRanges
+    from pytential.linalg import BlockIndexRanges, MatrixBlockIndexRanges
     row = BlockIndexRanges(indices, ranges)
     col = BlockIndexRanges(indices, ranges)
     idx = MatrixBlockIndexRanges(row, col)
@@ -62,17 +62,14 @@ def test_matrix_block_index(ctx_factory):
 
     # {{{ check the cartesian product
 
-    from pytential.linalg.utils import make_index_blockwise_product
+    from pytential.linalg import make_index_blockwise_product
     rowindices, colindices = make_index_blockwise_product(actx, idx)
     rowindices = actx.to_numpy(rowindices)
     colindices = actx.to_numpy(colindices)
-    offsets = np.cumsum([0] + [
-        idx.row.block_size(i) * idx.col.block_size(i) for i in range(idx.nblocks)
-        ])
 
+    ranges = idx._block_ranges
     for i in range(idx.nblocks):
-        istart = offsets[i]
-        iend = offsets[i + 1]
+        istart, iend = ranges[i:i + 2]
 
         blk_ref = idx.block_take(mat, i, i)
         blk = mat[rowindices[istart:iend], colindices[istart:iend]].reshape(

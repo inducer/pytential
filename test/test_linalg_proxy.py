@@ -29,7 +29,7 @@ import pyopencl as cl
 
 from pytential import bind, sym
 from pytential import GeometryCollection
-from pytential.linalg.proxy import ProxyGenerator, QBXProxyGenerator
+from pytential.linalg import ProxyGenerator, QBXProxyGenerator
 
 from arraycontext import PyOpenCLArrayContext
 from meshmode.mesh.generation import ellipse, NArmedStarfish
@@ -213,7 +213,7 @@ def test_partition_points(ctx_factory, tree_kind, case, visualize=False):
     places = GeometryCollection(qbx, auto_where=case.name)
 
     density_discr = places.get_discretization(case.name)
-    indices = case.get_block_indices(actx, density_discr).row.get(queue)
+    indices = case.get_block_indices(actx, density_discr, matrix_indices=False)
 
     expected_indices = np.arange(0, density_discr.ndofs)
     assert indices.ranges[-1] == density_discr.ndofs
@@ -294,7 +294,7 @@ def test_proxy_generator(ctx_factory, case,
         return
 
     plot_proxy_geometry(
-            actx, places, srcindices.get(queue), pxy=pxy, with_qbx_centers=True,
+            actx, places, srcindices, pxy=pxy, with_qbx_centers=True,
             suffix=f"generator_{index_sparsity_factor:.2f}",
             )
 
@@ -340,10 +340,8 @@ def test_neighbor_points(ctx_factory, case,
     pxy = generator(actx, places.auto_source, srcindices)
 
     # get neighboring points
-    from pytential.linalg.proxy import gather_block_neighbor_points
+    from pytential.linalg import gather_block_neighbor_points
     nbrindices = gather_block_neighbor_points(actx, density_discr, pxy)
-
-    nbrindices = nbrindices.get(queue)
 
     from meshmode.dof_array import flatten_to_numpy
     pxy = pxy.to_numpy(actx)

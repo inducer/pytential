@@ -26,7 +26,20 @@ from typing import Any, Optional, Tuple
 import numpy as np
 
 from arraycontext import PyOpenCLArrayContext
-from pytools import memoize_in
+from pytools import memoize_in, memoize_method
+
+__doc__ = """
+Misc
+~~~~
+
+.. currentmodule:: pytential.linalg
+
+.. autoclass:: BlockIndexRanges
+.. autoclass:: MatrixBlockIndexRanges
+
+.. autofunction:: make_block_index_from_array
+.. autofunction:: make_index_blockwise_product
+"""
 
 
 # {{{ block index handling
@@ -119,6 +132,24 @@ class MatrixBlockIndexRanges:
     @property
     def nblocks(self):
         return self.row.nblocks
+
+    @property
+    @memoize_method
+    def _size(self) -> int:
+        """
+        :returns: sum of all the block sizes.
+        """
+        return sum(
+                self.row.block_size(i) * self.col.block_size(i)
+                for i in range(self.nblocks))
+
+    @property
+    @memoize_method
+    def _block_ranges(self):
+        return np.cumsum([0] + [
+            self.row.block_size(i) * self.col.block_size(i)
+            for i in range(self.nblocks)
+            ])
 
     def block_shape(self, i: int, j: int) -> Tuple[int, int]:
         r"""
@@ -232,21 +263,37 @@ def make_index_blockwise_product(
 
     @memoize_in(idx, (make_index_blockwise_product, "index_set_product"))
     def _product():
-        offsets = np.cumsum([0] + [
-            idx.row.block_size(i) * idx.col.block_size(i) for i in range(idx.nblocks)
-            ])
 
         _, (rowindices, colindices) = prg()(actx.queue,
                 rowindices=actx.from_numpy(idx.row.indices),
                 rowranges=actx.from_numpy(idx.row.ranges),
                 colindices=actx.from_numpy(idx.col.indices),
                 colranges=actx.from_numpy(idx.col.ranges),
-                offsets=actx.from_numpy(offsets),
-                nresults=offsets[-1],
+                offsets=actx.from_numpy(idx._block_ranges),
+                nresults=idx._size,
                 )
 
         return actx.freeze(rowindices), actx.freeze(colindices)
 
     return _product()
+
+
+def make_block_diag(
+        mat: np.ndarray,
+        idx: MatrixBlockIndexRanges) -> np.ndarray:
+    """
+    :param mat: a one-dimensional :class:`~numpy.ndarray` that has a one-to-one
+        correspondence to the index sets constructed by
+        :func:`make_index_blockwise_product` for *idx*.
+    :returns: a block diagonal object :class:`~numpy.ndarray`, where each
+        diagonal element :math:`(i, i)` is the reshaped slice of *mat* that
+        corresponds to the block :math:`i`.
+    """
+    ranges = idx._block_ranges
+    blk = np.full((idx.nblocks, idx.nblocks), 0, dtype=object)
+    for i in range(idx.nblocks):
+        blk[i, i] = mat[ranges[i]:ranges[i + 1]].reshape(idx.block_shape(i, i))
+
+    return blk
 
 # }}}

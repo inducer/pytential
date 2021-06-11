@@ -30,7 +30,7 @@ from arraycontext import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 
 from pytools import memoize_in
-from sumpy.tools import BlockIndexRanges
+from pytential.linalg.utils import BlockIndexRanges
 
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
@@ -39,6 +39,8 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 __doc__ = """
 Proxy Point Generation
 ~~~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: pytential.linalg
 
 .. autoclass:: BlockProxyPoints
 .. autoclass:: ProxyGeneratorBase
@@ -100,7 +102,7 @@ def partition_by_nodes(
         ranges = np.linspace(0, discr.ndofs, nblocks + 1, dtype=np.int64)
         assert ranges[-1] == discr.ndofs
 
-    from pytential.linalg.utils import make_block_index_from_array
+    from pytential.linalg import make_block_index_from_array
     return make_block_index_from_array(indices, ranges=ranges)
 
 # }}}
@@ -159,12 +161,12 @@ class BlockProxyPoints:
     """
     .. attribute:: srcindices
 
-        A :class:`~sumpy.tools.BlockIndexRanges` describing which block of
+        A :class:`~pytential.linalg.BlockIndexRanges` describing which block of
         points each proxy ball was created from.
 
     .. attribute:: indices
 
-        A :class:`~sumpy.tools.BlockIndexRanges` describing which proxies
+        A :class:`~pytential.linalg.BlockIndexRanges` describing which proxies
         belong to which block.
 
     .. attribute:: points
@@ -203,8 +205,6 @@ class BlockProxyPoints:
         from arraycontext import to_numpy
         from dataclasses import replace
         return replace(self,
-                srcindices=self.srcindices.get(actx.queue),
-                indices=self.indices.get(actx.queue),
                 points=to_numpy(self.points, actx),
                 centers=to_numpy(self.centers, actx),
                 radii=to_numpy(self.radii, actx))
@@ -373,7 +373,7 @@ class ProxyGeneratorBase:
         pxyranges = np.arange(0, nproxy + 1, self.nproxy)
 
         from arraycontext import freeze, from_numpy
-        from pytential.linalg.utils import make_block_index_from_array
+        from pytential.linalg import make_block_index_from_array
         return BlockProxyPoints(
                 srcindices=indices,
                 indices=make_block_index_from_array(pxyindices, pxyranges),
@@ -594,7 +594,7 @@ def gather_block_neighbor_points(
     from arraycontext import to_numpy
     pxycenters = to_numpy(pxy.centers, actx)
     pxyradii = to_numpy(pxy.radii, actx)
-    indices = pxy.srcindices.get(actx.queue)
+    indices = pxy.srcindices
 
     nbrindices = np.empty(indices.nblocks, dtype=object)
     for iproxy in range(indices.nblocks):
@@ -623,7 +623,7 @@ def gather_block_neighbor_points(
 
     # }}}
 
-    from pytential.linalg.utils import make_block_index_from_array
+    from pytential.linalg import make_block_index_from_array
     return make_block_index_from_array(indices=nbrindices)
 
 # }}}

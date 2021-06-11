@@ -265,7 +265,7 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
         # blk_mapper is used to recursively compute the density to
         # a layer potential operator to ensure there is no composition
 
-        return MatrixBlockBuilderBase(self.array_context,
+        return MatrixBlockBuilderWithoutComposition(self.array_context,
                 self.dep_expr,
                 self.other_dep_exprs,
                 self.dep_source,
@@ -274,7 +274,13 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
                 self.index_set, self.context)
 
     def get_dep_variable(self):
-        return 1.0
+        from pytential.linalg import make_index_blockwise_product
+        actx = self.array_context
+        tgtindices, srcindices = make_index_blockwise_product(actx, self.index_set)
+
+        return np.equal(
+                actx.to_numpy(tgtindices), actx.to_numpy(srcindices)
+                ).astype(np.float64)
 
     def is_kind_vector(self, x):
         # NOTE: since matrices are flattened, the only way to differentiate
@@ -284,7 +290,12 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
     def is_kind_matrix(self, x):
         # NOTE: since matrices are flattened, we recognize them by checking
         # if they have the right size
-        return x.size == self.index_set.linear_row_indices.size
+        return x.size == self.index_set._size
+
+
+class MatrixBlockBuilderWithoutComposition(MatrixBlockBuilderBase):
+    def get_dep_variable(self):
+        return 1.0
 
 # }}}
 
@@ -416,8 +427,8 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, context)
 
-        self.exclude_self = exclude_self
         self.weighted = weighted
+        self.exclude_self = exclude_self
 
     def map_int_g(self, expr):
         source_discr = self.places.get_discretization(
@@ -486,13 +497,6 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, index_set, context)
 
-    def get_dep_variable(self):
-        queue = self.array_context.queue
-        tgtindices = self.index_set.linear_row_indices.get(queue)
-        srcindices = self.index_set.linear_col_indices.get(queue)
-
-        return np.equal(tgtindices, srcindices).astype(np.float64)
-
     def map_int_g(self, expr):
         lpot_source = self.places.get_geometry(expr.source.geometry)
         source_discr = self.places.get_discretization(
@@ -518,8 +522,12 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
                     kernel.get_base_kernel(), (expr.target_kernel,))
 
-            from sumpy.qbx import LayerPotentialMatrixBlockGenerator
-            mat_gen = LayerPotentialMatrixBlockGenerator(actx.context, local_expn,
+            from pytential.linalg import make_index_blockwise_product
+            tgtindices, srcindices = make_index_blockwise_product(
+                    actx, self.index_set)
+
+            from sumpy.qbx import LayerPotentialMatrixSubsetGenerator
+            mat_gen = LayerPotentialMatrixSubsetGenerator(actx.context, local_expn,
                 source_kernels=(kernel,), target_kernels=(expr.target_kernel,))
 
             assert abs(expr.qbx_forced_limit) > 0
@@ -537,15 +545,17 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                     sources=flatten(thaw(source_discr.nodes(), actx)),
                     centers=flatten(centers),
                     expansion_radii=flatten(radii),
-                    index_set=self.index_set,
+                    tgtindices=tgtindices,
+                    srcindices=srcindices,
                     **kernel_args)
 
-            waa = bind(self.places, sym.weights_and_area_elements(
-                source_discr.ambient_dim,
-                dofdesc=expr.source))(actx)
-            waa = flatten(waa)
+            waa = flatten(
+                    bind(self.places,
+                        sym.weights_and_area_elements(
+                            source_discr.ambient_dim,
+                            dofdesc=expr.source))(actx))
+            mat *= waa[srcindices]
 
-            mat *= waa[self.index_set.linear_col_indices]
             result += actx.to_numpy(mat) * rec_density
 
         return result
@@ -559,15 +569,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, index_set, context)
 
-        self.exclude_self = exclude_self
         self.weighted = weighted
-
-    def get_dep_variable(self):
-        queue = self.array_context.queue
-        tgtindices = self.index_set.linear_row_indices.get(queue)
-        srcindices = self.index_set.linear_col_indices.get(queue)
-
-        return np.equal(tgtindices, srcindices).astype(np.float64)
+        self.exclude_self = exclude_self
 
     def map_int_g(self, expr):
         source_discr = self.places.get_discretization(
@@ -598,8 +601,12 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                         np.arange(0, target_discr.ndofs, dtype=np.int64)
                         )
 
-            from sumpy.p2p import P2PMatrixBlockGenerator
-            mat_gen = P2PMatrixBlockGenerator(actx.context,
+            from pytential.linalg import make_index_blockwise_product
+            tgtindices, srcindices = make_index_blockwise_product(
+                    actx, self.index_set)
+
+            from sumpy.p2p import P2PMatrixSubsetGenerator
+            mat_gen = P2PMatrixSubsetGenerator(actx.context,
                     source_kernels=(base_kernel,),
                     target_kernels=(expr.target_kernel.get_base_kernel(),),
                     exclude_self=self.exclude_self)
@@ -607,7 +614,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
             _, (mat,) = mat_gen(actx.queue,
                     targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
                     sources=flatten(thaw(source_discr.nodes(), actx), strict=False),
-                    index_set=self.index_set,
+                    tgtindices=tgtindices,
+                    srcindices=srcindices,
                     **kernel_args)
 
             from meshmode.discretization import Discretization
@@ -618,7 +626,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                     dofdesc=expr.source))(actx)
                 waa = flatten(waa)
 
-                mat *= waa[self.index_set.linear_col_indices]
+                mat *= waa[srcindices]
 
             result += actx.to_numpy(mat) * rec_density
 

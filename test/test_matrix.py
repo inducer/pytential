@@ -31,7 +31,6 @@ import numpy.linalg as la
 import pyopencl as cl
 
 from sumpy.symbolic import USE_SYMENGINE
-from sumpy.tools import MatrixBlockIndexRanges
 from pytools.obj_array import make_obj_array
 
 from pytential import bind, sym
@@ -48,7 +47,15 @@ from pyopencl.tools import (  # noqa
 import extra_matrix_data as extra
 import logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+
+
+def max_block_error(mat, blk, index_set, p=None):
+    error = -np.inf
+    for i in range(index_set.nblocks):
+        mat_i = index_set.block_take(mat, i, i)
+        error = max(error, la.norm(mat_i - blk[i, i], ord=p) / la.norm(mat_i, ord=p))
+
+    return error
 
 
 @pytest.mark.skipif(USE_SYMENGINE,
@@ -383,7 +390,6 @@ def test_block_builder(ctx_factory, ambient_dim,
         except ImportError:
             visualize = False
 
-    index_set = index_set.get(actx.queue)
     if visualize and ambient_dim == 2:
         blk_full = np.zeros_like(mat)
         mat_full = np.zeros_like(mat)
@@ -404,7 +410,9 @@ def test_block_builder(ctx_factory, ambient_dim,
         filename = f"matrix_block_{block_builder_type}_{ambient_dim}d"
         pt.savefig(filename)
 
-    assert extra.max_block_error(mat, blk, index_set) < 1.0e-14
+    from pytential.linalg.utils import make_block_diag
+    blk = make_block_diag(blk, index_set)
+    assert max_block_error(mat, blk, index_set) < 1.0e-14
 
     # }}}
 
@@ -478,9 +486,10 @@ def test_build_matrix_fixed_stage(ctx_factory,
     logger.info("ndofs:         %d", source_discr.ndofs)
     logger.info("ndofs:         %d", target_discr.ndofs)
 
+    from pytential.linalg import MatrixBlockIndexRanges
     icols = case.get_block_indices(actx, source_discr, matrix_indices=False)
     irows = case.get_block_indices(actx, target_discr, matrix_indices=False)
-    index_set = MatrixBlockIndexRanges(actx.context, icols, irows)
+    index_set = MatrixBlockIndexRanges(icols, irows)
 
     kwargs = dict(
             dep_expr=sym_u,
@@ -498,8 +507,11 @@ def test_build_matrix_fixed_stage(ctx_factory,
     blk = matrix.NearFieldBlockBuilder(
             actx, index_set=index_set, **kwargs)(sym_prep_op)
 
+    from pytential.linalg.utils import make_block_diag
+    blk = make_block_diag(blk, index_set)
+
     assert mat.shape == (target_discr.ndofs, source_discr.ndofs)
-    assert extra.max_block_error(mat, blk, index_set.get(queue)) < 1.0e-14
+    assert max_block_error(mat, blk, index_set) < 1.0e-14
 
     # p2p
     mat = matrix.P2PMatrixBuilder(
@@ -507,8 +519,11 @@ def test_build_matrix_fixed_stage(ctx_factory,
     blk = matrix.FarFieldBlockBuilder(
             actx, index_set=index_set, exclude_self=True, **kwargs)(sym_prep_op)
 
+    from pytential.linalg.utils import make_block_diag
+    blk = make_block_diag(blk, index_set)
+
     assert mat.shape == (target_discr.ndofs, source_discr.ndofs)
-    assert extra.max_block_error(mat, blk, index_set.get(queue)) < 1.0e-14
+    assert max_block_error(mat, blk, index_set) < 1.0e-14
 
     # }}}
 
