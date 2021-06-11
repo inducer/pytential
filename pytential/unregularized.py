@@ -120,6 +120,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
     def op_group_features(self, expr):
         from pytential.utils import sort_arrays_together
+        from sumpy.kernel import TargetTransformationRemover
         result = (
                 expr.source,
                 *sort_arrays_together(expr.source_kernels, expr.densities, key=str),

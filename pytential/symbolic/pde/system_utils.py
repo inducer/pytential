@@ -213,6 +213,16 @@ def convert_int_g_to_base(int_g, base_kernel, verbose=False):
     return result
 
 
+def _filter_kernel_arguments(knls, kernel_arguments):
+    kernel_arg_names = set()
+
+    for kernel in knls:
+        for karg in (kernel.get_args() + kernel.get_source_args()):
+            kernel_arg_names.add(karg.loopy_arg.name)
+
+    return {k: v for (k, v) in kernel_arguments.items() if k in kernel_arg_names}
+
+
 def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
     tgt_knl = int_g.target_kernel
     dim = tgt_knl.dim
@@ -238,6 +248,8 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
     if source_kernel == source_kernel.get_base_kernel():
         result += const
 
+    new_kernel_args = _filter_kernel_arguments([base_kernel], int_g.kernel_arguments)
+
     for mi, c in deriv_relation[1]:
         knl = source_kernel.replace_base_kernel(base_kernel)
         for d, val in enumerate(mi):
@@ -245,7 +257,7 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
                 knl = AxisSourceDerivative(d, knl)
                 c *= -1
         result += int_g.copy(target_kernel=base_kernel, source_kernels=(knl,),
-                densities=(density,), kernel_arguments=None) * c
+                densities=(density,), kernel_arguments=new_kernel_args) * c
     return result
 
 
@@ -277,13 +289,15 @@ def _convert_target_multiplier_to_source(int_g):
         return int_g
     if isinstance(tgt_knl.inner_kernel, KernelWrapper):
         return int_g
+
+    new_kernel_args = _filter_kernel_arguments([tgt_knl], int_g.kernel_arguments)
     result = []
     # x G = y*G + (x - y)*G
     # For y*G, absorb y into a density
     new_densities = [density*NodeCoordinateComponent(tgt_knl.axis)
             for density in int_g.densities]
     result.append(int_g.copy(target_kernel=tgt_knl.inner_kernel,
-                densities=tuple(new_densities), kernel_arguments=None))
+                densities=tuple(new_densities), kernel_arguments=new_kernel_args))
 
     # create a new expression kernel for (x - y)*G
     sym_d = make_sym_vector("d", tgt_knl.dim)
@@ -297,7 +311,7 @@ def _convert_target_multiplier_to_source(int_g):
                 knl.is_complex_valued)
         result.append(int_g.copy(target_kernel=new_knl,
             densities=(density,),
-            source_kernels=(new_knl,), kernel_arguments=None))
+            source_kernels=(new_knl,), kernel_arguments=new_kernel_args))
     return result
 
 

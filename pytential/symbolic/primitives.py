@@ -1503,7 +1503,7 @@ class IntG(Expression):
                     % qbx_forced_limit)
 
         densities = list(densities)
-        source_kernels = tuple([source_kernels[i] for i in range(len(densities)) \
+        source_kernels = tuple([source_kernels[i] for i in range(len(densities))
                 if densities[i] != 0])
         densities = tuple([density for density in densities if density != 0])
 
@@ -1531,6 +1531,7 @@ class IntG(Expression):
 
         provided_arg_names = set(kernel_arguments.keys())
         missing_args = kernel_arg_names - provided_arg_names
+
         if missing_args:
             raise TypeError("kernel argument(s) '%s' not supplied"
                     % ", ".join(missing_args))

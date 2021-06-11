@@ -57,9 +57,8 @@ class KelvinOperator(StokesOperator):
         self.laplace_kernel = LaplaceKernel(3)
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
-        return merge_int_g_exprs(self.stresslet.apply(sigma, normal,
-            qbx_forced_limit=qbx_forced_limit),
-            base_kernel=self.base_kernel)
+        return self.stresslet.apply(sigma, normal,
+            qbx_forced_limit=qbx_forced_limit)
 
     def get_density_var(self, name="sigma"):
         """
@@ -256,7 +255,7 @@ class MindlinOperator:
             # TODO: make merge_int_g_exprs smart enough to merge two different
             # kernels into two separate IntGs.
             result = merge_int_g_exprs(resultA + resultC,
-                base_kernel=self.free_space_op.base_kernel)
+                base_kernel=self.free_space_op.stresslet.base_kernel)
             result += merge_int_g_exprs(resultB, base_kernel=self.compression_knl)
             return result
         else:
@@ -401,7 +400,6 @@ class StokesletWrapperYoshida(StokesletWrapperBase):
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
         stresslet = StressletWrapperYoshida(3, self.mu, self.nu)
-        return self.apply_stokeslet_and_stresslet(density_vec_sym,
+        return stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
             [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
             extra_deriv_dirs)
-
