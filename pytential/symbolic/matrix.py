@@ -290,7 +290,7 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
     def is_kind_matrix(self, x):
         # NOTE: since matrices are flattened, we recognize them by checking
         # if they have the right size
-        return x.size == self.index_set._size
+        return x.size == self.index_set._total_size
 
 
 class MatrixBlockBuilderWithoutComposition(MatrixBlockBuilderBase):

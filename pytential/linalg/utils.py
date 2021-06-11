@@ -57,7 +57,7 @@ class BlockIndexRanges:
 
     .. attribute:: ranges
 
-        An :class:`~numpy.ndarray` of size ``(nblocks,)`` consisting of
+        An :class:`~numpy.ndarray` of size ``(nblocks + 1,)`` consisting of
         nondecreasing integers used to index into :attr:`indices`. A block
         :math:`i` can be retrieved using ``indices[ranges[i]:ranges[i + 1]]``.
 
@@ -74,9 +74,6 @@ class BlockIndexRanges:
         return self.ranges.size - 1
 
     def block_size(self, i: int) -> int:
-        """
-        :returns: the number of indices in the block *i*.
-        """
         if not (0 <= i < self.nblocks):
             raise IndexError(f"block {i} is out of bounds for {self.nblocks} blocks")
 
@@ -84,7 +81,8 @@ class BlockIndexRanges:
 
     def block_indices(self, i: int) -> np.ndarray:
         """
-        :returns: the actual indices in block *i*.
+        :returns: a view into the :attr:`indices` array for the range
+            corresponding to block *i*.
         """
         if not (0 <= i < self.nblocks):
             raise IndexError(f"block {i} is out of bounds for {self.nblocks} blocks")
@@ -135,9 +133,9 @@ class MatrixBlockIndexRanges:
 
     @property
     @memoize_method
-    def _size(self) -> int:
+    def _total_size(self) -> int:
         """
-        :returns: sum of all the block sizes.
+        :returns: sum of all the diagonal block sizes.
         """
         return sum(
                 self.row.block_size(i) * self.col.block_size(i)
@@ -160,7 +158,7 @@ class MatrixBlockIndexRanges:
 
     def block_indices(self, i: int, j: int) -> Tuple[np.ndarray, np.ndarray]:
         """
-        :returns: the indices that make up the block ``(i, j)`` in the matrix.
+        :returns: a view into the indices that make up the block ``(i, j)``.
         """
         return (self.row.block_indices(i), self.col.block_indices(j))
 
@@ -263,14 +261,13 @@ def make_index_blockwise_product(
 
     @memoize_in(idx, (make_index_blockwise_product, "index_set_product"))
     def _product():
-
         _, (rowindices, colindices) = prg()(actx.queue,
                 rowindices=actx.from_numpy(idx.row.indices),
                 rowranges=actx.from_numpy(idx.row.ranges),
                 colindices=actx.from_numpy(idx.col.indices),
                 colranges=actx.from_numpy(idx.col.ranges),
                 offsets=actx.from_numpy(idx._block_ranges),
-                nresults=idx._size,
+                nresults=idx._total_size,
                 )
 
         return actx.freeze(rowindices), actx.freeze(colindices)
