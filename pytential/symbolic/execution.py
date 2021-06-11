@@ -33,7 +33,7 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
-from arraycontext import PyOpenCLArrayContext, thaw
+from arraycontext import PyOpenCLArrayContext, thaw, freeze
 from meshmode.dof_array import DOFArray, flatten
 
 from pytools import memoize_in, memoize_method
@@ -281,10 +281,10 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             return self.rec(expr.child)
 
         try:
-            rec = cache[expr.child]
+            rec = thaw(cache[expr.child], self.array_context)
         except KeyError:
             rec = self.rec(expr.child)
-            cache[expr.child] = rec
+            cache[expr.child] = freeze(rec, self.array_context)
 
         return rec
 
@@ -1064,7 +1064,7 @@ class BoundExpression:
             cache = self.places._get_cache(EvaluationMapperCSECacheKey)
 
             if self.sym_op_expr.child in cache:
-                return cache[self.sym_op_expr.child]
+                return thaw(cache[self.sym_op_expr.child], array_context)
 
         array_context = _find_array_context_from_args_in_context(
                 context, array_context)

@@ -342,6 +342,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         def make_container():
             from pytential.qbx.utils import TreeCodeContainer
             return TreeCodeContainer(self._setup_actx)
+
         return make_container()
 
     @property
@@ -352,6 +353,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from pytential.qbx.refinement import RefinerCodeContainer
             return RefinerCodeContainer(
                     self._setup_actx, self.tree_code_container)
+
         return make_container()
 
     @property
@@ -362,13 +364,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from pytential.qbx.target_assoc import TargetAssociationCodeContainer
             return TargetAssociationCodeContainer(
                     self._setup_actx, self.tree_code_container)
+
         return make_container()
 
     @property
     def qbx_fmm_geometry_data_code_container(self):
         @memoize_in(self._setup_actx, (
-                QBXLayerPotentialSource,
-                "qbx_fmm_geometry_data_code_container"))
+                QBXLayerPotentialSource, "qbx_fmm_geometry_data_code_container"))
         def make_container(
                 debug, ambient_dim, well_sep_is_n_away,
                 from_sep_smaller_crit):

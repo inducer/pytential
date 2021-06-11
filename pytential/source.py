@@ -248,7 +248,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
 
     @property
     def cl_context(self):
-        return self.density_discr._setup_actx.context
+        return self._setup_actx.context
 
     @property
     def real_dtype(self):
