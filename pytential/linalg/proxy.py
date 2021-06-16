@@ -448,9 +448,6 @@ def make_compute_block_qbx_radii_knl(
             for irange
                 <> ioffset = srcranges[irange]
                 <> npoints = srcranges[irange + 1] - srcranges[irange]
-                <> rblk = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
-                        (proxy_centers[idim, irange] -
-                         sources[idim, srcindices[i + ioffset]]) ** 2)))
                 <> rqbx_int = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
                         (proxy_centers[idim, irange] -
                          center_int[idim, srcindices[i + ioffset]]) ** 2)) + \
@@ -463,7 +460,7 @@ def make_compute_block_qbx_radii_knl(
                          {dup=idim}
                 <> rqbx = rqbx_int if rqbx_ext < rqbx_int else rqbx_ext
 
-                proxy_radius[irange] = radius_factor * rblk
+                proxy_radius[irange] = radius_factor * rqbx
             end
             """, [
                 lp.GlobalArg("sources", None,
