@@ -600,6 +600,10 @@ def gather_block_neighbor_points(
         iend = query.leaves_near_ball_starts[iproxy + 1]
         iboxes = query.leaves_near_ball_lists[istart:iend]
 
+        if (iend - istart) <= 0:
+            nbrindices[iproxy] = np.empty(0, dtype=np.int64)
+            continue
+
         # get nodes inside the boxes
         istart = tree.box_source_starts[iboxes]
         iend = istart + tree.box_source_counts_cumul[iboxes]
