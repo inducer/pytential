@@ -30,7 +30,6 @@ import numpy.linalg as la
 
 import pyopencl as cl
 
-from sumpy.symbolic import USE_SYMENGINE
 from pytools.obj_array import make_obj_array
 
 from pytential import bind, sym
@@ -58,8 +57,6 @@ def max_block_error(mat, blk, index_set, p=None):
     return error
 
 
-@pytest.mark.skipif(USE_SYMENGINE,
-        reason="https://gitlab.tiker.net/inducer/sumpy/issues/25")
 @pytest.mark.parametrize("k", [0, 42])
 @pytest.mark.parametrize("curve_fn", [
     partial(ellipse, 3),
