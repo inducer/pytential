@@ -161,7 +161,14 @@ def run_exterior_stokes(ctx_factory, *,
 
     sym_velocity = op.velocity(sym_sigma, normal=sym_normal)
 
-    sym_source_pot = op.stokeslet.apply(sym_sigma, qbx_forced_limit=None)
+    if ambient_dim == 3:
+        sym_source_pot = op.stokeslet.apply(sym_sigma, qbx_forced_limit=None)
+    else:
+        # Use the naive method here as biharmonic requires source derivatives
+        # of point_source
+        from pytential.symbolic.stokes import StokesletWrapper
+        sym_source_pot = StokesletWrapper(ambient_dim, mu_sym=sym_nu,
+            nu_sym=sym_nu, method="naive").apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
 

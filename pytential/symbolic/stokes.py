@@ -403,9 +403,12 @@ class StressletWrapper(StressletWrapperBase):
         stokeslet_obj = StokesletWrapper(dim=self.dim,
             mu_sym=self.mu, nu_sym=self.nu, method=self.method)
 
-        sym_expr = self.apply(stresslet_density_vec_sym, dir_vec_sym,
+        sym_expr = 0
+        if stresslet_weight != 0:
+            sym_expr += self.apply(stresslet_density_vec_sym, dir_vec_sym,
                 qbx_forced_limit, extra_deriv_dirs) * stresslet_weight
-        sym_expr += stokeslet_obj.apply(stokeslet_density_vec_sym,
+        if stokeslet_weight != 0:
+            sym_expr += stokeslet_obj.apply(stokeslet_density_vec_sym,
                 qbx_forced_limit, extra_deriv_dirs) * stokeslet_weight
 
         return merge_int_g_exprs(sym_expr)
@@ -693,9 +696,10 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     def _farfield(self, qbx_forced_limit):
         source_dofdesc = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
         length = sym.integral(self.ambient_dim, self.dim, 1, dofdesc=source_dofdesc)
-        return self.stresslet.apply(
-                -self.omega / length, [0]*self.dim, [0]*self.dim,
-                qbx_forced_limit, 1, 0)
+        return self.stresslet.apply_stokeslet_and_stresslet(
+                -self.omega / length, [0]*self.ambient_dim, [0]*self.ambient_dim,
+                qbx_forced_limit=qbx_forced_limit, stokeslet_weight=1,
+                stresslet_weight=0)
 
     def _operator(self, sigma, normal, qbx_forced_limit):
         slp_qbx_forced_limit = qbx_forced_limit
@@ -713,7 +717,8 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
 
         result = self.eta * self.alpha / (2.0 * np.pi) * int_sigma
         result += self.stresslet.apply_stokeslet_and_stresslet(meanless_sigma,
-                sigma, normal, qbx_forced_limit, -self.eta, 1)
+                sigma, normal, qbx_forced_limit=qbx_forced_limit,
+                stokeslet_weight=-self.eta, stresslet_weight=1)
 
         return result
 
@@ -768,7 +773,9 @@ class HebekerExteriorStokesOperator(StokesOperator):
 
     def _operator(self, sigma, normal, qbx_forced_limit):
         return self.stresslet.apply_stokeslet_and_stresslet(sigma,
-                sigma, normal, qbx_forced_limit, self.eta, 1, [])
+                sigma, normal, qbx_forced_limit=qbx_forced_limit,
+                stokeslet_weight=self.eta, stresslet_weight=1,
+                extra_deriv_dirs=[])
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         # NOTE: H. 1986 Equation 17
