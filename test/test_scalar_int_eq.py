@@ -29,7 +29,6 @@ from arraycontext import PyOpenCLArrayContext
 from meshmode.discretization.visualization import make_visualizer
 from meshmode.dof_array import flatten_to_numpy
 
-from sumpy.symbolic import USE_SYMENGINE
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel, BiharmonicKernel
 
 from pytential import bind, sym
@@ -473,9 +472,6 @@ def test_integral_equation(ctx_factory, case, visualize=False):
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue)
-
-    if USE_SYMENGINE and case.fmm_backend is None:
-        pytest.skip("https://gitlab.tiker.net/inducer/sumpy/issues/25")
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
