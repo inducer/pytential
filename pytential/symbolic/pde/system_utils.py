@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from sumpy.symbolic import make_sym_vector, sym, SympyToPymbolicMapper
+from sumpy.symbolic import make_sym_vector, sym, SympyToPymbolicMapper, sqrt
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
     DirectionalSourceDerivative, ExpressionKernel,
     KernelWrapper, TargetPointMultiplier)
@@ -30,11 +30,12 @@ from pytools import (memoize_on_first_arg,
                 generate_nonnegative_integer_tuples_summing_to_at_most
                 as gnitstam)
 
-from pymbolic.mapper import WalkMapper
-from pymbolic.primitives import Sum, Product, Quotient
+from pymbolic.mapper import WalkMapper, Mapper
+from pymbolic.primitives import Sum, Product, Quotient, Power
 from pytential.symbolic.primitives import IntG, NodeCoordinateComponent, int_g_vec
 import pytential
 
+from collections import defaultdict
 
 def _chop(expr, tol):
     nums = expr.atoms(sym.Number)
@@ -261,7 +262,7 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
     return result
 
 
-def merge_int_g_exprs(exprs, base_kernel=None, verbose=False):
+def merge_int_g_exprs(exprs, base_kernel=None, verbose=False, source_dependent_variables=None):
     replacements = {}
 
     if base_kernel is not None:
@@ -279,7 +280,272 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False):
             replacements[int_g] = sum(convert_int_g_to_base(new_int_g,
                 base_kernel, verbose=verbose) for new_int_g in new_int_g_s)
 
-    return np.array([merge_int_g_expr(expr, replacements) for expr in exprs])
+    result_coeffs = []
+    result_int_gs = []
+
+    for expr in exprs:
+        if not have_int_g_s(expr):
+            result_coeffs.append(expr)
+            result_int_gs.append(0)
+        try:
+            result_coeff, result_int_g = _merge_int_g_expr(expr, replacements)
+            result_int_g = _convert_axis_source_to_directional_source(result_int_g)
+            result_int_g = result_int_g.copy(
+                    densities=_simplify_densities(result_int_g.densities))
+            result_coeffs.append(result_coeff)
+            result_int_gs.append(result_int_g)
+        except AssertionError:
+            result_coeffs.append(expr)
+            result_int_gs.append(0)
+
+    if source_dependent_variables is not None:
+        result_int_gs = _reduce_number_of_fmms(result_int_gs, source_dependent_variables)
+    result = [coeff + int_g for coeff, int_g in zip(result_coeffs, result_int_gs)]
+    return np.array(result, dtype=object)
+
+
+def _convert_kernel_to_poly(kernel, axis_vars):
+    if isinstance(kernel, AxisTargetDerivative):
+        poly = _convert_kernel_to_poly(kernel.inner_kernel, axis_vars)
+        return axis_vars[kernel.axis]*poly
+    elif isinstance(kernel, AxisSourceDerivative):
+        poly = _convert_kernel_to_poly(kernel.inner_kernel, axis_vars)
+        return -axis_vars[kernel.axis]*poly
+    return 1
+
+
+def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
+    from pymbolic.interop.sympy import SympyToPymbolicMapper
+    to_pymbolic = SympyToPymbolicMapper()
+
+    orig_kernel = orig_int_g.source_kernels[0]
+    source_kernels = []
+    densities = []
+    for monom, coeff in poly.terms():
+        kernel = orig_kernel
+        for idim, rep in enumerate(monom):
+            for _ in range(rep):
+                kernel = AxisSourceDerivative(idim, kernel)
+        source_kernels.append(kernel)
+        densities.append(to_pymbolic(coeff) * (-1)**sum(monom))
+    return orig_int_g.copy(source_kernels=tuple(source_kernels),
+            densities=tuple(densities))
+
+
+def _convert_target_poly_to_int_g(poly, orig_int_g, rhs_int_g):
+    from pymbolic.interop.sympy import SympyToPymbolicMapper
+    to_pymbolic = SympyToPymbolicMapper()
+
+    result = 0
+    for monom, coeff in poly.terms():
+        kernel = orig_int_g.target_kernel
+        for idim, rep in enumerate(monom):
+            for _ in range(rep):
+                kernel = AxisTargetDerivative(idim, kernel)
+        result += orig_int_g.copy(target_kernel=kernel,
+                source_kernels=rhs_int_g.source_kernels,
+                densities=rhs_int_g.densities) * to_pymbolic(coeff)
+
+    return result
+
+
+def _syzygy_module(m, gens):
+    import sympy
+    from sympy.polys.orderings import grevlex
+
+    def _convert_to_matrix(module, *gens):
+        import sympy
+        result = []
+        for syzygy in module:
+            row = []
+            for dmp in syzygy.data:
+                row.append(sympy.Poly(dmp.to_dict(), *gens, domain=sympy.EX).as_expr())
+            result.append(row)
+        return sympy.Matrix(result)
+
+    ring = sympy.EX.old_poly_ring(*gens, order=grevlex)
+    column_ideals = [ring.free_module(1).submodule(*m[:, i].tolist(), order=grevlex)
+                for i in range(m.shape[1])]
+    column_syzygy_modules = [ideal.syzygy_module() for ideal in column_ideals]
+
+    intersection = column_syzygy_modules[0]
+    for i in range(1, len(column_syzygy_modules)):
+        intersection = intersection.intersect(column_syzygy_modules[i])
+
+    m2 = intersection._groebner_vec()
+    m3 = _convert_to_matrix(m2, *gens)
+    return m3
+
+
+def _factor_left(mat, axis_vars):
+    return  _syzygy_module(_syzygy_module(mat, axis_vars).T, axis_vars).T
+
+
+def _factor_right(mat, factor_left):
+    import sympy
+    ys = sympy.symbols(f"_y{{0:{factor_left.shape[1]}}}")
+    factor_right = []
+    for i in range(mat.shape[1]):
+        aug_mat = sympy.zeros(factor_left.shape[0], factor_left.shape[1] + 1)
+        aug_mat[:, :factor_left.shape[1]] = factor_left
+        aug_mat[:, factor_left.shape[1]] = mat[:, i]
+        res_map = sympy.solve_linear_system(aug_mat, *ys)
+        row = []
+        for y in ys:
+            row.append(res_map[y])
+        factor_right.append(row)
+    factor_right = sympy.Matrix(factor_right).T
+    return factor_right
+
+
+def _check_int_gs_common(int_gs):
+    base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
+    common_int_g = int_gs[0].copy(target_kernel=base_kernel,
+            source_kernels=(base_kernel,), densities=(1,))
+    for int_g in int_gs:
+        for source_kernel in int_g.source_kernels:
+            if source_kernel.get_base_kernel() != base_kernel:
+                return False
+        if common_int_g != int_g.copy(target_kernel=base_kernel,
+                source_kernels=(base_kernel,), densities=(1,)):
+            return False
+    return True
+
+
+def _reduce_number_of_fmms(int_gs, source_dependent_variables):
+    from pymbolic.interop.sympy import SympyToPymbolicMapper, PymbolicToSympyMapper
+    import sympy
+
+    source_exprs = []
+    mapper = ConvertDensityToSourceExprCoeffMap(source_dependent_variables)
+    matrix = []
+    dim = int_gs[0].target_kernel.dim
+    axis_vars = sympy.symbols(f"_x0:{dim}")
+    to_sympy = PymbolicToSympyMapper()
+    to_pymbolic = SympyToPymbolicMapper()
+
+    _check_int_gs_common(int_gs)
+
+    for int_g in int_gs:
+        row = [0]*len(source_exprs)
+        for density, source_kernel in zip(int_g.densities, int_g.source_kernels):
+            try:
+                d = mapper(density)
+            except ImportError:
+                return int_gs
+            for source_expr, coeff in d.items():
+                if source_expr not in source_exprs:
+                    source_exprs.append(source_expr)
+                    row += [0]
+                poly = _convert_kernel_to_poly(source_kernel, axis_vars)
+                row[source_exprs.index(source_expr)] += poly * to_sympy(coeff)
+        matrix.append(row)
+
+    for row in matrix:
+        row += [0]*(len(source_exprs) - len(row))
+
+    mat = sympy.Matrix(matrix)
+    lhs_mat = _factor_left(mat, axis_vars)
+    rhs_mat = _factor_right(mat, lhs_mat)
+    
+    if rhs_mat.shape[0] >= mat.shape[0]:
+        return int_gs
+
+    rhs_mat = rhs_mat.applyfunc(lambda x: x.as_poly(*axis_vars, domain=sympy.EX))
+    lhs_mat = lhs_mat.applyfunc(lambda x: x.as_poly(*axis_vars, domain=sympy.EX))
+
+    rhs_polys = [0] * rhs_mat.shape[0]
+    base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
+    base_int_g = int_gs[0].copy(target_kernel=base_kernel,
+            source_kernels=(base_kernel,), densities=(1,))
+    rhs_mat_int_gs = [[_convert_source_poly_to_int_g(poly, base_int_g, axis_vars) \
+            for poly in row] for row in rhs_mat.tolist()]
+    
+    rhs_int_gs = []
+    for i in range(rhs_mat.shape[0]):
+        source_kernels = []
+        densities = []
+        for j in range(rhs_mat.shape[1]):
+            new_densities = [density * source_expr[j] for density in \
+                    rhs_mat_int_gs[i][j].densities]
+            source_kernels.extend(rhs_mat_int_gs[i][j].source_kernels)
+            densities.extend(new_densities)
+        rhs_int_gs.append(rhs_mat_int_gs[i][0].copy(
+            source_kernels=tuple(source_kernels), densities=tuple(densities)))
+
+    res = [0]*lhs_mat.shape[0]
+    for i in range(lhs_mat.shape[0]):
+        for j in range(lhs_mat.shape[1]):
+            res[i] += _convert_target_poly_to_int_g(lhs_mat[i, j],
+                    int_gs[i], rhs_int_gs[j])
+
+    return res
+
+
+class ConvertDensityToSourceExprCoeffMap(Mapper):
+    def __init__(self, source_dependent_variables):
+        self.source_dependent_variables = source_dependent_variables
+
+    def __call__(self, expr):
+        if expr in self.source_dependent_variables:
+            return {expr: 1}
+        try:
+            return super().__call__(expr)
+        except NotImplementedError:
+            return {1: expr}
+
+    rec = __call__
+        
+    def map_sum(self, expr):
+        d = defaultdict(lambda: 0)
+        for child in expr.children:
+            d_child = self.rec(child)
+            for k, v in d_child.items():
+                d[k] += v
+        return dict(d)
+    
+    def map_product(self, expr):
+        if len(expr.children) > 2:
+            left = Product(tuple(expr.children[:2]))
+            right = Product(tuple(expr.children[2:]))
+            new_prod = Product((left, right))
+            return self.rec(new_prod)
+        elif len(expr.children) == 1:
+            return self.rec(expr.children[0])
+        elif len(expr.children) == 0:
+            return {1: 1}
+        left, right = expr.children
+        d_left = self.rec(left)
+        d_right = self.rec(right)
+        d = defaultdict(lambda : 0)
+        for k_left, v_left in d_left.items():
+            for k_right, v_right in d_right.items():
+                d[k_left*k_right] += v_left*v_right
+        return dict(d)
+
+    def map_power(self, expr):
+        d_base = self.rec(expr.base)
+        d_exponent = self.rec(expr.exponent)
+        if len(d_exponent) > 1:
+            raise ValueError
+        exp_k, exp_v = list(d_exponent.items())[0]
+        if exp_k != 1:
+            raise ValueError
+        for k in d_base.keys():
+            d_base[k] = d_base[k]**exp_v
+        return d_base
+
+    def map_quotient(self, expr):
+        d_num = self.rec(expr.numerator)
+        d_den = self.rec(expr.denominator)
+        if len(d_den) > 1:
+            raise ValueError
+        den_k, den_v = list(d_den.items())[0]
+        if den_k != 1:
+            raise ValueError
+        for k in d_num.keys():
+            d_num[k] /= den_v
+        return d_num
 
 
 def _convert_target_multiplier_to_source(int_g):
@@ -371,19 +637,6 @@ def _convert_axis_source_to_directional_source(int_g):
             densities=(1,),
             kernel_arguments=kernel_arguments)
     return res
-
-
-def merge_int_g_expr(expr, replacements):
-    if not have_int_g_s(expr):
-        return expr
-    try:
-        result_coeff, result_int_g = _merge_int_g_expr(expr, replacements)
-        result_int_g = _convert_axis_source_to_directional_source(result_int_g)
-        result_int_g = result_int_g.copy(
-                densities=_simplify_densities(result_int_g.densities))
-        return result_coeff + result_int_g
-    except AssertionError:
-        return expr
 
 
 def _merge_source_kernel_duplicates(source_kernels, densities):
@@ -487,13 +740,21 @@ if __name__ == "__main__":
     from sumpy.kernel import (StokesletKernel, BiharmonicKernel, StressletKernel,
             ElasticityKernel, LaplaceKernel)
     base_kernel = BiharmonicKernel(3)
-    kernels = [StokesletKernel(3, 0, 1), StokesletKernel(3, 0, 0)]
-    kernels += [StressletKernel(3, 0, 1, 0), StressletKernel(3, 0, 0, 0),
-            StressletKernel(3, 0, 1, 2)]
-    kernels += [ElasticityKernel(3, 0, 1, poisson_ratio="0.4"),
-            ElasticityKernel(3, 0, 0, poisson_ratio="0.4")]
-    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=2, verbose=True)
-    density = pytential.sym.make_sym_vector("d", 1)[0]
+    #base_kernel = LaplaceKernel(3)
+    kernels = [StokesletKernel(3, 0, 2), StokesletKernel(3, 0, 0)]
+    kernels += [StressletKernel(3, 0, 0, 0), StressletKernel(3, 0, 0, 1),
+            StressletKernel(3, 0, 0, 2), StressletKernel(3, 0, 1, 2)]
+    
+    sym_d = make_sym_vector("d", base_kernel.dim)
+    sym_r = sqrt(sum(a**2 for a in sym_d))
+    conv = SympyToPymbolicMapper()
+    expression_knl = ExpressionKernel(3, conv(sym_d[0]*sym_d[1]/sym_r**3), 1, False)
+    expression_knl2 = ExpressionKernel(3, conv(1/sym_r + sym_d[0]*sym_d[0]/sym_r**3), 1, False)
+    kernels = [expression_knl, expression_knl2]
+    #kernels += [ElasticityKernel(3, 0, 1, poisson_ratio="0.4"),
+    #        ElasticityKernel(3, 0, 0, poisson_ratio="0.4")]
+    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=True)
+    """density = pytential.sym.make_sym_vector("d", 1)[0]
     int_g_1 = int_g_vec(TargetPointMultiplier(2, AxisTargetDerivative(2,
             AxisSourceDerivative(1, AxisSourceDerivative(0,
                 LaplaceKernel(3))))), density, qbx_forced_limit=1)
@@ -501,4 +762,4 @@ if __name__ == "__main__":
         AxisSourceDerivative(0, AxisSourceDerivative(0,
             LaplaceKernel(3))))), density, qbx_forced_limit=1)
     print(merge_int_g_exprs([int_g_1, int_g_2],
-        base_kernel=BiharmonicKernel(3), verbose=True)[0])
+        base_kernel=BiharmonicKernel(3), verbose=True)[0])"""
