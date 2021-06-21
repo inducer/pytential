@@ -23,6 +23,7 @@ THE SOFTWARE.
 from sys import intern
 from warnings import warn
 from functools import wraps, partial
+from collections import OrderedDict
 
 import numpy as np
 from pymbolic.primitives import (  # noqa: F401,N813
@@ -1502,10 +1503,16 @@ class IntG(Expression):
             raise ValueError("invalid value (%s) of qbx_forced_limit"
                     % qbx_forced_limit)
 
-        densities = list(densities)
-        source_kernels = tuple([source_kernels[i] for i in range(len(densities))
-                if densities[i] != 0])
-        densities = tuple([density for density in densities if density != 0])
+        knl_density_dict = OrderedDict()
+        for density, source_kernel in zip(densities, source_kernels):
+            if source_kernel in knl_density_dict:
+                knl_density_dict[source_kernel] += density
+            else:
+                knl_density_dict[source_kernel] = density
+
+        knl_density_dict = OrderedDict((k, v) for k, v in knl_density_dict.items() if v)
+        densities = tuple(knl_density_dict.values())
+        source_kernels = tuple(knl_density_dict.keys())
 
         kernel_arg_names = set()
 
