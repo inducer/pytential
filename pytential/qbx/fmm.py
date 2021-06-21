@@ -89,6 +89,7 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
             qbx_order, fmm_level_to_order,
             source_extra_kwargs=None,
             kernel_extra_kwargs=None,
+            translation_classes_data=None, *,
             _use_target_specific_qbx=False):
 
         if source_extra_kwargs is None:
@@ -99,7 +100,8 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
                 qbx_order, fmm_level_to_order,
                 source_extra_kwargs,
                 kernel_extra_kwargs,
-                _use_target_specific_qbx)
+                _use_target_specific_qbx=_use_target_specific_qbx,
+                translation_classes_data=translation_classes_data)
 
 
 class QBXExpansionWrangler(SumpyExpansionWrangler):
@@ -124,13 +126,11 @@ non_qbx_box_target_lists`),
     def __init__(self, code_container, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs, kernel_extra_kwargs,
-            _use_target_specific_qbx=None):
-        if _use_target_specific_qbx:
-            raise ValueError("TSQBX is not implemented in sumpy")
-
+            translation_classes_data=None, *, _use_target_specific_qbx=None):
         SumpyExpansionWrangler.__init__(self,
                 code_container, queue, geo_data.tree(),
-                dtype, fmm_level_to_order, source_extra_kwargs, kernel_extra_kwargs)
+                dtype, fmm_level_to_order, source_extra_kwargs, kernel_extra_kwargs,
+                translation_classes_data=translation_classes_data)
 
         self.qbx_order = qbx_order
         self.geo_data = geo_data
