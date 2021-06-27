@@ -124,25 +124,28 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 expr)
 
     def map_node_sum(self, expr):
-        # FIXME: make less CL specific
-        queue = self.array_context.queue
-        return sum(
-                cl.array.sum(grp_ary, queue=queue).get()[()]
-                for grp_ary in self.rec(expr.operand))
+        actx = self.array_context
+        result = sum(actx.np.sum(grp_ary) for grp_ary in self.rec(expr.operand))
+        if not actx._force_device_scalars:
+            result = actx.to_numpy(result)[()]
+
+        return result
 
     def map_node_max(self, expr):
-        # FIXME: make less CL specific
-        queue = self.array_context.queue
-        return max(
-                cl.array.max(grp_ary, queue=queue).get()[()]
-                for grp_ary in self.rec(expr.operand))
+        actx = self.array_context
+        result = max(actx.np.max(grp_ary) for grp_ary in self.rec(expr.operand))
+        if not actx._force_device_scalars:
+            result = actx.to_numpy(result)[()]
+
+        return result
 
     def map_node_min(self, expr):
-        # FIXME: make less CL specific
-        queue = self.array_context.queue
-        return min(
-                cl.array.min(grp_ary, queue=queue).get()[()]
-                for grp_ary in self.rec(expr.operand))
+        actx = self.array_context
+        result = min(actx.np.min(grp_ary) for grp_ary in self.rec(expr.operand))
+        if not actx._force_device_scalars:
+            result = actx.to_numpy(result)[()]
+
+        return result
 
     def _map_elementwise_reduction(self, reduction_name, expr):
         @memoize_in(self.places, "elementwise_node_"+reduction_name)
