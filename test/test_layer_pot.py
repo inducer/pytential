@@ -20,41 +20,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import pytest
+from functools import partial
 
 import numpy as np
-import numpy.linalg as la  # noqa
-import pyopencl as cl
-import pytest
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
-from functools import partial
-from arraycontext import PyOpenCLArrayContext, thaw
-from meshmode.mesh.generation import (  # noqa
-        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
-        make_curve_mesh, NArmedStarfish)
-from sumpy.visualization import FieldPlotter
-
+from arraycontext import thaw
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
+import meshmode.mesh.generation as mgen
+from sumpy.visualization import FieldPlotter
+
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
 
-circle = partial(ellipse, 1)
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
 # {{{ geometry test
 
-def test_geometry(ctx_factory):
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+def test_geometry(actx_factory):
+    actx = actx_factory()
 
     nelements = 30
     order = 5
 
-    mesh = make_curve_mesh(partial(ellipse, 1),
+    mesh = mgen.make_curve_mesh(partial(mgen.ellipse, 1),
             np.linspace(0, 1, nelements+1),
             order)
 
@@ -80,12 +77,10 @@ def test_geometry(ctx_factory):
 # {{{ test off-surface eval
 
 @pytest.mark.parametrize("use_fmm", [True, False])
-def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
+def test_off_surface_eval(actx_factory, use_fmm, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
@@ -99,7 +94,7 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
     else:
         fmm_order = False
 
-    mesh = make_curve_mesh(partial(ellipse, 3),
+    mesh = mgen.make_curve_mesh(partial(mgen.ellipse, 3),
             np.linspace(0, 1, nelements+1),
             target_order)
 
@@ -148,12 +143,10 @@ def test_off_surface_eval(ctx_factory, use_fmm, visualize=False):
 
 # {{{ test off-surface eval vs direct
 
-def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
+def test_off_surface_eval_vs_direct(actx_factory,  do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
@@ -163,7 +156,7 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
     target_order = 8
     qbx_order = 3
 
-    mesh = make_curve_mesh(WobblyCircle.random(8, seed=30),
+    mesh = mgen.make_curve_mesh(mgen.WobblyCircle.random(8, seed=30),
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
@@ -236,12 +229,10 @@ def test_off_surface_eval_vs_direct(ctx_factory,  do_plot=False):
 
 # {{{
 
-def test_single_plus_double_with_single_fmm(ctx_factory,  do_plot=False):
+def test_single_plus_double_with_single_fmm(actx_factory,  do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
@@ -251,7 +242,7 @@ def test_single_plus_double_with_single_fmm(ctx_factory,  do_plot=False):
     target_order = 8
     qbx_order = 3
 
-    mesh = make_curve_mesh(WobblyCircle.random(8, seed=30),
+    mesh = mgen.make_curve_mesh(mgen.WobblyCircle.random(8, seed=30),
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
@@ -340,15 +331,13 @@ def test_single_plus_double_with_single_fmm(ctx_factory,  do_plot=False):
 
 # {{{ unregularized tests
 
-def test_unregularized_with_ones_kernel(ctx_factory):
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+def test_unregularized_with_ones_kernel(actx_factory):
+    actx = actx_factory()
 
     nelements = 10
     order = 8
 
-    mesh = make_curve_mesh(partial(ellipse, 1),
+    mesh = mgen.make_curve_mesh(partial(mgen.ellipse, 1),
             np.linspace(0, 1, nelements+1),
             order)
 
@@ -387,10 +376,8 @@ def test_unregularized_with_ones_kernel(ctx_factory):
     assert np.allclose(actx.to_numpy(result_nonself), 2 * np.pi)
 
 
-def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+def test_unregularized_off_surface_fmm_vs_direct(actx_factory):
+    actx = actx_factory()
 
     nelements = 300
     target_order = 8
@@ -398,7 +385,7 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
 
     # {{{ geometry
 
-    mesh = make_curve_mesh(WobblyCircle.random(8, seed=30),
+    mesh = mgen.make_curve_mesh(mgen.WobblyCircle.random(8, seed=30),
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
@@ -455,12 +442,10 @@ def test_unregularized_off_surface_fmm_vs_direct(ctx_factory):
 # {{{ test 3D jump relations
 
 @pytest.mark.parametrize("relation", ["sp", "nxcurls", "div_s"])
-def test_3d_jump_relations(ctx_factory, relation, visualize=False):
+def test_3d_jump_relations(actx_factory, relation, visualize=False):
     # logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     if relation == "div_s":
         target_order = 3

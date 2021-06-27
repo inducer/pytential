@@ -20,31 +20,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-import pyopencl as cl
+import pytest
 
-from arraycontext import PyOpenCLArrayContext
+import numpy as np
+
+from pytential import GeometryCollection, bind, sym
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
-
 from pytools.obj_array import make_obj_array
 
-from pytential import bind, sym
-from pytential import GeometryCollection
-
-import pytest
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl
-        as pytest_generate_tests)
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
 
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
+
 
 # {{{ test_exterior_stokes
 
-def run_exterior_stokes(ctx_factory, *,
+def run_exterior_stokes(actx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
         fmm_order=False,    # FIXME: FMM is slower than direct evaluation
         source_ovsmp=None,
@@ -54,9 +54,7 @@ def run_exterior_stokes(ctx_factory, *,
 
         _target_association_tolerance=0.05,
         _expansions_in_tree_have_extent=True):
-    cl_ctx = cl.create_some_context()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # {{{ geometry
 
@@ -247,7 +245,7 @@ def run_exterior_stokes(ctx_factory, *,
     2,
     pytest.param(3, marks=pytest.mark.slowtest)
     ])
-def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
+def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -266,7 +264,7 @@ def test_exterior_stokes(ctx_factory, ambient_dim, visualize=False):
         raise ValueError(f"unsupported dimension: {ambient_dim}")
 
     for resolution in resolutions:
-        h_max, err = run_exterior_stokes(ctx_factory,
+        h_max, err = run_exterior_stokes(actx_factory,
                 ambient_dim=ambient_dim,
                 target_order=target_order,
                 qbx_order=qbx_order,

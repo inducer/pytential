@@ -20,27 +20,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import pytest
+from functools import partial
 
 import numpy as np
-import numpy.linalg as la  # noqa
-import pyopencl as cl
-import pytest
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
-from functools import partial
-from arraycontext import PyOpenCLArrayContext, thaw
-from meshmode.mesh.generation import (  # noqa
-        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
-        make_curve_mesh, NArmedStarfish)
-
+from arraycontext import thaw
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
+import meshmode.mesh.generation as mgen
+
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
 
-circle = partial(ellipse, 1)
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 try:
     import matplotlib.pyplot as pt
@@ -61,16 +60,14 @@ except ImportError:
 
             (2, 7, 5, True),
             ])
-def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
+def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
         force_direct, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     print("ellipse_aspect: %s, mode_nr: %d, qbx_order: %d" % (
             ellipse_aspect, mode_nr, qbx_order))
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     target_order = 8
 
@@ -97,7 +94,7 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
     # https://dx.doi.org/10.1137/S1064827500372067
 
     for nelements in nelements_values:
-        mesh = make_curve_mesh(partial(ellipse, ellipse_aspect),
+        mesh = mgen.make_curve_mesh(partial(mgen.ellipse, ellipse_aspect),
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
@@ -253,15 +250,13 @@ def test_ellipse_eigenvalues(ctx_factory, ellipse_aspect, mode_nr, qbx_order,
     "sumpy",
     "fmmlib",
     ])
-def test_sphere_eigenvalues(ctx_factory, mode_m, mode_n, qbx_order,
+def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
         fmm_backend):
-    logging.basicConfig(level=logging.INFO)
-
     special = pytest.importorskip("scipy.special")
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    logging.basicConfig(level=logging.INFO)
+
+    actx = actx_factory()
 
     target_order = 8
 

@@ -20,27 +20,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-import numpy.linalg as la  # noqa
-import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
 import pytest
 
-from pytential import bind, sym, norm
+import numpy as np
 
-from arraycontext import PyOpenCLArrayContext
+import pyopencl as cl
+import pyopencl.clrandom
+
+from pytential import bind, sym, norm
+from pytential.target import PointsTarget
 from sumpy.visualization import make_field_plotter_from_bbox  # noqa
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
 from sumpy.tools import vector_from_device
-from pytential.target import PointsTarget
 from meshmode.mesh.processing import find_bounding_box
+
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
 
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
 # {{{ test cases
@@ -211,7 +214,7 @@ class EHField:
     #tc_int,
     tc_ext,
     ])
-def test_pec_mfie_extinction(ctx_factory, case,
+def test_pec_mfie_extinction(actx_factory, case,
         use_plane_wave=False, visualize=False):
     """For (say) is_interior=False (the 'exterior' MFIE), this test verifies
     extinction of the combined (incoming + scattered) field on the interior
@@ -219,9 +222,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
     """
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     np.random.seed(12)
 
@@ -244,7 +245,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
     calc_patch = CalculusPatch(np.array([-3, 0, 0]), h=0.01)
     calc_patch_tgt = PointsTarget(actx.from_numpy(calc_patch.points))
 
-    rng = cl.clrandom.PhiloxGenerator(cl_ctx, seed=12)
+    rng = cl.clrandom.PhiloxGenerator(actx.context, seed=12)
     from pytools.obj_array import make_obj_array
     src_j = make_obj_array([
             rng.normal(actx.queue, (test_source.ndofs), dtype=np.float64)
