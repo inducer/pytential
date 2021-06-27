@@ -24,42 +24,40 @@ THE SOFTWARE.
 """
 
 import pytest
-from pyopencl.tools import (  # noqa
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests)
-
-from arraycontext import PyOpenCLArrayContext
 
 import numpy as np
-import pyopencl as cl
 
 from boxtree.tools import ConstantOneExpansionWrangler
-from pytential.qbx import QBXLayerPotentialSource
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-from pytential import bind, sym, norm  # noqa
-from pytential import GeometryCollection
-from pytools import one
 
+from pytential import GeometryCollection, bind, sym
+from pytential.qbx import QBXLayerPotentialSource
 from pytential.qbx.cost import (
     QBXCostModel, _PythonQBXCostModel, make_pde_aware_translation_cost_model
 )
 
-import time
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
 
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
+
 
 # {{{ Compare the time and result of OpenCL implementation and Python implementation
 
-def test_compare_cl_and_py_cost_model(ctx_factory):
+def test_compare_cl_and_py_cost_model(actx_factory):
     nelements = 3600
     target_order = 16
     fmm_order = 5
     qbx_order = fmm_order
 
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
+    queue = actx.queue
 
     # {{{ Construct geometry
 
@@ -126,6 +124,8 @@ def test_compare_cl_and_py_cost_model(ctx_factory):
             queue, geo_data_dev.traversal()
         )
     )
+
+    import time
 
     queue.finish()
     start_time = time.time()
@@ -295,7 +295,7 @@ DEFAULT_LPOT_KWARGS = {
         }
 
 
-def get_lpot_source(actx: PyOpenCLArrayContext, dim):
+def get_lpot_source(actx, dim):
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import (
             InterpolatoryQuadratureSimplexGroupFactory)
@@ -346,10 +346,12 @@ def test_timing_data_gathering(ctx_factory):
 
     pytest.importorskip("pyfmmlib")
 
+    import pyopencl as cl
+    from arraycontext import PyOpenCLArrayContext
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
-    actx = PyOpenCLArrayContext(queue)
+    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
 
     lpot_source = get_lpot_source(actx, 2)
     places = GeometryCollection(lpot_source)
@@ -367,7 +369,7 @@ def test_timing_data_gathering(ctx_factory):
     timing_data = {}
     op_S.eval(dict(sigma=sigma), timing_data=timing_data, array_context=actx)
     assert timing_data
-    print(timing_data)
+    logging.info(timing_data)
 
 # }}}
 
@@ -381,11 +383,9 @@ def test_timing_data_gathering(ctx_factory):
     (2, False, True),
     (3, False, True),
     (3, True, True)))
-def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
+def test_cost_model(actx_factory, dim, use_target_specific_qbx, per_box):
     """Test that cost model gathering can execute successfully."""
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     lpot_source = get_lpot_source(actx, dim).copy(
             _use_target_specific_qbx=use_target_specific_qbx,
@@ -429,11 +429,9 @@ def test_cost_model(ctx_factory, dim, use_target_specific_qbx, per_box):
 
 # {{{ test cost model metadata gathering
 
-def test_cost_model_metadata_gathering(ctx_factory):
+def test_cost_model_metadata_gathering(actx_factory):
     """Test that the cost model correctly gathers metadata."""
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     from sumpy.expansion.level_to_order import SimpleExpansionOrderFinder
 
@@ -456,7 +454,7 @@ def test_cost_model_metadata_gathering(ctx_factory):
     _, metadata = op_S.cost_per_stage(
         "constant_one", sigma=sigma, k=k, return_metadata=True
     )
-    metadata = one(metadata.values())
+    metadata, = metadata.values()
 
     geo_data = lpot_source.qbx_fmm_geometry_data(
             places,
@@ -698,12 +696,11 @@ class OpCountingTranslationCostModel:
         (3, False, True),
         (3, True,  False),
         (3, True,  True)))
-def test_cost_model_correctness(ctx_factory, dim, off_surface,
+def test_cost_model_correctness(actx_factory, dim, off_surface,
         use_target_specific_qbx):
     """Check that computed cost matches that of a constant-one FMM."""
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
+    queue = actx.queue
 
     cost_model = QBXCostModel(
         translation_cost_model_factory=OpCountingTranslationCostModel)
@@ -738,9 +735,8 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
     op_S = bind(places, sym_op_S)
     sigma = get_density(actx, density_discr)
 
-    from pytools import one
     modeled_time, _ = op_S.cost_per_stage("constant_one", sigma=sigma)
-    modeled_time = one(modeled_time.values())
+    modeled_time, = modeled_time.values()
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
     # high-level interface, so call the FMM driver directly.
@@ -784,8 +780,8 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
         total_cost += timing_data[stage]["ops_elapsed"]
 
     per_box_cost, _ = op_S.cost_per_box("constant_one", sigma=sigma)
-    print(per_box_cost)
-    per_box_cost = one(per_box_cost.values())
+    logging.info(per_box_cost)
+    per_box_cost, = per_box_cost.values()
 
     total_aggregate_cost = cost_model.aggregate_over_boxes(per_box_cost)
     assert total_cost == (
@@ -801,14 +797,12 @@ def test_cost_model_correctness(ctx_factory, dim, off_surface,
 
 # {{{ test order varying by level
 
-def test_cost_model_order_varying_by_level(ctx_factory):
+def test_cost_model_order_varying_by_level(actx_factory):
     """For FMM order varying by level, this checks to ensure that the costs are
     different. The varying-level case should have larger cost.
     """
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # {{{ constant level to order
 
@@ -831,8 +825,8 @@ def test_cost_model_order_varying_by_level(ctx_factory):
     cost_constant, metadata = bind(places, sym_op).cost_per_stage(
             "constant_one", sigma=sigma)
 
-    cost_constant = one(cost_constant.values())
-    metadata = one(metadata.values())
+    cost_constant, = cost_constant.values()
+    metadata, = metadata.values()
 
     # }}}
 
@@ -853,7 +847,7 @@ def test_cost_model_order_varying_by_level(ctx_factory):
     cost_varying, _ = bind(lpot_source, sym_op).cost_per_stage(
         "constant_one", sigma=sigma)
 
-    cost_varying = one(cost_varying.values())
+    cost_varying, = cost_varying.values()
 
     # }}}
 

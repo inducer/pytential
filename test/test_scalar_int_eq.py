@@ -20,12 +20,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import pytest
+
 import numpy as np
 import numpy.linalg as la
-import pyopencl as cl
-import pyopencl.clmath  # noqa
 
-from arraycontext import PyOpenCLArrayContext
 from meshmode.discretization.visualization import make_visualizer
 from meshmode.dof_array import flatten_to_numpy
 
@@ -35,19 +34,22 @@ from pytential import bind, sym
 from pytential import GeometryCollection
 from pytools.obj_array import flat_obj_array
 
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+
 import extra_int_eq_data as inteq
-
-import pytest
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
-
 import logging
 logger = logging.getLogger(__name__)
+
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
 # {{{ test backend
 
-def run_int_eq_test(actx: PyOpenCLArrayContext,
+def run_int_eq_test(actx,
         case, resolution, visualize=False, check_spectrum=False):
     refiner_extra_kwargs = {}
     if case.use_refinement:
@@ -466,12 +468,10 @@ cases += [
 # 'test_integral_equation(cl._csc, EllipseIntEqTestCase(LaplaceKernel, "dirichlet", +1), visualize=True)'  # noqa: E501
 
 @pytest.mark.parametrize("case", cases)
-def test_integral_equation(ctx_factory, case, visualize=False):
+def test_integral_equation(actx_factory, case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache

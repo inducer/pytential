@@ -20,28 +20,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from arraycontext import PyOpenCLArrayContext, thaw
-import numpy as np
-import numpy.linalg as la  # noqa
-import pyopencl as cl
 import pytest
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
-from functools import partial  # noqa
-from meshmode.mesh.generation import (  # noqa
-        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
-        NArmedStarfish,
-        make_curve_mesh)
+import numpy as np
 
-from pytential import bind, sym
-from pytential import GeometryCollection
-
+from arraycontext import thaw
+from pytential import GeometryCollection, bind, sym
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
+
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
 def test_spherical_bessel_functions():
@@ -133,12 +129,10 @@ def test_spherical_hankel_functions():
 @pytest.mark.parametrize("op", ["S", "D", "Sp"])
 @pytest.mark.parametrize("helmholtz_k", [0, 1.2, 12 + 1.2j])
 @pytest.mark.parametrize("qbx_order", [0, 1, 5])
-def test_target_specific_qbx(ctx_factory, op, helmholtz_k, qbx_order):
+def test_target_specific_qbx(actx_factory, op, helmholtz_k, qbx_order):
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     target_order = 4
     fmm_tol = 1e-3
