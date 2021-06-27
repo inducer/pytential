@@ -3,7 +3,8 @@ import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
-from arraycontext import PyOpenCLArrayContext, thaw
+from arraycontext import thaw
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -30,7 +31,7 @@ def main(mesh_name="ellipse", visualize=False):
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
 
     from meshmode.mesh.generation import ellipse, make_curve_mesh
     from functools import partial

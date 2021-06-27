@@ -1,7 +1,8 @@
 import numpy as np
 import pyopencl as cl
 
-from arraycontext import PyOpenCLArrayContext, thaw
+from arraycontext import thaw
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import (  # noqa
         make_curve_mesh, starfish, ellipse, drop)
 
@@ -15,7 +16,7 @@ def main():
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
 
     target_order = 16
     qbx_order = 3
