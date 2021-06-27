@@ -2,7 +2,8 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 
-from arraycontext import PyOpenCLArrayContext, thaw
+from arraycontext import thaw
+from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
@@ -59,7 +60,7 @@ def timing_run(nx, ny, visualize=False):
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
 
     mesh = make_mesh(nx=nx, ny=ny, visualize=visualize)
 

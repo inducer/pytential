@@ -28,7 +28,8 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 
-from arraycontext import PyOpenCLArrayContext, thaw
+from arraycontext import thaw
+from meshmode.array_context import PyOpenCLArrayContext
 
 from pytential import sym, bind
 from pytential.qbx.cost import QBXCostModel
@@ -115,7 +116,7 @@ def get_test_density(actx, density_discr):
 
 def calibrate_cost_model(ctx):
     queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
     cost_model = QBXCostModel()
 
     model_results = []
@@ -153,7 +154,7 @@ def calibrate_cost_model(ctx):
 
 def test_cost_model(ctx, calibration_params):
     queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
     cost_model = QBXCostModel()
 
     for lpot_source in test_geometries(actx):
