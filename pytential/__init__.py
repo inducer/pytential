@@ -109,8 +109,7 @@ def norm(discr, x, p=2):
 
     if p == 2:
         norm_op = _norm_2_op(discr, num_components)
-        from math import sqrt
-        return sqrt(norm_op(integrand=x))
+        return norm_op(integrand=x)**(1/2)
 
     elif p == np.inf or p == "inf":
         norm_op = _norm_inf_op(discr, num_components)

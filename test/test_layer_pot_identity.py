@@ -393,10 +393,12 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
             pt.plot(error)
             pt.show()
 
-        linf_error_norm = norm(density_discr, error, p=np.inf)
-        print("--->", key, linf_error_norm)
+        linf_error_norm = actx.to_numpy(norm(density_discr, error, p=np.inf))
+        logger.info("---> key %s error %.5e", key, linf_error_norm)
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
+        h_max = actx.to_numpy(
+                bind(places, sym.h_max(qbx.ambient_dim))(actx)
+                )
         eoc_rec.add_data_point(h_max, linf_error_norm)
 
         if visualize:
@@ -412,7 +414,7 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
                 ("error", error),
                 ])
 
-    print(eoc_rec)
+    logger.info("\n%s", eoc_rec)
     tgt_order = case.qbx_order - case.expr.order_drop
     assert eoc_rec.order_estimate() > tgt_order - 1.6
 

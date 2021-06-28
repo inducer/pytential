@@ -126,7 +126,7 @@ def test_mean_curvature(actx_factory, discr_name, resolutions,
         h = 1.0 / r
         from meshmode.dof_array import flat_norm
         h_error = flat_norm(mean_curvature - ref_mean_curvature, np.inf)
-        eoc.add_data_point(h, h_error)
+        eoc.add_data_point(h, actx.to_numpy(h_error))
     print(eoc)
 
     order = min([g.order for g in discr.groups])
@@ -328,7 +328,7 @@ def test_node_reduction(actx_factory):
             (sym.NodeMin, 1),
             ]:
         r = bind(discr, func(sym.var("x")))(actx, x=ary)
-        assert abs(r - expected) < 1.0e-15, r
+        assert abs(actx.to_numpy(r) - expected) < 1.0e-15, r
 
     # }}}
 

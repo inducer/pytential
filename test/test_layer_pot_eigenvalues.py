@@ -166,8 +166,10 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
             pt.legend()
             pt.show()
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
-        s_err = (
+        h_max = actx.to_numpy(
+                bind(places, sym.h_max(qbx.ambient_dim))(actx)
+                )
+        s_err = actx.to_numpy(
                 norm(density_discr, s_sigma - s_sigma_ref)
                 / norm(density_discr, s_sigma_ref))
         s_eoc_rec.add_data_point(h_max, s_err)
@@ -197,9 +199,9 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
         else:
             d_ref_norm = norm(density_discr, d_sigma_ref)
 
-        d_err = (
-                norm(density_discr, d_sigma - d_sigma_ref)
-                / d_ref_norm)
+        d_err = actx.to_numpy(
+                norm(density_discr, d_sigma - d_sigma_ref) / d_ref_norm
+                )
         d_eoc_rec.add_data_point(h_max, d_err)
 
         # }}}
@@ -215,7 +217,7 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
 
             sp_sigma_ref = sp_eigval*sigma
 
-            sp_err = (
+            sp_err = actx.to_numpy(
                     norm(density_discr, sp_sigma - sp_sigma_ref)
                     / norm(density_discr, sigma))
             sp_eoc_rec.add_data_point(h_max, sp_err)
@@ -272,9 +274,9 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
     dp_eoc_rec = EOCRecorder()
 
     def rel_err(comp, ref):
-        return (
-                norm(density_discr, comp - ref)
-                / norm(density_discr, ref))
+        return actx.to_numpy(
+                norm(density_discr, comp - ref) / norm(density_discr, ref)
+                )
 
     for nrefinements in [0, 1]:
         from meshmode.mesh.generation import generate_icosphere
@@ -322,7 +324,9 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
         s_sigma = s_sigma_op(actx, sigma=ymn)
         s_eigval = 1/(2*mode_n + 1)
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
+        h_max = actx.to_numpy(
+                bind(places, sym.h_max(qbx.ambient_dim))(actx)
+                )
         s_eoc_rec.add_data_point(h_max, rel_err(s_sigma, s_eigval*ymn))
 
         # }}}

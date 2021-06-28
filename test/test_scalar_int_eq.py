@@ -431,7 +431,7 @@ def run_int_eq_test(actx,
 
     h_max = bind(places, sym.h_max(ambient_dim))(actx)
     return dict(
-            h_max=h_max,
+            h_max=actx.to_numpy(h_max),
             rel_err_2=rel_err_2,
             rel_err_inf=rel_err_inf,
             rel_td_err_inf=rel_td_err_inf,
