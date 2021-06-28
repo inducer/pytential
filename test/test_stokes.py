@@ -160,7 +160,7 @@ def run_exterior_stokes(actx_factory, *,
 
     if ambient_dim == 2:
         total_charge = make_obj_array([
-            actx.np.sum(c) for c in charges
+            actx.to_numpy(actx.np.sum(c)) for c in charges
             ])
         omega = bind(places, total_charge * sym.Ones())(actx)
 
@@ -204,7 +204,7 @@ def run_exterior_stokes(actx_factory, *,
             y_norm = 1.0
 
         d = x - y
-        return actx.np.linalg.norm(d.dot(d), ord=2) / y_norm
+        return actx.to_numpy(actx.np.linalg.norm(d.dot(d), ord=2) / y_norm)
 
     ps_velocity = bind(places, sym_velocity,
             auto_where=("source", "point_target"))(actx, sigma=sigma, **op_context)
@@ -212,7 +212,9 @@ def run_exterior_stokes(actx_factory, *,
             auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
 
     v_error = rnorm2(ps_velocity, ex_velocity)
-    h_max = bind(places, sym.h_max(ambient_dim))(actx)
+    h_max = actx.to_numpy(
+            bind(places, sym.h_max(ambient_dim))(actx)
+            )
 
     logger.info("resolution %4d h_max %.5e error %.5e",
             resolution, h_max, v_error)

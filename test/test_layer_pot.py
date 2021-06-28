@@ -540,11 +540,13 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
         bound_jump_identity = bind(places, jump_identity_sym)
         jump_identity = bound_jump_identity(actx, density=density)
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
-        err = (
+        h_max = actx.to_numpy(
+                bind(places, sym.h_max(qbx.ambient_dim))(actx)
+                )
+        err = actx.to_numpy(
                 norm(density_discr, jump_identity, np.inf)
                 / norm(density_discr, density, np.inf))
-        print("ERROR", h_max, err)
+        logging.info("ERROR: h_max %.5e %.5e", h_max, err)
 
         eoc_rec.add_data_point(h_max, err)
 

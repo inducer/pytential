@@ -335,7 +335,9 @@ def test_pec_mfie_extinction(actx_factory, case,
 
         # {{{ system solve
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
+        h_max = actx.to_numpy(
+                bind(places, sym.h_max(qbx.ambient_dim))(actx)
+                )
 
         pde_test_inc = EHField(vector_from_device(actx.queue,
             eval_inc_field_at(places, target="patch_target")))
@@ -397,12 +399,15 @@ def test_pec_mfie_extinction(actx_factory, case,
             eval_repr_at(places, target="patch_target")))
 
         maxwell_residuals = [
-                calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_repr.e, np.inf)
+                actx.to_numpy(
+                    calc_patch.norm(x, np.inf)
+                    / calc_patch.norm(pde_test_repr.e, np.inf))
                 for x in frequency_domain_maxwell(
                     calc_patch, pde_test_repr.e, pde_test_repr.h, case.k)]
         print("Maxwell residuals:", maxwell_residuals)
 
-        eoc_rec_repr_maxwell.add_data_point(h_max, max(maxwell_residuals))
+        eoc_rec_repr_maxwell.add_data_point(
+                actx.to_numpy(h_max), max(maxwell_residuals))
 
         # }}}
 
@@ -420,8 +425,12 @@ def test_pec_mfie_extinction(actx_factory, case,
         def scat_norm(f):
             return norm(density_discr, f, p=np.inf)
 
-        e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
-        h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
+        e_bc_residual = actx.to_numpy(
+                scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
+                )
+        h_bc_residual = actx.to_numpy(
+                scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
+                )
 
         print("E/H PEC BC residuals:", h_max, e_bc_residual, h_bc_residual)
 
@@ -485,9 +494,11 @@ def test_pec_mfie_extinction(actx_factory, case,
         def obs_norm(f):
             return norm(obs_discr, f, p=np.inf)
 
-        rel_err_e = (obs_norm(inc_field_obs.e + obs_repr.e)
+        rel_err_e = actx.to_numpy(
+                obs_norm(inc_field_obs.e + obs_repr.e)
                 / obs_norm(inc_field_obs.e))
-        rel_err_h = (obs_norm(inc_field_obs.h + obs_repr.h)
+        rel_err_h = actx.to_numpy(
+                obs_norm(inc_field_obs.h + obs_repr.h)
                 / obs_norm(inc_field_obs.h))
 
         # }}}
