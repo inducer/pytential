@@ -186,10 +186,14 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return result
 
     def _map_elementwise_reduction(self, reduction_name, expr):
+        import loopy as lp
+        from arraycontext import make_loopy_program
+        from meshmode.transform_metadata import (
+                ConcurrentElementInameTag, ConcurrentDOFInameTag)
+
         @memoize_in(self.places, "elementwise_node_"+reduction_name)
         def node_knl():
-            from arraycontext import make_loopy_program
-            return make_loopy_program(
+            t_unit = make_loopy_program(
                     """{[iel, idof, jdof]:
                         0<=iel<nelements and
                         0<=idof, jdof<ndofs}""",
@@ -198,10 +202,14 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                     """ % reduction_name,
                     name="nodewise_reduce")
 
+            return lp.tag_inames(t_unit, {
+                "iel": ConcurrentElementInameTag(),
+                "idof": ConcurrentDOFInameTag(),
+                })
+
         @memoize_in(self.places, "elementwise_"+reduction_name)
         def element_knl():
-            from arraycontext import make_loopy_program
-            return make_loopy_program(
+            t_unit = make_loopy_program(
                     """{[iel, jdof]:
                         0<=iel<nelements and
                         0<=jdof<ndofs}
@@ -210,6 +218,10 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                     result[iel, 0] = %s(jdof, operand[iel, jdof])
                     """ % reduction_name,
                     name="elementwise_reduce")
+
+            return lp.tag_inames(t_unit, {
+                "iel": ConcurrentElementInameTag(),
+                })
 
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)

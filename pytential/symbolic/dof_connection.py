@@ -93,7 +93,7 @@ class CenterGranularityConnection(GranularityConnection):
                  (CenterGranularityConnection, "interleave"))
         def prg():
             from arraycontext import make_loopy_program
-            return make_loopy_program(
+            t_unit = make_loopy_program(
                     "{[iel, idof]: 0 <= iel < nelements and 0 <= idof < nunit_dofs}",
                     """
                     result[iel, 2*idof] = ary1[iel, idof]
@@ -105,6 +105,12 @@ class CenterGranularityConnection(GranularityConnection):
                         ...
                         ],
                     name="interleave")
+
+            from meshmode.transform_metadata import (
+                    ConcurrentElementInameTag, ConcurrentDOFInameTag)
+            return lp.tag_inames(t_unit, {
+                "iel": ConcurrentElementInameTag(),
+                "idof": ConcurrentDOFInameTag()})
 
         results = []
         for grp, subary1, subary2 in zip(self.discr.groups, ary1, ary2):
