@@ -361,35 +361,10 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         raise NotImplementedError
 
-    # {{{ functions
-
-    def apply_real(self, args):
-        arg, = args
-        from pytools.obj_array import obj_array_real
-        return obj_array_real(self.rec(arg))
-
-    def apply_imag(self, args):
-        arg, = args
-        from pytools.obj_array import obj_array_imag
-        return obj_array_imag(self.rec(arg))
-
-    def apply_conj(self, args):
-        arg, = args
-        return self.rec(arg).conj()
-
-    def apply_abs(self, args):
-        arg, = args
-        return abs(self.rec(arg))
-
-    # }}}
-
     def map_call(self, expr):
-        from pytential.symbolic.primitives import (
-                EvalMapperFunction, NumpyMathFunction)
+        from pytential.symbolic.primitives import NumpyMathFunction
 
-        if isinstance(expr.function, EvalMapperFunction):
-            return getattr(self, f"apply_{expr.function.name}")(expr.parameters)
-        elif isinstance(expr.function, NumpyMathFunction):
+        if isinstance(expr.function, NumpyMathFunction):
             args = [self.rec(arg) for arg in expr.parameters]
             from numbers import Number
             if all(isinstance(arg, Number) for arg in args):
