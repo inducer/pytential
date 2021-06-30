@@ -209,6 +209,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         @memoize_in(self.places, "elementwise_"+reduction_name)
         def element_knl():
+            # FIXME: This computes the reduction value redundantly for each
+            # output DOF.
             t_unit = make_loopy_program(
                     """{[iel, jdof]:
                         0<=iel<nelements and
