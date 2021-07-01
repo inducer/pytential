@@ -44,9 +44,12 @@ def main(curve_fn=starfish, visualize=True):
     pre_density_discr = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    qbx = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
+    qbx = QBXLayerPotentialSource(
+            pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order+3,
-            target_association_tolerance=0.005)
+            target_association_tolerance=0.005,
+            #fmm_backend="fmmlib",
+            )
 
     from pytential.target import PointsTarget
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)

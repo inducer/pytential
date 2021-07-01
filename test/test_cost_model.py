@@ -27,7 +27,8 @@ import pytest
 
 import numpy as np
 
-from boxtree.tools import ConstantOneExpansionWrangler
+from boxtree.fmm import TreeIndependentDataForWrangler
+from boxtree.constant_one import ConstantOneExpansionWrangler
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 from pytential import GeometryCollection, bind, sym
@@ -481,7 +482,8 @@ def test_cost_model_metadata_gathering(actx_factory):
 
 class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
-    def __init__(self, queue, geo_data, use_target_specific_qbx):
+    def __init__(self, tree_indep, queue, geo_data,
+            use_target_specific_qbx):
         from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
         geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
 
@@ -492,7 +494,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
                 # None means use by default if possible
                 or use_target_specific_qbx is None)
 
-        ConstantOneExpansionWrangler.__init__(self, geo_data.tree())
+        super().__init__(tree_indep, geo_data.traversal())
 
     def _get_target_slice(self, ibox):
         non_qbx_box_target_lists = self.geo_data.non_qbx_box_target_lists()
@@ -505,7 +507,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         non_qbx_box_target_lists = self.geo_data.non_qbx_box_target_lists()
         return np.zeros(non_qbx_box_target_lists.nfiltered_targets)
 
-    def full_output_zeros(self):
+    def full_output_zeros(self, template_ary):
         from pytools.obj_array import make_obj_array
         return make_obj_array([np.zeros(self.tree.ntargets)])
 
@@ -585,7 +587,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         return qbx_expansions, self.timing_future(ops)
 
     def eval_qbx_expansions(self, qbx_expansions):
-        output = self.full_output_zeros()
+        output = self.full_output_zeros(qbx_expansions)
         ops = 0
 
         global_qbx_centers = self.geo_data.global_qbx_centers()
@@ -603,7 +605,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
     def eval_target_specific_qbx_locals(self, src_weight_vecs):
         src_weights, = src_weight_vecs
-        pot = self.full_output_zeros()
+        pot = self.full_output_zeros(src_weights)
         ops = 0
 
         if not self.using_tsqbx:
@@ -746,6 +748,7 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
             target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
 
     wrangler = ConstantOneQBXExpansionWrangler(
+            TreeIndependentDataForWrangler(),
             queue, geo_data, use_target_specific_qbx)
 
     quad_stage2_density_discr = places.get_discretization(

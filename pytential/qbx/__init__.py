@@ -482,7 +482,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         def drive_cost_model(
                     wrangler, strengths, geo_data, kernel, kernel_arguments):
-            del strengths
 
             if per_box:
                 cost_model_result, metadata = self.cost_model.qbx_cost_per_box(
@@ -496,10 +495,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 )
 
             from pytools.obj_array import obj_array_vectorize
+            from functools import partial
             return (
                     obj_array_vectorize(
-                        wrangler.finalize_potentials,
-                        wrangler.full_output_zeros()),
+                        partial(wrangler.finalize_potentials,
+                            template_ary=strengths[0]),
+                        wrangler.full_output_zeros(strengths[0])),
                     (cost_model_result, metadata))
 
         return self._dispatch_compute_potential_insn(
@@ -524,7 +525,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, source_kernels, target_kernels):
+    def _tree_indep_data_for_wrangler(self, source_kernels, target_kernels):
         from functools import partial
         base_kernel = single_valued(kernel.get_base_kernel() for
             kernel in source_kernels)
@@ -539,8 +540,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         if self.fmm_backend == "sumpy":
             from pytential.qbx.fmm import \
-                    QBXSumpyExpansionWranglerCodeContainer
-            return QBXSumpyExpansionWranglerCodeContainer(
+                    QBXSumpyTreeIndependentDataForWrangler
+            return QBXSumpyTreeIndependentDataForWrangler(
                     self.cl_context,
                     fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
                     target_kernels=target_kernels, source_kernels=source_kernels)
@@ -552,11 +553,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_kernel in target_kernels
             ]
             from pytential.qbx.fmmlib import \
-                    QBXFMMLibExpansionWranglerCodeContainer
-            return QBXFMMLibExpansionWranglerCodeContainer(
+                    QBXFMMLibTreeIndependentDataForWrangler
+            return QBXFMMLibTreeIndependentDataForWrangler(
                     self.cl_context,
-                    fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
-                    target_kernels=target_kernels_new)
+                    multipole_expansion_factory=fmm_mpole_factory,
+                    local_expansion_factory=fmm_local_factory,
+                    qbx_local_expansion_factory=qbx_local_factory,
+                    target_kernels=target_kernels_new,
+                    _use_target_specific_qbx=self._use_target_specific_qbx)
 
         else:
             raise ValueError(f"invalid FMM backend: {self.fmm_backend}")
@@ -634,15 +638,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     geo_data.tree().user_source_ids,
                     insn.kernel_arguments, evaluate))
 
-        wrangler = self.expansion_wrangler_code_container(
+        tree_indep = self._tree_indep_data_for_wrangler(
                 target_kernels=insn.target_kernels,
-                source_kernels=insn.source_kernels).get_wrangler(
-                        actx.queue, geo_data, output_and_expansion_dtype,
+                source_kernels=insn.source_kernels)
+
+        wrangler = tree_indep.wrangler_cls(
+                        tree_indep, geo_data, output_and_expansion_dtype,
                         self.qbx_order,
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
-                        kernel_extra_kwargs=kernel_extra_kwargs,
-                        _use_target_specific_qbx=self._use_target_specific_qbx)
+                        kernel_extra_kwargs=kernel_extra_kwargs)
 
         from pytential.qbx.geometry import target_state
         if (actx.thaw(geo_data.user_target_to_center())
