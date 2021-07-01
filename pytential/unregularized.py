@@ -180,7 +180,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, fmm_kernel, target_kernels,
+    def _tree_indep_data_for_wrangler(self, fmm_kernel, target_kernels,
             source_kernels):
         mpole_expn_class = \
                 self.expansion_factory.get_multipole_expansion_class(fmm_kernel)
@@ -191,8 +191,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         fmm_mpole_factory = partial(mpole_expn_class, fmm_kernel)
         fmm_local_factory = partial(local_expn_class, fmm_kernel)
 
-        from sumpy.fmm import SumpyExpansionWranglerCodeContainer
-        return SumpyExpansionWranglerCodeContainer(
+        from sumpy.fmm import SumpyTreeIndependentDataForWrangler
+        return SumpyTreeIndependentDataForWrangler(
                 self.cl_context,
                 fmm_mpole_factory,
                 fmm_local_factory,
@@ -252,22 +252,23 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     geo_data.tree().user_source_ids, insn.kernel_arguments,
                     evaluate))
 
-        wrangler = self.expansion_wrangler_code_container(
+        tree_indep = self._tree_indep_data_for_wrangler(
                 fmm_kernel, target_kernels=insn.target_kernels,
-                source_kernels=insn.source_kernels).get_wrangler(
-                    actx.queue,
-                    geo_data.tree(),
-                    output_and_expansion_dtype,
-                    self.fmm_level_to_order,
-                    source_extra_kwargs=source_extra_kwargs,
-                    kernel_extra_kwargs=kernel_extra_kwargs)
+                source_kernels=insn.source_kernels)
+
+        from sumpy.fmm import SumpyExpansionWrangler
+        wrangler = SumpyExpansionWrangler(
+                tree_indep, geo_data.traversal(),
+                output_and_expansion_dtype,
+                self.fmm_level_to_order,
+                source_extra_kwargs=source_extra_kwargs,
+                kernel_extra_kwargs=kernel_extra_kwargs)
 
         # }}}
 
         from boxtree.fmm import drive_fmm
         all_potentials_on_every_tgt = drive_fmm(
-                geo_data.traversal(), wrangler, flat_strengths,
-                timing_data=None)
+                wrangler, flat_strengths, timing_data=None)
 
         # {{{ postprocess fmm
 
