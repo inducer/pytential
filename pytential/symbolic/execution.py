@@ -1142,7 +1142,7 @@ class BoundExpression:
             raise TypeError("More than one positional argument supplied. "
                     "None or an PyOpenCLArrayContext expected.")
 
-        timing_data = kwargs.pop('timing_data', None)
+        timing_data = kwargs.pop("timing_data", None)
         return self.eval(kwargs, array_context=array_context,
             timing_data=timing_data)
 

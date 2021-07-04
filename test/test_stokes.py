@@ -216,9 +216,9 @@ def run_exterior_stokes(actx_factory, *,
         total = 0
         for k, timing in timings.items():
             for k, v in timing.items():
-                result[k] += v['wall_elapsed']
-                total += v['wall_elapsed']
-        result['total'] = total
+                result[k] += v["wall_elapsed"]
+                total += v["wall_elapsed"]
+        result["total"] = total
         print(f"{name}={result}")
 
     print_timing_data(fmm_timing_data, method)
@@ -284,6 +284,7 @@ def run_exterior_stokes(actx_factory, *,
     # }}}
 
     return h_max, v_error
+
 
 @pytest.mark.parametrize("ambient_dim, method, nu", [
     (2, "naive", 0.5),

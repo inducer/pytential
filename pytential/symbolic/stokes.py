@@ -73,7 +73,7 @@ class StokesletWrapperBase:
         self.mu = mu_sym
         self.nu = nu_sym
 
-    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
+    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         """Symbolic expressions for integrating Stokeslet kernel.
 
         Returns an object array of symbolic expressions for the vector
@@ -171,7 +171,7 @@ class StressletWrapperBase:
         self.nu = nu_sym
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
-            extra_deriv_dirs=[]):
+            extra_deriv_dirs=()):
         """Symbolic expressions for integrating Stresslet kernel.
 
         Returns an object array of symbolic expressions for the vector
@@ -278,7 +278,7 @@ class StokesletWrapper(StokesletWrapperBase):
                     qbx_forced_limit=qbx_forced_limit)/(2*(1-self.nu))
         return res
 
-    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
+    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -349,7 +349,7 @@ class StressletWrapper(StressletWrapperBase):
                     self.kernel_dict[(i, j, k)] = self.kernel_dict[s]
 
         # For elasticity (nu != 0.5), we need the LaplaceKernel
-        self.kernel_dict['laplace'] = LaplaceKernel(self.dim)
+        self.kernel_dict["laplace"] = LaplaceKernel(self.dim)
 
     def get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
@@ -364,7 +364,7 @@ class StressletWrapper(StressletWrapperBase):
         coeffs = [1]
         extra_deriv_dirs_vec = [[]]
 
-        kernel_indices = [idx, 'laplace', 'laplace', 'laplace']
+        kernel_indices = [idx, "laplace", "laplace", "laplace"]
         dir_vec_indices = [idx[-1], idx[1], idx[0], idx[2]]
         coeffs = [1, (1 - 2*nu)/self.dim, -(1 - 2*nu)/self.dim, -(1 - 2*nu)]
         extra_deriv_dirs_vec = [[], [idx[0]], [idx[1]], [idx[2]]]
@@ -382,7 +382,7 @@ class StressletWrapper(StressletWrapperBase):
         return result/(2*(1 - nu))
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
-            extra_deriv_dirs=[]):
+            extra_deriv_dirs=()):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -398,7 +398,7 @@ class StressletWrapper(StressletWrapperBase):
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
             qbx_forced_limit, stokeslet_weight, stresslet_weight,
-            extra_deriv_dirs=[]):
+            extra_deriv_dirs=()):
 
         stokeslet_obj = StokesletWrapper(dim=self.dim,
             mu_sym=self.mu, nu_sym=self.nu, method=self.method)
@@ -466,14 +466,14 @@ class StressletWrapperTornberg(StressletWrapperBase):
         self.nu = nu_sym
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
-            extra_deriv_dirs=[]):
+            extra_deriv_dirs=()):
         return self.apply_stokeslet_and_stresslet([0]*self.dim,
             density_vec_sym, dir_vec_sym, qbx_forced_limit, 0, 1, extra_deriv_dirs)
 
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
             qbx_forced_limit, stokeslet_weight, stresslet_weight,
-            extra_deriv_dirs=[]):
+            extra_deriv_dirs=()):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
@@ -549,7 +549,7 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
         self.mu = mu_sym
         self.nu = nu_sym
 
-    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=[]):
+    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         stresslet = StressletWrapperTornberg(3, self.mu, self.nu)
         return stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
             [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
@@ -775,7 +775,7 @@ class HebekerExteriorStokesOperator(StokesOperator):
         return self.stresslet.apply_stokeslet_and_stresslet(sigma,
                 sigma, normal, qbx_forced_limit=qbx_forced_limit,
                 stokeslet_weight=self.eta, stresslet_weight=1,
-                extra_deriv_dirs=[])
+                extra_deriv_dirs=())
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         # NOTE: H. 1986 Equation 17

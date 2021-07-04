@@ -635,7 +635,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     insn.kernel_arguments, evaluate))
 
         from sumpy.fmm import SumpyTranslationClassesData
-        translation_classes_data = SumpyTranslationClassesData(actx.queue, geo_data.traversal())
+        translation_classes_data = SumpyTranslationClassesData(actx.queue,
+                geo_data.traversal())
 
         wrangler = self.expansion_wrangler_code_container(
                 target_kernels=insn.target_kernels,

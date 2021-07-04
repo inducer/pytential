@@ -1506,7 +1506,8 @@ class IntG(Expression):
             else:
                 knl_density_dict[source_kernel] = density
 
-        knl_density_dict = OrderedDict((k, v) for k, v in knl_density_dict.items() if v)
+        knl_density_dict = OrderedDict((k, v) for k, v in
+                knl_density_dict.items() if v)
         densities = tuple(knl_density_dict.values())
         source_kernels = tuple(knl_density_dict.keys())
 

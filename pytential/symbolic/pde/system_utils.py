@@ -740,8 +740,8 @@ def _merge_int_g_expr(expr, replacements):
 
 
 if __name__ == "__main__":
-    from sumpy.kernel import (StokesletKernel, BiharmonicKernel, StressletKernel,
-            ElasticityKernel, LaplaceKernel)
+    from sumpy.kernel import (StokesletKernel, BiharmonicKernel,  # noqa:F401
+        StressletKernel, ElasticityKernel, LaplaceKernel)
     base_kernel = BiharmonicKernel(3)
     #base_kernel = LaplaceKernel(3)
     kernels = [StokesletKernel(3, 0, 2), StokesletKernel(3, 0, 0)]
