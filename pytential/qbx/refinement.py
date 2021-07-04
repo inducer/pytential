@@ -580,10 +580,10 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         expansion_disturbance_tolerance=None,
         maxiter=None, debug=None, visualize=False):
     from pytential import bind, sym
-    from meshmode.discretization.connection import ChainedDiscretizationConnection
     if lpot_source._disable_refinement:
-        return density_discr, ChainedDiscretizationConnection([],
-                from_discr=density_discr)
+        from meshmode.discretization.connection import \
+                IdentityDiscretizationConnection
+        return density_discr, IdentityDiscretizationConnection(density_discr)
 
     from meshmode.mesh.refinement import RefinerWithoutAdjacency
     refiner = RefinerWithoutAdjacency(density_discr.mesh)
@@ -688,6 +688,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
 
         del refine_flags
 
+    from meshmode.discretization.connection import ChainedDiscretizationConnection
     conn = ChainedDiscretizationConnection(connections,
             from_discr=density_discr)
 
@@ -699,10 +700,11 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         expansion_disturbance_tolerance=None,
         force_stage2_uniform_refinement_rounds=None,
         maxiter=None, debug=None, visualize=False):
-    from meshmode.discretization.connection import ChainedDiscretizationConnection
     if lpot_source._disable_refinement:
-        return stage1_density_discr, ChainedDiscretizationConnection([],
-                from_discr=stage1_density_discr)
+        from meshmode.discretization.connection import \
+                IdentityDiscretizationConnection
+        return (stage1_density_discr,
+                IdentityDiscretizationConnection(stage1_density_discr))
 
     from meshmode.mesh.refinement import RefinerWithoutAdjacency
     refiner = RefinerWithoutAdjacency(stage1_density_discr.mesh)
@@ -770,6 +772,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         stage2_density_discr = conn.to_discr
         connections.append(conn)
 
+    from meshmode.discretization.connection import ChainedDiscretizationConnection
     conn = ChainedDiscretizationConnection(connections,
             from_discr=stage1_density_discr)
 

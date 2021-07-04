@@ -1,54 +1,19 @@
-extensions = [
-    "sphinx.ext.autodoc",
-    "sphinx.ext.doctest",
-    "sphinx.ext.intersphinx",
-    "sphinx.ext.coverage",
-    "sphinx.ext.mathjax",
-    "sphinx.ext.viewcode",
-    "sphinx_copybutton",
-    ]
+import os
+from urllib.request import urlopen
 
-# Add any paths that contain templates here, relative to this directory.
-templates_path = ["_templates"]
+_conf_url = \
+        "https://raw.githubusercontent.com/inducer/sphinxconfig/main/sphinxconfig.py"
+with urlopen(_conf_url) as _inf:
+    exec(compile(_inf.read(), _conf_url, "exec"), globals())
 
-# The suffix of source filenames.
-source_suffix = ".rst"
+copyright = "2013-21, Andreas Kloeckner and contributors"
 
-# The encoding of source files.
-#source_encoding = "utf-8-sig"
-
-# The master toctree document.
-master_doc = "index"
-
-# General information about the project.
-project = "pytential"
-copyright = "2013-20, Andreas Kloeckner and contributors"
-
-# The version info for the project you're documenting, acts as replacement for
-# |version| and |release|, also used in various other places throughout the
-# built documents.
-#
-# The short X.Y version.
-version = "2013.1"
-# The full version, including alpha/beta/rc tags.
-release = "2013.1"
-
-
-# List of patterns, relative to source directory, that match files and
-# directories to ignore when looking for source files.
-exclude_patterns = ["_build"]
-
-
-# The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "sphinx"
-
-# If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = False
-
-
-# -- Options for HTML output ---------------------------------------------------
-
-html_theme = "furo"
+os.environ["AKPYTHON_EXEC_FROM_WITHIN_WITHIN_SETUP_PY"] = "1"
+ver_dic = {}
+exec(compile(open("../pytential/version.py").read(),
+    "../pytential/version.py", "exec"), ver_dic)
+version = ".".join(str(x) for x in ver_dic["VERSION"])
+release = ver_dic["VERSION_TEXT"]
 
 intersphinx_mapping = {
     "https://docs.python.org/3/": None,
@@ -64,5 +29,3 @@ intersphinx_mapping = {
     "https://documen.tician.de/loopy/": None,
     "https://documen.tician.de/sumpy/": None,
     }
-
-autoclass_content = "class"

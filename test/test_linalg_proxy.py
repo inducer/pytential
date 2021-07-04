@@ -20,28 +20,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import pytest
 from functools import partial
 
 import numpy as np
 import numpy.linalg as la
 
-import pyopencl as cl
-
 from pytential import bind, sym
 from pytential import GeometryCollection
-from pytential.linalg.proxy import ProxyGenerator, QBXProxyGenerator
-
-from arraycontext import PyOpenCLArrayContext
+from pytential.linalg import ProxyGenerator, QBXProxyGenerator
 from meshmode.mesh.generation import ellipse, NArmedStarfish
 
-import pytest
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl
-        as pytest_generate_tests)
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import extra_matrix_data as extra
 import logging
 logger = logging.getLogger(__name__)
+
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
 # {{{ visualize proxy geometry
@@ -194,15 +194,13 @@ PROXY_TEST_CASES = [
 
 @pytest.mark.parametrize("tree_kind", ["adaptive", None])
 @pytest.mark.parametrize("case", PROXY_TEST_CASES)
-def test_partition_points(ctx_factory, tree_kind, case, visualize=False):
+def test_partition_points(actx_factory, tree_kind, case, visualize=False):
     """Tests that the points are correctly partitioned."""
 
     if case.ambient_dim == 3 and tree_kind is None:
         pytest.skip("3d partitioning requires a tree")
 
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     case = case.copy(tree_kind=tree_kind, index_sparsity_factor=1.0)
     logger.info("\n%s", case)
@@ -213,7 +211,7 @@ def test_partition_points(ctx_factory, tree_kind, case, visualize=False):
     places = GeometryCollection(qbx, auto_where=case.name)
 
     density_discr = places.get_discretization(case.name)
-    indices = case.get_block_indices(actx, density_discr).row.get(queue)
+    indices = case.get_block_indices(actx, density_discr, matrix_indices=False)
 
     expected_indices = np.arange(0, density_discr.ndofs)
     assert indices.ranges[-1] == density_discr.ndofs
@@ -239,16 +237,14 @@ def test_partition_points(ctx_factory, tree_kind, case, visualize=False):
     ])
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
 @pytest.mark.parametrize("proxy_radius_factor", [1, 1.1])
-def test_proxy_generator(ctx_factory, case,
+def test_proxy_generator(actx_factory, case,
         proxy_generator_cls, index_sparsity_factor, proxy_radius_factor,
         visualize=False):
     """Tests that the proxies generated are all at the correct radius from the
     points in the cluster, etc.
     """
 
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     case = case.copy(
             index_sparsity_factor=index_sparsity_factor,
@@ -294,7 +290,7 @@ def test_proxy_generator(ctx_factory, case,
         return
 
     plot_proxy_geometry(
-            actx, places, srcindices.get(queue), pxy=pxy, with_qbx_centers=True,
+            actx, places, srcindices, pxy=pxy, with_qbx_centers=True,
             suffix=f"generator_{index_sparsity_factor:.2f}",
             )
 
@@ -309,16 +305,14 @@ def test_proxy_generator(ctx_factory, case,
     ])
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
 @pytest.mark.parametrize("proxy_radius_factor", [1, 1.1])
-def test_neighbor_points(ctx_factory, case,
+def test_neighbor_points(actx_factory, case,
         proxy_generator_cls, index_sparsity_factor, proxy_radius_factor,
         visualize=False):
     """Test that neighboring points (inside the proxy balls, but outside the
     current block/cluster) are actually inside.
     """
 
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     case = case.copy(
             index_sparsity_factor=index_sparsity_factor,
@@ -340,10 +334,8 @@ def test_neighbor_points(ctx_factory, case,
     pxy = generator(actx, places.auto_source, srcindices)
 
     # get neighboring points
-    from pytential.linalg.proxy import gather_block_neighbor_points
+    from pytential.linalg import gather_block_neighbor_points
     nbrindices = gather_block_neighbor_points(actx, density_discr, pxy)
-
-    nbrindices = nbrindices.get(queue)
 
     from meshmode.dof_array import flatten_to_numpy
     pxy = pxy.to_numpy(actx)

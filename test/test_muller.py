@@ -20,8 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
 import pytest
+
+import numpy as np
 
 
 @pytest.mark.parametrize("true_roots", [

@@ -20,27 +20,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-import numpy.linalg as la  # noqa
-import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
 import pytest
 
-from pytential import bind, sym, norm
+import numpy as np
 
-from arraycontext import PyOpenCLArrayContext
+import pyopencl as cl
+import pyopencl.clrandom
+
+from pytential import bind, sym, norm
+from pytential.target import PointsTarget
 from sumpy.visualization import make_field_plotter_from_bbox  # noqa
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
 from sumpy.tools import vector_from_device
-from pytential.target import PointsTarget
 from meshmode.mesh.processing import find_bounding_box
+
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
 
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
 # {{{ test cases
@@ -211,7 +214,7 @@ class EHField:
     #tc_int,
     tc_ext,
     ])
-def test_pec_mfie_extinction(ctx_factory, case,
+def test_pec_mfie_extinction(actx_factory, case,
         use_plane_wave=False, visualize=False):
     """For (say) is_interior=False (the 'exterior' MFIE), this test verifies
     extinction of the combined (incoming + scattered) field on the interior
@@ -219,9 +222,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
     """
     logging.basicConfig(level=logging.INFO)
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     np.random.seed(12)
 
@@ -244,7 +245,7 @@ def test_pec_mfie_extinction(ctx_factory, case,
     calc_patch = CalculusPatch(np.array([-3, 0, 0]), h=0.01)
     calc_patch_tgt = PointsTarget(actx.from_numpy(calc_patch.points))
 
-    rng = cl.clrandom.PhiloxGenerator(cl_ctx, seed=12)
+    rng = cl.clrandom.PhiloxGenerator(actx.context, seed=12)
     from pytools.obj_array import make_obj_array
     src_j = make_obj_array([
             rng.normal(actx.queue, (test_source.ndofs), dtype=np.float64)
@@ -334,7 +335,9 @@ def test_pec_mfie_extinction(ctx_factory, case,
 
         # {{{ system solve
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
+        h_max = actx.to_numpy(
+                bind(places, sym.h_max(qbx.ambient_dim))(actx)
+                )
 
         pde_test_inc = EHField(vector_from_device(actx.queue,
             eval_inc_field_at(places, target="patch_target")))
@@ -399,12 +402,15 @@ def test_pec_mfie_extinction(ctx_factory, case,
             eval_repr_at(places, target="patch_target")))
 
         maxwell_residuals = [
-                calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_repr.e, np.inf)
+                actx.to_numpy(
+                    calc_patch.norm(x, np.inf)
+                    / calc_patch.norm(pde_test_repr.e, np.inf))
                 for x in frequency_domain_maxwell(
                     calc_patch, pde_test_repr.e, pde_test_repr.h, case.k)]
         print("Maxwell residuals:", maxwell_residuals)
 
-        eoc_rec_repr_maxwell.add_data_point(h_max, max(maxwell_residuals))
+        eoc_rec_repr_maxwell.add_data_point(
+                actx.to_numpy(h_max), max(maxwell_residuals))
 
         # }}}
 
@@ -422,8 +428,12 @@ def test_pec_mfie_extinction(ctx_factory, case,
         def scat_norm(f):
             return norm(density_discr, f, p=np.inf)
 
-        e_bc_residual = scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
-        h_bc_residual = scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
+        e_bc_residual = actx.to_numpy(
+                scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
+                )
+        h_bc_residual = actx.to_numpy(
+                scat_norm(eh_bc_values[3]) / scat_norm(inc_field_scat.h)
+                )
 
         print("E/H PEC BC residuals:", h_max, e_bc_residual, h_bc_residual)
 
@@ -487,9 +497,11 @@ def test_pec_mfie_extinction(ctx_factory, case,
         def obs_norm(f):
             return norm(obs_discr, f, p=np.inf)
 
-        rel_err_e = (obs_norm(inc_field_obs.e + obs_repr.e)
+        rel_err_e = actx.to_numpy(
+                obs_norm(inc_field_obs.e + obs_repr.e)
                 / obs_norm(inc_field_obs.e))
-        rel_err_h = (obs_norm(inc_field_obs.h + obs_repr.h)
+        rel_err_h = actx.to_numpy(
+                obs_norm(inc_field_obs.h + obs_repr.h)
                 / obs_norm(inc_field_obs.h))
 
         # }}}

@@ -64,10 +64,6 @@ class GranularityConnection:
     def to_discr(self):
         return self.discr
 
-    @property
-    def array_context(self):
-        return self.discr._setup_actx
-
     def __call__(self, ary):
         raise NotImplementedError()
 
@@ -88,62 +84,73 @@ class CenterGranularityConnection(GranularityConnection):
         if not isinstance(ary1, DOFArray) or not isinstance(ary2, DOFArray):
             raise TypeError("non-array passed to connection")
 
-        @memoize_in(self.array_context,
+        if ary1.array_context is not ary2.array_context:
+            raise ValueError("array context of the two arguments must match")
+
+        actx = ary1.array_context
+
+        @memoize_in(actx,
                  (CenterGranularityConnection, "interleave"))
         def prg():
             from arraycontext import make_loopy_program
-            return make_loopy_program(
-                    """{[iel, idof]: 0<=iel<nelements and 0<=idof<nunit_dofs}""",
+            t_unit = make_loopy_program(
+                    "{[iel, idof]: 0 <= iel < nelements and 0 <= idof < nunit_dofs}",
                     """
-                    dst[iel, 2*idof] = src1[iel, idof]
-                    dst[iel, 2*idof + 1] = src2[iel, idof]
-                    """,
-                    [
-                        lp.GlobalArg("src1", shape="(nelements, nunit_dofs)"),
-                        lp.GlobalArg("src2", shape="(nelements, nunit_dofs)"),
-                        lp.GlobalArg("dst", shape="(nelements, 2*nunit_dofs)"),
-                        "...",
+                    result[iel, 2*idof] = ary1[iel, idof]
+                    result[iel, 2*idof + 1] = ary2[iel, idof]
+                    """, [
+                        lp.GlobalArg("ary1", shape="(nelements, nunit_dofs)"),
+                        lp.GlobalArg("ary2", shape="(nelements, nunit_dofs)"),
+                        lp.GlobalArg("result", shape="(nelements, 2*nunit_dofs)"),
+                        ...
                         ],
                     name="interleave")
 
+            from meshmode.transform_metadata import (
+                    ConcurrentElementInameTag, ConcurrentDOFInameTag)
+            return lp.tag_inames(t_unit, {
+                "iel": ConcurrentElementInameTag(),
+                "idof": ConcurrentDOFInameTag()})
+
         results = []
-        for grp, src1, src2 in zip(self.discr.groups, ary1, ary2):
-            if src1.dtype != src2.dtype:
-                raise ValueError("dtype mismatch in inputs")
-            result = self.array_context.empty(
-                    (grp.nelements, 2 * grp.nunit_dofs), dtype=src1.dtype)
-            self.array_context.call_loopy(
-                    prg(), src1=src1, src2=src2, dst=result,
-                    nelements=grp.nelements, nunit_dofs=grp.nunit_dofs)
+        for grp, subary1, subary2 in zip(self.discr.groups, ary1, ary2):
+            if subary1.dtype != subary2.dtype:
+                raise ValueError("dtype mismatch in inputs: "
+                    f"'{subary1.dtype.name}' and '{subary2.dtype.name}'")
+
+            result = actx.call_loopy(
+                    prg(),
+                    ary1=subary1, ary2=subary2,
+                    nelements=grp.nelements,
+                    nunit_dofs=grp.nunit_dofs)["result"]
             results.append(result)
-        return DOFArray(self.array_context, tuple(results))
+
+        return DOFArray(actx, tuple(results))
 
     def __call__(self, arys):
         r"""
-        :arg arys: either a single :class:`~meshmode.dof_array.DOFArray`
-            or a list/tuple with exactly 2 entries that are both
-            :class:`~meshmode.dof_array.DOFArray`\ s.
-            Additionally, this function vectorizes over object arrays of
-            :class:`~meshmode.dof_array.DOFArrays`\ s.
+        :param arys: a pair of :class:`~arraycontext.ArrayContainer`-like
+            classes. Can also be a single element, in which case it is
+            interleaved with itself. This function vectorizes over all the
+            :class:`~meshmode.dof_array.DOFArray` leaves of the container.
 
-        :return: an interleaved array or list of :class:`pyopencl.array.Array`s.
-            If *vecs* was a pair of arrays :math:`(x, y)`, they are
+        :returns: an interleaved :class:`~arraycontext.ArrayContainer`.
+            If *arys* was a pair of arrays :math:`(x, y)`, they are
             interleaved as :math:`[x_1, y_1, x_2, y_2, \ddots, x_n, y_n]`.
-            A single array is simply interleaved with itself.
-
         """
-        if isinstance(arys, DOFArray):
-            arys = (arys, arys)
         if isinstance(arys, (list, tuple)):
-            assert len(arys) == 2
+            ary1, ary2 = arys
         else:
-            raise ValueError("cannot interleave arrays")
+            ary1, ary2 = arys, arys
 
-        if isinstance(arys[0], DOFArray):
-            return self._interleave_dof_arrays(*arys)
-        else:
-            from pytools.obj_array import obj_array_vectorize_n_args
-            return obj_array_vectorize_n_args(self._interleave_dof_arrays, *arys)
+        if type(ary1) is not type(ary2):
+            raise TypeError("cannot interleave arrays of different types: "
+                    f"'{type(ary1).__name__}' and '{type(ary2.__name__)}'")
+
+        from meshmode.dof_array import rec_multimap_dof_array_container
+        return rec_multimap_dof_array_container(
+                self._interleave_dof_arrays,
+                ary1, ary2)
 
 # }}}
 

@@ -23,49 +23,50 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import pytest
 from functools import partial
 
 import numpy as np
 import numpy.linalg as la
 
-import pyopencl as cl
-
-from sumpy.symbolic import USE_SYMENGINE
-from sumpy.tools import MatrixBlockIndexRanges
-from pytools.obj_array import make_obj_array
-
 from pytential import bind, sym
 from pytential import GeometryCollection
-
-from arraycontext import PyOpenCLArrayContext
+from pytools.obj_array import make_obj_array
 from meshmode.mesh.generation import ellipse, NArmedStarfish
 
-import pytest
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl
-        as pytest_generate_tests)
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import extra_matrix_data as extra
 import logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
-@pytest.mark.skipif(USE_SYMENGINE,
-        reason="https://gitlab.tiker.net/inducer/sumpy/issues/25")
+def max_block_error(mat, blk, index_set, p=None):
+    error = -np.inf
+    for i in range(index_set.nblocks):
+        mat_i = index_set.block_take(mat, i, i)
+        error = max(error, la.norm(mat_i - blk[i, i], ord=p) / la.norm(mat_i, ord=p))
+
+    return error
+
+
 @pytest.mark.parametrize("k", [0, 42])
 @pytest.mark.parametrize("curve_fn", [
     partial(ellipse, 3),
     NArmedStarfish(5, 0.25)])
 @pytest.mark.parametrize("op_type", ["scalar_mixed", "vector"])
-def test_build_matrix(ctx_factory, k, curve_fn, op_type, visualize=False):
+def test_build_matrix(actx_factory, k, curve_fn, op_type, visualize=False):
     """Checks that the matrix built with `symbolic.execution.build_matrix`
     gives the same (to tolerance) answer as a direct evaluation.
     """
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
@@ -181,15 +182,13 @@ def test_build_matrix(ctx_factory, k, curve_fn, op_type, visualize=False):
 
 @pytest.mark.parametrize("side", [+1, -1])
 @pytest.mark.parametrize("op_type", ["single", "double"])
-def test_build_matrix_conditioning(ctx_factory, side, op_type, visualize=False):
+def test_build_matrix_conditioning(actx_factory, side, op_type, visualize=False):
     """Checks that :math:`I + K`, where :math:`K` is compact gives a
     well-conditioned operator when it should. For example, the exterior Laplace
     problem has a nullspace, so we check that and remove it.
     """
 
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # prevent cache explosion
     from sympy.core.cache import clear_cache
@@ -291,13 +290,11 @@ def test_build_matrix_conditioning(ctx_factory, side, op_type, visualize=False):
 @pytest.mark.parametrize("block_builder_type", ["qbx", "p2p"])
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
 @pytest.mark.parametrize("op_type", ["scalar", "scalar_mixed"])
-def test_block_builder(ctx_factory, ambient_dim,
+def test_block_builder(actx_factory, ambient_dim,
         block_builder_type, index_sparsity_factor, op_type, visualize=False):
     """Test that block builders and full matrix builders actually match."""
 
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # prevent cache explosion
     from sympy.core.cache import clear_cache
@@ -383,7 +380,6 @@ def test_block_builder(ctx_factory, ambient_dim,
         except ImportError:
             visualize = False
 
-    index_set = index_set.get(actx.queue)
     if visualize and ambient_dim == 2:
         blk_full = np.zeros_like(mat)
         mat_full = np.zeros_like(mat)
@@ -404,7 +400,9 @@ def test_block_builder(ctx_factory, ambient_dim,
         filename = f"matrix_block_{block_builder_type}_{ambient_dim}d"
         pt.savefig(filename)
 
-    assert extra.max_block_error(mat, blk, index_set) < 1.0e-14
+    from pytential.linalg.utils import make_block_diag
+    blk = make_block_diag(blk, index_set)
+    assert max_block_error(mat, blk, index_set) < 1.0e-14
 
     # }}}
 
@@ -414,13 +412,11 @@ def test_block_builder(ctx_factory, ambient_dim,
     (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE2),
     # (sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_STAGE1),
     ])
-def test_build_matrix_fixed_stage(ctx_factory,
+def test_build_matrix_fixed_stage(actx_factory,
         source_discr_stage, target_discr_stage, visualize=False):
     """Checks that the block builders match for difference stages."""
 
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # prevent cache explosion
     from sympy.core.cache import clear_cache
@@ -478,9 +474,10 @@ def test_build_matrix_fixed_stage(ctx_factory,
     logger.info("ndofs:         %d", source_discr.ndofs)
     logger.info("ndofs:         %d", target_discr.ndofs)
 
+    from pytential.linalg import MatrixBlockIndexRanges
     icols = case.get_block_indices(actx, source_discr, matrix_indices=False)
     irows = case.get_block_indices(actx, target_discr, matrix_indices=False)
-    index_set = MatrixBlockIndexRanges(actx.context, icols, irows)
+    index_set = MatrixBlockIndexRanges(icols, irows)
 
     kwargs = dict(
             dep_expr=sym_u,
@@ -498,8 +495,11 @@ def test_build_matrix_fixed_stage(ctx_factory,
     blk = matrix.NearFieldBlockBuilder(
             actx, index_set=index_set, **kwargs)(sym_prep_op)
 
+    from pytential.linalg.utils import make_block_diag
+    blk = make_block_diag(blk, index_set)
+
     assert mat.shape == (target_discr.ndofs, source_discr.ndofs)
-    assert extra.max_block_error(mat, blk, index_set.get(queue)) < 1.0e-14
+    assert max_block_error(mat, blk, index_set) < 1.0e-14
 
     # p2p
     mat = matrix.P2PMatrixBuilder(
@@ -507,8 +507,11 @@ def test_build_matrix_fixed_stage(ctx_factory,
     blk = matrix.FarFieldBlockBuilder(
             actx, index_set=index_set, exclude_self=True, **kwargs)(sym_prep_op)
 
+    from pytential.linalg.utils import make_block_diag
+    blk = make_block_diag(blk, index_set)
+
     assert mat.shape == (target_discr.ndofs, source_discr.ndofs)
-    assert extra.max_block_error(mat, blk, index_set.get(queue)) < 1.0e-14
+    assert max_block_error(mat, blk, index_set) < 1.0e-14
 
     # }}}
 

@@ -1,7 +1,8 @@
 import numpy as np
 import pyopencl as cl
 
-from arraycontext import PyOpenCLArrayContext, thaw
+from arraycontext import thaw
+from meshmode.array_context import PyOpenCLArrayContext
 
 from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
@@ -21,7 +22,7 @@ def main(mesh_name="ellipsoid"):
 
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
 
     if mesh_name == "ellipsoid":
         cad_file_name = "geometries/ellipsoid.step"

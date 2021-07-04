@@ -20,20 +20,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from functools import partial
-
-from arraycontext import PyOpenCLArrayContext, thaw
 import pytest
+from functools import partial
 
 import numpy as np
 import numpy.linalg as la
-import pyopencl as cl
+
+from arraycontext import thaw
+
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
 
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
 def test_gmres():
@@ -57,12 +61,10 @@ def test_gmres():
     assert la.norm(true_sol - sol) / la.norm(sol) < tol
 
 
-def test_interpolatory_error_reporting(ctx_factory):
+def test_interpolatory_error_reporting(actx_factory):
     logging.basicConfig(level=logging.INFO)
 
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     h = 0.2
     from meshmode.mesh.io import generate_gmsh, FileSource
@@ -94,14 +96,12 @@ def test_interpolatory_error_reporting(ctx_factory):
         print("AREA", integral(vol_discr, one), 0.25**2*np.pi)
 
 
-def test_geometry_collection_caching(ctx_factory):
+def test_geometry_collection_caching(actx_factory):
     # NOTE: checks that the on-demand caching works properly in
     # the `GeometryCollection`. This is done by constructing a few separated
     # spheres, putting a few `QBXLayerPotentialSource`s on them and requesting
     # the `nodes` on each `discr_stage`.
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     ndim = 2
     nelements = 1024

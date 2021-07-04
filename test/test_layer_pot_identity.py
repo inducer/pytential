@@ -20,32 +20,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import pytest
 
 import numpy as np
 import numpy.linalg as la
-import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pytest
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
-from functools import partial
-from arraycontext import PyOpenCLArrayContext, thaw
-from meshmode.mesh.generation import (  # noqa
-        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
-        NArmedStarfish,
-        make_curve_mesh)
-
-# from sumpy.visualization import FieldPlotter
+from arraycontext import thaw
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
-
+import meshmode.mesh.generation as mgen
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+# from sumpy.visualization import FieldPlotter
+
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
 
-circle = partial(ellipse, 1)
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 try:
     import matplotlib.pyplot as pt
@@ -87,8 +83,8 @@ class StarfishGeometry:
     resolutions = [30, 50, 70, 90]
 
     def get_mesh(self, nelements, target_order):
-        return make_curve_mesh(
-                NArmedStarfish(self.n_arms, self.amplitude),
+        return mgen.make_curve_mesh(
+                mgen.NArmedStarfish(self.n_arms, self.amplitude),
                 np.linspace(0, 1, nelements+1),
                 target_order)
 
@@ -100,8 +96,8 @@ class WobblyCircleGeometry:
     resolutions = [2000, 3000, 4000]
 
     def get_mesh(self, resolution, target_order):
-        return make_curve_mesh(
-                WobblyCircle.random(30, seed=30),
+        return mgen.make_curve_mesh(
+                mgen.WobblyCircle.random(30, seed=30),
                 np.linspace(0, 1, resolution+1),
                 target_order)
 
@@ -258,8 +254,8 @@ class DynamicTestCase:
 @pytest.mark.parametrize("case", [
         DynamicTestCase(SphereGeometry(), GreenExpr(), 0),
 ])
-def test_identity_convergence_slow(ctx_factory, case):
-    test_identity_convergence(ctx_factory, case)
+def test_identity_convergence_slow(actx_factory, case):
+    test_identity_convergence(actx_factory, case)
 
 
 @pytest.mark.parametrize("case", [
@@ -277,14 +273,12 @@ def test_identity_convergence_slow(ctx_factory, case):
         DynamicTestCase(SphereGeometry(), GreenExpr(), 0, fmm_backend="fmmlib"),
         DynamicTestCase(SphereGeometry(), GreenExpr(), 1.2, fmm_backend="fmmlib")
 ])
-def test_identity_convergence(ctx_factory,  case, visualize=False):
+def test_identity_convergence(actx_factory,  case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     case.check()
 
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # prevent cache 'splosion
     from sympy.core.cache import clear_cache
@@ -399,10 +393,12 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
             pt.plot(error)
             pt.show()
 
-        linf_error_norm = norm(density_discr, error, p=np.inf)
-        print("--->", key, linf_error_norm)
+        linf_error_norm = actx.to_numpy(norm(density_discr, error, p=np.inf))
+        logger.info("---> key %s error %.5e", key, linf_error_norm)
 
-        h_max = bind(places, sym.h_max(qbx.ambient_dim))(actx)
+        h_max = actx.to_numpy(
+                bind(places, sym.h_max(qbx.ambient_dim))(actx)
+                )
         eoc_rec.add_data_point(h_max, linf_error_norm)
 
         if visualize:
@@ -418,7 +414,7 @@ def test_identity_convergence(ctx_factory,  case, visualize=False):
                 ("error", error),
                 ])
 
-    print(eoc_rec)
+    logger.info("\n%s", eoc_rec)
     tgt_order = case.qbx_order - case.expr.order_drop
     assert eoc_rec.order_estimate() > tgt_order - 1.6
 

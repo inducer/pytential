@@ -487,10 +487,6 @@ class Function(var):
             return var.__call__(self, operand, *args, **kwargs)
 
 
-class EvalMapperFunction(Function):
-    pass
-
-
 class NumpyMathFunction(Function):
     """A math function named within the numpy naming convention and with
     numpy-like semantics."""
@@ -507,10 +503,10 @@ class CLMathFunction(NumpyMathFunction):
         return super().__call__(*args, **kwargs)
 
 
-real = EvalMapperFunction("real")
-imag = EvalMapperFunction("imag")
-conj = EvalMapperFunction("conj")
-abs = EvalMapperFunction("abs")
+real = NumpyMathFunction("real")
+imag = NumpyMathFunction("imag")
+conj = NumpyMathFunction("conj")
+abs = NumpyMathFunction("abs")
 
 sqrt = NumpyMathFunction("sqrt")
 

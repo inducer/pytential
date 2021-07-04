@@ -19,3 +19,22 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+
+from pytential.linalg.utils import (
+        BlockIndexRanges, MatrixBlockIndexRanges,
+        make_block_index_from_array, make_index_blockwise_product,
+        )
+from pytential.linalg.proxy import (
+        BlockProxyPoints, ProxyGeneratorBase,
+        ProxyGenerator, QBXProxyGenerator,
+        partition_by_nodes, gather_block_neighbor_points,
+        )
+
+__all__ = (
+    "BlockIndexRanges", "MatrixBlockIndexRanges",
+    "make_block_index_from_array", "make_index_blockwise_product",
+
+    "BlockProxyPoints", "ProxyGeneratorBase",
+    "ProxyGenerator", "QBXProxyGenerator",
+    "partition_by_nodes", "gather_block_neighbor_points",
+)

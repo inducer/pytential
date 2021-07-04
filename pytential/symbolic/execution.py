@@ -33,7 +33,7 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
-from arraycontext import PyOpenCLArrayContext, thaw
+from arraycontext import PyOpenCLArrayContext, thaw, freeze
 from meshmode.dof_array import DOFArray, flatten
 
 from pytools import memoize_in, memoize_method
@@ -100,6 +100,44 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         self.queue = actx.queue
 
+    # {{{ TODO: remove when device scalar broadcasting is fixed
+
+    # NOTE:
+    # * awaiting resolution of https://github.com/inducer/arraycontext/issues/49
+    # * these are only the operations required to pass tests
+
+    def _force_host_scalar(self, arg):
+        if isinstance(arg, cl.array.Array) and arg.shape == ():
+            return self.array_context.to_numpy(arg)[()]
+        elif isinstance(arg, np.ndarray) and arg.shape == ():
+            return arg[()]
+        else:
+            return arg
+
+    def _map_device_scalar_reduction(self, func, expr):
+        return func(
+                self._force_host_scalar(self.rec(child))
+                for child in expr.children)
+
+    def map_sum(self, expr):
+        return self._map_device_scalar_reduction(sum, expr)
+
+    def map_product(self, expr):
+        from pytools import product
+        return self._map_device_scalar_reduction(product, expr)
+
+    def _map_device_scalar_op(self, op, arg1, arg2):
+        return op(
+                self._force_host_scalar(self.rec(arg1)),
+                self._force_host_scalar(self.rec(arg2)))
+
+    def map_quotient(self, expr):
+        import operator
+        return self._map_device_scalar_op(
+                operator.truediv, expr.numerator, expr.denominator)
+
+    # }}}
+
     # {{{ map_XXX
 
     def _map_minmax(self, func, inherited_func, expr):
@@ -124,31 +162,38 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 expr)
 
     def map_node_sum(self, expr):
-        # FIXME: make less CL specific
-        queue = self.array_context.queue
-        return sum(
-                cl.array.sum(grp_ary, queue=queue).get()[()]
-                for grp_ary in self.rec(expr.operand))
+        actx = self.array_context
+        result = sum(actx.np.sum(grp_ary) for grp_ary in self.rec(expr.operand))
+        if not actx._force_device_scalars:
+            result = actx.to_numpy(result)[()]
+
+        return result
 
     def map_node_max(self, expr):
-        # FIXME: make less CL specific
-        queue = self.array_context.queue
-        return max(
-                cl.array.max(grp_ary, queue=queue).get()[()]
-                for grp_ary in self.rec(expr.operand))
+        actx = self.array_context
+        result = max(actx.np.max(grp_ary) for grp_ary in self.rec(expr.operand))
+        if not actx._force_device_scalars:
+            result = actx.to_numpy(result)[()]
+
+        return result
 
     def map_node_min(self, expr):
-        # FIXME: make less CL specific
-        queue = self.array_context.queue
-        return min(
-                cl.array.min(grp_ary, queue=queue).get()[()]
-                for grp_ary in self.rec(expr.operand))
+        actx = self.array_context
+        result = min(actx.np.min(grp_ary) for grp_ary in self.rec(expr.operand))
+        if not actx._force_device_scalars:
+            result = actx.to_numpy(result)[()]
+
+        return result
 
     def _map_elementwise_reduction(self, reduction_name, expr):
+        import loopy as lp
+        from arraycontext import make_loopy_program
+        from meshmode.transform_metadata import (
+                ConcurrentElementInameTag, ConcurrentDOFInameTag)
+
         @memoize_in(self.places, "elementwise_node_"+reduction_name)
         def node_knl():
-            from arraycontext import make_loopy_program
-            return make_loopy_program(
+            t_unit = make_loopy_program(
                     """{[iel, idof, jdof]:
                         0<=iel<nelements and
                         0<=idof, jdof<ndofs}""",
@@ -157,10 +202,16 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                     """ % reduction_name,
                     name="nodewise_reduce")
 
+            return lp.tag_inames(t_unit, {
+                "iel": ConcurrentElementInameTag(),
+                "idof": ConcurrentDOFInameTag(),
+                })
+
         @memoize_in(self.places, "elementwise_"+reduction_name)
         def element_knl():
-            from arraycontext import make_loopy_program
-            return make_loopy_program(
+            # FIXME: This computes the reduction value redundantly for each
+            # output DOF.
+            t_unit = make_loopy_program(
                     """{[iel, jdof]:
                         0<=iel<nelements and
                         0<=jdof<ndofs}
@@ -169,6 +220,10 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                     result[iel, 0] = %s(jdof, operand[iel, jdof])
                     """ % reduction_name,
                     name="elementwise_reduce")
+
+            return lp.tag_inames(t_unit, {
+                "iel": ConcurrentElementInameTag(),
+                })
 
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
@@ -280,11 +335,19 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         else:
             return self.rec(expr.child)
 
+        from numbers import Number
         try:
             rec = cache[expr.child]
+            if (expr.scope == sym.cse_scope.DISCRETIZATION
+                    and not isinstance(rec, Number)):
+                rec = thaw(rec, self.array_context)
         except KeyError:
-            rec = self.rec(expr.child)
-            cache[expr.child] = rec
+            cached_rec = rec = self.rec(expr.child)
+            if (expr.scope == sym.cse_scope.DISCRETIZATION
+                    and not isinstance(rec, Number)):
+                cached_rec = freeze(cached_rec, self.array_context)
+
+            cache[expr.child] = cached_rec
 
         return rec
 
@@ -298,35 +361,10 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         raise NotImplementedError
 
-    # {{{ functions
-
-    def apply_real(self, args):
-        arg, = args
-        from pytools.obj_array import obj_array_real
-        return obj_array_real(self.rec(arg))
-
-    def apply_imag(self, args):
-        arg, = args
-        from pytools.obj_array import obj_array_imag
-        return obj_array_imag(self.rec(arg))
-
-    def apply_conj(self, args):
-        arg, = args
-        return self.rec(arg).conj()
-
-    def apply_abs(self, args):
-        arg, = args
-        return abs(self.rec(arg))
-
-    # }}}
-
     def map_call(self, expr):
-        from pytential.symbolic.primitives import (
-                EvalMapperFunction, NumpyMathFunction)
+        from pytential.symbolic.primitives import NumpyMathFunction
 
-        if isinstance(expr.function, EvalMapperFunction):
-            return getattr(self, f"apply_{expr.function.name}")(expr.parameters)
-        elif isinstance(expr.function, NumpyMathFunction):
+        if isinstance(expr.function, NumpyMathFunction):
             args = [self.rec(arg) for arg in expr.parameters]
             from numbers import Number
             if all(isinstance(arg, Number) for arg in args):
@@ -1063,8 +1101,15 @@ class BoundExpression:
                 and self.sym_op_expr.scope == sym.cse_scope.DISCRETIZATION:
             cache = self.places._get_cache(EvaluationMapperCSECacheKey)
 
-            if self.sym_op_expr.child in cache:
-                return cache[self.sym_op_expr.child]
+            from numbers import Number
+            expr = self.sym_op_expr
+            if expr.child in cache:
+                value = cache[expr.child]
+                if (expr.scope == sym.cse_scope.DISCRETIZATION
+                        and not isinstance(value, Number)):
+                    value = thaw(value, array_context)
+
+                return value
 
         array_context = _find_array_context_from_args_in_context(
                 context, array_context)

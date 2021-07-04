@@ -21,39 +21,40 @@ THE SOFTWARE.
 """
 
 import pytest
+from functools import partial
 
 import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
-import pyopencl.array  # noqa
-import pyopencl.clmath  # noqa
+import pyopencl.array
+import pyopencl.clmath
 
+from arraycontext import thaw
+import meshmode.mesh.generation as mgen
+from meshmode.discretization import Discretization
+from meshmode.discretization.poly_element import \
+    InterpolatoryQuadratureSimplexGroupFactory
 from pytential import bind, sym
+
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
 
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
-
-from arraycontext import PyOpenCLArrayContext, thaw
-from meshmode.mesh.generation import (  # noqa
-        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut, WobblyCircle,
-        make_curve_mesh)
-
-from functools import partial
-from meshmode.discretization import Discretization
-from meshmode.discretization.poly_element import \
-    InterpolatoryQuadratureSimplexGroupFactory
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
 # {{{ discretization getters
 
 def get_ellipse_with_ref_mean_curvature(actx, nelements, aspect=1):
     order = 4
-    mesh = make_curve_mesh(
-            partial(ellipse, aspect),
+    mesh = mgen.make_curve_mesh(
+            partial(mgen.ellipse, aspect),
             np.linspace(0, 1, nelements+1),
             order)
 
@@ -109,11 +110,9 @@ def get_torus_with_ref_mean_curvature(actx, h):
     ("torus", [8, 10, 12, 16],
         get_torus_with_ref_mean_curvature),
     ])
-def test_mean_curvature(ctx_factory, discr_name, resolutions,
+def test_mean_curvature(actx_factory, discr_name, resolutions,
         discr_and_ref_mean_curvature_getter, visualize=False):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     from pytools.convergence import EOCRecorder
     eoc = EOCRecorder()
@@ -127,7 +126,7 @@ def test_mean_curvature(ctx_factory, discr_name, resolutions,
         h = 1.0 / r
         from meshmode.dof_array import flat_norm
         h_error = flat_norm(mean_curvature - ref_mean_curvature, np.inf)
-        eoc.add_data_point(h, h_error)
+        eoc.add_data_point(h, actx.to_numpy(h_error))
     print(eoc)
 
     order = min([g.order for g in discr.groups])
@@ -138,10 +137,8 @@ def test_mean_curvature(ctx_factory, discr_name, resolutions,
 
 # {{{ test_tangential_onb
 
-def test_tangential_onb(ctx_factory):
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+def test_tangential_onb(actx_factory):
+    actx = actx_factory()
 
     from meshmode.mesh.generation import generate_torus
     mesh = generate_torus(5, 2, order=3)
@@ -228,10 +225,8 @@ def test_layer_potential_construction(lpot_class, ambient_dim=2):
     ("stage2_center", sym.QBX_SOURCE_STAGE2, sym.GRANULARITY_CENTER),
     ("quad", sym.QBX_SOURCE_QUAD_STAGE2, sym.GRANULARITY_NODE)
     ])
-def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+def test_interpolation(actx_factory, name, source_discr_stage, target_granularity):
+    actx = actx_factory()
 
     nelements = 32
     target_order = 7
@@ -247,7 +242,7 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
             discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
             granularity=target_granularity)
 
-    mesh = make_curve_mesh(starfish,
+    mesh = mgen.make_curve_mesh(mgen.starfish,
             np.linspace(0.0, 1.0, nelements + 1),
             target_order)
     discr = Discretization(actx, mesh,
@@ -296,17 +291,15 @@ def test_interpolation(ctx_factory, name, source_discr_stage, target_granularity
 
 # {{{ test node reductions
 
-def test_node_reduction(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    actx = PyOpenCLArrayContext(queue)
+def test_node_reduction(actx_factory):
+    actx = actx_factory()
 
     # {{{ build discretization
 
     target_order = 4
     nelements = 32
 
-    mesh = make_curve_mesh(starfish,
+    mesh = mgen.make_curve_mesh(mgen.starfish,
             np.linspace(0.0, 1.0, nelements + 1),
             target_order)
     discr = Discretization(actx, mesh,
@@ -335,7 +328,7 @@ def test_node_reduction(ctx_factory):
             (sym.NodeMin, 1),
             ]:
         r = bind(discr, func(sym.var("x")))(actx, x=ary)
-        assert abs(r - expected) < 1.0e-15, r
+        assert abs(actx.to_numpy(r) - expected) < 1.0e-15, r
 
     # }}}
 

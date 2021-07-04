@@ -23,31 +23,29 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import pytest
+from functools import partial
+from dataclasses import dataclass
 
 import numpy as np
 import numpy.linalg as la
-import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pytest
-from pytools import RecordWithoutPickling
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+
+from arraycontext import thaw
+from pytential import GeometryCollection, bind, sym
 from pytential.qbx import QBXLayerPotentialSource
+import meshmode.mesh.generation as mgen
 
-from functools import partial
-from arraycontext import PyOpenCLArrayContext, thaw
-from meshmode.mesh.generation import (  # noqa
-        ellipse, cloverleaf, starfish, drop, n_gon, qbx_peanut,
-        make_curve_mesh, generate_icosphere, generate_torus)
+from meshmode import _acf           # noqa: F401
+from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+
 from extra_curve_data import horseshoe
-
-from pytential import bind, sym
-from pytential import GeometryCollection
-
 import logging
 logger = logging.getLogger(__name__)
 
-__all__ = ["pytest_generate_tests"]
+pytest_generate_tests = pytest_generate_tests_for_array_contexts([
+    PytestPyOpenCLArrayContextFactory,
+    ])
 
 
 RNG_SEED = 10
@@ -72,13 +70,10 @@ def dof_array_to_numpy(actx, ary):
 
 # {{{ source refinement checker
 
-class ElementInfo(RecordWithoutPickling):
-    """
-    .. attribute:: element_nr
-    .. attribute:: discr_slice
-    """
-    __slots__ = ["element_nr",
-                 "discr_slice"]
+@dataclass
+class ElementInfo:
+    element_nr: int
+    discr_slice: slice
 
 
 def iter_elements(discr):
@@ -96,11 +91,9 @@ def iter_elements(discr):
             discr_nodes_idx += discr_group.nunit_dofs
 
 
-def run_source_refinement_test(ctx_factory, mesh, order,
+def run_source_refinement_test(actx_factory, mesh, order,
         helmholtz_k=None, visualize=False):
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # {{{ initial geometry
 
@@ -230,42 +223,40 @@ def run_source_refinement_test(ctx_factory, mesh, order,
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
-    ("20-to-1 ellipse", partial(ellipse, 20), 100),
+    ("20-to-1 ellipse", partial(mgen.ellipse, 20), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_source_refinement_2d(ctx_factory, curve_name, curve_f, nelements):
+def test_source_refinement_2d(actx_factory, curve_name, curve_f, nelements):
     helmholtz_k = 10
     order = 8
 
-    mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
-    run_source_refinement_test(ctx_factory, mesh, order, helmholtz_k)
+    mesh = mgen.make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
+    run_source_refinement_test(actx_factory, mesh, order, helmholtz_k)
 
 
 @pytest.mark.parametrize(("surface_name", "surface_f", "order"), [
-    ("sphere", partial(generate_icosphere, 1), 4),
-    ("torus", partial(generate_torus, 3, 1, n_minor=10, n_major=7), 6),
+    ("sphere", partial(mgen.generate_icosphere, 1), 4),
+    ("torus", partial(mgen.generate_torus, 3, 1, n_minor=10, n_major=7), 6),
     ])
-def test_source_refinement_3d(ctx_factory, surface_name, surface_f, order):
+def test_source_refinement_3d(actx_factory, surface_name, surface_f, order):
     mesh = surface_f(order=order)
-    run_source_refinement_test(ctx_factory, mesh, order)
+    run_source_refinement_test(actx_factory, mesh, order)
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
-    ("20-to-1 ellipse", partial(ellipse, 20), 100),
+    ("20-to-1 ellipse", partial(mgen.ellipse, 20), 100),
     ("horseshoe", horseshoe, 64),
     ])
-def test_target_association(ctx_factory, curve_name, curve_f, nelements,
+def test_target_association(actx_factory, curve_name, curve_f, nelements,
         visualize=False):
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+    actx = actx_factory()
 
     # {{{ generate lpot source
 
     order = 16
 
     # Make the curve mesh.
-    mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
+    mesh = mgen.make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \
@@ -283,7 +274,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     # {{{ generate targets
 
     from pyopencl.clrandom import PhiloxGenerator
-    rng = PhiloxGenerator(cl_ctx, seed=RNG_SEED)
+    rng = PhiloxGenerator(actx.context, seed=RNG_SEED)
 
     dd = places.auto_source.to_stage1()
     centers = dof_array_to_numpy(actx,
@@ -293,7 +284,9 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     density_discr = places.get_discretization(dd.geometry)
 
     noise = actx.to_numpy(
-            rng.uniform(queue, density_discr.ndofs, dtype=np.float64, a=0.01, b=1.0))
+            rng.uniform(actx.queue, density_discr.ndofs,
+                dtype=np.float64, a=0.01, b=1.0)
+            )
 
     tunnel_radius = dof_array_to_numpy(actx,
             bind(places, sym._close_target_tunnel_radii(
@@ -351,7 +344,7 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
             code_container.get_wrangler(actx),
             target_discrs,
             target_association_tolerance=1e-10)
-        .get(queue=queue))
+        .get(queue=actx.queue))
 
     expansion_radii = dof_array_to_numpy(actx,
             bind(places, sym.expansion_radii(
@@ -441,10 +434,8 @@ def test_target_association(ctx_factory, curve_name, curve_f, nelements,
     # }}}
 
 
-def test_target_association_failure(ctx_factory):
-    cl_ctx = ctx_factory()
-    queue = cl.CommandQueue(cl_ctx)
-    actx = PyOpenCLArrayContext(queue)
+def test_target_association_failure(actx_factory):
+    actx = actx_factory()
 
     # {{{ generate circle
 
@@ -452,8 +443,8 @@ def test_target_association_failure(ctx_factory):
     nelements = 40
 
     # Make the curve mesh.
-    curve_f = partial(ellipse, 1)
-    mesh = make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
+    curve_f = partial(mgen.ellipse, 1)
+    mesh = mgen.make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \

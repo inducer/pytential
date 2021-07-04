@@ -1,27 +1,11 @@
 import numpy as np
-import numpy.linalg as la
 
 from pytools.obj_array import make_obj_array
-from sumpy.tools import BlockIndexRanges, MatrixBlockIndexRanges
 
 from pytential import sym
+from pytential.linalg import MatrixBlockIndexRanges
 
 import extra_int_eq_data as extra
-
-
-# {{{ helpers
-
-def max_block_error(mat, blk, index_set, p=None):
-    error = -np.inf
-    for i in range(index_set.nblocks):
-        mat_i = index_set.take(mat, i)
-        blk_i = index_set.block_take(blk, i)
-
-        error = max(error, la.norm(mat_i - blk_i, ord=p) / la.norm(mat_i, ord=p))
-
-    return error
-
-# }}}
 
 
 # {{{ MatrixTestCase
@@ -48,36 +32,30 @@ class MatrixTestCaseMixin:
         if max_particles_in_box is None:
             max_particles_in_box = discr.ndofs // self.approx_block_count
 
-        from pytential.linalg.proxy import partition_by_nodes
+        from pytential.linalg import partition_by_nodes
         indices = partition_by_nodes(actx, discr,
                 tree_kind=self.tree_kind,
                 max_particles_in_box=max_particles_in_box)
 
-        if abs(self.index_sparsity_factor - 1.0) < 1.0e-14:
-            if not matrix_indices:
-                return indices
-            return MatrixBlockIndexRanges(actx.context, indices, indices)
+        # randomly pick a subset of points from each block
+        if abs(self.index_sparsity_factor - 1.0) > 1.0e-14:
+            subset = np.empty(indices.nblocks, dtype=object)
+            for i in range(indices.nblocks):
+                iidx = indices.block_indices(i)
+                isize = int(self.index_sparsity_factor * len(iidx))
+                isize = max(1, min(isize, len(iidx)))
 
-        # randomly pick a subset of points
-        indices = indices.get(actx.queue)
+                subset[i] = np.sort(
+                        np.random.choice(iidx, size=isize, replace=False)
+                        )
 
-        subset = np.empty(indices.nblocks, dtype=object)
-        for i in range(indices.nblocks):
-            iidx = indices.block_indices(i)
-            isize = int(self.index_sparsity_factor * len(iidx))
-            isize = max(1, min(isize, len(iidx)))
-
-            subset[i] = np.sort(np.random.choice(iidx, size=isize, replace=False))
-
-        ranges = actx.from_numpy(np.cumsum([0] + [r.shape[0] for r in subset]))
-        indices = actx.from_numpy(np.hstack(subset))
-
-        indices = BlockIndexRanges(actx.context,
-                actx.freeze(indices), actx.freeze(ranges))
+            from pytential.linalg import make_block_index_from_array
+            indices = make_block_index_from_array(subset)
 
         if not matrix_indices:
             return indices
-        return MatrixBlockIndexRanges(actx.context, indices, indices)
+
+        return MatrixBlockIndexRanges(indices, indices)
 
     def get_operator(self, ambient_dim, qbx_forced_limit="avg"):
         knl = self.knl_class(ambient_dim)
