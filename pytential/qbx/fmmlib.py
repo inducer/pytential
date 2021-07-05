@@ -153,7 +153,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     def __init__(self, tree_indep, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs,
-            kernel_extra_kwargs,
+            kernel_extra_kwargs, *,
+            translation_classes_data=None,
             _use_target_specific_qbx=None):
         # FMMLib is CPU-only. This wrapper gets the geometry out of
         # OpenCL-land.
