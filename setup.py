@@ -119,7 +119,7 @@ setup(
     install_requires=[
         "pytools>=2018.2",
         "modepy>=2013.3",
-        "pyopencl>=2013.1",
+        "pyopencl>=2021.2.6",
         "boxtree>=2019.1",
         "pymbolic>=2013.2",
         "loopy>=2020.2",

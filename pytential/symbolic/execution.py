@@ -100,44 +100,6 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
         self.queue = actx.queue
 
-    # {{{ TODO: remove when device scalar broadcasting is fixed
-
-    # NOTE:
-    # * awaiting resolution of https://github.com/inducer/arraycontext/issues/49
-    # * these are only the operations required to pass tests
-
-    def _force_host_scalar(self, arg):
-        if isinstance(arg, cl.array.Array) and arg.shape == ():
-            return self.array_context.to_numpy(arg)[()]
-        elif isinstance(arg, np.ndarray) and arg.shape == ():
-            return arg[()]
-        else:
-            return arg
-
-    def _map_device_scalar_reduction(self, func, expr):
-        return func(
-                self._force_host_scalar(self.rec(child))
-                for child in expr.children)
-
-    def map_sum(self, expr):
-        return self._map_device_scalar_reduction(sum, expr)
-
-    def map_product(self, expr):
-        from pytools import product
-        return self._map_device_scalar_reduction(product, expr)
-
-    def _map_device_scalar_op(self, op, arg1, arg2):
-        return op(
-                self._force_host_scalar(self.rec(arg1)),
-                self._force_host_scalar(self.rec(arg2)))
-
-    def map_quotient(self, expr):
-        import operator
-        return self._map_device_scalar_op(
-                operator.truediv, expr.numerator, expr.denominator)
-
-    # }}}
-
     # {{{ map_XXX
 
     def _map_minmax(self, func, inherited_func, expr):
@@ -163,27 +125,21 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     def map_node_sum(self, expr):
         actx = self.array_context
-        result = sum(actx.np.sum(grp_ary) for grp_ary in self.rec(expr.operand))
-        if not actx._force_device_scalars:
-            result = actx.to_numpy(result)[()]
-
-        return result
+        return sum(actx.np.sum(grp_ary) for grp_ary in self.rec(expr.operand))
 
     def map_node_max(self, expr):
+        from functools import reduce
         actx = self.array_context
-        result = max(actx.np.max(grp_ary) for grp_ary in self.rec(expr.operand))
-        if not actx._force_device_scalars:
-            result = actx.to_numpy(result)[()]
-
-        return result
+        return reduce(
+            actx.np.maximum,
+            (actx.np.max(grp_ary) for grp_ary in self.rec(expr.operand)))
 
     def map_node_min(self, expr):
+        from functools import reduce
         actx = self.array_context
-        result = min(actx.np.min(grp_ary) for grp_ary in self.rec(expr.operand))
-        if not actx._force_device_scalars:
-            result = actx.to_numpy(result)[()]
-
-        return result
+        return reduce(
+            actx.np.minimum,
+            (actx.np.min(grp_ary) for grp_ary in self.rec(expr.operand)))
 
     def _map_elementwise_reduction(self, reduction_name, expr):
         import loopy as lp
