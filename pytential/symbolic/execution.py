@@ -500,23 +500,19 @@ class MatVecOp:
         #    => output is a flat PyOpenCL array
         # * structured arrays (object arrays/DOFArrays)
         #    => output has same structure as input
-        if isinstance(x, np.ndarray) and x.dtype.char != "O":
-            x = self.array_context.from_numpy(x)
-            flat = True
-            host = True
-            assert x.shape == (self.total_dofs,)
-        elif isinstance(x, cl.array.Array):
-            flat = True
-            host = False
-            assert x.shape == (self.total_dofs,)
+        if isinstance(x, DOFArray):
+            flat, host = False, False
         elif isinstance(x, np.ndarray) and x.dtype.char == "O":
-            flat = False
-            host = False
-        elif isinstance(x, DOFArray):
-            flat = False
-            host = False
+            flat, host = False, False
+        elif isinstance(x, cl.array.Array):
+            flat, host = True, False
+            assert x.shape == (self.total_dofs,)
+        elif isinstance(x, np.ndarray) and x.dtype.char != "O":
+            x = self.array_context.from_numpy(x)
+            flat, host = True, True
+            assert x.shape == (self.total_dofs,)
         else:
-            raise ValueError("unsupported input type")
+            raise ValueError(f"unsupported input type: {type(x).__name__}")
 
         args = self.extra_args.copy()
         args[self.arg_name] = self.unflatten(x) if flat else x
