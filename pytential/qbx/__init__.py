@@ -281,7 +281,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # FIXME Could/should share wrangler and geometry kernels
         # if no relevant changes have been made.
-        return QBXLayerPotentialSource(
+        return type(self)(
                 density_discr=density_discr or self.density_discr,
                 fine_order=(
                     fine_order if fine_order is not None else self.fine_order),
