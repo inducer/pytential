@@ -58,7 +58,7 @@ def main():
         "unaccel_qbx": unaccel_qbx,
         "qbx": unaccel_qbx.copy(fmm_order=10),
         "targets": PointsTarget(actx.freeze(actx.from_numpy(fplot.points)))
-        })
+        }, auto_where=("qbx", "targets"))
     density_discr = places.get_discretization("unaccel_qbx")
 
     nodes = thaw(density_discr.nodes(), actx)

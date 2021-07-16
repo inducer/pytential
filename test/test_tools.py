@@ -145,7 +145,7 @@ def test_geometry_collection_caching(actx_factory):
 
     # construct a geometry collection
     from pytential import GeometryCollection
-    places = GeometryCollection(dict(zip(sources, lpots)))
+    places = GeometryCollection(dict(zip(sources, lpots)), auto_where=sources[0])
     print(places.places)
 
     # check on-demand refinement
