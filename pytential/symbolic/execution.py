@@ -634,39 +634,62 @@ class _GeometryCollectionConnectionCacheKey:
 class GeometryCollection:
     """A mapping from symbolic identifiers ("place IDs", typically strings)
     to 'geometries', where a geometry can be a
-    :class:`pytential.source.PotentialSource`
-    or a :class:`pytential.target.TargetBase`.
+    :class:`~pytential.source.PotentialSource`, a
+    :class:`~pytential.target.TargetBase` or a
+    :class:`~meshmode.discretization.Discretization`.
+
     This class is meant to hold a specific combination of sources and targets
     serve to host caches of information derived from them, e.g. FMM trees
     of subsets of them, as well as related common subexpressions such as
     metric terms.
 
+    Refinement of :class:`pytential.qbx.QBXLayerPotentialSource` entries is
+    performed on demand, i.e. on calls to :meth:`get_discretization` with
+    a specific *discr_stage*. To perform refinement explicitly, call
+    :func:`pytential.qbx.refinement.refine_geometry_collection`,
+    which allows more customization of the refinement process through
+    parameters.
+
+    .. automethod:: __init__
+
+    .. attribute:: auto_source
+
+        Default :class:`~pytential.symbolic.primitives.DOFDescriptor` for the
+        source geometry.
+
+    .. attribute:: auto_target
+
+        Default :class:`~pytential.symbolic.primitives.DOFDescriptor` for the
+        target geometry.
+
     .. automethod:: get_geometry
-    .. automethod:: get_connection
     .. automethod:: get_discretization
+    .. automethod:: get_connection
 
     .. automethod:: copy
     .. automethod:: merge
 
-    Refinement of :class:`pytential.qbx.QBXLayerPotentialSource` entries is
-    performed on demand, or it may be performed by explcitly calling
-    :func:`pytential.qbx.refinement.refine_geometry_collection`,
-    which allows more customization of the refinement process through
-    parameters.
     """
 
     def __init__(self, places, auto_where=None):
-        """
+        r"""
         :arg places: a scalar, tuple of or mapping of symbolic names to
             geometry objects. Supported objects are
             :class:`~pytential.source.PotentialSource`,
             :class:`~pytential.target.TargetBase` and
             :class:`~meshmode.discretization.Discretization`. If this is
             a mapping, the keys that are strings must be valid Python identifiers.
-        :arg auto_where: location identifier for each geometry object, used
-            to denote specific discretizations, e.g. in the case where
-            *places* is a :class:`~pytential.source.LayerPotentialSourceBase`.
-            By default, we assume
+            The tuple should contain only two entries, denoting the source and
+            target geometries for layer potential evaluation, identified by
+            *auto_where*.
+
+        :arg auto_where: a single or a tuple of two
+            :class:`~pytential.symbolic.primitives.DOFDescriptor`\ s, or values
+            that can be converted to one using
+            :func:`~pytential.symbolic.primitives.as_dofdesc`. The two
+            descriptors are used to define the default source and target
+            geometries for layer potential evaluations.
+            By default, they are set to
             :class:`~pytential.symbolic.primitives.DEFAULT_SOURCE` and
             :class:`~pytential.symbolic.primitives.DEFAULT_TARGET` for
             sources and targets, respectively.
@@ -705,6 +728,15 @@ class GeometryCollection:
 
         # {{{ validate
 
+        # check auto_where
+        if auto_source.geometry not in self.places:
+            raise ValueError("'auto_where' source geometry is not in the "
+                f"collection: '{auto_source.geometry}'")
+
+        if auto_target.geometry not in self.places:
+            raise ValueError("'auto_where' target geometry is not in the "
+                f"collection: '{auto_target.geometry}'")
+
         # check allowed identifiers
         for name in self.places:
             if not isinstance(name, str):
@@ -715,8 +747,9 @@ class GeometryCollection:
         # check allowed types
         for p in self.places.values():
             if not isinstance(p, (PotentialSource, TargetBase, Discretization)):
-                raise TypeError("Values in 'places' must be discretization, targets "
-                        "or layer potential sources.")
+                raise TypeError(
+                    "Values in 'places' must be discretization, targets "
+                    f"or layer potential sources, got '{type(p).__name__}'")
 
         # check ambient_dim
         from pytools import is_single_valued
@@ -746,8 +779,9 @@ class GeometryCollection:
         key = (geometry, discr_stage)
 
         if key not in cache:
-            raise KeyError("cached discretization does not exist on '{}'"
-                    "for stage '{}'".format(geometry, discr_stage))
+            raise KeyError(
+                    "cached discretization does not exist on '{geometry}'"
+                    "for stage '{discr_stage}'")
 
         return cache[key]
 
@@ -756,7 +790,8 @@ class GeometryCollection:
         key = (geometry, discr_stage)
 
         if key in cache:
-            raise RuntimeError("trying to overwrite the cache")
+            raise RuntimeError("trying to overwrite the discretization cache of "
+                    f"'{geometry}' for stage '{discr_stage}'")
 
         cache[key] = discr
 
@@ -765,8 +800,8 @@ class GeometryCollection:
         key = (geometry, from_stage, to_stage)
 
         if key not in cache:
-            raise KeyError("cached connection does not exist on '{}' "
-                    "from '{}' to '{}'".format(geometry, from_stage, to_stage))
+            raise KeyError("cached connection does not exist on "
+                    f"'{geometry}' from stage '{from_stage}' to '{to_stage}'")
 
         return cache[key]
 
@@ -775,7 +810,8 @@ class GeometryCollection:
         key = (geometry, from_stage, to_stage)
 
         if key in cache:
-            raise RuntimeError("trying to overwrite the cache")
+            raise RuntimeError("trying to overwrite the connection cache of "
+                    f"'{geometry}' from stage '{from_stage}' to '{to_stage}'")
 
         cache[key] = conn
 
@@ -801,19 +837,38 @@ class GeometryCollection:
     # }}}
 
     def get_connection(self, from_dd, to_dd):
+        """Construct a connection from *from_dd* to *to_dd* geometries.
+
+        :param from_dd: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+            or a value that can be converted to one using
+            :func:`~pytential.symbolic.primitives.as_dofdesc`.
+        :param to_dd: as *from_dd*.
+
+        :returns: an object compatible with the
+            :class:`~meshmode.discretization.connection.DiscretizationConnection`
+            interface.
+        """
+
         from pytential.symbolic.dof_connection import connection_from_dds
         return connection_from_dds(self, from_dd, to_dd)
 
     def get_discretization(self, geometry, discr_stage=None):
-        """
-        :arg dofdesc: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
-            specifying the desired discretization.
+        """Get the geometry or discretization in the collection.
 
-        :return: a geometry object in the collection corresponding to the
-            key *dofdesc*. If it is a
-            :class:`~pytential.source.LayerPotentialSourceBase`, we look for
-            the corresponding :class:`~meshmode.discretization.Discretization`
-            in its attributes instead.
+        If a specific QBX stage discretization is requested, refinement is
+        performed on demand and cached for subsequent calls.
+
+        :param geometry: the identifier of the geometry in the collection.
+        :param discr_stage: if the geometry is a
+            :class:`~pytential.source.LayerPotentialSourceBase`, this denotes
+            the QBX stage of the returned discretization. Can be one of
+            :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1` (default),
+            :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE2` or
+            :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+
+        :returns: a geometry object in the collection or a
+            :class:`~meshmode.discretization.Discretization` corresponding to
+            *discr_stage*.
         """
         if discr_stage is None:
             discr_stage = sym.QBX_SOURCE_STAGE1
@@ -830,13 +885,18 @@ class GeometryCollection:
             return discr
 
     def get_geometry(self, geometry):
+        """
+        :param geometry: the identifier of the geometry in the collection.
+        """
+
         try:
             return self.places[geometry]
         except KeyError:
-            raise KeyError("geometry not in the collection: '{}'".format(
-                geometry))
+            raise KeyError(f"geometry not in the collection: '{geometry}'")
 
     def copy(self, places=None, auto_where=None):
+        """Get a shallow copy of the geometry collection."""
+
         places = self.places if places is None else places
         return type(self)(
                 places=places.copy(),
@@ -845,7 +905,7 @@ class GeometryCollection:
     def merge(self, places):
         """Merges two geometry collections and returns the new collection.
 
-        :arg places: A :class:`dict` or :class:`GeometryCollection` to
+        :param places: a :class:`dict` or :class:`GeometryCollection` to
             merge with the current collection. If it is empty, a copy of the
             current collection is returned.
         """
@@ -859,10 +919,10 @@ class GeometryCollection:
         return self.copy(places=new_places)
 
     def __repr__(self):
-        return "{}({})".format(type(self).__name__, repr(self.places))
+        return "{type(self).__name__}({repr(self.places)})"
 
     def __str__(self):
-        return "{}({})".format(type(self).__name__, str(self.places))
+        return "{type(self).__name__}({repr(self.places)})"
 
 # }}}
 
