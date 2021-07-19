@@ -339,10 +339,10 @@ def get_density(actx, discr):
 # }}}
 
 
-# {{{ test that timing data gathering can execute succesfully
+# {{{ test that timing data gathering can execute successfully
 
 def test_timing_data_gathering(ctx_factory):
-    """Test that timing data gathering can execute succesfully."""
+    """Test that timing data gathering can execute successfully."""
 
     pytest.importorskip("pyfmmlib")
 
@@ -858,7 +858,7 @@ def test_cost_model_order_varying_by_level(actx_factory):
 
 # You can test individual routines by typing
 # $ python test_cost_model.py 'test_routine()'
-# You can specify the log level by setting 'LOGLEVEL' enviroment variable, for
+# You can specify the log level by setting 'LOGLEVEL' environment variable, for
 # example
 # $ LOGLEVEL=INFO python test_cost_model.py 'test_compare_cl_and_py_cost_model(
 # $     cl.create_some_context)'
