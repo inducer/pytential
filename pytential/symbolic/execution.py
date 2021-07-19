@@ -1079,7 +1079,7 @@ class BoundExpression:
             total_dofs += size
 
         # Hidden assumption: Number of input components
-        # equals number of output compoments. But IMO that's
+        # equals number of output components. But IMO that's
         # fair, since these operators are usually only used
         # for linear system solving, in which case the assumption
         # has to be true.
