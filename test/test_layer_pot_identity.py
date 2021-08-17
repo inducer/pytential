@@ -143,7 +143,7 @@ class GradGreenExpr:
                 - d2.resolve(d2.dnabla(d) * d2(sym.D(kernel, u_sym,
                     qbx_forced_limit="avg", **knl_kwargs)))
                 - 0.5*grad_u_sym
-                )
+                ).as_vector()
 
     order_drop = 1
 
@@ -236,15 +236,15 @@ class DynamicTestCase:
             self.fmm_order = fmm_order
 
     def check(self):
+        from warnings import warn
         if (self.geometry.mesh_name == "sphere"
                 and self.k != 0
                 and self.fmm_backend == "sumpy"):
-            raise ValueError("both direct eval and generating the FMM kernels "
-                    "are too slow")
+            warn("both direct eval and generating the FMM kernels are too slow")
 
         if (self.geometry.mesh_name == "sphere"
-                and self.expr.zero_op_name == "green_grad"):
-            raise ValueError("does not achieve sufficient precision")
+                and self.expr.zero_op_name == "grad_green"):
+            warn("does not achieve sufficient precision")
 
 
 # {{{ integral identity tester
