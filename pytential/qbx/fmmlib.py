@@ -56,7 +56,8 @@ class QBXFMMLibExpansionWranglerCodeContainer:
     def get_wrangler(self, queue, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs=None,
-            kernel_extra_kwargs=None,
+            kernel_extra_kwargs=None, *,
+            translation_classes_data=None,
             _use_target_specific_qbx=None):
 
         if source_extra_kwargs is None:
