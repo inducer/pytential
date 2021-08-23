@@ -25,8 +25,8 @@ import numpy as np
 from pytential import sym
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
     TargetPointMultiplier, LaplaceKernel)
-from pymbolic import var
-from pytential.symbolic.stokes import (StressletWrapperBase, StokesletWrapperBase)
+from pytential.symbolic.stokes import (StressletWrapperBase, StokesletWrapperBase,
+        _MU_SYM_DEFAULT)
 
 
 class StressletWrapperYoshida(StressletWrapperBase):
@@ -39,7 +39,7 @@ class StressletWrapperYoshida(StressletWrapperBase):
         International Journal for Numerical Methods in Engineering, 50(3), 525-547.
     """
 
-    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "
@@ -150,7 +150,7 @@ class StokesletWrapperYoshida(StokesletWrapperBase):
         International Journal for Numerical Methods in Engineering, 50(3), 525-547.
     """
 
-    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "

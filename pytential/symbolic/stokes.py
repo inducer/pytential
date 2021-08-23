@@ -41,6 +41,9 @@ __doc__ = """
 
 # {{{ StokesletWrapper
 
+_MU_SYM_DEFAULT = var("mu")
+
+
 class StokesletWrapperBase:
     """Wrapper class for the :class:`~sumpy.kernel.StokesletKernel` kernel.
 
@@ -240,7 +243,8 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
 
 
 class StokesletWrapper(StokesletWrapperBase):
-    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5, method="biharmonic"):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5,
+            method="biharmonic"):
         super().__init__(dim, mu_sym, nu_sym)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
@@ -316,7 +320,8 @@ class StokesletWrapper(StokesletWrapperBase):
 # {{{ StressletWrapper
 
 class StressletWrapper(StressletWrapperBase):
-    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5, method="biharmonic"):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5,
+            method="biharmonic"):
         super().__init__(dim, mu_sym, nu_sym)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
@@ -454,7 +459,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
         three-dimensional Stokes equations.
         Journal of Computational Physics, 227(3), 1613-1619.
     """
-    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "
@@ -538,7 +543,7 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
         Journal of Computational Physics, 227(3), 1613-1619.
     """
 
-    def __init__(self, dim=None, mu_sym=var("mu"), nu_sym=0.5):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "
@@ -666,7 +671,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     """
 
     def __init__(self, *, omega, alpha=None, eta=None, method="biharmonic",
-            mu_sym=var("mu"), nu_sym=0.5):
+            mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         r"""
         :arg omega: farfield behaviour of the velocity field, as defined
             by :math:`A` in [HsiaoKress1985]_ Equation 2.3.
@@ -754,7 +759,8 @@ class HebekerExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, eta=None, method="laplace", mu_sym=var("mu"), nu_sym=0.5):
+    def __init__(self, *, eta=None, method="laplace", mu_sym=_MU_SYM_DEFAULT,
+            nu_sym=0.5):
         r"""
         :arg eta: a parameter :math:`\eta > 0`. Choosing this parameter well
             can have a non-trivial effect on the conditioning of the operator.
