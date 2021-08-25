@@ -38,7 +38,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
-    PytestPyOpenCLArrayContextFactory,
+    "pyopencl-deprecated",
     ])
 
 
