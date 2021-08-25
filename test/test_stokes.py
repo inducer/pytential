@@ -86,7 +86,6 @@ def run_exterior_stokes(actx_factory, *,
             fine_order=source_ovsmp * target_order,
             qbx_order=qbx_order,
             fmm_order=fmm_order,
-            _max_leaf_refine_weight=64,
             target_association_tolerance=_target_association_tolerance,
             _expansions_in_tree_have_extent=_expansions_in_tree_have_extent)
     places["source"] = qbx
@@ -116,12 +115,8 @@ def run_exterior_stokes(actx_factory, *,
 
         del mask
 
-    #places[sym.DEFAULT_SOURCE] = qbx
-    #places[sym.DEFAULT_TARGET] = qbx.density_discr
-    #places = GeometryCollection(places)
     places = GeometryCollection(places, auto_where="source")
 
-    #density_discr = places.get_discretization(sym.DEFAULT_SOURCE)
     density_discr = places.get_discretization("source")
     logger.info("ndofs:     %d", density_discr.ndofs)
     logger.info("nelements: %d", density_discr.mesh.nelements)
