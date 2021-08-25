@@ -164,7 +164,7 @@ def run_exterior_stokes(actx_factory, *,
         # Use the naive method here as biharmonic requires source derivatives
         # of point_source
         from pytential.symbolic.stokes import StokesletWrapper
-        sym_source_pot = StokesletWrapper(ambient_dim, mu_sym=sym_nu,
+        sym_source_pot = StokesletWrapper(ambient_dim, mu_sym=sym_mu,
             nu_sym=sym_nu, method="naive").apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
@@ -221,7 +221,8 @@ def run_exterior_stokes(actx_factory, *,
         result["total"] = total
         print(f"{name}={result}")
 
-    print_timing_data(fmm_timing_data, method)
+    # print_timing_data(fmm_timing_data, method)
+
     # {{{ solve
 
     from pytential.solve import gmres
@@ -344,6 +345,10 @@ def test_exterior_stokes(actx_factory, ambient_dim, method, nu, visualize=False)
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
+        import pyopencl as cl
+        context = cl._csc()
+        queue = cl.CommandQueue(context)
+        actx_factory = lambda : PyOpenCLArrayContext(queue)
         exec(sys.argv[1])
     else:
         from pytest import main
