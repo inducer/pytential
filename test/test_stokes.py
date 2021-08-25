@@ -341,6 +341,7 @@ if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
         import pyopencl as cl
+        from arraycontext import PyOpenCLArrayContext
         context = cl._csc()
         queue = cl.CommandQueue(context)
         actx_factory = lambda : PyOpenCLArrayContext(queue)
