@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from sumpy.symbolic import make_sym_vector, sym, SympyToPymbolicMapper, sqrt
+from sumpy.symbolic import make_sym_vector, sym, SympyToPymbolicMapper
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
     DirectionalSourceDerivative, ExpressionKernel,
     KernelWrapper, TargetPointMultiplier)
@@ -749,7 +749,7 @@ if __name__ == "__main__":
             StressletKernel(3, 0, 0, 2), StressletKernel(3, 0, 1, 2)]
 
     sym_d = make_sym_vector("d", base_kernel.dim)
-    sym_r = sqrt(sum(a**2 for a in sym_d))
+    sym_r = sym.sqrt(sum(a**2 for a in sym_d))
     conv = SympyToPymbolicMapper()
     expression_knl = ExpressionKernel(3, conv(sym_d[0]*sym_d[1]/sym_r**3), 1, False)
     expression_knl2 = ExpressionKernel(3, conv(1/sym_r + sym_d[0]*sym_d[0]/sym_r**3),

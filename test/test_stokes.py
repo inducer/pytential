@@ -32,7 +32,6 @@ from pytools.obj_array import make_obj_array
 
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
@@ -344,7 +343,9 @@ if __name__ == "__main__":
         from arraycontext import PyOpenCLArrayContext
         context = cl._csc()
         queue = cl.CommandQueue(context)
-        actx_factory = lambda : PyOpenCLArrayContext(queue)
+        def actx_factory():
+            return PyOpenCLArrayContext(queue)
+
         exec(sys.argv[1])
     else:
         from pytest import main

@@ -207,6 +207,20 @@ class StressletWrapperBase:
 
         return merge_int_g_exprs(sym_expr)
 
+    def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
+        """Symbolic derivative of velocity from Stokeslet.
+
+        Returns an object array of symbolic expressions for the vector
+        resulting from integrating the *deriv_dir* target derivative of the
+        dyadic Stokeslet kernel with variable *density_vec_sym*.
+
+        :arg deriv_dir: integer denoting the axis direction for the derivative.
+        :arg density_vec_sym: a symbolic vector variable for the density vector.
+        :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
+            to :class:`~pytential.symbolic.primitives.IntG`.
+        """
+        return self.apply(density_vec_sym, qbx_forced_limit, [deriv_dir])
+
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
                         qbx_forced_limit):
         r"""Symbolic expression for viscous stress applied to a direction.
@@ -670,7 +684,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, omega, alpha=None, eta=None, method="biharmonic",
+    def __init__(self, *, omega, alpha=1.0, eta=1.0, method="biharmonic",
             mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         r"""
         :arg omega: farfield behaviour of the velocity field, as defined
@@ -687,12 +701,6 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         #   1/2 <= alpha <= 2 and max(1/alpha, 1) <= eta <= min(2, 2/alpha)
         # so we choose alpha = eta = 1, which seems to be in line with some
         # of the presented numerical results too.
-
-        if alpha is None:
-            alpha = 1.0
-
-        if eta is None:
-            eta = 1.0
 
         self.omega = omega
         self.alpha = alpha
