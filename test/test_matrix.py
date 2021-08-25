@@ -388,7 +388,7 @@ def test_block_builder(actx_factory, ambient_dim,
             itgt, isrc = index_set.block_indices(i)
 
             blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i)
-            mat_full[np.ix_(itgt, isrc)] = index_set.take(mat, i)
+            mat_full[np.ix_(itgt, isrc)] = index_set.block_take(mat, i)
 
         _, (ax1, ax2) = pt.subplots(1, 2,
                 figsize=(10, 8), dpi=300, constrained_layout=True)

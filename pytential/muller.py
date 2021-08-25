@@ -42,7 +42,7 @@ def muller_deflate(f, n, maxiter=100, eps=1e-14, z_start=None):
 
     # finds n roots
     # checks for NaN which signifies the end of the root finding process.
-    # Truncates the zero arrays created above if neccessary.
+    # Truncates the zero arrays created above if necessary.
     for i in range(n):
         miter = 0
         roots0, niter0 = muller(f_deflated, maxiter, eps)

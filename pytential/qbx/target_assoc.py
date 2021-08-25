@@ -297,7 +297,7 @@ QBX_CENTER_FINDER = AreaQueryElementwiseTemplate(
                 //
                 // 1. Find the center with minimal relative distance on either side
                 // 2. Find the side with minimal Euclidean distance from one of the
-                //    choosen centers in step 1.
+                //    chosen centers in step 1.
                 //
                 // min_dist_to_center_plus and min_dist_to_center_minus
                 // hold the absolute distances from minimum

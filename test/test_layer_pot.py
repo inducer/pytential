@@ -187,7 +187,8 @@ def test_off_surface_eval_vs_direct(actx_factory,  do_plot=False):
     places = GeometryCollection({
         "direct_qbx": direct_qbx,
         "fmm_qbx": fmm_qbx,
-        "target": ptarget})
+        "target": ptarget,
+        }, auto_where=("fmm_qbx", "target"))
 
     direct_density_discr = places.get_discretization("direct_qbx")
     fmm_density_discr = places.get_discretization("fmm_qbx")
@@ -273,7 +274,8 @@ def test_single_plus_double_with_single_fmm(actx_factory,  do_plot=False):
     places = GeometryCollection({
         "direct_qbx": direct_qbx,
         "fmm_qbx": fmm_qbx,
-        "target": ptarget})
+        "target": ptarget,
+        }, auto_where=("fmm_qbx", "target"))
 
     direct_density_discr = places.get_discretization("direct_qbx")
     fmm_density_discr = places.get_discretization("fmm_qbx")
@@ -413,7 +415,8 @@ def test_unregularized_off_surface_fmm_vs_direct(actx_factory):
     places = GeometryCollection({
         "unregularized_direct": direct,
         "unregularized_fmm": fmm,
-        "targets": ptarget})
+        "targets": ptarget,
+        }, auto_where=("unregularized_fmm", "targets"))
 
     # }}}
 
