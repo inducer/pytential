@@ -24,10 +24,15 @@ from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative)
 
 from pymbolic.mapper import Mapper
 from pymbolic.primitives import Product
-from pymbolic.interop.sympy import PymbolicToSympyMapper
+from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
 import sympy
 
 from collections import defaultdict
+
+
+__all__ = (
+    "reduce_number_of_fmms",
+    )
 
 
 def reduce_number_of_fmms(int_gs, source_dependent_variables):
@@ -118,6 +123,10 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
 
 
 def _check_int_gs_common(int_gs):
+    """Checks that the :class:`~pytential.symbolic.primtive.IntG` objects
+    have the same base kernel and other properties that would allow
+    merging them.
+    """
     base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
     common_int_g = int_gs[0].copy(target_kernel=base_kernel,
             source_kernels=(base_kernel,), densities=(1,))
@@ -132,6 +141,14 @@ def _check_int_gs_common(int_gs):
 
 
 def _convert_kernel_to_poly(kernel, axis_vars):
+    """Converts a :class:`sumpy.kernel.Kernel` object to a polynomial.
+    A :class:`sumpy.kernel.Kernel` represents a derivative operator
+    and the derivative operator is converted to a polynomial with
+    variables given by `axis_vars`.
+
+    For eg: for target y and source x the derivative operator,
+    d/dx_1 dy_2 + d/dy_1 is converted to -y_2 * y_1 + y_1.
+    """
     if isinstance(kernel, AxisTargetDerivative):
         poly = _convert_kernel_to_poly(kernel.inner_kernel, axis_vars)
         return axis_vars[kernel.axis]*poly
@@ -142,7 +159,11 @@ def _convert_kernel_to_poly(kernel, axis_vars):
 
 
 def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
-    from pymbolic.interop.sympy import SympyToPymbolicMapper
+    """This does the opposite of :func:`_convert_kernel_to_poly`
+    and converts a polynomial back to a source derivative
+    operator. First it is converted to a :class:`sumpy.kernel.Kernel`
+    and then to a :class:`~pytential.symbolic.primitives.IntG`.
+    """
     to_pymbolic = SympyToPymbolicMapper()
 
     orig_kernel = orig_int_g.source_kernels[0]
@@ -160,7 +181,11 @@ def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
 
 
 def _convert_target_poly_to_int_g(poly, orig_int_g, rhs_int_g):
-    from pymbolic.interop.sympy import SympyToPymbolicMapper
+    """This does the opposite of :func:`_convert_kernel_to_poly`
+    and converts a polynomial back to a target derivative
+    operator. It is applied to a :class:`~pytential.symbolic.primitives.IntG`
+    object and returns a new instance.
+    """
     to_pymbolic = SympyToPymbolicMapper()
 
     result = 0
@@ -243,11 +268,13 @@ class ConvertDensityToSourceExprCoeffMap(Mapper):
 
 
 def _syzygy_module(m, gens):
-    import sympy
+    """Takes as input a module of polynomials with domain `sympy.EX` represented
+    as a matrix and returns the syzygy module as a matrix of polynomials in the
+    same domain.
+    """
     from sympy.polys.orderings import grevlex
 
     def _convert_to_matrix(module, *gens):
-        import sympy
         result = []
         for syzygy in module:
             row = []
@@ -272,11 +299,12 @@ def _syzygy_module(m, gens):
 
 
 def _factor_left(mat, axis_vars):
+    """Return the left hand side of the factorisation of the matrix"""
     return _syzygy_module(_syzygy_module(mat, axis_vars).T, axis_vars).T
 
 
 def _factor_right(mat, factor_left):
-    import sympy
+    """Return the right hand side of the factorisation of the matrix"""
     ys = sympy.symbols(f"_y{{0:{factor_left.shape[1]}}}")
     factor_right = []
     for i in range(mat.shape[1]):
