@@ -395,7 +395,7 @@ class StressletWrapper(StressletWrapperBase):
                 zip(kernel_indices, dir_vec_indices, coeffs,
                         extra_deriv_dirs_vec):
             knl = self.kernel_dict[kernel_idx]
-            result += _create_int_g(knl, deriv_dirs + tuple(extra_deriv_dirs),
+            result += _create_int_g(knl, tuple(deriv_dirs) + tuple(extra_deriv_dirs),
                     density=density_sym*dir_vec_sym[dir_vec_idx],
                     qbx_forced_limit=qbx_forced_limit) * coeff
         return result/(2*(1 - nu))
