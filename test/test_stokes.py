@@ -343,6 +343,7 @@ if __name__ == "__main__":
         from arraycontext import PyOpenCLArrayContext
         context = cl._csc()
         queue = cl.CommandQueue(context)
+
         def actx_factory():
             return PyOpenCLArrayContext(queue)
 

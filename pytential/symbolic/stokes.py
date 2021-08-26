@@ -207,7 +207,8 @@ class StressletWrapperBase:
 
         return merge_int_g_exprs(sym_expr)
 
-    def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
+    def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
+            qbx_forced_limit):
         """Symbolic derivative of velocity from Stokeslet.
 
         Returns an object array of symbolic expressions for the vector
@@ -216,10 +217,12 @@ class StressletWrapperBase:
 
         :arg deriv_dir: integer denoting the axis direction for the derivative.
         :arg density_vec_sym: a symbolic vector variable for the density vector.
+        :arg dir_vec_sym: a symbolic vector variable for the normal direction.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
-        return self.apply(density_vec_sym, qbx_forced_limit, [deriv_dir])
+        return self.apply(density_vec_sym, dir_vec_sym, qbx_forced_limit,
+                [deriv_dir])
 
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
                         qbx_forced_limit):
