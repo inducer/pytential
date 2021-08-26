@@ -265,6 +265,43 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
 
 def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         source_dependent_variables=None):
+    """
+    Merge expressions involving :class:`~pytential.symbolic.primitives.IntG`
+    objects.
+
+    Several techniques are used for merging and reducing number of FMMs
+
+       * When `base_kernel` is given an `IntG` is rewritten using `base_kernel`
+         and its derivatives.
+
+       * :class:`sumpy.kernel.AxisTargetDerivative` instances are converted
+         to :class:`sumpy.kernel.AxisSourceDerivative` instances.
+
+       * If there is a sum of two `IntG`s with same target derivative and different
+         source derivatives of the same kernel, they are merged into one FMM.
+
+       * If possible, convert :class:`sumpy.kernel.AxisSourceDerivative` to
+         :class:`sumpy.kernel.DirectionalSourceDerivative`.
+
+       * Reduce the number of FMMs by converting the `IntG` expression to
+         a matrix and factoring the matrix where the left operand matrix represents
+         a transformation at target and the right matrix represents a transformation
+         at source. For this to work, we need to know which variables depend on
+         source so that they do not end up in the left operand. User needs to supply
+         this as the argument `source_dependent_variable`.
+
+    :arg base_kernel: A :class:`sumpy.kernel.Kernel` object if given will be used
+        for converting a :class:`~pytential.symbolic.primitives.IntG` to a linear
+        expression of same type with the kernel replaced by base_kernel and its
+        derivatives
+
+    :arg verbose: increase verbosity of merging
+
+    :arg source_dependent_variable: When merging expressions, consider only these
+        variables as dependent on source. Otherwise consider all variables
+        as source dependent. This is important when reducing the number of FMMs
+        needed for the output.
+    """
     replacements = {}
 
     if base_kernel is not None:
