@@ -919,10 +919,10 @@ class GeometryCollection:
         return self.copy(places=new_places)
 
     def __repr__(self):
-        return "{type(self).__name__}({repr(self.places)})"
+        return f"{type(self).__name__}({repr(self.places)})"
 
     def __str__(self):
-        return "{type(self).__name__}({repr(self.places)})"
+        return f"{type(self).__name__}({repr(self.places)})"
 
 # }}}
 
