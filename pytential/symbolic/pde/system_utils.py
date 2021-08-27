@@ -33,23 +33,96 @@ from pytools import (memoize_on_first_arg,
 from pymbolic.mapper import WalkMapper
 from pymbolic.primitives import Sum, Product, Quotient
 from pytential.symbolic.primitives import IntG, NodeCoordinateComponent
+from pytential.utils import chop, lu_solve_with_expand
 import pytential
 
 from .reduce_fmms import reduce_number_of_fmms
 
+__all__ = (
+    "merge_int_g_exprs",
+    "get_deriv_relation",
+    )
 
-def _chop(expr, tol):
-    nums = expr.atoms(sym.Number)
-    replace_dict = {}
-    for num in nums:
-        if float(abs(num)) < tol:
-            replace_dict[num] = 0
-        else:
-            new_num = float(num)
-            if abs((int(new_num) - new_num)/new_num) < tol:
-                new_num = int(new_num)
-            replace_dict[num] = new_num
-    return expr.xreplace(replace_dict)
+
+def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
+        source_dependent_variables=None):
+    """
+    Merge expressions involving :class:`~pytential.symbolic.primitives.IntG`
+    objects.
+
+    Several techniques are used for merging and reducing number of FMMs
+
+       * When `base_kernel` is given an `IntG` is rewritten using `base_kernel`
+         and its derivatives.
+
+       * :class:`sumpy.kernel.AxisTargetDerivative` instances are converted
+         to :class:`sumpy.kernel.AxisSourceDerivative` instances.
+
+       * If there is a sum of two `IntG`s with same target derivative and different
+         source derivatives of the same kernel, they are merged into one FMM.
+
+       * If possible, convert :class:`sumpy.kernel.AxisSourceDerivative` to
+         :class:`sumpy.kernel.DirectionalSourceDerivative`.
+
+       * Reduce the number of FMMs by converting the `IntG` expression to
+         a matrix and factoring the matrix where the left operand matrix represents
+         a transformation at target and the right matrix represents a transformation
+         at source. For this to work, we need to know which variables depend on
+         source so that they do not end up in the left operand. User needs to supply
+         this as the argument `source_dependent_variable`.
+
+    :arg base_kernel: A :class:`sumpy.kernel.Kernel` object if given will be used
+        for converting a :class:`~pytential.symbolic.primitives.IntG` to a linear
+        expression of same type with the kernel replaced by base_kernel and its
+        derivatives
+
+    :arg verbose: increase verbosity of merging
+
+    :arg source_dependent_variable: When merging expressions, consider only these
+        variables as dependent on source. Otherwise consider all variables
+        as source dependent. This is important when reducing the number of FMMs
+        needed for the output.
+    """
+    replacements = {}
+
+    if base_kernel is not None:
+        mapper = GetIntGs()
+        [mapper(expr) for expr in exprs]
+        int_g_s = mapper.int_g_s
+        for int_g in int_g_s:
+            new_int_g = _convert_target_deriv_to_source(int_g)
+            tgt_knl = new_int_g.target_kernel
+            if isinstance(tgt_knl, TargetPointMultiplier) \
+                    and not isinstance(tgt_knl.inner_kernel, KernelWrapper):
+                new_int_g_s = _convert_target_multiplier_to_source(new_int_g)
+            else:
+                new_int_g_s = [new_int_g]
+            replacements[int_g] = sum(convert_int_g_to_base(new_int_g,
+                base_kernel, verbose=verbose) for new_int_g in new_int_g_s)
+
+    result_coeffs = []
+    result_int_gs = []
+
+    for expr in exprs:
+        if not have_int_g_s(expr):
+            result_coeffs.append(expr)
+            result_int_gs.append(0)
+        try:
+            result_coeff, result_int_g = _merge_int_g_expr(expr, replacements)
+            result_int_g = _convert_axis_source_to_directional_source(result_int_g)
+            result_int_g = result_int_g.copy(
+                    densities=_simplify_densities(result_int_g.densities))
+            result_coeffs.append(result_coeff)
+            result_int_gs.append(result_int_g)
+        except AssertionError:
+            result_coeffs.append(expr)
+            result_int_gs.append(0)
+
+    if source_dependent_variables is not None:
+        result_int_gs = reduce_number_of_fmms(result_int_gs,
+                source_dependent_variables)
+    result = [coeff + int_g for coeff, int_g in zip(result_coeffs, result_int_gs)]
+    return np.array(result, dtype=object)
 
 
 def _n(expr):
@@ -112,35 +185,6 @@ def _get_base_kernel_matrix(base_kernel, order=None, verbose=False):
     return (L, U, perm), rand, mis
 
 
-def _LUsolve_with_expand(L, U, perm, b):
-    def forward_substitution(L, b):
-        n = len(b)
-        res = sym.Matrix(b)
-        for i in range(n):
-            for j in range(i):
-                res[i] -= L[i, j]*res[j]
-            res[i] = (res[i] / L[i, i]).expand()
-        return res
-
-    def backward_substitution(U, b):
-        n = len(b)
-        res = sym.Matrix(b)
-        for i in range(n-1, -1, -1):
-            for j in range(n - 1, i, -1):
-                res[i] -= U[i, j]*res[j]
-            res[i] = (res[i] / U[i, i]).expand()
-        return res
-
-    def permuteFwd(b, perm):
-        res = sym.Matrix(b)
-        for p, q in perm:
-            res[p], res[q] = res[q], res[p]
-        return res
-
-    return backward_substitution(U,
-            forward_substitution(L, permuteFwd(b, perm)))
-
-
 @memoize_on_first_arg
 def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-8, order=None,
         verbose=False):
@@ -161,9 +205,9 @@ def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-8, order=None,
     if verbose:
         print(kernel, end=" = ", flush=True)
 
-    sol = _LUsolve_with_expand(L, U, perm, vec)
+    sol = lu_solve_with_expand(L, U, perm, vec)
     for i, coeff in enumerate(sol):
-        coeff = _chop(coeff, tol)
+        coeff = chop(coeff, tol)
         if coeff == 0:
             continue
         if mis[i] != (-1, -1, -1):
@@ -261,87 +305,6 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
         result += int_g.copy(target_kernel=base_kernel, source_kernels=(knl,),
                 densities=(density,), kernel_arguments=new_kernel_args) * c
     return result
-
-
-def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
-        source_dependent_variables=None):
-    """
-    Merge expressions involving :class:`~pytential.symbolic.primitives.IntG`
-    objects.
-
-    Several techniques are used for merging and reducing number of FMMs
-
-       * When `base_kernel` is given an `IntG` is rewritten using `base_kernel`
-         and its derivatives.
-
-       * :class:`sumpy.kernel.AxisTargetDerivative` instances are converted
-         to :class:`sumpy.kernel.AxisSourceDerivative` instances.
-
-       * If there is a sum of two `IntG`s with same target derivative and different
-         source derivatives of the same kernel, they are merged into one FMM.
-
-       * If possible, convert :class:`sumpy.kernel.AxisSourceDerivative` to
-         :class:`sumpy.kernel.DirectionalSourceDerivative`.
-
-       * Reduce the number of FMMs by converting the `IntG` expression to
-         a matrix and factoring the matrix where the left operand matrix represents
-         a transformation at target and the right matrix represents a transformation
-         at source. For this to work, we need to know which variables depend on
-         source so that they do not end up in the left operand. User needs to supply
-         this as the argument `source_dependent_variable`.
-
-    :arg base_kernel: A :class:`sumpy.kernel.Kernel` object if given will be used
-        for converting a :class:`~pytential.symbolic.primitives.IntG` to a linear
-        expression of same type with the kernel replaced by base_kernel and its
-        derivatives
-
-    :arg verbose: increase verbosity of merging
-
-    :arg source_dependent_variable: When merging expressions, consider only these
-        variables as dependent on source. Otherwise consider all variables
-        as source dependent. This is important when reducing the number of FMMs
-        needed for the output.
-    """
-    replacements = {}
-
-    if base_kernel is not None:
-        mapper = GetIntGs()
-        [mapper(expr) for expr in exprs]
-        int_g_s = mapper.int_g_s
-        for int_g in int_g_s:
-            new_int_g = _convert_target_deriv_to_source(int_g)
-            tgt_knl = new_int_g.target_kernel
-            if isinstance(tgt_knl, TargetPointMultiplier) \
-                    and not isinstance(tgt_knl.inner_kernel, KernelWrapper):
-                new_int_g_s = _convert_target_multiplier_to_source(new_int_g)
-            else:
-                new_int_g_s = [new_int_g]
-            replacements[int_g] = sum(convert_int_g_to_base(new_int_g,
-                base_kernel, verbose=verbose) for new_int_g in new_int_g_s)
-
-    result_coeffs = []
-    result_int_gs = []
-
-    for expr in exprs:
-        if not have_int_g_s(expr):
-            result_coeffs.append(expr)
-            result_int_gs.append(0)
-        try:
-            result_coeff, result_int_g = _merge_int_g_expr(expr, replacements)
-            result_int_g = _convert_axis_source_to_directional_source(result_int_g)
-            result_int_g = result_int_g.copy(
-                    densities=_simplify_densities(result_int_g.densities))
-            result_coeffs.append(result_coeff)
-            result_int_gs.append(result_int_g)
-        except AssertionError:
-            result_coeffs.append(expr)
-            result_int_gs.append(0)
-
-    if source_dependent_variables is not None:
-        result_int_gs = reduce_number_of_fmms(result_int_gs,
-                source_dependent_variables)
-    result = [coeff + int_g for coeff, int_g in zip(result_coeffs, result_int_gs)]
-    return np.array(result, dtype=object)
 
 
 def _convert_kernel_to_poly(kernel, axis_vars):
