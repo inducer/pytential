@@ -33,6 +33,7 @@ from pytools import (memoize_on_first_arg,
 from pymbolic.mapper import WalkMapper
 from pymbolic.primitives import Sum, Product, Quotient
 from pytential.symbolic.primitives import IntG, NodeCoordinateComponent
+from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
 import pytential
 
@@ -83,22 +84,26 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         as source dependent. This is important when reducing the number of FMMs
         needed for the output.
     """
-    replacements = {}
 
     if base_kernel is not None:
-        mapper = GetIntGs()
-        [mapper(expr) for expr in exprs]
+        get_int_g_mapper = GetIntGs()
+        [get_int_g_mapper(expr) for expr in exprs]
         int_g_s = mapper.int_g_s
+        replacements = {}
         for int_g in int_g_s:
+            # First convert IntGs with target derivatives to source derivatives
             new_int_g = _convert_target_deriv_to_source(int_g)
             tgt_knl = new_int_g.target_kernel
-            if isinstance(tgt_knl, TargetPointMultiplier) \
-                    and not isinstance(tgt_knl.inner_kernel, KernelWrapper):
-                new_int_g_s = _convert_target_multiplier_to_source(new_int_g)
-            else:
-                new_int_g_s = [new_int_g]
+            # Convert IntGs with TargetMultiplier to a sum of IntGs without
+            # TargetMultipliers
+            new_int_g_s = _convert_target_multiplier_to_source(new_int_g)
+            # Convert IntGs with different kernels to expressions containing
+            # IntGs with base_kernel or its derivatives
             replacements[int_g] = sum(convert_int_g_to_base(new_int_g,
                 base_kernel, verbose=verbose) for new_int_g in new_int_g_s)
+
+        substitutor = IntGSubstitutor(replacements)
+        exprs = [subsitutor(expr) for expr in exprs]
 
     result_coeffs = []
     result_int_gs = []
@@ -108,8 +113,11 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             result_coeffs.append(expr)
             result_int_gs.append(0)
         try:
-            result_coeff, result_int_g = _merge_int_g_expr(expr, replacements)
+            # run the main routine to merge IntG expressions with
+            result_coeff, result_int_g = _merge_int_g_expr(expr)
             result_int_g = _convert_axis_source_to_directional_source(result_int_g)
+            # simplify the densities as they may become large due to pymbolic
+            # not doing automatic simplifications unlike sympy/symengine
             result_int_g = result_int_g.copy(
                     densities=_simplify_densities(result_int_g.densities))
             result_coeffs.append(result_coeff)
@@ -125,7 +133,18 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
     return np.array(result, dtype=object)
 
 
-def _n(expr):
+class IntGSubstitutor(IdentityMapper):
+    """Replaces IntGs with pymbolic expression given by the
+    replacements dictionary
+    """
+    def __init__(self, replacements):
+        self.replacements = replacements
+
+    def map_int_g(self, expr):
+        return self.replacements.get(expr, expr)
+
+
+def evalf(expr):
     from sumpy.symbolic import USE_SYMENGINE
     if USE_SYMENGINE:
         # 100 bits
@@ -175,7 +194,7 @@ def _get_base_kernel_matrix(base_kernel, order=None, verbose=False):
             replace_dict = dict(
                 (k, v) for k, v in zip(sym_vec, rand[:, rand_vec_idx])
             )
-            eval_expr = _n(expr.xreplace(replace_dict))
+            eval_expr = evalf(expr.xreplace(replace_dict))
             row.append(eval_expr)
         row.append(1)
         mat.append(row)
@@ -197,7 +216,7 @@ def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-8, order=None,
     expr = kernel.get_expression(sym_vec)
     vec = []
     for i in range(len(mis)):
-        vec.append(_n(expr.xreplace(dict((k, v) for
+        vec.append(evalf(expr.xreplace(dict((k, v) for
             k, v in zip(sym_vec, rand[:, i])))))
     vec = sym.Matrix(vec)
     result = []
@@ -231,6 +250,9 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None, verbose=Fals
 
 
 class GetIntGs(WalkMapper):
+    """A Mapper that walks expressions and collects
+    :class:`~pytential.symbolic.primitives.IntG` objects
+    """
     def __init__(self):
         self.int_g_s = set()
 
@@ -245,6 +267,9 @@ class GetIntGs(WalkMapper):
 
 
 def have_int_g_s(expr):
+    """Checks if a :mod:`pymbolic` expression has
+    :class:`~pytential.symbolic.primitives.IntG` objects
+    """
     mapper = GetIntGs()
     mapper(expr)
     return bool(mapper.int_g_s)
@@ -480,12 +505,12 @@ def _simplify_densities(densities):
     return tuple(result)
 
 
-def _merge_int_g_expr(expr, replacements):
+def _merge_int_g_expr(expr):
     if isinstance(expr, Sum):
         result_coeff = 0
         result_int_g = 0
         for c in expr.children:
-            coeff, int_g = _merge_int_g_expr(c, replacements)
+            coeff, int_g = _merge_int_g_expr(c)
             result_coeff += coeff
             if int_g == 0:
                 continue
@@ -522,19 +547,15 @@ def _merge_int_g_expr(expr, replacements):
         if not found_int_g:
             return expr, 0
         else:
-            coeff, new_int_g = _merge_int_g_expr(found_int_g, replacements)
+            coeff, new_int_g = _merge_int_g_expr(found_int_g)
             new_densities = (density * mult for density in new_int_g.densities)
             return coeff*mult, new_int_g.copy(densities=new_densities)
     elif isinstance(expr, IntG):
-        new_expr = replacements.get(expr, expr)
-        if new_expr == expr:
-            new_int_g = _convert_target_deriv_to_source(expr)
-            return 0, new_int_g
-        else:
-            return _merge_int_g_expr(new_expr, replacements)
+        new_int_g = _convert_target_deriv_to_source(expr)
+        return 0, new_int_g
     elif isinstance(expr, Quotient):
         mult = 1/expr.denominator
-        coeff, new_int_g = _merge_int_g_expr(expr.numerator, replacements)
+        coeff, new_int_g = _merge_int_g_expr(expr.numerator)
         new_densities = (density * mult for density in new_int_g.densities)
         return coeff * mult, new_int_g.copy(densities=new_densities)
     else:
