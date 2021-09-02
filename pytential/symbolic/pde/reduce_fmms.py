@@ -22,14 +22,10 @@ THE SOFTWARE.
 
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative)
 
-from pymbolic.mapper import Mapper
-from pymbolic.primitives import Product
 from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
 from pymbolic.mapper.coefficient import (
         CoefficientCollector as CoefficientCollectorBase)
 import sympy
-
-from collections import defaultdict
 
 
 __all__ = (
@@ -141,6 +137,7 @@ def _create_matrix(int_gs, source_dependent_variables, axis_vars):
     source_exprs = []
     coefficient_collector = CoefficientCollector(source_dependent_variables)
     to_sympy = PymbolicToSympyMapper()
+    matrix = []
 
     for int_g in int_gs:
         row = [0]*len(source_exprs)
