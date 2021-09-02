@@ -25,6 +25,8 @@ from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative)
 from pymbolic.mapper import Mapper
 from pymbolic.primitives import Product
 from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
+from pymbolic.mapper.coefficient import (
+        CoefficientCollector as CoefficientCollectorBase)
 import sympy
 
 from collections import defaultdict
@@ -58,7 +60,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     """
 
     source_exprs = []
-    mapper = ConvertDensityToSourceExprCoeffMap(source_dependent_variables)
+    mapper = CoefficientCollector(source_dependent_variables)
     matrix = []
     dim = int_gs[0].target_kernel.dim
     axis_vars = sympy.symbols(f"_x0:{dim}")
@@ -201,70 +203,20 @@ def _convert_target_poly_to_int_g(poly, orig_int_g, rhs_int_g):
     return result
 
 
-class ConvertDensityToSourceExprCoeffMap(Mapper):
+class CoefficientCollector(CoefficientCollectorBase):
+    """This extends :class:`pymbolic.mapper.coefficient.CoefficientCollector`
+    by extending the targets to be any expression instead of just algebraic
+    leafs
+    """
     def __init__(self, source_dependent_variables):
         self.source_dependent_variables = source_dependent_variables
 
     def __call__(self, expr):
         if expr in self.source_dependent_variables:
             return {expr: 1}
-        try:
-            return super().__call__(expr)
-        except NotImplementedError:
-            return {1: expr}
+        return super().__call__(expr)
 
     rec = __call__
-
-    def map_sum(self, expr):
-        d = defaultdict(lambda: 0)
-        for child in expr.children:
-            d_child = self.rec(child)
-            for k, v in d_child.items():
-                d[k] += v
-        return dict(d)
-
-    def map_product(self, expr):
-        if len(expr.children) > 2:
-            left = Product(tuple(expr.children[:2]))
-            right = Product(tuple(expr.children[2:]))
-            new_prod = Product((left, right))
-            return self.rec(new_prod)
-        elif len(expr.children) == 1:
-            return self.rec(expr.children[0])
-        elif len(expr.children) == 0:
-            return {1: 1}
-        left, right = expr.children
-        d_left = self.rec(left)
-        d_right = self.rec(right)
-        d = defaultdict(lambda: 0)
-        for k_left, v_left in d_left.items():
-            for k_right, v_right in d_right.items():
-                d[k_left*k_right] += v_left*v_right
-        return dict(d)
-
-    def map_power(self, expr):
-        d_base = self.rec(expr.base)
-        d_exponent = self.rec(expr.exponent)
-        if len(d_exponent) > 1:
-            raise ValueError
-        exp_k, exp_v = list(d_exponent.items())[0]
-        if exp_k != 1:
-            raise ValueError
-        for k in d_base.keys():
-            d_base[k] = d_base[k]**exp_v
-        return d_base
-
-    def map_quotient(self, expr):
-        d_num = self.rec(expr.numerator)
-        d_den = self.rec(expr.denominator)
-        if len(d_den) > 1:
-            raise ValueError
-        den_k, den_v = list(d_den.items())[0]
-        if den_k != 1:
-            raise ValueError
-        for k in d_num.keys():
-            d_num[k] /= den_v
-        return d_num
 
 
 def _syzygy_module(m, gens):
