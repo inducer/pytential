@@ -1896,7 +1896,7 @@ def project_to_tangential(xyz_vec, dofdesc=None):
 
 @_deprecate_kwargs("where", "dofdesc")
 def n_dot(vec, dofdesc=None):
-    nrm = normal(len(vec), dofdesc).as_vector()
+    nrm = normal(len(vec), dofdesc=dofdesc).as_vector()
 
     return np.dot(nrm, vec)
 
