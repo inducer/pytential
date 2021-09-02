@@ -88,7 +88,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
     if base_kernel is not None:
         get_int_g_mapper = GetIntGs()
         [get_int_g_mapper(expr) for expr in exprs]
-        int_g_s = mapper.int_g_s
+        int_g_s = get_int_g_mapper.int_g_s
         replacements = {}
 
         # Iterate all the IntGs in the expressions and create a dictionary
@@ -96,7 +96,6 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         for int_g in int_g_s:
             # First convert IntGs with target derivatives to source derivatives
             new_int_g = _convert_target_deriv_to_source(int_g)
-            tgt_knl = new_int_g.target_kernel
             # Convert IntGs with TargetMultiplier to a sum of IntGs without
             # TargetMultipliers
             new_int_g_s = _convert_target_multiplier_to_source(new_int_g)
@@ -107,7 +106,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
 
         # replace the IntGs in the expressions
         substitutor = IntGSubstitutor(replacements)
-        exprs = [subsitutor(expr) for expr in exprs]
+        exprs = [substitutor(expr) for expr in exprs]
 
     result_coeffs = []
     result_int_gs = []
@@ -525,10 +524,10 @@ def _merge_int_g_expr(expr):
             if result_int_g == 0:
                 result_int_g = int_g
                 continue
-            if (result_int_g.source != int_g.source or
-                    result_int_g.target != int_g.target or
-                    result_int_g.qbx_forced_limit != int_g.qbx_forced_limit or
-                    result_int_g.target_kernel != int_g.target_kernel):
+            if (result_int_g.source != int_g.source
+                    or result_int_g.target != int_g.target
+                    or result_int_g.qbx_forced_limit != int_g.qbx_forced_limit
+                    or result_int_g.target_kernel != int_g.target_kernel):
                 raise ValueError
 
             kernel_arguments = _merge_kernel_arguments(result_int_g.kernel_arguments,
