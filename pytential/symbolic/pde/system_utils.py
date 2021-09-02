@@ -149,14 +149,17 @@ class IntGSubstitutor(IdentityMapper):
         return self.replacements.get(expr, expr)
 
 
-def evalf(expr):
+def evalf(expr, prec=100):
+    """evaluate an expression numerically using ``prec``
+    number of bits.
+    """
     from sumpy.symbolic import USE_SYMENGINE
     if USE_SYMENGINE:
-        # 100 bits
-        return expr.n(prec=100)
+        return expr.n(prec=prec)
     else:
-        # 30 decimal places
-        return expr.n(n=30)
+        import sympy
+        dps = int(sympy.log(2**prec, 10))
+        return expr.n(n=dps)
 
 
 @memoize_on_first_arg
