@@ -42,21 +42,24 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     Reduce the number of FMMs needed for a system of expressions with
     :class:`~pytential.symbolic.primitives.IntG` objects.
 
-    This is done by converting the `IntG` expression to a matrix of polynomials
+    This is done by converting the ``IntG`` expression to a matrix of polynomials
     with d variables corresponding to d dimensions and each polynomial represents
     a derivative operator. All the properties of derivative operator that we want
     are reflected in the properties of the polynomial including addition,
     multiplication and exact polynomial division.
 
     This matrix is factored into two matrices where the left hand side matrix
-    represents a transformation at target and the right hand side matrix represents
-    a transformation at source.
+    represents a transformation at the target and the right hand side matrix
+    represents a transformation at the source.
 
     If the expressions given are not linear, then the input expressions are
     returned as is.
 
     :arg source_dependent_variables: When reducing FMMs, consider only these
-        variables as dependent on source.
+        variables as dependent on source. For eg: densities, source
+        derivative vectors. Note that there's no analogous argument for target
+        as the algorithm assumes that there are no target dependent variables
+        passed to this function.
     """
 
     source_exprs = []
