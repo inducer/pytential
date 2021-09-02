@@ -39,10 +39,10 @@ __all__ = (
 
 def reduce_number_of_fmms(int_gs, source_dependent_variables):
     """
-    Reduce the number of FMMs needed for a system of expressions with
+    Reduce the number of FMMs needed for a system of
     :class:`~pytential.symbolic.primitives.IntG` objects.
 
-    This is done by converting the ``IntG`` expression to a matrix of polynomials
+    This is done by converting the ``IntG`` object to a matrix of polynomials
     with d variables corresponding to d dimensions and each polynomial represents
     a derivative operator. All the properties of derivative operator that we want
     are reflected in the properties of the polynomial including addition,
@@ -55,11 +55,14 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     If the expressions given are not linear, then the input expressions are
     returned as is.
 
-    :arg source_dependent_variables: When reducing FMMs, consider only these
-        variables as dependent on source. For eg: densities, source
-        derivative vectors. Note that there's no analogous argument for target
-        as the algorithm assumes that there are no target dependent variables
-        passed to this function.
+    :arg int_gs: list of ``IntG`` objects.
+
+    :arg source_dependent_variables: list of :class:`pymbolic.primtives.Expression`
+        objects. When reducing FMMs, consider only these variables as dependent
+        on source. For eg: densities, source derivative vectors.
+
+    Note: there is no argument for target dependent variables as the algorithm
+    assumes that there are no target dependent variables passed to this function.
     """
 
     dim = int_gs[0].target_kernel.dim
@@ -79,6 +82,14 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     lhs_mat = _factor_left(mat, axis_vars)
     rhs_mat = _factor_right(mat, lhs_mat)
 
+    # If there are n inputs and m outputs,
+    #
+    #  - matrix = R^{m x n},
+    #  - LHS = R^{m x k},
+    #  - RHS = R^{k x n}.
+    #
+    # If k is not greater than or equal to n we are gaining nothing.
+    # Return as is.
     if rhs_mat.shape[0] >= mat.shape[0]:
         return int_gs
 
@@ -95,6 +106,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
             for poly in row] for row in rhs_mat.tolist()]
 
     # For each row in the RHS matrix, merge the IntGs to one IntG
+    # to get a total of k IntGs.
     rhs_int_gs = []
     for i in range(rhs_mat.shape[0]):
         source_kernels = []
@@ -119,9 +131,8 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
 
 
 def _create_matrix(int_gs, source_dependent_variables, axis_vars):
-    """Create a matrix from a list of expression with
-    :class:`~pytential.symbolic.primitives.IntG` objects and returns
-    the matrix and the expressions corresponding to each column.
+    """Create a matrix from a list of :class:`~pytential.symbolic.primitives.IntG`
+    objects and returns the matrix and the expressions corresponding to each column.
     Each expression is one of ``source_dependent_variables`` or
     equals to one. Each element in the matrix is a multi-variate polynomial
     and the variables in the polynomial are from ``axis_vars`` input.
