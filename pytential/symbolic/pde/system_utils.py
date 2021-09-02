@@ -90,6 +90,9 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         [get_int_g_mapper(expr) for expr in exprs]
         int_g_s = mapper.int_g_s
         replacements = {}
+
+        # Iterate all the IntGs in the expressions and create a dictionary
+        # of replacements for the IntGs
         for int_g in int_g_s:
             # First convert IntGs with target derivatives to source derivatives
             new_int_g = _convert_target_deriv_to_source(int_g)
@@ -102,6 +105,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             replacements[int_g] = sum(convert_int_g_to_base(new_int_g,
                 base_kernel, verbose=verbose) for new_int_g in new_int_g_s)
 
+        # replace the IntGs in the expressions
         substitutor = IntGSubstitutor(replacements)
         exprs = [subsitutor(expr) for expr in exprs]
 
@@ -113,8 +117,10 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             result_coeffs.append(expr)
             result_int_gs.append(0)
         try:
-            # run the main routine to merge IntG expressions with
+            # run the main routine to merge IntG expressions
             result_coeff, result_int_g = _merge_int_g_expr(expr)
+            # replace an IntG with d axis source derivatives to an IntG
+            # with one directional source derivative
             result_int_g = _convert_axis_source_to_directional_source(result_int_g)
             # simplify the densities as they may become large due to pymbolic
             # not doing automatic simplifications unlike sympy/symengine
@@ -122,7 +128,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
                     densities=_simplify_densities(result_int_g.densities))
             result_coeffs.append(result_coeff)
             result_int_gs.append(result_int_g)
-        except AssertionError:
+        except ValueError:
             result_coeffs.append(expr)
             result_int_gs.append(0)
 
@@ -300,7 +306,8 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
     if tgt_knl != tgt_knl.get_base_kernel():
         return int_g
 
-    assert len(int_g.densities) == 1
+    if not len(int_g.densities) == 1:
+        raise ValueError
     density = int_g.densities[0]
     source_kernel = int_g.source_kernels[0]
 
@@ -485,7 +492,8 @@ def _merge_kernel_arguments(x, y):
     res = x.copy()
     for k, v in y.items():
         if k in res:
-            assert res[k] == v
+            if not res[k] == v:
+                raise ValueError
         else:
             res[k] = v
     return res
@@ -517,17 +525,17 @@ def _merge_int_g_expr(expr):
             if result_int_g == 0:
                 result_int_g = int_g
                 continue
-            assert result_int_g.source == int_g.source
-            assert result_int_g.target == int_g.target
-            assert result_int_g.qbx_forced_limit == int_g.qbx_forced_limit
-            assert result_int_g.target_kernel == int_g.target_kernel
+            if (result_int_g.source != int_g.source or
+                    result_int_g.target != int_g.target or
+                    result_int_g.qbx_forced_limit != int_g.qbx_forced_limit or
+                    result_int_g.target_kernel != int_g.target_kernel):
+                raise ValueError
+
             kernel_arguments = _merge_kernel_arguments(result_int_g.kernel_arguments,
                     int_g.kernel_arguments)
             source_kernels = result_int_g.source_kernels + int_g.source_kernels
             densities = result_int_g.densities + int_g.densities
             new_source_kernels, new_densities = source_kernels, densities
-            # new_source_kernels, new_densities = \
-            #        _merge_source_kernel_duplicates(source_kernels, densities)
             result_int_g = result_int_g.copy(
                 source_kernels=tuple(new_source_kernels),
                 densities=tuple(new_densities),
@@ -541,7 +549,7 @@ def _merge_int_g_expr(expr):
             if not have_int_g_s(c):
                 mult *= c
             elif found_int_g:
-                raise RuntimeError("Not a linear expression.")
+                raise ValueError("Not a linear expression.")
             else:
                 found_int_g = c
         if not found_int_g:
