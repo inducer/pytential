@@ -393,9 +393,9 @@ def convert_target_multiplier_to_source(int_g):
     from sumpy.symbolic import SympyToPymbolicMapper
     tgt_knl = int_g.target_kernel
     if not isinstance(tgt_knl, TargetPointMultiplier):
-        return int_g
+        return [int_g]
     if isinstance(tgt_knl.inner_kernel, KernelWrapper):
-        return int_g
+        return [int_g]
 
     new_kernel_args = _filter_kernel_arguments([tgt_knl], int_g.kernel_arguments)
     result = []
