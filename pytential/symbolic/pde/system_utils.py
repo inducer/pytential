@@ -95,10 +95,10 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         # of replacements for the IntGs
         for int_g in int_g_s:
             # First convert IntGs with target derivatives to source derivatives
-            new_int_g = _convert_target_deriv_to_source(int_g)
+            new_int_g = convert_target_deriv_to_source(int_g)
             # Convert IntGs with TargetMultiplier to a sum of IntGs without
             # TargetMultipliers
-            new_int_g_s = _convert_target_multiplier_to_source(new_int_g)
+            new_int_g_s = convert_target_multiplier_to_source(new_int_g)
             # Convert IntGs with different kernels to expressions containing
             # IntGs with base_kernel or its derivatives
             replacements[int_g] = sum(convert_int_g_to_base(new_int_g,
@@ -124,7 +124,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             # simplify the densities as they may become large due to pymbolic
             # not doing automatic simplifications unlike sympy/symengine
             result_int_g = result_int_g.copy(
-                    densities=_simplify_densities(result_int_g.densities))
+                    densities=simplify_densities(result_int_g.densities))
             result_coeffs.append(result_coeff)
             result_int_gs.append(result_int_g)
         except ValueError:
@@ -386,7 +386,10 @@ def _convert_target_poly_to_int_g(poly, orig_int_g, rhs_int_g):
     return result
 
 
-def _convert_target_multiplier_to_source(int_g):
+def convert_target_multiplier_to_source(int_g):
+    """Convert an IntG with TargetMultiplier to an sum of IntGs without
+    TargetMultiplier and only source dependent transformations
+    """
     from sumpy.symbolic import SympyToPymbolicMapper
     tgt_knl = int_g.target_kernel
     if not isinstance(tgt_knl, TargetPointMultiplier):
@@ -396,6 +399,7 @@ def _convert_target_multiplier_to_source(int_g):
 
     new_kernel_args = _filter_kernel_arguments([tgt_knl], int_g.kernel_arguments)
     result = []
+    # If the kernel is G, source is y and target is x,
     # x G = y*G + (x - y)*G
     # For y*G, absorb y into a density
     new_densities = [density*NodeCoordinateComponent(tgt_knl.axis)
@@ -419,7 +423,7 @@ def _convert_target_multiplier_to_source(int_g):
     return result
 
 
-def _convert_target_deriv_to_source(int_g):
+def convert_target_deriv_to_source(int_g):
     knl = int_g.target_kernel
     source_kernels = list(int_g.source_kernels)
     coeff = 1
@@ -490,7 +494,10 @@ def _merge_source_kernel_duplicates(source_kernels, densities):
     return new_source_kernels, new_densities
 
 
-def _merge_kernel_arguments(x, y):
+def merge_kernel_arguments(x, y):
+    """merge two kernel argument dictionaries and raise a ValueError if
+    the two dictionaries do not agree for duplicate keys.
+    """
     res = x.copy()
     for k, v in y.items():
         if k in res:
@@ -501,7 +508,10 @@ def _merge_kernel_arguments(x, y):
     return res
 
 
-def _simplify_densities(densities):
+def simplify_densities(densities):
+    """Simplify densities by converting to sympy and converting back
+    to trigger sympy's automatic simplification routines.
+    """
     from sumpy.symbolic import (SympyToPymbolicMapper, PymbolicToSympyMapper)
     from pymbolic.mapper import UnsupportedExpressionError
     to_sympy = PymbolicToSympyMapper()
@@ -533,7 +543,7 @@ def _merge_int_g_expr(expr):
                     or result_int_g.target_kernel != int_g.target_kernel):
                 raise ValueError
 
-            kernel_arguments = _merge_kernel_arguments(result_int_g.kernel_arguments,
+            kernel_arguments = merge_kernel_arguments(result_int_g.kernel_arguments,
                     int_g.kernel_arguments)
             source_kernels = result_int_g.source_kernels + int_g.source_kernels
             densities = result_int_g.densities + int_g.densities
@@ -561,7 +571,7 @@ def _merge_int_g_expr(expr):
             new_densities = (density * mult for density in new_int_g.densities)
             return coeff*mult, new_int_g.copy(densities=new_densities)
     elif isinstance(expr, IntG):
-        new_int_g = _convert_target_deriv_to_source(expr)
+        new_int_g = convert_target_deriv_to_source(expr)
         return 0, new_int_g
     elif isinstance(expr, Quotient):
         mult = 1/expr.denominator
