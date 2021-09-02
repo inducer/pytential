@@ -62,50 +62,39 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
         passed to this function.
     """
 
-    source_exprs = []
-    mapper = CoefficientCollector(source_dependent_variables)
-    matrix = []
     dim = int_gs[0].target_kernel.dim
     axis_vars = sympy.symbols(f"_x0:{dim}")
-    to_sympy = PymbolicToSympyMapper()
 
     if not _check_int_gs_common(int_gs):
         return int_gs
 
-    for int_g in int_gs:
-        row = [0]*len(source_exprs)
-        for density, source_kernel in zip(int_g.densities, int_g.source_kernels):
-            try:
-                d = mapper(density)
-            except ImportError:
-                return int_gs
-            for source_expr, coeff in d.items():
-                if source_expr not in source_exprs:
-                    source_exprs.append(source_expr)
-                    row += [0]
-                poly = _convert_kernel_to_poly(source_kernel, axis_vars)
-                row[source_exprs.index(source_expr)] += poly * to_sympy(coeff)
-        matrix.append(row)
+    try:
+        mat, source_exprs = _create_matrix(int_gs, source_dependent_variables,
+            axis_vars)
+    except ValueError:
+        return int_gs
 
-    for row in matrix:
-        row += [0]*(len(source_exprs) - len(row))
-
-    mat = sympy.Matrix(matrix)
+    mat = sympy.Matrix(mat)
+    # Factor the matrix into two
     lhs_mat = _factor_left(mat, axis_vars)
     rhs_mat = _factor_right(mat, lhs_mat)
 
     if rhs_mat.shape[0] >= mat.shape[0]:
         return int_gs
 
+    # Create SymPy Polynomial objects
     rhs_mat = rhs_mat.applyfunc(lambda x: x.as_poly(*axis_vars, domain=sympy.EX))
     lhs_mat = lhs_mat.applyfunc(lambda x: x.as_poly(*axis_vars, domain=sympy.EX))
 
     base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
     base_int_g = int_gs[0].copy(target_kernel=base_kernel,
             source_kernels=(base_kernel,), densities=(1,))
+
+    # Convert each element in the RHS matrix to IntGs
     rhs_mat_int_gs = [[_convert_source_poly_to_int_g(poly, base_int_g, axis_vars)
             for poly in row] for row in rhs_mat.tolist()]
 
+    # For each row in the RHS matrix, merge the IntGs to one IntG
     rhs_int_gs = []
     for i in range(rhs_mat.shape[0]):
         source_kernels = []
@@ -118,6 +107,8 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
         rhs_int_gs.append(rhs_mat_int_gs[i][0].copy(
             source_kernels=tuple(source_kernels), densities=tuple(densities)))
 
+    # Now that we have the IntG expressions depending on the source
+    # we now have to attach the target dependent derivatives.
     res = [0]*lhs_mat.shape[0]
     for i in range(lhs_mat.shape[0]):
         for j in range(lhs_mat.shape[1]):
@@ -125,6 +116,40 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
                     int_gs[i], rhs_int_gs[j])
 
     return res
+
+
+def _create_matrix(int_gs, source_dependent_variables, axis_vars):
+    """Create a matrix from a list of expression with
+    :class:`~pytential.symbolic.primitives.IntG` objects and returns
+    the matrix and the expressions corresponding to each column.
+    Each expression is one of ``source_dependent_variables`` or
+    equals to one. Each element in the matrix is a multi-variate polynomial
+    and the variables in the polynomial are from ``axis_vars`` input.
+    Each polynomial represents a derivative operator.
+    """
+    source_exprs = []
+    coefficient_collector = CoefficientCollector(source_dependent_variables)
+    to_sympy = PymbolicToSympyMapper()
+
+    for int_g in int_gs:
+        row = [0]*len(source_exprs)
+        for density, source_kernel in zip(int_g.densities, int_g.source_kernels):
+            d = coefficient_collector(density)
+            for source_expr, coeff in d.items():
+                if source_expr not in source_exprs:
+                    source_exprs.append(source_expr)
+                    row += [0]
+                poly = _convert_kernel_to_poly(source_kernel, axis_vars)
+                row[source_exprs.index(source_expr)] += poly * to_sympy(coeff)
+        matrix.append(row)
+
+    # At the beginning, we didn't know the number of columns of the matrix.
+    # Therefore we used a list for rows and they kept expanding.
+    # Here we are adding zero padding to make the result look like a matrix.
+    for row in matrix:
+        row += [0]*(len(source_exprs) - len(row))
+
+    return matrix, source_exprs
 
 
 def _check_int_gs_common(int_gs):
