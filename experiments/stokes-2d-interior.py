@@ -200,7 +200,7 @@ def main(nelements):
     pressure = bind((qbx, PointsTarget(eval_points_dev)),
                      rep_pressure)(queue, sigma=sigma, mu=mu, normal=normal)
     pressure = pressure.get()
-    print(f"pressure = ${pressure}")
+    print(f"pressure = {pressure}")
 
     x_dir_vecs = np.zeros((2,len(eval_points[0])))
     x_dir_vecs[0,:] = 1.0
@@ -218,8 +218,8 @@ def main(nelements):
                              rep_stress)(queue, sigma=sigma, normal=normal, force_direction=y_dir_vecs, mu=mu)
     applied_stress_y = get_obj_array(applied_stress_y)
 
-    print(f"stress applied to x direction: ${applied_stress_x}")
-    print(f"stress applied to y direction: ${applied_stress_y}")
+    print(f"stress applied to x direction: {applied_stress_x}")
+    print(f"stress applied to y direction: {applied_stress_y}")
 
 
     import matplotlib.pyplot as plt
