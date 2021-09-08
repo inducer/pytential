@@ -524,7 +524,12 @@ class StressletWrapperTornberg(StressletWrapperBase):
                     qbx_forced_limit=qbx_forced_limit)
 
                 if i == j:
-                    sym_expr[i] += sym.IntG(target_kernel=self.kernel,
+                    target_kernel = self.kernel
+                    for deriv_dir in extra_deriv_dirs:
+                        target_kernel = AxisTargetDerivative(
+                                deriv_dir, target_kernel)
+
+                    sym_expr[i] += sym.IntG(target_kernel=target_kernel,
                         source_kernels=common_source_kernels,
                         densities=densities,
                         qbx_forced_limit=qbx_forced_limit)
