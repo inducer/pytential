@@ -73,12 +73,13 @@ def test_source_dependent_variable():
     knl = LaplaceKernel(dim)
     densities = make_sym_vector("sigma", 2)
     mu = Variable("mu")
+    nu = Variable("nu")
 
     int_g1 = \
         int_g_vec(AxisSourceDerivative(1, AxisSourceDerivative(0, knl)),
-             mu * densities[0], qbx_forced_limit=1) + \
+             mu * nu * densities[0], qbx_forced_limit=1) + \
         int_g_vec(AxisSourceDerivative(1, AxisSourceDerivative(1, knl)),
-             mu * densities[1], qbx_forced_limit=1)
+             mu * nu * densities[1], qbx_forced_limit=1)
 
     int_g2 = \
         int_g_vec(AxisSourceDerivative(2, AxisSourceDerivative(0, knl)),
@@ -87,14 +88,14 @@ def test_source_dependent_variable():
              densities[1], qbx_forced_limit=1)
 
     result = merge_int_g_exprs([int_g1, int_g2],
-            source_dependent_variables=[mu])
+            source_dependent_variables=[mu, nu])
 
     # Merging reduces 4 FMMs to 2 FMMs. No further reduction of FMMs.
     int_g3 = \
         IntG(target_kernel=knl,
              source_kernels=[AxisSourceDerivative(1, AxisSourceDerivative(0, knl)),
                  AxisSourceDerivative(1, AxisSourceDerivative(1, knl))],
-             densities=[mu * densities[0], mu * densities[1]],
+             densities=[mu * nu * densities[0], mu * nu *densities[1]],
              qbx_forced_limit=1)
 
     int_g4 = \

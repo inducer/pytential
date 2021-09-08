@@ -23,10 +23,11 @@ THE SOFTWARE.
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative)
 
 from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
-from pymbolic.mapper.coefficient import (
-        CoefficientCollector as CoefficientCollectorBase)
+from pymbolic.mapper import Mapper
+from pymbolic.primitives import Product
 import sympy
 import functools
+from collections import defaultdict
 
 
 __all__ = (
@@ -246,10 +247,12 @@ def _convert_target_poly_to_int_g(poly, orig_int_g, rhs_int_g):
     return result
 
 
-class CoefficientCollector(CoefficientCollectorBase):
-    """This extends :class:`pymbolic.mapper.coefficient.CoefficientCollector`
-    by extending the targets to be any expression instead of just algebraic
-    leafs
+class CoefficientCollector(Mapper):
+    """From a density expression, extracts expressions that need to be
+    evaluated for each source and coefficients for each expression.
+
+    For eg: when this mapper is given as ``s*(s + 2) + 3`` input,
+    it returns {s**2: 1, s: 2, 1: 3}.
     """
     def __init__(self, source_dependent_variables):
         self.source_dependent_variables = source_dependent_variables
@@ -259,11 +262,68 @@ class CoefficientCollector(CoefficientCollectorBase):
             return {expr: 1}
         return super().__call__(expr)
 
+    def map_sum(self, expr):
+        stride_dicts = [self.rec(ch) for ch in expr.children]
+
+        result = defaultdict(lambda: 0)
+        for stride_dict in stride_dicts:
+            for var, stride in stride_dict.items():
+                result[var] += stride
+        return dict(result)
+
     def map_algebraic_leaf(self, expr):
         if expr in self.source_dependent_variables:
             return {expr: 1}
         else:
             return {1: expr}
+
+    def map_constant(self, expr):
+        return {1: expr}
+
+    def map_product(self, expr):
+        if len(expr.children) > 2:
+            left = Product(tuple(expr.children[:2]))
+            right = Product(tuple(expr.children[2:]))
+            new_prod = Product((left, right))
+            return self.rec(new_prod)
+        elif len(expr.children) == 1:
+            return self.rec(expr.children[0])
+        elif len(expr.children) == 0:
+            return {1: 1}
+        left, right = expr.children
+        d_left = self.rec(left)
+        d_right = self.rec(right)
+        d = defaultdict(lambda: 0)
+        for k_left, v_left in d_left.items():
+            for k_right, v_right in d_right.items():
+                d[k_left*k_right] += v_left*v_right
+        return dict(d)
+
+    def map_quotient(self, expr):
+        d_num = self.rec(expr.numerator)
+        d_den = self.rec(expr.denominator)
+        if len(d_den) > 1:
+            raise ValueError
+        den_k, den_v = list(d_den.items())[0]
+
+        result = {}
+        for k in d_num.keys():
+            result[d_num[k]/den_k] /= den_v
+        return result
+
+    def map_power(self, expr):
+        d_base = self.rec(expr.base)
+        d_exponent = self.rec(expr.exponent)
+        # d_exponent should look like {1: k}
+        if len(d_exponent) > 1 or 1 not in d_exponent:
+            raise RuntimeError("nonlinear expression")
+        exp = list(d_exponent.values())[0]
+        if exp == 1:
+            return d_base
+        if len(d_base) > 1:
+            raise NotImplementedError("powers are not implemented")
+        (k, v), = d_base.items()
+        return {k**exp: v**exp}
 
     rec = __call__
 
@@ -293,7 +353,7 @@ def _syzygy_module(m, generators):
     if not column_syzygy_modules:
         raise ValueError
 
-    functools.reduce(lambda x, y: x.intersect(y), column_syzygy_modules)
+    intersection = functools.reduce(lambda x, y: x.intersect(y), column_syzygy_modules)
 
     m2 = intersection._groebner_vec()
     m3 = _convert_to_matrix(m2, *generators)
