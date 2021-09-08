@@ -42,9 +42,9 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
 
     This is done by converting the ``IntG`` object to a matrix of polynomials
     with d variables corresponding to d dimensions, where each variable represents
-    a (target) derivative operator along one of the axes. All the properties of derivative operator that we want
-    are reflected in the properties of the polynomial including addition,
-    multiplication and exact polynomial division.
+    a (target) derivative operator along one of the axes. All the properties of
+    derivative operator that we want are reflected in the properties of the
+    polynomial including addition, multiplication and exact polynomial division.
 
     This matrix is factored into two matrices, where the left hand side matrix
     represents a transformation at the target, and the right hand side matrix
@@ -357,11 +357,12 @@ def _syzygy_module(m, generators):
     if not column_syzygy_modules:
         raise ValueError
 
-    intersection = functools.reduce(lambda x, y: x.intersect(y), column_syzygy_modules)
+    intersection = functools.reduce(lambda x, y: x.intersect(y),
+            column_syzygy_modules)
 
-    m2 = intersection._groebner_vec()
-    m3 = _convert_to_matrix(m2, *generators)
-    return m3
+    # _groebner_vec returns a groebner basis of the syzygy module as a list
+    groebner_vec = intersection._groebner_vec()
+    return _convert_to_matrix(groebner_vec, *generators)
 
 
 def _factor_left(mat, axis_vars):
