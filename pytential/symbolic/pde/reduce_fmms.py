@@ -39,13 +39,13 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     :class:`~pytential.symbolic.primitives.IntG` objects.
 
     This is done by converting the ``IntG`` object to a matrix of polynomials
-    with d variables corresponding to d dimensions and each polynomial represents
-    a derivative operator. All the properties of derivative operator that we want
+    with d variables corresponding to d dimensions, where each variable represents
+    a (target) derivative operator along one of the axes. All the properties of derivative operator that we want
     are reflected in the properties of the polynomial including addition,
     multiplication and exact polynomial division.
 
-    This matrix is factored into two matrices where the left hand side matrix
-    represents a transformation at the target and the right hand side matrix
+    This matrix is factored into two matrices, where the left hand side matrix
+    represents a transformation at the target, and the right hand side matrix
     represents a transformation at the source.
 
     If the expressions given are not linear, then the input expressions are
@@ -57,8 +57,10 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
         objects. When reducing FMMs, consider only these variables as dependent
         on source. For eg: densities, source derivative vectors.
 
-    Note: there is no argument for target dependent variables as the algorithm
-    assumes that there are no target dependent variables passed to this function.
+    Note: there is no argument for target-dependent variables as the algorithm
+    assumes that there are no target-dependent-variables passed to this function.
+    (where a "target-dependent variable" represents a function discretized on the
+    targets)
     """
 
     dim = int_gs[0].target_kernel.dim
