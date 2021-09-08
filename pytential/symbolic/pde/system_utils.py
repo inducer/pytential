@@ -30,14 +30,14 @@ from pytools import (memoize_on_first_arg,
                 generate_nonnegative_integer_tuples_summing_to_at_most
                 as gnitstam)
 
-from pymbolic.mapper import WalkMapper
+from pymbolic.mapper import WalkMapper, Mapper
 from pymbolic.primitives import Sum, Product, Quotient
 from pytential.symbolic.primitives import IntG, NodeCoordinateComponent
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
 import pytential
 
-from .reduce_fmms import reduce_number_of_fmms
+from pytential.symbolic.pde.reduce_fmms import reduce_number_of_fmms
 
 __all__ = (
     "merge_int_g_exprs",
@@ -111,16 +111,17 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
     result_coeffs = []
     result_int_gs = []
 
+    merge_int_g_expr_mapper = MergeIntGExpr()
     for expr in exprs:
         if not have_int_g_s(expr):
             result_coeffs.append(expr)
             result_int_gs.append(0)
         try:
             # run the main routine to merge IntG expressions
-            result_coeff, result_int_g = _merge_int_g_expr(expr)
+            result_coeff, result_int_g = merge_int_g_expr_mapper(expr)
             # replace an IntG with d axis source derivatives to an IntG
             # with one directional source derivative
-            result_int_g = _convert_axis_source_to_directional_source(result_int_g)
+            result_int_g = convert_axis_source_to_directional_source(result_int_g)
             # simplify the densities as they may become large due to pymbolic
             # not doing automatic simplifications unlike sympy/symengine
             result_int_g = result_int_g.copy(
@@ -283,16 +284,11 @@ def have_int_g_s(expr):
     return bool(mapper.int_g_s)
 
 
-def convert_int_g_to_base(int_g, base_kernel, verbose=False):
-    result = 0
-    for knl, density in zip(int_g.source_kernels, int_g.densities):
-        result += _convert_int_g_to_base(
-                int_g.copy(source_kernels=(knl,), densities=(density,)),
-                base_kernel, verbose)
-    return result
-
-
-def _filter_kernel_arguments(knls, kernel_arguments):
+def filter_kernel_arguments(knls, kernel_arguments):
+    """From a dictionary of kernel arguments, filter out arguments
+    that are not needed for the kernels given as a list and return a new
+    dictionary.
+    """
     kernel_arg_names = set()
 
     for kernel in knls:
@@ -300,6 +296,15 @@ def _filter_kernel_arguments(knls, kernel_arguments):
             kernel_arg_names.add(karg.loopy_arg.name)
 
     return {k: v for (k, v) in kernel_arguments.items() if k in kernel_arg_names}
+
+
+def convert_int_g_to_base(int_g, base_kernel, verbose=False):
+    result = 0
+    for knl, density in zip(int_g.source_kernels, int_g.densities):
+        result += _convert_int_g_to_base(
+                int_g.copy(source_kernels=(knl,), densities=(density,)),
+                base_kernel, verbose)
+    return result
 
 
 def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
@@ -328,7 +333,7 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
     if source_kernel == source_kernel.get_base_kernel():
         result += const
 
-    new_kernel_args = _filter_kernel_arguments([base_kernel], int_g.kernel_arguments)
+    new_kernel_args = filter_kernel_arguments([base_kernel], int_g.kernel_arguments)
 
     for mi, c in deriv_relation[1]:
         knl = source_kernel.replace_base_kernel(base_kernel)
@@ -397,7 +402,7 @@ def convert_target_multiplier_to_source(int_g):
     if isinstance(tgt_knl.inner_kernel, KernelWrapper):
         return [int_g]
 
-    new_kernel_args = _filter_kernel_arguments([tgt_knl], int_g.kernel_arguments)
+    new_kernel_args = filter_kernel_arguments([tgt_knl], int_g.kernel_arguments)
     result = []
     # If the kernel is G, source is y and target is x,
     # x G = y*G + (x - y)*G
@@ -424,6 +429,10 @@ def convert_target_multiplier_to_source(int_g):
 
 
 def convert_target_deriv_to_source(int_g):
+    """Converts AxisTargetDerivatives to AxisSourceDerivative instances
+    from an IntG. If there are outer TargetPointMultiplier transformations
+    they are preserved.
+    """
     knl = int_g.target_kernel
     source_kernels = list(int_g.source_kernels)
     coeff = 1
@@ -452,7 +461,10 @@ def convert_target_deriv_to_source(int_g):
                       source_kernels=tuple(source_kernels))
 
 
-def _convert_axis_source_to_directional_source(int_g):
+def convert_axis_source_to_directional_source(int_g):
+    """Convert an IntG with d AxisSourceDerivative instances to
+    an IntG with one DirectionalSourceDerivative instance.
+    """
     if not isinstance(int_g, IntG):
         return int_g
     knls = list(int_g.source_kernels)
@@ -479,19 +491,6 @@ def _convert_axis_source_to_directional_source(int_g):
             densities=(1,),
             kernel_arguments=kernel_arguments)
     return res
-
-
-def _merge_source_kernel_duplicates(source_kernels, densities):
-    new_source_kernels = []
-    new_densities = []
-    for knl, density in zip(source_kernels, densities):
-        if knl not in new_source_kernels:
-            new_source_kernels.append(knl)
-            new_densities.append(density)
-        else:
-            idx = new_source_kernels.index(knl)
-            new_densities[idx] += density
-    return new_source_kernels, new_densities
 
 
 def merge_kernel_arguments(x, y):
@@ -525,18 +524,23 @@ def simplify_densities(densities):
     return tuple(result)
 
 
-def _merge_int_g_expr(expr):
-    if isinstance(expr, Sum):
+class MergeIntGExpr(Mapper):
+    """Given an expression, return a tuple of (constant, IntG) where
+    the constant does not have any IntG expressions in them.
+    """
+    def map_sum(self, expr):
         result_coeff = 0
         result_int_g = 0
         for c in expr.children:
-            coeff, int_g = _merge_int_g_expr(c)
+            coeff, int_g = self.rec(c)
             result_coeff += coeff
             if int_g == 0:
                 continue
             if result_int_g == 0:
+                # This is the first IntG we have encountered
                 result_int_g = int_g
                 continue
+            # Check that the two IntGs are compatible
             if (result_int_g.source != int_g.source
                     or result_int_g.target != int_g.target
                     or result_int_g.qbx_forced_limit != int_g.qbx_forced_limit
@@ -554,7 +558,8 @@ def _merge_int_g_expr(expr):
                 kernel_arguments=kernel_arguments,
             )
         return result_coeff, result_int_g
-    elif isinstance(expr, Product):
+
+    def map_product(self, expr):
         mult = 1
         found_int_g = None
         for c in expr.children:
@@ -567,19 +572,30 @@ def _merge_int_g_expr(expr):
         if not found_int_g:
             return expr, 0
         else:
-            coeff, new_int_g = _merge_int_g_expr(found_int_g)
+            coeff, new_int_g = self.rec(found_int_g)
             new_densities = (density * mult for density in new_int_g.densities)
             return coeff*mult, new_int_g.copy(densities=new_densities)
-    elif isinstance(expr, IntG):
+
+    def map_int_g(self, expr):
         new_int_g = convert_target_deriv_to_source(expr)
         return 0, new_int_g
-    elif isinstance(expr, Quotient):
-        mult = 1/expr.denominator
-        coeff, new_int_g = _merge_int_g_expr(expr.numerator)
+
+    def map_quotient(self, expr):
+        mult = Quotient(1, expr.denominator)
+        coeff, new_int_g = self.rec(expr.numerator)
         new_densities = (density * mult for density in new_int_g.densities)
         return coeff * mult, new_int_g.copy(densities=new_densities)
-    else:
+
+    def handle_unsupported_expression(self, expr, *args, **kwargs):
         return expr, 0
+
+    def __call__(self, expr):
+        try:
+            return super().__call__(expr)
+        except NotImplementedError:
+            return expr, 0
+
+    rec = __call__
 
 
 if __name__ == "__main__":
@@ -601,7 +617,8 @@ if __name__ == "__main__":
     #kernels += [ElasticityKernel(3, 0, 1, poisson_ratio="0.4"),
     #        ElasticityKernel(3, 0, 0, poisson_ratio="0.4")]
     get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=True)
-    """density = pytential.sym.make_sym_vector("d", 1)[0]
+    density = pytential.sym.make_sym_vector("d", 1)[0]
+    from pytential.symbolic.primitives import int_g_vec
     int_g_1 = int_g_vec(TargetPointMultiplier(2, AxisTargetDerivative(2,
             AxisSourceDerivative(1, AxisSourceDerivative(0,
                 LaplaceKernel(3))))), density, qbx_forced_limit=1)
@@ -609,4 +626,4 @@ if __name__ == "__main__":
         AxisSourceDerivative(0, AxisSourceDerivative(0,
             LaplaceKernel(3))))), density, qbx_forced_limit=1)
     print(merge_int_g_exprs([int_g_1, int_g_2],
-        base_kernel=BiharmonicKernel(3), verbose=True)[0])"""
+        base_kernel=BiharmonicKernel(3), verbose=True)[0])
