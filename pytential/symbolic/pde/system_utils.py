@@ -31,7 +31,7 @@ from pytools import (memoize_on_first_arg,
                 as gnitstam)
 
 from pymbolic.mapper import WalkMapper, Mapper
-from pymbolic.primitives import Sum, Product, Quotient
+from pymbolic.primitives import Quotient
 from pytential.symbolic.primitives import IntG, NodeCoordinateComponent
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
