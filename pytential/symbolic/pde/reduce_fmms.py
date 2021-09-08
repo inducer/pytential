@@ -152,7 +152,7 @@ def _create_matrix(int_gs, source_dependent_variables, axis_vars):
                 if source_expr not in source_exprs:
                     source_exprs.append(source_expr)
                     row += [0]
-                poly = _convert_kernel_to_poly(source_kernel, axis_vars)
+                poly = _kernel_target_derivs_as_poly(source_kernel, axis_vars)
                 row[source_exprs.index(source_expr)] += poly * to_sympy(coeff)
         matrix.append(row)
 
@@ -183,7 +183,7 @@ def _check_int_gs_common(int_gs):
     return True
 
 
-def _convert_kernel_to_poly(kernel, axis_vars):
+def _kernel_target_derivs_as_poly(kernel, axis_vars):
     """Converts a :class:`sumpy.kernel.Kernel` object to a polynomial.
     A :class:`sumpy.kernel.Kernel` represents a derivative operator
     and the derivative operator is converted to a polynomial with
@@ -193,16 +193,16 @@ def _convert_kernel_to_poly(kernel, axis_vars):
     d/dx_1 dy_2 + d/dy_1 is converted to -y_2 * y_1 + y_1.
     """
     if isinstance(kernel, AxisTargetDerivative):
-        poly = _convert_kernel_to_poly(kernel.inner_kernel, axis_vars)
+        poly = _kernel_target_derivs_as_poly(kernel.inner_kernel, axis_vars)
         return axis_vars[kernel.axis]*poly
     elif isinstance(kernel, AxisSourceDerivative):
-        poly = _convert_kernel_to_poly(kernel.inner_kernel, axis_vars)
+        poly = _kernel_target_derivs_as_poly(kernel.inner_kernel, axis_vars)
         return -axis_vars[kernel.axis]*poly
     return 1
 
 
 def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
-    """This does the opposite of :func:`_convert_kernel_to_poly`
+    """This does the opposite of :func:`_kernel_target_derivs_as_poly`
     and converts a polynomial back to a source derivative
     operator. First it is converted to a :class:`sumpy.kernel.Kernel`
     and then to a :class:`~pytential.symbolic.primitives.IntG`.
@@ -225,7 +225,7 @@ def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
 
 
 def _convert_target_poly_to_int_g(poly, orig_int_g, rhs_int_g):
-    """This does the opposite of :func:`_convert_kernel_to_poly`
+    """This does the opposite of :func:`_kernel_target_derivs_as_poly`
     and converts a polynomial back to a target derivative
     operator. It is applied to a :class:`~pytential.symbolic.primitives.IntG`
     object and returns a new instance.
