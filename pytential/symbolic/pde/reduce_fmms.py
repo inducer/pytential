@@ -136,10 +136,14 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
 def _create_matrix(int_gs, source_dependent_variables, axis_vars):
     """Create a matrix from a list of :class:`~pytential.symbolic.primitives.IntG`
     objects and returns the matrix and the expressions corresponding to each column.
-    Each expression is one of ``source_dependent_variables`` or
-    equals to one. Each element in the matrix is a multi-variate polynomial
-    and the variables in the polynomial are from ``axis_vars`` input.
-    Each polynomial represents a derivative operator.
+    Each expression is an expression containing ``source_dependent_variables``.
+    Each element in the matrix is a multi-variate polynomial and the variables
+    in the polynomial are from ``axis_vars`` input. Each polynomial represents
+    a derivative operator.
+
+    Number of rows of the returned matrix is equal to the number of ``int_gs`` and
+    the number of columns is equal to the number of input source dependent
+    expressions.
     """
     source_exprs = []
     coefficient_collector = CoefficientCollector(source_dependent_variables)
