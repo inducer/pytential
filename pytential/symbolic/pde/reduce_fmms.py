@@ -267,24 +267,24 @@ class CoefficientCollector(CoefficientCollectorBase):
     rec = __call__
 
 
-def _syzygy_module(m, gens):
+def _syzygy_module(m, generators):
     """Takes as input a module of polynomials with domain `sympy.EX` represented
     as a matrix and returns the syzygy module as a matrix of polynomials in the
     same domain.
     """
     from sympy.polys.orderings import grevlex
 
-    def _convert_to_matrix(module, *gens):
+    def _convert_to_matrix(module, *generators):
         result = []
         for syzygy in module:
             row = []
             for dmp in syzygy.data:
-                row.append(sympy.Poly(dmp.to_dict(), *gens,
+                row.append(sympy.Poly(dmp.to_dict(), *generators,
                     domain=sympy.EX).as_expr())
             result.append(row)
         return sympy.Matrix(result)
 
-    ring = sympy.EX.old_poly_ring(*gens, order=grevlex)
+    ring = sympy.EX.old_poly_ring(*generators, order=grevlex)
     column_ideals = [ring.free_module(1).submodule(*m[:, i].tolist(), order=grevlex)
                 for i in range(m.shape[1])]
     column_syzygy_modules = [ideal.syzygy_module() for ideal in column_ideals]
@@ -297,7 +297,7 @@ def _syzygy_module(m, gens):
         intersection = intersection.intersect(column_syzygy_modules[i])
 
     m2 = intersection._groebner_vec()
-    m3 = _convert_to_matrix(m2, *gens)
+    m3 = _convert_to_matrix(m2, *generators)
     return m3
 
 
