@@ -75,8 +75,11 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
 
     mat = sympy.Matrix(mat)
     # Factor the matrix into two
-    lhs_mat = _factor_left(mat, axis_vars)
-    rhs_mat = _factor_right(mat, lhs_mat)
+    try:
+        lhs_mat = _factor_left(mat, axis_vars)
+        rhs_mat = _factor_right(mat, lhs_mat)
+    except ValueError:
+        return int_gs
 
     # If there are n inputs and m outputs,
     #
@@ -202,6 +205,7 @@ def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
     operator. First it is converted to a :class:`sumpy.kernel.Kernel`
     and then to a :class:`~pytential.symbolic.primitives.IntG`.
     """
+    from pytential.symbolic.pde.system_utils import simplify_densities
     to_pymbolic = SympyToPymbolicMapper()
 
     orig_kernel = orig_int_g.source_kernels[0]
@@ -215,7 +219,7 @@ def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
         source_kernels.append(kernel)
         densities.append(to_pymbolic(coeff) * (-1)**sum(monom))
     return orig_int_g.copy(source_kernels=tuple(source_kernels),
-            densities=tuple(densities))
+            densities=tuple(simplify_densities(densities)))
 
 
 def _convert_target_poly_to_int_g(poly, orig_int_g, rhs_int_g):
@@ -252,6 +256,12 @@ class CoefficientCollector(CoefficientCollectorBase):
             return {expr: 1}
         return super().__call__(expr)
 
+    def map_algebraic_leaf(self, expr):
+        if expr in self.source_dependent_variables:
+            return {expr: 1}
+        else:
+            return {1: expr}
+
     rec = __call__
 
 
@@ -276,6 +286,9 @@ def _syzygy_module(m, gens):
     column_ideals = [ring.free_module(1).submodule(*m[:, i].tolist(), order=grevlex)
                 for i in range(m.shape[1])]
     column_syzygy_modules = [ideal.syzygy_module() for ideal in column_ideals]
+
+    if not column_syzygy_modules:
+        raise ValueError
 
     intersection = column_syzygy_modules[0]
     for i in range(1, len(column_syzygy_modules)):
