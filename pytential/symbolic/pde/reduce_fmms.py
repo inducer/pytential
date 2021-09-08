@@ -26,6 +26,7 @@ from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
 from pymbolic.mapper.coefficient import (
         CoefficientCollector as CoefficientCollectorBase)
 import sympy
+import functools
 
 
 __all__ = (
@@ -292,9 +293,7 @@ def _syzygy_module(m, generators):
     if not column_syzygy_modules:
         raise ValueError
 
-    intersection = column_syzygy_modules[0]
-    for i in range(1, len(column_syzygy_modules)):
-        intersection = intersection.intersect(column_syzygy_modules[i])
+    functools.reduce(lambda x, y: x.intersect(y), column_syzygy_modules)
 
     m2 = intersection._groebner_vec()
     m3 = _convert_to_matrix(m2, *generators)
