@@ -93,16 +93,16 @@ def test_source_dependent_variable():
     # Merging reduces 4 FMMs to 2 FMMs. No further reduction of FMMs.
     int_g3 = \
         IntG(target_kernel=knl,
-             source_kernels=[AxisSourceDerivative(1, AxisSourceDerivative(0, knl)),
-                 AxisSourceDerivative(1, AxisSourceDerivative(1, knl))],
-             densities=[mu * nu * densities[0], mu * nu *densities[1]],
+             source_kernels=[AxisSourceDerivative(1, AxisSourceDerivative(1, knl)),
+                 AxisSourceDerivative(1, AxisSourceDerivative(0, knl))],
+             densities=[mu * nu * densities[1], mu * nu * densities[0]],
              qbx_forced_limit=1)
 
     int_g4 = \
         IntG(target_kernel=knl,
-             source_kernels=[AxisSourceDerivative(2, AxisSourceDerivative(0, knl)),
-                 AxisSourceDerivative(2, AxisSourceDerivative(1, knl))],
-             densities=[densities[0], densities[1]],
+             source_kernels=[AxisSourceDerivative(2, AxisSourceDerivative(1, knl)),
+                 AxisSourceDerivative(2, AxisSourceDerivative(0, knl))],
+             densities=[densities[1], densities[0]],
              qbx_forced_limit=1)
 
     assert result[0] == int_g3
@@ -131,19 +131,17 @@ def test_base_kernel_merge():
 
     sources = [NodeCoordinateComponent(i) for i in range(dim)]
 
-    source_kernels = [
+    source_kernels = list(reversed([
         AxisSourceDerivative(i, AxisSourceDerivative(i, biharm_knl))
-        for i in range(dim)]
+        for i in range(dim)]))
 
     int_g3 = IntG(target_kernel=biharm_knl,
-            source_kernels=source_kernels + [AxisSourceDerivative(0, biharm_knl)],
-            densities=[density*sources[0]*(-1.0) for i in range(dim)]
-                    + [2*density],
+            source_kernels=[AxisSourceDerivative(0, biharm_knl)] + source_kernels,
+            densities=[2*density] + [density*sources[0]*(-1.0) for _ in range(dim)],
             qbx_forced_limit=1)
     int_g4 = IntG(target_kernel=biharm_knl,
-            source_kernels=source_kernels + [AxisSourceDerivative(1, biharm_knl)],
-            densities=[density*sources[1]*(-1.0) for i in range(dim)]
-                    + [2*density],
+            source_kernels=[AxisSourceDerivative(1, biharm_knl)] + source_kernels,
+            densities=[2*density] + [density*sources[1]*(-1.0) for _ in range(dim)],
             qbx_forced_limit=1)
 
     assert int_g3 == result[0]

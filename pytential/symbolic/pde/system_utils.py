@@ -30,8 +30,8 @@ from pytools import (memoize_on_first_arg,
                 generate_nonnegative_integer_tuples_summing_to_at_most
                 as gnitstam)
 
-from pymbolic.mapper import WalkMapper, Mapper
-from pymbolic.primitives import Quotient
+from pymbolic.mapper import WalkMapper
+from pymbolic.mapper.coefficient import CoefficientCollector
 from pytential.symbolic.primitives import IntG, NodeCoordinateComponent
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
@@ -85,10 +85,9 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         needed for the output.
     """
 
+    int_g_s = get_int_g_s(exprs)
+
     if base_kernel is not None:
-        get_int_g_mapper = GetIntGs()
-        [get_int_g_mapper(expr) for expr in exprs]
-        int_g_s = get_int_g_mapper.int_g_s
         replacements = {}
 
         # Iterate all the IntGs in the expressions and create a dictionary
@@ -108,35 +107,91 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         substitutor = IntGSubstitutor(replacements)
         exprs = [substitutor(expr) for expr in exprs]
 
-    result_coeffs = []
-    result_int_gs = []
+    groups = []
+    exprs_per_groups = []
 
-    merge_int_g_expr_mapper = MergeIntGExpr()
-    for expr in exprs:
-        if not have_int_g_s(expr):
-            result_coeffs.append(expr)
-            result_int_gs.append(0)
+    result = np.array([0 for _ in exprs], dtype=object)
+
+    int_g_cc = IntGCoefficientCollector()
+    for i, expr in enumerate(exprs):
         try:
-            # run the main routine to merge IntG expressions
-            result_coeff, result_int_g = merge_int_g_expr_mapper(expr)
+            int_g_coeff_map = int_g_cc(expr)
+        except (RuntimeError, AssertionError):
+            # Don't touch this expression, because it's not linear.
+            # FIXME: if there's ever any use case, then we can extract
+            # some IntGs from them.
+            result[i] += expr
+            continue
+        for int_g, coeff in int_g_coeff_map.items():
+            if int_g == 1:
+                # coeff map may have some constant terms, add them to
+                result[i] += coeff
+                continue
+
+            # convert TargetDerivative to source before checking the group
+            # as the target kernel has to be the same for merging
+            int_g = convert_target_deriv_to_source(int_g)
+            group = get_int_g_group(int_g)
+            if group in groups:
+                group_idx = groups.index(group)
+            else:
+                groups.append(group)
+                group_idx = len(groups) - 1
+                exprs_per_groups.append([None]*len(exprs))
+
+            # move the coefficient inside
+            new_int_g = int_g.copy(densities=[density*coeff for density in
+                    int_g.densities])
+            prev_int_g = exprs_per_groups[group_idx][i]
+            if not prev_int_g:
+                exprs_per_groups[group_idx][i] = new_int_g
+            else:
+                merged_int_g = merge_two_int_gs(new_int_g, prev_int_g)
+                exprs_per_groups[group_idx][i] = merged_int_g
+
+    # Do some simplifications after merging. Not stricty necessary
+    for grouped_exprs in exprs_per_groups:
+        for i, int_g in enumerate(grouped_exprs):
+            if not int_g:
+                continue
             # replace an IntG with d axis source derivatives to an IntG
             # with one directional source derivative
-            result_int_g = convert_axis_source_to_directional_source(result_int_g)
+            result_int_g = convert_axis_source_to_directional_source(int_g)
             # simplify the densities as they may become large due to pymbolic
             # not doing automatic simplifications unlike sympy/symengine
             result_int_g = result_int_g.copy(
                     densities=simplify_densities(result_int_g.densities))
-            result_coeffs.append(result_coeff)
-            result_int_gs.append(result_int_g)
-        except ValueError:
-            result_coeffs.append(expr)
-            result_int_gs.append(0)
+            grouped_exprs[i] = result_int_g
 
-    if source_dependent_variables is not None:
-        result_int_gs = reduce_number_of_fmms(result_int_gs,
+    for grouped_exprs in exprs_per_groups:
+        idx_to_expr_dict = {idx: expr for idx, expr in enumerate(grouped_exprs)
+            if expr}
+        filtered_group_exprs = list(idx_to_expr_dict.values())
+        if source_dependent_variables is not None:
+            # try to reduce the number of fmms
+            filtered_group_exprs = reduce_number_of_fmms(filtered_group_exprs,
                 source_dependent_variables)
-    result = [coeff + int_g for coeff, int_g in zip(result_coeffs, result_int_gs)]
-    return np.array(result, dtype=object)
+        for idx, expr in zip(idx_to_expr_dict.keys(), filtered_group_exprs):
+            result[idx] += expr
+    return result
+
+
+def get_int_g_group(int_g):
+    return (int_g.source, int_g.target, int_g.qbx_forced_limit,
+        int_g.target_kernel)
+
+
+def merge_two_int_gs(int_g_1, int_g_2):
+    kernel_arguments = merge_kernel_arguments(int_g_1.kernel_arguments,
+            int_g_2.kernel_arguments)
+    source_kernels = int_g_1.source_kernels + int_g_2.source_kernels
+    densities = int_g_1.densities + int_g_2.densities
+
+    return int_g_1.copy(
+        source_kernels=tuple(source_kernels),
+        densities=tuple(densities),
+        kernel_arguments=kernel_arguments,
+    )
 
 
 class IntGSubstitutor(IdentityMapper):
@@ -148,6 +203,11 @@ class IntGSubstitutor(IdentityMapper):
 
     def map_int_g(self, expr):
         return self.replacements.get(expr, expr)
+
+
+class IntGCoefficientCollector(CoefficientCollector):
+    def map_int_g(self, expr):
+        return {expr: 1}
 
 
 def evalf(expr, prec=100):
@@ -282,6 +342,15 @@ def have_int_g_s(expr):
     mapper = GetIntGs()
     mapper(expr)
     return bool(mapper.int_g_s)
+
+
+def get_int_g_s(exprs):
+    """Returns all :class:`~pytential.symbolic.primitives.IntG` objects
+    in a list of :mod:`pymbolic` expressions.
+    """
+    get_int_g_mapper = GetIntGs()
+    [get_int_g_mapper(expr) for expr in exprs]
+    return get_int_g_mapper.int_g_s
 
 
 def filter_kernel_arguments(knls, kernel_arguments):
@@ -522,80 +591,6 @@ def simplify_densities(densities):
         except (ValueError, NotImplementedError, UnsupportedExpressionError):
             result.append(density)
     return tuple(result)
-
-
-class MergeIntGExpr(Mapper):
-    """Given an expression, return a tuple of (constant, IntG) where
-    the constant does not have any IntG expressions in them.
-    """
-    def map_sum(self, expr):
-        result_coeff = 0
-        result_int_g = 0
-        for c in expr.children:
-            coeff, int_g = self.rec(c)
-            result_coeff += coeff
-            if int_g == 0:
-                continue
-            if result_int_g == 0:
-                # This is the first IntG we have encountered
-                result_int_g = int_g
-                continue
-            # Check that the two IntGs are compatible
-            if (result_int_g.source != int_g.source
-                    or result_int_g.target != int_g.target
-                    or result_int_g.qbx_forced_limit != int_g.qbx_forced_limit
-                    or result_int_g.target_kernel != int_g.target_kernel):
-                raise ValueError
-
-            kernel_arguments = merge_kernel_arguments(result_int_g.kernel_arguments,
-                    int_g.kernel_arguments)
-            source_kernels = result_int_g.source_kernels + int_g.source_kernels
-            densities = result_int_g.densities + int_g.densities
-            new_source_kernels, new_densities = source_kernels, densities
-            result_int_g = result_int_g.copy(
-                source_kernels=tuple(new_source_kernels),
-                densities=tuple(new_densities),
-                kernel_arguments=kernel_arguments,
-            )
-        return result_coeff, result_int_g
-
-    def map_product(self, expr):
-        mult = 1
-        found_int_g = None
-        for c in expr.children:
-            if not have_int_g_s(c):
-                mult *= c
-            elif found_int_g:
-                raise ValueError("Not a linear expression.")
-            else:
-                found_int_g = c
-        if not found_int_g:
-            return expr, 0
-        else:
-            coeff, new_int_g = self.rec(found_int_g)
-            new_densities = (density * mult for density in new_int_g.densities)
-            return coeff*mult, new_int_g.copy(densities=new_densities)
-
-    def map_int_g(self, expr):
-        new_int_g = convert_target_deriv_to_source(expr)
-        return 0, new_int_g
-
-    def map_quotient(self, expr):
-        mult = Quotient(1, expr.denominator)
-        coeff, new_int_g = self.rec(expr.numerator)
-        new_densities = (density * mult for density in new_int_g.densities)
-        return coeff * mult, new_int_g.copy(densities=new_densities)
-
-    def handle_unsupported_expression(self, expr, *args, **kwargs):
-        return expr, 0
-
-    def __call__(self, expr):
-        try:
-            return super().__call__(expr)
-        except NotImplementedError:
-            return expr, 0
-
-    rec = __call__
 
 
 if __name__ == "__main__":

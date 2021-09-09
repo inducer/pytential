@@ -68,8 +68,8 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     dim = int_gs[0].target_kernel.dim
     axis_vars = sympy.symbols(f"_x0:{dim}")
 
-    if not _check_int_gs_common(int_gs):
-        return int_gs
+    # A high level driver for this function should send int_gs that are common.
+    assert _check_int_gs_common(int_gs)
 
     try:
         mat, source_exprs = _create_matrix(int_gs, source_dependent_variables,
