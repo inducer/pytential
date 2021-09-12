@@ -29,6 +29,7 @@ from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
 from pytools import (memoize_on_first_arg,
                 generate_nonnegative_integer_tuples_summing_to_at_most
                 as gnitstam)
+from collections import defaultdict
 
 from pymbolic.mapper import WalkMapper
 from pymbolic.mapper.coefficient import CoefficientCollector
@@ -107,10 +108,12 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         substitutor = IntGSubstitutor(replacements)
         exprs = [substitutor(expr) for expr in exprs]
 
-    groups = []
-    exprs_per_groups = []
+    # Using a dictionary instead of a set because sets are unordered
+    all_source_groups = dict()
 
     result = np.array([0 for _ in exprs], dtype=object)
+
+    int_gs_by_group_for_index = []
 
     int_g_cc = IntGCoefficientCollector()
     for i, expr in enumerate(exprs):
@@ -122,6 +125,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             # some IntGs from them.
             result[i] += expr
             continue
+        int_gs_by_group = {}
         for int_g, coeff in int_g_coeff_map.items():
             if int_g == 1:
                 # coeff map may have some constant terms, add them to
@@ -131,29 +135,25 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             # convert TargetDerivative to source before checking the group
             # as the target kernel has to be the same for merging
             int_g = convert_target_deriv_to_source(int_g)
-            group = get_int_g_group(int_g)
-            if group in groups:
-                group_idx = groups.index(group)
-            else:
-                groups.append(group)
-                group_idx = len(groups) - 1
-                exprs_per_groups.append([None]*len(exprs))
-
             # move the coefficient inside
-            new_int_g = int_g.copy(densities=[density*coeff for density in
+            int_g = int_g.copy(densities=[density*coeff for density in
                     int_g.densities])
-            prev_int_g = exprs_per_groups[group_idx][i]
-            if not prev_int_g:
-                exprs_per_groups[group_idx][i] = new_int_g
-            else:
-                merged_int_g = merge_two_int_gs(new_int_g, prev_int_g)
-                exprs_per_groups[group_idx][i] = merged_int_g
 
-    # Do some simplifications after merging. Not stricty necessary
-    for grouped_exprs in exprs_per_groups:
-        for i, int_g in enumerate(grouped_exprs):
-            if not int_g:
-                continue
+            source_group = get_int_g_source_group(int_g)
+            target_group = get_int_g_target_group(int_g)
+            group = (source_group, target_group)
+
+            all_source_groups[source_group] = 1
+
+            if group not in int_gs_by_group:
+                new_int_g = int_g
+            else:
+                prev_int_g = int_gs_by_group[group]
+                new_int_g = merge_two_int_gs(int_g, prev_int_g)
+            int_gs_by_group[group] = new_int_g
+
+        # Do some simplifications after merging. Not stricty necessary
+        for group, int_g in int_gs_by_group.items():
             # replace an IntG with d axis source derivatives to an IntG
             # with one directional source derivative
             result_int_g = convert_axis_source_to_directional_source(int_g)
@@ -161,24 +161,63 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             # not doing automatic simplifications unlike sympy/symengine
             result_int_g = result_int_g.copy(
                     densities=simplify_densities(result_int_g.densities))
-            grouped_exprs[i] = result_int_g
+            int_gs_by_group[group] = result_int_g
 
-    for grouped_exprs in exprs_per_groups:
-        idx_to_expr_dict = {idx: expr for idx, expr in enumerate(grouped_exprs)
-            if expr}
-        filtered_group_exprs = list(idx_to_expr_dict.values())
-        if source_dependent_variables is not None:
-            # try to reduce the number of fmms
-            filtered_group_exprs = reduce_number_of_fmms(filtered_group_exprs,
+        int_gs_by_group_for_index.append(int_gs_by_group)
+
+    # if source dependent variables is not given return early.
+    # check for (sdv is None) instead of just (sdv) because
+    # it can be an empty list.
+    if source_dependent_variables is None:
+        for iexpr, int_gs_by_group in enumerate(int_gs_by_group_for_index):
+            for int_g in int_gs_by_group.values():
+                result[iexpr] += int_g
+        return result
+
+    # Do the calculation for each source_group separately and assemble them
+    for source_group in all_source_groups.keys():
+        insn_to_idx_mapping = defaultdict(list)
+        for idx, int_gs_by_group in enumerate(int_gs_by_group_for_index):
+            for group, int_g in int_gs_by_group.items():
+                if group[0] != source_group:
+                    continue
+                common_int_g = remove_target_identifiers(int_g)
+                insn_to_idx_mapping[common_int_g].append((idx, int_g))
+        insns_to_reduce = list(insn_to_idx_mapping.keys())
+        reduced_insns = reduce_number_of_fmms(insns_to_reduce,
                 source_dependent_variables)
-        for idx, expr in zip(idx_to_expr_dict.keys(), filtered_group_exprs):
-            result[idx] += expr
+
+        for insn, reduced_insn in zip(insns_to_reduce, reduced_insns):
+            for idx, int_g in insn_to_idx_mapping[insn]:
+                result[idx] += restore_target_identifiers(reduced_insn, int_g)
     return result
 
 
-def get_int_g_group(int_g):
-    return (int_g.source, int_g.target, int_g.qbx_forced_limit,
-        int_g.target_kernel, tuple(sorted(int_g.kernel_arguments.items())))
+def get_int_g_source_group(int_g):
+    return (int_g.source, tuple(sorted(int_g.kernel_arguments.items())))
+
+
+def get_int_g_target_group(int_g):
+    return (int_g.target, int_g.qbx_forced_limit, int_g.target_kernel)
+
+
+def remove_target_identifiers(int_g):
+    return int_g.copy(target=None, qbx_forced_limit=None,
+            target_kernel=int_g.target_kernel.get_base_kernel())
+
+
+def restore_target_identifiers(expr, orig_int_g):
+    int_gs = get_int_g_s([expr])
+
+    replacements = {
+        int_g: int_g.copy(target=orig_int_g.target,
+                qbx_forced_limit=orig_int_g.qbx_forced_limit,
+                target_kernel=int_g.target_kernel.replace_base_kernel(
+                    orig_int_g.target_kernel))
+        for int_g in int_gs}
+
+    substitutor = IntGSubstitutor(replacements)
+    return substitutor(expr)
 
 
 def merge_two_int_gs(int_g_1, int_g_2):
