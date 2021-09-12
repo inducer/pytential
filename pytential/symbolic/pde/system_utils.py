@@ -149,6 +149,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
                 new_int_g = int_g
             else:
                 prev_int_g = int_gs_by_group[group]
+                # Let's merge IntGs with the same group
                 new_int_g = merge_two_int_gs(int_g, prev_int_g)
             int_gs_by_group[group] = new_int_g
 
@@ -165,8 +166,8 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
 
         int_gs_by_group_for_index.append(int_gs_by_group)
 
-    # if source dependent variables is not given return early.
-    # check for (sdv is None) instead of just (sdv) because
+    # If source_dependent_variables (sdv) is not given return early.
+    # Check for (sdv is None) instead of just (sdv) because
     # it can be an empty list.
     if source_dependent_variables is None:
         for iexpr, int_gs_by_group in enumerate(int_gs_by_group_for_index):
@@ -181,32 +182,76 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             for group, int_g in int_gs_by_group.items():
                 if group[0] != source_group:
                     continue
-                common_int_g = remove_target_identifiers(int_g)
+                # For each output, we now have a sum of int_gs with
+                # different target attributes.
+                # for eg: {+}S + {-}D (where {x} is the QBX limit).
+                # We can't merge them together, because merging implies
+                # that everything happens at the source level and therefore
+                # require same target attributes.
+                #
+                # To handle this case, we can treat them separately as in
+                # different source base kernels, but that would imply more
+                # FMMs than necessary.
+                #
+                # Take the following example,
+                #
+                # [ {+}(S + D), {-}S + {avg}D, {avg}S + {-}D]
+                #
+                # If we treated the target attributes separately, then we
+                # will be reducing [{+}(S + D), 0, 0], [0, {-}S, {-}D],
+                # [0, {avg}D, {avg}S] separately which results in
+                # [{+}(S + D)], [{-}S, {-}D], [{avg}S, {avg}D] as
+                # the reduced FMMs and pytential will calculate
+                # [S + D, S, D] as three separate FMMs and then assemble
+                # the three outputs by applying target attributes.
+                #
+                # Instead, we can do S, D as two separate FMMs and get the
+                # result for all three outputs. To do that, we will first
+                # get all five expressions in the example
+                # [ {+}(S + D), {-}S, {avg}D, {avg}S, {-}D]
+                # and then remove the target attributes to get,
+                # [S + D, S, D]. We will reduce these and restore the target
+                # attributes at the end
+                common_int_g = remove_target_attributes(int_g)
                 insn_to_idx_mapping[common_int_g].append((idx, int_g))
+
         insns_to_reduce = list(insn_to_idx_mapping.keys())
         reduced_insns = reduce_number_of_fmms(insns_to_reduce,
                 source_dependent_variables)
 
         for insn, reduced_insn in zip(insns_to_reduce, reduced_insns):
             for idx, int_g in insn_to_idx_mapping[insn]:
-                result[idx] += restore_target_identifiers(reduced_insn, int_g)
+                result[idx] += restore_target_attributes(reduced_insn, int_g)
     return result
 
 
 def get_int_g_source_group(int_g):
+    """Return a group for the *int_g* with so that all elements in that
+    group have the same source attributes.
+    """
     return (int_g.source, tuple(sorted(int_g.kernel_arguments.items())))
 
 
 def get_int_g_target_group(int_g):
+    """Return a group for the *int_g* with so that all elements in that
+    group have the same source attributes.
+    """
     return (int_g.target, int_g.qbx_forced_limit, int_g.target_kernel)
 
 
-def remove_target_identifiers(int_g):
+def remove_target_attributes(int_g):
+    """Remove target attributes from *int_g* and return an expression
+    that is common to all expression in the same source group.
+    """
     return int_g.copy(target=None, qbx_forced_limit=None,
             target_kernel=int_g.target_kernel.get_base_kernel())
 
 
-def restore_target_identifiers(expr, orig_int_g):
+def restore_target_attributes(expr, orig_int_g):
+    """Restore target attributes from *orig_int_g* to all the
+    :class:`~pytential.symbolic.primitives.IntG` objects in the
+    input *expr*.
+    """
     int_gs = get_int_g_s([expr])
 
     replacements = {
