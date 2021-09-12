@@ -195,8 +195,8 @@ def _kernel_source_derivs_as_poly(kernel, axis_vars):
     and the derivative operator is converted to a polynomial with
     variables given by `axis_vars`.
 
-    For eg: for target y and source x the derivative operator,
-    d/dx_1 dy_2 + d/dy_1 is converted to -y_2 * y_1 + y_1.
+    For eg: for source x the derivative operator,
+    d/dx_1 dx_2 + d/dx_1 is converted to x_2 * x_1 + x_1.
     """
     if isinstance(kernel, AxisSourceDerivative):
         poly = _kernel_source_derivs_as_poly(kernel.inner_kernel, axis_vars)
