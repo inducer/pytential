@@ -499,51 +499,6 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
     return result
 
 
-def _convert_kernel_to_poly(kernel, axis_vars):
-    if isinstance(kernel, AxisTargetDerivative):
-        poly = _convert_kernel_to_poly(kernel.inner_kernel, axis_vars)
-        return axis_vars[kernel.axis]*poly
-    elif isinstance(kernel, AxisSourceDerivative):
-        poly = _convert_kernel_to_poly(kernel.inner_kernel, axis_vars)
-        return -axis_vars[kernel.axis]*poly
-    return 1
-
-
-def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
-    from pymbolic.interop.sympy import SympyToPymbolicMapper
-    to_pymbolic = SympyToPymbolicMapper()
-
-    orig_kernel = orig_int_g.source_kernels[0]
-    source_kernels = []
-    densities = []
-    for monom, coeff in poly.terms():
-        kernel = orig_kernel
-        for idim, rep in enumerate(monom):
-            for _ in range(rep):
-                kernel = AxisSourceDerivative(idim, kernel)
-        source_kernels.append(kernel)
-        densities.append(to_pymbolic(coeff) * (-1)**sum(monom))
-    return orig_int_g.copy(source_kernels=tuple(source_kernels),
-            densities=tuple(densities))
-
-
-def _convert_target_poly_to_int_g(poly, orig_int_g, rhs_int_g):
-    from pymbolic.interop.sympy import SympyToPymbolicMapper
-    to_pymbolic = SympyToPymbolicMapper()
-
-    result = 0
-    for monom, coeff in poly.terms():
-        kernel = orig_int_g.target_kernel
-        for idim, rep in enumerate(monom):
-            for _ in range(rep):
-                kernel = AxisTargetDerivative(idim, kernel)
-        result += orig_int_g.copy(target_kernel=kernel,
-                source_kernels=rhs_int_g.source_kernels,
-                densities=rhs_int_g.densities) * to_pymbolic(coeff)
-
-    return result
-
-
 def convert_target_multiplier_to_source(int_g):
     """Convert an IntG with TargetMultiplier to an sum of IntGs without
     TargetMultiplier and only source dependent transformations
