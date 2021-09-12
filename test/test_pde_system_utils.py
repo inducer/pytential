@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from sumpy.kernel import (LaplaceKernel, AxisSourceDerivative,
-    AxisTargetDerivative, TargetPointMultiplier, BiharmonicKernel)
+    AxisTargetDerivative, TargetPointMultiplier, BiharmonicKernel, HelmholtzKernel)
 from pytential.symbolic.primitives import int_g_vec, IntG, NodeCoordinateComponent
 from pytential.symbolic.pde.system_utils import merge_int_g_exprs
 from pymbolic.primitives import make_sym_vector, Variable
@@ -144,8 +144,38 @@ def test_base_kernel_merge():
             densities=[2*density] + [density*sources[1]*(-1.0) for _ in range(dim)],
             qbx_forced_limit=1)
 
-    assert int_g3 == result[0]
-    assert int_g4 == result[1]
+    assert result[0] == int_g3
+    assert result[1] == int_g4
+
+
+def test_merge_different_kernels():
+    # Test different kernels Laplace, Helmholtz(k=1), Helmholtz(k=2)
+    dim = 3
+    laplace_knl = LaplaceKernel(dim)
+    helmholtz_knl = HelmholtzKernel(dim)
+    density = make_sym_vector("sigma", 1)[0]
+
+    int_g1 = int_g_vec(laplace_knl, density, qbx_forced_limit=1) \
+        + int_g_vec(helmholtz_knl, density, qbx_forced_limit=1, k=1) \
+        + int_g_vec(AxisTargetDerivative(0, helmholtz_knl),
+                density, qbx_forced_limit=1, k=1) \
+        + int_g_vec(helmholtz_knl, density, qbx_forced_limit=1, k=2)
+
+    int_g2 = int_g_vec(AxisTargetDerivative(0, laplace_knl),
+            density, qbx_forced_limit=1)
+
+    result = merge_int_g_exprs([int_g1, int_g2],
+            source_dependent_variables=[])
+
+    int_g3 = int_g_vec(laplace_knl, density, qbx_forced_limit=1) \
+        + IntG(target_kernel=helmholtz_knl,
+            source_kernels=[AxisSourceDerivative(0, helmholtz_knl), helmholtz_knl],
+            densities=[-density, density],
+            qbx_forced_limit=1, k=1) \
+        + int_g_vec(helmholtz_knl, density, qbx_forced_limit=1, k=2)
+
+    assert result[0] == int_g3
+    assert result[1] == int_g2
 
 
 # You can test individual routines by typing

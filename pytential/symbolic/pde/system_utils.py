@@ -178,7 +178,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
 
 def get_int_g_group(int_g):
     return (int_g.source, int_g.target, int_g.qbx_forced_limit,
-        int_g.target_kernel)
+        int_g.target_kernel, tuple(sorted(int_g.kernel_arguments.items())))
 
 
 def merge_two_int_gs(int_g_1, int_g_2):
