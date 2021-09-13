@@ -126,7 +126,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
 
     int_gs_by_group_for_index = []
 
-    int_g_cc = IntGCoefficientCollector()
+    int_g_cc = IntGCoefficientCollector({})
     for i, expr in enumerate(exprs):
         try:
             int_g_coeff_map = int_g_cc(expr)
@@ -317,6 +317,9 @@ class IntGSubstitutor(IdentityMapper):
 class IntGCoefficientCollector(CoefficientCollector):
     def map_int_g(self, expr):
         return {expr: 1}
+
+    def handle_unsupported_expression(self, expr, *args, **kwargs):
+        return {1: expr}
 
 
 def evalf(expr, prec=100):
