@@ -178,6 +178,38 @@ def test_merge_different_kernels():
     assert result[1] == int_g2
 
 
+def test_merge_different_qbx_forced_limit():
+    # Test different kernels Laplace, Helmholtz(k=1), Helmholtz(k=2)
+    dim = 3
+    laplace_knl = LaplaceKernel(dim)
+    density = make_sym_vector("sigma", 1)[0]
+
+
+    int_g1 = int_g_vec(laplace_knl, density, qbx_forced_limit=1)
+    int_g2 = int_g_vec(AxisTargetDerivative(0, laplace_knl),
+            density, qbx_forced_limit=1)
+
+    int_g3 = int_g2 + int_g1
+    int_g4 = int_g1.copy(qbx_forced_limit=2) + int_g2.copy(qbx_forced_limit=-2)
+    int_g5 = int_g1.copy(qbx_forced_limit=-2) + int_g2.copy(qbx_forced_limit=2)
+
+    result = merge_int_g_exprs([int_g3, int_g4, int_g5],
+            source_dependent_variables=[])
+
+    int_g6 = int_g_vec(laplace_knl, -density, qbx_forced_limit=1)
+    int_g7 = int_g_vec(AxisTargetDerivative(0, laplace_knl),
+                -density, qbx_forced_limit=1)
+    int_g8 = int_g7 * (-1) + int_g6 * (-1)
+    int_g9 = int_g6.copy(qbx_forced_limit=2) * (-1) \
+                + int_g7.copy(qbx_forced_limit=-2) * (-1)
+    int_g10 = int_g6.copy(qbx_forced_limit=-2) * (-1) \
+                + int_g7.copy(qbx_forced_limit=2) * (-1)
+
+    assert result[0] == int_g8
+    assert result[1] == int_g9
+    assert result[2] == int_g10
+
+
 # You can test individual routines by typing
 # $ python test_pde_system_tools.py 'test_reduce_number_of_fmms()'
 
