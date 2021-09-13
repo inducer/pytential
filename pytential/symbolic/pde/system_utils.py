@@ -321,8 +321,10 @@ class IntGCoefficientCollector(CoefficientCollector):
     def map_int_g(self, expr):
         return {expr: 1}
 
-    def handle_unsupported_expression(self, expr, *args, **kwargs):
+    def map_algebraic_leaf(self, expr, *args, **kwargs):
         return {1: expr}
+
+    handle_unsupported_expression = map_algebraic_leaf
 
 
 def evalf(expr, prec=100):
