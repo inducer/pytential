@@ -36,8 +36,8 @@ def test_reduce_number_of_fmms():
     mu = Variable("mu")
 
     int_g1 = \
-        int_g_vec(AxisSourceDerivative(1, AxisSourceDerivative(0, knl)),
-             densities[0] * mu, qbx_forced_limit=1) + \
+        mu * int_g_vec(AxisSourceDerivative(1, AxisSourceDerivative(0, knl)),
+             densities[0], qbx_forced_limit=1) + \
         int_g_vec(AxisSourceDerivative(1, AxisSourceDerivative(1, knl)),
              densities[1] * mu, qbx_forced_limit=1)
 
