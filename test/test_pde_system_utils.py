@@ -22,9 +22,11 @@ THE SOFTWARE.
 
 from sumpy.kernel import (LaplaceKernel, AxisSourceDerivative,
     AxisTargetDerivative, TargetPointMultiplier, BiharmonicKernel, HelmholtzKernel)
-from pytential.symbolic.primitives import int_g_vec, IntG, NodeCoordinateComponent
+from pytential.symbolic.primitives import (int_g_vec, D, IntG,
+    NodeCoordinateComponent)
 from pytential.symbolic.pde.system_utils import merge_int_g_exprs
 from pymbolic.primitives import make_sym_vector, Variable
+import pytest
 
 
 def test_reduce_number_of_fmms():
@@ -179,17 +181,14 @@ def test_merge_different_kernels():
 
 
 def test_merge_different_qbx_forced_limit():
-    # Test different kernels Laplace, Helmholtz(k=1), Helmholtz(k=2)
     dim = 3
     laplace_knl = LaplaceKernel(dim)
     density = make_sym_vector("sigma", 1)[0]
 
-
     int_g1 = int_g_vec(laplace_knl, density, qbx_forced_limit=1)
-    int_g2 = int_g_vec(AxisTargetDerivative(0, laplace_knl),
-            density, qbx_forced_limit=1)
+    int_g2 = int_g1.copy(target_kernel=AxisTargetDerivative(0, laplace_knl))
 
-    int_g3 = int_g2 + int_g1
+    int_g3, = merge_int_g_exprs([int_g2 + int_g1])
     int_g4 = int_g1.copy(qbx_forced_limit=2) + int_g2.copy(qbx_forced_limit=-2)
     int_g5 = int_g1.copy(qbx_forced_limit=-2) + int_g2.copy(qbx_forced_limit=2)
 
@@ -197,8 +196,7 @@ def test_merge_different_qbx_forced_limit():
             source_dependent_variables=[])
 
     int_g6 = int_g_vec(laplace_knl, -density, qbx_forced_limit=1)
-    int_g7 = int_g_vec(AxisTargetDerivative(0, laplace_knl),
-                -density, qbx_forced_limit=1)
+    int_g7 = int_g6.copy(target_kernel=AxisTargetDerivative(0, laplace_knl))
     int_g8 = int_g7 * (-1) + int_g6 * (-1)
     int_g9 = int_g6.copy(qbx_forced_limit=2) * (-1) \
                 + int_g7.copy(qbx_forced_limit=-2) * (-1)
@@ -208,6 +206,37 @@ def test_merge_different_qbx_forced_limit():
     assert result[0] == int_g8
     assert result[1] == int_g9
     assert result[2] == int_g10
+
+
+def test_merge_directional_source():
+    from pymbolic.primitives import Variable
+    dim = 3
+    laplace_knl = LaplaceKernel(dim)
+    density = Variable("density")
+    dsource = Variable("dsource_vec")
+
+    int_g1 = int_g_vec(laplace_knl, density, qbx_forced_limit=1)
+    int_g2 = D(laplace_knl, density, qbx_forced_limit=1)
+
+    with pytest.raises(ValueError):
+        result = merge_int_g_exprs([int_g1 + int_g2],
+            source_dependent_variables=[])
+
+    result = merge_int_g_exprs([int_g1 + int_g2],
+            source_dependent_variables=[dsource])
+
+    source_kernels = [AxisSourceDerivative(d, laplace_knl)
+            for d in range(dim)] + [laplace_knl]
+    densities = [density*dsource[d] for d in range(dim)] + [density]
+    int_g3 = int_g2.copy(source_kernels=source_kernels, densities=densities)
+
+    assert result[0] == int_g3
+
+    result = merge_int_g_exprs([int_g1 + int_g2])
+    int_g4 = int_g2.copy(
+            source_kernels=int_g2.source_kernels + int_g1.source_kernels,
+            densities=(density, density))
+    assert result[0] == int_g4
 
 
 # You can test individual routines by typing

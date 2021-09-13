@@ -33,6 +33,7 @@ from collections import defaultdict
 
 from pymbolic.mapper import WalkMapper
 from pymbolic.mapper.coefficient import CoefficientCollector
+from pymbolic.primitives import Variable
 from pytential.symbolic.primitives import IntG, NodeCoordinateComponent
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
@@ -108,6 +109,16 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         substitutor = IntGSubstitutor(replacements)
         exprs = [substitutor(expr) for expr in exprs]
 
+    differing_kernel_arguments = set()
+    kernel_arguments = {}
+    for int_g in int_g_s:
+        for k, v in int_g.kernel_arguments.items():
+            if k not in kernel_arguments:
+                kernel_arguments[k] = v
+            else:
+                if kernel_arguments[k] != v:
+                    differing_kernel_arguments.add(k)
+
     # Using a dictionary instead of a set because sets are unordered
     all_source_groups = dict()
 
@@ -132,6 +143,11 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
                 result[i] += coeff
                 continue
 
+            # convert DirectionalSourceDerivative to AxisSourceDerivative
+            # as kernel arguments need to be the same for merging
+            if source_dependent_variables is not None:
+                int_g = convert_directional_source_to_axis_source(int_g,
+                    source_dependent_variables)
             # convert TargetDerivative to source before checking the group
             # as the target kernel has to be the same for merging
             int_g = convert_target_deriv_to_source(int_g)
@@ -139,7 +155,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             int_g = int_g.copy(densities=[density*coeff for density in
                     int_g.densities])
 
-            source_group = get_int_g_source_group(int_g)
+            source_group = get_int_g_source_group(int_g, differing_kernel_arguments)
             target_group = get_int_g_target_group(int_g)
             group = (source_group, target_group)
 
@@ -157,11 +173,12 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         for group, int_g in int_gs_by_group.items():
             # replace an IntG with d axis source derivatives to an IntG
             # with one directional source derivative
-            result_int_g = convert_axis_source_to_directional_source(int_g)
+            # TODO: reenable this later
+            # result_int_g = convert_axis_source_to_directional_source(int_g)
             # simplify the densities as they may become large due to pymbolic
             # not doing automatic simplifications unlike sympy/symengine
-            result_int_g = result_int_g.copy(
-                    densities=simplify_densities(result_int_g.densities))
+            result_int_g = int_g.copy(
+                    densities=simplify_densities(int_g.densities))
             int_gs_by_group[group] = result_int_g
 
         int_gs_by_group_for_index.append(int_gs_by_group)
@@ -225,11 +242,19 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
     return result
 
 
-def get_int_g_source_group(int_g):
+def get_int_g_source_group(int_g, differing_kernel_arguments):
     """Return a group for the *int_g* with so that all elements in that
     group have the same source attributes.
     """
-    return (int_g.source, tuple(sorted(int_g.kernel_arguments.items())))
+    def get_hashable(arg):
+        if hasattr(arg, "__iter__"):
+            return tuple(arg)
+        return arg
+
+    args = tuple((k, get_hashable(v)) for k, v in sorted(
+        int_g.kernel_arguments.items()) if k in
+                differing_kernel_arguments)
+    return (int_g.source, args, int_g.target_kernel.get_base_kernel())
 
 
 def get_int_g_target_group(int_g):
@@ -569,10 +594,52 @@ def convert_target_deriv_to_source(int_g):
                       source_kernels=tuple(source_kernels))
 
 
+def convert_directional_source_to_axis_source(int_g, source_dependent_variables):
+    """Convert an IntG with a DirectionalSourceDerivative instance
+    to an IntG with d AxisSourceDerivative instances.
+    """
+    source_kernels = []
+    densities = []
+    for source_kernel, density in zip(int_g.source_kernels, int_g.densities):
+        knl_result = _convert_directional_source_knl_to_axis_source(source_kernel,
+                source_dependent_variables)
+        for knl, coeff in knl_result:
+            source_kernels.append(knl)
+            densities.append(coeff * density)
+    return int_g.copy(source_kernels=tuple(source_kernels),
+            densities=tuple(densities))
+
+
+def _convert_directional_source_knl_to_axis_source(knl, source_dependent_variables):
+    if isinstance(knl, DirectionalSourceDerivative):
+        dim = knl.dim
+        from pymbolic import make_sym_vector
+        dir_vec = make_sym_vector(knl.dir_vec_name, dim)
+        if Variable(knl.dir_vec_name) not in source_dependent_variables:
+            raise ValueError(f"{knl.dir_vec_name} not given in "
+                "source_dependent_variables, but is dependent on source")
+
+        res = []
+        inner_result = _convert_directional_source_knl_to_axis_source(
+                knl.inner_kernel, source_dependent_variables)
+        for inner_knl, coeff in inner_result:
+            for d in range(dim):
+                res.append((AxisSourceDerivative(d, inner_knl), coeff*dir_vec[d]))
+        return res
+    elif isinstance(knl, KernelWrapper):
+        inner_result = _convert_directional_source_knl_to_axis_source(
+                knl.inner_kernel, source_dependent_variables)
+        return [(knl.replace_inner_kernel(inner_knl), coeff) for
+                    inner_knl, coeff in inner_result]
+    else:
+        return [(knl, 1)]
+
+
 def convert_axis_source_to_directional_source(int_g):
     """Convert an IntG with d AxisSourceDerivative instances to
     an IntG with one DirectionalSourceDerivative instance.
     """
+    from pytential.symbolic.primitives import _DIR_VEC_NAME
     if not isinstance(int_g, IntG):
         return int_g
     knls = list(int_g.source_kernels)
@@ -590,7 +657,13 @@ def convert_axis_source_to_directional_source(int_g):
         return int_g
     base_knl = base_knls.pop()
     kernel_arguments = int_g.kernel_arguments.copy()
-    name = "generated_dir_vec"
+
+    name = _DIR_VEC_NAME
+    count = 0
+    while name in kernel_arguments:
+        name = _DIR_VEC_NAME + f"_{count}"
+        count += 1
+
     kernel_arguments[name] = \
             np.array(int_g.densities, dtype=np.object)
     res = int_g.copy(

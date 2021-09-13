@@ -20,7 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative)
+from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
+        KernelWrapper)
 
 from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
 from pymbolic.mapper import Mapper
@@ -201,6 +202,8 @@ def _kernel_source_derivs_as_poly(kernel, axis_vars):
     if isinstance(kernel, AxisSourceDerivative):
         poly = _kernel_source_derivs_as_poly(kernel.inner_kernel, axis_vars)
         return -axis_vars[kernel.axis]*poly
+    if isinstance(kernel, KernelWrapper):
+        raise ValueError
     return 1
 
 
@@ -274,6 +277,13 @@ class CoefficientCollector(Mapper):
 
     def map_algebraic_leaf(self, expr):
         if expr in self.source_dependent_variables:
+            return {expr: 1}
+        else:
+            return {1: expr}
+
+    def map_subscript(self, expr):
+        if expr in self.source_dependent_variables or \
+                expr.aggregate in self.source_dependent_variables:
             return {expr: 1}
         else:
             return {1: expr}
