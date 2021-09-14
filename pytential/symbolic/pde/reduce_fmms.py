@@ -340,9 +340,12 @@ class CoefficientCollector(Mapper):
 
 
 def _syzygy_module(m, generators):
-    """Takes as input a module of polynomials with domain `sympy.EX` represented
-    as a matrix and returns the syzygy module as a matrix of polynomials in the
-    same domain.
+    """Takes as input a module of polynomials with domain :class:`sympy.EX`
+    represented as a matrix and returns the syzygy module as a matrix of polynomials
+    in the same domain.
+    Using :class:`sympy.EX` because that represents the domain with any symbolic
+    element. Usually we need an Integer or Rational domain, but since there can be
+    unrelated symbols like *mu* in the expression, we need to use a symbolic domain.
     """
     from sympy.polys.orderings import grevlex
 
