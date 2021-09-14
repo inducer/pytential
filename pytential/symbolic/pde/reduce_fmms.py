@@ -364,9 +364,6 @@ def _syzygy_module(m, generators):
                 for i in range(m.shape[1])]
     column_syzygy_modules = [ideal.syzygy_module() for ideal in column_ideals]
 
-    if not column_syzygy_modules:
-        raise ValueError
-
     intersection = functools.reduce(lambda x, y: x.intersect(y),
             column_syzygy_modules)
 
@@ -376,8 +373,18 @@ def _syzygy_module(m, generators):
 
 
 def _factor_left(mat, axis_vars):
-    """Return the left hand side of the factorisation of the matrix"""
-    return _syzygy_module(_syzygy_module(mat, axis_vars).T, axis_vars).T
+    """Return the left hand side of the factorisation of the matrix
+    For a matrix M, we want to find a factorisation such that M = L R
+    with minimum number of columns of L.
+    To get a good factorisation, what we do is first find a matrix
+    such that S M = 0 where S is the syzygy module converted to a matrix.
+    Then, M.T S.T = 0 which implies that M.T is in the space spanned by
+    the syzygy module of S.T and to get M we get the transpose of that.
+    """
+    first_syzygy_module = _syzygy_module(mat, axis_vars)
+    if len(first_syzygy_module) == 0:
+        raise ValueError("could not find a factorization")
+    return _syzygy_module(first_syzygy_module.T, axis_vars).T
 
 
 def _factor_right(mat, factor_left):
