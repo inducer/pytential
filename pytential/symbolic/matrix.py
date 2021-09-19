@@ -346,10 +346,14 @@ class MatrixBuilder(MatrixBuilderBase):
             except KeyError:
                 from meshmode.discretization.connection import \
                     flatten_chained_connection
+                from meshmode.discretization.connection.direct import \
+                    make_direct_full_resample_matrix
 
                 conn = self.places.get_connection(expr.from_dd, expr.to_dd)
                 conn = flatten_chained_connection(actx, conn)
-                mat = actx.to_numpy(conn.full_resample_matrix(actx))
+                mat = actx.to_numpy(
+                    make_direct_full_resample_matrix(actx, conn)
+                    )
 
                 # FIXME: the resample matrix is slow to compute and very big
                 # to store, so caching it may not be the best idea
