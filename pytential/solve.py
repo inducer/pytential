@@ -31,27 +31,32 @@ __doc__ = """
 .. autoclass:: ResidualPrinter
 """
 
+from functools import partial
 
 import numpy as np
-from numbers import Number
-import pyopencl as cl
-import pyopencl.array  # noqa
-from meshmode.dof_array import obj_or_dof_array_vectorize_n_args, DOFArray
-from pytools.obj_array import obj_array_vectorize_n_args
 
 
-def structured_vdot(x, y):
-    # vdot() implementation that is aware of scalars and host or
-    # PyOpenCL arrays. It also recurses down nested object arrays.
+def structured_vdot(x, y, array_context=None):
+    """vdot() implementation that is aware of scalars and host or
+    PyOpenCL arrays. It also recurses down nested object arrays.
+    """
+
+    if not type(x) == type(y):
+        raise TypeError("'structured_vdot' entries have different types: "
+                f"{type(x).__name__} and {type(y).__name__}")
+
+    from numbers import Number
     if (isinstance(x, Number)
             or (isinstance(x, np.ndarray) and x.dtype.char != "O")):
         return np.vdot(x, y)
-    elif isinstance(x, cl.array.Array):
-        return cl.array.vdot(x, y).get()
-    elif isinstance(x, np.ndarray) and x.dtype.char == "O":
-        return np.sum(obj_array_vectorize_n_args(structured_vdot, x, y))
-    elif isinstance(x, DOFArray):
-        return sum(obj_or_dof_array_vectorize_n_args(structured_vdot, x, y))
+    else:
+        # actx.np.vdot works on PyOpenCL arrays and arbitrarily nested
+        # array containers, so this should handle all remaining cases
+        r = array_context.to_numpy(array_context.np.vdot(x, y))
+        if isinstance(r, np.ndarray) and r.shape == ():
+            r = r[()]
+
+        return r
 
 
 # {{{ gmres
@@ -262,7 +267,7 @@ class ResidualPrinter:
 # {{{ entrypoint
 
 def gmres(op, rhs, restart=None, tol=None, x0=None,
-        inner_product=structured_vdot,
+        inner_product=None,
         maxiter=None, hard_failure=None,
         no_progress_factor=None, stall_iterations=None,
         callback=None, progress=False, require_monotonicity=True):
@@ -284,6 +289,18 @@ def gmres(op, rhs, restart=None, tol=None, x0=None,
 
     :return: a :class:`GMRESResult`
     """
+    if inner_product is None:
+        from pytential.symbolic.execution import \
+                _find_array_context_from_args_in_context
+        try:
+            actx = _find_array_context_from_args_in_context({
+                "rhs": rhs, "x0": x0,
+                }, supplied_array_context=getattr(op, "array_context", None))
+        except (ValueError, TypeError):
+            actx = None
+
+        inner_product = partial(structured_vdot, array_context=actx)
+
     if callback is None:
         if progress:
             callback = ResidualPrinter(inner_product)
