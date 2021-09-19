@@ -152,8 +152,8 @@ def plot_proxy_geometry(
             from meshmode.discretization.poly_element import \
                 InterpolatoryQuadratureSimplexGroupFactory
 
-            from meshmode.mesh.generation import generate_icosphere
-            ref_mesh = generate_icosphere(1, 4, uniform_refinement_rounds=1)
+            from meshmode.mesh.generation import generate_sphere
+            ref_mesh = generate_sphere(1, 4, uniform_refinement_rounds=1)
             pxycenters = np.stack(pxy.centers)
 
             for i in range(indices.nblocks):
