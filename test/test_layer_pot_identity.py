@@ -55,16 +55,8 @@ d2 = sym.Derivative()
 
 def get_sphere_mesh(refinement_increment, target_order):
     from meshmode.mesh.generation import generate_sphere
-    mesh = generate_sphere(1, target_order)
-    from meshmode.mesh.refinement import Refiner
-
-    refiner = Refiner(mesh)
-    for _ in range(refinement_increment):
-        flags = np.ones(mesh.nelements, dtype=bool)
-        refiner.refine(flags)
-        mesh = refiner.get_current_mesh()
-
-    return mesh
+    return generate_sphere(1, target_order,
+            uniform_refinement_rounds=refinement_increment)
 
 
 class StarfishGeometry:
