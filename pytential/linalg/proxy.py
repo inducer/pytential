@@ -451,8 +451,7 @@ def make_compute_block_qbx_radii_knl(
                 <> rqbx_int = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
                         (proxy_centers[idim, irange] -
                          center_int[idim, srcindices[i + ioffset]]) ** 2)) + \
-                         expansion_radii[srcindices[i + ioffset]]) \
-                         {dup=idim}
+                         expansion_radii[srcindices[i + ioffset]])
                 <> rqbx_ext = simul_reduce(max, i, sqrt(simul_reduce(sum, idim, \
                         (proxy_centers[idim, irange] -
                          center_ext[idim, srcindices[i + ioffset]]) ** 2)) + \
