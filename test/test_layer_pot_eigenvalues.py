@@ -280,14 +280,8 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
 
     for nrefinements in [0, 1]:
         from meshmode.mesh.generation import generate_sphere
-        mesh = generate_sphere(1, target_order)
-        from meshmode.mesh.refinement import Refiner
-
-        refiner = Refiner(mesh)
-        for _ in range(nrefinements):
-            flags = np.ones(mesh.nelements, dtype=bool)
-            refiner.refine(flags)
-            mesh = refiner.get_current_mesh()
+        mesh = generate_sphere(1, target_order,
+                uniform_refinement_rounds=nrefinements)
 
         pre_density_discr = Discretization(
                 actx, mesh,

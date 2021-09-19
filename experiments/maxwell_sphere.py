@@ -27,16 +27,7 @@ def main():
     # cl.array.to_device(queue, numpy_array)
     from meshmode.mesh.io import generate_gmsh, FileSource
     from meshmode.mesh.generation import generate_sphere
-    from meshmode.mesh.refinement import Refiner
-    mesh = generate_sphere(1,target_order)
-
-    refinement_increment = 1
-    refiner = Refiner(mesh)
-    for i in range(refinement_increment):
-        flags = np.ones(mesh.nelements, dtype=bool)
-        refiner.refine(flags)
-        mesh = refiner.get_current_mesh()
-
+    mesh = generate_sphere(1, target_order, uniform_refinement_rounds=1)
 
     from meshmode.mesh.processing import perform_flips
     # Flip elements--gmsh generates inside-out geometry.
