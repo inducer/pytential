@@ -347,7 +347,7 @@ def test_timing_data_gathering(ctx_factory):
     pytest.importorskip("pyfmmlib")
 
     import pyopencl as cl
-    from arraycontext import PyOpenCLArrayContext
+    from meshmode.array_context import PyOpenCLArrayContext
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
