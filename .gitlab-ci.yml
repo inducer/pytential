@@ -1,6 +1,6 @@
 # Environment variables
 #
-# * PYTEST_ADDOPTS is used to filter test runs. The default value is "-k-slowtest",
+# * PYTEST_ADDOPTS is used to filter test runs. The default value is "-k 'not slowtest'",
 #   which skips the slow running tests.
 # * SKIP_EXAMPLES, if non-empty, can be used to skip the examples job.
 
@@ -8,7 +8,7 @@ Python 3 POCL:
   script:
   - export PY_EXE=python3
   - export PYOPENCL_TEST=portable:pthread
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-k 'not slowtest'"}
   - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
@@ -27,7 +27,7 @@ Python 3 Intel:
   - export PY_EXE=python3
   - source /opt/enable-intel-cl.sh
   - export PYOPENCL_TEST="intel(r):pu"
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-k 'not slowtest'"}
   - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
@@ -60,7 +60,7 @@ Python 3 Conda:
   script:
   - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
   - export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-k 'not slowtest'"}
 
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
   - ". ./build-and-test-py-project-within-miniconda.sh"
