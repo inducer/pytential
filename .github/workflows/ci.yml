@@ -70,7 +70,7 @@ jobs:
                 grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
 
-                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-k 'not slowtest'"}
 
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
@@ -88,7 +88,7 @@ jobs:
                 echo "- compilers" >> .test-conda-env.yml
                 echo "- llvm-openmp" >> .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
-                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-k 'not slowtest'"}
 
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
@@ -102,7 +102,7 @@ jobs:
             run: |
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
 
-                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-k 'not slowtest'"}
 
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
