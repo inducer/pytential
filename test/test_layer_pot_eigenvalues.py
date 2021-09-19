@@ -279,8 +279,8 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
                 )
 
     for nrefinements in [0, 1]:
-        from meshmode.mesh.generation import generate_icosphere
-        mesh = generate_icosphere(1, target_order)
+        from meshmode.mesh.generation import generate_sphere
+        mesh = generate_sphere(1, target_order)
         from meshmode.mesh.refinement import Refiner
 
         refiner = Refiner(mesh)
