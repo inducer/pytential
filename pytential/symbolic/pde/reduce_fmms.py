@@ -273,10 +273,8 @@ class CoefficientCollector(Mapper):
             raise ValueError
         den_var, den_coeff = list(d_den.items())[0]
 
-        result = {}
-        for num_var, num_coeff in d_num.items():
-            result[num_var/den_var] = num_coeff/den_coeff
-        return result
+        return {num_var/den_var: num_coeff/den_coeff for
+            num_var, num_coeff in d_num.items()}
 
     def map_power(self, expr):
         d_base = self.rec(expr.base)
