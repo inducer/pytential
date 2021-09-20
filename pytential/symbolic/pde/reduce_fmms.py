@@ -261,9 +261,9 @@ class CoefficientCollector(Mapper):
         d_left = self.rec(left)
         d_right = self.rec(right)
         d = defaultdict(lambda: 0)
-        for k_left, v_left in d_left.items():
-            for k_right, v_right in d_right.items():
-                d[k_left*k_right] += v_left*v_right
+        for var_left, coeff_left in d_left.items():
+            for var_right, coeff_right in d_right.items():
+                d[var_left*var_right] += coeff_left*coeff_right
         return dict(d)
 
     def map_quotient(self, expr):
@@ -271,11 +271,11 @@ class CoefficientCollector(Mapper):
         d_den = self.rec(expr.denominator)
         if len(d_den) > 1:
             raise ValueError
-        den_k, den_v = list(d_den.items())[0]
+        den_var, den_coeff = list(d_den.items())[0]
 
         result = {}
-        for k in d_num.keys():
-            result[d_num[k]/den_k] /= den_v
+        for num_var, num_coeff in d_num.items():
+            result[num_var/den_var] = num_coeff/den_coeff
         return result
 
     def map_power(self, expr):
@@ -289,8 +289,8 @@ class CoefficientCollector(Mapper):
             return d_base
         if len(d_base) > 1:
             raise NotImplementedError("powers are not implemented")
-        (k, v), = d_base.items()
-        return {k**exp: v**exp}
+        (var, coeff), = d_base.items()
+        return {var**exp: coeff**exp}
 
     rec = __call__
 
@@ -312,6 +312,7 @@ def _kernel_source_derivs_as_poly(kernel, axis_vars):
     return 1
 
 # }}}
+
 
 # {{{ factor the matrix
 
@@ -381,6 +382,7 @@ def _factor_right(mat, factor_left):
     return factor_right
 
 # }}}
+
 
 # {{{ convert factors back into IntGs
 
