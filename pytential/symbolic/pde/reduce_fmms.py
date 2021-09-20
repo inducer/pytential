@@ -109,9 +109,9 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     base_int_g = int_gs[0].copy(target_kernel=base_kernel,
             source_kernels=(base_kernel,), densities=(1,))
 
-    # Convert each element in the right factor to IntGs
-    source_int_gs = [[_convert_source_poly_to_int_g(poly, base_int_g, axis_vars)
-            for poly in row] for row in right_factor.tolist()]
+    # Convert polynomials back to IntGs with source derivatives
+    source_int_gs = [[_convert_source_poly_to_int_g_derivs(poly, base_int_g,
+        axis_vars) for poly in row] for row in right_factor.tolist()]
 
     # For each row in the right factor, merge the IntGs to one IntG
     # to get a total of k IntGs.
@@ -132,7 +132,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     res = [0]*left_factor.shape[0]
     for i in range(left_factor.shape[0]):
         for j in range(left_factor.shape[1]):
-            res[i] += _convert_target_poly_to_int_g(left_factor[i, j],
+            res[i] += _convert_target_poly_to_int_g_derivs(left_factor[i, j],
                     int_gs[i], source_int_gs_merged[j])
 
     return res
@@ -211,7 +211,7 @@ def _kernel_source_derivs_as_poly(kernel, axis_vars):
     return 1
 
 
-def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
+def _convert_source_poly_to_int_g_derivs(poly, orig_int_g, axis_vars):
     """This does the opposite of :func:`_kernel_source_derivs_as_poly`
     and converts a polynomial back to a source derivative
     operator. First it is converted to a :class:`sumpy.kernel.Kernel`
@@ -234,7 +234,7 @@ def _convert_source_poly_to_int_g(poly, orig_int_g, axis_vars):
             densities=tuple(simplify_densities(densities)))
 
 
-def _convert_target_poly_to_int_g(poly, orig_int_g, rhs_int_g):
+def _convert_target_poly_to_int_g_derivs(poly, orig_int_g, rhs_int_g):
     """This does the opposite of :func:`_kernel_source_derivs_as_poly`
     and converts a polynomial back to a target derivative
     operator. It is applied to a :class:`~pytential.symbolic.primitives.IntG`
