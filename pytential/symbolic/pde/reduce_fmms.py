@@ -36,6 +36,8 @@ __all__ = (
     )
 
 
+# {{{ Reduce number of FMMs - main routine
+
 def reduce_number_of_fmms(int_gs, source_dependent_variables):
     """
     Reduce the number of FMMs needed for a system of
@@ -138,6 +140,28 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     return res
 
 
+# }}}
+
+# {{{ convert IntG expressions to a matrix
+
+def _check_int_gs_common(int_gs):
+    """Checks that the :class:`~pytential.symbolic.primtive.IntG` objects
+    have the same base kernel and other properties that would allow
+    merging them.
+    """
+    base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
+    common_int_g = int_gs[0].copy(target_kernel=base_kernel,
+            source_kernels=(base_kernel,), densities=(1,))
+    for int_g in int_gs:
+        for source_kernel in int_g.source_kernels:
+            if source_kernel.get_base_kernel() != base_kernel:
+                return False
+        if common_int_g != int_g.copy(target_kernel=base_kernel,
+                source_kernels=(base_kernel,), densities=(1,)):
+            return False
+    return True
+
+
 def _create_matrix(int_gs, source_dependent_variables, axis_vars):
     """Create a matrix from a list of :class:`~pytential.symbolic.primitives.IntG`
     objects and returns the matrix and the expressions corresponding to each column.
@@ -174,86 +198,6 @@ def _create_matrix(int_gs, source_dependent_variables, axis_vars):
         row += [0]*(len(source_exprs) - len(row))
 
     return matrix, source_exprs
-
-
-def _check_int_gs_common(int_gs):
-    """Checks that the :class:`~pytential.symbolic.primtive.IntG` objects
-    have the same base kernel and other properties that would allow
-    merging them.
-    """
-    base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
-    common_int_g = int_gs[0].copy(target_kernel=base_kernel,
-            source_kernels=(base_kernel,), densities=(1,))
-    for int_g in int_gs:
-        for source_kernel in int_g.source_kernels:
-            if source_kernel.get_base_kernel() != base_kernel:
-                return False
-        if common_int_g != int_g.copy(target_kernel=base_kernel,
-                source_kernels=(base_kernel,), densities=(1,)):
-            return False
-    return True
-
-
-def _kernel_source_derivs_as_poly(kernel, axis_vars):
-    """Converts a :class:`sumpy.kernel.Kernel` object to a polynomial.
-    A :class:`sumpy.kernel.Kernel` represents a derivative operator
-    and the derivative operator is converted to a polynomial with
-    variables given by `axis_vars`.
-
-    For eg: for source x the derivative operator,
-    d/dx_1 dx_2 + d/dx_1 is converted to x_2 * x_1 + x_1.
-    """
-    if isinstance(kernel, AxisSourceDerivative):
-        poly = _kernel_source_derivs_as_poly(kernel.inner_kernel, axis_vars)
-        return -axis_vars[kernel.axis]*poly
-    if isinstance(kernel, KernelWrapper):
-        raise ValueError
-    return 1
-
-
-def _convert_source_poly_to_int_g_derivs(poly, orig_int_g, axis_vars):
-    """This does the opposite of :func:`_kernel_source_derivs_as_poly`
-    and converts a polynomial back to a source derivative
-    operator. First it is converted to a :class:`sumpy.kernel.Kernel`
-    and then to a :class:`~pytential.symbolic.primitives.IntG`.
-    """
-    from pytential.symbolic.pde.system_utils import simplify_densities
-    to_pymbolic = SympyToPymbolicMapper()
-
-    orig_kernel = orig_int_g.source_kernels[0]
-    source_kernels = []
-    densities = []
-    for monom, coeff in poly.terms():
-        kernel = orig_kernel
-        for idim, rep in enumerate(monom):
-            for _ in range(rep):
-                kernel = AxisSourceDerivative(idim, kernel)
-        source_kernels.append(kernel)
-        # (-1) below is because d/dx f(c - x) = - f'(c - x)
-        densities.append(to_pymbolic(coeff) * (-1)**sum(monom))
-    return orig_int_g.copy(source_kernels=tuple(source_kernels),
-            densities=tuple(simplify_densities(densities)))
-
-
-def _convert_target_poly_to_int_g_derivs(poly, orig_int_g, rhs_int_g):
-    """This does the opposite of :func:`_kernel_source_derivs_as_poly`
-    and converts a polynomial back to a target derivative
-    operator. It is applied to a :class:`~pytential.symbolic.primitives.IntG`
-    object and returns a new instance.
-    """
-    to_pymbolic = SympyToPymbolicMapper()
-
-    result = 0
-    for monom, coeff in poly.terms():
-        kernel = orig_int_g.target_kernel
-        for idim, rep in enumerate(monom):
-            for _ in range(rep):
-                kernel = AxisTargetDerivative(idim, kernel)
-        result += orig_int_g.copy(target_kernel=kernel,
-                source_kernels=rhs_int_g.source_kernels,
-                densities=rhs_int_g.densities) * to_pymbolic(coeff)
-
-    return result
 
 
 class CoefficientCollector(Mapper):
@@ -344,6 +288,26 @@ class CoefficientCollector(Mapper):
     rec = __call__
 
 
+def _kernel_source_derivs_as_poly(kernel, axis_vars):
+    """Converts a :class:`sumpy.kernel.Kernel` object to a polynomial.
+    A :class:`sumpy.kernel.Kernel` represents a derivative operator
+    and the derivative operator is converted to a polynomial with
+    variables given by `axis_vars`.
+
+    For eg: for source x the derivative operator,
+    d/dx_1 dx_2 + d/dx_1 is converted to x_2 * x_1 + x_1.
+    """
+    if isinstance(kernel, AxisSourceDerivative):
+        poly = _kernel_source_derivs_as_poly(kernel.inner_kernel, axis_vars)
+        return -axis_vars[kernel.axis]*poly
+    if isinstance(kernel, KernelWrapper):
+        raise ValueError
+    return 1
+
+# }}}
+
+# {{{ factor the matrix
+
 def _syzygy_module(m, generators):
     """Takes as input a module of polynomials with domain :class:`sympy.EX`
     represented as a matrix and returns the syzygy module as a matrix of polynomials
@@ -408,3 +372,55 @@ def _factor_right(mat, factor_left):
         factor_right.append(row)
     factor_right = sympy.Matrix(factor_right).T
     return factor_right
+
+# }}}
+
+# {{{ convert factors back into IntGs
+
+def _convert_source_poly_to_int_g_derivs(poly, orig_int_g, axis_vars):
+    """This does the opposite of :func:`_kernel_source_derivs_as_poly`
+    and converts a polynomial back to a source derivative
+    operator. First it is converted to a :class:`sumpy.kernel.Kernel`
+    and then to a :class:`~pytential.symbolic.primitives.IntG`.
+    """
+    from pytential.symbolic.pde.system_utils import simplify_densities
+    to_pymbolic = SympyToPymbolicMapper()
+
+    orig_kernel = orig_int_g.source_kernels[0]
+    source_kernels = []
+    densities = []
+    for monom, coeff in poly.terms():
+        kernel = orig_kernel
+        for idim, rep in enumerate(monom):
+            for _ in range(rep):
+                kernel = AxisSourceDerivative(idim, kernel)
+        source_kernels.append(kernel)
+        # (-1) below is because d/dx f(c - x) = - f'(c - x)
+        densities.append(to_pymbolic(coeff) * (-1)**sum(monom))
+    return orig_int_g.copy(source_kernels=tuple(source_kernels),
+            densities=tuple(simplify_densities(densities)))
+
+
+def _convert_target_poly_to_int_g_derivs(poly, orig_int_g, rhs_int_g):
+    """This does the opposite of :func:`_kernel_source_derivs_as_poly`
+    and converts a polynomial back to a target derivative
+    operator. It is applied to a :class:`~pytential.symbolic.primitives.IntG`
+    object and returns a new instance.
+    """
+    to_pymbolic = SympyToPymbolicMapper()
+
+    result = 0
+    for monom, coeff in poly.terms():
+        kernel = orig_int_g.target_kernel
+        for idim, rep in enumerate(monom):
+            for _ in range(rep):
+                kernel = AxisTargetDerivative(idim, kernel)
+        result += orig_int_g.copy(target_kernel=kernel,
+                source_kernels=rhs_int_g.source_kernels,
+                densities=rhs_int_g.densities) * to_pymbolic(coeff)
+
+    return result
+
+# }}}
+
+# vim: fdm=marker
