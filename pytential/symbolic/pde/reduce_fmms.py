@@ -282,7 +282,7 @@ class CoefficientCollector(Mapper):
         # d_exponent should look like {1: k}
         if len(d_exponent) > 1 or 1 not in d_exponent:
             raise RuntimeError("nonlinear expression")
-        exp = list(d_exponent.values())[0]
+        exp, = d_exponent.values()
         if exp == 1:
             return d_base
         if len(d_base) > 1:
