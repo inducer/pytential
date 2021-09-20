@@ -83,55 +83,57 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     mat = sympy.Matrix(mat)
     # Factor the matrix into two
     try:
-        lhs_mat = _factor_left(mat, axis_vars)
-        rhs_mat = _factor_right(mat, lhs_mat)
+        left_factor = _factor_left(mat, axis_vars)
+        right_factor = _factor_right(mat, left_factor)
     except ValueError:
         return int_gs
 
     # If there are n inputs and m outputs,
     #
-    #  - matrix = R^{m x n},
-    #  - LHS = R^{m x k},
-    #  - RHS = R^{k x n}.
+    #  - matrix: R^{m x n},
+    #  - LHS: R^{m x k},
+    #  - RHS: R^{k x n}.
     #
-    # If k is not greater than or equal to n we are gaining nothing.
+    # If k is greater than or equal to n we are gaining nothing.
     # Return as is.
-    if rhs_mat.shape[0] >= mat.shape[0]:
+    if right_factor.shape[0] >= mat.shape[0]:
         return int_gs
 
-    # Create SymPy Polynomial objects
-    rhs_mat = rhs_mat.applyfunc(lambda x: x.as_poly(*axis_vars, domain=sympy.EX))
-    lhs_mat = lhs_mat.applyfunc(lambda x: x.as_poly(*axis_vars, domain=sympy.EX))
+    # cast to SymPy Polynomial objects
+    right_factor = right_factor.applyfunc(lambda x: x.as_poly(*axis_vars,
+        domain=sympy.EX))
+    left_factor = left_factor.applyfunc(lambda x: x.as_poly(*axis_vars,
+        domain=sympy.EX))
 
     base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
     base_int_g = int_gs[0].copy(target_kernel=base_kernel,
             source_kernels=(base_kernel,), densities=(1,))
 
-    # Convert each element in the RHS matrix to IntGs
-    rhs_mat_int_gs = [[_convert_source_poly_to_int_g(poly, base_int_g, axis_vars)
-            for poly in row] for row in rhs_mat.tolist()]
+    # Convert each element in the right factor to IntGs
+    source_int_gs = [[_convert_source_poly_to_int_g(poly, base_int_g, axis_vars)
+            for poly in row] for row in right_factor.tolist()]
 
-    # For each row in the RHS matrix, merge the IntGs to one IntG
+    # For each row in the right factor, merge the IntGs to one IntG
     # to get a total of k IntGs.
-    rhs_int_gs = []
-    for i in range(rhs_mat.shape[0]):
+    source_int_gs_merged = []
+    for i in range(right_factor.shape[0]):
         source_kernels = []
         densities = []
-        for j in range(rhs_mat.shape[1]):
+        for j in range(right_factor.shape[1]):
             new_densities = [density * source_exprs[j] for density in
-                    rhs_mat_int_gs[i][j].densities]
-            source_kernels.extend(rhs_mat_int_gs[i][j].source_kernels)
+                    source_int_gs[i][j].densities]
+            source_kernels.extend(source_int_gs[i][j].source_kernels)
             densities.extend(new_densities)
-        rhs_int_gs.append(rhs_mat_int_gs[i][0].copy(
+        source_int_gs_merged.append(source_int_gs[i][0].copy(
             source_kernels=tuple(source_kernels), densities=tuple(densities)))
 
     # Now that we have the IntG expressions depending on the source
     # we now have to attach the target dependent derivatives.
-    res = [0]*lhs_mat.shape[0]
-    for i in range(lhs_mat.shape[0]):
-        for j in range(lhs_mat.shape[1]):
-            res[i] += _convert_target_poly_to_int_g(lhs_mat[i, j],
-                    int_gs[i], rhs_int_gs[j])
+    res = [0]*left_factor.shape[0]
+    for i in range(left_factor.shape[0]):
+        for j in range(left_factor.shape[1]):
+            res[i] += _convert_target_poly_to_int_g(left_factor[i, j],
+                    int_gs[i], source_int_gs_merged[j])
 
     return res
 
