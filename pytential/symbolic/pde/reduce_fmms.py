@@ -206,6 +206,11 @@ class CoefficientCollector(Mapper):
 
     For eg: when this mapper is given as ``s*(s + 2) + 3`` input,
     it returns {s**2: 1, s: 2, 1: 3}.
+
+    This is more general than
+    :class:`pymbolic.mapper.coefficient.CoefficientCollector` as that deals
+    only with linear expressions, but this collector works for polynomial
+    expressions too.
     """
     def __init__(self, source_dependent_variables):
         self.source_dependent_variables = source_dependent_variables
