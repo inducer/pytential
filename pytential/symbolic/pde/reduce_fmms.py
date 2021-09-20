@@ -247,8 +247,10 @@ class CoefficientCollector(Mapper):
 
     def map_product(self, expr):
         if len(expr.children) > 2:
-            left = Product(tuple(expr.children[:2]))
-            right = Product(tuple(expr.children[2:]))
+            # rewrite products of more than two children as a nested
+            # product and recurse to make it easier to handle.
+            left = expr.children[0]
+            right = Product(tuple(expr.children[1:]))
             new_prod = Product((left, right))
             return self.rec(new_prod)
         elif len(expr.children) == 1:
