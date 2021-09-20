@@ -314,11 +314,11 @@ def _kernel_source_derivs_as_poly(kernel, axis_vars):
 
 # {{{ factor the matrix
 
-def _syzygy_module(m, generators):
+def _syzygy_module_groebner_basis_mat(m, generators):
     """Takes as input a module of polynomials with domain :class:`sympy.EX`
     represented as a matrix and returns the syzygy module as a matrix of polynomials
     in the same domain. The syzygy module *S* that is returned as a matrix
-    satisfies S m = 0.
+    satisfies S m = 0 and is a left nullspace of the matrix.
     Using :class:`sympy.EX` because that represents the domain with any symbolic
     element. Usually we need an Integer or Rational domain, but since there can be
     unrelated symbols like *mu* in the expression, we need to use a symbolic domain.
@@ -354,13 +354,14 @@ def _factor_left(mat, axis_vars):
     with minimum number of columns of L.
     To get a good factorisation, what we do is first find a matrix
     such that S M = 0 where S is the syzygy module converted to a matrix.
+    It can also be referred to as the left nullspace of the matrix.
     Then, M.T S.T = 0 which implies that M.T is in the space spanned by
     the syzygy module of S.T and to get M we get the transpose of that.
     """
-    first_syzygy_module = _syzygy_module(mat, axis_vars)
-    if len(first_syzygy_module) == 0:
+    syzygy_of_mat = _syzygy_module_groebner_basis_mat(mat, axis_vars)
+    if len(syzygy_of_mat) == 0:
         raise ValueError("could not find a factorization")
-    return _syzygy_module(first_syzygy_module.T, axis_vars).T
+    return _syzygy_module(syzygy_of_mat.T, axis_vars).T
 
 
 def _factor_right(mat, factor_left):
