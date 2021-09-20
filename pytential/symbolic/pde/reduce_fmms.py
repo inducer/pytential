@@ -366,19 +366,8 @@ def _factor_left(mat, axis_vars):
 
 def _factor_right(mat, factor_left):
     """Return the right hand side of the factorisation of the matrix"""
-    ys = sympy.symbols(f"_y{{0:{factor_left.shape[1]}}}")
-    factor_right = []
-    for i in range(mat.shape[1]):
-        aug_mat = sympy.zeros(factor_left.shape[0], factor_left.shape[1] + 1)
-        aug_mat[:, :factor_left.shape[1]] = factor_left
-        aug_mat[:, factor_left.shape[1]] = mat[:, i]
-        res_map = sympy.solve_linear_system(aug_mat, *ys)
-        row = []
-        for y in ys:
-            row.append(res_map[y])
-        factor_right.append(row)
-    factor_right = sympy.Matrix(factor_right).T
-    return factor_right
+    return factor_left.LUsolve(sympy.Matrix(mat),
+            iszerofunc=lambda x: x.simplify() == 0)
 
 # }}}
 
