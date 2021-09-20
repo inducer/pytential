@@ -229,6 +229,7 @@ def _convert_source_poly_to_int_g_derivs(poly, orig_int_g, axis_vars):
             for _ in range(rep):
                 kernel = AxisSourceDerivative(idim, kernel)
         source_kernels.append(kernel)
+        # (-1) below is because d/dx f(c - x) = - f'(c - x)
         densities.append(to_pymbolic(coeff) * (-1)**sum(monom))
     return orig_int_g.copy(source_kernels=tuple(source_kernels),
             densities=tuple(simplify_densities(densities)))
