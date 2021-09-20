@@ -61,15 +61,17 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
         on source. For eg: densities, source derivative vectors.
 
     Note: there is no argument for target-dependent variables as the algorithm
-    assumes that there are no target-dependent-variables passed to this function.
-    (where a "target-dependent variable" represents a function discretized on the
-    targets)
+    assumes that there are no target-dependent variables passed to this function.
+    (where a "source/target-dependent variable" is a symbolic variable that evaluates
+    to a vector discretized on the sources/targets)
     """
 
     dim = int_gs[0].target_kernel.dim
     axis_vars = sympy.symbols(f"_x0:{dim}")
 
-    # A high level driver for this function should send int_gs that are common.
+    # A high level driver for this function should send int_gs that share all the
+    # properties except for the densities, source transformations and target
+    # transformations.
     assert _check_int_gs_common(int_gs)
 
     try:
