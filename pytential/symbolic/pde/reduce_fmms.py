@@ -361,7 +361,7 @@ def _factor_left(mat, axis_vars):
     syzygy_of_mat = _syzygy_module_groebner_basis_mat(mat, axis_vars)
     if len(syzygy_of_mat) == 0:
         raise ValueError("could not find a factorization")
-    return _syzygy_module(syzygy_of_mat.T, axis_vars).T
+    return _syzygy_module_groebner_basis_mat(syzygy_of_mat.T, axis_vars).T
 
 
 def _factor_right(mat, factor_left):
