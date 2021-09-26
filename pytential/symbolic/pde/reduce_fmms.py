@@ -369,7 +369,13 @@ def _factor_left(mat, axis_vars):
 
 
 def _factor_right(mat, factor_left):
-    """Return the right hand side of the factorisation of the matrix"""
+    """Return the right hand side of the factorisation of the matrix
+    Note that from the construction of *factor_left*, we know that
+    the factor on the right has elements in the same polynomial ring
+    as the input matrix *mat*. Therefore, doing divisions are fine
+    as they should result in exact polynomial divisions and will have
+    no remainders.
+    """
     return factor_left.LUsolve(sympy.Matrix(mat),
             iszerofunc=lambda x: x.simplify() == 0)
 
