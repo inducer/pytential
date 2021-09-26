@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 from sys import intern
 from warnings import warn
-from functools import wraps, partial
+from functools import partial
 
 import numpy as np
 from pymbolic.primitives import (  # noqa: F401,N813
@@ -224,23 +224,6 @@ Pretty-printing expressions
 
 .. autofunction:: pretty
 """
-
-
-def _deprecate_kwargs(oldkey, newkey):
-    def super_wrapper(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            if oldkey in kwargs:
-                warn("using `{}` keyword is deprecated. "
-                        "use `{}` instead".format(oldkey, newkey),
-                        DeprecationWarning, stacklevel=2)
-                kwargs[newkey] = kwargs[oldkey]
-                del kwargs[oldkey]
-
-            return func(*args, **kwargs)
-        return wrapper
-
-    return super_wrapper
 
 
 class _NoArgSentinel:
@@ -460,7 +443,6 @@ def make_sym_mv(name, num_components):
     return MultiVector(make_sym_vector(name, num_components))
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def make_sym_surface_mv(name, ambient_dim, dim, dofdesc=None):
     par_grad = parametrization_derivative_matrix(ambient_dim, dim, dofdesc)
 
@@ -546,19 +528,12 @@ class DiscretizationProperty(Expression):
 
     init_arg_names = ("dofdesc",)
 
-    @_deprecate_kwargs("where", "dofdesc")
     def __init__(self, dofdesc=None):
         """
         :arg dofdesc: |dofdesc-blurb|
         """
 
         self.dofdesc = as_dofdesc(dofdesc)
-
-    @property
-    def where(self):
-        warn("`where` is deprecated. use `dofdesc` instead.",
-             DeprecationWarning, stacklevel=2)
-        return self.dofdesc
 
     def __getinitargs__(self):
         return (self.dofdesc,)
@@ -576,7 +551,6 @@ class NodeCoordinateComponent(DiscretizationProperty):
 
     init_arg_names = ("ambient_axis", "dofdesc")
 
-    @_deprecate_kwargs("where", "dofdesc")
     def __init__(self, ambient_axis, dofdesc=None):
         """
         :arg dofdesc: |dofdesc-blurb|
@@ -590,7 +564,6 @@ class NodeCoordinateComponent(DiscretizationProperty):
     mapper_method = intern("map_node_coordinate_component")
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def nodes(ambient_dim, dofdesc=None):
     """Return a :class:`pymbolic.geometric_algebra.MultiVector` of node
     locations.
@@ -610,7 +583,6 @@ class NumReferenceDerivative(DiscretizationProperty):
 
     init_arg_names = ("ref_axes", "operand", "dofdesc")
 
-    @_deprecate_kwargs("where", "dofdesc")
     def __new__(cls, ref_axes=None, operand=None, dofdesc=None):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
@@ -624,7 +596,6 @@ class NumReferenceDerivative(DiscretizationProperty):
         else:
             return DiscretizationProperty.__new__(cls)
 
-    @_deprecate_kwargs("where", "dofdesc")
     def __init__(self, ref_axes, operand, dofdesc=None):
         """
         :arg ref_axes: a :class:`tuple` of tuples indicating indices of
@@ -661,7 +632,6 @@ class NumReferenceDerivative(DiscretizationProperty):
     mapper_method = intern("map_num_reference_derivative")
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def reference_jacobian(func, output_dim, dim, dofdesc=None):
     """Return a :class:`numpy.ndarray` representing the Jacobian of a vector function
     with respect to the reference coordinates.
@@ -676,7 +646,6 @@ def reference_jacobian(func, output_dim, dim, dofdesc=None):
     return jac
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def parametrization_derivative_matrix(ambient_dim, dim, dofdesc=None):
     """Return a :class:`numpy.ndarray` representing the derivative of the
     reference-to-global parametrization.
@@ -689,7 +658,6 @@ def parametrization_derivative_matrix(ambient_dim, dim, dofdesc=None):
             "pd_matrix", cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def parametrization_derivative(ambient_dim, dim, dofdesc=None):
     """Return a :class:`pymbolic.geometric_algebra.MultiVector` representing
     the derivative of the reference-to-global parametrization.
@@ -701,7 +669,6 @@ def parametrization_derivative(ambient_dim, dim, dofdesc=None):
     return product(MultiVector(vec) for vec in par_grad.T)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def pseudoscalar(ambient_dim, dim=None, dofdesc=None):
     """
     Same as the outer product of all parametrization derivative columns.
@@ -715,14 +682,12 @@ def pseudoscalar(ambient_dim, dim=None, dofdesc=None):
             "pseudoscalar", cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def area_element(ambient_dim, dim=None, dofdesc=None):
     return cse(
             sqrt(pseudoscalar(ambient_dim, dim, dofdesc).norm_squared()),
             "area_element", cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def sqrt_jac_q_weight(ambient_dim, dim=None, dofdesc=None):
     return cse(
             sqrt(
@@ -731,7 +696,6 @@ def sqrt_jac_q_weight(ambient_dim, dim=None, dofdesc=None):
             "sqrt_jac_q_weight", cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def normal(ambient_dim, dim=None, dofdesc=None):
     """Exterior unit normals."""
 
@@ -748,7 +712,6 @@ def normal(ambient_dim, dim=None, dofdesc=None):
             scope=cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def mean_curvature(ambient_dim, dim=None, dofdesc=None):
     """(Numerical) mean curvature."""
 
@@ -775,7 +738,6 @@ def mean_curvature(ambient_dim, dim=None, dofdesc=None):
     return kappa
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def first_fundamental_form(ambient_dim, dim=None, dofdesc=None):
     if dim is None:
         dim = ambient_dim - 1
@@ -790,7 +752,6 @@ def first_fundamental_form(ambient_dim, dim=None, dofdesc=None):
             "fundform1")
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def second_fundamental_form(ambient_dim, dim=None, dofdesc=None):
     """Compute the second fundamental form of a surface. This is in reference
     to the reference-to-global mapping in use for each element.
@@ -830,7 +791,6 @@ def second_fundamental_form(ambient_dim, dim=None, dofdesc=None):
     return result
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def shape_operator(ambient_dim, dim=None, dofdesc=None):
     if dim is None:
         dim = ambient_dim - 1
@@ -853,7 +813,6 @@ def shape_operator(ambient_dim, dim=None, dofdesc=None):
             "shape_operator")
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def _panel_size(ambient_dim, dim=None, dofdesc=None):
     # A broken quasi-1D approximation of 1D element size. Do not use.
 
@@ -901,7 +860,6 @@ def _small_mat_eigenvalues(mat):
                 "eigenvalue formula for %dx%d matrices" % (m, n))
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def _equilateral_parametrization_derivative_matrix(ambient_dim, dim=None,
         dofdesc=None):
     if dim is None:
@@ -920,7 +878,6 @@ def _equilateral_parametrization_derivative_matrix(ambient_dim, dim=None,
             "equilateral_pder_mat")
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
         with_elementwise_max=True):
     """Return the largest factor by which the reference-to-global
@@ -969,7 +926,6 @@ def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
     return cse(result, "mapping_max_stretch", cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def _max_curvature(ambient_dim, dim=None, dofdesc=None):
     # An attempt at a 'max curvature' criterion.
 
@@ -990,7 +946,6 @@ def _max_curvature(ambient_dim, dim=None, dofdesc=None):
                 "dimensions" % ambient_dim)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def _scaled_max_curvature(ambient_dim, dim=None, dofdesc=None):
     """An attempt at a unit-less, scale-invariant quantity that characterizes
     'how much curviness there is on an element'. Values seem to hover around 1
@@ -1016,7 +971,6 @@ def _expansion_radii_factor(ambient_dim, dim):
     return 0.5 * dim_fudge_factor
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     """This measures the quadrature resolution across the
     mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
@@ -1037,7 +991,6 @@ def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     return interp(from_dd, to_dd, stretch)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def _source_danger_zone_radii(ambient_dim, dim=None,
         granularity=None, dofdesc=None):
     # This should be the expression of the expansion radii, but
@@ -1055,14 +1008,12 @@ def _source_danger_zone_radii(ambient_dim, dim=None,
             dim=dim, granularity=granularity, dofdesc=dofdesc)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def _close_target_tunnel_radii(ambient_dim, dim=None,
         granularity=None, dofdesc=None):
     return 0.5 * expansion_radii(ambient_dim,
             dim=dim, granularity=granularity, dofdesc=dofdesc)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def expansion_radii(ambient_dim, dim=None, granularity=None, dofdesc=None):
     factor = _expansion_radii_factor(ambient_dim, dim)
     return cse(factor * _quad_resolution(ambient_dim, dim=dim,
@@ -1071,7 +1022,6 @@ def expansion_radii(ambient_dim, dim=None, granularity=None, dofdesc=None):
         cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
     x = nodes(ambient_dim, dofdesc=dofdesc)
     normals = normal(ambient_dim, dim=dim, dofdesc=dofdesc)
@@ -1084,7 +1034,6 @@ def expansion_centers(ambient_dim, side, dim=None, dofdesc=None):
             cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def interleaved_expansion_centers(ambient_dim, dim=None, dofdesc=None):
     centers = [
             expansion_centers(ambient_dim, -1, dim=dim, dofdesc=dofdesc),
@@ -1096,7 +1045,6 @@ def interleaved_expansion_centers(ambient_dim, dim=None, dofdesc=None):
     return interp(source, target, centers)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def h_max(ambient_dim, dim=None, dofdesc=None):
     """Defines a maximum element size in the discretization."""
 
@@ -1108,7 +1056,6 @@ def h_max(ambient_dim, dim=None, dofdesc=None):
             cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
     """Combines :func:`area_element` and :class:`QWeight`."""
 
@@ -1200,7 +1147,6 @@ class NodeMin(SingleScalarOperandExpression):
     mapper_method = "map_node_min"
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def integral(ambient_dim, dim, operand, dofdesc=None):
     """A volume integral of *operand*."""
 
@@ -1214,7 +1160,6 @@ class SingleScalarOperandExpressionWithWhere(Expression):
 
     init_arg_names = ("operand", "dofdesc")
 
-    @_deprecate_kwargs("where", "dofdesc")
     def __new__(cls, operand=None, dofdesc=None):
         # If the constructor is handed a multivector object, return an
         # object array of the operator applied to each of the
@@ -1228,16 +1173,9 @@ class SingleScalarOperandExpressionWithWhere(Expression):
         else:
             return Expression.__new__(cls)
 
-    @_deprecate_kwargs("where", "dofdesc")
     def __init__(self, operand, dofdesc=None):
         self.operand = operand
         self.dofdesc = as_dofdesc(dofdesc)
-
-    @property
-    def where(self):
-        warn("`where` is deprecated. use `dofdesc` instead.",
-             DeprecationWarning, stacklevel=2)
-        return self.dofdesc
 
     def __getinitargs__(self):
         return (self.operand, self.dofdesc)
@@ -1274,15 +1212,8 @@ class Ones(Expression):
 
     init_arg_names = ("dofdesc",)
 
-    @_deprecate_kwargs("where", "dofdesc")
     def __init__(self, dofdesc=None):
         self.dofdesc = as_dofdesc(dofdesc)
-
-    @property
-    def where(self):
-        warn("`where` is deprecated. use `dofdesc` instead.",
-             DeprecationWarning, stacklevel=2)
-        return self.dofdesc
 
     def __getinitargs__(self):
         return (self.dofdesc,)
@@ -1290,20 +1221,17 @@ class Ones(Expression):
     mapper_method = intern("map_ones")
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def ones_vec(dim, dofdesc=None):
     from pytools.obj_array import make_obj_array
     return MultiVector(
                 make_obj_array(dim*[Ones(dofdesc)]))
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def area(ambient_dim, dim, dofdesc=None):
     return cse(integral(ambient_dim, dim, Ones(dofdesc), dofdesc), "area",
             cse_scope.DISCRETIZATION)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def mean(ambient_dim, dim, operand, dofdesc=None):
     return (
             integral(ambient_dim, dim, operand, dofdesc)
@@ -1314,7 +1242,6 @@ class IterativeInverse(Expression):
 
     init_arg_names = ("expression", "rhs", "variable_name", "extra_vars", "dofdesc")
 
-    @_deprecate_kwargs("where", "dofdesc")
     def __init__(self, expression, rhs, variable_name, extra_vars=None,
             dofdesc=None):
         if extra_vars is None:
@@ -1324,12 +1251,6 @@ class IterativeInverse(Expression):
         self.variable_name = variable_name
         self.extra_vars = extra_vars
         self.dofdesc = as_dofdesc(dofdesc)
-
-    @property
-    def where(self):
-        warn("`where` is deprecated. use `dofdesc` instead.",
-             DeprecationWarning, stacklevel=2)
-        return self.dofdesc
 
     def __getinitargs__(self):
         return (self.expression, self.rhs, self.variable_name,
@@ -1721,7 +1642,6 @@ def S(kernel, density,
             kernel_arguments, **kwargs)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def tangential_derivative(ambient_dim, operand, dim=None, dofdesc=None):
     pder = (
             pseudoscalar(ambient_dim, dim, dofdesc)
@@ -1733,7 +1653,6 @@ def tangential_derivative(ambient_dim, operand, dim=None, dofdesc=None):
             (d.dnabla(ambient_dim) * d(operand)) >> pder)
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def normal_derivative(ambient_dim, operand, dim=None, dofdesc=None):
     d = Derivative()
     return d.resolve(
@@ -1841,7 +1760,6 @@ def Dp(kernel, *args, **kwargs):
 
 # {{{ conventional vector calculus
 
-@_deprecate_kwargs("where", "dofdesc")
 def tangential_onb(ambient_dim, dim=None, dofdesc=None):
     """Return a matrix of shape ``(ambient_dim, dim)`` with orthogonal columns
     spanning the tangential space of the surface of *dofdesc*.
@@ -1869,7 +1787,6 @@ def tangential_onb(ambient_dim, dim=None, dofdesc=None):
     return orth_pd_mat
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def xyz_to_tangential(xyz_vec, dofdesc=None):
     ambient_dim = len(xyz_vec)
     tonb = tangential_onb(ambient_dim, dofdesc=dofdesc)
@@ -1879,7 +1796,6 @@ def xyz_to_tangential(xyz_vec, dofdesc=None):
         ])
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def tangential_to_xyz(tangential_vec, dofdesc=None):
     ambient_dim = len(tangential_vec) + 1
     tonb = tangential_onb(ambient_dim, dofdesc=dofdesc)
@@ -1888,13 +1804,11 @@ def tangential_to_xyz(tangential_vec, dofdesc=None):
         for i in range(ambient_dim - 1))
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def project_to_tangential(xyz_vec, dofdesc=None):
     return tangential_to_xyz(
             cse(xyz_to_tangential(xyz_vec, dofdesc), dofdesc))
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def n_dot(vec, dofdesc=None):
     nrm = normal(len(vec), dofdesc=dofdesc).as_vector()
 
@@ -1913,7 +1827,6 @@ def cross(vec_a, vec_b):
         for i in range(3)])
 
 
-@_deprecate_kwargs("where", "dofdesc")
 def n_cross(vec, dofdesc=None):
     return cross(normal(3, dofdesc).as_vector(), vec)
 
