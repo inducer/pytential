@@ -96,31 +96,13 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
         FMMs needed for the output.
     """
 
-    int_g_s = get_int_g_s(exprs)
-
     if base_kernel is not None:
-        replacements = {}
-
-        # Iterate all the IntGs in the expressions and create a dictionary
-        # of replacements for the IntGs
-        for int_g in int_g_s:
-            # First convert IntGs with target derivatives to source derivatives
-            new_int_g = convert_target_deriv_to_source(int_g)
-            # Convert IntGs with TargetMultiplier to a sum of IntGs without
-            # TargetMultipliers
-            new_int_g_s = convert_target_multiplier_to_source(new_int_g)
-            # Convert IntGs with different kernels to expressions containing
-            # IntGs with base_kernel or its derivatives
-            replacements[int_g] = sum(convert_int_g_to_base(new_int_g,
-                base_kernel) for new_int_g in new_int_g_s)
-
-        # replace the IntGs in the expressions
-        substitutor = IntGSubstitutor(replacements)
-        exprs = [substitutor(expr) for expr in exprs]
+        mapper = RewriteUsingBaseKernelMapper()
+        exprs = [mapper(expr) for expr in exprs]
 
     differing_kernel_arguments = set()
     kernel_arguments = {}
-    for int_g in int_g_s:
+    for int_g in get_int_g_s(exprs):
         for k, v in int_g.kernel_arguments.items():
             if k not in kernel_arguments:
                 kernel_arguments[k] = v
@@ -251,6 +233,30 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
     return result
 
 
+class RewriteUsingBaseKernelMapper(IdentityMapper):
+    """Rewrites IntGs using the base kernel. First this method replaces
+    IntGs with :class:`sumpy.kernel.AxisTargetDerivative` to IntGs
+    :class:`sumpy.kernel.AxisSourceDerivative` and then replaces
+    IntGs with :class:`sumpy.kernel.TargetPointMultiplier` to IntGs
+    without them using :class:`sumpy.kernel.ExpressionKernel`
+    and then finally converts them to the base kernel by finding
+    a relationship between the derivatives.
+    """
+    def __init__(self, base_kernel):
+        self.base_kernel = base_kernel
+
+    def map_int_g(self, expr):
+        # First convert IntGs with target derivatives to source derivatives
+        expr = convert_target_deriv_to_source(expr)
+        # Convert IntGs with TargetMultiplier to a sum of IntGs without
+        # TargetMultipliers
+        new_int_gs = convert_target_multiplier_to_source(expr)
+        # Convert IntGs with different kernels to expressions containing
+        # IntGs with base_kernel or its derivatives
+        return sum(convert_int_g_to_base(new_int_g,
+            self.base_kernel) for new_int_g in new_int_g_s)
+
+
 def get_int_g_source_group(int_g, differing_kernel_arguments):
     """Return a group for the *int_g* with so that all elements in that
     group have the same source attributes.
@@ -310,17 +316,6 @@ def merge_two_int_gs(int_g_1, int_g_2):
         densities=tuple(densities),
         kernel_arguments=kernel_arguments,
     )
-
-
-class IntGSubstitutor(IdentityMapper):
-    """Replaces IntGs with pymbolic expression given by the
-    replacements dictionary
-    """
-    def __init__(self, replacements):
-        self.replacements = replacements
-
-    def map_int_g(self, expr):
-        return self.replacements.get(expr, expr)
 
 
 class IntGCoefficientCollector(CoefficientCollector):
