@@ -492,41 +492,44 @@ def convert_int_g_to_base(int_g, base_kernel):
 
 
 def _convert_int_g_to_base(int_g, base_kernel):
-    tgt_knl = int_g.target_kernel
+    target_kernel = int_g.target_kernel
     dim = tgt_knl.dim
-    if tgt_knl != tgt_knl.get_base_kernel():
-        return int_g
-
-    if not len(int_g.densities) == 1:
-        raise ValueError
-    density = int_g.densities[0]
-    source_kernel = int_g.source_kernels[0]
-
-    deriv_relation = get_deriv_relation_kernel(source_kernel.get_base_kernel(),
-        base_kernel)
-
-    const = deriv_relation[0]
-    # NOTE: we set a dofdesc here to force the evaluation of this integral
-    # on the source instead of the target when using automatic tagging
-    # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
-    dd = pytential.sym.DOFDescriptor(None,
-            discr_stage=pytential.sym.QBX_SOURCE_STAGE1)
-    const *= pytential.sym.integral(dim, dim-1, density, dofdesc=dd)
 
     result = 0
-    if source_kernel == source_kernel.get_base_kernel():
+    for density, source_kernel in zip(int_g.densities, int_g.source_kernels):
+        deriv_relation = get_deriv_relation_kernel(source_kernel.get_base_kernel(),
+            base_kernel)
+
+        const = deriv_relation[0]
+        # NOTE: we set a dofdesc here to force the evaluation of this integral
+        # on the source instead of the target when using automatic tagging
+        # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
+        dd = pytential.sym.DOFDescriptor(None,
+                discr_stage=pytential.sym.QBX_SOURCE_STAGE1)
+        const *= pytential.sym.integral(dim, dim-1, density, dofdesc=dd)
+
+        if const != 0 and target_kernel != target_kernel.get_base_kernel():
+            # There might be some TargetPointMultipliers hanging around.
+            # FIXME: handle them instead of bailing out
+            return [int_g]
+
+        if source_kernel != source_kernel.get_base_kernel():
+            # We assume that any source transformation is a derivative
+            # and the constant when applied becomes zero.
+            const = 0
+
         result += const
 
-    new_kernel_args = filter_kernel_arguments([base_kernel], int_g.kernel_arguments)
+        new_kernel_args = filter_kernel_arguments([base_kernel], int_g.kernel_arguments)
 
-    for mi, c in deriv_relation[1]:
-        knl = source_kernel.replace_base_kernel(base_kernel)
-        for d, val in enumerate(mi):
-            for _ in range(val):
-                knl = AxisSourceDerivative(d, knl)
-                c *= -1
-        result += int_g.copy(target_kernel=base_kernel, source_kernels=(knl,),
-                densities=(density,), kernel_arguments=new_kernel_args) * c
+        for mi, c in deriv_relation[1]:
+            knl = source_kernel.replace_base_kernel(base_kernel)
+            for d, val in enumerate(mi):
+                for _ in range(val):
+                    knl = AxisSourceDerivative(d, knl)
+                    c *= -1
+            result += int_g.copy(source_kernels=(knl,),
+                    densities=(density,), kernel_arguments=new_kernel_args) * c
     return result
 
 
