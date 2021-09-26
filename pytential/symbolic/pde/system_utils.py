@@ -56,16 +56,21 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
     Several techniques are used for merging and reducing number of FMMs
 
        * When `base_kernel` is given an `IntG` is rewritten using `base_kernel`
-         and its derivatives.
+         and its derivatives. (For example, if *base_kernel* is the biharmonic
+         kernel, and a Laplace kernel is encountered, this will (forcibly)
+         rewrite the kernel in terms of that. The routine will fail if this
+         process cannot be completed.)
 
        * :class:`sumpy.kernel.AxisTargetDerivative` instances are converted
          to :class:`sumpy.kernel.AxisSourceDerivative` instances.
+         (by flipping signs, assuming translation-invariance).
+         Target derivatives will be brought back by the syzygy module
+         construction below if beneficial.
+         (For example, D + d/dx(S) can be re-written as D - d/dy(S) which can be
+         done in one FMM)
 
        * If there is a sum of two `IntG`s with same target derivative and different
          source derivatives of the same kernel, they are merged into one FMM.
-
-       * If possible, convert :class:`sumpy.kernel.AxisSourceDerivative` to
-         :class:`sumpy.kernel.DirectionalSourceDerivative`.
 
        * Reduce the number of FMMs by converting the `IntG` expression to
          a matrix and factoring the matrix where the left operand matrix represents
