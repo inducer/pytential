@@ -351,7 +351,11 @@ def _syzygy_module_groebner_basis_mat(m, generators):
 def _factor_left(mat, axis_vars):
     """Return the left hand side of the factorisation of the matrix
     For a matrix M, we want to find a factorisation such that M = L R
-    with minimum number of columns of L.
+    with minimum number of columns of L. The polynomials represent
+    derivative operators and therefore division is not well defined.
+    To avoid divisions, we work in a polynomial ring which doesn't
+    have division either.
+
     To get a good factorisation, what we do is first find a matrix
     such that S M = 0 where S is the syzygy module converted to a matrix.
     It can also be referred to as the left nullspace of the matrix.
