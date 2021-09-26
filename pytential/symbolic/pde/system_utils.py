@@ -41,6 +41,9 @@ import pytential
 
 from pytential.symbolic.pde.reduce_fmms import reduce_number_of_fmms
 
+import logging
+logger = logging.getLogger(__name__)
+
 __all__ = (
     "merge_int_g_exprs",
     "get_deriv_relation",
@@ -51,9 +54,7 @@ __doc__ = """
 .. autofunction:: get_deriv_relation
 """
 
-
-def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
-        source_dependent_variables=None):
+def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
     """
     Merge expressions involving :class:`~pytential.symbolic.primitives.IntG`
     objects.
@@ -90,8 +91,6 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         expression of same type with the kernel replaced by base_kernel and its
         derivatives
 
-    :arg verbose: increase verbosity of merging
-
     :arg source_dependent_variable: When merging expressions, consider only these
         variables as dependent on source. Otherwise consider all variables
         as source dependent. This is important when reducing the number of FMMs
@@ -114,7 +113,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
             # Convert IntGs with different kernels to expressions containing
             # IntGs with base_kernel or its derivatives
             replacements[int_g] = sum(convert_int_g_to_base(new_int_g,
-                base_kernel, verbose=verbose) for new_int_g in new_int_g_s)
+                base_kernel) for new_int_g in new_int_g_s)
 
         # replace the IntGs in the expressions
         substitutor = IntGSubstitutor(replacements)
@@ -352,7 +351,7 @@ def evalf(expr, prec=100):
 
 
 @memoize_on_first_arg
-def _get_base_kernel_matrix(base_kernel, order=None, verbose=False):
+def _get_base_kernel_matrix(base_kernel, order=None):
     dim = base_kernel.dim
 
     pde = base_kernel.get_pde_as_diff_op()
@@ -370,8 +369,7 @@ def _get_base_kernel_matrix(base_kernel, order=None, verbose=False):
     if order == pde.order:
         pde_mis = [ident.mi for eq in pde.eqs for ident in eq.keys()]
         pde_mis = [mi for mi in pde_mis if sum(mi) == order]
-        if verbose:
-            print(f"Removing {pde_mis[-1]} to avoid linear dependent mis")
+        logger.debug(f"Removing {pde_mis[-1]} to avoid linear dependent mis")
         mis.remove(pde_mis[-1])
 
     rand = np.random.randint(1, 100, (dim, len(mis)))
@@ -402,10 +400,8 @@ def _get_base_kernel_matrix(base_kernel, order=None, verbose=False):
 
 
 @memoize_on_first_arg
-def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-8, order=None,
-        verbose=False):
-    (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order,
-            verbose=verbose)
+def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-8, order=None):
+    (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order)
     dim = base_kernel.dim
     sym_vec = make_sym_vector("d", dim)
     sympy_conv = SympyToPymbolicMapper()
@@ -418,8 +414,7 @@ def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-8, order=None,
     vec = sym.Matrix(vec)
     result = []
     const = 0
-    if verbose:
-        print(kernel, end=" = ", flush=True)
+    logger.debug("%s = ", kernel)
 
     sol = lu_solve_with_expand(L, U, perm, vec)
     for i, coeff in enumerate(sol):
@@ -430,19 +425,17 @@ def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-8, order=None,
             coeff *= kernel.get_global_scaling_const()
             coeff /= base_kernel.get_global_scaling_const()
             result.append((mis[i], sympy_conv(coeff)))
-            if verbose:
-                print(f"{base_kernel}.diff({mis[i]})*{coeff}", end=" + ")
+            logger.debug("  + %s.diff(%s)*%s", base_kernel, mis[i], coeff)
         else:
             const = sympy_conv(coeff * kernel.get_global_scaling_const())
-    if verbose:
-        print(const)
+    logger.debug("  + %s", const)
     return (const, result)
 
 
-def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None, verbose=False):
+def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None):
     res = []
     for knl in kernels:
-        res.append(get_deriv_relation_kernel(knl, base_kernel, tol, order, verbose))
+        res.append(get_deriv_relation_kernel(knl, base_kernel, tol, order))
     return res
 
 
@@ -495,16 +488,16 @@ def filter_kernel_arguments(knls, kernel_arguments):
     return {k: v for (k, v) in kernel_arguments.items() if k in kernel_arg_names}
 
 
-def convert_int_g_to_base(int_g, base_kernel, verbose=False):
+def convert_int_g_to_base(int_g, base_kernel):
     result = 0
     for knl, density in zip(int_g.source_kernels, int_g.densities):
         result += _convert_int_g_to_base(
                 int_g.copy(source_kernels=(knl,), densities=(density,)),
-                base_kernel, verbose)
+                base_kernel)
     return result
 
 
-def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
+def _convert_int_g_to_base(int_g, base_kernel):
     tgt_knl = int_g.target_kernel
     dim = tgt_knl.dim
     if tgt_knl != tgt_knl.get_base_kernel():
@@ -516,7 +509,7 @@ def _convert_int_g_to_base(int_g, base_kernel, verbose=False):
     source_kernel = int_g.source_kernels[0]
 
     deriv_relation = get_deriv_relation_kernel(source_kernel.get_base_kernel(),
-        base_kernel, verbose=verbose)
+        base_kernel)
 
     const = deriv_relation[0]
     # NOTE: we set a dofdesc here to force the evaluation of this integral
@@ -725,6 +718,7 @@ def simplify_densities(densities):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     from sumpy.kernel import (StokesletKernel, BiharmonicKernel,  # noqa:F401
         StressletKernel, ElasticityKernel, LaplaceKernel)
     base_kernel = BiharmonicKernel(3)
@@ -742,7 +736,7 @@ if __name__ == "__main__":
     kernels = [expression_knl, expression_knl2]
     #kernels += [ElasticityKernel(3, 0, 1, poisson_ratio="0.4"),
     #        ElasticityKernel(3, 0, 0, poisson_ratio="0.4")]
-    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, verbose=True)
+    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4)
     density = pytential.sym.make_sym_vector("d", 1)[0]
     from pytential.symbolic.primitives import int_g_vec
     int_g_1 = int_g_vec(TargetPointMultiplier(2, AxisTargetDerivative(2,
@@ -752,4 +746,4 @@ if __name__ == "__main__":
         AxisSourceDerivative(0, AxisSourceDerivative(0,
             LaplaceKernel(3))))), density, qbx_forced_limit=1)
     print(merge_int_g_exprs([int_g_1, int_g_2],
-        base_kernel=BiharmonicKernel(3), verbose=True)[0])
+        base_kernel=BiharmonicKernel(3))[0])
