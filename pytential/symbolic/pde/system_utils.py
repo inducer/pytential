@@ -92,9 +92,8 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
         derivatives
 
     :arg source_dependent_variable: When merging expressions, consider only these
-        variables as dependent on source. Otherwise consider all variables
-        as source dependent. This is important when reducing the number of FMMs
-        needed for the output.
+        variables as dependent on source. This is important when reducing the number of
+        FMMs needed for the output.
     """
 
     int_g_s = get_int_g_s(exprs)
