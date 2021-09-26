@@ -23,6 +23,7 @@ Contents
     tools
     misc
     qbx
+    merge
     🚀 Github <https://github.com/inducer/pytential>
     💾 Download Releases <https://pypi.org/project/pytential>
 

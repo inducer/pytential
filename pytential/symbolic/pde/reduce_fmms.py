@@ -35,6 +35,10 @@ __all__ = (
     "reduce_number_of_fmms",
     )
 
+__doc__="""
+.. autofunction:: reduce_number_of_fmms
+"""
+
 
 # {{{ Reduce number of FMMs - main routine
 
@@ -58,7 +62,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
 
     :arg int_gs: list of ``IntG`` objects.
 
-    :arg source_dependent_variables: list of :class:`pymbolic.primtives.Expression`
+    :arg source_dependent_variables: list of :class:`pymbolic.primitives.Expression`
         objects. When reducing FMMs, consider only these variables as dependent
         on source. For eg: densities, source derivative vectors.
 

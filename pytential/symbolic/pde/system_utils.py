@@ -46,6 +46,11 @@ __all__ = (
     "get_deriv_relation",
     )
 
+__doc__ = """
+.. autofunction:: merge_int_g_exprs
+.. autofunction:: get_deriv_relation
+"""
+
 
 def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
         source_dependent_variables=None):
@@ -55,7 +60,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
 
     Several techniques are used for merging and reducing number of FMMs
 
-       * When `base_kernel` is given an `IntG` is rewritten using `base_kernel`
+       * When *base_kernel* is given an *IntG* is rewritten using *base_kernel*
          and its derivatives. (For example, if *base_kernel* is the biharmonic
          kernel, and a Laplace kernel is encountered, this will (forcibly)
          rewrite the kernel in terms of that. The routine will fail if this
@@ -66,18 +71,19 @@ def merge_int_g_exprs(exprs, base_kernel=None, verbose=False,
          (by flipping signs, assuming translation-invariance).
          Target derivatives will be brought back by the syzygy module
          construction below if beneficial.
-         (For example, D + d/dx(S) can be re-written as D - d/dy(S) which can be
+         (For example, `D + d/dx(S)` can be re-written as `D - d/dy(S)` which can be
          done in one FMM)
 
-       * If there is a sum of two `IntG`s with same target derivative and different
+       * If there is a sum of two *IntG* s with same target derivative and different
          source derivatives of the same kernel, they are merged into one FMM.
 
-       * Reduce the number of FMMs by converting the `IntG` expression to
+       * Reduce the number of FMMs by converting the *IntG* expression to
          a matrix and factoring the matrix where the left operand matrix represents
          a transformation at target and the right matrix represents a transformation
          at source. For this to work, we need to know which variables depend on
          source so that they do not end up in the left operand. User needs to supply
-         this as the argument `source_dependent_variable`.
+         this as the argument *source_dependent_variable*. This is done by the
+         call to :func:`pytential.symbolic.pde.reduce_fmms.reduce_number_of_fmms`.
 
     :arg base_kernel: A :class:`sumpy.kernel.Kernel` object if given will be used
         for converting a :class:`~pytential.symbolic.primitives.IntG` to a linear
