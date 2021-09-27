@@ -128,6 +128,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
                 result[i] += coeff
                 continue
 
+            int_g = make_normal_vector_names_unique(int_g, seen_normal_vectors)
             # convert DirectionalSourceDerivative to AxisSourceDerivative
             # as kernel arguments need to be the same for merging
             if source_dependent_variables is not None:
@@ -139,11 +140,11 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
             # move the coefficient inside
             int_g = int_g.copy(densities=[density*coeff for density in
                     int_g.densities])
-            int_g = make_normal_vector_names_unique(int_g, seen_normal_vectors)
 
-            source_group_identifier = get_int_g_source_group_identifier(int_g)
-            target_group = get_int_g_target_group(int_g)
-            group = (source_group_identifier, target_group)
+            source_group_identifier = get_int_g_source_group_identifier(int_g,
+                    seen_normal_vectors.assignments)
+            target_group_identifier = get_int_g_target_group_identifier(int_g)
+            group = (source_group_identifier, target_group_identifier)
 
             all_source_group_identifiers[source_group_identifier] = 1
 
@@ -299,7 +300,7 @@ def rename_normal_vector_name(kernel, replacements):
     if not isinstance(kernel, DirectionalDerivative):
         return kernel.replace_inner_kernel(renamed_inner_kernel)
 
-    new_name = replacements[kernel.dir_vec_name]
+    new_name = replacements.get(kernel.dir_vec_name, kernel.dir_vec_name)
     return type(kernel)(renamed_inner_kernel, new_name)
 
 
@@ -325,17 +326,16 @@ def get_hashable_kernel_argument(arg):
     return arg
 
 
-def get_int_g_source_group_identifier(int_g):
+def get_int_g_source_group_identifier(int_g, normal_vectors):
     """Return a group for the *int_g* with so that all elements in that
     group have the same source attributes.
     """
-    normal_vectors = get_normal_vectors(int_g)
     args = tuple((k, get_hashable_kernel_argument(v)) for k, v in sorted(
         int_g.kernel_arguments.items()) if k not in normal_vectors)
     return (int_g.source, args, int_g.target_kernel.get_base_kernel())
 
 
-def get_int_g_target_group(int_g):
+def get_int_g_target_group_identifier(int_g):
     """Return a group for the *int_g* with so that all elements in that
     group have the same source attributes.
     """
@@ -566,7 +566,7 @@ def convert_int_g_to_base(int_g, base_kernel):
 
 
 def _convert_int_g_to_base(int_g, base_kernel):
-    target_kernel = int_g.target_kernel
+    target_kernel = int_g.target_kernel.replace_base_kernel(base_kernel)
     dim = target_kernel.dim
 
     result = 0
@@ -603,7 +603,7 @@ def _convert_int_g_to_base(int_g, base_kernel):
                 for _ in range(val):
                     knl = AxisSourceDerivative(d, knl)
                     c *= -1
-            result += int_g.copy(source_kernels=(knl,),
+            result += int_g.copy(source_kernels=(knl,), target_kernel=target_kernel,
                     densities=(density,), kernel_arguments=new_kernel_args) * c
     return result
 
