@@ -100,18 +100,11 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
         mapper = RewriteUsingBaseKernelMapper()
         exprs = [mapper(expr) for expr in exprs]
 
-    differing_kernel_arguments = set()
-    kernel_arguments = {}
-    for int_g in get_int_g_s(exprs):
-        for k, v in int_g.kernel_arguments.items():
-            if k not in kernel_arguments:
-                kernel_arguments[k] = v
-            else:
-                if kernel_arguments[k] != v:
-                    differing_kernel_arguments.add(k)
+    from sumpy.assignment_collection import SymbolicAssignmentCollection
+    seen_normal_vectors = SymbolicAssignmentCollection()
 
     # Using a dictionary instead of a set because sets are unordered
-    all_source_groups = dict()
+    all_source_group_identifiers = dict()
 
     result = np.array([0 for _ in exprs], dtype=object)
 
@@ -145,12 +138,13 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
             # move the coefficient inside
             int_g = int_g.copy(densities=[density*coeff for density in
                     int_g.densities])
+            int_g = make_normal_vector_names_unique(int_g, seen_normal_vectors)
 
-            source_group = get_int_g_source_group(int_g, differing_kernel_arguments)
+            source_group_identifier = get_int_g_source_group_identifier(int_g, differing_kernel_arguments)
             target_group = get_int_g_target_group(int_g)
-            group = (source_group, target_group)
+            group = (source_group_identifier, target_group)
 
-            all_source_groups[source_group] = 1
+            all_source_group_identifiers[source_group_identifier] = 1
 
             if group not in int_gs_by_group:
                 new_int_g = int_g
@@ -183,12 +177,12 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
                 result[iexpr] += int_g
         return result
 
-    # Do the calculation for each source_group separately and assemble them
-    for source_group in all_source_groups.keys():
+    # Do the calculation for each source_group_identifier separately and assemble them
+    for source_group_identifier in all_source_group_identifiers.keys():
         insn_to_idx_mapping = defaultdict(list)
         for idx, int_gs_by_group in enumerate(int_gs_by_group_for_index):
             for group, int_g in int_gs_by_group.items():
-                if group[0] != source_group:
+                if group[0] != source_group_identifier:
                     continue
                 # For each output, we now have a sum of int_gs with
                 # different target attributes.
@@ -257,18 +251,85 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
             self.base_kernel) for new_int_g in new_int_g_s)
 
 
-def get_int_g_source_group(int_g, differing_kernel_arguments):
+def make_normal_vector_names_unique(int_g, sac):
+    normal_vectors = get_normal_vectors(intg)
+    replacements = {}
+    for vector_name, value in normal_vectors.items():
+        if vector_name not in sac.assignments:
+            # There was no previous IntG with the same normal vector name
+            sac.assignments[vector_name] = value
+            sac.reversed_assignments[value] = vector_name
+        elif sac.assignments[vector_name] != value:
+            # There was a previous IntG with the same normal vector name
+            # and the value was different. We need to rename
+            new_name = sac.symbol_generator(vector_name).name
+            # If this name was already renamed, use that name
+            if value in sac.reversed_assignments:
+                new_name = sac.reversed_assignments[value]
+            else:
+                sac.assignments[new_name] = value
+                sac.reversed_assignments[value] = new_name
+            replacements[name] = new_name
+
+    target_kernel = rename_normal_vector_name(int_g.target_kernel,
+            replacements)
+    source_kernels = tuple([rename_normal_vector_name(source_kernel,
+            replacements) for source_kernel in int_g.source_kernels])
+
+    kernel_arguments = int_g.kernel_arguments.copy()
+    # first delete the old names and then add in the new names
+    # these have to be done in two loops to avoid issues with
+    # some new names conflicting with old names
+    for old_name in replacements.keys():
+        del kernel_arguments[old_name]
+    for old_name, new_name in replacements.items():
+        kernel_arguments[new_name] = int_g.kernel_arguments[old_name]
+
+    return int_g.copy(target_kernel=target_kernel, source_kernels=source_kernels)
+
+
+def rename_normal_vector_name(kernel, replacements):
+    if not isinstance(kernel, KernelWrapper):
+        return kernel
+    renamed_inner_kernel = rename_normal_vector_name(kernel.inner_kernel,
+        old_name, new_name)
+
+    if not isinstance(kernel, DirectionalDerivative):
+        return kernel.replace_inner_kernel(renamed_inner_kernel)
+
+    new_name = replacements[kernel.dir_vec_name]
+    return type(kernel)(renamed_inner_kernel, new_name)
+
+
+def get_normal_vectors(int_g):
+    """Return the normal vector names and their values from a
+    *int_g*.
+    """
+    normal_vectors = {}
+    kernels = [int_g.target_kernel] + list(int_g.source_kernels)
+    for kernel in kernels:
+        while isinstance(kernel, KernelWrapper):
+            if isinstance(kernel, DirectionalDerivative):
+                name = kernel.dir_vec_name
+                normal_vectors[name] = get_hashable_kernel_argument(
+                        int_g.kernel_arguments[name])
+            kernel = kernel.inner_kernel
+    return normal_vectors
+
+
+def get_hashable_kernel_argument(arg):
+    if hasattr(arg, "__iter__"):
+        return tuple(arg)
+    return arg
+
+
+def get_int_g_source_group_identifier(int_g):
     """Return a group for the *int_g* with so that all elements in that
     group have the same source attributes.
     """
-    def get_hashable(arg):
-        if hasattr(arg, "__iter__"):
-            return tuple(arg)
-        return arg
-
-    args = tuple((k, get_hashable(v)) for k, v in sorted(
-        int_g.kernel_arguments.items()) if k in
-                differing_kernel_arguments)
+    normal_vectors = get_normal_vectors(int_g)
+    args = tuple((k, get_hashable_kernel_argument(v)) for k, v in sorted(
+        int_g.kernel_arguments.items()) if k not in normal_vectors)
     return (int_g.source, args, int_g.target_kernel.get_base_kernel())
 
 
@@ -493,7 +554,7 @@ def convert_int_g_to_base(int_g, base_kernel):
 
 def _convert_int_g_to_base(int_g, base_kernel):
     target_kernel = int_g.target_kernel
-    dim = tgt_knl.dim
+    dim = target_kernel.dim
 
     result = 0
     for density, source_kernel in zip(int_g.densities, int_g.source_kernels):
@@ -520,7 +581,8 @@ def _convert_int_g_to_base(int_g, base_kernel):
 
         result += const
 
-        new_kernel_args = filter_kernel_arguments([base_kernel], int_g.kernel_arguments)
+        new_kernel_args = filter_kernel_arguments([base_kernel],
+                int_g.kernel_arguments)
 
         for mi, c in deriv_relation[1]:
             knl = source_kernel.replace_base_kernel(base_kernel)
