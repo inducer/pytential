@@ -35,7 +35,7 @@ __all__ = (
     "reduce_number_of_fmms",
     )
 
-__doc__="""
+__doc__ = """
 .. autofunction:: reduce_number_of_fmms
 """
 

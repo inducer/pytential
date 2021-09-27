@@ -25,7 +25,7 @@ import numpy as np
 from sumpy.symbolic import make_sym_vector, sym, SympyToPymbolicMapper
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
     DirectionalSourceDerivative, ExpressionKernel,
-    KernelWrapper, TargetPointMultiplier)
+    KernelWrapper, TargetPointMultiplier, DirectionalDerivative)
 from pytools import (memoize_on_first_arg,
                 generate_nonnegative_integer_tuples_summing_to_at_most
                 as gnitstam)
@@ -53,6 +53,7 @@ __doc__ = """
 .. autofunction:: merge_int_g_exprs
 .. autofunction:: get_deriv_relation
 """
+
 
 def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
     """
@@ -92,8 +93,8 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
         derivatives
 
     :arg source_dependent_variable: When merging expressions, consider only these
-        variables as dependent on source. This is important when reducing the number of
-        FMMs needed for the output.
+        variables as dependent on source. This is important when reducing the
+        number of FMMs needed for the output.
     """
 
     if base_kernel is not None:
@@ -140,7 +141,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
                     int_g.densities])
             int_g = make_normal_vector_names_unique(int_g, seen_normal_vectors)
 
-            source_group_identifier = get_int_g_source_group_identifier(int_g, differing_kernel_arguments)
+            source_group_identifier = get_int_g_source_group_identifier(int_g)
             target_group = get_int_g_target_group(int_g)
             group = (source_group_identifier, target_group)
 
@@ -177,7 +178,8 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
                 result[iexpr] += int_g
         return result
 
-    # Do the calculation for each source_group_identifier separately and assemble them
+    # Do the calculation for each source_group_identifier separately
+    # and assemble them
     for source_group_identifier in all_source_group_identifiers.keys():
         insn_to_idx_mapping = defaultdict(list)
         for idx, int_gs_by_group in enumerate(int_gs_by_group_for_index):
@@ -248,11 +250,11 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
         # Convert IntGs with different kernels to expressions containing
         # IntGs with base_kernel or its derivatives
         return sum(convert_int_g_to_base(new_int_g,
-            self.base_kernel) for new_int_g in new_int_g_s)
+            self.base_kernel) for new_int_g in new_int_gs)
 
 
 def make_normal_vector_names_unique(int_g, sac):
-    normal_vectors = get_normal_vectors(intg)
+    normal_vectors = get_normal_vectors(int_g)
     replacements = {}
     for vector_name, value in normal_vectors.items():
         if vector_name not in sac.assignments:
@@ -269,7 +271,7 @@ def make_normal_vector_names_unique(int_g, sac):
             else:
                 sac.assignments[new_name] = value
                 sac.reversed_assignments[value] = new_name
-            replacements[name] = new_name
+            replacements[vector_name] = new_name
 
     target_kernel = rename_normal_vector_name(int_g.target_kernel,
             replacements)
@@ -292,7 +294,7 @@ def rename_normal_vector_name(kernel, replacements):
     if not isinstance(kernel, KernelWrapper):
         return kernel
     renamed_inner_kernel = rename_normal_vector_name(kernel.inner_kernel,
-        old_name, new_name)
+        replacements)
 
     if not isinstance(kernel, DirectionalDerivative):
         return kernel.replace_inner_kernel(renamed_inner_kernel)
@@ -338,6 +340,17 @@ def get_int_g_target_group(int_g):
     group have the same source attributes.
     """
     return (int_g.target, int_g.qbx_forced_limit, int_g.target_kernel)
+
+
+class IntGSubstitutor(IdentityMapper):
+    """Replaces IntGs with pymbolic expression given by the
+    replacements dictionary
+    """
+    def __init__(self, replacements):
+        self.replacements = replacements
+
+    def map_int_g(self, expr):
+        return self.replacements.get(expr, expr)
 
 
 def remove_target_attributes(int_g):
