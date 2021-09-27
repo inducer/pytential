@@ -105,7 +105,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
     seen_normal_vectors = SymbolicAssignmentCollection()
 
     # Using a dictionary instead of a set because sets are unordered
-    all_source_group_identifiers = dict()
+    all_source_group_identifiers = {}
 
     result = np.array([0 for _ in exprs], dtype=object)
 
