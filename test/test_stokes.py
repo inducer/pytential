@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import partial
 import pytest
 
 import numpy as np
@@ -34,6 +35,7 @@ from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
+import extra_int_eq_data as eid
 import logging
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,24 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
 
 
 # {{{ test_exterior_stokes
+
+def rnorm2(actx, x, y, discr=None, p=None):
+    if discr is None:
+        y_norm = actx.to_numpy(actx.np.linalg.norm(y, ord=p))
+        if y_norm < 1.0e-14:
+            y_norm = 1
+
+        r_norm = actx.np.linalg.norm(x - y, ord=p)
+    else:
+        from pytential import norm
+        y_norm = actx.to_numpy(norm(discr, y, p=p))
+        if y_norm < 1.0e-14:
+            y_norm = 1
+
+        r_norm = norm(discr, x - y, p=p)
+
+    return actx.to_numpy(r_norm) / y_norm
+
 
 def run_exterior_stokes(actx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
@@ -198,26 +218,18 @@ def run_exterior_stokes(actx_factory, *,
 
     # {{{ check velocity at "point_target"
 
-    def rnorm2(x, y):
-        y_norm = actx.np.linalg.norm(y.dot(y), ord=2)
-        if y_norm < 1.0e-14:
-            y_norm = 1.0
-
-        d = x - y
-        return actx.to_numpy(actx.np.linalg.norm(d.dot(d), ord=2) / y_norm)
-
     ps_velocity = bind(places, sym_velocity,
             auto_where=("source", "point_target"))(actx, sigma=sigma, **op_context)
     ex_velocity = bind(places, sym_source_pot,
             auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
 
-    v_error = rnorm2(ps_velocity, ex_velocity)
+    v_error = [rnorm2(actx, x, y) for x, y in zip(ps_velocity, ex_velocity)]
     h_max = actx.to_numpy(
             bind(places, sym.h_max(ambient_dim))(actx)
             )
 
-    logger.info("resolution %4d h_max %.5e error %.5e",
-            resolution, h_max, v_error)
+    logger.info("resolution %4d h_max %.5e error " + ("%.5e " * ambient_dim),
+            resolution, h_max, *v_error)
 
     # }}}}
 
@@ -252,12 +264,12 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
         logging.basicConfig(level=logging.INFO)
 
     from pytools.convergence import EOCRecorder
-    eoc = EOCRecorder()
+    eocs = [EOCRecorder() for _ in range(ambient_dim)]
 
-    target_order = 3
+    target_order = 5
+    source_ovsmp = 4
     qbx_order = 3
 
-    print(ambient_dim)
     if ambient_dim == 2:
         resolutions = [20, 35, 50]
     elif ambient_dim == 3:
@@ -266,21 +278,235 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
         raise ValueError(f"unsupported dimension: {ambient_dim}")
 
     for resolution in resolutions:
-        h_max, err = run_exterior_stokes(actx_factory,
+        h_max, errors = run_exterior_stokes(actx_factory,
                 ambient_dim=ambient_dim,
                 target_order=target_order,
                 qbx_order=qbx_order,
+                source_ovsmp=source_ovsmp,
                 resolution=resolution,
                 visualize=visualize)
 
-        eoc.add_data_point(h_max, err)
+        for eoc, e in zip(eocs, errors):
+            eoc.add_data_point(h_max, e)
 
-    print(eoc)
+    for eoc in eocs:
+        print(eoc.pretty_print(
+            abscissa_format="%.8e",
+            error_format="%.8e",
+            eoc_format="%.2f"))
 
-    # This convergence data is not as clean as it could be. See
-    # https://github.com/inducer/pytential/pull/32
-    # for some discussion.
-    assert eoc.order_estimate() > target_order - 0.5
+    for eoc in eocs:
+        # This convergence data is not as clean as it could be. See
+        # https://github.com/inducer/pytential/pull/32
+        # for some discussion.
+        order = min(target_order, qbx_order)
+        assert eoc.order_estimate() > order - 0.5
+
+# }}}
+
+
+# {{{ test Stokeslet identity
+
+def run_stokes_identity(actx_factory, case, identity, resolution, visualize=False):
+    actx = actx_factory()
+
+    qbx = case.get_layer_potential(actx, resolution, case.target_order)
+    places = GeometryCollection(qbx, auto_where=case.name)
+
+    density_discr = places.get_discretization(case.name)
+    logger.info("ndofs:     %d", density_discr.ndofs)
+    logger.info("nelements: %d", density_discr.mesh.nelements)
+
+    # {{{ evaluate
+
+    result = bind(places, identity.apply_operator())(actx)
+    ref_result = bind(places, identity.ref_result())(actx)
+
+    h_min = actx.to_numpy(
+            bind(places, sym.h_min(places.ambient_dim))(actx)
+            )
+    h_max = actx.to_numpy(
+            bind(places, sym.h_max(places.ambient_dim))(actx)
+            )
+    error = [
+            rnorm2(actx, x, y, density_discr, p=np.inf)
+            for x, y in zip(result, ref_result)]
+    logger.info("resolution %4d h_min %.5e h_max %.5e error "
+            + ("%.5e " * places.ambient_dim),
+            resolution, h_min, h_max, *error)
+
+    # }}}
+
+    if visualize:
+        filename = "stokes_{}_{}d_resolution_{}".format(
+                type(identity).__name__.lower(), places.ambient_dim, resolution)
+
+        if places.ambient_dim == 2:
+            from meshmode.dof_array import flatten_to_numpy
+            result = flatten_to_numpy(actx, result)
+            if not isinstance(ref_result[0], (int, float)):
+                ref_result = flatten_to_numpy(actx, ref_result)
+            else:
+                ref_result = [
+                        c * np.ones_like(r)
+                        for c, r in zip(ref_result, result)]
+
+            import matplotlib.pyplot as plt
+            fig = plt.figure()
+            ax = fig.gca()
+
+            ax.plot(result[0], "o-")
+            ax.plot(ref_result[0], "k--")
+            ax.grid()
+            fig.savefig(f"{filename}_x")
+            fig.clf()
+
+            ax = fig.gca()
+            ax.plot(result[1], "o-")
+            ax.plot(ref_result[1], "k--")
+            ax.grid()
+            fig.savefig(f"{filename}_y")
+            plt.close(fig)
+        else:
+            from meshmode.discretization.visualization import make_visualizer
+            vis = make_visualizer(actx, density_discr,
+                    vis_order=case.target_order,
+                    force_equidistant=True)
+
+            ref_error = actx.np.abs(result - ref_result) + 1.0e-16
+
+            from pytential.symbolic.primitives import _scaled_max_curvature
+            scaled_kappa = bind(places,
+                    _scaled_max_curvature(places.ambient_dim),
+                    auto_where=case.name)(actx)
+            kappa = bind(places,
+                    sym.mean_curvature(places.ambient_dim),
+                    auto_where=case.name)(actx)
+
+            vis.write_vtk_file(f"{filename}.vtu", [
+                ("result", result),
+                ("ref", ref_result),
+                ("error", ref_error),
+                ("log_error", actx.np.log10(ref_error)),
+                ("kappa", kappa - 1.0),
+                ("scaled_kappa", scaled_kappa),
+                ], use_high_order=True, overwrite=True)
+
+    return h_max, error
+
+
+class StokesletIdentity:
+    """[Pozrikidis1992] Problem 3.1.1"""
+
+    def __init__(self, ambient_dim):
+        from pytential.symbolic.stokes import StokesletWrapper
+        self.ambient_dim = ambient_dim
+        self.stokeslet = StokesletWrapper(self.ambient_dim)
+
+    def apply_operator(self):
+        sym_density = sym.normal(self.ambient_dim).as_vector()
+        return self.stokeslet.apply(
+                sym_density,
+                mu_sym=1, qbx_forced_limit=+1)
+
+    def ref_result(self):
+        return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
+
+
+@pytest.mark.parametrize("cls", [
+    partial(eid.StarfishTestCase, resolutions=[16, 32, 64, 96, 128]),
+    partial(eid.SpheroidTestCase, resolutions=[0, 1, 2]),
+    ])
+def test_stokeslet_identity(actx_factory, cls, visualize=False):
+    if visualize:
+        logging.basicConfig(level=logging.INFO)
+
+    source_ovsmp = 4 if cls.func.ambient_dim == 2 else 8
+    case = cls(fmm_backend=None,
+            target_order=5, qbx_order=3, source_ovsmp=source_ovsmp)
+    identity = StokesletIdentity(case.ambient_dim)
+    logger.info("\n%s", str(case))
+
+    from pytools.convergence import EOCRecorder
+    eocs = [EOCRecorder() for _ in range(case.ambient_dim)]
+
+    for resolution in case.resolutions:
+        h_max, errors = run_stokes_identity(
+                actx_factory, case, identity,
+                resolution=resolution,
+                visualize=visualize)
+
+        for eoc, e in zip(eocs, errors):
+            eoc.add_data_point(h_max, e)
+
+    for eoc in eocs:
+        print(eoc.pretty_print(
+            abscissa_format="%.8e",
+            error_format="%.8e",
+            eoc_format="%.2f"))
+
+    for eoc in eocs:
+        order = min(case.target_order, case.qbx_order)
+        assert eoc.order_estimate() > order - 0.5
+
+# }}}
+
+
+# {{{ test Stresslet identity
+
+class StressletIdentity:
+    """[Pozrikidis1992] Equation 3.2.7"""
+
+    def __init__(self, ambient_dim):
+        from pytential.symbolic.stokes import StokesletWrapper
+        self.ambient_dim = ambient_dim
+        self.stokeslet = StokesletWrapper(self.ambient_dim)
+
+    def apply_operator(self):
+        sym_density = sym.normal(self.ambient_dim).as_vector()
+        return self.stokeslet.apply_stress(
+                sym_density, sym_density,
+                mu_sym=1, qbx_forced_limit="avg")
+
+    def ref_result(self):
+        return -0.5 * sym.normal(self.ambient_dim).as_vector()
+
+
+@pytest.mark.parametrize("cls", [
+    partial(eid.StarfishTestCase, resolutions=[16, 32, 64, 96, 128]),
+    partial(eid.SpheroidTestCase, resolutions=[0, 1, 2]),
+    ])
+def test_stresslet_identity(actx_factory, cls, visualize=False):
+    if visualize:
+        logging.basicConfig(level=logging.INFO)
+
+    source_ovsmp = 4 if cls.func.ambient_dim == 2 else 8
+    case = cls(fmm_backend=None,
+            target_order=5, qbx_order=3, source_ovsmp=source_ovsmp)
+    identity = StressletIdentity(case.ambient_dim)
+    logger.info("\n%s", str(case))
+
+    from pytools.convergence import EOCRecorder
+    eocs = [EOCRecorder() for _ in range(case.ambient_dim)]
+
+    for resolution in case.resolutions:
+        h_max, errors = run_stokes_identity(
+                actx_factory, case, identity,
+                resolution=resolution,
+                visualize=visualize)
+
+        for eoc, e in zip(eocs, errors):
+            eoc.add_data_point(h_max, e)
+
+    for eoc in eocs:
+        print(eoc.pretty_print(
+            abscissa_format="%.8e",
+            error_format="%.8e",
+            eoc_format="%.2f"))
+
+    for eoc in eocs:
+        order = min(case.target_order, case.qbx_order)
+        assert eoc.order_estimate() > order - 1.0
 
 # }}}
 

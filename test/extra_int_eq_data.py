@@ -291,6 +291,16 @@ class CircleTestCase(EllipseTestCase):
     aspect_ratio = 1.0
     radius = 1.0
 
+
+class StarfishTestCase(CurveTestCase):
+    name = "starfish"
+    narms = 5
+    amplitude = 0.25
+
+    def _curve_fn(self, t):
+        from meshmode.mesh.generation import NArmedStarfish
+        return NArmedStarfish(self.narms, self.amplitude)(t)
+
 # }}}
 
 
@@ -356,15 +366,30 @@ class SphereTestCase(IntegralEquationTestCase):
 
     # test case
     resolutions = [1, 2]
-    inner_radius = 0.4
-    outer_radius = 5.0
     check_gradient = False
     check_tangential_deriv = False
 
+    radius = 1.0
+    inner_radius = 0.4
+    outer_radius = 5.0
+
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.generation import generate_sphere
-        return generate_sphere(1.0, mesh_order,
+        return generate_sphere(self.radius, mesh_order,
                 uniform_refinement_rounds=resolution)
+
+
+class SpheroidTestCase(SphereTestCase):
+    name = "spheroid"
+    aspect_ratio = 2.0
+
+    def get_mesh(self, resolution, mesh_order):
+        mesh = super().get_mesh(resolution, mesh_order)
+
+        from meshmode.mesh.processing import affine_map
+        return affine_map(mesh, A=np.diag([
+            self.radius, self.radius, self.radius / self.aspect_ratio,
+            ]))
 
 
 class TorusTestCase(IntegralEquationTestCase):

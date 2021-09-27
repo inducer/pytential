@@ -1056,6 +1056,17 @@ def h_max(ambient_dim, dim=None, dofdesc=None):
             cse_scope.DISCRETIZATION)
 
 
+def h_min(ambient_dim, dim=None, dofdesc=None):
+    """Defines a maximum element size in the discretization."""
+
+    dofdesc = as_dofdesc(dofdesc).copy(granularity=GRANULARITY_ELEMENT)
+    r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
+
+    return cse(NodeMin(r),
+            "h_min",
+            cse_scope.DISCRETIZATION)
+
+
 def weights_and_area_elements(ambient_dim, dim=None, dofdesc=None):
     """Combines :func:`area_element` and :class:`QWeight`."""
 
