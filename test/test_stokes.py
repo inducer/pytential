@@ -71,8 +71,8 @@ def run_exterior_stokes(actx_factory, *,
                 np.linspace(0.0, 1.0, resolution + 1),
                 target_order)
     elif ambient_dim == 3:
-        from meshmode.mesh.generation import generate_icosphere
-        mesh = generate_icosphere(radius, target_order + 1,
+        from meshmode.mesh.generation import generate_sphere
+        mesh = generate_sphere(radius, target_order + 1,
                 uniform_refinement_rounds=resolution)
     else:
         raise ValueError(f"unsupported dimension: {ambient_dim}")

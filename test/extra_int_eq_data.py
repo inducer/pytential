@@ -362,8 +362,8 @@ class SphereTestCase(IntegralEquationTestCase):
     check_tangential_deriv = False
 
     def get_mesh(self, resolution, mesh_order):
-        from meshmode.mesh.generation import generate_icosphere
-        return generate_icosphere(1.0, mesh_order,
+        from meshmode.mesh.generation import generate_sphere
+        return generate_sphere(1.0, mesh_order,
                 uniform_refinement_rounds=resolution)
 
 

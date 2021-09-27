@@ -919,10 +919,10 @@ class GeometryCollection:
         return self.copy(places=new_places)
 
     def __repr__(self):
-        return "{type(self).__name__}({repr(self.places)})"
+        return f"{type(self).__name__}({repr(self.places)})"
 
     def __str__(self):
-        return "{type(self).__name__}({repr(self.places)})"
+        return f"{type(self).__name__}({repr(self.places)})"
 
 # }}}
 
@@ -1010,9 +1010,6 @@ class BoundExpression:
             name to the predicted time.
         """
         array_context = _find_array_context_from_args_in_context(kwargs)
-
-        if array_context is None:
-            raise ValueError("unable to figure array context from arguments")
 
         cost_model_mapper = CostModelMapper(
             self, array_context, calibration_params, per_box=False, context=kwargs

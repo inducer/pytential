@@ -26,17 +26,8 @@ k = 4
 def main():
     # cl.array.to_device(queue, numpy_array)
     from meshmode.mesh.io import generate_gmsh, FileSource
-    from meshmode.mesh.generation import generate_icosphere
-    from meshmode.mesh.refinement import Refiner
-    mesh = generate_icosphere(1,target_order)
-
-    refinement_increment = 1
-    refiner = Refiner(mesh)
-    for i in range(refinement_increment):
-        flags = np.ones(mesh.nelements, dtype=bool)
-        refiner.refine(flags)
-        mesh = refiner.get_current_mesh()
-
+    from meshmode.mesh.generation import generate_sphere
+    mesh = generate_sphere(1, target_order, uniform_refinement_rounds=1)
 
     from meshmode.mesh.processing import perform_flips
     # Flip elements--gmsh generates inside-out geometry.
@@ -135,7 +126,7 @@ def main():
         # magnetic field corresponding to dyadic green's function
         # due to monochromatic electric dipole located at "source".
         # "strength" is the the intensity of the dipole.
-        #  H = curl((I + Hess)(exp(ikr)/r) dot (strength)) = 
+        #  H = curl((I + Hess)(exp(ikr)/r) dot (strength)) =
         #  strength \cross \grad (exp(ikr)/r)
         #
             dx = x - source[0]
@@ -165,7 +156,7 @@ def main():
 #            print(hvec)
 #            print(strength)
             return evec,hvec
-            
+
         def dipole3m(x,y,z,source,strength,k):
         #
         #  evalaute electric and magnetic field due
@@ -175,7 +166,7 @@ def main():
             hvec = green3e(x,y,z,source,strength,k)
             hvec = -hvec*1j*k
             return evec,hvec
-            
+
 
         def dipole3eall(x,y,z,sources,strengths,k):
             ns = len(strengths)
@@ -194,7 +185,7 @@ def main():
 #        source[1] =-0.03
 #        source[2] = 0.02
         strength = np.ones(3)
-       
+
 #        evec = cl.array.to_device(queue,np.zeros((3,len(nodes[0])),dtype=np.complex128))
 #        hvec = cl.array.to_device(queue,np.zeros((3,len(nodes[0])),dtype=np.complex128))
 

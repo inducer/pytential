@@ -137,8 +137,8 @@ def test_target_specific_qbx(actx_factory, op, helmholtz_k, qbx_order):
     target_order = 4
     fmm_tol = 1e-3
 
-    from meshmode.mesh.generation import generate_icosphere
-    mesh = generate_icosphere(1, target_order)
+    from meshmode.mesh.generation import generate_sphere
+    mesh = generate_sphere(1, target_order)
 
     from meshmode.discretization import Discretization
     from meshmode.discretization.poly_element import \

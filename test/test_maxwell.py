@@ -65,19 +65,17 @@ class SphereTestCase(MaxwellTestCase):
     gmres_tol = 1e-10
 
     def get_mesh(self, resolution, target_order):
-        from meshmode.mesh.generation import generate_icosphere
-        from meshmode.mesh.refinement import refine_uniformly
-        return refine_uniformly(
-                generate_icosphere(2, target_order),
-                resolution)
+        from meshmode.mesh.generation import generate_sphere
+        return generate_sphere(2, target_order,
+                uniform_refinement_rounds=resolution)
 
     def get_observation_mesh(self, target_order):
-        from meshmode.mesh.generation import generate_icosphere
+        from meshmode.mesh.generation import generate_sphere
 
         if self.is_interior:
-            return generate_icosphere(5, target_order)
+            return generate_sphere(5, target_order)
         else:
-            return generate_icosphere(0.5, target_order)
+            return generate_sphere(0.5, target_order)
 
     def get_source(self, actx):
         if self.is_interior:
@@ -114,12 +112,12 @@ class RoundedCubeTestCase(MaxwellTestCase):
         return perform_flips(mesh, np.ones(mesh.nelements))
 
     def get_observation_mesh(self, target_order):
-        from meshmode.mesh.generation import generate_icosphere
+        from meshmode.mesh.generation import generate_sphere
 
         if self.is_interior:
-            return generate_icosphere(5, target_order)
+            return generate_sphere(5, target_order)
         else:
-            return generate_icosphere(0.5, target_order)
+            return generate_sphere(0.5, target_order)
 
     def get_source(self, actx):
         if self.is_interior:
@@ -159,12 +157,12 @@ class ElliptiPlaneTestCase(MaxwellTestCase):
         return perform_flips(mesh, np.ones(mesh.nelements))
 
     def get_observation_mesh(self, target_order):
-        from meshmode.mesh.generation import generate_icosphere
+        from meshmode.mesh.generation import generate_sphere
 
         if self.is_interior:
-            return generate_icosphere(12, target_order)
+            return generate_sphere(12, target_order)
         else:
-            return generate_icosphere(0.5, target_order)
+            return generate_sphere(0.5, target_order)
 
     def get_source(self, actx):
         if self.is_interior:
