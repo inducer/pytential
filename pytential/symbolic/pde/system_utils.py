@@ -181,7 +181,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
     # Do the calculation for each source_group_identifier separately
     # and assemble them
     for source_group_identifier in all_source_group_identifiers.keys():
-        insn_to_idx_mapping = defaultdict(list)
+        targetless_int_g_to_idx_mapping = defaultdict(list)
         for idx, int_gs_by_group in enumerate(int_gs_by_group_for_index):
             for group, int_g in int_gs_by_group.items():
                 if group[0] != source_group_identifier:
@@ -217,14 +217,14 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
                 # [S + D, S, D]. We will reduce these and restore the target
                 # attributes at the end
                 common_int_g = remove_target_attributes(int_g)
-                insn_to_idx_mapping[common_int_g].append((idx, int_g))
+                targetless_int_g_to_idx_mapping[common_int_g].append((idx, int_g))
 
-        insns_to_reduce = list(insn_to_idx_mapping.keys())
+        insns_to_reduce = list(targetless_int_g_to_idx_mapping.keys())
         reduced_insns = reduce_number_of_fmms(insns_to_reduce,
                 source_dependent_variables)
 
         for insn, reduced_insn in zip(insns_to_reduce, reduced_insns):
-            for idx, int_g in insn_to_idx_mapping[insn]:
+            for idx, int_g in targetless_int_g_to_idx_mapping[insn]:
                 result[idx] += restore_target_attributes(reduced_insn, int_g)
     return result
 
