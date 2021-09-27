@@ -98,7 +98,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
     """
 
     if base_kernel is not None:
-        mapper = RewriteUsingBaseKernelMapper()
+        mapper = RewriteUsingBaseKernelMapper(base_kernel)
         exprs = [mapper(expr) for expr in exprs]
 
     from sumpy.assignment_collection import SymbolicAssignmentCollection
