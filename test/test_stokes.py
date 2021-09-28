@@ -44,25 +44,26 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     ])
 
 
+def discr_rel_error(actx, discr, x, xref, p=None):
+    from pytential import norm
+    ref_norm = actx.to_numpy(norm(discr, xref, p=p))
+    if ref_norm < 1.0e-14:
+        ref_norm = 1
+
+    diff_norm = actx.to_numpy(norm(discr, x - xref, p=p))
+    return diff_norm / ref_norm
+
+
+def dof_array_rel_error(actx, x, xref, p=None):
+    ref_norm = actx.to_numpy(actx.np.linalg.norm(xref, ord=p))
+    if ref_norm < 1.0e-14:
+        ref_norm = 1
+
+    diff_norm = actx.to_numpy(actx.np.linalg.norm(x - xref, ord=p))
+    return diff_norm / ref_norm
+
+
 # {{{ test_exterior_stokes
-
-def rnorm2(actx, x, y, discr=None, p=None):
-    if discr is None:
-        y_norm = actx.to_numpy(actx.np.linalg.norm(y, ord=p))
-        if y_norm < 1.0e-14:
-            y_norm = 1
-
-        r_norm = actx.np.linalg.norm(x - y, ord=p)
-    else:
-        from pytential import norm
-        y_norm = actx.to_numpy(norm(discr, y, p=p))
-        if y_norm < 1.0e-14:
-            y_norm = 1
-
-        r_norm = norm(discr, x - y, p=p)
-
-    return actx.to_numpy(r_norm) / y_norm
-
 
 def run_exterior_stokes(actx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
@@ -218,12 +219,14 @@ def run_exterior_stokes(actx_factory, *,
 
     # {{{ check velocity at "point_target"
 
-    ps_velocity = bind(places, sym_velocity,
+    velocity = bind(places, sym_velocity,
             auto_where=("source", "point_target"))(actx, sigma=sigma, **op_context)
-    ex_velocity = bind(places, sym_source_pot,
+    ref_velocity = bind(places, sym_source_pot,
             auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
 
-    v_error = [rnorm2(actx, x, y) for x, y in zip(ps_velocity, ex_velocity)]
+    v_error = [
+            dof_array_rel_error(actx, u, uref)
+            for u, uref in zip(velocity, ref_velocity)]
     h_max = actx.to_numpy(
             bind(places, sym.h_max(ambient_dim))(actx)
             )
@@ -329,8 +332,8 @@ def run_stokes_identity(actx_factory, case, identity, resolution, visualize=Fals
             bind(places, sym.h_max(places.ambient_dim))(actx)
             )
     error = [
-            rnorm2(actx, x, y, density_discr, p=np.inf)
-            for x, y in zip(result, ref_result)]
+            discr_rel_error(actx, density_discr, x, xref, p=np.inf)
+            for x, xref in zip(result, ref_result)]
     logger.info("resolution %4d h_min %.5e h_max %.5e error "
             + ("%.5e " * places.ambient_dim),
             resolution, h_min, h_max, *error)
