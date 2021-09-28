@@ -1057,7 +1057,7 @@ def h_max(ambient_dim, dim=None, dofdesc=None):
 
 
 def h_min(ambient_dim, dim=None, dofdesc=None):
-    """Defines a maximum element size in the discretization."""
+    """Yields an approximate minimum element size in the discretization."""
 
     dofdesc = as_dofdesc(dofdesc).copy(granularity=GRANULARITY_ELEMENT)
     r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
