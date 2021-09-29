@@ -28,6 +28,7 @@ from sumpy.kernel import (StressletKernel, LaplaceKernel,
     ElasticityKernel, BiharmonicKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
 from pymbolic import var
+from abc import ABC
 
 __doc__ = """
 .. autoclass:: StokesletWrapper
@@ -44,7 +45,7 @@ __doc__ = """
 _MU_SYM_DEFAULT = var("mu")
 
 
-class StokesletWrapperBase:
+class StokesletWrapperBase(ABC):
     """Wrapper class for the :class:`~sumpy.kernel.StokesletKernel` kernel.
 
     This class is meant to shield the user from the messiness of writing
@@ -144,7 +145,7 @@ class StokesletWrapperBase:
         raise NotImplementedError
 
 
-class StressletWrapperBase:
+class StressletWrapperBase(ABC):
     """Wrapper class for the :class:`~sumpy.kernel.StressletKernel` kernel.
 
     This class is meant to shield the user from the messiness of writing
