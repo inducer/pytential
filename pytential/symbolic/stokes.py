@@ -94,6 +94,9 @@ class StokesletWrapperBase(ABC):
 
     def apply_pressure(self, density_vec_sym, qbx_forced_limit):
         """Symbolic expression for pressure field associated with the Stokeslet."""
+        # Pressure representation doesn't differ depending on the implementation
+        # and is implemented in base class here.
+
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
         sym_expr = 0
@@ -194,7 +197,11 @@ class StressletWrapperBase(ABC):
         raise NotImplementedError
 
     def apply_pressure(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
-        """Symbolic expression for pressure field associated with the Stresslet."""
+        """Symbolic expression for pressure field associated with the Stresslet.
+        """
+        # Pressure representation doesn't differ depending on the implementation
+        # and is implemented in base class here.
+
         import itertools
         from pytential.symbolic.mappers import DerivativeTaker
         kernel = LaplaceKernel(dim=self.dim)
