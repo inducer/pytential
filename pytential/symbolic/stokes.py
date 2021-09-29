@@ -40,7 +40,7 @@ __doc__ = """
 """
 
 
-# {{{ StokesletWrapper
+# {{{ StokesletWrapper/StressletWrapper ABCs
 
 _MU_SYM_DEFAULT = var("mu")
 
@@ -258,6 +258,10 @@ class StressletWrapperBase(ABC):
         """
         raise NotImplementedError
 
+# }}}
+
+
+# {{{ StokesletWrapper/StressletWrapper Naive and Biharmonic impl
 
 def _create_int_g(knl, deriv_dirs, density, **kwargs):
     for deriv_dir in deriv_dirs:
@@ -271,7 +275,7 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
     return res
 
 
-class StokesletWrapper(StokesletWrapperBase):
+class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5,
             method="biharmonic"):
         super().__init__(dim, mu_sym, nu_sym)
@@ -343,12 +347,25 @@ class StokesletWrapper(StokesletWrapperBase):
 
         return sym_expr
 
+
+class StokesletWrapperNaive(_StokesletWrapperNaiveOrBiharmonic):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
+        return super().__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+                method="naive")
+
+
+class StokesletWrapperBiharmonic(_StokesletWrapperNaiveOrBiharmonic):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
+        return super().__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+                method="biharmonic")
+
+
 # }}}
 
 
 # {{{ StressletWrapper
 
-class StressletWrapper(StressletWrapperBase):
+class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5,
             method="biharmonic"):
         super().__init__(dim, mu_sym, nu_sym)
@@ -358,8 +375,12 @@ class StressletWrapper(StressletWrapperBase):
         self.method = method
         if method == "biharmonic":
             self.base_kernel = BiharmonicKernel(dim)
+            self.stokeslet_obj = StokesletWrapperBiharmonic(dim=self.dim,
+                mu_sym=self.mu, nu_sym=self.nu)
         elif method == "naive":
             self.base_kernel = None
+            self.stokeslet_obj = StokesletWrapperNaive(dim=self.dim,
+                mu_sym=self.mu, nu_sym=self.nu)
         else:
             raise ValueError("method has to be one of biharmonic/naive")
 
@@ -434,15 +455,12 @@ class StressletWrapper(StressletWrapperBase):
             qbx_forced_limit, stokeslet_weight, stresslet_weight,
             extra_deriv_dirs=()):
 
-        stokeslet_obj = StokesletWrapper(dim=self.dim,
-            mu_sym=self.mu, nu_sym=self.nu, method=self.method)
-
         sym_expr = 0
         if stresslet_weight != 0:
             sym_expr += self.apply(stresslet_density_vec_sym, dir_vec_sym,
                 qbx_forced_limit, extra_deriv_dirs) * stresslet_weight
         if stokeslet_weight != 0:
-            sym_expr += stokeslet_obj.apply(stokeslet_density_vec_sym,
+            sym_expr += self.stokeslet_obj.apply(stokeslet_density_vec_sym,
                 qbx_forced_limit, extra_deriv_dirs) * stokeslet_weight
 
         return merge_int_g_exprs(sym_expr)
@@ -474,6 +492,18 @@ class StressletWrapper(StressletWrapperBase):
                                         )
 
         return sym_expr
+
+
+class StressletWrapperNaive(_StressletWrapperNaiveOrBiharmonic):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
+        return super().__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+                method="naive")
+
+
+class StressletWrapperBiharmonic(_StressletWrapperNaiveOrBiharmonic):
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
+        return super().__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+                method="biharmonic")
 
 # }}}
 
@@ -595,6 +625,42 @@ class StressletWrapperTornberg(StressletWrapperBase):
         return sym_expr
 
 # }}}
+
+
+class StokesletWrapper(StokesletWrapperBase):
+    def __new__(dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5, method=None):
+        if method == None:
+            import warnings
+            warnings.warn("method argument not given. falling back to 'naive'"
+                    "method argument will be required in the future.")
+            method = "naive"
+        if method == "naive":
+            return StokesletWrapperNaive(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+        elif method == "biharmonic":
+            return StokesletWrapperBiharmonic(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+        elif method == "laplace":
+            return StokesletWrapperTornberg(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+        else:
+            raise ValueError(f"invalid method: {method}."
+                    "Needs to be one of naive, laplace, biharmonic")
+
+
+class StressletWrapper(StressletWrapperBase):
+    def __new__(dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5, method=None):
+        if method == None:
+            import warnings
+            warnings.warn("method argument not given. falling back to 'naive'"
+                    "method argument will be required in the future.")
+            method = "naive"
+        if method == "naive":
+            return StressletWrapperNaive(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+        elif method == "biharmonic":
+            return StressletWrapperBiharmonic(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+        elif method == "laplace":
+            return StressletWrapperTornberg(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+        else:
+            raise ValueError(f"invalid method: {method}."
+                    "Needs to be one of naive, laplace, biharmonic")
 
 
 # {{{ base Stokes operator
