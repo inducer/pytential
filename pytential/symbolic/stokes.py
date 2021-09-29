@@ -267,7 +267,7 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
     for arg in args:
         kwargs[arg] = var(arg)
 
-    res = sym.S(knl, density, **kwargs)
+    res = sym.int_g_vec(knl, density, **kwargs)
     return res
 
 
