@@ -322,7 +322,10 @@ def get_normal_vectors(int_g):
 
 def get_hashable_kernel_argument(arg):
     if hasattr(arg, "__iter__"):
-        return tuple(arg)
+        try:
+            return tuple(arg)
+        except TypeError:
+            pass
     return arg
 
 
