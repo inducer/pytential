@@ -1431,13 +1431,13 @@ class IntG(Expression):
             raise ValueError("invalid value (%s) of qbx_forced_limit"
                     % qbx_forced_limit)
 
+        # Fold duplicates in source_kernels
         knl_density_dict = OrderedDict()
         for density, source_kernel in zip(densities, source_kernels):
             if source_kernel in knl_density_dict:
                 knl_density_dict[source_kernel] += density
             else:
                 knl_density_dict[source_kernel] = density
-
         knl_density_dict = OrderedDict((k, v) for k, v in
                 knl_density_dict.items() if v)
         densities = tuple(knl_density_dict.values())
