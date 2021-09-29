@@ -480,6 +480,33 @@ class StressletWrapper(StressletWrapperBase):
 
 # {{{ Stokeslet/Stresslet using Laplace
 
+class StokesletWrapperTornberg(StokesletWrapperBase):
+    """A Stresslet wrapper using Tornberg and Greengard's method which
+    uses Laplace derivatives.
+
+    [1] Tornberg, A. K., & Greengard, L. (2008). A fast multipole method for the
+        three-dimensional Stokes equations.
+        Journal of Computational Physics, 227(3), 1613-1619.
+    """
+
+    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
+        self.dim = dim
+        if dim != 3:
+            raise ValueError("unsupported dimension given to "
+                             "StokesletWrapperTornberg")
+        if nu_sym != 0.5:
+            raise ValueError("nu != 0.5 is not supported")
+        self.kernel = LaplaceKernel(dim=self.dim)
+        self.mu = mu_sym
+        self.nu = nu_sym
+
+    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
+        stresslet = StressletWrapperTornberg(3, self.mu, self.nu)
+        return stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
+            [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
+            extra_deriv_dirs)
+
+
 class StressletWrapperTornberg(StressletWrapperBase):
     """A Stresslet wrapper using Tornberg and Greengard's method which
     uses Laplace derivatives.
@@ -566,34 +593,6 @@ class StressletWrapperTornberg(StressletWrapperBase):
                 qbx_forced_limit=qbx_forced_limit)
 
         return sym_expr
-
-
-class StokesletWrapperTornberg(StokesletWrapperBase):
-    """A Stresslet wrapper using Tornberg and Greengard's method which
-    uses Laplace derivatives.
-
-    [1] Tornberg, A. K., & Greengard, L. (2008). A fast multipole method for the
-        three-dimensional Stokes equations.
-        Journal of Computational Physics, 227(3), 1613-1619.
-    """
-
-    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
-        self.dim = dim
-        if dim != 3:
-            raise ValueError("unsupported dimension given to "
-                             "StokesletWrapperTornberg")
-        if nu_sym != 0.5:
-            raise ValueError("nu != 0.5 is not supported")
-        self.kernel = LaplaceKernel(dim=self.dim)
-        self.mu = mu_sym
-        self.nu = nu_sym
-
-    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
-        stresslet = StressletWrapperTornberg(3, self.mu, self.nu)
-        return stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
-            [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
-            extra_deriv_dirs)
-
 
 # }}}
 
