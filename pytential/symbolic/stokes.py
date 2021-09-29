@@ -86,6 +86,8 @@ class StokesletWrapperBase:
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
+        :arg extra_deriv_dirs: adds target derivatives to all the integral
+            objects with the given derivative axis.
         """
         raise NotImplementedError
 
@@ -185,6 +187,8 @@ class StressletWrapperBase:
         :arg dir_vec_sym: a symbolic vector variable for the direction vector.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
+        :arg extra_deriv_dirs: adds target derivatives to all the integral
+            objects with the given derivative axis.
         """
         raise NotImplementedError
 
