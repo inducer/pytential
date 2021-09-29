@@ -100,11 +100,8 @@ def norm(discr, x, p=2):
     if isinstance(x, MultiVector):
         x = x.as_vector(object)
 
-    from meshmode.dof_array import DOFArray
     num_components = None
-    if (isinstance(x, np.ndarray)
-            and x.dtype.char == "O"
-            and not isinstance(x, DOFArray)):
+    if isinstance(x, np.ndarray) and x.dtype.char == "O":
         num_components, = x.shape
 
     if p == 2:
