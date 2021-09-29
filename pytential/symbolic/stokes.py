@@ -478,7 +478,7 @@ class StressletWrapper(StressletWrapperBase):
 # }}}
 
 
-# {{{ Stokeslet/Stresslet using Laplace
+# {{{ Stokeslet/Stresslet using Laplace (Tornberg)
 
 class StokesletWrapperTornberg(StokesletWrapperBase):
     """A Stresslet wrapper using Tornberg and Greengard's method which
