@@ -239,6 +239,24 @@ def test_merge_directional_source():
     assert result[0] == int_g4
 
 
+def test_restoring_target_attributes():
+    from pymbolic.primitives import Variable
+    dim = 3
+    laplace_knl = LaplaceKernel(dim)
+    density = Variable("density")
+
+    int_g1 = int_g_vec(TargetPointMultiplier(0, AxisTargetDerivative(0,
+        laplace_knl)), density, qbx_forced_limit=1)
+    int_g2 = int_g_vec(AxisTargetDerivative(1, laplace_knl),
+            density, qbx_forced_limit=1)
+
+    result = merge_int_g_exprs([int_g1, int_g2],
+            source_dependent_variables=[])
+
+    assert result[0] == int_g1
+    assert result[1] == int_g2
+
+
 # You can test individual routines by typing
 # $ python test_pde_system_tools.py 'test_reduce_number_of_fmms()'
 
