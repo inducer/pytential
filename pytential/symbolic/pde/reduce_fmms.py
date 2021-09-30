@@ -239,6 +239,9 @@ class CoefficientCollector(Mapper):
         else:
             return {1: expr}
 
+    def map_node_coordinate_component(self, expr):
+        return {expr: 1}
+
     def map_subscript(self, expr):
         if expr in self.source_dependent_variables or \
                 expr.aggregate in self.source_dependent_variables:
