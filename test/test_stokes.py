@@ -335,6 +335,8 @@ def test_exterior_stokes(actx_factory, ambient_dim, method, nu, visualize=False)
                 qbx_order=qbx_order,
                 source_ovsmp=source_ovsmp,
                 resolution=resolution,
+                method=method,
+                nu=nu,
                 visualize=visualize)
 
         for eoc, e in zip(eocs, errors):
