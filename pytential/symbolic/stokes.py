@@ -285,12 +285,8 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
         self.method = method
         if method == "biharmonic":
             self.base_kernel = BiharmonicKernel(dim)
-            self.stresslet_obj = StressletWrapperBiharmonic(dim=self.dim,
-                mu_sym=self.mu, nu_sym=self.nu)
         elif method == "naive":
             self.base_kernel = None
-            self.stresslet_obj = StressletWrapperBiharmonic(dim=self.dim,
-                mu_sym=self.mu, nu_sym=self.nu)
         else:
             raise ValueError("method has to be one of biharmonic/naive")
 
@@ -336,6 +332,8 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
+        stresslet_obj = StressletWrapper(dim=self.dim,
+            mu_sym=self.mu, nu_sym=self.nu, method=self.method)
 
         # For stokeslet, there's no direction vector involved
         # passing a list of ones instead to remove its usage.
@@ -343,7 +341,7 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
             for i in range(self.dim):
                 for j in range(self.dim):
                     sym_expr[comp] += dir_vec_sym[i] * \
-                        self.stresslet_obj.get_int_g((comp, i, j),
+                        stresslet_obj.get_int_g((comp, i, j),
                         density_vec_sym[j], [1]*self.dim,
                         qbx_forced_limit, deriv_dirs=[])
 
@@ -377,12 +375,8 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
         self.method = method
         if method == "biharmonic":
             self.base_kernel = BiharmonicKernel(dim)
-            self.stokeslet_obj = StokesletWrapperBiharmonic(dim=self.dim,
-                mu_sym=self.mu, nu_sym=self.nu)
         elif method == "naive":
             self.base_kernel = None
-            self.stokeslet_obj = StokesletWrapperNaive(dim=self.dim,
-                mu_sym=self.mu, nu_sym=self.nu)
         else:
             raise ValueError("method has to be one of biharmonic/naive")
 
@@ -457,12 +451,15 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
             qbx_forced_limit, stokeslet_weight, stresslet_weight,
             extra_deriv_dirs=()):
 
+        stokeslet_obj = StokesletWrapper(dim=self.dim,
+                mu_sym=self.mu, nu_sym=self.nu, method=self.method)
+
         sym_expr = 0
         if stresslet_weight != 0:
             sym_expr += self.apply(stresslet_density_vec_sym, dir_vec_sym,
                 qbx_forced_limit, extra_deriv_dirs) * stresslet_weight
         if stokeslet_weight != 0:
-            sym_expr += self.stokeslet_obj.apply(stokeslet_density_vec_sym,
+            sym_expr += stokeslet_obj.apply(stokeslet_density_vec_sym,
                 qbx_forced_limit, extra_deriv_dirs) * stokeslet_weight
 
         return merge_int_g_exprs(sym_expr)
