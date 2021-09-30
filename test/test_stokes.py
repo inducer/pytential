@@ -545,8 +545,8 @@ def test_stresslet_identity(actx_factory, cls, visualize=False):
                 actx_factory, case, identity,
                 resolution=resolution,
                 visualize=visualize,
-                nu=nu,
-                method=method)
+                nu=0.5,
+                method='naive')
 
         for eoc, e in zip(eocs, errors):
             eoc.add_data_point(h_max, e)
