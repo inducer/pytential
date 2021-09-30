@@ -457,8 +457,7 @@ class StokesletIdentity:
     def apply_operator(self):
         sym_density = sym.normal(self.ambient_dim).as_vector()
         return self.stokeslet.apply(
-                sym_density,
-                mu_sym=1, qbx_forced_limit=+1)
+                sym_density, qbx_forced_limit=+1)
 
     def ref_result(self):
         return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
@@ -517,7 +516,7 @@ class StressletIdentity:
         sym_density = sym.normal(self.ambient_dim).as_vector()
         return self.stokeslet.apply_stress(
                 sym_density, sym_density,
-                mu_sym=1, qbx_forced_limit="avg")
+                qbx_forced_limit="avg")
 
     def ref_result(self):
         return -0.5 * sym.normal(self.ambient_dim).as_vector()
@@ -544,9 +543,7 @@ def test_stresslet_identity(actx_factory, cls, visualize=False):
         h_max, errors = run_stokes_identity(
                 actx_factory, case, identity,
                 resolution=resolution,
-                visualize=visualize,
-                nu=0.5,
-                method="naive")
+                visualize=visualize)
 
         for eoc, e in zip(eocs, errors):
             eoc.add_data_point(h_max, e)

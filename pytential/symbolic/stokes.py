@@ -285,8 +285,12 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
         self.method = method
         if method == "biharmonic":
             self.base_kernel = BiharmonicKernel(dim)
+            self.stresslet_obj = StressletWrapperBiharmonic(dim=self.dim,
+                mu_sym=self.mu, nu_sym=self.nu)
         elif method == "naive":
             self.base_kernel = None
+            self.stresslet_obj = StressletWrapperBiharmonic(dim=self.dim,
+                mu_sym=self.mu, nu_sym=self.nu)
         else:
             raise ValueError("method has to be one of biharmonic/naive")
 
@@ -332,8 +336,6 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
-        stresslet_obj = StressletWrapper(dim=self.dim,
-            mu_sym=self.mu, nu_sym=self.nu, method=self.method)
 
         # For stokeslet, there's no direction vector involved
         # passing a list of ones instead to remove its usage.
@@ -341,7 +343,7 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
             for i in range(self.dim):
                 for j in range(self.dim):
                     sym_expr[comp] += dir_vec_sym[i] * \
-                        stresslet_obj.get_int_g((comp, i, j),
+                        self.stresslet_obj.get_int_g((comp, i, j),
                         density_vec_sym[j], [1]*self.dim,
                         qbx_forced_limit, deriv_dirs=[])
 
@@ -350,13 +352,13 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
 
 class StokesletWrapperNaive(_StokesletWrapperNaiveOrBiharmonic):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
-        return super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
                 method="naive")
 
 
 class StokesletWrapperBiharmonic(_StokesletWrapperNaiveOrBiharmonic):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
-        return super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
                 method="biharmonic")
 
 
@@ -496,13 +498,13 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
 
 class StressletWrapperNaive(_StressletWrapperNaiveOrBiharmonic):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
-        return super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
                 method="naive")
 
 
 class StressletWrapperBiharmonic(_StressletWrapperNaiveOrBiharmonic):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
-        return super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
                 method="biharmonic")
 
 # }}}
