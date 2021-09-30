@@ -374,8 +374,8 @@ def restore_target_attributes(expr, orig_int_g):
     replacements = {
         int_g: int_g.copy(target=orig_int_g.target,
                 qbx_forced_limit=orig_int_g.qbx_forced_limit,
-                target_kernel=int_g.target_kernel.replace_base_kernel(
-                    orig_int_g.target_kernel))
+                target_kernel=orig_int_g.target_kernel.replace_base_kernel(
+                    int_g.target_kernel))
         for int_g in int_gs}
 
     substitutor = IntGSubstitutor(replacements)
