@@ -454,12 +454,13 @@ class StokesletIdentity:
     def __init__(self, ambient_dim):
         from pytential.symbolic.stokes import StokesletWrapper
         self.ambient_dim = ambient_dim
-        self.stokeslet = StokesletWrapper(self.ambient_dim)
+        self.stokeslet = StokesletWrapper(self.ambient_dim, mu_sym=1)
 
     def apply_operator(self):
         sym_density = sym.normal(self.ambient_dim).as_vector()
         return self.stokeslet.apply(
-                sym_density, qbx_forced_limit=+1)
+                sym_density,
+                qbx_forced_limit=+1)
 
     def ref_result(self):
         return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
@@ -512,7 +513,7 @@ class StressletIdentity:
     def __init__(self, ambient_dim):
         from pytential.symbolic.stokes import StokesletWrapper
         self.ambient_dim = ambient_dim
-        self.stokeslet = StokesletWrapper(self.ambient_dim)
+        self.stokeslet = StokesletWrapper(self.ambient_dim, mu_sym=1)
 
     def apply_operator(self):
         sym_density = sym.normal(self.ambient_dim).as_vector()
