@@ -120,6 +120,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
             # FIXME: if there's ever any use case, then we can extract
             # some IntGs from them.
             result[i] += expr
+            logger.debug("%s is not linear", expr)
             continue
         int_gs_by_group = {}
         for int_g, coeff in int_g_coeff_map.items():
@@ -788,6 +789,7 @@ def simplify_densities(densities):
         try:
             result.append(to_pymbolic(to_sympy(density)))
         except (ValueError, NotImplementedError, UnsupportedExpressionError):
+            logger.debug("%s cannot be simplified", density)
             result.append(density)
     return tuple(result)
 

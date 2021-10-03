@@ -30,6 +30,9 @@ import sympy
 import functools
 from collections import defaultdict
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 __all__ = (
     "reduce_number_of_fmms",
@@ -84,6 +87,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
         mat, source_exprs = _create_matrix(int_gs, source_dependent_variables,
             axis_vars)
     except ValueError:
+        logger.debug("could not create matrix from %s", int_gs)
         return int_gs
 
     mat = sympy.Matrix(mat)
@@ -92,6 +96,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
         left_factor = _factor_left(mat, axis_vars)
         right_factor = _factor_right(mat, left_factor)
     except ValueError:
+        logger.debug("could not find a factorization for %s", mat)
         return int_gs
 
     # If there are n inputs and m outputs,
