@@ -770,7 +770,8 @@ def merge_kernel_arguments(x, y):
     res = x.copy()
     for k, v in y.items():
         if k in res:
-            if not res[k] == v:
+            if get_hashable_kernel_argument(res[k]) \
+                    != get_hashable_kernel_argument(v):
                 raise ValueError
         else:
             res[k] = v
