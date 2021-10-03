@@ -121,6 +121,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
             # some IntGs from them.
             result[i] += expr
             logger.debug("%s is not linear", expr)
+            int_gs_by_group_for_index.append({})
             continue
         int_gs_by_group = {}
         for int_g, coeff in int_g_coeff_map.items():
