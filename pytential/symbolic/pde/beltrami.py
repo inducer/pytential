@@ -29,6 +29,8 @@ __doc__ = """
 from functools import partial
 from typing import Any, Dict, Optional
 
+import numpy as np
+
 from pytential import sym
 from sumpy.kernel import Kernel
 
@@ -38,7 +40,7 @@ from sumpy.kernel import Kernel
 class BeltramiOperator:
     def __init__(self, kernel: Kernel, *,
             precond: str = "left",
-            kernel_arguments: Optional[Dict[str, Any]]) -> None:
+            kernel_arguments: Optional[Dict[str, Any]] = None) -> None:
         if kernel_arguments is None:
             kernel_arguments = {}
 
@@ -47,10 +49,17 @@ class BeltramiOperator:
 
         self.kernel = kernel
         self.precond = precond
+        self.kernel_arguments = kernel_arguments
 
     @property
     def dim(self):
         return self.kernel.dim
+
+    @property
+    def dtype(self):
+        return np.dtype(
+                np.complex128 if self.kernel.is_complex_valued
+                else np.float64)
 
     def get_density_var(self, name: str = "sigma"):
         return sym.var(name)
@@ -116,7 +125,7 @@ class BeltramiOperator:
 
         return op
 
-    def _get_right_operator(self, sigma, **kwargs):
+    def _get_right_operator(self, sigma: sym.var, kappa: sym.var, **kwargs: Any):
         raise NotImplementedError(
                 f"right preconditioning for {type(self.kernel).__name__}")
 
@@ -128,9 +137,9 @@ class BeltramiOperator:
             mean_curvature = sym.mean_curvature(self.dim)
 
         if self.precond == "left":
-            return self._get_left_operator(self, sigma, mean_curvature, **kwargs)
+            return self._get_left_operator(sigma, mean_curvature, **kwargs)
         else:
-            return self._get_right_operator(self, sigma, mean_curvature, **kwargs)
+            return self._get_right_operator(sigma, mean_curvature, **kwargs)
 
 # }}}
 
@@ -160,7 +169,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         # {{{ operator
 
         def W(operand: sym.Expression) -> sym.Expression:                # noqa: N802
-            return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
+            return sym.Ones() * sym.integral(self.dim, self.dim - 1, operand)
 
         # NOTE: based on Lemma 3.1 in [ONeil2017], but doing :math:`-\Delta_\Gamma`
         op = (
@@ -192,7 +201,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         # {{{ operator
 
         def W(operand: sym.Expression) -> sym.Expression:                # noqa: N802
-            return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
+            return sym.Ones() * sym.integral(self.dim, self.dim - 1, operand)
 
         # NOTE: based on Lemma 3.2 in [ONeil2017], but doing :math:`-\Delta_\Gamma`
         op = (
@@ -234,7 +243,7 @@ class HelmholtzBeltramiOperator(BeltramiOperator):
             helmholtz_k_name: str = "k") -> None:
         from sumpy.kernel import HelmholtzKernel
         super().__init__(
-                kernel=HelmholtzKernel(dim, yukawa_lambda_name=helmholtz_k_name),
+                kernel=HelmholtzKernel(dim, helmholtz_k_name=helmholtz_k_name),
                 precond=precond,
                 kernel_arguments={helmholtz_k_name: sym.var(helmholtz_k_name)}
                 )
