@@ -91,6 +91,7 @@ class BeltramiOperator:
 
         context = self.kernel_arguments.copy()
         context.update(kwargs)
+        kappa = (self.dim - 1) * kappa
 
         knl = self.kernel
         lknl = LaplaceKernel(self.dim)
@@ -155,6 +156,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         knl = self.kernel
         context = self.kernel_arguments.copy()
         context.update(kwargs)
+        kappa = (self.dim - 1) * kappa
 
         # {{{ layer potentials
 
@@ -177,7 +179,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
                 - D(D(sigma))
                 + S(Spp(sigma) + Dp(sigma))
                 + S(kappa * Sp(sigma))
-                + S(W(S(sigma)))
+                - S(W(S(sigma)))
                 )
 
         # }}}
@@ -188,6 +190,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         knl = self.kernel
         context = self.kernel_arguments.copy()
         context.update(kwargs)
+        kappa = (self.dim - 1) * kappa
 
         # {{{ layer potentials
 
