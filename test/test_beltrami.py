@@ -52,19 +52,19 @@ def evaluate_spharm(actx, discr, m: int, n: int) -> np.ndarray:
     from arraycontext import thaw
     x, y, z = thaw(discr.nodes(), actx)
 
-    theta = actx.np.arctan2(z, actx.np.sqrt(x**2 + y**2))
-    phi = actx.np.arctan2(y, x) + np.pi * (x < 0)
+    theta = actx.np.arctan2(actx.np.sqrt(x**2 + y**2), z)
+    phi = actx.np.arctan2(y, x)
 
     # }}}
 
     # {{{ evaluate Y^m_n
 
-    from scipy.special import sph_harm
+    from scipy.special import sph_harm      # pylint: disable=no-name-in-module
     y_mn = []
     for gtheta, gphi in zip(theta, phi):
         result = sph_harm(m, n, actx.to_numpy(gphi), actx.to_numpy(gtheta))
 
-        y_mn.append(actx.from_numpy(result))
+        y_mn.append(actx.from_numpy(result.real.copy()))
 
     # }}}
 
@@ -110,12 +110,13 @@ class YukawaBeltramiSolution(LaplaceBeltramiSolution):
 
 # {{{ test_beltrami_convergence
 
+@pytest.mark.slowtest
 @pytest.mark.parametrize(("operator", "solution"), [
     (LaplaceBeltramiOperator(3, precond="left"), LaplaceBeltramiSolution()),
     (LaplaceBeltramiOperator(3, precond="right"), LaplaceBeltramiSolution()),
     (YukawaBeltramiOperator(3, precond="left"), YukawaBeltramiSolution()),
     ])
-def test_beltrami_convergence(actx_factory, operator, solution, visualize=True):
+def test_beltrami_convergence(actx_factory, operator, solution, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
     actx = actx_factory()
@@ -124,9 +125,10 @@ def test_beltrami_convergence(actx_factory, operator, solution, visualize=True):
     case = eid.SphereTestCase(
             target_order=5,
             qbx_order=5,
-            source_ovsmp=4,
-            fmm_order=False, fmm_backend=None,
-            radius=radius
+            source_ovsmp=8,
+            fmm_order=False, fmm_tol=None, fmm_backend=None,
+            radius=radius,
+            resolutions=[0, 1, 2]
             )
     logger.info("\n%s", case)
 
@@ -154,7 +156,7 @@ def test_beltrami_convergence(actx_factory, operator, solution, visualize=True):
         sym_rhs = operator.prepare_rhs(sym_b)
         sym_result = operator.prepare_solution(sym_sigma)
 
-        sym_op = operator.operator(sym_sigma, mean_curvature=2/radius)
+        sym_op = operator.operator(sym_sigma, mean_curvature=1/radius)
 
         # }}}
 
@@ -162,18 +164,22 @@ def test_beltrami_convergence(actx_factory, operator, solution, visualize=True):
 
         scipy_op = bind(places, sym_op).scipy_op(
                 actx, "sigma", operator.dtype, **solution.context)
-        rhs = bind(places, sym_rhs)(actx, b=solution.source(actx, density_discr))
+        rhs = bind(places, sym_rhs)(
+                actx, b=solution.source(actx, density_discr),
+                **solution.context)
 
         from pytential.solve import gmres
         result = gmres(
                 scipy_op, rhs,
                 x0=rhs,
-                tol=1.0e-10,
+                tol=1.0e-7,
                 progress=visualize,
                 stall_iterations=0,
                 hard_failure=True)
 
-        result = bind(places, sym_result)(actx, sigma=result.solution)
+        result = bind(places, sym_result)(
+                actx, sigma=actx.np.real(result.solution),
+                **solution.context)
         ref_result = solution.exact(actx, density_discr)
 
         # }}}
@@ -190,26 +196,27 @@ def test_beltrami_convergence(actx_factory, operator, solution, visualize=True):
         eoc.add_data_point(h_max, error)
         logger.info("resolution %3d h_max %.5e rel_error %.5e",
                 resolution, h_max, error)
-        print(resolution, h_max, error)
 
         if not visualize:
             continue
 
         from meshmode.discretization.visualization import make_visualizer
-        vis = make_visualizer(actx, density_discr)
+        vis = make_visualizer(actx, density_discr, case.target_order)
 
-        filename = f"beltrami_{case.name}_{solution.name}.vtu"
+        filename = f"beltrami_{case.name}_{solution.name}_{resolution}.vtu"
         vis.write_vtk_file(filename, [
             ("result", result),
             ("ref_result", ref_result),
             ("error", result - ref_result)
             ], overwrite=True)
 
-    print(eoc.pretty_print(
+    logger.info("\n%s", eoc.pretty_print(
         abscissa_format="%.8e",
         error_format="%.8e",
         eoc_format="%.2f"))
 
+    # NOTE: expected order is `order - 2` because the formulation has two
+    # additional target derivatives on the kernel
     order = min(case.target_order, case.qbx_order)
     assert eoc.order_estimate() > order - 2.5
 
