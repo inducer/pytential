@@ -39,20 +39,25 @@ from sumpy.kernel import Kernel
 
 class BeltramiOperator:
     def __init__(self, kernel: Kernel, *,
+            dim: Optional[int] = None,
             precond: str = "left",
             kernel_arguments: Optional[Dict[str, Any]] = None) -> None:
-        if kernel_arguments is None:
-            kernel_arguments = {}
+        if dim is None:
+            dim = kernel.dim - 1
 
         if precond not in ("left", "right"):
             raise ValueError(f"unknown preconditioning '{precond}'")
 
+        if kernel_arguments is None:
+            kernel_arguments = {}
+
+        self.dim = dim
         self.kernel = kernel
         self.precond = precond
         self.kernel_arguments = kernel_arguments
 
     @property
-    def dim(self):
+    def ambient_dim(self):
         return self.kernel.dim
 
     @property
@@ -91,10 +96,10 @@ class BeltramiOperator:
 
         context = self.kernel_arguments.copy()
         context.update(kwargs)
-        kappa = (self.dim - 1) * kappa
+        kappa = self.dim * kappa
 
         knl = self.kernel
-        lknl = LaplaceKernel(self.dim)
+        lknl = LaplaceKernel(knl.dim)
 
         # {{{ layer potentials
 
@@ -135,7 +140,7 @@ class BeltramiOperator:
             mean_curvature: Optional[sym.var] = None,
             **kwargs) -> sym.var:
         if mean_curvature is None:
-            mean_curvature = sym.mean_curvature(self.dim)
+            mean_curvature = sym.mean_curvature(self.ambient_dim, dim=self.dim)
 
         if self.precond == "left":
             return self._get_left_operator(sigma, mean_curvature, **kwargs)
@@ -148,15 +153,20 @@ class BeltramiOperator:
 # {{{ Laplace-Beltrami operator
 
 class LaplaceBeltramiOperator(BeltramiOperator):
-    def __init__(self, dim: int, precond: str = "left") -> None:
+    def __init__(self, ambient_dim, *,
+            dim: Optional[int] = None,
+            precond: str = "left") -> None:
         from sumpy.kernel import LaplaceKernel
-        super().__init__(kernel=LaplaceKernel(dim), precond=precond)
+        super().__init__(
+                LaplaceKernel(ambient_dim),
+                dim=dim,
+                precond=precond)
 
     def _get_left_operator(self, sigma: sym.var, kappa: sym.var, **kwargs: Any):
         knl = self.kernel
         context = self.kernel_arguments.copy()
         context.update(kwargs)
-        kappa = (self.dim - 1) * kappa
+        kappa = self.dim * kappa
 
         # {{{ layer potentials
 
@@ -171,7 +181,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         # {{{ operator
 
         def W(operand: sym.Expression) -> sym.Expression:                # noqa: N802
-            return sym.Ones() * sym.integral(self.dim, self.dim - 1, operand)
+            return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
 
         # NOTE: based on Lemma 3.1 in [ONeil2017], but doing :math:`-\Delta_\Gamma`
         op = (
@@ -190,7 +200,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         knl = self.kernel
         context = self.kernel_arguments.copy()
         context.update(kwargs)
-        kappa = (self.dim - 1) * kappa
+        kappa = self.dim * kappa
 
         # {{{ layer potentials
 
@@ -204,7 +214,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         # {{{ operator
 
         def W(operand: sym.Expression) -> sym.Expression:                # noqa: N802
-            return sym.Ones() * sym.integral(self.dim, self.dim - 1, operand)
+            return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
 
         # NOTE: based on Lemma 3.2 in [ONeil2017], but doing :math:`-\Delta_\Gamma`
         op = (
@@ -225,12 +235,14 @@ class LaplaceBeltramiOperator(BeltramiOperator):
 # {{{ Yukawa-Beltrami operator
 
 class YukawaBeltramiOperator(BeltramiOperator):
-    def __init__(self, dim: int,
+    def __init__(self, ambient_dim: int, *,
+            dim: Optional[int] = None,
             precond: str = "left",
             yukawa_k_name: str = "k") -> None:
         from sumpy.kernel import YukawaKernel
         super().__init__(
-                kernel=YukawaKernel(dim, yukawa_lambda_name=yukawa_k_name),
+                YukawaKernel(ambient_dim, yukawa_lambda_name=yukawa_k_name),
+                dim=dim,
                 precond=precond,
                 kernel_arguments={yukawa_k_name: sym.var(yukawa_k_name)}
                 )
@@ -241,12 +253,14 @@ class YukawaBeltramiOperator(BeltramiOperator):
 # {{{ Helmholtz-Beltrami operator
 
 class HelmholtzBeltramiOperator(BeltramiOperator):
-    def __init__(self, dim: int,
+    def __init__(self, ambient_dim: int, *,
+            dim: Optional[int] = None,
             precond: str = "left",
             helmholtz_k_name: str = "k") -> None:
         from sumpy.kernel import HelmholtzKernel
         super().__init__(
-                kernel=HelmholtzKernel(dim, helmholtz_k_name=helmholtz_k_name),
+                HelmholtzKernel(ambient_dim, helmholtz_k_name=helmholtz_k_name),
+                dim=dim,
                 precond=precond,
                 kernel_arguments={helmholtz_k_name: sym.var(helmholtz_k_name)}
                 )
