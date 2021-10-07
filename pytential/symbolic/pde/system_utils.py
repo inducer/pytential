@@ -22,7 +22,8 @@ THE SOFTWARE.
 
 import numpy as np
 
-from sumpy.symbolic import make_sym_vector, sym, SympyToPymbolicMapper
+from sumpy.symbolic import make_sym_vector, SympyToPymbolicMapper
+import sumpy.symbolic as sym
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
     DirectionalSourceDerivative, ExpressionKernel,
     KernelWrapper, TargetPointMultiplier, DirectionalDerivative)
@@ -424,7 +425,7 @@ def evalf(expr, prec=100):
 
 
 @memoize_on_first_arg
-def _get_base_kernel_matrix(base_kernel, order=None):
+def _get_base_kernel_matrix(base_kernel, order=None, retries=3):
     dim = base_kernel.dim
 
     pde = base_kernel.get_pde_as_diff_op()
@@ -445,13 +446,15 @@ def _get_base_kernel_matrix(base_kernel, order=None):
         logger.debug(f"Removing {pde_mis[-1]} to avoid linear dependent mis")
         mis.remove(pde_mis[-1])
 
-    rand = np.random.randint(1, 100, (dim, len(mis)))
+    rand = np.random.randint(1, 10**15, (dim, len(mis)))
     sym_vec = make_sym_vector("d", dim)
 
     base_expr = base_kernel.get_expression(sym_vec)
 
     mat = []
     for rand_vec_idx in range(rand.shape[1]):
+        rand_int = rand[:, rand_vec_idx]
+        rand_rat = [sym.sympify(i)/10**15 for i in rand_int]
         row = []
         for mi in mis[:-1]:
             expr = base_expr
@@ -460,7 +463,7 @@ def _get_base_kernel_matrix(base_kernel, order=None):
                     continue
                 expr = expr.diff(sym_vec[var_idx], nderivs)
             replace_dict = dict(
-                (k, v) for k, v in zip(sym_vec, rand[:, rand_vec_idx])
+                (k, v) for k, v in zip(sym_vec, rand_rat)
             )
             eval_expr = evalf(expr.xreplace(replace_dict))
             row.append(eval_expr)
@@ -468,7 +471,23 @@ def _get_base_kernel_matrix(base_kernel, order=None):
         mat.append(row)
 
     mat = sym.Matrix(mat)
-    L, U, perm = mat.LUdecomposition()
+    failed = False
+    try:
+        L, U, perm = mat.LUdecomposition()
+    except RuntimeError:
+        # symengine throws an error when rank deficient
+        # and sympy returns U with last row zero
+        failed = True
+
+    if not sym.USE_SYMENGINE and all(expr == 0 for expr in U[-1, :]):
+        failed = True
+
+    if failed:
+        if retries == 0:
+            raise RuntimeError("Failed to find a base kernel")
+        return  _get_base_kernel_matrix(base_kernel, order=order,
+                retries=retries - 1)
+
     return (L, U, perm), rand, mis
 
 
