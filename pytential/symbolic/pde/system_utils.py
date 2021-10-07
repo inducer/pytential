@@ -32,7 +32,8 @@ from pytools import (memoize_on_first_arg,
                 as gnitstam)
 from collections import defaultdict
 
-from pymbolic.mapper import WalkMapper
+from pymbolic.geometric_algebra.mapper import WalkMapper
+from pymbolic.mapper import CombineMapper
 from pymbolic.mapper.coefficient import CoefficientCollector
 from pymbolic.primitives import Variable
 from pytential.symbolic.primitives import IntG, NodeCoordinateComponent
@@ -140,14 +141,16 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
             # convert TargetDerivative to source before checking the group
             # as the target kernel has to be the same for merging
             int_g = convert_target_deriv_to_source(int_g)
-            # move the coefficient inside
-            int_g = int_g.copy(densities=[density*coeff for density in
+            if not is_expr_target_dependent(coeff):
+                # move the coefficient inside
+                int_g = int_g.copy(densities=[density*coeff for density in
                     int_g.densities])
+                coeff = 1
 
             source_group_identifier = get_int_g_source_group_identifier(int_g,
                     seen_normal_vectors.assignments)
             target_group_identifier = get_int_g_target_group_identifier(int_g)
-            group = (source_group_identifier, target_group_identifier)
+            group = (source_group_identifier, target_group_identifier, coeff)
 
             all_source_group_identifiers[source_group_identifier] = 1
 
@@ -173,13 +176,17 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
 
         int_gs_by_group_for_index.append(int_gs_by_group)
 
+    # No IntGs found
+    if all(not int_gs_by_group for int_gs_by_group in int_gs_by_group_for_index):
+        return exprs
+
     # If source_dependent_variables (sdv) is not given return early.
     # Check for (sdv is None) instead of just (sdv) because
     # it can be an empty list.
     if source_dependent_variables is None:
         for iexpr, int_gs_by_group in enumerate(int_gs_by_group_for_index):
-            for int_g in int_gs_by_group.values():
-                result[iexpr] += int_g
+            for group, int_g in int_gs_by_group.items():
+                result[iexpr] += group[2] * int_g
         return result
 
     # Do the calculation for each source_group_identifier separately
@@ -221,16 +228,47 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
                 # [S + D, S, D]. We will reduce these and restore the target
                 # attributes at the end
                 common_int_g = remove_target_attributes(int_g)
-                targetless_int_g_to_idx_mapping[common_int_g].append((idx, int_g))
+                targetless_int_g_to_idx_mapping[common_int_g].append((idx, int_g, group[2]))
 
         insns_to_reduce = list(targetless_int_g_to_idx_mapping.keys())
         reduced_insns = reduce_number_of_fmms(insns_to_reduce,
                 source_dependent_variables)
 
         for insn, reduced_insn in zip(insns_to_reduce, reduced_insns):
-            for idx, int_g in targetless_int_g_to_idx_mapping[insn]:
-                result[idx] += restore_target_attributes(reduced_insn, int_g)
+            for idx, int_g, coeff in targetless_int_g_to_idx_mapping[insn]:
+                result[idx] += coeff * restore_target_attributes(reduced_insn, int_g)
     return result
+
+
+def is_expr_target_dependent(expr):
+    mapper = IsExprTargetDependent()
+    return mapper(expr)
+
+
+class IsExprTargetDependent(CombineMapper):
+    def combine(self, values):
+        import operator
+        from functools import reduce
+        return reduce(operator.or_, values, False)
+
+    def map_constant(self, expr):
+        return False
+
+    map_variable = map_constant
+    map_wildcard = map_constant
+    map_function_symbol = map_constant
+
+    def map_common_subexpression(self, expr):
+        return self.rec(expr.child)
+
+    def map_coordinate_component(self, expr):
+        return True
+
+    def map_num_reference_derivative(self, expr):
+        return True
+
+    def map_q_weight(self, expr):
+        return True
 
 
 class RewriteUsingBaseKernelMapper(IdentityMapper):
