@@ -185,8 +185,8 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
     # it can be an empty list.
     if source_dependent_variables is None:
         for iexpr, int_gs_by_group in enumerate(int_gs_by_group_for_index):
-            for group, int_g in int_gs_by_group.items():
-                result[iexpr] += group[2] * int_g
+            for (_, _, coeff), int_g in int_gs_by_group.items():
+                result[iexpr] += coeff * int_g
         return result
 
     # Do the calculation for each source_group_identifier separately
@@ -228,7 +228,8 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
                 # [S + D, S, D]. We will reduce these and restore the target
                 # attributes at the end
                 common_int_g = remove_target_attributes(int_g)
-                targetless_int_g_to_idx_mapping[common_int_g].append((idx, int_g, group[2]))
+                targetless_int_g_to_idx_mapping[common_int_g].append((idx, int_g,
+                                                                      group[2]))
 
         insns_to_reduce = list(targetless_int_g_to_idx_mapping.keys())
         reduced_insns = reduce_number_of_fmms(insns_to_reduce,
@@ -523,8 +524,11 @@ def _get_base_kernel_matrix(base_kernel, order=None, retries=3):
     if failed:
         if retries == 0:
             raise RuntimeError("Failed to find a base kernel")
-        return  _get_base_kernel_matrix(base_kernel, order=order,
-                retries=retries - 1)
+        return _get_base_kernel_matrix(
+            base_kernel=base_kernel,
+            order=order,
+            retries=retries-1,
+        )
 
     return (L, U, perm), rand, mis
 
