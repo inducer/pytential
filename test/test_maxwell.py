@@ -352,10 +352,7 @@ def test_pec_mfie_extinction(actx_factory, case,
 
         inc_xyz_sym = EHField(sym.make_sym_vector("inc_fld", 6))
 
-        mfie_j = mfie.j_operator(loc_sign, jt_sym)
-        from pytential.symbolic.pde.system_utils import merge_int_g_exprs
-        mfie_j = merge_int_g_exprs(mfie_j)
-        bound_j_op = bind(places, mfie_j)
+        bound_j_op = bind(places, mfie.j_operator(loc_sign, jt_sym))
         j_rhs = bind(places, mfie.j_rhs(inc_xyz_sym.h))(
                 actx, inc_fld=inc_field_scat.field, **knl_kwargs)
 
