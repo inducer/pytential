@@ -485,7 +485,11 @@ def _get_base_kernel_matrix(base_kernel, order=None, retries=3):
         logger.debug(f"Removing {pde_mis[-1]} to avoid linear dependent mis")
         mis.remove(pde_mis[-1])
 
-    rand = np.random.randint(1, 100, (dim, len(mis)))
+    rand = np.random.randint(1, 10**15, (dim, len(mis)))
+    rand = rand.astype(object)
+    for i in range(rand.shape[0]):
+        for j in range(rand.shape[1]):
+            rand[i, j] = sym.sympify(rand[i, j])/10**15
     sym_vec = make_sym_vector("d", dim)
 
     base_expr = base_kernel.get_expression(sym_vec)
@@ -532,7 +536,7 @@ def _get_base_kernel_matrix(base_kernel, order=None, retries=3):
 
 
 @memoize_on_first_arg
-def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-8, order=None):
+def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-10, order=None):
     (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order)
     dim = base_kernel.dim
     sym_vec = make_sym_vector("d", dim)
