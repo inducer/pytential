@@ -24,7 +24,7 @@ __doc__ = """
 .. autoclass:: BeltramiOperator
 .. autoclass:: LaplaceBeltramiOperator
 .. autoclass:: YukawaBeltramiOperator
-.. autoclass:: HelmholtzbeltramiOperator
+.. autoclass:: HelmholtzBeltramiOperator
 """
 
 from functools import partial
@@ -57,14 +57,15 @@ class BeltramiOperator:
         solution = beltrami.prepare_solution(sigma)
         op = beltrami.operator(sigma)
 
-    where :meth:`prepare_solution` is required to be apply to the density
-    due to the different types of preconditioning. See [ONeil2018] for
-    additional details
+    where :meth:`prepare_solution` is required to recover the solution from th
+    density due to the different types of preconditioning.
 
     .. [ONeil2018] M. O'Neil, *Second-Kind Integral Equations for the
-        Laplace-Beltrami Problem on Surfaces in Three Dimensions,
-        Advances in Computational Mathematics, Vol. 44, pp. 1385--1409, 2018,
-        `DOI http://dx.doi.org/10.1007/s10444-018-9587-7}`__.
+        Laplace-Beltrami Problem on Surfaces in Three Dimensions*,
+        Advances in Computational Mathematics, Vol. 44, pp. 1385-1409, 2018,
+        `DOI <http://dx.doi.org/10.1007/s10444-018-9587-7>`__.
+
+    .. attribute:: dim
 
     .. automethod:: __init__
 
@@ -102,10 +103,18 @@ class BeltramiOperator:
                 np.complex128 if self.kernel.is_complex_valued
                 else np.float64)
 
-    def get_density_var(self, name: str = "sigma") -> sym.Expression:
+    def get_density_var(self, name: str = "sigma") -> sym.var:
+        """
+        :returns: a symbolic expression for the density.
+        """
         return sym.var(name)
 
     def prepare_solution(self, sigma: sym.var) -> sym.var:
+        """
+        :returns: an expression for the solution to the original Beltrami
+            equation based on the density *sigma* and the type of
+            preconditioning used in the operator.
+        """
         S = partial(sym.S, self.kernel,     # noqa: N806
                 qbx_forced_limit=+1, **self.kernel_arguments)
 
@@ -115,6 +124,10 @@ class BeltramiOperator:
             return S(S(sigma))
 
     def prepare_rhs(self, b: sym.var) -> sym.var:
+        """
+        :returns: a modified expression for the right-hands ide *b* based on
+            the preconditiong used in the operator.
+        """
         S = partial(sym.S, self.kernel,     # noqa: N806
                 qbx_forced_limit=+1, **self.kernel_arguments)
 
@@ -167,13 +180,57 @@ class BeltramiOperator:
         return op
 
     def _get_right_operator(self, sigma: sym.var, kappa: sym.var, **kwargs: Any):
-        raise NotImplementedError(
-                f"right preconditioning for {type(self.kernel).__name__}")
+        from sumpy.kernel import LaplaceKernel
+        if isinstance(self.kernel, LaplaceKernel):
+            raise TypeError(
+                    f"{type(self).__name__} does not support the Laplace "
+                    "kernel, use LaplaceBeltramiOperator instead")
+
+        context = self.kernel_arguments.copy()
+        context.update(kwargs)
+
+        knl = self.kernel
+        lknl = LaplaceKernel(self.dim)
+
+        # {{{ layer potentials
+
+        # laplace
+        S0 = partial(sym.S, lknl, qbx_forced_limit=+1, **kwargs)        # noqa: N806
+        Sp0 = partial(sym.Sp, lknl, qbx_forced_limit="avg", **kwargs)   # noqa: N806
+        Dp0 = partial(sym.Dp, lknl, qbx_forced_limit="avg", **kwargs)   # noqa: N806
+
+        # base
+        S = partial(sym.S, knl, qbx_forced_limit=+1, **context)         # noqa: N806
+        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", **context)    # noqa: N806
+        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", **context)  # noqa: N806
+
+        # }}}
+
+        # {{{ operator
+
+        # similar to 6.2 in [ONeil2017]
+        op = (
+                sigma / 4
+                - Sp0(Sp0(sigma))
+                + (Spp(S(sigma)) + Dp0(S(sigma)))
+                - Dp0(S(sigma) - S0(sigma))
+                + kappa * Sp(S(sigma))
+                )
+
+        # }}}
+
+        return op
 
     def operator(self,
             sigma: sym.var,
             mean_curvature: Optional[sym.var] = None,
             **kwargs) -> sym.var:
+        """
+        :arg mean_curvature: an expression for the mean curvature that can be
+            used in the construction of the operator.
+        :returns: a Fredholm integral equation of the second kind for the
+            Beltrami PDE with the unknown density *sigma*.
+        """
         if mean_curvature is None:
             mean_curvature = sym.mean_curvature(self.ambient_dim, dim=self.dim)
 
