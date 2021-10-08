@@ -28,6 +28,7 @@ import numpy as np
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from meshmode.dof_array import DOFArray
 
 from pytential import bind, sym
 from pytential.symbolic.pde.beltrami import (
@@ -44,7 +45,21 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
 
 # {{{ solutions
 
-def evaluate_spharm(actx, discr, m: int, n: int) -> np.ndarray:
+def evaluate_circle_eigf(actx, discr, k: int) -> np.ndarray:
+    assert discr.ambient_dim == 2
+
+    # {{{ get polar coordinates
+
+    from arraycontext import thaw
+    x, y = thaw(discr.nodes(), actx)
+    theta = actx.np.arctan2(y, x)
+
+    # }}}
+
+    return actx.np.exp(-1j * k * theta)
+
+
+def evaluate_sphere_eigf(actx, discr, m: int, n: int) -> DOFArray:
     assert discr.ambient_dim == 3
 
     # {{{ get spherical coordinates
@@ -68,32 +83,49 @@ def evaluate_spharm(actx, discr, m: int, n: int) -> np.ndarray:
 
     # }}}
 
-    return type(x)(actx, tuple(y_mn))
+    return DOFArray(actx, tuple(y_mn))
 
 
 @dataclass(frozen=True)
 class LaplaceBeltramiSolution:
     name: str = "laplace"
+    dim: int = 3
     radius: float = 1.0
     m: int = 1
     n: int = 3
 
     @property
-    def eig(self):
-        # NOTE: eigenvalue of the -Laplacian on the sphere
-        return self.n * (self.n + 1) / self.radius ** 2
+    def eigenvalue(self):
+        # NOTE: eigenvalue of the -Laplacian on a ball of radius *radius*
+        if self.dim == 2:
+            return self.n**2 / self.radius ** 2
+        elif self.dim == 3:
+            return self.n * (self.n + 1) / self.radius ** 2
+        else:
+            raise ValueError(f"unsupported dimension: {self.dim}")
+
+    def eigenfunction(self, actx, discr):
+        if self.dim == 2:
+            f = evaluate_circle_eigf(actx, discr, k=self.n)
+        elif self.dim == 3:
+            f = evaluate_sphere_eigf(actx, discr, self.m, self.n)
+        else:
+            raise ValueError(f"unsupported dimension: {self.dim}")
+
+        return actx.np.real(f)
 
     @property
     def context(self):
         return {}
 
     def source(self, actx, discr):
-        return self.eig * evaluate_spharm(actx, discr, self.m, self.n)
+        return self.eigenvalue * self.eigenfunction(actx, discr)
 
     def exact(self, actx, discr):
-        return evaluate_spharm(actx, discr, self.m, self.n)
+        return self.eigenfunction(actx, discr)
 
 
+@dataclass(frozen=True)
 class YukawaBeltramiSolution(LaplaceBeltramiSolution):
     name: str = "yukawa"
     k: float = 1.0
@@ -103,18 +135,24 @@ class YukawaBeltramiSolution(LaplaceBeltramiSolution):
         return {"k": self.k}
 
     def source(self, actx, discr):
-        return (self.eig + self.k**2) * evaluate_spharm(actx, discr, self.m, self.n)
+        return (self.eigenvalue + self.k**2) * self.eigenfunction(actx, discr)
 
 # }}}
 
 
 # {{{ test_beltrami_convergence
 
-@pytest.mark.slowtest
 @pytest.mark.parametrize(("operator", "solution"), [
-    (LaplaceBeltramiOperator(3, precond="left"), LaplaceBeltramiSolution()),
-    (LaplaceBeltramiOperator(3, precond="right"), LaplaceBeltramiSolution()),
-    (YukawaBeltramiOperator(3, precond="left"), YukawaBeltramiSolution()),
+    (LaplaceBeltramiOperator(2, precond="left"), LaplaceBeltramiSolution(dim=2)),
+    (LaplaceBeltramiOperator(2, precond="right"), LaplaceBeltramiSolution(dim=2)),
+    (YukawaBeltramiOperator(2, precond="left"), YukawaBeltramiSolution(dim=2)),
+    (YukawaBeltramiOperator(2, precond="right"), YukawaBeltramiSolution(dim=2)),
+    pytest.param(
+        LaplaceBeltramiOperator(3, precond="left"), LaplaceBeltramiSolution(),
+        marks=pytest.mark.slowtest),
+    pytest.param(
+        YukawaBeltramiOperator(3, precond="left"), YukawaBeltramiSolution(),
+        marks=pytest.mark.slowtest),
     ])
 def test_beltrami_convergence(actx_factory, operator, solution, visualize=False):
     if visualize:
@@ -122,15 +160,28 @@ def test_beltrami_convergence(actx_factory, operator, solution, visualize=False)
     actx = actx_factory()
 
     radius = 1
-    case = eid.SphereTestCase(
-            target_order=5,
-            qbx_order=5,
-            source_ovsmp=8,
-            fmm_order=False, fmm_tol=None, fmm_backend=None,
-            radius=radius,
-            resolutions=[0, 1, 2]
-            )
+    if operator.ambient_dim == 2:
+        case = eid.CircleTestCase(
+                target_order=5,
+                qbx_order=5,
+                source_ovsmp=4,
+                resolutions=[32, 64, 96, 128],
+                fmm_order=False, fmm_backend=None,
+                radius=radius
+                )
+    elif operator.ambient_dim == 3:
+        case = eid.SphereTestCase(
+                target_order=5,
+                qbx_order=5,
+                source_ovsmp=8,
+                fmm_order=False, fmm_tol=None, fmm_backend=None,
+                radius=radius
+                )
+    else:
+        raise ValueError(f"unsupported dimension: {operator.ambient_dim}")
+
     logger.info("\n%s", case)
+    logger.info("\n%s", solution)
 
     from pytools.convergence import EOCRecorder
     eoc = EOCRecorder()
@@ -177,7 +228,7 @@ def test_beltrami_convergence(actx_factory, operator, solution, visualize=False)
                 stall_iterations=0,
                 hard_failure=True)
 
-        result = bind(places, sym_result)(
+        result = bind(places, sym.real(sym_result))(
                 actx, sigma=actx.np.real(result.solution),
                 **solution.context)
         ref_result = solution.exact(actx, density_discr)

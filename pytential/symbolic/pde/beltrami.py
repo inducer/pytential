@@ -190,7 +190,7 @@ class BeltramiOperator:
         context.update(kwargs)
 
         knl = self.kernel
-        lknl = LaplaceKernel(self.dim)
+        lknl = LaplaceKernel(knl.dim)
 
         # {{{ layer potentials
 
@@ -235,7 +235,6 @@ class BeltramiOperator:
             mean_curvature = sym.mean_curvature(self.ambient_dim, dim=self.dim)
 
         kappa = self.dim * mean_curvature
-
         if self.precond == "left":
             return self._get_left_operator(sigma, kappa, **kwargs)
         else:
