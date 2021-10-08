@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 __doc__ = """
+.. autoclass:: BeltramiOperator
 .. autoclass:: LaplaceBeltramiOperator
 .. autoclass:: YukawaBeltramiOperator
 .. autoclass:: HelmholtzbeltramiOperator
@@ -38,6 +39,41 @@ from sumpy.kernel import Kernel
 # {{{ beltrami operator
 
 class BeltramiOperator:
+    """Beltrami-type operators on closed surfaces.
+
+    The construction of the operators is based on [ONeil2018]_ extended to take
+    any scalar PDE kernel. However, specific kernels may require additional
+    work to allow for unique solutions. For example, the Laplace-Beltrami
+    equation is only unique up to a constant, so using
+    :class:`LaplaceBeltramiOperator` is recommended to take this into account.
+    In general, the boundary integral equation can be constructed as
+
+    .. code:: python
+
+        sigma = beltrami.get_density_var("sigma")
+        bc = beltrami.get_density_var("bc")
+
+        rhs = beltrami.prepare_rhs(bc)
+        solution = beltrami.prepare_solution(sigma)
+        op = beltrami.operator(sigma)
+
+    where :meth:`prepare_solution` is required to be apply to the density
+    due to the different types of preconditioning. See [ONeil2018] for
+    additional details
+
+    .. [ONeil2018] M. O'Neil, *Second-Kind Integral Equations for the
+        Laplace-Beltrami Problem on Surfaces in Three Dimensions,
+        Advances in Computational Mathematics, Vol. 44, pp. 1385--1409, 2018,
+        `DOI http://dx.doi.org/10.1007/s10444-018-9587-7}`__.
+
+    .. automethod:: __init__
+
+    .. automethod:: get_density_var
+    .. automethod:: prepare_solution
+    .. automethod:: prepare_rhs
+    .. automethod:: operator
+    """
+
     def __init__(self, kernel: Kernel, *,
             dim: Optional[int] = None,
             precond: str = "left",
@@ -66,7 +102,7 @@ class BeltramiOperator:
                 np.complex128 if self.kernel.is_complex_valued
                 else np.float64)
 
-    def get_density_var(self, name: str = "sigma"):
+    def get_density_var(self, name: str = "sigma") -> sym.Expression:
         return sym.var(name)
 
     def prepare_solution(self, sigma: sym.var) -> sym.var:
@@ -96,7 +132,6 @@ class BeltramiOperator:
 
         context = self.kernel_arguments.copy()
         context.update(kwargs)
-        kappa = self.dim * kappa
 
         knl = self.kernel
         lknl = LaplaceKernel(knl.dim)
@@ -142,10 +177,12 @@ class BeltramiOperator:
         if mean_curvature is None:
             mean_curvature = sym.mean_curvature(self.ambient_dim, dim=self.dim)
 
+        kappa = self.dim * mean_curvature
+
         if self.precond == "left":
-            return self._get_left_operator(sigma, mean_curvature, **kwargs)
+            return self._get_left_operator(sigma, kappa, **kwargs)
         else:
-            return self._get_right_operator(sigma, mean_curvature, **kwargs)
+            return self._get_right_operator(sigma, kappa, **kwargs)
 
 # }}}
 
@@ -153,6 +190,17 @@ class BeltramiOperator:
 # {{{ Laplace-Beltrami operator
 
 class LaplaceBeltramiOperator(BeltramiOperator):
+    r"""Laplace-Beltrami operator on a closed surface :math:`\Sigma`
+
+    .. math::
+
+        -\Delta_\Sigma u = b
+
+    Inherits from :class:`BeltramiOperator`.
+
+    .. automethod:: __init__
+    """
+
     def __init__(self, ambient_dim, *,
             dim: Optional[int] = None,
             precond: str = "left") -> None:
@@ -166,7 +214,6 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         knl = self.kernel
         context = self.kernel_arguments.copy()
         context.update(kwargs)
-        kappa = self.dim * kappa
 
         # {{{ layer potentials
 
@@ -200,7 +247,6 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         knl = self.kernel
         context = self.kernel_arguments.copy()
         context.update(kwargs)
-        kappa = self.dim * kappa
 
         # {{{ layer potentials
 
@@ -235,6 +281,17 @@ class LaplaceBeltramiOperator(BeltramiOperator):
 # {{{ Yukawa-Beltrami operator
 
 class YukawaBeltramiOperator(BeltramiOperator):
+    r"""Yukawa-Beltrami operator on a closed surface :math:`\Sigma`
+
+    .. math::
+
+        -\Delta_\Sigma u + k^2 u = b
+
+    Inherits from :class:`BeltramiOperator`.
+
+    .. automethod:: __init__
+    """
+
     def __init__(self, ambient_dim: int, *,
             dim: Optional[int] = None,
             precond: str = "left",
@@ -253,6 +310,17 @@ class YukawaBeltramiOperator(BeltramiOperator):
 # {{{ Helmholtz-Beltrami operator
 
 class HelmholtzBeltramiOperator(BeltramiOperator):
+    r"""Helmholtz-Beltrami operator on a closed surface :math:`\Sigma`
+
+    .. math::
+
+        -\Delta_\Sigma u - k^2 u = b
+
+    Inherits from :class:`BeltramiOperator`.
+
+    .. automethod:: __init__
+    """
+
     def __init__(self, ambient_dim: int, *,
             dim: Optional[int] = None,
             precond: str = "left",
