@@ -111,21 +111,30 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
 
     result = np.array([0 for _ in exprs], dtype=object)
 
-    int_gs_by_group_for_index = []
-
     int_g_cc = IntGCoefficientCollector()
+    int_gs_by_source_group = defaultdict(list)
+
+    def add_int_gs_in_expr(expr):
+        for int_g in get_int_g_s([expr]):
+            source_group_identifier = get_int_g_source_group_identifier(int_g,
+                    seen_normal_vectors.assignments)
+            int_gs_by_source_group[source_group_identifier].append(int_g)
+            for density in int_g.densities:
+                add_int_gs_in_expr(density)
+
     for i, expr in enumerate(exprs):
+        int_gs_by_group = {}
         try:
             int_g_coeff_map = int_g_cc(expr)
         except (RuntimeError, AssertionError):
             # Don't touch this expression, because it's not linear.
             # FIXME: if there's ever any use case, then we can extract
             # some IntGs from them.
-            result[i] += expr
             logger.debug("%s is not linear", expr)
-            int_gs_by_group_for_index.append({})
+            expr = make_normal_vector_names_unique(expr, seen_normal_vectors)
+            result[i] += expr
+            add_int_gs_in_expr(expr)
             continue
-        int_gs_by_group = {}
         for int_g, coeff in int_g_coeff_map.items():
             if int_g == 1:
                 # coeff map may have some constant terms, add them to
@@ -163,7 +172,7 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
             int_gs_by_group[group] = new_int_g
 
         # Do some simplifications after merging. Not stricty necessary
-        for group, int_g in int_gs_by_group.items():
+        for (source_group, _, coeff), int_g in int_gs_by_group.items():
             # replace an IntG with d axis source derivatives to an IntG
             # with one directional source derivative
             # TODO: reenable this later
@@ -172,73 +181,69 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
             # not doing automatic simplifications unlike sympy/symengine
             result_int_g = int_g.copy(
                     densities=simplify_densities(int_g.densities))
-            int_gs_by_group[group] = result_int_g
-
-        int_gs_by_group_for_index.append(int_gs_by_group)
+            result[i] += result_int_g * coeff
+            add_int_gs_in_expr(result_int_g)
 
     # No IntGs found
-    if all(not int_gs_by_group for int_gs_by_group in int_gs_by_group_for_index):
+    if all(not int_gs for int_gs in int_gs_by_source_group):
         return exprs
 
     # If source_dependent_variables (sdv) is not given return early.
     # Check for (sdv is None) instead of just (sdv) because
     # it can be an empty list.
     if source_dependent_variables is None:
-        for iexpr, int_gs_by_group in enumerate(int_gs_by_group_for_index):
-            for (_, _, coeff), int_g in int_gs_by_group.items():
-                result[iexpr] += coeff * int_g
         return result
 
     # Do the calculation for each source_group_identifier separately
     # and assemble them
-    for source_group_identifier in all_source_group_identifiers.keys():
-        targetless_int_g_to_idx_mapping = defaultdict(list)
-        for idx, int_gs_by_group in enumerate(int_gs_by_group_for_index):
-            for group, int_g in int_gs_by_group.items():
-                if group[0] != source_group_identifier:
-                    continue
-                # For each output, we now have a sum of int_gs with
-                # different target attributes.
-                # for eg: {+}S + {-}D (where {x} is the QBX limit).
-                # We can't merge them together, because merging implies
-                # that everything happens at the source level and therefore
-                # require same target attributes.
-                #
-                # To handle this case, we can treat them separately as in
-                # different source base kernels, but that would imply more
-                # FMMs than necessary.
-                #
-                # Take the following example,
-                #
-                # [ {+}(S + D), {-}S + {avg}D, {avg}S + {-}D]
-                #
-                # If we treated the target attributes separately, then we
-                # will be reducing [{+}(S + D), 0, 0], [0, {-}S, {-}D],
-                # [0, {avg}D, {avg}S] separately which results in
-                # [{+}(S + D)], [{-}S, {-}D], [{avg}S, {avg}D] as
-                # the reduced FMMs and pytential will calculate
-                # [S + D, S, D] as three separate FMMs and then assemble
-                # the three outputs by applying target attributes.
-                #
-                # Instead, we can do S, D as two separate FMMs and get the
-                # result for all three outputs. To do that, we will first
-                # get all five expressions in the example
-                # [ {+}(S + D), {-}S, {avg}D, {avg}S, {-}D]
-                # and then remove the target attributes to get,
-                # [S + D, S, D]. We will reduce these and restore the target
-                # attributes at the end
-                common_int_g = remove_target_attributes(int_g)
-                targetless_int_g_to_idx_mapping[common_int_g].append((idx, int_g,
-                                                                      group[2]))
+    replacements = {}
+    for source_group, int_gs in int_gs_by_source_group.items():
+        # For each output, we now have a sum of int_gs with
+        # different target attributes.
+        # for eg: {+}S + {-}D (where {x} is the QBX limit).
+        # We can't merge them together, because merging implies
+        # that everything happens at the source level and therefore
+        # require same target attributes.
+        #
+        # To handle this case, we can treat them separately as in
+        # different source base kernels, but that would imply more
+        # FMMs than necessary.
+        #
+        # Take the following example,
+        #
+        # [ {+}(S + D), {-}S + {avg}D, {avg}S + {-}D]
+        #
+        # If we treated the target attributes separately, then we
+        # will be reducing [{+}(S + D), 0, 0], [0, {-}S, {-}D],
+        # [0, {avg}D, {avg}S] separately which results in
+        # [{+}(S + D)], [{-}S, {-}D], [{avg}S, {avg}D] as
+        # the reduced FMMs and pytential will calculate
+        # [S + D, S, D] as three separate FMMs and then assemble
+        # the three outputs by applying target attributes.
+        #
+        # Instead, we can do S, D as two separate FMMs and get the
+        # result for all three outputs. To do that, we will first
+        # get all five expressions in the example
+        # [ {+}(S + D), {-}S, {avg}D, {avg}S, {-}D]
+        # and then remove the target attributes to get,
+        # [S + D, S, D]. We will reduce these and restore the target
+        # attributes at the end
 
-        insns_to_reduce = list(targetless_int_g_to_idx_mapping.keys())
+        targetless_int_g_mapping = defaultdict(list)
+        for int_g in int_gs:
+            common_int_g = remove_target_attributes(int_g)
+            targetless_int_g_mapping[common_int_g].append(int_g)
+
+        insns_to_reduce = list(targetless_int_g_mapping.keys())
         reduced_insns = reduce_number_of_fmms(insns_to_reduce,
                 source_dependent_variables)
 
         for insn, reduced_insn in zip(insns_to_reduce, reduced_insns):
-            for idx, int_g, coeff in targetless_int_g_to_idx_mapping[insn]:
-                result[idx] += coeff * restore_target_attributes(reduced_insn, int_g)
-    return result
+            for int_g in targetless_int_g_mapping[insn]:
+                replacements[int_g] = restore_target_attributes(reduced_insn, int_g)
+
+    mapper = IntGSubstitutor(replacements)
+    return [mapper(expr) for expr in result]
 
 
 def is_expr_target_dependent(expr):
@@ -296,41 +301,53 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
             self.base_kernel) for new_int_g in new_int_gs)
 
 
-def make_normal_vector_names_unique(int_g, sac):
-    normal_vectors = get_normal_vectors(int_g)
-    replacements = {}
-    for vector_name, value in normal_vectors.items():
-        if vector_name not in sac.assignments:
-            # There was no previous IntG with the same normal vector name
-            sac.assignments[vector_name] = value
-            sac.reversed_assignments[value] = vector_name
-        elif sac.assignments[vector_name] != value:
-            # There was a previous IntG with the same normal vector name
-            # and the value was different. We need to rename
-            new_name = sac.symbol_generator(vector_name).name
-            # If this name was already renamed, use that name
-            if value in sac.reversed_assignments:
-                new_name = sac.reversed_assignments[value]
-            else:
-                sac.assignments[new_name] = value
-                sac.reversed_assignments[value] = new_name
-            replacements[vector_name] = new_name
+def make_normal_vector_names_unique(expr, sac):
+    mapper = MakeNormalVectorNamesUniqueMapper(sac)
+    return mapper(expr)
 
-    target_kernel = rename_normal_vector_name(int_g.target_kernel,
-            replacements)
-    source_kernels = tuple([rename_normal_vector_name(source_kernel,
-            replacements) for source_kernel in int_g.source_kernels])
 
-    kernel_arguments = int_g.kernel_arguments.copy()
-    # first delete the old names and then add in the new names
-    # these have to be done in two loops to avoid issues with
-    # some new names conflicting with old names
-    for old_name in replacements.keys():
-        del kernel_arguments[old_name]
-    for old_name, new_name in replacements.items():
-        kernel_arguments[new_name] = int_g.kernel_arguments[old_name]
+class MakeNormalVectorNamesUniqueMapper(IdentityMapper):
+    def __init__(self, sac):
+        self.sac = sac
 
-    return int_g.copy(target_kernel=target_kernel, source_kernels=source_kernels)
+    def map_int_g(self, int_g):
+        sac = self.sac
+        normal_vectors = get_normal_vectors(int_g)
+        replacements = {}
+        for vector_name, value in normal_vectors.items():
+            if vector_name not in sac.assignments:
+                # There was no previous IntG with the same normal vector name
+                sac.assignments[vector_name] = value
+                sac.reversed_assignments[value] = vector_name
+            elif sac.assignments[vector_name] != value:
+                # There was a previous IntG with the same normal vector name
+                # and the value was different. We need to rename
+                new_name = sac.symbol_generator(vector_name).name
+                # If this name was already renamed, use that name
+                if value in sac.reversed_assignments:
+                    new_name = sac.reversed_assignments[value]
+                else:
+                    sac.assignments[new_name] = value
+                    sac.reversed_assignments[value] = new_name
+                replacements[vector_name] = new_name
+
+        target_kernel = rename_normal_vector_name(int_g.target_kernel,
+                replacements)
+        source_kernels = tuple([rename_normal_vector_name(source_kernel,
+                replacements) for source_kernel in int_g.source_kernels])
+
+        kernel_arguments = int_g.kernel_arguments.copy()
+        # first delete the old names and then add in the new names
+        # these have to be done in two loops to avoid issues with
+        # some new names conflicting with old names
+        for old_name in replacements.keys():
+            del kernel_arguments[old_name]
+        for old_name, new_name in replacements.items():
+            kernel_arguments[new_name] = int_g.kernel_arguments[old_name]
+
+        densities = [self.rec(density) for density in int_g.densities]
+        return int_g.copy(target_kernel=target_kernel, source_kernels=source_kernels,
+                densities=tuple(densities))
 
 
 def rename_normal_vector_name(kernel, replacements):
@@ -395,7 +412,15 @@ class IntGSubstitutor(IdentityMapper):
         self.replacements = replacements
 
     def map_int_g(self, expr):
-        return self.replacements.get(expr, expr)
+        if expr in self.replacements:
+            new_expr = self.replacements[expr]
+            if new_expr != expr:
+                return self.rec(new_expr)
+            else:
+                expr = new_expr
+
+        densities = [self.rec(density) for density in expr.densities]
+        return expr.copy(densities=tuple(densities))
 
 
 def remove_target_attributes(int_g):
