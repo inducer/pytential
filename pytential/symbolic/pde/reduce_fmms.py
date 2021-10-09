@@ -83,6 +83,14 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     # transformations.
     assert _check_int_gs_common(int_gs)
 
+    from pytential.symbolic.pde.system_utils import get_int_g_s
+    source_dependent_variables = list(source_dependent_variables)
+    for int_g in int_gs:
+        for density in int_g.densities:
+            for inner_int_g in get_int_g_s([density]):
+                if inner_int_g not in source_dependent_variables:
+                    source_dependent_variables.append(inner_int_g)
+
     try:
         mat, source_exprs = _create_matrix(int_gs, source_dependent_variables,
             axis_vars)
@@ -91,6 +99,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
         return int_gs
 
     mat = sympy.Matrix(mat)
+
     # Factor the matrix into two
     try:
         left_factor = _factor_left(mat, axis_vars)

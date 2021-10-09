@@ -258,6 +258,42 @@ def test_restoring_target_attributes():
     assert result[1] == int_g2
 
 
+def test_int_gs_in_densities():
+    from pymbolic.primitives import Variable, Quotient
+    dim = 3
+    laplace_knl = LaplaceKernel(dim)
+    density = Variable("density")
+
+    int_g1 = \
+        int_g_vec(laplace_knl,
+            int_g_vec(AxisSourceDerivative(2, laplace_knl), density,
+                qbx_forced_limit=1), qbx_forced_limit=1) + \
+        int_g_vec(AxisTargetDerivative(0, laplace_knl),
+            int_g_vec(AxisSourceDerivative(1, laplace_knl), 2*density,
+                qbx_forced_limit=1), qbx_forced_limit=1)
+
+    # In the above example the two inner source derivatives should
+    # be converted to target derivatives and the two outermost
+    # IntGs should be merged into one by converting the target
+    # derivative in the last term to a source derivative
+    result = merge_int_g_exprs([int_g1],
+            source_dependent_variables=[])
+
+    source_kernels = [AxisSourceDerivative(0, laplace_knl), laplace_knl]
+    densities = [
+        (-1)*int_g_vec(AxisTargetDerivative(1, laplace_knl),
+            (-2)*density, qbx_forced_limit=1),
+        int_g_vec(AxisTargetDerivative(2, laplace_knl),
+            (-2)*density, qbx_forced_limit=1) * Quotient(1, 2)
+    ]
+    int_g3 = IntG(target_kernel=laplace_knl,
+                  source_kernels=tuple(source_kernels),
+                  densities=tuple(densities),
+                  qbx_forced_limit=1)
+
+    assert result[0] == int_g3
+
+
 # You can test individual routines by typing
 # $ python test_pde_system_tools.py 'test_reduce_number_of_fmms()'
 
