@@ -23,7 +23,7 @@ THE SOFTWARE.
 import numpy as np
 
 from pytential import sym
-from pytential.symbolic.pde.system_utils import merge_int_g_exprs
+from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
 from sumpy.kernel import (StressletKernel, LaplaceKernel,
     ElasticityKernel, BiharmonicKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
@@ -106,7 +106,7 @@ class StokesletWrapperBase(ABC):
                          sym.S(kernel, density_vec_sym[i],
                          qbx_forced_limit=qbx_forced_limit)))
 
-        return merge_int_g_exprs(sym_expr)
+        return sym_expr
 
     def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
         """Symbolic derivative of velocity from Stokeslet.
@@ -217,7 +217,7 @@ class StressletWrapperBase(ABC):
                                              density_vec_sym[i] * dir_vec_sym[j],
                                              qbx_forced_limit=qbx_forced_limit)))
 
-        return merge_int_g_exprs(sym_expr)
+        return sym_expr
 
     def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
             qbx_forced_limit):
@@ -327,7 +327,10 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
                         density_vec_sym[i], [1]*self.dim,
                         qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
-        return merge_int_g_exprs(sym_expr, base_kernel=self.base_kernel)
+        if self.base_kernel is None:
+            return sym_expr
+        else:
+            return rewrite_using_base_kernel(sym_expr, base_kernel=self.base_kernel)
 
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
@@ -444,7 +447,10 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
                         density_vec_sym[i], dir_vec_sym,
                         qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
-        return merge_int_g_exprs(sym_expr, base_kernel=self.base_kernel)
+        if self.base_kernel is None:
+            return sym_expr
+        else:
+            return rewrite_using_base_kernel(sym_expr, base_kernel=self.base_kernel)
 
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
@@ -462,7 +468,7 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
             sym_expr += stokeslet_obj.apply(stokeslet_density_vec_sym,
                 qbx_forced_limit, extra_deriv_dirs) * stokeslet_weight
 
-        return merge_int_g_exprs(sym_expr)
+        return sym_expr
 
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
                         qbx_forced_limit):
@@ -822,14 +828,13 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         # NOTE: H. K. 1985 Equation 2.18
-        return merge_int_g_exprs(-0.5 * self.side * sigma - self._operator(
-            sigma, normal, qbx_forced_limit))
+        return -0.5 * self.side * sigma - self._operator(
+            sigma, normal, qbx_forced_limit)
 
     def velocity(self, sigma, *, normal, qbx_forced_limit=2):
         # NOTE: H. K. 1985 Equation 2.16
-        return merge_int_g_exprs(
-                -self._farfield(qbx_forced_limit)
-                - self._operator(sigma, normal, qbx_forced_limit))
+        return -self._farfield(qbx_forced_limit) \
+                - self._operator(sigma, normal, qbx_forced_limit)
 
     def pressure(self, sigma, *, normal, qbx_forced_limit=2):
         # FIXME: H. K. 1985 Equation 2.17
@@ -875,13 +880,12 @@ class HebekerExteriorStokesOperator(StokesOperator):
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         # NOTE: H. 1986 Equation 17
-        return merge_int_g_exprs(-0.5 * self.side * sigma - self._operator(sigma,
-            normal, qbx_forced_limit))
+        return -0.5 * self.side * sigma - self._operator(sigma,
+            normal, qbx_forced_limit)
 
     def velocity(self, sigma, *, normal, qbx_forced_limit=2):
         # NOTE: H. 1986 Equation 16
-        return merge_int_g_exprs(-self._operator(sigma, normal,
-            qbx_forced_limit))
+        return -self._operator(sigma, normal, qbx_forced_limit)
 
     def pressure(self, sigma, *, normal, qbx_forced_limit=2):
         # FIXME: not given in H. 1986, but should be easy to derive using the

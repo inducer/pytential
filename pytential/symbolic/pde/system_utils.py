@@ -52,23 +52,321 @@ __all__ = (
     )
 
 __doc__ = """
+.. autofunction:: rewrite_using_base_kernel
 .. autofunction:: merge_int_g_exprs
 .. autofunction:: get_deriv_relation
 """
 
 
-def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
+# {{{ rewrite_using_base_kernel
+
+def rewrite_using_base_kernel(exprs, base_kernel):
+    """Rewrites an expression with :class:`~pytential.symbolic.primitives.IntG`
+    objects using *base_kernel*.
+
+    For example, if *base_kernel* is the Biharmonic kernel, and a Laplace kernel
+    is encountered, this will (forcibly) rewrite the Laplace kernel in terms of
+    derivatives of the Biharmonic kernel.
+
+    The routine will fail if this process cannot be completed.
+    """
+    mapper = RewriteUsingBaseKernelMapper(base_kernel)
+    return [mapper(expr) for expr in exprs]
+
+
+class RewriteUsingBaseKernelMapper(IdentityMapper):
+    """Rewrites IntGs using the base kernel. First this method replaces
+    IntGs with :class:`sumpy.kernel.AxisTargetDerivative` to IntGs
+    :class:`sumpy.kernel.AxisSourceDerivative` and then replaces
+    IntGs with :class:`sumpy.kernel.TargetPointMultiplier` to IntGs
+    without them using :class:`sumpy.kernel.ExpressionKernel`
+    and then finally converts them to the base kernel by finding
+    a relationship between the derivatives.
+    """
+    def __init__(self, base_kernel):
+        self.base_kernel = base_kernel
+
+    def map_int_g(self, expr):
+        # First convert IntGs with target derivatives to source derivatives
+        expr = convert_target_deriv_to_source(expr)
+        # Convert IntGs with TargetMultiplier to a sum of IntGs without
+        # TargetMultipliers
+        new_int_gs = convert_target_multiplier_to_source(expr)
+        # Convert IntGs with different kernels to expressions containing
+        # IntGs with base_kernel or its derivatives
+        return sum(convert_int_g_to_base(new_int_g,
+            self.base_kernel) for new_int_g in new_int_gs)
+
+
+def convert_target_deriv_to_source(int_g):
+    """Converts AxisTargetDerivatives to AxisSourceDerivative instances
+    from an IntG. If there are outer TargetPointMultiplier transformations
+    they are preserved.
+    """
+    knl = int_g.target_kernel
+    source_kernels = list(int_g.source_kernels)
+    coeff = 1
+    multipliers = []
+    while isinstance(knl, TargetPointMultiplier):
+        multipliers.append(knl.axis)
+        knl = knl.inner_kernel
+
+    while isinstance(knl, AxisTargetDerivative):
+        coeff *= -1
+        source_kernels = [AxisSourceDerivative(knl.axis, source_knl) for
+                source_knl in source_kernels]
+        knl = knl.inner_kernel
+
+    # TargetPointMultiplier has to be the outermost kernel
+    # If it is the inner kernel, return early
+    if isinstance(knl, TargetPointMultiplier):
+        return 1, int_g
+
+    for axis in reversed(multipliers):
+        knl = TargetPointMultiplier(axis, knl)
+
+    new_densities = tuple(density*coeff for density in int_g.densities)
+    return int_g.copy(target_kernel=knl,
+                      densities=new_densities,
+                      source_kernels=tuple(source_kernels))
+
+
+def convert_target_multiplier_to_source(int_g):
+    """Convert an IntG with TargetMultiplier to an sum of IntGs without
+    TargetMultiplier and only source dependent transformations
+    """
+    from sumpy.symbolic import SympyToPymbolicMapper
+    tgt_knl = int_g.target_kernel
+    if not isinstance(tgt_knl, TargetPointMultiplier):
+        return [int_g]
+    if isinstance(tgt_knl.inner_kernel, KernelWrapper):
+        return [int_g]
+
+    new_kernel_args = filter_kernel_arguments([tgt_knl], int_g.kernel_arguments)
+    result = []
+    # If the kernel is G, source is y and target is x,
+    # x G = y*G + (x - y)*G
+    # For y*G, absorb y into a density
+    new_densities = [density*NodeCoordinateComponent(tgt_knl.axis)
+            for density in int_g.densities]
+    result.append(int_g.copy(target_kernel=tgt_knl.inner_kernel,
+                densities=tuple(new_densities), kernel_arguments=new_kernel_args))
+
+    # create a new expression kernel for (x - y)*G
+    sym_d = make_sym_vector("d", tgt_knl.dim)
+    conv = SympyToPymbolicMapper()
+
+    for knl, density in zip(int_g.source_kernels, int_g.densities):
+        new_expr = conv(knl.postprocess_at_source(knl.get_expression(sym_d), sym_d)
+                * sym_d[tgt_knl.axis])
+        new_knl = ExpressionKernel(knl.dim, new_expr,
+                knl.get_base_kernel().global_scaling_const,
+                knl.is_complex_valued)
+        result.append(int_g.copy(target_kernel=new_knl,
+            densities=(density,),
+            source_kernels=(new_knl,), kernel_arguments=new_kernel_args))
+    return result
+
+
+def convert_int_g_to_base(int_g, base_kernel):
+    result = 0
+    for knl, density in zip(int_g.source_kernels, int_g.densities):
+        result += _convert_int_g_to_base(
+                int_g.copy(source_kernels=(knl,), densities=(density,)),
+                base_kernel)
+    return result
+
+
+def _convert_int_g_to_base(int_g, base_kernel):
+    target_kernel = int_g.target_kernel.replace_base_kernel(base_kernel)
+    dim = target_kernel.dim
+
+    result = 0
+    for density, source_kernel in zip(int_g.densities, int_g.source_kernels):
+        deriv_relation = get_deriv_relation_kernel(source_kernel.get_base_kernel(),
+            base_kernel)
+
+        const = deriv_relation[0]
+        # NOTE: we set a dofdesc here to force the evaluation of this integral
+        # on the source instead of the target when using automatic tagging
+        # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
+        dd = pytential.sym.DOFDescriptor(None,
+                discr_stage=pytential.sym.QBX_SOURCE_STAGE1)
+        const *= pytential.sym.integral(dim, dim-1, density, dofdesc=dd)
+
+        if const != 0 and target_kernel != target_kernel.get_base_kernel():
+            # There might be some TargetPointMultipliers hanging around.
+            # FIXME: handle them instead of bailing out
+            return [int_g]
+
+        if source_kernel != source_kernel.get_base_kernel():
+            # We assume that any source transformation is a derivative
+            # and the constant when applied becomes zero.
+            const = 0
+
+        result += const
+
+        new_kernel_args = filter_kernel_arguments([base_kernel],
+                int_g.kernel_arguments)
+
+        for mi, c in deriv_relation[1]:
+            knl = source_kernel.replace_base_kernel(base_kernel)
+            for d, val in enumerate(mi):
+                for _ in range(val):
+                    knl = AxisSourceDerivative(d, knl)
+                    c *= -1
+            result += int_g.copy(source_kernels=(knl,), target_kernel=target_kernel,
+                    densities=(density,), kernel_arguments=new_kernel_args) * c
+    return result
+
+
+def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None):
+    res = []
+    for knl in kernels:
+        res.append(get_deriv_relation_kernel(knl, base_kernel, tol, order))
+    return res
+
+
+@memoize_on_first_arg
+def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-10, order=None):
+    (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order)
+    dim = base_kernel.dim
+    sym_vec = make_sym_vector("d", dim)
+    sympy_conv = SympyToPymbolicMapper()
+
+    expr = kernel.get_expression(sym_vec)
+    vec = []
+    for i in range(len(mis)):
+        vec.append(evalf(expr.xreplace(dict((k, v) for
+            k, v in zip(sym_vec, rand[:, i])))))
+    vec = sym.Matrix(vec)
+    result = []
+    const = 0
+    logger.debug("%s = ", kernel)
+
+    sol = lu_solve_with_expand(L, U, perm, vec)
+    for i, coeff in enumerate(sol):
+        coeff = chop(coeff, tol)
+        if coeff == 0:
+            continue
+        if mis[i] != (-1, -1, -1):
+            coeff *= kernel.get_global_scaling_const()
+            coeff /= base_kernel.get_global_scaling_const()
+            result.append((mis[i], sympy_conv(coeff)))
+            logger.debug("  + %s.diff(%s)*%s", base_kernel, mis[i], coeff)
+        else:
+            const = sympy_conv(coeff * kernel.get_global_scaling_const())
+    logger.debug("  + %s", const)
+    return (const, result)
+
+
+@memoize_on_first_arg
+def _get_base_kernel_matrix(base_kernel, order=None, retries=3):
+    dim = base_kernel.dim
+
+    pde = base_kernel.get_pde_as_diff_op()
+    if order is None:
+        order = pde.order
+
+    if order > pde.order:
+        raise NotImplementedError(f"order ({order}) cannot be greater than the order"
+                         f"of the PDE ({pde.order}) yet.")
+
+    mis = sorted(gnitstam(order, dim), key=sum)
+    # (-1, -1, -1) represent a constant
+    mis.append((-1, -1, -1))
+
+    if order == pde.order:
+        pde_mis = [ident.mi for eq in pde.eqs for ident in eq.keys()]
+        pde_mis = [mi for mi in pde_mis if sum(mi) == order]
+        logger.debug(f"Removing {pde_mis[-1]} to avoid linear dependent mis")
+        mis.remove(pde_mis[-1])
+
+    rand = np.random.randint(1, 10**15, (dim, len(mis)))
+    rand = rand.astype(object)
+    for i in range(rand.shape[0]):
+        for j in range(rand.shape[1]):
+            rand[i, j] = sym.sympify(rand[i, j])/10**15
+    sym_vec = make_sym_vector("d", dim)
+
+    base_expr = base_kernel.get_expression(sym_vec)
+
+    mat = []
+    for rand_vec_idx in range(rand.shape[1]):
+        row = []
+        for mi in mis[:-1]:
+            expr = base_expr
+            for var_idx, nderivs in enumerate(mi):
+                if nderivs == 0:
+                    continue
+                expr = expr.diff(sym_vec[var_idx], nderivs)
+            replace_dict = dict(
+                (k, v) for k, v in zip(sym_vec, rand[:, rand_vec_idx])
+            )
+            eval_expr = evalf(expr.xreplace(replace_dict))
+            row.append(eval_expr)
+        row.append(1)
+        mat.append(row)
+
+    mat = sym.Matrix(mat)
+    failed = False
+    try:
+        L, U, perm = mat.LUdecomposition()
+    except RuntimeError:
+        # symengine throws an error when rank deficient
+        # and sympy returns U with last row zero
+        failed = True
+
+    if not sym.USE_SYMENGINE and all(expr == 0 for expr in U[-1, :]):
+        failed = True
+
+    if failed:
+        if retries == 0:
+            raise RuntimeError("Failed to find a base kernel")
+        return _get_base_kernel_matrix(
+            base_kernel=base_kernel,
+            order=order,
+            retries=retries-1,
+        )
+
+    return (L, U, perm), rand, mis
+
+
+def evalf(expr, prec=100):
+    """evaluate an expression numerically using ``prec``
+    number of bits.
+    """
+    from sumpy.symbolic import USE_SYMENGINE
+    if USE_SYMENGINE:
+        return expr.n(prec=prec)
+    else:
+        import sympy
+        dps = int(sympy.log(2**prec, 10))
+        return expr.n(n=dps)
+
+
+def filter_kernel_arguments(knls, kernel_arguments):
+    """From a dictionary of kernel arguments, filter out arguments
+    that are not needed for the kernels given as a list and return a new
+    dictionary.
+    """
+    kernel_arg_names = set()
+
+    for kernel in knls:
+        for karg in (kernel.get_args() + kernel.get_source_args()):
+            kernel_arg_names.add(karg.loopy_arg.name)
+
+    return {k: v for (k, v) in kernel_arguments.items() if k in kernel_arg_names}
+
+# }}}
+
+
+def merge_int_g_exprs(exprs, source_dependent_variables=None):
     """
     Merge expressions involving :class:`~pytential.symbolic.primitives.IntG`
     objects.
 
     Several techniques are used for merging and reducing number of FMMs
-
-       * When *base_kernel* is given an *IntG* is rewritten using *base_kernel*
-         and its derivatives. (For example, if *base_kernel* is the biharmonic
-         kernel, and a Laplace kernel is encountered, this will (forcibly)
-         rewrite the kernel in terms of that. The routine will fail if this
-         process cannot be completed.)
 
        * :class:`sumpy.kernel.AxisTargetDerivative` instances are converted
          to :class:`sumpy.kernel.AxisSourceDerivative` instances.
@@ -98,11 +396,6 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
         variables as dependent on source. This is important when reducing the
         number of FMMs needed for the output.
     """
-
-    if base_kernel is not None:
-        mapper = RewriteUsingBaseKernelMapper(base_kernel)
-        exprs = [mapper(expr) for expr in exprs]
-
     from sumpy.assignment_collection import SymbolicAssignmentCollection
     seen_normal_vectors = SymbolicAssignmentCollection()
 
@@ -246,6 +539,19 @@ def merge_int_g_exprs(exprs, base_kernel=None, source_dependent_variables=None):
     return [mapper(expr) for expr in result]
 
 
+class IntGCoefficientCollector(CoefficientCollector):
+    def __init__(self):
+        super().__init__({})
+
+    def map_int_g(self, expr):
+        return {expr: 1}
+
+    def map_algebraic_leaf(self, expr, *args, **kwargs):
+        return {1: expr}
+
+    handle_unsupported_expression = map_algebraic_leaf
+
+
 def is_expr_target_dependent(expr):
     mapper = IsExprTargetDependent()
     return mapper(expr)
@@ -275,30 +581,6 @@ class IsExprTargetDependent(CombineMapper):
 
     def map_q_weight(self, expr):
         return True
-
-
-class RewriteUsingBaseKernelMapper(IdentityMapper):
-    """Rewrites IntGs using the base kernel. First this method replaces
-    IntGs with :class:`sumpy.kernel.AxisTargetDerivative` to IntGs
-    :class:`sumpy.kernel.AxisSourceDerivative` and then replaces
-    IntGs with :class:`sumpy.kernel.TargetPointMultiplier` to IntGs
-    without them using :class:`sumpy.kernel.ExpressionKernel`
-    and then finally converts them to the base kernel by finding
-    a relationship between the derivatives.
-    """
-    def __init__(self, base_kernel):
-        self.base_kernel = base_kernel
-
-    def map_int_g(self, expr):
-        # First convert IntGs with target derivatives to source derivatives
-        expr = convert_target_deriv_to_source(expr)
-        # Convert IntGs with TargetMultiplier to a sum of IntGs without
-        # TargetMultipliers
-        new_int_gs = convert_target_multiplier_to_source(expr)
-        # Convert IntGs with different kernels to expressions containing
-        # IntGs with base_kernel or its derivatives
-        return sum(convert_int_g_to_base(new_int_g,
-            self.base_kernel) for new_int_g in new_int_gs)
 
 
 def make_normal_vector_names_unique(expr, sac):
@@ -462,144 +744,6 @@ def merge_two_int_gs(int_g_1, int_g_2):
     )
 
 
-class IntGCoefficientCollector(CoefficientCollector):
-    def __init__(self):
-        super().__init__({})
-
-    def map_int_g(self, expr):
-        return {expr: 1}
-
-    def map_algebraic_leaf(self, expr, *args, **kwargs):
-        return {1: expr}
-
-    handle_unsupported_expression = map_algebraic_leaf
-
-
-def evalf(expr, prec=100):
-    """evaluate an expression numerically using ``prec``
-    number of bits.
-    """
-    from sumpy.symbolic import USE_SYMENGINE
-    if USE_SYMENGINE:
-        return expr.n(prec=prec)
-    else:
-        import sympy
-        dps = int(sympy.log(2**prec, 10))
-        return expr.n(n=dps)
-
-
-@memoize_on_first_arg
-def _get_base_kernel_matrix(base_kernel, order=None, retries=3):
-    dim = base_kernel.dim
-
-    pde = base_kernel.get_pde_as_diff_op()
-    if order is None:
-        order = pde.order
-
-    if order > pde.order:
-        raise NotImplementedError(f"order ({order}) cannot be greater than the order"
-                         f"of the PDE ({pde.order}) yet.")
-
-    mis = sorted(gnitstam(order, dim), key=sum)
-    # (-1, -1, -1) represent a constant
-    mis.append((-1, -1, -1))
-
-    if order == pde.order:
-        pde_mis = [ident.mi for eq in pde.eqs for ident in eq.keys()]
-        pde_mis = [mi for mi in pde_mis if sum(mi) == order]
-        logger.debug(f"Removing {pde_mis[-1]} to avoid linear dependent mis")
-        mis.remove(pde_mis[-1])
-
-    rand = np.random.randint(1, 10**15, (dim, len(mis)))
-    rand = rand.astype(object)
-    for i in range(rand.shape[0]):
-        for j in range(rand.shape[1]):
-            rand[i, j] = sym.sympify(rand[i, j])/10**15
-    sym_vec = make_sym_vector("d", dim)
-
-    base_expr = base_kernel.get_expression(sym_vec)
-
-    mat = []
-    for rand_vec_idx in range(rand.shape[1]):
-        row = []
-        for mi in mis[:-1]:
-            expr = base_expr
-            for var_idx, nderivs in enumerate(mi):
-                if nderivs == 0:
-                    continue
-                expr = expr.diff(sym_vec[var_idx], nderivs)
-            replace_dict = dict(
-                (k, v) for k, v in zip(sym_vec, rand[:, rand_vec_idx])
-            )
-            eval_expr = evalf(expr.xreplace(replace_dict))
-            row.append(eval_expr)
-        row.append(1)
-        mat.append(row)
-
-    mat = sym.Matrix(mat)
-    failed = False
-    try:
-        L, U, perm = mat.LUdecomposition()
-    except RuntimeError:
-        # symengine throws an error when rank deficient
-        # and sympy returns U with last row zero
-        failed = True
-
-    if not sym.USE_SYMENGINE and all(expr == 0 for expr in U[-1, :]):
-        failed = True
-
-    if failed:
-        if retries == 0:
-            raise RuntimeError("Failed to find a base kernel")
-        return _get_base_kernel_matrix(
-            base_kernel=base_kernel,
-            order=order,
-            retries=retries-1,
-        )
-
-    return (L, U, perm), rand, mis
-
-
-@memoize_on_first_arg
-def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-10, order=None):
-    (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order)
-    dim = base_kernel.dim
-    sym_vec = make_sym_vector("d", dim)
-    sympy_conv = SympyToPymbolicMapper()
-
-    expr = kernel.get_expression(sym_vec)
-    vec = []
-    for i in range(len(mis)):
-        vec.append(evalf(expr.xreplace(dict((k, v) for
-            k, v in zip(sym_vec, rand[:, i])))))
-    vec = sym.Matrix(vec)
-    result = []
-    const = 0
-    logger.debug("%s = ", kernel)
-
-    sol = lu_solve_with_expand(L, U, perm, vec)
-    for i, coeff in enumerate(sol):
-        coeff = chop(coeff, tol)
-        if coeff == 0:
-            continue
-        if mis[i] != (-1, -1, -1):
-            coeff *= kernel.get_global_scaling_const()
-            coeff /= base_kernel.get_global_scaling_const()
-            result.append((mis[i], sympy_conv(coeff)))
-            logger.debug("  + %s.diff(%s)*%s", base_kernel, mis[i], coeff)
-        else:
-            const = sympy_conv(coeff * kernel.get_global_scaling_const())
-    logger.debug("  + %s", const)
-    return (const, result)
-
-
-def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None):
-    res = []
-    for knl in kernels:
-        res.append(get_deriv_relation_kernel(knl, base_kernel, tol, order))
-    return res
-
-
 class GetIntGs(WalkMapper):
     """A Mapper that walks expressions and collects
     :class:`~pytential.symbolic.primitives.IntG` objects
@@ -633,142 +777,6 @@ def get_int_g_s(exprs):
     get_int_g_mapper = GetIntGs()
     [get_int_g_mapper(expr) for expr in exprs]
     return get_int_g_mapper.int_g_s
-
-
-def filter_kernel_arguments(knls, kernel_arguments):
-    """From a dictionary of kernel arguments, filter out arguments
-    that are not needed for the kernels given as a list and return a new
-    dictionary.
-    """
-    kernel_arg_names = set()
-
-    for kernel in knls:
-        for karg in (kernel.get_args() + kernel.get_source_args()):
-            kernel_arg_names.add(karg.loopy_arg.name)
-
-    return {k: v for (k, v) in kernel_arguments.items() if k in kernel_arg_names}
-
-
-def convert_int_g_to_base(int_g, base_kernel):
-    result = 0
-    for knl, density in zip(int_g.source_kernels, int_g.densities):
-        result += _convert_int_g_to_base(
-                int_g.copy(source_kernels=(knl,), densities=(density,)),
-                base_kernel)
-    return result
-
-
-def _convert_int_g_to_base(int_g, base_kernel):
-    target_kernel = int_g.target_kernel.replace_base_kernel(base_kernel)
-    dim = target_kernel.dim
-
-    result = 0
-    for density, source_kernel in zip(int_g.densities, int_g.source_kernels):
-        deriv_relation = get_deriv_relation_kernel(source_kernel.get_base_kernel(),
-            base_kernel)
-
-        const = deriv_relation[0]
-        # NOTE: we set a dofdesc here to force the evaluation of this integral
-        # on the source instead of the target when using automatic tagging
-        # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
-        dd = pytential.sym.DOFDescriptor(None,
-                discr_stage=pytential.sym.QBX_SOURCE_STAGE1)
-        const *= pytential.sym.integral(dim, dim-1, density, dofdesc=dd)
-
-        if const != 0 and target_kernel != target_kernel.get_base_kernel():
-            # There might be some TargetPointMultipliers hanging around.
-            # FIXME: handle them instead of bailing out
-            return [int_g]
-
-        if source_kernel != source_kernel.get_base_kernel():
-            # We assume that any source transformation is a derivative
-            # and the constant when applied becomes zero.
-            const = 0
-
-        result += const
-
-        new_kernel_args = filter_kernel_arguments([base_kernel],
-                int_g.kernel_arguments)
-
-        for mi, c in deriv_relation[1]:
-            knl = source_kernel.replace_base_kernel(base_kernel)
-            for d, val in enumerate(mi):
-                for _ in range(val):
-                    knl = AxisSourceDerivative(d, knl)
-                    c *= -1
-            result += int_g.copy(source_kernels=(knl,), target_kernel=target_kernel,
-                    densities=(density,), kernel_arguments=new_kernel_args) * c
-    return result
-
-
-def convert_target_multiplier_to_source(int_g):
-    """Convert an IntG with TargetMultiplier to an sum of IntGs without
-    TargetMultiplier and only source dependent transformations
-    """
-    from sumpy.symbolic import SympyToPymbolicMapper
-    tgt_knl = int_g.target_kernel
-    if not isinstance(tgt_knl, TargetPointMultiplier):
-        return [int_g]
-    if isinstance(tgt_knl.inner_kernel, KernelWrapper):
-        return [int_g]
-
-    new_kernel_args = filter_kernel_arguments([tgt_knl], int_g.kernel_arguments)
-    result = []
-    # If the kernel is G, source is y and target is x,
-    # x G = y*G + (x - y)*G
-    # For y*G, absorb y into a density
-    new_densities = [density*NodeCoordinateComponent(tgt_knl.axis)
-            for density in int_g.densities]
-    result.append(int_g.copy(target_kernel=tgt_knl.inner_kernel,
-                densities=tuple(new_densities), kernel_arguments=new_kernel_args))
-
-    # create a new expression kernel for (x - y)*G
-    sym_d = make_sym_vector("d", tgt_knl.dim)
-    conv = SympyToPymbolicMapper()
-
-    for knl, density in zip(int_g.source_kernels, int_g.densities):
-        new_expr = conv(knl.postprocess_at_source(knl.get_expression(sym_d), sym_d)
-                * sym_d[tgt_knl.axis])
-        new_knl = ExpressionKernel(knl.dim, new_expr,
-                knl.get_base_kernel().global_scaling_const,
-                knl.is_complex_valued)
-        result.append(int_g.copy(target_kernel=new_knl,
-            densities=(density,),
-            source_kernels=(new_knl,), kernel_arguments=new_kernel_args))
-    return result
-
-
-def convert_target_deriv_to_source(int_g):
-    """Converts AxisTargetDerivatives to AxisSourceDerivative instances
-    from an IntG. If there are outer TargetPointMultiplier transformations
-    they are preserved.
-    """
-    knl = int_g.target_kernel
-    source_kernels = list(int_g.source_kernels)
-    coeff = 1
-    multipliers = []
-    while isinstance(knl, TargetPointMultiplier):
-        multipliers.append(knl.axis)
-        knl = knl.inner_kernel
-
-    while isinstance(knl, AxisTargetDerivative):
-        coeff *= -1
-        source_kernels = [AxisSourceDerivative(knl.axis, source_knl) for
-                source_knl in source_kernels]
-        knl = knl.inner_kernel
-
-    # TargetPointMultiplier has to be the outermost kernel
-    # If it is the inner kernel, return early
-    if isinstance(knl, TargetPointMultiplier):
-        return 1, int_g
-
-    for axis in reversed(multipliers):
-        knl = TargetPointMultiplier(axis, knl)
-
-    new_densities = tuple(density*coeff for density in int_g.densities)
-    return int_g.copy(target_kernel=knl,
-                      densities=new_densities,
-                      source_kernels=tuple(source_kernels))
 
 
 def convert_directional_source_to_axis_source(int_g, source_dependent_variables):

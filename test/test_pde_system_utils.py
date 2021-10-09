@@ -24,7 +24,8 @@ from sumpy.kernel import (LaplaceKernel, AxisSourceDerivative,
     AxisTargetDerivative, TargetPointMultiplier, BiharmonicKernel, HelmholtzKernel)
 from pytential.symbolic.primitives import (int_g_vec, D, IntG,
     NodeCoordinateComponent)
-from pytential.symbolic.pde.system_utils import merge_int_g_exprs
+from pytential.symbolic.pde.system_utils import (merge_int_g_exprs,
+    rewrite_using_base_kernel)
 from pymbolic.primitives import make_sym_vector, Variable
 import pytest
 
@@ -127,9 +128,9 @@ def test_base_kernel_merge():
         int_g_vec(TargetPointMultiplier(1, knl),
              density, qbx_forced_limit=1)
 
-    result = merge_int_g_exprs([int_g1, int_g2],
-            source_dependent_variables=[],
+    exprs_rewritten = rewrite_using_base_kernel([int_g1, int_g2],
             base_kernel=biharm_knl)
+    result = merge_int_g_exprs(exprs_rewritten, source_dependent_variables=[])
 
     sources = [NodeCoordinateComponent(i) for i in range(dim)]
 
@@ -261,6 +262,8 @@ def test_restoring_target_attributes():
 # $ python test_pde_system_tools.py 'test_reduce_number_of_fmms()'
 
 if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
     import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
