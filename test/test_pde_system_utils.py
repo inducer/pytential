@@ -21,7 +21,8 @@ THE SOFTWARE.
 """
 
 from sumpy.kernel import (LaplaceKernel, AxisSourceDerivative,
-    AxisTargetDerivative, TargetPointMultiplier, BiharmonicKernel, HelmholtzKernel)
+    AxisTargetDerivative, TargetPointMultiplier, BiharmonicKernel, HelmholtzKernel,
+    DirectionalTargetDerivative)
 from pytential.symbolic.primitives import (int_g_vec, D, IntG,
     NodeCoordinateComponent)
 from pytential.symbolic.pde.system_utils import (merge_int_g_exprs,
@@ -232,6 +233,22 @@ def test_merge_directional_source():
 
     result = merge_int_g_exprs([int_g1 + int_g2])
     assert result[0] == int_g3
+
+
+def test_merge_directional_target():
+    from pymbolic.primitives import Variable
+
+    dim = 3
+    knl = DirectionalTargetDerivative(LaplaceKernel(dim), "target_dir")
+    density = Variable("density")
+    target_dir1 = make_sym_vector("target_dir1", dim)
+    target_dir2 = make_sym_vector("target_dir2", dim)
+
+    int_g1 = int_g_vec(knl, density, qbx_forced_limit=1, target_dir=target_dir1)
+    int_g2 = int_g_vec(knl, density, qbx_forced_limit=1, target_dir=target_dir2)
+
+    result = merge_int_g_exprs([int_g1 + int_g2])
+    assert result[0] == int_g1 + int_g2
 
 
 def test_restoring_target_attributes():

@@ -595,11 +595,9 @@ def get_int_g_source_group_identifier(int_g):
     """Return a identifier for a group for the *int_g* so that all elements in that
     group have the same source attributes.
     """
-    from sumpy.tools import gather_source_arguments
-    source_arg_names = set(arg.loopy_arg.name for arg in
-            gather_source_arguments(int_g.source_kernels))
+    target_arg_names = get_normal_vector_names(int_g.target_kernel)
     args = tuple((k, get_hashable_kernel_argument(v)) for k, v in sorted(
-        int_g.kernel_arguments.items()) if k in source_arg_names)
+        int_g.kernel_arguments.items()) if k not in target_arg_names)
     return (int_g.source, args, int_g.target_kernel.get_base_kernel())
 
 
@@ -607,14 +605,21 @@ def get_int_g_target_group_identifier(int_g):
     """Return a identifier for a group for the *int_g* so that all elements in that
     group have the same target attributes.
     """
-    from sumpy.tools import gather_arguments, gather_source_arguments
-    source_arg_names = set(arg.loopy_arg.name for arg in
-            gather_source_arguments(int_g.source_kernels))
-    target_arg_names = set(arg.loopy_arg.name for arg in
-            gather_arguments(int_g.source_kernels)) - source_arg_names
+    target_arg_names = get_normal_vector_names(int_g.target_kernel)
     args = tuple((k, get_hashable_kernel_argument(v)) for k, v in sorted(
         int_g.kernel_arguments.items()) if k in target_arg_names)
     return (int_g.target, int_g.qbx_forced_limit, int_g.target_kernel, args)
+
+
+def get_normal_vector_names(kernel):
+    """Return the normal vector names in a kernel
+    """
+    normal_vectors = set()
+    while isinstance(kernel, KernelWrapper):
+        if isinstance(kernel, DirectionalDerivative):
+            normal_vectors.add(kernel.dir_vec_name)
+        kernel = kernel.inner_kernel
+    return normal_vectors
 
 
 class IntGSubstitutor(IdentityMapper):
@@ -640,8 +645,12 @@ def remove_target_attributes(int_g):
     """Remove target attributes from *int_g* and return an expression
     that is common to all expression in the same source group.
     """
+    normals = get_normal_vector_names(int_g.target_kernel)
+    kernel_arguments = {k: v for k, v in int_g.kernel_arguments.items() if
+                        k not in normals}
     return int_g.copy(target=None, qbx_forced_limit=None,
-            target_kernel=int_g.target_kernel.get_base_kernel())
+            target_kernel=int_g.target_kernel.get_base_kernel(),
+            kernel_arguments=kernel_arguments)
 
 
 def restore_target_attributes(expr, orig_int_g):
@@ -655,7 +664,8 @@ def restore_target_attributes(expr, orig_int_g):
         int_g: int_g.copy(target=orig_int_g.target,
                 qbx_forced_limit=orig_int_g.qbx_forced_limit,
                 target_kernel=orig_int_g.target_kernel.replace_base_kernel(
-                    int_g.target_kernel))
+                    int_g.target_kernel),
+                kernel_arguments=orig_int_g.kernel_arguments)
         for int_g in int_gs}
 
     substitutor = IntGSubstitutor(replacements)
