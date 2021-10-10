@@ -681,7 +681,7 @@ def get_int_g_source_group_identifier(int_g, normal_vectors):
     group have the same source attributes.
     """
     args = tuple((k, get_hashable_kernel_argument(v)) for k, v in sorted(
-        int_g.kernel_arguments.items()) if k not in normal_vectors)
+        int_g.kernel_arguments.items()) if k in int_g.get_source_args())
     return (int_g.source, args, int_g.target_kernel.get_base_kernel())
 
 
@@ -689,7 +689,9 @@ def get_int_g_target_group_identifier(int_g):
     """Return a group for the *int_g* with so that all elements in that
     group have the same source attributes.
     """
-    return (int_g.target, int_g.qbx_forced_limit, int_g.target_kernel)
+    args = tuple((k, get_hashable_kernel_argument(v)) for k, v in sorted(
+        int_g.kernel_arguments.items()) if k in int_g.get_args())
+    return (int_g.target, int_g.qbx_forced_limit, int_g.target_kernel, args)
 
 
 class IntGSubstitutor(IdentityMapper):
