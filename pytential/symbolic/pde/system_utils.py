@@ -462,7 +462,7 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
             int_gs_by_group[group] = new_int_g
 
         # Do some simplifications after merging. Not stricty necessary
-        for (source_group, _, coeff), int_g in int_gs_by_group.items():
+        for (_, _, coeff), int_g in int_gs_by_group.items():
             # replace an IntG with d axis source derivatives to an IntG
             # with one directional source derivative
             # TODO: reenable this later
@@ -481,7 +481,7 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
     # Do the calculation for each source_group_identifier separately
     # and assemble them
     replacements = {}
-    for source_group, int_gs in int_gs_by_source_group.items():
+    for int_gs in int_gs_by_source_group.values():
         # For each output, we now have a sum of int_gs with
         # different target attributes.
         # for eg: {+}S + {-}D (where {x} is the QBX limit).
