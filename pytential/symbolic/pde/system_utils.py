@@ -437,9 +437,7 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
             int_g = make_normal_vector_names_unique(int_g, seen_normal_vectors)
             # convert DirectionalSourceDerivative to AxisSourceDerivative
             # as kernel arguments need to be the same for merging
-            if source_dependent_variables is not None:
-                int_g = convert_directional_source_to_axis_source(int_g,
-                    source_dependent_variables)
+            int_g = convert_directional_source_to_axis_source(int_g)
             # convert TargetDerivative to source before checking the group
             # as the target kernel has to be the same for merging
             int_g = convert_target_deriv_to_source(int_g)
@@ -480,12 +478,6 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
     # No IntGs found
     if all(not int_gs for int_gs in int_gs_by_source_group):
         return exprs
-
-    # If source_dependent_variables (sdv) is not given return early.
-    # Check for (sdv is None) instead of just (sdv) because
-    # it can be an empty list.
-    if source_dependent_variables is None:
-        return result
 
     # Do the calculation for each source_group_identifier separately
     # and assemble them
@@ -779,15 +771,14 @@ def get_int_g_s(exprs):
     return get_int_g_mapper.int_g_s
 
 
-def convert_directional_source_to_axis_source(int_g, source_dependent_variables):
+def convert_directional_source_to_axis_source(int_g):
     """Convert an IntG with a DirectionalSourceDerivative instance
     to an IntG with d AxisSourceDerivative instances.
     """
     source_kernels = []
     densities = []
     for source_kernel, density in zip(int_g.source_kernels, int_g.densities):
-        knl_result = _convert_directional_source_knl_to_axis_source(source_kernel,
-                source_dependent_variables)
+        knl_result = _convert_directional_source_knl_to_axis_source(source_kernel)
         for knl, coeff in knl_result:
             source_kernels.append(knl)
             densities.append(coeff * density)
@@ -795,25 +786,22 @@ def convert_directional_source_to_axis_source(int_g, source_dependent_variables)
             densities=tuple(densities))
 
 
-def _convert_directional_source_knl_to_axis_source(knl, source_dependent_variables):
+def _convert_directional_source_knl_to_axis_source(knl):
     if isinstance(knl, DirectionalSourceDerivative):
         dim = knl.dim
         from pymbolic import make_sym_vector
         dir_vec = make_sym_vector(knl.dir_vec_name, dim)
-        if Variable(knl.dir_vec_name) not in source_dependent_variables:
-            raise ValueError(f"{knl.dir_vec_name} not given in "
-                "source_dependent_variables, but is dependent on source")
 
         res = []
         inner_result = _convert_directional_source_knl_to_axis_source(
-                knl.inner_kernel, source_dependent_variables)
+                knl.inner_kernel)
         for inner_knl, coeff in inner_result:
             for d in range(dim):
                 res.append((AxisSourceDerivative(d, inner_knl), coeff*dir_vec[d]))
         return res
     elif isinstance(knl, KernelWrapper):
         inner_result = _convert_directional_source_knl_to_axis_source(
-                knl.inner_kernel, source_dependent_variables)
+                knl.inner_kernel)
         return [(knl.replace_inner_kernel(inner_knl), coeff) for
                     inner_knl, coeff in inner_result]
     else:

@@ -25,6 +25,7 @@ from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
 
 from pymbolic.interop.sympy import PymbolicToSympyMapper, SympyToPymbolicMapper
 from pymbolic.mapper import Mapper
+from pymbolic.geometric_algebra.mapper import WalkMapper
 from pymbolic.primitives import Product
 import sympy
 import functools
@@ -83,13 +84,8 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     # transformations.
     assert _check_int_gs_common(int_gs)
 
-    from pytential.symbolic.pde.system_utils import get_int_g_s
-    source_dependent_variables = list(source_dependent_variables)
-    for int_g in int_gs:
-        for density in int_g.densities:
-            for inner_int_g in get_int_g_s([density]):
-                if inner_int_g not in source_dependent_variables:
-                    source_dependent_variables.append(inner_int_g)
+    if source_dependent_variables is None:
+        source_dependent_variables = get_all_source_dependent_variables(int_gs)
 
     try:
         mat, source_exprs = _create_matrix(int_gs, source_dependent_variables,
@@ -157,6 +153,35 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
 
     return res
 
+
+class GatherAllSourceDependentVariables(WalkMapper):
+    def __init__(self):
+        self.vars = {}
+
+    def map_variable(self, expr):
+        from sumpy.symbolic import SpatialConstant
+        if not isinstance(expr, SpatialConstant):
+            self.vars[expr] = True
+
+    def map_node_coordinate_component(self, expr):
+        self.vars[expr] = True
+
+    def map_list(self, exprs):
+        for expr in exprs:
+            self.rec(expr)
+
+    def map_int_g(self, expr):
+        self.vars[expr] = True
+        for density in expr.densities:
+            self.rec(density)
+
+
+def get_all_source_dependent_variables(int_gs):
+    mapper = GatherAllSourceDependentVariables()
+    for int_g in int_gs:
+        for density in int_g.densities:
+            mapper(density)
+    return list(mapper.vars.keys())
 
 # }}}
 
