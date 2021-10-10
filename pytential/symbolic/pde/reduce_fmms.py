@@ -163,9 +163,6 @@ class GatherAllSourceDependentVariables(WalkMapper):
         if not isinstance(expr, SpatialConstant):
             self.vars[expr] = True
 
-    def map_node_coordinate_component(self, expr):
-        self.vars[expr] = True
-
     def map_list(self, exprs):
         for expr in exprs:
             self.rec(expr)
@@ -174,6 +171,12 @@ class GatherAllSourceDependentVariables(WalkMapper):
         self.vars[expr] = True
         for density in expr.densities:
             self.rec(density)
+
+    def map_node_coordinate_component(self, expr):
+        self.vars[expr] = True
+
+    map_num_reference_derivative = map_node_coordinate_component
+    map_interpolation = map_node_coordinate_component
 
 
 def get_all_source_dependent_variables(int_gs):
@@ -192,15 +195,28 @@ def _check_int_gs_common(int_gs):
     have the same base kernel and other properties that would allow
     merging them.
     """
+    from pytential.symbolic.pde.system_utils import merge_kernel_arguments
+
+    kernel_arguments = {}
     base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
     common_int_g = int_gs[0].copy(target_kernel=base_kernel,
             source_kernels=(base_kernel,), densities=(1,))
+
     for int_g in int_gs:
         for source_kernel in int_g.source_kernels:
             if source_kernel.get_base_kernel() != base_kernel:
                 return False
-        if common_int_g != int_g.copy(target_kernel=base_kernel,
-                source_kernels=(base_kernel,), densities=(1,)):
+
+        if common_int_g.qbx_forced_limit != int_g.qbx_forced_limit:
+            return False
+
+        if common_int_g.source != int_g.source:
+            return False
+
+        try:
+            kernel_arguments = merge_kernel_arguments(kernel_arguments,
+                int_g.kernel_arguments)
+        except ValueError:
             return False
     return True
 
@@ -279,6 +295,11 @@ class CoefficientCollector(Mapper):
             return {1: expr}
 
     def map_node_coordinate_component(self, expr):
+        return {expr: 1}
+
+    map_num_reference_derivative = map_node_coordinate_component
+
+    def map_common_subexpression(self, expr):
         return {expr: 1}
 
     def map_subscript(self, expr):

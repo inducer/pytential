@@ -211,21 +211,24 @@ def test_merge_different_qbx_forced_limit():
 
 def test_merge_directional_source():
     from pymbolic.primitives import Variable
+    from pytential.symbolic.primitives import cse
+
     dim = 3
     laplace_knl = LaplaceKernel(dim)
     density = Variable("density")
-    dsource = Variable("dsource_vec")
 
     int_g1 = int_g_vec(laplace_knl, density, qbx_forced_limit=1)
     int_g2 = D(laplace_knl, density, qbx_forced_limit=1)
 
     source_kernels = [AxisSourceDerivative(d, laplace_knl)
             for d in range(dim)] + [laplace_knl]
-    densities = [density*dsource[d] for d in range(dim)] + [density]
-    int_g3 = int_g2.copy(source_kernels=source_kernels, densities=densities)
+    dsource = int_g2.kernel_arguments["dsource_vec"]
+    densities = [dsource[d]*cse(density) for d in range(dim)] + [density]
+    int_g3 = int_g2.copy(source_kernels=source_kernels, densities=densities,
+                         kernel_arguments={})
 
     result = merge_int_g_exprs([int_g1 + int_g2],
-            source_dependent_variables=[dsource, density])
+            source_dependent_variables=[density])
     assert result[0] == int_g3
 
     result = merge_int_g_exprs([int_g1 + int_g2])

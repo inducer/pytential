@@ -528,7 +528,22 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
                 replacements[int_g] = restore_target_attributes(reduced_insn, int_g)
 
     mapper = IntGSubstitutor(replacements)
-    return [mapper(expr) for expr in result]
+    result = [mapper(expr) for expr in result]
+
+    orig_count = get_number_of_fmms(exprs)
+    new_count = get_number_of_fmms(result)
+    if orig_count < new_count:
+        raise RuntimeError("merge_int_g_exprs failed. "
+                           "Please open an issue in pytential bug tracker.")
+
+    return result
+
+
+def get_number_of_fmms(exprs):
+    fmms = set()
+    for int_g in get_int_g_s(exprs):
+        fmms.add(remove_target_attributes(int_g))
+    return len(fmms)
 
 
 class IntGCoefficientCollector(CoefficientCollector):
@@ -778,30 +793,34 @@ def convert_directional_source_to_axis_source(int_g):
     source_kernels = []
     densities = []
     for source_kernel, density in zip(int_g.source_kernels, int_g.densities):
-        knl_result = _convert_directional_source_knl_to_axis_source(source_kernel)
+        knl_result = _convert_directional_source_knl_to_axis_source(source_kernel,
+                        int_g.kernel_arguments)
         for knl, coeff in knl_result:
             source_kernels.append(knl)
             densities.append(coeff * density)
+
+    kernel_arguments = filter_kernel_arguments(
+        list(source_kernels) + [int_g.target_kernel], int_g.kernel_arguments)
     return int_g.copy(source_kernels=tuple(source_kernels),
-            densities=tuple(densities))
+            densities=tuple(densities), kernel_arguments=kernel_arguments)
 
 
-def _convert_directional_source_knl_to_axis_source(knl):
+def _convert_directional_source_knl_to_axis_source(knl, knl_arguments):
     if isinstance(knl, DirectionalSourceDerivative):
         dim = knl.dim
         from pymbolic import make_sym_vector
-        dir_vec = make_sym_vector(knl.dir_vec_name, dim)
+        dir_vec = knl_arguments[knl.dir_vec_name]
 
         res = []
         inner_result = _convert_directional_source_knl_to_axis_source(
-                knl.inner_kernel)
+                knl.inner_kernel, knl_arguments)
         for inner_knl, coeff in inner_result:
             for d in range(dim):
                 res.append((AxisSourceDerivative(d, inner_knl), coeff*dir_vec[d]))
         return res
     elif isinstance(knl, KernelWrapper):
         inner_result = _convert_directional_source_knl_to_axis_source(
-                knl.inner_kernel)
+                knl.inner_kernel, knl_arguments)
         return [(knl.replace_inner_kernel(inner_knl), coeff) for
                     inner_knl, coeff in inner_result]
     else:
