@@ -35,7 +35,6 @@ from collections import defaultdict
 from pymbolic.geometric_algebra.mapper import WalkMapper
 from pymbolic.mapper import CombineMapper
 from pymbolic.mapper.coefficient import CoefficientCollector
-from pymbolic.primitives import Variable
 from pytential.symbolic.primitives import IntG, NodeCoordinateComponent
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
@@ -808,7 +807,6 @@ def convert_directional_source_to_axis_source(int_g):
 def _convert_directional_source_knl_to_axis_source(knl, knl_arguments):
     if isinstance(knl, DirectionalSourceDerivative):
         dim = knl.dim
-        from pymbolic import make_sym_vector
         dir_vec = knl_arguments[knl.dir_vec_name]
 
         res = []

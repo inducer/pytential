@@ -27,7 +27,6 @@ from pytential.symbolic.primitives import (int_g_vec, D, IntG,
 from pytential.symbolic.pde.system_utils import (merge_int_g_exprs,
     rewrite_using_base_kernel)
 from pymbolic.primitives import make_sym_vector, Variable
-import pytest
 
 
 def test_reduce_number_of_fmms():

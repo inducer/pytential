@@ -188,6 +188,7 @@ def get_all_source_dependent_variables(int_gs):
 
 # }}}
 
+
 # {{{ convert IntG expressions to a matrix
 
 def _check_int_gs_common(int_gs):
