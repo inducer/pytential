@@ -27,7 +27,7 @@ from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
 from sumpy.kernel import (StressletKernel, LaplaceKernel,
     ElasticityKernel, BiharmonicKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
-from pymbolic import var
+from sumpy.symbolic import SpatialConstant
 from abc import ABC
 
 __doc__ = """
@@ -42,7 +42,7 @@ __doc__ = """
 
 # {{{ StokesletWrapper/StressletWrapper ABCs
 
-_MU_SYM_DEFAULT = var("mu")
+_MU_SYM_DEFAULT = SpatialConstant("mu")
 
 
 class StokesletWrapperBase(ABC):
@@ -267,9 +267,12 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
     for deriv_dir in deriv_dirs:
         knl = AxisTargetDerivative(deriv_dir, knl)
 
-    args = [arg.loopy_arg.name for arg in knl.get_args()]
-    for arg in args:
-        kwargs[arg] = var(arg)
+    kernel_arg_names = set(karg.loopy_arg.name
+            for karg in (knl.get_args() + knl.get_source_args()))
+
+    for var_name in ["mu", "nu"]:
+        if var_name not in kernel_arg_names:
+            kwargs.pop(var_name)
 
     res = sym.int_g_vec(knl, density, **kwargs)
     return res
@@ -291,11 +294,14 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
             raise ValueError("method has to be one of biharmonic/naive")
 
         self.kernel_dict = {}
+        # The two cases of nu=0.5 and nu!=0.5 differ significantly and
+        # ElasticityKernel needs to know if nu=0.5 or not at creation time
+        poisson_ratio = "nu" if nu_sym != 0.5 else 0.5
 
         for i in range(dim):
             for j in range(i, dim):
                 self.kernel_dict[(i, j)] = ElasticityKernel(dim=dim, icomp=i,
-                    jcomp=j, viscosity_mu=mu_sym, poisson_ratio=nu_sym)
+                    jcomp=j, poisson_ratio=poisson_ratio)
 
         # The dictionary allows us to exploit symmetry -- that
         # :math:`T_{01}` is identical to :math:`T_{10}` -- and avoid creating
@@ -312,7 +318,8 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
         """
         res = _create_int_g(self.kernel_dict[idx], deriv_dirs,
                     density=density_sym*dir_vec_sym[idx[-1]],
-                    qbx_forced_limit=qbx_forced_limit)/(2*(1-self.nu))
+                    qbx_forced_limit=qbx_forced_limit, mu=self.mu,
+                    nu=self.nu)/(2*(1-self.nu))
         return res
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
@@ -330,7 +337,7 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
         if self.base_kernel is None:
             return sym_expr
         else:
-            return rewrite_using_base_kernel(sym_expr, base_kernel=self.base_kernel)
+            return np.array(rewrite_using_base_kernel(sym_expr, base_kernel=self.base_kernel))
 
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
@@ -389,7 +396,7 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
             for j in range(i, dim):
                 for k in range(j, dim):
                     self.kernel_dict[(i, j, k)] = StressletKernel(dim=dim, icomp=i,
-                            jcomp=j, kcomp=k, viscosity_mu=mu_sym)
+                            jcomp=j, kcomp=k)
 
         # The dictionary allows us to exploit symmetry -- that
         # :math:`T_{012}` is identical to :math:`T_{120}` -- and avoid creating
@@ -432,7 +439,7 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
             knl = self.kernel_dict[kernel_idx]
             result += _create_int_g(knl, tuple(deriv_dirs) + tuple(extra_deriv_dirs),
                     density=density_sym*dir_vec_sym[dir_vec_idx],
-                    qbx_forced_limit=qbx_forced_limit) * coeff
+                    qbx_forced_limit=qbx_forced_limit, mu=self.mu, nu=self.nu) * coeff
         return result/(2*(1 - nu))
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
@@ -450,7 +457,7 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
         if self.base_kernel is None:
             return sym_expr
         else:
-            return rewrite_using_base_kernel(sym_expr, base_kernel=self.base_kernel)
+            return np.array(rewrite_using_base_kernel(sym_expr, base_kernel=self.base_kernel))
 
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
