@@ -359,6 +359,7 @@ def filter_kernel_arguments(knls, kernel_arguments):
 
 # }}}
 
+# {{{ merge_int_g_exprs
 
 def merge_int_g_exprs(exprs, source_dependent_variables=None):
     """
@@ -398,19 +399,24 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
     # Using a dictionary instead of a set because sets are unordered
     all_source_group_identifiers = {}
 
-    result = np.array([0 for _ in exprs], dtype=object)
+    result = [0]*len(exprs)
 
     int_g_cc = IntGCoefficientCollector()
     int_gs_by_source_group = defaultdict(list)
 
-    def add_int_gs_in_expr(expr):
-        for int_g in get_int_g_s([expr]):
-            source_group_identifier = get_int_g_source_group_identifier(int_g)
-            int_gs_by_source_group[source_group_identifier].append(int_g)
-            for density in int_g.densities:
-                add_int_gs_in_expr(density)
+    new_exprs = list(exprs)
 
-    for i, expr in enumerate(exprs):
+    def add_int_gs_in_expr(int_g):
+        source_group_identifier = get_int_g_source_group_identifier(int_g)
+        int_gs_by_source_group[source_group_identifier].append(int_g)
+        for density in int_g.densities:
+            if have_int_g_s(density):
+                new_exprs.append(density)
+                result.append(0)
+
+    i = 0
+    while i < len(new_exprs):
+        expr = new_exprs[i]
         int_gs_by_group = {}
         try:
             int_g_coeff_map = int_g_cc(expr)
@@ -420,7 +426,9 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
             # some IntGs from them.
             logger.debug("%s is not linear", expr)
             result[i] += expr
-            add_int_gs_in_expr(expr)
+            for int_g in get_int_g_s([expr]):
+                add_int_gs_in_expr(expr)
+            i = i + 1
             continue
         for int_g, coeff in int_g_coeff_map.items():
             if int_g == 1:
@@ -466,6 +474,8 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
                     densities=simplify_densities(int_g.densities))
             result[i] += result_int_g * coeff
             add_int_gs_in_expr(result_int_g)
+
+        i = i + 1
 
     # No IntGs found
     if all(not int_gs for int_gs in int_gs_by_source_group):
@@ -519,8 +529,23 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
             for int_g in targetless_int_g_mapping[insn]:
                 replacements[int_g] = restore_target_attributes(reduced_insn, int_g)
 
-    mapper = IntGSubstitutor(replacements)
-    result = [mapper(expr) for expr in result]
+    for r in result:
+        print("r", r)
+
+    for k, v in replacements.items():
+        print("outer_k", k)
+        print("outer_v", v)
+    outer_mapper = Substitutor(replacements)
+
+    nexprs = len(exprs)
+    replacements_for_inner_exprs = {expr: outer_mapper(result_expr) for expr, result_expr in
+                    zip(new_exprs[nexprs:], result[nexprs:])}
+    for k, v in replacements_for_inner_exprs.items():
+        print("k", k)
+        print("v", v)
+    mapper = Substitutor(replacements_for_inner_exprs)
+    result = [outer_mapper(expr) for expr in result[:nexprs]]
+
 
     orig_count = get_number_of_fmms(exprs)
     new_count = get_number_of_fmms(result)
@@ -622,7 +647,7 @@ def get_normal_vector_names(kernel):
     return normal_vectors
 
 
-class IntGSubstitutor(IdentityMapper):
+class Substitutor(IdentityMapper):
     """Replaces IntGs with pymbolic expression given by the
     replacements dictionary
     """
@@ -668,7 +693,7 @@ def restore_target_attributes(expr, orig_int_g):
                 kernel_arguments=orig_int_g.kernel_arguments)
         for int_g in int_gs}
 
-    substitutor = IntGSubstitutor(replacements)
+    substitutor = Substitutor(replacements)
     return substitutor(expr)
 
 
@@ -831,6 +856,8 @@ def simplify_densities(densities):
             logger.debug("%s cannot be simplified", density)
             result.append(density)
     return tuple(result)
+
+# }}}
 
 
 if __name__ == "__main__":
