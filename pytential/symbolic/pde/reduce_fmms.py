@@ -115,19 +115,14 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     if right_factor.shape[0] >= mat.shape[0]:
         return int_gs
 
-    # cast to SymPy Polynomial objects
-    right_factor = right_factor.applyfunc(lambda x: x.as_poly(*axis_vars,
-        domain=sympy.EX))
-    left_factor = left_factor.applyfunc(lambda x: x.as_poly(*axis_vars,
-        domain=sympy.EX))
-
     base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
     base_int_g = int_gs[0].copy(target_kernel=base_kernel,
             source_kernels=(base_kernel,), densities=(1,))
 
     # Convert polynomials back to IntGs with source derivatives
-    source_int_gs = [[_convert_source_poly_to_int_g_derivs(poly, base_int_g,
-        axis_vars) for poly in row] for row in right_factor.tolist()]
+    source_int_gs = [[_convert_source_poly_to_int_g_derivs(
+        expr.as_poly(*axis_vars, domain=sympy.EX), base_int_g,
+            axis_vars) for expr in row] for row in right_factor.tolist()]
 
     # For each row in the right factor, merge the IntGs to one IntG
     # to get a total of k IntGs.
@@ -148,7 +143,8 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     res = [0]*left_factor.shape[0]
     for i in range(left_factor.shape[0]):
         for j in range(left_factor.shape[1]):
-            res[i] += _convert_target_poly_to_int_g_derivs(left_factor[i, j],
+            res[i] += _convert_target_poly_to_int_g_derivs(
+                    left_factor[i, j].as_poly(*axis_vars, domain=sympy.EX),
                     int_gs[i], source_int_gs_merged[j])
 
     return res
