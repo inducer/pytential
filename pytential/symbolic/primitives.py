@@ -1352,7 +1352,7 @@ def hashable_kernel_arg_value(val):
 
 
 def hashable_kernel_args(kernel_arguments):
-    return tuple([(key, hashable_kernel_arg_value(val)) for key, val in \
+    return tuple([(key, hashable_kernel_arg_value(val)) for key, val in
         sorted(kernel_arguments.items())])
 
 

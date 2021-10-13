@@ -287,7 +287,8 @@ def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-10, order=None,
 
 
 @memoize_on_first_arg
-def _get_base_kernel_matrix(base_kernel, order=None, retries=3, kernel_arguments=None):
+def _get_base_kernel_matrix(base_kernel, order=None, retries=3,
+        kernel_arguments=None):
     dim = base_kernel.dim
 
     pde = base_kernel.get_pde_as_diff_op()

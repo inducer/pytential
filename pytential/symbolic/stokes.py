@@ -270,6 +270,8 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
     kernel_arg_names = set(karg.loopy_arg.name
             for karg in (knl.get_args() + knl.get_source_args()))
 
+    # When the kernel is Laplace, mu and nu are not kernel arguments
+    # Also when nu==0.5, it's not a kernel argument to StokesletKernel
     for var_name in ["mu", "nu"]:
         if var_name not in kernel_arg_names:
             kwargs.pop(var_name)
@@ -437,7 +439,8 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
             knl = self.kernel_dict[kernel_idx]
             result += _create_int_g(knl, tuple(deriv_dirs) + tuple(extra_deriv_dirs),
                     density=density_sym*dir_vec_sym[dir_vec_idx],
-                    qbx_forced_limit=qbx_forced_limit, mu=self.mu, nu=self.nu) * coeff
+                    qbx_forced_limit=qbx_forced_limit, mu=self.mu, nu=self.nu) * \
+                            coeff
         return result/(2*(1 - nu))
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
