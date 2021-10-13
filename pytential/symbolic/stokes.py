@@ -350,10 +350,13 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
         for comp in range(self.dim):
             for i in range(self.dim):
                 for j in range(self.dim):
+                    # pylint does not like __new__ returning new object
+                    # pylint: disable=no-member
                     sym_expr[comp] += dir_vec_sym[i] * \
                         stresslet_obj.get_int_g((comp, i, j),
                         density_vec_sym[j], [1]*self.dim,
                         qbx_forced_limit, deriv_dirs=[])
+                    # pylint: enable=no-member
 
         return sym_expr
 
@@ -803,10 +806,14 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     def _farfield(self, qbx_forced_limit):
         source_dofdesc = sym.DOFDescriptor(None, discr_stage=sym.QBX_SOURCE_STAGE1)
         length = sym.integral(self.ambient_dim, self.dim, 1, dofdesc=source_dofdesc)
-        return self.stresslet.apply_stokeslet_and_stresslet(
+        # pylint does not like __new__ returning new object
+        # pylint: disable=no-member
+        result = self.stresslet.apply_stokeslet_and_stresslet(
                 -self.omega / length, [0]*self.ambient_dim, [0]*self.ambient_dim,
                 qbx_forced_limit=qbx_forced_limit, stokeslet_weight=1,
                 stresslet_weight=0)
+        # pylint: enable=no-member
+        return result
 
     def _operator(self, sigma, normal, qbx_forced_limit):
         slp_qbx_forced_limit = qbx_forced_limit
@@ -823,9 +830,12 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
             self.dim, sigma, dofdesc=dd))
 
         result = self.eta * self.alpha / (2.0 * np.pi) * int_sigma
+        # pylint does not like __new__ returning new object
+        # pylint: disable=no-member
         result += self.stresslet.apply_stokeslet_and_stresslet(meanless_sigma,
                 sigma, normal, qbx_forced_limit=qbx_forced_limit,
                 stokeslet_weight=-self.eta, stresslet_weight=1)
+        # pylint: enable=no-member
 
         return result
 
@@ -879,10 +889,14 @@ class HebekerExteriorStokesOperator(StokesOperator):
         self.laplace_kernel = LaplaceKernel(3)
 
     def _operator(self, sigma, normal, qbx_forced_limit):
-        return self.stresslet.apply_stokeslet_and_stresslet(sigma,
+        # pylint does not like __new__ returning new object
+        # pylint: disable=no-member
+        result = self.stresslet.apply_stokeslet_and_stresslet(sigma,
                 sigma, normal, qbx_forced_limit=qbx_forced_limit,
                 stokeslet_weight=self.eta, stresslet_weight=1,
                 extra_deriv_dirs=())
+        # pylint: enable=no-member
+        return result
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
         # NOTE: H. 1986 Equation 17

@@ -244,7 +244,7 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None,
     res = []
     for knl in kernels:
         res.append(get_deriv_relation_kernel(knl, base_kernel, tol, order,
-            kernel_arguments=hashable_kernel_args(kernel_arguments)))
+            hashable_kernel_arguments=hashable_kernel_args(kernel_arguments)))
     return res
 
 
@@ -880,16 +880,4 @@ if __name__ == "__main__":
     expression_knl2 = ExpressionKernel(3, conv(1/sym_r + sym_d[0]*sym_d[0]/sym_r**3),
         1, False)
     kernels = [expression_knl, expression_knl2]
-    #kernels += [ElasticityKernel(3, 0, 1, poisson_ratio="0.4"),
-    #        ElasticityKernel(3, 0, 0, poisson_ratio="0.4")]
     get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4)
-    density = pytential.sym.make_sym_vector("d", 1)[0]
-    from pytential.symbolic.primitives import int_g_vec
-    int_g_1 = int_g_vec(TargetPointMultiplier(2, AxisTargetDerivative(2,
-            AxisSourceDerivative(1, AxisSourceDerivative(0,
-                LaplaceKernel(3))))), density, qbx_forced_limit=1)
-    int_g_2 = int_g_vec(TargetPointMultiplier(0, AxisTargetDerivative(0,
-        AxisSourceDerivative(0, AxisSourceDerivative(0,
-            LaplaceKernel(3))))), density, qbx_forced_limit=1)
-    print(merge_int_g_exprs([int_g_1, int_g_2],
-        base_kernel=BiharmonicKernel(3))[0])
