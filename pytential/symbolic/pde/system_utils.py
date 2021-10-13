@@ -35,7 +35,8 @@ from collections import defaultdict
 from pymbolic.geometric_algebra.mapper import WalkMapper
 from pymbolic.mapper import CombineMapper
 from pymbolic.mapper.coefficient import CoefficientCollector
-from pytential.symbolic.primitives import IntG, NodeCoordinateComponent
+from pytential.symbolic.primitives import (IntG, NodeCoordinateComponent,
+    hashable_kernel_args, hashable_kernel_arg_value)
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
 import pytential
@@ -130,8 +131,18 @@ def convert_target_deriv_to_source(int_g):
                       source_kernels=tuple(source_kernels))
 
 
+def _get_kernel_expression(expr, kernel_arguments):
+    from pymbolic.mapper.substitutor import substitute
+    from sumpy.symbolic import PymbolicToSympyMapperWithSymbols
+
+    pymbolic_expr = substitute(expr, kernel_arguments)
+
+    res = PymbolicToSympyMapperWithSymbols()(pymbolic_expr)
+    return res
+
+
 def convert_target_multiplier_to_source(int_g):
-    """Convert an IntG with TargetMultiplier to an sum of IntGs without
+    """Convert an IntG with TargetMultiplier to a sum of IntGs without
     TargetMultiplier and only source dependent transformations
     """
     from sumpy.symbolic import SympyToPymbolicMapper
@@ -141,7 +152,6 @@ def convert_target_multiplier_to_source(int_g):
     if isinstance(tgt_knl.inner_kernel, KernelWrapper):
         return [int_g]
 
-    new_kernel_args = filter_kernel_arguments([tgt_knl], int_g.kernel_arguments)
     result = []
     # If the kernel is G, source is y and target is x,
     # x G = y*G + (x - y)*G
@@ -149,21 +159,25 @@ def convert_target_multiplier_to_source(int_g):
     new_densities = [density*NodeCoordinateComponent(tgt_knl.axis)
             for density in int_g.densities]
     result.append(int_g.copy(target_kernel=tgt_knl.inner_kernel,
-                densities=tuple(new_densities), kernel_arguments=new_kernel_args))
+                densities=tuple(new_densities),
+                kernel_arguments=int_g.kernel_arguments))
 
     # create a new expression kernel for (x - y)*G
     sym_d = make_sym_vector("d", tgt_knl.dim)
+    base_kernel_expr = _get_kernel_expression(
+            int_g.target_kernel.get_base_kernel().expression,
+            int_g.kernel_arguments)
     conv = SympyToPymbolicMapper()
 
     for knl, density in zip(int_g.source_kernels, int_g.densities):
-        new_expr = conv(knl.postprocess_at_source(knl.get_expression(sym_d), sym_d)
+        new_expr = conv(knl.postprocess_at_source(base_kernel_expr, sym_d)
                 * sym_d[tgt_knl.axis])
         new_knl = ExpressionKernel(knl.dim, new_expr,
                 knl.get_base_kernel().global_scaling_const,
                 knl.is_complex_valued)
         result.append(int_g.copy(target_kernel=new_knl,
             densities=(density,),
-            source_kernels=(new_knl,), kernel_arguments=new_kernel_args))
+            source_kernels=(new_knl,)))
     return result
 
 
@@ -183,7 +197,8 @@ def _convert_int_g_to_base(int_g, base_kernel):
     result = 0
     for density, source_kernel in zip(int_g.densities, int_g.source_kernels):
         deriv_relation = get_deriv_relation_kernel(source_kernel.get_base_kernel(),
-            base_kernel)
+            base_kernel, hashable_kernel_arguments=(
+                hashable_kernel_args(int_g.kernel_arguments)))
 
         const = deriv_relation[0]
         # NOTE: we set a dofdesc here to force the evaluation of this integral
@@ -219,21 +234,25 @@ def _convert_int_g_to_base(int_g, base_kernel):
     return result
 
 
-def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None):
+def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None,
+        kernel_arguments=None):
     res = []
     for knl in kernels:
-        res.append(get_deriv_relation_kernel(knl, base_kernel, tol, order))
+        res.append(get_deriv_relation_kernel(knl, base_kernel, tol, order,
+            kernel_arguments=hashable_kernel_args(kernel_arguments)))
     return res
 
 
 @memoize_on_first_arg
-def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-10, order=None):
+def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-10, order=None,
+        hashable_kernel_arguments=None):
+    kernel_arguments = dict(hashable_kernel_arguments)
     (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order)
     dim = base_kernel.dim
     sym_vec = make_sym_vector("d", dim)
     sympy_conv = SympyToPymbolicMapper()
 
-    expr = kernel.get_expression(sym_vec)
+    expr = _get_kernel_expression(kernel.expression, kernel_arguments)
     vec = []
     for i in range(len(mis)):
         vec.append(evalf(expr.xreplace(dict((k, v) for
@@ -249,18 +268,21 @@ def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-10, order=None):
         if coeff == 0:
             continue
         if mis[i] != (-1, -1, -1):
-            coeff *= kernel.get_global_scaling_const()
-            coeff /= base_kernel.get_global_scaling_const()
+            coeff *= _get_kernel_expression(kernel.global_scaling_const,
+                    kernel_arguments)
+            coeff /= _get_kernel_expression(base_kernel.global_scaling_const,
+                    kernel_arguments)
             result.append((mis[i], sympy_conv(coeff)))
             logger.debug("  + %s.diff(%s)*%s", base_kernel, mis[i], coeff)
         else:
-            const = sympy_conv(coeff * kernel.get_global_scaling_const())
+            const = sympy_conv(coeff * _get_kernel_expression(
+                kernel.global_scaling_const, kernel_arguments))
     logger.debug("  + %s", const)
     return (const, result)
 
 
 @memoize_on_first_arg
-def _get_base_kernel_matrix(base_kernel, order=None, retries=3):
+def _get_base_kernel_matrix(base_kernel, order=None, retries=3, kernel_arguments=None):
     dim = base_kernel.dim
 
     pde = base_kernel.get_pde_as_diff_op()
@@ -288,7 +310,7 @@ def _get_base_kernel_matrix(base_kernel, order=None, retries=3):
             rand[i, j] = sym.sympify(rand[i, j])/10**15
     sym_vec = make_sym_vector("d", dim)
 
-    base_expr = base_kernel.get_expression(sym_vec)
+    base_expr = _get_kernel_expression(base_kernel.expression, kernel_arguments)
 
     mat = []
     for rand_vec_idx in range(rand.shape[1]):
@@ -596,9 +618,10 @@ def get_int_g_source_group_identifier(int_g):
     group have the same source attributes.
     """
     target_arg_names = get_normal_vector_names(int_g.target_kernel)
-    args = tuple((k, get_hashable_kernel_argument(v)) for k, v in sorted(
+    args = dict((k, v) for k, v in sorted(
         int_g.kernel_arguments.items()) if k not in target_arg_names)
-    return (int_g.source, args, int_g.target_kernel.get_base_kernel())
+    return (int_g.source, hashable_kernel_args(args),
+            int_g.target_kernel.get_base_kernel())
 
 
 def get_int_g_target_group_identifier(int_g):
@@ -606,9 +629,10 @@ def get_int_g_target_group_identifier(int_g):
     group have the same target attributes.
     """
     target_arg_names = get_normal_vector_names(int_g.target_kernel)
-    args = tuple((k, get_hashable_kernel_argument(v)) for k, v in sorted(
+    args = dict((k, v) for k, v in sorted(
         int_g.kernel_arguments.items()) if k in target_arg_names)
-    return (int_g.target, int_g.qbx_forced_limit, int_g.target_kernel, args)
+    return (int_g.target, int_g.qbx_forced_limit, int_g.target_kernel,
+            hashable_kernel_args(args))
 
 
 def get_normal_vector_names(kernel):
@@ -806,8 +830,8 @@ def merge_kernel_arguments(x, y):
     res = x.copy()
     for k, v in y.items():
         if k in res:
-            if get_hashable_kernel_argument(res[k]) \
-                    != get_hashable_kernel_argument(v):
+            if hashable_kernel_arg_value(res[k]) \
+                    != hashable_kernel_arg_value(v):
                 raise ValueError(f"Error merging values for {k}."
                     f"values were {res[k]} and {v}")
         else:
