@@ -60,7 +60,10 @@ __doc__ = """
 
 # {{{ rewrite_using_base_kernel
 
-def rewrite_using_base_kernel(exprs, base_kernel):
+_NO_ARG_SENTINEL = object()
+
+
+def rewrite_using_base_kernel(exprs, base_kernel=_NO_ARG_SENTINEL):
     """Rewrites an expression with :class:`~pytential.symbolic.primitives.IntG`
     objects using *base_kernel*.
 
@@ -70,6 +73,8 @@ def rewrite_using_base_kernel(exprs, base_kernel):
 
     The routine will fail if this process cannot be completed.
     """
+    if base_kernel is None:
+        return list(exprs)
     mapper = RewriteUsingBaseKernelMapper(base_kernel)
     return [mapper(expr) for expr in exprs]
 

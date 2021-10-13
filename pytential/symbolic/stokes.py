@@ -334,10 +334,8 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
                         density_vec_sym[i], [1]*self.dim,
                         qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
-        if self.base_kernel is None:
-            return sym_expr
-        else:
-            return np.array(rewrite_using_base_kernel(sym_expr, base_kernel=self.base_kernel))
+        return np.array(rewrite_using_base_kernel(sym_expr,
+            base_kernel=self.base_kernel))
 
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
@@ -454,10 +452,8 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
                         density_vec_sym[i], dir_vec_sym,
                         qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
-        if self.base_kernel is None:
-            return sym_expr
-        else:
-            return np.array(rewrite_using_base_kernel(sym_expr, base_kernel=self.base_kernel))
+        return np.array(rewrite_using_base_kernel(sym_expr,
+            base_kernel=self.base_kernel))
 
     def apply_stokeslet_and_stresslet(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
