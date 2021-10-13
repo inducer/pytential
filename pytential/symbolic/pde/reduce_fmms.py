@@ -122,7 +122,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     # Convert polynomials back to IntGs with source derivatives
     source_int_gs = [[_convert_source_poly_to_int_g_derivs(
         expr.as_poly(*axis_vars, domain=sympy.EX), base_int_g,
-            axis_vars) for expr in row] for row in right_factor.tolist()]
+        axis_vars) for expr in row] for row in right_factor.tolist()]
 
     # For each row in the right factor, merge the IntGs to one IntG
     # to get a total of k IntGs.
