@@ -30,6 +30,7 @@ from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureSimplexGroupFactory
 from pytools.obj_array import make_obj_array
+from sumpy.symbolic import SpatialConstant
 
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
@@ -146,12 +147,12 @@ def run_exterior_stokes(actx_factory, *,
     # {{{ symbolic
 
     sym_normal = sym.make_sym_vector("normal", ambient_dim)
-    sym_mu = sym.var("mu")
+    sym_mu = SpatialConstant("mu2")
 
     if nu == 0.5:
         sym_nu = 0.5
     else:
-        sym_nu = sym.var("nu")
+        sym_nu = SpatialConstant("nu2")
 
     if ambient_dim == 2:
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
@@ -201,17 +202,17 @@ def run_exterior_stokes(actx_factory, *,
         omega = bind(places, total_charge * sym.Ones())(actx)
 
     if ambient_dim == 2:
-        bc_context = {"mu": mu, "omega": omega}
-        op_context = {"mu": mu, "omega": omega, "normal": normal}
+        bc_context = {"mu2": mu, "omega": omega}
+        op_context = {"mu2": mu, "omega": omega, "normal": normal}
     else:
         bc_context = {}
-        op_context = {"mu": mu, "normal": normal}
-    direct_context = {"mu": mu}
+        op_context = {"mu2": mu, "normal": normal}
+    direct_context = {"mu2": mu}
 
     if sym_nu != 0.5:
-        bc_context["nu"] = nu
-        op_context["nu"] = nu
-        direct_context["nu"] = nu
+        bc_context["nu2"] = nu
+        op_context["nu2"] = nu
+        direct_context["nu2"] = nu
 
     bc_op = bind(places, sym_source_pot,
             auto_where=("point_source", "source"))
