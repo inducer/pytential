@@ -279,12 +279,15 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     stage1_density_discr = stage1_density_discrs[0]
     density_discr = density_discrs[0]
 
-    from arraycontext import thaw
-    from meshmode.dof_array import flatten
-    sources = flatten(thaw(density_discr.nodes(), actx))
-    centers = flatten(_make_centers(stage1_density_discr))
+    from arraycontext import flatten
+    sources = actx.np.reshape(
+            flatten(density_discr.nodes(), actx),
+            (density_discr.ambient_dim, -1))
+    centers = actx.np.reshape(
+            flatten(_make_centers(stage1_density_discr), actx),
+            (stage1_density_discr.ambient_dim, -1))
     targets = [
-            flatten(thaw(tgt.nodes(), actx), strict=False)
+            actx.np.reshape(flatten(tgt.nodes(), actx), (tgt.ambient_dim, -1))
             for tgt in targets_list]
 
     queue = actx.queue

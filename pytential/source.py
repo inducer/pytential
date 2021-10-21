@@ -25,7 +25,6 @@ import pyopencl as cl
 
 from pytools import memoize_in
 
-from meshmode.dof_array import flatten
 from sumpy.fmm import UnableToCollectTimingData
 
 
@@ -176,17 +175,19 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                 target_kernels=insn.target_kernels)
 
-            from arraycontext import thaw
+            from arraycontext import thaw, flatten, unflatten
             evt, output_for_each_kernel = p2p(actx.queue,
-                    flatten(thaw(target_discr.nodes(), actx), strict=False),
-                    self._nodes,
-                    strengths, **kernel_args)
+                    targets=actx.np.reshape(
+                        flatten(target_discr.nodes(), actx),
+                        (target_discr.ambient_dim, -1)),
+                    sources=self._nodes,
+                    strength=strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
             result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
-                from meshmode.dof_array import unflatten
-                result = unflatten(actx, target_discr, result)
+                template_ary = thaw(target_discr.nodes()[0], actx)
+                result = unflatten(template_ary, result, actx)
 
             results.append((o.name, result))
 
@@ -290,7 +291,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
 
         def reorder_sources(source_array):
             if isinstance(source_array, cl.array.Array):
-                return (source_array
+                return source_array[].with_queue(None)
                         .with_queue(queue)
                         [tree_user_source_ids]
                         .with_queue(None))
@@ -301,16 +302,20 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         source_extra_kwargs = {}
 
         from sumpy.tools import gather_arguments, gather_source_arguments
-        from pytools.obj_array import obj_array_vectorize
+        from arraycontext import flatten, map_array_container
 
         for func, var_dict in [
                 (gather_arguments, kernel_extra_kwargs),
                 (gather_source_arguments, source_extra_kwargs),
                 ]:
             for arg in func(target_kernels):
-                var_dict[arg.name] = obj_array_vectorize(
-                        reorder_sources,
-                        flatten(evaluator(arguments[arg.name]), strict=False))
+                value = evaluator(arguments[arg.name])
+                if isinstance(value, np.ndarray):
+                    value = actx.np.reshape(flatten(value, actx), (value.size, -1))
+                else:
+                    value = flatten(value, actx)
+
+                var_dict[arg.name] = reorder_sources(value)
 
         return kernel_extra_kwargs, source_extra_kwargs
 

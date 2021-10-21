@@ -30,7 +30,7 @@ import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_method
-from arraycontext import PyOpenCLArrayContext, thaw
+from arraycontext import PyOpenCLArrayContext, thaw, flatten, unflatten
 
 from boxtree.tools import DeviceDataRecord
 from pytential.source import LayerPotentialSourceBase
@@ -140,16 +140,20 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             insn, bound_expr, evaluate):
         kernel_args = {}
 
-        from meshmode.dof_array import flatten, unflatten
-
         for arg_name, arg_expr in insn.kernel_arguments.items():
-            kernel_args[arg_name] = flatten(evaluate(arg_expr))
+            value = evaluate(arg_expr)
+            if isinstance(value, np.ndarray):
+                value = actx.np.reshape(flatten(value, actx), (value.size, -1))
+            else:
+                value = flatten(value, actx)
+
+            kernel_args[arg_name] = value
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim, dofdesc=insn.source))(actx)
         strengths = [waa * evaluate(density) for density in insn.densities]
-        flat_strengths = [flatten(strength) for strength in strengths]
+        flat_strengths = [flatten(strength, actx) for strength in strengths]
 
         results = []
         p2p = None
@@ -163,14 +167,19 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     target_kernels=insn.target_kernels)
 
             evt, output_for_each_kernel = p2p(actx.queue,
-                    flatten(thaw(target_discr.nodes(), actx), strict=False),
-                    flatten(thaw(self.density_discr.nodes(), actx)),
-                    flat_strengths, **kernel_args)
+                    targets=actx.np.reshape(
+                        flatten(target_discr.nodes(), actx),
+                        (target_discr.ambient_dim, -1)),
+                    sources=actx.np.reshape(
+                        flatten(self.density_discr.nodes(), actx)
+                        (self.density_discr.ambient_dim, -1)),
+                    strength=flat_strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
             result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
-                result = unflatten(actx, target_discr, result)
+                template_ary = thaw(target_discr.nodes()[0], actx)
+                result = unflatten(template_ary, result, actx)
 
             results.append((o.name, result))
 
@@ -239,8 +248,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             self.ambient_dim, dofdesc=insn.source))(actx)
         strengths = [waa * evaluate(density) for density in insn.densities]
 
-        from meshmode.dof_array import flatten
-        flat_strengths = [flatten(strength) for strength in strengths]
+        flat_strengths = [flatten(strength, actx) for strength in strengths]
 
         fmm_kernel = self.get_fmm_kernel(insn.target_kernels)
         output_and_expansion_dtype = (
@@ -284,8 +292,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
-                from meshmode.dof_array import unflatten
-                result = unflatten(actx, target_discr, result)
+                template_ary = thaw(target_discr.nodes()[0], actx)
+                result = unflatten(template_ary, result, actx)
 
             results.append((o.name, result))
 
@@ -403,21 +411,21 @@ class _FMMGeometryData:
         lpot_src = self.lpot_source
         target_info = self.target_info()
 
-        queue = self.array_context.queue
+        actx = self.array_context
 
         nsources = lpot_src.density_discr.ndofs
         nparticles = nsources + target_info.ntargets
 
-        refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
+        refine_weights = cl.array.zeros(actx.queue, nparticles, dtype=np.int32)
         refine_weights[:nsources] = 1
         refine_weights.finish()
 
         MAX_LEAF_REFINE_WEIGHT = 32  # noqa
 
-        from meshmode.dof_array import flatten
-        tree, _ = code_getter.build_tree(queue,
-                particles=flatten(
-                    thaw(lpot_src.density_discr.nodes(), self.array_context)),
+        tree, _ = code_getter.build_tree(actx.queue,
+                particles=actx.np.reshape(
+                    flatten(lpot_src.density_discr.nodes(), actx),
+                    (lpot_src.ambient_dim, -1)),
                 targets=target_info.targets,
                 max_leaf_refine_weight=MAX_LEAF_REFINE_WEIGHT,
                 refine_weights=refine_weights,
@@ -445,14 +453,13 @@ class _FMMGeometryData:
                 (lpot_src.ambient_dim, ntargets),
                 self.coord_dtype)
 
-        from meshmode.dof_array import flatten
         for start, target_discr in zip(target_discr_starts, target_discrs):
             code_getter.copy_targets_kernel()(
                     self.array_context.queue,
                     targets=targets[:, start:start+target_discr.ndofs],
-                    points=flatten(
-                        thaw(target_discr.nodes(), self.array_context),
-                        strict=False)
+                    points=self.array_context.np.reshape(
+                        flatten(target_discr.nodes(), self.array_context),
+                        (target_discr.ambient_dim, -1))
                     )
 
         return _TargetInfo(

@@ -26,7 +26,7 @@ from typing import Optional
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, flatten
 from meshmode.discretization import Discretization
 
 from pytools import memoize_in
@@ -76,10 +76,10 @@ def partition_by_nodes(
 
         builder = TreeBuilder(actx.context)
 
-        from arraycontext import thaw
-        from meshmode.dof_array import flatten
         tree, _ = builder(actx.queue,
-                flatten(thaw(discr.nodes(), actx)),
+                particles=actx.np.reshape(
+                    flatten(discr.nodes(), actx)
+                    (discr.ambient_dim, -1)),
                 max_particles_in_box=max_particles_in_box,
                 kind=tree_kind)
 
@@ -244,8 +244,7 @@ def make_compute_block_centers_knl(
                 %(insns)s
             end
             """ % dict(insns=insns), [
-                lp.GlobalArg("sources", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.GlobalArg("sources", None, shape=(ndim, "nsources")),
                 lp.ValueArg("nsources", np.int64),
                 ...
                 ],
@@ -330,9 +329,9 @@ class ProxyGeneratorBase:
 
         # {{{ get proxy centers and radii
 
-        from arraycontext import thaw
-        from meshmode.dof_array import flatten
-        sources = flatten(thaw(discr.nodes(), actx))
+        sources = actx.np.reshape(
+                flatten(discr.nodes(), actx),
+                (self.ambient_dim, -1))
 
         knl = self.get_centers_knl(actx)
         _, (centers_dev,) = knl(actx.queue,
@@ -404,8 +403,7 @@ def make_compute_block_radii_knl(
                 proxy_radius[irange] = radius_factor * rblk
             end
             """, [
-                lp.GlobalArg("sources", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.GlobalArg("sources", None, shape=(ndim, "nsources")),
                 lp.ValueArg("nsources", np.int64),
                 lp.ValueArg("radius_factor", np.float64),
                 ...
@@ -462,12 +460,9 @@ def make_compute_block_qbx_radii_knl(
                 proxy_radius[irange] = radius_factor * rqbx
             end
             """, [
-                lp.GlobalArg("sources", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
-                lp.GlobalArg("center_int", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
-                lp.GlobalArg("center_ext", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.GlobalArg("sources", None, shape=(ndim, "nsources")),
+                lp.GlobalArg("center_int", None, shape=(ndim, "nsources")),
+                lp.GlobalArg("center_ext", None, shape=(ndim, "nsources")),
                 lp.ValueArg("nsources", np.int64),
                 lp.ValueArg("radius_factor", np.float64),
                 ...
@@ -510,11 +505,12 @@ class QBXProxyGenerator(ProxyGeneratorBase):
         center_ext = bind(self.places, sym.expansion_centers(
             self.ambient_dim, +1, dofdesc=source_dd))(actx)
 
-        from meshmode.dof_array import flatten
         return super().__call__(actx, source_dd, indices,
-                expansion_radii=flatten(radii),
-                center_int=flatten(center_int),
-                center_ext=flatten(center_ext),
+                expansion_radii=flatten(radii, actx),
+                center_int=actx.np.reshape(
+                    flatten(center_int, actx), (self.ambient_dim, -1)),
+                center_ext=actx.np.reshape(
+                    flatten(center_ext, actx), (self.ambient_dim, -1)),
                 **kwargs)
 
 # }}}
@@ -545,8 +541,7 @@ def gather_block_neighbor_points(
             """
             result[idim, i] = ary[idim, srcindices[i]]
             """, [
-                lp.GlobalArg("ary", None,
-                    shape=(discr.ambient_dim, "ndofs"), dim_tags="sep,C"),
+                lp.GlobalArg("ary", None, shape=(discr.ambient_dim, "ndofs")),
                 lp.ValueArg("ndofs", np.int64),
                 ...],
             name="picker_knl",
@@ -560,10 +555,10 @@ def gather_block_neighbor_points(
 
         return knl
 
-    from arraycontext import thaw
-    from meshmode.dof_array import flatten
     _, (sources,) = prg()(actx.queue,
-            ary=flatten(thaw(discr.nodes(), actx)),
+            ary=actx.np.reshape(
+                flatten(discr.nodes(), actx),
+                (discr.ambient_dim, -1)),
             srcindices=pxy.srcindices.indices)
 
     # }}}

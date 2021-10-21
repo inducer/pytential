@@ -34,7 +34,7 @@ import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 
 from arraycontext import PyOpenCLArrayContext, thaw, freeze
-from meshmode.dof_array import DOFArray, flatten
+from meshmode.dof_array import DOFArray
 
 from pytools import memoize_in, memoize_method
 from pytential.qbx.cost import AbstractQBXCostModel
@@ -470,9 +470,11 @@ class MatVecOp:
         if not self._operator_uses_obj_array:
             ary = [ary]
 
+        from arraycontext import flatten
         result = self.array_context.empty(self.total_dofs, self.dtype)
         for res_i, (start, end) in zip(ary, self.starts_and_ends):
-            result[start:end] = flatten(thaw(res_i, self.array_context))
+            result[start:end] = flatten(res_i, self.array_context)
+
         return result
 
     def unflatten(self, ary):
@@ -480,10 +482,13 @@ class MatVecOp:
         components = []
         for discr, (start, end) in zip(self.discrs, self.starts_and_ends):
             component = ary[start:end]
+
             from meshmode.discretization import Discretization
             if isinstance(discr, Discretization):
-                from meshmode.dof_array import unflatten
-                component = unflatten(self.array_context, discr, component)
+                from arraycontext import unflatten
+                template_ary = thaw(discr.nodes()[0], self.array_context)
+                component = unflatten(template_ary, component, self.array_context)
+
             components.append(component)
 
         if self._operator_uses_obj_array:

@@ -28,8 +28,7 @@ import pyopencl.array  # noqa
 from pytools import memoize_method, log_process
 from pytools.obj_array import obj_array_vectorize
 
-from arraycontext import PyOpenCLArrayContext, thaw
-from meshmode.dof_array import flatten
+from arraycontext import PyOpenCLArrayContext, flatten
 
 from boxtree.tools import DeviceDataRecord
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
@@ -433,10 +432,14 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """
         from pytential import bind, sym
 
+        actx = self.array_context
         centers = bind(self.places, sym.interleaved_expansion_centers(
                 self.ambient_dim,
-                dofdesc=self.source_dd.to_stage1()))(self.array_context)
-        return obj_array_vectorize(self.array_context.freeze, flatten(centers))
+                dofdesc=self.source_dd.to_stage1()))(actx)
+
+        return actx.freeze(actx.np.reshape(
+            flatten(centers, actx), (centers.size, -1)
+            ))
 
     @memoize_method
     def flat_expansion_radii(self):
@@ -447,14 +450,14 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """
         from pytential import bind, sym
 
+        actx = self.array_context
         radii = bind(self.places,
                     sym.expansion_radii(
                         self.ambient_dim,
                         granularity=sym.GRANULARITY_CENTER,
-                        dofdesc=self.source_dd.to_stage1()))(
-                    self.array_context)
+                        dofdesc=self.source_dd.to_stage1()))(actx)
 
-        return self.array_context.freeze(flatten(radii))
+        return actx.freeze(flatten(radii, actx))
 
     # }}}
 
@@ -465,7 +468,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """Return a :class:`TargetInfo`. |cached|"""
 
         code_getter = self.code_getter
-        queue = self.array_context.queue
+        actx = self.array_context
         ntargets = self.ncenters
         target_discr_starts = []
 
@@ -475,23 +478,22 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         target_discr_starts.append(ntargets)
 
-        targets = cl.array.empty(
-                self.cl_context, (self.ambient_dim, ntargets),
-                self.coord_dtype)
+        targets = actx.empty((self.ambient_dim, ntargets), self.coord_dtype)
         code_getter.copy_targets_kernel()(
-                queue,
+                actx.queue,
                 targets=targets[:, :self.ncenters],
                 points=self.flat_centers())
 
         for start, (target_discr, _) in zip(
                 target_discr_starts, self.target_discrs_and_qbx_sides):
             code_getter.copy_targets_kernel()(
-                    queue,
+                    actx.queue,
                     targets=targets[:,
                         start:start+target_discr.ndofs],
-                    points=flatten(
-                        thaw(target_discr.nodes(), self.array_context),
-                        strict=False)
+                    points=actx.np.reshape(
+                        flatten(target_discr.nodes(), actx),
+                        (target_discr.ambient_dim, -1)
+                        )
                     )
 
         return TargetInfo(
@@ -566,8 +568,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         refine_weights.finish()
 
         tree, _ = code_getter.build_tree()(queue,
-                particles=flatten(thaw(
-                    quad_stage2_discr.nodes(), self.array_context)),
+                particles=actx.np.reshape(
+                    flatten(quad_stage2_discr.nodes(), actx),
+                    (quad_stage2_discr.ambient_dim, -1)),
                 targets=target_info.targets,
                 target_radii=target_radii,
                 max_leaf_refine_weight=lpot_source._max_leaf_refine_weight,

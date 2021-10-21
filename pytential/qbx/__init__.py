@@ -23,8 +23,7 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 
-from arraycontext import PyOpenCLArrayContext, freeze, thaw
-from meshmode.dof_array import flatten, unflatten
+from arraycontext import PyOpenCLArrayContext, thaw, flatten, unflatten
 
 from pytools import memoize_method, memoize_in, single_valued
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
@@ -683,7 +682,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
-                result = unflatten(actx, target_discr, result)
+                template_ary = thaw(target_discr.nodes()[0], actx)
+                result = unflatten(template_ary, result, actx)
 
             results.append((o.name, result))
 
@@ -779,7 +779,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         def _flat_nodes(dofdesc):
             discr = bound_expr.places.get_discretization(
                     dofdesc.geometry, dofdesc.discr_stage)
-            return freeze(flatten(thaw(discr.nodes(), actx), strict=False), actx)
+            return actx.freeze(actx.np.reshape(
+                flatten(discr.nodes(), actx), (self.ambient_dim, -1)
+                ))
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_expansion_radii"))
@@ -788,7 +790,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     bound_expr.places,
                     sym.expansion_radii(self.ambient_dim, dofdesc=dofdesc),
                     )(actx)
-            return freeze(flatten(radii), actx)
+            return actx.freeze(flatten(radii, actx))
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_centers"))
@@ -797,11 +799,19 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     sym.expansion_centers(
                         self.ambient_dim, qbx_forced_limit, dofdesc=dofdesc),
                     )(actx)
-            return freeze(flatten(centers), actx)
+            return actx.freeze(actx.np.reshape(
+                flatten(centers, actx), (self.ambient_dim, -1)
+                ))
 
         kernel_args = {}
         for arg_name, arg_expr in insn.kernel_arguments.items():
-            kernel_args[arg_name] = flatten(evaluate(arg_expr), strict=False)
+            value = evaluate(arg_expr)
+
+            if isinstance(value, np.ndarray):
+                kernel_args[arg_name] = actx.np.reshape(
+                        flatten(value, actx), (value.size, -1))
+            else:
+                kernel_args[arg_name] = flatten(value, actx)
 
         flat_strengths = _get_flat_strengths_from_densities(
                 actx, bound_expr.places, evaluate, insn.densities,
@@ -868,7 +878,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             for i, o in outputs:
                 result = output_for_each_kernel[o.target_kernel_index]
                 if isinstance(target_discr, Discretization):
-                    result = unflatten(actx, target_discr, result)
+                    template_ary = thaw(target_discr.nodes()[0], actx)
+                    result = unflatten(template_ary, result, actx)
 
                 results[i] = (o.name, result)
 
@@ -944,7 +955,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             for i, o in outputs:
                 result = output_for_each_kernel[o.target_kernel_index]
                 if isinstance(target_discr, Discretization):
-                    result = unflatten(actx, target_discr, result)
+                    template_ary = thaw(target_discr.nodes()[0], actx)
+                    result = unflatten(template_ary, result, actx)
 
                 results[i] = (o.name, result)
 
@@ -967,8 +979,7 @@ def _get_flat_strengths_from_densities(
             )(actx)
     strength_vecs = [waa * evaluate(density) for density in densities]
 
-    from meshmode.dof_array import flatten
-    return [flatten(strength) for strength in strength_vecs]
+    return [flatten(strength, actx) for strength in strength_vecs]
 
 # }}}
 
