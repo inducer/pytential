@@ -621,7 +621,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # FIXME don't compute *all* output kernels on all targets--respect that
         # some target discretizations may only be asking for derivatives (e.g.)
 
-        flat_strengths = _get_flat_strengths_from_densities(
+        flat_strengths = get_flat_strengths_from_densities(
                 actx, bound_expr.places, evaluate, insn.densities,
                 dofdesc=insn.source)
 
@@ -682,7 +682,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
-                template_ary = thaw(target_discr.nodes()[0], actx)
+                template_ary = actx.np.astype(
+                        thaw(target_discr.nodes()[0], actx),
+                        result.dtype)
+
                 result = unflatten(template_ary, result, actx)
 
             results.append((o.name, result))
@@ -803,17 +806,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 flatten(centers, actx), (self.ambient_dim, -1)
                 ))
 
-        kernel_args = {}
-        for arg_name, arg_expr in insn.kernel_arguments.items():
-            value = evaluate(arg_expr)
-
-            if isinstance(value, np.ndarray):
-                kernel_args[arg_name] = actx.np.reshape(
-                        flatten(value, actx), (value.size, -1))
-            else:
-                kernel_args[arg_name] = flatten(value, actx)
-
-        flat_strengths = _get_flat_strengths_from_densities(
+        from pytential.source import evaluate_kernel_arguments
+        flat_kernel_args = evaluate_kernel_arguments(
+                actx, evaluate, insn.kernel_arguments, flat=True)
+        flat_strengths = get_flat_strengths_from_densities(
                 actx, bound_expr.places, evaluate, insn.densities,
                 dofdesc=insn.source)
 
@@ -873,12 +869,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     centers=_flat_centers(target_name, qbx_forced_limit),
                     strengths=flat_strengths,
                     expansion_radii=_flat_expansion_radii(target_name),
-                    **kernel_args)
+                    **flat_kernel_args)
 
             for i, o in outputs:
                 result = output_for_each_kernel[o.target_kernel_index]
                 if isinstance(target_discr, Discretization):
-                    template_ary = thaw(target_discr.nodes()[0], actx)
+                    template_ary = actx.np.astype(
+                            thaw(target_discr.nodes()[0], actx),
+                            result.dtype)
                     result = unflatten(template_ary, result, actx)
 
                 results[i] = (o.name, result)
@@ -902,7 +900,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     targets=flat_target_nodes,
                     sources=flat_source_nodes,
                     strength=flat_strengths,
-                    **kernel_args)
+                    **flat_kernel_args)
 
             target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
             geo_data = self.qbx_fmm_geometry_data(
@@ -936,7 +934,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
             qbx_center_numbers.finish()
 
-            tgt_subset_kwargs = kernel_args.copy()
+            tgt_subset_kwargs = flat_kernel_args.copy()
             for i, res_i in enumerate(output_for_each_kernel):
                 tgt_subset_kwargs[f"result_{i}"] = res_i
 
@@ -970,7 +968,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
 
-def _get_flat_strengths_from_densities(
+def get_flat_strengths_from_densities(
         actx, places, evaluate, densities, dofdesc=None):
     from pytential import bind, sym
     waa = bind(

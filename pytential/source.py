@@ -24,6 +24,7 @@ import numpy as np
 import pyopencl as cl
 
 from pytools import memoize_in
+from arraycontext import thaw, flatten, unflatten
 
 from sumpy.fmm import UnableToCollectTimingData
 
@@ -82,6 +83,26 @@ class _SumpyP2PMixin:
 
 
 # {{{ point potential source
+
+def evaluate_kernel_arguments(actx, evaluate, kernel_arguments, flat=True):
+    from meshmode.dof_array import DOFArray
+
+    kernel_args = {}
+    for arg_name, arg_expr in kernel_arguments.items():
+        value = evaluate(arg_expr)
+
+        if flat:
+            if isinstance(value, np.ndarray):
+                value = actx.np.reshape(flatten(value, actx), (value.size, -1))
+            elif isinstance(value, DOFArray):
+                value = flatten(value, actx)
+            else:
+                pass
+
+        kernel_args[arg_name] = value
+
+    return kernel_args
+
 
 class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
     """
@@ -158,10 +179,8 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
         p2p = None
 
-        kernel_args = {}
-        for arg_name, arg_expr in insn.kernel_arguments.items():
-            kernel_args[arg_name] = evaluate(arg_expr)
-
+        kernel_args = evaluate_kernel_arguments(
+                actx, evaluate, insn.kernel_arguments, flat=False)
         strengths = [evaluate(density) for density in insn.densities]
 
         # FIXME: Do this all at once
@@ -175,7 +194,6 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                 target_kernels=insn.target_kernels)
 
-            from arraycontext import thaw, flatten, unflatten
             evt, output_for_each_kernel = p2p(actx.queue,
                     targets=actx.np.reshape(
                         flatten(target_discr.nodes(), actx),
@@ -287,14 +305,9 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         # This contains things like the Helmholtz parameter k or
         # the normal directions for double layers.
 
-        queue = actx.queue
-
         def reorder_sources(source_array):
             if isinstance(source_array, cl.array.Array):
-                return source_array[].with_queue(None)
-                        .with_queue(queue)
-                        [tree_user_source_ids]
-                        .with_queue(None))
+                return source_array[tree_user_source_ids].with_queue(None)
             else:
                 return source_array
 
@@ -302,7 +315,8 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         source_extra_kwargs = {}
 
         from sumpy.tools import gather_arguments, gather_source_arguments
-        from arraycontext import flatten, map_array_container
+        from arraycontext import map_array_container
+        from meshmode.dof_array import DOFArray
 
         for func, var_dict in [
                 (gather_arguments, kernel_extra_kwargs),
@@ -311,11 +325,15 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
             for arg in func(target_kernels):
                 value = evaluator(arguments[arg.name])
                 if isinstance(value, np.ndarray):
-                    value = actx.np.reshape(flatten(value, actx), (value.size, -1))
+                    value = map_array_container(
+                            lambda ary: reorder_sources(flatten(value, actx)),
+                            value)
+                elif isinstance(value, DOFArray):
+                    value = reorder_sources(flatten(value, actx))
                 else:
-                    value = flatten(value, actx)
+                    pass
 
-                var_dict[arg.name] = reorder_sources(value)
+                var_dict[arg.name] = value
 
         return kernel_extra_kwargs, source_extra_kwargs
 

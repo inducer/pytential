@@ -568,8 +568,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         refine_weights.finish()
 
         tree, _ = code_getter.build_tree()(queue,
-                particles=actx.np.reshape(
-                    flatten(quad_stage2_discr.nodes(), actx),
+                particles=self.array_context.np.reshape(
+                    flatten(quad_stage2_discr.nodes(), self.array_context),
                     (quad_stage2_discr.ambient_dim, -1)),
                 targets=target_info.targets,
                 target_radii=target_radii,

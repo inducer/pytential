@@ -276,19 +276,20 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
         return bind(discr, sym.interleaved_expansion_centers(
             discr.ambient_dim))(actx)
 
+    def _flatten_nodes(ary):
+        if isinstance(ary, np.ndarray):
+            return actx.np.reshape(flatten(ary, actx), (ary.size, -1))
+        else:
+            assert ary.shape[0] == density_discr.ambient_dim
+            return ary
+
     stage1_density_discr = stage1_density_discrs[0]
     density_discr = density_discrs[0]
 
     from arraycontext import flatten
-    sources = actx.np.reshape(
-            flatten(density_discr.nodes(), actx),
-            (density_discr.ambient_dim, -1))
-    centers = actx.np.reshape(
-            flatten(_make_centers(stage1_density_discr), actx),
-            (stage1_density_discr.ambient_dim, -1))
-    targets = [
-            actx.np.reshape(flatten(tgt.nodes(), actx), (tgt.ambient_dim, -1))
-            for tgt in targets_list]
+    sources =_flatten_nodes(density_discr.nodes())
+    centers = _flatten_nodes(_make_centers(stage1_density_discr))
+    targets = [_flatten_nodes(tgt.nodes()) for tgt in targets_list]
 
     queue = actx.queue
     particles = tuple(

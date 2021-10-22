@@ -171,7 +171,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                         flatten(target_discr.nodes(), actx),
                         (target_discr.ambient_dim, -1)),
                     sources=actx.np.reshape(
-                        flatten(self.density_discr.nodes(), actx)
+                        flatten(self.density_discr.nodes(), actx),
                         (self.density_discr.ambient_dim, -1)),
                     strength=flat_strengths, **kernel_args)
 

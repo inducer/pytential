@@ -78,7 +78,7 @@ def partition_by_nodes(
 
         tree, _ = builder(actx.queue,
                 particles=actx.np.reshape(
-                    flatten(discr.nodes(), actx)
+                    flatten(discr.nodes(), actx),
                     (discr.ambient_dim, -1)),
                 max_particles_in_box=max_particles_in_box,
                 kind=tree_kind)

@@ -41,29 +41,27 @@ def is_zero(x):
 
 def _get_layer_potential_args(actx, places, expr, context=None, include_args=None):
     """
-    :arg mapper: a :class:`~pytential.symbolic.matrix.MatrixBuilderBase`.
-    :arg expr: symbolic layer potential expression.
-
-    :return: a mapping of kernel arguments evaluated by the *mapper*.
+    :arg expr: symbolic layer potential expression containing the kernel arguments.
+    :arg include_args: subset of the kernel arguments to evaluate.
     """
+
     from pytential import bind
     if context is None:
         context = {}
 
-    kernel_args = {}
-    for arg_name, arg_expr in expr.kernel_arguments.items():
-        if include_args is not None and arg_name not in include_args:
-            continue
+    if include_args is not None:
+        kernel_arguments = {
+                k: v for k, v in expr.kernel_arguments.items()
+                if k in include_args
+                }
+    else:
+        kernel_arguments = expr.kernel_arguments
 
-        value = bind(places, arg_expr)(actx, **context)
-        if isinstance(value, np.ndarray):
-            value = actx.np.reshape(flatten(value, actx), (value.size, -1))
-        else:
-            value = flatten(value, actx)
-
-        kernel_args[arg_name] = value
-
-    return kernel_args
+    from pytential.source import evaluate_kernel_arguments
+    return evaluate_kernel_arguments(
+            actx,
+            lambda expr: bind(places, expr)(actx, **context),
+            kernel_arguments, flat=True)
 
 # }}}
 
@@ -237,9 +235,9 @@ class MatrixBuilderBase(EvaluationMapperBase):
         else:
             actx = self.array_context
 
-            rec_arg = actx.from_numpy(rec_arg, actx)
+            rec_arg = actx.from_numpy(rec_arg)
             result = getattr(actx.np, expr.function.name)(rec_arg)
-            return actx.to_numpy(flatten(result, actx), actx)
+            return actx.to_numpy(flatten(result, actx))
 
     # }}}
 
