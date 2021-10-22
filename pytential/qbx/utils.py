@@ -287,7 +287,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     density_discr = density_discrs[0]
 
     from arraycontext import flatten
-    sources =_flatten_nodes(density_discr.nodes())
+    sources = _flatten_nodes(density_discr.nodes())
     centers = _flatten_nodes(_make_centers(stage1_density_discr))
     targets = [_flatten_nodes(tgt.nodes()) for tgt in targets_list]
 

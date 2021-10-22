@@ -525,7 +525,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
 
         tunnel_radius_by_source = flatten(
-                bind(places,
+                bind(
+                    places,
                     sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc),
                     )(self.array_context),
                 self.array_context)
@@ -724,7 +725,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
 
         tunnel_radius_by_source = flatten(
-                bind(places,
+                bind(
+                    places,
                     sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc),
                     )(self.array_context),
                 self.array_context)

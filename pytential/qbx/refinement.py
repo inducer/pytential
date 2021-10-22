@@ -313,7 +313,7 @@ class RefinerWrangler(TreeWranglerBase):
             bind(stage1_density_discr,
                 sym.expansion_radii(stage1_density_discr.ambient_dim,
                     granularity=sym.GRANULARITY_CENTER))(self.array_context),
-                self.array_context)
+            self.array_context)
 
         evt = knl(
             *unwrap_args(

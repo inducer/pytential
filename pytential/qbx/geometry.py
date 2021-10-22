@@ -26,8 +26,6 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 
 from pytools import memoize_method, log_process
-from pytools.obj_array import obj_array_vectorize
-
 from arraycontext import PyOpenCLArrayContext, flatten
 
 from boxtree.tools import DeviceDataRecord
