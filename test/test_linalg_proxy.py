@@ -26,6 +26,7 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
+from arraycontext import thaw, flatten, unflatten
 from pytential import bind, sym
 from pytential import GeometryCollection
 from pytential.linalg import ProxyGenerator, QBXProxyGenerator
@@ -64,8 +65,9 @@ def plot_proxy_geometry(
     pt.clf()
 
     if ambient_dim == 2:
-        from meshmode.dof_array import flatten_to_numpy
-        sources = np.stack(flatten_to_numpy(actx, discr.nodes()))
+        sources = actx.to_numpy(
+                flatten(discr.nodes(), actx)
+                ).reshape(ambient_dim, -1)
 
         if pxy is not None:
             proxies = np.stack(pxy.points)
@@ -73,15 +75,15 @@ def plot_proxy_geometry(
             pxyranges = pxy.indices.ranges
 
         if with_qbx_centers:
-            ci = np.stack(flatten_to_numpy(actx,
-                bind(places, sym.expansion_centers(ambient_dim, -1))(actx)
-                ))
-            ce = np.stack(flatten_to_numpy(actx,
-                bind(places, sym.expansion_centers(ambient_dim, +1))(actx)
-                ))
-            r = flatten_to_numpy(actx,
-                bind(places, sym.expansion_radii(ambient_dim))(actx)
-                )
+            ci = actx.to_numpy(flatten(
+                bind(places, sym.expansion_centers(ambient_dim, -1))(actx),
+                actx)).reshape(ambient_dim, -1)
+            ce = actx.to_numpy(flatten(
+                bind(places, sym.expansion_centers(ambient_dim, +1))(actx),
+                actx)).reshape(ambient_dim, -1)
+            r = actx.to_numpy(flatten(
+                bind(places, sym.expansion_radii(ambient_dim))(actx),
+                actx))
 
         fig = pt.figure(figsize=(10, 8), dpi=300)
         if indices.indices.shape[0] != discr.ndofs:
@@ -120,8 +122,8 @@ def plot_proxy_geometry(
             isrc = indices.block_indices(i)
             marker[isrc] = 10.0 * (i + 1.0)
 
-        from meshmode.dof_array import unflatten_from_numpy
-        marker_dev = unflatten_from_numpy(actx, discr, marker)
+        template_ary = thaw(discr.nodes()[0], actx)
+        marker_dev = unflatten(template_ary, actx.from_numpy(marker), actx)
 
         vis = make_visualizer(actx, discr)
         vis.write_vtk_file(f"test_proxy_geometry_{suffix}.vtu", [
@@ -137,7 +139,7 @@ def plot_proxy_geometry(
                 marker[indices.indices] = 0.0
                 marker[isrc] = -42.0
                 marker[inbr] = +42.0
-                marker_dev = unflatten_from_numpy(actx, discr, marker)
+                marker_dev = unflatten(template_ary, actx.from_numpy(marker), actx)
 
                 vis.write_vtk_file(
                         f"test_proxy_geometry_{suffix}_neighbor_{i:04d}.vtu",
@@ -264,10 +266,11 @@ def test_proxy_generator(actx_factory, case,
             radius_factor=case.proxy_radius_factor)
     pxy = generator(actx, places.auto_source, srcindices).to_numpy(actx)
 
-    from meshmode.dof_array import flatten_to_numpy
     pxypoints = np.stack(pxy.points)
     pxycenters = np.stack(pxy.centers)
-    sources = np.stack(flatten_to_numpy(actx, density_discr.nodes()))
+    sources = actx.to_numpy(
+            flatten(density_discr.nodes(), actx)
+            ).reshape(places.ambient_dim, -1)
 
     for i in range(srcindices.nblocks):
         isrc = pxy.srcindices.block_indices(i)
@@ -337,10 +340,11 @@ def test_neighbor_points(actx_factory, case,
     from pytential.linalg import gather_block_neighbor_points
     nbrindices = gather_block_neighbor_points(actx, density_discr, pxy)
 
-    from meshmode.dof_array import flatten_to_numpy
     pxy = pxy.to_numpy(actx)
     pxycenters = np.stack(pxy.centers)
-    nodes = np.vstack(flatten_to_numpy(actx, density_discr.nodes()))
+    nodes = actx.to_numpy(
+            flatten(density_discr.nodes(), actx)
+            ).reshape(places.ambient_dim, -1)
 
     for i in range(srcindices.nblocks):
         isrc = pxy.srcindices.block_indices(i)

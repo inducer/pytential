@@ -25,8 +25,8 @@ import pytest
 import numpy as np
 import numpy.linalg as la
 
+from arraycontext import flatten
 from meshmode.discretization.visualization import make_visualizer
-from meshmode.dof_array import flatten_to_numpy
 
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel, BiharmonicKernel
 
@@ -148,8 +148,12 @@ def run_int_eq_test(actx,
 
         # show geometry, centers, normals
         if ambient_dim == 2:
-            nodes = flatten_to_numpy(actx, density_discr.nodes())
-            normals = flatten_to_numpy(actx, normals)
+            nodes = actx.to_numpy(
+                    flatten(density_discr.nodes(), actx)
+                    ).reshape(ambient_dim, -1)
+            normals = actx.to_numpy(
+                    flatten(normals, actx)
+                    ).reshape(ambient_dim, -1)
 
             pt.plot(nodes[0], nodes[1], "x-")
             pt.quiver(nodes[0], nodes[1], normals[0], normals[1])
@@ -287,9 +291,9 @@ def run_int_eq_test(actx,
 
         err = test_via_bdry - test_direct
 
-        err = flatten_to_numpy(actx, err, strict=False)
-        test_direct = flatten_to_numpy(actx, test_direct, strict=False)
-        test_via_bdry = flatten_to_numpy(actx, test_via_bdry, strict=False)
+        err = actx.to_numpy(flatten(err, actx))
+        test_direct = actx.to_numpy(flatten(test_direct, actx))
+        test_via_bdry = actx.to_numpy(flatten(test_via_bdry, actx))
 
         # {{{ remove effect of net source charge
 
@@ -330,8 +334,8 @@ def run_int_eq_test(actx,
                         actx, charges=source_charges_dev, **case.knl_concrete_kwargs)
 
         grad_err = grad_from_src - grad_ref
-        grad_ref = flatten_to_numpy(actx, grad_ref[0])
-        grad_err = flatten_to_numpy(actx, grad_err[0])
+        grad_ref = actx.to_numpy(flatten(grad_ref[0], actx))
+        grad_err = actx.to_numpy(flatten(grad_err[0], actx))
 
         rel_grad_err_inf = la.norm(grad_err, np.inf) / la.norm(grad_ref, np.inf)
         logger.info("rel_grad_err_inf: %.5e", rel_grad_err_inf)
@@ -356,8 +360,8 @@ def run_int_eq_test(actx,
                 auto_where=("point_source", case.name))(
                         actx, charges=source_charges_dev, **case.knl_concrete_kwargs)
 
-        tang_deriv_from_src = flatten_to_numpy(actx, tang_deriv_from_src)
-        tang_deriv_ref = flatten_to_numpy(actx, tang_deriv_ref)
+        tang_deriv_from_src = actx.to_numpy(flatten(tang_deriv_from_src, actx))
+        tang_deriv_ref = actx.to_numpy(flatten(tang_deriv_ref, actx))
         td_err = tang_deriv_from_src - tang_deriv_ref
 
         if visualize:

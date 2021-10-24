@@ -25,7 +25,7 @@ from functools import partial
 
 import numpy as np
 
-from arraycontext import thaw
+from arraycontext import thaw, flatten
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
 import meshmode.mesh.generation as mgen
@@ -373,8 +373,7 @@ def test_unregularized_with_ones_kernel(actx_factory):
             auto_where=(places.auto_source, "target_non_self"))(
                     actx, sigma=sigma)
 
-    from meshmode.dof_array import flatten
-    assert np.allclose(actx.to_numpy(flatten(result_self)), 2 * np.pi)
+    assert np.allclose(actx.to_numpy(flatten(result_self, actx)), 2 * np.pi)
     assert np.allclose(actx.to_numpy(result_nonself), 2 * np.pi)
 
 

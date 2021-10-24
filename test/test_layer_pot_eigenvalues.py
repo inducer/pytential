@@ -25,7 +25,7 @@ from functools import partial
 
 import numpy as np
 
-from arraycontext import thaw
+from arraycontext import thaw, flatten, unflatten
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
 import meshmode.mesh.generation as mgen
@@ -69,6 +69,7 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
 
     actx = actx_factory()
 
+    ambient_dim = 2
     target_order = 8
 
     from meshmode.discretization import Discretization
@@ -113,7 +114,6 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
         places = GeometryCollection(qbx)
 
         density_discr = places.get_discretization(places.auto_source.geometry)
-        from meshmode.dof_array import flatten
         nodes = thaw(density_discr.nodes(), actx)
 
         if visualize:
@@ -123,9 +123,12 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
             normals = bind(places,
                     sym.normal(qbx.ambient_dim))(actx).as_vector(object)
 
-            nodes_h = np.array([actx.to_numpy(axis) for axis in flatten(nodes)])
-            centers_h = np.array([actx.to_numpy(axis) for axis in flatten(centers)])
-            normals_h = np.array([actx.to_numpy(axis) for axis in flatten(normals)])
+            nodes_h = actx.to_numpy(
+                    flatten(nodes, actx)).reshape(ambient_dim, -1)
+            centers_h = actx.to_numpy(
+                    flatten(centers, actx)).reshape(ambient_dim, -1)
+            normals_h = actx.to_numpy(
+                    flatten(normals, actx)).reshape(ambient_dim, -1)
 
             pt.plot(nodes_h[0], nodes_h[1], "x-")
             pt.plot(centers_h[0], centers_h[1], "o")
@@ -160,9 +163,12 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
         s_sigma_ref = s_eigval*J*sigma
 
         if 0:
-            #pt.plot(s_sigma.get(), label="result")
-            #pt.plot(s_sigma_ref.get(), label="ref")
-            pt.plot(actx.to_numpy(flatten(s_sigma_ref - s_sigma)), label="err")
+            s_sigma_h = actx.to_numpy(flatten(s_sigma, actx))
+            s_sigma_ref_h = actx.to_numpy(flatten(s_sigma_ref, actx))
+
+            # pt.plot(s_sigma_h, label="Result")
+            # pt.plot(s_sigma_ref_h, label="Reference")
+            pt.plot(s_sigma_ref_h - s_sigma_h, label="Error")
             pt.legend()
             pt.show()
 
@@ -189,8 +195,8 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
         d_sigma_ref = d_eigval*sigma
 
         if 0:
-            pt.plot(actx.to_numpy(flatten(d_sigma)), label="result")
-            pt.plot(actx.to_numpy(flatten(d_sigma_ref)), label="ref")
+            pt.plot(actx.to_numpy(flatten(d_sigma, actx)), label="Result")
+            pt.plot(actx.to_numpy(flatten(d_sigma_ref, actx)), label="Reference")
             pt.legend()
             pt.show()
 
@@ -293,20 +299,19 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
                 )
         places = GeometryCollection(qbx)
 
-        from meshmode.dof_array import flatten, unflatten
-
         density_discr = places.get_discretization(places.auto_source.geometry)
         nodes = thaw(density_discr.nodes(), actx)
         r = actx.np.sqrt(nodes[0]*nodes[0] + nodes[1]*nodes[1] + nodes[2]*nodes[2])
         phi = actx.np.arccos(nodes[2]/r)
         theta = actx.np.arctan2(nodes[0], nodes[1])
 
-        ymn = unflatten(actx, density_discr,
+        ymn = unflatten(theta,
                 actx.from_numpy(
                     special.sph_harm(
                         mode_m, mode_n,
-                        actx.to_numpy(flatten(theta)),
-                        actx.to_numpy(flatten(phi)))))
+                        actx.to_numpy(flatten(theta, actx)),
+                        actx.to_numpy(flatten(phi, actx)))),
+                    actx)
 
         from sumpy.kernel import LaplaceKernel
         lap_knl = LaplaceKernel(3)
