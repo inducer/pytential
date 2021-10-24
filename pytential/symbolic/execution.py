@@ -487,7 +487,9 @@ class MatVecOp:
             if isinstance(discr, Discretization):
                 from arraycontext import unflatten
                 template_ary = thaw(discr.nodes()[0], self.array_context)
-                component = unflatten(template_ary, component, self.array_context)
+                component = unflatten(
+                        template_ary, component, self.array_context,
+                        strict=False)
 
             components.append(component)
 

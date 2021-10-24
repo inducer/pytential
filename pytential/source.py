@@ -205,7 +205,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
             result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
                 template_ary = thaw(target_discr.nodes()[0], actx)
-                result = unflatten(template_ary, result, actx)
+                result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))
 
