@@ -117,8 +117,8 @@ def main(mesh_name="torus", visualize=False):
     source = np.array([rout, 0, 0])
 
     def u_incoming_func(x):
-        x = actx.to_numpy(flatten(x, actx)).reshape(x.size, -1)
-        dists = 1.0/la.norm(x - source[:, None], axis=0)
+        x_flat = actx.to_numpy(flatten(x, actx)).reshape(x.size, -1)
+        dists = 1.0/la.norm(x_flat - source[:, None], axis=0)
 
         return unflatten(x[0], actx.from_numpy(dists), actx)
 
