@@ -86,12 +86,12 @@ def main(mesh_name="ellipsoid"):
 
     sigma = actx.np.cos(mode_nr*angle)
     if 0:
-        from meshmode.dof_array import flatten, unflatten
-        sigma = flatten(0 * angle)
+        from arraycontext import flatten, unflatten
+        sigma = flatten(0 * angle, actx)
         from random import randrange
         for _ in range(5):
             sigma[randrange(len(sigma))] = 1
-        sigma = unflatten(actx, density_discr, sigma)
+        sigma = unflatten(angle, sigma, actx)
 
     if isinstance(kernel, HelmholtzKernel):
         for i, elem in np.ndenumerate(sigma):

@@ -82,12 +82,12 @@ def main(curve_fn=starfish, visualize=True):
 
     sigma = actx.np.cos(mode_nr*angle)
     if 0:
-        from meshmode.dof_array import flatten, unflatten
-        sigma = flatten(0 * angle)
+        from arraycontext import flatten, unflatten
+        sigma = flatten(0 * angle, actx)
         from random import randrange
         for _ in range(5):
             sigma[randrange(len(sigma))] = 1
-        sigma = unflatten(actx, density_discr, sigma)
+        sigma = unflatten(angle, sigma, actx)
 
     if isinstance(kernel, HelmholtzKernel):
         for i, elem in np.ndenumerate(sigma):
@@ -121,11 +121,13 @@ def main(curve_fn=starfish, visualize=True):
     if enable_mayavi:
         # {{{ plot boundary field
 
-        from meshmode.dof_array import flatten_to_numpy
+        from arraycontext import flatten
 
-        fld_on_bdry = flatten_to_numpy(
-                actx, bound_bdry_op(actx, sigma=sigma, k=k))
-        nodes_host = flatten_to_numpy(actx, density_discr.nodes())
+        fld_on_bdry = actx.to_numpy(
+                flatten(bound_bdry_op(actx, sigma=sigma, k=k), actx))
+        nodes_host = actx.to_numpy(
+                flatten(density_discr.nodes(), actx)
+                ).reshape(density_discr.ambient_dim, -1)
 
         mlab.points3d(nodes_host[0], nodes_host[1],
                 fld_on_bdry.real, scale_factor=0.03)
