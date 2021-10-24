@@ -307,7 +307,9 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
 
         def reorder_sources(source_array):
             if isinstance(source_array, cl.array.Array):
-                return source_array[tree_user_source_ids].with_queue(None)
+                return actx.freeze(
+                        actx.thaw(source_array)[tree_user_source_ids]
+                        )
             else:
                 return source_array
 
@@ -325,9 +327,9 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
             for arg in func(target_kernels):
                 value = evaluator(arguments[arg.name])
                 if isinstance(value, np.ndarray):
-                    value = map_array_container(
-                            lambda ary: reorder_sources(flatten(value, actx)),
-                            value)
+                    value = actx.np.stack(map_array_container(
+                            lambda ary: reorder_sources(flatten(ary, actx)),
+                            value))
                 elif isinstance(value, DOFArray):
                     value = reorder_sources(flatten(value, actx))
                 else:

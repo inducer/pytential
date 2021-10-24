@@ -126,9 +126,10 @@ def test_off_surface_eval(actx_factory, use_fmm, visualize=False):
     fld_in_vol = bind(places, op)(actx, sigma=sigma)
     fld_in_vol_exact = -1
 
-    err = actx.np.fabs(fld_in_vol - fld_in_vol_exact)
-    linf_err = actx.to_numpy(err).max()
-    print("l_inf error:", linf_err)
+    linf_err = actx.to_numpy(
+            actx.np.linalg.norm(fld_in_vol - fld_in_vol_exact, ord=np.inf)
+            )
+    logger.info("l_inf error: %.12e", linf_err)
 
     if visualize:
         fplot.show_scalar_in_matplotlib(actx.to_numpy(fld_in_vol))
