@@ -311,7 +311,7 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
                         mode_m, mode_n,
                         actx.to_numpy(flatten(theta, actx)),
                         actx.to_numpy(flatten(phi, actx)))),
-                    actx)
+                    actx, strict=False)
 
         from sumpy.kernel import LaplaceKernel
         lap_knl = LaplaceKernel(3)

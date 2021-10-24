@@ -161,16 +161,17 @@ def test_build_matrix(actx_factory, k, curve_fn, op_type, visualize=False):
         if isinstance(sym_u, np.ndarray):
             u = np.random.randn(len(sym_u), density_discr.ndofs)
             u_dev = make_obj_array([
-                unflatten(template_ary, ui, actx) for ui in u
+                unflatten(template_ary, actx.from_numpy(ui), actx, strict=False)
+                for ui in u
                 ])
         else:
             u = np.random.randn(density_discr.ndofs)
-            u_dev = unflatten(template_ary, u, actx)
+            u_dev = unflatten(template_ary, actx.from_numpy(u), actx, strict=False)
 
         res_matvec = actx.to_numpy(flatten(
             bound_op(actx, u=u_dev, **case.knl_concrete_kwargs),
             actx))
-        res_mat = mat @ u
+        res_mat = mat @ u.ravel()
 
         abs_err = la.norm(res_mat - res_matvec, np.inf)
         rel_err = abs_err / la.norm(res_matvec, np.inf)

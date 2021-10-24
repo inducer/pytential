@@ -370,9 +370,12 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
 
         # }}}
 
-        u_dev = unflatten(normal[0], actx.from_numpy(u), actx)
-        dn_u_dev = unflatten(normal[0], actx.from_numpy(dn_u), actx)
-        grad_u_dev = unflatten(normal, actx.from_numpy(grad_u.ravel()), actx)
+        u_dev = unflatten(
+                normal[0], actx.from_numpy(u), actx, strict=False)
+        dn_u_dev = unflatten(
+                normal[0], actx.from_numpy(dn_u), actx, strict=False)
+        grad_u_dev = unflatten(
+                normal, actx.from_numpy(grad_u.ravel()), actx, strict=False)
 
         key = (case.qbx_order, case.geometry.mesh_name, resolution,
                 case.expr.zero_op_name)
