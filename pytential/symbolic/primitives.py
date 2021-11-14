@@ -851,10 +851,15 @@ def _small_mat_eigenvalues(mat):
         return make_obj_array([mat[0, 0]])
     elif m == 2:
         (a, b), (c, d) = mat
+        tr_mat = cse(a + d)
+        det_mat = a * d - b * c
+
+        # solutions to lambda**2 - tr(A) * lambda + det(A)
+        sqrt_discriminant = cse(sqrt(tr_mat**2 - 4*det_mat))
         return make_obj_array([
-                -(sqrt(d**2-2*a*d+4*b*c+a**2)-d-a)/2,
-                 (sqrt(d**2-2*a*d+4*b*c+a**2)+d+a)/2
-                ])
+            (tr_mat - sqrt_discriminant) / 2,
+            (tr_mat + sqrt_discriminant) / 2,
+            ])
     else:
         raise NotImplementedError(
                 "eigenvalue formula for %dx%d matrices" % (m, n))
