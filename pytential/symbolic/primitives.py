@@ -827,7 +827,9 @@ def _panel_size(ambient_dim, dim=None, dofdesc=None):
 def _small_mat_inverse(mat):
     m, n = mat.shape
     if m != n:
-        raise ValueError("inverses only make sense for square matrices")
+        raise ValueError(
+                "inverses only make sense for square matrices: "
+                f"got a {m}x{n} matrix")
 
     if m == 1:
         return np.array([[1/mat[0, 0]]], dtype=object)
@@ -838,14 +840,15 @@ def _small_mat_inverse(mat):
             [-c, a],
             ], dtype=object)
     else:
-        raise NotImplementedError(
-                "inverse formula for %dx%d matrices" % (m, n))
+        raise NotImplementedError(f"inverse formula for {m}x{n} matrices")
 
 
 def _small_mat_eigenvalues(mat):
     m, n = mat.shape
     if m != n:
-        raise ValueError("eigenvalues only make sense for square matrices")
+        raise ValueError(
+                "eigenvalues only make sense for square matrices: "
+                f"got a {m}x{n} matrix")
 
     if m == 1:
         return make_obj_array([mat[0, 0]])
@@ -861,8 +864,7 @@ def _small_mat_eigenvalues(mat):
             (tr_mat + sqrt_discriminant) / 2,
             ])
     else:
-        raise NotImplementedError(
-                "eigenvalue formula for %dx%d matrices" % (m, n))
+        raise NotImplementedError(f"eigenvalue formula for {m}x{n} matrices")
 
 
 def _equilateral_parametrization_derivative_matrix(ambient_dim, dim=None,
