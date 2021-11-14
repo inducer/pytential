@@ -830,13 +830,13 @@ def _small_mat_inverse(mat):
         raise ValueError("inverses only make sense for square matrices")
 
     if m == 1:
-        return make_obj_array([1/mat[0, 0]])
+        return np.array([[1/mat[0, 0]]], dtype=object)
     elif m == 2:
         (a, b), (c, d) = mat
-        return 1/(a*d-b*c) * make_obj_array([
+        return 1/(a*d - b*c) * np.array([
             [d, -b],
             [-c, a],
-            ])
+            ], dtype=object)
     else:
         raise NotImplementedError(
                 "inverse formula for %dx%d matrices" % (m, n))
