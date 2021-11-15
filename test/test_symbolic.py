@@ -332,6 +332,68 @@ def test_node_reduction(actx_factory):
 # }}}
 
 
+# {{{ test_prepare_expr
+
+def principal_curvatures(ambient_dim, dim=None, dofdesc=None):
+    from pytential import sym
+    s_op = sym.shape_operator(ambient_dim, dim=dim, dofdesc=dofdesc)
+
+    from pytential.symbolic.primitives import _small_mat_eigenvalues
+    kappa1, kappa2 = _small_mat_eigenvalues(s_op)
+
+    from pytools.obj_array import make_obj_array
+    return make_obj_array([
+        sym.cse(kappa1, "principal_curvature_0", sym.cse_scope.DISCRETIZATION),
+        sym.cse(kappa2, "principal_curvature_1", sym.cse_scope.DISCRETIZATION),
+        ])
+
+
+def principal_directions(ambient_dim, dim=None, dofdesc=None):
+    from pytential import sym
+    s_op = sym.shape_operator(ambient_dim, dim=dim, dofdesc=dofdesc)
+
+    (s11, s12), (_, s22) = s_op
+    k1, k2 = principal_curvatures(ambient_dim, dim=dim, dofdesc=dofdesc)
+
+    from pytools.obj_array import make_obj_array
+    d1 = sym.cse(make_obj_array([s12, -(s11 - k1)]))
+    d2 = sym.cse(make_obj_array([-(s22 - k2), s12]))
+
+    form1 = sym.first_fundamental_form(ambient_dim, dim=dim, dofdesc=dofdesc)
+    return make_obj_array([
+        sym.cse(
+            d1 / sym.sqrt(d1 @ (form1 @ d1)),
+            "principal_direction_0", sym.cse_scope.DISCRETIZATION),
+        sym.cse(
+            d2 / sym.sqrt(d2 @ (form1 @ d2)),
+            "principal_direction_1", sym.cse_scope.DISCRETIZATION),
+        ])
+
+
+def test_derivative_binder_expr():
+    logging.basicConfig(level=logging.INFO)
+
+    ambient_dim = 3
+    dim = ambient_dim - 1
+
+    from pytential.symbolic.mappers import DerivativeBinder
+    d1, d2 = principal_directions(ambient_dim, dim=dim)
+    expr = (d1 @ d2 + d1 @ d1) / (d2 @ d2)
+
+    nruns = 4
+    for i in range(nruns):
+        from pytools import ProcessTimer
+        with ProcessTimer() as pd:
+            new_expr = DerivativeBinder()(expr)
+
+        logger.info("time: [%04d/%04d] bind [%s] (%s)",
+                i, nruns, pd, expr is new_expr)
+
+        assert expr is new_expr
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_symbolic.py 'test_routine()'
 
