@@ -82,7 +82,7 @@ class DebyeOperatorBase:
         self.a_cycle_names = a_cycle_names
 
         if b_cycle_names is None:
-            b_cycle_names = [f"bcyc{i}" i for i in range(genus)]
+            b_cycle_names = [f"bcyc{i}" for i in range(genus)]
         self.b_cycle_names = b_cycle_names
 
         if b_spanning_surface_names is None:
