@@ -22,15 +22,15 @@ THE SOFTWARE.
 
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, Hashable, List, Optional, Set
 
 import numpy as np
 
-from pymbolic.primitives import cse_scope, Expression
+from pymbolic.primitives import cse_scope, Expression, Variable
 from pytools import memoize_method
 from sumpy.kernel import Kernel
 
-from pytential.symbolic.primitives import DOFDescriptor
+from pytential.symbolic.primitives import DOFDescriptor, IntG
 from pytential.symbolic.mappers import IdentityMapper, DependencyMapper
 
 
@@ -328,7 +328,7 @@ def dot_dataflow_graph(code: "Code",
 # {{{ code representation
 
 class Code:
-    def __init__(self, instructions, result):
+    def __init__(self, instructions: List[Instruction], result: Variable) -> None:
         self.instructions = instructions
         self.result = result
         self.last_schedule = None
@@ -385,7 +385,6 @@ class Code:
             # not consist of just variables.
 
             for var in dm(result_expr):
-                from pymbolic.primitives import Variable
                 assert isinstance(var, Variable)
                 discardable_vars.discard(var.name)
 
@@ -465,20 +464,22 @@ class Code:
 # {{{ compiler
 
 class OperatorCompiler(IdentityMapper):
-    def __init__(self, places, prefix="_expr",
-            max_vectors_in_batch_expr=None):
-        IdentityMapper.__init__(self)
+    def __init__(self,
+            places,
+            prefix: str = "_expr",
+            max_vectors_in_batch_expr: Optional[int] = None) -> None:
+        super().__init__()
+
         self.places = places
         self.prefix = prefix
-
         self.max_vectors_in_batch_expr = max_vectors_in_batch_expr
 
-        self.code = []
-        self.expr_to_var = {}
+        self.code: List[Instruction] = []
+        self.expr_to_var: Dict[Expression, Variable] = {}
+        self.assigned_names: Set[str] = set()
+        self.group_to_operators: Dict[Hashable, Set[IntG]] = {}
 
-        self.assigned_names = set()
-
-    def op_group_features(self, expr):
+    def op_group_features(self, expr) -> Hashable:
         from pytential.symbolic.primitives import hashable_kernel_args
         lpot_source = self.places.get_geometry(expr.source.geometry)
         return (
@@ -486,14 +487,16 @@ class OperatorCompiler(IdentityMapper):
                 + hashable_kernel_args(expr.kernel_arguments))
 
     @memoize_method
-    def dep_mapper_factory(self, include_subscripts=False):
-        self.dep_mapper = DependencyMapper(
-                #include_operator_bindings=False,
+    def dep_mapper_factory(self, include_subscripts: bool = False):
+        return DependencyMapper(
+                # include_operator_bindings=False,
                 include_lookups=False,
                 include_subscripts=include_subscripts,
                 include_calls="descend_args")
 
-        return self.dep_mapper
+    @property
+    def dep_mapper(self):
+        return self.dep_mapper_factory()
 
     # {{{ top-level driver
 
@@ -501,8 +504,6 @@ class OperatorCompiler(IdentityMapper):
         # {{{ collect operators by operand
 
         from pytential.symbolic.mappers import OperatorCollector
-        from pytential.symbolic.primitives import IntG
-
         operators = [
                 op
                 for op in OperatorCollector()(expr)
@@ -517,7 +518,7 @@ class OperatorCompiler(IdentityMapper):
 
         # Traverse the expression, generate code.
 
-        result = IdentityMapper.__call__(self, expr)
+        result = super().__call__(expr)
 
         # Put the toplevel expressions into variables as well.
 
@@ -530,18 +531,18 @@ class OperatorCompiler(IdentityMapper):
 
     # {{{ variables and names
 
-    def get_var_name(self, prefix=None):
-        def generate_suffixes():
+    def get_var_name(self, prefix: Optional[str] = None) -> str:
+        def generate_suffixes() -> str:
             yield ""
             i = 2
             while True:
                 yield f"_{i}"
                 i += 1
 
-        def generate_plain_names():
+        def generate_plain_names() -> str:
             i = 0
             while True:
-                yield self.prefix + str(i)
+                yield f"{self.prefix}{i}"
                 i += 1
 
         if prefix is None:
@@ -550,20 +551,25 @@ class OperatorCompiler(IdentityMapper):
                     break
         else:
             for suffix in generate_suffixes():
-                name = prefix + suffix
+                name = f"{prefix}{suffix}"
                 if name not in self.assigned_names:
                     break
 
         self.assigned_names.add(name)
         return name
 
-    def make_assign(self, name, expr, priority):
-        return Assign(names=[name], exprs=[expr],
+    def make_assign(
+            self, name: str, expr: Expression, priority: int,
+            ) -> Assign:
+        return Assign(
+                names=[name], exprs=[expr],
                 dep_mapper_factory=self.dep_mapper_factory,
                 priority=priority)
 
-    def assign_to_new_var(self, expr, priority=0, prefix=None):
-        from pymbolic.primitives import Variable, Subscript
+    def assign_to_new_var(
+            self, expr: Expression, priority: int = 0, prefix: Optional[str] = None,
+            ) -> Variable:
+        from pymbolic.primitives import Subscript
 
         # Observe that the only things that can be legally subscripted
         # are variables. All other expressions are broken down into
