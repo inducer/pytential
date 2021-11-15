@@ -31,6 +31,8 @@ from pymbolic.mapper import (
         )
 from pymbolic.mapper.dependency import (
         DependencyMapper as DependencyMapperBase)
+from pymbolic.mapper.equality import (
+        EqualityMapper as EqualityMapperBase)
 from pymbolic.geometric_algebra.mapper import (
         CombineMapper as CombineMapperBase,
         IdentityMapper as IdentityMapperBase,
@@ -672,6 +674,80 @@ class QBXPreprocessor(IdentityMapper):
                     + expr.copy(qbx_forced_limit=-1))
         else:
             return expr
+
+# }}}
+
+
+# {{{ EqualityMapper
+
+class EqualityMapper(EqualityMapperBase):
+    def map_ones(self, expr, other) -> bool:
+        return expr.dofdesc == other.dofdesc
+
+    map_q_weight = map_ones
+
+    def map_node_coordinate_component(self, expr, other) -> bool:
+        return (
+                expr.ambient_axis == other.ambient_axis
+                and expr.dofdesc == other.dofdesc)
+
+    def map_num_reference_derivative(self, expr, other) -> bool:
+        return (
+                expr.ref_axes == other.ref_axes
+                and expr.dofdesc == other.dofdesc
+                and self.rec(expr.operand, other.operand)
+                )
+
+    def map_node_sum(self, expr, other) -> bool:
+        return self.rec(expr.operand, other.operand)
+
+    map_node_max = map_node_sum
+    map_node_min = map_node_sum
+
+    def map_elementwise_sum(self, expr, other) -> bool:
+        return (
+                expr.dofdesc == other.dofdesc
+                and self.rec(expr.operand, other.operand))
+
+    map_elementwise_max = map_elementwise_sum
+    map_elementwise_min = map_elementwise_sum
+
+    def map_int_g(self, expr, other) -> bool:
+        from pytential.symbolic.primitives import hashable_kernel_args
+        return (
+                expr.qbx_forced_limit == other.qbx_forced_limit
+                and expr.source == other.source
+                and expr.target == other.target
+                and len(expr.kernel_arguments) == len(other.kernel_arguments)
+                and len(expr.source_kernels) == len(other.source_kernels)
+                and len(expr.densities) == len(other.densities)
+                and expr.target_kernel == other.target_kernel
+                and all(knl == other_knl for knl, other_knl in zip(
+                    expr.source_kernels, other.source_kernels)
+                    )
+                and all(d == other_d for d, other_d in zip(
+                    expr.densities, other.densities))
+                and all(k == other_k
+                        and self.rec(v, other_v)
+                    for (k, v), (other_k, other_v) in zip(
+                        sorted(hashable_kernel_args(expr.kernel_arguments)),
+                        sorted(hashable_kernel_args(other.kernel_arguments))))
+                )
+
+    def map_interpolation(self, expr, other) -> bool:
+        return (
+                expr.from_dd == other.from_dd
+                and expr.to_dd == other.to_dd
+                and self.rec(expr.operand, other.operand))
+
+    def map_is_shape_class(self, expr, other) -> bool:
+        return (
+                expr.shape is other.shape,
+                expr.dofdesc == other.dofdesc
+                )
+
+    def map_error_expression(self, expr, other) -> bool:
+        return expr.message == other.message
 
 # }}}
 
