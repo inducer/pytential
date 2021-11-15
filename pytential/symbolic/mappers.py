@@ -31,7 +31,6 @@ from pymbolic.mapper import (
         )
 from pymbolic.mapper.dependency import (
         DependencyMapper as DependencyMapperBase)
-from pymbolic.geometric_algebra import componentwise
 from pymbolic.geometric_algebra.mapper import (
         CombineMapper as CombineMapperBase,
         IdentityMapper as IdentityMapperBase,
@@ -52,22 +51,50 @@ from pymbolic.geometric_algebra.mapper import (
 import pytential.symbolic.primitives as prim
 
 
+def rec_int_g_arguments(mapper, expr):
+    densities = mapper.rec(expr.densities)
+    kernel_arguments = {
+            name: mapper.rec(arg) for name, arg in expr.kernel_arguments.items()
+            }
+
+    changed = (
+            all(d is orig for d, orig in zip(densities, expr.densities))
+            and all(
+                arg is orig for arg, orig in zip(
+                    kernel_arguments.values(),
+                    expr.kernel_arguments.values()))
+            )
+
+    return densities, kernel_arguments, changed
+
+
 class IdentityMapper(IdentityMapperBase):
     def map_node_sum(self, expr):
-        return type(expr)(self.rec(expr.operand))
+        operand = self.rec(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(operand)
 
     map_node_max = map_node_sum
     map_node_min = map_node_sum
 
     def map_elementwise_sum(self, expr):
-        return type(expr)(self.rec(expr.operand), expr.dofdesc)
+        operand = self.rec(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(operand, expr.dofdesc)
 
     map_elementwise_min = map_elementwise_sum
     map_elementwise_max = map_elementwise_sum
 
     def map_num_reference_derivative(self, expr):
-        return type(expr)(expr.ref_axes, self.rec(expr.operand),
-                expr.dofdesc)
+        operand = self.rec(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(expr.ref_axes, operand, expr.dofdesc)
 
     # {{{ childless -- no need to rebuild
 
@@ -95,15 +122,20 @@ class IdentityMapper(IdentityMapperBase):
                 expr.dofdesc)
 
     def map_int_g(self, expr):
+        densities, kernel_arguments, changed = rec_int_g_arguments(self, expr)
+        if not changed:
+            return expr
+
         return expr.copy(
-                densities=self.rec(expr.densities),
-                kernel_arguments={
-                    name: self.rec(arg_expr)
-                    for name, arg_expr in expr.kernel_arguments.items()
-                    })
+                densities=densities,
+                kernel_arguments=kernel_arguments)
 
     def map_interpolation(self, expr):
-        return type(expr)(expr.from_dd, expr.to_dd, self.rec(expr.operand))
+        operand = self.rec(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(expr.from_dd, expr.to_dd, operand)
 
 
 class CombineMapper(CombineMapperBase):
@@ -167,13 +199,22 @@ class EvaluationMapper(EvaluationMapperBase):
         return expr
 
     def map_subscript(self, expr):
-        return self.rec(expr.aggregate)[self.rec(expr.index)]
+        aggregate = self.rec(expr.aggregate)
+        index = self.rec(expr.index)
+        if aggregate is expr.aggregate and index is expr.index:
+            return expr
+
+        return aggregate[index]
 
     map_q_weight = map_variable
     map_ones = map_variable
 
     def map_node_sum(self, expr):
-        return componentwise(type(expr), self.rec(expr.operand))
+        operand = self.rec(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(operand)
 
     map_node_max = map_node_sum
     map_node_min = map_node_sum
@@ -182,22 +223,29 @@ class EvaluationMapper(EvaluationMapperBase):
         return expr
 
     def map_num_reference_derivative(self, expr):
-        return componentwise(
-                lambda subexpr: type(expr)(
-                        expr.ref_axes, self.rec(subexpr), expr.dofdesc),
-                expr.operand)
+        operand = self.rec(expr.operand)
+        if operand is expr.operand:
+            return expr
+
+        return type(expr)(expr.ref_axes, operand, expr.dofdesc)
 
     def map_int_g(self, expr):
+        densities, kernel_arguments, changed = rec_int_g_arguments(self, expr)
+        if not changed:
+            return expr
+
         return expr.copy(
-                    densities=self.rec(expr.densities),
-                    kernel_arguments={
-                        name: self.rec(arg_expr)
-                        for name, arg_expr in expr.kernel_arguments.items()
-                    })
+                densities=densities,
+                kernel_arguments=kernel_arguments,
+                )
 
     def map_common_subexpression(self, expr):
+        child = self.rec(expr.child)
+        if child is expr.child:
+            return expr
+
         return prim.cse(
-                self.rec(expr.child),
+                child,
                 expr.prefix,
                 expr.scope)
 
@@ -379,8 +427,12 @@ class DerivativeTaker(Mapper):
         self.ambient_axis = ambient_axis
 
     def map_sum(self, expr):
+        children = [self.rec(child) for child in expr.children]
+        if all(child is orig for child, orig in zip(children, expr.children)):
+            return expr
+
         from pymbolic.primitives import flattened_sum
-        return flattened_sum(tuple(self.rec(child) for child in expr.children))
+        return flattened_sum(children)
 
     def map_product(self, expr):
         from pymbolic.primitives import is_constant
@@ -404,8 +456,9 @@ class DerivativeTaker(Mapper):
 
     def map_int_g(self, expr):
         from sumpy.kernel import AxisTargetDerivative
-        return expr.copy(target_kernel=AxisTargetDerivative(self.ambient_axis,
-            expr.target_kernel))
+        return expr.copy(
+                target_kernel=AxisTargetDerivative(
+                    self.ambient_axis, expr.target_kernel))
 
 
 class DerivativeSourceAndNablaComponentCollector(
@@ -420,7 +473,8 @@ class NablaComponentToUnitVector(
     pass
 
 
-class DerivativeSourceFinder(EvaluationMapper,
+class DerivativeSourceFinder(
+        EvaluationMapper,
         DerivativeSourceFinderBase):
     pass
 
