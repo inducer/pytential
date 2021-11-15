@@ -39,6 +39,23 @@ jobs:
                 build_py_project_in_conda_env
                 run_pylint "$(get_proj_name)" examples/*.py test/*.py
 
+    mypy:
+        name: Mypy
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -
+            uses: actions/setup-python@v1
+            with:
+                python-version: '3.x'
+        -   name: "Main Script"
+            run: |
+                curl -L -O https://tiker.net/ci-support-v0
+                . ./ci-support-v0
+                build_py_project_in_conda_env
+                python -m pip install mypy
+                ./run-mypy.sh
+
     docs:
         name: Documentation
         runs-on: ubuntu-latest
