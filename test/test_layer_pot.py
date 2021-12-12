@@ -447,7 +447,6 @@ def test_unregularized_off_surface_fmm_vs_direct(actx_factory):
 @pytest.mark.parametrize("relation", ["sp", "nxcurls", "div_s"])
 def test_3d_jump_relations(actx_factory, relation, visualize=False):
     # logging.basicConfig(level=logging.INFO)
-
     actx = actx_factory()
 
     if relation == "div_s":
@@ -457,25 +456,32 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
 
     qbx_order = target_order
 
+    if relation == "sp":
+        resolutions = [10, 14, 18]
+    else:
+        resolutions = [6, 10, 14]
+
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
 
-    for nel_factor in [6, 10, 14]:
+    for nel_factor in resolutions:
         from meshmode.mesh.generation import generate_torus
         mesh = generate_torus(
-                5, 2, order=target_order,
-                n_major=2*nel_factor, n_minor=nel_factor)
+                5, 2, n_major=2*nel_factor, n_minor=nel_factor,
+                order=target_order,
+                )
 
         from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \
             InterpolatoryQuadratureSimplexGroupFactory
-        pre_discr = Discretization(
+        pre_density_discr = Discretization(
                 actx, mesh,
-                InterpolatoryQuadratureSimplexGroupFactory(3))
+                InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
         from pytential.qbx import QBXLayerPotentialSource
         qbx = QBXLayerPotentialSource(
-                pre_discr, fine_order=4*target_order,
+                pre_density_discr,
+                fine_order=5*target_order,
                 qbx_order=qbx_order,
                 fmm_order=qbx_order + 5,
                 fmm_backend="fmmlib"
@@ -485,118 +491,122 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
         density_discr = places.get_discretization(places.auto_source.geometry)
 
         from sumpy.kernel import LaplaceKernel
-        knl = LaplaceKernel(3)
+        knl = LaplaceKernel(places.ambient_dim)
 
         def nxcurlS(qbx_forced_limit):
-
-            return sym.n_cross(sym.curl(sym.S(
-                knl,
-                sym.cse(sym.tangential_to_xyz(density_sym), "jxyz"),
-                qbx_forced_limit=qbx_forced_limit)))
+            sigma_sym = sym.cse(sym.tangential_to_xyz(density_sym), "jxyz")
+            return sym.n_cross(sym.curl(
+                sym.S(knl, sigma_sym, qbx_forced_limit=qbx_forced_limit)
+                ))
 
         x, y, z = thaw(density_discr.nodes(), actx)
-        m = actx.np
-
         if relation == "nxcurls":
             density_sym = sym.make_sym_vector("density", 2)
-
             jump_identity_sym = (
                     nxcurlS(+1)
-                    - (nxcurlS("avg") + 0.5*sym.tangential_to_xyz(density_sym)))
+                    - nxcurlS("avg")
+                    - 0.5*sym.tangential_to_xyz(density_sym)
+                    )
 
             # The tangential coordinate system is element-local, so we can't just
             # conjure up some globally smooth functions, interpret their values
             # in the tangential coordinate system, and be done. Instead, generate
             # an XYZ function and project it.
-            density = bind(places,
-                    sym.xyz_to_tangential(sym.make_sym_vector("jxyz", 3)))(
-                            actx,
-                            jxyz=sym.make_obj_array([
-                                m.cos(0.5*x) * m.cos(0.5*y) * m.cos(0.5*z),
-                                m.sin(0.5*x) * m.cos(0.5*y) * m.sin(0.5*z),
-                                m.sin(0.5*x) * m.cos(0.5*y) * m.cos(0.5*z),
-                                ]))
+            jxyz = sym.make_obj_array([
+                actx.np.cos(0.5*x) * actx.np.cos(0.5*y) * actx.np.cos(0.5*z),
+                actx.np.sin(0.5*x) * actx.np.cos(0.5*y) * actx.np.sin(0.5*z),
+                actx.np.sin(0.5*x) * actx.np.cos(0.5*y) * actx.np.cos(0.5*z),
+                ])
+            density = bind(
+                    places, sym.xyz_to_tangential(sym.make_sym_vector("jxyz", 3))
+                    )(actx, jxyz=jxyz)
 
         elif relation == "sp":
-
-            density = m.cos(2*x) * m.cos(2*y) * m.cos(z)
             density_sym = sym.var("density")
-
             jump_identity_sym = (
-                    sym.Sp(knl, density_sym, qbx_forced_limit=+1)
-                    - (sym.Sp(knl, density_sym, qbx_forced_limit="avg")
-                        - 0.5*density_sym))
+                    0.5 * density_sym
+                    + sym.Sp(knl, density_sym, qbx_forced_limit=+1)
+                    - sym.Sp(knl, density_sym, qbx_forced_limit="avg")
+                    )
+
+            density = actx.np.cos(2*x) * actx.np.cos(2*y) * actx.np.cos(z)
 
         elif relation == "div_s":
-
-            density = m.cos(2*x) * m.cos(2*y) * m.cos(z)
             density_sym = sym.var("density")
-
+            sigma_sym = sym.normal(places.ambient_dim).as_vector() * density_sym
             jump_identity_sym = (
-                    sym.div(sym.S(knl, sym.normal(3).as_vector()*density_sym,
-                        qbx_forced_limit="avg"))
+                    sym.div(sym.S(knl, sigma_sym, qbx_forced_limit="avg"))
                     + sym.D(knl, density_sym, qbx_forced_limit="avg"))
 
+            density = actx.np.cos(2*x) * actx.np.cos(2*y) * actx.np.cos(z)
+
         else:
-            raise ValueError("unexpected value of 'relation': %s" % relation)
+            raise ValueError(f"unexpected value of 'relation': '{relation}'")
 
         bound_jump_identity = bind(places, jump_identity_sym)
         jump_identity = bound_jump_identity(actx, density=density)
 
         h_max = actx.to_numpy(
-                bind(places, sym.h_max(qbx.ambient_dim))(actx)
+                bind(places, sym.h_max(places.ambient_dim))(actx)
                 )
         err = actx.to_numpy(
                 norm(density_discr, jump_identity, np.inf)
                 / norm(density_discr, density, np.inf))
-        logging.info("ERROR: h_max %.5e %.5e", h_max, err)
-
         eoc_rec.add_data_point(h_max, err)
+
+        logging.info("error: nel %d h_max %.5e %.5e", nel_factor, h_max, err)
 
         # {{{ visualization
 
-        if visualize and relation == "nxcurls":
+        if not visualize:
+            continue
+
+        from meshmode.discretization.visualization import make_visualizer
+        vis = make_visualizer(actx, density_discr, target_order)
+        normals = bind(
+                places, sym.normal(places.ambient_dim).as_vector()
+                )(actx)
+        error = actx.np.log10(actx.np.abs(jump_identity) + 1.0e-15)
+
+        if relation == "nxcurls":
             nxcurlS_ext = bind(places, nxcurlS(+1))(actx, density=density)
             nxcurlS_avg = bind(places, nxcurlS("avg"))(actx, density=density)
-            jtxyz = bind(places, sym.tangential_to_xyz(density_sym))(
-                    actx, density=density)
+            jtxyz = bind(
+                    places, sym.tangential_to_xyz(density_sym)
+                    )(actx, density=density)
 
-            from meshmode.discretization.visualization import make_visualizer
-            bdry_vis = make_visualizer(actx, qbx.density_discr, target_order+3)
-
-            bdry_normals = bind(places, sym.normal(3))(actx)\
-                    .as_vector(dtype=object)
-
-            bdry_vis.write_vtk_file("source-%s.vtu" % nel_factor, [
+            vis.write_vtk_file(f"source-nxcurls-{nel_factor:03d}.vtu", [
                 ("jt", jtxyz),
                 ("nxcurlS_ext", nxcurlS_ext),
                 ("nxcurlS_avg", nxcurlS_avg),
-                ("bdry_normals", bdry_normals),
+                ("bdry_normals", normals),
+                ("error", error),
                 ])
 
-        if visualize and relation == "sp":
+        elif relation == "sp":
             op = sym.Sp(knl, density_sym, qbx_forced_limit=+1)
             sp_ext = bind(places, op)(actx, density=density)
             op = sym.Sp(knl, density_sym, qbx_forced_limit="avg")
             sp_avg = bind(places, op)(actx, density=density)
 
-            from meshmode.discretization.visualization import make_visualizer
-            bdry_vis = make_visualizer(actx, qbx.density_discr, target_order+3)
-
-            bdry_normals = bind(places,
-                    sym.normal(3))(actx).as_vector(dtype=object)
-
-            bdry_vis.write_vtk_file("source-%s.vtu" % nel_factor, [
+            vis.write_vtk_file(f"source-sp-{nel_factor:03d}.vtu", [
                 ("density", density),
                 ("sp_ext", sp_ext),
                 ("sp_avg", sp_avg),
-                ("bdry_normals", bdry_normals),
+                ("bdry_normals", normals),
+                ("error", error),
+                ])
+
+        elif relation == "div_s":
+            vis.write_vtk_file(f"source-div-{nel_factor:03d}.vtu", [
+                ("density", density),
+                ("bdry_normals", normals),
+                ("error", error),
                 ])
 
         # }}}
 
-    print(eoc_rec)
-
+    logger.info("\n%s", str(eoc_rec))
     assert eoc_rec.order_estimate() >= qbx_order - 1.5
 
 # }}}
