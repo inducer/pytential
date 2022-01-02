@@ -6,7 +6,7 @@ pytential: 2D/3D Layer Potential Evaluation
     :target: https://gitlab.tiker.net/inducer/pytential/commits/main
 .. image:: https://github.com/inducer/pytential/workflows/CI/badge.svg?branch=main&event=push
     :alt: Github Build Status
-    :target: https://github.com/inducer/pytential/actions?query=branch%3Amain+workflow%3ACI+event%3Apush
+    :target: https://github.com/inducer/pytential/actions?query=branch%3Amain+workflow%3ACI
 .. image:: https://badge.fury.io/py/pytential.png
     :alt: Python Package Index Release Page
     :target: https://pypi.org/project/pytential/
