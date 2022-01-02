@@ -1,4 +1,6 @@
-numpy
+# https://github.com/numpy/numpy/issues/20709
+numpy != 1.22.0
+
 git+git://github.com/inducer/pytools.git#egg=pytools
 git+git://github.com/inducer/pymbolic.git#egg=pymbolic
 sympy
