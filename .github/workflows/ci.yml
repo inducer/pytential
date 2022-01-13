@@ -21,7 +21,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
-                . ./prepare-and-run-flake8.sh ./pytential ./test
+                . ./prepare-and-run-flake8.sh pytential test examples
 
     pylint:
         name: Pylint
