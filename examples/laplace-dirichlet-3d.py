@@ -112,15 +112,12 @@ def main(mesh_name="torus", visualize=False):
 
     # {{{ fix rhs and solve
 
-    from arraycontext import flatten, unflatten
     nodes = thaw(density_discr.nodes(), actx)
-    source = np.array([rout, 0, 0])
+    source = np.array([rout, 0, 0], dtype=object)
 
     def u_incoming_func(x):
-        x_flat = actx.to_numpy(flatten(x, actx)).reshape(x.size, -1)
-        dists = 1.0/la.norm(x_flat - source[:, None], axis=0)
-
-        return unflatten(x[0], actx.from_numpy(dists), actx)
+        dists = x - source
+        return 1.0 / actx.np.sqrt(sum(dists**2))
 
     bc = u_incoming_func(nodes)
     bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(actx, bc=bc)

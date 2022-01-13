@@ -296,8 +296,11 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         # This contains things like the Helmholtz parameter k or
         # the normal directions for double layers.
 
-        def reorder_sources(source_array):
-            if isinstance(source_array, cl.array.Array):
+        def flatten_and_reorder_sources(source_array):
+            if isinstance(source_array, DOFArray):
+                source_array = flatten(source_array, actx)
+
+            if isinstance(source_array, actx.array_types):
                 return actx.freeze(
                         actx.thaw(source_array)[tree_user_source_ids]
                         )
@@ -308,15 +311,15 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         source_extra_kwargs = {}
 
         from sumpy.tools import gather_arguments, gather_source_arguments
-        from arraycontext import map_array_container
+        from arraycontext import rec_map_array_container
 
         for func, var_dict in [
                 (gather_arguments, kernel_extra_kwargs),
                 (gather_source_arguments, source_extra_kwargs),
                 ]:
             for arg in func(target_kernels):
-                var_dict[arg.name] = map_array_container(
-                        lambda ary: reorder_sources(flatten(ary, actx)),
+                var_dict[arg.name] = rec_map_array_container(
+                        flatten_and_reorder_sources,
                         evaluator(arguments[arg.name]),
                         leaf_class=DOFArray)
 

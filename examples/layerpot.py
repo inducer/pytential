@@ -80,14 +80,16 @@ def main(curve_fn=starfish, visualize=True):
         return sym.D(kernel, sym.var("sigma"), **kwargs)
         #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None, **kwargs)
 
-    sigma = actx.np.cos(mode_nr*angle)
     if 0:
-        from arraycontext import flatten, unflatten
-        sigma = flatten(0 * angle, actx)
         from random import randrange
+        sigma = actx.zeros(density_discr.ndofs, angle.entry_dtype)
         for _ in range(5):
             sigma[randrange(len(sigma))] = 1
+
+        from arraycontext import unflatten
         sigma = unflatten(angle, sigma, actx)
+    else:
+        sigma = actx.np.cos(mode_nr*angle)
 
     if isinstance(kernel, HelmholtzKernel):
         for i, elem in np.ndenumerate(sigma):
@@ -122,7 +124,6 @@ def main(curve_fn=starfish, visualize=True):
         # {{{ plot boundary field
 
         from arraycontext import flatten
-
         fld_on_bdry = actx.to_numpy(
                 flatten(bound_bdry_op(actx, sigma=sigma, k=k), actx))
         nodes_host = actx.to_numpy(

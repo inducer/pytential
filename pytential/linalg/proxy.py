@@ -77,8 +77,11 @@ def partition_by_nodes(
 
         builder = TreeBuilder(actx.context)
 
+        from arraycontext import thaw
         tree, _ = builder(actx.queue,
-                particles=flatten(discr.nodes(), actx, leaf_class=DOFArray),
+                particles=flatten(
+                    thaw(discr.nodes(), actx), actx, leaf_class=DOFArray
+                    ),
                 max_particles_in_box=max_particles_in_box,
                 kind=tree_kind)
 
@@ -243,7 +246,8 @@ def make_compute_block_centers_knl(
                 %(insns)s
             end
             """ % dict(insns=insns), [
-                lp.GlobalArg("sources", None, shape=(ndim, "nsources")),
+                lp.GlobalArg("sources", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
                 lp.ValueArg("nsources", np.int64),
                 ...
                 ],
@@ -400,7 +404,8 @@ def make_compute_block_radii_knl(
                 proxy_radius[irange] = radius_factor * rblk
             end
             """, [
-                lp.GlobalArg("sources", None, shape=(ndim, "nsources")),
+                lp.GlobalArg("sources", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
                 lp.ValueArg("nsources", np.int64),
                 lp.ValueArg("radius_factor", np.float64),
                 ...
@@ -457,9 +462,12 @@ def make_compute_block_qbx_radii_knl(
                 proxy_radius[irange] = radius_factor * rqbx
             end
             """, [
-                lp.GlobalArg("sources", None, shape=(ndim, "nsources")),
-                lp.GlobalArg("center_int", None, shape=(ndim, "nsources")),
-                lp.GlobalArg("center_ext", None, shape=(ndim, "nsources")),
+                lp.GlobalArg("sources", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.GlobalArg("center_int", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                lp.GlobalArg("center_ext", None,
+                    shape=(ndim, "nsources"), dim_tags="sep,C"),
                 lp.ValueArg("nsources", np.int64),
                 lp.ValueArg("radius_factor", np.float64),
                 ...
@@ -536,7 +544,8 @@ def gather_block_neighbor_points(
             """
             result[idim, i] = ary[idim, srcindices[i]]
             """, [
-                lp.GlobalArg("ary", None, shape=(discr.ambient_dim, "ndofs")),
+                lp.GlobalArg("ary", None,
+                    shape=(discr.ambient_dim, "ndofs"), dim_tags="sep,C"),
                 lp.ValueArg("ndofs", np.int64),
                 ...],
             name="picker_knl",

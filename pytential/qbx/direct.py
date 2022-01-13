@@ -50,7 +50,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                 lp.GlobalArg("targets", None,
                     shape=(self.dim, "ntargets_total"), order="C"),
                 lp.GlobalArg("center", None,
-                    shape=(self.dim, "ncenters_total")),
+                    shape=(self.dim, "ncenters_total"), dim_tags="sep,C"),
                 lp.GlobalArg("expansion_radii", None,
                     shape="ncenters_total"),
                 lp.GlobalArg("qbx_tgt_numbers", None,

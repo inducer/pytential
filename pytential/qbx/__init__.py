@@ -23,7 +23,7 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 
-from arraycontext import PyOpenCLArrayContext, thaw, flatten, unflatten
+from arraycontext import PyOpenCLArrayContext, thaw, freeze, flatten, unflatten
 from meshmode.dof_array import DOFArray
 
 from pytools import memoize_method, memoize_in, single_valued
@@ -780,7 +780,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         def _flat_nodes(dofdesc):
             discr = bound_expr.places.get_discretization(
                     dofdesc.geometry, dofdesc.discr_stage)
-            return actx.freeze(flatten(discr.nodes(), actx, leaf_class=DOFArray))
+            return freeze(flatten(discr.nodes(), actx, leaf_class=DOFArray), actx)
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_expansion_radii"))
@@ -789,7 +789,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     bound_expr.places,
                     sym.expansion_radii(self.ambient_dim, dofdesc=dofdesc),
                     )(actx)
-            return actx.freeze(flatten(radii, actx))
+            return freeze(flatten(radii, actx), actx)
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_centers"))
@@ -798,7 +798,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     sym.expansion_centers(
                         self.ambient_dim, qbx_forced_limit, dofdesc=dofdesc),
                     )(actx)
-            return actx.freeze(flatten(centers, actx, leaf_class=DOFArray))
+            return freeze(flatten(centers, actx, leaf_class=DOFArray), actx)
 
         from pytential.source import evaluate_kernel_arguments
         flat_kernel_args = evaluate_kernel_arguments(
