@@ -3,7 +3,6 @@ if enable_mayavi:
     from mayavi import mlab  # noqa
 
 import numpy as np
-import pyopencl as cl
 
 from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
@@ -26,6 +25,7 @@ def main(curve_fn=starfish, visualize=True):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
+    import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
@@ -53,7 +53,7 @@ def main(curve_fn=starfish, visualize=True):
 
     from pytential.target import PointsTarget
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
-    targets_dev = cl.array.to_device(queue, fplot.points)
+    targets_dev = actx.from_numpy(fplot.points)
 
     from pytential import GeometryCollection
     places = GeometryCollection({

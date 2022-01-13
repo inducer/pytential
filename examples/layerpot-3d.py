@@ -1,5 +1,4 @@
 import numpy as np
-import pyopencl as cl
 
 from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
@@ -20,6 +19,7 @@ def main(mesh_name="ellipsoid"):
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
+    import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue, force_device_scalars=True)

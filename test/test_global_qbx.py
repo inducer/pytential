@@ -197,8 +197,8 @@ def run_source_refinement_test(actx_factory, mesh, order,
         # panel.
 
         rad = expansion_radii[centers_panel.discr_slice]
-        assert (dist >= rad * (1-expansion_disturbance_tolerance)).all(), \
-                (dist, rad, centers_panel.element_nr, sources_panel.element_nr)
+        assert np.all(dist >= rad * (1 - expansion_disturbance_tolerance)), (
+                dist, rad, centers_panel.element_nr, sources_panel.element_nr)
 
     def check_sufficient_quadrature_resolution(centers_panel, sources_panel):
         dz_radius = source_danger_zone_radii[sources_panel.element_nr]
@@ -370,13 +370,14 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
     code_container = TargetAssociationCodeContainer(
             actx, TreeCodeContainer(actx))
 
-    target_assoc = (associate_targets_to_qbx_centers(
-            places,
-            places.auto_source,
-            code_container.get_wrangler(actx),
-            target_discrs,
-            target_association_tolerance=1e-10)
-        .get(queue=actx.queue))
+    target_assoc = (
+            associate_targets_to_qbx_centers(
+                places,
+                places.auto_source,
+                code_container.get_wrangler(actx),
+                target_discrs,
+                target_association_tolerance=1e-10)
+            ).get(queue=actx.queue)
 
     expansion_radii = actx.to_numpy(flatten(
             bind(places, sym.expansion_radii(ambient_dim,
@@ -421,15 +422,13 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
     # within the allowable distance.
     def check_close_targets(centers, targets, true_side,
                             target_to_center, target_to_side_result,
-                            tgt_slice):
-        targets_have_centers = (target_to_center >= 0).all()
+                            tgt_slice, tol=1.0e-3):
+        targets_have_centers = np.all(target_to_center >= 0)
         assert targets_have_centers
+        assert np.all(target_to_side_result == true_side)
 
-        assert (target_to_side_result == true_side).all()
-
-        TOL = 1e-3
         dists = la.norm((targets.T - centers.T[target_to_center]), axis=1)
-        assert (dists <= (1 + TOL) * expansion_radii[target_to_center]).all()
+        assert np.all(dists <= (1 + tol) * expansion_radii[target_to_center])
 
     # Center side order = -1, 1, -1, 1, ...
     target_to_center_side = 2 * (target_assoc.target_to_center % 2) - 1
@@ -463,7 +462,7 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
         vol_ext_slice)
 
     # Checks that far targets are not assigned a center.
-    assert (target_assoc.target_to_center[far_slice] == -1).all()
+    assert np.all(target_assoc.target_to_center[far_slice] == -1)
 
     # }}}
 

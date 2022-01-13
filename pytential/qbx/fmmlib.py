@@ -160,9 +160,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         # FMMLib is CPU-only. This wrapper gets the geometry out of
         # OpenCL-land.
 
-        with cl.CommandQueue(tree_indep.cl_context) as queue:
-            from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
-            geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
+        geo_data = ToHostTransferredGeoDataWrapper(geo_data)
 
         self.geo_data = geo_data
         self.qbx_order = qbx_order

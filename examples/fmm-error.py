@@ -1,5 +1,4 @@
 import numpy as np
-import pyopencl as cl
 
 from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
@@ -14,6 +13,7 @@ def main():
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
+    import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
@@ -85,11 +85,17 @@ def main():
         for i, elem in np.ndenumerate(sigma):
             sigma[i] = elem.astype(np.complex128)
 
-    fld_in_vol = bind(places, op, auto_where=("unaccel_qbx", "targets"))(
-            actx, sigma=sigma, k=k).get()
+    fld_in_vol = actx.to_numpy(
+            bind(
+                places, op, auto_where=("unaccel_qbx", "targets")
+                )(actx, sigma=sigma, k=k)
+            )
 
-    fmm_fld_in_vol = bind(places, op, auto_where=("qbx", "targets"))(
-            actx, sigma=sigma, k=k).get()
+    fmm_fld_in_vol = actx.to_numpy(
+            bind(
+                places, op, auto_where=("qbx", "targets")
+                )(actx, sigma=sigma, k=k)
+            )
 
     err = fmm_fld_in_vol-fld_in_vol
 

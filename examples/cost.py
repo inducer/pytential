@@ -209,4 +209,4 @@ def predict_cost(ctx):
 
 
 if __name__ == "__main__":
-    predict_cost(cl.create_some_context(0))
+    predict_cost(cl.create_some_context())

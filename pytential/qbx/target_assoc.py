@@ -23,8 +23,6 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import pyopencl as cl
-import pyopencl.array # noqa
 
 from pytools import memoize_method
 from boxtree.tools import DeviceDataRecord
@@ -503,6 +501,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
             debug, wait_for=None):
         from pytential import bind, sym
         ambient_dim = places.ambient_dim
+        actx = self.array_context
 
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
@@ -516,20 +515,19 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tree.particle_id_dtype,
                 max_levels)
 
-        found_target_close_to_panel = cl.array.zeros(self.queue, 1, np.int32)
+        found_target_close_to_panel = actx.zeros(1, np.int32)
         found_target_close_to_panel.finish()
 
         # Perform a space invader query over the sources.
         source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
-        sources = [
-                axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
+        sources = [actx.thaw(axis)[source_slice] for axis in tree.sources]
 
         tunnel_radius_by_source = flatten(
                 bind(
                     places,
                     sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc),
-                    )(self.array_context),
-                self.array_context)
+                    )(actx),
+                actx)
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -585,13 +583,15 @@ class TargetAssociationWrangler(TreeWranglerBase):
         if debug:
             target_status.finish()
             # Marked target = 1, 0 otherwise
-            marked_target_count = cl.array.sum(target_status).get()
-            logger.debug("target association: {}/{} targets marked close to panels"
-                         .format(marked_target_count, tree.nqbxtargets))
+            marked_target_count = actx.to_numpy(actx.np.sum(target_status)).item()
+            logger.debug(
+                    "target association: %d / %d targets marked close to panels",
+                    marked_target_count, tree.nqbxtargets)
 
+        import pyopencl as cl
         cl.wait_for_events([evt])
 
-        return (found_target_close_to_panel == 1).all().get()
+        return actx.to_numpy(actx.np.all(found_target_close_to_panel == 1))
 
     @log_process(logger)
     def find_centers(self, places, dofdesc,
@@ -600,6 +600,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
             debug, wait_for=None):
         from pytential import bind, sym
         ambient_dim = places.ambient_dim
+        actx = self.array_context
 
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
@@ -615,21 +616,19 @@ class TargetAssociationWrangler(TreeWranglerBase):
 
         if debug:
             target_status.finish()
-            marked_target_count = int(cl.array.sum(target_status).get())
+            marked_target_count = actx.to_numpy(actx.np.sum(target_status)).item()
 
         # Perform a space invader query over the centers.
-        center_slice = (
-                tree.sorted_target_ids[tree.qbx_user_center_slice]
-                .with_queue(self.queue))
-        centers = [
-                axis.with_queue(self.queue)[center_slice] for axis in tree.sources]
-        expansion_radii_by_center = bind(places, sym.expansion_radii(
-            ambient_dim,
-            granularity=sym.GRANULARITY_CENTER,
-            dofdesc=dofdesc))(self.array_context)
+        center_slice = actx.thaw(tree.sorted_target_ids[tree.qbx_user_center_slice])
+        centers = [actx.thaw(axis)[center_slice] for axis in tree.sources]
+        expansion_radii_by_center = bind(places,
+                sym.expansion_radii(ambient_dim,
+                    granularity=sym.GRANULARITY_CENTER,
+                    dofdesc=dofdesc)
+                )(actx)
         expansion_radii_by_center_with_tolerance = flatten(
                 expansion_radii_by_center * (1 + target_association_tolerance),
-                self.array_context)
+                actx)
 
         # Idea:
         #
@@ -647,8 +646,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         wait_for = [evt]
 
         def make_target_field(fill_val, dtype=tree.coord_dtype):
-            arr = cl.array.empty(
-                self.queue, tree.nqbxtargets, dtype)
+            arr = actx.empty(tree.nqbxtargets, dtype)
             arr.fill(fill_val)
             wait_for.extend(arr.events)
             return arr
@@ -690,11 +688,13 @@ class TargetAssociationWrangler(TreeWranglerBase):
             target_status.finish()
             # Associated target = 2, marked target = 1
             ntargets_associated = (
-                int(cl.array.sum(target_status).get()) - marked_target_count)
+                actx.to_numpy(actx.np.sum(target_status)).item()
+                - marked_target_count)
             assert ntargets_associated >= 0
-            logger.debug("target association: {} targets were assigned centers"
-                         .format(ntargets_associated))
+            logger.debug("target association: %d targets were assigned centers",
+                    ntargets_associated)
 
+        import pyopencl as cl
         cl.wait_for_events([evt])
 
     @log_process(logger)
@@ -703,6 +703,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
             debug, wait_for=None):
         from pytential import bind, sym
         ambient_dim = places.ambient_dim
+        actx = self.array_context
 
         # Round up level count--this gets included in the kernel as
         # a stack bound. Rounding avoids too many kernel versions.
@@ -716,13 +717,12 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tree.particle_id_dtype,
                 max_levels)
 
-        found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
+        found_panel_to_refine = actx.zeros(1, np.int32)
         found_panel_to_refine.finish()
 
         # Perform a space invader query over the sources.
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
-        sources = [
-                axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
+        sources = [actx.thaw(axis)[source_slice] for axis in tree.sources]
 
         tunnel_radius_by_source = flatten(
                 bind(
@@ -765,19 +765,22 @@ class TargetAssociationWrangler(TreeWranglerBase):
         if debug:
             refine_flags.finish()
             # Marked panel = 1, 0 otherwise
-            marked_panel_count = cl.array.sum(refine_flags).get()
-            logger.debug("target association: {} panels flagged for refinement"
-                         .format(marked_panel_count))
+            marked_panel_count = actx.to_numpy(actx.np.sum(refine_flags)).item()
+            logger.debug("target association: %d panels flagged for refinement",
+                    marked_panel_count)
 
+        import pyopencl as cl
         cl.wait_for_events([evt])
 
-        return (found_panel_to_refine == 1).all().get()
+        return actx.to_numpy(actx.np.all(found_panel_to_refine == 1))
 
     def make_target_flags(self, target_discrs_and_qbx_sides):
-        ntargets = sum(discr.ndofs for discr, _ in target_discrs_and_qbx_sides)
-        target_flags = cl.array.empty(self.queue, ntargets, dtype=np.int32)
-        offset = 0
+        actx = self.array_context
 
+        ntargets = sum(discr.ndofs for discr, _ in target_discrs_and_qbx_sides)
+        target_flags = actx.empty(ntargets, dtype=np.int32)
+
+        offset = 0
         for discr, flags in target_discrs_and_qbx_sides:
             if np.isscalar(flags):
                 target_flags[offset:offset + discr.ndofs].fill(flags)
@@ -790,7 +793,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return target_flags
 
     def make_default_target_association(self, ntargets):
-        target_to_center = cl.array.empty(self.queue, ntargets, dtype=np.int32)
+        target_to_center = self.array_context.empty(ntargets, dtype=np.int32)
         target_to_center.fill(-1)
         target_to_center.finish()
 
@@ -823,6 +826,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
 
     :returns: A :class:`QBXTargetAssociation`.
     """
+    actx = wrangler.array_context
 
     from pytential import sym
     dofdesc = sym.as_dofdesc(geometry).to_stage1()
@@ -833,7 +837,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
 
     peer_lists = wrangler.find_peer_lists(tree)
 
-    target_status = cl.array.zeros(wrangler.queue, tree.nqbxtargets, dtype=np.int32)
+    target_status = actx.zeros(tree.nqbxtargets, dtype=np.int32)
     target_status.finish()
 
     have_close_targets = wrangler.mark_targets(places, dofdesc,
@@ -841,7 +845,6 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
             debug)
 
     target_assoc = wrangler.make_default_target_association(tree.nqbxtargets)
-
     if not have_close_targets:
         return target_assoc.with_queue(None)
 
@@ -855,12 +858,12 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
     center_not_found = (
         target_status == target_status_enum.MARKED_QBX_CENTER_PENDING)
 
-    if center_not_found.any().get():
+    if actx.to_numpy(actx.np.any(center_not_found)):
         surface_target = (
             (target_flags == target_flag_enum.INTERIOR_SURFACE_TARGET)
             | (target_flags == target_flag_enum.EXTERIOR_SURFACE_TARGET))
 
-        if (center_not_found & surface_target).any().get():
+        if actx.to_numpy(actx.np.any(center_not_found & surface_target)):
             fail_msg = "An on-surface target was not assigned a QBX center."
         else:
             fail_msg = "Some targets were not assigned a QBX center."
@@ -877,8 +880,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
             "the 'target_association_tolerance' parameter, but "
             "this could also cause an invalid center assignment.")
 
-        refine_flags = cl.array.zeros(
-                wrangler.queue, tree.nqbxpanels, dtype=np.int32)
+        refine_flags = actx.zeros(tree.nqbxpanels, dtype=np.int32)
         have_panel_to_refine = wrangler.mark_panels_for_refinement(
                 places, dofdesc,
                 tree, peer_lists, target_status, refine_flags,
@@ -886,8 +888,8 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
 
         assert have_panel_to_refine
         raise QBXTargetAssociationFailedException(
-                refine_flags=refine_flags.with_queue(None),
-                failed_target_flags=center_not_found.with_queue(None),
+                refine_flags=actx.freeze(refine_flags),
+                failed_target_flags=actx.freeze(center_not_found),
                 message=fail_msg)
 
     return target_assoc.with_queue(None)

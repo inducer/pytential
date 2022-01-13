@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import pyopencl as cl
 
 from pytools import memoize_in
 from arraycontext import thaw, flatten, unflatten
@@ -208,22 +207,23 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
 # {{{ layer potential source
 
-def _entry_dtype(ary):
+def _entry_dtype(actx, ary):
     from meshmode.dof_array import DOFArray
+
     if isinstance(ary, DOFArray):
         # the "normal case"
         return ary.entry_dtype
     elif isinstance(ary, np.ndarray):
         if ary.dtype.char == "O":
             from pytools import single_valued
-            return single_valued(_entry_dtype(entry) for entry in ary.flat)
+            return single_valued(_entry_dtype(actx, entry) for entry in ary.flat)
         else:
             return ary.dtype
-    elif isinstance(ary, cl.array.Array):
+    elif isinstance(ary, actx.array_types):
         # for "unregularized" layer potential sources
         return ary.dtype
     else:
-        raise TypeError(f"unexpected type '{type(ary)}' in _entry_dtype")
+        raise TypeError(f"unexpected type: '{type(ary).__name__}'")
 
 
 class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
@@ -286,7 +286,7 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
 
     def get_fmm_output_and_expansion_dtype(self, kernels, strengths):
         if any(knl.is_complex_valued for knl in kernels) or \
-                _entry_dtype(strengths).kind == "c":
+                _entry_dtype(self._setup_actx, strengths).kind == "c":
             return self.complex_dtype
         else:
             return self.real_dtype
