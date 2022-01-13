@@ -28,6 +28,7 @@ import numpy.linalg as la
 
 from arraycontext import PyOpenCLArrayContext, flatten
 from meshmode.discretization import Discretization
+from meshmode.dof_array import DOFArray
 
 from pytools import memoize_in
 from pytential.linalg.utils import BlockIndexRanges
@@ -77,9 +78,7 @@ def partition_by_nodes(
         builder = TreeBuilder(actx.context)
 
         tree, _ = builder(actx.queue,
-                particles=actx.np.reshape(
-                    flatten(discr.nodes(), actx),
-                    (discr.ambient_dim, -1)),
+                particles=flatten(discr.nodes(), actx, leaf_class=DOFArray),
                 max_particles_in_box=max_particles_in_box,
                 kind=tree_kind)
 
@@ -329,9 +328,7 @@ class ProxyGeneratorBase:
 
         # {{{ get proxy centers and radii
 
-        sources = actx.np.reshape(
-                flatten(discr.nodes(), actx),
-                (self.ambient_dim, -1))
+        sources = flatten(discr.nodes(), actx, leaf_class=DOFArray)
 
         knl = self.get_centers_knl(actx)
         _, (centers_dev,) = knl(actx.queue,
@@ -507,10 +504,8 @@ class QBXProxyGenerator(ProxyGeneratorBase):
 
         return super().__call__(actx, source_dd, indices,
                 expansion_radii=flatten(radii, actx),
-                center_int=actx.np.reshape(
-                    flatten(center_int, actx), (self.ambient_dim, -1)),
-                center_ext=actx.np.reshape(
-                    flatten(center_ext, actx), (self.ambient_dim, -1)),
+                center_int=flatten(center_int, actx, leaf_class=DOFArray),
+                center_ext=flatten(center_ext, actx, leaf_class=DOFArray),
                 **kwargs)
 
 # }}}
@@ -556,9 +551,7 @@ def gather_block_neighbor_points(
         return knl
 
     _, (sources,) = prg()(actx.queue,
-            ary=actx.np.reshape(
-                flatten(discr.nodes(), actx),
-                (discr.ambient_dim, -1)),
+            ary=flatten(discr.nodes(), actx, leaf_class=DOFArray),
             srcindices=pxy.srcindices.indices)
 
     # }}}

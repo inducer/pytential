@@ -25,6 +25,7 @@ import pyopencl as cl
 
 from pytools import memoize_in
 from arraycontext import thaw, flatten, unflatten
+from meshmode.dof_array import DOFArray
 
 from sumpy.fmm import UnableToCollectTimingData
 
@@ -85,20 +86,12 @@ class _SumpyP2PMixin:
 # {{{ point potential source
 
 def evaluate_kernel_arguments(actx, evaluate, kernel_arguments, flat=True):
-    from meshmode.dof_array import DOFArray
-
     kernel_args = {}
     for arg_name, arg_expr in kernel_arguments.items():
         value = evaluate(arg_expr)
 
         if flat:
-            if isinstance(value, np.ndarray):
-                value = actx.np.reshape(flatten(value, actx), (value.size, -1))
-            elif isinstance(value, DOFArray):
-                value = flatten(value, actx)
-            else:
-                pass
-
+            value = flatten(value, actx, leaf_class=DOFArray)
         kernel_args[arg_name] = value
 
     return kernel_args
@@ -195,9 +188,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                 target_kernels=insn.target_kernels)
 
             evt, output_for_each_kernel = p2p(actx.queue,
-                    targets=actx.np.reshape(
-                        flatten(target_discr.nodes(), actx),
-                        (target_discr.ambient_dim, -1)),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=self._nodes,
                     strength=strengths, **kernel_args)
 
@@ -318,24 +309,16 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
 
         from sumpy.tools import gather_arguments, gather_source_arguments
         from arraycontext import map_array_container
-        from meshmode.dof_array import DOFArray
 
         for func, var_dict in [
                 (gather_arguments, kernel_extra_kwargs),
                 (gather_source_arguments, source_extra_kwargs),
                 ]:
             for arg in func(target_kernels):
-                value = evaluator(arguments[arg.name])
-                if isinstance(value, np.ndarray):
-                    value = actx.np.stack(map_array_container(
-                            lambda ary: reorder_sources(flatten(ary, actx)),
-                            value))
-                elif isinstance(value, DOFArray):
-                    value = reorder_sources(flatten(value, actx))
-                else:
-                    pass
-
-                var_dict[arg.name] = value
+                var_dict[arg.name] = map_array_container(
+                        lambda ary: reorder_sources(flatten(ary, actx)),
+                        evaluator(arguments[arg.name]),
+                        leaf_class=DOFArray)
 
         return kernel_extra_kwargs, source_extra_kwargs
 

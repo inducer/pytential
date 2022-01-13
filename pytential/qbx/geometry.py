@@ -27,6 +27,7 @@ import pyopencl.array  # noqa
 
 from pytools import memoize_method, log_process
 from arraycontext import PyOpenCLArrayContext, flatten
+from meshmode.dof_array import DOFArray
 
 from boxtree.tools import DeviceDataRecord
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
@@ -435,9 +436,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                 self.ambient_dim,
                 dofdesc=self.source_dd.to_stage1()))(actx)
 
-        return actx.freeze(actx.np.reshape(
-            flatten(centers, actx), (centers.size, -1)
-            ))
+        return actx.freeze(flatten(centers, actx, leaf_class=DOFArray))
 
     @memoize_method
     def flat_expansion_radii(self):
@@ -488,10 +487,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     actx.queue,
                     targets=targets[:,
                         start:start+target_discr.ndofs],
-                    points=actx.np.reshape(
-                        flatten(target_discr.nodes(), actx),
-                        (target_discr.ambient_dim, -1)
-                        )
+                    points=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     )
 
         return TargetInfo(
@@ -536,7 +532,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         lpot_source = self.lpot_source
         target_info = self.target_info()
 
-        queue = self.array_context.queue
+        actx = self.array_context
+        queue = actx.queue
 
         from pytential import sym
         quad_stage2_discr = self.places.get_discretization(
@@ -566,9 +563,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         refine_weights.finish()
 
         tree, _ = code_getter.build_tree()(queue,
-                particles=self.array_context.np.reshape(
-                    flatten(quad_stage2_discr.nodes(), self.array_context),
-                    (quad_stage2_discr.ambient_dim, -1)),
+                particles=flatten(
+                    quad_stage2_discr.nodes(), actx, leaf_class=DOFArray
+                    ),
                 targets=target_info.targets,
                 target_radii=target_radii,
                 max_leaf_refine_weight=lpot_source._max_leaf_refine_weight,

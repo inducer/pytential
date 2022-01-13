@@ -31,6 +31,7 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_method
 from arraycontext import PyOpenCLArrayContext, thaw, flatten, unflatten
+from meshmode.dof_array import DOFArray
 
 from boxtree.tools import DeviceDataRecord
 from pytential.source import LayerPotentialSourceBase
@@ -141,13 +142,9 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         kernel_args = {}
 
         for arg_name, arg_expr in insn.kernel_arguments.items():
-            value = evaluate(arg_expr)
-            if isinstance(value, np.ndarray):
-                value = actx.np.reshape(flatten(value, actx), (value.size, -1))
-            else:
-                value = flatten(value, actx)
-
-            kernel_args[arg_name] = value
+            kernel_args[arg_name] = flatten(
+                    evaluate(arg_expr), actx, leaf_class=DOFArray
+                    )
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
@@ -167,12 +164,10 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     target_kernels=insn.target_kernels)
 
             evt, output_for_each_kernel = p2p(actx.queue,
-                    targets=actx.np.reshape(
-                        flatten(target_discr.nodes(), actx),
-                        (target_discr.ambient_dim, -1)),
-                    sources=actx.np.reshape(
-                        flatten(self.density_discr.nodes(), actx),
-                        (self.density_discr.ambient_dim, -1)),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(
+                        self.density_discr.nodes(), actx, leaf_class=DOFArray
+                        ),
                     strength=flat_strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
@@ -423,9 +418,9 @@ class _FMMGeometryData:
         MAX_LEAF_REFINE_WEIGHT = 32  # noqa
 
         tree, _ = code_getter.build_tree(actx.queue,
-                particles=actx.np.reshape(
-                    flatten(lpot_src.density_discr.nodes(), actx),
-                    (lpot_src.ambient_dim, -1)),
+                particles=flatten(
+                    lpot_src.density_discr.nodes(), actx, leaf_class=DOFArray
+                    ),
                 targets=target_info.targets,
                 max_leaf_refine_weight=MAX_LEAF_REFINE_WEIGHT,
                 refine_weights=refine_weights,
@@ -447,19 +442,19 @@ class _FMMGeometryData:
             target_discr_starts.append(ntargets)
             ntargets += target_discr.ndofs
 
+        actx = self.array_context
         target_discr_starts.append(ntargets)
 
-        targets = self.array_context.empty(
+        targets = actx.empty(
                 (lpot_src.ambient_dim, ntargets),
                 self.coord_dtype)
 
         for start, target_discr in zip(target_discr_starts, target_discrs):
-            code_getter.copy_targets_kernel()(
-                    self.array_context.queue,
+            code_getter.copy_targets_kernel()(actx.queue,
                     targets=targets[:, start:start+target_discr.ndofs],
-                    points=self.array_context.np.reshape(
-                        flatten(target_discr.nodes(), self.array_context),
-                        (target_discr.ambient_dim, -1))
+                    points=flatten(
+                        target_discr.nodes(), actx, leaf_class=DOFArray
+                        ),
                     )
 
         return _TargetInfo(

@@ -29,6 +29,7 @@ from sys import intern
 
 from pytools import memoize_method
 from arraycontext import thaw, flatten, unflatten
+from meshmode.dof_array import DOFArray
 
 from pytential.symbolic.mappers import EvaluationMapperBase
 
@@ -413,15 +414,9 @@ class MatrixBuilder(MatrixBuilderBase):
                 dofdesc=expr.target))(actx)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=actx.np.reshape(
-                        flatten(target_discr.nodes(), actx),
-                        (target_discr.ambient_dim, -1)),
-                    sources=actx.np.reshape(
-                        flatten(source_discr.nodes(), actx),
-                        (source_discr.ambient_dim, -1)),
-                    centers=actx.np.reshape(
-                        flatten(centers, actx),
-                        (target_discr.ambient_dim, -1)),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
+                    centers=flatten(centers, actx, leaf_class=DOFArray),
                     expansion_radii=flatten(radii, actx),
                     **kernel_args)
             mat = actx.to_numpy(mat)
@@ -488,12 +483,8 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                     exclude_self=self.exclude_self)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=actx.np.reshape(
-                        flatten(target_discr.nodes(), actx),
-                        (target_discr.ambient_dim, -1)),
-                    sources=actx.np.reshape(
-                        flatten(source_discr.nodes(), actx),
-                        (source_discr.ambient_dim, -1)),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     **kernel_args)
             mat = actx.to_numpy(mat)
 
@@ -566,15 +557,9 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 dofdesc=expr.target))(actx)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=actx.np.reshape(
-                        flatten(target_discr.nodes(), actx),
-                        (target_discr.ambient_dim, -1)),
-                    sources=actx.np.reshape(
-                        flatten(source_discr.nodes(), actx),
-                        (source_discr.ambient_dim, -1)),
-                    centers=actx.np.reshape(
-                        flatten(centers, actx),
-                        (target_discr.ambient_dim, -1)),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
+                    centers=flatten(centers, actx, leaf_class=DOFArray),
                     expansion_radii=flatten(radii, actx),
                     tgtindices=tgtindices,
                     srcindices=srcindices,
@@ -644,12 +629,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                     exclude_self=self.exclude_self)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=actx.np.reshape(
-                        flatten(target_discr.nodes(), actx),
-                        (target_discr.ambient_dim, -1)),
-                    sources=actx.np.reshape(
-                        flatten(source_discr.nodes(), actx),
-                        (source_discr.ambient_dim, -1)),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     tgtindices=tgtindices,
                     srcindices=srcindices,
                     **kernel_args)
