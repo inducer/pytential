@@ -218,7 +218,6 @@ def test_off_surface_eval_vs_direct(actx_factory,  do_plot=False):
     print("l_inf error:", linf_err)
 
     if do_plot:
-        #fplot.show_scalar_in_mayavi(0.1*.get(queue))
         fplot.write_vtk_file("potential.vts", [
             ("fmm_fld_in_vol", actx.to_numpy(fmm_fld_in_vol)),
             ("direct_fld_in_vol", actx.to_numpy(direct_fld_in_vol))
@@ -308,7 +307,6 @@ def test_single_plus_double_with_single_fmm(actx_factory,  do_plot=False):
     print("l_inf error:", linf_err)
 
     if do_plot:
-        #fplot.show_scalar_in_mayavi(0.1*.get(queue))
         fplot.write_vtk_file("potential.vts", [
             ("fmm_fld_in_vol", actx.to_numpy(fmm_fld_in_vol)),
             ("direct_fld_in_vol", actx.to_numpy(direct_fld_in_vol))

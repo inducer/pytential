@@ -1,6 +1,4 @@
 import numpy as np
-import pyopencl as cl
-import pyopencl.clmath  # noqa
 
 from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
@@ -58,6 +56,7 @@ def timing_run(nx, ny, visualize=False):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
+    import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
@@ -82,12 +81,12 @@ def timing_run(nx, ny, visualize=False):
         targets = PointsTarget(actx.from_numpy(fplot.points))
 
         places.update({
-            "plot-targets": targets,
-            "qbx-indicator": qbx.copy(
+            "plot_targets": targets,
+            "qbx_indicator": qbx.copy(
                 target_association_tolerance=0.05,
-                fmm_level_to_order=lambda lev: 7,
+                fmm_level_to_order=lambda knl, knl_args, tree, lev: 7,
                 qbx_order=2),
-            "qbx-target-assoc": qbx.copy(target_association_tolerance=0.1)
+            "qbx_target_assoc": qbx.copy(target_association_tolerance=0.1)
             })
 
     from pytential import GeometryCollection
@@ -155,23 +154,29 @@ def timing_run(nx, ny, visualize=False):
             % (mesh.nelements, elapsed))
 
     if visualize:
-        ones_density = density_discr.zeros(queue)
-        ones_density.fill(1)
-        indicator = bind(places, sym_op,
-                auto_where=("qbx-indicator", "plot-targets"))(
-                queue, sigma=ones_density).get()
+        ones_density = 1 + density_discr.zeros(actx)
+        sym_op = sym_op.copy(qbx_forced_limit=None)
+        indicator = actx.to_numpy(
+                bind(
+                    places, sym_op,
+                    auto_where=("qbx_indicator", "plot_targets")
+                    )(actx, sigma=ones_density, k=k)
+                )
 
         try:
-            fld_in_vol = bind(places, sym_op,
-                    auto_where=("qbx-target-assoc", "plot-targets"))(
-                    queue, sigma=sigma, k=k).get()
+            fld_in_vol = actx.to_numpy(
+                    bind(
+                        places, sym_op,
+                        auto_where=("qbx_target_assoc", "plot_targets")
+                        )(actx, sigma=sigma, k=k)
+                    )
         except QBXTargetAssociationFailedException as e:
             fplot.write_vtk_file("scaling-study-failed-targets.vts", [
-                ("failed", e.failed_target_flags.get(queue)),
+                ("failed", actx.to_numpy(e.failed_target_flags)),
                 ])
             raise
 
-        fplot.write_vtk_file("scaling-study-potential.vts", [
+        fplot.write_vtk_file(f"scaling-study-potential-{nx}-{ny}.vts", [
             ("potential", fld_in_vol),
             ("indicator", indicator),
             ])

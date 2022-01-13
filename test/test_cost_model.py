@@ -89,7 +89,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
     )
 
     from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
-    geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data_dev)
+    geo_data = ToHostTransferredGeoDataWrapper(geo_data_dev)
 
     # }}}
 
@@ -158,7 +158,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
         str(time.time() - start_time)
     ))
 
-    assert np.array_equal(cl_p2qbxl.get(), python_p2qbxl)
+    assert np.array_equal(actx.to_numpy(cl_p2qbxl), python_p2qbxl)
 
     # }}}
 
@@ -186,7 +186,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
         str(time.time() - start_time)
     ))
 
-    assert np.array_equal(cl_m2qbxl.get(), python_m2qbxl)
+    assert np.array_equal(actx.to_numpy(cl_m2qbxl), python_m2qbxl)
 
     # }}}
 
@@ -214,7 +214,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
         str(time.time() - start_time)
     ))
 
-    assert np.array_equal(cl_l2qbxl.get(), python_l2qbxl)
+    assert np.array_equal(actx.to_numpy(cl_l2qbxl), python_l2qbxl)
 
     # }}}
 
@@ -242,7 +242,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
         str(time.time() - start_time)
     ))
 
-    assert np.array_equal(cl_eval_qbxl.get(), python_eval_qbxl)
+    assert np.array_equal(actx.to_numpy(cl_eval_qbxl), python_eval_qbxl)
 
     # }}}
 
@@ -274,7 +274,8 @@ def test_compare_cl_and_py_cost_model(actx_factory):
     ))
 
     assert np.array_equal(
-        cl_eval_target_specific_qbxl.get(), python_eval_target_specific_qbxl
+        actx.to_numpy(cl_eval_target_specific_qbxl),
+        python_eval_target_specific_qbxl
     )
 
     # }}}
@@ -485,7 +486,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
     def __init__(self, tree_indep, queue, geo_data,
             use_target_specific_qbx):
         from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
-        geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+        geo_data = ToHostTransferredGeoDataWrapper(geo_data)
 
         self.geo_data = geo_data
         self.trav = geo_data.traversal()
@@ -761,7 +762,7 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
             traversal=wrangler.trav)[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
-    assert (potential == ndofs).all()
+    assert np.all(potential == ndofs)
 
     # Check that the cost model matches the timing data returned by the
     # constant one wrangler.

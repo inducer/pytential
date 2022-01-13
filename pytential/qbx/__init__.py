@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import pyopencl as cl
 
 from arraycontext import PyOpenCLArrayContext, thaw, freeze, flatten, unflatten
 from meshmode.dof_array import DOFArray
@@ -650,8 +649,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         kernel_extra_kwargs=kernel_extra_kwargs)
 
         from pytential.qbx.geometry import target_state
-        if (actx.thaw(geo_data.user_target_to_center())
-                == target_state.FAILED).any().get():
+        if actx.to_numpy(actx.np.any(
+                actx.thaw(geo_data.user_target_to_center())
+                == target_state.FAILED)):
             raise RuntimeError("geometry has failed targets")
 
         # {{{ geometry data inspection hook
@@ -903,21 +903,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # center-related info is independent of targets
 
             # First ncenters targets are the centers
-            tgt_to_qbx_center = (
+            tgt_to_qbx_center = actx.np.copy(actx.thaw(
                     geo_data.user_target_to_center()[geo_data.ncenters:]
-                    .copy(queue=queue)
-                    .with_queue(queue))
+                    ))
 
             qbx_tgt_numberer = self.get_qbx_target_numberer(
                     tgt_to_qbx_center.dtype)
-            qbx_tgt_count = cl.array.empty(queue, (), np.int32)
-            qbx_tgt_numbers = cl.array.empty_like(tgt_to_qbx_center)
+            qbx_tgt_count = actx.empty((), np.int32)
+            qbx_tgt_numbers = actx.empty_like(tgt_to_qbx_center)
 
             qbx_tgt_numberer(
                     tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,
                     queue=queue)
 
-            qbx_tgt_count = int(qbx_tgt_count.get())
+            qbx_tgt_count = int(actx.to_numpy(qbx_tgt_count).item())
             if (abs(qbx_forced_limit) == 1 and qbx_tgt_count < target_discr.ndofs):
                 raise RuntimeError(
                         "Did not find a matching QBX center for some targets")

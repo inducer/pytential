@@ -1,7 +1,5 @@
 import numpy as np
 import numpy.linalg as la
-import pyopencl as cl
-import pyopencl.clmath  # noqa
 
 from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
@@ -29,6 +27,7 @@ def main(mesh_name="ellipse", visualize=False):
     import logging
     logging.basicConfig(level=logging.INFO)  # INFO for more progress info
 
+    import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
@@ -169,7 +168,7 @@ def main(mesh_name="ellipse", visualize=False):
                     actx, sigma=gmres_result.solution, k=k))
     except QBXTargetAssociationFailedException as e:
         fplot.write_vtk_file("helmholtz-dirichlet-failed-targets.vts", [
-            ("failed", e.failed_target_flags.get(queue))
+            ("failed", actx.to_numpy(e.failed_target_flags))
             ])
         raise
 

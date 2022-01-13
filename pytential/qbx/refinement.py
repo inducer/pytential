@@ -24,7 +24,6 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import pyopencl as cl
 
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
@@ -269,9 +268,6 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
         return knl
 
     def get_wrangler(self):
-        """
-        :arg queue:
-        """
         return RefinerWrangler(self.array_context, self)
 
 # }}}
@@ -288,6 +284,7 @@ class RefinerWrangler(TreeWranglerBase):
             expansion_disturbance_tolerance,
             refine_flags,
             debug, wait_for=None):
+        actx = self.array_context
 
         # Avoid generating too many kernels.
         from pytools import div_ceil
@@ -302,9 +299,9 @@ class RefinerWrangler(TreeWranglerBase):
                 max_levels)
 
         if debug:
-            npanels_to_refine_prev = cl.array.sum(refine_flags).get()
+            npanels_to_refine_prev = actx.to_numpy(actx.np.sum(refine_flags)).item()
 
-        found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
+        found_panel_to_refine = actx.zeros(1, dtype=np.int32)
         found_panel_to_refine.finish()
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
@@ -332,23 +329,25 @@ class RefinerWrangler(TreeWranglerBase):
                 found_panel_to_refine,
                 *tree.sources),
             range=slice(tree.nqbxcenters),
-            queue=self.queue,
+            queue=actx.queue,
             wait_for=wait_for)
 
+        import pyopencl as cl
         cl.wait_for_events([evt])
 
         if debug:
-            npanels_to_refine = cl.array.sum(refine_flags).get()
+            npanels_to_refine = actx.to_numpy(actx.np.sum(refine_flags)).item()
             if npanels_to_refine > npanels_to_refine_prev:
-                logger.debug("refiner: found {} panel(s) to refine".format(
-                    npanels_to_refine - npanels_to_refine_prev))
+                logger.debug("refiner: found %d panel(s) to refine",
+                        npanels_to_refine - npanels_to_refine_prev)
 
-        return found_panel_to_refine.get()[0] == 1
+        return actx.to_numpy(found_panel_to_refine)[0] == 1
 
     @log_process(logger)
     def check_sufficient_source_quadrature_resolution(self,
             stage2_density_discr, tree, peer_lists, refine_flags,
             debug, wait_for=None):
+        actx = self.array_context
 
         # Avoid generating too many kernels.
         from pytools import div_ceil
@@ -362,9 +361,10 @@ class RefinerWrangler(TreeWranglerBase):
                 tree.particle_id_dtype,
                 max_levels)
         if debug:
-            npanels_to_refine_prev = cl.array.sum(refine_flags).get()
+            npanels_to_refine_prev = actx.to_numpy(
+                    actx.np.sum(refine_flags)).item()
 
-        found_panel_to_refine = cl.array.zeros(self.queue, 1, np.int32)
+        found_panel_to_refine = actx.zeros(1, dtype=np.int32)
         found_panel_to_refine.finish()
 
         from pytential import bind, sym
@@ -391,44 +391,48 @@ class RefinerWrangler(TreeWranglerBase):
                 found_panel_to_refine,
                 *tree.sources),
             range=slice(tree.nqbxsources),
-            queue=self.queue,
+            queue=actx.queue,
             wait_for=wait_for)
 
+        import pyopencl as cl
         cl.wait_for_events([evt])
 
         if debug:
-            npanels_to_refine = cl.array.sum(refine_flags).get()
+            npanels_to_refine = actx.to_numpy(actx.np.sum(refine_flags)).item()
             if npanels_to_refine > npanels_to_refine_prev:
-                logger.debug("refiner: found {} panel(s) to refine".format(
-                    npanels_to_refine - npanels_to_refine_prev))
+                logger.debug("refiner: found %d panel(s) to refine",
+                    npanels_to_refine - npanels_to_refine_prev)
 
-        return found_panel_to_refine.get()[0] == 1
+        return actx.to_numpy(found_panel_to_refine)[0] == 1
 
     def check_element_prop_threshold(self, element_property, threshold, refine_flags,
             debug, wait_for=None):
+        actx = self.array_context
         knl = self.code_container.element_prop_threshold_checker()
 
         if debug:
-            npanels_to_refine_prev = cl.array.sum(refine_flags).get()
+            npanels_to_refine_prev = actx.to_numpy(
+                    actx.np.sum(refine_flags)).item()
 
         element_property = flatten(element_property, self.array_context)
 
-        evt, out = knl(self.queue,
+        evt, out = knl(actx.queue,
                        element_property=element_property,
                        refine_flags=refine_flags,
                        refine_flags_updated=np.array(0),
                        threshold=np.array(threshold),
                        wait_for=wait_for)
 
+        import pyopencl as cl
         cl.wait_for_events([evt])
 
         if debug:
-            npanels_to_refine = cl.array.sum(refine_flags).get()
+            npanels_to_refine = actx.to_numpy(actx.np.sum(refine_flags)).item()
             if npanels_to_refine > npanels_to_refine_prev:
-                logger.debug("refiner: found {} panel(s) to refine".format(
-                    npanels_to_refine - npanels_to_refine_prev))
+                logger.debug("refiner: found %d panel(s) to refine",
+                        npanels_to_refine - npanels_to_refine_prev)
 
-        return (out["refine_flags_updated"] == 1).all()
+        return out["refine_flags_updated"] == 1
 
     # }}}
 
@@ -436,16 +440,15 @@ class RefinerWrangler(TreeWranglerBase):
         """
         Refine the underlying mesh and discretization.
         """
-        if isinstance(refine_flags, cl.array.Array):
-            refine_flags = refine_flags.get(self.queue)
-        refine_flags = refine_flags.astype(bool)
+        actx = self.array_context
+        if isinstance(refine_flags, actx.array_types):
+            refine_flags = actx.to_numpy(refine_flags)
 
+        refine_flags = refine_flags.astype(bool)
         with ProcessLogger(logger, "refine mesh"):
             refiner.refine(refine_flags)
-            from meshmode.discretization.connection import (
-                    make_refinement_connection)
-            conn = make_refinement_connection(
-                    self.array_context, refiner, density_discr, factory)
+            from meshmode.discretization.connection import make_refinement_connection
+            conn = make_refinement_connection(actx, refiner, density_discr, factory)
 
         return conn
 
@@ -458,16 +461,15 @@ class RefinerNotConvergedWarning(UserWarning):
     pass
 
 
-def make_empty_refine_flags(queue, density_discr):
+def make_empty_refine_flags(actx, density_discr):
     """Return an array on the device suitable for use as element refine flags.
 
-    :arg queue: An instance of :class:`pyopencl.CommandQueue`.
-    :arg lpot_source: An instance of :class:`pytential.qbx.QBXLayerPotentialSource`.
-
+    :arg density_discr: An instance of a
+        :class:`meshmode.discretization.Discretization`.
     :returns: A :class:`pyopencl.array.Array` suitable for use as refine flags,
         initialized to zero.
     """
-    result = cl.array.zeros(queue, density_discr.mesh.nelements, np.int32)
+    result = actx.zeros(density_discr.mesh.nelements, np.int32)
     result.finish()
     return result
 
@@ -501,7 +503,7 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
     if stage_nr not in (1, 2):
         raise ValueError("unexpected stage number")
 
-    flags = flags.get()
+    flags = actx.to_numpy(flags)
     logger.info("for stage %s: splitting %d/%d stage-%d elements",
             stage_name, np.sum(flags), discr.mesh.nelements, stage_nr)
 
@@ -603,8 +605,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                     violated_criteria, expansion_disturbance_tolerance)
             break
 
-        refine_flags = make_empty_refine_flags(
-                wrangler.queue, stage1_density_discr)
+        refine_flags = make_empty_refine_flags(actx, stage1_density_discr)
 
         if kernel_length_scale is not None:
             with ProcessLogger(logger,
@@ -712,6 +713,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
     iter_violated_criteria = ["start"]
     niter = 0
 
+    actx = wrangler.array_context
     stage2_density_discr = stage1_density_discr
     while iter_violated_criteria:
         iter_violated_criteria = []
@@ -732,8 +734,7 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
                 sources_list=[places.auto_source.geometry],
                 use_stage2_discr=True)
         peer_lists = wrangler.find_peer_lists(tree)
-        refine_flags = make_empty_refine_flags(
-                wrangler.queue, stage2_density_discr)
+        refine_flags = make_empty_refine_flags(actx, stage2_density_discr)
 
         has_insufficient_quad_resolution = \
                 wrangler.check_sufficient_source_quadrature_resolution(

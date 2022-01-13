@@ -23,8 +23,6 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import pyopencl as cl
-import pyopencl.array # noqa
 
 from pytools import memoize_method, log_process
 from arraycontext import PyOpenCLArrayContext
@@ -136,7 +134,10 @@ class TreeWranglerBase:
     def find_peer_lists(self, tree):
         plf = self.code_container.peer_list_finder()
         peer_lists, evt = plf(self.queue, tree)
+
+        import pyopencl as cl
         cl.wait_for_events([evt])
+
         return peer_lists
 
 # }}}
@@ -289,7 +290,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
     queue = actx.queue
     particles = tuple(
-            cl.array.concatenate(dim_coords, queue=queue)
+            actx.np.concatenate(dim_coords)
             for dim_coords in zip(sources, centers, *targets))
 
     # Counts
@@ -313,7 +314,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
     # Build tree with sources and centers. Split boxes
     # only because of sources.
-    refine_weights = cl.array.zeros(queue, nparticles, np.int32)
+    refine_weights = actx.zeros(nparticles, np.int32)
     refine_weights[:nsources].fill(1)
 
     refine_weights.finish()
@@ -338,7 +339,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
         box_to_class = (
             particle_list_filter
             .filter_target_lists_in_user_order(queue, tree, flags)
-            .with_queue(actx.queue))
+            ).with_queue(actx.queue)
 
         if fixup:
             box_to_class.target_lists += fixup
@@ -349,16 +350,16 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     del box_to_class
 
     # Compute panel => source relation
-    qbx_panel_to_source_starts = cl.array.empty(
-            queue, npanels + 1, dtype=tree.particle_id_dtype)
+    qbx_panel_to_source_starts = actx.empty(npanels + 1, tree.particle_id_dtype)
     el_offset = 0
     node_nr_base = 0
     for group in density_discr.groups:
+        group_element_starts = np.arange(
+                node_nr_base, node_nr_base + group.ndofs, group.nunit_dofs,
+                dtype=tree.particle_id_dtype)
         qbx_panel_to_source_starts[el_offset:el_offset + group.nelements] = \
-                cl.array.arange(queue, node_nr_base,
-                                node_nr_base + group.ndofs,
-                                group.nunit_dofs,
-                                dtype=tree.particle_id_dtype)
+                actx.from_numpy(group_element_starts)
+
         node_nr_base += group.ndofs
         el_offset += group.nelements
     qbx_panel_to_source_starts[-1] = nsources
@@ -401,9 +402,16 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
     automatically converting returned OpenCL arrays to host data.
     """
 
-    def __init__(self, queue, geo_data):
-        self.queue = queue
+    def __init__(self, geo_data):
         self.geo_data = geo_data
+
+    @property
+    def queue(self):
+        return self.geo_data._setup_actx.queue
+
+    def to_numpy(self, ary):
+        from arraycontext import to_numpy
+        return to_numpy(ary, self.geo_data._setup_actx)
 
     @memoize_method
     def tree(self):
@@ -423,26 +431,25 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
 
     @memoize_method
     def centers(self):
-        return np.array([
-            ci.get(queue=self.queue)
-            for ci in self.geo_data.flat_centers()])
+        return np.stack(self.to_numpy(self.geo_data.flat_centers()))
 
     @memoize_method
     def expansion_radii(self):
-        return self.geo_data.flat_expansion_radii().get(queue=self.queue)
+        return self.to_numpy(self.geo_data.flat_expansion_radii())
 
     @memoize_method
     def global_qbx_centers(self):
-        return self.geo_data.global_qbx_centers().get(queue=self.queue)
+        return self.to_numpy(self.geo_data.global_qbx_centers())
 
     @memoize_method
     def qbx_center_to_target_box(self):
-        return self.geo_data.qbx_center_to_target_box().get(queue=self.queue)
+        return self.to_numpy(self.geo_data.qbx_center_to_target_box())
 
     @memoize_method
     def qbx_center_to_target_box_source_level(self, source_level):
-        return self.geo_data.qbx_center_to_target_box_source_level(
-            source_level).get(queue=self.queue)
+        return self.to_numpy(
+            self.geo_data.qbx_center_to_target_box_source_level(source_level)
+            )
 
     @memoize_method
     def non_qbx_box_target_lists(self):

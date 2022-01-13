@@ -29,10 +29,6 @@ from pymbolic.mapper.evaluator import (
         EvaluationMapper as PymbolicEvaluationMapper)
 import numpy as np
 
-import pyopencl as cl
-import pyopencl.array  # noqa
-import pyopencl.clmath  # noqa
-
 from arraycontext import PyOpenCLArrayContext, thaw, freeze
 from meshmode.dof_array import DOFArray
 
@@ -106,7 +102,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         ev_children = [self.rec(ch) for ch in expr.children]
         from functools import reduce
         from meshmode.dof_array import DOFArray
-        if any(isinstance(ch, (cl.array.Array, DOFArray)) for ch in ev_children):
+        if any(isinstance(ch, self.array_context.array_types + (DOFArray,))
+                for ch in ev_children):
             return reduce(func, ev_children)
         else:
             return inherited_func(expr)
@@ -275,7 +272,9 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_interpolation(self, expr):
         operand = self.rec(expr.operand)
 
-        if isinstance(operand, (cl.array.Array, list, np.ndarray, DOFArray)):
+        if isinstance(operand,
+                self.array_context.array_types
+                + (list, np.ndarray, DOFArray)):
             conn = self.places.get_connection(expr.from_dd, expr.to_dd)
             return conn(operand)
         elif isinstance(operand, (int, float, complex, np.number)):
@@ -531,7 +530,7 @@ class MatVecOp:
             flat, host = False, False
         elif isinstance(x, np.ndarray) and x.dtype.char == "O":
             flat, host = False, False
-        elif isinstance(x, cl.array.Array):
+        elif isinstance(x, self.array_context.array_types):
             flat, host = True, False
             assert x.shape == (self.total_dofs,)
         elif isinstance(x, np.ndarray) and x.dtype.char != "O":
@@ -1027,7 +1026,6 @@ class BoundExpression:
 
     def cost_per_stage(self, calibration_params, **kwargs):
         """
-        :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg calibration_params: either a :class:`dict` returned by
             `estimate_kernel_specific_calibration_params`, or a :class:`str`
             "constant_one".
@@ -1045,7 +1043,6 @@ class BoundExpression:
 
     def cost_per_box(self, calibration_params, **kwargs):
         """
-        :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg calibration_params: either a :class:`dict` returned by
             `estimate_kernel_specific_calibration_params`, or a :class:`str`
             "constant_one".
@@ -1112,7 +1109,6 @@ class BoundExpression:
     def eval(self, context=None, timing_data=None,
             array_context: Optional[PyOpenCLArrayContext] = None):
         """Evaluate the expression in *self*, using the
-        :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
 
         :arg timing_data: A dictionary into which timing
@@ -1123,7 +1119,7 @@ class BoundExpression:
             :class:`~arraycontext.PyOpenCLArrayContext`
             are supplied as part of *context*.
         :returns: the value of the expression, as a scalar,
-            :class:`pyopencl.array.Array`, or an object array of these.
+            array or an :class:`arraycontext.ArrayContainer` of these.
         """
 
         if context is None:
@@ -1155,7 +1151,6 @@ class BoundExpression:
 
     def __call__(self, *args, **kwargs):
         """Evaluate the expression in *self*, using the
-        :class:`pyopencl.CommandQueue` *queue* and the
         input variables given in the dictionary *context*.
 
         :returns: the value of the expression, as a scalar,
