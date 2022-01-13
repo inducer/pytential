@@ -112,23 +112,14 @@ def main(mesh_name="torus", visualize=False):
 
     # {{{ fix rhs and solve
 
-    from meshmode.dof_array import flatten, unflatten
     nodes = thaw(density_discr.nodes(), actx)
-    source = np.array([rout, 0, 0])
+    source = np.array([rout, 0, 0], dtype=object)
 
     def u_incoming_func(x):
-        from pytools.obj_array import obj_array_vectorize
-        x = obj_array_vectorize(actx.to_numpy, flatten(x))
-        x = np.array(list(x))
-        #        return 1/cl.clmath.sqrt( (x[0] - source[0])**2
-        #                                +(x[1] - source[1])**2
-        #                                +(x[2] - source[2])**2 )
-        return 1.0/la.norm(x - source[:, None], axis=0)
+        dists = x - source
+        return 1.0 / actx.np.sqrt(sum(dists**2))
 
-    bc = unflatten(actx,
-            density_discr,
-            actx.from_numpy(u_incoming_func(nodes)))
-
+    bc = u_incoming_func(nodes)
     bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(actx, bc=bc)
 
     from pytential.solve import gmres

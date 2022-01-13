@@ -33,8 +33,7 @@ from boxtree.tools import InlineBinarySearch
 
 from cgen import Enum
 
-from arraycontext import PyOpenCLArrayContext
-from meshmode.dof_array import flatten
+from arraycontext import PyOpenCLArrayContext, flatten
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
     TreeCodeContainerMixin)
@@ -526,9 +525,11 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
 
         tunnel_radius_by_source = flatten(
-                bind(places,
-                    sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))
-                (self.array_context))
+                bind(
+                    places,
+                    sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc),
+                    )(self.array_context),
+                self.array_context)
 
         # Target-marking algorithm (TGTMARK):
         #
@@ -627,7 +628,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
             granularity=sym.GRANULARITY_CENTER,
             dofdesc=dofdesc))(self.array_context)
         expansion_radii_by_center_with_tolerance = flatten(
-                expansion_radii_by_center * (1 + target_association_tolerance))
+                expansion_radii_by_center * (1 + target_association_tolerance),
+                self.array_context)
 
         # Idea:
         #
@@ -723,9 +725,11 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 axis.with_queue(self.queue)[source_slice] for axis in tree.sources]
 
         tunnel_radius_by_source = flatten(
-                bind(places,
-                    sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc))
-                (self.array_context))
+                bind(
+                    places,
+                    sym._close_target_tunnel_radii(ambient_dim, dofdesc=dofdesc),
+                    )(self.array_context),
+                self.array_context)
 
         # see (TGTMARK) above for algorithm.
 

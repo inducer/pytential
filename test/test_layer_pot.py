@@ -25,7 +25,7 @@ from functools import partial
 
 import numpy as np
 
-from arraycontext import thaw
+from arraycontext import thaw, flatten
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
 import meshmode.mesh.generation as mgen
@@ -126,9 +126,10 @@ def test_off_surface_eval(actx_factory, use_fmm, visualize=False):
     fld_in_vol = bind(places, op)(actx, sigma=sigma)
     fld_in_vol_exact = -1
 
-    err = actx.np.fabs(fld_in_vol - fld_in_vol_exact)
-    linf_err = actx.to_numpy(err).max()
-    print("l_inf error:", linf_err)
+    linf_err = actx.to_numpy(
+            actx.np.linalg.norm(fld_in_vol - fld_in_vol_exact, ord=np.inf)
+            )
+    logger.info("l_inf error: %.12e", linf_err)
 
     if visualize:
         fplot.show_scalar_in_matplotlib(actx.to_numpy(fld_in_vol))
@@ -373,8 +374,7 @@ def test_unregularized_with_ones_kernel(actx_factory):
             auto_where=(places.auto_source, "target_non_self"))(
                     actx, sigma=sigma)
 
-    from meshmode.dof_array import flatten
-    assert np.allclose(actx.to_numpy(flatten(result_self)), 2 * np.pi)
+    assert np.allclose(actx.to_numpy(flatten(result_self, actx)), 2 * np.pi)
     assert np.allclose(actx.to_numpy(result_nonself), 2 * np.pi)
 
 

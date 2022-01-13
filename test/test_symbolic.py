@@ -26,11 +26,7 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
-import pyopencl as cl
-import pyopencl.array
-import pyopencl.clmath
-
-from arraycontext import thaw
+from arraycontext import thaw, flatten, unflatten
 import meshmode.mesh.generation as mgen
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -155,10 +151,10 @@ def test_tangential_onb(actx_factory):
         for i in range(nvecs) for j in range(nvecs)])
         )(actx)
 
-    from meshmode.dof_array import flatten
-    orth_check = flatten(orth_check)
     for orth_i in orth_check:
-        assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
+        assert actx.to_numpy(
+                actx.np.all(actx.np.abs(orth_i) < 1e-13)
+                )
 
     # make sure tangential_onb is orthogonal to normal
     orth_check = bind(discr, sym.make_obj_array([
@@ -166,9 +162,10 @@ def test_tangential_onb(actx_factory):
         for i in range(nvecs)])
         )(actx)
 
-    orth_check = flatten(orth_check)
     for orth_i in orth_check:
-        assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
+        assert actx.to_numpy(
+                actx.np.all(actx.np.abs(orth_i) < 1e-13)
+                )
 
 # }}}
 
@@ -261,22 +258,22 @@ def test_interpolation(actx_factory, name, source_discr_stage, target_granularit
     op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
     bound_op = bind(places, op_sym, auto_where=where)
 
-    from meshmode.dof_array import flatten, unflatten
-
     def discr_and_nodes(stage):
         density_discr = places.get_discretization(where.geometry, stage)
-        return density_discr, np.array([
-                actx.to_numpy(flatten(axis))
-                for axis in thaw(density_discr.nodes(), actx)])
+        return density_discr, actx.to_numpy(
+                flatten(density_discr.nodes(), actx)
+                ).reshape(density_discr.ambient_dim, -1)
 
     _, target_nodes = discr_and_nodes(sym.QBX_SOURCE_QUAD_STAGE2)
     source_discr, source_nodes = discr_and_nodes(source_discr_stage)
 
     sigma_target = np.sin(la.norm(target_nodes, axis=0))
     sigma_dev = unflatten(
-            actx, source_discr,
-            actx.from_numpy(la.norm(source_nodes, axis=0)))
-    sigma_target_interp = actx.to_numpy(flatten(bound_op(actx, sigma=sigma_dev)))
+            thaw(source_discr.nodes()[0], actx),
+            actx.from_numpy(la.norm(source_nodes, axis=0)), actx)
+    sigma_target_interp = actx.to_numpy(
+            flatten(bound_op(actx, sigma=sigma_dev), actx)
+            )
 
     if name in ("default", "default_explicit", "stage2", "quad"):
         error = la.norm(sigma_target_interp - sigma_target) / la.norm(sigma_target)

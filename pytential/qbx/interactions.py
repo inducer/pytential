@@ -46,9 +46,9 @@ class P2QBXLFromCSR(P2EBase):
         from sumpy.tools import gather_loopy_source_arguments
         arguments = (
                 [
-                    lp.GlobalArg("sources", None, shape=(self.dim, "nsources"),
-                        dim_tags="sep,c"),
-                    lp.GlobalArg("strengths", None, dim_tags="sep,c",
+                    lp.GlobalArg("sources", None,
+                        shape=(self.dim, "nsources"), dim_tags="sep,C"),
+                    lp.GlobalArg("strengths", None, dim_tags="sep,C",
                         shape="strength_count, nsources"),
                     lp.GlobalArg("qbx_center_to_target_box",
                         None, shape=None),
@@ -56,14 +56,14 @@ class P2QBXLFromCSR(P2EBase):
                         None, shape=None),
                     lp.GlobalArg("box_source_starts,box_source_counts_nonchild",
                         None, shape=None),
-                    lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
-                        dim_tags="sep,c"),
+                    lp.GlobalArg("qbx_centers", None,
+                        shape=("dim", "ncenters"), dim_tags="sep,C"),
                     lp.GlobalArg("qbx_expansion_radii", None, shape="ncenters"),
                     lp.GlobalArg("qbx_expansions", None,
                         shape=("ncenters", ncoeffs)),
                     lp.ValueArg("ncenters", np.int32),
                     lp.ValueArg("nsources", np.int32),
-                    "..."
+                    ...
                 ] + gather_loopy_source_arguments(
                         self.source_kernels + (self.expansion,))
         )
@@ -113,6 +113,7 @@ class P2QBXLFromCSR(P2EBase):
                 silenced_warnings="write_race(write_expn*)",
                 fixed_parameters=dict(dim=self.dim,
                     strength_count=self.strength_count),
+                default_offset=lp.auto,
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         for knl in self.source_kernels:
@@ -122,15 +123,28 @@ class P2QBXLFromCSR(P2EBase):
         return loopy_knl
 
     @memoize_method
-    def get_optimized_kernel(self):
+    def get_optimized_kernel(self, is_sources_obj_array, is_centers_obj_array):
         # FIXME
         knl = self.get_kernel()
+
+        if is_sources_obj_array:
+            knl = lp.tag_array_axes(knl, "sources", "sep,C")
+        if is_centers_obj_array:
+            knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
+
         knl = lp.split_iname(knl, "itgt_center", 16, outer_tag="g.0")
         knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_cached_optimized_kernel()(queue, **kwargs)
+        sources = kwargs.pop("sources")
+        qbx_centers = kwargs.pop("qbx_centers")
+
+        from sumpy.tools import is_obj_array_like
+        return self.get_cached_optimized_kernel(
+                is_sources_obj_array=is_obj_array_like(sources),
+                is_centers_obj_array=is_obj_array_like(qbx_centers),
+                )(queue, sources=sources, qbx_centers=qbx_centers, **kwargs)
 
 # }}}
 
@@ -203,8 +217,8 @@ class M2QBXL(E2EBase):
                     lp.ValueArg("src_rscale", None),
                     lp.GlobalArg("src_box_starts, src_box_lists",
                         None, shape=None, strides=(1,)),
-                    lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
-                        dim_tags="sep,c"),
+                    lp.GlobalArg("qbx_centers", None,
+                        shape="dim, ncenters", dim_tags="sep,C"),
                     lp.GlobalArg("qbx_expansion_radii", None, shape="ncenters"),
                     lp.ValueArg("aligned_nboxes,nsrc_level_boxes", np.int32),
                     lp.ValueArg("src_base_ibox", np.int32),
@@ -212,7 +226,7 @@ class M2QBXL(E2EBase):
                         shape=("nsrc_level_boxes", ncoeff_src), offset=lp.auto),
                     lp.GlobalArg("qbx_expansions", None,
                         shape=("ncenters", ncoeff_tgt)),
-                    "..."
+                    ...
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name, assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)",
@@ -227,9 +241,13 @@ class M2QBXL(E2EBase):
         return loopy_knl
 
     @memoize_method
-    def get_optimized_kernel(self):
+    def get_optimized_kernel(self, is_centers_obj_array):
         # FIXME
         knl = self.get_kernel()
+
+        if is_centers_obj_array:
+            knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
+
         knl = lp.split_iname(knl, "icenter", 16, outer_tag="g.0")
         knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
@@ -240,10 +258,13 @@ class M2QBXL(E2EBase):
         # meaningfully inferred. Make the type of rscale explicit.
         src_rscale = centers.dtype.type(kwargs.pop("src_rscale"))
 
-        return self.get_cached_optimized_kernel()(queue,
-                centers=centers,
-                src_rscale=src_rscale,
-                **kwargs)
+        from sumpy.tools import is_obj_array_like
+        qbx_centers = kwargs.pop("qbx_centers")
+        return self.get_cached_optimized_kernel(
+                is_centers_obj_array=is_obj_array_like(qbx_centers),
+                )(queue, centers=centers,
+                        qbx_centers=qbx_centers,
+                        src_rscale=src_rscale, **kwargs)
 
 # }}}
 
@@ -308,13 +329,13 @@ class L2QBXL(E2EBase):
                         offset=lp.auto),
                     lp.GlobalArg("centers", None, shape="dim, naligned_boxes"),
                     lp.ValueArg("src_rscale", None),
-                    lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
-                        dim_tags="sep,c"),
+                    lp.GlobalArg("qbx_centers", None,
+                        shape="dim, ncenters", dim_tags="sep,C"),
                     lp.GlobalArg("qbx_expansion_radii", None, shape="ncenters"),
                     lp.ValueArg("naligned_boxes,target_base_ibox,nboxes", np.int32),
                     lp.GlobalArg("expansions", None,
                         shape=("nboxes", ncoeff_src), offset=lp.auto),
-                    "..."
+                    ...
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name,
                 assumptions="ncenters>=1",
@@ -330,9 +351,13 @@ class L2QBXL(E2EBase):
         return loopy_knl
 
     @memoize_method
-    def get_optimized_kernel(self):
+    def get_optimized_kernel(self, is_centers_obj_array):
         # FIXME
         knl = self.get_kernel()
+
+        if is_centers_obj_array:
+            knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
+
         knl = lp.split_iname(knl, "icenter", 16, outer_tag="g.0")
         knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
@@ -343,10 +368,13 @@ class L2QBXL(E2EBase):
         # meaningfully inferred. Make the type of rscale explicit.
         src_rscale = centers.dtype.type(kwargs.pop("src_rscale"))
 
-        return self.get_cached_optimized_kernel()(queue,
-                centers=centers,
-                src_rscale=src_rscale,
-                **kwargs)
+        from sumpy.tools import is_obj_array_like
+        qbx_centers = kwargs.pop("qbx_centers")
+        return self.get_cached_optimized_kernel(
+                is_centers_obj_array=is_obj_array_like(qbx_centers),
+                )(queue, centers=centers,
+                        qbx_centers=qbx_centers,
+                        src_rscale=src_rscale, **kwargs)
 
 # }}}
 
@@ -402,18 +430,18 @@ class QBXL2P(E2PBase):
                 end
                 """],
                 [
-                    lp.GlobalArg("result", None, shape="nresults, ntargets",
-                        dim_tags="sep,C"),
-                    lp.GlobalArg("qbx_centers", None, shape="dim, ncenters",
-                        dim_tags="sep,c"),
+                    lp.GlobalArg("result", None,
+                        shape=("nresults", "ntargets"), dim_tags="sep,C"),
+                    lp.GlobalArg("qbx_centers", None,
+                        shape=("dim", "ncenters"), dim_tags="sep,C"),
                     lp.GlobalArg("center_to_targets_starts,center_to_targets_lists",
                         None, shape=None),
                     lp.GlobalArg("qbx_expansions", None,
                         shape=("ncenters", ncoeffs)),
-                    lp.GlobalArg("targets", None, shape=(self.dim, "ntargets"),
-                        dim_tags="sep,C"),
+                    lp.GlobalArg("targets", None,
+                        shape=(self.dim, "ntargets"), dim_tags="sep,C"),
                     lp.ValueArg("ncenters,ntargets", np.int32),
-                    "..."
+                    ...
                 ] + [arg.loopy_arg for arg in self.expansion.get_args()],
                 name=self.name,
                 assumptions="nglobal_qbx_centers>=1",
@@ -428,15 +456,28 @@ class QBXL2P(E2PBase):
         return loopy_knl
 
     @memoize_method
-    def get_optimized_kernel(self):
+    def get_optimized_kernel(self, is_targets_obj_array, is_centers_obj_array):
         # FIXME
         knl = self.get_kernel()
+
+        if is_targets_obj_array:
+            knl = lp.tag_array_axes(knl, "targets", "sep,C")
+        if is_centers_obj_array:
+            knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
+
         knl = lp.tag_inames(knl, dict(iglobal_center="g.0"))
         knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
     def __call__(self, queue, **kwargs):
-        return self.get_cached_optimized_kernel()(queue, **kwargs)
+        targets = kwargs.pop("targets")
+        qbx_centers = kwargs.pop("qbx_centers")
+
+        from sumpy.tools import is_obj_array_like
+        return self.get_cached_optimized_kernel(
+                is_targets_obj_array=is_obj_array_like(targets),
+                is_centers_obj_array=is_obj_array_like(qbx_centers),
+                )(queue, targets=targets, qbx_centers=qbx_centers, **kwargs)
 
 # }}}
 

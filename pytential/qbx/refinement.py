@@ -29,8 +29,8 @@ import pyopencl as cl
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
-from arraycontext import PyOpenCLArrayContext
-from meshmode.dof_array import flatten, DOFArray
+from arraycontext import PyOpenCLArrayContext, flatten
+from meshmode.dof_array import DOFArray
 
 from pytools import memoize_method
 from boxtree.area_query import AreaQueryElementwiseTemplate
@@ -312,7 +312,8 @@ class RefinerWrangler(TreeWranglerBase):
         center_danger_zone_radii = flatten(
             bind(stage1_density_discr,
                 sym.expansion_radii(stage1_density_discr.ambient_dim,
-                    granularity=sym.GRANULARITY_CENTER))(self.array_context))
+                    granularity=sym.GRANULARITY_CENTER))(self.array_context),
+            self.array_context)
 
         evt = knl(
             *unwrap_args(
@@ -372,7 +373,7 @@ class RefinerWrangler(TreeWranglerBase):
                 bind(stage2_density_discr,
                     sym._source_danger_zone_radii(
                         stage2_density_discr.ambient_dim, dofdesc=dd))
-                (self.array_context))
+                (self.array_context), self.array_context)
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
         evt = knl(
@@ -410,7 +411,7 @@ class RefinerWrangler(TreeWranglerBase):
         if debug:
             npanels_to_refine_prev = cl.array.sum(refine_flags).get()
 
-        element_property = flatten(element_property)
+        element_property = flatten(element_property, self.array_context)
 
         evt, out = knl(self.queue,
                        element_property=element_property,

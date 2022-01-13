@@ -24,8 +24,9 @@ import numpy as np
 import pyopencl as cl
 
 from pytools import memoize_in
+from arraycontext import thaw, flatten, unflatten
+from meshmode.dof_array import DOFArray
 
-from meshmode.dof_array import flatten
 from sumpy.fmm import UnableToCollectTimingData
 
 
@@ -83,6 +84,18 @@ class _SumpyP2PMixin:
 
 
 # {{{ point potential source
+
+def evaluate_kernel_arguments(actx, evaluate, kernel_arguments, flat=True):
+    kernel_args = {}
+    for arg_name, arg_expr in kernel_arguments.items():
+        value = evaluate(arg_expr)
+
+        if flat:
+            value = flatten(value, actx, leaf_class=DOFArray)
+        kernel_args[arg_name] = value
+
+    return kernel_args
+
 
 class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
     """
@@ -159,10 +172,8 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
         p2p = None
 
-        kernel_args = {}
-        for arg_name, arg_expr in insn.kernel_arguments.items():
-            kernel_args[arg_name] = evaluate(arg_expr)
-
+        kernel_args = evaluate_kernel_arguments(
+                actx, evaluate, insn.kernel_arguments, flat=False)
         strengths = [evaluate(density) for density in insn.densities]
 
         # FIXME: Do this all at once
@@ -176,17 +187,16 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                 target_kernels=insn.target_kernels)
 
-            from arraycontext import thaw
             evt, output_for_each_kernel = p2p(actx.queue,
-                    flatten(thaw(target_discr.nodes(), actx), strict=False),
-                    self._nodes,
-                    strengths, **kernel_args)
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=self._nodes,
+                    strength=strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
             result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
-                from meshmode.dof_array import unflatten
-                result = unflatten(actx, target_discr, result)
+                template_ary = thaw(target_discr.nodes()[0], actx)
+                result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))
 
@@ -286,14 +296,14 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         # This contains things like the Helmholtz parameter k or
         # the normal directions for double layers.
 
-        queue = actx.queue
+        def flatten_and_reorder_sources(source_array):
+            if isinstance(source_array, DOFArray):
+                source_array = flatten(source_array, actx)
 
-        def reorder_sources(source_array):
-            if isinstance(source_array, cl.array.Array):
-                return (source_array
-                        .with_queue(queue)
-                        [tree_user_source_ids]
-                        .with_queue(None))
+            if isinstance(source_array, actx.array_types):
+                return actx.freeze(
+                        actx.thaw(source_array)[tree_user_source_ids]
+                        )
             else:
                 return source_array
 
@@ -301,16 +311,17 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         source_extra_kwargs = {}
 
         from sumpy.tools import gather_arguments, gather_source_arguments
-        from pytools.obj_array import obj_array_vectorize
+        from arraycontext import rec_map_array_container
 
         for func, var_dict in [
                 (gather_arguments, kernel_extra_kwargs),
                 (gather_source_arguments, source_extra_kwargs),
                 ]:
             for arg in func(target_kernels):
-                var_dict[arg.name] = obj_array_vectorize(
-                        reorder_sources,
-                        flatten(evaluator(arguments[arg.name]), strict=False))
+                var_dict[arg.name] = rec_map_array_container(
+                        flatten_and_reorder_sources,
+                        evaluator(arguments[arg.name]),
+                        leaf_class=DOFArray)
 
         return kernel_extra_kwargs, source_extra_kwargs
 

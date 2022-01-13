@@ -29,6 +29,7 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
+from arraycontext import thaw, flatten, unflatten
 from pytential import bind, sym
 from pytential import GeometryCollection
 from pytools.obj_array import make_obj_array
@@ -153,23 +154,24 @@ def test_build_matrix(actx_factory, k, curve_fn, op_type, visualize=False):
 
     # {{{ check
 
-    from meshmode.dof_array import unflatten_from_numpy, flatten_to_numpy
-
     np.random.seed(12)
+    template_ary = thaw(density_discr.nodes()[0], actx)
+
     for i in range(5):
         if isinstance(sym_u, np.ndarray):
-            u = make_obj_array([
-                np.random.randn(density_discr.ndofs)
-                for _ in range(len(sym_u))
+            u = np.random.randn(len(sym_u), density_discr.ndofs)
+            u_dev = make_obj_array([
+                unflatten(template_ary, actx.from_numpy(ui), actx, strict=False)
+                for ui in u
                 ])
         else:
             u = np.random.randn(density_discr.ndofs)
-        u_dev = unflatten_from_numpy(actx, density_discr, u)
+            u_dev = unflatten(template_ary, actx.from_numpy(u), actx, strict=False)
 
-        res_matvec = np.hstack(flatten_to_numpy(actx,
-            bound_op(actx, u=u_dev, **case.knl_concrete_kwargs)
-            ))
-        res_mat = mat.dot(np.hstack(u))
+        res_matvec = actx.to_numpy(flatten(
+            bound_op(actx, u=u_dev, **case.knl_concrete_kwargs),
+            actx))
+        res_mat = mat @ u.ravel()
 
         abs_err = la.norm(res_mat - res_matvec, np.inf)
         rel_err = abs_err / la.norm(res_matvec, np.inf)
@@ -252,10 +254,10 @@ def test_build_matrix_conditioning(actx_factory, side, op_type, visualize=False)
     if side == +1 and op_type == "double":
         # NOTE: this adds the "mean" to remove the nullspace for the operator
         # See `pytential.symbolic.pde.scalar` for the equivalent formulation
-        from meshmode.dof_array import flatten_to_numpy
-        w = flatten_to_numpy(actx,
-                bind(places, sym.sqrt_jac_q_weight(places.ambient_dim)**2)(actx)
-                )
+        w = actx.to_numpy(flatten(
+            bind(places, sym.sqrt_jac_q_weight(places.ambient_dim)**2)(actx),
+            actx))
+
         w = np.tile(w.reshape(-1, 1), w.size).T
         kappa = la.cond(mat + w)
 

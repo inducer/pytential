@@ -27,9 +27,9 @@ import numpy as np
 
 from sys import intern
 
-from arraycontext import thaw
 from pytools import memoize_method
-from meshmode.dof_array import flatten, flatten_to_numpy, unflatten_from_numpy
+from arraycontext import thaw, flatten, unflatten
+from meshmode.dof_array import DOFArray
 
 from pytential.symbolic.mappers import EvaluationMapperBase
 
@@ -42,25 +42,27 @@ def is_zero(x):
 
 def _get_layer_potential_args(actx, places, expr, context=None, include_args=None):
     """
-    :arg mapper: a :class:`~pytential.symbolic.matrix.MatrixBuilderBase`.
-    :arg expr: symbolic layer potential expression.
-
-    :return: a mapping of kernel arguments evaluated by the *mapper*.
+    :arg expr: symbolic layer potential expression containing the kernel arguments.
+    :arg include_args: subset of the kernel arguments to evaluate.
     """
+
     from pytential import bind
     if context is None:
         context = {}
 
-    kernel_args = {}
-    for arg_name, arg_expr in expr.kernel_arguments.items():
-        if include_args is not None and arg_name not in include_args:
-            continue
+    if include_args is not None:
+        kernel_arguments = {
+                k: v for k, v in expr.kernel_arguments.items()
+                if k in include_args
+                }
+    else:
+        kernel_arguments = expr.kernel_arguments
 
-        kernel_args[arg_name] = flatten(
-                bind(places, arg_expr)(actx, **context),
-                strict=False)
-
-    return kernel_args
+    from pytential.source import evaluate_kernel_arguments
+    return evaluate_kernel_arguments(
+            actx,
+            lambda expr: bind(places, expr)(actx, **context),
+            kernel_arguments, flat=True)
 
 # }}}
 
@@ -198,6 +200,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if self.is_kind_matrix(rec_operand):
             raise NotImplementedError("derivatives")
 
+        actx = self.array_context
         dofdesc = expr.dofdesc
         op = sym.NumReferenceDerivative(
                 ref_axes=expr.ref_axes,
@@ -205,18 +208,20 @@ class MatrixBuilderBase(EvaluationMapperBase):
                 dofdesc=dofdesc)
 
         discr = self.places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
-        rec_operand = unflatten_from_numpy(self.array_context, discr, rec_operand)
 
-        return flatten_to_numpy(self.array_context,
-                bind(self.places, op)(self.array_context, u=rec_operand)
-                )
+        template_ary = thaw(discr.nodes()[0], actx)
+        rec_operand = unflatten(template_ary, actx.from_numpy(rec_operand), actx)
+
+        return actx.to_numpy(flatten(
+                bind(self.places, op)(self.array_context, u=rec_operand),
+                actx))
 
     def map_node_coordinate_component(self, expr):
         from pytential import bind, sym
         op = sym.NodeCoordinateComponent(expr.ambient_axis, dofdesc=expr.dofdesc)
-        return flatten_to_numpy(self.array_context,
-                bind(self.places, op)(self.array_context)
-                )
+
+        actx = self.array_context
+        return actx.to_numpy(flatten(bind(self.places, op)(actx), actx))
 
     def map_call(self, expr):
         arg, = expr.parameters
@@ -229,10 +234,11 @@ class MatrixBuilderBase(EvaluationMapperBase):
         if isinstance(rec_arg, Number):
             return getattr(np, expr.function.name)(rec_arg)
         else:
-            from arraycontext import from_numpy
-            rec_arg = from_numpy(rec_arg, self.array_context)
-            result = getattr(self.array_context.np, expr.function.name)(rec_arg)
-            return flatten_to_numpy(self.array_context, result, strict=False)
+            actx = self.array_context
+
+            rec_arg = actx.from_numpy(rec_arg)
+            result = getattr(actx.np, expr.function.name)(rec_arg)
+            return actx.to_numpy(flatten(result, actx))
 
     # }}}
 
@@ -332,9 +338,15 @@ class MatrixBuilder(MatrixBuilderBase):
             conn = self.places.get_connection(expr.from_dd, expr.to_dd)
             discr = self.places.get_discretization(
                     expr.from_dd.geometry, expr.from_dd.discr_stage)
+            template_ary = thaw(discr.nodes()[0], actx)
 
-            operand = unflatten_from_numpy(actx, discr, operand)
-            return flatten_to_numpy(actx, conn(operand))
+            from pytools.obj_array import make_obj_array
+            return make_obj_array([
+                actx.to_numpy(flatten(
+                    conn(unflatten(template_ary, actx.from_numpy(o), actx)),
+                    actx))
+                for o in operand
+                ])
         elif isinstance(operand, np.ndarray) and operand.ndim == 2:
             cache = self.places._get_cache(MatrixBuilderDirectResamplerCacheKey)
             key = (expr.from_dd.geometry,
@@ -402,17 +414,17 @@ class MatrixBuilder(MatrixBuilderBase):
                 dofdesc=expr.target))(actx)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
-                    sources=flatten(thaw(source_discr.nodes(), actx)),
-                    centers=flatten(centers),
-                    expansion_radii=flatten(radii),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
+                    centers=flatten(centers, actx, leaf_class=DOFArray),
+                    expansion_radii=flatten(radii, actx),
                     **kernel_args)
             mat = actx.to_numpy(mat)
 
             waa = bind(self.places, sym.weights_and_area_elements(
                 source_discr.ambient_dim,
                 dofdesc=expr.source))(actx)
-            mat[:, :] *= flatten_to_numpy(actx, waa)
+            mat[:, :] *= actx.to_numpy(flatten(waa, actx))
 
             result += mat @ rec_density
 
@@ -471,8 +483,8 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                     exclude_self=self.exclude_self)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
-                    sources=flatten(thaw(source_discr.nodes(), actx), strict=False),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     **kernel_args)
             mat = actx.to_numpy(mat)
 
@@ -483,7 +495,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                     source_discr.ambient_dim,
                     dofdesc=expr.source))(actx)
 
-                mat[:, :] *= flatten_to_numpy(actx, waa)
+                mat[:, :] *= actx.to_numpy(flatten(waa, actx))
 
             result += mat @ rec_density
 
@@ -545,10 +557,10 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                 dofdesc=expr.target))(actx)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
-                    sources=flatten(thaw(source_discr.nodes(), actx)),
-                    centers=flatten(centers),
-                    expansion_radii=flatten(radii),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
+                    centers=flatten(centers, actx, leaf_class=DOFArray),
+                    expansion_radii=flatten(radii, actx),
                     tgtindices=tgtindices,
                     srcindices=srcindices,
                     **kernel_args)
@@ -557,7 +569,8 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
                     bind(self.places,
                         sym.weights_and_area_elements(
                             source_discr.ambient_dim,
-                            dofdesc=expr.source))(actx))
+                            dofdesc=expr.source))(actx),
+                    actx)
             mat *= waa[srcindices]
 
             result += actx.to_numpy(mat) * rec_density
@@ -616,8 +629,8 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                     exclude_self=self.exclude_self)
 
             _, (mat,) = mat_gen(actx.queue,
-                    targets=flatten(thaw(target_discr.nodes(), actx), strict=False),
-                    sources=flatten(thaw(source_discr.nodes(), actx), strict=False),
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     tgtindices=tgtindices,
                     srcindices=srcindices,
                     **kernel_args)
@@ -628,7 +641,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                 waa = bind(self.places, sym.weights_and_area_elements(
                     source_discr.ambient_dim,
                     dofdesc=expr.source))(actx)
-                waa = flatten(waa)
+                waa = flatten(waa, actx)
 
                 mat *= waa[srcindices]
 

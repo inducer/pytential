@@ -28,6 +28,7 @@ import pyopencl.array # noqa
 
 from pytools import memoize_method, log_process
 from arraycontext import PyOpenCLArrayContext
+from meshmode.dof_array import DOFArray
 
 from boxtree.tree import Tree
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
@@ -279,12 +280,11 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     stage1_density_discr = stage1_density_discrs[0]
     density_discr = density_discrs[0]
 
-    from arraycontext import thaw
-    from meshmode.dof_array import flatten
-    sources = flatten(thaw(density_discr.nodes(), actx))
-    centers = flatten(_make_centers(stage1_density_discr))
+    from arraycontext import flatten
+    sources = flatten(density_discr.nodes(), actx, leaf_class=DOFArray)
+    centers = flatten(_make_centers(stage1_density_discr), actx, leaf_class=DOFArray)
     targets = [
-            flatten(thaw(tgt.nodes(), actx), strict=False)
+            flatten(tgt.nodes(), actx, leaf_class=DOFArray)
             for tgt in targets_list]
 
     queue = actx.queue

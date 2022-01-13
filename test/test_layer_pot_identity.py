@@ -25,7 +25,7 @@ import pytest
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import thaw
+from arraycontext import flatten, unflatten
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
 import meshmode.mesh.generation as mgen
@@ -328,12 +328,13 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
         # {{{ compute values of a solution to the PDE
 
         density_discr = places.get_discretization(places.auto_source.geometry)
+        ambient_dim = places.ambient_dim
 
-        from meshmode.dof_array import flatten, unflatten
-        nodes_host = [actx.to_numpy(axis)
-                for axis in flatten(thaw(density_discr.nodes(), actx))]
+        nodes_host = actx.to_numpy(
+                flatten(density_discr.nodes(), actx)
+                ).reshape(ambient_dim, -1)
         normal = bind(places, sym.normal(d))(actx).as_vector(object)
-        normal_host = [actx.to_numpy(axis)for axis in flatten(normal)]
+        normal_host = actx.to_numpy(flatten(normal, actx)).reshape(ambient_dim, -1)
 
         if k != 0:
             if d == 2:
@@ -369,11 +370,12 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
 
         # }}}
 
-        u_dev = unflatten(actx, density_discr, actx.from_numpy(u))
-        dn_u_dev = unflatten(actx, density_discr, actx.from_numpy(dn_u))
-        from pytools.obj_array import make_obj_array, obj_array_vectorize
-        grad_u_dev = unflatten(actx, density_discr,
-                obj_array_vectorize(actx.from_numpy, make_obj_array(grad_u)))
+        u_dev = unflatten(
+                normal[0], actx.from_numpy(u), actx, strict=False)
+        dn_u_dev = unflatten(
+                normal[0], actx.from_numpy(dn_u), actx, strict=False)
+        grad_u_dev = unflatten(
+                normal, actx.from_numpy(grad_u.ravel()), actx, strict=False)
 
         key = (case.qbx_order, case.geometry.mesh_name, resolution,
                 case.expr.zero_op_name)

@@ -26,8 +26,9 @@ from typing import Optional
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, flatten
 from meshmode.discretization import Discretization
+from meshmode.dof_array import DOFArray
 
 from pytools import memoize_in
 from pytential.linalg.utils import BlockIndexRanges
@@ -77,9 +78,10 @@ def partition_by_nodes(
         builder = TreeBuilder(actx.context)
 
         from arraycontext import thaw
-        from meshmode.dof_array import flatten
         tree, _ = builder(actx.queue,
-                flatten(thaw(discr.nodes(), actx)),
+                particles=flatten(
+                    thaw(discr.nodes(), actx), actx, leaf_class=DOFArray
+                    ),
                 max_particles_in_box=max_particles_in_box,
                 kind=tree_kind)
 
@@ -330,9 +332,7 @@ class ProxyGeneratorBase:
 
         # {{{ get proxy centers and radii
 
-        from arraycontext import thaw
-        from meshmode.dof_array import flatten
-        sources = flatten(thaw(discr.nodes(), actx))
+        sources = flatten(discr.nodes(), actx, leaf_class=DOFArray)
 
         knl = self.get_centers_knl(actx)
         _, (centers_dev,) = knl(actx.queue,
@@ -510,11 +510,10 @@ class QBXProxyGenerator(ProxyGeneratorBase):
         center_ext = bind(self.places, sym.expansion_centers(
             self.ambient_dim, +1, dofdesc=source_dd))(actx)
 
-        from meshmode.dof_array import flatten
         return super().__call__(actx, source_dd, indices,
-                expansion_radii=flatten(radii),
-                center_int=flatten(center_int),
-                center_ext=flatten(center_ext),
+                expansion_radii=flatten(radii, actx),
+                center_int=flatten(center_int, actx, leaf_class=DOFArray),
+                center_ext=flatten(center_ext, actx, leaf_class=DOFArray),
                 **kwargs)
 
 # }}}
@@ -560,10 +559,8 @@ def gather_block_neighbor_points(
 
         return knl
 
-    from arraycontext import thaw
-    from meshmode.dof_array import flatten
     _, (sources,) = prg()(actx.queue,
-            ary=flatten(thaw(discr.nodes(), actx)),
+            ary=flatten(discr.nodes(), actx, leaf_class=DOFArray),
             srcindices=pxy.srcindices.indices)
 
     # }}}

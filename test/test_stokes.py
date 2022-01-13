@@ -25,6 +25,7 @@ import pytest
 
 import numpy as np
 
+from arraycontext import flatten
 from pytential import GeometryCollection, bind, sym
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -345,14 +346,7 @@ def run_stokes_identity(actx_factory, case, identity, resolution, visualize=Fals
                 type(identity).__name__.lower(), places.ambient_dim, resolution)
 
         if places.ambient_dim == 2:
-            from meshmode.dof_array import flatten_to_numpy
-            result = flatten_to_numpy(actx, result)
-            if not isinstance(ref_result[0], (int, float)):
-                ref_result = flatten_to_numpy(actx, ref_result)
-            else:
-                ref_result = [
-                        c * np.ones_like(r)
-                        for c, r in zip(ref_result, result)]
+            result = actx.to_numpy(flatten(result, actx))
 
             import matplotlib.pyplot as plt
             fig = plt.figure()

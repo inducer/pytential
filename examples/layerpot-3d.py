@@ -84,14 +84,16 @@ def main(mesh_name="ellipsoid"):
     op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None)
     #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
 
-    sigma = actx.np.cos(mode_nr*angle)
     if 0:
-        from meshmode.dof_array import flatten, unflatten
-        sigma = flatten(0 * angle)
         from random import randrange
+        sigma = actx.zeros(density_discr.ndofs, angle.entry_dtype)
         for _ in range(5):
             sigma[randrange(len(sigma))] = 1
-        sigma = unflatten(actx, density_discr, sigma)
+
+        from arraycontext import unflatten
+        sigma = unflatten(angle, sigma, actx)
+    else:
+        sigma = actx.np.cos(mode_nr*angle)
 
     if isinstance(kernel, HelmholtzKernel):
         for i, elem in np.ndenumerate(sigma):
