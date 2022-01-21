@@ -161,7 +161,6 @@ def run_source_refinement_test(actx_factory, mesh, order,
         bind(places, sym.expansion_radii(ambient_dim))(actx), actx)
         )
 
-    dd = dd.copy(granularity=sym.GRANULARITY_ELEMENT)
     source_danger_zone_radii = actx.to_numpy(flatten(
             bind(
                 places,

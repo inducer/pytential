@@ -965,8 +965,7 @@ def _equilateral_parametrization_derivative_matrix(ambient_dim, dim=None,
             "equilateral_pder_mat")
 
 
-def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
-        with_elementwise_max=True):
+def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None):
     """Return the largest factor by which the reference-to-global
     mapping stretches the bi-unit (i.e. :math:`[-1, 1]`) reference
     element along any axis.
@@ -1003,12 +1002,7 @@ def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
             ]
 
     from pymbolic.primitives import Max
-    result = Max(tuple(stretch_factors))
-
-    if with_elementwise_max:
-        result = ElementwiseMax(result, dofdesc=dofdesc)
-
-    return result
+    return Max(tuple(stretch_factors))
 
 
 def _hypercube_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
@@ -1027,22 +1021,14 @@ def _hypercube_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
             ]
 
     from pymbolic.primitives import Max
-    result = Max(tuple(stretch_factors))
-
-    if with_elementwise_max:
-        result = ElementwiseMax(result, dofdesc=dofdesc)
-
-    return result
+    return Max(tuple(stretch_factors))
 
 
-def _mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
-                                with_elementwise_max=True):
+def _mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None):
     simplex_stretch_factor = _simplex_mapping_max_stretch_factor(
-        ambient_dim, dim, dofdesc=dofdesc,
-        with_elementwise_max=with_elementwise_max)
+        ambient_dim, dim, dofdesc=dofdesc)
     hypercube_stretch_factor = _hypercube_mapping_max_stretch_factor(
-        ambient_dim, dim, dofdesc=dofdesc,
-        with_elementwise_max=with_elementwise_max)
+        ambient_dim, dim, dofdesc=dofdesc)
 
     import modepy as mp
     from pymbolic.primitives import If
@@ -1085,9 +1071,7 @@ def _scaled_max_curvature(ambient_dim, dim=None, dofdesc=None):
 
     return (
         _max_curvature(ambient_dim, dim, dofdesc=dofdesc)
-        * _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=dofdesc,
-                                      with_elementwise_max=False)
-    )
+        * _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=dofdesc))
 
 # }}}
 
@@ -1102,7 +1086,8 @@ def _expansion_radii_factor(ambient_dim, dim):
     return 0.5 * dim_fudge_factor
 
 
-def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
+def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None,
+        with_elementwise_max=False):
     """This measures the quadrature resolution across the
     mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
     should be the same as the element length.
@@ -1118,7 +1103,10 @@ def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     to_dd = from_dd.copy(granularity=granularity)
 
     stretch = _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=from_dd)
-    return interp(from_dd, to_dd, stretch)
+    if with_elementwise_max:
+        return ElementwiseMax(stretch, to_dd)
+    else:
+        return interp(from_dd, to_dd, stretch)
 
 
 def _source_danger_zone_radii(ambient_dim, dim=None,
@@ -1178,9 +1166,7 @@ def interleaved_expansion_centers(ambient_dim, dim=None, dofdesc=None):
 def h_max(ambient_dim, dim=None, dofdesc=None):
     """Defines a maximum element size in the discretization."""
 
-    dofdesc = as_dofdesc(dofdesc).copy(granularity=GRANULARITY_ELEMENT)
     r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
-
     return cse(NodeMax(r),
             "h_max",
             cse_scope.DISCRETIZATION)
@@ -1189,9 +1175,7 @@ def h_max(ambient_dim, dim=None, dofdesc=None):
 def h_min(ambient_dim, dim=None, dofdesc=None):
     """Yields an approximate minimum element size in the discretization."""
 
-    dofdesc = as_dofdesc(dofdesc).copy(granularity=GRANULARITY_ELEMENT)
     r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
-
     return cse(NodeMin(r),
             "h_min",
             cse_scope.DISCRETIZATION)

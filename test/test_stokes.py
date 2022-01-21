@@ -29,7 +29,7 @@ from arraycontext import flatten
 from pytential import GeometryCollection, bind, sym
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
-        InterpolatoryQuadratureSimplexGroupFactory
+        InterpolatoryQuadratureGroupFactory
 from pytools.obj_array import make_obj_array
 
 from meshmode import _acf           # noqa: F401
@@ -88,18 +88,25 @@ def run_exterior_stokes(actx_factory, *,
     if ambient_dim == 2:
         from meshmode.mesh.generation import make_curve_mesh, ellipse
         mesh = make_curve_mesh(
-                lambda t: radius * ellipse(1.0, t),
+                lambda t: radius * ellipse(2.0, t),
                 np.linspace(0.0, 1.0, resolution + 1),
                 target_order)
     elif ambient_dim == 3:
+        from meshmode.mesh import TensorProductElementGroup
         from meshmode.mesh.generation import generate_sphere
         mesh = generate_sphere(radius, target_order + 1,
-                uniform_refinement_rounds=resolution)
+                uniform_refinement_rounds=resolution,
+                group_cls=TensorProductElementGroup)
+
+        from meshmode.mesh.processing import affine_map
+        mesh = affine_map(mesh, A=np.diag([
+            radius, radius / 2.0, radius,
+            ]))
     else:
         raise ValueError(f"unsupported dimension: {ambient_dim}")
 
     pre_density_discr = Discretization(actx, mesh,
-            InterpolatoryQuadratureSimplexGroupFactory(target_order))
+            InterpolatoryQuadratureGroupFactory(target_order))
 
     from pytential.qbx import QBXLayerPotentialSource
     qbx = QBXLayerPotentialSource(pre_density_discr,
@@ -275,7 +282,7 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
     qbx_order = 3
 
     if ambient_dim == 2:
-        resolutions = [20, 35, 50]
+        resolutions = [20, 35, 50, 65, 80]
     elif ambient_dim == 3:
         resolutions = [0, 1, 2]
     else:
