@@ -70,7 +70,7 @@ def run_exterior_stokes(actx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
         fmm_order=False,    # FIXME: FMM is slower than direct evaluation
         source_ovsmp=None,
-        radius=1.5,
+        radius=1.5, aspect_ratio=1.0,
         mu=1.0,
         visualize=False,
 
@@ -88,20 +88,19 @@ def run_exterior_stokes(actx_factory, *,
     if ambient_dim == 2:
         from meshmode.mesh.generation import make_curve_mesh, ellipse
         mesh = make_curve_mesh(
-                lambda t: radius * ellipse(2.0, t),
+                lambda t: radius * ellipse(aspect_ratio, t),
                 np.linspace(0.0, 1.0, resolution + 1),
                 target_order)
     elif ambient_dim == 3:
-        from meshmode.mesh import TensorProductElementGroup
         from meshmode.mesh.generation import generate_sphere
         mesh = generate_sphere(radius, target_order + 1,
-                uniform_refinement_rounds=resolution,
-                group_cls=TensorProductElementGroup)
+                uniform_refinement_rounds=resolution)
 
-        from meshmode.mesh.processing import affine_map
-        mesh = affine_map(mesh, A=np.diag([
-            radius, radius / 2.0, radius,
-            ]))
+        if abs(aspect_ratio - 1.0) > 1.0e-14:
+            from meshmode.mesh.processing import affine_map
+            mesh = affine_map(mesh, A=np.diag([
+                radius, radius / aspect_ratio, radius,
+                ]))
     else:
         raise ValueError(f"unsupported dimension: {ambient_dim}")
 
@@ -282,7 +281,7 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
     qbx_order = 3
 
     if ambient_dim == 2:
-        resolutions = [20, 35, 50, 65, 80]
+        resolutions = [20, 35, 50]
     elif ambient_dim == 3:
         resolutions = [0, 1, 2]
     else:

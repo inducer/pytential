@@ -309,9 +309,12 @@ class RefinerWrangler(TreeWranglerBase):
 
         from pytential import bind, sym
         center_danger_zone_radii = flatten(
-            bind(stage1_density_discr,
-                sym.expansion_radii(stage1_density_discr.ambient_dim,
-                    granularity=sym.GRANULARITY_CENTER))(self.array_context),
+            bind(
+                stage1_density_discr,
+                sym.interleave(
+                    sym.expansion_radii(stage1_density_discr.ambient_dim),
+                    )
+                )(self.array_context),
             self.array_context)
 
         evt = knl(
@@ -605,6 +608,9 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         iter_violated_criteria = []
         niter += 1
 
+        logger.debug("[stage1] niter %4d nelements %8d ndofs %8d",
+            niter, stage1_density_discr.mesh.nelements, stage1_density_discr.ndofs)
+
         if niter > maxiter:
             _warn_max_iterations(
                     violated_criteria, expansion_disturbance_tolerance)
@@ -683,6 +689,8 @@ def _refine_qbx_stage1(lpot_source, density_discr,
             del peer_lists
 
         if iter_violated_criteria:
+            logger.debug("[stage1] violated_criteria: %s",
+                    " and ".join(iter_violated_criteria))
             violated_criteria.append(" and ".join(iter_violated_criteria))
 
             conn = wrangler.refine(
@@ -728,6 +736,9 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         iter_violated_criteria = []
         niter += 1
 
+        logger.debug("[stage2] niter %4d nelements %8d ndofs %8d",
+            niter, stage2_density_discr.mesh.nelements, stage2_density_discr.ndofs)
+
         if niter > maxiter:
             _warn_max_iterations(
                     violated_criteria, expansion_disturbance_tolerance)
@@ -756,6 +767,8 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
                     visualize=visualize)
 
         if iter_violated_criteria:
+            logger.debug("[stage2] violated_criteria: %s",
+                    " and ".join(iter_violated_criteria))
             violated_criteria.append(" and ".join(iter_violated_criteria))
 
             conn = wrangler.refine(

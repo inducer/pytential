@@ -118,11 +118,14 @@ class CenterGranularityConnection(GranularityConnection):
                 raise ValueError("dtype mismatch in inputs: "
                     f"'{subary1.dtype.name}' and '{subary2.dtype.name}'")
 
+            assert subary1.shape[0] == grp.nelements
+            assert subary1.shape == subary2.shape
+
             result = actx.call_loopy(
                     prg(),
                     ary1=subary1, ary2=subary2,
-                    nelements=grp.nelements,
-                    nunit_dofs=grp.nunit_dofs)["result"]
+                    nelements=subary1.shape[0],
+                    nunit_dofs=subary1.shape[1])["result"]
             results.append(result)
 
         return DOFArray(actx, tuple(results))
