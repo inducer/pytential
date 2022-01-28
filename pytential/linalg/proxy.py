@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import numpy.linalg as la
@@ -126,32 +126,8 @@ def _generate_unit_sphere(ambient_dim: int, approx_npoints: int) -> np.ndarray:
         t = np.linspace(0.0, 2.0 * np.pi, approx_npoints)
         points = np.vstack([np.cos(t), np.sin(t)])
     elif ambient_dim == 3:
-        # https://www.cmu.edu/biolphys/deserno/pdf/sphere_equi.pdf
-        # code by Matt Wala from
-        # https://github.com/mattwala/gigaqbx-accuracy-experiments/blob/d56ed063ffd7843186f4fe05d2a5b5bfe6ef420c/translation_accuracy.py#L23
-        a = 4.0 * np.pi / approx_npoints
-        m_theta = int(np.round(np.pi / np.sqrt(a)))
-        d_theta = np.pi / m_theta
-        d_phi = a / d_theta
-
-        points = []
-        for m in range(m_theta):
-            theta = np.pi * (m + 0.5) / m_theta
-            m_phi = int(np.round(2.0 * np.pi * np.sin(theta) / d_phi))
-
-            for n in range(m_phi):
-                phi = 2.0 * np.pi * n / m_phi
-                points.append(np.array([np.sin(theta) * np.cos(phi),
-                                        np.sin(theta) * np.sin(phi),
-                                        np.cos(theta)]))
-
-        for i in range(ambient_dim):
-            for sign in [-1, 1]:
-                pole = np.zeros(ambient_dim)
-                pole[i] = sign
-                points.append(pole)
-
-        points = np.array(points).T
+        from pytools import sphere_sample_equidistant
+        points = sphere_sample_equidistant(approx_npoints, r=1)
     else:
         raise ValueError("ambient_dim > 3 not supported.")
 
