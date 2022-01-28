@@ -31,6 +31,7 @@ from meshmode.discretization import Discretization
 from meshmode.dof_array import DOFArray
 
 from pytools import memoize_in
+from pytential.qbx import QBXLayerPotentialSource
 from pytential.linalg.utils import BlockIndexRanges
 
 import loopy as lp
@@ -149,23 +150,26 @@ class BlockProxyPoints:
 
     .. attribute:: points
 
-        A concatenated list of all the proxy points. Can be sliced into
-        using :attr:`indices` (shape ``(dim, nproxy_per_block * nblocks)``).
+        A concatenated array of all the proxy points. Can be sliced into
+        using :attr:`indices` (shape ``(dim, nproxies)``).
 
     .. attribute:: centers
 
-        A list of all the proxy ball centers (shape ``(dim, nblocks)``).
+        An array of all the proxy ball centers (shape ``(dim, nblocks)``).
 
     .. attribute:: radii
 
-        A list of all the proxy ball radii (shape ``(nblocks,)``).
+        An array of all the proxy ball radii (shape ``(nblocks,)``).
 
     .. attribute:: nblocks
-    .. attribute:: nproxy_per_block
+
+    .. automethod:: __init__
     .. automethod:: to_numpy
     """
 
+    lpot_source: QBXLayerPotentialSource
     srcindices: BlockIndexRanges
+
     indices: BlockIndexRanges
     points: np.ndarray
     centers: np.ndarray
@@ -174,10 +178,6 @@ class BlockProxyPoints:
     @property
     def nblocks(self) -> int:
         return self.srcindices.nblocks
-
-    @property
-    def nproxy_per_block(self) -> int:
-        return self.points[0].shape[0] // self.nblocks
 
     def to_numpy(self, actx: PyOpenCLArrayContext) -> "BlockProxyPoints":
         from arraycontext import to_numpy
