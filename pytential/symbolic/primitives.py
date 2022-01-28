@@ -855,10 +855,38 @@ def _small_mat_eigenvalues(mat):
     elif m == 2:
         (a, b), (c, d) = mat
         tr_mat = cse(a + d)
-        det_mat = a * d - b * c
 
         # solutions to lambda**2 - tr(A) * lambda + det(A)
-        sqrt_discriminant = cse(sqrt(tr_mat**2 - 4*det_mat))
+        # NOTE: 4 * b * c + (a - d)**2 can still become negative if the matrix
+        # is not positive definite, but there's not much we can do here
+        sqrt_discriminant = cse(sqrt(4 * b * c + (a - d)**2))
+        return make_obj_array([
+            (tr_mat - sqrt_discriminant) / 2,
+            (tr_mat + sqrt_discriminant) / 2,
+            ])
+    else:
+        raise NotImplementedError(f"eigenvalue formula for {m}x{n} matrices")
+
+
+def _small_sym_mat_eigenvalues(mat):
+    m, n = mat.shape
+    if m != n:
+        raise ValueError(
+                "eigenvalues only make sense for square matrices: "
+                f"got a {m}x{n} matrix")
+
+    if m == 1:
+        return make_obj_array([mat[0, 0]])
+    elif m == 2:
+        (a, b), (_, d) = mat
+        tr_mat = cse(a + d)
+
+        # NOTE: solutions to lambda**2 - tr(A) * lambda + det(A)
+        # we would normally have
+        #       discriminant = tr - 4 * det
+        # but that can become negative with some floating point fuzz, so we
+        # rewrite it as a sum of squares to avoid that issue
+        sqrt_discriminant = cse(sqrt(4 * b**2 + (a - d)**2))
         return make_obj_array([
             (tr_mat - sqrt_discriminant) / 2,
             (tr_mat + sqrt_discriminant) / 2,
@@ -918,7 +946,7 @@ def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
     stretch_factors = [
             cse(sqrt(s), "mapping_singval_%d" % i)
             for i, s in enumerate(
-                _small_mat_eigenvalues(
+                _small_sym_mat_eigenvalues(
                     # Multiply by 4 to compensate for equilateral reference
                     # elements of side length 2. (J^T J contains two factors of
                     # two.)
@@ -945,7 +973,7 @@ def _max_curvature(ambient_dim, dim=None, dofdesc=None):
         shape_op = shape_operator(ambient_dim, dim, dofdesc=dofdesc)
 
         abs_principal_curvatures = [
-                abs(x) for x in _small_mat_eigenvalues(shape_op)]
+                abs(x) for x in _small_sym_mat_eigenvalues(shape_op)]
         from pymbolic.primitives import Max
         return cse(Max(tuple(abs_principal_curvatures)))
     else:
