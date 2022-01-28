@@ -193,11 +193,13 @@ def make_compute_block_centers_knl(
     @memoize_in(actx, (make_compute_block_centers_knl, ndim, norm_type))
     def prg():
         if norm_type == "l2":
+            # NOTE: computes first-order approximation of the source centroids
             insns = """
             proxy_center[idim, irange] = 1.0 / npoints \
                     * simul_reduce(sum, i, sources[idim, srcindices[i + ioffset]])
             """
         elif norm_type == "linf":
+            # NOTE: computes the centers of the bounding box
             insns = """
             <> bbox_max = \
                     simul_reduce(max, i, sources[idim, srcindices[i + ioffset]])
@@ -251,10 +253,14 @@ class ProxyGeneratorBase:
     .. automethod:: __call__
     """
 
-    def __init__(self, places,
+    def __init__(
+            self, places,
             approx_nproxy: Optional[int] = None,
             radius_factor: Optional[float] = None,
-            norm_type: str = "linf"):
+            norm_type: str = "linf",
+
+            _generate_ref_proxies: Optional[Callable[[int], np.ndarray]] = None,
+            ) -> None:
         """
         :param approx_nproxy: desired number of proxy points. In higher
             dimensions, it is not always possible to construct a proxy ball
@@ -265,16 +271,33 @@ class ProxyGeneratorBase:
         :param norm_type: type of the norm used to compute the centers of
             each block. Supported values are ``"linf"`` and ``"l2"``.
         """
+        if _generate_ref_proxies is None:
+            from functools import partial
+            _generate_ref_proxies = partial(
+                    _generate_unit_sphere, places.ambient_dim)
+
         from pytential import GeometryCollection
         if not isinstance(places, GeometryCollection):
             places = GeometryCollection(places)
 
+        if norm_type not in ("l2", "linf"):
+            raise ValueError(
+                    f"unsupported norm type: '{norm_type}' "
+                    + "(expected one of 'l2' or 'linf')")
+
+        if radius_factor is None:
+            # FIXME: this is a fairly arbitrary value
+            radius_factor = 1.1
+
+        if approx_nproxy is None:
+            # FIXME: this is a fairly arbitrary value
+            approx_nproxy = 32
+
         self.places = places
-        self.radius_factor = 1.1 if radius_factor is None else radius_factor
+        self.radius_factor = radius_factor
         self.norm_type = norm_type
 
-        approx_nproxy = 32 if approx_nproxy is None else approx_nproxy
-        self.ref_points = _generate_unit_sphere(self.ambient_dim, approx_nproxy)
+        self.ref_points = _generate_ref_proxies(approx_nproxy)
 
     @property
     def ambient_dim(self) -> int:
@@ -338,8 +361,8 @@ class ProxyGeneratorBase:
         pxy_nr_base = 0
 
         for i in range(indices.nblocks):
-            bball = radii[i] * self.ref_points + centers[:, i].reshape(-1, 1)
-            proxies[:, pxy_nr_base:pxy_nr_base + self.nproxy] = bball
+            points = radii[i] * self.ref_points + centers[:, i].reshape(-1, 1)
+            proxies[:, pxy_nr_base:pxy_nr_base + self.nproxy] = points
 
             pxy_nr_base += self.nproxy
 
@@ -351,6 +374,7 @@ class ProxyGeneratorBase:
         from arraycontext import freeze, from_numpy
         from pytential.linalg import make_block_index_from_array
         return BlockProxyPoints(
+                lpot_source=self.places.get_geometry(source_dd.geometry),
                 srcindices=indices,
                 indices=make_block_index_from_array(pxyindices, pxyranges),
                 points=freeze(from_numpy(proxies, actx), actx),
