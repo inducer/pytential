@@ -590,33 +590,34 @@ def gather_block_neighbor_points(
     indices = pxy.srcindices
 
     nbrindices = np.empty(indices.nblocks, dtype=object)
-    for iproxy in range(indices.nblocks):
+    for iblock in range(indices.nblocks):
         # get list of boxes intersecting the current ball
-        istart = query.leaves_near_ball_starts[iproxy]
-        iend = query.leaves_near_ball_starts[iproxy + 1]
+        istart = query.leaves_near_ball_starts[iblock]
+        iend = query.leaves_near_ball_starts[iblock + 1]
         iboxes = query.leaves_near_ball_lists[istart:iend]
 
         if (iend - istart) <= 0:
-            nbrindices[iproxy] = np.empty(0, dtype=np.int64)
+            nbrindices[iblock] = np.empty(0, dtype=np.int64)
             continue
 
         # get nodes inside the boxes
         istart = tree.box_source_starts[iboxes]
         iend = istart + tree.box_source_counts_cumul[iboxes]
-        isources = np.hstack([np.arange(s, e)
-                              for s, e in zip(istart, iend)])
-        nodes = np.vstack([tree.sources[idim][isources]
-                           for idim in range(discr.ambient_dim)])
+        isources = np.hstack([np.arange(s, e) for s, e in zip(istart, iend)])
+        nodes = np.vstack([s[isources] for s in tree.sources])
         isources = tree.user_source_ids[isources]
 
         # get nodes inside the ball but outside the current range
-        center = pxycenters[:, iproxy].reshape(-1, 1)
-        radius = pxyradii[iproxy]
+        # FIXME: this assumes that only the points in `pxy.srcindices` should
+        # count as neighbors, not all the nodes in the discretization.
+        # FIXME: it also assumes that all the indices are sorted?
+        center = pxycenters[:, iblock].reshape(-1, 1)
+        radius = pxyradii[iblock]
         mask = ((la.norm(nodes - center, axis=0) < radius)
-                & ((isources < indices.ranges[iproxy])
-                    | (indices.ranges[iproxy + 1] <= isources)))
+                & ((isources < indices.ranges[iblock])
+                    | (indices.ranges[iblock + 1] <= isources)))
 
-        nbrindices[iproxy] = indices.indices[isources[mask]]
+        nbrindices[iblock] = indices.indices[isources[mask]]
 
     # }}}
 
