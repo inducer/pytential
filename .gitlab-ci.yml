@@ -88,7 +88,7 @@ Pylint:
   # Pylint won't find the Cython bits without this
   - PROJECT_INSTALL_FLAGS="--editable"
   - export PY_EXE=python3
-  - EXTRA_INSTALL="Cython pybind11 numpy mako matplotlib"
+  - EXTRA_INSTALL="Cython pybind11 numpy mako matplotlib scipy"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
   - ". ./prepare-and-run-pylint.sh pytential test/test_*.py"
   tags:
