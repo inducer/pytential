@@ -128,7 +128,7 @@ class LaplaceBeltramiSolution:
 @dataclass(frozen=True)
 class YukawaBeltramiSolution(LaplaceBeltramiSolution):
     name: str = "yukawa"
-    k: float = 1.0
+    k: float = 2.0
 
     @property
     def context(self):
@@ -159,7 +159,10 @@ def test_beltrami_convergence(actx_factory, operator, solution, visualize=False)
         logging.basicConfig(level=logging.INFO)
     actx = actx_factory()
 
-    radius = 1
+    from dataclasses import replace
+    radius = 1.5
+    solution = replace(solution, radius=radius)
+
     if operator.ambient_dim == 2:
         case = eid.CircleTestCase(
                 target_order=5,
