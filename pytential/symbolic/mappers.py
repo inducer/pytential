@@ -78,6 +78,7 @@ class IdentityMapper(IdentityMapperBase):
     map_node_coordinate_component = map_ones
     map_parametrization_gradient = map_ones
     map_parametrization_derivative = map_ones
+    map_is_shape_class = map_ones
 
     # }}}
 
@@ -128,6 +129,9 @@ class CombineMapper(CombineMapperBase):
                 (self.rec(name_expr)
                 for name_expr in expr.extra_vars.values())
                 ])
+
+    def map_is_shape_class(self, expr):
+        return set()
 
 
 class Collector(CollectorBase, CombineMapper):
@@ -291,6 +295,9 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
             to_dd = to_dd.copy(geometry=self.default_source)
 
         return type(expr)(from_dd, to_dd, self.operand_rec(expr.operand))
+
+    def map_is_shape_class(self, expr):
+        return type(expr)(expr.shape, self._default_dofdesc(expr.dofdesc))
 
     def operand_rec(self, expr):
         return self.rec(expr)
@@ -690,6 +697,10 @@ class StringifyMapper(BaseStringifyMapper):
                 stringify_where(expr.from_dd),
                 stringify_where(expr.to_dd),
                 self.rec(expr.operand, PREC_PRODUCT))
+
+    def map_is_shape_class(self, expr, enclosing_prec):
+        return "IsShape[{}]({})".format(stringify_where(expr.dofdesc),
+                                        expr.shape.__name__)
 
 # }}}
 
