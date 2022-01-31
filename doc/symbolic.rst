@@ -35,6 +35,11 @@ Stokes' equations
 
 .. automodule:: pytential.symbolic.stokes
 
+Scalar Beltrami equations
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: pytential.symbolic.pde.beltrami
+
 Internal affairs
 ----------------
 
