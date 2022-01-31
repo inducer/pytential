@@ -136,13 +136,26 @@ class BeltramiOperator:
         else:
             return b
 
-    def _get_left_operator(self, sigma: sym.var, kappa: sym.var, **kwargs: Any):
+    def operator(self,
+            sigma: sym.var,
+            mean_curvature: Optional[sym.var] = None,
+            **kwargs) -> sym.var:
+        """
+        :arg mean_curvature: an expression for the mean curvature that can be
+            used in the construction of the operator.
+        :returns: a Fredholm integral equation of the second kind for the
+            Beltrami PDE with the unknown density *sigma*.
+        """
         from sumpy.kernel import LaplaceKernel
         if isinstance(self.kernel, LaplaceKernel):
             raise TypeError(
                     f"{type(self).__name__} does not support the Laplace "
                     "kernel, use LaplaceBeltramiOperator instead")
 
+        if mean_curvature is None:
+            mean_curvature = sym.mean_curvature(self.ambient_dim, dim=self.dim)
+
+        kappa = self.dim * mean_curvature
         context = self.kernel_arguments.copy()
         context.update(kwargs)
 
@@ -154,48 +167,6 @@ class BeltramiOperator:
         # laplace
         S0 = partial(sym.S, lknl, qbx_forced_limit=+1, **kwargs)        # noqa: N806
         D0 = partial(sym.D, lknl, qbx_forced_limit="avg", **kwargs)     # noqa: N806
-        Dp0 = partial(sym.Dp, lknl, qbx_forced_limit="avg", **kwargs)   # noqa: N806
-
-        # base
-        S = partial(sym.S, knl, qbx_forced_limit=+1, **context)         # noqa: N806
-        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", **context)    # noqa: N806
-        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", **context)  # noqa: N806
-
-        # }}}
-
-        # {{{ operator
-
-        # similar to 6.2 in [ONeil2017]
-        op = (
-                sigma / 4
-                - D0(D0(sigma))
-                + S(kappa * Sp(sigma))
-                + S(Spp(sigma) + Dp0(sigma))
-                - S(Dp0(sigma))
-                + S0(Dp0(sigma))
-                )
-
-        # }}}
-
-        return op
-
-    def _get_right_operator(self, sigma: sym.var, kappa: sym.var, **kwargs: Any):
-        from sumpy.kernel import LaplaceKernel
-        if isinstance(self.kernel, LaplaceKernel):
-            raise TypeError(
-                    f"{type(self).__name__} does not support the Laplace "
-                    "kernel, use LaplaceBeltramiOperator instead")
-
-        context = self.kernel_arguments.copy()
-        context.update(kwargs)
-
-        knl = self.kernel
-        lknl = LaplaceKernel(knl.dim)
-
-        # {{{ layer potentials
-
-        # laplace
-        S0 = partial(sym.S, lknl, qbx_forced_limit=+1, **kwargs)        # noqa: N806
         Sp0 = partial(sym.Sp, lknl, qbx_forced_limit="avg", **kwargs)   # noqa: N806
         Dp0 = partial(sym.Dp, lknl, qbx_forced_limit="avg", **kwargs)   # noqa: N806
 
@@ -206,39 +177,27 @@ class BeltramiOperator:
 
         # }}}
 
-        # {{{ operator
-
-        # similar to 6.2 in [ONeil2017]
-        op = (
-                sigma / 4
-                - Sp0(Sp0(sigma))
-                + (Spp(S(sigma)) + Dp0(S(sigma)))
-                - Dp0(S(sigma) - S0(sigma))
-                + kappa * Sp(S(sigma))
-                )
-
-        # }}}
+        if self.precond == "left":
+            # similar to 6.2 in [ONeil2017]
+            op = (
+                    sigma / 4
+                    - D0(D0(sigma))
+                    + S(kappa * Sp(sigma))
+                    + S(Spp(sigma) + Dp0(sigma))
+                    - S(Dp0(sigma))
+                    + S0(Dp0(sigma))
+                    )
+        else:
+            # similar to 6.2 in [ONeil2017]
+            op = (
+                    sigma / 4
+                    - Sp0(Sp0(sigma))
+                    + (Spp(S(sigma)) + Dp0(S(sigma)))
+                    - Dp0(S(sigma) - S0(sigma))
+                    + kappa * Sp(S(sigma))
+                    )
 
         return op
-
-    def operator(self,
-            sigma: sym.var,
-            mean_curvature: Optional[sym.var] = None,
-            **kwargs) -> sym.var:
-        """
-        :arg mean_curvature: an expression for the mean curvature that can be
-            used in the construction of the operator.
-        :returns: a Fredholm integral equation of the second kind for the
-            Beltrami PDE with the unknown density *sigma*.
-        """
-        if mean_curvature is None:
-            mean_curvature = sym.mean_curvature(self.ambient_dim, dim=self.dim)
-
-        kappa = self.dim * mean_curvature
-        if self.precond == "left":
-            return self._get_left_operator(sigma, kappa, **kwargs)
-        else:
-            return self._get_right_operator(sigma, kappa, **kwargs)
 
 # }}}
 
@@ -266,10 +225,24 @@ class LaplaceBeltramiOperator(BeltramiOperator):
                 dim=dim,
                 precond=precond)
 
-    def _get_left_operator(self, sigma: sym.var, kappa: sym.var, **kwargs: Any):
-        knl = self.kernel
+    def operator(self,
+            sigma: sym.var,
+            mean_curvature: Optional[sym.var] = None,
+            **kwargs) -> sym.var:
+        """
+        :arg mean_curvature: an expression for the mean curvature that can be
+            used in the construction of the operator.
+        :returns: a Fredholm integral equation of the second kind for the
+            Laplace-Beltrami PDE with the unknown density *sigma*.
+        """
+        if mean_curvature is None:
+            mean_curvature = sym.mean_curvature(self.ambient_dim, dim=self.dim)
+
+        kappa = self.dim * mean_curvature
         context = self.kernel_arguments.copy()
         context.update(kwargs)
+
+        knl = self.kernel
 
         # {{{ layer potentials
 
@@ -279,55 +252,32 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         D = partial(sym.D, knl, qbx_forced_limit="avg", **context)       # noqa: N806
         Dp = partial(sym.Dp, knl, qbx_forced_limit="avg", **context)     # noqa: N806
 
-        # }}}
-
-        # {{{ operator
-
-        def W(operand: sym.Expression) -> sym.Expression:                # noqa: N802
+        def Wl(operand: sym.Expression) -> sym.Expression:               # noqa: N802
             return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
 
-        # NOTE: based on Lemma 3.1 in [ONeil2017], but doing :math:`-\Delta_\Gamma`
-        op = (
-                sigma / 4
-                - D(D(sigma))
-                + S(Spp(sigma) + Dp(sigma))
-                + S(kappa * Sp(sigma))
-                - S(W(S(sigma)))
-                )
-
-        # }}}
-
-        return op
-
-    def _get_right_operator(self, sigma: sym.var, kappa: sym.var, **kwargs: Any):
-        knl = self.kernel
-        context = self.kernel_arguments.copy()
-        context.update(kwargs)
-
-        # {{{ layer potentials
-
-        S = partial(sym.S, knl, qbx_forced_limit=+1, **context)          # noqa: N806
-        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", **context)     # noqa: N806
-        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", **context)   # noqa: N806
-        Dp = partial(sym.Dp, knl, qbx_forced_limit="avg", **context)     # noqa: N806
-
-        # }}}
-
-        # {{{ operator
-
-        def W(operand: sym.Expression) -> sym.Expression:                # noqa: N802
+        def Wr(operand: sym.Expression) -> sym.Expression:               # noqa: N802
             return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
 
-        # NOTE: based on Lemma 3.2 in [ONeil2017], but doing :math:`-\Delta_\Gamma`
-        op = (
-                sigma / 4
-                - Sp(Sp(sigma))
-                + (Spp(S(sigma)) + Dp(S(sigma)))
-                + kappa * Sp(S(sigma))
-                + W(S(S(sigma)))
-                )
-
         # }}}
+
+        if self.precond == "left":
+            # NOTE: based on Lemma 3.1 in [ONeil2017] for :math:`-\Delta_\Gamma`
+            op = (
+                    sigma / 4
+                    - D(D(sigma))
+                    + S(Spp(sigma) + Dp(sigma))
+                    + S(kappa * Sp(sigma))
+                    - S(Wl(S(sigma)))
+                    )
+        else:
+            # NOTE: based on Lemma 3.2 in [ONeil2017] for :math:`-\Delta_\Gamma`
+            op = (
+                    sigma / 4
+                    - Sp(Sp(sigma))
+                    + (Spp(S(sigma)) + Dp(S(sigma)))
+                    + kappa * Sp(S(sigma))
+                    + Wr(S(S(sigma)))
+                    )
 
         return op
 
