@@ -24,6 +24,7 @@ import numpy as np
 
 from pytential import sym
 from pytools import RecordWithoutPickling, memoize_method
+from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
 
 import logging
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ class IntegralEquationTestCase(RecordWithoutPickling):
     source_ovsmp = 4
     target_order = None
     use_refinement = True
+    group_factory_cls = InterpolatoryQuadratureGroupFactory
 
     # fmm
     fmm_backend = "sumpy"
@@ -190,10 +192,8 @@ class IntegralEquationTestCase(RecordWithoutPickling):
         mesh = self.get_mesh(resolution, mesh_order)
 
         from meshmode.discretization import Discretization
-        from meshmode.discretization.poly_element import \
-                InterpolatoryQuadratureSimplexGroupFactory
         return Discretization(actx, mesh,
-                InterpolatoryQuadratureSimplexGroupFactory(self.target_order))
+                self.group_factory_cls(self.target_order))
 
     def get_layer_potential(self, actx, resolution, mesh_order):
         pre_density_discr = self.get_discretization(actx, resolution, mesh_order)
@@ -235,7 +235,7 @@ class IntegralEquationTestCase(RecordWithoutPickling):
         attrs = {k: getattr(self, k) for k in self.__class__.fields}
         header = {
                 "class": type(self).__name__,
-                "name": attrs.pop("name"),
+                "name": attrs.get("name", self.name),
                 "-" * width: "-" * width
                 }
 
@@ -292,14 +292,28 @@ class CircleTestCase(EllipseTestCase):
     radius = 1.0
 
 
+class WobbleCircleTestCase(CurveTestCase):
+    name = "wobble-circle"
+    resolutions = [2000, 3000, 4000]
+
+    def _curve_fn(self, t):
+        from meshmode.mesh.generation import WobblyCircle
+        return WobblyCircle.random(30, seed=30)(t)
+
+
 class StarfishTestCase(CurveTestCase):
-    name = "starfish"
-    narms = 5
+    resolutions = [30, 50, 70, 90]
+
+    n_arms = 5
     amplitude = 0.25
+
+    @property
+    def name(self):
+        return f"starfish_{self.n_arms}"
 
     def _curve_fn(self, t):
         from meshmode.mesh.generation import NArmedStarfish
-        return NArmedStarfish(self.narms, self.amplitude)(t)
+        return NArmedStarfish(self.n_arms, self.amplitude)(t)
 
 # }}}
 
@@ -390,6 +404,24 @@ class SpheroidTestCase(SphereTestCase):
         return affine_map(mesh, A=np.diag([
             self.radius, self.radius, self.radius / self.aspect_ratio,
             ]))
+
+
+class QuadSpheroidTestCase(SphereTestCase):
+    name = "quadspheroid"
+    aspect_ratio = 2.0
+
+    def get_mesh(self, resolution, mesh_order):
+        from meshmode.mesh import TensorProductElementGroup
+        from meshmode.mesh.generation import generate_sphere
+        mesh = generate_sphere(1.0, mesh_order,
+                uniform_refinement_rounds=resolution,
+                group_cls=TensorProductElementGroup)
+
+        if abs(self.aspect_ratio - 1.0) > 1.0e-14:
+            from meshmode.mesh.processing import affine_map
+            mesh = affine_map(mesh, A=np.diag([1.0, 1.0, 1/self.aspect_ratio]))
+
+        return mesh
 
 
 class TorusTestCase(IntegralEquationTestCase):

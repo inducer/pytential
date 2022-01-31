@@ -309,6 +309,23 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     # }}}
 
+    def map_is_shape_class(self, expr):
+        discr = self.places.get_discretization(
+            expr.dofdesc.geometry, expr.dofdesc.discr_stage)
+
+        from pytools import is_single_valued
+        if not is_single_valued(type(grp.mesh_el_group) for grp in discr.groups):
+            # FIXME Conceivably, one could stick per-group bools into a DOFArray.
+            raise NotImplementedError(
+                    "non-homogeneous element groups are not supported")
+
+        from meshmode.mesh import _ModepyElementGroup
+        meg = discr.groups[0].mesh_el_group
+        if isinstance(meg, _ModepyElementGroup):
+            return isinstance(meg._modepy_shape, expr.shape)
+        else:
+            raise TypeError(f"element type not supported: '{type(meg).__name__}'")
+
     def exec_assign(self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         return [(name, evaluate(expr))
                 for name, expr in zip(insn.names, insn.exprs)]
@@ -828,7 +845,6 @@ class GeometryCollection:
         try:
             discr = self._get_discr_from_cache(geometry, discr_stage)
         except KeyError:
-            from pytential import sym
             from pytential.qbx.refinement import _refine_for_global_qbx
 
             # NOTE: this adds the required discretizations to the cache

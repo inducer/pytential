@@ -342,8 +342,8 @@ def run_stokes_identity(actx_factory, case, identity, resolution, visualize=Fals
     # }}}
 
     if visualize:
-        filename = "stokes_{}_{}d_resolution_{}".format(
-                type(identity).__name__.lower(), places.ambient_dim, resolution)
+        filename = "stokes_{}_{}_resolution_{}".format(
+                type(identity).__name__.lower(), case.name, resolution)
 
         if places.ambient_dim == 2:
             result = actx.to_numpy(flatten(result, actx))
