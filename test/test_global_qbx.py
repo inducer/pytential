@@ -58,23 +58,25 @@ FAR_TARGET_DIST_FROM_SOURCE = 10
 
 @dataclass
 class ElementInfo:
-    element_nr: int
+    index: int
     discr_slice: slice
 
 
 def iter_elements(discr):
     discr_nodes_idx = 0
-    element_nr = 0
+    element_nr_base = 0
 
     for discr_group in discr.groups:
-        start = element_nr
+        start = element_nr_base
         for element_nr in range(start, start + discr_group.nelements):
             yield ElementInfo(
-                element_nr=element_nr,
+                index=element_nr,
                 discr_slice=slice(discr_nodes_idx,
                     discr_nodes_idx + discr_group.nunit_dofs))
 
             discr_nodes_idx += discr_group.nunit_dofs
+
+        element_nr_base += discr_group.nelements
 
 
 def run_source_refinement_test(actx_factory, mesh, order,
@@ -173,18 +175,18 @@ def run_source_refinement_test(actx_factory, mesh, order,
 
     # {{{ check if satisfying criteria
 
-    def check_disk_undisturbed_by_sources(centers_panel, sources_panel):
-        if centers_panel.element_nr == sources_panel.element_nr:
-            # Same panel
+    def check_disk_undisturbed_by_sources(centers_element, sources_element):
+        if centers_element.index == sources_element.index:
+            # Same element
             return
 
-        my_int_centers = int_centers[:, centers_panel.discr_slice]
-        my_ext_centers = ext_centers[:, centers_panel.discr_slice]
+        my_int_centers = int_centers[:, centers_element.discr_slice]
+        my_ext_centers = ext_centers[:, centers_element.discr_slice]
         all_centers = np.append(my_int_centers, my_ext_centers, axis=-1)
 
-        nodes = stage1_density_nodes[:, sources_panel.discr_slice]
+        nodes = stage1_density_nodes[:, sources_element.discr_slice]
 
-        # =distance(centers of panel 1, panel 2)
+        # =distance(centers of element 1, element 2)
         dist = (
             la.norm((
                     all_centers[..., np.newaxis]
@@ -193,23 +195,23 @@ def run_source_refinement_test(actx_factory, mesh, order,
             .min())
 
         # Criterion:
-        # A center cannot be closer to another panel than to its originating
-        # panel.
+        # A center cannot be closer to another element than to its originating
+        # element.
 
-        rad = expansion_radii[centers_panel.discr_slice]
+        rad = expansion_radii[centers_element.discr_slice]
         assert np.all(dist >= rad * (1 - expansion_disturbance_tolerance)), (
-                dist, rad, centers_panel.element_nr, sources_panel.element_nr)
+                dist, rad, centers_element.index, sources_element.index)
 
-    def check_sufficient_quadrature_resolution(centers_panel, sources_panel):
-        dz_radius = source_danger_zone_radii[sources_panel.element_nr]
+    def check_sufficient_quadrature_resolution(centers_element, sources_element):
+        dz_radius = source_danger_zone_radii[sources_element.index]
 
-        my_int_centers = int_centers[:, centers_panel.discr_slice]
-        my_ext_centers = ext_centers[:, centers_panel.discr_slice]
+        my_int_centers = int_centers[:, centers_element.discr_slice]
+        my_ext_centers = ext_centers[:, centers_element.discr_slice]
         all_centers = np.append(my_int_centers, my_ext_centers, axis=-1)
 
-        nodes = quad_stage2_density_nodes[:, sources_panel.discr_slice]
+        nodes = quad_stage2_density_nodes[:, sources_element.discr_slice]
 
-        # =distance(centers of panel 1, panel 2)
+        # =distance(centers of element 1, element 2)
         dist = (
             la.norm((
                     all_centers[..., np.newaxis]
@@ -218,22 +220,22 @@ def run_source_refinement_test(actx_factory, mesh, order,
             .min())
 
         # Criterion:
-        # The quadrature contribution from each panel is as accurate
-        # as from the center's own source panel.
+        # The quadrature contribution from each element is as accurate
+        # as from the center's own source element.
         assert dist >= dz_radius, \
-                (dist, dz_radius, centers_panel.element_nr, sources_panel.element_nr)
+                (dist, dz_radius, centers_element.index, sources_element.index)
 
-    def check_quad_res_to_helmholtz_k_ratio(panel):
-        # Check wavenumber to panel size ratio.
-        assert quad_res[panel.element_nr] * helmholtz_k <= 5
+    def check_quad_res_to_helmholtz_k_ratio(element):
+        # Check wavenumber to element size ratio.
+        assert quad_res[element.index] * helmholtz_k <= 5
 
-    for panel_1 in iter_elements(stage1_density_discr):
-        for panel_2 in iter_elements(stage1_density_discr):
-            check_disk_undisturbed_by_sources(panel_1, panel_2)
-        for panel_2 in iter_elements(quad_stage2_density_discr):
-            check_sufficient_quadrature_resolution(panel_1, panel_2)
+    for element_1 in iter_elements(stage1_density_discr):
+        for element_2 in iter_elements(stage1_density_discr):
+            check_disk_undisturbed_by_sources(element_1, element_2)
+        for element_2 in iter_elements(quad_stage2_density_discr):
+            check_sufficient_quadrature_resolution(element_1, element_2)
         if helmholtz_k is not None:
-            check_quad_res_to_helmholtz_k_ratio(panel_1)
+            check_quad_res_to_helmholtz_k_ratio(element_1)
 
     # }}}
 

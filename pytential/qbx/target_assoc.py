@@ -49,7 +49,7 @@ The goal of target association is to:
    * decide which targets require QBX,
    * decide which centers to use for targets that require QBX,
    * if no good centers are available for a target that requires QBX,
-     flag the appropriate panels for refinement.
+     flag the appropriate elements for refinement.
 
 Requesting a target side
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -116,7 +116,7 @@ Target association driver
 # v
 # +-----------------------+ No +-----------------------------------+
 # |(QBXCenterFinder)      |--->|(QBXFailedTargetAssociationRefiner)|
-# |Is there a valid center|    |Mark panels close to t for         |
+# |Is there a valid center|    |Mark elements close to t for       |
 # |close to t?            |    |refinement.                        |
 # +-----------------------+    +-----------------------------------+
 # | Yes
@@ -175,7 +175,7 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
 
         /* output */
         int *target_status,
-        int *found_target_close_to_panel,
+        int *found_target_close_to_element,
 
         /* input, dim-dependent size */
         %for ax in AXIS_NAMES[:dimensions]:
@@ -204,7 +204,7 @@ QBX_TARGET_MARKER = AreaQueryElementwiseTemplate(
                     <= tunnel_radius_by_source[source])
             {
                 target_status[i] = MARKED_QBX_CENTER_PENDING;
-                atomic_or(found_target_close_to_panel, 1);
+                atomic_or(found_target_close_to_element, 1);
             }
         }
     """,
@@ -352,10 +352,10 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
         /* input */
         particle_id_t *box_to_source_starts,
         particle_id_t *box_to_source_lists,
-        particle_id_t *panel_to_source_starts,
+        particle_id_t *element_to_source_starts,
         particle_id_t source_offset,
         particle_id_t target_offset,
-        int npanels,
+        int nelements,
         particle_id_t *sorted_target_ids,
         coord_t *tunnel_radius_by_source,
         int *target_status,
@@ -363,7 +363,7 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
 
         /* output */
         int *refine_flags,
-        int *found_panel_to_refine,
+        int *found_element_to_refine,
 
         /* input, dim-dependent size */
         %for ax in AXIS_NAMES[:dimensions]:
@@ -395,14 +395,14 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
 
             if (is_close && target_status[i] == MARKED_QBX_CENTER_PENDING)
             {
-                particle_id_t panel = bsearch(
-                    panel_to_source_starts, npanels + 1, source);
-                atomic_or(&refine_flags[panel], 1);
-                atomic_or(found_panel_to_refine, 1);
+                particle_id_t element = bsearch(
+                    element_to_source_starts, nelements + 1, source);
+                atomic_or(&refine_flags[element], 1);
+                atomic_or(found_element_to_refine, 1);
             }
         }
     """,
-    name="refine_panels",
+    name="refine_elements",
     preamble=TARGET_ASSOC_DEFINES + str(InlineBinarySearch("particle_id_t")))
 
 # }}}
@@ -515,8 +515,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tree.particle_id_dtype,
                 max_levels)
 
-        found_target_close_to_panel = actx.zeros(1, np.int32)
-        found_target_close_to_panel.finish()
+        found_target_close_to_element = actx.zeros(1, np.int32)
+        found_target_close_to_element.finish()
 
         # Perform a space invader query over the sources.
         source_slice = tree.sorted_target_ids[tree.qbx_user_source_slice]
@@ -574,7 +574,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tunnel_radius_by_source,
                 box_to_search_dist,
                 target_status,
-                found_target_close_to_panel,
+                found_target_close_to_element,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
             queue=self.queue,
@@ -585,13 +585,13 @@ class TargetAssociationWrangler(TreeWranglerBase):
             # Marked target = 1, 0 otherwise
             marked_target_count = actx.to_numpy(actx.np.sum(target_status)).item()
             logger.debug(
-                    "target association: %d / %d targets marked close to panels",
+                    "target association: %d / %d targets marked close to elements",
                     marked_target_count, tree.nqbxtargets)
 
         import pyopencl as cl
         cl.wait_for_events([evt])
 
-        return actx.to_numpy(actx.np.all(found_target_close_to_panel == 1))
+        return actx.to_numpy(actx.np.all(found_target_close_to_element == 1))
 
     @log_process(logger)
     def find_centers(self, places, dofdesc,
@@ -698,7 +698,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         cl.wait_for_events([evt])
 
     @log_process(logger)
-    def mark_panels_for_refinement(self, places, dofdesc,
+    def mark_elements_for_refinement(self, places, dofdesc,
             tree, peer_lists, target_status, refine_flags,
             debug, wait_for=None):
         from pytential import bind, sym
@@ -717,8 +717,8 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tree.particle_id_dtype,
                 max_levels)
 
-        found_panel_to_refine = actx.zeros(1, np.int32)
-        found_panel_to_refine.finish()
+        found_element_to_refine = actx.zeros(1, np.int32)
+        found_element_to_refine.finish()
 
         # Perform a space invader query over the sources.
         source_slice = tree.user_source_ids[tree.qbx_user_source_slice]
@@ -747,16 +747,16 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tree, peer_lists,
                 tree.box_to_qbx_source_starts,
                 tree.box_to_qbx_source_lists,
-                tree.qbx_panel_to_source_starts,
+                tree.qbx_element_to_source_starts,
                 tree.qbx_user_source_slice.start,
                 tree.qbx_user_target_slice.start,
-                tree.nqbxpanels,
+                tree.nqbxelements,
                 tree.sorted_target_ids,
                 tunnel_radius_by_source,
                 target_status,
                 box_to_search_dist,
                 refine_flags,
-                found_panel_to_refine,
+                found_element_to_refine,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
             queue=self.queue,
@@ -764,15 +764,15 @@ class TargetAssociationWrangler(TreeWranglerBase):
 
         if debug:
             refine_flags.finish()
-            # Marked panel = 1, 0 otherwise
-            marked_panel_count = actx.to_numpy(actx.np.sum(refine_flags)).item()
-            logger.debug("target association: %d panels flagged for refinement",
-                    marked_panel_count)
+            # Marked element = 1, 0 otherwise
+            marked_element_count = actx.to_numpy(actx.np.sum(refine_flags)).item()
+            logger.debug("target association: %d elements flagged for refinement",
+                         marked_element_count)
 
         import pyopencl as cl
         cl.wait_for_events([evt])
 
-        return actx.to_numpy(actx.np.all(found_panel_to_refine == 1))
+        return actx.to_numpy(actx.np.all(found_element_to_refine == 1))
 
     def make_target_flags(self, target_discrs_and_qbx_sides):
         actx = self.array_context
@@ -880,13 +880,13 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
             "the 'target_association_tolerance' parameter, but "
             "this could also cause an invalid center assignment.")
 
-        refine_flags = actx.zeros(tree.nqbxpanels, dtype=np.int32)
-        have_panel_to_refine = wrangler.mark_panels_for_refinement(
+        refine_flags = actx.zeros(tree.nqbxelements, dtype=np.int32)
+        have_element_to_refine = wrangler.mark_elements_for_refinement(
                 places, dofdesc,
                 tree, peer_lists, target_status, refine_flags,
                 debug)
 
-        assert have_panel_to_refine
+        assert have_element_to_refine
         raise QBXTargetAssociationFailedException(
                 refine_flags=actx.freeze(refine_flags),
                 failed_target_flags=actx.freeze(center_not_found),

@@ -34,7 +34,7 @@ from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
 from pytools.obj_array import make_obj_array, flat_obj_array  # noqa: F401
-from pytools import single_valued
+from pytools import single_valued, MovedFunctionDeprecationWrapper
 
 
 __doc__ = """
@@ -396,7 +396,7 @@ class DOFDescriptor:
         if self.granularity == GRANULARITY_CENTER:
             name.append("center")
         elif self.granularity == GRANULARITY_ELEMENT:
-            name.append("panel")
+            name.append("element")
 
         return "/".join(name)
 
@@ -862,7 +862,7 @@ def shape_operator(ambient_dim, dim=None, dofdesc=None):
             "shape_operator")
 
 
-def _panel_size(ambient_dim, dim=None, dofdesc=None):
+def _element_size(ambient_dim, dim=None, dofdesc=None):
     # A broken quasi-1D approximation of 1D element size. Do not use.
 
     if dim is None:
@@ -871,6 +871,9 @@ def _panel_size(ambient_dim, dim=None, dofdesc=None):
     return ElementwiseSum(
             area_element(ambient_dim=ambient_dim, dim=dim)
             * QWeight())**(1/dim)
+
+
+_panel_size = MovedFunctionDeprecationWrapper(_element_size)
 
 
 def _small_mat_inverse(mat):
@@ -1102,7 +1105,7 @@ def _expansion_radii_factor(ambient_dim, dim):
 def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     """This measures the quadrature resolution across the
     mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
-    should be the same as the panel length.
+    should be the same as the element length.
 
     In multiple dimensions (i.e. with multiple quadrature resolutions
     depending on direction), this measure returns the coarsest of these resolution,

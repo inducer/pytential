@@ -147,7 +147,7 @@ class Arc(Curve):
 # horseshoe curve
 #
 # To avoid issues with crossing non-smooth regions, make sure the number of
-# panels given to this function (for make_curve_mesh) is a multiple of 8.
+# elements given to this function (for make_curve_mesh) is a multiple of 8.
 horseshoe = (
     Segment((0, 0), (-5, 0))
     + Arc((-5, 0), (-5.5, -0.5), (-5, -1))

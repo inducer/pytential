@@ -227,7 +227,7 @@ def _entry_dtype(actx, ary):
 
 
 class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
-    """A discretization of a layer potential using panel-based geometry, with
+    """A discretization of a layer potential using element-based geometry, with
     support for refinement and upsampling.
 
     .. rubric:: Discretization data
