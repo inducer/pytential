@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # {{{ c and mako snippets
 
 QBX_TREE_C_PREAMBLE = r"""//CL:mako//
-// A note on node numberings: sources, centers, and panels each
+// A note on node numberings: sources, centers, and elements each
 // have their own numbering starting at 0. These macros convert
 // the per-class numbering into the internal tree particle number.
 #define INDEX_FOR_CENTER_PARTICLE(i) (sorted_target_ids[center_offset + i])
@@ -149,7 +149,7 @@ class TreeWithQBXMetadata(Tree):
     """A subclass of :class:`boxtree.tree.Tree`. Has all of that class's
     attributes, along with the following:
 
-    .. attribute:: nqbxpanels
+    .. attribute:: nqbxelements
     .. attribuet:: nqbxsources
     .. attribute:: nqbxcenters
     .. attribute:: nqbxtargets
@@ -158,13 +158,13 @@ class TreeWithQBXMetadata(Tree):
     .. rubric:: Box properties
     .. ------------------------------------------------------------------------
 
-    .. rubric:: Box to QBX panels
+    .. rubric:: Box to QBX elements
 
-    .. attribute:: box_to_qbx_panel_starts
+    .. attribute:: box_to_qbx_element_starts
 
         ``box_id_t [nboxes + 1]``
 
-    .. attribute:: box_to_qbx_panel_lists
+    .. attribute:: box_to_qbx_element_lists
 
         ``particle_id_t [*]``
 
@@ -199,16 +199,16 @@ class TreeWithQBXMetadata(Tree):
         ``particle_id_t [*]``
 
     .. ------------------------------------------------------------------------
-    .. rubric:: Panel properties
+    .. rubric:: Element properties
     .. ------------------------------------------------------------------------
 
-    .. attribute:: qbx_panel_to_source_starts
+    .. attribute:: qbx_element_to_source_starts
 
-        ``particle_id_t [nqbxpanels + 1]``
+        ``particle_id_t [nqbxelements + 1]``
 
-    .. attribute:: qbx_panel_to_center_starts
+    .. attribute:: qbx_element_to_center_starts
 
-        ``particle_id_t [nqbxpanels + 1]``
+        ``particle_id_t [nqbxelements + 1]``
 
     .. ------------------------------------------------------------------------
     .. rubric:: Particle order indices
@@ -295,7 +295,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
     # Counts
     nparticles = len(particles[0])
-    npanels = density_discr.mesh.nelements
+    nelements = density_discr.mesh.nelements
     nsources = len(sources[0])
     ncenters = len(centers[0])
     # Each source gets an interior / exterior center.
@@ -308,8 +308,8 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     center_slice_start = nsources
     qbx_user_center_slice = slice(center_slice_start, center_slice_start + ncenters)
 
-    panel_slice_start = center_slice_start + ncenters
-    target_slice_start = panel_slice_start
+    element_slice_start = center_slice_start + ncenters
+    target_slice_start = element_slice_start
     qbx_user_target_slice = slice(target_slice_start, target_slice_start + ntargets)
 
     # Build tree with sources and centers. Split boxes
@@ -349,24 +349,24 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     del flags
     del box_to_class
 
-    # Compute panel => source relation
-    qbx_panel_to_source_starts = actx.empty(npanels + 1, tree.particle_id_dtype)
+    # Compute element => source relation
+    qbx_element_to_source_starts = actx.empty(nelements + 1, tree.particle_id_dtype)
     el_offset = 0
     node_nr_base = 0
     for group in density_discr.groups:
         group_element_starts = np.arange(
                 node_nr_base, node_nr_base + group.ndofs, group.nunit_dofs,
                 dtype=tree.particle_id_dtype)
-        qbx_panel_to_source_starts[el_offset:el_offset + group.nelements] = \
+        qbx_element_to_source_starts[el_offset:el_offset + group.nelements] = \
                 actx.from_numpy(group_element_starts)
 
         node_nr_base += group.ndofs
         el_offset += group.nelements
-    qbx_panel_to_source_starts[-1] = nsources
+    qbx_element_to_source_starts[-1] = nsources
 
-    # Compute panel => center relation
-    qbx_panel_to_center_starts = (
-            2 * qbx_panel_to_source_starts
+    # Compute element => center relation
+    qbx_element_to_center_starts = (
+            2 * qbx_element_to_source_starts
             if not use_stage2_discr
             else None)
 
@@ -381,12 +381,12 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     tree_attrs.update(particle_classes)
 
     return TreeWithQBXMetadata(
-        qbx_panel_to_source_starts=qbx_panel_to_source_starts,
-        qbx_panel_to_center_starts=qbx_panel_to_center_starts,
+        qbx_element_to_source_starts=qbx_element_to_source_starts,
+        qbx_element_to_center_starts=qbx_element_to_center_starts,
         qbx_user_source_slice=qbx_user_source_slice,
         qbx_user_center_slice=qbx_user_center_slice,
         qbx_user_target_slice=qbx_user_target_slice,
-        nqbxpanels=npanels,
+        nqbxelements=nelements,
         nqbxsources=nsources,
         nqbxcenters=ncenters,
         nqbxtargets=ntargets,

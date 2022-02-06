@@ -43,11 +43,11 @@ __doc__ = """
 """
 
 
-# {{{ (panel-based) unregularized layer potential source
+# {{{ (element-based) unregularized layer potential source
 
 class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     """A source discretization for a layer potential discretized with a Nyström
-    method that uses panel-based quadrature and does not modify the kernel.
+    method that uses element-based quadrature and does not modify the kernel.
 
     .. attribute:: fmm_level_to_order
     """
