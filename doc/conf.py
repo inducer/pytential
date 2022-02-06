@@ -19,7 +19,7 @@ intersphinx_mapping = {
     "https://docs.python.org/3/": None,
     "https://documen.tician.de/boxtree/": None,
     "https://numpy.org/doc/stable/": None,
-    "https://docs.scipy.org/doc/scipy/reference/": None,
+    "https://scipy.github.io/devdocs/": None,
     "https://documen.tician.de/arraycontext/": None,
     "https://documen.tician.de/meshmode/": None,
     "https://documen.tician.de/modepy/": None,
