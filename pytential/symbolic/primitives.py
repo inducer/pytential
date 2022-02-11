@@ -94,6 +94,11 @@ DOF Description
 .. autoclass:: DOFDescriptor
 .. autofunction:: as_dofdesc
 
+Diagnostics
+^^^^^^^^^^^
+
+.. autoclass:: ErrorExpression
+
 .. _placeholders:
 
 Placeholders
@@ -438,6 +443,23 @@ class Expression(ExpressionBase):
     def make_stringifier(self, originating_stringifier=None):
         from pytential.symbolic.mappers import StringifyMapper
         return StringifyMapper()
+
+
+class ErrorExpression(Expression):
+    """An expression that, if evaluated, causes an error with the supplied
+    *message*.
+
+    .. automethod:: __init__
+    """
+    init_arg_names = ("message",)
+
+    def __init__(self, message):
+        self.message = message
+
+    def __getinitargs__(self):
+        return (self.message,)
+
+    mapper_method = intern("map_error_expression")
 
 
 def make_sym_mv(name, num_components):
@@ -1013,7 +1035,8 @@ def _mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
     stretch_factor = If(IsShapeClass(mp.Simplex, dofdesc),
                         simplex_stretch_factor,
                         If(IsShapeClass(mp.Hypercube, dofdesc),
-                           hypercube_stretch_factor, 0)
+                           hypercube_stretch_factor,
+                           ErrorExpression("unknown reference element shape"))
                         )
 
     return cse(stretch_factor, "mapping_stretch_factor", cse_scope.DISCRETIZATION)

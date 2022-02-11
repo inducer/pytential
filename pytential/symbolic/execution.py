@@ -309,6 +309,9 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     # }}}
 
+    def map_error_expression(self, expr):
+        raise RuntimeError(expr.message)
+
     def map_is_shape_class(self, expr):
         discr = self.places.get_discretization(
             expr.dofdesc.geometry, expr.dofdesc.discr_stage)

@@ -79,6 +79,7 @@ class IdentityMapper(IdentityMapperBase):
     map_parametrization_gradient = map_ones
     map_parametrization_derivative = map_ones
     map_is_shape_class = map_ones
+    map_error_expression = map_ones
 
     # }}}
 
@@ -132,6 +133,8 @@ class CombineMapper(CombineMapperBase):
 
     def map_is_shape_class(self, expr):
         return set()
+
+    map_error_expression = map_is_shape_class
 
 
 class Collector(CollectorBase, CombineMapper):
@@ -298,6 +301,9 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
 
     def map_is_shape_class(self, expr):
         return type(expr)(expr.shape, self._default_dofdesc(expr.dofdesc))
+
+    def map_error_expression(self, expr):
+        return expr
 
     def operand_rec(self, expr):
         return self.rec(expr)
