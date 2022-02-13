@@ -24,16 +24,20 @@ __doc__ = """
 
 .. autofunction:: gmres
 
-.. autoclass:: GMRESResult()
+.. autoclass:: GMRESResult
 
 .. autoexception:: GMRESError
 
 .. autoclass:: ResidualPrinter
 """
 
+from dataclasses import dataclass
 from functools import partial
+from typing import Callable, Optional, Sequence
 
 import numpy as np
+
+from arraycontext.container import ArrayOrContainerT
 
 
 def structured_vdot(x, y, array_context=None):
@@ -66,8 +70,6 @@ def structured_vdot(x, y, array_context=None):
 # Necessary because SciPy gmres is not reentrant and thus does
 # not allow recursive solves.
 
-from pytools import Record
-
 
 class GMRESError(RuntimeError):
     pass
@@ -75,19 +77,26 @@ class GMRESError(RuntimeError):
 
 # {{{ main routine
 
-class GMRESResult(Record):
+@dataclass(frozen=True)
+class GMRESResult:
     """
     .. attribute:: solution
     .. attribute:: residual_norms
     .. attribute:: iteration_count
     .. attribute:: success
 
-        a :class:`bool` indicating whether the iteration succeeded
+        A :class:`bool` indicating whether the iteration succeeded.
 
     .. attribute:: state
 
-        a verbal description of the outcome of the iteration
+        A description of the outcome.
     """
+
+    solution: ArrayOrContainerT
+    residual_norms: Sequence[float]
+    iteration_count: int
+    success: bool
+    state: str
 
 
 def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
