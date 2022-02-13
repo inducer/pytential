@@ -275,28 +275,38 @@ class ResidualPrinter:
 
 # {{{ entrypoint
 
-def gmres(op, rhs, restart=None, tol=None, x0=None,
-        inner_product=None,
-        maxiter=None, hard_failure=None,
-        no_progress_factor=None, stall_iterations=None,
-        callback=None, progress=False, require_monotonicity=True):
-    """Solve a linear system Ax=b by means of GMRES
-    with restarts.
+def gmres(
+        op: Callable[[ArrayOrContainerT], ArrayOrContainerT],
+        rhs: ArrayOrContainerT,
+        restart: Optional[int] = None,
+        tol: Optional[float] = None,
+        x0: Optional[ArrayOrContainerT] = None,
+        inner_product: Optional[
+            Callable[[ArrayOrContainerT, ArrayOrContainerT], float]] = None,
+        maxiter: Optional[int] = None,
+        hard_failure: Optional[bool] = None,
+        no_progress_factor: Optional[float] = None,
+        stall_iterations: Optional[int] = None,
+        callback: Optional[Callable[[ArrayOrContainerT], None]] = None,
+        progress: bool = False,
+        require_monotonicity: bool = True) -> GMRESResult:
+    """Solve a linear system :math:`Ax = b` using GMRES with restarts.
 
-    :arg op: a callable to evaluate A(x)
-    :arg b: the right hand side
-    :arg restart: the maximum number of iteration after
-       which GMRES algorithm needs to be restarted
-    :arg tol: the required decrease in residual norm
-    :arg inner_product: Must have an interface compatible with
-        :func:`numpy.vdot`. Must return a host scalar.
-    :arg maxiter: the maximum number of iteration permitted
-    :arg hard_failure: If True, raise :exc:`GMRESError` in case of failure.
-    :arg stall_iterations: Number of iterations with residual decrease
-        below *no_progress_factor* indicates stall. Set to 0 to disable
+    :arg op: a callable to evaluate :math:`A(x)`.
+    :arg rhs: the right hand side :math:`b`.
+    :arg restart: the maximum number of iteration after which GMRES algorithm
+        needs to be restarted
+    :arg tol: the required decrease in residual norm (relative to the *rhs*).
+    :arg x0: an initial guess for the iteration (a zero array is used by default).
+    :arg inner_product: a callable with an interface compatible with
+        :func:`numpy.vdot` that returns a host scalar.
+    :arg maxiter: the maximum number of iterations permitted.
+    :arg hard_failure: if *True*, raise :exc:`GMRESError` in case of failure.
+    :arg stall_iterations: number of iterations with residual decrease
+        below *no_progress_factor* indicates stall. Set to ``0`` to disable
         stall detection.
 
-    :return: a :class:`GMRESResult`
+    :return: a :class:`GMRESResult`.
     """
     if inner_product is None:
         from pytential.symbolic.execution import \
