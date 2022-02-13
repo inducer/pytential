@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import Optional
+
 import numpy as np
 
 from pytools.obj_array import make_obj_array
@@ -9,22 +12,23 @@ import extra_int_eq_data as extra
 
 # {{{ MatrixTestCase
 
+@dataclass
 class MatrixTestCaseMixin:
     # partitioning
-    approx_cluster_count = 10
-    max_particles_in_box = None
-    tree_kind = "adaptive-level-restricted"
-    index_sparsity_factor = 1.0
+    approx_cluster_count: int = 10
+    max_particles_in_box: Optional[int] = None
+    tree_kind: str = "adaptive-level-restricted"
+    index_sparsity_factor: float = 1.0
 
     # proxy
-    proxy_radius_factor = 1.1
-    proxy_approx_count = 32
+    proxy_radius_factor: float = 1.1
+    proxy_approx_count: float = 32
 
     # operators
-    op_type = "scalar"
+    op_type: str = "scalar"
 
     # disable fmm for matrix tests
-    fmm_backend = None
+    fmm_backend: Optional[str] = None
 
     def get_cluster_index(self, actx, places, dofdesc=None):
         if dofdesc is None:
@@ -97,10 +101,12 @@ class MatrixTestCaseMixin:
         return sym_u, sym_op
 
 
+@dataclass
 class CurveTestCase(MatrixTestCaseMixin, extra.CurveTestCase):
     pass
 
 
+@dataclass
 class TorusTestCase(MatrixTestCaseMixin, extra.TorusTestCase):
     pass
 
