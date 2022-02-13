@@ -21,9 +21,11 @@ THE SOFTWARE.
 """
 
 import numpy as np
-from pytools import Record, memoize_method
+
+from pytools import memoize_method
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
+
 from boxtree.pyfmmlib_integration import (
         Kernel,
         FMMLibTreeIndependentDataForWrangler,
@@ -39,10 +41,6 @@ from pytools import log_process
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-class P2QBXLInfo(Record):
-    pass
 
 
 class QBXFMMLibTreeIndependentDataForWrangler(FMMLibTreeIndependentDataForWrangler):
