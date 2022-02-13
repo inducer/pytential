@@ -20,10 +20,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Type, Tuple, Union
+
 import numpy as np
 
 from pytential import sym
-from pytools import RecordWithoutPickling, memoize_method
+from pytools import memoize_method
+from sumpy.kernel import Kernel
 from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
 
 import logging
@@ -78,53 +82,41 @@ def make_source_and_target_points(
 
 # {{{ IntegralEquationTestCase
 
-class IntegralEquationTestCase(RecordWithoutPickling):
-    name = "unknown"
+@dataclass
+class IntegralEquationTestCase:
+    name: Optional[str] = None
+    ambient_dim: Optional[int] = None
 
     # operator
-    knl_class_or_helmholtz_k = 0
-    knl_kwargs = {}
-    bc_type = "dirichlet"
-    side = -1
+    knl_class_or_helmholtz_k: Union[Type[Kernel], float] = 0
+    knl_kwargs: Dict[str, Any] = field(default_factory=dict)
+    bc_type: str = "dirichlet"
+    side: int = -1
 
     # qbx
-    qbx_order = None
-    source_ovsmp = 4
-    target_order = None
-    use_refinement = True
-    group_factory_cls = InterpolatoryQuadratureGroupFactory
+    qbx_order: Optional[int] = None
+    source_ovsmp: int = 4
+    target_order: Optional[int] = None
+    use_refinement: bool = True
+    group_factory_cls: type = InterpolatoryQuadratureGroupFactory
 
     # fmm
-    fmm_backend = "sumpy"
-    fmm_order = None
-    fmm_tol = None
+    fmm_backend: str = "sumpy"
+    fmm_order: Optional[int] = None
+    fmm_tol: Optional[float] = None
 
     # solver
-    gmres_tol = 1.0e-14
+    gmres_tol: float = 1.0e-14
 
     # test case
-    resolutions = None
-    inner_radius = None
-    outer_radius = None
-    check_tangential_deriv = True
-    check_gradient = False
+    resolutions: Optional[List[int]] = None
+    inner_radius: Optional[float] = None
+    outer_radius: Optional[float] = None
+    check_tangential_deriv: bool = True
+    check_gradient: bool = False
 
-    def __init__(self, **kwargs):
-        import inspect
-        members = inspect.getmembers(type(self), lambda m: not inspect.isroutine(m))
-        members = dict(
-                m for m in members
-                if (not m[0].startswith("__")
-                    and m[0] != "fields"
-                    and not isinstance(m[1], property))
-                )
-
-        for k, v in kwargs.items():
-            if k not in members:
-                raise KeyError(f"unknown keyword argument '{k}'")
-            members[k] = v
-
-        super().__init__(**members)
+    box_extent_norm: Optional[str] = None
+    from_sep_smaller_crit: Optional[str] = None
 
     # {{{ symbolic
 
@@ -218,21 +210,20 @@ class IntegralEquationTestCase(RecordWithoutPickling):
                 fmm_backend=self.fmm_backend, **fmm_kwargs,
 
                 _disable_refinement=not self.use_refinement,
-                _box_extent_norm=getattr(self, "box_extent_norm", None),
-                _from_sep_smaller_crit=getattr(self, "from_sep_smaller_crit", None),
+                _box_extent_norm=self.box_extent_norm,
+                _from_sep_smaller_crit=self.from_sep_smaller_crit,
                 _from_sep_smaller_min_nsources_cumul=30,
                 )
 
     # }}}
 
     def __str__(self):
-        if not self.__class__.fields:
-            return f"{type(self).__name__}()"
+        from dataclasses import fields
+        attrs = {f.name: getattr(self, f.name) for f in fields(self)}
 
-        width = len(max(list(self.__class__.fields), key=len))
+        width = len(max(attrs, key=len))
         fmt = f"%{width}s : %s"
 
-        attrs = {k: getattr(self, k) for k in self.__class__.fields}
         header = {
                 "class": type(self).__name__,
                 "name": attrs.get("name", self.name),
@@ -249,21 +240,22 @@ class IntegralEquationTestCase(RecordWithoutPickling):
 
 # {{{ 2d curves
 
+@dataclass
 class CurveTestCase(IntegralEquationTestCase):
-    ambient_dim = 2
+    ambient_dim: int = 2
 
     # qbx
-    qbx_order = 5
-    target_order = 5
+    qbx_order: int = 5
+    target_order: int = 5
 
     # fmm
-    fmm_backend = None
+    fmm_backend: Optional[str] = None
 
     # test case
-    curve_fn = None
-    inner_radius = 0.1
-    outer_radius = 2
-    resolutions = [40, 50, 60]
+    curve_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None
+    inner_radius: float = 0.1
+    outer_radius: float = 2
+    resolutions: List[int] = field(default_factory=lambda: [40, 50, 60])
 
     def _curve_fn(self, t):
         return self.curve_fn(t)     # pylint:disable=not-callable
@@ -276,44 +268,45 @@ class CurveTestCase(IntegralEquationTestCase):
                 mesh_order)
 
 
+@dataclass
 class EllipseTestCase(CurveTestCase):
-    name = "ellipse"
-    aspect_ratio = 3.0
-    radius = 1.0
+    name: str = "ellipse"
+    aspect_ratio: float = 3.0
+    radius: float = 1.0
 
     def _curve_fn(self, t):
         from meshmode.mesh.generation import ellipse
         return self.radius * ellipse(self.aspect_ratio, t)
 
 
+@dataclass
 class CircleTestCase(EllipseTestCase):
-    name = "circle"
-    aspect_ratio = 1.0
-    radius = 1.0
+    name: str = "circle"
+    aspect_ratio: float = 1.0
+    radius: float = 1.0
 
 
+@dataclass
 class WobbleCircleTestCase(CurveTestCase):
-    name = "wobble-circle"
-    resolutions = [2000, 3000, 4000]
+    name: str = "wobble-circle"
+    resolutions: List[int] = field(default_factory=lambda: [2000, 3000, 4000])
 
     def _curve_fn(self, t):
         from meshmode.mesh.generation import WobblyCircle
         return WobblyCircle.random(30, seed=30)(t)
 
 
+@dataclass
 class StarfishTestCase(CurveTestCase):
-    resolutions = [30, 50, 70, 90]
+    name: str = "starfish"
+    n_arms: int = 5
+    amplitude: float = 0.25
 
-    n_arms = 5
-    amplitude = 0.25
+    # NOTE: these are valid for the (n_arms, amplitude) above
+    inner_radius: float = 0.25
+    outer_radius: float = 2.0
 
-    # NOTE: these are valid for the (n_args, amplitude) above
-    inner_radius = 0.25
-    outer_radius = 2.0
-
-    @property
-    def name(self):
-        return f"starfish_{self.n_arms}"
+    resolutions: List[int] = field(default_factory=lambda: [30, 50, 70, 90])
 
     def _curve_fn(self, t):
         from meshmode.mesh.generation import NArmedStarfish
@@ -324,34 +317,36 @@ class StarfishTestCase(CurveTestCase):
 
 # {{{ 3d surfaces
 
+@dataclass
 class Helmholtz3DTestCase(IntegralEquationTestCase):
-    ambient_dim = 3
+    ambient_dim: int = 3
 
     # qbx
-    use_refinement = False
+    use_refinement: bool = False
 
     # fmm
-    fmm_backend = "fmmlib"
+    fmm_backend: str = "fmmlib"
 
     # solver
-    gmres_tol = 1.0e-7
+    gmres_tol: float = 1.0e-7
 
     # test case
-    check_tangential_deriv = False
+    check_tangential_deriv: bool = False
 
 
+@dataclass
 class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
-    name = "ellipsoid"
+    name: str = "ellipsoid"
 
     # qbx
-    qbx_order = 5
-    fmm_order = 13
+    qbx_order: int = 5
+    fmm_order: int = 13
 
     # test case
-    resolutions = [2, 0.8]
-    inner_radius = 0.4
-    outer_radius = 5.0
-    check_gradient = True
+    resolutions: List[int] = field(default_factory=lambda: [2, 0.8])
+    inner_radius: float = 0.4
+    outer_radius: float = 5.0
+    check_gradient: bool = True
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.io import generate_gmsh, FileSource
@@ -366,30 +361,31 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
         return perform_flips(mesh, np.ones(mesh.nelements))
 
 
+@dataclass
 class SphereTestCase(IntegralEquationTestCase):
-    ambient_dim = 3
-    name = "sphere"
+    name: str = "sphere"
+    ambient_dim: int = 3
 
     # qbx
-    qbx_order = 5
-    target_order = 8
-    use_refinement = False
+    qbx_order: int = 5
+    target_order: int = 8
+    use_refinement: bool = False
 
     # fmm
-    fmm_backend = "fmmlib"
-    fmm_tol = 1.0e-4
+    fmm_backend: str = "fmmlib"
+    fmm_tol: float = 1.0e-4
 
     # solver
-    gmres_tol = 1.0e-7
+    gmres_tol: float = 1.0e-7
 
     # test case
-    resolutions = [1, 2]
-    check_gradient = False
-    check_tangential_deriv = False
+    resolutions: List[int] = field(default_factory=lambda: [1, 2])
+    check_gradient: bool = False
+    check_tangential_deriv: bool = False
 
-    radius = 1.0
-    inner_radius = 0.4
-    outer_radius = 5.0
+    radius: float = 1.0
+    inner_radius: float = 0.4
+    outer_radius: float = 5.0
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.generation import generate_sphere
@@ -397,9 +393,10 @@ class SphereTestCase(IntegralEquationTestCase):
                 uniform_refinement_rounds=resolution)
 
 
+@dataclass
 class SpheroidTestCase(SphereTestCase):
-    name = "spheroid"
-    aspect_ratio = 2.0
+    name: str = "spheroid"
+    aspect_ratio: float = 2.0
 
     def get_mesh(self, resolution, mesh_order):
         mesh = super().get_mesh(resolution, mesh_order)
@@ -410,9 +407,10 @@ class SpheroidTestCase(SphereTestCase):
             ]))
 
 
+@dataclass
 class QuadSpheroidTestCase(SphereTestCase):
-    name = "quadspheroid"
-    aspect_ratio = 2.0
+    name: str = "quadspheroid"
+    aspect_ratio: float = 2.0
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh import TensorProductElementGroup
@@ -428,21 +426,22 @@ class QuadSpheroidTestCase(SphereTestCase):
         return mesh
 
 
+@dataclass
 class TorusTestCase(IntegralEquationTestCase):
-    ambient_dim = 3
-    name = "torus"
+    name: str = "torus"
+    ambient_dim: int = 3
 
     # qbx
-    qbx_order = 4
-    target_order = 7
-    use_refinement = True
+    qbx_order: int = 4
+    target_order: int = 7
+    use_refinement: bool = True
 
     # geometry
-    r_major = 10.0
-    r_minor = 2.0
+    r_major: float = 10.0
+    r_minor: float = 2.0
 
     # test case
-    resolutions = [0, 1, 2]
+    resolutions: List[int] = field(default_factory=lambda: [0, 1, 2])
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.generation import generate_torus
@@ -452,16 +451,17 @@ class TorusTestCase(IntegralEquationTestCase):
         return refine_uniformly(mesh, resolution)
 
 
+@dataclass
 class MergedCubesTestCase(Helmholtz3DTestCase):
-    name = "merged_cubes"
+    name: str = "merged_cubes"
 
     # qbx
-    use_refinement = True
+    use_refinement: bool = True
 
     # test case
-    resolutions = [1.4]
-    inner_radius = 0.4
-    outer_radius = 12.0
+    resolutions: List[int] = field(default_factory=lambda: [1.4])
+    inner_radius: float = 0.4
+    outer_radius: float = 12.0
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.io import generate_gmsh, FileSource
@@ -476,19 +476,20 @@ class MergedCubesTestCase(Helmholtz3DTestCase):
         return perform_flips(mesh, np.ones(mesh.nelements))
 
 
+@dataclass
 class ManyEllipsoidTestCase(Helmholtz3DTestCase):
-    name = "ellipsoid"
+    name: str = "ellipsoid"
 
     # test case
-    resolutions = [2, 1]
-    inner_radius = 0.4
-    outer_radius = 5.0
+    resolutions: List[int] = field(default_factory=lambda: [2, 1])
+    inner_radius: float = 0.4
+    outer_radius: float = 5.0
 
     # repeated geometry
-    pitch = 10
-    nx = 2
-    ny = 2
-    nz = 2
+    pitch: int = 10
+    nx: int = 2
+    ny: int = 2
+    nz: int = 2
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.io import generate_gmsh, FileSource
@@ -523,33 +524,34 @@ class ManyEllipsoidTestCase(Helmholtz3DTestCase):
 
 # {{{ fancy geometries
 
+@dataclass
 class EllipticPlaneTestCase(IntegralEquationTestCase):
-    ambient_dim = 3
-    name = "elliptic_plane"
+    name: str = "elliptic_plane"
+    ambient_dim: int = 3
 
     # qbx
-    qbx_order = 3
-    target_order = 3
-    use_refinement = True
+    qbx_order: int = 3
+    target_order: int = 3
+    use_refinement: bool = True
 
     # fmm
-    fmm_backend = "fmmlib"
-    fmm_tol = 1.0e-4
+    fmm_backend: str = "fmmlib"
+    fmm_tol: float = 1.0e-4
 
     # test case
-    resolutions = [0.1]
-    inner_radius = 0.2
-    outer_radius = 12   # was '-13' in some large-scale run (?)
-    check_gradient = False
-    check_tangential_deriv = False
+    resolutions: List[int] = field(default_factory=lambda: [0.1])
+    inner_radius: float = 0.2
+    outer_radius: float = 12   # was '-13' in some large-scale run (?)
+    check_gradient: bool = False
+    check_tangential_deriv: bool = False
 
     # solver
     # NOTE: we're only expecting three digits based on FMM settings
-    gmres_tol = 1.0e-5
+    gmres_tol: float = 1.0e-5
 
     # to match the scheme given in the GIGAQBX3D paper
-    box_extent_norm = "l2"
-    from_sep_smaller_crit = "static_l2"
+    box_extent_norm: str = "l2"
+    from_sep_smaller_crit: str = "static_l2"
 
     def get_mesh(self, resolution, mesh_order):
         from pytools import download_from_web_if_not_present
@@ -571,37 +573,39 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
         return perform_flips(mesh, np.ones(mesh.nelements))
 
 
+@dataclass
 class BetterPlaneTestCase(IntegralEquationTestCase):
-    ambient_dim = 3
-    name = "better_plane"
+    name: str = "better_plane"
+    ambient_dim: int = 3
 
     # qbx
-    qbx_order = 3
-    target_order = 6
+    qbx_order: int = 3
+    target_order: int = 6
 
     # fmm
-    fmm_backend = "fmmlib"
-    fmm_tol = 1.0e-4
-    use_refinement = True
+    fmm_backend: str = "fmmlib"
+    fmm_tol: float = 1.0e-4
+    use_refinement: bool = True
 
     # test case
-    resolutions = [0.2]
-    inner_radius = 0.2
-    outer_radius = 15
-    check_gradient = False
-    check_tangential_deriv = False
+    resolutions: List[int] = field(default_factory=lambda: [0.2])
+    inner_radius: float = 0.2
+    outer_radius: float = 15
+    check_gradient: bool = False
+    check_tangential_deriv: bool = False
 
     # solver
-    gmres_tol = 1.0e-5
+    gmres_tol: float = 1.0e-5
 
     # other stuff
-    visualize_geometry = True
-    vis_grid_spacing = (0.025, 0.2, 0.025)
-    vis_extend_factor = 0.2
+    visualize_geometry: bool = True
+    vis_grid_spacing: Tuple[float, float, float] = field(
+        default_factory=lambda: (0.025, 0.2, 0.025))
+    vis_extend_factor: float = 0.2
 
     # refine_on_helmholtz_k = False
     # scaled_max_curvature_threshold = 1
-    expansion_disturbance_tolerance = 0.3
+    expansion_disturbance_tolerance: float = 0.3
 
     def get_mesh(self, resolution, target_order):
         from pytools import download_from_web_if_not_present

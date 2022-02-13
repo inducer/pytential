@@ -204,7 +204,8 @@ def test_partition_points(actx_factory, tree_kind, case, visualize=False):
 
     actx = actx_factory()
 
-    case = case.copy(tree_kind=tree_kind, index_sparsity_factor=1.0)
+    from dataclasses import replace
+    case = replace(case, tree_kind=tree_kind, index_sparsity_factor=1.0)
     logger.info("\n%s", case)
 
     # {{{
@@ -248,7 +249,8 @@ def test_proxy_generator(actx_factory, case,
 
     actx = actx_factory()
 
-    case = case.copy(
+    from dataclasses import replace
+    case = replace(case,
             index_sparsity_factor=index_sparsity_factor,
             proxy_radius_factor=proxy_radius_factor)
     logger.info("\n%s", case)
@@ -317,7 +319,8 @@ def test_neighbor_points(actx_factory, case,
 
     actx = actx_factory()
 
-    case = case.copy(
+    from dataclasses import replace
+    case = replace(case,
             index_sparsity_factor=index_sparsity_factor,
             proxy_radius_factor=proxy_radius_factor)
     logger.info("\n%s", case)
