@@ -498,10 +498,21 @@ class NumpyMathFunction(Function):
 
 
 class CLMathFunction(NumpyMathFunction):
+    _np_to_cl_names = {
+        "arcsin": "asin",
+        "arccos": "acos",
+        "arctan": "atan",
+        "arctan2": "atan2",
+        "asinh": "arcsinh",
+        "acosh": "arccosh",
+        "atanh": "arctanh",
+    }
+
     def __call__(self, *args, **kwargs):
         from warnings import warn
-        warn("CLMathFunction '{name}' is deprecated. Use NumpyMathFunction instead. "
-                "CLMathFunction will go away in 2022.",
+        cl_name = self._np_to_cl_names[self.name]
+        warn(f"'sym.{cl_name}' is deprecated. Use 'sym.{self.name}' instead. "
+                 "'sym.{cl_name}' will go away in 2022.",
                 DeprecationWarning, stacklevel=2)
 
         return super().__call__(*args, **kwargs)
