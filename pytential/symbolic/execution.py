@@ -281,7 +281,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         elif isinstance(operand, (int, float, complex, np.number)):
             return operand
         else:
-            raise TypeError("cannot interpolate `{}`".format(type(operand)))
+            raise TypeError(f"cannot interpolate '{type(operand).__name__}'")
 
     def map_common_subexpression(self, expr):
         if expr.scope == sym.cse_scope.EXPRESSION:
@@ -807,8 +807,8 @@ class GeometryCollection:
 
         if key not in cache:
             raise KeyError(
-                    "cached discretization does not exist on '{geometry}'"
-                    "for stage '{discr_stage}'")
+                    f"cached discretization does not exist on '{geometry}' "
+                    f"for stage '{discr_stage}'")
 
         return cache[key]
 
