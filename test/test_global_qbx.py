@@ -111,7 +111,7 @@ def run_source_refinement_test(actx_factory, mesh, order,
             vis_discr = places.get_discretization(dd.geometry, dd.discr_stage)
 
         stretch = bind(places,
-                sym._simplex_mapping_max_stretch_factor(places.ambient_dim),
+                sym._mapping_max_stretch_factor(places.ambient_dim),
                 auto_where=dd)(actx)
 
         from meshmode.discretization.visualization import make_visualizer
@@ -280,8 +280,10 @@ def test_source_refinement_2d(actx_factory,
     order = 8
 
     mesh = mgen.make_curve_mesh(curve_f, np.linspace(0, 1, nelements+1), order)
-    run_source_refinement_test(actx_factory, mesh, order, helmholtz_k,
-                               surface_name=curve_name, visualize=visualize)
+    run_source_refinement_test(actx_factory, mesh, order,
+            helmholtz_k=helmholtz_k,
+            surface_name=curve_name,
+            visualize=visualize)
 
 
 @pytest.mark.parametrize(("surface_name", "surface_f", "order"), [
@@ -293,7 +295,8 @@ def test_source_refinement_3d(actx_factory,
         surface_name, surface_f, order, visualize=False):
     mesh = surface_f(order=order)
     run_source_refinement_test(actx_factory, mesh, order,
-                               surface_name=surface_name, visualize=visualize)
+            surface_name=surface_name,
+            visualize=visualize)
 
 
 @pytest.mark.parametrize(("curve_name", "curve_f", "nelements"), [
