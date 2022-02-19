@@ -608,9 +608,6 @@ def _refine_qbx_stage1(lpot_source, density_discr,
         iter_violated_criteria = []
         niter += 1
 
-        logger.debug("[stage1] niter %4d nelements %8d ndofs %8d",
-            niter, stage1_density_discr.mesh.nelements, stage1_density_discr.ndofs)
-
         if niter > maxiter:
             _warn_max_iterations(
                     violated_criteria, expansion_disturbance_tolerance)
@@ -622,12 +619,10 @@ def _refine_qbx_stage1(lpot_source, density_discr,
             with ProcessLogger(logger,
                     "checking kernel length scale to element size ratio"):
 
-                quad_resolution_by_element = bind(
-                        stage1_density_discr,
+                quad_resolution_by_element = bind(stage1_density_discr,
                         sym.ElementwiseMax(
                             sym._quad_resolution(stage1_density_discr.ambient_dim),
-                            dofdesc=sym.GRANULARITY_ELEMENT)
-                        )(actx)
+                            dofdesc=sym.GRANULARITY_ELEMENT))(actx)
 
                 violates_kernel_length_scale = \
                         wrangler.check_element_prop_threshold(
@@ -647,8 +642,7 @@ def _refine_qbx_stage1(lpot_source, density_discr,
                 scaled_max_curvature_by_element = bind(stage1_density_discr,
                     sym.ElementwiseMax(
                         sym._scaled_max_curvature(stage1_density_discr.ambient_dim),
-                        dofdesc=sym.GRANULARITY_ELEMENT)
-                    )(actx)
+                        dofdesc=sym.GRANULARITY_ELEMENT))(actx)
 
                 violates_scaled_max_curv = \
                         wrangler.check_element_prop_threshold(
@@ -689,8 +683,6 @@ def _refine_qbx_stage1(lpot_source, density_discr,
             del peer_lists
 
         if iter_violated_criteria:
-            logger.debug("[stage1] violated_criteria: %s",
-                    " and ".join(iter_violated_criteria))
             violated_criteria.append(" and ".join(iter_violated_criteria))
 
             conn = wrangler.refine(
@@ -736,9 +728,6 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
         iter_violated_criteria = []
         niter += 1
 
-        logger.debug("[stage2] niter %4d nelements %8d ndofs %8d",
-            niter, stage2_density_discr.mesh.nelements, stage2_density_discr.ndofs)
-
         if niter > maxiter:
             _warn_max_iterations(
                     violated_criteria, expansion_disturbance_tolerance)
@@ -767,8 +756,6 @@ def _refine_qbx_stage2(lpot_source, stage1_density_discr,
                     visualize=visualize)
 
         if iter_violated_criteria:
-            logger.debug("[stage2] violated_criteria: %s",
-                    " and ".join(iter_violated_criteria))
             violated_criteria.append(" and ".join(iter_violated_criteria))
 
             conn = wrangler.refine(
