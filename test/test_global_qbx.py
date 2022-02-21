@@ -162,7 +162,7 @@ def run_source_refinement_test(actx_factory, mesh, order,
         bind(places, sym.expansion_radii(ambient_dim))(actx), actx)
         )
 
-    source_danger_zone_radii = actx.to_numpy(flatten(
+    source_danger_zone_radii_by_element = actx.to_numpy(flatten(
             bind(
                 places, sym.ElementwiseMax(
                     sym._source_danger_zone_radii(
@@ -183,13 +183,16 @@ def run_source_refinement_test(actx_factory, mesh, order,
             # Same element
             return True
 
+        # NOTE: centers.shape: (ambient_dim, nunit_dofs)
         my_int_centers = int_centers[:, centers_element.discr_slice]
         my_ext_centers = ext_centers[:, centers_element.discr_slice]
+        # NOTE: all_centers.shape: (ambient_dim, 2*nunit_dofs)
         all_centers = np.append(my_int_centers, my_ext_centers, axis=-1)
 
         nodes = stage1_density_nodes[:, sources_element.discr_slice]
 
-        # =distance(centers of element 1, element 2)
+        # NOTE: computes distance(centers of element 1, element 2)
+        #       dist.shape: (2*nunit_dofs,)
         dist = np.min(
                 la.norm(
                     (all_centers[..., np.newaxis] - nodes[:, np.newaxis, ...]).T,
@@ -200,6 +203,7 @@ def run_source_refinement_test(actx_factory, mesh, order,
         # A center cannot be closer to another element than to its originating
         # element.
 
+        # NOTE: rad.shape: (2*nunit_dofs,)
         rad = (
                 (1 - expansion_disturbance_tolerance)
                 * np.tile(expansion_radii[centers_element.discr_slice], 2))
@@ -216,15 +220,18 @@ def run_source_refinement_test(actx_factory, mesh, order,
         return is_undisturbed
 
     def check_sufficient_quadrature_resolution(centers_element, sources_element):
-        dz_radius = source_danger_zone_radii[sources_element.index]
+        dz_radius = source_danger_zone_radii_by_element[sources_element.index]
 
+        # NOTE: centers.shape: (ambient_dim, nunit_dofs)
         my_int_centers = int_centers[:, centers_element.discr_slice]
         my_ext_centers = ext_centers[:, centers_element.discr_slice]
+        # NOTE: all_centers.shape: (ambient_dim, 2*nunit_dofs)
         all_centers = np.append(my_int_centers, my_ext_centers, axis=-1)
 
+        # NOTE: nodes.shape: (ambient_dim, nunit_quad_dofs)
         nodes = quad_stage2_density_nodes[:, sources_element.discr_slice]
 
-        # =distance(centers of element 1, element 2)
+        # NOTE: computes min(distance(centers of element 1, element 2))
         dist = (
             la.norm((
                     all_centers[..., np.newaxis]
