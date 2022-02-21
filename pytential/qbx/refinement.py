@@ -311,9 +311,8 @@ class RefinerWrangler(TreeWranglerBase):
         center_danger_zone_radii = flatten(
             bind(
                 stage1_density_discr,
-                sym.interleave(
-                    sym.expansion_radii(stage1_density_discr.ambient_dim),
-                    )
+                sym.interp(None, sym.GRANULARITY_CENTER,
+                    sym.expansion_radii(stage1_density_discr.ambient_dim))
                 )(self.array_context),
             self.array_context)
 

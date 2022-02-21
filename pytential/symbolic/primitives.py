@@ -1225,11 +1225,6 @@ def interp(from_dd, to_dd, operand):
     return Interpolation(from_dd, to_dd, operand)
 
 
-def interleave(operand, dofdesc=None):
-    dofdesc = as_dofdesc(dofdesc)
-    return interp(dofdesc, dofdesc.copy(granularity=GRANULARITY_CENTER), operand)
-
-
 class SingleScalarOperandExpression(Expression):
 
     init_arg_names = ("operand",)
