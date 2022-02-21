@@ -522,15 +522,17 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
     flags = flags.astype(bool)
     nodes_flags_template = discr.zeros(actx)
     nodes_flags = []
+
+    element_nr_base = 0
     for grp in discr.groups:
         meg = grp.mesh_el_group
         nodes_flags_grp = actx.to_numpy(nodes_flags_template[grp.index])
-        nodes_flags_grp[
-                flags[meg.element_nr_base:meg.nelements+meg.element_nr_base]] = 1
+        nodes_flags_grp[flags[element_nr_base:element_nr_base + meg.nelements]] = 1
         nodes_flags.append(actx.from_numpy(nodes_flags_grp))
 
-    nodes_flags = DOFArray(actx, tuple(nodes_flags))
+        element_nr_base += meg.nelements
 
+    nodes_flags = DOFArray(actx, tuple(nodes_flags))
     vis_data = [
         ("refine_flags", nodes_flags),
         ]
