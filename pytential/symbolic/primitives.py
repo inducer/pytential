@@ -1005,8 +1005,7 @@ def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None):
     return Max(tuple(stretch_factors))
 
 
-def _hypercube_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
-        with_elementwise_max=True):
+def _hypercube_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None):
     if dim is None:
         dim = ambient_dim - 1
 
@@ -1086,8 +1085,7 @@ def _expansion_radii_factor(ambient_dim, dim):
     return 0.5 * dim_fudge_factor
 
 
-def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None,
-        with_elementwise_max=False):
+def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     """This measures the quadrature resolution across the
     mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
     should be the same as the element length.
@@ -1103,10 +1101,7 @@ def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None,
     to_dd = from_dd.copy(granularity=granularity)
 
     stretch = _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=from_dd)
-    if with_elementwise_max:
-        return ElementwiseMax(stretch, to_dd)
-    else:
-        return interp(from_dd, to_dd, stretch)
+    return interp(from_dd, to_dd, stretch)
 
 
 def _source_danger_zone_radii(ambient_dim, dim=None,
