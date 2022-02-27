@@ -168,10 +168,9 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         assert operand.shape == (len(discr.groups),)
 
         def _reduce(knl, result):
-            for grp in discr.groups:
-                self.array_context.call_loopy(knl,
-                        operand=operand[grp.index],
-                        result=result[grp.index])
+            for g_operand, g_result in zip(operand, result):
+                self.array_context.call_loopy(
+                    knl, operand=g_operand, result=g_result)
 
             return result
 
