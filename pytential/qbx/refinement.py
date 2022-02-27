@@ -524,9 +524,9 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
     nodes_flags = []
 
     element_nr_base = 0
-    for grp in discr.groups:
+    for igrp, grp in enumerate(discr.groups):
         meg = grp.mesh_el_group
-        nodes_flags_grp = actx.to_numpy(nodes_flags_template[grp.index])
+        nodes_flags_grp = actx.to_numpy(nodes_flags_template[igrp])
         nodes_flags_grp[flags[element_nr_base:element_nr_base + meg.nelements]] = 1
         nodes_flags.append(actx.from_numpy(nodes_flags_grp))
 
