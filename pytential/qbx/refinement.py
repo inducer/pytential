@@ -940,7 +940,7 @@ def refine_geometry_collection(places,
         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE2` or
         :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
     :arg group_factory: An instance of
-        :class:`meshmode.discretization.poly_element.ElementGroupFactory`. Used for
+        :class:`meshmode.discretization.ElementGroupFactory`. Used for
         discretizing the coarse refined mesh.
 
     :arg kernel_length_scale: The kernel length scale, or *None* if not
