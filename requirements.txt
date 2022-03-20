@@ -1,8 +1,8 @@
 # https://github.com/numpy/numpy/issues/20709
 numpy != 1.22.0
 
-git+git://github.com/inducer/pytools.git#egg=pytools
-git+git://github.com/inducer/pymbolic.git#egg=pymbolic
+git+https://github.com/inducer/pytools.git#egg=pytools
+git+https://github.com/inducer/pymbolic.git#egg=pymbolic
 sympy
 git+https://github.com/inducer/modepy.git#egg=modepy
 git+https://github.com/inducer/pyopencl.git#egg=pyopencl
