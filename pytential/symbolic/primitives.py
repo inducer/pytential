@@ -1582,19 +1582,32 @@ class IntG(Expression):
         self.target = as_dofdesc(target)
         self.kernel_arguments = kernel_arguments
 
-    def copy(self, target_kernel=None, densities=None,
-            qbx_forced_limit=_NoArgSentinel, source=None, target=None,
-            kernel_arguments=None, source_kernels=None):
-        target_kernel = target_kernel or self.target_kernel
-        source_kernels = source_kernels or self.source_kernels
-        densities = densities or self.densities
+    def copy(self, target_kernel=None, source_kernels=None, densities=None,
+            qbx_forced_limit=_NoArgSentinel,
+            source=_NoArgSentinel, target=_NoArgSentinel,
+            kernel_arguments=None):
+        if target_kernel is None:
+            target_kernel = self.target_kernel
+
+        if source_kernels is None:
+            source_kernels = self.source_kernels
+
+        if densities is None:
+            densities = self.densities
+
+        if kernel_arguments is None:
+            kernel_arguments = self.kernel_arguments
+
         if qbx_forced_limit is _NoArgSentinel:
             qbx_forced_limit = self.qbx_forced_limit
-        source = as_dofdesc(source or self.source)
-        target = as_dofdesc(target or self.target)
-        kernel_arguments = kernel_arguments or self.kernel_arguments
-        return type(self)(target_kernel, source_kernels, densities, qbx_forced_limit,
-                source, target, kernel_arguments)
+
+        source = self.source if source is _NoArgSentinel else as_dofdesc(source)
+        target = self.target if target is _NoArgSentinel else as_dofdesc(target)
+        return type(self)(target_kernel, source_kernels, densities,
+                          qbx_forced_limit=qbx_forced_limit,
+                          source=source,
+                          target=target,
+                          kernel_arguments=kernel_arguments)
 
     def __getinitargs__(self):
         return (self.target_kernel, self.source_kernels, self.densities,
