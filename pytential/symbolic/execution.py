@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Optional
+from typing import Any, Dict, Hashable, Optional
 
 from pymbolic.mapper.evaluator import (
         EvaluationMapper as PymbolicEvaluationMapper)
@@ -273,9 +273,13 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         else:
             return self.rec(expr.child)
 
+        # NOTE: the expr.prefix is added to the key mainly for testing purposes
+        # (i.e. to check if a given CSE is there in some simple cases)
+        key = (expr.prefix, expr.child)
+
         from numbers import Number
         try:
-            rec = cache[expr.child]
+            rec = cache[key]
             if (expr.scope == sym.cse_scope.DISCRETIZATION
                     and not isinstance(rec, Number)):
                 rec = thaw(rec, self.array_context)
@@ -285,7 +289,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                     and not isinstance(rec, Number)):
                 cached_rec = freeze(cached_rec, self.array_context)
 
-            cache[expr.child] = cached_rec
+            cache[key] = cached_rec
 
         return rec
 
@@ -711,27 +715,30 @@ class GeometryCollection:
 
         # {{{ construct dict
 
-        self.places = {}
-        self.caches = {}
+        places_dict = {}
 
         auto_source, auto_target = _prepare_auto_where(auto_where)
         if isinstance(places, QBXLayerPotentialSource):
-            self.places[auto_source.geometry] = places
+            places_dict[auto_source.geometry] = places
             auto_target = auto_source
         elif isinstance(places, TargetBase):
-            self.places[auto_target.geometry] = places
+            places_dict[auto_target.geometry] = places
             auto_source = auto_target
         if isinstance(places, (Discretization, PotentialSource)):
-            self.places[auto_source.geometry] = places
-            self.places[auto_target.geometry] = places
+            places_dict[auto_source.geometry] = places
+            places_dict[auto_target.geometry] = places
         elif isinstance(places, tuple):
             source_discr, target_discr = places
-            self.places[auto_source.geometry] = source_discr
-            self.places[auto_target.geometry] = target_discr
+            places_dict[auto_source.geometry] = source_discr
+            places_dict[auto_target.geometry] = target_discr
         else:
-            self.places = places
+            places_dict = places
 
+        import immutables
+        self.places = immutables.Map(places_dict)
         self.auto_where = (auto_source, auto_target)
+
+        self._caches = {}
 
         # }}}
 
@@ -781,7 +788,7 @@ class GeometryCollection:
     # {{{ cache handling
 
     def _get_cache(self, name):
-        return self.caches.setdefault(name, {})
+        return self._caches.setdefault(name, {})
 
     def _get_discr_from_cache(self, geometry, discr_stage):
         cache = self._get_cache(_GeometryCollectionDiscretizationCacheKey)
@@ -904,10 +911,8 @@ class GeometryCollection:
 
     def copy(self, places=None, auto_where=None):
         """Get a shallow copy of the geometry collection."""
-
-        places = self.places if places is None else places
         return type(self)(
-                places=places.copy(),
+                places=self.places if places is None else places,
                 auto_where=self.auto_where if auto_where is None else auto_where)
 
     def merge(self, places):
@@ -918,11 +923,11 @@ class GeometryCollection:
             current collection is returned.
         """
 
-        new_places = self.places.copy()
+        new_places = self.places
         if places:
             if isinstance(places, GeometryCollection):
                 places = places.places
-            new_places.update(places)
+            new_places = new_places.update(places)
 
         return self.copy(places=new_places)
 
@@ -931,6 +936,57 @@ class GeometryCollection:
 
     def __str__(self):
         return f"{type(self).__name__}({repr(self.places)})"
+
+
+_KNOWN_GEOMETRY_COLLECTION_CACHE_KEYS = (
+        EvaluationMapperCSECacheKey,
+        _GeometryCollectionConnectionCacheKey,
+        _GeometryCollectionDiscretizationCacheKey,
+        )
+
+
+def add_geometry_to_collection(
+        places: GeometryCollection,
+        geometries: Dict[Hashable, Any]) -> GeometryCollection:
+    """Adds a :class:`dict` of geometries to an existing collection.
+
+    This function is similar to :meth:`GeometryCollection.merge`, but it makes
+    an attempt to maintain the caches in *places*. In particular, a shallow
+    copy of the following are pased to the new collection
+
+    * Any cached discretizations from
+      :func:`~pytential.qbx.refinement.refine_geometry_collection`.
+    * Any cached expressions marked with `cse_scope.DISCRETIZATION` from the
+      evaluation mapper.
+
+    This allows adding new targets to the collection without recomputing the
+    source geometry data.
+    """
+    from pytential.source import PointPotentialSource
+    from pytential.target import PointsTarget
+    for key, geometry in geometries.items():
+        if key in places.places:
+            raise ValueError(f"geometry '{key}' already in the collection")
+
+        if not isinstance(geometry, (PointsTarget, PointPotentialSource)):
+            raise TypeError(
+                    f"Cannot add a geometry of type '{type(geometry).__name__}' "
+                    "to the existing collection. Construct a new collection "
+                    "instead.")
+
+    # copy over all the caches
+    new_places = places.merge(geometries)
+    for key in places._caches:
+        if key not in _KNOWN_GEOMETRY_COLLECTION_CACHE_KEYS:
+            from warnings import warn
+            warn(f"GeometryCollection cache key '{key}' is not known and will "
+                    "be dropped in the new collection.")
+            continue
+
+        new_cache = new_places._get_cache(key)
+        new_cache.update(places._get_cache(key))
+
+    return new_places
 
 # }}}
 
