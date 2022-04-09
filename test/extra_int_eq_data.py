@@ -307,6 +307,10 @@ class StarfishTestCase(CurveTestCase):
     n_arms = 5
     amplitude = 0.25
 
+    # NOTE: these are valid for the (n_args, amplitude) above
+    inner_radius = 0.25
+    outer_radius = 2.0
+
     @property
     def name(self):
         return f"starfish_{self.n_arms}"

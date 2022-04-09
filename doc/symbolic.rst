@@ -14,6 +14,7 @@ Binding an operator to a discretization
 .. currentmodule:: pytential
 
 .. autoclass:: GeometryCollection
+.. autofunction:: add_geometry_to_collection
 
 .. autofunction:: bind
 
