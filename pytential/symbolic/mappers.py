@@ -255,18 +255,22 @@ class EvaluationMapper(EvaluationMapperBase):
 class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     """Used internally by :class:`ToTargetTagger`."""
 
-    def __init__(self, default_where, default_source=prim.DEFAULT_SOURCE):
+    def __init__(self, default_target, default_source=prim.DEFAULT_SOURCE):
         self.default_source = default_source
-        self.default_where = default_where
+        self.default_target = default_target
 
     map_common_subexpression_uncached = \
             IdentityMapper.map_common_subexpression
 
     def _default_dofdesc(self, dofdesc):
         if dofdesc.geometry is None:
-            if dofdesc.discr_stage is None \
-                    and dofdesc.granularity == prim.GRANULARITY_NODE:
-                dofdesc = dofdesc.copy(geometry=self.default_where)
+            # NOTE: this is a heuristic to determine how to tag things:
+            #   * if no `discr_stage` is given, it's probably a target, since
+            #   only `QBXLayerPotentialSource` has stages.
+            #   * if some stage is present, assume it's a source
+            if (dofdesc.discr_stage is None
+                    and dofdesc.granularity == prim.GRANULARITY_NODE):
+                dofdesc = dofdesc.copy(geometry=self.default_target)
             else:
                 dofdesc = dofdesc.copy(geometry=self.default_source)
 
@@ -309,7 +313,7 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
 
         target = expr.target
         if target.geometry is None:
-            target = target.copy(geometry=self.default_where)
+            target = target.copy(geometry=self.default_target)
 
         return type(expr)(
                 expr.target_kernel,
@@ -322,9 +326,11 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                     })
 
     def map_inverse(self, expr):
+        # NOTE: this doesn't use `_default_dofdesc` because it should be always
+        # evaluated at the targets (ignores `discr_stage`)
         dofdesc = expr.dofdesc
         if dofdesc.geometry is None:
-            dofdesc = dofdesc.copy(geometry=self.default_where)
+            dofdesc = dofdesc.copy(geometry=self.default_target)
 
         return type(expr)(
                 # don't recurse into expression--it is a separate world that
