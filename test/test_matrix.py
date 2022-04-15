@@ -347,7 +347,7 @@ def test_block_builder(actx_factory, ambient_dim,
 
     # {{{ matrix
 
-    index_set = case.get_block_indices(actx, density_discr)
+    index_set = case.get_matrix_block_indices(actx, places)
     kwargs = dict(
             dep_expr=sym_u,
             other_dep_exprs=[],
@@ -441,15 +441,16 @@ def test_build_matrix_fixed_stage(actx_factory,
     # {{{ geometry
 
     dd = sym.DOFDescriptor(case.name)
+    source_dd = dd.copy(discr_stage=source_discr_stage)
+    target_dd = dd.copy(discr_stage=target_discr_stage)
+
     qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
 
-    places = GeometryCollection({case.name: qbx},
-            auto_where=(
-                dd.copy(discr_stage=source_discr_stage),
-                dd.copy(discr_stage=target_discr_stage)))
-
-    dd = places.auto_source
-    density_discr = places.get_discretization(dd.geometry, dd.discr_stage)
+    places = GeometryCollection({case.name: qbx}, auto_where=(source_dd, target_dd))
+    source_discr = places.get_discretization(
+            source_dd.geometry, source_dd.discr_stage)
+    target_discr = places.get_discretization(
+            target_dd.geometry, target_dd.discr_stage)
 
     # }}}
 
@@ -469,23 +470,20 @@ def test_build_matrix_fixed_stage(actx_factory,
 
     # {{{ check
 
-    source_discr = places.get_discretization(case.name, source_discr_stage)
-    target_discr = places.get_discretization(case.name, target_discr_stage)
-
-    logger.info("nelements:     %d", density_discr.mesh.nelements)
+    logger.info("nelements:     %d", source_discr.mesh.nelements)
     logger.info("ndofs:         %d", source_discr.ndofs)
     logger.info("ndofs:         %d", target_discr.ndofs)
 
     from pytential.linalg import MatrixBlockIndexRanges
-    icols = case.get_block_indices(actx, source_discr, matrix_indices=False)
-    irows = case.get_block_indices(actx, target_discr, matrix_indices=False)
+    icols = case.get_block_indices(actx, places, source_dd)
+    irows = case.get_block_indices(actx, places, target_dd)
     index_set = MatrixBlockIndexRanges(icols, irows)
 
     kwargs = dict(
             dep_expr=sym_u,
             other_dep_exprs=[],
             dep_source=places.get_geometry(case.name),
-            dep_discr=density_discr,
+            dep_discr=source_discr,
             places=places,
             context=case.knl_concrete_kwargs,
             )

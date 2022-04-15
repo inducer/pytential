@@ -213,7 +213,7 @@ def test_partition_points(actx_factory, tree_kind, case, visualize=False):
     places = GeometryCollection(qbx, auto_where=case.name)
 
     density_discr = places.get_discretization(case.name)
-    indices = case.get_block_indices(actx, density_discr, matrix_indices=False)
+    indices = case.get_block_indices(actx, places)
 
     expected_indices = np.arange(0, density_discr.ndofs)
     assert indices.ranges[-1] == density_discr.ndofs
@@ -259,7 +259,7 @@ def test_proxy_generator(actx_factory, case,
     places = GeometryCollection(qbx, auto_where=case.name)
 
     density_discr = places.get_discretization(case.name)
-    srcindices = case.get_block_indices(actx, density_discr, matrix_indices=False)
+    srcindices = case.get_block_indices(actx, places)
 
     generator = proxy_generator_cls(places,
             approx_nproxy=case.proxy_approx_count,
@@ -328,7 +328,7 @@ def test_neighbor_points(actx_factory, case,
     places = GeometryCollection(qbx, auto_where=case.name)
 
     density_discr = places.get_discretization(case.name)
-    srcindices = case.get_block_indices(actx, density_discr, matrix_indices=False)
+    srcindices = case.get_block_indices(actx, places)
 
     # generate proxy points
     generator = proxy_generator_cls(places,
@@ -338,7 +338,7 @@ def test_neighbor_points(actx_factory, case,
 
     # get neighboring points
     from pytential.linalg import gather_block_neighbor_points
-    nbrindices = gather_block_neighbor_points(actx, density_discr, pxy)
+    nbrindices = gather_block_neighbor_points(actx, pxy)
 
     pxy = pxy.to_numpy(actx)
     pxycenters = np.stack(pxy.centers)

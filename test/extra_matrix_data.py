@@ -27,13 +27,19 @@ class MatrixTestCaseMixin:
     # disable fmm for matrix tests
     fmm_backend = None
 
-    def get_block_indices(self, actx, discr, matrix_indices=True):
+    def get_block_indices(self, actx, places, dofdesc=None):
+        if dofdesc is None:
+            dofdesc = places.auto_source
+
+        discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
+
         max_particles_in_box = self.max_particles_in_box
         if max_particles_in_box is None:
             max_particles_in_box = discr.ndofs // self.approx_block_count
 
         from pytential.linalg import partition_by_nodes
-        indices = partition_by_nodes(actx, discr,
+        indices = partition_by_nodes(actx, places,
+                dofdesc=dofdesc,
                 tree_kind=self.tree_kind,
                 max_particles_in_box=max_particles_in_box)
 
@@ -52,9 +58,10 @@ class MatrixTestCaseMixin:
             from pytential.linalg import make_block_index_from_array
             indices = make_block_index_from_array(subset)
 
-        if not matrix_indices:
-            return indices
+        return indices
 
+    def get_matrix_block_indices(self, actx, places, dofdesc=None):
+        indices = self.get_block_indices(actx, places, dofdesc=dofdesc)
         return MatrixBlockIndexRanges(indices, indices)
 
     def get_operator(self, ambient_dim, qbx_forced_limit="avg"):

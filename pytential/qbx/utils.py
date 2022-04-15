@@ -86,6 +86,11 @@ class TreeCodeContainer:
         from boxtree.tree import ParticleListFilter
         return ParticleListFilter(self.array_context.context)
 
+    @memoize_method
+    def build_area_query(self):
+        from boxtree.area_query import AreaQueryBuilder
+        return AreaQueryBuilder(self.array_context.context)
+
 # }}}
 
 
