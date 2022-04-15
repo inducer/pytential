@@ -48,11 +48,14 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     ])
 
 
-def max_block_error(mat, blk, index_set, p=None):
+def max_cluster_error(mat, clusters, mindex, p=None):
     error = -np.inf
-    for i in range(index_set.nblocks):
-        mat_i = index_set.block_take(mat, i, i)
-        error = max(error, la.norm(mat_i - blk[i, i], ord=p) / la.norm(mat_i, ord=p))
+    for i in range(mindex.nclusters):
+        mat_i = mindex.cluster_take(mat, i, i)
+        error = max(
+                error,
+                la.norm(mat_i - clusters[i, i], ord=p) / la.norm(mat_i, ord=p)
+                )
 
     return error
 
@@ -289,12 +292,12 @@ def test_build_matrix_conditioning(actx_factory, side, op_type, visualize=False)
 
 
 @pytest.mark.parametrize("ambient_dim", [2, 3])
-@pytest.mark.parametrize("block_builder_type", ["qbx", "p2p"])
+@pytest.mark.parametrize("cluster_builder_type", ["qbx", "p2p"])
 @pytest.mark.parametrize("index_sparsity_factor", [1.0, 0.6])
 @pytest.mark.parametrize("op_type", ["scalar", "scalar_mixed"])
-def test_block_builder(actx_factory, ambient_dim,
-        block_builder_type, index_sparsity_factor, op_type, visualize=False):
-    """Test that block builders and full matrix builders actually match."""
+def test_cluster_builder(actx_factory, ambient_dim,
+        cluster_builder_type, index_sparsity_factor, op_type, visualize=False):
+    """Test that cluster builders and full matrix builders actually match."""
 
     actx = actx_factory()
 
@@ -347,7 +350,7 @@ def test_block_builder(actx_factory, ambient_dim,
 
     # {{{ matrix
 
-    index_set = case.get_matrix_block_indices(actx, places)
+    mindex = case.get_tgt_src_cluster_index(actx, places)
     kwargs = dict(
             dep_expr=sym_u,
             other_dep_exprs=[],
@@ -357,20 +360,21 @@ def test_block_builder(actx_factory, ambient_dim,
             context=case.knl_concrete_kwargs
             )
 
-    if block_builder_type == "qbx":
+    if cluster_builder_type == "qbx":
         from pytential.symbolic.matrix import MatrixBuilder
-        from pytential.symbolic.matrix import \
-                NearFieldBlockBuilder as BlockMatrixBuilder
-    elif block_builder_type == "p2p":
+        from pytential.symbolic.matrix import (
+                QBXClusterMatrixBuilder as ClusterMatrixBuilder)
+    elif cluster_builder_type == "p2p":
         from pytential.symbolic.matrix import P2PMatrixBuilder as MatrixBuilder
-        from pytential.symbolic.matrix import \
-                FarFieldBlockBuilder as BlockMatrixBuilder
+        from pytential.symbolic.matrix import (
+                P2PClusterMatrixBuilder as ClusterMatrixBuilder)
         kwargs["exclude_self"] = True
     else:
-        raise ValueError(f"unknown block builder type: '{block_builder_type}'")
+        raise ValueError(f"unknown cluster builder type: '{cluster_builder_type}'")
 
     mat = MatrixBuilder(actx, **kwargs)(sym_prep_op)
-    blk = BlockMatrixBuilder(actx, index_set=index_set, **kwargs)(sym_prep_op)
+    flat_cluster_mat = ClusterMatrixBuilder(
+            actx, tgt_src_index=mindex, **kwargs)(sym_prep_op)
 
     # }}}
 
@@ -383,28 +387,29 @@ def test_block_builder(actx_factory, ambient_dim,
             visualize = False
 
     if visualize and ambient_dim == 2:
-        blk_full = np.zeros_like(mat)
+        cluster_full = np.zeros_like(mat)
         mat_full = np.zeros_like(mat)
 
-        for i in range(index_set.nblocks):
-            itgt, isrc = index_set.block_indices(i, i)
+        for i in range(mindex.nclusters):
+            itgt, isrc = mindex.cluster_indices(i, i)
 
-            blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i, i)
-            mat_full[np.ix_(itgt, isrc)] = index_set.block_take(mat, i, i)
+            cluster_full[np.ix_(itgt, isrc)] = (
+                    mindex.cluster_take(flat_cluster_mat, i, i))
+            mat_full[np.ix_(itgt, isrc)] = mindex.cluster_take(mat, i, i)
 
         _, (ax1, ax2) = pt.subplots(1, 2,
                 figsize=(10, 8), dpi=300, constrained_layout=True)
-        ax1.imshow(blk_full)
-        ax1.set_title(type(BlockMatrixBuilder).__name__)
+        ax1.imshow(cluster_full)
+        ax1.set_title(type(ClusterMatrixBuilder).__name__)
         ax2.imshow(mat_full)
         ax2.set_title(type(MatrixBuilder).__name__)
 
-        filename = f"matrix_block_{block_builder_type}_{ambient_dim}d"
+        filename = f"matrix_cluster_{cluster_builder_type}_{ambient_dim}d"
         pt.savefig(filename)
 
-    from pytential.linalg.utils import make_block_diag
-    blk = make_block_diag(blk, index_set)
-    assert max_block_error(mat, blk, index_set) < 1.0e-14
+    from pytential.linalg.utils import make_flat_cluster_diag
+    cluster_mat = make_flat_cluster_diag(flat_cluster_mat, mindex)
+    assert max_cluster_error(mat, cluster_mat, mindex) < 1.0e-14
 
     # }}}
 
@@ -445,6 +450,7 @@ def test_build_matrix_fixed_stage(actx_factory,
     target_dd = dd.copy(discr_stage=target_discr_stage)
 
     qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
+    places = GeometryCollection({case.name: qbx}, auto_where=(source_dd, target_dd))
 
     places = GeometryCollection({case.name: qbx}, auto_where=(source_dd, target_dd))
     source_discr = places.get_discretization(
@@ -474,10 +480,10 @@ def test_build_matrix_fixed_stage(actx_factory,
     logger.info("ndofs:         %d", source_discr.ndofs)
     logger.info("ndofs:         %d", target_discr.ndofs)
 
-    from pytential.linalg import MatrixBlockIndexRanges
-    icols = case.get_block_indices(actx, places, source_dd)
-    irows = case.get_block_indices(actx, places, target_dd)
-    index_set = MatrixBlockIndexRanges(icols, irows)
+    from pytential.linalg import TargetAndSourceClusterList
+    itargets = case.get_cluster_index(actx, places, target_dd)
+    jsources = case.get_cluster_index(actx, places, source_dd)
+    mindex = TargetAndSourceClusterList(itargets, jsources)
 
     kwargs = dict(
             dep_expr=sym_u,
@@ -492,26 +498,26 @@ def test_build_matrix_fixed_stage(actx_factory,
     from pytential.symbolic import matrix
     mat = matrix.MatrixBuilder(
             actx, **kwargs)(sym_prep_op)
-    blk = matrix.NearFieldBlockBuilder(
-            actx, index_set=index_set, **kwargs)(sym_prep_op)
+    flat_cluster_mat = matrix.QBXClusterMatrixBuilder(
+            actx, tgt_src_index=mindex, **kwargs)(sym_prep_op)
 
-    from pytential.linalg.utils import make_block_diag
-    blk = make_block_diag(blk, index_set)
+    from pytential.linalg.utils import make_flat_cluster_diag
+    cluster_mat = make_flat_cluster_diag(flat_cluster_mat, mindex)
 
     assert mat.shape == (target_discr.ndofs, source_discr.ndofs)
-    assert max_block_error(mat, blk, index_set) < 1.0e-14
+    assert max_cluster_error(mat, cluster_mat, mindex) < 1.0e-14
 
     # p2p
     mat = matrix.P2PMatrixBuilder(
             actx, exclude_self=True, **kwargs)(sym_prep_op)
-    blk = matrix.FarFieldBlockBuilder(
-            actx, index_set=index_set, exclude_self=True, **kwargs)(sym_prep_op)
+    flat_cluster_mat = matrix.P2PClusterMatrixBuilder(
+            actx, tgt_src_index=mindex, exclude_self=True, **kwargs)(sym_prep_op)
 
-    from pytential.linalg.utils import make_block_diag
-    blk = make_block_diag(blk, index_set)
+    from pytential.linalg.utils import make_flat_cluster_diag
+    cluster_mat = make_flat_cluster_diag(flat_cluster_mat, mindex)
 
     assert mat.shape == (target_discr.ndofs, source_discr.ndofs)
-    assert max_block_error(mat, blk, index_set) < 1.0e-14
+    assert max_cluster_error(mat, cluster_mat, mindex) < 1.0e-14
 
     # }}}
 

@@ -37,45 +37,48 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     ])
 
 
-# {{{ test_matrix_block_index
+# {{{ test_matrix_cluster_index
 
-def test_matrix_block_index(actx_factory):
+def test_matrix_cluster_index(actx_factory):
     actx = actx_factory()
 
     # {{{ setup
 
     npoints = 256
-    nblocks = 12
+    nclusters = 12
 
     indices = np.arange(0, npoints)
-    ranges = np.linspace(0, npoints, nblocks + 1, dtype=np.int64)
+    starts = np.linspace(0, npoints, nclusters + 1, dtype=np.int64)
 
-    rng = np.random.default_rng()
-    mat = rng.random(size=(npoints, npoints))
-
-    from pytential.linalg import BlockIndexRanges, MatrixBlockIndexRanges
-    row = BlockIndexRanges(indices, ranges)
-    col = BlockIndexRanges(indices, ranges)
-    idx = MatrixBlockIndexRanges(row, col)
+    from pytential.linalg import IndexList, TargetAndSourceClusterList
+    index = IndexList(indices, starts)
+    tgt_src_index = TargetAndSourceClusterList(index, index)
 
     # }}}
 
     # {{{ check the cartesian product
 
-    from pytential.linalg import make_index_blockwise_product
-    rowindices, colindices = make_index_blockwise_product(actx, idx)
-    rowindices = actx.to_numpy(rowindices)
-    colindices = actx.to_numpy(colindices)
+    from pytential.linalg import make_index_cluster_cartesian_product
+    tgtindices, srcindices = (
+            make_index_cluster_cartesian_product(actx, tgt_src_index))
+    tgtindices = actx.to_numpy(tgtindices)
+    srcindices = actx.to_numpy(srcindices)
 
-    ranges = idx._block_ranges
-    for i in range(idx.nblocks):
-        istart, iend = ranges[i:i + 2]
+    rng = np.random.default_rng()
+    mat = rng.random(size=(npoints, npoints))
+    flat_mat = mat[tgtindices, srcindices]
 
-        blk_ref = idx.block_take(mat, i, i)
-        blk = mat[rowindices[istart:iend], colindices[istart:iend]].reshape(
-                idx.block_shape(i, i))
+    starts = tgt_src_index._flat_cluster_starts
+    for i in range(tgt_src_index.nclusters):
+        shape = tgt_src_index.cluster_shape(i, i)
+        istart, iend = starts[i:i + 2]
 
-        assert la.norm(blk - blk_ref) < 1.0e-15 * la.norm(blk_ref)
+        cmat_ref = tgt_src_index.cluster_take(mat, i, i)
+        cmat_flat = tgt_src_index.flat_cluster_take(flat_mat, i).reshape(shape)
+        cmat = mat[tgtindices[istart:iend], srcindices[istart:iend]].reshape(shape)
+
+        assert la.norm(cmat - cmat_ref) < 1.0e-15 * la.norm(cmat_ref)
+        assert la.norm(cmat_flat - cmat_ref) < 1.0e-15 * la.norm(cmat_ref)
 
     # }}}
 
