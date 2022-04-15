@@ -53,6 +53,9 @@ Proxy Point Generation
 .. autofunction:: gather_block_neighbor_points
 """
 
+# FIXME: this is just an arbitrary value
+_DEFAULT_MAX_PARTICLES_IN_BOX = 32
+
 
 # {{{ point index partitioning
 
@@ -69,8 +72,7 @@ def partition_by_nodes(
     """
 
     if max_particles_in_box is None:
-        # FIXME: this is just an arbitrary value
-        max_particles_in_box = 32
+        max_particles_in_box = _DEFAULT_MAX_PARTICLES_IN_BOX
 
     if tree_kind is not None:
         from boxtree import box_flags_enum
@@ -531,8 +533,7 @@ def gather_block_neighbor_points(
     """
 
     if max_particles_in_box is None:
-        # FIXME: this is a fairly arbitrary value
-        max_particles_in_box = 32
+        max_particles_in_box = _DEFAULT_MAX_PARTICLES_IN_BOX
 
     # {{{ get only sources in indices
 
