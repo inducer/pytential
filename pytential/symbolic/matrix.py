@@ -243,10 +243,11 @@ class MatrixBuilderBase(EvaluationMapperBase):
     # }}}
 
 
-class MatrixBlockBuilderBase(MatrixBuilderBase):
-    """Evaluate individual blocks of a matrix operator.
+class ClusterMatrixBuilderBase(MatrixBuilderBase):
+    """Evaluate individual clusters of a matrix operator, as defined by a
+    :class:`~pytential.lingla.TargetAndSourceClusterList`.
 
-    Unlike, e.g. :class:`MatrixBuilder`, matrix block builders are
+    Unlike, e.g. :class:`MatrixBuilder`, matrix cluster builders are
     significantly reduced in scope. They are basically just meant
     to evaluate linear combinations of layer potential operators.
     For example, they do not support composition of operators because we
@@ -254,35 +255,37 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
     """
 
     def __init__(self, actx, dep_expr, other_dep_exprs,
-            dep_source, dep_discr, places, index_set, context):
+            dep_source, dep_discr, places, tgt_src_index, context):
         """
-        :arg index_set: a :class:`sumpy.tools.MatrixBlockIndexRanges` class
-            describing which blocks are going to be evaluated.
+        :arg tgt_src_index: a :class:`~pytential.linalg.TargetAndSourceClusterList`
+            class describing which clusters are going to be evaluated.
         """
 
         super().__init__(actx,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, context)
-        self.index_set = index_set
+        self.tgt_src_index = tgt_src_index
 
     @property
     @memoize_method
-    def _blk_mapper(self):
-        # blk_mapper is used to recursively compute the density to
+    def _inner_mapper(self):
+        # inner_mapper is used to recursively compute the density to
         # a layer potential operator to ensure there is no composition
 
-        return MatrixBlockBuilderWithoutComposition(self.array_context,
+        return ClusterMatrixBuilderWithoutComposition(self.array_context,
                 self.dep_expr,
                 self.other_dep_exprs,
                 self.dep_source,
                 self.dep_discr,
                 self.places,
-                self.index_set, self.context)
+                self.tgt_src_index, self.context)
 
     def get_dep_variable(self):
-        from pytential.linalg import make_index_blockwise_product
+        from pytential.linalg import make_index_cluster_cartesian_product
         actx = self.array_context
-        tgtindices, srcindices = make_index_blockwise_product(actx, self.index_set)
+        tgtindices, srcindices = (
+                make_index_cluster_cartesian_product(actx, self.tgt_src_index)
+                )
 
         return np.equal(
                 actx.to_numpy(tgtindices), actx.to_numpy(srcindices)
@@ -291,15 +294,15 @@ class MatrixBlockBuilderBase(MatrixBuilderBase):
     def is_kind_vector(self, x):
         # NOTE: since matrices are flattened, the only way to differentiate
         # them from a vector is by size
-        return x.size == self.index_set.row.indices.size
+        return x.size == self.tgt_src_index.target.indices.size
 
     def is_kind_matrix(self, x):
         # NOTE: since matrices are flattened, we recognize them by checking
         # if they have the right size
-        return x.size == self.index_set._total_size
+        return x.size == self.tgt_src_index._flat_total_size
 
 
-class MatrixBlockBuilderWithoutComposition(MatrixBlockBuilderBase):
+class ClusterMatrixBuilderWithoutComposition(ClusterMatrixBuilderBase):
     def get_dep_variable(self):
         return 1.0
 
@@ -504,14 +507,14 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 # }}}
 
 
-# {{{ block matrix builders
+# {{{ cluster matrix builders
 
-class NearFieldBlockBuilder(MatrixBlockBuilderBase):
+class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, index_set, context):
+            places, tgt_src_index, context):
         super().__init__(queue,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
-                places, index_set, context)
+                places, tgt_src_index, context)
 
     def map_int_g(self, expr):
         lpot_source = self.places.get_geometry(expr.source.geometry)
@@ -525,7 +528,7 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
 
         result = 0
         for kernel, density in zip(expr.source_kernels, expr.densities):
-            rec_density = self._blk_mapper.rec(density)
+            rec_density = self._inner_mapper.rec(density)
             if is_zero(rec_density):
                 continue
 
@@ -538,9 +541,9 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
             local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
                     kernel.get_base_kernel(), (expr.target_kernel,))
 
-            from pytential.linalg import make_index_blockwise_product
-            tgtindices, srcindices = make_index_blockwise_product(
-                    actx, self.index_set)
+            from pytential.linalg import make_index_cluster_cartesian_product
+            tgtindices, srcindices = make_index_cluster_cartesian_product(
+                    actx, self.tgt_src_index)
 
             from sumpy.qbx import LayerPotentialMatrixSubsetGenerator
             mat_gen = LayerPotentialMatrixSubsetGenerator(actx.context, local_expn,
@@ -578,13 +581,13 @@ class NearFieldBlockBuilder(MatrixBlockBuilderBase):
         return result
 
 
-class FarFieldBlockBuilder(MatrixBlockBuilderBase):
+class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, index_set, context,
+            places, tgt_src_index, context,
             weighted=False, exclude_self=False):
         super().__init__(queue,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
-                places, index_set, context)
+                places, tgt_src_index, context)
 
         self.weighted = weighted
         self.exclude_self = exclude_self
@@ -597,7 +600,7 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
 
         result = 0
         for kernel, density in zip(expr.source_kernels, expr.densities):
-            rec_density = self._blk_mapper.rec(density)
+            rec_density = self._inner_mapper.rec(density)
             if is_zero(rec_density):
                 continue
 
@@ -618,9 +621,9 @@ class FarFieldBlockBuilder(MatrixBlockBuilderBase):
                         np.arange(0, target_discr.ndofs, dtype=np.int64)
                         )
 
-            from pytential.linalg import make_index_blockwise_product
-            tgtindices, srcindices = make_index_blockwise_product(
-                    actx, self.index_set)
+            from pytential.linalg import make_index_cluster_cartesian_product
+            tgtindices, srcindices = make_index_cluster_cartesian_product(
+                    actx, self.tgt_src_index)
 
             from sumpy.p2p import P2PMatrixSubsetGenerator
             mat_gen = P2PMatrixSubsetGenerator(actx.context,

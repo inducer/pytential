@@ -21,20 +21,20 @@ THE SOFTWARE.
 """
 
 from pytential.linalg.utils import (
-        BlockIndexRanges, MatrixBlockIndexRanges,
-        make_block_index_from_array, make_index_blockwise_product,
+        IndexList, TargetAndSourceClusterList,
+        make_index_list, make_index_cluster_cartesian_product,
         )
 from pytential.linalg.proxy import (
-        BlockProxyPoints, ProxyGeneratorBase,
-        ProxyGenerator, QBXProxyGenerator,
-        partition_by_nodes, gather_block_neighbor_points,
+        ProxyClusterGeometryData,
+        ProxyGeneratorBase, ProxyGenerator, QBXProxyGenerator,
+        partition_by_nodes, gather_cluster_neighbor_points,
         )
 
 __all__ = (
-    "BlockIndexRanges", "MatrixBlockIndexRanges",
-    "make_block_index_from_array", "make_index_blockwise_product",
+    "IndexList", "TargetAndSourceClusterList",
+    "make_index_list", "make_index_cluster_cartesian_product",
 
-    "BlockProxyPoints", "ProxyGeneratorBase",
-    "ProxyGenerator", "QBXProxyGenerator",
-    "partition_by_nodes", "gather_block_neighbor_points",
+    "ProxyClusterGeometryData",
+    "ProxyGeneratorBase", "ProxyGenerator", "QBXProxyGenerator",
+    "partition_by_nodes", "gather_cluster_neighbor_points",
 )

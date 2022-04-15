@@ -21,11 +21,11 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
-from arraycontext import PyOpenCLArrayContext
+from arraycontext import PyOpenCLArrayContext, Array
 from pytools import memoize_in, memoize_method
 
 __doc__ = """
@@ -34,263 +34,284 @@ Misc
 
 .. currentmodule:: pytential.linalg
 
-.. autoclass:: BlockIndexRanges
-.. autoclass:: MatrixBlockIndexRanges
+.. autoclass:: IndexList
+.. autoclass:: TargetAndSourceClusterList
 
-.. autofunction:: make_block_index_from_array
-.. autofunction:: make_index_blockwise_product
+.. autofunction:: make_index_list
+.. autofunction:: make_index_cluster_cartesian_product
 """
 
 
-# {{{ block index handling
+# {{{ cluster index handling
 
 @dataclass(frozen=True)
-class BlockIndexRanges:
-    """Convenience class for working with subsets (blocks) of an array.
+class IndexList:
+    """Convenience class for working with clusters (subsets) of an array.
 
-    .. attribute:: nblocks
+    .. attribute:: nclusters
     .. attribute:: indices
 
         An :class:`~numpy.ndarray` of not necessarily continuous or increasing
         integers representing the indices of a global array. The individual
-        blocks are delimited using :attr:`ranges`.
+        cluster slices are delimited using :attr:`starts`.
 
-    .. attribute:: ranges
+    .. attribute:: starts
 
-        An :class:`~numpy.ndarray` of size ``(nblocks + 1,)`` consisting of
-        nondecreasing integers used to index into :attr:`indices`. A block
-        :math:`i` can be retrieved using ``indices[ranges[i]:ranges[i + 1]]``.
+        An :class:`~numpy.ndarray` of size ``(nclusters + 1,)`` consisting of
+        nondecreasing integers used to index into :attr:`indices`. A cluster
+        :math:`i` can be retrieved using ``indices[starts[i]:starts[i + 1]]``.
 
-    .. automethod:: block_size
-    .. automethod:: block_indices
-    .. automethod:: block_take
+    .. automethod:: cluster_size
+    .. automethod:: cluster_indices
+    .. automethod:: cluster_take
     """
 
     indices: np.ndarray
-    ranges: np.ndarray
+    starts: np.ndarray
 
     @property
-    def nblocks(self) -> int:
-        return self.ranges.size - 1
+    def nclusters(self) -> int:
+        return self.starts.size - 1
 
-    def block_size(self, i: int) -> int:
-        if not (0 <= i < self.nblocks):
-            raise IndexError(f"block {i} is out of bounds for {self.nblocks} blocks")
+    def cluster_size(self, i: int) -> int:
+        if not (0 <= i < self.nclusters):
+            raise IndexError(
+                    f"cluster {i} is out of bounds for {self.nclusters} clusters")
 
-        return self.ranges[i + 1] - self.ranges[i]
+        return self.starts[i + 1] - self.starts[i]
 
-    def block_indices(self, i: int) -> np.ndarray:
+    def cluster_indices(self, i: int) -> np.ndarray:
         """
         :returns: a view into the :attr:`indices` array for the range
-            corresponding to block *i*.
+            corresponding to cluster *i*.
         """
-        if not (0 <= i < self.nblocks):
-            raise IndexError(f"block {i} is out of bounds for {self.nblocks} blocks")
+        if not (0 <= i < self.nclusters):
+            raise IndexError(
+                    f"cluster {i} is out of bounds for {self.nclusters} clusters")
 
-        return self.indices[self.ranges[i]:self.ranges[i + 1]]
+        return self.indices[self.starts[i]:self.starts[i + 1]]
 
-    def block_take(self, x: np.ndarray, i: int) -> np.ndarray:
+    def cluster_take(self, x: np.ndarray, i: int) -> np.ndarray:
         """
-        :returns: a subset of *x* corresponding to the indices in block *i*.
+        :returns: a subset of *x* corresponding to the indices in cluster *i*.
             The returned array is a copy (not a view) of the elements of *x*.
         """
-        if not (0 <= i < self.nblocks):
-            raise IndexError(f"block {i} is out of bounds for {self.nblocks} blocks")
+        if not (0 <= i < self.nclusters):
+            raise IndexError(
+                    f"cluster {i} is out of bounds for {self.nclusters} clusters")
 
-        return x[self.block_indices(i)]
+        return x[self.cluster_indices(i)]
 
 
 @dataclass(frozen=True)
-class MatrixBlockIndexRanges:
-    """Convenience class for working with subsets (blocks) of a matrix.
+class TargetAndSourceClusterList:
+    """Convenience class for working with clusters (subsets) of a matrix.
 
-    .. attribute:: nblocks
-    .. attribute:: row
+    .. attribute:: nclusters
+    .. attribute:: targets
 
-        A :class:`BlockIndexRanges` encapsulating row block indices.
+        An :class:`IndexList` encapsulating target cluster indices.
 
-    .. attribute:: col
+    .. attribute:: sources
 
-        A :class:`BlockIndexRanges` encapsulating column block indices.
+        An :class:`IndexList` encapsulating source cluster indices.
 
-    .. automethod:: block_shape
-    .. automethod:: block_indices
-    .. automethod:: block_take
+    .. automethod:: cluster_shape
+    .. automethod:: cluster_indices
+    .. automethod:: cluster_take
+    .. automethod:: flat_cluster_take
     """
 
-    row: BlockIndexRanges
-    col: BlockIndexRanges
+    targets: IndexList
+    sources: IndexList
 
     def __post_init__(self):
-        if self.row.nblocks != self.col.nblocks:
-            raise ValueError("row and column must have the same number of blocks: "
-                    f"got {self.row.nblocks} row blocks "
-                    f"and {self.col.nblocks} column blocks")
+        if self.targets.nclusters != self.sources.nclusters:
+            raise ValueError(
+                    "targets and sources must have the same number of clusters: "
+                    f"got {self.targets.nclusters} target clusters "
+                    f"and {self.sources.nclusters} source clusters")
 
     @property
-    def nblocks(self):
-        return self.row.nblocks
-
-    @property
-    @memoize_method
-    def _total_size(self) -> int:
-        """
-        :returns: sum of all the diagonal block sizes.
-        """
-        return sum(
-                self.row.block_size(i) * self.col.block_size(i)
-                for i in range(self.nblocks))
+    def nclusters(self):
+        return self.targets.nclusters
 
     @property
     @memoize_method
-    def _block_ranges(self):
+    def _flat_cluster_starts(self):
         return np.cumsum([0] + [
-            self.row.block_size(i) * self.col.block_size(i)
-            for i in range(self.nblocks)
+            self.targets.cluster_size(i) * self.sources.cluster_size(i)
+            for i in range(self.nclusters)
             ])
 
-    def block_shape(self, i: int, j: int) -> Tuple[int, int]:
+    @property
+    def _flat_total_size(self):
+        return self._flat_cluster_starts[-1]
+
+    def cluster_shape(self, i: int, j: int) -> Tuple[int, int]:
         r"""
-        :returns: the shape of the block ``(i, j)``, where *i* indexes into
-            the :attr:`row`\ s and *j* into the :attr:`col`\ s.
+        :returns: the shape of the cluster ``(i, j)``, where *i* indexes into
+            the :attr:`targets` and *j* into the :attr:`sources`.
         """
-        return (self.row.block_size(i), self.col.block_size(j))
+        return (self.targets.cluster_size(i), self.sources.cluster_size(j))
 
-    def block_indices(self, i: int, j: int) -> Tuple[np.ndarray, np.ndarray]:
+    def cluster_indices(self, i: int, j: int) -> Tuple[np.ndarray, np.ndarray]:
         """
-        :returns: a view into the indices that make up the block ``(i, j)``.
+        :returns: a view into the indices that make up the cluster ``(i, j)``.
         """
-        return (self.row.block_indices(i), self.col.block_indices(j))
+        return (self.targets.cluster_indices(i), self.sources.cluster_indices(j))
 
-    def block_take(self, x: np.ndarray, i: int, j: int) -> np.ndarray:
+    def cluster_take(self, x: np.ndarray, i: int, j: int) -> np.ndarray:
         """
         :returns: a subset of the matrix *x* corresponding to the indices in
-            the block ``(i, j)``. The returned array is a copy of the elements
+            the cluster ``(i, j)``. The returned array is a copy of the elements
             of *x*.
         """
-        irow, icol = self.block_indices(i, j)
-        return x[np.ix_(irow, icol)]
+        assert x.ndim == 2
+
+        itargets, isources = self.cluster_indices(i, j)
+        return x[np.ix_(itargets, isources)]
+
+    def flat_cluster_take(self, x: np.ndarray, i: int) -> np.ndarray:
+        """
+        :returns: a subset of an array *x* corresponding to the indices in
+            the cluster *i*. Unlike :meth:`cluster_take`, this method indexes
+            into flattened cluster arrays (see also
+            :func:`make_index_cluster_cartesian_product`).
+        """
+        assert x.ndim == 1
+        istart, iend = self._flat_cluster_starts[i:i + 2]
+
+        return x[istart:iend]
 
 
-def make_block_index_from_array(
+def make_index_list(
         indices: np.ndarray,
-        ranges: Optional[np.ndarray] = None) -> BlockIndexRanges:
-    """Wrap a ``(indices, ranges)`` tuple into a ``BlockIndexRanges``.
+        starts: Optional[np.ndarray] = None) -> IndexList:
+    """Wrap a ``(indices, starts)`` tuple into an :class:`IndexList`.
 
-    :param ranges: if *None*, then *indices* is expected to be an object
-        array of indices, so that the ranges can be reconstructed.
+    :param starts: if *None*, then *indices* is expected to be an object
+        array of indices, so that the *starts* can be reconstructed.
     """
-    if ranges is None:
-        ranges = np.cumsum([0] + [r.size for r in indices])
+    if starts is None:
+        assert indices.dtype.char == "O"
+
+        starts = np.cumsum([0] + [r.size for r in indices])
         indices = np.hstack(indices)
     else:
-        if ranges[-1] != indices.size:
-            raise ValueError("size of 'indices' does not match 'ranges' endpoint; "
-                    f"expected {indices.size}, but got {ranges[-1]}")
+        if starts[-1] != indices.size:
+            raise ValueError("size of 'indices' does not match 'starts' endpoint; "
+                    f"expected {indices.size}, but got {starts[-1]}")
 
-    return BlockIndexRanges(indices=indices, ranges=ranges)
+    return IndexList(indices=indices, starts=starts)
 
 
-def make_index_blockwise_product(
+def make_index_cluster_cartesian_product(
         actx: PyOpenCLArrayContext,
-        idx: MatrixBlockIndexRanges) -> Tuple[Any, Any]:
-    """Constructs a block by block Cartesian product of all the indices in *idx*.
+        mindex: TargetAndSourceClusterList) -> Tuple[Array, Array]:
+    """Constructs a cluster by cluster Cartesian product of all the
+    indices in *mindex*.
 
     The indices in the resulting arrays are laid out in *C* order. Retrieving
-    two-dimensional data for a block diagonal :math:`i` using the resulting
+    two-dimensional data for a cluster :math:`i` using the resulting
     index arrays can be done as follows
 
     .. code:: python
 
         offsets = np.cumsum([0] + [
-            idx.row.block_size(i) * idx.col.block_size(i)
-            for i in range(idx.nblocks)
+            mindex.targets.cluster_size(i) * mindex.sources.cluster_size(i)
+            for i in range(mindex.nclusters)
             ])
         istart = offsets[i]
         iend = offsets[i + 1]
 
-        block_1d = x[rowindices[istart:iend], colindices[istart:iend]]
-        block_2d = block_1d.reshape(*idx.block_shape(i, i))
+        cluster_1d = x[tgtindices[istart:iend], srcindices[istart:iend]]
+        cluster_2d = cluster_1d.reshape(*mindex.cluster_shape(i, i))
 
-        assert np.allclose(block_2d, idx.block_take(x, i, i))
+        assert np.allclose(cluster_2d, mindex.cluster_take(x, i, i))
 
-    The result is equivalent to :meth:`~MatrixBlockIndexRanges.block_take`,
+    The result is equivalent to :meth:`~TargetAndSourceClusterList.cluster_take`,
     which takes the Cartesian product as well.
 
-    :returns: a :class:`tuple` containing ``(rowindices, colindices)``, where
+    :returns: a :class:`tuple` containing ``(tgtindices, srcindices)``, where
         the type of the arrays is the base array type of *actx*.
     """
-    @memoize_in(actx, (make_index_blockwise_product, "index_set_product_knl"))
+    @memoize_in(actx, (
+        make_index_cluster_cartesian_product, "index_product_knl"))
     def prg():
         import loopy as lp
         from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
         knl = lp.make_kernel([
-            "{[irange]: 0 <= irange < nranges}",
-            "{[i, j]: 0 <= i < nrows and 0 <= j < ncols}"
+            "{[icluster]: 0 <= icluster < nclusters}",
+            "{[i, j]: 0 <= i < ntargets and 0 <= j < nsources}"
             ],
             """
-            for irange
-                <> nrows = rowranges[irange + 1] - rowranges[irange]
-                <> ncols = colranges[irange + 1] - colranges[irange]
+            for icluster
+                <> offset = offsets[icluster]
+                <> tgtstart = tgtstarts[icluster]
+                <> srcstart = srcstarts[icluster]
+                <> ntargets = tgtstarts[icluster + 1] - tgtstart
+                <> nsources = srcstarts[icluster + 1] - srcstart
 
                 for i, j
-                    rowproduct[offsets[irange] + ncols * i + j] = \
-                            rowindices[rowranges[irange] + i] \
+                    tgtproduct[offset + nsources * i + j] = \
+                            tgtindices[tgtstart + i] \
                             {id_prefix=write_index}
-                    colproduct[offsets[irange] + ncols * i + j] = \
-                            colindices[colranges[irange] + j] \
+                    srcproduct[offset + nsources * i + j] = \
+                            srcindices[srcstart + j] \
                             {id_prefix=write_index}
                 end
             end
             """, [
-                lp.GlobalArg("offsets", None, shape="nranges + 1"),
-                lp.GlobalArg("rowproduct", None, shape="nresults"),
-                lp.GlobalArg("colproduct", None, shape="nresults"),
+                lp.GlobalArg("offsets", None, shape="nclusters + 1"),
+                lp.GlobalArg("tgtproduct", None, shape="nresults"),
+                lp.GlobalArg("srcproduct", None, shape="nresults"),
                 lp.ValueArg("nresults", np.int64),
                 ...
                 ],
-            name="index_set_product_knl",
+            name="index_product_knl",
             default_offset=lp.auto,
-            assumptions="nranges>=1",
+            assumptions="nclusters>=1",
             silenced_warnings="write_race(write_index*)",
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
-        knl = lp.split_iname(knl, "irange", 128, outer_tag="g.0")
+        knl = lp.split_iname(knl, "icluster", 128, outer_tag="g.0")
         return knl
 
-    @memoize_in(idx, (make_index_blockwise_product, "index_set_product"))
+    @memoize_in(mindex, (make_index_cluster_cartesian_product, "index_product"))
     def _product():
-        _, (rowindices, colindices) = prg()(actx.queue,
-                rowindices=actx.from_numpy(idx.row.indices),
-                rowranges=actx.from_numpy(idx.row.ranges),
-                colindices=actx.from_numpy(idx.col.indices),
-                colranges=actx.from_numpy(idx.col.ranges),
-                offsets=actx.from_numpy(idx._block_ranges),
-                nresults=idx._total_size,
+        _, (tgtindices, srcindices) = prg()(actx.queue,
+                tgtindices=actx.from_numpy(mindex.targets.indices),
+                tgtstarts=actx.from_numpy(mindex.targets.starts),
+                srcindices=actx.from_numpy(mindex.sources.indices),
+                srcstarts=actx.from_numpy(mindex.sources.starts),
+                offsets=actx.from_numpy(mindex._flat_cluster_starts),
+                nresults=mindex._flat_total_size,
                 )
 
-        return actx.freeze(rowindices), actx.freeze(colindices)
+        return actx.freeze(tgtindices), actx.freeze(srcindices)
 
     return _product()
 
 
-def make_block_diag(
+def make_flat_cluster_diag(
         mat: np.ndarray,
-        idx: MatrixBlockIndexRanges) -> np.ndarray:
+        mindex: TargetAndSourceClusterList) -> np.ndarray:
     """
     :param mat: a one-dimensional :class:`~numpy.ndarray` that has a one-to-one
         correspondence to the index sets constructed by
-        :func:`make_index_blockwise_product` for *idx*.
+        :func:`make_index_cluster_cartesian_product` for *mindex*.
+
     :returns: a block diagonal object :class:`~numpy.ndarray`, where each
         diagonal element :math:`(i, i)` is the reshaped slice of *mat* that
-        corresponds to the block :math:`i`.
+        corresponds to the cluster :math:`i`.
     """
-    ranges = idx._block_ranges
-    blk = np.full((idx.nblocks, idx.nblocks), 0, dtype=object)
-    for i in range(idx.nblocks):
-        blk[i, i] = mat[ranges[i]:ranges[i + 1]].reshape(idx.block_shape(i, i))
+    block_mat = np.full((mindex.nclusters, mindex.nclusters), 0, dtype=object)
+    for i in range(mindex.nclusters):
+        shape = mindex.cluster_shape(i, i)
+        block_mat[i, i] = mindex.flat_cluster_take(mat, i).reshape(*shape)
 
-    return blk
+    return block_mat
 
 # }}}
