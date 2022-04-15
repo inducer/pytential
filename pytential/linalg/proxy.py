@@ -21,17 +21,16 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 import numpy.linalg as la
 
 from arraycontext import PyOpenCLArrayContext, flatten
-from meshmode.discretization import Discretization
 from meshmode.dof_array import DOFArray
 
 from pytools import memoize_in
-from pytential.qbx import QBXLayerPotentialSource
+from pytential import GeometryCollection, bind, sym
 from pytential.linalg.utils import BlockIndexRanges
 
 import loopy as lp
@@ -60,7 +59,8 @@ _DEFAULT_MAX_PARTICLES_IN_BOX = 32
 # {{{ point index partitioning
 
 def partition_by_nodes(
-        actx: PyOpenCLArrayContext, discr: Discretization, *,
+        actx: PyOpenCLArrayContext, places: GeometryCollection, *,
+        dofdesc: Any = None,
         tree_kind: Optional[str] = "adaptive-level-restricted",
         max_particles_in_box: Optional[int] = None) -> BlockIndexRanges:
     """Generate equally sized ranges of nodes. The partition is created at the
@@ -71,16 +71,19 @@ def partition_by_nodes(
     :arg max_particles_in_box: passed to :class:`boxtree.TreeBuilder`.
     """
 
+    if dofdesc is None:
+        dofdesc = places.auto_source
+    dofdesc = sym.as_dofdesc(dofdesc)
+
     if max_particles_in_box is None:
         max_particles_in_box = _DEFAULT_MAX_PARTICLES_IN_BOX
 
+    lpot_source = places.get_geometry(dofdesc.geometry)
+    discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
+
     if tree_kind is not None:
-        from boxtree import box_flags_enum
-        from boxtree import TreeBuilder
-
-        builder = TreeBuilder(actx.context)
-
         from arraycontext import thaw
+        builder = lpot_source.tree_code_container.build_tree()
         tree, _ = builder(actx.queue,
                 particles=flatten(
                     thaw(discr.nodes(), actx), actx, leaf_class=DOFArray
@@ -88,6 +91,7 @@ def partition_by_nodes(
                 max_particles_in_box=max_particles_in_box,
                 kind=tree_kind)
 
+        from boxtree import box_flags_enum
         tree = tree.get(actx.queue)
         leaf_boxes, = (tree.box_flags & box_flags_enum.HAS_CHILDREN == 0).nonzero()
 
@@ -169,10 +173,12 @@ class BlockProxyPoints:
     .. automethod:: to_numpy
     """
 
-    lpot_source: QBXLayerPotentialSource
-    srcindices: BlockIndexRanges
+    places: GeometryCollection
+    dofdesc: sym.DOFDescriptor
 
+    srcindices: BlockIndexRanges
     indices: BlockIndexRanges
+
     points: np.ndarray
     centers: np.ndarray
     radii: np.ndarray
@@ -326,7 +332,6 @@ class ProxyGeneratorBase:
             for the discretization on which the proxy points are to be
             generated.
         """
-        from pytential import sym
         source_dd = sym.as_dofdesc(source_dd)
         discr = self.places.get_discretization(
                 source_dd.geometry, source_dd.discr_stage)
@@ -376,7 +381,8 @@ class ProxyGeneratorBase:
         from arraycontext import freeze, from_numpy
         from pytential.linalg import make_block_index_from_array
         return BlockProxyPoints(
-                lpot_source=self.places.get_geometry(source_dd.geometry),
+                places=self.places,
+                dofdesc=source_dd,
                 srcindices=indices,
                 indices=make_block_index_from_array(pxyindices, pxyranges),
                 points=freeze(from_numpy(proxies, actx), actx),
@@ -502,7 +508,6 @@ class QBXProxyGenerator(ProxyGeneratorBase):
             actx: PyOpenCLArrayContext,
             source_dd,
             indices: BlockIndexRanges, **kwargs) -> BlockProxyPoints:
-        from pytential import bind, sym
         source_dd = sym.as_dofdesc(source_dd)
 
         radii = bind(self.places, sym.expansion_radii(
@@ -524,7 +529,7 @@ class QBXProxyGenerator(ProxyGeneratorBase):
 # {{{ gather_block_neighbor_points
 
 def gather_block_neighbor_points(
-        actx: PyOpenCLArrayContext, discr: Discretization, pxy: BlockProxyPoints,
+        actx: PyOpenCLArrayContext, pxy: BlockProxyPoints, *,
         max_particles_in_box: Optional[int] = None) -> BlockIndexRanges:
     """Generate a set of neighboring points for each range of points in
     *discr*. Neighboring points of a range :math:`i` are defined
@@ -534,6 +539,10 @@ def gather_block_neighbor_points(
 
     if max_particles_in_box is None:
         max_particles_in_box = _DEFAULT_MAX_PARTICLES_IN_BOX
+
+    dofdesc = pxy.dofdesc
+    lpot_source = pxy.places.get_geometry(dofdesc.geometry)
+    discr = pxy.places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
 
     # {{{ get only sources in indices
 
@@ -568,13 +577,11 @@ def gather_block_neighbor_points(
 
     # {{{ perform area query
 
-    from boxtree import TreeBuilder
-    builder = TreeBuilder(actx.context)
+    builder = lpot_source.tree_code_container.build_tree()
     tree, _ = builder(actx.queue, sources,
             max_particles_in_box=max_particles_in_box)
 
-    from boxtree.area_query import AreaQueryBuilder
-    builder = AreaQueryBuilder(actx.context)
+    builder = lpot_source.tree_code_container.build_area_query()
     query, _ = builder(actx.queue, tree, pxy.centers, pxy.radii)
 
     # find nodes inside each proxy ball
