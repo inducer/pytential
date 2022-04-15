@@ -233,7 +233,7 @@ def make_compute_block_centers_knl(
             end
             """ % dict(insns=insns), [
                 lp.GlobalArg("sources", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                    shape=(ndim, "nsources"), dim_tags="sep,C", offset=lp.auto),
                 lp.ValueArg("nsources", np.int64),
                 ...
                 ],
@@ -413,7 +413,7 @@ def make_compute_block_radii_knl(
             end
             """, [
                 lp.GlobalArg("sources", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                    shape=(ndim, "nsources"), dim_tags="sep,C", offset=lp.auto),
                 lp.ValueArg("nsources", np.int64),
                 lp.ValueArg("radius_factor", np.float64),
                 ...
@@ -471,11 +471,11 @@ def make_compute_block_qbx_radii_knl(
             end
             """, [
                 lp.GlobalArg("sources", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                    shape=(ndim, "nsources"), dim_tags="sep,C", offset=lp.auto),
                 lp.GlobalArg("center_int", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                    shape=(ndim, "nsources"), dim_tags="sep,C", offset=lp.auto),
                 lp.GlobalArg("center_ext", None,
-                    shape=(ndim, "nsources"), dim_tags="sep,C"),
+                    shape=(ndim, "nsources"), dim_tags="sep,C", offset=lp.auto),
                 lp.ValueArg("nsources", np.int64),
                 lp.ValueArg("radius_factor", np.float64),
                 ...
