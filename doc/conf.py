@@ -15,6 +15,11 @@ exec(compile(open("../pytential/version.py").read(),
 version = ".".join(str(x) for x in ver_dic["VERSION"])
 release = ver_dic["VERSION_TEXT"]
 
+autodoc_type_aliases = {
+        "GeometryLike": "pytential.collection.GeometryLike",
+        "DOFDescriptorLike": "pytential.collection.DOFDescriptorLike",
+        }
+
 intersphinx_mapping = {
     "https://docs.python.org/3/": None,
     "https://documen.tician.de/boxtree/": None,

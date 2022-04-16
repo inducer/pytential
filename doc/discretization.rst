@@ -29,3 +29,8 @@ Targets
 -------
 
 .. automodule:: pytential.target
+
+Geometry Collection
+-------------------
+
+.. automodule:: pytential.collection

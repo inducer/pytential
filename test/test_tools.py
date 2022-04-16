@@ -221,7 +221,7 @@ def _add_geometry_to_collection(actx, places, geometry, dofdesc=None):
         dofdesc = places.auto_source
     ambient_dim = places.ambient_dim
 
-    from pytential.symbolic.execution import add_geometry_to_collection
+    from pytential.collection import add_geometry_to_collection
     new_places = add_geometry_to_collection(places, {"geometry": geometry})
 
     from sumpy.kernel import LaplaceKernel

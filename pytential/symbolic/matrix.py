@@ -82,7 +82,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
             for the given *dep_expr*.
         :arg dep_discr: a concerete :class:`~meshmode.discretization.Discretization`
             for the given *dep_expr*.
-        :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`
+        :arg places: a :class:`~pytential.collection.GeometryCollection`
             for all the sources and targets the builder is expected to
             encounter.
         """
@@ -313,7 +313,7 @@ class MatrixBlockBuilderWithoutComposition(MatrixBlockBuilderBase):
 
 class MatrixBuilderDirectResamplerCacheKey:
     """Serves as a unique key for the resampler cache in
-    :meth:`pytential.symbolic.execution.GeometryCollection._get_cache`.
+    :meth:`pytential.collection.GeometryCollection._get_cache`.
     """
 
 

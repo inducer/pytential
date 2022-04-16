@@ -23,8 +23,8 @@ THE SOFTWARE.
 import numpy as np
 
 import pytential.symbolic.primitives as sym
-from pytential.symbolic.execution import bind, add_geometry_to_collection
-from pytential.symbolic.execution import GeometryCollection
+from pytential.symbolic.execution import bind
+from pytential.collection import GeometryCollection
 
 from pytools import memoize_on_first_arg
 
@@ -120,4 +120,4 @@ def norm(discr, x, p=2):
         raise ValueError(f"unsupported norm order: {p}")
 
 
-__all__ = ["sym", "bind", "GeometryCollection", "add_geometry_to_collection"]
+__all__ = ["sym", "bind", "GeometryCollection"]
