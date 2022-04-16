@@ -806,7 +806,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
     """
     Associate targets to centers in a layer potential source.
 
-    :arg places: A :class:`~pytential.GeometryCollection`.
+    :arg places: A :class:`~pytential.collection.GeometryCollection`.
     :arg geometry: Name of the source geometry in *places* for which to
         associate targets.
     :arg wrangler: An instance of :class:`TargetAssociationWrangler`

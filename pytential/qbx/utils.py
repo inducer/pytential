@@ -248,8 +248,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
          :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`.
        * targets from ``targets_list``.
 
-    :arg places: An instance of
-        :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg places: An instance of :class:`~pytential.collection.GeometryCollection`.
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
 
     :arg use_stage2_discr: If *True*, builds a tree with stage 2 sources.

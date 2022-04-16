@@ -808,9 +808,9 @@ def _refine_for_global_qbx(places, dofdesc, wrangler,
         _copy_collection=False):
     """Entry point for calling the refiner. Once the refinement is complete,
     the refined discretizations can be obtained from *places* by calling
-    :meth:`~pytential.GeometryCollection.get_discretization`.
+    :meth:`~pytential.collection.GeometryCollection.get_discretization`.
 
-    :returns: a new version of the :class:`pytential.GeometryCollection`
+    :returns: a new version of the :class:`pytential.collection.GeometryCollection`
         *places* with (what)?
         Depending on *_copy_collection*, *places* is updated in-place
         or copied.
@@ -929,11 +929,11 @@ def refine_geometry_collection(places,
         debug=None, visualize=False):
     """Entry point for refining all the
     :class:`~pytential.qbx.QBXLayerPotentialSource` in the given collection.
-    The :class:`~pytential.GeometryCollection` performs
+    The :class:`~pytential.collection.GeometryCollection` performs
     on-demand refinement, but this function can be used to tweak the
     parameters.
 
-    :arg places: A :class:`~pytential.GeometryCollection`.
+    :arg places: A :class:`~pytential.collection.GeometryCollection`.
     :arg refine_discr_stage: Defines up to which stage the refinement should
         be performed. One of
         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`,
