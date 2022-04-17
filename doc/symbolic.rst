@@ -3,6 +3,11 @@ Symbolic operator representation
 
 Based on :mod:`pymbolic`.
 
+DOF Description
+---------------
+
+.. automodule:: pytential.symbolic.dof_desc
+
 Basic objects
 -------------
 

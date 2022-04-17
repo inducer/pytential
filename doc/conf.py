@@ -17,7 +17,9 @@ release = ver_dic["VERSION_TEXT"]
 
 autodoc_type_aliases = {
         "GeometryLike": "pytential.collection.GeometryLike",
-        "DOFDescriptorLike": "pytential.collection.DOFDescriptorLike",
+        "DiscretizationStages": "pytential.symbolic.dof_desc.DiscretizationStages",
+        "DOFGranularities": "pytential.symbolic.dof_desc.DOFGranularities",
+        "DOFDescriptorLike": "pytential.symbolic.dof_desc.DOFDescriptorLike",
         }
 
 intersphinx_mapping = {

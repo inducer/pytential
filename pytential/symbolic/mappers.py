@@ -370,10 +370,10 @@ class ToTargetTagger(LocationTagger):
     * everything up to the first layer potential operator is marked as
     operating on the targets, and everything below there as operating on the
     source.
-    * if an expression has a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+    * if an expression has a :class:`~pytential.symbolic.dof_desc.DOFDescriptor`
     that requires a :class:`~pytential.source.LayerPotentialSourceBase` to be
     used (e.g. by being defined on
-    :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`), then
+    :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_QUAD_STAGE2`), then
     it is marked as operating on a source.
     """
 
@@ -386,14 +386,14 @@ class ToTargetTagger(LocationTagger):
 
 class DiscretizationStageTagger(IdentityMapper):
     """Descends into an expression tree and changes the
-    :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage` to
+    :attr:`~pytential.symbolic.dof_desc.DOFDescriptor.discr_stage` to
     :attr:`discr_stage`.
 
     .. attribute:: discr_stage
 
         The new discretization for the DOFs in the expression. For valid
         values, see
-        :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage`.
+        :attr:`~pytential.symbolic.dof_desc.DOFDescriptor.discr_stage`.
     """
 
     def __init__(self, discr_stage):
@@ -530,10 +530,10 @@ class InterpolationPreprocessor(IdentityMapper):
     a :class:`~pytential.symbolic.primitives.Interpolation`. This is used to
 
     * do differentiation on
-      :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+      :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_QUAD_STAGE2`.
       by performing it on :attr:`from_discr_stage` and upsampling.
     * upsample layer potential sources to
-      :attr:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`, if a
+      :attr:`~pytential.symbolic.dof_desc.QBX_SOURCE_QUAD_STAGE2`, if a
       stage is not already assigned to the source descriptor.
 
     .. attribute:: from_discr_stage
@@ -544,7 +544,7 @@ class InterpolationPreprocessor(IdentityMapper):
         """
         :arg from_discr_stage: sets the stage on which to evaluate the expression
             before interpolation. For valid values, see
-            :attr:`~pytential.symbolic.primitives.DOFDescriptor.discr_stage`.
+            :attr:`~pytential.symbolic.dof_desc.DOFDescriptor.discr_stage`.
         """
         self.places = places
         self.from_discr_stage = (prim.QBX_SOURCE_STAGE2

@@ -577,7 +577,7 @@ def _prepare_auto_where(auto_where, places=None):
         whose :attr:`pytential.collection.GeometryCollection.auto_where` is
         used by default if provided and `auto_where` is `None`.
     :return: a tuple ``(source, target)`` of
-        :class:`~pytential.symbolic.primitives.DOFDescriptor`s denoting
+        :class:`~pytential.symbolic.dof_desc.DOFDescriptor`s denoting
         the default source and target geometries.
     """
 
@@ -740,7 +740,7 @@ class BoundExpression:
             *None* values indicating the domains on which each component of the
             solution vector lives.  *None* values indicate that the component
             is a scalar.  If *domains* is *None*,
-            :class:`~pytential.symbolic.primitives.DEFAULT_TARGET` is required
+            :class:`~pytential.symbolic.dof_desc.DEFAULT_TARGET` is required
             to be a key in :attr:`places`.
         :returns: An object that (mostly) satisfies the
             :class:`scipy.sparse.linalg.LinearOperator` protocol, except for
@@ -919,7 +919,7 @@ def build_matrix(actx, places, exprs, input_exprs, domains=None,
         *None* values indicating the domains on which each component of the
         solution vector lives.  *None* values indicate that the component
         is a scalar.  If *None*, *auto_where* or, if it is not provided,
-        :class:`~pytential.symbolic.primitives.DEFAULT_SOURCE` is required
+        :class:`~pytential.symbolic.dof_desc.DEFAULT_SOURCE` is required
         to be a key in :attr:`places`.
     :arg auto_where: For simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.

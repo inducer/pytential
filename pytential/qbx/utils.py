@@ -242,10 +242,10 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     potential source. This contains particles of four different types:
 
        * source particles either from
-         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1` or
-         :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+         :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE1` or
+         :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_QUAD_STAGE2`.
        * centers from
-         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`.
+         :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE1`.
        * targets from ``targets_list``.
 
     :arg places: An instance of :class:`~pytential.collection.GeometryCollection`.

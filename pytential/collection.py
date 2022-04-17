@@ -27,6 +27,7 @@ from typing import Dict, Hashable, Optional, Tuple, Union
 
 from pytential import sym
 from pytential.symbolic.execution import EvaluationMapperCSECacheKey
+from pytential.symbolic.dof_desc import DOFDescriptorLike, DiscretizationStages
 
 from pytential.target import TargetBase
 from pytential.source import PotentialSource
@@ -38,18 +39,16 @@ __doc__ = """
 
     Types accepted by the :class:`GeometryCollection`.
 
-.. class:: DOFDescriptorLike
-
-    Types convertible to a :class:`~pytential.symbolic.primitives.DOFDescriptor`
-    by :func:`~pytential.symbolic.primitives.as_dofdesc`.
-
 .. autoclass:: GeometryCollection
 
 .. autofunction:: add_geometry_to_collection
 """
 
-DOFDescriptorLike = Optional[Union[sym.DOFDescriptor, Hashable]]
 GeometryLike = Union[TargetBase, PotentialSource, Discretization]
+AutoWhereLike = Union[
+        "DOFDescriptorLike",
+        Tuple["DOFDescriptorLike", "DOFDescriptorLike"]
+        ]
 
 
 def _is_valid_identifier(name: str) -> bool:
@@ -101,12 +100,12 @@ class GeometryCollection:
 
     .. attribute:: auto_source
 
-        Default :class:`~pytential.symbolic.primitives.DOFDescriptor` for the
+        Default :class:`~pytential.symbolic.dof_desc.DOFDescriptor` for the
         source geometry.
 
     .. attribute:: auto_target
 
-        Default :class:`~pytential.symbolic.primitives.DOFDescriptor` for the
+        Default :class:`~pytential.symbolic.dof_desc.DOFDescriptor` for the
         target geometry.
 
     .. automethod:: get_geometry
@@ -124,9 +123,7 @@ class GeometryCollection:
                 Tuple["GeometryLike", "GeometryLike"],
                 Dict[Hashable, "GeometryLike"]
                 ],
-            auto_where: Union[
-                "DOFDescriptorLike",
-                Tuple["DOFDescriptorLike", "DOFDescriptorLike"]] = None) -> None:
+            auto_where: Optional[AutoWhereLike] = None) -> None:
         r"""
         :arg places: a scalar, tuple of or mapping of symbolic names to
             geometry objects. Supported objects are
@@ -139,14 +136,14 @@ class GeometryCollection:
             *auto_where*.
 
         :arg auto_where: a single or a tuple of two
-            :class:`~pytential.symbolic.primitives.DOFDescriptor`\ s, or values
+            :class:`~pytential.symbolic.dof_desc.DOFDescriptor`\ s, or values
             that can be converted to one using
-            :func:`~pytential.symbolic.primitives.as_dofdesc`. The two
+            :func:`~pytential.symbolic.dof_desc.as_dofdesc`. The two
             descriptors are used to define the default source and target
             geometries for layer potential evaluations.
             By default, they are set to
-            :class:`~pytential.symbolic.primitives.DEFAULT_SOURCE` and
-            :class:`~pytential.symbolic.primitives.DEFAULT_TARGET` for
+            :class:`~pytential.symbolic.dof_desc.DEFAULT_SOURCE` and
+            :class:`~pytential.symbolic.dof_desc.DEFAULT_TARGET` for
             sources and targets, respectively.
         """
 
@@ -289,13 +286,10 @@ class GeometryCollection:
 
     # }}}
 
-    def get_connection(self, from_dd, to_dd):
+    def get_connection(self,
+            from_dd: "DOFDescriptorLike",
+            to_dd: "DOFDescriptorLike"):
         """Construct a connection from *from_dd* to *to_dd* geometries.
-
-        :arg from_dd: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
-            or a value that can be converted to one using
-            :func:`~pytential.symbolic.primitives.as_dofdesc`.
-        :arg to_dd: as *from_dd*.
 
         :returns: an object compatible with the
             :class:`~meshmode.discretization.connection.DiscretizationConnection`
@@ -305,7 +299,10 @@ class GeometryCollection:
         from pytential.symbolic.dof_connection import connection_from_dds
         return connection_from_dds(self, from_dd, to_dd)
 
-    def get_discretization(self, geometry, discr_stage=None):
+    def get_discretization(
+            self, geometry: Hashable,
+            discr_stage: Optional["DiscretizationStages"] = None
+            ) -> "GeometryLike":
         """Get the geometry or discretization in the collection.
 
         If a specific QBX stage discretization is requested, refinement is
@@ -315,9 +312,9 @@ class GeometryCollection:
         :arg discr_stage: if the geometry is a
             :class:`~pytential.source.LayerPotentialSourceBase`, this denotes
             the QBX stage of the returned discretization. Can be one of
-            :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1` (default),
-            :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE2` or
-            :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+            :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE1` (default),
+            :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE2` or
+            :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_QUAD_STAGE2`.
 
         :returns: a geometry object in the collection or a
             :class:`~meshmode.discretization.Discretization` corresponding to
@@ -337,7 +334,7 @@ class GeometryCollection:
         else:
             return discr
 
-    def get_geometry(self, geometry):
+    def get_geometry(self, geometry: Hashable) -> "GeometryLike":
         """
         :arg geometry: the identifier of the geometry in the collection.
         """
@@ -347,13 +344,20 @@ class GeometryCollection:
         except KeyError:
             raise KeyError(f"geometry not in the collection: '{geometry}'")
 
-    def copy(self, places=None, auto_where=None):
+    def copy(
+            self,
+            places: Optional[Dict[Hashable, "GeometryLike"]] = None,
+            auto_where: Optional[AutoWhereLike] = None,
+            ) -> "GeometryCollection":
         """Get a shallow copy of the geometry collection."""
         return type(self)(
                 places=self.places if places is None else places,
                 auto_where=self.auto_where if auto_where is None else auto_where)
 
-    def merge(self, places):
+    def merge(
+            self,
+            places: Union["GeometryCollection", Dict[Hashable, "GeometryLike"]],
+            ) -> "GeometryCollection":
         """Merges two geometry collections and returns the new collection.
 
         :arg places: a :class:`dict` or :class:`GeometryCollection` to

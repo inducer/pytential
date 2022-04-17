@@ -328,7 +328,7 @@ class ProxyGeneratorBase:
         """Generate proxy points for each block in *indices* with nodes in
         the discretization *source_dd*.
 
-        :arg source_dd: a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+        :arg source_dd: a :class:`~pytential.symbolic.dof_desc.DOFDescriptor`
             for the discretization on which the proxy points are to be
             generated.
         """
