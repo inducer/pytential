@@ -394,6 +394,376 @@ def test_derivative_binder_expr():
 # }}}
 
 
+# {{{ test_stretch_factor
+
+# {{{ twisted mesh
+
+def make_twisted_mesh(order, cls):
+    #  2       3             5
+    #   o------o-----------o
+    #   |      |           |
+    #   |      |           |
+    #   |      |           |
+    #   o------o-----------o
+    #  0       1            4
+    #
+    #
+    vertices = np.array([
+        [-1, -1, 0], [1, -1, 0], [-1, 1, 0], [1, 1, 0],
+        [4, -1, 0], [4, 1, 0],
+        ], dtype=np.float64).T
+
+    import meshmode.mesh as mm
+    if issubclass(cls, mm.SimplexElementGroup):
+        vertex_indices = np.array([
+            (0, 1, 2), (1, 3, 2),
+            (1, 4, 3), (4, 5, 3),
+            ], dtype=np.int32)
+    elif issubclass(cls, mm.TensorProductElementGroup):
+        vertex_indices = np.array([
+            (0, 1, 2, 3), (1, 4, 3, 5),
+            ], dtype=np.int32)
+    else:
+        raise ValueError
+
+    from meshmode.mesh.generation import make_group_from_vertices
+    grp = make_group_from_vertices(
+            vertices, vertex_indices, order,
+            unit_nodes=None,
+            group_cls=cls)
+
+    def wobble(x):
+        result = np.empty_like(x)
+        result[0] = x[0] + 0.5 * np.sin(x[1])
+        result[1] = x[1] + 0.5 * np.cos(x[0])
+        result[2] = x[2] + 0.5 * np.cos(x[1]) + 0.5 * np.sin(x[0])
+        # result[2] = np.sin(x[1]) * np.sin(x[0])
+
+        return result
+
+    from meshmode.mesh.processing import map_mesh
+    mesh = mm.Mesh(vertices, [grp], is_conforming=True)
+    return map_mesh(mesh, wobble)
+
+# }}}
+
+
+# {{{ torus elements
+
+def make_torus_mesh(order, cls, a=2.0, b=1.0, n_major=12, n_minor=6):
+    # NOTE: this is the torus construction before
+    #   https://github.com/inducer/meshmode/pull/288
+    # which caused very discontinuous stretch factors on simplices
+    u, v = np.mgrid[0:2*np.pi:2*np.pi/n_major, 0:2*np.pi:2*np.pi/n_minor]
+
+    x = np.cos(u) * (a + b*np.cos(v))
+    y = np.sin(u) * (a + b*np.cos(v))
+    z = b * np.sin(v)
+    del u, v
+
+    vertices = (
+            np.vstack((x[np.newaxis], y[np.newaxis], z[np.newaxis]))
+            .transpose(0, 2, 1).copy().reshape(3, -1))
+
+    def idx(i, j):
+        return (i % n_major) + (j % n_minor) * n_major
+
+    import meshmode.mesh as mm
+    # i, j = 0, 0
+    i, j = 0, n_minor // 3
+    if issubclass(cls, mm.SimplexElementGroup):
+        vertex_indices = [
+                (idx(i, j), idx(i+1, j), idx(i, j+1)),
+                (idx(i+1, j), idx(i+1, j+1), idx(i, j+1)),
+                ]
+    elif issubclass(cls, mm.TensorProductElementGroup):
+        vertex_indices = [(idx(i, j), idx(i+1, j), idx(i, j+1), idx(i+1, j+1))]
+    else:
+        raise TypeError(f"unsupported 'group_cls': {cls}")
+
+    from meshmode.mesh.generation import make_group_from_vertices
+    vertex_indices = np.array(vertex_indices, dtype=np.int32)
+    grp = make_group_from_vertices(
+            vertices, vertex_indices, order,
+            group_cls=cls)
+
+    # NOTE: project the nodes back to the torus surface
+    u = np.arctan2(grp.nodes[1], grp.nodes[0])
+    v = np.arctan2(
+            grp.nodes[2],
+            grp.nodes[0] * np.cos(u) + grp.nodes[1] * np.sin(u) - a)
+
+    nodes = np.empty_like(grp.nodes)
+    nodes[0] = np.cos(u) * (a + b*np.cos(v))
+    nodes[1] = np.sin(u) * (a + b*np.cos(v))
+    nodes[2] = b * np.sin(v)
+
+    return mm.Mesh(vertices, [grp.copy(nodes=nodes)], is_conforming=True)
+
+# }}}
+
+
+# {{{ gmsh sphere
+
+def make_gmsh_sphere(order: int, cls: type):
+    from meshmode.mesh.io import ScriptSource
+    from meshmode.mesh import SimplexElementGroup, TensorProductElementGroup
+    if issubclass(cls, SimplexElementGroup):
+        script = ScriptSource(
+            """
+            Mesh.CharacteristicLengthMax = 0.05;
+            Mesh.HighOrderOptimize = 1;
+            Mesh.Algorithm = 1;
+
+            SetFactory("OpenCASCADE");
+            Sphere(1) = {0, 0, 0, 0.5};
+            """,
+            "geo")
+    elif issubclass(cls, TensorProductElementGroup):
+        script = ScriptSource(
+            """
+            Mesh.CharacteristicLengthMax = 0.05;
+            Mesh.HighOrderOptimize = 1;
+            Mesh.Algorithm = 6;
+
+            SetFactory("OpenCASCADE");
+            Sphere(1) = {0, 0, 0, 0.5};
+            Recombine Surface "*" = 0.0001;
+            """,
+            "geo")
+    else:
+        raise TypeError
+
+    from meshmode.mesh.io import generate_gmsh
+    return generate_gmsh(
+            script,
+            order=order,
+            dimensions=2,
+            force_ambient_dim=3,
+            target_unit="MM",
+            )
+
+# }}}
+
+
+# {{{ gmsh torus
+
+def make_gmsh_torus(order: int, cls: type):
+    from meshmode.mesh.io import ScriptSource
+    from meshmode.mesh import SimplexElementGroup, TensorProductElementGroup
+    if issubclass(cls, SimplexElementGroup):
+        script = ScriptSource(
+            """
+            Mesh.CharacteristicLengthMax = 0.05;
+            Mesh.HighOrderOptimize = 1;
+            Mesh.Algorithm = 1;
+
+            SetFactory("OpenCASCADE");
+            Torus(1) = {0, 0, 0, 1, 0.5, 2*Pi};
+            """,
+            "geo")
+    elif issubclass(cls, TensorProductElementGroup):
+        script = ScriptSource(
+            """
+            Mesh.CharacteristicLengthMax = 0.05;
+            Mesh.HighOrderOptimize = 1;
+            Mesh.Algorithm = 7;
+
+            SetFactory("OpenCASCADE");
+            Torus(1) = {0, 0, 0, 1, 0.5, 2*Pi};
+            Recombine Surface "*" = 0.0001;
+            """,
+            "geo")
+    else:
+        raise TypeError
+
+    from meshmode.mesh.io import generate_gmsh
+    return generate_gmsh(
+            script,
+            order=order,
+            dimensions=2,
+            force_ambient_dim=3,
+            target_unit="MM",
+            )
+
+# }}}
+
+
+# {{{ symbolic
+
+def metric_from_form1(form1, metric_type: str):
+    from pytential.symbolic.primitives import _small_sym_mat_eigenvalues
+    s0, s1 = _small_sym_mat_eigenvalues(4 * form1)
+
+    if metric_type == "singvals":
+        return np.array([sym.sqrt(s0), sym.sqrt(s1)], dtype=object)
+    elif metric_type == "det":
+        return np.array([s0 * s1], dtype=object)
+    elif metric_type == "trace":
+        return np.array([s0 + s1], dtype=object)
+    elif metric_type == "norm":
+        return np.array([sym.sqrt(s0**2 + s1**2)], dtype=object)
+    elif metric_type == "aspect":
+        return np.array([
+            (s0 * s1)**(2/3) / (s0**2 + s1**2),
+            ], dtype=object)
+    elif metric_type == "condition":
+        import pymbolic.primitives as prim
+        return np.array([
+            prim.Max((s0, s1)) / prim.Min((s0, s1))
+            ], dtype=object)
+    else:
+        raise ValueError(f"unknown metric type: '{metric_type}'")
+
+
+def make_simplex_stretch_factors(ambient_dim: int, metric_type: str):
+    from pytential.symbolic.primitives import \
+            _equilateral_parametrization_derivative_matrix
+    equi_pder = _equilateral_parametrization_derivative_matrix(ambient_dim)
+    equi_form1 = sym.cse(equi_pder.T @ equi_pder, "pd_mat_jtj")
+
+    return metric_from_form1(equi_form1, metric_type)
+
+
+def make_quad_stretch_factors(ambient_dim: int, metric_type: str):
+    pder = sym.parametrization_derivative_matrix(ambient_dim, ambient_dim - 1)
+    form1 = sym.cse(pder.T @ pder, "pd_mat_jtj")
+
+    return metric_from_form1(form1, metric_type)
+
+# }}}
+
+
+@pytest.mark.parametrize("order", [4, 8])
+def test_stretch_factor(actx_factory, order,
+        mesh_name="torus", metric_type="singvals",
+        visualize=False):
+    logging.basicConfig(level=logging.INFO)
+    actx = actx_factory()
+
+    from meshmode.mesh import SimplexElementGroup, TensorProductElementGroup
+    if mesh_name == "torus":
+        quad_mesh = make_torus_mesh(order, TensorProductElementGroup)
+        simplex_mesh = make_torus_mesh(order, SimplexElementGroup)
+    elif mesh_name == "twisted":
+        quad_mesh = make_twisted_mesh(order, TensorProductElementGroup)
+        simplex_mesh = make_twisted_mesh(order, SimplexElementGroup)
+    elif mesh_name == "sphere":
+        from meshmode.mesh.generation import generate_sphere
+        simplex_mesh = generate_sphere(1, order=order,
+                uniform_refinement_rounds=1,
+                group_cls=SimplexElementGroup)
+        quad_mesh = generate_sphere(1, order=order,
+                uniform_refinement_rounds=1,
+                group_cls=TensorProductElementGroup)
+    elif mesh_name == "gmsh_sphere":
+        simplex_mesh = make_gmsh_sphere(order, cls=SimplexElementGroup)
+        quad_mesh = make_gmsh_sphere(order, cls=TensorProductElementGroup)
+    elif mesh_name == "gmsh_torus":
+        simplex_mesh = make_gmsh_torus(order, cls=SimplexElementGroup)
+        quad_mesh = make_gmsh_torus(order, cls=TensorProductElementGroup)
+    else:
+        raise ValueError(f"unknown mesh: '{mesh_name}'")
+
+    ambient_dim = 3
+    assert simplex_mesh.ambient_dim == ambient_dim
+    assert quad_mesh.ambient_dim == ambient_dim
+
+    from meshmode.discretization import Discretization
+    import meshmode.discretization.poly_element as mpoly
+    simplex_discr = Discretization(actx, simplex_mesh,
+            mpoly.InterpolatoryEquidistantGroupFactory(order))
+    quad_discr = Discretization(actx, quad_mesh,
+            mpoly.InterpolatoryEquidistantGroupFactory(order))
+
+    print(f"simplex_discr.ndofs: {simplex_discr.ndofs}")
+    print(f"quad_discr.ndofs:  {quad_discr.ndofs}")
+
+    sym_simplex = make_simplex_stretch_factors(ambient_dim, metric_type)
+    sym_quad = make_quad_stretch_factors(ambient_dim, metric_type)
+
+    s = bind(simplex_discr, sym_simplex)(actx)
+    q = bind(quad_discr, sym_quad)(actx)
+
+    def print_bounds(x, name):
+        for i, si in enumerate(x):
+            print("{}{} [{:.12e}, {:.12e}]".format(
+                name, i,
+                actx.to_numpy(actx.np.min(si))[()],
+                actx.to_numpy(actx.np.min(si))[()]
+                ), end=" ")
+        print()
+
+    print_bounds(s, "s")
+    print_bounds(q, "q")
+
+    if not visualize:
+        return
+
+    suffix = f"{mesh_name}_{metric_type}_{order:02d}"
+
+    # {{{ plot vtk
+
+    s_pder = bind(simplex_discr, sym.parametrization_derivative_matrix(3, 2))(actx)
+    q_pder = bind(quad_discr, sym.parametrization_derivative_matrix(3, 2))(actx)
+
+    from meshmode.discretization.visualization import make_visualizer
+    vis = make_visualizer(actx, simplex_discr, order, force_equidistant=True)
+    vis.write_vtk_file(f"simplex_{suffix}.vtu",
+            [(f"s{i}", si) for i, si in enumerate(s)]
+            + [(f"J_{i}_{j}", pder) for (i, j), pder in np.ndenumerate(s_pder)],
+            overwrite=True, use_high_order=True)
+
+    vis = make_visualizer(actx, quad_discr, order, force_equidistant=True)
+    vis.write_vtk_file(f"quad_{suffix}.vtu",
+            [(f"q{i}", qi) for i, qi in enumerate(q)]
+            + [(f"J_{i}_{j}", pder) for (i, j), pder in np.ndenumerate(q_pder)],
+            overwrite=True, use_high_order=True)
+
+    # }}}
+
+    if s.size != 2:
+        return
+
+    s0, s1 = s
+    q0, q1 = q
+
+    # {{{ plot reference simplex
+
+    if quad_discr.mesh.nelements <= 2:
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(12, 10), dpi=300)
+
+        xi = simplex_discr.groups[0].unit_nodes
+        for name, sv in zip(["s0", "s1"], [s0, s1]):
+            sv = actx.to_numpy(sv[0])[0].ravel()
+
+            ax = fig.gca()
+            im = ax.tricontourf(xi[0], xi[1], sv, levels=32)
+            fig.colorbar(im, ax=ax)
+            fig.savefig(f"simplex_{suffix}_{name}")
+            fig.clf()
+
+    # }}}
+
+    # {{{ plot reference quad
+
+    if quad_discr.mesh.nelements <= 2:
+        xi = quad_discr.groups[0].unit_nodes
+        for name, sv in zip(["q0", "q1"], [q0, q1]):
+            sv = actx.to_numpy(sv[0])[0]
+
+            ax = fig.gca()
+            im = ax.tricontourf(xi[0], xi[1], sv, levels=32)
+            fig.colorbar(im, ax=ax)
+            fig.savefig(f"quad_{suffix}_{name}")
+            fig.clf()
+
+    # }}}
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_symbolic.py 'test_routine()'
 
