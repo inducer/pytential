@@ -25,6 +25,7 @@ from warnings import warn
 from functools import partial
 
 import numpy as np
+
 from pymbolic.primitives import (  # noqa: F401,N813
         Expression as ExpressionBase, Variable as var,
         cse_scope as cse_scope_base,
@@ -33,13 +34,21 @@ from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
-from pytools.obj_array import make_obj_array, flat_obj_array  # noqa: F401
+
+from pytools.obj_array import make_obj_array, flat_obj_array    # noqa: F401
 from pytools import single_valued, MovedFunctionDeprecationWrapper
 
+from pytential.symbolic.dof_desc import (   # noqa: F401
+        DEFAULT_SOURCE, DEFAULT_TARGET,
+        QBX_SOURCE_STAGE1, QBX_SOURCE_STAGE2, QBX_SOURCE_QUAD_STAGE2,
+        GRANULARITY_NODE, GRANULARITY_CENTER, GRANULARITY_ELEMENT,
+        DOFDescriptor, DOFDescriptorLike,
+        as_dofdesc,
+        )
 
 __doc__ = """
 .. |dofdesc-blurb| replace:: A
-    :class:`~pytential.symbolic.primitives.DOFDescriptor` or a symbolic
+    :class:`~pytential.symbolic.dof_desc.DOFDescriptor` or a symbolic
     name for a geometric object (such as a
     :class:`~meshmode.discretization.Discretization`).
 
@@ -76,23 +85,6 @@ used depends on the meaning of the data being represented. If the data is
 associated with a :class:`~meshmode.discretization.Discretization`, then
 :class:`~meshmode.dof_array.DOFArray` is used and otherwise
 :class:`~pyopencl.array.Array` is used.
-
-DOF Description
-^^^^^^^^^^^^^^^
-
-.. autoclass:: DEFAULT_SOURCE
-.. autoclass:: DEFAULT_TARGET
-
-.. autoclass:: QBX_SOURCE_STAGE1
-.. autoclass:: QBX_SOURCE_STAGE2
-.. autoclass:: QBX_SOURCE_QUAD_STAGE2
-
-.. autoclass:: GRANULARITY_NODE
-.. autoclass:: GRANULARITY_CENTER
-.. autoclass:: GRANULARITY_ELEMENT
-
-.. autoclass:: DOFDescriptor
-.. autofunction:: as_dofdesc
 
 Diagnostics
 ^^^^^^^^^^^
@@ -236,190 +228,6 @@ class _NoArgSentinel:
     pass
 
 
-# {{{ dof descriptors
-
-class DEFAULT_SOURCE:                   # noqa: N801
-    pass
-
-
-class DEFAULT_TARGET:                   # noqa: N801
-    pass
-
-
-class QBX_SOURCE_STAGE1:                # noqa: N801
-    """Symbolic identifier for the Stage 1 discretization of a
-    :class:`pytential.qbx.QBXLayerPotentialSource`.
-    """
-    pass
-
-
-class QBX_SOURCE_STAGE2:                # noqa: N801
-    """Symbolic identifier for the Stage 2 discretization of a
-    :class:`pytential.qbx.QBXLayerPotentialSource`.
-    """
-    pass
-
-
-class QBX_SOURCE_QUAD_STAGE2:           # noqa: N801
-    """Symbolic identifier for the upsampled Stage 2 discretization of a
-    :class:`pytential.qbx.QBXLayerPotentialSource`.
-    """
-    pass
-
-
-class GRANULARITY_NODE:                 # noqa: N801
-    """DOFs are per node."""
-    pass
-
-
-class GRANULARITY_CENTER:               # noqa: N801
-    """DOFs interleaved per expansion center (two per node, one on each side)."""
-    pass
-
-
-class GRANULARITY_ELEMENT:              # noqa: N801
-    """DOFs per discretization element."""
-    pass
-
-
-class DOFDescriptor:
-    """A data structure specifying the meaning of a vector of degrees of freedom
-    that is handled by :mod:`pytential` (a "DOF vector"). In particular, using
-    :attr:`geometry`, this data structure describes the geometric object on which
-    the (scalar) function described by the DOF vector exists. Using
-    :attr:`granularity`, the data structure describes how the geometric object
-    is discretized (e.g. conventional nodal data, per-element scalars, etc.)
-
-    .. attribute:: geometry
-
-        An identifier for the geometry on which the DOFs exist. This can be a
-        simple string or any other hashable identifier for the geometric object.
-        The geometric objects are generally subclasses of
-        :class:`~pytential.source.PotentialSource`,
-        :class:`~pytential.target.TargetBase` or
-        :class:`~meshmode.discretization.Discretization`.
-
-    .. attribute:: discr_stage
-
-        Specific to a :class:`pytential.source.LayerPotentialSourceBase`,
-        this describes on which of the discretizations the
-        DOFs are defined. Can be one of :class:`QBX_SOURCE_STAGE1`,
-        :class:`QBX_SOURCE_STAGE2` or :class:`QBX_SOURCE_QUAD_STAGE2`.
-
-    .. attribute:: granularity
-
-        Describes the level of granularity of the DOF vector.
-        Can be one of :class:`GRANULARITY_NODE` (one DOF per node),
-        :class:`GRANULARITY_CENTER` (two DOFs per node, one per side) or
-        :class:`GRANULARITY_ELEMENT` (one DOF per element).
-    """
-
-    def __init__(self, geometry=None, discr_stage=None, granularity=None):
-        if granularity is None:
-            granularity = GRANULARITY_NODE
-
-        if not (discr_stage is None
-                or discr_stage == QBX_SOURCE_STAGE1
-                or discr_stage == QBX_SOURCE_STAGE2
-                or discr_stage == QBX_SOURCE_QUAD_STAGE2):
-            raise ValueError(f"unknown discr stage tag: '{discr_stage}'")
-
-        if not (granularity == GRANULARITY_NODE
-                or granularity == GRANULARITY_CENTER
-                or granularity == GRANULARITY_ELEMENT):
-            raise ValueError(f"unknown granularity: '{granularity}'")
-
-        self.geometry = geometry
-        self.discr_stage = discr_stage
-        self.granularity = granularity
-
-    def copy(self, geometry=None, discr_stage=_NoArgSentinel, granularity=None):
-        if isinstance(geometry, DOFDescriptor):
-            discr_stage = geometry.discr_stage \
-                    if discr_stage is _NoArgSentinel else discr_stage
-            geometry = geometry.geometry
-
-        return type(self)(
-                geometry=(self.geometry
-                    if geometry is None else geometry),
-                granularity=(self.granularity
-                    if granularity is None else granularity),
-                discr_stage=(self.discr_stage
-                    if discr_stage is _NoArgSentinel else discr_stage),
-                )
-
-    def to_stage1(self):
-        return self.copy(discr_stage=QBX_SOURCE_STAGE1)
-
-    def to_stage2(self):
-        return self.copy(discr_stage=QBX_SOURCE_STAGE2)
-
-    def to_quad_stage2(self):
-        return self.copy(discr_stage=QBX_SOURCE_QUAD_STAGE2)
-
-    def __hash__(self):
-        return hash((type(self),
-            self.geometry, self.discr_stage, self.granularity))
-
-    def __eq__(self, other):
-        return (type(self) is type(other)
-                and self.geometry == other.geometry
-                and self.discr_stage == other.discr_stage
-                and self.granularity == other.granularity)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __repr__(self):
-        discr_stage = self.discr_stage \
-                if self.discr_stage is None else self.discr_stage.__name__
-        granularity = self.granularity.__name__
-        return "{}(geometry={}, stage={}, granularity={})".format(
-                type(self).__name__, self.geometry, discr_stage, granularity)
-
-    def __str__(self):
-        name = []
-        if self.geometry is None:
-            name.append("?")
-        elif self.geometry == DEFAULT_SOURCE:
-            name.append("s")
-        elif self.geometry == DEFAULT_TARGET:
-            name.append("t")
-        else:
-            name.append(str(self.geometry))
-
-        if self.discr_stage == QBX_SOURCE_STAGE2:
-            name.append("stage2")
-        elif self.discr_stage == QBX_SOURCE_QUAD_STAGE2:
-            name.append("quads2")
-
-        if self.granularity == GRANULARITY_CENTER:
-            name.append("center")
-        elif self.granularity == GRANULARITY_ELEMENT:
-            name.append("element")
-
-        return "/".join(name)
-
-
-def as_dofdesc(desc):
-    if isinstance(desc, DOFDescriptor):
-        return desc
-
-    if (desc == QBX_SOURCE_STAGE1
-            or desc == QBX_SOURCE_STAGE2
-            or desc == QBX_SOURCE_QUAD_STAGE2):
-        return DOFDescriptor(discr_stage=desc)
-
-    if (desc == GRANULARITY_NODE
-            or desc == GRANULARITY_CENTER
-            or desc == GRANULARITY_ELEMENT):
-        return DOFDescriptor(granularity=desc)
-
-    return DOFDescriptor(geometry=desc)
-
-# }}}
-
-
 class cse_scope(cse_scope_base):  # noqa: N801
     DISCRETIZATION = "pytential_discretization"
 
@@ -509,7 +317,6 @@ class CLMathFunction(NumpyMathFunction):
     }
 
     def __call__(self, *args, **kwargs):
-        from warnings import warn
         cl_name = self._np_to_cl_names[self.name]
         warn(f"'sym.{cl_name}' is deprecated. Use 'sym.{self.name}' instead. "
                  "'sym.{cl_name}' will go away in 2022.",

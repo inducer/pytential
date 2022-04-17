@@ -387,10 +387,10 @@ def test_block_builder(actx_factory, ambient_dim,
         mat_full = np.zeros_like(mat)
 
         for i in range(index_set.nblocks):
-            itgt, isrc = index_set.block_indices(i)
+            itgt, isrc = index_set.block_indices(i, i)
 
-            blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i)
-            mat_full[np.ix_(itgt, isrc)] = index_set.block_take(mat, i)
+            blk_full[np.ix_(itgt, isrc)] = index_set.block_take(blk, i, i)
+            mat_full[np.ix_(itgt, isrc)] = index_set.block_take(mat, i, i)
 
         _, (ax1, ax2) = pt.subplots(1, 2,
                 figsize=(10, 8), dpi=300, constrained_layout=True)

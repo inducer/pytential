@@ -936,9 +936,9 @@ def refine_geometry_collection(places,
     :arg places: A :class:`~pytential.collection.GeometryCollection`.
     :arg refine_discr_stage: Defines up to which stage the refinement should
         be performed. One of
-        :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`,
-        :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE2` or
-        :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+        :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE1`,
+        :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE2` or
+        :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_QUAD_STAGE2`.
     :arg group_factory: An instance of
         :class:`meshmode.discretization.ElementGroupFactory`. Used for
         discretizing the coarse refined mesh.
