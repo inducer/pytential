@@ -61,6 +61,20 @@ class PROXY_SKELETONIZATION_TARGET:             # noqa: N801
 
 
 class NonOperatorRemover(IdentityMapper):
+    r"""A mapper that removes any terms that do not contain an
+    :class:`~pytential.symbolic.primitives.IntG`. It can only handle
+    expressions of the form
+
+    .. math::
+
+        \sum F_i(\mathbf{x}, \sigma(\mathbf{x}))
+        + \sum \int_\Sigma
+            G_j(\mathbf{x} - \mathbf{y}) \sigma(\mathbf{y}) \mathrm{d}S_y
+
+    and removes all the :math:`F_i` terms that are diagonal in terms of
+    the density :math:`\sigma`.
+    """
+
     def map_sum(self, expr):
         from pytential.symbolic.mappers import OperatorCollector
         children = []
@@ -78,6 +92,18 @@ class NonOperatorRemover(IdentityMapper):
 
 
 class KernelTransformationRemover(IdentityMapper):
+    r"""A mapper that removes the transformations from the kernel of all
+    :class:`~pytential.symbolic.primitives.IntG`\ s in the expression.
+
+    This is used when evaluating the proxy-target or proxy-source
+    interactions because
+
+    * Evaluating a single-layer vs a double-layer does not make a difference
+      there (proxies are assumed to be far enough from the surface)
+    * Kernel arguments, such as the normal, are not necessarily available at
+      the proxies.
+    """
+
     def __init__(self):
         self.sxr = SourceTransformationRemover()
         self.txr = TargetTransformationRemover()
