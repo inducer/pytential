@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from pytools import memoize_method
+from pytools import memoize_method, memoize_in
 from boxtree.tools import DeviceDataRecord
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
@@ -440,9 +440,11 @@ class QBXTargetAssociation(DeviceDataRecord):
 
 class TargetAssociationCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, actx: PyOpenCLArrayContext, tree_code_container):
+    def __init__(self, actx: PyOpenCLArrayContext):
         self.array_context = actx
-        self.tree_code_container = tree_code_container
+
+        from pytential.qbx.utils import tree_code_container
+        self.tree_code_container = tree_code_container(actx)
 
     @property
     def cl_context(self):
@@ -491,6 +493,16 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
 
     def get_wrangler(self, actx: PyOpenCLArrayContext):
         return TargetAssociationWrangler(actx, code_container=self)
+
+
+def target_association_code_container(
+        actx: PyOpenCLArrayContext) -> TargetAssociationCodeContainer:
+    @memoize_in(actx, (
+            TargetAssociationCodeContainer, target_association_code_container))
+    def make_container():
+        return TargetAssociationCodeContainer(actx)
+
+    return make_container()
 
 
 class TargetAssociationWrangler(TreeWranglerBase):

@@ -341,60 +341,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # }}}
 
-    # {{{ code containers
-
-    @property
-    def tree_code_container(self):
-        @memoize_in(self._setup_actx, (
-                QBXLayerPotentialSource, "tree_code_container"))
-        def make_container():
-            from pytential.qbx.utils import TreeCodeContainer
-            return TreeCodeContainer(self._setup_actx)
-
-        return make_container()
-
-    @property
-    def refiner_code_container(self):
-        @memoize_in(self._setup_actx, (
-                QBXLayerPotentialSource, "refiner_code_container"))
-        def make_container():
-            from pytential.qbx.refinement import RefinerCodeContainer
-            return RefinerCodeContainer(
-                    self._setup_actx, self.tree_code_container)
-
-        return make_container()
-
-    @property
-    def target_association_code_container(self):
-        @memoize_in(self._setup_actx, (
-                QBXLayerPotentialSource, "target_association_code_container"))
-        def make_container():
-            from pytential.qbx.target_assoc import TargetAssociationCodeContainer
-            return TargetAssociationCodeContainer(
-                    self._setup_actx, self.tree_code_container)
-
-        return make_container()
-
-    @property
-    def qbx_fmm_geometry_data_code_container(self):
-        @memoize_in(self._setup_actx, (
-                QBXLayerPotentialSource, "qbx_fmm_geometry_data_code_container"))
-        def make_container(
-                debug, ambient_dim, well_sep_is_n_away,
-                from_sep_smaller_crit):
-            from pytential.qbx.geometry import QBXFMMGeometryDataCodeContainer
-            return QBXFMMGeometryDataCodeContainer(
-                    self._setup_actx,
-                    ambient_dim, self.tree_code_container, debug,
-                    _well_sep_is_n_away=well_sep_is_n_away,
-                    _from_sep_smaller_crit=from_sep_smaller_crit)
-
-        return make_container(
-                self.debug, self.ambient_dim,
-                self._well_sep_is_n_away, self._from_sep_smaller_crit)
-
-    # }}}
-
     # {{{ internal API
 
     @memoize_method
@@ -409,11 +355,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             :class:`pytential.target.TargetBase`
             instance
         """
-        from pytential.qbx.geometry import QBXFMMGeometryData
+        from pytential.qbx.geometry import qbx_fmm_geometry_data_code_container
+        code_container = qbx_fmm_geometry_data_code_container(
+                self._setup_actx, self.ambient_dim,
+                debug=self.debug,
+                well_sep_is_n_away=self._well_sep_is_n_away,
+                from_sep_smaller_crit=self._from_sep_smaller_crit)
 
-        return QBXFMMGeometryData(places, name,
-                self.qbx_fmm_geometry_data_code_container,
-                target_discrs_and_qbx_sides,
+        from pytential.qbx.geometry import QBXFMMGeometryData
+        return QBXFMMGeometryData(
+                places, name, code_container, target_discrs_and_qbx_sides,
                 target_association_tolerance=self.target_association_tolerance,
                 tree_kind=self._tree_kind,
                 debug=self.debug)

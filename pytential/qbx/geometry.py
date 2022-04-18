@@ -23,7 +23,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from pytools import memoize_method, log_process
+from pytools import memoize_method, memoize_in, log_process
 from arraycontext import PyOpenCLArrayContext, flatten, freeze
 from meshmode.dof_array import DOFArray
 
@@ -107,16 +107,17 @@ class target_state(Enum):  # noqa
 
 
 class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
-    def __init__(self, actx: PyOpenCLArrayContext, ambient_dim,
-            tree_code_container, debug,
-            _well_sep_is_n_away, _from_sep_smaller_crit):
+    def __init__(self,
+            actx: PyOpenCLArrayContext, ambient_dim: int, debug: bool,
+            _well_sep_is_n_away: int, _from_sep_smaller_crit: str) -> None:
+        self._setup_actx = actx
         self.ambient_dim = ambient_dim
-        self.tree_code_container = tree_code_container
+        self.debug = debug
         self._well_sep_is_n_away = _well_sep_is_n_away
         self._from_sep_smaller_crit = _from_sep_smaller_crit
 
-        self._setup_actx = actx.clone()
-        self.debug = debug
+        from pytential.qbx.utils import tree_code_container
+        self.tree_code_container = tree_code_container(actx)
 
     @memoize_method
     def copy_targets_kernel(self):
@@ -259,6 +260,26 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
     def rotation_classes_builder(self):
         from boxtree.rotation_classes import RotationClassesBuilder
         return RotationClassesBuilder(self._setup_actx.context)
+
+
+def qbx_fmm_geometry_data_code_container(
+        actx: PyOpenCLArrayContext, ambient_dim: int, *,
+        debug: bool,
+        well_sep_is_n_away: int,
+        from_sep_smaller_crit: str) -> QBXFMMGeometryDataCodeContainer:
+    @memoize_in(actx, (
+            QBXFMMGeometryDataCodeContainer, qbx_fmm_geometry_data_code_container))
+    def make_container(
+            _ambient_dim, _debug,
+            _well_sep_is_n_away, _from_sep_smaller_crit):
+        return QBXFMMGeometryDataCodeContainer(
+                actx, _ambient_dim, _debug,
+                _well_sep_is_n_away=_well_sep_is_n_away,
+                _from_sep_smaller_crit=_from_sep_smaller_crit)
+
+    return make_container(
+            ambient_dim, debug,
+            well_sep_is_n_away, from_sep_smaller_crit)
 
 # }}}
 
@@ -759,9 +780,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                 PointsTarget(target_info.targets[:, self.ncenters:]),
                 target_side_prefs.astype(np.int32))]
 
+        from pytential.qbx.target_assoc import target_association_code_container
         target_association_wrangler = (
-                self.lpot_source.target_association_code_container
-                .get_wrangler(actx))
+                target_association_code_container(actx).get_wrangler(actx))
 
         tgt_assoc_result = associate_targets_to_qbx_centers(
                 self.places,
