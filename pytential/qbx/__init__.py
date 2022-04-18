@@ -28,6 +28,7 @@ from meshmode.dof_array import DOFArray
 from pytools import memoize_method, memoize_in, single_valued
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 from pytential.source import LayerPotentialSourceBase
+from sumpy.expansion import DefaultExpansionFactory as DefaultExpansionFactoryBase
 
 import logging
 logger = logging.getLogger(__name__)
@@ -37,10 +38,19 @@ __doc__ = """
 .. autoclass:: QBXLayerPotentialSource
 
 .. autoclass:: QBXTargetAssociationFailedException
+
+.. autoclass:: DefaultExpansionFactory
 """
 
 
 # {{{ QBX layer potential source
+
+class DefaultExpansionFactory(DefaultExpansionFactoryBase):
+    """A expansion factory to create QBX local, local and multipole expansions
+    """
+    def get_qbx_local_expansion_class(self, kernel):
+        return self.get_local_expansion_class(kernel)
+
 
 class _not_provided:  # noqa: N801
     pass
@@ -188,7 +198,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self.fmm_backend = fmm_backend
 
         if expansion_factory is None:
-            from sumpy.expansion import DefaultExpansionFactory
             expansion_factory = DefaultExpansionFactory()
         self.expansion_factory = expansion_factory
 
@@ -533,9 +542,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         local_expn_class = \
                 self.expansion_factory.get_local_expansion_class(base_kernel)
 
+        try:
+            qbx_local_expn_class = \
+                self.expansion_factory.get_qbx_local_expansion_class(base_kernel)
+        except AttributeError:
+            qbx_local_expn_class = local_expn_class
+
         fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
         fmm_local_factory = partial(local_expn_class, base_kernel)
-        qbx_local_factory = partial(local_expn_class, base_kernel)
+        qbx_local_factory = partial(qbx_local_expn_class, base_kernel)
 
         if self.fmm_backend == "sumpy":
             from pytential.qbx.fmm import \
