@@ -164,14 +164,14 @@ class DOFDescriptorReplacer(LocationReplacer):
         self.operand_rec = LocationReplacer(source, default_source=source)
 
 
-def _prepare_nearfield_expr(places, exprs, auto_where=None):
+def _prepare_neighbor_expr(places, exprs, auto_where=None):
     from pytential.symbolic.execution import _prepare_expr
     return make_obj_array([
         _prepare_expr(places, expr, auto_where=auto_where)
         for expr in exprs])
 
 
-def _prepare_farfield_expr(places, exprs, auto_where=None):
+def prepare_proxy_expr(places, exprs, auto_where=None):
     def _prepare_expr(expr):
         # remove all diagonal / non-operator terms in the expression
         expr = NonOperatorRemover()(expr)
@@ -238,16 +238,16 @@ def _apply_weights(actx, mat, places, tgt_pxy_index, nbrindex, domain):
 @dataclass(frozen=True)
 class SkeletonizationWrangler:
     """
-    .. attribute:: nearfield_exprs
+    .. attribute:: exprs
 
         An :class:`~numpy.ndarray` of expressions (layer potentials)
         that correspond to the output blocks of the matrix. These expressions
-        are tagged for nearfield evalution.
+        are tagged for nearfield neighbor evalution.
 
-    .. attribute:: farfield_source_exprs
-    .. attribute:: farfield_target_exprs
+    .. attribute:: source_proxy_exprs
+    .. attribute:: target_proxy_exprs
 
-        Like :attr:`nearfield_exprs`, but stripped down for farfield proxy
+        Like :attr:`exprs`, but stripped down for farfield proxy
         evaluation.
 
     .. attribute:: input_exprs
@@ -275,46 +275,46 @@ class SkeletonizationWrangler:
 
         A flag which if *True* adds a weight to the proxy to target evaluation.
 
-    .. attribute:: farfield_source_cluster_builder
-    .. attribute:: farfield_target_cluster_builder
+    .. attribute:: proxy_source_cluster_builder
+    .. attribute:: proxy_target_cluster_builder
 
         A callable that is used to evaluate farfield proxy interactions.
         This should follow the calling convention of the constructor to
         :class:`pytential.symbolic.matrix.P2PClusterMatrixBuilder`.
 
-    .. attribute:: nearfield_cluster_builder
+    .. attribute:: neighbor_cluster_builder
 
         A callable that is used to evaluate nearfield neighbour interactions.
         This should follow the calling convention of the constructor to
         :class:`pytential.symbolic.matrix.QBXClusterMatrixBuilder`.
 
-    .. automethod:: evaluate_source_farfield
-    .. automethod:: evaluate_target_farfield
-    .. automethod:: evaluate_source_nearfield
-    .. automethod:: evaluate_target_nearfield
+    .. automethod:: evaluate_source_proxy_interaction
+    .. automethod:: evaluate_target_proxy_interaction
+    .. automethod:: evaluate_source_neighbor_interaction
+    .. automethod:: evaluate_target_neighbor_interaction
     """
 
     # operator
-    nearfield_exprs: np.ndarray
+    exprs: np.ndarray
     input_exprs: Tuple[sym.var, ...]
     domains: Tuple[Hashable, ...]
     context: Dict[str, Any]
 
-    nearfield_cluster_builder: Callable[..., np.ndarray]
+    neighbor_cluster_builder: Callable[..., np.ndarray]
 
     # target skeletonization
     weighted_targets: bool
-    farfield_target_exprs: np.ndarray
-    farfield_target_cluster_builder: Callable[..., np.ndarray]
+    target_proxy_exprs: np.ndarray
+    proxy_target_cluster_builder: Callable[..., np.ndarray]
 
     # source skeletonization
     weighted_sources: bool
-    farfield_source_exprs: np.ndarray
-    farfield_source_cluster_builder: Callable[..., np.ndarray]
+    source_proxy_exprs: np.ndarray
+    proxy_source_cluster_builder: Callable[..., np.ndarray]
 
     @property
     def nrows(self):
-        return len(self.nearfield_exprs)
+        return len(self.exprs)
 
     @property
     def ncols(self):
@@ -341,30 +341,30 @@ class SkeletonizationWrangler:
 
     # {{{ nearfield
 
-    def evaluate_source_nearfield(self,
+    def evaluate_source_neighbor_interaction(self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
             ibrow: int, ibcol: int) -> Tuple[np.ndarray, TargetAndSourceClusterList]:
         nbr_src_index = TargetAndSourceClusterList(nbrindex, pxy.srcindex)
 
-        eval_mapper_cls = self.nearfield_cluster_builder
-        expr = self.nearfield_exprs[ibrow]
+        eval_mapper_cls = self.neighbor_cluster_builder
+        expr = self.exprs[ibrow]
         mat = self._evaluate_expr(
                 actx, places, eval_mapper_cls, nbr_src_index, expr,
                 idomain=ibcol, _weighted=self.weighted_sources)
 
         return mat, nbr_src_index
 
-    def evaluate_target_nearfield(self,
+    def evaluate_target_neighbor_interaction(self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
             ibrow: int, ibcol: int) -> Tuple[np.ndarray, TargetAndSourceClusterList]:
         tgt_nbr_index = TargetAndSourceClusterList(pxy.srcindex, nbrindex)
 
-        eval_mapper_cls = self.nearfield_cluster_builder
-        expr = self.nearfield_exprs[ibrow]
+        eval_mapper_cls = self.neighbor_cluster_builder
+        expr = self.exprs[ibrow]
         mat = self._evaluate_expr(
                 actx, places, eval_mapper_cls, tgt_nbr_index, expr,
                 idomain=ibcol, _weighted=self.weighted_sources)
@@ -373,9 +373,9 @@ class SkeletonizationWrangler:
 
     # }}}
 
-    # {{{ farfield
+    # {{{ proxy
 
-    def evaluate_source_farfield(self,
+    def evaluate_source_proxy_interaction(self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
@@ -386,8 +386,8 @@ class SkeletonizationWrangler:
                 places, {PROXY_SKELETONIZATION_TARGET: pxy.as_targets()}
                 )
 
-        eval_mapper_cls = self.farfield_source_cluster_builder
-        expr = self.farfield_source_exprs[ibrow]
+        eval_mapper_cls = self.proxy_source_cluster_builder
+        expr = self.source_proxy_exprs[ibrow]
         mat = self._evaluate_expr(
                 actx, places, eval_mapper_cls, pxy_src_index, expr,
                 idomain=ibcol,
@@ -396,7 +396,7 @@ class SkeletonizationWrangler:
 
         return mat, pxy_src_index
 
-    def evaluate_target_farfield(self,
+    def evaluate_target_proxy_interaction(self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
@@ -407,8 +407,8 @@ class SkeletonizationWrangler:
                 places, {PROXY_SKELETONIZATION_SOURCE: pxy.as_sources()}
                 )
 
-        eval_mapper_cls = self.farfield_target_cluster_builder
-        expr = self.farfield_target_exprs[ibrow]
+        eval_mapper_cls = self.proxy_target_cluster_builder
+        expr = self.target_proxy_exprs[ibrow]
         mat = self._evaluate_expr(
                 actx, places, eval_mapper_cls, tgt_pxy_index, expr,
                 idomain=ibcol,
@@ -434,10 +434,10 @@ def make_skeletonization_wrangler(
         auto_where: Optional[Union[Hashable, Tuple[Hashable, Hashable]]] = None,
 
         # internal
-        _weighted_farfield: Optional[Union[bool, Tuple[bool, bool]]] = None,
-        _farfield_source_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
-        _farfield_target_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
-        _nearfield_cluster_builder: Optional[Callable[..., np.ndarray]] = None):
+        _weighted_proxy: Optional[Union[bool, Tuple[bool, bool]]] = None,
+        _proxy_source_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
+        _proxy_target_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
+        _neighbor_cluster_builder: Optional[Callable[..., np.ndarray]] = None):
     if context is None:
         context = {}
 
@@ -458,24 +458,24 @@ def make_skeletonization_wrangler(
     from pytential.symbolic.execution import _prepare_domains
     domains = _prepare_domains(len(input_exprs), places, domains, auto_where[0])
 
-    nearfield_exprs = _prepare_nearfield_expr(places, exprs, auto_where)
-    farfield_source_exprs = _prepare_farfield_expr(
-            places, nearfield_exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET))
-    farfield_target_exprs = _prepare_farfield_expr(
-            places, nearfield_exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]))
+    exprs = _prepare_neighbor_expr(places, exprs, auto_where)
+    source_proxy_exprs = prepare_proxy_expr(
+            places, exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET))
+    target_proxy_exprs = prepare_proxy_expr(
+            places, exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]))
 
     # }}}
 
     # {{{ weighting
 
-    if _weighted_farfield is None:
+    if _weighted_proxy is None:
         weighted_sources = weighted_targets = True
-    elif isinstance(_weighted_farfield, bool):
-        weighted_sources = weighted_targets = _weighted_farfield
-    elif isinstance(_weighted_farfield, tuple):
-        weighted_sources, weighted_targets = _weighted_farfield
+    elif isinstance(_weighted_proxy, bool):
+        weighted_sources = weighted_targets = _weighted_proxy
+    elif isinstance(_weighted_proxy, tuple):
+        weighted_sources, weighted_targets = _weighted_proxy
     else:
-        raise ValueError(f"unknown value for weighting: '{_weighted_farfield}'")
+        raise ValueError(f"unknown value for weighting: '{_weighted_proxy}'")
 
     # }}}
 
@@ -484,32 +484,32 @@ def make_skeletonization_wrangler(
     from pytential.symbolic.matrix import (
             P2PClusterMatrixBuilder, QBXClusterMatrixBuilder)
 
-    if _nearfield_cluster_builder is None:
-        _nearfield_cluster_builder = QBXClusterMatrixBuilder
+    if _neighbor_cluster_builder is None:
+        _neighbor_cluster_builder = QBXClusterMatrixBuilder
 
-    if _farfield_source_cluster_builder is None:
-        _farfield_source_cluster_builder = P2PClusterMatrixBuilder
+    if _proxy_source_cluster_builder is None:
+        _proxy_source_cluster_builder = P2PClusterMatrixBuilder
 
-    if _farfield_target_cluster_builder is None:
-        _farfield_target_cluster_builder = QBXClusterMatrixBuilder
+    if _proxy_target_cluster_builder is None:
+        _proxy_target_cluster_builder = QBXClusterMatrixBuilder
 
     # }}}
 
     return SkeletonizationWrangler(
             # operator
-            nearfield_exprs=nearfield_exprs,
+            exprs=exprs,
             input_exprs=tuple(input_exprs),
             domains=tuple(domains),
             context=context,
-            nearfield_cluster_builder=_nearfield_cluster_builder,
+            neighbor_cluster_builder=_neighbor_cluster_builder,
             # source
             weighted_sources=weighted_sources,
-            farfield_source_exprs=farfield_source_exprs,
-            farfield_source_cluster_builder=_farfield_source_cluster_builder,
+            source_proxy_exprs=source_proxy_exprs,
+            proxy_source_cluster_builder=_proxy_source_cluster_builder,
             # target
             weighted_targets=weighted_targets,
-            farfield_target_exprs=farfield_target_exprs,
-            farfield_target_cluster_builder=_farfield_target_cluster_builder,
+            target_proxy_exprs=target_proxy_exprs,
+            proxy_target_cluster_builder=_proxy_target_cluster_builder,
             )
 
 # }}}
@@ -538,7 +538,7 @@ class _ProxyNeighborEvaluationResult:
 def _make_block_proxy_skeleton(
         actx, ibrow, ibcol,
         places, proxy_generator, wrangler, cluster_index,
-        evaluate_farfield, evaluate_nearfield,
+        evaluate_proxy, evaluate_neighbor,
         max_particles_in_box=None):
     """Builds a block matrix that can be used to skeletonize the
     rows (targets) or columns (sources) of the symbolic matrix block
@@ -555,16 +555,16 @@ def _make_block_proxy_skeleton(
 
     # }}}
 
-    # {{{ evaluate farfield (proxy) and nearfield (neighbor) interactions
+    # {{{ evaluate proxy and neighbor interactions
 
     from pytential.linalg import gather_cluster_neighbor_points
     nbrindex = gather_cluster_neighbor_points(
             actx, pxy,
             max_particles_in_box=max_particles_in_box)
 
-    pxymat, pxy_geo_index = evaluate_farfield(
+    pxymat, pxy_geo_index = evaluate_proxy(
             actx, places, pxy, nbrindex, ibrow=ibrow, ibcol=ibcol)
-    nbrmat, nbr_geo_index = evaluate_nearfield(
+    nbrmat, nbr_geo_index = evaluate_neighbor(
             actx, places, pxy, nbrindex, ibrow=ibrow, ibcol=ibcol)
 
     # }}}
@@ -595,13 +595,13 @@ def _skeletonize_block_by_proxy_with_mats(
 
     src_result = make_proxy_skeleton(
             tgt_src_index.sources,
-            evaluate_farfield=wrangler.evaluate_source_farfield,
-            evaluate_nearfield=wrangler.evaluate_source_nearfield,
+            evaluate_proxy=wrangler.evaluate_source_proxy_interaction,
+            evaluate_neighbor=wrangler.evaluate_source_neighbor_interaction,
             )
     tgt_result = make_proxy_skeleton(
             tgt_src_index.targets,
-            evaluate_farfield=wrangler.evaluate_target_farfield,
-            evaluate_nearfield=wrangler.evaluate_target_nearfield,
+            evaluate_proxy=wrangler.evaluate_target_proxy_interaction,
+            evaluate_neighbor=wrangler.evaluate_target_neighbor_interaction,
             )
 
     src_skl_indices = np.empty(nclusters, dtype=object)

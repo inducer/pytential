@@ -130,10 +130,10 @@ def test_skeletonize_symbolic(actx_factory, case, visualize=False):
     wrangler = make_skeletonization_wrangler(places, sym_op, sym_u,
             domains=None,
             context=case.knl_concrete_kwargs,
-            _weighted_farfield=case.weighted_farfield,
-            _farfield_source_cluster_builder=case.farfield_source_cluster_builder,
-            _farfield_target_cluster_builder=case.farfield_target_cluster_builder,
-            _nearfield_cluster_builder=case.nearfield_cluster_builder)
+            _weighted_proxy=case.weighted_proxy,
+            _proxy_source_cluster_builder=case.proxy_source_cluster_builder,
+            _proxy_target_cluster_builder=case.proxy_target_cluster_builder,
+            _neighbor_cluster_builder=case.neighbor_cluster_builder)
 
     # }}}
 
@@ -191,10 +191,10 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     wrangler = make_skeletonization_wrangler(places, sym_op, sym_u,
             domains=None,
             context=case.knl_concrete_kwargs,
-            _weighted_farfield=case.weighted_farfield,
-            _farfield_source_cluster_builder=case.farfield_source_cluster_builder,
-            _farfield_target_cluster_builder=case.farfield_target_cluster_builder,
-            _nearfield_cluster_builder=case.nearfield_cluster_builder)
+            _weighted_proxy=case.weighted_proxy,
+            _proxy_source_cluster_builder=case.proxy_source_cluster_builder,
+            _proxy_target_cluster_builder=case.proxy_target_cluster_builder,
+            _neighbor_cluster_builder=case.neighbor_cluster_builder)
 
     # }}}
 
@@ -413,7 +413,7 @@ def test_skeletonize_by_proxy_convergence(
     for i in range(id_eps.size):
         case = case.copy(
             id_eps=id_eps[i],
-            weighted_farfield=weighted,
+            weighted_proxy=weighted,
         )
 
         if not was_zero:

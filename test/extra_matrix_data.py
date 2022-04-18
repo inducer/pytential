@@ -38,13 +38,10 @@ class MatrixTestCaseMixin:
     id_eps: float = 1.0e-8
     skel_discr_stage: DOFGranularities = sym.QBX_SOURCE_STAGE2
 
-    # disable fmm for matrix tests
-    fmm_backend: Optional[str] = None
-
     weighted_farfield: Optional[bool] = None
-    farfield_source_cluster_builder: Callable[..., Any] = None
-    farfield_target_cluster_builder: Callable[..., Any] = None
-    nearfield_cluster_builder: Callable[..., Any] = None
+    proxy_source_cluster_builder: Callable[..., Any] = None
+    proxy_target_cluster_builder: Callable[..., Any] = None
+    neighbor_cluster_builder: Callable[..., Any] = None
 
     def get_cluster_index(self, actx, places, dofdesc=None):
         if dofdesc is None:
