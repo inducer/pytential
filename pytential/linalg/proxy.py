@@ -86,9 +86,11 @@ def partition_by_nodes(
     discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
 
     if tree_kind is not None:
+        from pytential.qbx.utils import tree_code_container
+        tcc = tree_code_container(lpot_source._setup_actx)
+
         from arraycontext import thaw
-        builder = lpot_source.tree_code_container.build_tree()
-        tree, _ = builder(actx.queue,
+        tree, _ = tcc.build_tree()(actx.queue,
                 particles=flatten(
                     thaw(discr.nodes(), actx), actx, leaf_class=DOFArray
                     ),
@@ -594,12 +596,12 @@ def gather_cluster_neighbor_points(
 
     # {{{ perform area query
 
-    builder = lpot_source.tree_code_container.build_tree()
-    tree, _ = builder(actx.queue, sources,
-            max_particles_in_box=max_particles_in_box)
+    from pytential.qbx.utils import tree_code_container
+    tcc = tree_code_container(lpot_source._setup_actx)
 
-    builder = lpot_source.tree_code_container.build_area_query()
-    query, _ = builder(actx.queue, tree, pxy.centers, pxy.radii)
+    tree, _ = tcc.build_tree()(actx.queue, sources,
+            max_particles_in_box=max_particles_in_box)
+    query, _ = tcc.build_area_query()(actx.queue, tree, pxy.centers, pxy.radii)
 
     tree = tree.get(actx.queue)
     query = query.get(actx.queue)

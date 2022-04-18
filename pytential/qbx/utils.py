@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from pytools import memoize_method, log_process
+from pytools import memoize_method, memoize_in, log_process
 from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import DOFArray
 
@@ -91,6 +91,14 @@ class TreeCodeContainer:
         from boxtree.area_query import AreaQueryBuilder
         return AreaQueryBuilder(self.array_context.context)
 
+
+def tree_code_container(actx: PyOpenCLArrayContext) -> TreeCodeContainer:
+    @memoize_in(actx, (TreeCodeContainer, tree_code_container))
+    def make_container():
+        return TreeCodeContainer(actx)
+
+    return make_container()
+
 # }}}
 
 
@@ -109,6 +117,7 @@ class TreeCodeContainerMixin:
 
     def particle_list_filter(self):
         return self.tree_code_container.particle_list_filter()
+
 
 # }}}
 

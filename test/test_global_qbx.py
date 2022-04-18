@@ -401,11 +401,8 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
     # {{{ run target associator and check
 
     from pytential.qbx.target_assoc import (
-            TargetAssociationCodeContainer, associate_targets_to_qbx_centers)
-
-    from pytential.qbx.utils import TreeCodeContainer
-    code_container = TargetAssociationCodeContainer(
-            actx, TreeCodeContainer(actx))
+            target_association_code_container, associate_targets_to_qbx_centers)
+    code_container = target_association_code_container(actx)
 
     target_assoc = (
             associate_targets_to_qbx_centers(
@@ -543,13 +540,9 @@ def test_target_association_failure(actx_factory):
         )
 
     from pytential.qbx.target_assoc import (
-            TargetAssociationCodeContainer, associate_targets_to_qbx_centers,
+            target_association_code_container, associate_targets_to_qbx_centers,
             QBXTargetAssociationFailedException)
-
-    from pytential.qbx.utils import TreeCodeContainer
-
-    code_container = TargetAssociationCodeContainer(
-            actx, TreeCodeContainer(actx))
+    code_container = target_association_code_container(actx)
 
     with pytest.raises(QBXTargetAssociationFailedException):
         associate_targets_to_qbx_centers(

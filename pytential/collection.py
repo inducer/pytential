@@ -274,12 +274,12 @@ class GeometryCollection:
         except KeyError:
             dofdesc = sym.DOFDescriptor(geometry, discr_stage)
 
+            from pytential.qbx.refinement import refiner_code_container
+            wrangler = refiner_code_container(lpot_source._setup_actx).get_wrangler()
+
             from pytential.qbx.refinement import _refine_for_global_qbx
             # NOTE: this adds the required discretizations to the cache
-            _refine_for_global_qbx(self, dofdesc,
-                    lpot_source.refiner_code_container.get_wrangler(),
-                    _copy_collection=False)
-
+            _refine_for_global_qbx(self, dofdesc, wrangler, _copy_collection=False)
             discr = self._get_discr_from_cache(geometry, discr_stage)
 
         return discr

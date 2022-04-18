@@ -31,7 +31,7 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from arraycontext import PyOpenCLArrayContext, flatten
 from meshmode.dof_array import DOFArray
 
-from pytools import memoize_method
+from pytools import memoize_method, memoize_in
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
 from pytential.qbx.utils import (
@@ -219,9 +219,11 @@ SUFFICIENT_SOURCE_QUADRATURE_RESOLUTION_CHECKER = AreaQueryElementwiseTemplate(
 
 class RefinerCodeContainer(TreeCodeContainerMixin):
 
-    def __init__(self, actx: PyOpenCLArrayContext, tree_code_container):
+    def __init__(self, actx: PyOpenCLArrayContext):
         self.array_context = actx
-        self.tree_code_container = tree_code_container
+
+        from pytential.qbx.utils import tree_code_container
+        self.tree_code_container = tree_code_container(actx)
 
     @memoize_method
     def expansion_disk_undisturbed_by_sources_checker(
@@ -270,6 +272,14 @@ class RefinerCodeContainer(TreeCodeContainerMixin):
 
     def get_wrangler(self):
         return RefinerWrangler(self.array_context, self)
+
+
+def refiner_code_container(actx: PyOpenCLArrayContext) -> RefinerCodeContainer:
+    @memoize_in(actx, (RefinerCodeContainer, refiner_code_container))
+    def make_container():
+        return RefinerCodeContainer(actx)
+
+    return make_container()
 
 # }}}
 
@@ -964,8 +974,8 @@ def refine_geometry_collection(places,
         if not isinstance(lpot_source, QBXLayerPotentialSource):
             continue
 
-        _refine_for_global_qbx(places, dofdesc,
-                lpot_source.refiner_code_container.get_wrangler(),
+        wrangler = refiner_code_container(lpot_source._setup_actx).get_wrangler()
+        _refine_for_global_qbx(places, dofdesc, wrangler,
                 group_factory=group_factory,
                 kernel_length_scale=kernel_length_scale,
                 scaled_max_curvature_threshold=scaled_max_curvature_threshold,
