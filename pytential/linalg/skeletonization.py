@@ -519,6 +519,8 @@ def make_skeletonization_wrangler(
 
 @dataclass(frozen=True)
 class _ProxyNeighborEvaluationResult:
+    pxy: ProxyClusterGeometryData
+
     pxymat: np.ndarray
     pxyindex: TargetAndSourceClusterList
 
@@ -532,7 +534,7 @@ class _ProxyNeighborEvaluationResult:
         shape = self.pxyindex.cluster_shape(i, i)
         pxymat_i = self.pxyindex.flat_cluster_take(self.pxymat, i).reshape(*shape)
 
-        return pxymat_i, nbrmat_i
+        return [pxymat_i, nbrmat_i]
 
 
 def _make_block_proxy_skeleton(
@@ -570,6 +572,7 @@ def _make_block_proxy_skeleton(
     # }}}
 
     return _ProxyNeighborEvaluationResult(
+            pxy=pxy,
             pxymat=pxymat, pxyindex=pxy_geo_index,
             nbrmat=nbrmat, nbrindex=nbr_geo_index)
 
