@@ -217,17 +217,39 @@ class ProxyClusterGeometryData:
     centers: np.ndarray
     radii: np.ndarray
 
+    _cluster_radii: Optional[np.ndarray] = None
+
     @property
     def nclusters(self) -> int:
         return self.srcindex.nclusters
 
-    def to_numpy(self, actx: PyOpenCLArrayContext) -> "ProxyClusterGeometryData":
+    @property
+    def discr(self):
+        return self.places.get_discretization(
+                self.dofdesc.geometry,
+                self.dofdesc.discr_stage)
+
+    def to_numpy(
+            self, actx: PyOpenCLArrayContext, *, stack_nodes: bool = False
+            ) -> "ProxyClusterGeometryData":
+        if stack_nodes:
+            stack = np.stack
+        else:
+            def stack(x):
+                return x
+
         from arraycontext import to_numpy
+        if self._cluster_radii is not None:
+            cluster_radii = to_numpy(self._cluster_radii, actx)
+        else:
+            cluster_radii = None
+
         from dataclasses import replace
         return replace(self,
-                points=to_numpy(self.points, actx),
-                centers=to_numpy(self.centers, actx),
-                radii=to_numpy(self.radii, actx))
+                points=stack(to_numpy(self.points, actx)),
+                centers=stack(to_numpy(self.centers, actx)),
+                radii=to_numpy(self.radii, actx),
+                _cluster_radii=cluster_radii)
 
     def as_sources(self) -> ProxyPointSource:
         lpot_source = self.places.get_geometry(self.dofdesc.geometry)
@@ -409,6 +431,8 @@ class ProxyGeneratorBase:
         discr = self.places.get_discretization(
                 source_dd.geometry, source_dd.discr_stage)
 
+        include_cluster_radii = kwargs.pop("include_cluster_radii", False)
+
         # {{{ get proxy centers and radii
 
         sources = flatten(discr.nodes(), actx, leaf_class=DOFArray)
@@ -427,6 +451,18 @@ class ProxyGeneratorBase:
                 radius_factor=self.radius_factor,
                 proxy_centers=centers_dev,
                 **kwargs)
+
+        if include_cluster_radii:
+            knl = make_compute_cluster_radii_knl(actx, self.ambient_dim)
+            _, (cluster_radii,) = knl(actx.queue,
+                    sources=sources,
+                    srcindices=dof_index.indices,
+                    srcstarts=dof_index.starts,
+                    radius_factor=1.0,
+                    proxy_centers=centers_dev)
+            cluster_radii = actx.freeze(cluster_radii)
+        else:
+            cluster_radii = None
 
         # }}}
 
@@ -461,6 +497,7 @@ class ProxyGeneratorBase:
                 points=actx.freeze(from_numpy(proxies, actx)),
                 centers=actx.freeze(centers_dev),
                 radii=actx.freeze(radii_dev),
+                _cluster_radii=cluster_radii
                 )
 
 
