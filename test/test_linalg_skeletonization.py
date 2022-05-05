@@ -20,8 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
+from dataclasses import replace
 from functools import partial
+import pytest
 
 import numpy as np
 import numpy.linalg as la
@@ -91,11 +92,11 @@ def _plot_skeleton_with_proxies(name, sources, pxy, srcindex, sklindex):
 
 @pytest.mark.parametrize("case", [
     # Laplace
-    SKELETONIZE_TEST_CASES[0].copy(op_type="single", knl_class_or_helmholtz_k=0),
-    SKELETONIZE_TEST_CASES[0].copy(op_type="double", knl_class_or_helmholtz_k=0),
+    replace(SKELETONIZE_TEST_CASES[0], op_type="single", knl_class_or_helmholtz_k=0),
+    replace(SKELETONIZE_TEST_CASES[0], op_type="double", knl_class_or_helmholtz_k=0),
     # Helmholz
-    SKELETONIZE_TEST_CASES[0].copy(op_type="single", knl_class_or_helmholtz_k=5),
-    SKELETONIZE_TEST_CASES[0].copy(op_type="double", knl_class_or_helmholtz_k=5),
+    replace(SKELETONIZE_TEST_CASES[0], op_type="single", knl_class_or_helmholtz_k=5),
+    replace(SKELETONIZE_TEST_CASES[0], op_type="double", knl_class_or_helmholtz_k=5),
     ])
 def test_skeletonize_symbolic(actx_factory, case, visualize=False):
     actx = actx_factory()
@@ -352,7 +353,7 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
-    case = case.copy(approx_cluster_count=6, id_eps=1.0e-8)
+    case = replace(case, approx_cluster_count=6, id_eps=1.0e-8)
     logger.info("\n%s", case)
 
     run_skeletonize_by_proxy(actx, case, case.resolutions[0], visualize=visualize)
@@ -363,9 +364,9 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
 # {{{ test_skeletonize_by_proxy_convergence
 
 CONVERGENCE_TEST_CASES = [
-        SKELETONIZE_TEST_CASES[0].copy(resolutions=[256]),
-        SKELETONIZE_TEST_CASES[1].copy(resolutions=[256]),
-        SKELETONIZE_TEST_CASES[2].copy(resolutions=[0]),
+        replace(SKELETONIZE_TEST_CASES[0], resolutions=[256]),
+        replace(SKELETONIZE_TEST_CASES[1], resolutions=[256]),
+        replace(SKELETONIZE_TEST_CASES[2], resolutions=[0]),
         extra.GMSHSphereTestCase(
             target_order=8,
             op_type="scalar",
@@ -392,7 +393,7 @@ def test_skeletonize_by_proxy_convergence(
     else:
         nclusters = 12
 
-    case = case.copy(approx_cluster_count=nclusters)
+    case = replace(case, approx_cluster_count=nclusters)
     logger.info("\n%s", case)
 
     id_eps = 10.0 ** (-np.arange(2, 16))
@@ -411,10 +412,7 @@ def test_skeletonize_by_proxy_convergence(
     was_zero = False
     places = mat = None
     for i in range(id_eps.size):
-        case = case.copy(
-            id_eps=id_eps[i],
-            weighted_proxy=weighted,
-        )
+        case = replace(case, id_eps=id_eps[i], weighted_proxy=weighted)
 
         if not was_zero:
             rec_error[i], (places, mat) = run_skeletonize_by_proxy(
