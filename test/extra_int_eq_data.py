@@ -442,7 +442,7 @@ class GMSHSphereTestCase(SphereTestCase):
     name: str = "gmsphere"
 
     radius: float = 1.5
-    resolutions: List[float] = [0.4]
+    resolutions: List[float] = field(default_factory=lambda: [0.4])
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.io import ScriptSource

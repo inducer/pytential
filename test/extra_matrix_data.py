@@ -20,7 +20,7 @@ class _NoArgSentinel:
 @dataclass
 class MatrixTestCaseMixin:
     # operators
-    op_type = "scalar"
+    op_type: str = "scalar"
     # disable fmm for matrix tests
     fmm_backend: Optional[str] = None
 
@@ -38,7 +38,7 @@ class MatrixTestCaseMixin:
     id_eps: float = 1.0e-8
     skel_discr_stage: DOFGranularities = sym.QBX_SOURCE_STAGE2
 
-    weighted_farfield: Optional[bool] = None
+    weighted_proxy: Optional[bool] = None
     proxy_source_cluster_builder: Callable[..., Any] = None
     proxy_target_cluster_builder: Callable[..., Any] = None
     neighbor_cluster_builder: Callable[..., Any] = None
@@ -142,6 +142,7 @@ class TorusTestCase(MatrixTestCaseMixin, extra.TorusTestCase):
     pass
 
 
+@dataclass
 class GMSHSphereTestCase(MatrixTestCaseMixin, extra.GMSHSphereTestCase):
     pass
 
