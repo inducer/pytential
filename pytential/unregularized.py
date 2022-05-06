@@ -256,12 +256,16 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         tree_indep = self._tree_indep_data_for_wrangler(
                 fmm_kernel, target_kernels=insn.target_kernels,
                 source_kernels=insn.source_kernels)
+        from sumpy.fmm import SumpyTranslationClassesData
+        translation_classes_data = SumpyTranslationClassesData(actx.queue,
+                geo_data.traversal())
 
         from sumpy.fmm import SumpyExpansionWrangler
         wrangler = SumpyExpansionWrangler(
                 tree_indep, geo_data.traversal(),
                 output_and_expansion_dtype,
                 self.fmm_level_to_order,
+                translation_classes_data=translation_classes_data,
                 source_extra_kwargs=source_extra_kwargs,
                 kernel_extra_kwargs=kernel_extra_kwargs)
 
