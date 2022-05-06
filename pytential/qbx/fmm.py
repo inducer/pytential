@@ -25,7 +25,7 @@ import numpy as np  # noqa
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa
 from sumpy.fmm import (SumpyTreeIndependentDataForWrangler,
-        SumpyExpansionWrangler, level_to_rscale, SumpyTimingFuture)
+        SumpyExpansionWrangler, SumpyTimingFuture)
 
 from pytools import memoize_method
 from pytential.qbx.interactions import P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P
@@ -267,7 +267,7 @@ non_qbx_box_target_lists`),
                     src_box_starts=ssn.starts,
                     src_box_lists=ssn.lists,
 
-                    src_rscale=level_to_rscale(self.tree, isrc_level),
+                    src_rscale=self.level_to_rscale(isrc_level),
 
                     wait_for=wait_for,
 
@@ -317,7 +317,7 @@ non_qbx_box_target_lists`),
                     expansions=target_locals_view,
                     qbx_expansions=qbx_expansions,
 
-                    src_rscale=level_to_rscale(self.tree, isrc_level),
+                    src_rscale=self.level_to_rscale(isrc_level),
 
                     wait_for=wait_for,
 
