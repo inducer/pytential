@@ -178,7 +178,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                             tree_indep.source_deriv_name]],
                         order="F")
 
-        def inner_fmm_level_to_nterms(tree, level):
+        def inner_fmm_level_to_order(tree, level):
             if helmholtz_k == 0:
                 return fmm_level_to_order(
                         LaplaceKernel(tree.dimensions),
@@ -196,7 +196,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 dipole_vec=dipole_vec,
                 dipoles_already_reordered=True,
 
-                fmm_level_to_nterms=inner_fmm_level_to_nterms,
+                fmm_level_to_order=inner_fmm_level_to_order,
                 rotation_data=geo_data)
 
     # {{{ data vector helpers
@@ -525,7 +525,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     center1_offsets=icurr_level_qbx_center_to_box,
                     expn1=locals_view.T,
                     expn1_offsets=icurr_level_qbx_center_to_box - lev_box_start,
-                    nterms1=self.level_nterms[isrc_level],
+                    nterms1=self.level_orders[isrc_level],
                     nterms2=self.qbx_order,
                     rscale2=qbx_radii,
                     rscale2_offsets=curr_level_qbx_centers,
