@@ -22,3 +22,4 @@ dependencies:
 - pyfmmlib
 - cython
 - gmsh
+- pyvkfft
