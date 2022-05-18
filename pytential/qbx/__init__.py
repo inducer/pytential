@@ -195,6 +195,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         LayerPotentialSourceBase.__init__(self, density_discr)
 
+        if density_discr.dim != density_discr.ambient_dim - 1:
+            raise RuntimeError("QBX requires geometry with codimension one. "
+                    f"Got: dim={density_discr.dim} "
+                    f"ambient_dim={density_discr.ambient_dim}.")
+
         self.fine_order = fine_order
         self.qbx_order = qbx_order
         self.fmm_level_to_order = fmm_level_to_order
