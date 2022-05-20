@@ -10,6 +10,8 @@ scheme is used:
   proxy-based skeletonization of the direct solver algorithms. Clusters
   are represented by a :class:`~pytential.linalg.TargetAndSourceClusterList`.
 
+.. _direct_solver:
+
 Hierarchical Direct Solver
 --------------------------
 
@@ -20,5 +22,10 @@ Hierarchical Direct Solver
 
 .. automodule:: pytential.linalg.proxy
 .. automodule:: pytential.linalg.utils
+
+Internal Functionality
+----------------------
+
+.. automodule:: pytential.linalg.direct_solver_symbolic
 
 .. vim: sw=4:tw=75
