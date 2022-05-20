@@ -400,8 +400,10 @@ class NeumannOperator(L2WeightedPDEOperator):
             if isinstance(self.kernel, HelmholtzKernel):
                 DpS0u = (
                         sym.Dp(
-                            self.kernel - self.laplace_kernel,
-                            laplace_s_inv_sqrt_w_u,
+                            self.kernel, laplace_s_inv_sqrt_w_u,
+                            qbx_forced_limit=+1, **kwargs)
+                        - sym.Dp(
+                            self.laplace_kernel, laplace_s_inv_sqrt_w_u,
                             qbx_forced_limit=+1, **kwargs)
                         + Dp0S0u)
             elif isinstance(self.kernel, LaplaceKernel):

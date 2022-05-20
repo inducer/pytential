@@ -68,6 +68,8 @@ def rec_int_g_arguments(mapper, expr):
     return densities, kernel_arguments, changed
 
 
+# {{{ IdentityMapper
+
 class IdentityMapper(IdentityMapperBase):
     def map_node_sum(self, expr):
         operand = self.rec(expr.operand)
@@ -137,6 +139,10 @@ class IdentityMapper(IdentityMapperBase):
 
         return type(expr)(expr.from_dd, expr.to_dd, operand)
 
+# }}}
+
+
+# {{{ CombineMapper
 
 class CombineMapper(CombineMapperBase):
     def map_node_sum(self, expr):
@@ -169,6 +175,10 @@ class CombineMapper(CombineMapperBase):
 
     map_error_expression = map_is_shape_class
 
+# }}}
+
+
+# {{{ Collector
 
 class Collector(CollectorBase, CombineMapper):
     def map_ones(self, expr):
@@ -187,6 +197,10 @@ class OperatorCollector(Collector):
 class DependencyMapper(DependencyMapperBase, Collector):
     pass
 
+# }}}
+
+
+# {{{ EvaluationMapper
 
 class EvaluationMapper(EvaluationMapperBase):
     """Unlike :mod:`pymbolic.mapper.evaluation.EvaluationMapper`, this class
@@ -250,8 +264,10 @@ class EvaluationMapper(EvaluationMapperBase):
                 expr.prefix,
                 expr.scope)
 
+# }}}
 
-# {{{ dofdesc tagging
+
+# {{{ LocationTagger
 
 class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     """Used internally by :class:`ToTargetTagger`."""
@@ -384,6 +400,10 @@ class ToTargetTagger(LocationTagger):
         self.operand_rec = LocationTagger(default_source,
                                           default_source=default_source)
 
+# }}}
+
+
+# {{{ DiscretizationStageTagger
 
 class DiscretizationStageTagger(IdentityMapper):
     """Descends into an expression tree and changes the
@@ -427,7 +447,7 @@ class DiscretizationStageTagger(IdentityMapper):
 # }}}
 
 
-# {{{ derivative binder
+# {{{ DerivativeBinder
 
 class DerivativeTaker(Mapper):
     def __init__(self, ambient_axis):
@@ -498,7 +518,7 @@ class DerivativeBinder(DerivativeBinderBase, IdentityMapper):
 # }}}
 
 
-# {{{ Unregularized preprocessor
+# {{{ UnregularizedPreprocessor
 
 class UnregularizedPreprocessor(IdentityMapper):
 
@@ -524,7 +544,7 @@ class UnregularizedPreprocessor(IdentityMapper):
 # }}}
 
 
-# {{{ interpolation preprocessor
+# {{{ InterpolationPreprocessor
 
 class InterpolationPreprocessor(IdentityMapper):
     """Handle expressions that require upsampling or downsampling by inserting
@@ -596,7 +616,7 @@ class InterpolationPreprocessor(IdentityMapper):
 # }}}
 
 
-# {{{ QBX preprocessor
+# {{{ QBXPreprocessor
 
 class QBXPreprocessor(IdentityMapper):
     def __init__(self, geometry, places):
@@ -656,7 +676,7 @@ class QBXPreprocessor(IdentityMapper):
 # }}}
 
 
-# {{{ stringifier
+# {{{ StringifyMapper
 
 def stringify_where(where):
     return str(prim.as_dofdesc(where))
@@ -769,12 +789,12 @@ class StringifyMapper(BaseStringifyMapper):
         return "IsShape[{}]({})".format(stringify_where(expr.dofdesc),
                                         expr.shape.__name__)
 
-# }}}
-
 
 class PrettyStringifyMapper(
         CSESplittingStringifyMapperMixin, StringifyMapper):
     pass
+
+# }}}
 
 
 # {{{ graphviz
