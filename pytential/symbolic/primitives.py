@@ -1279,6 +1279,12 @@ class IntG(Expression):
     where :math:`\sigma_k` is the k-th *density*, :math:`G` is a Green's
     function, :math:`S_k` are source derivative operators and :math:`T` is a
     target derivative operator.
+
+    .. attribute:: target_kernel
+    .. attribute:: source_kernels
+    .. attribute:: densities
+    .. attribute:: qbx_forced_limit
+    .. attribute:: kernel_arguments
     """
 
     init_arg_names = ("target_kernel", "source_kernels", "densities",

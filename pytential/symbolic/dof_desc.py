@@ -222,7 +222,10 @@ class DOFDescriptor:
         elif self.geometry == DEFAULT_TARGET:
             name.append("t")
         else:
-            name.append(str(self.geometry))
+            name.append(
+                    self.geometry.__name__
+                    if isinstance(self.geometry, type)
+                    else str(self.geometry))
 
         if self.discr_stage == QBX_SOURCE_STAGE2:
             name.append("stage2")
