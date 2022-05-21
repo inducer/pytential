@@ -123,7 +123,7 @@ def test_mean_curvature(actx_factory, discr_name, resolutions,
         from meshmode.dof_array import flat_norm
         h_error = flat_norm(mean_curvature - ref_mean_curvature, np.inf)
         eoc.add_data_point(h, actx.to_numpy(h_error))
-    print(eoc)
+    logger.info("eoc:\n%s", eoc)
 
     order = min([g.order for g in discr.groups])
     assert eoc.order_estimate() > order - 1.1
@@ -390,6 +390,107 @@ def test_derivative_binder_expr():
                 i, nruns, pd, expr is new_expr)
 
         assert expr is new_expr
+
+# }}}
+
+
+# {{{ test_mapper_kernel_transformation_remover
+
+def _make_operator(ambient_dim: int, op_name: str, k: float, *, side: int = +1):
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+    if k == 0:
+        kernel = LaplaceKernel(ambient_dim)
+        kernel_arguments = {}
+    else:
+        kernel = HelmholtzKernel(ambient_dim)
+        kernel_arguments = {"k": sym.var("k")}
+
+    import pytential.symbolic.pde.scalar as ops
+    if op_name == "dirichlet":
+        op = ops.DirichletOperator(
+                kernel, side, use_l2_weighting=True,
+                kernel_arguments=kernel_arguments)
+    elif op_name == "neumann":
+        op = ops.NeumannOperator(
+                kernel, side, use_l2_weighting=True,
+                kernel_arguments=kernel_arguments)
+    else:
+        raise ValueError(f"unknown operator: '{op_name}'")
+
+    return op
+
+
+@pytest.mark.parametrize("op_name", ["dirichlet", "neumann"])
+@pytest.mark.parametrize("k", [0, 5])
+def test_mapper_kernel_transformation_remover(op_name, k):
+    ambient_dim = 3
+    op = _make_operator(ambient_dim, op_name, k)
+    expr = op.operator(op.get_density_var("sigma"))
+
+    from pytential.linalg.direct_solver_symbolic import (
+            OperatorCollector, KernelTransformationRemover)
+    expr_without_transformations = KernelTransformationRemover()(expr)
+    intgs = OperatorCollector()(expr_without_transformations)
+
+    def is_base_kernel(knl):
+        return knl.get_base_kernel() == knl
+
+    for intg in intgs:
+        assert is_base_kernel(intg.target_kernel)
+        assert all(is_base_kernel(kernel) for kernel in intg.source_kernels)
+
+# }}}
+
+
+# {{{ test_mapper_int_g_term_collector
+
+@pytest.mark.parametrize("op_name", ["dirichlet", "neumann"])
+def test_mapper_int_g_term_collector(op_name, k=0):
+    ambient_dim = 3
+    op = _make_operator(ambient_dim, op_name, k)
+    expr = op.operator(op.get_density_var("sigma"))
+
+    from pytential.linalg.direct_solver_symbolic import IntGTermCollector
+    expr_only_intgs = IntGTermCollector()(expr)
+
+    # FIXME: how to check this did something?
+    sigma = sym.cse(op.get_density_var("sigma") / op.get_sqrt_weight())
+    if op_name == "dirichlet":
+        expected_expr = -1 * sym.D(op.kernel, sigma)
+    elif op_name == "neumann":
+        int_g = sym.S(op.kernel, sigma, qbx_forced_limit="avg")
+        expected_expr = sym.div([int_g] * ambient_dim)
+    else:
+        raise ValueError(f"unknown operator name: {op_name}")
+
+    assert expr_only_intgs == expected_expr
+
+# }}}
+
+
+# {{{ test_mapper_dof_descriptor_replacer
+
+@pytest.mark.parametrize("op_name", ["dirichlet", "neumann"])
+@pytest.mark.parametrize("k", [0, 5])
+def test_mapper_dof_descriptor_replacer(op_name, k):
+    ambient_dim = 3
+    op = _make_operator(ambient_dim, op_name, k)
+    expr = op.operator(op.get_density_var("sigma"))
+
+    from pytential.symbolic.mappers import ToTargetTagger
+    from pytential.linalg.direct_solver_symbolic import DOFDescriptorReplacer
+    source_dd = sym.as_dofdesc(sym.DEFAULT_SOURCE)
+    target_dd = sym.as_dofdesc(sym.DEFAULT_TARGET)
+    tagged_expr = ToTargetTagger(source_dd, target_dd)(expr)
+
+    source_new_dd = sym.as_dofdesc("source")
+    target_new_dd = sym.as_dofdesc("target")
+    replaced_expr = DOFDescriptorReplacer(source_new_dd, target_new_dd)(tagged_expr)
+
+    from testlib import DOFDescriptorCollector
+    collector = DOFDescriptorCollector()
+    assert collector(tagged_expr) == {source_dd, target_dd}
+    assert collector(replaced_expr) == {source_new_dd, target_new_dd}
 
 # }}}
 
