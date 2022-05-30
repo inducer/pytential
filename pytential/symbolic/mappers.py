@@ -151,10 +151,11 @@ class CombineMapper(CombineMapperBase):
     map_interpolation = map_node_sum
 
     def map_int_g(self, expr):
+        from pytential.symbolic.primitives import hashable_kernel_args
         return self.combine(
                 [self.rec(density) for density in expr.densities]
                 + [self.rec(arg_expr)
-                    for arg_expr in expr.kernel_arguments.values()])
+                    for _, arg_expr in hashable_kernel_args(expr.kernel_arguments)])
 
     def map_inverse(self, expr):
         return self.combine([
