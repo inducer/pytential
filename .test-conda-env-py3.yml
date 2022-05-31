@@ -23,6 +23,3 @@ dependencies:
 - cython
 - gmsh
 - pyvkfft
-
-# https://github.com/conda-forge/libtiff-feedstock/issues/78
-- libtiff<4.4
