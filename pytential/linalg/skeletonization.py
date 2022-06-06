@@ -27,13 +27,13 @@ from typing import (
 import numpy as np
 
 from arraycontext import PyOpenCLArrayContext
-from pytools.obj_array import make_obj_array
 
 from pytential import GeometryCollection, sym
 from pytential.linalg.utils import IndexList, TargetAndSourceClusterList
 from pytential.linalg.proxy import ProxyGeneratorBase, ProxyClusterGeometryData
-from pytential.symbolic.mappers import IdentityMapper, LocationTagger
-from sumpy.kernel import TargetTransformationRemover, SourceTransformationRemover
+from pytential.linalg.direct_solver_symbolic import (
+        PROXY_SKELETONIZATION_TARGET, PROXY_SKELETONIZATION_SOURCE,
+        prepare_expr, prepare_proxy_expr)
 
 
 __doc__ = """
@@ -48,143 +48,6 @@ Skeletonization
 .. autoclass:: SkeletonizationResult
 .. autofunction:: skeletonize_by_proxy
 """
-
-
-# {{{ symbolic
-
-class PROXY_SKELETONIZATION_SOURCE:             # noqa: N801
-    pass
-
-
-class PROXY_SKELETONIZATION_TARGET:             # noqa: N801
-    pass
-
-
-class NonOperatorRemover(IdentityMapper):
-    r"""A mapper that removes any terms that do not contain an
-    :class:`~pytential.symbolic.primitives.IntG`. It can only handle
-    expressions of the form
-
-    .. math::
-
-        \sum F_i(\mathbf{x}, \sigma(\mathbf{x}))
-        + \sum \int_\Sigma
-            G_j(\mathbf{x} - \mathbf{y}) \sigma(\mathbf{y}) \mathrm{d}S_y
-
-    and removes all the :math:`F_i` terms that are diagonal in terms of
-    the density :math:`\sigma`.
-    """
-
-    def map_sum(self, expr):
-        from pytential.symbolic.mappers import OperatorCollector
-        children = []
-        for child in expr.children:
-            rec_child = self.rec(child)
-            ops = OperatorCollector()(rec_child)
-            if ops:
-                children.append(rec_child)
-
-        from pymbolic.primitives import flattened_sum
-        return flattened_sum(children)
-
-    def map_int_g(self, expr):
-        return expr
-
-
-class KernelTransformationRemover(IdentityMapper):
-    r"""A mapper that removes the transformations from the kernel of all
-    :class:`~pytential.symbolic.primitives.IntG`\ s in the expression.
-
-    This is used when evaluating the proxy-target or proxy-source
-    interactions because
-
-    * Evaluating a single-layer vs a double-layer does not make a difference
-      there (proxies are assumed to be far enough from the surface)
-    * Kernel arguments, such as the normal, are not necessarily available at
-      the proxies.
-    """
-
-    def __init__(self):
-        self.sxr = SourceTransformationRemover()
-        self.txr = TargetTransformationRemover()
-
-    def map_int_g(self, expr):
-        target_kernel = self.txr(expr.target_kernel)
-        source_kernels = tuple([self.sxr(kernel) for kernel in expr.source_kernels])
-        if (target_kernel == expr.target_kernel
-                and source_kernels == expr.source_kernels):
-            return expr
-
-        source_args = {
-            arg.name for kernel in expr.source_kernels
-            for arg in kernel.get_source_args()}
-        kernel_arguments = {
-            name: self.rec(arg) for name, arg in expr.kernel_arguments.items()
-            if name not in source_args
-        }
-
-        return expr.copy(target_kernel=target_kernel,
-                         source_kernels=source_kernels,
-                         kernel_arguments=kernel_arguments)
-
-
-class LocationReplacer(LocationTagger):
-    def _default_dofdesc(self, dofdesc):
-        return self.default_target
-
-    def map_int_g(self, expr):
-        return type(expr)(
-                expr.target_kernel, expr.source_kernels,
-                densities=self.operand_rec(expr.densities),
-                qbx_forced_limit=expr.qbx_forced_limit,
-                source=self.default_source, target=self.default_target,
-                kernel_arguments={
-                    name: self.operand_rec(arg_expr)
-                    for name, arg_expr in expr.kernel_arguments.items()
-                    }
-                )
-
-
-class DOFDescriptorReplacer(LocationReplacer):
-    r"""Mapper that replaces all the
-    :class:`~pytential.symbolic.primitives.DOFDescriptor`\ s in the expression
-    with the given ones.
-
-    .. automethod:: __init__
-    """
-
-    def __init__(self, source, target):
-        """
-        :param source: a descriptor for all expressions to be evaluated on
-            the source geometry.
-        :param target: a descriptor for all expressions to be evaluate on
-            the target geometry.
-        """
-        super().__init__(target, default_source=source)
-        self.operand_rec = LocationReplacer(source, default_source=source)
-
-
-def _prepare_neighbor_expr(places, exprs, auto_where=None):
-    from pytential.symbolic.execution import _prepare_expr
-    return make_obj_array([
-        _prepare_expr(places, expr, auto_where=auto_where)
-        for expr in exprs])
-
-
-def prepare_proxy_expr(places, exprs, auto_where=None):
-    def _prepare_expr(expr):
-        # remove all diagonal / non-operator terms in the expression
-        expr = NonOperatorRemover()(expr)
-        # ensure all IntGs remove all the kernel derivatives
-        expr = KernelTransformationRemover()(expr)
-        # ensure all IntGs have their source and targets set
-        expr = DOFDescriptorReplacer(auto_where[0], auto_where[1])(expr)
-
-        return expr
-
-    return make_obj_array([_prepare_expr(expr) for expr in exprs])
-
-# }}}
 
 
 # {{{ wrangler
@@ -458,7 +321,7 @@ def make_skeletonization_wrangler(
     from pytential.symbolic.execution import _prepare_domains
     domains = _prepare_domains(len(input_exprs), places, domains, auto_where[0])
 
-    exprs = _prepare_neighbor_expr(places, exprs, auto_where)
+    exprs = prepare_expr(places, exprs, auto_where)
     source_proxy_exprs = prepare_proxy_expr(
             places, exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET))
     target_proxy_exprs = prepare_proxy_expr(
