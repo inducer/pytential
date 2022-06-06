@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from pytools.obj_array import make_obj_array
+
 from pytential.symbolic.mappers import (
         IdentityMapper, OperatorCollector, LocationTagger)
 
@@ -28,6 +30,39 @@ __doc__ = """
 .. autoclass:: IntGTermCollector
 .. autoclass:: DOFDescriptorReplacer
 """
+
+
+# {{{ utils
+
+class PROXY_SKELETONIZATION_SOURCE:             # noqa: N801
+    pass
+
+
+class PROXY_SKELETONIZATION_TARGET:             # noqa: N801
+    pass
+
+
+def prepare_expr(places, exprs, auto_where=None):
+    from pytential.symbolic.execution import _prepare_expr
+    return make_obj_array([
+        _prepare_expr(places, expr, auto_where=auto_where)
+        for expr in exprs])
+
+
+def prepare_proxy_expr(places, exprs, auto_where=None):
+    def _prepare_expr(expr):
+        # remove all diagonal / non-operator terms in the expression
+        expr = IntGTermCollector()(expr)
+        # ensure all IntGs remove all the kernel derivatives
+        expr = KernelTransformationRemover()(expr)
+        # ensure all IntGs have their source and targets set
+        expr = DOFDescriptorReplacer(auto_where[0], auto_where[1])(expr)
+
+        return expr
+
+    return make_obj_array([_prepare_expr(expr) for expr in exprs])
+
+# }}}
 
 
 # {{{ KernelTransformationRemover
