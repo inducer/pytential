@@ -25,7 +25,7 @@ from functools import partial
 
 import numpy as np
 
-from arraycontext import thaw, flatten
+from arraycontext import flatten
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
 import meshmode.mesh.generation as mgen
@@ -497,7 +497,7 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
                 sym.S(knl, sigma_sym, qbx_forced_limit=qbx_forced_limit)
                 ))
 
-        x, y, z = thaw(density_discr.nodes(), actx)
+        x, y, z = actx.thaw(density_discr.nodes())
         if relation == "nxcurls":
             density_sym = sym.make_sym_vector("density", 2)
             jump_identity_sym = (

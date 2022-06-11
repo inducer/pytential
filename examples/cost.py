@@ -28,7 +28,6 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 
-from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
 
 from pytential import sym, bind
@@ -109,7 +108,7 @@ def get_bound_op(places):
 
 
 def get_test_density(actx, density_discr):
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     sigma = actx.np.sin(10 * nodes[0])
     return sigma
 

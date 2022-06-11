@@ -24,7 +24,7 @@ THE SOFTWARE.
 import numpy as np
 
 from pytools import memoize_method, memoize_in, log_process
-from arraycontext import PyOpenCLArrayContext, flatten, freeze
+from arraycontext import PyOpenCLArrayContext, flatten
 from meshmode.dof_array import DOFArray
 
 from boxtree.tools import DeviceDataRecord
@@ -442,7 +442,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                 self.ambient_dim,
                 dofdesc=self.source_dd.to_stage1()))(actx)
 
-        return freeze(flatten(centers, actx, leaf_class=DOFArray), actx)
+        return actx.freeze(flatten(centers, actx, leaf_class=DOFArray))
 
     @memoize_method
     def flat_expansion_radii(self):
@@ -460,7 +460,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                         granularity=sym.GRANULARITY_CENTER,
                         dofdesc=self.source_dd.to_stage1()))(actx)
 
-        return freeze(flatten(radii, actx), actx)
+        return actx.freeze(flatten(radii, actx))
 
     # }}}
 

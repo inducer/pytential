@@ -1,7 +1,6 @@
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -122,7 +121,7 @@ def main(mesh_name="ellipse", visualize=False):
 
     # {{{ fix rhs and solve
 
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     k_vec = np.array([2, 1])
     k_vec = k * k_vec / la.norm(k_vec, 2)
 

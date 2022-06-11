@@ -50,8 +50,7 @@ def evaluate_circle_eigf(actx, discr, k: int) -> np.ndarray:
 
     # {{{ get polar coordinates
 
-    from arraycontext import thaw
-    x, y = thaw(discr.nodes(), actx)
+    x, y = actx.thaw(discr.nodes())
     theta = actx.np.arctan2(y, x)
 
     # }}}
@@ -64,8 +63,7 @@ def evaluate_sphere_eigf(actx, discr, m: int, n: int) -> DOFArray:
 
     # {{{ get spherical coordinates
 
-    from arraycontext import thaw
-    x, y, z = thaw(discr.nodes(), actx)
+    x, y, z = actx.thaw(discr.nodes())
 
     theta = actx.np.arctan2(actx.np.sqrt(x**2 + y**2), z)
     phi = actx.np.arctan2(y, x)

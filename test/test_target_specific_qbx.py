@@ -24,7 +24,7 @@ import pytest
 
 import numpy as np
 
-from arraycontext import thaw, flatten
+from arraycontext import flatten
 from pytential import GeometryCollection, bind, sym
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
@@ -171,7 +171,7 @@ def test_target_specific_qbx(actx_factory, op, helmholtz_k, qbx_order):
             kernel_length_scale=kernel_length_scale)
 
     density_discr = places.get_discretization("qbx")
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     u_dev = actx.np.sin(nodes[0])
 
     if helmholtz_k == 0:

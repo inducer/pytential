@@ -334,8 +334,7 @@ def get_lpot_source(actx, dim):
 
 
 def get_density(actx, discr):
-    from arraycontext import thaw
-    nodes = thaw(discr.nodes(), actx)
+    nodes = actx.thaw(discr.nodes())
     return actx.np.sin(10 * nodes[0])
 
 # }}}

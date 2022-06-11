@@ -26,7 +26,7 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import thaw, flatten, unflatten
+from arraycontext import flatten, unflatten
 import meshmode.mesh.generation as mgen
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -57,7 +57,7 @@ def get_ellipse_with_ref_mean_curvature(actx, nelements, aspect=1):
     discr = Discretization(actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    nodes = thaw(discr.nodes(), actx)
+    nodes = actx.thaw(discr.nodes())
 
     a = 1
     b = 1/aspect
@@ -77,7 +77,7 @@ def get_torus_with_ref_mean_curvature(actx, h):
     discr = Discretization(actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    nodes = thaw(discr.nodes(), actx)
+    nodes = actx.thaw(discr.nodes())
 
     # copied from meshmode.mesh.generation.generate_torus
     a = r_major
@@ -269,7 +269,7 @@ def test_interpolation(actx_factory, name, source_discr_stage, target_granularit
 
     sigma_target = np.sin(la.norm(target_nodes, axis=0))
     sigma_dev = unflatten(
-            thaw(source_discr.nodes()[0], actx),
+            actx.thaw(source_discr.nodes()[0]),
             actx.from_numpy(la.norm(source_nodes, axis=0)), actx)
     sigma_target_interp = actx.to_numpy(
             flatten(bound_op(actx, sigma=sigma_dev), actx)

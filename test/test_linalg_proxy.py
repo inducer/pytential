@@ -26,7 +26,7 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import thaw, flatten, unflatten
+from arraycontext import flatten, unflatten
 from pytential import bind, sym
 from pytential import GeometryCollection
 from pytential.linalg import ProxyGenerator, QBXProxyGenerator
@@ -122,7 +122,7 @@ def plot_proxy_geometry(
             isrc = cindex.cluster_indices(i)
             marker[isrc] = 10.0 * (i + 1.0)
 
-        template_ary = thaw(discr.nodes()[0], actx)
+        template_ary = actx.thaw(discr.nodes()[0])
         marker_dev = unflatten(template_ary, actx.from_numpy(marker), actx)
 
         vis = make_visualizer(actx, discr)

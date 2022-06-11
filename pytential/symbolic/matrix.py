@@ -28,7 +28,7 @@ import numpy as np
 from sys import intern
 
 from pytools import memoize_method
-from arraycontext import thaw, flatten, unflatten
+from arraycontext import flatten, unflatten
 from meshmode.dof_array import DOFArray
 
 from pytential.symbolic.mappers import EvaluationMapperBase
@@ -209,7 +209,7 @@ class MatrixBuilderBase(EvaluationMapperBase):
 
         discr = self.places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
 
-        template_ary = thaw(discr.nodes()[0], actx)
+        template_ary = actx.thaw(discr.nodes()[0])
         rec_operand = unflatten(template_ary, actx.from_numpy(rec_operand), actx)
 
         return actx.to_numpy(flatten(
@@ -341,7 +341,7 @@ class MatrixBuilder(MatrixBuilderBase):
             conn = self.places.get_connection(expr.from_dd, expr.to_dd)
             discr = self.places.get_discretization(
                     expr.from_dd.geometry, expr.from_dd.discr_stage)
-            template_ary = thaw(discr.nodes()[0], actx)
+            template_ary = actx.thaw(discr.nodes()[0])
 
             from pytools.obj_array import make_obj_array
             return make_obj_array([

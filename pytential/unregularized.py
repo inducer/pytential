@@ -28,7 +28,7 @@ import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_method
-from arraycontext import PyOpenCLArrayContext, thaw, flatten, unflatten
+from arraycontext import PyOpenCLArrayContext, flatten, unflatten
 from meshmode.dof_array import DOFArray
 
 from boxtree.tools import DeviceDataRecord
@@ -171,7 +171,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             from meshmode.discretization import Discretization
             result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
-                template_ary = thaw(target_discr.nodes()[0], actx)
+                template_ary = actx.thaw(target_discr.nodes()[0])
                 result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))
@@ -285,7 +285,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
-                template_ary = thaw(target_discr.nodes()[0], actx)
+                template_ary = actx.thaw(target_discr.nodes()[0])
                 result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))

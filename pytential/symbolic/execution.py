@@ -29,7 +29,7 @@ from pymbolic.mapper.evaluator import (
         EvaluationMapper as PymbolicEvaluationMapper)
 import numpy as np
 
-from arraycontext import PyOpenCLArrayContext, thaw, freeze
+from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import DOFArray
 
 from pytools import memoize_in, memoize_method
@@ -210,9 +210,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
 
-        from arraycontext import thaw
         x = discr.nodes()[expr.ambient_axis]
-        return thaw(x, self.array_context)
+        return self.array_context.thaw(x)
 
     def map_num_reference_derivative(self, expr):
         from pytools import flatten
@@ -225,10 +224,9 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         return num_reference_derivative(discr, ref_axes, self.rec(expr.operand))
 
     def map_q_weight(self, expr):
-        from arraycontext import thaw
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        return thaw(discr.quad_weights(), self.array_context)
+        return self.array_context.thaw(discr.quad_weights())
 
     def map_inverse(self, expr):
         bound_op_cache = self.bound_expr.places._get_cache(
@@ -282,12 +280,12 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
             rec = cache[key]
             if (expr.scope == sym.cse_scope.DISCRETIZATION
                     and not isinstance(rec, Number)):
-                rec = thaw(rec, self.array_context)
+                rec = self.array_context.thaw(rec)
         except KeyError:
             cached_rec = rec = self.rec(expr.child)
             if (expr.scope == sym.cse_scope.DISCRETIZATION
                     and not isinstance(rec, Number)):
-                cached_rec = freeze(cached_rec, self.array_context)
+                cached_rec = self.array_context.freeze(cached_rec)
 
             cache[key] = cached_rec
 
@@ -492,7 +490,7 @@ class MatVecOp:
             from meshmode.discretization import Discretization
             if isinstance(discr, Discretization):
                 from arraycontext import unflatten
-                template_ary = thaw(discr.nodes()[0], self.array_context)
+                template_ary = self.array_context.thaw(discr.nodes()[0])
                 component = unflatten(
                         template_ary, component, self.array_context,
                         strict=False)
@@ -811,7 +809,7 @@ class BoundExpression:
                 value = cache[expr.child]
                 if (expr.scope == sym.cse_scope.DISCRETIZATION
                         and not isinstance(value, Number)):
-                    value = thaw(value, array_context)
+                    value = array_context.thaw(value)
 
                 return value
 
