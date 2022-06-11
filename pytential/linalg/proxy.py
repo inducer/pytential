@@ -89,10 +89,9 @@ def partition_by_nodes(
         from pytential.qbx.utils import tree_code_container
         tcc = tree_code_container(lpot_source._setup_actx)
 
-        from arraycontext import thaw
         tree, _ = tcc.build_tree()(actx.queue,
                 particles=flatten(
-                    thaw(discr.nodes(), actx), actx, leaf_class=DOFArray
+                    actx.thaw(discr.nodes()), actx, leaf_class=DOFArray
                     ),
                 max_particles_in_box=max_particles_in_box,
                 kind=tree_kind)
@@ -389,16 +388,16 @@ class ProxyGeneratorBase:
         pxyindices = np.arange(0, nproxy, dtype=dof_index.indices.dtype)
         pxystarts = np.arange(0, nproxy + 1, self.nproxy)
 
-        from arraycontext import freeze, from_numpy
+        from arraycontext import from_numpy
         from pytential.linalg import make_index_list
         return ProxyClusterGeometryData(
                 places=self.places,
                 dofdesc=source_dd,
                 srcindex=dof_index,
                 pxyindex=make_index_list(pxyindices, pxystarts),
-                points=freeze(from_numpy(proxies, actx), actx),
-                centers=freeze(centers_dev, actx),
-                radii=freeze(radii_dev, actx),
+                points=actx.freeze(from_numpy(proxies, actx)),
+                centers=actx.freeze(centers_dev),
+                radii=actx.freeze(radii_dev),
                 )
 
 

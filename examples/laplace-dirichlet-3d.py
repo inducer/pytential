@@ -1,6 +1,5 @@
 import numpy as np
 
-from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -110,7 +109,7 @@ def main(mesh_name="torus", visualize=False):
 
     # {{{ fix rhs and solve
 
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     source = np.array([rout, 0, 0], dtype=object)
 
     def u_incoming_func(x):

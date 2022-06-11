@@ -29,7 +29,7 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import thaw, flatten, unflatten
+from arraycontext import flatten, unflatten
 from pytential import bind, sym
 from pytential import GeometryCollection
 from pytools.obj_array import make_obj_array
@@ -157,18 +157,18 @@ def test_build_matrix(actx_factory, k, curve_fn, op_type, visualize=False):
 
     # {{{ check
 
-    np.random.seed(12)
-    template_ary = thaw(density_discr.nodes()[0], actx)
+    rng = np.random.default_rng(12)
+    template_ary = actx.thaw(density_discr.nodes()[0])
 
     for i in range(5):
         if isinstance(sym_u, np.ndarray):
-            u = np.random.randn(len(sym_u), density_discr.ndofs)
+            u = rng.normal(size=(len(sym_u), density_discr.ndofs))
             u_dev = make_obj_array([
                 unflatten(template_ary, actx.from_numpy(ui), actx, strict=False)
                 for ui in u
                 ])
         else:
-            u = np.random.randn(density_discr.ndofs)
+            u = rng.normal(size=density_discr.ndofs)
             u_dev = unflatten(template_ary, actx.from_numpy(u), actx, strict=False)
 
         res_matvec = actx.to_numpy(flatten(

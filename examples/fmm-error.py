@@ -1,6 +1,5 @@
 import numpy as np
 
-from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import (  # noqa
         make_curve_mesh, starfish, ellipse, drop)
@@ -61,7 +60,7 @@ def main():
         }, auto_where=("qbx", "targets"))
     density_discr = places.get_discretization("unaccel_qbx")
 
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     from pytential import bind, sym

@@ -23,7 +23,7 @@ THE SOFTWARE.
 import numpy as np
 
 from pytools import memoize_in
-from arraycontext import thaw, flatten, unflatten
+from arraycontext import flatten, unflatten
 from meshmode.dof_array import DOFArray
 
 from sumpy.fmm import UnableToCollectTimingData
@@ -194,7 +194,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
             from meshmode.discretization import Discretization
             result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
-                template_ary = thaw(target_discr.nodes()[0], actx)
+                template_ary = actx.thaw(target_discr.nodes()[0])
                 result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))

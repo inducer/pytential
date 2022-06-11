@@ -26,8 +26,6 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import thaw
-
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
@@ -91,7 +89,7 @@ def test_interpolatory_error_reporting(actx_factory):
     vol_discr = Discretization(actx, mesh,
             QuadratureSimplexGroupFactory(5))
 
-    vol_x = thaw(vol_discr.nodes(), actx)
+    vol_x = actx.thaw(vol_discr.nodes())
 
     # }}}
 

@@ -1,6 +1,5 @@
 import numpy as np
 
-from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -122,7 +121,7 @@ def timing_run(nx, ny, visualize=False):
 
     mode_nr = 3
 
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     sigma = actx.np.cos(mode_nr*angle)

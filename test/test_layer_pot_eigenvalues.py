@@ -25,7 +25,7 @@ from functools import partial
 
 import numpy as np
 
-from arraycontext import thaw, flatten, unflatten
+from arraycontext import flatten, unflatten
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
 import meshmode.mesh.generation as mgen
@@ -114,7 +114,7 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
         places = GeometryCollection(qbx)
 
         density_discr = places.get_discretization(places.auto_source.geometry)
-        nodes = thaw(density_discr.nodes(), actx)
+        nodes = actx.thaw(density_discr.nodes())
 
         if visualize:
             # plot geometry, centers, normals
@@ -300,7 +300,7 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
         places = GeometryCollection(qbx)
 
         density_discr = places.get_discretization(places.auto_source.geometry)
-        nodes = thaw(density_discr.nodes(), actx)
+        nodes = actx.thaw(density_discr.nodes())
         r = actx.np.sqrt(nodes[0]*nodes[0] + nodes[1]*nodes[1] + nodes[2]*nodes[2])
         phi = actx.np.arccos(nodes[2]/r)
         theta = actx.np.arctan2(nodes[0], nodes[1])

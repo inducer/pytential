@@ -4,7 +4,6 @@ if enable_mayavi:
 
 import numpy as np
 
-from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
 from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
@@ -63,7 +62,7 @@ def main(curve_fn=starfish, visualize=True):
 
     density_discr = places.get_discretization("qbx")
 
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
