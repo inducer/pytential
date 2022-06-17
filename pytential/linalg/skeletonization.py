@@ -915,8 +915,8 @@ def rec_skeletonize_by_proxy(
         proxy_radius_factor: float | None = None,
 
         id_eps: float | None = None,
-        rng: np.random.Generator | None = None,
         max_particles_in_box: int | None = None,
+        rng: np.random.Generator | None = None,
 
         _wrangler: SkeletonizationWrangler | None = None,
         _proxy: ProxyGeneratorBase | None = None) -> np.ndarray:
@@ -961,7 +961,7 @@ def rec_skeletonize_by_proxy(
                 rng=rng,
                 max_particles_in_box=max_particles_in_box)
 
-        skel_per_level[i] = skeleton
+        skel_per_level[i] = skeleton  # type: ignore[call-overload]
         tgt_src_index = cluster(skeleton.skel_tgt_src_index, clevel)
 
     assert tgt_src_index.nclusters == 1
@@ -969,7 +969,7 @@ def rec_skeletonize_by_proxy(
 
     # evaluate the full root cluster (no skeletonization or anything)
     skeleton = _evaluate_root(actx, 0, 0, places, wrangler, tgt_src_index)
-    skel_per_level[-1] = skeleton
+    skel_per_level[-1] = skeleton  # type: ignore[call-overload]
 
     return skel_per_level
 
