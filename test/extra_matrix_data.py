@@ -58,8 +58,8 @@ class MatrixTestCaseMixin:
         if max_particles_in_box is None:
             max_particles_in_box = discr.ndofs // self.approx_cluster_count
 
-        from pytential.linalg.proxy import partition_by_nodes
-        cindex = partition_by_nodes(actx, places,
+        from pytential.linalg.cluster import partition_by_nodes
+        cindex, ctree = partition_by_nodes(actx, places,
                 dofdesc=dofdesc,
                 tree_kind=self.tree_kind,
                 max_particles_in_box=max_particles_in_box)
@@ -81,12 +81,12 @@ class MatrixTestCaseMixin:
             from pytential.linalg import make_index_list
             cindex = make_index_list(subset)
 
-        return cindex
+        return cindex, ctree
 
     def get_tgt_src_cluster_index(self, actx, places, dofdesc=None):
         from pytential.linalg import TargetAndSourceClusterList
-        cindex = self.get_cluster_index(actx, places, dofdesc=dofdesc)
-        return TargetAndSourceClusterList(cindex, cindex)
+        cindex, ctree = self.get_cluster_index(actx, places, dofdesc=dofdesc)
+        return TargetAndSourceClusterList(cindex, cindex), ctree
 
     def get_operator(self, ambient_dim, qbx_forced_limit=_NoArgSentinel):
         knl = self.knl_class(ambient_dim)
