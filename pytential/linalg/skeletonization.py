@@ -54,6 +54,14 @@ if TYPE_CHECKING:
     from pytential.linalg.proxy import ProxyClusterGeometryData, ProxyGeneratorBase
     from pytential.symbolic.matrix import ClusterMatrixBuilderBase
 
+logger = logging.getLogger(__name__)
+
+
+logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
