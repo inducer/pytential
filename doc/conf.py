@@ -35,12 +35,12 @@ intersphinx_mapping = {
 }
 
 nitpick_ignore_regex = [
+    ["py:class", r".*_ProxyNeighborEvaluationResult"],
     # Sphinx started complaining about these in 8.2.1(-ish)
     # -AK, 2025-02-24
     ["py:class", r"TypeAliasForwardRef"],
     ["py:class", r"arraycontext.typing._UserDefinedArrayContainer"],
     ["py:class", r"arraycontext.typing._UserDefinedArithArrayContainer"],
-    ["py:class", r"TreeKind"],
 ]
 
 
@@ -49,10 +49,13 @@ sphinxconfig_missing_reference_aliases = {
     "NDArray": "obj:numpy.typing.NDArray",
     "np.integer": "obj:numpy.integer",
     "np.floating": "obj:numpy.floating",
+    "np.inexact": "obj:numpy.inexact",
+    "np.random.Generator": "class:numpy.random.Generator",
     # pytools
     "ObjectArrayND": "obj:pytools.obj_array.ObjectArrayND",
     "T": "obj:pytools.T",
     "obj_array.ObjectArray1D": "obj:pytools.obj_array.ObjectArray1D",
+    "obj_array.ObjectArray2D": "obj:pytools.obj_array.ObjectArray2D",
     # pyopencl
     "WaitList": "obj:pyopencl.WaitList",
     # pymbolic
@@ -70,7 +73,8 @@ sphinxconfig_missing_reference_aliases = {
     "Discretization": "class:meshmode.discretization.Discretization",
     "DOFArray": "class:meshmode.dof_array.DOFArray",
     # boxtree
-    # "TreeKind": "obj:boxtree.tree_build.TreeKind",
+    "Tree": "obj:boxtree.tree.Tree",
+    "TreeKind": "obj:boxtree.tree_build.TreeKind",
     # sumpy
     "ExpansionBase": "class:sumpy.expansion.ExpansionBase",
     "ExpansionFactoryBase": "class:sumpy.expansion.ExpansionFactoryBase",
@@ -86,7 +90,9 @@ sphinxconfig_missing_reference_aliases = {
     "TargetOrDiscretization": "obj:pytential.target.TargetOrDiscretization",
     "pytential.symbolic.dof_desc.DOFDescriptorLike":
         "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
+    "sym.var": "obj:pytential.symbolic.primitives.var",
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
+    "sym.DOFDescriptorLike": "obj:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "sym.IntG": "class:pytential.symbolic.primitives.IntG",
 }
 

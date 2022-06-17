@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 from typing_extensions import override
 
 from pytools import obj_array
@@ -66,9 +67,12 @@ def prepare_expr(
     ) -> obj_array.ObjectArray1D[ArithmeticExpression]:
     from pytential.symbolic.execution import _prepare_expr
 
-    return obj_array.new_1d([
-        _prepare_expr(places, expr, auto_where=auto_where)
-        for expr in exprs])
+    if isinstance(exprs, np.ndarray):
+        return obj_array.new_1d([
+            _prepare_expr(places, expr, auto_where=auto_where)
+            for expr in exprs])
+
+    return _prepare_expr(places, exprs, auto_where=auto_where)
 
 
 def prepare_proxy_expr(
@@ -261,3 +265,5 @@ class DOFDescriptorReplacer(_LocationReplacer):
         self.operand_rec = _LocationReplacer(source, default_source=source)
 
 # }}}
+
+# vim: foldmethod=marker

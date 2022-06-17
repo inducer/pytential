@@ -23,22 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pytential.linalg.proxy import (
-        ProxyClusterGeometryData,
-        ProxyGenerator,
-        ProxyGeneratorBase,
-        ProxyPointSource,
-        ProxyPointTarget,
-        QBXProxyGenerator,
-        gather_cluster_neighbor_points,
-        partition_by_nodes,
-)
-from pytential.linalg.skeletonization import (
-        SkeletonizationResult,
-        SkeletonizationWrangler,
-        make_skeletonization_wrangler,
-        skeletonize_by_proxy,
-)
 from pytential.linalg.utils import (
         IndexList,
         TargetAndSourceClusterList,
@@ -52,11 +36,4 @@ __all__ = (
     "IndexList", "TargetAndSourceClusterList",
     "make_index_list", "make_index_cluster_cartesian_product",
     "interp_decomp",
-
-    "ProxyClusterGeometryData", "ProxyPointTarget", "ProxyPointSource",
-    "ProxyGeneratorBase", "ProxyGenerator", "QBXProxyGenerator",
-    "partition_by_nodes", "gather_cluster_neighbor_points",
-
-    "SkeletonizationWrangler", "make_skeletonization_wrangler",
-    "SkeletonizationResult", "skeletonize_by_proxy",
 )
