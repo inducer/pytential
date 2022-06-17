@@ -295,7 +295,7 @@ class MatrixBuilderBase(EvaluationRewriterBase):
 
 class ClusterMatrixBuilderBase(MatrixBuilderBase):
     """Evaluate individual clusters of a matrix operator, as defined by a
-    :class:`~pytential.linalg.TargetAndSourceClusterList`.
+    :class:`~pytential.linalg.utils.TargetAndSourceClusterList`.
 
     Unlike, e.g. :class:`MatrixBuilder`, matrix cluster builders are
     significantly reduced in scope. They are basically just meant
@@ -315,7 +315,8 @@ class ClusterMatrixBuilderBase(MatrixBuilderBase):
                  tgt_src_index: TargetAndSourceClusterList,
                  context: dict[str, Any]) -> None:
         """
-        :arg tgt_src_index: a :class:`~pytential.linalg.TargetAndSourceClusterList`
+        :arg tgt_src_index: a
+            :class:`~pytential.linalg.utils.TargetAndSourceClusterList`
             class describing which clusters are going to be evaluated.
         """
 
