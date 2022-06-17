@@ -296,7 +296,6 @@ def uncluster(ary: np.ndarray, index: IndexList, clevel: ClusterLevel) -> np.nda
 
 def _build_binary_ish_tree_from_starts(starts: np.ndarray) -> ClusterTree:
     partition_box_ids: np.ndarray[tuple[int, ...], Any] = np.arange(starts.size - 1)
-
     box_ids = partition_box_ids
 
     box_parent_ids = []
