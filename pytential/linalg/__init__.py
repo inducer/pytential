@@ -25,25 +25,9 @@ from pytential.linalg.utils import (
         make_index_list, make_index_cluster_cartesian_product,
         interp_decomp,
         )
-from pytential.linalg.proxy import (
-        ProxyClusterGeometryData, ProxyPointTarget, ProxyPointSource,
-        ProxyGeneratorBase, ProxyGenerator, QBXProxyGenerator,
-        partition_by_nodes, gather_cluster_neighbor_points,
-        )
-from pytential.linalg.skeletonization import (
-        SkeletonizationWrangler, make_skeletonization_wrangler,
-        SkeletonizationResult, skeletonize_by_proxy,
-        )
 
 __all__ = (
     "IndexList", "TargetAndSourceClusterList",
     "make_index_list", "make_index_cluster_cartesian_product",
     "interp_decomp",
-
-    "ProxyClusterGeometryData", "ProxyPointTarget", "ProxyPointSource",
-    "ProxyGeneratorBase", "ProxyGenerator", "QBXProxyGenerator",
-    "partition_by_nodes", "gather_cluster_neighbor_points",
-
-    "SkeletonizationWrangler", "make_skeletonization_wrangler",
-    "SkeletonizationResult", "skeletonize_by_proxy",
 )
