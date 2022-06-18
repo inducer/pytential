@@ -229,15 +229,7 @@ class ProxyClusterGeometryData:
                 self.dofdesc.geometry,
                 self.dofdesc.discr_stage)
 
-    def to_numpy(
-            self, actx: PyOpenCLArrayContext, *, stack_nodes: bool = False
-            ) -> "ProxyClusterGeometryData":
-        if stack_nodes:
-            stack = np.stack
-        else:
-            def stack(x):
-                return x
-
+    def to_numpy(self, actx: PyOpenCLArrayContext) -> "ProxyClusterGeometryData":
         from arraycontext import to_numpy
         if self._cluster_radii is not None:
             cluster_radii = to_numpy(self._cluster_radii, actx)
@@ -246,8 +238,8 @@ class ProxyClusterGeometryData:
 
         from dataclasses import replace
         return replace(self,
-                points=stack(to_numpy(self.points, actx)),
-                centers=stack(to_numpy(self.centers, actx)),
+                points=np.stack(to_numpy(self.points, actx)),
+                centers=np.stack(to_numpy(self.centers, actx)),
                 radii=to_numpy(self.radii, actx),
                 _cluster_radii=cluster_radii)
 

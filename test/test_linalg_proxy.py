@@ -69,11 +69,6 @@ def plot_proxy_geometry(
                 flatten(discr.nodes(), actx)
                 ).reshape(ambient_dim, -1)
 
-        if pxy is not None:
-            proxies = np.stack(pxy.points)
-            pxycenters = np.stack(pxy.centers)
-            pxystarts = pxy.pxyindex.starts
-
         if with_qbx_centers:
             ci = actx.to_numpy(flatten(
                 bind(places, sym.expansion_centers(ambient_dim, -1))(actx),
@@ -102,9 +97,11 @@ def plot_proxy_geometry(
                     ax.add_artist(c)
 
             if pxy is not None:
+                pxystarts = pxy.pxyindex.starts
+
                 ipxy = np.s_[pxystarts[i]:pxystarts[i + 1]]
-                pt.plot(proxies[0, ipxy], proxies[1, ipxy], "o", ms=2.0)
-                pt.text(*pxycenters[:, i], f"{i}", fontsize=18)
+                pt.plot(pxy.points[0, ipxy], pxy.points[1, ipxy], "o", ms=2.0)
+                pt.text(*pxy.centers[:, i], f"{i}", fontsize=18)
 
             if nbrindex is not None:
                 inbr = nbrindex.cluster_indices(i)
@@ -157,12 +154,11 @@ def plot_proxy_geometry(
 
             from meshmode.mesh.generation import generate_sphere
             ref_mesh = generate_sphere(1, 4, uniform_refinement_rounds=1)
-            pxycenters = np.stack(pxy.centers)
 
             for i in range(cindex.nclusters):
                 mesh = affine_map(ref_mesh,
                     A=pxy.radii[i],
-                    b=pxycenters[:, i].reshape(-1))
+                    b=pxy.centers[:, i].reshape(-1))
 
                 mesh = merge_disjoint_meshes([mesh, discr.mesh])
                 discr = Discretization(actx, mesh,
@@ -269,8 +265,6 @@ def test_proxy_generator(actx_factory, case,
             radius_factor=case.proxy_radius_factor)
     pxy = generator(actx, places.auto_source, cindex).to_numpy(actx)
 
-    pxypoints = np.stack(pxy.points)
-    pxycenters = np.stack(pxy.centers)
     sources = actx.to_numpy(
             flatten(density_discr.nodes(), actx)
             ).reshape(places.ambient_dim, -1)
@@ -280,11 +274,11 @@ def test_proxy_generator(actx_factory, case,
         ipxy = pxy.pxyindex.cluster_indices(i)
 
         # check all the proxy points are inside the radius
-        r = la.norm(pxypoints[:, ipxy] - pxycenters[:, i].reshape(-1, 1), axis=0)
+        r = la.norm(pxy.points[:, ipxy] - pxy.centers[:, i].reshape(-1, 1), axis=0)
         p_error = la.norm(r - pxy.radii[i])
 
         # check all sources are inside the radius too
-        r = la.norm(sources[:, isrc] - pxycenters[:, i].reshape(-1, 1), axis=0)
+        r = la.norm(sources[:, isrc] - pxy.centers[:, i].reshape(-1, 1), axis=0)
         n_error = la.norm(r - pxy.radii[i], np.inf)
 
         assert p_error < 1.0e-14, f"cluster {i}"
@@ -346,7 +340,6 @@ def test_neighbor_points(actx_factory, case,
     nbrindex = gather_cluster_neighbor_points(actx, pxy)
 
     pxy = pxy.to_numpy(actx)
-    pxycenters = np.stack(pxy.centers)
     nodes = actx.to_numpy(
             flatten(density_discr.nodes(), actx)
             ).reshape(places.ambient_dim, -1)
@@ -359,7 +352,7 @@ def test_neighbor_points(actx_factory, case,
         assert not np.any(np.isin(inbr, isrc))
 
         # check that the neighbors are all within the proxy radius
-        r = la.norm(nodes[:, inbr] - pxycenters[:, i].reshape(-1, 1), axis=0)
+        r = la.norm(nodes[:, inbr] - pxy.centers[:, i].reshape(-1, 1), axis=0)
         assert np.all((r - pxy.radii[i]) < 0.0)
 
     # }}}

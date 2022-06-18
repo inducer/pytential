@@ -387,6 +387,9 @@ class MatrixBuilder(MatrixBuilderBase):
         target_discr = self.places.get_discretization(
                 expr.target.geometry, expr.target.discr_stage)
 
+        actx = self.array_context
+        assert abs(expr.qbx_forced_limit) > 0
+
         result = 0
         for kernel, density in zip(expr.source_kernels, expr.densities):
             rec_density = self.rec(density)
@@ -397,18 +400,8 @@ class MatrixBuilder(MatrixBuilderBase):
             if not self.is_kind_matrix(rec_density):
                 raise NotImplementedError("layer potentials on non-variables")
 
-            actx = self.array_context
-            kernel_args = _get_layer_potential_args(
-                    actx, self.places, expr, context=self.context)
-            local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
-                    kernel.get_base_kernel(), (expr.target_kernel,))
+            # {{{ geometry
 
-            from sumpy.qbx import LayerPotentialMatrixGenerator
-            mat_gen = LayerPotentialMatrixGenerator(actx.context,
-                expansion=local_expn, source_kernels=(kernel,),
-                target_kernels=(expr.target_kernel,))
-
-            assert abs(expr.qbx_forced_limit) > 0
             from pytential import bind, sym
             radii = bind(self.places, sym.expansion_radii(
                 source_discr.ambient_dim,
@@ -417,6 +410,25 @@ class MatrixBuilder(MatrixBuilderBase):
                 source_discr.ambient_dim,
                 expr.qbx_forced_limit,
                 dofdesc=expr.target))(actx)
+
+            # }}}
+
+            # {{{ expansion
+
+            local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
+                    kernel.get_base_kernel(), (expr.target_kernel,))
+
+            from sumpy.qbx import LayerPotentialMatrixGenerator
+            mat_gen = LayerPotentialMatrixGenerator(actx.context,
+                expansion=local_expn, source_kernels=(kernel,),
+                target_kernels=(expr.target_kernel,))
+
+            # }}}
+
+            # {{{ evaluate
+
+            kernel_args = _get_layer_potential_args(
+                    actx, self.places, expr, context=self.context)
 
             _, (mat,) = mat_gen(actx.queue,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
@@ -431,6 +443,8 @@ class MatrixBuilder(MatrixBuilderBase):
                     source_discr.ambient_dim,
                     dofdesc=expr.source))(actx)
                 mat[:, :] *= actx.to_numpy(flatten(waa, actx))
+
+            # }}}
 
             result += mat @ rec_density
 
@@ -458,6 +472,9 @@ class P2PMatrixBuilder(MatrixBuilderBase):
         target_discr = self.places.get_discretization(
                 expr.target.geometry, expr.target.discr_stage)
 
+        actx = self.array_context
+        target_base_kernel = expr.target_kernel.get_base_kernel()
+
         result = 0
         for density, kernel in zip(expr.densities, expr.source_kernels):
             rec_density = self.rec(density)
@@ -468,25 +485,36 @@ class P2PMatrixBuilder(MatrixBuilderBase):
             if not self.is_kind_matrix(rec_density):
                 raise NotImplementedError("layer potentials on non-variables")
 
-            # NOTE: copied from pytential.symbolic.primitives.IntG
+            # {{{ generator
+
             base_kernel = kernel.get_base_kernel()
+
+            from sumpy.p2p import P2PMatrixGenerator
+            mat_gen = P2PMatrixGenerator(actx.context,
+                    source_kernels=(base_kernel,),
+                    target_kernels=(target_base_kernel,),
+                    exclude_self=self.exclude_self)
+
+            # }}}
+
+            # {{{ evaluation
+
+            # {{{ kernel args
+
+            # NOTE: copied from pytential.symbolic.primitives.IntG
             kernel_args = base_kernel.get_args() + base_kernel.get_source_args()
             kernel_args = {arg.loopy_arg.name for arg in kernel_args}
 
-            actx = self.array_context
             kernel_args = _get_layer_potential_args(
                     actx, self.places, expr, context=self.context,
                     include_args=kernel_args)
+
             if self.exclude_self:
                 kernel_args["target_to_source"] = actx.from_numpy(
                         np.arange(0, target_discr.ndofs, dtype=np.int64)
                         )
 
-            from sumpy.p2p import P2PMatrixGenerator
-            mat_gen = P2PMatrixGenerator(actx.context,
-                    source_kernels=(base_kernel,),
-                    target_kernels=(expr.target_kernel.get_base_kernel(),),
-                    exclude_self=self.exclude_self)
+            # }}}
 
             _, (mat,) = mat_gen(actx.queue,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
@@ -494,14 +522,15 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                     **kernel_args)
             mat = actx.to_numpy(mat)
 
-            from meshmode.discretization import Discretization
-            if self.weighted and isinstance(source_discr, Discretization):
+            if self.weighted:
                 from pytential import bind, sym
                 waa = bind(self.places, sym.weights_and_area_elements(
                     source_discr.ambient_dim,
                     dofdesc=expr.source))(actx)
 
                 mat[:, :] *= actx.to_numpy(flatten(waa, actx))
+
+            # }}}
 
             result += mat @ rec_density
 
@@ -514,7 +543,8 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 
 class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
-            places, tgt_src_index, context, _weighted=True, **kwargs):
+            places, tgt_src_index, context,
+            exclude_self=False, _weighted=True):
         super().__init__(queue,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, tgt_src_index, context)
@@ -531,51 +561,48 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
         if self.weighted and source_discr is not target_discr:
             raise NotImplementedError
 
+        actx = self.array_context
+
         result = 0
+        assert abs(expr.qbx_forced_limit) > 0
+
         for kernel, density in zip(expr.source_kernels, expr.densities):
             rec_density = self._inner_mapper.rec(density)
             if is_zero(rec_density):
                 continue
 
             if not np.isscalar(rec_density):
-                raise NotImplementedError
+                raise NotImplementedError("layer potentials on non-variables")
 
-            actx = self.array_context
-            local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
-                    kernel.get_base_kernel(), (expr.target_kernel,))
+            # {{{ geometry
 
             from pytential.linalg import make_index_cluster_cartesian_product
             tgtindices, srcindices = make_index_cluster_cartesian_product(
                     actx, self.tgt_src_index)
 
-            from meshmode.discretization import Discretization
-            if isinstance(target_discr, Discretization):
-                assert abs(expr.qbx_forced_limit) > 0
+            from pytential import bind, sym
+            radii = bind(self.places, sym.expansion_radii(
+                source_discr.ambient_dim,
+                dofdesc=expr.target))(actx)
+            centers = bind(self.places, sym.expansion_centers(
+                source_discr.ambient_dim,
+                expr.qbx_forced_limit,
+                dofdesc=expr.target))(actx)
 
-                from pytential import bind, sym
-                radii = bind(self.places, sym.expansion_radii(
-                    source_discr.ambient_dim,
-                    dofdesc=expr.target))(actx)
-                centers = bind(self.places, sym.expansion_centers(
-                    source_discr.ambient_dim,
-                    expr.qbx_forced_limit,
-                    dofdesc=expr.target))(actx)
+            # }}}
 
-                radii = flatten(radii, actx)
-                centers = flatten(centers, actx, leaf_class=DOFArray)
-            else:
-                raise TypeError("unsupported target type: "
-                        f"'{type(target_discr).__name__}'")
+            # {{{ generator
 
-            if not isinstance(source_discr, Discretization):
-                expr = expr.copy(kernel_arguments={
-                    k: (sym.var(k) if k in self.context else v)
-                    for k, v in expr.kernel_arguments.items()
-                    })
+            local_expn = lpot_source.get_expansion_for_qbx_direct_eval(
+                    kernel.get_base_kernel(), (expr.target_kernel,))
 
             from sumpy.qbx import LayerPotentialMatrixSubsetGenerator
             mat_gen = LayerPotentialMatrixSubsetGenerator(actx.context, local_expn,
                 source_kernels=(kernel,), target_kernels=(expr.target_kernel,))
+
+            # }}}
+
+            # {{{ evaluate
 
             kernel_args = _get_layer_potential_args(
                     actx, self.places, expr, context=self.context)
@@ -598,6 +625,8 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
                         actx)
                 mat *= waa[srcindices]
 
+            # }}}
+
             result += actx.to_numpy(mat) * rec_density
 
         return result
@@ -606,7 +635,7 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
 class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
     def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
             places, tgt_src_index, context,
-            exclude_self=False, _weighted=False, **kwargs):
+            exclude_self=False, _weighted=False):
         super().__init__(queue,
                 dep_expr, other_dep_exprs, dep_source, dep_discr,
                 places, tgt_src_index, context)
@@ -620,6 +649,9 @@ class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
         target_discr = self.places.get_discretization(
                 expr.target.geometry, expr.target.discr_stage)
 
+        actx = self.array_context
+        target_base_kernel = expr.target_kernel.get_base_kernel()
+
         result = 0
         for kernel, density in zip(expr.source_kernels, expr.densities):
             rec_density = self._inner_mapper.rec(density)
@@ -629,29 +661,44 @@ class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
             if not np.isscalar(rec_density):
                 raise NotImplementedError
 
-            # NOTE: copied from pytential.symbolic.primitives.IntG
-            base_kernel = kernel.get_base_kernel()
-            kernel_args = base_kernel.get_args() + base_kernel.get_source_args()
-            kernel_args = {arg.loopy_arg.name for arg in kernel_args}
-
-            actx = self.array_context
-            kernel_args = _get_layer_potential_args(
-                    actx, self.places, expr, context=self.context,
-                    include_args=kernel_args)
-            if self.exclude_self:
-                kernel_args["target_to_source"] = actx.from_numpy(
-                        np.arange(0, target_discr.ndofs, dtype=np.int64)
-                        )
+            # {{{ geometry
 
             from pytential.linalg import make_index_cluster_cartesian_product
             tgtindices, srcindices = make_index_cluster_cartesian_product(
                     actx, self.tgt_src_index)
 
+            # }}}
+
+            # {{{ generator
+
+            base_kernel = kernel.get_base_kernel()
+
             from sumpy.p2p import P2PMatrixSubsetGenerator
             mat_gen = P2PMatrixSubsetGenerator(actx.context,
                     source_kernels=(base_kernel,),
-                    target_kernels=(expr.target_kernel.get_base_kernel(),),
+                    target_kernels=(target_base_kernel,),
                     exclude_self=self.exclude_self)
+
+            # }}}
+
+            # {{{ evaluation
+
+            # {{{ kernel args
+
+            # NOTE: copied from pytential.symbolic.primitives.IntG
+            kernel_args = base_kernel.get_args() + base_kernel.get_source_args()
+            kernel_args = {arg.loopy_arg.name for arg in kernel_args}
+
+            kernel_args = _get_layer_potential_args(
+                    actx, self.places, expr, context=self.context,
+                    include_args=kernel_args)
+
+            if self.exclude_self:
+                kernel_args["target_to_source"] = actx.from_numpy(
+                        np.arange(0, target_discr.ndofs, dtype=np.int64)
+                        )
+
+            # }}}
 
             _, (mat,) = mat_gen(actx.queue,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),

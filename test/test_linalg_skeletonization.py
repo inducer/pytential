@@ -70,15 +70,13 @@ def _plot_skeleton_with_proxies(name, sources, pxy, srcindex, sklindex):
     ax.plot(sources[0][srcindex.indices], sources[1][srcindex.indices],
             "ko", alpha=0.5)
 
-    pxycenters = np.vstack(pxy.centers)
-    pxyradii = pxy.radii
     for i in range(srcindex.nclusters):
         iskl = sklindex.cluster_indices(i)
         pt.plot(sources[0][iskl], sources[1][iskl], "o")
 
-        c = pt.Circle(pxycenters[:, i], pxyradii[i], color="k", alpha=0.1)
+        c = pt.Circle(pxy.centers[:, i], pxy.radii[i], color="k", alpha=0.1)
         ax.add_artist(c)
-        ax.text(*pxycenters[:, i], f"{i}",
+        ax.text(*pxy.centers[:, i], f"{i}",
                 fontweight="bold", ha="center", va="center")
 
     ax.set_aspect("equal")
