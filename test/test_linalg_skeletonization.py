@@ -99,6 +99,7 @@ def _plot_skeleton_with_proxies(name, sources, pxy, srcindex, sklindex):
     replace(SKELETONIZE_TEST_CASES[0], op_type="double", knl_class_or_helmholtz_k=5),
     ])
 def test_skeletonize_symbolic(actx_factory, case, visualize=False):
+    """Tests that the symbolic manipulations work for different kernels / IntGs."""
     actx = actx_factory()
 
     if visualize:
@@ -374,8 +375,12 @@ CONVERGENCE_TEST_CASES = [
         ]
 
 
-@pytest.mark.slowtest
-@pytest.mark.parametrize("case", CONVERGENCE_TEST_CASES)
+@pytest.mark.parametrize("case", [
+    CONVERGENCE_TEST_CASES[0],
+    CONVERGENCE_TEST_CASES[1],
+    pytest.param(CONVERGENCE_TEST_CASES[2], marks=pytest.mark.slowtest),
+    pytest.param(CONVERGENCE_TEST_CASES[3], marks=pytest.mark.slowtest),
+    ])
 def test_skeletonize_by_proxy_convergence(
         actx_factory, case, weighted=True,
         visualize=False):
@@ -440,6 +445,8 @@ def test_skeletonize_by_proxy_convergence(
 
         fig.savefig(f"test_skeletonize_by_proxy_convergence{suffix}")
         pt.close(fig)
+
+    assert eoc.order_estimate() > 0.9
 
 # }}}
 

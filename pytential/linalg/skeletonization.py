@@ -230,7 +230,7 @@ class SkeletonizationWrangler:
         expr = self.exprs[ibrow]
         mat = self._evaluate_expr(
                 actx, places, eval_mapper_cls, tgt_nbr_index, expr,
-                idomain=ibcol, _weighted=self.weighted_sources)
+                idomain=ibcol, _weighted=self.weighted_targets)
 
         return mat, tgt_nbr_index
 
