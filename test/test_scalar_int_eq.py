@@ -464,7 +464,12 @@ cases += [
             bc_type="clamped_plate", side=-1, fmm_backend=None),
         inteq.EllipseTestCase(
             knl_class_or_helmholtz_k=BiharmonicKernel,
-            bc_type="clamped_plate", side=-1, fmm_backend="sumpy", fmm_order=15),
+            bc_type="clamped_plate", side=-1, fmm_backend="sumpy", fmm_order=15,
+            gmres_tol=1e-9),
+        inteq.EllipseTestCase(
+            knl_class_or_helmholtz_k=BiharmonicKernel,
+            bc_type="clamped_plate", side=-1, fmm_backend="sumpy", fmm_order=15,
+            disable_fft=True),
         ]
 
 
