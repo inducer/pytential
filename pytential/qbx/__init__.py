@@ -42,6 +42,8 @@ __doc__ = """
 .. autoclass:: QBXTargetAssociationFailedException
 
 .. autoclass:: DefaultExpansionFactory
+
+.. autoclass:: NonFFTExpansionFactory
 """
 
 
@@ -51,12 +53,20 @@ class DefaultExpansionFactory(DefaultExpansionFactoryBase):
     """A expansion factory to create QBX local, local and multipole expansions
     """
     def get_qbx_local_expansion_class(self, kernel):
-        local_expn_class = self.get_local_expansion_class(kernel)
+        local_expn_class = DefaultExpansionFactoryBase.get_local_expansion_class(
+                self, kernel)
         from sumpy.expansion.m2l import NonFFTM2LTranslationClassFactory
         factory = NonFFTM2LTranslationClassFactory()
         m2l_translation = factory.get_m2l_translation_class(kernel,
             local_expn_class)()
         return partial(local_expn_class, m2l_translation=m2l_translation)
+
+
+class NonFFTExpansionFactory(DefaultExpansionFactoryBase):
+    """A expansion factory to create QBX local, local and multipole expansions
+    with no FFT for multipole-to-local translations
+    """
+    get_local_expansion_class = DefaultExpansionFactory.get_qbx_local_expansion_class
 
 
 class _not_provided:  # noqa: N801

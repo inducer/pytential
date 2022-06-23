@@ -104,6 +104,7 @@ class IntegralEquationTestCase:
     fmm_backend: str = "sumpy"
     fmm_order: Optional[int] = None
     fmm_tol: Optional[float] = None
+    disable_fft: bool = False
 
     # solver
     gmres_tol: float = 1.0e-14
@@ -201,6 +202,10 @@ class IntegralEquationTestCase:
                 fmm_kwargs["fmm_order"] = self.fmm_order
             else:
                 fmm_kwargs["fmm_order"] = self.qbx_order + 5
+
+        if self.disable_fft:
+            from pytential.qbx import NonFFTExpansionFactory
+            fmm_kwargs["expansion_factory"] = NonFFTExpansionFactory()
 
         from pytential.qbx import QBXLayerPotentialSource
         return QBXLayerPotentialSource(
