@@ -1,7 +1,5 @@
 import numpy as np
-import pyopencl as cl
 
-from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
 
 from sumpy.visualization import FieldPlotter
@@ -20,6 +18,7 @@ def main(mesh_name="ellipsoid"):
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
+    import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
@@ -72,7 +71,7 @@ def main(mesh_name="ellipsoid"):
         }, auto_where="qbx")
     density_discr = places.get_discretization("qbx")
 
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
@@ -84,14 +83,16 @@ def main(mesh_name="ellipsoid"):
     op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None)
     #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
 
-    sigma = actx.np.cos(mode_nr*angle)
     if 0:
-        from meshmode.dof_array import flatten, unflatten
-        sigma = flatten(0 * angle)
         from random import randrange
+        sigma = actx.zeros(density_discr.ndofs, angle.entry_dtype)
         for _ in range(5):
             sigma[randrange(len(sigma))] = 1
-        sigma = unflatten(actx, density_discr, sigma)
+
+        from arraycontext import unflatten
+        sigma = unflatten(angle, sigma, actx)
+    else:
+        sigma = actx.np.cos(mode_nr*angle)
 
     if isinstance(kernel, HelmholtzKernel):
         for i, elem in np.ndenumerate(sigma):

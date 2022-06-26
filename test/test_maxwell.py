@@ -24,9 +24,6 @@ import pytest
 
 import numpy as np
 
-import pyopencl as cl
-import pyopencl.clrandom
-
 from pytential import bind, sym, norm
 from pytential.target import PointsTarget
 from sumpy.visualization import make_field_plotter_from_bbox  # noqa
@@ -243,7 +240,9 @@ def test_pec_mfie_extinction(actx_factory, case,
     calc_patch = CalculusPatch(np.array([-3, 0, 0]), h=0.01)
     calc_patch_tgt = PointsTarget(actx.from_numpy(calc_patch.points))
 
-    rng = cl.clrandom.PhiloxGenerator(actx.context, seed=12)
+    import pyopencl.clrandom as clrandom
+    rng = clrandom.PhiloxGenerator(actx.context, seed=12)
+
     from pytools.obj_array import make_obj_array
     src_j = make_obj_array([
             rng.normal(actx.queue, (test_source.ndofs), dtype=np.float64)

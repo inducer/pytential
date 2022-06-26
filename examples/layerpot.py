@@ -3,9 +3,7 @@ if enable_mayavi:
     from mayavi import mlab  # noqa
 
 import numpy as np
-import pyopencl as cl
 
-from arraycontext import thaw
 from meshmode.array_context import PyOpenCLArrayContext
 from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
@@ -26,6 +24,7 @@ def main(curve_fn=starfish, visualize=True):
     import logging
     logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
 
+    import pyopencl as cl
     cl_ctx = cl.create_some_context()
     queue = cl.CommandQueue(cl_ctx)
     actx = PyOpenCLArrayContext(queue, force_device_scalars=True)
@@ -44,13 +43,16 @@ def main(curve_fn=starfish, visualize=True):
     pre_density_discr = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    qbx = QBXLayerPotentialSource(pre_density_discr, 4*target_order, qbx_order,
+    qbx = QBXLayerPotentialSource(
+            pre_density_discr, 4*target_order, qbx_order,
             fmm_order=qbx_order+3,
-            target_association_tolerance=0.005)
+            target_association_tolerance=0.005,
+            #fmm_backend="fmmlib",
+            )
 
     from pytential.target import PointsTarget
     fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
-    targets_dev = cl.array.to_device(queue, fplot.points)
+    targets_dev = actx.from_numpy(fplot.points)
 
     from pytential import GeometryCollection
     places = GeometryCollection({
@@ -60,7 +62,7 @@ def main(curve_fn=starfish, visualize=True):
 
     density_discr = places.get_discretization("qbx")
 
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     angle = actx.np.arctan2(nodes[1], nodes[0])
 
     if k:
@@ -77,14 +79,16 @@ def main(curve_fn=starfish, visualize=True):
         return sym.D(kernel, sym.var("sigma"), **kwargs)
         #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None, **kwargs)
 
-    sigma = actx.np.cos(mode_nr*angle)
     if 0:
-        from meshmode.dof_array import flatten, unflatten
-        sigma = flatten(0 * angle)
         from random import randrange
+        sigma = actx.zeros(density_discr.ndofs, angle.entry_dtype)
         for _ in range(5):
             sigma[randrange(len(sigma))] = 1
-        sigma = unflatten(actx, density_discr, sigma)
+
+        from arraycontext import unflatten
+        sigma = unflatten(angle, sigma, actx)
+    else:
+        sigma = actx.np.cos(mode_nr*angle)
 
     if isinstance(kernel, HelmholtzKernel):
         for i, elem in np.ndenumerate(sigma):
@@ -118,11 +122,12 @@ def main(curve_fn=starfish, visualize=True):
     if enable_mayavi:
         # {{{ plot boundary field
 
-        from meshmode.dof_array import flatten_to_numpy
-
-        fld_on_bdry = flatten_to_numpy(
-                actx, bound_bdry_op(actx, sigma=sigma, k=k))
-        nodes_host = flatten_to_numpy(actx, density_discr.nodes())
+        from arraycontext import flatten
+        fld_on_bdry = actx.to_numpy(
+                flatten(bound_bdry_op(actx, sigma=sigma, k=k), actx))
+        nodes_host = actx.to_numpy(
+                flatten(density_discr.nodes(), actx)
+                ).reshape(density_discr.ambient_dim, -1)
 
         mlab.points3d(nodes_host[0], nodes_host[1],
                 fld_on_bdry.real, scale_factor=0.03)

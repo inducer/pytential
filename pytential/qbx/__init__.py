@@ -21,14 +21,16 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import pyopencl as cl
 
-from arraycontext import PyOpenCLArrayContext, freeze, thaw
-from meshmode.dof_array import flatten, unflatten
+from arraycontext import PyOpenCLArrayContext, flatten, unflatten
+from meshmode.dof_array import DOFArray
 
 from pytools import memoize_method, memoize_in, single_valued
 from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
 from pytential.source import LayerPotentialSourceBase
+from sumpy.expansion import DefaultExpansionFactory as DefaultExpansionFactoryBase
+
+from functools import partial
 
 import logging
 logger = logging.getLogger(__name__)
@@ -38,10 +40,34 @@ __doc__ = """
 .. autoclass:: QBXLayerPotentialSource
 
 .. autoclass:: QBXTargetAssociationFailedException
+
+.. autoclass:: DefaultExpansionFactory
+
+.. autoclass:: NonFFTExpansionFactory
 """
 
 
 # {{{ QBX layer potential source
+
+class DefaultExpansionFactory(DefaultExpansionFactoryBase):
+    """A expansion factory to create QBX local, local and multipole expansions
+    """
+    def get_qbx_local_expansion_class(self, kernel):
+        local_expn_class = DefaultExpansionFactoryBase.get_local_expansion_class(
+                self, kernel)
+        from sumpy.expansion.m2l import NonFFTM2LTranslationClassFactory
+        factory = NonFFTM2LTranslationClassFactory()
+        m2l_translation = factory.get_m2l_translation_class(kernel,
+            local_expn_class)()
+        return partial(local_expn_class, m2l_translation=m2l_translation)
+
+
+class NonFFTExpansionFactory(DefaultExpansionFactoryBase):
+    """A expansion factory to create QBX local, local and multipole expansions
+    with no FFT for multipole-to-local translations
+    """
+    get_local_expansion_class = DefaultExpansionFactory.get_qbx_local_expansion_class
+
 
 class _not_provided:  # noqa: N801
     pass
@@ -179,6 +205,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         LayerPotentialSourceBase.__init__(self, density_discr)
 
+        if density_discr.dim != density_discr.ambient_dim - 1:
+            raise RuntimeError("QBX requires geometry with codimension one. "
+                    f"Got: dim={density_discr.dim} "
+                    f"ambient_dim={density_discr.ambient_dim}.")
+
         self.fine_order = fine_order
         self.qbx_order = qbx_order
         self.fmm_level_to_order = fmm_level_to_order
@@ -189,7 +220,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         self.fmm_backend = fmm_backend
 
         if expansion_factory is None:
-            from sumpy.expansion import DefaultExpansionFactory
             expansion_factory = DefaultExpansionFactory()
         self.expansion_factory = expansion_factory
 
@@ -333,60 +363,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # }}}
 
-    # {{{ code containers
-
-    @property
-    def tree_code_container(self):
-        @memoize_in(self._setup_actx, (
-                QBXLayerPotentialSource, "tree_code_container"))
-        def make_container():
-            from pytential.qbx.utils import TreeCodeContainer
-            return TreeCodeContainer(self._setup_actx)
-
-        return make_container()
-
-    @property
-    def refiner_code_container(self):
-        @memoize_in(self._setup_actx, (
-                QBXLayerPotentialSource, "refiner_code_container"))
-        def make_container():
-            from pytential.qbx.refinement import RefinerCodeContainer
-            return RefinerCodeContainer(
-                    self._setup_actx, self.tree_code_container)
-
-        return make_container()
-
-    @property
-    def target_association_code_container(self):
-        @memoize_in(self._setup_actx, (
-                QBXLayerPotentialSource, "target_association_code_container"))
-        def make_container():
-            from pytential.qbx.target_assoc import TargetAssociationCodeContainer
-            return TargetAssociationCodeContainer(
-                    self._setup_actx, self.tree_code_container)
-
-        return make_container()
-
-    @property
-    def qbx_fmm_geometry_data_code_container(self):
-        @memoize_in(self._setup_actx, (
-                QBXLayerPotentialSource, "qbx_fmm_geometry_data_code_container"))
-        def make_container(
-                debug, ambient_dim, well_sep_is_n_away,
-                from_sep_smaller_crit):
-            from pytential.qbx.geometry import QBXFMMGeometryDataCodeContainer
-            return QBXFMMGeometryDataCodeContainer(
-                    self._setup_actx,
-                    ambient_dim, self.tree_code_container, debug,
-                    _well_sep_is_n_away=well_sep_is_n_away,
-                    _from_sep_smaller_crit=from_sep_smaller_crit)
-
-        return make_container(
-                self.debug, self.ambient_dim,
-                self._well_sep_is_n_away, self._from_sep_smaller_crit)
-
-    # }}}
-
     # {{{ internal API
 
     @memoize_method
@@ -401,11 +377,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             :class:`pytential.target.TargetBase`
             instance
         """
-        from pytential.qbx.geometry import QBXFMMGeometryData
+        from pytential.qbx.geometry import qbx_fmm_geometry_data_code_container
+        code_container = qbx_fmm_geometry_data_code_container(
+                self._setup_actx, self.ambient_dim,
+                debug=self.debug,
+                well_sep_is_n_away=self._well_sep_is_n_away,
+                from_sep_smaller_crit=self._from_sep_smaller_crit)
 
-        return QBXFMMGeometryData(places, name,
-                self.qbx_fmm_geometry_data_code_container,
-                target_discrs_and_qbx_sides,
+        from pytential.qbx.geometry import QBXFMMGeometryData
+        return QBXFMMGeometryData(
+                places, name, code_container, target_discrs_and_qbx_sides,
                 target_association_tolerance=self.target_association_tolerance,
                 tree_kind=self._tree_kind,
                 debug=self.debug)
@@ -482,7 +463,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         def drive_cost_model(
                     wrangler, strengths, geo_data, kernel, kernel_arguments):
-            del strengths
 
             if per_box:
                 cost_model_result, metadata = self.cost_model.qbx_cost_per_box(
@@ -496,10 +476,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 )
 
             from pytools.obj_array import obj_array_vectorize
+            from functools import partial
             return (
                     obj_array_vectorize(
-                        wrangler.finalize_potentials,
-                        wrangler.full_output_zeros()),
+                        partial(wrangler.finalize_potentials,
+                            template_ary=strengths[0]),
+                        wrangler.full_output_zeros(strengths[0])),
                     (cost_model_result, metadata))
 
         return self._dispatch_compute_potential_insn(
@@ -524,7 +506,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, source_kernels, target_kernels):
+    def _tree_indep_data_for_wrangler(self, source_kernels, target_kernels):
         from functools import partial
         base_kernel = single_valued(kernel.get_base_kernel() for
             kernel in source_kernels)
@@ -533,14 +515,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         local_expn_class = \
                 self.expansion_factory.get_local_expansion_class(base_kernel)
 
+        try:
+            qbx_local_expn_class = \
+                self.expansion_factory.get_qbx_local_expansion_class(base_kernel)
+        except AttributeError:
+            qbx_local_expn_class = local_expn_class
+
         fmm_mpole_factory = partial(mpole_expn_class, base_kernel)
         fmm_local_factory = partial(local_expn_class, base_kernel)
-        qbx_local_factory = partial(local_expn_class, base_kernel)
+        qbx_local_factory = partial(qbx_local_expn_class, base_kernel)
 
         if self.fmm_backend == "sumpy":
             from pytential.qbx.fmm import \
-                    QBXSumpyExpansionWranglerCodeContainer
-            return QBXSumpyExpansionWranglerCodeContainer(
+                    QBXSumpyTreeIndependentDataForWrangler
+            return QBXSumpyTreeIndependentDataForWrangler(
                     self.cl_context,
                     fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
                     target_kernels=target_kernels, source_kernels=source_kernels)
@@ -552,11 +540,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 target_kernel in target_kernels
             ]
             from pytential.qbx.fmmlib import \
-                    QBXFMMLibExpansionWranglerCodeContainer
-            return QBXFMMLibExpansionWranglerCodeContainer(
+                    QBXFMMLibTreeIndependentDataForWrangler
+            return QBXFMMLibTreeIndependentDataForWrangler(
                     self.cl_context,
-                    fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
-                    target_kernels=target_kernels_new)
+                    multipole_expansion_factory=fmm_mpole_factory,
+                    local_expansion_factory=fmm_local_factory,
+                    qbx_local_expansion_factory=qbx_local_factory,
+                    target_kernels=target_kernels_new,
+                    _use_target_specific_qbx=self._use_target_specific_qbx)
 
         else:
             raise ValueError(f"invalid FMM backend: {self.fmm_backend}")
@@ -618,7 +609,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # FIXME don't compute *all* output kernels on all targets--respect that
         # some target discretizations may only be asking for derivatives (e.g.)
 
-        flat_strengths = _get_flat_strengths_from_densities(
+        flat_strengths = get_flat_strengths_from_densities(
                 actx, bound_expr.places, evaluate, insn.densities,
                 dofdesc=insn.source)
 
@@ -634,24 +625,21 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     geo_data.tree().user_source_ids,
                     insn.kernel_arguments, evaluate))
 
-        from sumpy.fmm import SumpyTranslationClassesData
-        translation_classes_data = SumpyTranslationClassesData(actx.queue,
-                geo_data.traversal())
-
-        wrangler = self.expansion_wrangler_code_container(
+        tree_indep = self._tree_indep_data_for_wrangler(
                 target_kernels=insn.target_kernels,
-                source_kernels=insn.source_kernels).get_wrangler(
-                        actx.queue, geo_data, output_and_expansion_dtype,
+                source_kernels=insn.source_kernels)
+
+        wrangler = tree_indep.wrangler_cls(
+                        tree_indep, geo_data, output_and_expansion_dtype,
                         self.qbx_order,
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
-                        kernel_extra_kwargs=kernel_extra_kwargs,
-                        translation_classes_data=translation_classes_data,
-                        _use_target_specific_qbx=self._use_target_specific_qbx)
+                        kernel_extra_kwargs=kernel_extra_kwargs)
 
         from pytential.qbx.geometry import target_state
-        if (actx.thaw(geo_data.user_target_to_center())
-                == target_state.FAILED).any().get():
+        if actx.to_numpy(actx.np.any(
+                actx.thaw(geo_data.user_target_to_center())
+                == target_state.FAILED)):
             raise RuntimeError("geometry has failed targets")
 
         # {{{ geometry data inspection hook
@@ -683,7 +671,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
-                result = unflatten(actx, target_discr, result)
+                template_ary = actx.thaw(target_discr.nodes()[0])
+                result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))
 
@@ -779,7 +768,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         def _flat_nodes(dofdesc):
             discr = bound_expr.places.get_discretization(
                     dofdesc.geometry, dofdesc.discr_stage)
-            return freeze(flatten(thaw(discr.nodes(), actx), strict=False), actx)
+            return actx.freeze(flatten(discr.nodes(), actx, leaf_class=DOFArray))
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_expansion_radii"))
@@ -788,7 +777,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     bound_expr.places,
                     sym.expansion_radii(self.ambient_dim, dofdesc=dofdesc),
                     )(actx)
-            return freeze(flatten(radii), actx)
+            return actx.freeze(flatten(radii, actx))
 
         @memoize_in(bound_expr.places,
                 (QBXLayerPotentialSource, "flat_centers"))
@@ -797,13 +786,12 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     sym.expansion_centers(
                         self.ambient_dim, qbx_forced_limit, dofdesc=dofdesc),
                     )(actx)
-            return freeze(flatten(centers), actx)
+            return actx.freeze(flatten(centers, actx, leaf_class=DOFArray))
 
-        kernel_args = {}
-        for arg_name, arg_expr in insn.kernel_arguments.items():
-            kernel_args[arg_name] = flatten(evaluate(arg_expr), strict=False)
-
-        flat_strengths = _get_flat_strengths_from_densities(
+        from pytential.source import evaluate_kernel_arguments
+        flat_kernel_args = evaluate_kernel_arguments(
+                actx, evaluate, insn.kernel_arguments, flat=True)
+        flat_strengths = get_flat_strengths_from_densities(
                 actx, bound_expr.places, evaluate, insn.densities,
                 dofdesc=insn.source)
 
@@ -863,12 +851,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     centers=_flat_centers(target_name, qbx_forced_limit),
                     strengths=flat_strengths,
                     expansion_radii=_flat_expansion_radii(target_name),
-                    **kernel_args)
+                    **flat_kernel_args)
 
             for i, o in outputs:
                 result = output_for_each_kernel[o.target_kernel_index]
                 if isinstance(target_discr, Discretization):
-                    result = unflatten(actx, target_discr, result)
+                    template_ary = actx.thaw(target_discr.nodes()[0])
+                    result = unflatten(template_ary, result, actx, strict=False)
 
                 results[i] = (o.name, result)
 
@@ -891,7 +880,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     targets=flat_target_nodes,
                     sources=flat_source_nodes,
                     strength=flat_strengths,
-                    **kernel_args)
+                    **flat_kernel_args)
 
             target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
             geo_data = self.qbx_fmm_geometry_data(
@@ -902,21 +891,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             # center-related info is independent of targets
 
             # First ncenters targets are the centers
-            tgt_to_qbx_center = (
+            tgt_to_qbx_center = actx.np.copy(actx.thaw(
                     geo_data.user_target_to_center()[geo_data.ncenters:]
-                    .copy(queue=queue)
-                    .with_queue(queue))
+                    ))
 
             qbx_tgt_numberer = self.get_qbx_target_numberer(
                     tgt_to_qbx_center.dtype)
-            qbx_tgt_count = cl.array.empty(queue, (), np.int32)
-            qbx_tgt_numbers = cl.array.empty_like(tgt_to_qbx_center)
+            qbx_tgt_count = actx.empty((), np.int32)
+            qbx_tgt_numbers = actx.empty_like(tgt_to_qbx_center)
 
             qbx_tgt_numberer(
                     tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,
                     queue=queue)
 
-            qbx_tgt_count = int(qbx_tgt_count.get())
+            qbx_tgt_count = int(actx.to_numpy(qbx_tgt_count).item())
             if (abs(qbx_forced_limit) == 1 and qbx_tgt_count < target_discr.ndofs):
                 raise RuntimeError(
                         "Did not find a matching QBX center for some targets")
@@ -925,7 +913,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             qbx_center_numbers = tgt_to_qbx_center[qbx_tgt_numbers]
             qbx_center_numbers.finish()
 
-            tgt_subset_kwargs = kernel_args.copy()
+            tgt_subset_kwargs = flat_kernel_args.copy()
             for i, res_i in enumerate(output_for_each_kernel):
                 tgt_subset_kwargs[f"result_{i}"] = res_i
 
@@ -944,7 +932,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             for i, o in outputs:
                 result = output_for_each_kernel[o.target_kernel_index]
                 if isinstance(target_discr, Discretization):
-                    result = unflatten(actx, target_discr, result)
+                    template_ary = actx.thaw(target_discr.nodes()[0])
+                    result = unflatten(template_ary, result, actx, strict=False)
 
                 results[i] = (o.name, result)
 
@@ -958,7 +947,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
     # }}}
 
 
-def _get_flat_strengths_from_densities(
+def get_flat_strengths_from_densities(
         actx, places, evaluate, densities, dofdesc=None):
     from pytential import bind, sym
     waa = bind(
@@ -967,8 +956,7 @@ def _get_flat_strengths_from_densities(
             )(actx)
     strength_vecs = [waa * evaluate(density) for density in densities]
 
-    from meshmode.dof_array import flatten
-    return [flatten(strength) for strength in strength_vecs]
+    return [flatten(strength, actx) for strength in strength_vecs]
 
 # }}}
 

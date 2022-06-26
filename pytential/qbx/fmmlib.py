@@ -21,76 +21,40 @@ THE SOFTWARE.
 """
 
 import numpy as np
-from pytools import Record, memoize_method
+
+from pytools import memoize_method
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa: F401
-from boxtree.pyfmmlib_integration import FMMLibExpansionWrangler
+
+from boxtree.pyfmmlib_integration import (
+        Kernel,
+        FMMLibTreeIndependentDataForWrangler,
+        FMMLibExpansionWrangler)
 from sumpy.kernel import (
         LaplaceKernel, HelmholtzKernel, AxisTargetDerivative,
         DirectionalSourceDerivative)
 import pytential.qbx.target_specific as ts
 
 
-from boxtree.tools import return_timing_data
+from boxtree.timing import return_timing_data
 from pytools import log_process
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-class P2QBXLInfo(Record):
-    pass
-
-
-class QBXFMMLibExpansionWranglerCodeContainer:
-    def __init__(self, cl_context,
+class QBXFMMLibTreeIndependentDataForWrangler(FMMLibTreeIndependentDataForWrangler):
+    def __init__(self, cl_context, *,
             multipole_expansion_factory, local_expansion_factory,
-            qbx_local_expansion_factory, target_kernels):
+            qbx_local_expansion_factory, target_kernels,
+            _use_target_specific_qbx):
         self.cl_context = cl_context
         self.multipole_expansion_factory = multipole_expansion_factory
         self.local_expansion_factory = local_expansion_factory
         self.qbx_local_expansion_factory = qbx_local_expansion_factory
 
+        kernel = target_kernels[0].get_base_kernel()
         self.target_kernels = target_kernels
-
-    def get_wrangler(self, queue, geo_data, dtype,
-            qbx_order, fmm_level_to_order,
-            source_extra_kwargs=None,
-            kernel_extra_kwargs=None, *,
-            translation_classes_data=None,
-            _use_target_specific_qbx=None):
-
-        if source_extra_kwargs is None:
-            source_extra_kwargs = {}
-
-        return QBXFMMLibExpansionWrangler(self, queue, geo_data, dtype,
-                qbx_order, fmm_level_to_order,
-                source_extra_kwargs,
-                kernel_extra_kwargs,
-                _use_target_specific_qbx)
-
-# }}}
-
-
-# {{{ fmmlib expansion wrangler
-
-class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
-    def __init__(self, code, queue, geo_data, dtype,
-            qbx_order, fmm_level_to_order,
-            source_extra_kwargs,
-            kernel_extra_kwargs,
-            _use_target_specific_qbx=None):
-        self.code = code
-        self.queue = queue
-
-        # FMMLib is CPU-only. This wrapper gets the geometry out of
-        # OpenCL-land.
-
-        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
-        geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
-
-        self.geo_data = geo_data
-        self.qbx_order = qbx_order
 
         # {{{ digest target_kernels
 
@@ -104,7 +68,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 # None means use by default if possible
                 or _use_target_specific_qbx is None)
 
-        for out_knl in self.code.target_kernels:
+        for out_knl in target_kernels:
             if not self.is_supported_helmknl_for_tsqbx(out_knl):
                 if _use_target_specific_qbx:
                     raise ValueError("not all kernels passed support TSQBX")
@@ -143,49 +107,29 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             raise ValueError("not all kernels passed are the same in "
                     "whether they represent a source derivative")
 
-        source_deriv_name = source_deriv_names[0]
+        self.source_deriv_name = source_deriv_names[0]
 
         if not is_single_valued(k_names):
             raise ValueError("not all kernels passed have the same "
                     "Helmholtz parameter")
 
-        k_name = k_names[0]
-
-        if k_name is None:
-            helmholtz_k = 0
-        else:
-            helmholtz_k = kernel_extra_kwargs[k_name]
+        self.k_name = k_names[0]
 
         # }}}
 
-        dipole_vec = None
-        if source_deriv_name is not None:
-            dipole_vec = np.array([
-                    d_i.get(queue=queue)
-                    for d_i in source_extra_kwargs[source_deriv_name]],
-                    order="F")
+        super().__init__(kernel.dim, {
+            LaplaceKernel: Kernel.LAPLACE,
+            HelmholtzKernel: Kernel.HELMHOLTZ,
+            }[type(kernel)],
+            ifgrad=ifgrad)
 
-        def inner_fmm_level_to_nterms(tree, level):
-            if helmholtz_k == 0:
-                return fmm_level_to_order(
-                        LaplaceKernel(tree.dimensions),
-                        frozenset(), tree, level)
-            else:
-                return fmm_level_to_order(
-                        HelmholtzKernel(tree.dimensions),
-                        frozenset([("k", helmholtz_k)]), tree, level)
+    @staticmethod
+    def is_supported_helmknl(knl):
+        if isinstance(knl, DirectionalSourceDerivative):
+            knl = knl.inner_kernel
 
-        super().__init__(
-                geo_data.tree(),
-
-                helmholtz_k=helmholtz_k,
-                dipole_vec=dipole_vec,
-                dipoles_already_reordered=True,
-
-                fmm_level_to_nterms=inner_fmm_level_to_nterms,
-                rotation_data=geo_data,
-
-                ifgrad=ifgrad)
+        return (isinstance(knl, (LaplaceKernel, HelmholtzKernel))
+                and knl.dim in (2, 3))
 
     @staticmethod
     def is_supported_helmknl_for_tsqbx(knl):
@@ -196,13 +140,64 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return (isinstance(knl, (LaplaceKernel, HelmholtzKernel))
                 and knl.dim == 3)
 
-    @staticmethod
-    def is_supported_helmknl(knl):
-        if isinstance(knl, DirectionalSourceDerivative):
-            knl = knl.inner_kernel
+    @property
+    def wrangler_cls(self):
+        return QBXFMMLibExpansionWrangler
 
-        return (isinstance(knl, (LaplaceKernel, HelmholtzKernel))
-                and knl.dim in (2, 3))
+# }}}
+
+
+# {{{ fmmlib expansion wrangler
+
+class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
+    def __init__(self, tree_indep, geo_data, dtype,
+            qbx_order, fmm_level_to_order,
+            source_extra_kwargs,
+            kernel_extra_kwargs,
+            _use_target_specific_qbx=None):
+        # FMMLib is CPU-only. This wrapper gets the geometry out of
+        # OpenCL-land.
+
+        from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
+        geo_data = ToHostTransferredGeoDataWrapper(geo_data)
+
+        self.geo_data = geo_data
+        self.qbx_order = qbx_order
+
+        if tree_indep.k_name is None:
+            helmholtz_k = 0
+        else:
+            helmholtz_k = kernel_extra_kwargs[tree_indep.k_name]
+
+        dipole_vec = None
+        if tree_indep.source_deriv_name is not None:
+            with cl.CommandQueue(tree_indep.cl_context) as queue:
+                dipole_vec = np.array([
+                        d_i.get(queue=queue)
+                        for d_i in source_extra_kwargs[
+                            tree_indep.source_deriv_name]],
+                        order="F")
+
+        def inner_fmm_level_to_order(tree, level):
+            if helmholtz_k == 0:
+                return fmm_level_to_order(
+                        LaplaceKernel(tree.dimensions),
+                        frozenset(), tree, level)
+            else:
+                return fmm_level_to_order(
+                        HelmholtzKernel(tree.dimensions),
+                        frozenset([("k", helmholtz_k)]), tree, level)
+
+        super().__init__(
+                tree_indep,
+                geo_data.traversal(),
+
+                helmholtz_k=helmholtz_k,
+                dipole_vec=dipole_vec,
+                dipoles_already_reordered=True,
+
+                fmm_level_to_order=inner_fmm_level_to_order,
+                rotation_data=geo_data)
 
     # {{{ data vector helpers
 
@@ -216,20 +211,20 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         from pytools.obj_array import make_obj_array
         return make_obj_array([
-                np.zeros(nqbtl.nfiltered_targets, self.dtype)
-                for k in self.outputs])
+                np.zeros(nqbtl.nfiltered_targets, self.tree_indep.dtype)
+                for k in self.tree_indep.outputs])
 
-    def full_output_zeros(self):
+    def full_output_zeros(self, template_ary):
         """This includes QBX and non-QBX targets."""
 
         from pytools.obj_array import make_obj_array
         return make_obj_array([
-                np.zeros(self.tree.ntargets, self.dtype)
-                for k in self.outputs])
+                np.zeros(self.tree.ntargets, self.tree_indep.dtype)
+                for k in self.tree_indep.outputs])
 
     def reorder_sources(self, source_array):
         if isinstance(source_array, cl.array.Array):
-            source_array = source_array.get(queue=self.queue)
+            source_array = source_array.get()
 
         return super().reorder_sources(source_array)
 
@@ -241,7 +236,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         # potentials from non-QBX targets and QBX targets.
 
     def add_potgrad_onto_output(self, output, output_slice, pot, grad):
-        for i_out, out in enumerate(self.outputs):
+        for i_out, out in enumerate(self.tree_indep.outputs):
             if len(out) == 0:
                 output[i_out][output_slice] += pot
             elif len(out) == 1:
@@ -282,7 +277,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     def qbx_local_expansion_zeros(self):
         return np.zeros(
                     (self.geo_data.ncenters,) + self.expansion_shape(self.qbx_order),
-                    dtype=self.dtype)
+                    dtype=self.tree_indep.dtype)
 
     # {{{ p2qbxl
 
@@ -290,7 +285,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     @return_timing_data
     def form_global_qbx_locals(self, src_weight_vecs):
         src_weights, = src_weight_vecs
-        if self.using_tsqbx:
+        if self.tree_indep.using_tsqbx:
             return self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
@@ -299,7 +294,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         if len(geo_data.global_qbx_centers()) == 0:
             return self.qbx_local_expansion_zeros()
 
-        formta_qbx = self.get_routine("%ddformta" + self.dp_suffix,
+        formta_qbx = self.tree_indep.get_routine(
+                "%ddformta" + ("_dp" if self.dipole_vec is not None else ""),
                 suffix="_qbx")
 
         kwargs = {}
@@ -309,7 +305,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             kwargs["charge"] = src_weights
 
         else:
-            if self.dim == 2 and self.eqn_letter == "l":
+            if self.dim == 2 and self.tree_indep.eqn_letter == "l":
                 kwargs["dipstr"] = -src_weights * (
                         self.dipole_vec[0] + 1j*self.dipole_vec[1])
             else:
@@ -356,7 +352,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         if ngqbx_centers == 0:
             return qbx_exps
 
-        mploc = self.get_translation_routine("%ddmploc", vec_suffix="_imany")
+        mploc = self.tree_indep.get_translation_routine(
+                self, "%ddmploc", vec_suffix="_imany")
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
             source_level_start_ibox, source_mpoles_view = \
@@ -373,7 +370,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             rscale2 = geo_data.expansion_radii()[geo_data.global_qbx_centers()]
 
             kwargs = {}
-            if self.dim == 3 and self.eqn_letter == "h":
+            if self.dim == 3 and self.tree_indep.eqn_letter == "h":
                 kwargs["radius"] = (0.5
                         * geo_data.expansion_radii()[geo_data.global_qbx_centers()])
 
@@ -418,7 +415,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             # This gets added onto: pass initialized version.
             expn2 = np.zeros(
                     (ngqbx_centers,) + self.expansion_shape(self.qbx_order),
-                    dtype=self.dtype)
+                    dtype=self.tree_indep.dtype)
 
             kwargs.update(self.kernel_kwargs)
 
@@ -473,7 +470,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         is_global_qbx_center = np.zeros(geo_data.ncenters, dtype=int)
         is_global_qbx_center[global_qbx_centers] = 1
 
-        locloc = self.get_translation_routine("%ddlocloc", vec_suffix="_qbx")
+        locloc = self.tree_indep.get_translation_routine(
+                self, "%ddlocloc", vec_suffix="_qbx")
 
         nlevels = geo_data.tree().nlevels
 
@@ -515,7 +513,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
             icurr_level_qbx_center_to_box = (
                     qbx_center_to_box[curr_level_qbx_centers])
 
-            if self.dim == 3 and self.eqn_letter == "h":
+            if self.dim == 3 and self.tree_indep.eqn_letter == "h":
                 kwargs["radius"] = 0.5 * (
                         geo_data.expansion_radii()[curr_level_qbx_centers])
 
@@ -527,7 +525,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                     center1_offsets=icurr_level_qbx_center_to_box,
                     expn1=locals_view.T,
                     expn1_offsets=icurr_level_qbx_center_to_box - lev_box_start,
-                    nterms1=self.level_nterms[isrc_level],
+                    nterms1=self.level_orders[isrc_level],
                     nterms2=self.qbx_order,
                     rscale2=qbx_radii,
                     rscale2_offsets=curr_level_qbx_centers,
@@ -549,7 +547,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     @log_process(logger)
     @return_timing_data
     def eval_qbx_expansions(self, qbx_expansions):
-        output = self.full_output_zeros()
+        output = self.full_output_zeros(template_ary=qbx_expansions)
 
         geo_data = self.geo_data
         ctt = geo_data.center_to_tree_targets()
@@ -559,7 +557,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         all_targets = geo_data.all_targets()
 
-        taeval = self.get_expn_eval_routine("ta")
+        taeval = self.tree_indep.get_expn_eval_routine("ta")
 
         for src_icenter in global_qbx_centers:
             for icenter_tgt in range(
@@ -585,8 +583,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     @return_timing_data
     def eval_target_specific_qbx_locals(self, src_weight_vecs):
         src_weights, = src_weight_vecs
-        if not self.using_tsqbx:
-            return self.full_output_zeros()
+        if not self.tree_indep.using_tsqbx:
+            return self.full_output_zeros(template_ary=src_weights)
 
         geo_data = self.geo_data
         trav = geo_data.traversal()
@@ -598,8 +596,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         ifcharge = self.dipole_vec is None
         ifdipole = self.dipole_vec is not None
 
-        ifpot = any(not output for output in self.outputs)
-        ifgrad = self.ifgrad
+        ifpot = any(not output for output in self.tree_indep.outputs)
+        ifgrad = self.tree_indep.ifgrad
 
         # Create temporary output arrays for potential / gradient.
         pot = np.zeros(self.tree.ntargets, np.complex128) if ifpot else None
@@ -631,14 +629,14 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 pot=pot,
                 grad=grad)
 
-        output = self.full_output_zeros()
+        output = self.full_output_zeros(template_ary=src_weights)
         self.add_potgrad_onto_output(output, slice(None), pot, grad)
 
         return output
 
-    def finalize_potentials(self, potential):
-        potential = super().finalize_potentials(potential)
-        return cl.array.to_device(self.queue, potential)
+    def finalize_potentials(self, potential, template_ary):
+        potential = super().finalize_potentials(potential, template_ary)
+        return cl.array.to_device(template_ary.queue, potential)
 
 # }}}
 

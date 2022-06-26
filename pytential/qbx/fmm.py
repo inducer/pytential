@@ -24,13 +24,13 @@ THE SOFTWARE.
 import numpy as np  # noqa
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa
-from sumpy.fmm import (SumpyExpansionWranglerCodeContainer,
-        SumpyExpansionWrangler, level_to_rscale, SumpyTimingFuture)
+from sumpy.fmm import (SumpyTreeIndependentDataForWrangler,
+        SumpyExpansionWrangler, SumpyTimingFuture)
 
 from pytools import memoize_method
 from pytential.qbx.interactions import P2QBXLFromCSR, M2QBXL, L2QBXL, QBXL2P
 
-from boxtree.fmm import TimingRecorder
+from boxtree.timing import TimingRecorder
 from pytools import log_process, ProcessLogger
 
 import logging
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
-.. autoclass:: QBXSumpyExpansionWranglerCodeContainer
+.. autoclass:: QBXSumpyTreeIndependentDataForWrangler
 
 .. autoclass:: QBXExpansionWrangler
 
@@ -48,11 +48,11 @@ __doc__ = """
 
 # {{{ sumpy expansion wrangler
 
-class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer):
+class QBXSumpyTreeIndependentDataForWrangler(SumpyTreeIndependentDataForWrangler):
     def __init__(self, cl_context,
             multipole_expansion_factory, local_expansion_factory,
             qbx_local_expansion_factory, target_kernels, source_kernels):
-        SumpyExpansionWranglerCodeContainer.__init__(self,
+        super().__init__(
                 cl_context, multipole_expansion_factory, local_expansion_factory,
                 target_kernels=target_kernels, source_kernels=source_kernels)
 
@@ -85,23 +85,9 @@ class QBXSumpyExpansionWranglerCodeContainer(SumpyExpansionWranglerCodeContainer
                 self.qbx_local_expansion_factory(order),
                 self.target_kernels)
 
-    def get_wrangler(self, queue, geo_data, dtype,
-            qbx_order, fmm_level_to_order,
-            source_extra_kwargs=None,
-            kernel_extra_kwargs=None, *,
-            translation_classes_data=None,
-            _use_target_specific_qbx=False):
-
-        if source_extra_kwargs is None:
-            source_extra_kwargs = {}
-
-        return QBXExpansionWrangler(self, queue, geo_data,
-                dtype,
-                qbx_order, fmm_level_to_order,
-                source_extra_kwargs,
-                kernel_extra_kwargs,
-                _use_target_specific_qbx=_use_target_specific_qbx,
-                translation_classes_data=translation_classes_data)
+    @property
+    def wrangler_cls(self):
+        return QBXExpansionWrangler
 
 
 class QBXExpansionWrangler(SumpyExpansionWrangler):
@@ -123,17 +109,16 @@ non_qbx_box_target_lists`),
     .. automethod:: eval_qbx_expansions
     """
 
-    def __init__(self, code_container, queue, geo_data, dtype,
+    def __init__(self, tree_indep, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs, kernel_extra_kwargs,
             *, translation_classes_data=None, _use_target_specific_qbx=None):
         if _use_target_specific_qbx:
             raise ValueError("TSQBX is not implemented in sumpy")
 
-        SumpyExpansionWrangler.__init__(self,
-                code_container, queue, geo_data.tree(),
-                dtype, fmm_level_to_order, source_extra_kwargs, kernel_extra_kwargs,
-                translation_classes_data=translation_classes_data)
+        super().__init__(
+                tree_indep, geo_data.traversal(),
+                dtype, fmm_level_to_order, source_extra_kwargs, kernel_extra_kwargs)
 
         self.qbx_order = qbx_order
         self.geo_data = geo_data
@@ -141,7 +126,7 @@ non_qbx_box_target_lists`),
 
     # {{{ data vector utilities
 
-    def output_zeros(self):
+    def output_zeros(self, template_ary):
         """This ought to be called ``non_qbx_output_zeros``, but since
         it has to override the superclass's behavior to integrate seamlessly,
         it needs to be called just :meth:`output_zeros`.
@@ -152,31 +137,28 @@ non_qbx_box_target_lists`),
         from pytools.obj_array import make_obj_array
         return make_obj_array([
                 cl.array.zeros(
-                    self.queue,
+                    template_ary.queue,
                     nqbtl.nfiltered_targets,
                     dtype=self.dtype)
-                for k in self.code.target_kernels])
+                for k in self.tree_indep.target_kernels])
 
-    def full_output_zeros(self):
+    def full_output_zeros(self, template_ary):
         # The superclass generates a full field of zeros, for all
         # (not just non-QBX) targets.
-        return SumpyExpansionWrangler.output_zeros(self)
+        return super().output_zeros(template_ary)
 
-    def qbx_local_expansion_zeros(self):
+    def qbx_local_expansion_zeros(self, template_ary):
         order = self.qbx_order
-        qbx_l_expn = self.code.qbx_local_expansion(order)
+        qbx_l_expn = self.tree_indep.qbx_local_expansion(order)
 
         return cl.array.zeros(
-                    self.queue,
+                    template_ary.queue,
                     (self.geo_data.ncenters,
                         len(qbx_l_expn)),
                     dtype=self.dtype)
 
     def reorder_sources(self, source_array):
-        return (source_array
-                .with_queue(self.queue)
-                [self.tree.user_source_ids]
-                .with_queue(None))
+        return source_array[self.tree.user_source_ids]
 
     def reorder_potentials(self, potentials):
         raise NotImplementedError("reorder_potentials should not "
@@ -208,12 +190,14 @@ non_qbx_box_target_lists`),
 
     @log_process(logger)
     def form_global_qbx_locals(self, src_weight_vecs):
-        local_exps = self.qbx_local_expansion_zeros()
+        queue = src_weight_vecs[0].queue
+
+        local_exps = self.qbx_local_expansion_zeros(src_weight_vecs[0])
         events = []
 
         geo_data = self.geo_data
         if len(geo_data.global_qbx_centers()) == 0:
-            return (local_exps, SumpyTimingFuture(self.queue, events))
+            return (local_exps, SumpyTimingFuture(queue, events))
 
         traversal = geo_data.traversal()
 
@@ -223,10 +207,10 @@ non_qbx_box_target_lists`),
         kwargs = self.extra_kwargs.copy()
         kwargs.update(self.box_source_list_kwargs())
 
-        p2qbxl = self.code.p2qbxl(self.qbx_order)
+        p2qbxl = self.tree_indep.p2qbxl(self.qbx_order)
 
         evt, (result,) = p2qbxl(
-                self.queue,
+                queue,
                 global_qbx_centers=geo_data.global_qbx_centers(),
                 qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
                 qbx_centers=geo_data.flat_centers(),
@@ -243,30 +227,31 @@ non_qbx_box_target_lists`),
         assert local_exps is result
         result.add_event(evt)
 
-        return (result, SumpyTimingFuture(self.queue, events))
+        return (result, SumpyTimingFuture(queue, events))
 
     @log_process(logger)
     def translate_box_multipoles_to_qbx_local(self, multipole_exps):
-        qbx_expansions = self.qbx_local_expansion_zeros()
+        queue = multipole_exps.queue
+        qbx_expansions = self.qbx_local_expansion_zeros(multipole_exps)
         events = []
 
         geo_data = self.geo_data
         if geo_data.ncenters == 0:
-            return (qbx_expansions, SumpyTimingFuture(self.queue, events))
+            return (qbx_expansions, SumpyTimingFuture(queue, events))
 
         traversal = geo_data.traversal()
 
         wait_for = multipole_exps.events
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
-            m2qbxl = self.code.m2qbxl(
+            m2qbxl = self.tree_indep.m2qbxl(
                     self.level_orders[isrc_level],
                     self.qbx_order)
 
             source_level_start_ibox, source_mpoles_view = \
                     self.multipole_expansions_view(multipole_exps, isrc_level)
 
-            evt, (qbx_expansions_res,) = m2qbxl(self.queue,
+            evt, (qbx_expansions_res,) = m2qbxl(queue,
                     qbx_center_to_target_box_source_level=(
                         geo_data.qbx_center_to_target_box_source_level(isrc_level)
                     ),
@@ -282,7 +267,7 @@ non_qbx_box_target_lists`),
                     src_box_starts=ssn.starts,
                     src_box_lists=ssn.lists,
 
-                    src_rscale=level_to_rscale(self.tree, isrc_level),
+                    src_rscale=self.level_to_rscale(isrc_level),
 
                     wait_for=wait_for,
 
@@ -294,24 +279,25 @@ non_qbx_box_target_lists`),
 
         qbx_expansions.add_event(evt)
 
-        return (qbx_expansions, SumpyTimingFuture(self.queue, events))
+        return (qbx_expansions, SumpyTimingFuture(queue, events))
 
     @log_process(logger)
     def translate_box_local_to_qbx_local(self, local_exps):
-        qbx_expansions = self.qbx_local_expansion_zeros()
+        queue = local_exps.queue
+        qbx_expansions = self.qbx_local_expansion_zeros(local_exps)
 
         geo_data = self.geo_data
         events = []
 
         if geo_data.ncenters == 0:
-            return (qbx_expansions, SumpyTimingFuture(self.queue, events))
+            return (qbx_expansions, SumpyTimingFuture(queue, events))
 
         trav = geo_data.traversal()
 
         wait_for = local_exps.events
 
         for isrc_level in range(geo_data.tree().nlevels):
-            l2qbxl = self.code.l2qbxl(
+            l2qbxl = self.tree_indep.l2qbxl(
                     self.level_orders[isrc_level],
                     self.qbx_order)
 
@@ -319,7 +305,7 @@ non_qbx_box_target_lists`),
                     self.local_expansions_view(local_exps, isrc_level)
 
             evt, (qbx_expansions_res,) = l2qbxl(
-                    self.queue,
+                    queue,
                     qbx_center_to_target_box=geo_data.qbx_center_to_target_box(),
                     target_boxes=trav.target_boxes,
                     target_base_ibox=target_level_start_ibox,
@@ -331,7 +317,7 @@ non_qbx_box_target_lists`),
                     expansions=target_locals_view,
                     qbx_expansions=qbx_expansions,
 
-                    src_rscale=level_to_rscale(self.tree, isrc_level),
+                    src_rscale=self.level_to_rscale(isrc_level),
 
                     wait_for=wait_for,
 
@@ -343,23 +329,24 @@ non_qbx_box_target_lists`),
 
         qbx_expansions.add_event(evt)
 
-        return (qbx_expansions, SumpyTimingFuture(self.queue, events))
+        return (qbx_expansions, SumpyTimingFuture(queue, events))
 
     @log_process(logger)
     def eval_qbx_expansions(self, qbx_expansions):
-        pot = self.full_output_zeros()
+        queue = qbx_expansions.queue
+        pot = self.full_output_zeros(qbx_expansions)
 
         geo_data = self.geo_data
         events = []
 
         if len(geo_data.global_qbx_centers()) == 0:
-            return (pot, SumpyTimingFuture(self.queue, events))
+            return (pot, SumpyTimingFuture(queue, events))
 
         ctt = geo_data.center_to_tree_targets()
 
-        qbxl2p = self.code.qbxl2p(self.qbx_order)
+        qbxl2p = self.tree_indep.qbxl2p(self.qbx_order)
 
-        evt, pot_res = qbxl2p(self.queue,
+        evt, pot_res = qbxl2p(queue,
                 qbx_centers=geo_data.flat_centers(),
                 qbx_expansion_radii=geo_data.flat_expansion_radii(),
 
@@ -378,11 +365,13 @@ non_qbx_box_target_lists`),
         for pot_i, pot_res_i in zip(pot, pot_res):
             assert pot_i is pot_res_i
 
-        return (pot, SumpyTimingFuture(self.queue, events))
+        return (pot, SumpyTimingFuture(queue, events))
 
     @log_process(logger)
     def eval_target_specific_qbx_locals(self, src_weight_vecs):
-        return (self.full_output_zeros(), SumpyTimingFuture(self.queue, events=()))
+        template_ary = src_weight_vecs[0]
+        return (self.full_output_zeros(template_ary),
+                SumpyTimingFuture(template_ary.queue, events=()))
 
     # }}}
 
@@ -415,6 +404,8 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None,
         traversal = geo_data.traversal()
 
     tree = traversal.tree
+
+    template_ary = src_weight_vecs[0]
 
     recorder = TimingRecorder()
 
@@ -576,7 +567,7 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None,
 
     nqbtl = geo_data.non_qbx_box_target_lists()
 
-    all_potentials_in_tree_order = wrangler.full_output_zeros()
+    all_potentials_in_tree_order = wrangler.full_output_zeros(template_ary)
 
     for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
         ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
@@ -586,7 +577,7 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None,
     def reorder_and_finalize_potentials(x):
         # "finalize" gives host FMMs (like FMMlib) a chance to turn the
         # potential back into a CL array.
-        return wrangler.finalize_potentials(x[tree.sorted_target_ids])
+        return wrangler.finalize_potentials(x[tree.sorted_target_ids], template_ary)
 
     from pytools.obj_array import obj_array_vectorize
     result = obj_array_vectorize(

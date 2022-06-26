@@ -25,10 +25,9 @@ import pytest
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import thaw
+from arraycontext import flatten, unflatten
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
-import meshmode.mesh.generation as mgen
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 # from sumpy.visualization import FieldPlotter
 
@@ -36,6 +35,7 @@ from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
+import extra_int_eq_data as ied
 import logging
 logger = logging.getLogger(__name__)
 
@@ -53,62 +53,21 @@ d1 = sym.Derivative()
 d2 = sym.Derivative()
 
 
-def get_sphere_mesh(refinement_increment, target_order):
-    from meshmode.mesh.generation import generate_sphere
-    return generate_sphere(1, target_order,
-            uniform_refinement_rounds=refinement_increment)
-
-
-class StarfishGeometry:
-    def __init__(self, n_arms=5, amplitude=0.25):
-        self.n_arms = n_arms
-        self.amplitude = amplitude
-
-    @property
-    def mesh_name(self):
-        return "%d-starfish-%s" % (
-                self.n_arms,
-                self.amplitude)
-
-    dim = 2
-
-    resolutions = [30, 50, 70, 90]
-
-    def get_mesh(self, nelements, target_order):
-        return mgen.make_curve_mesh(
-                mgen.NArmedStarfish(self.n_arms, self.amplitude),
-                np.linspace(0, 1, nelements+1),
-                target_order)
-
-
-class WobblyCircleGeometry:
-    dim = 2
-    mesh_name = "wobbly-circle"
-
-    resolutions = [2000, 3000, 4000]
-
-    def get_mesh(self, resolution, target_order):
-        return mgen.make_curve_mesh(
-                mgen.WobblyCircle.random(30, seed=30),
-                np.linspace(0, 1, resolution+1),
-                target_order)
-
-
-class SphereGeometry:
-    mesh_name = "sphere"
-    dim = 3
-
+class SphereTestCase(ied.SphereTestCase):
     resolutions = [0, 1]
 
-    def get_mesh(self, resolution, tgt_order):
-        return get_sphere_mesh(resolution, tgt_order)
+
+class QuadSphereTestCase(ied.QuadSpheroidTestCase):
+    name = "sphere-quad"
+    aspect_ratio = 1
+    resolutions = [0, 1]
 
 
 class GreenExpr:
     zero_op_name = "green"
+    order_drop = 0
 
     def get_zero_op(self, kernel, **knl_kwargs):
-
         u_sym = sym.var("u")
         dn_u_sym = sym.var("dn_u")
 
@@ -117,11 +76,10 @@ class GreenExpr:
             - sym.D(kernel, u_sym, qbx_forced_limit="avg", **knl_kwargs)
             - 0.5*u_sym)
 
-    order_drop = 0
-
 
 class GradGreenExpr:
     zero_op_name = "grad_green"
+    order_drop = 1
 
     def get_zero_op(self, kernel, **knl_kwargs):
         d = kernel.dim
@@ -137,11 +95,10 @@ class GradGreenExpr:
                 - 0.5*grad_u_sym
                 ).as_vector()
 
-    order_drop = 1
-
 
 class ZeroCalderonExpr:
     zero_op_name = "calderon"
+    order_drop = 1
 
     def get_zero_op(self, kernel, **knl_kwargs):
         assert isinstance(kernel, LaplaceKernel)
@@ -155,11 +112,9 @@ class ZeroCalderonExpr:
         Sp = partial(sym.Sp, qbx_forced_limit="avg")
 
         return (
-                    -Dp(kernel, S(kernel, u_sym))
-                    - 0.25*u_sym + Sp(kernel, Sp(kernel, u_sym))
-                    )
-
-    order_drop = 1
+                -Dp(kernel, S(kernel, u_sym))
+                - 0.25*u_sym + Sp(kernel, Sp(kernel, u_sym))
+                )
 
 
 class StaticTestCase:
@@ -169,7 +124,7 @@ class StaticTestCase:
 
 class StarfishGreenTest(StaticTestCase):
     expr = GreenExpr()
-    geometry = StarfishGeometry()
+    geometry = ied.StarfishTestCase()
     k = 0
     qbx_order = 5
     fmm_order = 15
@@ -183,7 +138,7 @@ class StarfishGreenTest(StaticTestCase):
 
 class WobblyCircleGreenTest(StaticTestCase):
     expr = GreenExpr()
-    geometry = WobblyCircleGeometry()
+    geometry = ied.WobbleCircleTestCase()
     k = 0
     qbx_order = 3
     fmm_order = 10
@@ -195,7 +150,7 @@ class WobblyCircleGreenTest(StaticTestCase):
 
 class SphereGreenTest(StaticTestCase):
     expr = GreenExpr()
-    geometry = SphereGeometry()
+    geometry = SphereTestCase()
     k = 0
     qbx_order = 3
     fmm_order = 10
@@ -214,27 +169,33 @@ class DynamicTestCase:
         self.geometry = geometry
         self.expr = expr
         self.k = k
-        self.qbx_order = 5 if geometry.dim == 2 else 3
+        self.qbx_order = 5 if geometry.ambient_dim == 2 else 3
         self.fmm_backend = fmm_backend
 
-        if geometry.dim == 2:
+        if geometry.ambient_dim == 2:
             order_bump = 15
-        elif geometry.dim == 3:
+        elif geometry.ambient_dim == 3:
             order_bump = 8
+        else:
+            raise ValueError(f"unsupported dimension: {geometry.ambient_dim}")
 
         if fmm_order is None:
             self.fmm_order = self.qbx_order + order_bump
         else:
             self.fmm_order = fmm_order
 
+    @property
+    def resolutions(self):
+        return self.geometry.resolutions
+
     def check(self):
         from warnings import warn
-        if (self.geometry.mesh_name == "sphere"
+        if (self.geometry.name == "sphere"
                 and self.k != 0
                 and self.fmm_backend == "sumpy"):
             warn("both direct eval and generating the FMM kernels are too slow")
 
-        if (self.geometry.mesh_name == "sphere"
+        if (self.geometry.name == "sphere"
                 and self.expr.zero_op_name == "grad_green"):
             warn("does not achieve sufficient precision")
 
@@ -244,7 +205,7 @@ class DynamicTestCase:
 
 @pytest.mark.slowtest
 @pytest.mark.parametrize("case", [
-        DynamicTestCase(SphereGeometry(), GreenExpr(), 0),
+        DynamicTestCase(SphereTestCase(), GreenExpr(), 0),
 ])
 def test_identity_convergence_slow(actx_factory, case):
     test_identity_convergence(actx_factory, case)
@@ -252,18 +213,22 @@ def test_identity_convergence_slow(actx_factory, case):
 
 @pytest.mark.parametrize("case", [
         # 2d
-        DynamicTestCase(StarfishGeometry(), GreenExpr(), 0),
-        DynamicTestCase(StarfishGeometry(), GreenExpr(), 1.2),
-        DynamicTestCase(StarfishGeometry(), GradGreenExpr(), 0),
-        DynamicTestCase(StarfishGeometry(), GradGreenExpr(), 1.2),
-        DynamicTestCase(StarfishGeometry(), ZeroCalderonExpr(), 0),
+        DynamicTestCase(ied.StarfishTestCase(), GreenExpr(), 0),
+        DynamicTestCase(ied.StarfishTestCase(), GreenExpr(), 1.2),
+        DynamicTestCase(ied.StarfishTestCase(), GradGreenExpr(), 0),
+        DynamicTestCase(ied.StarfishTestCase(), GradGreenExpr(), 1.2),
+        DynamicTestCase(ied.StarfishTestCase(), ZeroCalderonExpr(), 0),
         # test target derivatives with direct evaluation
-        DynamicTestCase(StarfishGeometry(), ZeroCalderonExpr(), 0, fmm_order=False),
-        DynamicTestCase(StarfishGeometry(), GreenExpr(), 0, fmm_backend="fmmlib"),
-        DynamicTestCase(StarfishGeometry(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
+        DynamicTestCase(
+            ied.StarfishTestCase(), ZeroCalderonExpr(), 0, fmm_order=False),
+        DynamicTestCase(
+            ied.StarfishTestCase(), GreenExpr(), 0, fmm_backend="fmmlib"),
+        DynamicTestCase(
+            ied.StarfishTestCase(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
         # 3d
-        DynamicTestCase(SphereGeometry(), GreenExpr(), 0, fmm_backend="fmmlib"),
-        DynamicTestCase(SphereGeometry(), GreenExpr(), 1.2, fmm_backend="fmmlib")
+        DynamicTestCase(SphereTestCase(), GreenExpr(), 0, fmm_backend="fmmlib"),
+        DynamicTestCase(SphereTestCase(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
+        DynamicTestCase(QuadSphereTestCase(), GreenExpr(), 0, fmm_backend="fmmlib"),
 ])
 def test_identity_convergence(actx_factory,  case, visualize=False):
     logging.basicConfig(level=logging.INFO)
@@ -281,10 +246,7 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
     from pytools.convergence import EOCRecorder
     eoc_rec = EOCRecorder()
 
-    for resolution in (
-            getattr(case, "resolutions", None)
-            or case.geometry.resolutions
-            ):
+    for resolution in case.resolutions:
         mesh = case.geometry.get_mesh(resolution, target_order)
         if mesh is None:
             break
@@ -302,12 +264,11 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
 
         from meshmode.discretization import Discretization
         from meshmode.discretization.poly_element import \
-                InterpolatoryQuadratureSimplexGroupFactory
-        from pytential.qbx import QBXLayerPotentialSource
+                InterpolatoryQuadratureGroupFactory
         pre_density_discr = Discretization(
-                actx, mesh,
-                InterpolatoryQuadratureSimplexGroupFactory(target_order))
+                actx, mesh, InterpolatoryQuadratureGroupFactory(target_order))
 
+        from pytential.qbx import QBXLayerPotentialSource
         qbx = QBXLayerPotentialSource(
                 pre_density_discr, 4*target_order,
                 case.qbx_order,
@@ -328,12 +289,13 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
         # {{{ compute values of a solution to the PDE
 
         density_discr = places.get_discretization(places.auto_source.geometry)
+        ambient_dim = places.ambient_dim
 
-        from meshmode.dof_array import flatten, unflatten
-        nodes_host = [actx.to_numpy(axis)
-                for axis in flatten(thaw(density_discr.nodes(), actx))]
+        nodes_host = actx.to_numpy(
+                flatten(density_discr.nodes(), actx)
+                ).reshape(ambient_dim, -1)
         normal = bind(places, sym.normal(d))(actx).as_vector(object)
-        normal_host = [actx.to_numpy(axis)for axis in flatten(normal)]
+        normal_host = actx.to_numpy(flatten(normal, actx)).reshape(ambient_dim, -1)
 
         if k != 0:
             if d == 2:
@@ -369,13 +331,14 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
 
         # }}}
 
-        u_dev = unflatten(actx, density_discr, actx.from_numpy(u))
-        dn_u_dev = unflatten(actx, density_discr, actx.from_numpy(dn_u))
-        from pytools.obj_array import make_obj_array, obj_array_vectorize
-        grad_u_dev = unflatten(actx, density_discr,
-                obj_array_vectorize(actx.from_numpy, make_obj_array(grad_u)))
+        u_dev = unflatten(
+                normal[0], actx.from_numpy(u), actx, strict=False)
+        dn_u_dev = unflatten(
+                normal[0], actx.from_numpy(dn_u), actx, strict=False)
+        grad_u_dev = unflatten(
+                normal, actx.from_numpy(grad_u.ravel()), actx, strict=False)
 
-        key = (case.qbx_order, case.geometry.mesh_name, resolution,
+        key = (case.qbx_order, case.geometry.name, resolution,
                 case.expr.zero_op_name)
 
         bound_op = bind(places, case.expr.get_zero_op(k_sym, **knl_kwargs))

@@ -23,14 +23,13 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import pyopencl as cl
-import pyopencl.array  # noqa
 
 import loopy as lp
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 
 from pytools import memoize_method
-from arraycontext import PyOpenCLArrayContext, thaw
+from arraycontext import PyOpenCLArrayContext, flatten, unflatten
+from meshmode.dof_array import DOFArray
 
 from boxtree.tools import DeviceDataRecord
 from pytential.source import LayerPotentialSourceBase
@@ -44,11 +43,11 @@ __doc__ = """
 """
 
 
-# {{{ (panel-based) unregularized layer potential source
+# {{{ (element-based) unregularized layer potential source
 
 class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     """A source discretization for a layer potential discretized with a Nyström
-    method that uses panel-based quadrature and does not modify the kernel.
+    method that uses element-based quadrature and does not modify the kernel.
 
     .. attribute:: fmm_level_to_order
     """
@@ -141,16 +140,16 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             insn, bound_expr, evaluate):
         kernel_args = {}
 
-        from meshmode.dof_array import flatten, unflatten
-
         for arg_name, arg_expr in insn.kernel_arguments.items():
-            kernel_args[arg_name] = flatten(evaluate(arg_expr))
+            kernel_args[arg_name] = flatten(
+                    evaluate(arg_expr), actx, leaf_class=DOFArray
+                    )
 
         from pytential import bind, sym
         waa = bind(bound_expr.places, sym.weights_and_area_elements(
             self.ambient_dim, dofdesc=insn.source))(actx)
         strengths = [waa * evaluate(density) for density in insn.densities]
-        flat_strengths = [flatten(strength) for strength in strengths]
+        flat_strengths = [flatten(strength, actx) for strength in strengths]
 
         results = []
         p2p = None
@@ -164,14 +163,17 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     target_kernels=insn.target_kernels)
 
             evt, output_for_each_kernel = p2p(actx.queue,
-                    flatten(thaw(target_discr.nodes(), actx), strict=False),
-                    flatten(thaw(self.density_discr.nodes(), actx)),
-                    flat_strengths, **kernel_args)
+                    targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
+                    sources=flatten(
+                        self.density_discr.nodes(), actx, leaf_class=DOFArray
+                        ),
+                    strength=flat_strengths, **kernel_args)
 
             from meshmode.discretization import Discretization
             result = output_for_each_kernel[o.target_kernel_index]
             if isinstance(target_discr, Discretization):
-                result = unflatten(actx, target_discr, result)
+                template_ary = actx.thaw(target_discr.nodes()[0])
+                result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))
 
@@ -181,7 +183,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
     # {{{ fmm-based execution
 
     @memoize_method
-    def expansion_wrangler_code_container(self, fmm_kernel, target_kernels,
+    def _tree_indep_data_for_wrangler(self, fmm_kernel, target_kernels,
             source_kernels):
         mpole_expn_class = \
                 self.expansion_factory.get_multipole_expansion_class(fmm_kernel)
@@ -192,8 +194,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         fmm_mpole_factory = partial(mpole_expn_class, fmm_kernel)
         fmm_local_factory = partial(local_expn_class, fmm_kernel)
 
-        from sumpy.fmm import SumpyExpansionWranglerCodeContainer
-        return SumpyExpansionWranglerCodeContainer(
+        from sumpy.fmm import SumpyTreeIndependentDataForWrangler
+        return SumpyTreeIndependentDataForWrangler(
                 self.cl_context,
                 fmm_mpole_factory,
                 fmm_local_factory,
@@ -240,8 +242,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             self.ambient_dim, dofdesc=insn.source))(actx)
         strengths = [waa * evaluate(density) for density in insn.densities]
 
-        from meshmode.dof_array import flatten
-        flat_strengths = [flatten(strength) for strength in strengths]
+        flat_strengths = [flatten(strength, actx) for strength in strengths]
 
         fmm_kernel = self.get_fmm_kernel(insn.target_kernels)
         output_and_expansion_dtype = (
@@ -253,22 +254,23 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                     geo_data.tree().user_source_ids, insn.kernel_arguments,
                     evaluate))
 
-        wrangler = self.expansion_wrangler_code_container(
+        tree_indep = self._tree_indep_data_for_wrangler(
                 fmm_kernel, target_kernels=insn.target_kernels,
-                source_kernels=insn.source_kernels).get_wrangler(
-                    actx.queue,
-                    geo_data.tree(),
-                    output_and_expansion_dtype,
-                    self.fmm_level_to_order,
-                    source_extra_kwargs=source_extra_kwargs,
-                    kernel_extra_kwargs=kernel_extra_kwargs)
+                source_kernels=insn.source_kernels)
+
+        from sumpy.fmm import SumpyExpansionWrangler
+        wrangler = SumpyExpansionWrangler(
+                tree_indep, geo_data.traversal(),
+                output_and_expansion_dtype,
+                self.fmm_level_to_order,
+                source_extra_kwargs=source_extra_kwargs,
+                kernel_extra_kwargs=kernel_extra_kwargs)
 
         # }}}
 
         from boxtree.fmm import drive_fmm
         all_potentials_on_every_tgt = drive_fmm(
-                geo_data.traversal(), wrangler, flat_strengths,
-                timing_data=None)
+                wrangler, flat_strengths, timing_data=None)
 
         # {{{ postprocess fmm
 
@@ -284,8 +286,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
-                from meshmode.dof_array import unflatten
-                result = unflatten(actx, target_discr, result)
+                template_ary = actx.thaw(target_discr.nodes()[0])
+                result = unflatten(template_ary, result, actx, strict=False)
 
             results.append((o.name, result))
 
@@ -385,11 +387,11 @@ class _FMMGeometryData:
 
     @memoize_method
     def traversal(self):
-        with cl.CommandQueue(self.cl_context) as queue:
-            trav, _ = self.code_getter.build_traversal(queue, self.tree(),
-                    debug=self.debug)
+        actx = self.array_context
+        trav, _ = self.code_getter.build_traversal(
+                actx.queue, self.tree(), debug=self.debug)
 
-            return trav
+        return trav.with_queue(None)
 
     @memoize_method
     def tree(self):
@@ -403,21 +405,21 @@ class _FMMGeometryData:
         lpot_src = self.lpot_source
         target_info = self.target_info()
 
-        queue = self.array_context.queue
+        actx = self.array_context
 
         nsources = lpot_src.density_discr.ndofs
         nparticles = nsources + target_info.ntargets
 
-        refine_weights = cl.array.zeros(queue, nparticles, dtype=np.int32)
+        refine_weights = actx.zeros(nparticles, dtype=np.int32)
         refine_weights[:nsources] = 1
         refine_weights.finish()
 
         MAX_LEAF_REFINE_WEIGHT = 32  # noqa
 
-        from meshmode.dof_array import flatten
-        tree, _ = code_getter.build_tree(queue,
+        tree, _ = code_getter.build_tree(actx.queue,
                 particles=flatten(
-                    thaw(lpot_src.density_discr.nodes(), self.array_context)),
+                    lpot_src.density_discr.nodes(), actx, leaf_class=DOFArray
+                    ),
                 targets=target_info.targets,
                 max_leaf_refine_weight=MAX_LEAF_REFINE_WEIGHT,
                 refine_weights=refine_weights,
@@ -439,20 +441,19 @@ class _FMMGeometryData:
             target_discr_starts.append(ntargets)
             ntargets += target_discr.ndofs
 
+        actx = self.array_context
         target_discr_starts.append(ntargets)
 
-        targets = self.array_context.empty(
+        targets = actx.empty(
                 (lpot_src.ambient_dim, ntargets),
                 self.coord_dtype)
 
-        from meshmode.dof_array import flatten
         for start, target_discr in zip(target_discr_starts, target_discrs):
-            code_getter.copy_targets_kernel()(
-                    self.array_context.queue,
+            code_getter.copy_targets_kernel()(actx.queue,
                     targets=targets[:, start:start+target_discr.ndofs],
                     points=flatten(
-                        thaw(target_discr.nodes(), self.array_context),
-                        strict=False)
+                        target_discr.nodes(), actx, leaf_class=DOFArray
+                        ),
                     )
 
         return _TargetInfo(

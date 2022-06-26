@@ -929,7 +929,7 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
 
         if not isinstance(geo_data, ToHostTransferredGeoDataWrapper):
             assert isinstance(geo_data, QBXFMMGeometryData)
-            geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+            geo_data = ToHostTransferredGeoDataWrapper(geo_data)
 
         return AbstractQBXCostModel.qbx_cost_per_box(
             self, queue, geo_data, kernel, kernel_arguments, calibration_params
@@ -944,8 +944,7 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
 
         if not isinstance(geo_data, ToHostTransferredGeoDataWrapper):
             assert isinstance(geo_data, QBXFMMGeometryData)
-            geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
-            queue.finish()
+            geo_data = ToHostTransferredGeoDataWrapper(geo_data)
 
         return AbstractQBXCostModel.qbx_cost_per_stage(
             self, queue, geo_data, kernel, kernel_arguments, calibration_params

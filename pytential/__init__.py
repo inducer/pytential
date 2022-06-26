@@ -24,7 +24,7 @@ import numpy as np
 
 import pytential.symbolic.primitives as sym
 from pytential.symbolic.execution import bind
-from pytential.symbolic.execution import GeometryCollection
+from pytential.collection import GeometryCollection
 
 from pytools import memoize_on_first_arg
 

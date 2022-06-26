@@ -3,6 +3,11 @@ Symbolic operator representation
 
 Based on :mod:`pymbolic`.
 
+DOF Description
+---------------
+
+.. automodule:: pytential.symbolic.dof_desc
+
 Basic objects
 -------------
 
@@ -12,8 +17,6 @@ Binding an operator to a discretization
 ---------------------------------------
 
 .. currentmodule:: pytential
-
-.. autoclass:: GeometryCollection
 
 .. autofunction:: bind
 
@@ -34,6 +37,11 @@ Stokes' equations
 ^^^^^^^^^^^^^^^^^
 
 .. automodule:: pytential.symbolic.stokes
+
+Scalar Beltrami equations
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: pytential.symbolic.pde.beltrami
 
 Internal affairs
 ----------------

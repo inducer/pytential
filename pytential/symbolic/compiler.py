@@ -20,69 +20,83 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import numpy as np  # noqa
-from pytools import Record, memoize_method
-from pymbolic.primitives import cse_scope
-from pytential.symbolic.mappers import IdentityMapper
+from dataclasses import dataclass
 from functools import reduce
+from typing import Any, Callable, Dict, Hashable, List, Optional, Set
+
+import numpy as np
+
+from pymbolic.primitives import cse_scope, Expression, Variable
+from pytools import memoize_method
+from sumpy.kernel import Kernel
+
+from pytential.symbolic.primitives import DOFDescriptor, IntG
+from pytential.symbolic.mappers import IdentityMapper, DependencyMapper
 
 
-# {{{ instructions ------------------------------------------------------------
+# {{{ instructions
 
-class Instruction(Record):
-    __slots__ = ["dep_mapper_factory"]
-    priority = 0
+@dataclass(frozen=True, eq=False)
+class Instruction:
+    """
+    .. attribute:: names
+    .. attribute:: exprs
+    .. attribute:: priority
+    .. attribute:: dep_mapper_factory
+    """
+    names: List[str]
+    exprs: List[Expression]
+    dep_mapper_factory: Callable[[], DependencyMapper]
+    priority: int
 
-    def get_assignees(self):
-        raise NotImplementedError(f"no get_assignees in {self.__class__}")
+    def get_assignees(self) -> Set[str]:
+        raise NotImplementedError(
+                f"get_assignees for '{self.__class__.__name__}'")
 
-    def get_dependencies(self):
-        raise NotImplementedError(f"no get_dependencies in {self.__class__}")
+    def get_dependencies(self) -> Set[Expression]:
+        raise NotImplementedError(
+                f"get_dependencies for '{self.__class__.__name__}'")
 
     def __str__(self):
         raise NotImplementedError
 
 
+@dataclass(frozen=True, eq=False)
 class Assign(Instruction):
-    # attributes: names, exprs, do_not_return, priority
-    #
-    # do_not_return is a list of bools indicating whether the corresponding
-    # entry in names and exprs describes an expression that is not needed
-    # beyond this assignment
+    """
+    .. attribute:: do_not_return
 
-    comment = ""
+        A list of bools indicating whether the corresponding entry in
+        :attr:`Instructio.names` and :attr:`Instruction.exprs` describes an
+        expression that is not needed beyond this assignment.
+    """
 
-    def __init__(self, names, exprs, **kwargs):
-        Instruction.__init__(self, names=names, exprs=exprs, **kwargs)
+    do_not_return: Optional[List[bool]] = None
+    comment: str = ""
 
-        if not hasattr(self, "do_not_return"):
-            self.do_not_return = [False] * len(names)
+    def __post_init__(self):
+        if self.do_not_return is None:
+            object.__setattr__(self, "do_not_return", [False] * len(self.names))
 
     def get_assignees(self):
         return set(self.names)
 
+    @memoize_method
     def get_dependencies(self):
-        try:
-            return self._dependencies
-        except Exception:
-            # arg is include_subscripts
-            dep_mapper = self.dep_mapper_factory()
+        # arg is include_subscripts
+        dep_mapper = self.dep_mapper_factory()
 
-            from operator import or_
-            deps = reduce(
-                    or_, (dep_mapper(expr)
-                    for expr in self.exprs))
+        from operator import or_
+        deps = reduce(or_, (dep_mapper(expr) for expr in self.exprs))
 
-            from pymbolic.primitives import Variable
-            deps -= {Variable(name) for name in self.names}
+        from pymbolic.primitives import Variable
+        deps -= {Variable(name) for name in self.names}
 
-            self._dependencies = deps
-
-            return deps
+        return deps
 
     def __str__(self):
         comment = self.comment
+
         if len(self.names) == 1:
             if comment:
                 comment = f"/* {comment} */ "
@@ -102,6 +116,7 @@ class Assign(Instruction):
 
                 lines.append(f"  {n} <{dnr_indicator}- {e}")
             lines.append("}")
+
             return "\n".join(lines)
 
     def __hash__(self):
@@ -112,7 +127,8 @@ class Assign(Instruction):
 
 # {{{ layer pot instruction
 
-class PotentialOutput(Record):
+@dataclass(frozen=True)
+class PotentialOutput:
     """
     .. attribute:: name
 
@@ -124,44 +140,55 @@ class PotentialOutput(Record):
 
     .. attribute:: qbx_forced_limit
 
-        +1 if the output is required to originate from a QBX center on the "+" side
-        of the boundary. -1 for the other side. 0 if either side of center (or no
-        center at all) is acceptable.
+        ``+1`` if the output is required to originate from a QBX center on the
+        "+" side of the boundary. ``-1`` for the other side. ``0`` if either
+        side of center (or no center at all) is acceptable.
     """
 
+    name: str
+    target_kernel_index: int
+    target_name: DOFDescriptor
+    qbx_forced_limit: int
 
+
+@dataclass(frozen=True, eq=False)
 class ComputePotentialInstruction(Instruction):
     """
     .. attribute:: outputs
 
         A list of :class:`PotentialOutput` instances
-        The entries in the list correspond to :attr:`names`.
+        The entries in the list correspond to :attr:`Instruction.names`.
 
     .. attribute:: target_kernels
 
-        a list of :class:`sumpy.kernel.Kernel` instances, indexed by
+        A list of :class:`sumpy.kernel.Kernel` instances, indexed by
         :attr:`PotentialOutput.target_kernel_index`.
 
     .. attribute:: kernel_arguments
 
-        a dictionary mapping arg names to kernel arguments
+        A dictionary mapping arg names to kernel arguments
 
     .. attribute:: source_kernels
 
-        a list of :class:`sumpy.kernel.Kernel` instances with only source
+        A list of :class:`sumpy.kernel.Kernel` instances with only source
         derivatives and no target derivatives. See
         :class:`pytential.symbolic.primitives.IntG` docstring for details.
 
     .. attribute:: densities
 
-        a list of densities with the same number of entries as
+        A list of densities with the same number of entries as
         :attr:`source_kernels`. See the :class:`pytential.symbolic.primitives.IntG`
         docstring for details.
 
     .. attribute:: source
-
-    .. attribute:: priority
     """
+
+    outputs: List[PotentialOutput]
+    target_kernels: List[Kernel]
+    kernel_arguments: Dict[str, Any]
+    source_kernels: List[Kernel]
+    densities: List[Expression]
+    source: DOFDescriptor
 
     def get_assignees(self):
         return {o.name for o in self.outputs}
@@ -239,8 +266,9 @@ class ComputePotentialInstruction(Instruction):
 
 # {{{ graphviz/dot dataflow graph drawing
 
-def dot_dataflow_graph(code, max_node_label_length=30,
-        label_wrap_width=50):
+def dot_dataflow_graph(code: "Code",
+        max_node_label_length: int = 30,
+        label_wrap_width: int = 50) -> str:
     origins = {}
     node_names = {}
 
@@ -300,7 +328,7 @@ def dot_dataflow_graph(code, max_node_label_length=30,
 # {{{ code representation
 
 class Code:
-    def __init__(self, instructions, result):
+    def __init__(self, instructions: List[Instruction], result: Variable) -> None:
         self.instructions = instructions
         self.result = result
         self.last_schedule = None
@@ -357,7 +385,6 @@ class Code:
             # not consist of just variables.
 
             for var in dm(result_expr):
-                from pymbolic.primitives import Variable
                 assert isinstance(var, Variable)
                 discardable_vars.discard(var.name)
 
@@ -437,20 +464,22 @@ class Code:
 # {{{ compiler
 
 class OperatorCompiler(IdentityMapper):
-    def __init__(self, places, prefix="_expr",
-            max_vectors_in_batch_expr=None):
-        IdentityMapper.__init__(self)
+    def __init__(self,
+            places,
+            prefix: str = "_expr",
+            max_vectors_in_batch_expr: Optional[int] = None) -> None:
+        super().__init__()
+
         self.places = places
         self.prefix = prefix
-
         self.max_vectors_in_batch_expr = max_vectors_in_batch_expr
 
-        self.code = []
-        self.expr_to_var = {}
+        self.code: List[Instruction] = []
+        self.expr_to_var: Dict[Expression, Variable] = {}
+        self.assigned_names: Set[str] = set()
+        self.group_to_operators: Dict[Hashable, Set[IntG]] = {}
 
-        self.assigned_names = set()
-
-    def op_group_features(self, expr):
+    def op_group_features(self, expr) -> Hashable:
         from pytential.symbolic.primitives import hashable_kernel_args
         lpot_source = self.places.get_geometry(expr.source.geometry)
         return (
@@ -458,15 +487,16 @@ class OperatorCompiler(IdentityMapper):
                 + hashable_kernel_args(expr.kernel_arguments))
 
     @memoize_method
-    def dep_mapper_factory(self, include_subscripts=False):
-        from pytential.symbolic.mappers import DependencyMapper
-        self.dep_mapper = DependencyMapper(
-                #include_operator_bindings=False,
+    def dep_mapper_factory(self, include_subscripts: bool = False):
+        return DependencyMapper(
+                # include_operator_bindings=False,
                 include_lookups=False,
                 include_subscripts=include_subscripts,
                 include_calls="descend_args")
 
-        return self.dep_mapper
+    @property
+    def dep_mapper(self):
+        return self.dep_mapper_factory()
 
     # {{{ top-level driver
 
@@ -474,8 +504,6 @@ class OperatorCompiler(IdentityMapper):
         # {{{ collect operators by operand
 
         from pytential.symbolic.mappers import OperatorCollector
-        from pytential.symbolic.primitives import IntG
-
         operators = [
                 op
                 for op in OperatorCollector()(expr)
@@ -490,7 +518,7 @@ class OperatorCompiler(IdentityMapper):
 
         # Traverse the expression, generate code.
 
-        result = IdentityMapper.__call__(self, expr)
+        result = super().__call__(expr)
 
         # Put the toplevel expressions into variables as well.
 
@@ -503,18 +531,18 @@ class OperatorCompiler(IdentityMapper):
 
     # {{{ variables and names
 
-    def get_var_name(self, prefix=None):
-        def generate_suffixes():
+    def get_var_name(self, prefix: Optional[str] = None) -> str:
+        def generate_suffixes() -> str:
             yield ""
             i = 2
             while True:
                 yield f"_{i}"
                 i += 1
 
-        def generate_plain_names():
+        def generate_plain_names() -> str:
             i = 0
             while True:
-                yield self.prefix + str(i)
+                yield f"{self.prefix}{i}"
                 i += 1
 
         if prefix is None:
@@ -523,20 +551,25 @@ class OperatorCompiler(IdentityMapper):
                     break
         else:
             for suffix in generate_suffixes():
-                name = prefix + suffix
+                name = f"{prefix}{suffix}"
                 if name not in self.assigned_names:
                     break
 
         self.assigned_names.add(name)
         return name
 
-    def make_assign(self, name, expr, priority):
-        return Assign(names=[name], exprs=[expr],
+    def make_assign(
+            self, name: str, expr: Expression, priority: int,
+            ) -> Assign:
+        return Assign(
+                names=[name], exprs=[expr],
                 dep_mapper_factory=self.dep_mapper_factory,
                 priority=priority)
 
-    def assign_to_new_var(self, expr, priority=0, prefix=None):
-        from pymbolic.primitives import Variable, Subscript
+    def assign_to_new_var(
+            self, expr: Expression, priority: int = 0, prefix: Optional[str] = None,
+            ) -> Variable:
+        from pymbolic.primitives import Subscript
 
         # Observe that the only things that can be legally subscripted
         # are variables. All other expressions are broken down into
@@ -622,6 +655,10 @@ class OperatorCompiler(IdentityMapper):
 
             self.code.append(
                     ComputePotentialInstruction(
+                        # NOTE: these are set to None because they are deduced
+                        # from `outputs` in `get_assignees` and `get_dependencies`
+                        names=None,
+                        exprs=None,
                         outputs=outputs,
                         target_kernels=tuple(target_kernels),
                         kernel_arguments=kernel_arguments,

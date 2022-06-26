@@ -24,7 +24,7 @@ import pytest
 
 import numpy as np
 
-from arraycontext import thaw
+from arraycontext import flatten
 from pytential import GeometryCollection, bind, sym
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
@@ -171,7 +171,7 @@ def test_target_specific_qbx(actx_factory, op, helmholtz_k, qbx_order):
             kernel_length_scale=kernel_length_scale)
 
     density_discr = places.get_discretization("qbx")
-    nodes = thaw(density_discr.nodes(), actx)
+    nodes = actx.thaw(density_discr.nodes())
     u_dev = actx.np.sin(nodes[0])
 
     if helmholtz_k == 0:
@@ -194,12 +194,15 @@ def test_target_specific_qbx(actx_factory, op, helmholtz_k, qbx_order):
 
     expr = op(kernel, u_sym, qbx_forced_limit=-1, **kernel_kwargs)
 
-    from meshmode.dof_array import flatten
     bound_op = bind(places, expr)
-    pot_ref = actx.to_numpy(flatten(bound_op(actx, u=u_dev, k=helmholtz_k)))
+    pot_ref = actx.to_numpy(
+            flatten(bound_op(actx, u=u_dev, k=helmholtz_k), actx)
+            )
 
     bound_op = bind(places, expr, auto_where="qbx_target_specific")
-    pot_tsqbx = actx.to_numpy(flatten(bound_op(actx, u=u_dev, k=helmholtz_k)))
+    pot_tsqbx = actx.to_numpy(
+            flatten(bound_op(actx, u=u_dev, k=helmholtz_k), actx)
+            )
 
     assert np.allclose(pot_tsqbx, pot_ref, atol=1e-13, rtol=1e-13)
 

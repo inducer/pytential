@@ -26,6 +26,7 @@ from functools import partial
 from collections import OrderedDict
 
 import numpy as np
+
 from pymbolic.primitives import (  # noqa: F401,N813
         Expression as ExpressionBase, Variable as var,
         cse_scope as cse_scope_base,
@@ -34,13 +35,21 @@ from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (  # noqa: F401
         NablaComponent, DerivativeSource, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
-from pytools.obj_array import make_obj_array, flat_obj_array  # noqa: F401
-from pytools import single_valued
 
+from pytools.obj_array import make_obj_array, flat_obj_array    # noqa: F401
+from pytools import single_valued, MovedFunctionDeprecationWrapper
+
+from pytential.symbolic.dof_desc import (   # noqa: F401
+        DEFAULT_SOURCE, DEFAULT_TARGET,
+        QBX_SOURCE_STAGE1, QBX_SOURCE_STAGE2, QBX_SOURCE_QUAD_STAGE2,
+        GRANULARITY_NODE, GRANULARITY_CENTER, GRANULARITY_ELEMENT,
+        DOFDescriptor, DOFDescriptorLike,
+        as_dofdesc,
+        )
 
 __doc__ = """
 .. |dofdesc-blurb| replace:: A
-    :class:`~pytential.symbolic.primitives.DOFDescriptor` or a symbolic
+    :class:`~pytential.symbolic.dof_desc.DOFDescriptor` or a symbolic
     name for a geometric object (such as a
     :class:`~meshmode.discretization.Discretization`).
 
@@ -78,22 +87,10 @@ associated with a :class:`~meshmode.discretization.Discretization`, then
 :class:`~meshmode.dof_array.DOFArray` is used and otherwise
 :class:`~pyopencl.array.Array` is used.
 
-DOF Description
-^^^^^^^^^^^^^^^
+Diagnostics
+^^^^^^^^^^^
 
-.. autoclass:: DEFAULT_SOURCE
-.. autoclass:: DEFAULT_TARGET
-
-.. autoclass:: QBX_SOURCE_STAGE1
-.. autoclass:: QBX_SOURCE_STAGE2
-.. autoclass:: QBX_SOURCE_QUAD_STAGE2
-
-.. autoclass:: GRANULARITY_NODE
-.. autoclass:: GRANULARITY_CENTER
-.. autoclass:: GRANULARITY_ELEMENT
-
-.. autoclass:: DOFDescriptor
-.. autofunction:: as_dofdesc
+.. autoclass:: ErrorExpression
 
 .. _placeholders:
 
@@ -137,6 +134,7 @@ Functions
 Discretization properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. autoclass:: IsShapeClass
 .. autoclass:: QWeight
 .. autofunction:: nodes
 .. autofunction:: parametrization_derivative
@@ -231,190 +229,6 @@ class _NoArgSentinel:
     pass
 
 
-# {{{ dof descriptors
-
-class DEFAULT_SOURCE:  # noqa: N801
-    pass
-
-
-class DEFAULT_TARGET:  # noqa: N801
-    pass
-
-
-class QBX_SOURCE_STAGE1:   # noqa: N801
-    """Symbolic identifier for the Stage 1 discretization of a
-    :class:`pytential.qbx.QBXLayerPotentialSource`.
-    """
-    pass
-
-
-class QBX_SOURCE_STAGE2:   # noqa: N801
-    """Symbolic identifier for the Stage 2 discretization of a
-    :class:`pytential.qbx.QBXLayerPotentialSource`.
-    """
-    pass
-
-
-class QBX_SOURCE_QUAD_STAGE2:   # noqa: N801
-    """Symbolic identifier for the upsampled Stage 2 discretization of a
-    :class:`pytential.qbx.QBXLayerPotentialSource`.
-    """
-    pass
-
-
-class GRANULARITY_NODE:     # noqa: N801
-    """DOFs are per node."""
-    pass
-
-
-class GRANULARITY_CENTER:   # noqa: N801
-    """DOFs interleaved per expansion center (two per node, one on each side)."""
-    pass
-
-
-class GRANULARITY_ELEMENT:  # noqa: N801
-    """DOFs per discretization element."""
-    pass
-
-
-class DOFDescriptor:
-    """A data structure specifying the meaning of a vector of degrees of freedom
-    that is handled by :mod:`pytential` (a "DOF vector"). In particular, using
-    :attr:`geometry`, this data structure describes the geometric object on which
-    the (scalar) function described by the DOF vector exists. Using
-    :attr:`granularity`, the data structure describes how the geometric object
-    is discretized (e.g. conventional nodal data, per-element scalars, etc.)
-
-    .. attribute:: geometry
-
-        An identifier for the geometry on which the DOFs exist. This can be a
-        simple string or any other hashable identifier for the geometric object.
-        The geometric objects are generally subclasses of
-        :class:`~pytential.source.PotentialSource`,
-        :class:`~pytential.target.TargetBase` or
-        :class:`~meshmode.discretization.Discretization`.
-
-    .. attribute:: discr_stage
-
-        Specific to a :class:`pytential.source.LayerPotentialSourceBase`,
-        this describes on which of the discretizations the
-        DOFs are defined. Can be one of :class:`QBX_SOURCE_STAGE1`,
-        :class:`QBX_SOURCE_STAGE2` or :class:`QBX_SOURCE_QUAD_STAGE2`.
-
-    .. attribute:: granularity
-
-        Describes the level of granularity of the DOF vector.
-        Can be one of :class:`GRANULARITY_NODE` (one DOF per node),
-        :class:`GRANULARITY_CENTER` (two DOFs per node, one per side) or
-        :class:`GRANULARITY_ELEMENT` (one DOF per element).
-    """
-
-    def __init__(self, geometry=None, discr_stage=None, granularity=None):
-        if granularity is None:
-            granularity = GRANULARITY_NODE
-
-        if not (discr_stage is None
-                or discr_stage == QBX_SOURCE_STAGE1
-                or discr_stage == QBX_SOURCE_STAGE2
-                or discr_stage == QBX_SOURCE_QUAD_STAGE2):
-            raise ValueError(f"unknown discr stage tag: '{discr_stage}'")
-
-        if not (granularity == GRANULARITY_NODE
-                or granularity == GRANULARITY_CENTER
-                or granularity == GRANULARITY_ELEMENT):
-            raise ValueError(f"unknown granularity: '{granularity}'")
-
-        self.geometry = geometry
-        self.discr_stage = discr_stage
-        self.granularity = granularity
-
-    def copy(self, geometry=None, discr_stage=_NoArgSentinel, granularity=None):
-        if isinstance(geometry, DOFDescriptor):
-            discr_stage = geometry.discr_stage \
-                    if discr_stage is _NoArgSentinel else discr_stage
-            geometry = geometry.geometry
-
-        return type(self)(
-                geometry=(self.geometry
-                    if geometry is None else geometry),
-                granularity=(self.granularity
-                    if granularity is None else granularity),
-                discr_stage=(self.discr_stage
-                    if discr_stage is _NoArgSentinel else discr_stage),
-                )
-
-    def to_stage1(self):
-        return self.copy(discr_stage=QBX_SOURCE_STAGE1)
-
-    def to_stage2(self):
-        return self.copy(discr_stage=QBX_SOURCE_STAGE2)
-
-    def to_quad_stage2(self):
-        return self.copy(discr_stage=QBX_SOURCE_QUAD_STAGE2)
-
-    def __hash__(self):
-        return hash((type(self),
-            self.geometry, self.discr_stage, self.granularity))
-
-    def __eq__(self, other):
-        return (type(self) is type(other)
-                and self.geometry == other.geometry
-                and self.discr_stage == other.discr_stage
-                and self.granularity == other.granularity)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __repr__(self):
-        discr_stage = self.discr_stage \
-                if self.discr_stage is None else self.discr_stage.__name__
-        granularity = self.granularity.__name__
-        return "{}(geometry={}, stage={}, granularity={})".format(
-                type(self).__name__, self.geometry, discr_stage, granularity)
-
-    def __str__(self):
-        name = []
-        if self.geometry is None:
-            name.append("?")
-        elif self.geometry == DEFAULT_SOURCE:
-            name.append("s")
-        elif self.geometry == DEFAULT_TARGET:
-            name.append("t")
-        else:
-            name.append(str(self.geometry))
-
-        if self.discr_stage == QBX_SOURCE_STAGE2:
-            name.append("stage2")
-        elif self.discr_stage == QBX_SOURCE_QUAD_STAGE2:
-            name.append("quads2")
-
-        if self.granularity == GRANULARITY_CENTER:
-            name.append("center")
-        elif self.granularity == GRANULARITY_ELEMENT:
-            name.append("panel")
-
-        return "/".join(name)
-
-
-def as_dofdesc(desc):
-    if isinstance(desc, DOFDescriptor):
-        return desc
-
-    if desc == QBX_SOURCE_STAGE1 \
-            or desc == QBX_SOURCE_STAGE2 \
-            or desc == QBX_SOURCE_QUAD_STAGE2:
-        return DOFDescriptor(discr_stage=desc)
-
-    if desc == GRANULARITY_NODE \
-            or desc == GRANULARITY_CENTER \
-            or desc == GRANULARITY_ELEMENT:
-        return DOFDescriptor(granularity=desc)
-
-    return DOFDescriptor(geometry=desc)
-
-# }}}
-
-
 class cse_scope(cse_scope_base):  # noqa: N801
     DISCRETIZATION = "pytential_discretization"
 
@@ -438,6 +252,23 @@ class Expression(ExpressionBase):
     def make_stringifier(self, originating_stringifier=None):
         from pytential.symbolic.mappers import StringifyMapper
         return StringifyMapper()
+
+
+class ErrorExpression(Expression):
+    """An expression that, if evaluated, causes an error with the supplied
+    *message*.
+
+    .. automethod:: __init__
+    """
+    init_arg_names = ("message",)
+
+    def __init__(self, message):
+        self.message = message
+
+    def __getinitargs__(self):
+        return (self.message,)
+
+    mapper_method = intern("map_error_expression")
 
 
 def make_sym_mv(name, num_components):
@@ -476,10 +307,20 @@ class NumpyMathFunction(Function):
 
 
 class CLMathFunction(NumpyMathFunction):
+    _np_to_cl_names = {
+        "arcsin": "asin",
+        "arccos": "acos",
+        "arctan": "atan",
+        "arctan2": "atan2",
+        "asinh": "arcsinh",
+        "acosh": "arccosh",
+        "atanh": "arctanh",
+    }
+
     def __call__(self, *args, **kwargs):
-        from warnings import warn
-        warn("CLMathFunction '{name}' is deprecated. Use NumpyMathFunction instead. "
-                "CLMathFunction will go away in 2022.",
+        cl_name = self._np_to_cl_names[self.name]
+        warn(f"'sym.{cl_name}' is deprecated. Use 'sym.{self.name}' instead. "
+                 "'sym.{cl_name}' will go away in 2022.",
                 DeprecationWarning, stacklevel=2)
 
         return super().__call__(*args, **kwargs)
@@ -522,9 +363,12 @@ exp = NumpyMathFunction("exp")
 log = NumpyMathFunction("log")
 
 
+# {{{ discretization properties
+
 class DiscretizationProperty(Expression):
-    """A quantity that depends exclusively on the discretization (and has no
-    further arguments.
+    """A quantity that depends exclusively on the discretization.
+
+    .. attribute:: dofdesc
     """
 
     init_arg_names = ("dofdesc",)
@@ -540,7 +384,25 @@ class DiscretizationProperty(Expression):
         return (self.dofdesc,)
 
 
-# {{{ discretization properties
+class IsShapeClass(DiscretizationProperty):
+    """A predicate that is *True* if the elements of the discretization have
+    a unique type that matches :attr:`shape`.
+
+    .. attribute:: shape
+
+        A :class:`modepy.Shape` subclass.
+    """
+    init_arg_names = ("shape", "dofdesc")
+
+    def __init__(self, shape, dofdesc) -> None:
+        super().__init__(dofdesc)
+        self.shape = shape
+
+    def __getinitargs__(self):
+        return (self.shape, self.dofdesc)
+
+    mapper_method = intern("map_is_shape_class")
+
 
 class QWeight(DiscretizationProperty):
     """Bare quadrature weights (without Jacobians)."""
@@ -743,14 +605,8 @@ def first_fundamental_form(ambient_dim, dim=None, dofdesc=None):
     if dim is None:
         dim = ambient_dim - 1
 
-    if not (ambient_dim == 3 and dim == 2):
-        raise NotImplementedError("only available for surfaces in 3D")
-
     pd_mat = parametrization_derivative_matrix(ambient_dim, dim, dofdesc)
-
-    return cse(
-            np.dot(pd_mat.T, pd_mat),
-            "fundform1")
+    return cse(np.dot(pd_mat.T, pd_mat), "fundform1")
 
 
 def second_fundamental_form(ambient_dim, dim=None, dofdesc=None):
@@ -814,7 +670,7 @@ def shape_operator(ambient_dim, dim=None, dofdesc=None):
             "shape_operator")
 
 
-def _panel_size(ambient_dim, dim=None, dofdesc=None):
+def _element_size(ambient_dim, dim=None, dofdesc=None):
     # A broken quasi-1D approximation of 1D element size. Do not use.
 
     if dim is None:
@@ -825,40 +681,78 @@ def _panel_size(ambient_dim, dim=None, dofdesc=None):
             * QWeight())**(1/dim)
 
 
+_panel_size = MovedFunctionDeprecationWrapper(_element_size)
+
+
 def _small_mat_inverse(mat):
     m, n = mat.shape
     if m != n:
-        raise ValueError("inverses only make sense for square matrices")
+        raise ValueError(
+                "inverses only make sense for square matrices: "
+                f"got a {m}x{n} matrix")
 
     if m == 1:
-        return make_obj_array([1/mat[0, 0]])
+        return np.array([[1/mat[0, 0]]], dtype=object)
     elif m == 2:
         (a, b), (c, d) = mat
-        return 1/(a*d-b*c) * make_obj_array([
+        return 1/(a*d - b*c) * np.array([
             [d, -b],
             [-c, a],
-            ])
+            ], dtype=object)
     else:
-        raise NotImplementedError(
-                "inverse formula for %dx%d matrices" % (m, n))
+        raise NotImplementedError(f"inverse formula for {m}x{n} matrices")
 
 
 def _small_mat_eigenvalues(mat):
     m, n = mat.shape
     if m != n:
-        raise ValueError("eigenvalues only make sense for square matrices")
+        raise ValueError(
+                "eigenvalues only make sense for square matrices: "
+                f"got a {m}x{n} matrix")
 
     if m == 1:
         return make_obj_array([mat[0, 0]])
     elif m == 2:
         (a, b), (c, d) = mat
+        tr_mat = cse(a + d)
+
+        # solutions to lambda**2 - tr(A) * lambda + det(A)
+        # NOTE: 4 * b * c + (a - d)**2 can still become negative if the matrix
+        # is not positive definite, but there's not much we can do here
+        sqrt_discriminant = cse(sqrt(4 * b * c + (a - d)**2))
         return make_obj_array([
-                -(sqrt(d**2-2*a*d+4*b*c+a**2)-d-a)/2,
-                 (sqrt(d**2-2*a*d+4*b*c+a**2)+d+a)/2
-                ])
+            (tr_mat - sqrt_discriminant) / 2,
+            (tr_mat + sqrt_discriminant) / 2,
+            ])
     else:
-        raise NotImplementedError(
-                "eigenvalue formula for %dx%d matrices" % (m, n))
+        raise NotImplementedError(f"eigenvalue formula for {m}x{n} matrices")
+
+
+def _small_sym_mat_eigenvalues(mat):
+    m, n = mat.shape
+    if m != n:
+        raise ValueError(
+                "eigenvalues only make sense for square matrices: "
+                f"got a {m}x{n} matrix")
+
+    if m == 1:
+        return make_obj_array([mat[0, 0]])
+    elif m == 2:
+        (a, b), (_, d) = mat
+        tr_mat = cse(a + d)
+
+        # NOTE: solutions to lambda**2 - tr(A) * lambda + det(A)
+        # we would normally have
+        #       discriminant = tr - 4 * det
+        # but that can become negative with some floating point fuzz, so we
+        # rewrite it as a sum of squares to avoid that issue
+        sqrt_discriminant = cse(sqrt(4 * b**2 + (a - d)**2))
+        return make_obj_array([
+            (tr_mat - sqrt_discriminant) / 2,
+            (tr_mat + sqrt_discriminant) / 2,
+            ])
+    else:
+        raise NotImplementedError(f"eigenvalue formula for {m}x{n} matrices")
 
 
 def _equilateral_parametrization_derivative_matrix(ambient_dim, dim=None,
@@ -879,10 +773,9 @@ def _equilateral_parametrization_derivative_matrix(ambient_dim, dim=None,
             "equilateral_pder_mat")
 
 
-def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
-        with_elementwise_max=True):
+def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None):
     """Return the largest factor by which the reference-to-global
-    mapping stretches the bi-unit (i.e. :math:`[-1,1]`) reference
+    mapping stretches the bi-unit (i.e. :math:`[-1, 1]`) reference
     element along any axis.
 
     If *map_elementwise_max* is True, returns a DOF vector that is elementwise
@@ -910,21 +803,50 @@ def _simplex_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None,
             "pd_mat_jtj")
 
     stretch_factors = [
-            cse(sqrt(s), "mapping_singval_%d" % i)
-            for i, s in enumerate(
-                _small_mat_eigenvalues(
-                    # Multiply by 4 to compensate for equilateral reference
-                    # elements of side length 2. (J^T J contains two factors of
-                    # two.)
-                    4 * equi_pder_mat_jtj))]
+            cse(sqrt(s), f"simplex_mapping_singval_{i}")
+            # NOTE: multiply by 4 to compensate for equilateral reference
+            # elements of side length 2. (J^T J contains two factors of two.)
+            for i, s in enumerate(_small_sym_mat_eigenvalues(4 * equi_pder_mat_jtj))
+            ]
 
     from pymbolic.primitives import Max
-    result = Max(tuple(stretch_factors))
+    return Max(tuple(stretch_factors))
 
-    if with_elementwise_max:
-        result = ElementwiseMax(result, dofdesc=dofdesc)
 
-    return cse(result, "mapping_max_stretch", cse_scope.DISCRETIZATION)
+def _hypercube_mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None):
+    if dim is None:
+        dim = ambient_dim - 1
+
+    # NOTE: unlike in the simplex case, here we do not need to transform the
+    # reference element, as it already is nicely rotation invariant
+    pder_mat = first_fundamental_form(ambient_dim, dim=dim, dofdesc=dofdesc)
+    stretch_factors = [
+            cse(sqrt(s), f"hypercube_mapping_singval_{i}")
+            # NOTE: like for the simplex, we multiply `pder_mat` by 4 to
+            # account for the side length of 2 in J^T J
+            for i, s in enumerate(_small_sym_mat_eigenvalues(4.0 * pder_mat))
+            ]
+
+    from pymbolic.primitives import Max
+    return Max(tuple(stretch_factors))
+
+
+def _mapping_max_stretch_factor(ambient_dim, dim=None, dofdesc=None):
+    simplex_stretch_factor = _simplex_mapping_max_stretch_factor(
+        ambient_dim, dim, dofdesc=dofdesc)
+    hypercube_stretch_factor = _hypercube_mapping_max_stretch_factor(
+        ambient_dim, dim, dofdesc=dofdesc)
+
+    import modepy as mp
+    from pymbolic.primitives import If
+    stretch_factor = If(IsShapeClass(mp.Simplex, dofdesc),
+                        simplex_stretch_factor,
+                        If(IsShapeClass(mp.Hypercube, dofdesc),
+                           hypercube_stretch_factor,
+                           ErrorExpression("unknown reference element shape"))
+                        )
+
+    return cse(stretch_factor, "mapping_stretch_factor", cse_scope.DISCRETIZATION)
 
 
 def _max_curvature(ambient_dim, dim=None, dofdesc=None):
@@ -939,7 +861,7 @@ def _max_curvature(ambient_dim, dim=None, dofdesc=None):
         shape_op = shape_operator(ambient_dim, dim, dofdesc=dofdesc)
 
         abs_principal_curvatures = [
-                abs(x) for x in _small_mat_eigenvalues(shape_op)]
+                abs(x) for x in _small_sym_mat_eigenvalues(shape_op)]
         from pymbolic.primitives import Max
         return cse(Max(tuple(abs_principal_curvatures)))
     else:
@@ -954,10 +876,9 @@ def _scaled_max_curvature(ambient_dim, dim=None, dofdesc=None):
     a threshold of about 0.8-1 will have high QBX truncation error.
     """
 
-    return _max_curvature(ambient_dim, dim, dofdesc=dofdesc) * \
-            _simplex_mapping_max_stretch_factor(ambient_dim, dim,
-                    dofdesc=dofdesc,
-                    with_elementwise_max=False)
+    return (
+        _max_curvature(ambient_dim, dim, dofdesc=dofdesc)
+        * _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=dofdesc))
 
 # }}}
 
@@ -975,7 +896,7 @@ def _expansion_radii_factor(ambient_dim, dim):
 def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     """This measures the quadrature resolution across the
     mesh. In a 1D uniform mesh of uniform 'parametrization speed', it
-    should be the same as the panel length.
+    should be the same as the element length.
 
     In multiple dimensions (i.e. with multiple quadrature resolutions
     depending on direction), this measure returns the coarsest of these resolution,
@@ -987,8 +908,7 @@ def _quad_resolution(ambient_dim, dim=None, granularity=None, dofdesc=None):
     from_dd = as_dofdesc(dofdesc)
     to_dd = from_dd.copy(granularity=granularity)
 
-    stretch = _simplex_mapping_max_stretch_factor(ambient_dim,
-            dim=dim, dofdesc=from_dd)
+    stretch = _mapping_max_stretch_factor(ambient_dim, dim=dim, dofdesc=from_dd)
     return interp(from_dd, to_dd, stretch)
 
 
@@ -1049,9 +969,7 @@ def interleaved_expansion_centers(ambient_dim, dim=None, dofdesc=None):
 def h_max(ambient_dim, dim=None, dofdesc=None):
     """Defines a maximum element size in the discretization."""
 
-    dofdesc = as_dofdesc(dofdesc).copy(granularity=GRANULARITY_ELEMENT)
     r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
-
     return cse(NodeMax(r),
             "h_max",
             cse_scope.DISCRETIZATION)
@@ -1060,9 +978,7 @@ def h_max(ambient_dim, dim=None, dofdesc=None):
 def h_min(ambient_dim, dim=None, dofdesc=None):
     """Yields an approximate minimum element size in the discretization."""
 
-    dofdesc = as_dofdesc(dofdesc).copy(granularity=GRANULARITY_ELEMENT)
     r = _quad_resolution(ambient_dim, dim=dim, dofdesc=dofdesc)
-
     return cse(NodeMin(r),
             "h_min",
             cse_scope.DISCRETIZATION)
@@ -1365,6 +1281,12 @@ class IntG(Expression):
     where :math:`\sigma_k` is the k-th *density*, :math:`G` is a Green's
     function, :math:`S_k` are source derivative operators and :math:`T` is a
     target derivative operator.
+
+    .. attribute:: target_kernel
+    .. attribute:: source_kernels
+    .. attribute:: densities
+    .. attribute:: qbx_forced_limit
+    .. attribute:: kernel_arguments
     """
 
     init_arg_names = ("target_kernel", "source_kernels", "densities",
@@ -1486,20 +1408,32 @@ class IntG(Expression):
         self.target = as_dofdesc(target)
         self.kernel_arguments = kernel_arguments
 
-    def copy(self, target_kernel=None, densities=None,
-            qbx_forced_limit=_NoArgSentinel, source=None, target=None,
-            kernel_arguments=_NoArgSentinel, source_kernels=None):
-        target_kernel = target_kernel or self.target_kernel
-        source_kernels = source_kernels or self.source_kernels
-        densities = densities or self.densities
+    def copy(self, target_kernel=None, source_kernels=None, densities=None,
+            qbx_forced_limit=_NoArgSentinel,
+            source=_NoArgSentinel, target=_NoArgSentinel,
+            kernel_arguments=None):
+        if target_kernel is None:
+            target_kernel = self.target_kernel
+
+        if source_kernels is None:
+            source_kernels = self.source_kernels
+
+        if densities is None:
+            densities = self.densities
+
+        if kernel_arguments is None:
+            kernel_arguments = self.kernel_arguments
+
         if qbx_forced_limit is _NoArgSentinel:
             qbx_forced_limit = self.qbx_forced_limit
-        source = as_dofdesc(source or self.source)
-        target = as_dofdesc(target or self.target)
-        if kernel_arguments is _NoArgSentinel:
-            kernel_arguments = self.kernel_arguments
-        return type(self)(target_kernel, source_kernels, densities, qbx_forced_limit,
-                source, target, kernel_arguments)
+
+        source = self.source if source is _NoArgSentinel else as_dofdesc(source)
+        target = self.target if target is _NoArgSentinel else as_dofdesc(target)
+        return type(self)(target_kernel, source_kernels, densities,
+                          qbx_forced_limit=qbx_forced_limit,
+                          source=source,
+                          target=target,
+                          kernel_arguments=kernel_arguments)
 
     def __getinitargs__(self):
         return (self.target_kernel, self.source_kernels, self.densities,

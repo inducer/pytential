@@ -26,8 +26,6 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
-from arraycontext import thaw
-
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
@@ -39,6 +37,8 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
 
+
+# {{{ test_gmres
 
 def test_gmres():
     n = 200
@@ -60,6 +60,10 @@ def test_gmres():
 
     assert la.norm(true_sol - sol) / la.norm(sol) < tol
 
+# }}}
+
+
+# {{{ test_interpolatory_error_reporting
 
 def test_interpolatory_error_reporting(actx_factory):
     logging.basicConfig(level=logging.INFO)
@@ -85,7 +89,7 @@ def test_interpolatory_error_reporting(actx_factory):
     vol_discr = Discretization(actx, mesh,
             QuadratureSimplexGroupFactory(5))
 
-    vol_x = thaw(vol_discr.nodes(), actx)
+    vol_x = actx.thaw(vol_discr.nodes())
 
     # }}}
 
@@ -95,6 +99,10 @@ def test_interpolatory_error_reporting(actx_factory):
     with pytest.raises(NoninterpolatoryElementGroupError):
         print("AREA", integral(vol_discr, one), 0.25**2*np.pi)
 
+# }}}
+
+
+# {{{ test_geometry_collection_caching
 
 def test_geometry_collection_caching(actx_factory):
     # NOTE: checks that the on-demand caching works properly in
@@ -164,6 +172,111 @@ def test_geometry_collection_caching(actx_factory):
 
             discr = places._get_discr_from_cache(sources[k], discr_stage)
             assert discr is not None
+
+# }}}
+
+
+# {{{ test_geometry_collection_merge
+
+def _check_cache_state(places, include_cs_prefixes, exclude_cse_prefixes):
+    dd = places.auto_source
+
+    # check that the refined geometries are still here
+    from pytential import sym
+    try:
+        places._get_discr_from_cache(
+                dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
+    except KeyError:
+        return False
+
+    # check that the connections are still here too
+    try:
+        places._get_conn_from_cache(
+                dd.geometry, sym.QBX_SOURCE_STAGE2, sym.QBX_SOURCE_QUAD_STAGE2)
+    except KeyError:
+        return False
+
+    # check that the normal is in there
+    from pytential.symbolic.execution import EvaluationMapperCSECacheKey
+    cache = places._get_cache(EvaluationMapperCSECacheKey)
+    if not any(prefix.startswith("normal_") for (prefix, _) in cache):
+        return False
+
+    # check that any additional data is in there
+    for cse_prefix in include_cs_prefixes:
+        if not any(prefix.startswith(cse_prefix) for (prefix, _) in cache):
+            return False
+
+    for cse_prefix in exclude_cse_prefixes:
+        if any(prefix.startswith(cse_prefix) for (prefix, _) in cache):
+            return False
+
+    return True
+
+
+def _add_geometry_to_collection(actx, places, geometry, dofdesc=None):
+    if dofdesc is None:
+        dofdesc = places.auto_source
+    ambient_dim = places.ambient_dim
+
+    from pytential.collection import add_geometry_to_collection
+    new_places = add_geometry_to_collection(places, {"geometry": geometry})
+
+    from sumpy.kernel import LaplaceKernel
+    kernel = LaplaceKernel(ambient_dim)
+
+    from pytential import bind, sym
+    sym_density = sym.nodes(ambient_dim).as_vector()[0]
+    sym_op = sym.D(kernel, sym_density, qbx_forced_limit=None)
+
+    extra_cse_prefixes = ("expansion_radii", "weights_area_elements")
+    assert _check_cache_state(new_places, (), extra_cse_prefixes)
+
+    r = bind(new_places, sym_op,
+            auto_where=(dofdesc, "geometry"))(actx)
+    assert r is not None
+
+    assert _check_cache_state(new_places, extra_cse_prefixes, ())
+
+
+def test_add_geometry_to_collection(actx_factory):
+    """
+    Test case of `add_geometry_to_collection`. Verifies that
+    * cse_scope.DISCRETIZATION caches stick around
+    * refinement / connection caches stick around
+    * caches added to the new collection don't polute the original one
+    """
+
+    actx = actx_factory()
+
+    from extra_int_eq_data import StarfishTestCase, make_source_and_target_points
+    case = StarfishTestCase()
+
+    from pytential import GeometryCollection
+    qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
+    places = GeometryCollection(qbx, auto_where=case.name)
+
+    from pytential import bind, sym
+    from pytential.qbx.refinement import refine_geometry_collection
+    places = refine_geometry_collection(
+            places,
+            refine_discr_stage=sym.QBX_SOURCE_QUAD_STAGE2,
+            )
+
+    sources, targets = make_source_and_target_points(
+            actx, case.side, case.inner_radius, case.outer_radius,
+            places.ambient_dim,
+            nsources=64, ntargets=64)
+
+    # compute the normal so that it gets cached in the original collection
+    normal = bind(places, sym.normal(places.ambient_dim).as_vector())(actx)
+    assert normal is not None
+
+    # add some more geometries and see if the normal gets recomputed
+    _add_geometry_to_collection(actx, places, sources)
+    _add_geometry_to_collection(actx, places, targets)
+
+# }}}
 
 
 # You can test individual routines by typing

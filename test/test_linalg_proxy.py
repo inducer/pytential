@@ -26,6 +26,7 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
+from arraycontext import flatten, unflatten
 from pytential import bind, sym
 from pytential import GeometryCollection
 from pytential.linalg import ProxyGenerator, QBXProxyGenerator
@@ -47,7 +48,7 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
 # {{{ visualize proxy geometry
 
 def plot_proxy_geometry(
-        actx, places, indices, pxy=None, nbrindices=None, with_qbx_centers=False,
+        actx, places, cindex, pxy=None, nbrindex=None, with_qbx_centers=False,
         suffix=None):
     dofdesc = places.auto_source
     discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
@@ -59,36 +60,37 @@ def plot_proxy_geometry(
 
     import matplotlib.pyplot as pt
     pt.figure(figsize=(10, 8), dpi=300)
-    pt.plot(np.diff(indices.ranges))
-    pt.savefig(f"test_proxy_geometry_{suffix}_ranges")
+    pt.plot(np.diff(cindex.starts))
+    pt.savefig(f"test_proxy_geometry_{suffix}_starts")
     pt.clf()
 
     if ambient_dim == 2:
-        from meshmode.dof_array import flatten_to_numpy
-        sources = np.stack(flatten_to_numpy(actx, discr.nodes()))
+        sources = actx.to_numpy(
+                flatten(discr.nodes(), actx)
+                ).reshape(ambient_dim, -1)
 
         if pxy is not None:
             proxies = np.stack(pxy.points)
             pxycenters = np.stack(pxy.centers)
-            pxyranges = pxy.indices.ranges
+            pxystarts = pxy.pxyindex.starts
 
         if with_qbx_centers:
-            ci = np.stack(flatten_to_numpy(actx,
-                bind(places, sym.expansion_centers(ambient_dim, -1))(actx)
-                ))
-            ce = np.stack(flatten_to_numpy(actx,
-                bind(places, sym.expansion_centers(ambient_dim, +1))(actx)
-                ))
-            r = flatten_to_numpy(actx,
-                bind(places, sym.expansion_radii(ambient_dim))(actx)
-                )
+            ci = actx.to_numpy(flatten(
+                bind(places, sym.expansion_centers(ambient_dim, -1))(actx),
+                actx)).reshape(ambient_dim, -1)
+            ce = actx.to_numpy(flatten(
+                bind(places, sym.expansion_centers(ambient_dim, +1))(actx),
+                actx)).reshape(ambient_dim, -1)
+            r = actx.to_numpy(flatten(
+                bind(places, sym.expansion_radii(ambient_dim))(actx),
+                actx))
 
         fig = pt.figure(figsize=(10, 8), dpi=300)
-        if indices.indices.shape[0] != discr.ndofs:
+        if cindex.indices.shape[0] != discr.ndofs:
             pt.plot(sources[0], sources[1], "ko", ms=2.0, alpha=0.5)
 
-        for i in range(indices.nblocks):
-            isrc = indices.block_indices(i)
+        for i in range(cindex.nclusters):
+            isrc = cindex.cluster_indices(i)
             pt.plot(sources[0, isrc], sources[1, isrc], "o", ms=2.0)
 
             if with_qbx_centers:
@@ -100,11 +102,11 @@ def plot_proxy_geometry(
                     ax.add_artist(c)
 
             if pxy is not None:
-                ipxy = np.s_[pxyranges[i]:pxyranges[i + 1]]
+                ipxy = np.s_[pxystarts[i]:pxystarts[i + 1]]
                 pt.plot(proxies[0, ipxy], proxies[1, ipxy], "o", ms=2.0)
 
-            if nbrindices is not None:
-                inbr = nbrindices.block_indices(i)
+            if nbrindex is not None:
+                inbr = nbrindex.cluster_indices(i)
                 pt.plot(sources[0, inbr], sources[1, inbr], "o", ms=2.0)
 
         pt.xlim([-2, 2])
@@ -116,32 +118,32 @@ def plot_proxy_geometry(
         from meshmode.discretization.visualization import make_visualizer
         marker = -42.0 * np.ones(discr.ndofs)
 
-        for i in range(indices.nblocks):
-            isrc = indices.block_indices(i)
+        for i in range(cindex.nclusters):
+            isrc = cindex.cluster_indices(i)
             marker[isrc] = 10.0 * (i + 1.0)
 
-        from meshmode.dof_array import unflatten_from_numpy
-        marker_dev = unflatten_from_numpy(actx, discr, marker)
+        template_ary = actx.thaw(discr.nodes()[0])
+        marker_dev = unflatten(template_ary, actx.from_numpy(marker), actx)
 
         vis = make_visualizer(actx, discr)
         vis.write_vtk_file(f"test_proxy_geometry_{suffix}.vtu", [
             ("marker", marker_dev)
-            ], overwrite=False)
+            ], overwrite=True)
 
-        if nbrindices:
-            for i in range(indices.nblocks):
-                isrc = indices.block_indices(i)
-                inbr = nbrindices.block_indices(i)
+        if nbrindex:
+            for i in range(cindex.nclusters):
+                isrc = cindex.cluster_indices(i)
+                inbr = nbrindex.cluster_indices(i)
 
                 marker.fill(0.0)
-                marker[indices.indices] = 0.0
+                marker[cindex.indices] = 0.0
                 marker[isrc] = -42.0
                 marker[inbr] = +42.0
-                marker_dev = unflatten_from_numpy(actx, discr, marker)
+                marker_dev = unflatten(template_ary, actx.from_numpy(marker), actx)
 
                 vis.write_vtk_file(
                         f"test_proxy_geometry_{suffix}_neighbor_{i:04d}.vtu",
-                        [("marker", marker_dev)], overwrite=False)
+                        [("marker", marker_dev)], overwrite=True)
 
         if pxy:
             # NOTE: this does not plot the actual proxy points, just sphere
@@ -156,7 +158,7 @@ def plot_proxy_geometry(
             ref_mesh = generate_sphere(1, 4, uniform_refinement_rounds=1)
             pxycenters = np.stack(pxy.centers)
 
-            for i in range(indices.nblocks):
+            for i in range(cindex.nclusters):
                 mesh = affine_map(ref_mesh,
                     A=pxy.radii[i],
                     b=pxycenters[:, i].reshape(-1))
@@ -166,8 +168,8 @@ def plot_proxy_geometry(
                     InterpolatoryQuadratureSimplexGroupFactory(4))
 
                 vis = make_visualizer(actx, discr)
-                filename = f"test_proxy_geometry_{suffix}_block_{i:04d}.vtu"
-                vis.write_vtk_file(filename, [], overwrite=False)
+                filename = f"test_proxy_geometry_{suffix}_cluster_{i:04d}.vtu"
+                vis.write_vtk_file(filename, [], overwrite=True)
     else:
         raise ValueError
 
@@ -202,7 +204,8 @@ def test_partition_points(actx_factory, tree_kind, case, visualize=False):
 
     actx = actx_factory()
 
-    case = case.copy(tree_kind=tree_kind, index_sparsity_factor=1.0)
+    from dataclasses import replace
+    case = replace(case, tree_kind=tree_kind, index_sparsity_factor=1.0)
     logger.info("\n%s", case)
 
     # {{{
@@ -211,19 +214,19 @@ def test_partition_points(actx_factory, tree_kind, case, visualize=False):
     places = GeometryCollection(qbx, auto_where=case.name)
 
     density_discr = places.get_discretization(case.name)
-    indices = case.get_block_indices(actx, density_discr, matrix_indices=False)
+    mindex = case.get_cluster_index(actx, places)
 
     expected_indices = np.arange(0, density_discr.ndofs)
-    assert indices.ranges[-1] == density_discr.ndofs
+    assert mindex.starts[-1] == density_discr.ndofs
 
-    assert la.norm(np.sort(indices.indices) - expected_indices) < 1.0e-14
+    assert la.norm(np.sort(mindex.indices) - expected_indices) < 1.0e-14
 
     # }}}
 
     if not visualize:
         return
 
-    plot_proxy_geometry(actx, places, indices,
+    plot_proxy_geometry(actx, places, mindex,
             suffix=f"{tree_kind}_{case.ambient_dim}d".lower())
 
 # }}}
@@ -246,7 +249,8 @@ def test_proxy_generator(actx_factory, case,
 
     actx = actx_factory()
 
-    case = case.copy(
+    from dataclasses import replace
+    case = replace(case,
             index_sparsity_factor=index_sparsity_factor,
             proxy_radius_factor=proxy_radius_factor)
     logger.info("\n%s", case)
@@ -257,21 +261,22 @@ def test_proxy_generator(actx_factory, case,
     places = GeometryCollection(qbx, auto_where=case.name)
 
     density_discr = places.get_discretization(case.name)
-    srcindices = case.get_block_indices(actx, density_discr, matrix_indices=False)
+    cindex = case.get_cluster_index(actx, places)
 
     generator = proxy_generator_cls(places,
             approx_nproxy=case.proxy_approx_count,
             radius_factor=case.proxy_radius_factor)
-    pxy = generator(actx, places.auto_source, srcindices).to_numpy(actx)
+    pxy = generator(actx, places.auto_source, cindex).to_numpy(actx)
 
-    from meshmode.dof_array import flatten_to_numpy
     pxypoints = np.stack(pxy.points)
     pxycenters = np.stack(pxy.centers)
-    sources = np.stack(flatten_to_numpy(actx, density_discr.nodes()))
+    sources = actx.to_numpy(
+            flatten(density_discr.nodes(), actx)
+            ).reshape(places.ambient_dim, -1)
 
-    for i in range(srcindices.nblocks):
-        isrc = pxy.srcindices.block_indices(i)
-        ipxy = pxy.indices.block_indices(i)
+    for i in range(cindex.nclusters):
+        isrc = pxy.srcindex.cluster_indices(i)
+        ipxy = pxy.pxyindex.cluster_indices(i)
 
         # check all the proxy points are inside the radius
         r = la.norm(pxypoints[:, ipxy] - pxycenters[:, i].reshape(-1, 1), axis=0)
@@ -281,8 +286,8 @@ def test_proxy_generator(actx_factory, case,
         r = la.norm(sources[:, isrc] - pxycenters[:, i].reshape(-1, 1), axis=0)
         n_error = la.norm(r - pxy.radii[i], np.inf)
 
-        assert p_error < 1.0e-14, f"block {i}"
-        assert n_error - pxy.radii[i] < 1.0e-14, f"block {i}"
+        assert p_error < 1.0e-14, f"cluster {i}"
+        assert n_error - pxy.radii[i] < 1.0e-14, f"cluster {i}"
 
     # }}}
 
@@ -290,7 +295,7 @@ def test_proxy_generator(actx_factory, case,
         return
 
     plot_proxy_geometry(
-            actx, places, srcindices, pxy=pxy, with_qbx_centers=True,
+            actx, places, cindex, pxy=pxy, with_qbx_centers=True,
             suffix=f"generator_{index_sparsity_factor:.2f}",
             )
 
@@ -309,12 +314,13 @@ def test_neighbor_points(actx_factory, case,
         proxy_generator_cls, index_sparsity_factor, proxy_radius_factor,
         visualize=False):
     """Test that neighboring points (inside the proxy balls, but outside the
-    current block/cluster) are actually inside.
+    current cluster) are actually inside.
     """
 
     actx = actx_factory()
 
-    case = case.copy(
+    from dataclasses import replace
+    case = replace(case,
             index_sparsity_factor=index_sparsity_factor,
             proxy_radius_factor=proxy_radius_factor)
     logger.info("\n%s", case)
@@ -323,30 +329,32 @@ def test_neighbor_points(actx_factory, case,
 
     qbx = case.get_layer_potential(actx, case.resolutions[-1], case.target_order)
     places = GeometryCollection(qbx, auto_where=case.name)
+    dofdesc = places.auto_source
 
-    density_discr = places.get_discretization(case.name)
-    srcindices = case.get_block_indices(actx, density_discr, matrix_indices=False)
+    density_discr = places.get_discretization(dofdesc.geometry)
+    srcindex = case.get_cluster_index(actx, places)
 
     # generate proxy points
     generator = proxy_generator_cls(places,
             approx_nproxy=case.proxy_approx_count,
             radius_factor=case.proxy_radius_factor)
-    pxy = generator(actx, places.auto_source, srcindices)
+    pxy = generator(actx, dofdesc, srcindex)
 
     # get neighboring points
-    from pytential.linalg import gather_block_neighbor_points
-    nbrindices = gather_block_neighbor_points(actx, density_discr, pxy)
+    from pytential.linalg import gather_cluster_neighbor_points
+    nbrindex = gather_cluster_neighbor_points(actx, pxy)
 
-    from meshmode.dof_array import flatten_to_numpy
     pxy = pxy.to_numpy(actx)
     pxycenters = np.stack(pxy.centers)
-    nodes = np.vstack(flatten_to_numpy(actx, density_discr.nodes()))
+    nodes = actx.to_numpy(
+            flatten(density_discr.nodes(), actx)
+            ).reshape(places.ambient_dim, -1)
 
-    for i in range(srcindices.nblocks):
-        isrc = pxy.srcindices.block_indices(i)
-        inbr = nbrindices.block_indices(i)
+    for i in range(srcindex.nclusters):
+        isrc = pxy.srcindex.cluster_indices(i)
+        inbr = nbrindex.cluster_indices(i)
 
-        # check that none of the neighbors are part of the current block
+        # check that none of the neighbors are part of the current cluster
         assert not np.any(np.isin(inbr, isrc))
 
         # check that the neighbors are all within the proxy radius
@@ -359,7 +367,7 @@ def test_neighbor_points(actx_factory, case,
         return
 
     plot_proxy_geometry(
-            actx, places, srcindices, nbrindices=nbrindices,
+            actx, places, srcindex, nbrindex=nbrindex,
             suffix=f"neighbor_{index_sparsity_factor:.2f}",
             )
 

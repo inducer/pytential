@@ -23,11 +23,10 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import pyopencl as cl
-import pyopencl.array # noqa
 
-from pytools import memoize_method, log_process
+from pytools import memoize_method, memoize_in, log_process
 from arraycontext import PyOpenCLArrayContext
+from meshmode.dof_array import DOFArray
 
 from boxtree.tree import Tree
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
@@ -39,7 +38,7 @@ logger = logging.getLogger(__name__)
 # {{{ c and mako snippets
 
 QBX_TREE_C_PREAMBLE = r"""//CL:mako//
-// A note on node numberings: sources, centers, and panels each
+// A note on node numberings: sources, centers, and elements each
 // have their own numbering starting at 0. These macros convert
 // the per-class numbering into the internal tree particle number.
 #define INDEX_FOR_CENTER_PARTICLE(i) (sorted_target_ids[center_offset + i])
@@ -87,6 +86,19 @@ class TreeCodeContainer:
         from boxtree.tree import ParticleListFilter
         return ParticleListFilter(self.array_context.context)
 
+    @memoize_method
+    def build_area_query(self):
+        from boxtree.area_query import AreaQueryBuilder
+        return AreaQueryBuilder(self.array_context.context)
+
+
+def tree_code_container(actx: PyOpenCLArrayContext) -> TreeCodeContainer:
+    @memoize_in(actx, (TreeCodeContainer, tree_code_container))
+    def make_container():
+        return TreeCodeContainer(actx)
+
+    return make_container()
+
 # }}}
 
 
@@ -105,6 +117,7 @@ class TreeCodeContainerMixin:
 
     def particle_list_filter(self):
         return self.tree_code_container.particle_list_filter()
+
 
 # }}}
 
@@ -135,7 +148,10 @@ class TreeWranglerBase:
     def find_peer_lists(self, tree):
         plf = self.code_container.peer_list_finder()
         peer_lists, evt = plf(self.queue, tree)
+
+        import pyopencl as cl
         cl.wait_for_events([evt])
+
         return peer_lists
 
 # }}}
@@ -147,7 +163,7 @@ class TreeWithQBXMetadata(Tree):
     """A subclass of :class:`boxtree.tree.Tree`. Has all of that class's
     attributes, along with the following:
 
-    .. attribute:: nqbxpanels
+    .. attribute:: nqbxelements
     .. attribuet:: nqbxsources
     .. attribute:: nqbxcenters
     .. attribute:: nqbxtargets
@@ -156,13 +172,13 @@ class TreeWithQBXMetadata(Tree):
     .. rubric:: Box properties
     .. ------------------------------------------------------------------------
 
-    .. rubric:: Box to QBX panels
+    .. rubric:: Box to QBX elements
 
-    .. attribute:: box_to_qbx_panel_starts
+    .. attribute:: box_to_qbx_element_starts
 
         ``box_id_t [nboxes + 1]``
 
-    .. attribute:: box_to_qbx_panel_lists
+    .. attribute:: box_to_qbx_element_lists
 
         ``particle_id_t [*]``
 
@@ -197,16 +213,16 @@ class TreeWithQBXMetadata(Tree):
         ``particle_id_t [*]``
 
     .. ------------------------------------------------------------------------
-    .. rubric:: Panel properties
+    .. rubric:: Element properties
     .. ------------------------------------------------------------------------
 
-    .. attribute:: qbx_panel_to_source_starts
+    .. attribute:: qbx_element_to_source_starts
 
-        ``particle_id_t [nqbxpanels + 1]``
+        ``particle_id_t [nqbxelements + 1]``
 
-    .. attribute:: qbx_panel_to_center_starts
+    .. attribute:: qbx_element_to_center_starts
 
-        ``particle_id_t [nqbxpanels + 1]``
+        ``particle_id_t [nqbxelements + 1]``
 
     .. ------------------------------------------------------------------------
     .. rubric:: Particle order indices
@@ -235,14 +251,13 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     potential source. This contains particles of four different types:
 
        * source particles either from
-         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1` or
-         :class:`~pytential.symbolic.primitives.QBX_SOURCE_QUAD_STAGE2`.
+         :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE1` or
+         :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_QUAD_STAGE2`.
        * centers from
-         :class:`~pytential.symbolic.primitives.QBX_SOURCE_STAGE1`.
+         :class:`~pytential.symbolic.dof_desc.QBX_SOURCE_STAGE1`.
        * targets from ``targets_list``.
 
-    :arg places: An instance of
-        :class:`~pytential.symbolic.execution.GeometryCollection`.
+    :arg places: An instance of :class:`~pytential.collection.GeometryCollection`.
     :arg targets_list: A list of :class:`pytential.target.TargetBase`
 
     :arg use_stage2_discr: If *True*, builds a tree with stage 2 sources.
@@ -279,22 +294,21 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     stage1_density_discr = stage1_density_discrs[0]
     density_discr = density_discrs[0]
 
-    from arraycontext import thaw
-    from meshmode.dof_array import flatten
-    sources = flatten(thaw(density_discr.nodes(), actx))
-    centers = flatten(_make_centers(stage1_density_discr))
+    from arraycontext import flatten
+    sources = flatten(density_discr.nodes(), actx, leaf_class=DOFArray)
+    centers = flatten(_make_centers(stage1_density_discr), actx, leaf_class=DOFArray)
     targets = [
-            flatten(thaw(tgt.nodes(), actx), strict=False)
+            flatten(tgt.nodes(), actx, leaf_class=DOFArray)
             for tgt in targets_list]
 
     queue = actx.queue
     particles = tuple(
-            cl.array.concatenate(dim_coords, queue=queue)
+            actx.np.concatenate(dim_coords)
             for dim_coords in zip(sources, centers, *targets))
 
     # Counts
     nparticles = len(particles[0])
-    npanels = density_discr.mesh.nelements
+    nelements = density_discr.mesh.nelements
     nsources = len(sources[0])
     ncenters = len(centers[0])
     # Each source gets an interior / exterior center.
@@ -307,13 +321,13 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     center_slice_start = nsources
     qbx_user_center_slice = slice(center_slice_start, center_slice_start + ncenters)
 
-    panel_slice_start = center_slice_start + ncenters
-    target_slice_start = panel_slice_start
+    element_slice_start = center_slice_start + ncenters
+    target_slice_start = element_slice_start
     qbx_user_target_slice = slice(target_slice_start, target_slice_start + ntargets)
 
     # Build tree with sources and centers. Split boxes
     # only because of sources.
-    refine_weights = cl.array.zeros(queue, nparticles, np.int32)
+    refine_weights = actx.zeros(nparticles, np.int32)
     refine_weights[:nsources].fill(1)
 
     refine_weights.finish()
@@ -338,7 +352,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
         box_to_class = (
             particle_list_filter
             .filter_target_lists_in_user_order(queue, tree, flags)
-            .with_queue(actx.queue))
+            ).with_queue(actx.queue)
 
         if fixup:
             box_to_class.target_lists += fixup
@@ -348,24 +362,24 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     del flags
     del box_to_class
 
-    # Compute panel => source relation
-    qbx_panel_to_source_starts = cl.array.empty(
-            queue, npanels + 1, dtype=tree.particle_id_dtype)
+    # Compute element => source relation
+    qbx_element_to_source_starts = actx.empty(nelements + 1, tree.particle_id_dtype)
     el_offset = 0
     node_nr_base = 0
     for group in density_discr.groups:
-        qbx_panel_to_source_starts[el_offset:el_offset + group.nelements] = \
-                cl.array.arange(queue, node_nr_base,
-                                node_nr_base + group.ndofs,
-                                group.nunit_dofs,
-                                dtype=tree.particle_id_dtype)
+        group_element_starts = np.arange(
+                node_nr_base, node_nr_base + group.ndofs, group.nunit_dofs,
+                dtype=tree.particle_id_dtype)
+        qbx_element_to_source_starts[el_offset:el_offset + group.nelements] = \
+                actx.from_numpy(group_element_starts)
+
         node_nr_base += group.ndofs
         el_offset += group.nelements
-    qbx_panel_to_source_starts[-1] = nsources
+    qbx_element_to_source_starts[-1] = nsources
 
-    # Compute panel => center relation
-    qbx_panel_to_center_starts = (
-            2 * qbx_panel_to_source_starts
+    # Compute element => center relation
+    qbx_element_to_center_starts = (
+            2 * qbx_element_to_source_starts
             if not use_stage2_discr
             else None)
 
@@ -380,12 +394,12 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     tree_attrs.update(particle_classes)
 
     return TreeWithQBXMetadata(
-        qbx_panel_to_source_starts=qbx_panel_to_source_starts,
-        qbx_panel_to_center_starts=qbx_panel_to_center_starts,
+        qbx_element_to_source_starts=qbx_element_to_source_starts,
+        qbx_element_to_center_starts=qbx_element_to_center_starts,
         qbx_user_source_slice=qbx_user_source_slice,
         qbx_user_center_slice=qbx_user_center_slice,
         qbx_user_target_slice=qbx_user_target_slice,
-        nqbxpanels=npanels,
+        nqbxelements=nelements,
         nqbxsources=nsources,
         nqbxcenters=ncenters,
         nqbxtargets=ntargets,
@@ -401,9 +415,16 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
     automatically converting returned OpenCL arrays to host data.
     """
 
-    def __init__(self, queue, geo_data):
-        self.queue = queue
+    def __init__(self, geo_data):
         self.geo_data = geo_data
+
+    @property
+    def queue(self):
+        return self.geo_data._setup_actx.queue
+
+    def to_numpy(self, ary):
+        from arraycontext import to_numpy
+        return to_numpy(ary, self.geo_data._setup_actx)
 
     @memoize_method
     def tree(self):
@@ -423,26 +444,25 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
 
     @memoize_method
     def centers(self):
-        return np.array([
-            ci.get(queue=self.queue)
-            for ci in self.geo_data.flat_centers()])
+        return np.stack(self.to_numpy(self.geo_data.flat_centers()))
 
     @memoize_method
     def expansion_radii(self):
-        return self.geo_data.flat_expansion_radii().get(queue=self.queue)
+        return self.to_numpy(self.geo_data.flat_expansion_radii())
 
     @memoize_method
     def global_qbx_centers(self):
-        return self.geo_data.global_qbx_centers().get(queue=self.queue)
+        return self.to_numpy(self.geo_data.global_qbx_centers())
 
     @memoize_method
     def qbx_center_to_target_box(self):
-        return self.geo_data.qbx_center_to_target_box().get(queue=self.queue)
+        return self.to_numpy(self.geo_data.qbx_center_to_target_box())
 
     @memoize_method
     def qbx_center_to_target_box_source_level(self, source_level):
-        return self.geo_data.qbx_center_to_target_box_source_level(
-            source_level).get(queue=self.queue)
+        return self.to_numpy(
+            self.geo_data.qbx_center_to_target_box_source_level(source_level)
+            )
 
     @memoize_method
     def non_qbx_box_target_lists(self):

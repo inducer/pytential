@@ -127,5 +127,7 @@ setup(
         "meshmode>=2021.2",
         "sumpy>=2020.2beta1",
         "pyfmmlib>=2019.1.1",
+
+        "immutables",
     ],
 )

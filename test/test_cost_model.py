@@ -1,6 +1,6 @@
 __copyright__ = """
-    Copyright (C) 2018 Matt Wala
-    Copyright (C) 2019 Hao Gao
+Copyright (C) 2018 Matt Wala
+Copyright (C) 2019 Hao Gao
 """
 
 __license__ = """
@@ -27,7 +27,8 @@ import pytest
 
 import numpy as np
 
-from boxtree.tools import ConstantOneExpansionWrangler
+from boxtree.fmm import TreeIndependentDataForWrangler
+from boxtree.constant_one import ConstantOneExpansionWrangler
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
 
 from pytential import GeometryCollection, bind, sym
@@ -88,7 +89,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
     )
 
     from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
-    geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data_dev)
+    geo_data = ToHostTransferredGeoDataWrapper(geo_data_dev)
 
     # }}}
 
@@ -157,7 +158,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
         str(time.time() - start_time)
     ))
 
-    assert np.array_equal(cl_p2qbxl.get(), python_p2qbxl)
+    assert np.array_equal(actx.to_numpy(cl_p2qbxl), python_p2qbxl)
 
     # }}}
 
@@ -185,7 +186,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
         str(time.time() - start_time)
     ))
 
-    assert np.array_equal(cl_m2qbxl.get(), python_m2qbxl)
+    assert np.array_equal(actx.to_numpy(cl_m2qbxl), python_m2qbxl)
 
     # }}}
 
@@ -213,7 +214,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
         str(time.time() - start_time)
     ))
 
-    assert np.array_equal(cl_l2qbxl.get(), python_l2qbxl)
+    assert np.array_equal(actx.to_numpy(cl_l2qbxl), python_l2qbxl)
 
     # }}}
 
@@ -241,7 +242,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
         str(time.time() - start_time)
     ))
 
-    assert np.array_equal(cl_eval_qbxl.get(), python_eval_qbxl)
+    assert np.array_equal(actx.to_numpy(cl_eval_qbxl), python_eval_qbxl)
 
     # }}}
 
@@ -273,7 +274,8 @@ def test_compare_cl_and_py_cost_model(actx_factory):
     ))
 
     assert np.array_equal(
-        cl_eval_target_specific_qbxl.get(), python_eval_target_specific_qbxl
+        actx.to_numpy(cl_eval_target_specific_qbxl),
+        python_eval_target_specific_qbxl
     )
 
     # }}}
@@ -332,8 +334,7 @@ def get_lpot_source(actx, dim):
 
 
 def get_density(actx, discr):
-    from arraycontext import thaw
-    nodes = thaw(discr.nodes(), actx)
+    nodes = actx.thaw(discr.nodes())
     return actx.np.sin(10 * nodes[0])
 
 # }}}
@@ -481,9 +482,10 @@ def test_cost_model_metadata_gathering(actx_factory):
 
 class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
-    def __init__(self, queue, geo_data, use_target_specific_qbx):
+    def __init__(self, tree_indep, queue, geo_data,
+            use_target_specific_qbx):
         from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
-        geo_data = ToHostTransferredGeoDataWrapper(queue, geo_data)
+        geo_data = ToHostTransferredGeoDataWrapper(geo_data)
 
         self.geo_data = geo_data
         self.trav = geo_data.traversal()
@@ -492,7 +494,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
                 # None means use by default if possible
                 or use_target_specific_qbx is None)
 
-        ConstantOneExpansionWrangler.__init__(self, geo_data.tree())
+        super().__init__(tree_indep, geo_data.traversal())
 
     def _get_target_slice(self, ibox):
         non_qbx_box_target_lists = self.geo_data.non_qbx_box_target_lists()
@@ -505,7 +507,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         non_qbx_box_target_lists = self.geo_data.non_qbx_box_target_lists()
         return np.zeros(non_qbx_box_target_lists.nfiltered_targets)
 
-    def full_output_zeros(self):
+    def full_output_zeros(self, template_ary):
         from pytools.obj_array import make_obj_array
         return make_obj_array([np.zeros(self.tree.ntargets)])
 
@@ -585,7 +587,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         return qbx_expansions, self.timing_future(ops)
 
     def eval_qbx_expansions(self, qbx_expansions):
-        output = self.full_output_zeros()
+        output = self.full_output_zeros(qbx_expansions)
         ops = 0
 
         global_qbx_centers = self.geo_data.global_qbx_centers()
@@ -603,7 +605,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
     def eval_target_specific_qbx_locals(self, src_weight_vecs):
         src_weights, = src_weight_vecs
-        pot = self.full_output_zeros()
+        pot = self.full_output_zeros(src_weights)
         ops = 0
 
         if not self.using_tsqbx:
@@ -718,14 +720,17 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
                 make_uniform_particle_array(queue, ntargets, dim, np.float64))
         target_discrs_and_qbx_sides = ((targets, 0),)
         qbx_forced_limit = None
+
+        places = GeometryCollection((lpot_source, targets))
     else:
-        targets = lpot_source.density_discr
-        target_discrs_and_qbx_sides = ((targets, 1),)
-        qbx_forced_limit = 1
-    places = GeometryCollection((lpot_source, targets))
+        places = GeometryCollection(lpot_source)
 
     source_dd = places.auto_source
     density_discr = places.get_discretization(source_dd.geometry)
+
+    if not off_surface:
+        target_discrs_and_qbx_sides = ((density_discr, 1),)
+        qbx_forced_limit = 1
 
     # Construct bound op, run cost model.
     sigma_sym = sym.var("sigma")
@@ -746,6 +751,7 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
             target_discrs_and_qbx_sides=target_discrs_and_qbx_sides)
 
     wrangler = ConstantOneQBXExpansionWrangler(
+            TreeIndependentDataForWrangler(),
             queue, geo_data, use_target_specific_qbx)
 
     quad_stage2_density_discr = places.get_discretization(
@@ -758,7 +764,7 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
             traversal=wrangler.trav)[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
-    assert (potential == ndofs).all()
+    assert np.all(potential == ndofs)
 
     # Check that the cost model matches the timing data returned by the
     # constant one wrangler.

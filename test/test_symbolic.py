@@ -26,11 +26,7 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
-import pyopencl as cl
-import pyopencl.array
-import pyopencl.clmath
-
-from arraycontext import thaw
+from arraycontext import flatten, unflatten
 import meshmode.mesh.generation as mgen
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -61,7 +57,7 @@ def get_ellipse_with_ref_mean_curvature(actx, nelements, aspect=1):
     discr = Discretization(actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    nodes = thaw(discr.nodes(), actx)
+    nodes = actx.thaw(discr.nodes())
 
     a = 1
     b = 1/aspect
@@ -81,7 +77,7 @@ def get_torus_with_ref_mean_curvature(actx, h):
     discr = Discretization(actx, mesh,
         InterpolatoryQuadratureSimplexGroupFactory(order))
 
-    nodes = thaw(discr.nodes(), actx)
+    nodes = actx.thaw(discr.nodes())
 
     # copied from meshmode.mesh.generation.generate_torus
     a = r_major
@@ -127,7 +123,7 @@ def test_mean_curvature(actx_factory, discr_name, resolutions,
         from meshmode.dof_array import flat_norm
         h_error = flat_norm(mean_curvature - ref_mean_curvature, np.inf)
         eoc.add_data_point(h, actx.to_numpy(h_error))
-    print(eoc)
+    logger.info("eoc:\n%s", eoc)
 
     order = min([g.order for g in discr.groups])
     assert eoc.order_estimate() > order - 1.1
@@ -155,10 +151,10 @@ def test_tangential_onb(actx_factory):
         for i in range(nvecs) for j in range(nvecs)])
         )(actx)
 
-    from meshmode.dof_array import flatten
-    orth_check = flatten(orth_check)
     for orth_i in orth_check:
-        assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
+        assert actx.to_numpy(
+                actx.np.all(actx.np.abs(orth_i) < 1e-13)
+                )
 
     # make sure tangential_onb is orthogonal to normal
     orth_check = bind(discr, sym.make_obj_array([
@@ -166,9 +162,10 @@ def test_tangential_onb(actx_factory):
         for i in range(nvecs)])
         )(actx)
 
-    orth_check = flatten(orth_check)
     for orth_i in orth_check:
-        assert (cl.clmath.fabs(orth_i) < 1e-13).get().all()
+        assert actx.to_numpy(
+                actx.np.all(actx.np.abs(orth_i) < 1e-13)
+                )
 
 # }}}
 
@@ -261,22 +258,22 @@ def test_interpolation(actx_factory, name, source_discr_stage, target_granularit
     op_sym = sym.sin(sym.interp(from_dd, to_dd, sigma_sym))
     bound_op = bind(places, op_sym, auto_where=where)
 
-    from meshmode.dof_array import flatten, unflatten
-
     def discr_and_nodes(stage):
         density_discr = places.get_discretization(where.geometry, stage)
-        return density_discr, np.array([
-                actx.to_numpy(flatten(axis))
-                for axis in thaw(density_discr.nodes(), actx)])
+        return density_discr, actx.to_numpy(
+                flatten(density_discr.nodes(), actx)
+                ).reshape(density_discr.ambient_dim, -1)
 
     _, target_nodes = discr_and_nodes(sym.QBX_SOURCE_QUAD_STAGE2)
     source_discr, source_nodes = discr_and_nodes(source_discr_stage)
 
     sigma_target = np.sin(la.norm(target_nodes, axis=0))
     sigma_dev = unflatten(
-            actx, source_discr,
-            actx.from_numpy(la.norm(source_nodes, axis=0)))
-    sigma_target_interp = actx.to_numpy(flatten(bound_op(actx, sigma=sigma_dev)))
+            actx.thaw(source_discr.nodes()[0]),
+            actx.from_numpy(la.norm(source_nodes, axis=0)), actx)
+    sigma_target_interp = actx.to_numpy(
+            flatten(bound_op(actx, sigma=sigma_dev), actx)
+            )
 
     if name in ("default", "default_explicit", "stage2", "quad"):
         error = la.norm(sigma_target_interp - sigma_target) / la.norm(sigma_target)
@@ -331,6 +328,169 @@ def test_node_reduction(actx_factory):
         assert abs(actx.to_numpy(r) - expected) < 1.0e-15, r
 
     # }}}
+
+# }}}
+
+
+# {{{ test_prepare_expr
+
+def principal_curvatures(ambient_dim, dim=None, dofdesc=None):
+    from pytential import sym
+    s_op = sym.shape_operator(ambient_dim, dim=dim, dofdesc=dofdesc)
+
+    from pytential.symbolic.primitives import _small_mat_eigenvalues
+    kappa1, kappa2 = _small_mat_eigenvalues(s_op)
+
+    from pytools.obj_array import make_obj_array
+    return make_obj_array([
+        sym.cse(kappa1, "principal_curvature_0", sym.cse_scope.DISCRETIZATION),
+        sym.cse(kappa2, "principal_curvature_1", sym.cse_scope.DISCRETIZATION),
+        ])
+
+
+def principal_directions(ambient_dim, dim=None, dofdesc=None):
+    from pytential import sym
+    s_op = sym.shape_operator(ambient_dim, dim=dim, dofdesc=dofdesc)
+
+    (s11, s12), (_, s22) = s_op
+    k1, k2 = principal_curvatures(ambient_dim, dim=dim, dofdesc=dofdesc)
+
+    from pytools.obj_array import make_obj_array
+    d1 = sym.cse(make_obj_array([s12, -(s11 - k1)]))
+    d2 = sym.cse(make_obj_array([-(s22 - k2), s12]))
+
+    form1 = sym.first_fundamental_form(ambient_dim, dim=dim, dofdesc=dofdesc)
+    return make_obj_array([
+        sym.cse(
+            d1 / sym.sqrt(d1 @ (form1 @ d1)),
+            "principal_direction_0", sym.cse_scope.DISCRETIZATION),
+        sym.cse(
+            d2 / sym.sqrt(d2 @ (form1 @ d2)),
+            "principal_direction_1", sym.cse_scope.DISCRETIZATION),
+        ])
+
+
+def test_derivative_binder_expr():
+    logging.basicConfig(level=logging.INFO)
+
+    ambient_dim = 3
+    dim = ambient_dim - 1
+
+    from pytential.symbolic.mappers import DerivativeBinder
+    d1, d2 = principal_directions(ambient_dim, dim=dim)
+    expr = (d1 @ d2 + d1 @ d1) / (d2 @ d2)
+
+    nruns = 4
+    for i in range(nruns):
+        from pytools import ProcessTimer
+        with ProcessTimer() as pd:
+            new_expr = DerivativeBinder()(expr)
+
+        logger.info("time: [%04d/%04d] bind [%s] (%s)",
+                i, nruns, pd, expr is new_expr)
+
+        assert expr is new_expr
+
+# }}}
+
+
+# {{{ test_mapper_kernel_transformation_remover
+
+def _make_operator(ambient_dim: int, op_name: str, k: float, *, side: int = +1):
+    from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+    if k == 0:
+        kernel = LaplaceKernel(ambient_dim)
+        kernel_arguments = {}
+    else:
+        kernel = HelmholtzKernel(ambient_dim)
+        kernel_arguments = {"k": sym.var("k")}
+
+    import pytential.symbolic.pde.scalar as ops
+    if op_name == "dirichlet":
+        op = ops.DirichletOperator(
+                kernel, side, use_l2_weighting=True,
+                kernel_arguments=kernel_arguments)
+    elif op_name == "neumann":
+        op = ops.NeumannOperator(
+                kernel, side, use_l2_weighting=True,
+                kernel_arguments=kernel_arguments)
+    else:
+        raise ValueError(f"unknown operator: '{op_name}'")
+
+    return op
+
+
+@pytest.mark.parametrize("op_name", ["dirichlet", "neumann"])
+@pytest.mark.parametrize("k", [0, 5])
+def test_mapper_kernel_transformation_remover(op_name, k):
+    ambient_dim = 3
+    op = _make_operator(ambient_dim, op_name, k)
+    expr = op.operator(op.get_density_var("sigma"))
+
+    from pytential.linalg.direct_solver_symbolic import (
+            OperatorCollector, KernelTransformationRemover)
+    expr_without_transformations = KernelTransformationRemover()(expr)
+    intgs = OperatorCollector()(expr_without_transformations)
+
+    def is_base_kernel(knl):
+        return knl.get_base_kernel() == knl
+
+    for intg in intgs:
+        assert is_base_kernel(intg.target_kernel)
+        assert all(is_base_kernel(kernel) for kernel in intg.source_kernels)
+
+# }}}
+
+
+# {{{ test_mapper_int_g_term_collector
+
+@pytest.mark.parametrize("op_name", ["dirichlet", "neumann"])
+def test_mapper_int_g_term_collector(op_name, k=0):
+    ambient_dim = 3
+    op = _make_operator(ambient_dim, op_name, k)
+    expr = op.operator(op.get_density_var("sigma"))
+
+    from pytential.linalg.direct_solver_symbolic import IntGTermCollector
+    expr_only_intgs = IntGTermCollector()(expr)
+
+    # FIXME: how to check this did something?
+    sigma = sym.cse(op.get_density_var("sigma") / op.get_sqrt_weight())
+    if op_name == "dirichlet":
+        expected_expr = -1 * sym.D(op.kernel, sigma)
+    elif op_name == "neumann":
+        int_g = sym.S(op.kernel, sigma, qbx_forced_limit="avg")
+        expected_expr = sym.div([int_g] * ambient_dim)
+    else:
+        raise ValueError(f"unknown operator name: {op_name}")
+
+    assert expr_only_intgs == expected_expr
+
+# }}}
+
+
+# {{{ test_mapper_dof_descriptor_replacer
+
+@pytest.mark.parametrize("op_name", ["dirichlet", "neumann"])
+@pytest.mark.parametrize("k", [0, 5])
+def test_mapper_dof_descriptor_replacer(op_name, k):
+    ambient_dim = 3
+    op = _make_operator(ambient_dim, op_name, k)
+    expr = op.operator(op.get_density_var("sigma"))
+
+    from pytential.symbolic.mappers import ToTargetTagger
+    from pytential.linalg.direct_solver_symbolic import DOFDescriptorReplacer
+    source_dd = sym.as_dofdesc(sym.DEFAULT_SOURCE)
+    target_dd = sym.as_dofdesc(sym.DEFAULT_TARGET)
+    tagged_expr = ToTargetTagger(source_dd, target_dd)(expr)
+
+    source_new_dd = sym.as_dofdesc("source")
+    target_new_dd = sym.as_dofdesc("target")
+    replaced_expr = DOFDescriptorReplacer(source_new_dd, target_new_dd)(tagged_expr)
+
+    from testlib import DOFDescriptorCollector
+    collector = DOFDescriptorCollector()
+    assert collector(tagged_expr) == {source_dd, target_dd}
+    assert collector(replaced_expr) == {source_new_dd, target_new_dd}
 
 # }}}
 

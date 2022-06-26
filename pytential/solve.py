@@ -24,16 +24,20 @@ __doc__ = """
 
 .. autofunction:: gmres
 
-.. autoclass:: GMRESResult()
+.. autoclass:: GMRESResult
 
 .. autoexception:: GMRESError
 
 .. autoclass:: ResidualPrinter
 """
 
+from dataclasses import dataclass
 from functools import partial
+from typing import Callable, Optional, Sequence
 
 import numpy as np
+
+from arraycontext.container import ArrayOrContainerT
 
 
 def structured_vdot(x, y, array_context=None):
@@ -66,8 +70,6 @@ def structured_vdot(x, y, array_context=None):
 # Necessary because SciPy gmres is not reentrant and thus does
 # not allow recursive solves.
 
-from pytools import Record
-
 
 class GMRESError(RuntimeError):
     pass
@@ -75,19 +77,26 @@ class GMRESError(RuntimeError):
 
 # {{{ main routine
 
-class GMRESResult(Record):
+@dataclass(frozen=True)
+class GMRESResult:
     """
     .. attribute:: solution
     .. attribute:: residual_norms
     .. attribute:: iteration_count
     .. attribute:: success
 
-        a :class:`bool` indicating whether the iteration succeeded
+        A :class:`bool` indicating whether the iteration succeeded.
 
     .. attribute:: state
 
-        a verbal description of the outcome of the iteration
+        A description of the outcome.
     """
+
+    solution: ArrayOrContainerT
+    residual_norms: Sequence[float]
+    iteration_count: int
+    success: bool
+    state: str
 
 
 def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
@@ -266,28 +275,38 @@ class ResidualPrinter:
 
 # {{{ entrypoint
 
-def gmres(op, rhs, restart=None, tol=None, x0=None,
-        inner_product=None,
-        maxiter=None, hard_failure=None,
-        no_progress_factor=None, stall_iterations=None,
-        callback=None, progress=False, require_monotonicity=True):
-    """Solve a linear system Ax=b by means of GMRES
-    with restarts.
+def gmres(
+        op: Callable[[ArrayOrContainerT], ArrayOrContainerT],
+        rhs: ArrayOrContainerT,
+        restart: Optional[int] = None,
+        tol: Optional[float] = None,
+        x0: Optional[ArrayOrContainerT] = None,
+        inner_product: Optional[
+            Callable[[ArrayOrContainerT, ArrayOrContainerT], float]] = None,
+        maxiter: Optional[int] = None,
+        hard_failure: Optional[bool] = None,
+        no_progress_factor: Optional[float] = None,
+        stall_iterations: Optional[int] = None,
+        callback: Optional[Callable[[ArrayOrContainerT], None]] = None,
+        progress: bool = False,
+        require_monotonicity: bool = True) -> GMRESResult:
+    """Solve a linear system :math:`Ax = b` using GMRES with restarts.
 
-    :arg op: a callable to evaluate A(x)
-    :arg b: the right hand side
-    :arg restart: the maximum number of iteration after
-       which GMRES algorithm needs to be restarted
-    :arg tol: the required decrease in residual norm
-    :arg inner_product: Must have an interface compatible with
-        :func:`numpy.vdot`. Must return a host scalar.
-    :arg maxiter: the maximum number of iteration permitted
-    :arg hard_failure: If True, raise :exc:`GMRESError` in case of failure.
-    :arg stall_iterations: Number of iterations with residual decrease
-        below *no_progress_factor* indicates stall. Set to 0 to disable
+    :arg op: a callable to evaluate :math:`A(x)`.
+    :arg rhs: the right hand side :math:`b`.
+    :arg restart: the maximum number of iteration after which GMRES algorithm
+        needs to be restarted
+    :arg tol: the required decrease in residual norm (relative to the *rhs*).
+    :arg x0: an initial guess for the iteration (a zero array is used by default).
+    :arg inner_product: a callable with an interface compatible with
+        :func:`numpy.vdot` that returns a host scalar.
+    :arg maxiter: the maximum number of iterations permitted.
+    :arg hard_failure: if *True*, raise :exc:`GMRESError` in case of failure.
+    :arg stall_iterations: number of iterations with residual decrease
+        below *no_progress_factor* indicates stall. Set to ``0`` to disable
         stall detection.
 
-    :return: a :class:`GMRESResult`
+    :return: a :class:`GMRESResult`.
     """
     if inner_product is None:
         from pytential.symbolic.execution import \

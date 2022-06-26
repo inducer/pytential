@@ -118,11 +118,14 @@ class CenterGranularityConnection(GranularityConnection):
                 raise ValueError("dtype mismatch in inputs: "
                     f"'{subary1.dtype.name}' and '{subary2.dtype.name}'")
 
+            assert subary1.shape[0] == grp.nelements
+            assert subary1.shape == subary2.shape
+
             result = actx.call_loopy(
                     prg(),
                     ary1=subary1, ary2=subary2,
-                    nelements=grp.nelements,
-                    nunit_dofs=grp.nunit_dofs)["result"]
+                    nelements=subary1.shape[0],
+                    nunit_dofs=subary1.shape[1])["result"]
             results.append(result)
 
         return DOFArray(actx, tuple(results))
@@ -160,7 +163,7 @@ class CenterGranularityConnection(GranularityConnection):
 class DOFConnection:
     """An interpolation operation for converting a DOF vector between
     different DOF types, as described by
-    :class:`~pytential.symbolic.primitives.DOFDescriptor`.
+    :class:`~pytential.symbolic.dof_desc.DOFDescriptor`.
 
     .. attribute:: connections
 
@@ -171,12 +174,12 @@ class DOFConnection:
 
     .. attribute:: from_dd
 
-        A :class:`~pytential.symbolic.primitives.DOFDescriptor` for the
+        A :class:`~pytential.symbolic.dof_desc.DOFDescriptor` for the
         DOF type of the incoming array.
 
     .. attribute:: to_dd
 
-        A :class:`~pytential.symbolic.primitives.DOFDescriptor` for the
+        A :class:`~pytential.symbolic.dof_desc.DOFDescriptor` for the
         DOF type of the outgoing array.
 
     .. attribute:: from_discr
@@ -209,12 +212,12 @@ class DOFConnection:
 
 def connection_from_dds(places, from_dd, to_dd):
     """
-    :arg places: a :class:`~pytential.symbolic.execution.GeometryCollection`
+    :arg places: a :class:`~pytential.collection.GeometryCollection`
         or an argument taken by its constructor.
     :arg from_dd: a descriptor for the incoming degrees of freedom. This
-        can be a :class:`~pytential.symbolic.primitives.DOFDescriptor`
+        can be a :class:`~pytential.symbolic.dof_desc.DOFDescriptor`
         or an identifier that can be transformed into one by
-        :func:`~pytential.symbolic.primitives.as_dofdesc`.
+        :func:`~pytential.symbolic.dof_desc.as_dofdesc`.
     :arg to_dd: a descriptor for the outgoing degrees of freedom.
 
     :return: a :class:`DOFConnection` transporting between the two
