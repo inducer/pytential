@@ -169,7 +169,8 @@ def convert_target_multiplier_to_source(int_g):
     sources = sympy.symbols(f"y0:{knl.dim}")
     # instead of just x, we use x = (d + y)
     targets = [d + source for d, source in zip(ds, sources)]
-    orig_expr = sympy.Function("f")(*ds)
+    f = sympy.Function("f")
+    orig_expr = f(*ds)
     expr = orig_expr
     found = False
     while isinstance(knl, KernelWrapper):
