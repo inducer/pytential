@@ -204,7 +204,7 @@ def convert_target_multiplier_to_source(int_g):
             rest_terms = sympy.Poly(arg.xreplace({orig_expr: 1}), *ds, *sources)
             derivatives = [(d, 0) for d in ds]
         else:
-            assert False, "impossible condition"
+            raise AssertionError("impossible condition")
         assert len(rest_terms.terms()) == 1
         monom, coeff = rest_terms.terms()[0]
         expr_multiplier = _monom_to_expr(monom[:len(ds)], ds)
