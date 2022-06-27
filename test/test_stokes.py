@@ -356,12 +356,17 @@ def test_exterior_stokes(actx_factory, ambient_dim, method, nu, visualize=False)
             error_format="%.8e",
             eoc_format="%.2f"))
 
+    extra_order = 0
+    if method == "biharmonic":
+        extra_order += 2
+    elif nu != 0.5:
+        extra_order += 0.5
     for eoc in eocs:
         # This convergence data is not as clean as it could be. See
         # https://github.com/inducer/pytential/pull/32
         # for some discussion.
         order = min(target_order, qbx_order)
-        assert eoc.order_estimate() > order - 0.5
+        assert eoc.order_estimate() > order - 0.5 - extra_order
 
 # }}}
 
