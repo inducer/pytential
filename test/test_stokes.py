@@ -31,17 +31,17 @@ from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureGroupFactory
 from pytools.obj_array import make_obj_array
+from sumpy.symbolic import SpatialConstant
 
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import extra_int_eq_data as eid
 import logging
 logger = logging.getLogger(__name__)
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
-    PytestPyOpenCLArrayContextFactory,
+    "pyopencl-deprecated",
     ])
 
 
@@ -68,11 +68,13 @@ def dof_array_rel_error(actx, x, xref, p=None):
 
 def run_exterior_stokes(actx_factory, *,
         ambient_dim, target_order, qbx_order, resolution,
-        fmm_order=False,    # FIXME: FMM is slower than direct evaluation
+        fmm_order=None,    # FIXME: FMM is slower than direct evaluation
         source_ovsmp=None,
         radius=1.5, aspect_ratio=1.0,
         mu=1.0,
+        nu=0.4,
         visualize=False,
+        method="naive",
 
         _target_association_tolerance=0.05,
         _expansions_in_tree_have_extent=True):
@@ -152,27 +154,41 @@ def run_exterior_stokes(actx_factory, *,
     # {{{ symbolic
 
     sym_normal = sym.make_sym_vector("normal", ambient_dim)
-    sym_mu = sym.var("mu")
+    sym_mu = SpatialConstant("mu2")
+
+    if nu == 0.5:
+        sym_nu = 0.5
+    else:
+        sym_nu = SpatialConstant("nu2")
 
     if ambient_dim == 2:
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
         sym_omega = sym.make_sym_vector("omega", ambient_dim)
-        op = HsiaoKressExteriorStokesOperator(omega=sym_omega)
+        op = HsiaoKressExteriorStokesOperator(omega=sym_omega, method=method,
+                mu_sym=sym_mu, nu_sym=sym_nu)
     elif ambient_dim == 3:
         from pytential.symbolic.stokes import HebekerExteriorStokesOperator
-        op = HebekerExteriorStokesOperator()
+        op = HebekerExteriorStokesOperator(method=method,
+                mu_sym=sym_mu, nu_sym=sym_nu)
     else:
         raise AssertionError()
 
     sym_sigma = op.get_density_var("sigma")
     sym_bc = op.get_density_var("bc")
 
-    sym_op = op.operator(sym_sigma, normal=sym_normal, mu=sym_mu)
-    sym_rhs = op.prepare_rhs(sym_bc, mu=mu)
+    sym_op = op.operator(sym_sigma, normal=sym_normal)
+    sym_rhs = op.prepare_rhs(sym_bc)
 
-    sym_velocity = op.velocity(sym_sigma, normal=sym_normal, mu=sym_mu)
+    sym_velocity = op.velocity(sym_sigma, normal=sym_normal)
 
-    sym_source_pot = op.stokeslet.apply(sym_sigma, sym_mu, qbx_forced_limit=None)
+    if ambient_dim == 3:
+        sym_source_pot = op.stokeslet.apply(sym_sigma, qbx_forced_limit=None)
+    else:
+        # Use the naive method here as biharmonic requires source derivatives
+        # of point_source
+        from pytential.symbolic.stokes import StokesletWrapper
+        sym_source_pot = StokesletWrapper(ambient_dim, mu_sym=sym_mu,
+            nu_sym=sym_nu, method="naive").apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
 
@@ -193,19 +209,42 @@ def run_exterior_stokes(actx_factory, *,
         omega = bind(places, total_charge * sym.Ones())(actx)
 
     if ambient_dim == 2:
-        bc_context = {"mu": mu, "omega": omega}
-        op_context = {"mu": mu, "omega": omega, "normal": normal}
+        bc_context = {"mu2": mu, "omega": omega}
+        op_context = {"mu2": mu, "omega": omega, "normal": normal}
     else:
         bc_context = {}
-        op_context = {"mu": mu, "normal": normal}
+        op_context = {"mu2": mu, "normal": normal}
+    direct_context = {"mu2": mu}
 
-    bc = bind(places, sym_source_pot,
-            auto_where=("point_source", "source"))(actx, sigma=charges, mu=mu)
+    if sym_nu != 0.5:
+        bc_context["nu2"] = nu
+        op_context["nu2"] = nu
+        direct_context["nu2"] = nu
+
+    bc_op = bind(places, sym_source_pot,
+            auto_where=("point_source", "source"))
+    bc = bc_op(actx, sigma=charges, **direct_context)
 
     rhs = bind(places, sym_rhs)(actx, bc=bc, **bc_context)
     bound_op = bind(places, sym_op)
 
     # }}}
+
+    fmm_timing_data = {}
+    bound_op.eval({"sigma": rhs, **op_context}, array_context=actx,
+            timing_data=fmm_timing_data)
+
+    def print_timing_data(timings, name):
+        result = {k: 0 for k in list(timings.values())[0].keys()}
+        total = 0
+        for k, timing in timings.items():
+            for k, v in timing.items():
+                result[k] += v["wall_elapsed"]
+                total += v["wall_elapsed"]
+        result["total"] = total
+        print(f"{name}={result}")
+
+    # print_timing_data(fmm_timing_data, method)
 
     # {{{ solve
 
@@ -219,7 +258,6 @@ def run_exterior_stokes(actx_factory, *,
             progress=visualize,
             stall_iterations=0,
             hard_failure=True)
-
     sigma = result.solution
 
     # }}}
@@ -229,7 +267,8 @@ def run_exterior_stokes(actx_factory, *,
     velocity = bind(places, sym_velocity,
             auto_where=("source", "point_target"))(actx, sigma=sigma, **op_context)
     ref_velocity = bind(places, sym_source_pot,
-            auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
+            auto_where=("point_source", "point_target"))(actx, sigma=charges,
+                    **direct_context)
 
     v_error = [
             dof_array_rel_error(actx, u, uref)
@@ -265,11 +304,18 @@ def run_exterior_stokes(actx_factory, *,
     return h_max, v_error
 
 
-@pytest.mark.parametrize("ambient_dim", [
-    2,
-    pytest.param(3, marks=pytest.mark.slowtest)
+@pytest.mark.parametrize("ambient_dim, method, nu", [
+    (2, "naive", 0.5),
+    (2, "biharmonic", 0.5),
+    pytest.param(3, "naive", 0.5, marks=pytest.mark.slowtest),
+    pytest.param(3, "biharmonic", 0.5, marks=pytest.mark.slowtest),
+    pytest.param(3, "laplace", 0.5, marks=pytest.mark.slowtest),
+
+    (2, "biharmonic", 0.4),
+    pytest.param(3, "biharmonic", 0.4, marks=pytest.mark.slowtest),
+    pytest.param(3, "laplace", 0.4, marks=pytest.mark.slowtest),
     ])
-def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
+def test_exterior_stokes(actx_factory, ambient_dim, method, nu, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -281,8 +327,10 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
     qbx_order = 3
 
     if ambient_dim == 2:
+        fmm_order = 10
         resolutions = [20, 35, 50]
     elif ambient_dim == 3:
+        fmm_order = 6
         resolutions = [0, 1, 2]
     else:
         raise ValueError(f"unsupported dimension: {ambient_dim}")
@@ -291,9 +339,12 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
         h_max, errors = run_exterior_stokes(actx_factory,
                 ambient_dim=ambient_dim,
                 target_order=target_order,
+                fmm_order=fmm_order,
                 qbx_order=qbx_order,
                 source_ovsmp=source_ovsmp,
                 resolution=resolution,
+                method=method,
+                nu=nu,
                 visualize=visualize)
 
         for eoc, e in zip(eocs, errors):
@@ -305,12 +356,17 @@ def test_exterior_stokes(actx_factory, ambient_dim, visualize=False):
             error_format="%.8e",
             eoc_format="%.2f"))
 
+    extra_order = 0
+    if method == "biharmonic":
+        extra_order += 1
+    elif nu != 0.5:
+        extra_order += 0.5
     for eoc in eocs:
         # This convergence data is not as clean as it could be. See
         # https://github.com/inducer/pytential/pull/32
         # for some discussion.
         order = min(target_order, qbx_order)
-        assert eoc.order_estimate() > order - 0.5
+        assert eoc.order_estimate() > order - 0.5 - extra_order
 
 # }}}
 
@@ -404,13 +460,13 @@ class StokesletIdentity:
     def __init__(self, ambient_dim):
         from pytential.symbolic.stokes import StokesletWrapper
         self.ambient_dim = ambient_dim
-        self.stokeslet = StokesletWrapper(self.ambient_dim)
+        self.stokeslet = StokesletWrapper(self.ambient_dim, mu_sym=1)
 
     def apply_operator(self):
         sym_density = sym.normal(self.ambient_dim).as_vector()
         return self.stokeslet.apply(
                 sym_density,
-                mu_sym=1, qbx_forced_limit=+1)
+                qbx_forced_limit=+1)
 
     def ref_result(self):
         return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
@@ -463,13 +519,13 @@ class StressletIdentity:
     def __init__(self, ambient_dim):
         from pytential.symbolic.stokes import StokesletWrapper
         self.ambient_dim = ambient_dim
-        self.stokeslet = StokesletWrapper(self.ambient_dim)
+        self.stokeslet = StokesletWrapper(self.ambient_dim, mu_sym=1)
 
     def apply_operator(self):
         sym_density = sym.normal(self.ambient_dim).as_vector()
         return self.stokeslet.apply_stress(
                 sym_density, sym_density,
-                mu_sym=1, qbx_forced_limit="avg")
+                qbx_forced_limit="avg")
 
     def ref_result(self):
         return -0.5 * sym.normal(self.ambient_dim).as_vector()
@@ -520,6 +576,14 @@ def test_stresslet_identity(actx_factory, cls, visualize=False):
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
+        import pyopencl as cl
+        from arraycontext import PyOpenCLArrayContext
+        context = cl._csc()
+        queue = cl.CommandQueue(context)
+
+        def actx_factory():
+            return PyOpenCLArrayContext(queue)
+
         exec(sys.argv[1])
     else:
         from pytest import main
