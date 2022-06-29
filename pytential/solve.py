@@ -37,7 +37,7 @@ from typing import Callable, Optional, Sequence
 
 import numpy as np
 
-from arraycontext.container import ArrayOrContainerT
+from arraycontext import ArrayContainer, ArrayOrContainerT
 
 
 def structured_vdot(x, y, array_context=None):
@@ -92,7 +92,7 @@ class GMRESResult:
         A description of the outcome.
     """
 
-    solution: ArrayOrContainerT
+    solution: ArrayContainer
     residual_norms: Sequence[float]
     iteration_count: int
     success: bool
