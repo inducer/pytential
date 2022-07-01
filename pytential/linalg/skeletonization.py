@@ -52,6 +52,57 @@ Skeletonization
 
 # {{{ wrangler
 
+# Adding weights to proxy evaluation: Why? How? Huh?
+# --------------------------------------------------
+#
+# We have a couple of interaction evaluations that need to happen for the
+# proxy-based skeletonization, namely
+# 1. with the proxies + neighbors when the current cluster is the source
+# 2. with the proxies + neighbors when the current cluster is the target
+#
+# The operator that we want to skeletonize at the end of the day is the full
+# layer potential, that contains quadrature weights and area elements. That
+# means that it is in our interest to include some of that information in
+# the proxy + neighbor interaction matrices that get passed to the ID
+# (interpolative decomposition). This helps on two fronts:
+# * first, it gives the ID a better chance at guessing a good range. This is more
+#   important for the nearfield than the farfield.
+# * second, as the ID constructs an approximation until a relative error is
+#   reached, columns with a larger norm will be preferred. However, since
+#   we ultimately reconstruct both nearfield and farfield, we have no reason to
+#   weigh the proxy or neighbor interactions more heavily. Ideally both sets of
+#   interactions are weighted similarly, which is what we try to achieve below.
+#
+# In the first case, the geometry is the source and we can directly
+# right multiply with the same weights, e.g.
+#
+#   P_w <- P @ W
+#   N_w <- N @ W
+#
+# where `P` and `N` just evaluate the direct proxy interactions (P2P) and
+# the neighbor interactions (QBX) without any other changes. Then, the matrix
+# `hstack([P_w, N_w])` is the one that gets ID-ed. As the proxies and neighbors
+# are at a comparable distance from the cluster, multiplying both by the same
+# weights is expected to ensure similar norms. Adding these weights is
+# controlled by `SkeletonizationWrangler.weighted_sources`.
+#
+# In the second case, the source points are either the proxy points or the
+# neighboring points. For neighboring points, we retrieve the weights on the
+# geometry (same as above). However, for the proxy points we generally do not
+# construct (or wish to) a full discretization with a quadrature scheme. From a
+# linear algebra point of view, we want to find a matrix `W_p` in
+#
+#   P_w <- P @ W_p
+#   N_w <- N @ W
+#
+# such that `P_w` and `N_w` have comparable norms. For now, we approximate `W_p`
+# by taking the average of `W`, i.e. `W_p <- avg(W) * I`. As `W` is diagonal,
+# we could easily approximate the `\ell^2` or Frobenius norm, but the average
+# is thought of as reasonable compromise. Adding these weights is controlled by
+# `SkeletonizationWrangler.weighted_targets` and computed below in
+# `_approximate_geometry_waa_magnitude`.
+
+
 def _approximate_geometry_waa_magnitude(
         actx: PyOpenCLArrayContext,
         places: GeometryCollection,
