@@ -227,37 +227,38 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     from pytential.linalg.skeletonization import \
             _skeletonize_block_by_proxy_with_mats
     with ProcessTimer() as p:
-        L, R, skel_tgt_src_index, src, tgt = _skeletonize_block_by_proxy_with_mats(
+        skeleton = _skeletonize_block_by_proxy_with_mats(
                 actx, 0, 0, places, proxy_generator, wrangler, tgt_src_index,
                 id_eps=case.id_eps,
                 max_particles_in_box=case.max_particles_in_box)
 
     logger.info("[time] skeletonization by proxy: %s", p)
 
+    L, R = skeleton.L, skeleton.R
     for i in range(tgt_src_index.nclusters):
         # targets (rows)
         bi = np.searchsorted(
             tgt_src_index.targets.cluster_indices(i),
-            skel_tgt_src_index.targets.cluster_indices(i),
+            skeleton.skel_tgt_src_index.targets.cluster_indices(i),
             )
 
-        A = np.hstack(tgt[i])
+        A = np.hstack(skeleton._tgt_eval_result[i])
         S = A[bi, :]
-        tgt_error = la.norm(A - L[i, i] @ S, ord=2) / la.norm(A, ord=2)
+        tgt_error = la.norm(A - L[i] @ S, ord=2) / la.norm(A, ord=2)
 
         # sources (columns)
         bj = np.searchsorted(
             tgt_src_index.sources.cluster_indices(i),
-            skel_tgt_src_index.sources.cluster_indices(i),
+            skeleton.skel_tgt_src_index.sources.cluster_indices(i),
             )
 
-        A = np.vstack(src[i])
+        A = np.vstack(skeleton._src_eval_result[i])
         S = A[:, bj]
-        src_error = la.norm(A - S @ R[i, i], ord=2) / la.norm(A, ord=2)
+        src_error = la.norm(A - S @ R[i], ord=2) / la.norm(A, ord=2)
 
         logger.info("[%04d] id_eps %.5e src %.5e tgt %.5e rank %d/%d",
                 i, case.id_eps,
-                src_error, tgt_error, R[i, i].shape[0], R[i, i].shape[1])
+                src_error, tgt_error, R[i].shape[0], R[i].shape[1])
 
         if ctol is not None:
             assert src_error < ctol * case.id_eps
@@ -266,12 +267,6 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     # }}}
 
     # {{{ check skeletonize
-
-    from pytential.linalg import SkeletonizationResult
-    skeleton = SkeletonizationResult(
-            L=L, R=R,
-            tgt_src_index=tgt_src_index,
-            skel_tgt_src_index=skel_tgt_src_index)
 
     from pytential.linalg.utils import (
             cluster_skeletonization_error, skeletonization_error)
@@ -329,9 +324,9 @@ def run_skeletonize_by_proxy(actx, case, resolution,
                     ).reshape(places.ambient_dim, -1)
 
             _plot_skeleton_with_proxies(f"sources{suffix}", sources, pxy,
-                    tgt_src_index.sources, skel_tgt_src_index.sources)
+                    tgt_src_index.sources, skeleton.skel_tgt_src_index.sources)
             _plot_skeleton_with_proxies(f"targets{suffix}", sources, pxy,
-                    tgt_src_index.targets, skel_tgt_src_index.targets)
+                    tgt_src_index.targets, skeleton.skel_tgt_src_index.targets)
         else:
             # TODO: would be nice to figure out a way to visualize some of these
             # skeletonization results in 3D. Probably need to teach the
@@ -435,15 +430,14 @@ def test_skeletonize_by_proxy_convergence(
     places = mat = None
     for i in range(id_eps.size):
         case = replace(case, id_eps=id_eps[i], weighted_proxy=weighted)
-
-        if not was_zero:
-            rec_error[i], (places, mat) = run_skeletonize_by_proxy(
-                actx, case, r, places=places, mat=mat,
-                force_assert=False,
-                suffix=f"{suffix}_{i:04d}", visualize=False)
+        rec_error[i], (places, mat) = run_skeletonize_by_proxy(
+            actx, case, r, places=places, mat=mat,
+            suffix=f"{suffix}_{i:04d}", visualize=False)
 
         was_zero = rec_error[i] == 0.0
         eoc.add_data_point(id_eps[i], rec_error[i])
+        if was_zero:
+            break
 
     logger.info("\n%s", eoc.pretty_print())
 

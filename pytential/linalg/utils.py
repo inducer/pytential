@@ -415,10 +415,10 @@ def cluster_skeletonization_error(
 
         # compute cluster-wise errors
         S = mat[np.ix_(s_tgt, f_src)]
-        tgt_error[i, j] = mnorm(A, L[i, i] @ S)
+        tgt_error[i, j] = mnorm(A, L[i] @ S)
 
         S = mat[np.ix_(f_tgt, s_src)]
-        src_error[i, j] = mnorm(A, S @ R[j, j])
+        src_error[i, j] = mnorm(A, S @ R[j])
 
     # }}}
 
@@ -474,7 +474,7 @@ def skeletonization_error(
         s_src = skel_tgt_src_index.sources.cluster_indices(j)
 
         S = mat[np.ix_(s_tgt, s_src)]
-        skl[np.ix_(f_tgt, f_src)] = L[i, i] @ S @ R[j, j]
+        skl[np.ix_(f_tgt, f_src)] = L[i] @ S @ R[j]
 
     # }}}
 
