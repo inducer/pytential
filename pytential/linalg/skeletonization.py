@@ -167,7 +167,7 @@ def _apply_weights(
             _approximate_geometry_waa_magnitude(actx, places, cluster_index, domain)
             )
 
-    result = actx.np.zeros_like(mat)
+    result = np.zeros_like(mat)
     for i in range(tgt_pxy_index.nclusters):
         istart, iend = tgt_pxy_index._flat_cluster_starts[i:i + 2]
         result[istart:iend] = mat[istart:iend] * waa[i]
@@ -619,18 +619,21 @@ def _skeletonize_block_by_proxy_with_mats(
         src_mat = np.vstack(src_result[i])
         tgt_mat = np.hstack(tgt_result[i])
 
-        assert np.all(np.isfinite(tgt_mat)), np.where(np.isfinite(tgt_mat))
-        assert np.all(np.isfinite(src_mat)), np.where(np.isfinite(src_mat))
+        if __debug__:
+            isfinite = np.isfinite(tgt_mat)
+            assert np.all(isfinite), np.where(isfinite)
+            isfinite = np.isfinite(src_mat)
+            assert np.all(isfinite), np.where(isfinite)
 
         # skeletonize target points
-        k, idx, interp = interp_decomp(tgt_mat.T, k, id_eps)
+        k, idx, interp = interp_decomp(tgt_mat.T, rank=k, eps=id_eps)
         assert k > 0
 
         L[i] = interp.T
         tgt_skl_indices[i] = tgt_src_index.targets.cluster_indices(i)[idx[:k]]
 
         # skeletonize source points
-        k, idx, interp = interp_decomp(src_mat, k, id_eps)
+        k, idx, interp = interp_decomp(src_mat, rank=k, eps=None)
         assert k > 0
 
         R[i] = interp
