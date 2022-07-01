@@ -97,7 +97,11 @@ def _plot_skeleton_with_proxies(name, sources, pxy, srcindex, sklindex):
     replace(SKELETONIZE_TEST_CASES[0], op_type="double", knl_class_or_helmholtz_k=5),
     ])
 def test_skeletonize_symbolic(actx_factory, case, visualize=False):
-    """Tests that the symbolic manipulations work for different kernels / IntGs."""
+    """Tests that the symbolic manipulations work for different kernels / IntGs.
+    This tests that `prepare_expr` and `prepare_proxy_expr` can "clean" the
+    given integral equations and that the result can be evaluated and skeletonized.
+    """
+
     actx = actx_factory()
 
     if visualize:
@@ -152,7 +156,7 @@ def test_skeletonize_symbolic(actx_factory, case, visualize=False):
 
 def run_skeletonize_by_proxy(actx, case, resolution,
                              places=None, mat=None,
-                             force_assert=True,
+                             ctol=None, rtol=None,
                              suffix="", visualize=False):
     from pytools import ProcessTimer
 
@@ -255,9 +259,9 @@ def run_skeletonize_by_proxy(actx, case, resolution,
                 i, case.id_eps,
                 src_error, tgt_error, R[i, i].shape[0], R[i, i].shape[1])
 
-        if force_assert:
-            assert src_error < 6 * case.id_eps
-            assert tgt_error < 6 * case.id_eps
+        if ctol is not None:
+            assert src_error < ctol * case.id_eps
+            assert tgt_error < ctol * case.id_eps
 
     # }}}
 
@@ -289,16 +293,14 @@ def run_skeletonize_by_proxy(actx, case, resolution,
 
         logger.info("[time] full error: %s", p)
 
-    # FIXME: why is the 3D error so large?
-    rtol = 10**places.ambient_dim * case.id_eps
-
     logger.info("error: id_eps %.5e R %.5e L %.5e F %.5e (rtol %.5e)",
-            case.id_eps, err_r, err_l, err_f, rtol)
+            case.id_eps, err_r, err_l, err_f,
+            rtol if rtol is not None else 0.0)
 
-    if force_assert:
-        assert err_l < rtol
-        assert err_r < rtol
-        assert err_f < rtol
+    if rtol:
+        assert err_l < rtol * case.id_eps
+        assert err_r < rtol * case.id_eps
+        assert err_f < rtol * case.id_eps
 
     # }}}
 
@@ -341,9 +343,18 @@ def run_skeletonize_by_proxy(actx, case, resolution,
     return err_f, (places, mat)
 
 
-@pytest.mark.parametrize("case", SKELETONIZE_TEST_CASES)
+@pytest.mark.parametrize("case", [
+    # NOTE: skip 2d tests, since they're better checked for convergence in
+    # `test_skeletonize_by_proxy_convergence`
+    # SKELETONIZE_TEST_CASES[0], SKELETONIZE_TEST_CASES[1],
+    SKELETONIZE_TEST_CASES[2],
+    ])
 def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
-    """Test single-level level skeletonization accuracy."""
+    r"""Test single-level skeletonization accuracy. Checks that the error
+    satisfies :math:`e < c \epsilon_{id}` for a fixed ID tolerance and an
+    empirically determined (not too huge) :math:`c`.
+    """
+
     import scipy.linalg.interpolative as sli    # pylint:disable=no-name-in-module
     sli.seed(42)
 
@@ -355,7 +366,12 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
     case = replace(case, approx_cluster_count=6, id_eps=1.0e-8)
     logger.info("\n%s", case)
 
-    run_skeletonize_by_proxy(actx, case, case.resolutions[0], visualize=visualize)
+    run_skeletonize_by_proxy(
+        actx, case, case.resolutions[0],
+        ctol=6,
+        # FIXME: why is the 3D error so large?
+        rtol=10**case.ambient_dim,
+        visualize=visualize)
 
 # }}}
 
@@ -382,7 +398,10 @@ CONVERGENCE_TEST_CASES = [
 def test_skeletonize_by_proxy_convergence(
         actx_factory, case, weighted=True,
         visualize=False):
-    """Test single-level level skeletonization accuracy."""
+    r"""Test single-level skeletonization accuracy. Checks that the
+    accuracy of the skeletonization scales linearly with :math:`\epsilon_{id}`
+    (the ID tolerance).
+    """
     import scipy.linalg.interpolative as sli    # pylint:disable=no-name-in-module
     sli.seed(42)
 
