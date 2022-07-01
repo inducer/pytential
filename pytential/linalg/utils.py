@@ -325,14 +325,16 @@ def make_flat_cluster_diag(
 # {{{ interpolative decomposition
 
 def interp_decomp(
-        A: np.ndarray, rank: Optional[int], eps: Optional[float],
+        A: np.ndarray, *, rank: Optional[int], eps: Optional[float],
         ) -> Tuple[int, np.ndarray, np.ndarray]:
     """Wrapper for :func:`~scipy.linalg.interpolative.interp_decomp` that
     always has the same output signature.
 
-    :return: a tuple ``(k, idx, interp)`` containing the numerical rank,
-        the column indices and the resulting interpolation matrix.
+    :return: a tuple ``(k, idx, interp)`` containing the numerical rank *k*,
+        the column indices *idx* and the resulting interpolation matrix *interp*.
     """
+    if rank is not None and eps is not None:
+        raise ValueError("providing both 'rank' and 'eps' is not supported")
 
     import scipy.linalg.interpolative as sli    # pylint:disable=no-name-in-module
     if rank is None:
