@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import partial
 import pytest
 
 import numpy as np
@@ -389,8 +390,9 @@ def test_pec_mfie_extinction(actx_factory, case,
             if source is None:
                 source = sym.DEFAULT_SOURCE
 
-            return bind(places, sym_repr, auto_where=(source, target))(
-                    actx, jt=jt, rho=rho, **knl_kwargs)
+            return bind(
+                places, sym_repr, auto_where=(source, target)       # noqa: B023
+                )(actx, jt=jt, rho=rho, **knl_kwargs)               # noqa: B023
 
         pde_test_repr = EHField(vector_from_device(actx.queue,
             eval_repr_at(places, target="patch_target")))
@@ -419,9 +421,7 @@ def test_pec_mfie_extinction(actx_factory, case,
                     actx, jt=jt, rho=rho, inc_fld=inc_field_scat.field,
                     **knl_kwargs)
 
-        def scat_norm(f):
-            return norm(density_discr, f, p=np.inf)
-
+        scat_norm = partial(norm, density_discr, p=np.inf)
         e_bc_residual = actx.to_numpy(
                 scat_norm(eh_bc_values[:3]) / scat_norm(inc_field_scat.e)
                 )
@@ -488,9 +488,7 @@ def test_pec_mfie_extinction(actx_factory, case,
 
         obs_repr = EHField(eval_repr_at(places, target="obs_discr"))
 
-        def obs_norm(f):
-            return norm(obs_discr, f, p=np.inf)
-
+        obs_norm = partial(norm, obs_discr, p=np.inf)
         rel_err_e = actx.to_numpy(
                 obs_norm(inc_field_obs.e + obs_repr.e)
                 / obs_norm(inc_field_obs.e))

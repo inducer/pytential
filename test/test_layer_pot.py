@@ -491,18 +491,18 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
         from sumpy.kernel import LaplaceKernel
         knl = LaplaceKernel(places.ambient_dim)
 
-        def nxcurlS(qbx_forced_limit):
-            sigma_sym = sym.cse(sym.tangential_to_xyz(density_sym), "jxyz")
+        def nxcurlS(knl, density_sym, qbx_forced_limit):
+            tangent_sigma_sym = sym.cse(sym.tangential_to_xyz(density_sym), "jxyz")
             return sym.n_cross(sym.curl(
-                sym.S(knl, sigma_sym, qbx_forced_limit=qbx_forced_limit)
+                sym.S(knl, tangent_sigma_sym, qbx_forced_limit=qbx_forced_limit)
                 ))
 
         x, y, z = actx.thaw(density_discr.nodes())
         if relation == "nxcurls":
             density_sym = sym.make_sym_vector("density", 2)
             jump_identity_sym = (
-                    nxcurlS(+1)
-                    - nxcurlS("avg")
+                    nxcurlS(knl, density_sym, +1)
+                    - nxcurlS(knl, density_sym, "avg")
                     - 0.5*sym.tangential_to_xyz(density_sym)
                     )
 
@@ -567,8 +567,10 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
         error = actx.np.log10(actx.np.abs(jump_identity) + 1.0e-15)
 
         if relation == "nxcurls":
-            nxcurlS_ext = bind(places, nxcurlS(+1))(actx, density=density)
-            nxcurlS_avg = bind(places, nxcurlS("avg"))(actx, density=density)
+            nxcurlS_ext = bind(
+                places, nxcurlS(knl, density_sym, +1))(actx, density=density)
+            nxcurlS_avg = bind(
+                places, nxcurlS(knl, density_sym, "avg"))(actx, density=density)
             jtxyz = bind(
                     places, sym.tangential_to_xyz(density_sym)
                     )(actx, density=density)
