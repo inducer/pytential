@@ -870,7 +870,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         tree = self.tree()
 
         result = self.code_getter.rotation_classes_builder(actx.queue, trav, tree)
-        return actx.to_numpy(result[0])
+        return result[0].get(queue=actx.queue)
 
     @memoize_method
     def m2l_rotation_lists(self):
