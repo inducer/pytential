@@ -261,18 +261,17 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             D = self.D  # noqa
             T = self.T  # noqa
 
-            def Tt(where, dom, density):  # noqa
+            def Tt(where, dom, density):
                 return sym.tangential_derivative(
-                        2, T(where, dom, density)).xproject(0)
+                        2, self.T(where, dom, density)).xproject(0)
 
-            def Sn(dom, density):  # noqa
+            def Sn(dom, density):
                 return sym.normal_derivative(
-                        2,
-                        S(dom, density,
-                            qbx_forced_limit="avg"))
+                        2, self.S(dom, density, qbx_forced_limit="avg"))
 
             def St(dom, density):  # noqa
-                return sym.tangential_derivative(2, S(dom, density)).xproject(0)
+                return sym.tangential_derivative(
+                    2, self.S(dom, density)).xproject(0)
 
             n0 = self.domain_n_exprs[dom0i]
             n1 = self.domain_n_exprs[dom1i]
@@ -311,14 +310,16 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                     - (n1**2 - ne**2) * S(dom1i, phi2)
                     ), "a32")
 
-            def a23_expr(phi):
+            def a23_expr(phi, tangent, where=where, dom0i=dom0i, dom1i=dom1i):
                 return (
                         1j * (Tt(where, dom0i, phi) - Tt(where, dom1i, phi))
                         - 1j * (
-                            n0**2 * tangent.scalar_product(
-                                S(dom0i, tangent * phi))
-                            - n1**2 * tangent.scalar_product(
-                                S(dom1i, tangent * phi))))
+                            self.domain_n_exprs[dom0i]**2
+                            * tangent.scalar_product(self.S(dom0i, tangent * phi))
+                            - self.domain_n_exprs[dom1i]**2
+                            * tangent.scalar_product(self.S(dom1i, tangent * phi))
+                            )
+                        )
 
             a23 = +1*sym.cse(a23_expr(phi3), "a23")
             a41 = -1*sym.cse(a23_expr(phi1), "a41")
