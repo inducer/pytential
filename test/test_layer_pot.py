@@ -612,6 +612,50 @@ def test_3d_jump_relations(actx_factory, relation, visualize=False):
 # }}}
 
 
+# {{{
+
+def test_qbx_fmm_failure(actx_factory, visualize=False):
+    actx = actx_factory()
+
+    # {{{ setup
+
+    from extra_int_eq_data import CircleTestCase
+    case = CircleTestCase(
+        target_order=5,
+        qbx_order=5,
+        source_ovsmp=4,
+        fmm_order=10, fmm_backend="sumpy",
+        )
+    resolution = case.resolutions[-1]
+
+    logger.info("\n%s", case)
+
+    from pytential import GeometryCollection
+    qbx = case.get_layer_potential(actx, resolution, case.target_order)
+    places = GeometryCollection(qbx, auto_where=case.name)
+    density_discr = places.get_discretization(case.name)
+
+    # }}}
+
+    # {{{ evaluate
+
+    from sumpy.kernel import LaplaceKernel
+    knl = LaplaceKernel(places.ambient_dim)
+
+    Sp = partial(sym.Sp, knl, qbx_forced_limit="avg")     # noqa: N806
+    Spp = partial(sym.Spp, knl, qbx_forced_limit="avg")   # noqa: N806
+
+    sym_sigma = sym.var("sigma")
+    sym_op = Sp(sym_sigma) + Spp(sym_sigma)
+
+    sigma = actx.thaw(density_discr.nodes()[0])
+    bind(places, sym_op)(actx, sigma=sigma)
+
+    # }}}
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_layer_pot.py 'test_routine()'
 
