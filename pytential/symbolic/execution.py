@@ -124,29 +124,31 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def _map_elementwise_reduction(self, reduction_name, expr):
         import loopy as lp
         from arraycontext import make_loopy_program
-        from meshmode.transform_metadata import (
-                ConcurrentElementInameTag, ConcurrentDOFInameTag)
+        from meshmode.transform_metadata import ConcurrentElementInameTag
+        actx = self.array_context
 
-        @memoize_in(self.places, "elementwise_node_"+reduction_name)
+        @memoize_in(actx, (
+            EvaluationMapperBase._map_elementwise_reduction,
+            f"elementwise_node_{reduction_name}"))
         def node_knl():
             t_unit = make_loopy_program(
                     """{[iel, idof, jdof]:
                         0<=iel<nelements and
                         0<=idof, jdof<ndofs}""",
                     """
-                    result[iel, idof] = %s(jdof, operand[iel, jdof])
+                    <> el_result = %s(jdof, operand[iel, jdof])
+                    result[iel, idof] = el_result
                     """ % reduction_name,
-                    name="nodewise_reduce")
+                    name=f"elementwise_node_{reduction_name}")
 
             return lp.tag_inames(t_unit, {
                 "iel": ConcurrentElementInameTag(),
-                "idof": ConcurrentDOFInameTag(),
                 })
 
-        @memoize_in(self.places, "elementwise_"+reduction_name)
+        @memoize_in(actx, (
+            EvaluationMapperBase._map_elementwise_reduction,
+            f"elementwise_element_{reduction_name}"))
         def element_knl():
-            # FIXME: This computes the reduction value redundantly for each
-            # output DOF.
             t_unit = make_loopy_program(
                     """{[iel, jdof]:
                         0<=iel<nelements and
@@ -155,37 +157,27 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                     """
                     result[iel, 0] = %s(jdof, operand[iel, jdof])
                     """ % reduction_name,
-                    name="elementwise_reduce")
+                    name=f"elementwise_element_{reduction_name}")
 
             return lp.tag_inames(t_unit, {
                 "iel": ConcurrentElementInameTag(),
                 })
 
-        discr = self.places.get_discretization(
-                expr.dofdesc.geometry, expr.dofdesc.discr_stage)
+        dofdesc = expr.dofdesc
         operand = self.rec(expr.operand)
-        assert operand.shape == (len(discr.groups),)
 
-        def _reduce(knl, result):
-            for g_operand, g_result in zip(operand, result):
-                self.array_context.call_loopy(
-                    knl, operand=g_operand, result=g_result)
-
-            return result
-
-        dtype = operand.entry_dtype
-        granularity = expr.dofdesc.granularity
-        if granularity is sym.GRANULARITY_NODE:
-            return _reduce(node_knl(),
-                    discr.empty(self.array_context, dtype=dtype))
-        elif granularity is sym.GRANULARITY_ELEMENT:
-            result = DOFArray(self.array_context, tuple([
-                self.array_context.empty((grp.nelements, 1), dtype=dtype)
-                for grp in discr.groups
+        if dofdesc.granularity is sym.GRANULARITY_NODE:
+            return type(operand)(actx, tuple([
+                actx.call_loopy(node_knl(), operand=operand_i)["result"]
+                for operand_i in operand
                 ]))
-            return _reduce(element_knl(), result)
+        elif dofdesc.granularity is sym.GRANULARITY_ELEMENT:
+            return type(operand)(actx, tuple([
+                actx.call_loopy(element_knl(), operand=operand_i)["result"]
+                for operand_i in operand
+                ]))
         else:
-            raise ValueError(f"unsupported granularity: {granularity}")
+            raise ValueError(f"unsupported granularity: {dofdesc.granularity}")
 
     def map_elementwise_sum(self, expr):
         return self._map_elementwise_reduction("sum", expr)
