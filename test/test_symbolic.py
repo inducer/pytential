@@ -306,26 +306,58 @@ def test_node_reduction(actx_factory):
 
     # {{{ test
 
-    # create a shuffled [1, nelements + 1] array
-    ary = []
-    el_nr_base = 0
-    for grp in discr.groups:
-        x = 1 + np.arange(el_nr_base, grp.nelements)
-        np.random.shuffle(x)
+    # create a shuffled [1, ndofs + 1] array
+    rng = np.random.default_rng(seed=42)
 
-        ary.append(actx.freeze(actx.from_numpy(x.reshape(-1, 1))))
-        el_nr_base += grp.nelements
+    def randrange_like(xi, offset):
+        x = offset + np.arange(1, xi.size + 1)
+        rng.shuffle(x)
+
+        return actx.from_numpy(x.reshape(xi.shape))
 
     from meshmode.dof_array import DOFArray
-    ary = DOFArray(actx, tuple(ary))
+    base_node_nrs = np.cumsum([0] + [grp.ndofs for grp in discr.groups])
+    ary = DOFArray(actx, tuple([
+        randrange_like(xi, offset)
+        for xi, offset in zip(discr.nodes()[0], base_node_nrs)
+        ]))
 
+    n = discr.ndofs
     for func, expected in [
-            (sym.NodeSum, nelements * (nelements + 1) // 2),
-            (sym.NodeMax, nelements),
+            (sym.NodeSum, n * (n + 1) // 2),
+            (sym.NodeMax, n),
             (sym.NodeMin, 1),
             ]:
-        r = bind(discr, func(sym.var("x")))(actx, x=ary)
-        assert abs(actx.to_numpy(r) - expected) < 1.0e-15, r
+        r = actx.to_numpy(
+            bind(discr, func(sym.var("x")))(actx, x=ary)
+            )
+        assert r == expected, (r, expected)
+
+    arys = tuple([rng.random(size=xi.shape) for xi in ary])
+    x = DOFArray(actx, tuple([actx.from_numpy(xi) for xi in arys]))
+
+    from meshmode.dof_array import flat_norm
+    for func, np_func in [
+            (sym.ElementwiseSum, np.sum),
+            (sym.ElementwiseMax, np.max)
+            ]:
+        expected = DOFArray(actx, tuple([
+            actx.from_numpy(np.tile(np_func(xi, axis=1, keepdims=True), xi.shape[1]))
+            for xi in arys
+            ]))
+        r = bind(
+            discr, func(sym.var("x"), dofdesc=sym.GRANULARITY_NODE)
+            )(actx, x=x)
+        assert actx.to_numpy(flat_norm(r - expected)) < 1.0e-15
+
+        expected = DOFArray(actx, tuple([
+            actx.from_numpy(np_func(xi, axis=1, keepdims=True))
+            for xi in arys
+            ]))
+        r = bind(
+            discr, func(sym.var("x"), dofdesc=sym.GRANULARITY_ELEMENT)
+            )(actx, x=x)
+        assert actx.to_numpy(flat_norm(r - expected)) < 1.0e-15
 
     # }}}
 
