@@ -85,7 +85,6 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def _map_minmax(self, func, inherited_func, expr):
         ev_children = [self.rec(ch) for ch in expr.children]
         from functools import reduce
-        from meshmode.dof_array import DOFArray
         if any(isinstance(ch, self.array_context.array_types + (DOFArray,))
                 for ch in ev_children):
             return reduce(func, ev_children)
@@ -105,22 +104,22 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 expr)
 
     def map_node_sum(self, expr):
-        actx = self.array_context
-        return sum(actx.np.sum(grp_ary) for grp_ary in self.rec(expr.operand))
+        operand = self.rec(expr.operand)
+        assert isinstance(operand, self.array_context.array_types + (DOFArray,))
+
+        return self.array_context.np.sum(operand)
 
     def map_node_max(self, expr):
-        from functools import reduce
-        actx = self.array_context
-        return reduce(
-            actx.np.maximum,
-            (actx.np.max(grp_ary) for grp_ary in self.rec(expr.operand)))
+        operand = self.rec(expr.operand)
+        assert isinstance(operand, self.array_context.array_types + (DOFArray,))
+
+        return self.array_context.np.max(operand)
 
     def map_node_min(self, expr):
-        from functools import reduce
-        actx = self.array_context
-        return reduce(
-            actx.np.minimum,
-            (actx.np.min(grp_ary) for grp_ary in self.rec(expr.operand)))
+        operand = self.rec(expr.operand)
+        assert isinstance(operand, self.array_context.array_types + (DOFArray,))
+
+        return self.array_context.np.min(operand)
 
     def _map_elementwise_reduction(self, reduction_name, expr):
         import loopy as lp
