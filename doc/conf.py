@@ -24,7 +24,6 @@ autodoc_type_aliases = {
 
 intersphinx_mapping = {
     "https://docs.python.org/3/": None,
-    "https://documen.tician.de/boxtree/": None,
     "https://numpy.org/doc/stable/": None,
     "https://scipy.github.io/devdocs/": None,
     "https://documen.tician.de/arraycontext/": None,
@@ -34,5 +33,6 @@ intersphinx_mapping = {
     "https://documen.tician.de/pytools/": None,
     "https://documen.tician.de/pymbolic/": None,
     "https://documen.tician.de/loopy/": None,
+    "https://documen.tician.de/boxtree/": None,
     "https://documen.tician.de/sumpy/": None,
     }

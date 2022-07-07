@@ -20,17 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import partial
+from typing import Callable, Optional, Union
+
 import numpy as np
 
 from arraycontext import PyOpenCLArrayContext, flatten, unflatten
+from meshmode.discretization import Discretization
 from meshmode.dof_array import DOFArray
-
 from pytools import memoize_method, memoize_in, single_valued
-from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
-from pytential.source import LayerPotentialSourceBase
 from sumpy.expansion import DefaultExpansionFactory as DefaultExpansionFactoryBase
 
-from functools import partial
+from pytential.qbx.cost import AbstractQBXCostModel
+from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
+from pytential.source import LayerPotentialSourceBase
 
 import logging
 logger = logging.getLogger(__name__)
@@ -87,111 +90,139 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ constructor / copy
 
-    def __init__(self,
-            density_discr,
-            fine_order,
-            qbx_order=None,
-            fmm_order=None,
-            fmm_level_to_order=None,
-            expansion_factory=None,
-            target_association_tolerance=_not_provided,
+    def __init__(
+            self,
+            density_discr: Discretization,
+            fine_order: Optional[int],
+            qbx_order: Optional[int] = None,
+            fmm_order: Optional[Union[bool, int]] = None,
+            fmm_level_to_order: Optional[
+                Union[bool, Callable[..., int]]
+                ] = None,
+            expansion_factory: Optional[DefaultExpansionFactoryBase] = None,
+            target_association_tolerance: Optional[float] = _not_provided,
 
             # begin experimental arguments
             # FIXME default debug=False once everything has matured
-            debug=True,
-            _disable_refinement=False,
-            _expansions_in_tree_have_extent=True,
-            _expansion_stick_out_factor=0.5,
-            _well_sep_is_n_away=2,
-            _max_leaf_refine_weight=None,
-            _box_extent_norm=None,
-            _from_sep_smaller_crit=None,
-            _from_sep_smaller_min_nsources_cumul=None,
-            _tree_kind="adaptive",
-            _use_target_specific_qbx=None,
-            geometry_data_inspector=None,
-            cost_model=None,
-            fmm_backend="sumpy",
-            target_stick_out_factor=_not_provided):
+            debug: bool = True,
+            _disable_refinement: bool = False,
+            _expansions_in_tree_have_extent: bool = True,
+            _expansion_stick_out_factor: float = 0.5,
+            _max_leaf_refine_weight: Optional[int] = None,
+            _box_extent_norm: Optional[str] = None,
+            _tree_kind: str = "adaptive",
+            _well_sep_is_n_away: int = 2,
+            _from_sep_smaller_crit: Optional[str] = None,
+            _from_sep_smaller_min_nsources_cumul: Optional[int] = None,
+            _use_target_specific_qbx: Optional[bool] = None,
+            geometry_data_inspector: Optional[Callable[..., bool]] = None,
+            cost_model: Optional[AbstractQBXCostModel] = None,
+            fmm_backend: str = "sumpy",
+            ) -> None:
         """
         :arg fine_order: The total degree to which the (upsampled)
-             underlying quadrature is exact.
-        :arg fmm_order: `False` for direct calculation. May not be given if
+            underlying quadrature is exact.
+        :arg fmm_order: Use *False* for direct calculation or an integer
+            otherwise. May not be given (i.e. left as *None*) if
             *fmm_level_to_order* is given.
-        :arg fmm_level_to_order: A function that takes arguments of
-             *(kernel, kernel_args, tree, level)* and returns the expansion
-             order to be used on a given *level* of *tree* with *kernel*, where
-             *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
-             *kernel_args* is a set of *(key, value)* tuples with evaluated
-             kernel arguments. May not be given if *fmm_order* is given.
+        :arg fmm_level_to_order: A callable that takes arguments of
+            *(kernel, kernel_args, tree, level)* and returns the expansion
+            order to be used on a given *level* of *tree* with *kernel*, where
+            *kernel* is the :class:`sumpy.kernel.Kernel` being evaluated, and
+            *kernel_args* is a set of *(key, value)* tuples with evaluated
+            kernel arguments. May not be given if *fmm_order* is given.
+        :arg fmm_backend: a string denoting the desired FMM backend to use,
+            either `"sumpy"` or `"fmmlib"`. Only used if *fmm_order* or
+            *fmm_level_to_order* are provided.
+        :arg expansion_factory: used to get local and multipole expansions for
+            the FMM evaluations.
+        :arg target_association_tolerance: passed on to
+            :func:`pytential.qbx.target_assoc.associate_targets_to_qbx_centers`.
 
         Experimental arguments without a promise of forward compatibility:
 
+        :arg _expansions_in_tree_have_extent: if *True*, target radii are passed
+            to the tree build, see :meth:`boxtree.TreeBuilder.__call__`.
+        :arg _expansion_stick_out_factor: passed on to the tree builder, see
+            :attr:`boxtree.Tree.stick_out_factor` for meaning.
+        :arg _max_leaf_refine_weight: passed on to the tree builder, see
+            :meth:`boxtree.TreeBuilder.__call__`.
+        :arg _box_extent_norm: passed on to the tree builder, see
+            :meth:`boxtree.TreeBuilder.__call__`.
+        :arg _tree_kind: passed on to the tree builder, see
+            :meth:`boxtree.TreeBuilder.__call__`.
+
+        :arg _well_sep_is_n_away: see
+            :class:`boxtree.traversal.FMMTraversalBuilder`
+        :arg _from_sep_smaller_crit: see
+            :class:`boxtree.traversal.FMMTraversalBuilder`.
+        :arg _from_sep_smaller_min_nsources_cumul: see
+            :meth:`boxtree.traversal.FMMTraversalBuilder.__call__`.
         :arg _use_target_specific_qbx: Whether to use target-specific
-            acceleration by default if possible. *None* means
-            "use if possible".
+            acceleration by default if possible. *None* means "use if possible".
+
         :arg cost_model: Either *None* or an object implementing the
              :class:`~pytential.qbx.cost.AbstractQBXCostModel` interface, used for
-             gathering modeled costs if provided (experimental)
+             gathering modeled costs if provided (experimental).
         """
 
         # {{{ argument processing
 
         if fine_order is None:
-            raise ValueError("fine_order must be provided.")
+            raise ValueError("'fine_order' must be provided.")
+        assert isinstance(fine_order, int)
 
         if qbx_order is None:
-            raise ValueError("qbx_order must be provided.")
-
-        if target_stick_out_factor is not _not_provided:
-            from warnings import warn
-            warn("target_stick_out_factor has been renamed to "
-                    "target_association_tolerance. "
-                    "Using target_stick_out_factor is deprecated "
-                    "and will stop working in 2018.",
-                    DeprecationWarning, stacklevel=2)
-
-            if target_association_tolerance is not _not_provided:
-                raise TypeError("May not pass both target_association_tolerance and "
-                        "target_stick_out_factor.")
-
-            target_association_tolerance = target_stick_out_factor
-
-        del target_stick_out_factor
+            raise ValueError("'qbx_order' must be provided.")
+        assert isinstance(qbx_order, int)
 
         if target_association_tolerance is _not_provided:
-            target_association_tolerance = float(
-                    np.finfo(density_discr.real_dtype).eps) * 1e3
+            target_association_tolerance = (
+                1.0e+3 * float(np.finfo(density_discr.real_dtype).eps))
+        assert isinstance(target_association_tolerance, float)
 
-        if fmm_order is not None and fmm_level_to_order is not None:
-            raise TypeError("may not specify both fmm_order and fmm_level_to_order")
+        if (
+                (fmm_order is not None and fmm_level_to_order is not None)
+                or (fmm_order is None and fmm_level_to_order is None)):
+            raise TypeError(
+                "must specify exactly one of 'fmm_order' or 'fmm_level_to_order'.")
 
         if _box_extent_norm is None:
             _box_extent_norm = "l2"
+        assert isinstance(_box_extent_norm, str)
 
         if _from_sep_smaller_crit is None:
             # This seems to win no matter what the box extent norm is
             # https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/10
             _from_sep_smaller_crit = "precise_linf"
+        assert isinstance(_from_sep_smaller_crit, str)
 
         if fmm_level_to_order is None:
             if fmm_order is False:
                 fmm_level_to_order = False
             else:
+                assert isinstance(fmm_order, int) and not isinstance(fmm_order, bool)
+
                 def fmm_level_to_order(kernel, kernel_args, tree, level):  # noqa pylint:disable=function-redefined
                     return fmm_order
+        assert isinstance(fmm_level_to_order, bool) or callable(fmm_level_to_order)
 
         if _max_leaf_refine_weight is None:
             if density_discr.ambient_dim == 2:
                 # FIXME: This should be verified now that l^2 is the default.
                 _max_leaf_refine_weight = 64
             elif density_discr.ambient_dim == 3:
-                # For static_linf/linf: https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/8#note_25009  # noqa
-                # For static_l2/l2: https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/12  # noqa
+                # FIXME: this is likely no longer up to date as the translation
+                # operators have changed (as of 07-07-2022)
+                # For static_linf/linf (private url):
+                #   https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/8#note_25009
+                # For static_l2/l2 (private url):
+                #   https://gitlab.tiker.net/papers/2017-qbx-fmm-3d/issues/12
                 _max_leaf_refine_weight = 512
             else:
                 # Just guessing...
                 _max_leaf_refine_weight = 64
+        assert isinstance(_max_leaf_refine_weight, int)
 
         if _from_sep_smaller_min_nsources_cumul is None:
             # See here for the comment thread that led to these defaults:
@@ -200,28 +231,31 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _from_sep_smaller_min_nsources_cumul = 15
             else:
                 _from_sep_smaller_min_nsources_cumul = 30
+        assert isinstance(_from_sep_smaller_min_nsources_cumul, int)
+
+        if expansion_factory is None:
+            expansion_factory = DefaultExpansionFactory()
+
+        if cost_model is None:
+            from pytential.qbx.cost import QBXCostModel
+            cost_model = QBXCostModel()
 
         # }}}
 
-        LayerPotentialSourceBase.__init__(self, density_discr)
-
         if density_discr.dim != density_discr.ambient_dim - 1:
             raise RuntimeError("QBX requires geometry with codimension one. "
-                    f"Got: dim={density_discr.dim} "
+                    f"Got: dim={density_discr.dim} and "
                     f"ambient_dim={density_discr.ambient_dim}.")
+
+        super().__init__(density_discr)
 
         self.fine_order = fine_order
         self.qbx_order = qbx_order
         self.fmm_level_to_order = fmm_level_to_order
-
-        assert target_association_tolerance is not None
-
-        self.target_association_tolerance = target_association_tolerance
         self.fmm_backend = fmm_backend
 
-        if expansion_factory is None:
-            expansion_factory = DefaultExpansionFactory()
         self.expansion_factory = expansion_factory
+        self.target_association_tolerance = target_association_tolerance
 
         self.debug = debug
         self._disable_refinement = _disable_refinement
@@ -236,12 +270,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 _from_sep_smaller_min_nsources_cumul
         self._tree_kind = _tree_kind
         self._use_target_specific_qbx = _use_target_specific_qbx
+
         self.geometry_data_inspector = geometry_data_inspector
-
-        if cost_model is None:
-            from pytential.qbx.cost import QBXCostModel
-            cost_model = QBXCostModel()
-
         self.cost_model = cost_model
 
         # /!\ *All* parameters set here must also be set by copy() below,
@@ -271,37 +301,16 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             debug=_not_provided,
             _disable_refinement=_not_provided,
-            target_stick_out_factor=_not_provided,
             ):
-
-        # {{{ argument processing
-
-        if target_stick_out_factor is not _not_provided:
-            from warnings import warn
-            warn("target_stick_out_factor has been renamed to "
-                    "target_association_tolerance. "
-                    "Using target_stick_out_factor is deprecated "
-                    "and will stop working in 2018.",
-                    DeprecationWarning, stacklevel=2)
-
-            if target_association_tolerance is not _not_provided:
-                raise TypeError("May not pass both target_association_tolerance and "
-                        "target_stick_out_factor.")
-
-            target_association_tolerance = target_stick_out_factor
-
-        elif target_association_tolerance is _not_provided:
+        if target_association_tolerance is _not_provided:
             target_association_tolerance = self.target_association_tolerance
-
-        del target_stick_out_factor
-
-        # }}}
 
         kwargs = {}
 
         if (fmm_order is not _not_provided
                 and fmm_level_to_order is not _not_provided):
-            raise TypeError("may not specify both fmm_order and fmm_level_to_order")
+            raise TypeError(
+                "may not specify both 'fmm_order' and 'fmm_level_to_order'")
         elif fmm_order is not _not_provided:
             kwargs["fmm_order"] = fmm_order
         elif fmm_level_to_order is not _not_provided:
@@ -669,7 +678,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             result = \
                 all_potentials_on_every_target[o.target_kernel_index][target_slice]
 
-            from meshmode.discretization import Discretization
             if isinstance(target_discr, Discretization):
                 template_ary = actx.thaw(target_discr.nodes()[0])
                 result = unflatten(template_ary, result, actx, strict=False)
