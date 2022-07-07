@@ -94,7 +94,8 @@ def run_source_refinement_test(actx_factory, mesh, order,
 
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in refinement
-            fine_order=order)
+            fine_order=order,
+            fmm_order=False)
     places = GeometryCollection(lpot_source, auto_where="source")
 
     logger.info("nelements: %d", discr.mesh.nelements)
@@ -329,7 +330,8 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
 
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in target association
-            fine_order=order)
+            fine_order=order,
+            fmm_order=False)
     places = GeometryCollection(lpot_source)
 
     # }}}
@@ -520,7 +522,8 @@ def test_target_association_failure(actx_factory):
     discr = Discretization(actx, mesh, factory)
     lpot_source = QBXLayerPotentialSource(discr,
             qbx_order=order,  # not used in target association
-            fine_order=order)
+            fine_order=order,
+            fmm_order=False)
     places = GeometryCollection(lpot_source)
 
     # }}}
