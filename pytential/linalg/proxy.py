@@ -230,17 +230,16 @@ class ProxyClusterGeometryData:
                 self.dofdesc.discr_stage)
 
     def to_numpy(self, actx: PyOpenCLArrayContext) -> "ProxyClusterGeometryData":
-        from arraycontext import to_numpy
         if self._cluster_radii is not None:
-            cluster_radii = to_numpy(self._cluster_radii, actx)
+            cluster_radii = actx.to_numpy(self._cluster_radii)
         else:
             cluster_radii = None
 
         from dataclasses import replace
         return replace(self,
-                points=np.stack(to_numpy(self.points, actx)),
-                centers=np.stack(to_numpy(self.centers, actx)),
-                radii=to_numpy(self.radii, actx),
+                points=np.stack(actx.to_numpy(self.points)),
+                centers=np.stack(actx.to_numpy(self.centers)),
+                radii=actx.to_numpy(self.radii),
                 _cluster_radii=cluster_radii)
 
     def as_sources(self) -> ProxyPointSource:
@@ -460,9 +459,8 @@ class ProxyGeneratorBase:
 
         # {{{ build proxy points for each cluster
 
-        from arraycontext import to_numpy
-        centers = np.vstack(to_numpy(centers_dev, actx))
-        radii = to_numpy(radii_dev, actx)
+        centers = np.vstack(actx.to_numpy(centers_dev))
+        radii = actx.to_numpy(radii_dev)
 
         nproxy = self.nproxy * dof_index.nclusters
         proxies = np.empty((self.ambient_dim, nproxy), dtype=centers.dtype)
@@ -479,14 +477,13 @@ class ProxyGeneratorBase:
         pxyindices = np.arange(0, nproxy, dtype=dof_index.indices.dtype)
         pxystarts = np.arange(0, nproxy + 1, self.nproxy)
 
-        from arraycontext import from_numpy
         from pytential.linalg import make_index_list
         return ProxyClusterGeometryData(
                 places=self.places,
                 dofdesc=source_dd,
                 srcindex=dof_index,
                 pxyindex=make_index_list(pxyindices, pxystarts),
-                points=actx.freeze(from_numpy(proxies, actx)),
+                points=actx.freeze(actx.from_numpy(proxies)),
                 centers=actx.freeze(centers_dev),
                 radii=actx.freeze(radii_dev),
                 _cluster_radii=cluster_radii
@@ -701,9 +698,8 @@ def gather_cluster_neighbor_points(
 
     # {{{ retrieve results
 
-    from arraycontext import to_numpy
-    pxycenters = to_numpy(pxy.centers, actx)
-    pxyradii = to_numpy(pxy.radii, actx)
+    pxycenters = actx.to_numpy(pxy.centers)
+    pxyradii = actx.to_numpy(pxy.radii)
     srcindex = pxy.srcindex
 
     nbrindices = np.empty(srcindex.nclusters, dtype=object)
