@@ -10,6 +10,11 @@ scheme is used:
   proxy-based skeletonization of the direct solver algorithms. Clusters
   are represented by a :class:`~pytential.linalg.TargetAndSourceClusterList`.
 
+GMRES
+-----
+
+.. automodule:: pytential.linalg.gmres
+
 .. _direct_solver:
 
 Hierarchical Direct Solver
@@ -28,4 +33,4 @@ Internal Functionality
 
 .. automodule:: pytential.linalg.direct_solver_symbolic
 
-.. vim: sw=4:tw=75
+.. vim: sw=4:tw=75:fdm=marker
