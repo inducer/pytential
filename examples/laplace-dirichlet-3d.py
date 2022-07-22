@@ -119,7 +119,7 @@ def main(mesh_name="torus", visualize=False):
     bc = u_incoming_func(nodes)
     bvp_rhs = bind(places, sqrt_w*sym.var("bc"))(actx, bc=bc)
 
-    from pytential.solve import gmres
+    from pytential.linalg.gmres import gmres
     gmres_result = gmres(
             bound_op.scipy_op(actx, "sigma", dtype=np.float64),
             bvp_rhs, tol=1e-14, progress=True,

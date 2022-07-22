@@ -82,7 +82,7 @@ def run_test(cl_ctx, queue):
             op.operator(sym.var('sigma')))
     rhs = bind(qbx.density_discr, op.prepare_rhs(sym.var("bc")))(queue, bc=bvals)
 
-    from pytential.solve import gmres
+    from pytential.linalg.gmres import gmres
     gmres_result = gmres(
             bound_op.scipy_op(queue, "sigma", dtype=np.float64),
             rhs,

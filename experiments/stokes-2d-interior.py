@@ -127,7 +127,7 @@ def main(nelements):
     # Get rhs vector
     bvp_rhs = bind(qbx, sqrt_w*sym.make_sym_vector("bc",dim))(queue, bc=bc)
 
-    from pytential.solve import gmres
+    from pytential.linalg.gmres import gmres
     gmres_result = gmres(
              bound_op.scipy_op(queue, "sigma", np.float64, mu=mu, normal=normal),
              bvp_rhs, tol=1e-9, progress=True,

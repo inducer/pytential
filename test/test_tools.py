@@ -53,7 +53,7 @@ def test_gmres():
     A_func.shape = A.shape
     A_func.dtype = A.dtype
 
-    from pytential.solve import gmres, ResidualPrinter
+    from pytential.linalg.gmres import gmres, ResidualPrinter
     tol = 1e-6
     sol = gmres(A_func, b, callback=ResidualPrinter(),
             maxiter=5*n, tol=tol).solution
