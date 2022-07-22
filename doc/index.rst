@@ -20,7 +20,6 @@ Contents
     discretization
     symbolic
     linalg
-    tools
     misc
     qbx
     🚀 Github <https://github.com/inducer/pytential>
