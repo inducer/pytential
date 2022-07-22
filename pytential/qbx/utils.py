@@ -423,8 +423,7 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
         return self.geo_data._setup_actx.queue
 
     def to_numpy(self, ary):
-        from arraycontext import to_numpy
-        return to_numpy(ary, self.geo_data._setup_actx)
+        return self.geo_data._setup_actx.to_numpy(ary)
 
     @memoize_method
     def tree(self):
