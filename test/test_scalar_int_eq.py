@@ -244,7 +244,7 @@ def run_int_eq_test(actx,
 
     from pytential.qbx import QBXTargetAssociationFailedException
     try:
-        from pytential.solve import gmres
+        from pytential.linalg.gmres import gmres
         gmres_result = gmres(
                 bound_op.scipy_op(actx, "u", dtype, **case.knl_concrete_kwargs),
                 rhs,

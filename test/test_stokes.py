@@ -209,7 +209,7 @@ def run_exterior_stokes(actx_factory, *,
 
     # {{{ solve
 
-    from pytential.solve import gmres
+    from pytential.linalg.gmres import gmres
     gmres_tol = 1.0e-9
     result = gmres(
             bound_op.scipy_op(actx, "sigma", np.float64, **op_context),

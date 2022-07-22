@@ -361,7 +361,7 @@ def test_pec_mfie_extinction(actx_factory, case,
                 progress=True,
                 hard_failure=True,
                 stall_iterations=50, no_progress_factor=1.05)
-        from pytential.solve import gmres
+        from pytential.linalg.gmres import gmres
         gmres_result = gmres(
                 bound_j_op.scipy_op(actx, "jt", np.complex128, **knl_kwargs),
                 j_rhs, **gmres_settings)

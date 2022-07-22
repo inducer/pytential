@@ -220,7 +220,7 @@ def test_beltrami_convergence(actx_factory, operator, solution, visualize=False)
                 actx, b=solution.source(actx, density_discr),
                 **solution.context)
 
-        from pytential.solve import gmres
+        from pytential.linalg.gmres import gmres
         result = gmres(
                 scipy_op, rhs,
                 x0=rhs,

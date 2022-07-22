@@ -244,7 +244,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
                 **{var_name: self.rec(var_expr)
                     for var_name, var_expr in expr.extra_vars.items()})
 
-        from pytential.solve import gmres
+        from pytential.linalg.gmres import gmres
         rhs = self.rec(expr.rhs)
         result = gmres(scipy_op, rhs)
         return result

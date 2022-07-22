@@ -130,7 +130,7 @@ def main():
         # magnetic field corresponding to dyadic green's function
         # due to monochromatic electric dipole located at "source".
         # "strength" is the the intensity of the dipole.
-        #  H = curl((I + Hess)(exp(ikr)/r) dot (strength)) = 
+        #  H = curl((I + Hess)(exp(ikr)/r) dot (strength)) =
         #  strength \cross \grad (exp(ikr)/r)
         #
             dx = x - source[0]
@@ -158,7 +158,7 @@ def main():
             evec = evec*1j*k
             hvec = green3m(x,y,z,source,strength,k)
             return evec,hvec
-            
+
         def dipole3m(x,y,z,source,strength,k):
         #
         #  evalaute electric and magnetic field due
@@ -168,7 +168,7 @@ def main():
             hvec = green3e(x,y,z,source,strength,k)
             hvec = -hvec*1j*k
             return evec,hvec
-            
+
 
         def dipole3eall(x,y,z,sources,strengths,k):
             ns = len(strengths)
@@ -187,7 +187,7 @@ def main():
 #        source[1] =-0.03
 #        source[2] = 0.02
         strength = np.ones(3)
-       
+
 #        evec = cl.array.to_device(queue,np.zeros((3,len(nodes[0])),dtype=np.complex128))
 #        hvec = cl.array.to_device(queue,np.zeros((3,len(nodes[0])),dtype=np.complex128))
 
@@ -210,7 +210,7 @@ def main():
 
         bound_op = bind(qbx, sym_operator)
 
-        from pytential.solve import gmres
+        from pytential.linalg.gmres import gmres
         if 0:
             gmres_result = gmres(
                 bound_op.scipy_op(queue, "sigma", dtype=np.complex128, k=k),

@@ -107,7 +107,7 @@ def find_mode():
     bound_op = bind(qbx, op)
 
     def muller_solve_func(ne):
-        from pytential.solve import gmres
+        from pytential.linalg.gmres import gmres
         gmres_result = gmres(
                 bound_op.scipy_op(queue, "u",
                     np.complex128, ne=ne, **base_context),

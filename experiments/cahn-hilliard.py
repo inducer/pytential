@@ -73,7 +73,7 @@ def main():
         -g(nodes),
         ])
 
-    from pytential.solve import gmres
+    from pytential.linalg.gmres import gmres
     gmres_result = gmres(
             bound_op.scipy_op(queue, "sigma", dtype=np.complex128),
             bc, tol=1e-8, progress=True,
