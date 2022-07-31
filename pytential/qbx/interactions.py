@@ -96,7 +96,8 @@ class P2QBXLFromCSR(P2EBase):
                             <> a[idim] = center[idim] - sources[idim, isrc] \
                                     {dup=idim}
                             """] + [f"<> strength_{i} = strengths[{i}, isrc]" for
-                            i in set(self.strength_usage)] + self.get_loopy_instructions() + ["""
+                            i in set(self.strength_usage)]
+                + self.get_loopy_instructions() + ["""
                         end
                     end
 
