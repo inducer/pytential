@@ -18,6 +18,10 @@ autodoc_type_aliases = {
         "DOFDescriptorLike": "pytential.symbolic.dof_desc.DOFDescriptorLike",
         }
 
+nitpick_ignore_regex = [
+    ["py:class", r".*_ProxyNeighborEvaluationResult"],
+    ]
+
 intersphinx_mapping = {
     "arraycontext": ("https://documen.tician.de/arraycontext", None),
     "boxtree": ("https://documen.tician.de/boxtree", None),
@@ -35,6 +39,7 @@ intersphinx_mapping = {
 }
 
 nitpick_ignore_regex = [
+    ["py:class", r".*_ProxyNeighborEvaluationResult"],
     # Sphinx started complaining about these in 8.2.1(-ish)
     # -AK, 2025-02-24
     ["py:class", r"TypeAliasForwardRef"],
