@@ -152,6 +152,7 @@ class ProxyClusterGeometryData:
     """
 
     places: GeometryCollection
+    """Geometry collection containing the used :attr:`dofdesc`."""
     dofdesc: sym.DOFDescriptor
     """A descriptor for the geometry used to compute the proxy points."""
 
