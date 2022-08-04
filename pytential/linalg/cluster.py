@@ -208,7 +208,7 @@ def cluster(obj: object, clevel: ClusterLevel) -> Any:
 
 
 @cluster.register(IndexList)
-def _cluster_index_list(obj: IndexList, clevel: ClusterLevel) -> IndexList:
+def cluster_index_list(obj: IndexList, clevel: ClusterLevel) -> IndexList:
     assert obj.nclusters == clevel.nclusters
 
     if clevel.nclusters == 1:
@@ -224,7 +224,7 @@ def _cluster_index_list(obj: IndexList, clevel: ClusterLevel) -> IndexList:
 
 
 @cluster.register(TargetAndSourceClusterList)
-def _cluster_target_and_source_cluster_list(
+def cluster_target_and_source_cluster_list(
         obj: TargetAndSourceClusterList, clevel: ClusterLevel,
         ) -> TargetAndSourceClusterList:
     assert obj.nclusters == clevel.nclusters
@@ -238,7 +238,7 @@ def _cluster_target_and_source_cluster_list(
 
 
 @cluster.register(np.ndarray)
-def _cluster_ndarray(obj: NDArray[Any], clevel: ClusterLevel) -> NDArray[Any]:
+def cluster_ndarray(obj: NDArray[Any], clevel: ClusterLevel) -> NDArray[Any]:
     assert obj.shape == (clevel.nclusters,)
     if clevel.nclusters == 1:
         return obj
@@ -420,26 +420,14 @@ def partition_by_nodes(
 
 # {{{ visualize clusters
 
-def visualize_clusters(actx: PyOpenCLArrayContext,
-                       generator: ProxyGenerator,
-                       srcindex: IndexList,
-                       tree: ClusterTree,
-                       filename: str | pathlib.Path, *,
-                       dofdesc: sym.DOFDescriptorLike = None,
-                       overwrite: bool = False) -> None:
-    filename = pathlib.Path(filename)
-
-    places = generator.places
-    if dofdesc is None:
-        dofdesc = places.auto_source
-    dofdesc = sym.as_dofdesc(dofdesc)
-
-    discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
-    assert isinstance(discr, Discretization)
-
-    if discr.ambient_dim != 2:
-        raise NotImplementedError(f"Unsupported dimension: {discr.ambient_dim}")
-
+def _visualize_clusters_2d(actx: PyOpenCLArrayContext,
+                           discr: Discretization,
+                           generator: ProxyGenerator,
+                           srcindex: IndexList,
+                           tree: ClusterTree,
+                           filename: pathlib.Path, *,
+                           dofdesc: sym.DOFDescriptor,
+                           overwrite: bool = False) -> None:
     import matplotlib.pyplot as pt
 
     from arraycontext import flatten
@@ -448,7 +436,7 @@ def visualize_clusters(actx: PyOpenCLArrayContext,
 
     x, y = actx.to_numpy(flatten(discr.nodes(), actx, leaf_class=DOFArray))
     for clevel in tree.levels:
-        outfile = filename.with_stem(f"{filename.stem}-{clevel.level:03d}")
+        outfile = filename.with_stem(f"{filename.stem}-lvl{clevel.level:03d}")
         if not overwrite and outfile.exists():
             raise FileExistsError(f"Output file '{outfile}' already exists")
 
@@ -492,6 +480,102 @@ def visualize_clusters(actx: PyOpenCLArrayContext,
         pt.close(fig)
 
         srcindex = cluster(srcindex, clevel)
+
+
+def _visualize_clusters_3d(actx: PyOpenCLArrayContext,
+                           discr: Discretization,
+                           generator: ProxyGenerator,
+                           srcindex: IndexList,
+                           tree: ClusterTree,
+                           filename: pathlib.Path, *,
+                           dofdesc: sym.DOFDescriptor,
+                           overwrite: bool = False) -> None:
+    from arraycontext import unflatten
+    from meshmode.discretization.visualization import make_visualizer
+
+    for clevel in tree.levels:
+        outfile = filename.with_stem(f"{filename.stem}-lvl{clevel.level:03d}")
+        outfile = outfile.with_suffix(".vtu")
+        if not overwrite and outfile.exists():
+            raise FileExistsError(f"Output file '{outfile}' already exists")
+
+        # construct proxy balls
+        pxy = generator(actx, dofdesc, srcindex).to_numpy(actx)
+        pxycenters = pxy.centers
+        pxyradii = pxy.radii
+        nclusters = srcindex.nclusters
+
+        # construct meshes for each proxy ball
+        from meshmode.mesh.generation import generate_sphere
+        from meshmode.mesh.processing import affine_map, merge_disjoint_meshes
+
+        ref_mesh = generate_sphere(1, 4, uniform_refinement_rounds=1)
+        pxymeshes = [
+            affine_map(ref_mesh, A=pxyradii[i], b=pxycenters[:, i].squeeze())
+            for i in range(nclusters)
+        ]
+
+        # merge meshes into a single discretization
+        from meshmode.discretization.poly_element import (
+            InterpolatoryEdgeClusteredGroupFactory,
+        )
+        pxymesh = merge_disjoint_meshes([discr.mesh, *pxymeshes])
+        pxydiscr = Discretization(actx, pxymesh,
+                                  InterpolatoryEdgeClusteredGroupFactory(4))
+
+        # add a marker field for all clusters
+        marker = np.full((pxydiscr.ndofs,), np.nan, dtype=np.float64)
+        template_ary = actx.thaw(pxydiscr.nodes()[0])
+
+        for i in range(srcindex.nclusters):
+            isrc = srcindex.cluster_indices(i)
+            marker[isrc] = 10.0 * (i + 1.0)
+        marker_dev = unflatten(template_ary, actx.from_numpy(marker), actx)
+
+        # add a marker field for all proxies
+        pxymarker = np.full((pxydiscr.ndofs,), np.nan, dtype=np.float64)
+        pxymarker[discr.ndofs:] = 1.0
+        pxymarker_dev = unflatten(template_ary, actx.from_numpy(pxymarker), actx)
+
+        # write it all out
+        vis = make_visualizer(actx, pxydiscr)
+        vis.write_vtk_file(outfile, [
+            ("marker", marker_dev),
+            ("proxies", pxymarker_dev),
+            ], overwrite=overwrite)
+
+        srcindex = cluster(srcindex, clevel)
+
+
+def visualize_clusters(actx: PyOpenCLArrayContext,
+                       generator: ProxyGenerator,
+                       srcindex: IndexList,
+                       tree: ClusterTree,
+                       filename: str | pathlib.Path, *,
+                       dofdesc: sym.DOFDescriptorLike = None,
+                       overwrite: bool = False) -> None:
+    filename = pathlib.Path(filename)
+
+    places = generator.places
+    if dofdesc is None:
+        dofdesc = places.auto_source
+    dofdesc = sym.as_dofdesc(dofdesc)
+
+    discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
+    assert isinstance(discr, Discretization)
+
+    if discr.ambient_dim == 2:
+        _visualize_clusters_2d(
+            actx, discr, generator, srcindex, tree, filename,
+            dofdesc=dofdesc,
+            overwrite=overwrite)
+    elif discr.ambient_dim == 3:
+        _visualize_clusters_3d(
+            actx, discr, generator, srcindex, tree, filename,
+            dofdesc=dofdesc,
+            overwrite=overwrite)
+    else:
+        raise NotImplementedError(f"Unsupported dimension: {discr.ambient_dim}")
 
 # }}}
 
