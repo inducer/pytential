@@ -49,14 +49,23 @@ class MatrixTestCaseMixin:
     proxy_target_cluster_builder: Callable[..., Any] | None = None
     neighbor_cluster_builder: Callable[..., Any] | None = None
 
-    def get_cluster_index(self, actx, places, dofdesc=None):
+    def max_particles_in_box_for_discr(self, discr):
+        max_particles_in_box = self.max_particles_in_box
+        if max_particles_in_box is None:
+            max_particles_in_box = discr.ndofs // self.approx_cluster_count
+
+        return max_particles_in_box
+
+    def get_cluster_index(
+            self, actx, places, dofdesc=None, max_particles_in_box=None):
         if dofdesc is None:
             dofdesc = places.auto_source
         discr = places.get_discretization(dofdesc.geometry)
 
-        max_particles_in_box = self.max_particles_in_box
         if max_particles_in_box is None:
-            max_particles_in_box = discr.ndofs // self.approx_cluster_count
+            max_particles_in_box = self.max_particles_in_box
+            if max_particles_in_box is None:
+                max_particles_in_box = discr.ndofs // self.approx_cluster_count
 
         from pytential.linalg.cluster import partition_by_nodes
         cindex, ctree = partition_by_nodes(actx, places,
@@ -83,9 +92,11 @@ class MatrixTestCaseMixin:
 
         return cindex, ctree
 
-    def get_tgt_src_cluster_index(self, actx, places, dofdesc=None):
+    def get_tgt_src_cluster_index(
+            self, actx, places, dofdesc=None, max_particles_in_box=None):
         from pytential.linalg import TargetAndSourceClusterList
-        cindex, ctree = self.get_cluster_index(actx, places, dofdesc=dofdesc)
+        cindex, ctree = self.get_cluster_index(
+            actx, places, dofdesc=dofdesc, max_particles_in_box=max_particles_in_box)
         return TargetAndSourceClusterList(cindex, cindex), ctree
 
     def get_operator(self, ambient_dim, qbx_forced_limit=_NoArgSentinel):
