@@ -360,7 +360,7 @@ class ProxyGeneratorBase:
                 source_dd.geometry, source_dd.discr_stage)
         assert isinstance(discr, Discretization)
 
-        include_cluster_radii = kwargs.pop("include_cluster_radii", False)
+        include_cluster_radii = kwargs.pop("include_cluster_radii", True)
 
         # {{{ get proxy centers and radii
 
