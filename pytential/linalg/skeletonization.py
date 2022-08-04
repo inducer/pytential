@@ -28,9 +28,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import numpy.linalg as la
 
 from meshmode.discretization import Discretization
-from pytools import log_process, memoize_in, obj_array
+from pytools import log_process, memoize_in, memoize_method, obj_array
 
 from pytential import GeometryCollection, bind, sym
 from pytential.linalg.cluster import ClusterTree, cluster
@@ -56,16 +57,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-logger = logging.getLogger(__name__)
-
-logger = logging.getLogger(__name__)
-
-logger = logging.getLogger(__name__)
-
 __doc__ = """
 Skeletonization
----------------
+~~~~~~~~~~~~~~~
 
 .. autoclass:: SkeletonizationWrangler
 .. autoclass:: make_skeletonization_wrangler
@@ -320,7 +314,8 @@ class SkeletonizationWrangler:
                 context=self.context,
                 **kwargs)(expr)
 
-    def evaluate_self(self,
+    def evaluate_self(
+            self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             tgt_src_index: TargetAndSourceClusterList,
@@ -334,7 +329,8 @@ class SkeletonizationWrangler:
     # {{{ nearfield
 
     @log_process(logger)
-    def evaluate_source_neighbor_interaction(self,
+    def evaluate_source_neighbor_interaction(
+            self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData,
@@ -352,7 +348,8 @@ class SkeletonizationWrangler:
         return mat, nbr_src_index
 
     @log_process(logger)
-    def evaluate_target_neighbor_interaction(self,
+    def evaluate_target_neighbor_interaction(
+            self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData,
@@ -374,7 +371,8 @@ class SkeletonizationWrangler:
     # {{{ proxy
 
     @log_process(logger)
-    def evaluate_source_proxy_interaction(self,
+    def evaluate_source_proxy_interaction(
+            self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData,
@@ -383,6 +381,7 @@ class SkeletonizationWrangler:
         ) -> tuple[onp.Array1D[np.inexact], TargetAndSourceClusterList]:
         from pytential.collection import add_geometry_to_collection
         pxy_src_index = TargetAndSourceClusterList(pxy.pxyindex, pxy.srcindex)
+
         places = add_geometry_to_collection(
                 places, {PROXY_SKELETONIZATION_TARGET: pxy.as_targets()}
                 )
@@ -402,7 +401,8 @@ class SkeletonizationWrangler:
         return mat, pxy_src_index
 
     @log_process(logger)
-    def evaluate_target_proxy_interaction(self,
+    def evaluate_target_proxy_interaction(
+            self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
@@ -410,6 +410,7 @@ class SkeletonizationWrangler:
         ) -> tuple[onp.Array1D[np.inexact], TargetAndSourceClusterList]:
         from pytential.collection import add_geometry_to_collection
         tgt_pxy_index = TargetAndSourceClusterList(pxy.srcindex, pxy.pxyindex)
+
         places = add_geometry_to_collection(
                 places, {PROXY_SKELETONIZATION_SOURCE: pxy.as_sources()}
                 )
@@ -445,6 +446,7 @@ def make_skeletonization_wrangler(
 
         # internal
         _weighted_proxy: bool | tuple[bool, bool] | None = None,
+        _remove_source_transforms: bool = False,
         _proxy_source_cluster_builder: type[ClusterMatrixBuilderBase] | None = None,
         _proxy_target_cluster_builder: type[ClusterMatrixBuilderBase] | None = None,
         _neighbor_cluster_builder: type[ClusterMatrixBuilderBase] | None = None,
@@ -473,9 +475,13 @@ def make_skeletonization_wrangler(
 
     prepared_lpot_exprs = prepare_expr(places, lpot_exprs, auto_where)
     source_proxy_exprs = prepare_proxy_expr(
-            places, prepared_lpot_exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET))
+            places, prepared_lpot_exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET),
+            remove_transforms=_remove_source_transforms)
     target_proxy_exprs = prepare_proxy_expr(
-            places, prepared_lpot_exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]))
+            places, prepared_lpot_exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]),
+            # NOTE: transforms are unconditionally removed here because the
+            # source would be the proxies, where we do not have normals, etc.
+            remove_transforms=True)
 
     # }}}
 
@@ -485,7 +491,7 @@ def make_skeletonization_wrangler(
         weighted_sources = weighted_targets = True
     elif isinstance(_weighted_proxy, bool):
         weighted_sources = weighted_targets = _weighted_proxy
-    elif isinstance(_weighted_proxy, tuple):
+    elif isinstance(_weighted_proxy, tuple) and len(_weighted_proxy) == 2:
         weighted_sources, weighted_targets = _weighted_proxy
     else:
         raise ValueError(f"unknown value for weighting: '{_weighted_proxy}'")
@@ -509,7 +515,10 @@ def make_skeletonization_wrangler(
 
     proxy_target_cluster_builder = _proxy_target_cluster_builder
     if proxy_target_cluster_builder is None:
-        proxy_target_cluster_builder = QBXClusterMatrixBuilder
+        if _remove_source_transforms:
+            proxy_target_cluster_builder = P2PClusterMatrixBuilder
+        else:
+            proxy_target_cluster_builder = QBXClusterMatrixBuilder
 
     # }}}
 
@@ -629,6 +638,53 @@ def _evaluate_proxy_skeletonization_interaction(
     return result
 
 
+def _worker_skeletonize_block_by_proxy(
+        data: tuple[int, onp.Array2D[np.inexact], onp.Array2D[np.inexact]],
+        *,
+        tgt_src_index: TargetAndSourceClusterList,
+        id_rank: int | None,
+        id_eps: float | None,
+        rng: np.random.Generator,
+    ) -> tuple[int,
+               onp.Array2D[np.inexact], onp.Array2D[np.inexact],
+               onp.Array1D[np.integer], onp.Array1D[np.integer]]:
+    from pytential.linalg.utils import interp_decomp
+
+    k = id_rank
+    i, src_mat, tgt_mat = data
+    max_allowable_rank = min(*src_mat.shape, *tgt_mat.shape)
+
+    if __debug__:
+        isfinite = np.isfinite(tgt_mat)
+        assert np.all(isfinite), np.where(~isfinite)
+        isfinite = np.isfinite(src_mat)
+        assert np.all(isfinite), np.where(~isfinite)
+
+    # skeletonize target points
+    k, idx, interp = interp_decomp(tgt_mat.T, rank=k, eps=id_eps, rng=rng)
+    assert 0 < k <= len(idx)
+
+    if k > max_allowable_rank:
+        k = max_allowable_rank
+        interp = interp[:k, :]
+
+    L_i = interp.T
+    skel_tgt_indices_i = tgt_src_index.targets.cluster_indices(i)[idx[:k]]
+    assert L_i.shape == (tgt_mat.shape[0], k)
+
+    # skeletonize source points
+    k, idx, interp = interp_decomp(src_mat, rank=k, eps=None, rng=rng)
+    assert 0 < k <= len(idx)
+
+    R_i = interp
+    skel_src_indices_i = tgt_src_index.sources.cluster_indices(i)[idx[:k]]
+    assert R_i.shape == (k, src_mat.shape[1])
+
+    assert skel_tgt_indices_i.shape == skel_src_indices_i.shape
+
+    return i, L_i, R_i, skel_src_indices_i, skel_tgt_indices_i
+
+
 def _skeletonize_block_by_proxy_with_mats(
         actx: PyOpenCLArrayContext, ibrow: int, ibcol: int,
         places: GeometryCollection,
@@ -652,7 +708,6 @@ def _skeletonize_block_by_proxy_with_mats(
             dofdesc=wrangler.domains[ibcol],
             max_particles_in_box=max_particles_in_box)
 
-    from pytential.linalg.utils import interp_decomp
     skel_src_indices = np.empty(nclusters, dtype=object)
     skel_tgt_indices = np.empty(nclusters, dtype=object)
     skel_starts = np.zeros(nclusters + 1, dtype=np.int32)
@@ -660,11 +715,9 @@ def _skeletonize_block_by_proxy_with_mats(
     L = np.empty(nclusters, dtype=object)
     R = np.empty(nclusters, dtype=object)
 
-    from pytools import ProcessLogger
+    from pytools import ProcessTimer
 
-    with ProcessLogger(
-            logger,
-            f"_skeletonize_block_by_proxy_with_mats_{ibrow}_{ibcol}"):
+    with ProcessTimer() as pt:
         src_result = evaluate_skeletonization_interaction(
                 tgt_src_index.sources, tgt_src_index.targets,
                 evaluate_proxy=partial(
@@ -683,41 +736,27 @@ def _skeletonize_block_by_proxy_with_mats(
                     wrangler.evaluate_target_neighbor_interaction,
                     ibrow=ibrow, ibcol=ibcol)
                 )
+    logger.info("_skeletonize_block_by_proxy_with_mats (evaluate): completed (%s)",
+                pt)
 
-        for i in range(nclusters):
-            k = id_rank
-            src_mat = np.vstack(src_result[i])
-            tgt_mat = np.hstack(tgt_result[i])
-            max_allowable_rank = min(*src_mat.shape, *tgt_mat.shape)
+    with ProcessTimer() as pt:
+        mats = ((i, np.vstack(src_result[i]), np.hstack(tgt_result[i]))
+                for i in range(nclusters))
+        worker = partial(_worker_skeletonize_block_by_proxy,
+                         tgt_src_index=tgt_src_index,
+                         id_rank=id_rank,
+                         id_eps=id_eps,
+                         rng=rng)
 
-            if __debug__:
-                isfinite = np.isfinite(tgt_mat)
-                assert np.all(isfinite), np.where(isfinite)
-                isfinite = np.isfinite(src_mat)
-                assert np.all(isfinite), np.where(isfinite)
-
-            # skeletonize target points
-            k, idx, interp = interp_decomp(tgt_mat.T, rank=k, eps=id_eps, rng=rng)
-            assert 0 < k <= len(idx)
-
-            if k > max_allowable_rank:
-                k = max_allowable_rank
-                interp = interp[:k, :]
-
-            L[i] = interp.T
-            skel_tgt_indices[i] = tgt_src_index.targets.cluster_indices(i)[idx[:k]]
-            assert interp.shape == (k, tgt_mat.shape[0])
-
-            # skeletonize source points
-            k, idx, interp = interp_decomp(src_mat, rank=k, eps=None, rng=rng)
-            assert 0 < k <= len(idx)
-
-            R[i] = interp
-            skel_src_indices[i] = tgt_src_index.sources.cluster_indices(i)[idx[:k]]
-            assert interp.shape == (k, src_mat.shape[1])
-
-            skel_starts[i + 1] = skel_starts[i] + k
-            assert skel_tgt_indices[i].shape == skel_src_indices[i].shape
+        # FIXME: these are trivially parallelizable.. but not in Python?
+        for (i, L_i, R_i, skel_src_i, skel_tgt_i) in (worker(mat) for mat in mats):
+            L[i] = L_i
+            R[i] = R_i
+            skel_tgt_indices[i] = skel_tgt_i
+            skel_src_indices[i] = skel_src_i
+            skel_starts[i + 1] = skel_starts[i] + skel_tgt_i.size
+    logger.info("_skeletonize_block_by_proxy_with_mats (skeletonize): completed (%s)",
+                pt)
 
     # evaluate diagonal
     from pytential.linalg.utils import make_flat_cluster_diag
@@ -835,6 +874,24 @@ class SkeletonizationResult:
     def nclusters(self) -> int:
         """Number of clusters that have been skeletonized."""
         return self.tgt_src_index.nclusters
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        # FIXME: check that everyone has the same dtype? probably in __post_init__
+        return self.L[0].dtype
+
+    @property
+    @memoize_method
+    def invD(self) -> obj_array.ObjectArray1D[onp.Array2D[np.inexact]]:
+        return obj_array.new_1d([la.inv(D) for D in self.D])
+
+    @property
+    @memoize_method
+    def Dhat(self) -> obj_array.ObjectArray1D[onp.Array2D[np.inexact]]:
+        return obj_array.new_1d([
+            la.inv(self.R[i] @ self.invD[i] @ self.L[i])
+            for i in range(self.nclusters)
+            ])
 
 
 @log_process(logger)

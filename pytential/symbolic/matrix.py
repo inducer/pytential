@@ -561,7 +561,6 @@ class P2PMatrixBuilder(MatrixBuilderBase):
                 expr.target.geometry, expr.target.discr_stage)
 
         actx = self.array_context
-        target_base_kernel = expr.target_kernel.get_base_kernel()
 
         result = 0
         for density, kernel in zip(expr.densities, expr.source_kernels, strict=True):
@@ -575,12 +574,10 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 
             # {{{ generator
 
-            base_kernel = kernel.get_base_kernel()
-
             from sumpy.p2p import P2PMatrixGenerator
             mat_gen = P2PMatrixGenerator(
-                    source_kernels=(base_kernel,),
-                    target_kernels=(target_base_kernel,),
+                    source_kernels=(kernel,),
+                    target_kernels=(expr.target_kernel,),
                     exclude_self=self.exclude_self)
 
             # }}}
@@ -590,7 +587,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
             # {{{ kernel args
 
             # NOTE: copied from pytential.symbolic.primitives.IntG
-            kernel_args = base_kernel.get_args() + base_kernel.get_source_args()
+            kernel_args = kernel.get_args() + kernel.get_source_args()
             kernel_args = {arg.loopy_arg.name for arg in kernel_args}
 
             kernel_args = _get_layer_potential_args(
@@ -777,7 +774,6 @@ class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
                 expr.target.geometry, expr.target.discr_stage)
 
         actx = self.array_context
-        target_base_kernel = expr.target_kernel.get_base_kernel()
 
         result = 0
         for kernel, density in zip(expr.source_kernels, expr.densities, strict=True):
@@ -798,12 +794,10 @@ class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
 
             # {{{ generator
 
-            base_kernel = kernel.get_base_kernel()
-
             from sumpy.p2p import P2PMatrixSubsetGenerator
             mat_gen = P2PMatrixSubsetGenerator(
-                    source_kernels=(base_kernel,),
-                    target_kernels=(target_base_kernel,),
+                    source_kernels=(kernel,),
+                    target_kernels=(expr.target_kernel,),
                     exclude_self=self.exclude_self)
 
             # }}}
@@ -813,7 +807,7 @@ class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
             # {{{ kernel args
 
             # NOTE: copied from pytential.symbolic.primitives.IntG
-            kernel_args = [*base_kernel.get_args(), *base_kernel.get_source_args()]
+            kernel_args = [*kernel.get_args(), *kernel.get_source_args()]
             kernel_args = {arg.loopy_arg.name for arg in kernel_args}
 
             kernel_args = _get_layer_potential_args(
