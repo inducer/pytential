@@ -440,6 +440,22 @@ def cluster_skeletonization_error(
     return tgt_error, src_error
 
 
+def skeletonization_matrix(
+        mat: np.ndarray, skeleton: "SkeletonizationResult",
+        ) -> Tuple[np.ndarray, np.ndarray]:
+    D = np.empty(skeleton.nclusters, dtype=object)
+    S = np.empty((skeleton.nclusters, skeleton.nclusters), dtype=object)
+
+    from itertools import product
+    for i, j in product(range(skeleton.nclusters), repeat=2):
+        if i == j:
+            D[i] = skeleton.tgt_src_index.cluster_take(mat, i, i)
+        else:
+            S[i, j] = skeleton.skel_tgt_src_index.cluster_take(mat, i, j)
+
+    return D, S
+
+
 def skeletonization_error(
         mat: np.ndarray, skeleton: "SkeletonizationResult", *,
         ord: Optional[float] = None,
@@ -498,6 +514,52 @@ def skeletonization_error(
         result = result / la.norm(mat, ord=ord)
 
     return result
+
+# }}}
+
+
+# {{{ eigenvalues
+
+def eigs(
+        mat, *,
+        k: int = 6,
+        which: str = "LM",
+        maxiter: Optional[int] = None,
+        tol: float = 0.0) -> np.ndarray:
+    import scipy.sparse.linalg as ssla
+
+    result = ssla.eigs(mat,
+            k=k,
+            which=which,
+            maxiter=maxiter,
+            tol=tol,
+            return_eigenvectors=False)
+
+    imag_norm = np.linalg.norm(np.imag(result), ord=np.inf)
+    if imag_norm > 1.0e-14:
+        from warnings import warn
+        warn(f"eigenvalues are not real enough: norm(imag) = {imag_norm:.12e}")
+
+    return result
+
+
+def cond(mat, *,
+        mat_inv=None,
+        p: Optional[float] = None,
+        tol: float = 1.0e-6) -> float:
+    if p is None:
+        p = 2
+
+    if p != 2:
+        raise ValueError(f"unsupported norm order: '{p}'")
+
+    lambda_max = eigs(mat, k=1, which="LM", tol=tol)
+    if mat_inv is None:
+        lambda_min = eigs(mat, k=1, which="SM", tol=tol)
+    else:
+        lambda_min = eigs(mat_inv, k=1, which="LM", tol=tol)
+
+    return np.abs(lambda_max) / np.abs(lambda_min)
 
 # }}}
 
