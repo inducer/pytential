@@ -26,8 +26,10 @@ from typing import (
         TYPE_CHECKING)
 
 import numpy as np
+import numpy.linalg as la
 
 from arraycontext import PyOpenCLArrayContext, Array
+from pytools import memoize_method
 
 from pytential import GeometryCollection, sym
 from pytential.linalg.proxy import ProxyGeneratorBase, ProxyClusterGeometryData
@@ -802,6 +804,21 @@ class SkeletonizationResult:
     @property
     def nclusters(self):
         return self.tgt_src_index.nclusters
+
+    @property
+    @memoize_method
+    def invD(self) -> np.ndarray:
+        from pytools.obj_array import make_obj_array
+        return make_obj_array([la.inv(D) for D in self.D])
+
+    @property
+    @memoize_method
+    def Dhat(self) -> np.ndarray:
+        from pytools.obj_array import make_obj_array
+        return make_obj_array([
+            la.inv(self.R[i] @ self.invD[i] @ self.L[i])
+            for i in range(self.nclusters)
+            ])
 
 
 def skeletonize_by_proxy(
