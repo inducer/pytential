@@ -842,10 +842,12 @@ class BoundExpression:
             raise TypeError("More than one positional argument supplied. "
                     "None or an PyOpenCLArrayContext expected.")
 
-        return self.eval(kwargs, array_context=array_context)
+        timing_data = kwargs.pop("timing_data", None)
+        return self.eval(kwargs, array_context=array_context,
+            timing_data=timing_data)
 
 
-def bind(places, expr, auto_where=None):
+def bind(places, expr, auto_where=None, _merge_exprs=True):
     """
     :arg places: a :class:`pytential.collection.GeometryCollection`.
         Alternatively, any list or mapping that is a valid argument for its
@@ -864,6 +866,18 @@ def bind(places, expr, auto_where=None):
         auto_where = places.auto_where
 
     expr = _prepare_expr(places, expr, auto_where=auto_where)
+    if _merge_exprs:
+        from pytential.symbolic.pde.system_utils import merge_int_g_exprs
+        from pymbolic.primitives import Expression
+        from pytential.qbx import QBXLayerPotentialSource
+        fmmlib = any(value.fmm_backend == "fmmlib" for value
+            in places.places.values() if isinstance(value, QBXLayerPotentialSource))
+        if not fmmlib:
+            if isinstance(expr, (np.ndarray, list, tuple)):
+                expr = np.array(merge_int_g_exprs(list(expr)), dtype=object)
+            elif isinstance(expr, Expression):
+                expr = merge_int_g_exprs([expr])[0]
+
     return BoundExpression(places, expr)
 
 # }}}
