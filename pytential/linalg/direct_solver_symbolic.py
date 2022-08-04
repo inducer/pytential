@@ -75,12 +75,14 @@ def prepare_proxy_expr(
         places: GeometryCollection,
         exprs: Iterable[ArithmeticExpression],
         auto_where: tuple[DOFDescriptorLike, DOFDescriptorLike],
+        remove_transforms: bool = True,
     ) -> obj_array.ObjectArray1D[ArithmeticExpression]:
     def _prepare_expr(expr: ArithmeticExpression) -> ArithmeticExpression:
         # remove all diagonal / non-operator terms in the expression
         expr = IntGTermCollector()(expr)
         # ensure all IntGs remove all the kernel derivatives
-        expr = KernelTransformationRemover()(expr)
+        if remove_transforms:
+            expr = KernelTransformationRemover()(expr)
         # ensure all IntGs have their source and targets set
         expr = DOFDescriptorReplacer(auto_where[0], auto_where[1])(expr)
 

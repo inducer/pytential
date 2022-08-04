@@ -463,7 +463,7 @@ def _visualize_clusters_2d(actx: PyOpenCLArrayContext,
     assert discr.ambient_dim == 2
     x, y = actx.to_numpy(flatten(discr.nodes(), actx, leaf_class=DOFArray))
     for clevel in tree.levels:
-        outfile = filename.with_stem(f"{filename.stem}-{clevel.level:03d}")
+        outfile = filename.with_stem(f"{filename.stem}-lvl{clevel.level:03d}")
         if not overwrite and outfile.exists():
             raise FileExistsError(f"Output file '{outfile}' already exists")
 
