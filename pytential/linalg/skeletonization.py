@@ -28,9 +28,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import numpy.linalg as la
 
 from meshmode.discretization import Discretization
-from pytools import memoize_in, obj_array
+from pytools import memoize_in, memoize_method, obj_array
 
 from pytential import GeometryCollection, sym
 from pytential.linalg.cluster import ClusterTree, cluster
@@ -59,7 +60,7 @@ logger = logging.getLogger(__name__)
 
 __doc__ = """
 Skeletonization
----------------
+~~~~~~~~~~~~~~~
 
 .. autoclass:: SkeletonizationWrangler
 .. autoclass:: make_skeletonization_wrangler
@@ -252,13 +253,15 @@ class SkeletonizationWrangler:
     .. attribute:: proxy_source_cluster_builder
     .. attribute:: proxy_target_cluster_builder
 
-        A callable that is used to evaluate farfield proxy interactions.
+        A subclass of ``pytential.symbolic.matrix.ClusterMatrixBuilderBase``
+        that is used to evaluate farfield proxy interactions.
         This should follow the calling convention of the constructor to
         ``pytential.symbolic.matrix.P2PClusterMatrixBuilder``.
 
     .. attribute:: neighbor_cluster_builder
 
-        A callable that is used to evaluate nearfield neighbour interactions.
+        A subclass of ``pytential.symbolic.matrix.ClusterMatrixBuilderBase``
+        that is used to evaluate nearfield neighbour interactions.
         This should follow the calling convention of the constructor to
         ``pytential.symbolic.matrix.QBXClusterMatrixBuilder``.
 
@@ -332,7 +335,8 @@ class SkeletonizationWrangler:
 
     # {{{ nearfield
 
-    def evaluate_source_neighbor_interaction(self,
+    def evaluate_source_neighbor_interaction(
+            self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData,
@@ -348,7 +352,8 @@ class SkeletonizationWrangler:
 
         return mat, nbr_src_index
 
-    def evaluate_target_neighbor_interaction(self,
+    def evaluate_target_neighbor_interaction(
+            self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData,
@@ -368,7 +373,8 @@ class SkeletonizationWrangler:
 
     # {{{ proxy
 
-    def evaluate_source_proxy_interaction(self,
+    def evaluate_source_proxy_interaction(
+            self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData,
@@ -376,6 +382,7 @@ class SkeletonizationWrangler:
             ibrow: int, ibcol: int) -> tuple[NDArray[Any], TargetAndSourceClusterList]:
         from pytential.collection import add_geometry_to_collection
         pxy_src_index = TargetAndSourceClusterList(pxy.pxyindex, pxy.srcindex)
+
         places = add_geometry_to_collection(
                 places, {PROXY_SKELETONIZATION_TARGET: pxy.as_targets()}
                 )
@@ -394,13 +401,15 @@ class SkeletonizationWrangler:
 
         return mat, pxy_src_index
 
-    def evaluate_target_proxy_interaction(self,
+    def evaluate_target_proxy_interaction(
+            self,
             actx: PyOpenCLArrayContext,
             places: GeometryCollection,
             pxy: ProxyClusterGeometryData, nbrindex: IndexList, *,
             ibrow: int, ibcol: int) -> tuple[NDArray[Any], TargetAndSourceClusterList]:
         from pytential.collection import add_geometry_to_collection
         tgt_pxy_index = TargetAndSourceClusterList(pxy.srcindex, pxy.pxyindex)
+
         places = add_geometry_to_collection(
                 places, {PROXY_SKELETONIZATION_SOURCE: pxy.as_sources()}
                 )
@@ -436,6 +445,7 @@ def make_skeletonization_wrangler(
 
         # internal
         _weighted_proxy: bool | tuple[bool, bool] | None = None,
+        _remove_source_transforms: bool = False,
         _proxy_source_cluster_builder: type[ClusterMatrixBuilderBase] | None = None,
         _proxy_target_cluster_builder: type[ClusterMatrixBuilderBase] | None = None,
         _neighbor_cluster_builder: type[ClusterMatrixBuilderBase] | None = None,
@@ -464,9 +474,13 @@ def make_skeletonization_wrangler(
 
     prepared_lpot_exprs = prepare_expr(places, lpot_exprs, auto_where)
     source_proxy_exprs = prepare_proxy_expr(
-            places, prepared_lpot_exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET))
+            places, prepared_lpot_exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET),
+            remove_transforms=_remove_source_transforms)
     target_proxy_exprs = prepare_proxy_expr(
-            places, prepared_lpot_exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]))
+            places, prepared_lpot_exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]),
+            # NOTE: transforms are unconditionally removed here because the
+            # source would be the proxies, where we do not have normals, etc.
+            remove_transforms=True)
 
     # }}}
 
@@ -476,7 +490,7 @@ def make_skeletonization_wrangler(
         weighted_sources = weighted_targets = True
     elif isinstance(_weighted_proxy, bool):
         weighted_sources = weighted_targets = _weighted_proxy
-    elif isinstance(_weighted_proxy, tuple):
+    elif isinstance(_weighted_proxy, tuple) and len(_weighted_proxy) == 2:
         weighted_sources, weighted_targets = _weighted_proxy
     else:
         raise ValueError(f"unknown value for weighting: '{_weighted_proxy}'")
@@ -684,9 +698,9 @@ def _skeletonize_block_by_proxy_with_mats(
 
         if __debug__:
             isfinite = np.isfinite(tgt_mat)
-            assert np.all(isfinite), np.where(isfinite)
+            assert np.all(isfinite), np.where(~isfinite)
             isfinite = np.isfinite(src_mat)
-            assert np.all(isfinite), np.where(isfinite)
+            assert np.all(isfinite), np.where(~isfinite)
 
         # skeletonize target points
         k, idx, interp = interp_decomp(tgt_mat.T, rank=k, eps=id_eps, rng=rng)
@@ -834,6 +848,19 @@ class SkeletonizationResult:
     @property
     def nclusters(self) -> int:
         return self.tgt_src_index.nclusters
+
+    @property
+    @memoize_method
+    def invD(self) -> np.ndarray:
+        return obj_array.new_1d([la.inv(D) for D in self.D])
+
+    @property
+    @memoize_method
+    def Dhat(self) -> np.ndarray:
+        return obj_array.new_1d([
+            la.inv(self.R[i] @ self.invD[i] @ self.L[i])
+            for i in range(self.nclusters)
+            ])
 
 
 def skeletonize_by_proxy(
