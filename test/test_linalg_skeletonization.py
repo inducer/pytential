@@ -137,8 +137,109 @@ def test_skeletonize_symbolic(actx_factory: ArrayContextFactory, case, visualize
         context=case.knl_concrete_kwargs,
         auto_where=dd,
         id_eps=1.0e-8,
-        rng=rng,
+        rng=rng
     )
+
+# }}}
+
+
+# {{{ test_skeletonize_diagonal
+
+@pytest.mark.parametrize("case", [
+    SKELETONIZE_TEST_CASES[0],
+    SKELETONIZE_TEST_CASES[1],
+    SKELETONIZE_TEST_CASES[2],
+    ])
+def test_skeletonize_diagonal(actx_factory, case, visualize=False):
+    import scipy.linalg.interpolative as sli
+    sli.seed(42)
+
+    actx = actx_factory()
+    rng = np.random.default_rng(42)
+
+    if visualize:
+        logging.basicConfig(level=logging.INFO)
+
+    # {{{ setup
+
+    dd = sym.DOFDescriptor(case.name, discr_stage=case.skel_discr_stage)
+    resolution = case.resolutions[-1]
+
+    qbx = case.get_layer_potential(actx, resolution, case.target_order)
+    places = GeometryCollection(qbx, auto_where=dd)
+
+    tgt_src_index, ctree = case.get_tgt_src_cluster_index(actx, places, dd)
+
+    sym_u, sym_op = case.get_operator(places.ambient_dim)
+
+    # }}}
+
+    # {{{ check
+
+    from pytential.linalg.skeletonization import make_skeletonization_wrangler
+    wrangler = make_skeletonization_wrangler(
+            places, sym_op, sym_u,
+            auto_where=dd, context=case.knl_concrete_kwargs)
+
+    from pytential.linalg.skeletonization import rec_skeletonize_by_proxy
+    skeletons = rec_skeletonize_by_proxy(
+        actx, places, ctree, tgt_src_index, sym_op, sym_u,
+        auto_where=dd,
+        context=case.knl_concrete_kwargs,
+        approx_nproxy=case.proxy_approx_count,
+        proxy_radius_factor=case.proxy_radius_factor,
+        id_eps=case.id_eps,
+        rng=rng,
+        _wrangler=wrangler,
+        )
+
+    from pytential.linalg.hmatrix import _update_skeleton_diagonal
+    for i in range(1, skeletons.size):
+        skeletons[i] = _update_skeleton_diagonal(
+            skeletons[i], skeletons[i - 1], ctree.levels[i - 1],
+            )
+
+    from pytential.linalg.cluster import cluster
+    parent = None
+    for k, clevel in enumerate(ctree.levels):
+        from pytential.linalg.utils import make_flat_cluster_diag
+
+        tgt_src_index = skeletons[k].tgt_src_index
+        D1 = wrangler.evaluate_self(actx, places, tgt_src_index, 0, 0)
+        D1 = make_flat_cluster_diag(D1, tgt_src_index)
+
+        if k == 0:
+            D = D0 = D1
+        else:
+            skel_tgt_src_index = skeletons[k - 1].skel_tgt_src_index
+            assert skel_tgt_src_index.shape == tgt_src_index.shape
+
+            D0 = wrangler.evaluate_self(actx, places, skel_tgt_src_index, 0, 0)
+            D0 = cluster(make_flat_cluster_diag(D0, skel_tgt_src_index), parent)
+
+            D = D1 - D0
+
+        parent = clevel
+
+        assert D1.shape == (skeletons[k].nclusters,)
+        assert D1.shape == D0.shape, (D1.shape, D0.shape)
+        assert D1.shape == D.shape, (D1.shape, D.shape)
+
+        for i in range(skeletons[k].nclusters):
+            assert D1[i].shape == skeletons[k].tgt_src_index.cluster_shape(i, i)
+            assert D1[i].shape == D0[i].shape, (D1[i].shape, D0[i].shape)
+
+            error = la.norm(D[i] - skeletons[k].D[i]) / (la.norm(D[i]) + 1.0e-12)
+            logger.info("level %04d / %04d cluster %3d (%4d, %4d) error %.12e",
+                k, ctree.nlevels,
+                ctree.tree_cluster_parent_ids[clevel.box_ids][i],
+                *skeletons[k].tgt_src_index.cluster_shape(i, i), error)
+
+            assert error < 1.0e-15
+
+        logger.info("")
+
+    # }}}
 
 # }}}
 
