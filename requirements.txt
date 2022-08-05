@@ -11,5 +11,5 @@ git+https://github.com/inducer/loopy.git#egg=loopy
 git+https://github.com/inducer/boxtree.git#egg=boxtree
 git+https://github.com/inducer/arraycontext.git#egg=arraycontext
 git+https://github.com/inducer/meshmode.git#egg=meshmode
-git+https://github.com/inducer/sumpy.git#egg=sumpy
+git+https://github.com/inducer/sumpy.git@fd355ebfbcc7f3b4ee96640563c55e5bc6f88a76#egg=sumpy
 git+https://github.com/inducer/pyfmmlib.git#egg=pyfmmlib
