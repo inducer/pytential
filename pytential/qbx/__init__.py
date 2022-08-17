@@ -643,7 +643,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         self.qbx_order,
                         self.fmm_level_to_order,
                         source_extra_kwargs=source_extra_kwargs,
-                        kernel_extra_kwargs=kernel_extra_kwargs)
+                        kernel_extra_kwargs=kernel_extra_kwargs,
+                        _use_target_specific_qbx=self._use_target_specific_qbx,
+                        )
 
         from pytential.qbx.geometry import target_state
         if actx.to_numpy(actx.np.any(
