@@ -112,13 +112,24 @@ non_qbx_box_target_lists`),
     def __init__(self, tree_indep, geo_data, dtype,
             qbx_order, fmm_level_to_order,
             source_extra_kwargs, kernel_extra_kwargs,
+            translation_classes_data=None,
             _use_target_specific_qbx=None):
         if _use_target_specific_qbx:
             raise ValueError("TSQBX is not implemented in sumpy")
 
+        base_kernel = tree_indep.get_base_kernel()
+        if translation_classes_data is None and base_kernel.is_translation_invariant:
+            from pytential.qbx.fmm import translation_classes_builder
+            traversal = geo_data.traversal()
+            actx = geo_data._setup_actx
+
+            translation_classes_data, _ = translation_classes_builder(actx)(
+                actx.queue, traversal, traversal.tree, is_translation_per_level=True)
+
         super().__init__(
-                tree_indep, geo_data.traversal(),
-                dtype, fmm_level_to_order, source_extra_kwargs, kernel_extra_kwargs)
+                tree_indep, traversal,
+                dtype, fmm_level_to_order, source_extra_kwargs, kernel_extra_kwargs,
+                translation_classes_data=translation_classes_data)
 
         self.qbx_order = qbx_order
         self.geo_data = geo_data
@@ -374,6 +385,17 @@ non_qbx_box_target_lists`),
                 SumpyTimingFuture(template_ary.queue, events=()))
 
     # }}}
+
+
+def translation_classes_builder(actx):
+    from pytools import memoize_in
+
+    @memoize_in(actx, (QBXExpansionWrangler, translation_classes_builder))
+    def make_container():
+        from boxtree.translation_classes import TranslationClassesBuilder
+        return TranslationClassesBuilder(actx.context)
+
+    return make_container()
 
 # }}}
 
