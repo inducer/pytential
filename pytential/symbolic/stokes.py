@@ -28,7 +28,7 @@ from sumpy.kernel import (StressletKernel, LaplaceKernel,
     ElasticityKernel, BiharmonicKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
 from sumpy.symbolic import SpatialConstant
-from abc import ABC
+from abc import ABC, abstractmethod
 
 __doc__ = """
 .. autoclass:: StokesletWrapper
@@ -744,6 +744,7 @@ class StokesOperator:
         """
         return b
 
+    @abstractmethod
     def operator(self, sigma):
         """
         :returns: the integral operator that should be solved to obtain the
@@ -751,12 +752,14 @@ class StokesOperator:
         """
         raise NotImplementedError
 
+    @abstractmethod
     def velocity(self, sigma, *, normal, qbx_forced_limit=None):
         """
         :returns: a representation of the velocity field in the Stokes flow.
         """
         raise NotImplementedError
 
+    @abstractmethod
     def pressure(self, sigma, *, normal, qbx_forced_limit=None):
         """
         :returns: a representation of the pressure in the Stokes flow.
