@@ -73,10 +73,10 @@ def rewrite_using_base_kernel(exprs, base_kernel=_NO_ARG_SENTINEL):
 
 
 class RewriteUsingBaseKernelMapper(IdentityMapper):
-    """Rewrites IntGs using the base kernel. First this method replaces
-    IntGs with :class:`sumpy.kernel.AxisTargetDerivative` to IntGs
+    """Rewrites ``IntG``s using the base kernel. First this method replaces
+    ``IntG``s with :class:`sumpy.kernel.AxisTargetDerivative` to ``IntG``s
     :class:`sumpy.kernel.AxisSourceDerivative` and
-    IntGs with :class:`sumpy.kernel.TargetPointMultiplier` to IntGs
+    ``IntG``s with :class:`sumpy.kernel.TargetPointMultiplier` to ``IntG``s
     without them using :class:`sumpy.kernel.ExpressionKernel`
     and then converts them to the base kernel by finding
     a relationship between the derivatives.
@@ -123,7 +123,7 @@ def _monom_to_expr(monom, variables):
 
 
 def convert_target_multiplier_to_source(int_g):
-    """Convert an IntG with TargetMultiplier to a sum of IntGs without
+    """Convert an ``IntG`` with TargetMultiplier to a sum of ``IntG``s without
     TargetMultiplier and only source dependent transformations.
     """
     import sympy
@@ -215,7 +215,7 @@ def convert_target_multiplier_to_source(int_g):
 
 
 def _multiply_int_g(int_g, expr_multiplier, density_multiplier):
-    """Multiply the expression in IntG with the *expr_multiplier*
+    """Multiply the expression in ``IntG`` with the *expr_multiplier*
     which is a symbolic expression and multiply the densities
     with *density_multiplier* which is a pymbolic expression.
     """
