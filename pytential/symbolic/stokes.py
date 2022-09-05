@@ -285,18 +285,12 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
 
 class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5,
-            method="biharmonic"):
+            base_kernel=None):
         super().__init__(dim, mu_sym, nu_sym)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
 
-        self.method = method
-        if method == "biharmonic":
-            self.base_kernel = BiharmonicKernel(dim)
-        elif method == "naive":
-            self.base_kernel = None
-        else:
-            raise ValueError("method has to be one of biharmonic/naive")
+        self.base_kernel = base_kernel
 
         self.kernel_dict = {}
         # The two cases of nu=0.5 and nu!=0.5 differ significantly and
@@ -342,8 +336,8 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
-        stresslet_obj = StressletWrapper(dim=self.dim,
-            mu_sym=self.mu, nu_sym=self.nu, method=self.method)
+        stresslet_obj = _StressletWrapperNaiveOrBiharmonic(dim=self.dim,
+            mu_sym=self.mu, nu_sym=self.nu, base_kernel=self.base_kernel)
 
         # For stokeslet, there's no direction vector involved
         # passing a list of ones instead to remove its usage.
@@ -364,13 +358,13 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
 class StokesletWrapperNaive(_StokesletWrapperNaiveOrBiharmonic):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
-                method="naive")
+                base_kernel=None)
 
 
 class StokesletWrapperBiharmonic(_StokesletWrapperNaiveOrBiharmonic):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
-                method="biharmonic")
+                base_kernel=BiharmonicKernel(dim))
 
 
 # }}}
@@ -380,18 +374,12 @@ class StokesletWrapperBiharmonic(_StokesletWrapperNaiveOrBiharmonic):
 
 class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5,
-            method="biharmonic"):
+            base_kernel=None):
         super().__init__(dim, mu_sym, nu_sym)
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to StokesletWrapper")
 
-        self.method = method
-        if method == "biharmonic":
-            self.base_kernel = BiharmonicKernel(dim)
-        elif method == "naive":
-            self.base_kernel = None
-        else:
-            raise ValueError("method has to be one of biharmonic/naive")
+        self.base_kernel = base_kernel
 
         self.kernel_dict = {}
 
@@ -466,8 +454,8 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
             qbx_forced_limit, stokeslet_weight, stresslet_weight,
             extra_deriv_dirs=()):
 
-        stokeslet_obj = StokesletWrapper(dim=self.dim,
-                mu_sym=self.mu, nu_sym=self.nu, method=self.method)
+        stokeslet_obj = _StokesletWrapperNaiveOrBiharmonic(dim=self.dim,
+                mu_sym=self.mu, nu_sym=self.nu, base_kernel=self.base_kernel)
 
         sym_expr = 0
         if stresslet_weight != 0:
@@ -511,13 +499,13 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
 class StressletWrapperNaive(_StressletWrapperNaiveOrBiharmonic):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
-                method="naive")
+                base_kernel=None)
 
 
 class StressletWrapperBiharmonic(_StressletWrapperNaiveOrBiharmonic):
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
         super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
-                method="biharmonic")
+                base_kernel=BiharmonicKernel(dim))
 
 # }}}
 
