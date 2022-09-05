@@ -93,7 +93,7 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
     def map_int_g(self, expr):
         # Convert IntGs with TargetPointMultiplier/AxisTargetDerivative to a sum of
         # IntGs without TargetPointMultipliers
-        new_int_gs = convert_target_multiplier_to_source(expr)
+        new_int_gs = convert_target_transformation_to_source(expr)
         # Convert IntGs with different kernels to expressions containing
         # IntGs with base_kernel or its derivatives
         return sum(convert_int_g_to_base(new_int_g,
@@ -131,9 +131,15 @@ def _monom_to_expr(monom: List[int],
     return prod
 
 
-def convert_target_multiplier_to_source(int_g: IntG) -> List[IntG]:
-    """Convert an ``IntG`` with TargetMultiplier to a sum of ``IntG``s without
-    TargetMultiplier and only source dependent transformations.
+def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
+    """Convert an ``IntG`` with AxisTargetDerivative/TargetMultiplier to a list
+    of ``IntG``s without them and only source dependent transformations.
+    The sum of the list returned is a tranformation of the input ``IntG``.
+
+    eg::
+
+       IntG(d/dx r, sigma) -> [IntG(d/dy r, -sigma)]
+       IntG(x*r, sigma) -> [IntG(r, sigma*y), IntG(r*(x -y), sigma)]
     """
     import sympy
     import sumpy.symbolic as sym
