@@ -24,6 +24,7 @@ import numpy as np
 
 from sumpy.symbolic import make_sym_vector, SympyToPymbolicMapper
 import sumpy.symbolic as sym
+import pymbolic
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
     ExpressionKernel, KernelWrapper, TargetPointMultiplier)
 from pytools import (memoize_on_first_arg,
@@ -74,20 +75,18 @@ def rewrite_using_base_kernel(exprs, base_kernel=_NO_ARG_SENTINEL):
 class RewriteUsingBaseKernelMapper(IdentityMapper):
     """Rewrites IntGs using the base kernel. First this method replaces
     IntGs with :class:`sumpy.kernel.AxisTargetDerivative` to IntGs
-    :class:`sumpy.kernel.AxisSourceDerivative` and then replaces
+    :class:`sumpy.kernel.AxisSourceDerivative` and
     IntGs with :class:`sumpy.kernel.TargetPointMultiplier` to IntGs
     without them using :class:`sumpy.kernel.ExpressionKernel`
-    and then finally converts them to the base kernel by finding
+    and then converts them to the base kernel by finding
     a relationship between the derivatives.
     """
     def __init__(self, base_kernel):
         self.base_kernel = base_kernel
 
     def map_int_g(self, expr):
-        # First convert IntGs with target derivatives to source derivatives
-        expr = convert_target_deriv_to_source(expr)
-        # Convert IntGs with TargetMultiplier to a sum of IntGs without
-        # TargetMultipliers
+        # Convert IntGs with TargetPointMultiplier/AxisTargetDerivative to a sum of
+        # IntGs without TargetPointMultipliers
         new_int_gs = convert_target_multiplier_to_source(expr)
         # Convert IntGs with different kernels to expressions containing
         # IntGs with base_kernel or its derivatives
@@ -95,40 +94,13 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
             self.base_kernel) for new_int_g in new_int_gs)
 
 
-def convert_target_deriv_to_source(int_g):
-    """Converts AxisTargetDerivatives to AxisSourceDerivative instances
-    from an IntG. If there are outer TargetPointMultiplier transformations
-    they are preserved.
-    """
-    knl = int_g.target_kernel
-    source_kernels = list(int_g.source_kernels)
-    coeff = 1
-    multipliers = []
-    while isinstance(knl, TargetPointMultiplier):
-        multipliers.append(knl.axis)
-        knl = knl.inner_kernel
-
-    while isinstance(knl, AxisTargetDerivative):
-        coeff *= -1
-        source_kernels = [AxisSourceDerivative(knl.axis, source_knl) for
-                source_knl in source_kernels]
-        knl = knl.inner_kernel
-
-    # TargetPointMultiplier has to be the outermost kernel
-    # If it is the inner kernel, return early
-    if isinstance(knl, TargetPointMultiplier):
-        return int_g
-
-    for axis in reversed(multipliers):
-        knl = TargetPointMultiplier(axis, knl)
-
-    new_densities = tuple(density*coeff for density in int_g.densities)
-    return int_g.copy(target_kernel=knl,
-                      densities=new_densities,
-                      source_kernels=tuple(source_kernels))
-
-
 def _get_kernel_expression(expr, kernel_arguments):
+    """Convert a :mod:`pymbolic` expression to :mod:`sympy` expression
+    after susituting kernel arguments.
+
+    For eg: `exp(I*k*r)/r` with `{k: 1}` is converted to the sympy expression
+    `exp(I*r)/r`
+    """
     from pymbolic.mapper.substitutor import substitute
     from sumpy.symbolic import PymbolicToSympyMapperWithSymbols
 
@@ -139,6 +111,10 @@ def _get_kernel_expression(expr, kernel_arguments):
 
 
 def _monom_to_expr(monom, variables):
+    """Convert a monomial to an expression using given variables.
+
+    For eg: [3, 2, 1] with variables [x, y, z] is converted to x^3 y^2 z.
+    """
     prod = 1
     for i, nrepeats in enumerate(monom):
         for _ in range(nrepeats):
@@ -148,7 +124,7 @@ def _monom_to_expr(monom, variables):
 
 def convert_target_multiplier_to_source(int_g):
     """Convert an IntG with TargetMultiplier to a sum of IntGs without
-    TargetMultiplier and only source dependent transformations
+    TargetMultiplier and only source dependent transformations.
     """
     import sympy
     import sumpy.symbolic as sym
@@ -172,6 +148,7 @@ def convert_target_multiplier_to_source(int_g):
             # sympy can't differentiate w.r.t target because
             # it's not a symbol, but d/d(x) = d/d(d)
             expr = expr.diff(ds[knl.axis])
+            found = True
         else:
             return [int_g]
         knl = knl.inner_kernel
@@ -179,44 +156,66 @@ def convert_target_multiplier_to_source(int_g):
     if not found:
         return [int_g]
 
+    int_g = int_g.copy(target_kernel=knl)
+
     sources_pymbolic = [NodeCoordinateComponent(i) for i in range(knl.dim)]
     expr = expr.expand()
     # Now the expr is an Add and looks like
-    # u''(d, s)*d[0] + u(d, s)
-    assert isinstance(expr, sympy.Add)
-    result = []
+    # u_{d[0], d[1]}(d, y)*d[0]*y[1] + u(d, y) * d[1]
+    # or a single term like u(d, y) * d[1]
+    if isinstance(expr, sympy.Add):
+        args = expr.args
+    else:
+        args = [expr]
 
-    for arg in expr.args:
+    result = []
+    for arg in args:
         deriv_terms = arg.atoms(sympy.Derivative)
         if len(deriv_terms) == 1:
+            # for eg: we have a term like u_{d[0], d[1]}(d, y) * d[0] * y[1]
+            # deriv_term is u_{d[0], d[1]}
             deriv_term = deriv_terms.pop()
+            # eg: rest_terms is d[0] * y[1]
             rest_terms = sympy.Poly(arg.xreplace({deriv_term: 1}), *ds, *sources)
+            # eg: derivatives is (d[0], 1), (d[1], 1)
             derivatives = deriv_term.args[1:]
         elif len(deriv_terms) == 0:
+            # for eg: we have a term like u(d, y) * d[1]
+            # rest_terms = d[1]
             rest_terms = sympy.Poly(arg.xreplace({orig_expr: 1}), *ds, *sources)
             derivatives = [(d, 0) for d in ds]
         else:
             raise AssertionError("impossible condition")
-        assert len(rest_terms.terms()) == 1
-        monom, coeff = rest_terms.terms()[0]
-        expr_multiplier = _monom_to_expr(monom[:len(ds)], ds)
-        density_multiplier = _monom_to_expr(monom[len(ds):], sources_pymbolic) \
-                * conv(coeff)
 
-        new_int_gs = _multiply_int_g(int_g, sym.sympify(expr_multiplier),
-                density_multiplier)
-        for new_int_g in new_int_gs:
-            knl = new_int_g.target_kernel
+        # apply the derivatives
+        new_source_kernels = []
+        for source_kernel in int_g.source_kernels:
+            knl = source_kernel
             for axis_var, nrepeats in derivatives:
                 axis = ds.index(axis_var)
                 for _ in range(nrepeats):
-                    knl = AxisTargetDerivative(axis, knl)
-            result.append(new_int_g.copy(target_kernel=knl))
+                    knl = AxisSourceDerivative(axis, knl)
+            new_source_kernels.append(knl)
+        new_int_g = int_g.copy(source_kernels=new_source_kernels)
+
+        assert len(rest_terms.terms()) == 1
+        monom, coeff = rest_terms.terms()[0]
+        # Now from d[0]*y[1], we separate the two terms
+        # d terms end up in the expression and y terms end up in the density
+        d_terms, y_terms = monom[:len(ds)], monom[len(ds):]
+        expr_multiplier = _monom_to_expr(d_terms, ds)
+        density_multiplier = _monom_to_expr(y_terms, sources_pymbolic) \
+                * conv(coeff)
+        # since d/d(d) = - d/d(y), we multiply by -1 to get source derivatives
+        density_multiplier *= (-1)**int(sum(nrepeats for _, nrepeats in derivatives))
+        new_int_gs = _multiply_int_g(new_int_g, sym.sympify(expr_multiplier),
+                density_multiplier)
+        result.extend(new_int_gs)
     return result
 
 
 def _multiply_int_g(int_g, expr_multiplier, density_multiplier):
-    """Multiply the exprssion in IntG with the *expr_multiplier*
+    """Multiply the expression in IntG with the *expr_multiplier*
     which is a symbolic expression and multiply the densities
     with *density_multiplier* which is a pymbolic expression.
     """
@@ -227,7 +226,14 @@ def _multiply_int_g(int_g, expr_multiplier, density_multiplier):
     sym_d = make_sym_vector("d", base_kernel.dim)
     base_kernel_expr = _get_kernel_expression(base_kernel.expression,
             int_g.kernel_arguments)
+    subst = {pymbolic.var(f"d{i}"): pymbolic.var("d")[i] for i in
+            range(base_kernel.dim)}
     conv = SympyToPymbolicMapper()
+
+    if expr_multiplier == 1:
+        # if there's no expr_multiplier, only multiply the densities
+        return [int_g.copy(densities=tuple(density*density_multiplier
+            for density in int_g.densities))]
 
     for knl, density in zip(int_g.source_kernels, int_g.densities):
         if expr_multiplier == 1:
@@ -235,6 +241,7 @@ def _multiply_int_g(int_g, expr_multiplier, density_multiplier):
         else:
             new_expr = conv(knl.postprocess_at_source(base_kernel_expr, sym_d)
                     * expr_multiplier)
+            new_expr = pymbolic.substitute(new_expr, subst)
             new_knl = ExpressionKernel(knl.dim, new_expr,
                 knl.get_base_kernel().global_scaling_const,
                 knl.is_complex_valued)

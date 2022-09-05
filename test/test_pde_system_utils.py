@@ -1,0 +1,98 @@
+__copyright__ = "Copyright (C) 2022 Isuru Fernando"
+
+__license__ = """
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
+
+from pytential.symbolic.pde.system_utils import convert_target_multiplier_to_source
+from pytential.symbolic.primitives import IntG
+from pytential.symbolic.primitives import NodeCoordinateComponent
+
+from sumpy.kernel import (LaplaceKernel, HelmholtzKernel, AxisTargetDerivative,
+    TargetPointMultiplier, AxisSourceDerivative, ExpressionKernel)
+
+from pymbolic.primitives import make_sym_vector
+import pymbolic.primitives as prim
+
+
+def test_convert_target_deriv():
+    knl = LaplaceKernel(2)
+    int_g = IntG(AxisTargetDerivative(0, knl), [AxisSourceDerivative(1, knl), knl],
+        [1, 2], qbx_forced_limit=1)
+    expected_int_g = IntG(knl,
+        [AxisSourceDerivative(0, AxisSourceDerivative(1, knl)),
+        AxisSourceDerivative(0, knl)], [-1, -2], qbx_forced_limit=1)
+
+    assert sum(convert_target_multiplier_to_source(int_g)) == expected_int_g
+
+
+def test_convert_target_point_multiplier():
+    xs = [NodeCoordinateComponent(i) for i in range(3)]
+
+    knl = LaplaceKernel(3)
+    int_g = IntG(TargetPointMultiplier(0, knl), [AxisSourceDerivative(1, knl), knl],
+        [1, 2], qbx_forced_limit=1)
+
+    d = make_sym_vector("d", 3)
+    r2 = d[2]**2 + d[1]**2 + d[0]**2
+    eknl1 = ExpressionKernel(3, d[1]*d[0]*r2**prim.Quotient(-3, 2),
+        knl.global_scaling_const, False)
+    eknl2 = ExpressionKernel(3, d[0]*r2**prim.Quotient(-1, 2),
+        knl.global_scaling_const, False)
+    expected_int_g = IntG(eknl1, [eknl1], [1], qbx_forced_limit=1) + \
+        IntG(eknl2, [eknl2], [2], qbx_forced_limit=1) + \
+        IntG(knl, [AxisSourceDerivative(1, knl), knl],
+        [xs[0], 2*xs[0]], qbx_forced_limit=1)
+
+    assert expected_int_g == sum(convert_target_multiplier_to_source(int_g))
+
+
+def test_product_rule():
+    xs = [NodeCoordinateComponent(i) for i in range(3)]
+
+    knl = LaplaceKernel(3)
+    int_g = IntG(AxisTargetDerivative(0, TargetPointMultiplier(0, knl)), [knl], [1],
+        qbx_forced_limit=1)
+
+    d = make_sym_vector("d", 3)
+    r2 = d[2]**2 + d[1]**2 + d[0]**2
+    eknl = ExpressionKernel(3, d[0]**2*r2**prim.Quotient(-3, 2),
+        knl.global_scaling_const, False)
+    expected_int_g = IntG(eknl, [eknl], [-1], qbx_forced_limit=1) + \
+        IntG(knl, [AxisSourceDerivative(0, knl)], [xs[0]*(-1)], qbx_forced_limit=1)
+
+    assert expected_int_g == sum(convert_target_multiplier_to_source(int_g))
+
+
+def test_convert_helmholtz():
+    xs = [NodeCoordinateComponent(i) for i in range(3)]
+
+    knl = HelmholtzKernel(3)
+    int_g = IntG(TargetPointMultiplier(0, knl), [knl], [1],
+        qbx_forced_limit=1, k=1)
+
+    d = make_sym_vector("d", 3)
+    r2 = (d[2]**2 + d[1]**2 + d[0]**2)
+    exp = prim.Variable("exp")
+    eknl = ExpressionKernel(3, exp(1j*r2**prim.Quotient(1, 2))*d[0]
+        * r2**prim.Quotient(-1, 2),
+        knl.global_scaling_const, knl.is_complex_valued)
+    expected_int_g = IntG(eknl, [eknl], [1], qbx_forced_limit=1,
+            kernel_arguments={"k": 1}) + \
+        IntG(knl, [knl], [xs[0]], qbx_forced_limit=1, k=1)
+
+    assert expected_int_g == sum(convert_target_multiplier_to_source(int_g))
