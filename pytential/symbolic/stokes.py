@@ -630,52 +630,50 @@ class StressletWrapperTornberg(StressletWrapperBase):
 
 # {{{ StokesletWrapper dispatch class
 
-class StokesletWrapper(StokesletWrapperBase):
-    def __new__(cls, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5, method=None):
-        if method is None:
-            import warnings
-            warnings.warn("method argument not given. falling back to 'naive'"
-                    "method argument will be required in the future.")
-            method = "naive"
-        if method == "naive":
-            return StokesletWrapperNaive(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
-        elif method == "biharmonic":
-            return StokesletWrapperBiharmonic(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
-        elif method == "laplace":
-            if nu_sym == 0.5:
-                return StokesletWrapperTornberg(dim=dim,
-                    mu_sym=mu_sym, nu_sym=nu_sym)
-            else:
-                from pytential.symbolic.elasticity import StokesletWrapperYoshida
-                return StokesletWrapperYoshida(dim=dim,
-                    mu_sym=mu_sym, nu_sym=nu_sym)
+def StokesletWrapper(dim, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5, method=None):
+    if method is None:
+        import warnings
+        warnings.warn("method argument not given. falling back to 'naive'"
+                "method argument will be required in the future.")
+        method = "naive"
+    if method == "naive":
+        return StokesletWrapperNaive(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+    elif method == "biharmonic":
+        return StokesletWrapperBiharmonic(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+    elif method == "laplace":
+        if nu_sym == 0.5:
+            return StokesletWrapperTornberg(dim=dim,
+                mu_sym=mu_sym, nu_sym=nu_sym)
         else:
-            raise ValueError(f"invalid method: {method}."
-                    "Needs to be one of naive, laplace, biharmonic")
+            from pytential.symbolic.elasticity import StokesletWrapperYoshida
+            return StokesletWrapperYoshida(dim=dim,
+                mu_sym=mu_sym, nu_sym=nu_sym)
+    else:
+        raise ValueError(f"invalid method: {method}."
+                "Needs to be one of naive, laplace, biharmonic")
 
 
-class StressletWrapper(StressletWrapperBase):
-    def __new__(cls, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5, method=None):
-        if method is None:
-            import warnings
-            warnings.warn("method argument not given. falling back to 'naive'"
-                    "method argument will be required in the future.")
-            method = "naive"
-        if method == "naive":
-            return StressletWrapperNaive(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
-        elif method == "biharmonic":
-            return StressletWrapperBiharmonic(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
-        elif method == "laplace":
-            if nu_sym == 0.5:
-                return StressletWrapperTornberg(dim=dim,
-                    mu_sym=mu_sym, nu_sym=nu_sym)
-            else:
-                from pytential.symbolic.elasticity import StressletWrapperYoshida
-                return StressletWrapperYoshida(dim=dim,
-                    mu_sym=mu_sym, nu_sym=nu_sym)
+def StressletWrapper(dim, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5, method=None):
+    if method is None:
+        import warnings
+        warnings.warn("method argument not given. falling back to 'naive'"
+                "method argument will be required in the future.")
+        method = "naive"
+    if method == "naive":
+        return StressletWrapperNaive(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+    elif method == "biharmonic":
+        return StressletWrapperBiharmonic(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+    elif method == "laplace":
+        if nu_sym == 0.5:
+            return StressletWrapperTornberg(dim=dim,
+                mu_sym=mu_sym, nu_sym=nu_sym)
         else:
-            raise ValueError(f"invalid method: {method}."
-                    "Needs to be one of naive, laplace, biharmonic")
+            from pytential.symbolic.elasticity import StressletWrapperYoshida
+            return StressletWrapperYoshida(dim=dim,
+                mu_sym=mu_sym, nu_sym=nu_sym)
+    else:
+        raise ValueError(f"invalid method: {method}."
+                "Needs to be one of naive, laplace, biharmonic")
 
 # }}}
 
