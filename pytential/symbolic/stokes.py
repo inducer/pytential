@@ -77,6 +77,7 @@ class StokesletWrapperBase(ABC):
         self.mu = mu_sym
         self.nu = nu_sym
 
+    @abstractmethod
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         """Symbolic expressions for integrating Stokeslet kernel.
 
