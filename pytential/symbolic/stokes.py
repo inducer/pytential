@@ -122,7 +122,6 @@ class StokesletWrapperBase(ABC):
         """
         return self.apply(density_vec_sym, qbx_forced_limit, (deriv_dir,))
 
-    @abstractmethod
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
         r"""Symbolic expression for viscous stress applied to a direction.
 
@@ -238,7 +237,6 @@ class StressletWrapperBase(ABC):
         return self.apply(density_vec_sym, dir_vec_sym, qbx_forced_limit,
                 (deriv_dir,))
 
-    @abstractmethod
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
                         qbx_forced_limit):
         r"""Symbolic expression for viscous stress applied to a direction.
@@ -537,9 +535,6 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
         return stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
             [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
             extra_deriv_dirs)
-
-    def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
-        raise NotImplementedError
 
 
 class StressletWrapperTornberg(StressletWrapperBase):
