@@ -32,11 +32,10 @@ from pytools import (memoize_on_first_arg,
                 as gnitstam)
 
 from pytential.symbolic.primitives import (NodeCoordinateComponent,
-    hashable_kernel_args)
+    hashable_kernel_args, IntG)
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
 import pytential
-from pytential.symbolic import IntG
 
 from typing import List, Mapping, Text, Any, Union, Tuple
 from pytential.symbolic.typing import ExpressionT
@@ -329,8 +328,9 @@ def get_deriv_relation(kernels: List[ExpressionKernel],
         -> List[Tuple[ExpressionT, ExpressionT]]:
     res = []
     for knl in kernels:
-        res.append(get_deriv_relation_kernel(knl, base_kernel, tol, order,
-            hashable_kernel_arguments=hashable_kernel_args(kernel_arguments)))
+        res.append(get_deriv_relation_kernel(knl, base_kernel,
+            hashable_kernel_arguments=hashable_kernel_args(kernel_arguments),
+            tol=tol, order=order))
     return res
 
 
@@ -446,6 +446,7 @@ def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
             raise RuntimeError("Failed to find a base kernel")
         return _get_base_kernel_matrix(
             base_kernel=base_kernel,
+            kernel_arguments=kernel_arguments,
             order=order,
             retries=retries-1,
         )
@@ -499,4 +500,4 @@ if __name__ == "__main__":
     expression_knl2 = ExpressionKernel(3, conv(1/sym_r + sym_d[0]*sym_d[0]/sym_r**3),
         1, False)
     kernels = [expression_knl, expression_knl2]
-    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4)
+    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, kernel_arguments={})
