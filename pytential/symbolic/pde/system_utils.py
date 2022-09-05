@@ -36,6 +36,10 @@ from pytential.symbolic.primitives import (NodeCoordinateComponent,
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
 import pytential
+from pytential.symbolic import IntG
+
+from typing import List, Mapping, Text, Any, Union, Tuple
+from pytential.symbolic.typing import ExpressionT
 
 import logging
 logger = logging.getLogger(__name__)
@@ -56,7 +60,8 @@ __doc__ = """
 _NO_ARG_SENTINEL = object()
 
 
-def rewrite_using_base_kernel(exprs, base_kernel=_NO_ARG_SENTINEL):
+def rewrite_using_base_kernel(exprs: List[ExpressionT],
+        base_kernel=_NO_ARG_SENTINEL) -> List[ExpressionT]:
     """Rewrites an expression with :class:`~pytential.symbolic.primitives.IntG`
     objects using *base_kernel*.
 
@@ -64,7 +69,8 @@ def rewrite_using_base_kernel(exprs, base_kernel=_NO_ARG_SENTINEL):
     is encountered, this will (forcibly) rewrite the Laplace kernel in terms of
     derivatives of the Biharmonic kernel.
 
-    The routine will fail with a ``RuntimeError`` if this process cannot be completed.
+    The routine will fail with a ``RuntimeError`` if this process cannot be
+    completed.
     """
     if base_kernel is None:
         return list(exprs)
@@ -94,7 +100,8 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
             self.base_kernel) for new_int_g in new_int_gs)
 
 
-def _get_kernel_expression(expr, kernel_arguments):
+def _get_kernel_expression(expr: ExpressionT,
+        kernel_arguments: Mapping[Text, Any]) -> sym.Basic:
     """Convert a :mod:`pymbolic` expression to :mod:`sympy` expression
     after susituting kernel arguments.
 
@@ -110,7 +117,9 @@ def _get_kernel_expression(expr, kernel_arguments):
     return res
 
 
-def _monom_to_expr(monom, variables):
+def _monom_to_expr(monom: List[int],
+        variables: List[Union[sym.Basic, ExpressionT]]) \
+        -> Union[sym.Basic, ExpressionT]:
     """Convert a monomial to an expression using given variables.
 
     For eg: [3, 2, 1] with variables [x, y, z] is converted to x^3 y^2 z.
@@ -122,7 +131,7 @@ def _monom_to_expr(monom, variables):
     return prod
 
 
-def convert_target_multiplier_to_source(int_g):
+def convert_target_multiplier_to_source(int_g: IntG) -> List[IntG]:
     """Convert an ``IntG`` with TargetMultiplier to a sum of ``IntG``s without
     TargetMultiplier and only source dependent transformations.
     """
@@ -214,7 +223,8 @@ def convert_target_multiplier_to_source(int_g):
     return result
 
 
-def _multiply_int_g(int_g, expr_multiplier, density_multiplier):
+def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
+        density_multiplier: ExpressionT) -> List[IntG]:
     """Multiply the expression in ``IntG`` with the *expr_multiplier*
     which is a symbolic expression and multiply the densities
     with *density_multiplier* which is a pymbolic expression.
@@ -251,7 +261,8 @@ def _multiply_int_g(int_g, expr_multiplier, density_multiplier):
     return result
 
 
-def convert_int_g_to_base(int_g, base_kernel):
+def convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
+        -> ExpressionT:
     result = 0
     for knl, density in zip(int_g.source_kernels, int_g.densities):
         result += _convert_int_g_to_base(
@@ -260,7 +271,8 @@ def convert_int_g_to_base(int_g, base_kernel):
     return result
 
 
-def _convert_int_g_to_base(int_g, base_kernel):
+def _convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
+        -> ExpressionT:
     target_kernel = int_g.target_kernel.replace_base_kernel(base_kernel)
     dim = target_kernel.dim
 
@@ -304,8 +316,12 @@ def _convert_int_g_to_base(int_g, base_kernel):
     return result
 
 
-def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None,
-        kernel_arguments=None):
+def get_deriv_relation(kernels: List[ExpressionKernel],
+        base_kernel: ExpressionKernel,
+        kernel_arguments: Mapping[Text, Any],
+        tol: float = 1e-10,
+        order: Union[None, int] = None) \
+        -> List[Tuple[ExpressionT, ExpressionT]]:
     res = []
     for knl in kernels:
         res.append(get_deriv_relation_kernel(knl, base_kernel, tol, order,
@@ -314,10 +330,15 @@ def get_deriv_relation(kernels, base_kernel, tol=1e-10, order=None,
 
 
 @memoize_on_first_arg
-def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-10, order=None,
-        hashable_kernel_arguments=None):
+def get_deriv_relation_kernel(kernel: ExpressionKernel,
+        base_kernel: ExpressionKernel,
+        hashable_kernel_arguments: List[Tuple[Text, Any]],
+        tol: float = 1e-10,
+        order: Union[None, int] = None) \
+        -> Tuple[ExpressionT, ExpressionT]:
     kernel_arguments = dict(hashable_kernel_arguments)
-    (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order)
+    (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order,
+            kernel_arguments=kernel_arguments)
     dim = base_kernel.dim
     sym_vec = make_sym_vector("d", dim)
     sympy_conv = SympyToPymbolicMapper()
@@ -352,8 +373,11 @@ def get_deriv_relation_kernel(kernel, base_kernel, tol=1e-10, order=None,
 
 
 @memoize_on_first_arg
-def _get_base_kernel_matrix(base_kernel, order=None, retries=3,
-        kernel_arguments=None):
+def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
+        kernel_arguments: Mapping[Text, Any],
+        order: Union[None, int] = None, retries: int = 3) \
+        -> Tuple[Tuple[sym.Matrix, sym.Matrix, List[Tuple[int, int]]],
+            np.ndarray, List[Tuple[int]]]:
     dim = base_kernel.dim
 
     pde = base_kernel.get_pde_as_diff_op()
