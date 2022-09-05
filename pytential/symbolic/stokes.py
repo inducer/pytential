@@ -120,7 +120,7 @@ class StokesletWrapperBase(ABC):
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
-        return self.apply(density_vec_sym, qbx_forced_limit, [deriv_dir])
+        return self.apply(density_vec_sym, qbx_forced_limit, (deriv_dir,))
 
     @abstractmethod
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
@@ -236,7 +236,7 @@ class StressletWrapperBase(ABC):
             to :class:`~pytential.symbolic.primitives.IntG`.
         """
         return self.apply(density_vec_sym, dir_vec_sym, qbx_forced_limit,
-                [deriv_dir])
+                (deriv_dir,))
 
     @abstractmethod
     def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
