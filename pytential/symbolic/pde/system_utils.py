@@ -213,8 +213,7 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
             new_source_kernels.append(knl)
         new_int_g = int_g.copy(source_kernels=new_source_kernels)
 
-        assert len(rest_terms.terms()) == 1
-        monom, coeff = rest_terms.terms()[0]
+        (monom, coeff,) = rest_terms.terms()[0]
         # Now from d[0]*y[1], we separate the two terms
         # d terms end up in the expression and y terms end up in the density
         d_terms, y_terms = monom[:len(ds)], monom[len(ds):]
