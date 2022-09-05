@@ -18,7 +18,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pytential.symbolic.pde.system_utils import convert_target_multiplier_to_source
+from pytential.symbolic.pde.system_utils import (
+    convert_target_transformation_to_source)
 from pytential.symbolic.primitives import IntG
 from pytential.symbolic.primitives import NodeCoordinateComponent
 
@@ -37,7 +38,7 @@ def test_convert_target_deriv():
         [AxisSourceDerivative(0, AxisSourceDerivative(1, knl)),
         AxisSourceDerivative(0, knl)], [-1, -2], qbx_forced_limit=1)
 
-    assert sum(convert_target_multiplier_to_source(int_g)) == expected_int_g
+    assert sum(convert_target_transformation_to_source(int_g)) == expected_int_g
 
 
 def test_convert_target_point_multiplier():
@@ -58,7 +59,7 @@ def test_convert_target_point_multiplier():
         IntG(knl, [AxisSourceDerivative(1, knl), knl],
         [xs[0], 2*xs[0]], qbx_forced_limit=1)
 
-    assert expected_int_g == sum(convert_target_multiplier_to_source(int_g))
+    assert expected_int_g == sum(convert_target_transformation_to_source(int_g))
 
 
 def test_product_rule():
@@ -75,7 +76,7 @@ def test_product_rule():
     expected_int_g = IntG(eknl, [eknl], [-1], qbx_forced_limit=1) + \
         IntG(knl, [AxisSourceDerivative(0, knl)], [xs[0]*(-1)], qbx_forced_limit=1)
 
-    assert expected_int_g == sum(convert_target_multiplier_to_source(int_g))
+    assert expected_int_g == sum(convert_target_transformation_to_source(int_g))
 
 
 def test_convert_helmholtz():
@@ -95,4 +96,4 @@ def test_convert_helmholtz():
             kernel_arguments={"k": 1}) + \
         IntG(knl, [knl], [xs[0]], qbx_forced_limit=1, k=1)
 
-    assert expected_int_g == sum(convert_target_multiplier_to_source(int_g))
+    assert expected_int_g == sum(convert_target_transformation_to_source(int_g))
