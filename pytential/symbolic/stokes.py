@@ -822,10 +822,6 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
         return result
 
     def _operator(self, sigma, normal, qbx_forced_limit):
-        slp_qbx_forced_limit = qbx_forced_limit
-        if slp_qbx_forced_limit == "avg":
-            slp_qbx_forced_limit = "avg"
-
         # NOTE: we set a dofdesc here to force the evaluation of this integral
         # on the source instead of the target when using automatic tagging
         # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
