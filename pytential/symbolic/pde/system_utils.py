@@ -60,11 +60,11 @@ def rewrite_using_base_kernel(exprs, base_kernel=_NO_ARG_SENTINEL):
     """Rewrites an expression with :class:`~pytential.symbolic.primitives.IntG`
     objects using *base_kernel*.
 
-    For example, if *base_kernel* is the Biharmonic kernel, and a Laplace kernel
+    For example, if *base_kernel* is the biharmonic kernel, and a Laplace kernel
     is encountered, this will (forcibly) rewrite the Laplace kernel in terms of
     derivatives of the Biharmonic kernel.
 
-    The routine will fail if this process cannot be completed.
+    The routine will fail with a ``RuntimeError`` if this process cannot be completed.
     """
     if base_kernel is None:
         return list(exprs)
@@ -361,7 +361,7 @@ def _get_base_kernel_matrix(base_kernel, order=None, retries=3,
         order = pde.order
 
     if order > pde.order:
-        raise NotImplementedError(f"order ({order}) cannot be greater than the order"
+        raise RuntimeError(f"order ({order}) cannot be greater than the order"
                          f"of the PDE ({pde.order}) yet.")
 
     mis = sorted(gnitstam(order, dim), key=sum)
