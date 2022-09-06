@@ -29,6 +29,7 @@ from sumpy.kernel import (
     LaplaceKernel, HelmholtzKernel, ExpressionKernel, BiharmonicKernel,
     StokesletKernel,
     AxisTargetDerivative, TargetPointMultiplier, AxisSourceDerivative)
+from sumpy.symbolic import USE_SYMENGINE
 
 from pymbolic.primitives import make_sym_vector
 import pymbolic.primitives as prim
@@ -53,9 +54,15 @@ def test_convert_target_point_multiplier():
         [1, 2], qbx_forced_limit=1)
 
     d = make_sym_vector("d", 3)
-    r2 = d[2]**2 + d[1]**2 + d[0]**2
-    eknl1 = ExpressionKernel(3, d[1]*d[0]*r2**prim.Quotient(-3, 2),
-        knl.global_scaling_const, False)
+
+    if USE_SYMENGINE:
+        r2 = d[2]**2 + d[1]**2 + d[0]**2
+        eknl1 = ExpressionKernel(3, d[1]*d[0]*r2**prim.Quotient(-3, 2),
+            knl.global_scaling_const, False)
+    else:
+        r2 = d[0]**2 + d[1]**2 + d[2]**2
+        eknl1 = ExpressionKernel(3, d[0]*d[1]*r2**prim.Quotient(-3, 2),
+            knl.global_scaling_const, False)
     eknl2 = ExpressionKernel(3, d[0]*r2**prim.Quotient(-1, 2),
         knl.global_scaling_const, False)
     expected_int_g = IntG(eknl1, [eknl1], [1], qbx_forced_limit=1) + \
@@ -74,7 +81,10 @@ def test_product_rule():
         qbx_forced_limit=1)
 
     d = make_sym_vector("d", 3)
-    r2 = d[2]**2 + d[1]**2 + d[0]**2
+    if USE_SYMENGINE:
+        r2 = d[2]**2 + d[1]**2 + d[0]**2
+    else:
+        r2 = d[0]**2 + d[1]**2 + d[2]**2
     eknl = ExpressionKernel(3, d[0]**2*r2**prim.Quotient(-3, 2),
         knl.global_scaling_const, False)
     expected_int_g = IntG(eknl, [eknl], [-1], qbx_forced_limit=1) + \
@@ -91,11 +101,19 @@ def test_convert_helmholtz():
         qbx_forced_limit=1, k=1)
 
     d = make_sym_vector("d", 3)
-    r2 = (d[2]**2 + d[1]**2 + d[0]**2)
     exp = prim.Variable("exp")
-    eknl = ExpressionKernel(3, exp(1j*r2**prim.Quotient(1, 2))*d[0]
-        * r2**prim.Quotient(-1, 2),
-        knl.global_scaling_const, knl.is_complex_valued)
+
+    if USE_SYMENGINE:
+        r2 = d[2]**2 + d[1]**2 + d[0]**2
+        eknl = ExpressionKernel(3, exp(1j*r2**prim.Quotient(1, 2))*d[0]
+            * r2**prim.Quotient(-1, 2),
+            knl.global_scaling_const, knl.is_complex_valued)
+    else:
+        r2 = d[0]**2 + d[1]**2 + d[2]**2
+        eknl = ExpressionKernel(3, d[0]*r2**prim.Quotient(-1, 2)
+            * exp(1j*r2**prim.Quotient(1, 2)),
+            knl.global_scaling_const, knl.is_complex_valued)
+
     expected_int_g = IntG(eknl, [eknl], [1], qbx_forced_limit=1,
             kernel_arguments={"k": 1}) + \
         IntG(knl, [knl], [xs[0]], qbx_forced_limit=1, k=1)
