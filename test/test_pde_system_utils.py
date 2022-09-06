@@ -19,12 +19,16 @@ THE SOFTWARE.
 """
 
 from pytential.symbolic.pde.system_utils import (
-    convert_target_transformation_to_source)
+    convert_target_transformation_to_source, convert_int_g_to_base)
 from pytential.symbolic.primitives import IntG
 from pytential.symbolic.primitives import NodeCoordinateComponent
+import pytential
+import numpy as np
 
-from sumpy.kernel import (LaplaceKernel, HelmholtzKernel, AxisTargetDerivative,
-    TargetPointMultiplier, AxisSourceDerivative, ExpressionKernel)
+from sumpy.kernel import (
+    LaplaceKernel, HelmholtzKernel, ExpressionKernel, BiharmonicKernel,
+    StokesletKernel,
+    AxisTargetDerivative, TargetPointMultiplier, AxisSourceDerivative)
 
 from pymbolic.primitives import make_sym_vector
 import pymbolic.primitives as prim
@@ -97,3 +101,45 @@ def test_convert_helmholtz():
         IntG(knl, [knl], [xs[0]], qbx_forced_limit=1, k=1)
 
     assert expected_int_g == sum(convert_target_transformation_to_source(int_g))
+
+
+def test_convert_int_g_base():
+    knl = LaplaceKernel(3)
+    int_g = IntG(knl, [knl], [1], qbx_forced_limit=1)
+
+    base_knl = BiharmonicKernel(3)
+    expected_int_g = sum(
+        IntG(base_knl, [AxisSourceDerivative(d, AxisSourceDerivative(d, base_knl))],
+            [-1], qbx_forced_limit=1) for d in range(3))
+
+    assert expected_int_g == convert_int_g_to_base(int_g, base_kernel=base_knl)
+
+
+def test_convert_int_g_base_with_const():
+    knl = StokesletKernel(2, 0, 0)
+    int_g = IntG(knl, [knl], [1], qbx_forced_limit=1, mu=2)
+
+    base_knl = BiharmonicKernel(2)
+    dim = 2
+    dd = pytential.sym.DOFDescriptor(None,
+            discr_stage=pytential.sym.QBX_SOURCE_STAGE1)
+
+    expected_int_g = (-0.1875)*prim.Power(np.pi, -1) * \
+        pytential.sym.integral(dim, dim-1, 1, dofdesc=dd) + \
+        IntG(base_knl,
+            [AxisSourceDerivative(1, AxisSourceDerivative(1, base_knl))], [0.5],
+            qbx_forced_limit=1)
+    assert convert_int_g_to_base(int_g, base_kernel=base_knl) == expected_int_g
+
+
+def test_convert_int_g_base_with_const_and_deriv():
+    knl = StokesletKernel(2, 0, 0)
+    int_g = IntG(knl, [AxisSourceDerivative(0, knl)], [1], qbx_forced_limit=1, mu=2)
+
+    base_knl = BiharmonicKernel(2)
+
+    expected_int_g = IntG(base_knl,
+            [AxisSourceDerivative(1, AxisSourceDerivative(1,
+                AxisSourceDerivative(0, base_knl)))], [0.5],
+            qbx_forced_limit=1)
+    assert convert_int_g_to_base(int_g, base_kernel=base_knl) == expected_int_g
