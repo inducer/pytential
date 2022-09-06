@@ -297,7 +297,7 @@ def _convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
         if const != 0 and target_kernel != target_kernel.get_base_kernel():
             # There might be some TargetPointMultipliers hanging around.
             # FIXME: handle them instead of bailing out
-            return [int_g]
+            return int_g
 
         if source_kernel != source_kernel.get_base_kernel():
             # We assume that any source transformation is a derivative
@@ -337,13 +337,13 @@ def get_deriv_relation(kernels: List[ExpressionKernel],
 @memoize_on_first_arg
 def get_deriv_relation_kernel(kernel: ExpressionKernel,
         base_kernel: ExpressionKernel,
-        hashable_kernel_arguments: List[Tuple[Text, Any]],
+        hashable_kernel_arguments: Tuple[Tuple[Text, Any]],
         tol: float = 1e-10,
         order: Union[None, int] = None) \
         -> Tuple[ExpressionT, ExpressionT]:
     kernel_arguments = dict(hashable_kernel_arguments)
     (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order,
-            kernel_arguments=kernel_arguments)
+            hashable_kernel_arguments=hashable_kernel_arguments)
     dim = base_kernel.dim
     sym_vec = make_sym_vector("d", dim)
     sympy_conv = SympyToPymbolicMapper()
@@ -379,7 +379,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
 
 @memoize_on_first_arg
 def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
-        kernel_arguments: Mapping[Text, Any],
+        hashable_kernel_arguments: Tuple[Tuple[Text, Any]],
         order: Union[None, int] = None, retries: int = 3) \
         -> Tuple[Tuple[sym.Matrix, sym.Matrix, List[Tuple[int, int]]],
             np.ndarray, List[Tuple[int]]]:
@@ -410,7 +410,8 @@ def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
             rand[i, j] = sym.sympify(rand[i, j])/10**15
     sym_vec = make_sym_vector("d", dim)
 
-    base_expr = _get_kernel_expression(base_kernel.expression, kernel_arguments)
+    base_expr = _get_kernel_expression(base_kernel.expression,
+        dict(hashable_kernel_arguments))
 
     mat = []
     for rand_vec_idx in range(rand.shape[1]):
@@ -446,7 +447,7 @@ def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
             raise RuntimeError("Failed to find a base kernel")
         return _get_base_kernel_matrix(
             base_kernel=base_kernel,
-            kernel_arguments=kernel_arguments,
+            hashable_kernel_arguments=hashable_kernel_arguments,
             order=order,
             retries=retries-1,
         )
@@ -487,12 +488,14 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     from sumpy.kernel import (StokesletKernel, BiharmonicKernel,  # noqa:F401
         StressletKernel, ElasticityKernel, LaplaceKernel)
-    base_kernel = BiharmonicKernel(3)
+    base_kernel = BiharmonicKernel(2)
     #base_kernel = LaplaceKernel(3)
-    kernels = [StokesletKernel(3, 0, 2), StokesletKernel(3, 0, 0)]
-    kernels += [StressletKernel(3, 0, 0, 0), StressletKernel(3, 0, 0, 1),
-            StressletKernel(3, 0, 0, 2), StressletKernel(3, 0, 1, 2)]
+    kernels = [StokesletKernel(2, 0, 1), StokesletKernel(2, 0, 0)]
+    kernels += [StressletKernel(2, 0, 0, 0), StressletKernel(2, 0, 0, 1),
+            StressletKernel(2, 0, 0, 1), StressletKernel(2, 0, 1, 1)]
+    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, kernel_arguments={})
 
+    base_kernel = BiharmonicKernel(3)
     sym_d = make_sym_vector("d", base_kernel.dim)
     sym_r = sym.sqrt(sum(a**2 for a in sym_d))
     conv = SympyToPymbolicMapper()
