@@ -27,6 +27,8 @@ import numpy as np
 
 from arraycontext import flatten
 from pytential import GeometryCollection, bind, sym
+from pytential.symbolic.stokes import (StokesletWrapper, StressletWrapper,
+        StressletWrapperBase)
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureGroupFactory
@@ -186,7 +188,6 @@ def run_exterior_stokes(actx_factory, *,
     else:
         # Use the naive method here as biharmonic requires source derivatives
         # of point_source
-        from pytential.symbolic.stokes import StokesletWrapper
         sym_source_pot = StokesletWrapper(ambient_dim, mu_sym=sym_mu,
             nu_sym=sym_nu, method="naive").apply(sym_sigma, qbx_forced_limit=None)
 
@@ -458,7 +459,6 @@ class StokesletIdentity:
     """[Pozrikidis1992] Problem 3.1.1"""
 
     def __init__(self, ambient_dim):
-        from pytential.symbolic.stokes import StokesletWrapper
         self.ambient_dim = ambient_dim
         self.stokeslet = StokesletWrapper(self.ambient_dim, mu_sym=1)
 
@@ -517,7 +517,6 @@ class StressletIdentity:
     """[Pozrikidis1992] Equation 3.2.7"""
 
     def __init__(self, ambient_dim):
-        from pytential.symbolic.stokes import StokesletWrapper
         self.ambient_dim = ambient_dim
         self.stokeslet = StokesletWrapper(self.ambient_dim, mu_sym=1)
 
@@ -544,6 +543,116 @@ def test_stresslet_identity(actx_factory, cls, visualize=False):
             target_order=5, qbx_order=3, source_ovsmp=source_ovsmp)
     identity = StressletIdentity(case.ambient_dim)
     logger.info("\n%s", str(case))
+
+    from pytools.convergence import EOCRecorder
+    eocs = [EOCRecorder() for _ in range(case.ambient_dim)]
+
+    for resolution in case.resolutions:
+        h_max, errors = run_stokes_identity(
+                actx_factory, case, identity,
+                resolution=resolution,
+                visualize=visualize)
+
+        for eoc, e in zip(eocs, errors):
+            eoc.add_data_point(h_max, e)
+
+    for eoc in eocs:
+        print(eoc.pretty_print(
+            abscissa_format="%.8e",
+            error_format="%.8e",
+            eoc_format="%.2f"))
+
+    for eoc in eocs:
+        order = min(case.target_order, case.qbx_order)
+        assert eoc.order_estimate() > order - 1.0
+
+# }}}
+
+
+# {{{ test Stokes PDE
+
+class StokesPDE:
+    def __init__(self, ambient_dim, operator):
+        self.ambient_dim = ambient_dim
+        self.operator = operator
+
+    def apply_operator(self):
+        dim = self.ambient_dim
+        args = {
+            "density_vec_sym": [1]*dim,
+            "qbx_forced_limit": 1,
+        }
+        if isinstance(self.operator, StressletWrapperBase):
+            args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
+
+        dd_u = [self.operator.apply(**args, extra_deriv_dirs=(i, i))
+                for i in range(dim)]
+        laplace_u = [sum(dd_u[j][i] for j in range(dim)) for i in range(dim)]
+        d_p = [self.operator.apply_pressure(**args, extra_deriv_dirs=(i,))
+               for i in range(dim)]
+        res = make_obj_array([laplace_u[i] - d_p[i] for i in range(dim)])
+        return res
+
+    def ref_result(self):
+        return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
+
+
+@pytest.mark.parametrize("dim, method", [
+    (2, "naive"),
+    (2, "biharmonic"),
+    (3, "naive"),
+    (3, "biharmonic"),
+    (3, "laplace"),
+    ])
+def test_stokeslet_pde(actx_factory, dim, method, visualize=False):
+    if visualize:
+        logging.basicConfig(level=logging.INFO)
+
+    if dim == 2:
+        case_cls = eid.StarfishTestCase
+        resolutions = [16, 32, 64, 96, 128]
+    else:
+        case_cls = eid.SpheroidTestCase
+        resolutions = [0, 1, 2]
+
+    source_ovsmp = 4 if dim == 2 else 8
+    case = case_cls(fmm_backend=None,
+            target_order=5, qbx_order=3, source_ovsmp=source_ovsmp,
+            resolutions=resolutions)
+    identity = StokesPDE(dim,
+            StokesletWrapper(case.ambient_dim, mu_sym=1, method=method))
+
+    for resolution in resolutions:
+        h_max, errors = run_stokes_identity(
+            actx_factory, case, identity,
+            resolution=resolution,
+            visualize=visualize)
+
+
+@pytest.mark.parametrize("dim, method", [
+    (2, "naive"),
+    (2, "biharmonic"),
+    (3, "naive"),
+    (3, "biharmonic"),
+    (3, "laplace"),
+    ])
+def test_stresslet_pde(actx_factory, dim, method, visualize=False):
+    if visualize:
+        logging.basicConfig(level=logging.INFO)
+
+    if dim == 2:
+        case_cls = eid.StarfishTestCase
+        resolutions = [16, 32, 64, 96, 128]
+    else:
+        case_cls = eid.SpheroidTestCase
+        resolutions = [0, 1, 2]
+
+    source_ovsmp = 4 if dim == 2 else 8
+    case = case_cls(fmm_backend=None,
+            target_order=5, qbx_order=3, source_ovsmp=source_ovsmp,
+            resolutions=resolutions)
+    identity = StokesPDE(dim,
+            StressletWrapper(case.ambient_dim, mu_sym=1, method=method))
 
     from pytools.convergence import EOCRecorder
     eocs = [EOCRecorder() for _ in range(case.ambient_dim)]
