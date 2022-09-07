@@ -61,12 +61,16 @@ _NO_ARG_SENTINEL = object()
 
 def rewrite_using_base_kernel(exprs: List[ExpressionT],
         base_kernel=_NO_ARG_SENTINEL) -> List[ExpressionT]:
-    """Rewrites an expression with :class:`~pytential.symbolic.primitives.IntG`
+    """
+    Rewrites a list of expressions with :class:`~pytential.symbolic.primitives.IntG`
     objects using *base_kernel*.
 
     For example, if *base_kernel* is the biharmonic kernel, and a Laplace kernel
     is encountered, this will (forcibly) rewrite the Laplace kernel in terms of
     derivatives of the Biharmonic kernel.
+
+    If *base_kernel* is *None*, the expression list is returned as is.
+    If *base_kernel* is not given, the method will try to find a base kernel.
 
     The routine will fail with a ``RuntimeError`` if this process cannot be
     completed.
@@ -93,10 +97,15 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
         # Convert IntGs with TargetPointMultiplier/AxisTargetDerivative to a sum of
         # IntGs without TargetPointMultipliers
         new_int_gs = convert_target_transformation_to_source(expr)
-        # Convert IntGs with different kernels to expressions containing
-        # IntGs with base_kernel or its derivatives
-        return sum(convert_int_g_to_base(new_int_g,
-            self.base_kernel) for new_int_g in new_int_gs)
+        # if base_kernel was not given, use the first we find
+        if self.base_kernel == _NO_ARG_SENTINEL:
+            self.base_kernel = int_g.target_kernel.get_base_kernel()
+            return int_g
+        else:
+            # Convert IntGs with different kernels to expressions containing
+            # IntGs with base_kernel or its derivatives
+            return sum(convert_int_g_to_base(new_int_g,
+                self.base_kernel) for new_int_g in new_int_gs)
 
 
 def _get_kernel_expression(expr: ExpressionT,
