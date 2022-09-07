@@ -642,8 +642,8 @@ class StressletWrapperTornberg(StressletWrapperBase):
 def StokesletWrapper(dim, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5, method=None):
     if method is None:
         import warnings
-        warnings.warn("method argument not given. falling back to 'naive'"
-                "method argument will be required in the future.")
+        warnings.warn("Method argument not given. Falling back to 'naive'. "
+                "Method argument will be required in the future.")
         method = "naive"
     if method == "naive":
         return StokesletWrapperNaive(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
@@ -665,8 +665,8 @@ def StokesletWrapper(dim, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5, method=None):
 def StressletWrapper(dim, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5, method=None):
     if method is None:
         import warnings
-        warnings.warn("method argument not given. falling back to 'naive'"
-                "method argument will be required in the future.")
+        warnings.warn("Method argument not given. Falling back to 'naive'. "
+                "Method argument will be required in the future.")
         method = "naive"
     if method == "naive":
         return StressletWrapperNaive(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
