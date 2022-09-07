@@ -93,20 +93,20 @@ class StokesletWrapperBase(ABC):
         """
         raise NotImplementedError
 
-    def apply_pressure(self, density_vec_sym, qbx_forced_limit):
+    def apply_pressure(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         """Symbolic expression for pressure field associated with the Stokeslet."""
         # Pressure representation doesn't differ depending on the implementation
         # and is implemented in base class here.
+        lknl = LaplaceKernel(dim=self.dim)
 
-        from pytential.symbolic.mappers import DerivativeTaker
-        kernel = LaplaceKernel(dim=self.dim)
         sym_expr = 0
-
         for i in range(self.dim):
-            sym_expr += (DerivativeTaker(i).map_int_g(
-                         sym.S(kernel, density_vec_sym[i],
-                         qbx_forced_limit=qbx_forced_limit)))
-
+            deriv_dirs = tuple(extra_deriv_dirs) + (i,)
+            knl = lknl
+            for deriv_dir in deriv_dirs:
+                knl = AxisTargetDerivative(deriv_dir, knl)
+            sym_expr += sym.int_g_vec(knl, density_vec_sym[i],
+                                      qbx_forced_limit=qbx_forced_limit)
         return sym_expr
 
     def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
@@ -198,26 +198,28 @@ class StressletWrapperBase(ABC):
         """
         raise NotImplementedError
 
-    def apply_pressure(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
+    def apply_pressure(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
+                       extra_deriv_dirs=()):
         """Symbolic expression for pressure field associated with the Stresslet.
         """
         # Pressure representation doesn't differ depending on the implementation
         # and is implemented in base class here.
 
         import itertools
-        from pytential.symbolic.mappers import DerivativeTaker
-        kernel = LaplaceKernel(dim=self.dim)
+        lknl = LaplaceKernel(dim=self.dim)
 
         factor = (2. * self.mu)
 
         sym_expr = 0
 
         for i, j in itertools.product(range(self.dim), range(self.dim)):
-            sym_expr += factor * DerivativeTaker(i).map_int_g(
-                                   DerivativeTaker(j).map_int_g(
-                                       sym.int_g_vec(kernel,
+            deriv_dirs = tuple(extra_deriv_dirs) + (i, j)
+            knl = lknl
+            for deriv_dir in deriv_dirs:
+                knl = AxisTargetDerivative(deriv_dir, knl)
+            sym_expr += factor * sym.int_g_vec(knl,
                                              density_vec_sym[i] * dir_vec_sym[j],
-                                             qbx_forced_limit=qbx_forced_limit)))
+                                             qbx_forced_limit=qbx_forced_limit)
 
         return sym_expr
 
@@ -331,6 +333,13 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
 
         return np.array(rewrite_using_base_kernel(sym_expr,
             base_kernel=self.base_kernel))
+
+    def apply_pressure(self, density_vec_sym, qbx_forced_limit,
+            extra_deriv_dirs=()):
+        sym_expr = super().apply_pressure(density_vec_sym, qbx_forced_limit,
+                                          extra_deriv_dirs=extra_deriv_dirs)
+        res, = rewrite_using_base_kernel([sym_expr], base_kernel=self.base_kernel)
+        return res
 
     def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
 
