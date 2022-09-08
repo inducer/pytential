@@ -37,7 +37,7 @@ from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_solve_with_expand
 import pytential
 
-from typing import List, Mapping, Text, Any, Union, Tuple
+from typing import List, Mapping, Text, Any, Union, Tuple, Optional
 from pytential.symbolic.typing import ExpressionT
 
 import logging
@@ -274,6 +274,9 @@ def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
 
 def convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
         -> ExpressionT:
+    """Converts an *IntG* to an expression with *IntG*s having the
+    base kernel *base_kernel*.
+    """
     result = 0
     for knl, density in zip(int_g.source_kernels, int_g.densities):
         result += _convert_int_g_to_base(
@@ -284,46 +287,51 @@ def convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
 
 def _convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
         -> ExpressionT:
+    """Converts an *IntG* with only one source kernel to an expression with *IntG*s
+    having the base kernel *base_kernel*.
+    """
     target_kernel = int_g.target_kernel.replace_base_kernel(base_kernel)
     dim = target_kernel.dim
 
     result = 0
-    for density, source_kernel in zip(int_g.densities, int_g.source_kernels):
-        deriv_relation = get_deriv_relation_kernel(source_kernel.get_base_kernel(),
-            base_kernel, hashable_kernel_arguments=(
-                hashable_kernel_args(int_g.kernel_arguments)))
 
-        const = deriv_relation[0]
-        # NOTE: we set a dofdesc here to force the evaluation of this integral
-        # on the source instead of the target when using automatic tagging
-        # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
-        dd = pytential.sym.DOFDescriptor(None,
-                discr_stage=pytential.sym.QBX_SOURCE_STAGE1)
-        const *= pytential.sym.integral(dim, dim-1, density, dofdesc=dd)
+    density, = int_g.densities
+    source_kernel, = int_g.source_kernels
+    deriv_relation = get_deriv_relation_kernel(source_kernel.get_base_kernel(),
+        base_kernel, hashable_kernel_arguments=(
+            hashable_kernel_args(int_g.kernel_arguments)))
 
-        if const != 0 and target_kernel != target_kernel.get_base_kernel():
-            # There might be some TargetPointMultipliers hanging around.
-            # FIXME: handle them instead of bailing out
-            return int_g
+    const = deriv_relation[0]
+    # NOTE: we set a dofdesc here to force the evaluation of this integral
+    # on the source instead of the target when using automatic tagging
+    # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
+    dd = pytential.sym.DOFDescriptor(None,
+            discr_stage=pytential.sym.QBX_SOURCE_STAGE1)
+    const *= pytential.sym.integral(dim, dim-1, density, dofdesc=dd)
 
-        if source_kernel != source_kernel.get_base_kernel():
-            # We assume that any source transformation is a derivative
-            # and the constant when applied becomes zero.
-            const = 0
+    if const != 0 and target_kernel != target_kernel.get_base_kernel():
+        # There might be some TargetPointMultipliers hanging around.
+        # FIXME: handle them instead of bailing out
+        return int_g
 
-        result += const
+    if source_kernel != source_kernel.get_base_kernel():
+        # We assume that any source transformation is a derivative
+        # and the constant when applied becomes zero.
+        const = 0
 
-        new_kernel_args = filter_kernel_arguments([base_kernel],
-                int_g.kernel_arguments)
+    result += const
 
-        for mi, c in deriv_relation[1]:
-            knl = source_kernel.replace_base_kernel(base_kernel)
-            for d, val in enumerate(mi):
-                for _ in range(val):
-                    knl = AxisSourceDerivative(d, knl)
-                    c *= -1
-            result += int_g.copy(source_kernels=(knl,), target_kernel=target_kernel,
-                    densities=(density * c,), kernel_arguments=new_kernel_args)
+    new_kernel_args = filter_kernel_arguments([base_kernel],
+            int_g.kernel_arguments)
+
+    for mi, c in deriv_relation[1]:
+        knl = source_kernel.replace_base_kernel(base_kernel)
+        for d, val in enumerate(mi):
+            for _ in range(val):
+                knl = AxisSourceDerivative(d, knl)
+                c *= -1
+        result += int_g.copy(source_kernels=(knl,), target_kernel=target_kernel,
+                densities=(density * c,), kernel_arguments=new_kernel_args)
     return result
 
 
@@ -331,8 +339,8 @@ def get_deriv_relation(kernels: List[ExpressionKernel],
         base_kernel: ExpressionKernel,
         kernel_arguments: Mapping[Text, Any],
         tol: float = 1e-10,
-        order: Union[None, int] = None) \
-        -> List[Tuple[ExpressionT, ExpressionT]]:
+        order: Optional[int] = None) \
+        -> List[Tuple[ExpressionT, List[Tuple[Tuple[int], ExpressionT]]]]:
     res = []
     for knl in kernels:
         res.append(get_deriv_relation_kernel(knl, base_kernel,
@@ -346,8 +354,16 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
         base_kernel: ExpressionKernel,
         hashable_kernel_arguments: Tuple[Tuple[Text, Any]],
         tol: float = 1e-10,
-        order: Union[None, int] = None) \
-        -> Tuple[ExpressionT, ExpressionT]:
+        order: Optional[int] = None) \
+        -> Tuple[ExpressionT, List[Tuple[Tuple[int], ExpressionT]]]:
+    """Takes a *kernel* and a base_kernel* as input and re-writes the
+    *kernel* as a linear combination of derivatives of *base_kernel* up-to
+    order *order* and a constant. *tol* is an upper limit for small numbers that
+    are replaced with zero in the numerical procedure.
+
+    Returns the constant and a list of (mulit-index, coeff) to represent the
+    linear combination of derivatives
+    """
     kernel_arguments = dict(hashable_kernel_arguments)
     (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order,
             hashable_kernel_arguments=hashable_kernel_arguments)
@@ -387,7 +403,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
 @memoize_on_first_arg
 def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
         hashable_kernel_arguments: Tuple[Tuple[Text, Any]],
-        order: Union[None, int] = None, retries: int = 3) \
+        order: Optional[int] = None, retries: int = 3) \
         -> Tuple[Tuple[sym.Matrix, sym.Matrix, List[Tuple[int, int]]],
             np.ndarray, List[Tuple[int]]]:
     dim = base_kernel.dim
