@@ -600,15 +600,62 @@ class StokesPDE:
         return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
 
 
-@pytest.mark.parametrize("dim, method", [
-    (2, "laplace"),
-    (2, "naive"),
-    (2, "biharmonic"),
-    (3, "laplace"),
-    (3, "naive"),
-    (3, "biharmonic"),
+class ElasticityPDE:
+    def __init__(self, ambient_dim, operator):
+        self.ambient_dim = ambient_dim
+        self.operator = operator
+
+    def apply_operator(self):
+        dim = self.ambient_dim
+        args = {
+            "density_vec_sym": [1]*dim,
+            "qbx_forced_limit": 1,
+        }
+        if isinstance(self.operator, StressletWrapperBase):
+            args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
+
+        mu = self.operator.mu
+        nu = self.operator.nu
+        assert nu != 0.5
+        lam = 2*nu*mu/(1-2*nu)
+
+        derivs = {}
+
+        for i in range(dim):
+            for j in range(i + 1):
+                derivs[(i, j)] = self.operator.apply(**args,
+                                                     extra_deriv_dirs=(i, j))
+                derivs[(j, i)] = derivs[(i, j)]
+
+        laplace_u = sum(derivs[(i, i)] for i in range(dim))
+        grad_of_div_u = [sum(derivs[(i, j)][j] for j in range(dim))
+                         for i in range(dim)]
+
+        # Navier-Cauchy equations
+        eqs = [(lam + mu)*grad_of_div_u[i] + mu*laplace_u[i] for i in range(dim)]
+        return make_obj_array(eqs)
+
+    def ref_result(self):
+        return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
+
+
+@pytest.mark.parametrize("dim, method, nu", [
+    pytest.param(2, "biharmonic", 0.4),
+    pytest.param(2, "biharmonic", 0.5),
+    pytest.param(2, "laplace", 0.5),
+    pytest.param(3, "laplace", 0.5),
+    pytest.param(3, "laplace", 0.4),
+    pytest.param(2, "naive", 0.4, marks=pytest.mark.slowtest),
+    pytest.param(3, "naive", 0.4, marks=pytest.mark.slowtest),
+    pytest.param(2, "naive", 0.5, marks=pytest.mark.slowtest),
+    pytest.param(3, "naive", 0.5, marks=pytest.mark.slowtest),
+    # FIXME: re-enable when merge_int_g_exprs is in
+    pytest.param(3, "biharmonic", 0.4, marks=pytest.mark.skip),
+    pytest.param(3, "biharmonic", 0.5, marks=pytest.mark.skip),
+    # FIXME: re-enable when implemented
+    pytest.param(2, "laplace", 0.4, marks=pytest.mark.xfail),
     ])
-def test_stokeslet_pde(actx_factory, dim, method, visualize=False):
+def test_stokeslet_pde(actx_factory, dim, method, nu, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -623,8 +670,14 @@ def test_stokeslet_pde(actx_factory, dim, method, visualize=False):
     case = case_cls(fmm_backend=None,
             target_order=5, qbx_order=3, source_ovsmp=source_ovsmp,
             resolutions=resolutions)
-    identity = StokesPDE(dim,
-            StokesletWrapper(case.ambient_dim, mu_sym=1, method=method))
+
+    if nu == 0.5:
+        pde_class = StokesPDE
+    else:
+        pde_class = ElasticityPDE
+
+    identity = pde_class(dim,
+            StokesletWrapper(case.ambient_dim, mu_sym=1, nu_sym=nu, method=method))
 
     for resolution in resolutions:
         h_max, errors = run_stokes_identity(
@@ -633,16 +686,23 @@ def test_stokeslet_pde(actx_factory, dim, method, visualize=False):
             visualize=visualize)
 
 
-@pytest.mark.parametrize("dim, method", [
-    (2, "laplace"),
-    (2, "naive"),
-    (2, "biharmonic"),
-    (3, "naive"),
+@pytest.mark.parametrize("dim, method, nu", [
+    pytest.param(2, "laplace", 0.5),
+    pytest.param(3, "laplace", 0.5),
+    pytest.param(3, "laplace", 0.4),
+    pytest.param(2, "naive", 0.4, marks=pytest.mark.slowtest),
+    pytest.param(3, "naive", 0.4, marks=pytest.mark.slowtest),
+    pytest.param(2, "naive", 0.5, marks=pytest.mark.slowtest),
+    pytest.param(3, "naive", 0.5, marks=pytest.mark.slowtest),
     # FIXME: re-enable when merge_int_g_exprs is in
-    # (3, "biharmonic"),
-    (3, "laplace"),
+    pytest.param(2, "biharmonic", 0.4, marks=pytest.mark.skip),
+    pytest.param(2, "biharmonic", 0.5, marks=pytest.mark.skip),
+    pytest.param(3, "biharmonic", 0.4, marks=pytest.mark.skip),
+    pytest.param(3, "biharmonic", 0.5, marks=pytest.mark.skip),
+    # FIXME: re-enable when implemented
+    pytest.param(2, "laplace", 0.4, marks=pytest.mark.xfail),
     ])
-def test_stresslet_pde(actx_factory, dim, method, visualize=False):
+def test_stresslet_pde(actx_factory, dim, method, nu, visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
@@ -657,8 +717,14 @@ def test_stresslet_pde(actx_factory, dim, method, visualize=False):
     case = case_cls(fmm_backend=None,
             target_order=5, qbx_order=3, source_ovsmp=source_ovsmp,
             resolutions=resolutions)
-    identity = StokesPDE(dim,
-            StressletWrapper(case.ambient_dim, mu_sym=1, method=method))
+
+    if nu == 0.5:
+        pde_class = StokesPDE
+    else:
+        pde_class = ElasticityPDE
+
+    identity = pde_class(dim,
+            StressletWrapper(case.ambient_dim, mu_sym=1, nu_sym=nu, method=method))
 
     from pytools.convergence import EOCRecorder
     eocs = [EOCRecorder() for _ in range(case.ambient_dim)]
