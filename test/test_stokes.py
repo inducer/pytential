@@ -307,6 +307,7 @@ def run_exterior_stokes(actx_factory, *,
 
 @pytest.mark.parametrize("ambient_dim, method, nu", [
     (2, "naive", 0.5),
+    (2, "laplace", 0.5),
     (2, "biharmonic", 0.5),
     pytest.param(3, "naive", 0.5, marks=pytest.mark.slowtest),
     pytest.param(3, "biharmonic", 0.5, marks=pytest.mark.slowtest),
