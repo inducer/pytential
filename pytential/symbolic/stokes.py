@@ -1,4 +1,7 @@
-__copyright__ = "Copyright (C) 2017 Natalie Beams"
+__copyright__ = """
+Copyright (C) 2017 Natalie Beams
+Copyright (C) 2022 Isuru Fernando
+"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
