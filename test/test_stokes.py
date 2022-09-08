@@ -598,11 +598,12 @@ class StokesPDE:
 
 
 @pytest.mark.parametrize("dim, method", [
+    (2, "laplace"),
     (2, "naive"),
     (2, "biharmonic"),
+    (3, "laplace"),
     (3, "naive"),
     (3, "biharmonic"),
-    (3, "laplace"),
     ])
 def test_stokeslet_pde(actx_factory, dim, method, visualize=False):
     if visualize:
@@ -630,6 +631,7 @@ def test_stokeslet_pde(actx_factory, dim, method, visualize=False):
 
 
 @pytest.mark.parametrize("dim, method", [
+    (2, "laplace"),
     (2, "naive"),
     (2, "biharmonic"),
     (3, "naive"),
