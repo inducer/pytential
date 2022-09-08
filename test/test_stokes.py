@@ -585,13 +585,15 @@ class StokesPDE:
         if isinstance(self.operator, StressletWrapperBase):
             args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
 
+        d_u = [self.operator.apply(**args, extra_deriv_dirs=(i,))
+                for i in range(dim)]
         dd_u = [self.operator.apply(**args, extra_deriv_dirs=(i, i))
                 for i in range(dim)]
         laplace_u = [sum(dd_u[j][i] for j in range(dim)) for i in range(dim)]
         d_p = [self.operator.apply_pressure(**args, extra_deriv_dirs=(i,))
                for i in range(dim)]
-        res = make_obj_array([laplace_u[i] - d_p[i] for i in range(dim)])
-        return res
+        eqs = [laplace_u[i] - d_p[i] for i in range(dim)] + [sum(d_u)]
+        return make_obj_array(eqs)
 
     def ref_result(self):
         return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
