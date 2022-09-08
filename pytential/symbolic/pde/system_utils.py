@@ -71,12 +71,15 @@ def rewrite_using_base_kernel(exprs: List[ExpressionT],
 
     If *base_kernel* is *None*, the expression list is returned as is.
     If *base_kernel* is not given, the method will try to find a base kernel.
+    This is currently not implemented and will raise a ``NotImplementedError``.
 
-    The routine will fail with a ``RuntimeError`` if this process cannot be
-    completed.
+    The routine will fail with a ``RuntimeError`` when *base_kernel* is given, but
+    method fails to find a way to rewrite.
     """
     if base_kernel is None:
         return list(exprs)
+    if base_kernel == _NO_ARG_SENTINEL:
+        raise NotImplementedError
     mapper = RewriteUsingBaseKernelMapper(base_kernel)
     return [mapper(expr) for expr in exprs]
 
@@ -97,15 +100,10 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
         # Convert IntGs with TargetPointMultiplier/AxisTargetDerivative to a sum of
         # IntGs without TargetPointMultipliers
         new_int_gs = convert_target_transformation_to_source(expr)
-        # if base_kernel was not given, use the first we find
-        if self.base_kernel == _NO_ARG_SENTINEL:
-            self.base_kernel = int_g.target_kernel.get_base_kernel()
-            return int_g
-        else:
-            # Convert IntGs with different kernels to expressions containing
-            # IntGs with base_kernel or its derivatives
-            return sum(convert_int_g_to_base(new_int_g,
-                self.base_kernel) for new_int_g in new_int_gs)
+        # Convert IntGs with different kernels to expressions containing
+        # IntGs with base_kernel or its derivatives
+        return sum(convert_int_g_to_base(new_int_g,
+            self.base_kernel) for new_int_g in new_int_gs)
 
 
 def _get_kernel_expression(expr: ExpressionT,
