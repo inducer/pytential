@@ -406,7 +406,8 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
                     self.kernel_dict[(i, j, k)] = self.kernel_dict[s]
 
         # For elasticity (nu != 0.5), we need the LaplaceKernel
-        self.kernel_dict["laplace"] = LaplaceKernel(self.dim)
+        if nu_sym != 0.5:
+            self.kernel_dict["laplace"] = LaplaceKernel(self.dim)
 
     def get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
@@ -432,6 +433,8 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
         for kernel_idx, dir_vec_idx, coeff, extra_deriv_dirs in \
                 zip(kernel_indices, dir_vec_indices, coeffs,
                         extra_deriv_dirs_vec):
+            if coeff == 0:
+                continue
             knl = self.kernel_dict[kernel_idx]
             result += _create_int_g(knl, tuple(deriv_dirs) + tuple(extra_deriv_dirs),
                     density=density_sym*dir_vec_sym[dir_vec_idx],
