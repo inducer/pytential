@@ -382,6 +382,9 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
             2 * qbx_element_to_source_starts
             if not use_stage2_discr
             else None)
+    if qbx_element_to_center_starts is not None:
+        assert (qbx_element_to_center_starts.dtype
+                == qbx_element_to_source_starts.dtype)
 
     # Transfer all tree attributes.
     tree_attrs = {}
