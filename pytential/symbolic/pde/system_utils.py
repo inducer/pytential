@@ -137,11 +137,12 @@ def _monom_to_expr(monom: List[int],
 
 
 def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
-    """Convert an ``IntG`` with AxisTargetDerivative/TargetMultiplier to a list
+    """Convert an ``IntG`` with :class:`sumpy.kernel.AxisTargetDerivative`
+    or :class:`sumpy.kernel.TargetMultiplier` to a list
     of ``IntG``s without them and only source dependent transformations.
-    The sum of the list returned is a tranformation of the input ``IntG``.
+    The sum of the list returned is equivalent to the input *int_g*.
 
-    eg::
+    For example::
 
        IntG(d/dx r, sigma) -> [IntG(d/dy r, -sigma)]
        IntG(x*r, sigma) -> [IntG(r, sigma*y), IntG(r*(x -y), sigma)]
@@ -359,8 +360,8 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
     order *order* and a constant. *tol* is an upper limit for small numbers that
     are replaced with zero in the numerical procedure.
 
-    Returns the constant and a list of (mulit-index, coeff) to represent the
-    linear combination of derivatives
+    :returns: the constant and a list of (multi-index, coeff) to represent the
+              linear combination of derivatives
     """
     kernel_arguments = dict(hashable_kernel_arguments)
     (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order,
