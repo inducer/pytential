@@ -108,7 +108,7 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
 def _get_kernel_expression(expr: ExpressionT,
         kernel_arguments: Mapping[Text, Any]) -> sym.Basic:
     """Convert a :mod:`pymbolic` expression to :mod:`sympy` expression
-    after susituting kernel arguments.
+    after substituting kernel arguments.
 
     For eg: `exp(I*k*r)/r` with `{k: 1}` is converted to the sympy expression
     `exp(I*r)/r`
