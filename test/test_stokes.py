@@ -652,7 +652,7 @@ class ElasticityPDE:
     # FIXME: re-enable when merge_int_g_exprs is in
     pytest.param(3, "biharmonic", 0.4, marks=pytest.mark.skip),
     pytest.param(3, "biharmonic", 0.5, marks=pytest.mark.skip),
-    # FIXME: re-enable when implemented
+    # FIXME: re-enable when StokesletWrapperYoshida is implemented for 2D
     pytest.param(2, "laplace", 0.4, marks=pytest.mark.xfail),
     ])
 def test_stokeslet_pde(actx_factory, dim, method, nu, visualize=False):
@@ -699,7 +699,7 @@ def test_stokeslet_pde(actx_factory, dim, method, nu, visualize=False):
     pytest.param(2, "biharmonic", 0.5, marks=pytest.mark.skip),
     pytest.param(3, "biharmonic", 0.4, marks=pytest.mark.skip),
     pytest.param(3, "biharmonic", 0.5, marks=pytest.mark.skip),
-    # FIXME: re-enable when implemented
+    # FIXME: re-enable when StressletWrapperYoshida is implemented for 2D
     pytest.param(2, "laplace", 0.4, marks=pytest.mark.xfail),
     ])
 def test_stresslet_pde(actx_factory, dim, method, nu, visualize=False):
