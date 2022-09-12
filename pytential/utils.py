@@ -82,13 +82,13 @@ def lu_solve_with_expand(L, U, perm, b):
             res[i] = (res[i] / U[i, i]).expand()
         return res
 
-    def permuteFwd(b, perm):
+    def permute_fwd(b, perm):
         res = sym.Matrix(b)
         for p, q in perm:
             res[p], res[q] = res[q], res[p]
         return res
 
     return backward_substitution(U,
-            forward_substitution(L, permuteFwd(b, perm)))
+            forward_substitution(L, permute_fwd(b, perm)))
 
 # vim: foldmethod=marker
