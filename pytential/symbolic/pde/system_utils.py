@@ -22,7 +22,6 @@ THE SOFTWARE.
 
 import numpy as np
 
-from sumpy.symbolic import make_sym_vector, SympyToPymbolicMapper
 import sumpy.symbolic as sym
 import pymbolic
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
@@ -148,8 +147,7 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
        IntG(x*r, sigma) -> [IntG(r, sigma*y), IntG(r*(x -y), sigma)]
     """
     import sympy
-    import sumpy.symbolic as sym
-    from sumpy.symbolic import SympyToPymbolicMapper
+    from sumpy.symbolic.sympy import SympyToPymbolicMapper
     conv = SympyToPymbolicMapper()
 
     knl = int_g.target_kernel
@@ -240,16 +238,15 @@ def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
     which is a symbolic expression and multiply the densities
     with *density_multiplier* which is a pymbolic expression.
     """
-    from sumpy.symbolic import SympyToPymbolicMapper
     result = []
 
     base_kernel = int_g.target_kernel.get_base_kernel()
-    sym_d = make_sym_vector("d", base_kernel.dim)
+    sym_d = sym.make_sym_vector("d", base_kernel.dim)
     base_kernel_expr = _get_kernel_expression(base_kernel.expression,
             int_g.kernel_arguments)
     subst = {pymbolic.var(f"d{i}"): pymbolic.var("d")[i] for i in
             range(base_kernel.dim)}
-    conv = SympyToPymbolicMapper()
+    conv = sym.SympyToPymbolicMapper()
 
     if expr_multiplier == 1:
         # if there's no expr_multiplier, only multiply the densities
@@ -368,8 +365,8 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
     (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order,
             hashable_kernel_arguments=hashable_kernel_arguments)
     dim = base_kernel.dim
-    sym_vec = make_sym_vector("d", dim)
-    sympy_conv = SympyToPymbolicMapper()
+    sym_vec = sym.make_sym_vector("d", dim)
+    sympy_conv = sym.SympyToPymbolicMapper()
 
     expr = _get_kernel_expression(kernel.expression, kernel_arguments)
     vec = []
@@ -431,7 +428,7 @@ def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
     for i in range(rand.shape[0]):
         for j in range(rand.shape[1]):
             rand[i, j] = sym.sympify(rand[i, j])/10**15
-    sym_vec = make_sym_vector("d", dim)
+    sym_vec = sym.make_sym_vector("d", dim)
 
     base_expr = _get_kernel_expression(base_kernel.expression,
         dict(hashable_kernel_arguments))
@@ -519,9 +516,9 @@ if __name__ == "__main__":
     get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, kernel_arguments={})
 
     base_kernel = BiharmonicKernel(3)
-    sym_d = make_sym_vector("d", base_kernel.dim)
+    sym_d = sym.make_sym_vector("d", base_kernel.dim)
     sym_r = sym.sqrt(sum(a**2 for a in sym_d))
-    conv = SympyToPymbolicMapper()
+    conv = sym.SympyToPymbolicMapper()
     expression_knl = ExpressionKernel(3, conv(sym_d[0]*sym_d[1]/sym_r**3), 1, False)
     expression_knl2 = ExpressionKernel(3, conv(1/sym_r + sym_d[0]*sym_d[0]/sym_r**3),
         1, False)
