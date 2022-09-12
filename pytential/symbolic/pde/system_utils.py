@@ -235,8 +235,9 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
 def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
         density_multiplier: ExpressionT) -> List[IntG]:
     """Multiply the expression in ``IntG`` with the *expr_multiplier*
-    which is a symbolic expression and multiply the densities
-    with *density_multiplier* which is a pymbolic expression.
+    which is a symbolic (:mod:`sympy` or :mod:`symengine`) expression and
+    multiply the densities with *density_multiplier* which is a :mod:`pymbolic`
+    expression.
     """
     result = []
 
