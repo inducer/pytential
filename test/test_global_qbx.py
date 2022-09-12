@@ -106,11 +106,7 @@ def run_source_refinement_test(actx_factory, mesh, order,
     # {{{ refined geometry
 
     def _visualize_quad_resolution(dd, suffix):
-        if dd.discr_stage is None:
-            vis_discr = lpot_source.density_discr
-        else:
-            vis_discr = places.get_discretization(dd.geometry, dd.discr_stage)
-
+        vis_discr = places.get_discretization(dd.geometry, dd.discr_stage)
         stretch = bind(places,
                 sym._mapping_max_stretch_factor(places.ambient_dim),
                 auto_where=dd)(actx)
@@ -133,7 +129,6 @@ def run_source_refinement_test(actx_factory, mesh, order,
 
     if visualize:
         dd = places.auto_source
-        _visualize_quad_resolution(dd.copy(discr_stage=None), "original")
         _visualize_quad_resolution(dd.to_stage1(), "stage1")
         _visualize_quad_resolution(dd.to_stage2(), "stage2")
 
