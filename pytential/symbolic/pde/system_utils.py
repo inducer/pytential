@@ -105,7 +105,7 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
             self.base_kernel) for new_int_g in new_int_gs)
 
 
-def _get_kernel_expression(expr: ExpressionT,
+def _get_sympy_kernel_expression(expr: ExpressionT,
         kernel_arguments: Mapping[Text, Any]) -> sym.Basic:
     """Convert a :mod:`pymbolic` expression to :mod:`sympy` expression
     after substituting kernel arguments.
@@ -242,7 +242,7 @@ def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
 
     base_kernel = int_g.target_kernel.get_base_kernel()
     sym_d = sym.make_sym_vector("d", base_kernel.dim)
-    base_kernel_expr = _get_kernel_expression(base_kernel.expression,
+    base_kernel_expr = _get_sympy_kernel_expression(base_kernel.expression,
             int_g.kernel_arguments)
     subst = {pymbolic.var(f"d{i}"): pymbolic.var("d")[i] for i in
             range(base_kernel.dim)}
@@ -368,7 +368,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
     sym_vec = sym.make_sym_vector("d", dim)
     sympy_conv = sym.SympyToPymbolicMapper()
 
-    expr = _get_kernel_expression(kernel.expression, kernel_arguments)
+    expr = _get_sympy_kernel_expression(kernel.expression, kernel_arguments)
     vec = []
     for i in range(len(mis)):
         vec.append(evalf(expr.xreplace(dict((k, v) for
@@ -384,14 +384,14 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
         if coeff == 0:
             continue
         if mis[i] != (-1, -1, -1):
-            coeff *= _get_kernel_expression(kernel.global_scaling_const,
+            coeff *= _get_sympy_kernel_expression(kernel.global_scaling_const,
                     kernel_arguments)
-            coeff /= _get_kernel_expression(base_kernel.global_scaling_const,
+            coeff /= _get_sympy_kernel_expression(base_kernel.global_scaling_const,
                     kernel_arguments)
             result.append((mis[i], sympy_conv(coeff)))
             logger.debug("  + %s.diff(%s)*%s", base_kernel, mis[i], coeff)
         else:
-            const = sympy_conv(coeff * _get_kernel_expression(
+            const = sympy_conv(coeff * _get_sympy_kernel_expression(
                 kernel.global_scaling_const, kernel_arguments))
     logger.debug("  + %s", const)
     return (const, result)
@@ -430,7 +430,7 @@ def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
             rand[i, j] = sym.sympify(rand[i, j])/10**15
     sym_vec = sym.make_sym_vector("d", dim)
 
-    base_expr = _get_kernel_expression(base_kernel.expression,
+    base_expr = _get_sympy_kernel_expression(base_kernel.expression,
         dict(hashable_kernel_arguments))
 
     mat = []
