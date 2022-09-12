@@ -350,10 +350,10 @@ def get_deriv_relation(kernels: List[ExpressionKernel],
 @memoize_on_first_arg
 def get_deriv_relation_kernel(kernel: ExpressionKernel,
         base_kernel: ExpressionKernel,
-        hashable_kernel_arguments: Tuple[Tuple[Text, Any]],
+        hashable_kernel_arguments: Tuple[Tuple[Text, Any], ...],
         tol: float = 1e-10,
         order: Optional[int] = None) \
-        -> Tuple[ExpressionT, List[Tuple[Tuple[int], ExpressionT]]]:
+        -> Tuple[ExpressionT, List[Tuple[Tuple[int, ...], ExpressionT]]]:
     """Takes a *kernel* and a base_kernel* as input and re-writes the
     *kernel* as a linear combination of derivatives of *base_kernel* up-to
     order *order* and a constant. *tol* is an upper limit for small numbers that
@@ -400,10 +400,10 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
 
 @memoize_on_first_arg
 def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
-        hashable_kernel_arguments: Tuple[Tuple[Text, Any]],
+        hashable_kernel_arguments: Tuple[Tuple[Text, Any], ...],
         order: Optional[int] = None, retries: int = 3) \
         -> Tuple[Tuple[sym.Matrix, sym.Matrix, List[Tuple[int, int]]],
-            np.ndarray, List[Tuple[int]]]:
+            np.ndarray, List[Tuple[int, ...]]]:
     dim = base_kernel.dim
 
     pde = base_kernel.get_pde_as_diff_op()
