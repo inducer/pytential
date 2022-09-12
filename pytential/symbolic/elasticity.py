@@ -158,9 +158,9 @@ class StokesletWrapperYoshida(StokesletWrapperBase):
         self.kernel = LaplaceKernel(dim=3)
         self.mu = mu_sym
         self.nu = nu_sym
+        self.stresslet = StressletWrapperYoshida(3, self.mu, self.nu)
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
-        stresslet = StressletWrapperYoshida(3, self.mu, self.nu)
-        return stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
+        return self.stresslet.apply_stokeslet_and_stresslet(density_vec_sym,
             [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
             extra_deriv_dirs)
