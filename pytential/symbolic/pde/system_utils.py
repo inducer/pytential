@@ -27,8 +27,8 @@ import pymbolic
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
     ExpressionKernel, KernelWrapper, TargetPointMultiplier)
 from pytools import (memoize_on_first_arg,
-                generate_nonnegative_integer_tuples_summing_to_at_most
-                as gnitstam)
+    generate_nonnegative_integer_tuples_summing_to_at_most
+    as gnitstam)
 
 from pytential.symbolic.primitives import (NodeCoordinateComponent,
     hashable_kernel_args, IntG)
