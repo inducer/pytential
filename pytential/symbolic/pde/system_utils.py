@@ -319,7 +319,8 @@ def _convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
         # and the constant when applied becomes zero. We bail out if not
         knl = source_kernel
         while isinstance(knl, KernelWrapper):
-            if not isinstance(knl, (AxisSourceDerivative, DirectionalSourceDerivative)):
+            if not isinstance(knl,
+                              (AxisSourceDerivative, DirectionalSourceDerivative)):
                 return int_g
             knl = knl.inner_kernel
         const = 0
