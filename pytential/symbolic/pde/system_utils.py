@@ -148,7 +148,7 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
        IntG(x*r, sigma) -> [IntG(r, sigma*y), IntG(r*(x -y), sigma)]
     """
     import sympy
-    from sumpy.symbolic.sympy import SympyToPymbolicMapper
+    from pymbolic.interop.sympy import SympyToPymbolicMapper
     conv = SympyToPymbolicMapper()
 
     knl = int_g.target_kernel
