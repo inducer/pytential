@@ -41,6 +41,7 @@ class StressletWrapperYoshida(StressletWrapperBase):
         fast multipole Galerkin boundary integral equation method to elastostatic
         crack problems in 3D.
         International Journal for Numerical Methods in Engineering, 50(3), 525-547.
+        https://doi.org/10.1002/1097-0207(20010130)50:3<525::AID-NME34>3.0.CO;2-4
     """
 
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=_NU_SYM_DEFAULT):
@@ -152,6 +153,7 @@ class StokesletWrapperYoshida(StokesletWrapperBase):
         fast multipole Galerkin boundary integral equation method to elastostatic
         crack problems in 3D.
         International Journal for Numerical Methods in Engineering, 50(3), 525-547.
+        https://doi.org/10.1002/1097-0207(20010130)50:3<525::AID-NME34>3.0.CO;2-4
     """
 
     def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=_NU_SYM_DEFAULT):
