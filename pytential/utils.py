@@ -57,7 +57,7 @@ def chop(expr, tol):
     return expr.xreplace(replace_dict)
 
 
-def lu_solve_with_expand(L, U, perm, b):
+def lu_with_post_division_callback(L, U, perm, b, callback):
     """Given an LU factorization and a vector, solve a linear
     system with intermediate results expanded to avoid
     an explosion of the expression trees
@@ -66,6 +66,7 @@ def lu_solve_with_expand(L, U, perm, b):
     :param U: upper triangular matrix
     :param perm: permutation matrix
     :param b: column vector to solve for
+    :param callback: callable that is called after each division
     """
     def forward_substitution(L, b):
         n = len(b)
@@ -73,7 +74,7 @@ def lu_solve_with_expand(L, U, perm, b):
         for i in range(n):
             for j in range(i):
                 res[i] -= L[i, j]*res[j]
-            res[i] = (res[i] / L[i, i]).expand()
+            res[i] = callback(res[i] / L[i, i])
         return res
 
     def backward_substitution(U, b):
@@ -82,7 +83,7 @@ def lu_solve_with_expand(L, U, perm, b):
         for i in range(n-1, -1, -1):
             for j in range(n - 1, i, -1):
                 res[i] -= U[i, j]*res[j]
-            res[i] = (res[i] / U[i, i]).expand()
+            res[i] = callback(res[i] / U[i, i])
         return res
 
     def permute_fwd(b, perm):
