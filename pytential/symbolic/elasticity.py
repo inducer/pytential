@@ -34,8 +34,8 @@ from sumpy.symbolic import SpatialConstant
 from abc import ABC, abstractmethod
 
 __doc__ = """
-.. autoclass:: ElasticityWrapper
-.. autoclass:: ElasticityDoubleLayerWrapper
+.. autoclass:: ElasticityWrapperBase
+.. autoclass:: ElasticityDoubleLayerWrapperBase
 """
 
 
@@ -189,9 +189,12 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
     return res
 
 
-class _ElasticityWrapperNaiveOrBiharmonic(ElasticityWrapperBase):
+class _ElasticityWrapperNaiveOrBiharmonic:
     def __init__(self, dim, mu_sym, nu_sym, base_kernel):
-        super().__init__(dim, mu_sym, nu_sym)
+        self.dim = dim
+        self.mu = mu_sym
+        self.nu = nu_sym
+
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to ElasticityWrapper")
 
@@ -239,15 +242,19 @@ class _ElasticityWrapperNaiveOrBiharmonic(ElasticityWrapperBase):
             base_kernel=self.base_kernel))
 
 
-class ElasticityWrapperNaive(_ElasticityWrapperNaiveOrBiharmonic):
+class ElasticityWrapperNaive(_ElasticityWrapperNaiveOrBiharmonic,
+                             ElasticityWrapperBase):
     def __init__(self, dim, mu_sym, nu_sym):
         super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym, base_kernel=None)
+        ElasticityWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
 
 
-class ElasticityWrapperBiharmonic(_ElasticityWrapperNaiveOrBiharmonic):
+class ElasticityWrapperBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
+                                  ElasticityWrapperBase):
     def __init__(self, dim, mu_sym, nu_sym):
         super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
                 base_kernel=BiharmonicKernel(dim))
+        ElasticityWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
 
 
 # }}}
@@ -255,11 +262,13 @@ class ElasticityWrapperBiharmonic(_ElasticityWrapperNaiveOrBiharmonic):
 
 # {{{ ElasticityDoubleLayerWrapper Naive and Biharmonic impl
 
-class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic(
-        ElasticityDoubleLayerWrapperBase):
+class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
 
     def __init__(self, dim, mu_sym, nu_sym, base_kernel):
-        super().__init__(dim, mu_sym, nu_sym)
+        self.dim = dim
+        self.mu = mu_sym
+        self.nu = nu_sym
+
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to "
                 "ElasticityDoubleLayerWrapper")
@@ -357,17 +366,23 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic(
 
 
 class ElasticityDoubleLayerWrapperNaive(
-        _ElasticityDoubleLayerWrapperNaiveOrBiharmonic):
+        _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
+        ElasticityDoubleLayerWrapperBase):
     def __init__(self, dim, mu_sym, nu_sym):
         super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
                 base_kernel=None)
+        ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim,
+            mu_sym=mu_sym, nu_sym=nu_sym)
 
 
 class ElasticityDoubleLayerWrapperBiharmonic(
-        _ElasticityDoubleLayerWrapperNaiveOrBiharmonic):
+        _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
+        ElasticityDoubleLayerWrapperBase):
     def __init__(self, dim, mu_sym, nu_sym):
         super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
                 base_kernel=BiharmonicKernel(dim))
+        ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim,
+            mu_sym=mu_sym, nu_sym=nu_sym)
 
 # }}}
 
