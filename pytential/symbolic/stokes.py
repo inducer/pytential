@@ -27,12 +27,12 @@ import numpy as np
 
 from pytential import sym
 from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
-from sumpy.kernel import (LaplaceKernel,
+from sumpy.kernel import (LaplaceKernel, BiharmonicKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
 from pytential.symbolic.elasticity import (ElasticityWrapperBase,
     ElasticityDoubleLayerWrapperBase,
-    ElasticityWrapperNaive, ElasticityDoubleLayerWrapperNaive,
-    ElasticityWrapperBiharmonic, ElasticityDoubleLayerWrapperBiharmonic,
+    _ElasticityWrapperNaiveOrBiharmonic,
+    _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
     _MU_SYM_DEFAULT)
 from abc import abstractmethod
 
@@ -176,7 +176,9 @@ class StressletWrapperBase(ElasticityDoubleLayerWrapperBase):
 
 # {{{ Stokeslet/StressletWrapper Naive and Biharmonic
 
-class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
+class _StokesletWrapperNaiveOrBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
+                                         StokesletWrapperBase):
+
     def apply_pressure(self, density_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=()):
         sym_expr = super().apply_pressure(density_vec_sym, qbx_forced_limit,
@@ -188,7 +190,7 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
         stresslet_obj = _StressletWrapperNaiveOrBiharmonic(dim=self.dim,
-            mu_sym=self.mu, nu_sym=self.nu, base_kernel=self.base_kernel)
+            mu_sym=self.mu, nu_sym=0.5, base_kernel=self.base_kernel)
 
         # For stokeslet, there's no direction vector involved
         # passing a list of ones instead to remove its usage.
@@ -203,7 +205,9 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
         return sym_expr
 
 
-class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
+class _StressletWrapperNaiveOrBiharmonic(
+        _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
+        StressletWrapperBase):
     def apply_pressure(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=()):
         sym_expr = super().apply_pressure(density_vec_sym, dir_vec_sym,
@@ -240,23 +244,36 @@ class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
 
 
 class StokesletWrapperNaive(_StokesletWrapperNaiveOrBiharmonic,
-                            ElasticityWrapperNaive):
-    pass
+                            ElasticityWrapperBase):
+    def __init__(self, dim, mu_sym):
+        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5, base_kernel=None)
+        ElasticityWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=0.5)
 
 
 class StressletWrapperNaive(_StressletWrapperNaiveOrBiharmonic,
-                            ElasticityDoubleLayerWrapperNaive):
-    pass
+                            ElasticityDoubleLayerWrapperBase):
+
+    def __init__(self, dim, mu_sym):
+        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5, base_kernel=None)
+        ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym,
+                                                  nu_sym=0.5)
 
 
 class StokesletWrapperBiharmonic(_StokesletWrapperNaiveOrBiharmonic,
-                            ElasticityWrapperBiharmonic):
-    pass
+                            ElasticityWrapperBase):
+    def __init__(self, dim, mu_sym):
+        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5,
+                         base_kernel=BiharmonicKernel(dim))
+        ElasticityWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=0.5)
 
 
 class StressletWrapperBiharmonic(_StressletWrapperNaiveOrBiharmonic,
-                            ElasticityDoubleLayerWrapperBiharmonic):
-    pass
+                            ElasticityDoubleLayerWrapperBase):
+    def __init__(self, dim, mu_sym):
+        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5,
+                         base_kernel=BiharmonicKernel(dim))
+        ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym,
+                                                  nu_sym=0.5)
 
 # }}}
 
