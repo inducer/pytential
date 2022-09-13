@@ -397,7 +397,7 @@ def create_elasticity_wrapper(
         dim: int,
         mu_sym: ExpressionT = _MU_SYM_DEFAULT,
         nu_sym: ExpressionT = _NU_SYM_DEFAULT,
-        method:str = "naive") -> ElasticityWrapperBase:
+        method: str = "naive") -> ElasticityWrapperBase:
     """Creates a :class:`ElasticityWrapperBase` object depending on the input
     values.
 
@@ -434,7 +434,7 @@ def create_elasticity_double_layer_wrapper(
         dim: int,
         mu_sym: ExpressionT = _MU_SYM_DEFAULT,
         nu_sym: ExpressionT = _NU_SYM_DEFAULT,
-        method:str = "naive") -> ElasticityDoubleLayerWrapperBase:
+        method: str = "naive") -> ElasticityDoubleLayerWrapperBase:
     """Creates a :class:`ElasticityDoubleLayerWrapperBase` object depending on the
     input values.
 
