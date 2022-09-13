@@ -184,14 +184,59 @@ class _StokesletWrapperNaiveOrBiharmonic(StokesletWrapperBase):
         res, = rewrite_using_base_kernel([sym_expr], base_kernel=self.base_kernel)
         return res
 
+    def apply_stress(self, density_vec_sym, dir_vec_sym, qbx_forced_limit):
+
+        sym_expr = np.zeros((self.dim,), dtype=object)
+        stresslet_obj = _StressletWrapperNaiveOrBiharmonic(dim=self.dim,
+            mu_sym=self.mu, nu_sym=self.nu, base_kernel=self.base_kernel)
+
+        # For stokeslet, there's no direction vector involved
+        # passing a list of ones instead to remove its usage.
+        for comp in range(self.dim):
+            for i in range(self.dim):
+                for j in range(self.dim):
+                    sym_expr[comp] += dir_vec_sym[i] * \
+                        stresslet_obj.get_int_g((comp, i, j),
+                        density_vec_sym[j], [1]*self.dim,
+                        qbx_forced_limit, deriv_dirs=[])
+
+        return sym_expr
+
 
 class _StressletWrapperNaiveOrBiharmonic(StressletWrapperBase):
-    def apply_pressure(self, density_vec_sym, qbx_forced_limit,
+    def apply_pressure(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=()):
-        sym_expr = super().apply_pressure(density_vec_sym, qbx_forced_limit,
-                                          extra_deriv_dirs=extra_deriv_dirs)
+        sym_expr = super().apply_pressure(density_vec_sym, dir_vec_sym,
+            qbx_forced_limit, extra_deriv_dirs=extra_deriv_dirs)
         res, = rewrite_using_base_kernel([sym_expr], base_kernel=self.base_kernel)
         return res
+
+    def apply_stress(self, density_vec_sym, normal_vec_sym, dir_vec_sym,
+                        qbx_forced_limit):
+
+        sym_expr = np.empty((self.dim,), dtype=object)
+
+        # Build velocity derivative matrix
+        sym_grad_matrix = np.empty((self.dim, self.dim), dtype=object)
+        for i in range(self.dim):
+            sym_grad_matrix[:, i] = self.apply_derivative(i, density_vec_sym,
+                                     normal_vec_sym, qbx_forced_limit)
+
+        for comp in range(self.dim):
+
+            # First, add the pressure term:
+            sym_expr[comp] = - dir_vec_sym[comp] * self.apply_pressure(
+                                            density_vec_sym, normal_vec_sym,
+                                            qbx_forced_limit)
+
+            # Now add the velocity derivative components
+            for j in range(self.dim):
+                sym_expr[comp] = sym_expr[comp] + (
+                                    dir_vec_sym[j] * self.mu * (
+                                        sym_grad_matrix[comp][j]
+                                        + sym_grad_matrix[j][comp])
+                                        )
+        return sym_expr
 
 
 class StokesletWrapperNaive(_StokesletWrapperNaiveOrBiharmonic,
