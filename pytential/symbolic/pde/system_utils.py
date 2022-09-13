@@ -34,7 +34,7 @@ from pytools import (memoize_on_first_arg,
 from pytential.symbolic.primitives import (NodeCoordinateComponent,
     hashable_kernel_args, IntG)
 from pytential.symbolic.mappers import IdentityMapper
-from pytential.utils import chop, lu_solve_with_expand
+from pytential.utils import chop, lu_with_post_division_callback
 import pytential
 
 from typing import List, Mapping, Text, Any, Union, Tuple, Optional
@@ -387,7 +387,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
     const = 0
     logger.debug("%s = ", kernel)
 
-    sol = lu_solve_with_expand(L, U, perm, vec)
+    sol = lu_with_post_division_callback(L, U, perm, vec, lambda expr: expr.expand())
     for i, coeff in enumerate(sol):
         coeff = chop(coeff, tol)
         if coeff == 0:
