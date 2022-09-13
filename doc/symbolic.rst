@@ -33,6 +33,11 @@ Maxwell's equations
 
 .. automodule:: pytential.symbolic.pde.maxwell
 
+Elasticity equations
+^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: pytential.symbolic.elasticity
+
 Stokes' equations
 ^^^^^^^^^^^^^^^^^
 
@@ -57,3 +62,8 @@ How a symbolic operator gets executed
 .. automodule:: pytential.symbolic.execution
 
 .. automodule:: pytential.symbolic.compiler
+
+Rewriting expressions with IntGs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: pytential.symbolic.pde.system_utils
