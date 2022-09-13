@@ -23,9 +23,7 @@ from typing import Union
 import numpy as np
 from pymbolic.primitives import Expression
 
-IntegralT = Union[int, np.int8, np.int16, np.int32, np.int64, np.uint8,
-                  np.uint16, np.uint32, np.uint64]
-FloatT = Union[float, complex, np.float32, np.float64, np.complex64,
-        np.complex128]
+IntegralT = Union[int, np.integer]
+FloatT = Union[float, complex, np.floating, np.complexfloating]
 
 ExpressionT = Union[IntegralT, FloatT, Expression]
