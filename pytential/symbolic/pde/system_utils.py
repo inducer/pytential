@@ -25,7 +25,8 @@ import numpy as np
 import sumpy.symbolic as sym
 import pymbolic
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
-    ExpressionKernel, KernelWrapper, TargetPointMultiplier)
+    ExpressionKernel, KernelWrapper, TargetPointMultiplier,
+    DirectionalSourceDerivative)
 from pytools import (memoize_on_first_arg,
     generate_nonnegative_integer_tuples_summing_to_at_most
     as gnitstam)
@@ -313,9 +314,14 @@ def _convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
         # FIXME: handle them instead of bailing out
         return int_g
 
-    if source_kernel != source_kernel.get_base_kernel():
-        # We assume that any source transformation is a derivative
-        # and the constant when applied becomes zero.
+    if const != 0 and source_kernel != source_kernel.get_base_kernel():
+        # We only handle the case where any source transformation is a derivative
+        # and the constant when applied becomes zero. We bail out if not
+        knl = source_kernel
+        while isinstance(knl, KernelWrapper):
+            if not isinstance(knl, (AxisSourceDerivative, DirectionalSourceDerivative)):
+                return int_g
+            knl = knl.inner_kernel
         const = 0
 
     result += const
