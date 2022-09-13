@@ -140,7 +140,7 @@ def _monom_to_expr(monom: List[int],
 def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
     """Convert an ``IntG`` with :class:`sumpy.kernel.AxisTargetDerivative`
     or :class:`sumpy.kernel.TargetPointMultiplier` to a list
-    of ``IntG``\s without them and only source dependent transformations.
+    of ``IntG`` s without them and only source dependent transformations.
     The sum of the list returned is equivalent to the input *int_g*.
 
     For example::
