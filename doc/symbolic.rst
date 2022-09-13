@@ -48,6 +48,11 @@ Scalar Beltrami equations
 
 .. automodule:: pytential.symbolic.pde.beltrami
 
+Rewriting expressions with IntGs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: pytential.symbolic.pde.system_utils
+
 Internal affairs
 ----------------
 
@@ -63,7 +68,9 @@ How a symbolic operator gets executed
 
 .. automodule:: pytential.symbolic.compiler
 
-Rewriting expressions with IntGs
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Rewriting expressions with IntGs internals
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: pytential.symbolic.pde.system_utils
+.. automethod:: pytential.symbolic.pde.system_utils.convert_target_transformation_to_source
+.. automethod:: pytential.symbolic.pde.system_utils.convert_int_g_to_base
+
