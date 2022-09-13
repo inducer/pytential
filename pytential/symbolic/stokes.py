@@ -96,7 +96,7 @@ class StokesletWrapperBase(ElasticityWrapperBase):
 
         Note that this computation is very similar to computing
         a double-layer potential with the Stresslet kernel in
-        :class:`StressletWrapper`. The difference is that here the direction
+        :class:`StressletWrapperBase`. The difference is that here the direction
         vector is applied at the target points, while in the Stresslet the
         direction is applied at the source points.
 
