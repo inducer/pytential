@@ -37,10 +37,11 @@ from pytential.symbolic.elasticity import (ElasticityWrapperBase,
 from abc import abstractmethod
 
 __doc__ = """
+
 .. autoclass:: StokesletWrapperBase
 .. autoclass:: StressletWrapperBase
-.. automethod:: StokesletWrapper
-.. automethod:: StressletWrapper
+.. automethod:: pytential.symbolic.stokes.StokesletWrapper
+.. automethod:: pytential.symbolic.stokes.StressletWrapper
 
 .. autoclass:: StokesOperator
 .. autoclass:: HsiaoKressExteriorStokesOperator
