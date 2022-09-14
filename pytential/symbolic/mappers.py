@@ -290,9 +290,9 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 dofdesc = dofdesc.copy(geometry=self.default_target)
             else:
                 dofdesc = dofdesc.copy(geometry=self.default_source)
-        elif dofdesc.geometry is prim.DEFAULT_SOURCE:
+        elif dofdesc.geometry is prim.TAG_WITH_DEFAULT_SOURCE:
             dofdesc = dofdesc.copy(geometry=self.default_source)
-        elif dofdesc.geometry is prim.DEFAULT_TARGET:
+        elif dofdesc.geometry is prim.TAG_WITH_DEFAULT_TARGET:
             dofdesc = dofdesc.copy(geometry=self.default_target)
 
         return dofdesc

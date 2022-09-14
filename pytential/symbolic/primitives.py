@@ -41,6 +41,7 @@ from sumpy.kernel import SpatialConstant
 
 from pytential.symbolic.dof_desc import (
         DEFAULT_SOURCE, DEFAULT_TARGET,
+        TAG_WITH_DEFAULT_SOURCE, TAG_WITH_DEFAULT_TARGET,
         QBX_SOURCE_STAGE1, QBX_SOURCE_STAGE2, QBX_SOURCE_QUAD_STAGE2,
         GRANULARITY_NODE, GRANULARITY_CENTER, GRANULARITY_ELEMENT,
         DOFDescriptor, DOFDescriptorLike,
