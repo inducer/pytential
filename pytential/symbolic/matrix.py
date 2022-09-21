@@ -419,7 +419,7 @@ class MatrixBuilder(MatrixBuilderBase):
             kernel_args = _get_layer_potential_args(
                     actx, self.places, expr, context=self.context)
 
-            _, (mat,) = mat_gen(actx,
+            mat, = mat_gen(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     centers=flatten(centers, actx, leaf_class=DOFArray),
@@ -503,7 +503,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 
             # }}}
 
-            _, (mat,) = mat_gen(actx,
+            mat, = mat_gen(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     **kernel_args)
@@ -596,7 +596,7 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
             kernel_args = _get_layer_potential_args(
                     actx, self.places, expr, context=self.context)
 
-            _, (mat,) = mat_gen(actx,
+            mat, = mat_gen(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     centers=flatten(centers, actx, leaf_class=DOFArray),
@@ -689,7 +689,7 @@ class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
 
             # }}}
 
-            _, (mat,) = mat_gen(actx,
+            mat, = mat_gen(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     tgtindices=tgtindices,

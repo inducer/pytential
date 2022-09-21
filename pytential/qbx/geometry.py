@@ -57,9 +57,9 @@ Geometry data
 Subordinate data structures
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: TargetInfo()
+.. autoclass:: TargetInfo
 
-.. autoclass:: CenterToTargetList()
+.. autoclass:: CenterToTargetList
 
 Enums of special values
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -286,7 +286,6 @@ def qbx_fmm_geometry_data_code_container(
 
 # {{{ geometry data
 
-@dataclass_array_container
 @dataclass(frozen=True)
 class TargetInfo:
     """Describes the internal structure of the QBX FMM's list of :attr:`targets`.
@@ -572,7 +571,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         refine_weights.finish()
 
-        tree, _ = code_getter.build_tree()(actx.queue,
+        tree, _ = code_getter.build_tree()(actx,
                 particles=flatten(
                     quad_stage2_discr.nodes(), actx, leaf_class=DOFArray
                     ),
@@ -604,13 +603,13 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """
 
         actx = self._setup_actx
-        trav, _ = self.code_getter.build_traversal(actx.queue, self.tree(),
+        trav, _ = self.code_getter.build_traversal(actx, self.tree(),
                 debug=self.debug,
                 _from_sep_smaller_min_nsources_cumul=(
                     self.lpot_source._from_sep_smaller_min_nsources_cumul))
 
         if merge_close_lists and self.lpot_source._expansions_in_tree_have_extent:
-            trav = trav.merge_close_lists(actx.queue)
+            trav = trav.merge_close_lists(actx)
 
         return actx.freeze(trav)
 
@@ -868,7 +867,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         tree = self.tree()
         plfilt = self.code_getter.particle_list_filter()
-        result = plfilt.filter_target_lists_in_tree_order(actx.queue, tree, flags)
+        result = plfilt.filter_target_lists_in_tree_order(actx, tree, flags)
 
         return actx.freeze(result)
 
@@ -878,8 +877,8 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         trav = self.traversal()
         tree = self.tree()
 
-        result = self.code_getter.rotation_classes_builder(actx.queue, trav, tree)
-        return result[0].get(queue=actx.queue)
+        result = self.code_getter.rotation_classes_builder(actx, trav, tree)
+        return actx.to_numpy(result[0])
 
     @memoize_method
     def m2l_rotation_lists(self):
@@ -925,7 +924,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         global_flags = actx.to_numpy(self.global_qbx_flags())
 
-        tree = self.tree().get(queue=actx.queue)
+        tree = actx.to_numpy(self.tree())
         from boxtree.visualization import TreePlotter
         tp = TreePlotter(tree)
         tp.draw_tree()

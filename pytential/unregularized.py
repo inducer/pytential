@@ -163,7 +163,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                     target_kernels=insn.target_kernels)
 
-            evt, output_for_each_kernel = p2p(actx.queue,
+            output_for_each_kernel = p2p(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(
                         self.density_discr.nodes(), actx, leaf_class=DOFArray
@@ -197,7 +197,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from sumpy.fmm import SumpyTreeIndependentDataForWrangler
         return SumpyTreeIndependentDataForWrangler(
-                self.cl_context,
+                self._setup_actx,
                 fmm_mpole_factory,
                 fmm_local_factory,
                 target_kernels=target_kernels, source_kernels=source_kernels)
@@ -338,16 +338,15 @@ class _FMMGeometryDataCodeContainer:
     @memoize_method
     def build_tree(self):
         from boxtree import TreeBuilder
-        return TreeBuilder(self.cl_context)
+        return TreeBuilder(self.array_context)
 
     @property
     @memoize_method
     def build_traversal(self):
         from boxtree.traversal import FMMTraversalBuilder
-        return FMMTraversalBuilder(self.cl_context)
+        return FMMTraversalBuilder(self.array_context)
 
 
-@dataclass_array_container
 @dataclass(frozen=True)
 class _TargetInfo:
     """
@@ -376,10 +375,6 @@ class _FMMGeometryData:
         self.debug = debug
 
     @property
-    def cl_context(self):
-        return self.code_getter.cl_context
-
-    @property
     def array_context(self):
         return self.code_getter.array_context
 
@@ -395,7 +390,7 @@ class _FMMGeometryData:
     def traversal(self):
         actx = self.array_context
         trav, _ = self.code_getter.build_traversal(
-                actx.queue, self.tree(), debug=self.debug)
+                actx, self.tree(), debug=self.debug)
 
         return actx.freeze(trav)
 
@@ -422,7 +417,7 @@ class _FMMGeometryData:
 
         MAX_LEAF_REFINE_WEIGHT = 32  # noqa
 
-        tree, _ = code_getter.build_tree(actx.queue,
+        tree, _ = code_getter.build_tree(actx,
                 particles=flatten(
                     lpot_src.density_discr.nodes(), actx, leaf_class=DOFArray
                     ),
@@ -462,12 +457,10 @@ class _FMMGeometryData:
                         ),
                     )
 
-        info = _TargetInfo(
-                targets=targets,
+        return _TargetInfo(
+                targets=actx.freeze(targets),
                 target_discr_starts=target_discr_starts,
                 ntargets=ntargets)
-
-        return actx.freeze(info)
 
 # }}}
 
