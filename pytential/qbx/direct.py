@@ -23,6 +23,8 @@ THE SOFTWARE.
 import loopy as lp
 import numpy as np
 
+from pytools.obj_array import make_obj_array
+
 from sumpy.qbx import LayerPotentialBase
 from pytential.array_context import PyOpenCLArrayContext, make_loopy_program
 
@@ -134,10 +136,12 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
         for i, dens in enumerate(strengths):
             kwargs[f"strength_{i}"] = dens
 
-        return actx.call_loopy(
+        result = actx.call_loopy(
                 knl,
                 sources=sources, targets=targets, center=centers,
                 expansion_radii=expansion_radii, **kwargs)
+
+        return make_obj_array([result[f"result_{i}"] for i in range(self.nresults)])
 
 # }}}
 

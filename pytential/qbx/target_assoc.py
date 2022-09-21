@@ -22,17 +22,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 
-from arraycontext import flatten
+from arraycontext import Array, flatten
 from pytools import memoize_method, memoize_in
-from boxtree.tools import DeviceDataRecord
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import InlineBinarySearch
 
 from cgen import Enum
 
-from pytential.array_context import PyOpenCLArrayContext
+from pytential.array_context import PyOpenCLArrayContext, dataclass_array_container
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE, QBX_TREE_MAKO_DEFS, TreeWranglerBase,
     TreeCodeContainerMixin)
@@ -432,11 +433,13 @@ class QBXTargetAssociationFailedException(Exception):
         return "<%s>" % type(self).__name__
 
 
-class QBXTargetAssociation(DeviceDataRecord):
+@dataclass_array_container
+@dataclass(frozen=True)
+class QBXTargetAssociation:
     """
     .. attribute:: target_to_center
     """
-    pass
+    target_to_center: Array
 
 
 class TargetAssociationCodeContainer(TreeCodeContainerMixin):
