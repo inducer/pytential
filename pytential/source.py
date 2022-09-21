@@ -161,7 +161,11 @@ def evaluate_kernel_arguments(
 
 class PointPotentialSource(PotentialSource):
     """
-    .. attribute:: ndofs
+    .. autoproperty:: real_dtype
+    .. autoproperty:: complex_dtype
+
+    .. autoproperty:: ndofs
+    .. autoproperty:: ambient_dim
 
     .. automethod:: nodes
     .. automethod:: cost_model_compute_potential_insn

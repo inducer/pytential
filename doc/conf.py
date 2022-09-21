@@ -18,6 +18,10 @@ autodoc_type_aliases = {
         "DOFDescriptorLike": "pytential.symbolic.dof_desc.DOFDescriptorLike",
         }
 
+nitpick_ignore_regex = [
+        ["py:class", r"boxtree\.array_context\.(.+)"],
+        ]
+
 intersphinx_mapping = {
     "arraycontext": ("https://documen.tician.de/arraycontext", None),
     "boxtree": ("https://documen.tician.de/boxtree", None),
@@ -100,11 +104,13 @@ sphinxconfig_missing_reference_aliases = {
     "P2P": "class:sumpy.p2p.P2P",
     "P2PBase": "class:sumpy.p2p.P2PBase",
     "FMMLevelToOrder": "class:sumpy.fmm.FMMLevelToOrder",
+    "MultipoleExpansionFromOrderFactory": "class:sumpy.fmm.MultipoleExpansionFromOrderFactory",  # noqa: E501
+    "LocalExpansionFromOrderFactory": "class:sumpy.fmm.LocalExpansionFromOrderFactory",
     # pytential
-    "ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",
     "DOFDescriptorLike": "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
     "DOFGranularity": "data:pytential.symbolic.dof_desc.DOFGranularity",
     "DiscretizationStage": "data:pytential.symbolic.dof_desc.DiscretizationStage",
+    "ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",
     "GeometryId": "data:pytential.symbolic.dof_desc.GeometryId",
     "KernelArgumentLike": "obj:pytential.symbolic.primitives.KernelArgumentLike",
     "KernelArgumentMapping": "obj:pytential.symbolic.primitives.KernelArgumentMapping",
@@ -114,10 +120,8 @@ sphinxconfig_missing_reference_aliases = {
     "Side": "obj:pytential.symbolic.primitives.Side",
     "TargetOrDiscretization": "obj:pytential.target.TargetOrDiscretization",
     "VectorExpression": "obj:pytential.symbolic.pde.scalar.VectorExpression",
-    "pytential.symbolic.dof_desc.DOFDescriptorLike":
-        "data:pytential.symbolic.dof_desc.DOFDescriptorLike",
-    "pytential.symbolic.primitives.ExpressionNode":
-        "class:pytential.symbolic.primitives.ExpressionNode",
+    "pytential.symbolic.dof_desc.DOFDescriptorLike": "data:pytential.symbolic.dof_desc.DOFDescriptorLike",  # noqa: E501
+    "pytential.symbolic.primitives.ExpressionNode": "class:pytential.symbolic.primitives.ExpressionNode",  # noqa: E501
     "sym.DOFDescriptor": "class:pytential.symbolic.dof_desc.DOFDescriptor",
     "sym.IntG": "class:pytential.symbolic.primitives.IntG",
     "sym.var": "obj:pytential.symbolic.primitives.var",

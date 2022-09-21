@@ -408,14 +408,14 @@ def test_target_association(
     )
     code_container = target_association_code_container(actx)
 
-    target_assoc = (
+    target_assoc = actx.to_numpy(
             associate_targets_to_qbx_centers(
                 places,
                 places.auto_source,
                 code_container.get_wrangler(actx),
                 target_discrs,
                 target_association_tolerance=1e-10)
-            ).get(queue=actx.queue)
+            )
 
     expansion_radii = actx.to_numpy(flatten(
             bind(places, sym.expansion_radii(ambient_dim,

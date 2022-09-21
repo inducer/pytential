@@ -24,12 +24,10 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-import pyopencl as cl
-import pyopencl.array
 from boxtree.pyfmmlib_integration import (
     FMMLibExpansionWrangler,
     FMMLibTreeIndependentDataForWrangler,
@@ -46,15 +44,18 @@ from sumpy.kernel import (
 import pytential.qbx.target_specific as ts
 
 
+if TYPE_CHECKING:
+    from pytential.array_context import PyOpenCLArrayContext
+
 logger = logging.getLogger(__name__)
 
 
 class QBXFMMLibTreeIndependentDataForWrangler(FMMLibTreeIndependentDataForWrangler):
-    def __init__(self, cl_context, *,
+    def __init__(self, actx: PyOpenCLArrayContext, *,
             multipole_expansion_factory, local_expansion_factory,
             qbx_local_expansion_factory, target_kernels,
             _use_target_specific_qbx):
-        self.cl_context = cl_context
+        self._setup_actx = actx
         self.multipole_expansion_factory = multipole_expansion_factory
         self.local_expansion_factory = local_expansion_factory
         self.qbx_local_expansion_factory = qbx_local_expansion_factory
@@ -177,12 +178,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         dipole_vec = None
         if tree_indep.source_deriv_name is not None:
-            with cl.CommandQueue(tree_indep.cl_context) as queue:
-                dipole_vec = np.array([
-                        d_i.get(queue=queue)
-                        for d_i in source_extra_kwargs[
-                            tree_indep.source_deriv_name]],
-                        order="F")
+            dipole_vec = np.array([
+                    tree_indep._setup_actx.to_numpy(d_i)
+                    for d_i in source_extra_kwargs[
+                        tree_indep.source_deriv_name]],
+                    order="F")
 
         def inner_fmm_level_to_order(tree, level):
             if helmholtz_k == 0:
@@ -205,6 +205,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 fmm_level_to_order=inner_fmm_level_to_order,
                 rotation_data=geo_data)
 
+    @property
+    def _setup_actx(self):
+        return self.tree_indep._setup_actx
+
     # {{{ data vector helpers
 
     def output_zeros(self):
@@ -220,7 +224,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 np.zeros(nqbtl.nfiltered_targets, self.tree_indep.dtype)
                 for k in self.tree_indep.outputs])
 
-    def full_output_zeros(self, template_ary):
+    def full_output_zeros(self, actx: PyOpenCLArrayContext):
         """This includes QBX and non-QBX targets."""
 
         from pytools import obj_array
@@ -635,9 +639,9 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         return output
 
-    def finalize_potentials(self, potential, template_ary):
-        potential = super().finalize_potentials(potential, template_ary)
-        return cl.array.to_device(template_ary.queue, potential)
+    def finalize_potentials(self, actx, potential):
+        potential = super().finalize_potentials(actx, potential)
+        return actx.from_numpy(potential)
 
 # }}}
 

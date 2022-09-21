@@ -34,9 +34,6 @@ from sumpy.array_context import (  # noqa: F401
 
 
 __doc__ = """
-Array Context
-=============
-
 .. autoclass:: PyOpenCLArrayContext
 """
 
