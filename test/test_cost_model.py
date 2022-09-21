@@ -45,13 +45,10 @@ from pytential.qbx.cost import (
     _PythonQBXCostModel,
     make_pde_aware_translation_cost_model,
 )
-
-
-logger = logging.getLogger(__name__)
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -340,7 +337,9 @@ def test_timing_data_gathering(ctx_factory):
     pytest.importorskip("pyfmmlib")
 
     import pyopencl as cl
-    from meshmode.array_context import PyOpenCLArrayContext
+
+    from pytential.array_context import PyOpenCLArrayContext
+
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)

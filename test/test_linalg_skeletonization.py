@@ -26,6 +26,7 @@ THE SOFTWARE.
 import logging
 from dataclasses import replace
 from functools import partial
+from typing import TYPE_CHECKING
 
 import extra_matrix_data as extra
 import numpy as np
@@ -38,12 +39,6 @@ from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.generation import NArmedStarfish, ellipse
 
 from pytential import GeometryCollection, sym
-
-
-logger = logging.getLogger(__name__)
-
-from typing import TYPE_CHECKING
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
@@ -51,6 +46,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])

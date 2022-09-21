@@ -43,13 +43,10 @@ from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 from pytential import GeometryCollection, bind, sym
 from pytential.qbx import QBXLayerPotentialSource
-
-
-logger = logging.getLogger(__name__)
-
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])

@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.linalg as la
 
-from meshmode.array_context import PyOpenCLArrayContext
+from pytential.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import (
     InterpolatoryQuadratureSimplexGroupFactory,
