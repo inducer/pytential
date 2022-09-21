@@ -25,6 +25,7 @@ from meshmode.array_context import (
 from sumpy.array_context import (   # noqa: F401
     PyOpenCLArrayContext as SumpyPyOpenCLArrayContext,
     make_loopy_program)
+from boxtree.array_context import dataclass_array_container     # noqa: F401
 from arraycontext.pytest import (
         _PytestPyOpenCLArrayContextFactoryWithClass,
         register_pytest_array_context_factory)

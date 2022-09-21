@@ -78,22 +78,22 @@ class TreeCodeContainer:
     @memoize_method
     def build_tree(self):
         from boxtree.tree_build import TreeBuilder
-        return TreeBuilder(self.array_context.context)
+        return TreeBuilder(self.array_context)
 
     @memoize_method
     def peer_list_finder(self):
         from boxtree.area_query import PeerListFinder
-        return PeerListFinder(self.array_context.context)
+        return PeerListFinder(self.array_context)
 
     @memoize_method
     def particle_list_filter(self):
         from boxtree.tree import ParticleListFilter
-        return ParticleListFilter(self.array_context.context)
+        return ParticleListFilter(self.array_context)
 
     @memoize_method
     def build_area_query(self):
         from boxtree.area_query import AreaQueryBuilder
-        return AreaQueryBuilder(self.array_context.context)
+        return AreaQueryBuilder(self.array_context)
 
 
 def tree_code_container(actx: PyOpenCLArrayContext) -> TreeCodeContainer:
@@ -373,10 +373,10 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
         flags[particle_slice].fill(1)
         flags.finish()
 
-        box_to_class = (
+        box_to_class = actx.thaw(
             particle_list_filter
             .filter_target_lists_in_user_order(queue, tree, flags)
-            ).with_queue(actx.queue)
+            )
 
         if fixup:
             box_to_class.target_lists += fixup

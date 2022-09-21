@@ -22,21 +22,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
-
 import loopy as lp
+import numpy as np
+from arraycontext import Array, flatten, unflatten
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-
-from pytools import memoize_method
-from arraycontext import PyOpenCLArrayContext, flatten, unflatten
 from meshmode.dof_array import DOFArray
+from pytools import memoize_method
 
-from boxtree.tools import DeviceDataRecord
+from pytential.array_context import PyOpenCLArrayContext, dataclass_array_container
 from pytential.source import LayerPotentialSourceBase
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -102,6 +101,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             insn, bound_expr, evaluate, return_timing_data):
         if return_timing_data:
             from warnings import warn
+
             from pytential.source import UnableToCollectTimingData
             warn(
                    "Timing data collection not supported.",
@@ -314,10 +314,6 @@ class _FMMGeometryDataCodeContainer:
         self.ambient_dim = ambient_dim
         self.debug = debug
 
-    @property
-    def cl_context(self):
-        return self.array_context.context
-
     @memoize_method
     def copy_targets_kernel(self):
         knl = lp.make_kernel(
@@ -353,7 +349,9 @@ class _FMMGeometryDataCodeContainer:
         return FMMTraversalBuilder(self.cl_context)
 
 
-class _TargetInfo(DeviceDataRecord):
+@dataclass_array_container
+@dataclass(frozen=True)
+class _TargetInfo:
     """
     .. attribute:: targets
 
@@ -365,6 +363,10 @@ class _TargetInfo(DeviceDataRecord):
 
     .. attribute:: ntargets
     """
+
+    targets: Array
+    target_discr_starts: Array
+    ntargets: int
 
 
 class _FMMGeometryData:
@@ -397,7 +399,7 @@ class _FMMGeometryData:
         trav, _ = self.code_getter.build_traversal(
                 actx.queue, self.tree(), debug=self.debug)
 
-        return trav.with_queue(None)
+        return actx.freeze(trav)
 
     @memoize_method
     def tree(self):
@@ -463,10 +465,12 @@ class _FMMGeometryData:
                         ),
                     )
 
-        return _TargetInfo(
+        info = _TargetInfo(
                 targets=targets,
                 target_discr_starts=target_discr_starts,
-                ntargets=ntargets).with_queue(None)
+                ntargets=ntargets)
+
+        return actx.freeze(info)
 
 # }}}
 

@@ -241,12 +241,12 @@ def test_pec_mfie_extinction(actx_factory, case,
     calc_patch = CalculusPatch(np.array([-3, 0, 0]), h=0.01)
     calc_patch_tgt = PointsTarget(actx.from_numpy(calc_patch.points))
 
-    import pyopencl.clrandom as clrandom
-    rng = clrandom.PhiloxGenerator(actx.context, seed=12)
-
     from pytools.obj_array import make_obj_array
+    rng = np.random.default_rng(12)
     src_j = make_obj_array([
-            rng.normal(actx.queue, (test_source.ndofs), dtype=np.float64)
+            actx.from_numpy(
+                rng.standard_normal(test_source.ndofs, dtype=np.float64)
+                )
             for _ in range(3)])
 
     def eval_inc_field_at(places, source=None, target=None):
