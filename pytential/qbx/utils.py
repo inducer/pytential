@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 
 import numpy as np
 
@@ -33,7 +33,7 @@ from boxtree.tree import Tree
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 
 from arraycontext import Array
-from pytential.array_context import PyOpenCLArrayContext
+from pytential.array_context import PyOpenCLArrayContext, dataclass_array_container
 
 import logging
 logger = logging.getLogger(__name__)
@@ -159,6 +159,7 @@ class TreeWranglerBase:
 
 # {{{ tree-with-metadata: data structure
 
+@dataclass_array_container
 @dataclass(frozen=True)
 class TreeWithQBXMetadata(Tree):
     """A subclass of :class:`boxtree.tree.Tree`. Has all of that class's
@@ -238,9 +239,6 @@ class TreeWithQBXMetadata(Tree):
     nqbxsources: int
     nqbxcenters: int
     nqbxtargets: int
-
-    box_to_qbx_element_starts: Array
-    box_to_qbx_element_lists: Array
 
     box_to_qbx_source_starts: Array
     box_to_qbx_source_lists: Array
@@ -325,7 +323,6 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
             flatten(tgt.nodes(), actx, leaf_class=DOFArray)
             for tgt in targets_list]
 
-    queue = actx.queue
     particles = tuple(
             actx.np.concatenate(dim_coords)
             for dim_coords in zip(sources, centers, *targets, strict=True))
@@ -356,7 +353,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
     refine_weights.finish()
 
-    tree, _ = tree_builder(queue, particles,
+    tree, _ = tree_builder(actx, particles,
             max_leaf_refine_weight=MAX_REFINE_WEIGHT,
             refine_weights=refine_weights)
 
@@ -375,13 +372,15 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
         box_to_class = actx.thaw(
             particle_list_filter
-            .filter_target_lists_in_user_order(queue, tree, flags)
+            .filter_target_lists_in_user_order(actx, tree, flags)
             )
 
         if fixup:
-            box_to_class.target_lists += fixup
-        particle_classes[class_name + "_starts"] = box_to_class.target_starts
-        particle_classes[class_name + "_lists"] = box_to_class.target_lists
+            box_to_class = replace(box_to_class,
+                target_lists=box_to_class.target_lists + fixup)
+
+        particle_classes[f"{class_name}_starts"] = box_to_class.target_starts
+        particle_classes[f"{class_name}_lists"] = box_to_class.target_lists
 
     del flags
     del box_to_class
@@ -412,11 +411,8 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
     # Transfer all tree attributes.
     tree_attrs = {}
-    for attr_name in tree.__class__.fields:
-        try:
-            tree_attrs[attr_name] = getattr(tree, attr_name)
-        except AttributeError:
-            pass
+    for attr in fields(tree):
+        tree_attrs[attr.name] = getattr(tree, attr.name)
 
     tree_attrs.update(particle_classes)
 
@@ -447,20 +443,18 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
     def __init__(self, geo_data):
         self.geo_data = geo_data
 
-    @property
-    def queue(self):
-        return self.geo_data._setup_actx.queue
-
     def to_numpy(self, ary):
         return self.geo_data._setup_actx.to_numpy(ary)
 
     @memoize_method
     def tree(self):
-        return self.geo_data.tree().get(queue=self.queue)
+        actx = self.geo_data._setup_actx
+        return actx.to_numpy(self.geo_data.tree())
 
     @memoize_method
     def traversal(self):
-        return self.geo_data.traversal().get(queue=self.queue)
+        actx = self.geo_data._setup_actx
+        return actx.to_numpy(self.geo_data.traversal())
 
     @property
     def lpot_source(self):
@@ -494,11 +488,13 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
 
     @memoize_method
     def non_qbx_box_target_lists(self):
-        return self.geo_data.non_qbx_box_target_lists().get(queue=self.queue)
+        actx = self.geo_data._setup_actx
+        return actx.to_numpy(self.geo_data.non_qbx_box_target_lists())
 
     @memoize_method
     def center_to_tree_targets(self):
-        return self.geo_data.center_to_tree_targets().get(queue=self.queue)
+        actx = self.geo_data._setup_actx
+        return actx.to_numpy(self.geo_data.center_to_tree_targets())
 
     @memoize_method
     def all_targets(self):

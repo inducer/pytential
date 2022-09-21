@@ -226,10 +226,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 for k in self.tree_indep.outputs])
 
     def reorder_sources(self, source_array):
-        from pyopencl.array import Array
-
-        if isinstance(source_array, Array):
-            source_array = source_array.get()
+        if isinstance(source_array, self._setup_actx.array_types):
+            source_array = self._setup_actx.to_numpy(source_array)
 
         return super().reorder_sources(source_array)
 
@@ -552,7 +550,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     @log_process(logger)
     @return_timing_data
     def eval_qbx_expansions(self, actx, qbx_expansions):
-        output = self.full_output_zeros(template_ary=qbx_expansions)
+        output = self.full_output_zeros(actx)
 
         geo_data = self.geo_data
         ctt = geo_data.center_to_tree_targets()
@@ -589,7 +587,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     def eval_target_specific_qbx_locals(self, actx, src_weight_vecs):
         src_weights, = src_weight_vecs
         if not self.tree_indep.using_tsqbx:
-            return self.full_output_zeros(template_ary=src_weights)
+            return self.full_output_zeros(actx)
 
         geo_data = self.geo_data
         trav = geo_data.traversal()
@@ -634,7 +632,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 pot=pot,
                 grad=grad)
 
-        output = self.full_output_zeros(template_ary=src_weights)
+        output = self.full_output_zeros(actx)
         self.add_potgrad_onto_output(output, slice(None), pot, grad)
 
         return output

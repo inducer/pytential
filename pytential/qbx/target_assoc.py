@@ -455,15 +455,11 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
         from pytential.qbx.utils import tree_code_container
         self.tree_code_container = tree_code_container(actx)
 
-    @property
-    def cl_context(self):
-        return self.array_context.context
-
     @memoize_method
     def target_marker(self, dimensions, coord_dtype, box_id_dtype,
             peer_list_idx_dtype, particle_id_dtype, max_levels):
         return QBX_TARGET_MARKER.generate(
-                self.cl_context,
+                self.array_context.context,
                 dimensions,
                 coord_dtype,
                 box_id_dtype,
@@ -475,7 +471,7 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
     def center_finder(self, dimensions, coord_dtype, box_id_dtype,
             peer_list_idx_dtype, particle_id_dtype, max_levels):
         return QBX_CENTER_FINDER.generate(
-                self.cl_context,
+                self.array_context.context,
                 dimensions,
                 coord_dtype,
                 box_id_dtype,
@@ -487,7 +483,7 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
     def refiner_for_failed_target_association(self, dimensions, coord_dtype,
             box_id_dtype, peer_list_idx_dtype, particle_id_dtype, max_levels):
         return QBX_FAILED_TARGET_ASSOCIATION_REFINER.generate(
-                self.cl_context,
+                self.array_context.context,
                 dimensions,
                 coord_dtype,
                 box_id_dtype,
@@ -498,7 +494,7 @@ class TargetAssociationCodeContainer(TreeCodeContainerMixin):
     @memoize_method
     def space_invader_query(self):
         from boxtree.area_query import SpaceInvaderQueryBuilder
-        return SpaceInvaderQueryBuilder(self.cl_context)
+        return SpaceInvaderQueryBuilder(self.array_context)
 
     def get_wrangler(self, actx: PyOpenCLArrayContext):
         return TargetAssociationWrangler(actx, code_container=self)
@@ -577,7 +573,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         # of targets per box is not bounded).
 
         box_to_search_dist, evt = self.code_container.space_invader_query()(
-                actx.queue,
+                actx,
                 tree,
                 sources,
                 tunnel_radius_by_source,
@@ -659,7 +655,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         # center in terms of relative distance.
 
         box_to_search_dist, evt = self.code_container.space_invader_query()(
-                actx.queue,
+                actx,
                 tree,
                 centers,
                 expansion_radii_by_center_with_tolerance,
@@ -756,7 +752,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         # see (TGTMARK) above for algorithm.
 
         box_to_search_dist, evt = self.code_container.space_invader_query()(
-                actx.queue,
+                actx,
                 tree,
                 sources,
                 tunnel_radius_by_source,
@@ -863,7 +859,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
     target_status.finish()
 
     have_close_targets = wrangler.mark_targets(
-            actx, places, dofdesc,
+            places, dofdesc,
             tree, peer_lists, target_status,
             debug)
 

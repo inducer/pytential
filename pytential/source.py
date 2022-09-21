@@ -237,7 +237,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                 target_kernels=insn.target_kernels)
 
-            _, output_for_each_kernel = p2p(actx.queue,
+            output_for_each_kernel = p2p(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=self._nodes,
                     strength=strengths, **kernel_args)
@@ -284,6 +284,11 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     Inherits from :class:`PotentialSource`.
 
     .. attribute:: density_discr
+
+    .. attribute:: ambient_dim
+    .. attribute:: dim
+    .. attribute:: real_dtype
+    .. attribute:: complex_dtype
     """
 
     def __init__(self, density_discr):

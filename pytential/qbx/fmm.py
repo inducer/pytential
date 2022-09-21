@@ -122,7 +122,7 @@ non_qbx_box_target_lists`),
             actx = geo_data._setup_actx
 
             translation_classes_data, _ = translation_classes_builder(actx)(
-                actx.queue, traversal, traversal.tree, is_translation_per_level=True)
+                actx, traversal, traversal.tree, is_translation_per_level=True)
 
         super().__init__(
                 tree_indep, traversal,

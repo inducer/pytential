@@ -677,7 +677,8 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
 
         # Build a mask (weight) of whether a target is a global qbx center
         global_qbx_centers_tree_order = (
-            tree.sorted_target_ids[global_qbx_centers])
+            actx.thaw(tree.sorted_target_ids)[global_qbx_centers]
+        )
 
         global_qbx_center_weight = actx.zeros(
             tree.ntargets, dtype=tree.particle_id_dtype
@@ -779,7 +780,7 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
                 nqbx_centers_itgt_box,
                 ssn.starts,
                 nm2qbxl,
-                m2qbxl_cost[isrc_level].reshape(-1)[0],
+                actx.to_numpy(m2qbxl_cost[isrc_level]).reshape(-1)[0],
                 queue=actx.queue
             )
 
@@ -791,8 +792,8 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
         nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(actx, geo_data)
 
         # l2qbxl_cost_itgt_box = l2qbxl_cost[tree.box_levels[traversal.target_boxes]]
-        tgt_box_levels = tree.box_levels[traversal.target_boxes]
-        l2qbxl_cost_itgt_box = l2qbxl_cost[tgt_box_levels]
+        tgt_box_levels = actx.thaw(tree.box_levels)[traversal.target_boxes]
+        l2qbxl_cost_itgt_box = actx.thaw(l2qbxl_cost)[tgt_box_levels]
 
         return nqbx_centers_itgt_box * l2qbxl_cost_itgt_box
 
