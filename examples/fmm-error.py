@@ -1,9 +1,10 @@
 import numpy as np
 
-from meshmode.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import drop, ellipse, make_curve_mesh, starfish  # noqa
 from sumpy.kernel import HelmholtzKernel, LaplaceKernel
 from sumpy.visualization import FieldPlotter
+
+from pytential.array_context import PyOpenCLArrayContext
 
 
 def main():
