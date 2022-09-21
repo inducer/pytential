@@ -38,11 +38,10 @@ from arraycontext import (
 )
 
 # from sumpy.visualization import FieldPlotter
-from meshmode import _acf  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from sumpy.kernel import HelmholtzKernel, LaplaceKernel
 
 from pytential import GeometryCollection, bind, norm, sym
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
@@ -375,6 +374,9 @@ def test_identity_convergence(actx_factory: ArrayContextFactory, case, visualize
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

@@ -26,6 +26,7 @@ THE SOFTWARE.
 import logging
 from dataclasses import replace
 from functools import partial
+from typing import TYPE_CHECKING
 
 import extra_matrix_data as extra
 import numpy as np
@@ -33,17 +34,10 @@ import numpy.linalg as la
 import pytest
 
 from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
-from meshmode import _acf  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.generation import NArmedStarfish, ellipse
 
 from pytential import GeometryCollection, sym
-
-
-logger = logging.getLogger(__name__)
-
-from typing import TYPE_CHECKING
-
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
@@ -51,6 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -500,6 +495,9 @@ def test_skeletonize_by_proxy_convergence(
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
