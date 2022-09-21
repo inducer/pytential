@@ -31,7 +31,8 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from boxtree.array_container import dataclass_array_container
+from arraycontext import Array, PyOpenCLArrayContext  # noqa: TC001
+from boxtree.array_context import dataclass_array_container
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 from boxtree.tree import Tree
 from meshmode.dof_array import DOFArray
@@ -40,7 +41,6 @@ from pytools import log_process, memoize_in, memoize_method
 
 if TYPE_CHECKING:
     import pyopencl.array as cl_array
-    from arraycontext import Array, PyOpenCLArrayContext
 
     from pytential.collection import GeometryCollection
 
@@ -86,22 +86,22 @@ class TreeCodeContainer:
     @memoize_method
     def build_tree(self):
         from boxtree.tree_build import TreeBuilder
-        return TreeBuilder(self.array_context.context)
+        return TreeBuilder(self.array_context)
 
     @memoize_method
     def peer_list_finder(self):
         from boxtree.area_query import PeerListFinder
-        return PeerListFinder(self.array_context.context)
+        return PeerListFinder(self.array_context)
 
     @memoize_method
     def particle_list_filter(self):
         from boxtree.tree import ParticleListFilter
-        return ParticleListFilter(self.array_context.context)
+        return ParticleListFilter(self.array_context)
 
     @memoize_method
     def build_area_query(self):
         from boxtree.area_query import AreaQueryBuilder
-        return AreaQueryBuilder(self.array_context.context)
+        return AreaQueryBuilder(self.array_context)
 
 
 def tree_code_container(actx: PyOpenCLArrayContext) -> TreeCodeContainer:
@@ -383,7 +383,7 @@ def build_tree_with_qbx_metadata(
         flags[particle_slice].fill(1)
         flags.finish()
 
-        box_to_class = (
+        box_to_class = actx.thaw(
             particle_list_filter
             .filter_target_lists_in_user_order(actx, tree, flags)
             )
