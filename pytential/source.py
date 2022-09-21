@@ -148,7 +148,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
     """
     .. attribute:: nodes
 
-        An :class:`pyopencl.array.Array` of shape ``[ambient_dim, ndofs]``.
+        An array of shape ``[ambient_dim, ndofs]``.
 
     .. attribute:: ndofs
 
