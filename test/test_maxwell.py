@@ -30,20 +30,18 @@ import numpy as np
 import pytest
 
 from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
-from meshmode import _acf  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.mesh.processing import find_bounding_box
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
 from sumpy.tools import vector_from_device
 from sumpy.visualization import make_field_plotter_from_bbox
 
 from pytential import bind, norm, sym
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.target import PointsTarget
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -539,6 +537,9 @@ def test_pec_mfie_extinction(actx_factory: ArrayContextFactory, case,
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

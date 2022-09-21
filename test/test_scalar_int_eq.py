@@ -35,20 +35,16 @@ from arraycontext import (
     flatten,
     pytest_generate_tests_for_array_contexts,
 )
-from meshmode import _acf  # noqa: F401  # noqa: F401  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.discretization.visualization import make_visualizer
 from pytools import obj_array
 from sumpy.kernel import BiharmonicKernel, HelmholtzKernel, LaplaceKernel
 
 from pytential import GeometryCollection, bind, sym
-
-
-logger = logging.getLogger(__name__)
-
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -528,6 +524,9 @@ def test_integral_equation(actx_factory: ArrayContextFactory, case, visualize=Fa
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
