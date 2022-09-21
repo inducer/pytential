@@ -77,7 +77,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
             for i in range(self.strength_count)]
             + [lp.GlobalArg(f"result_{i}", self.value_dtypes[i],
                 shape="ntargets_total", order="C")
-            for i in range(len(self.target_kernels))])
+            for i in range(self.nresults)])
 
         from pytential.array_context import make_loopy_program
 
@@ -105,7 +105,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                     simul_reduce(sum, isrc, pair_result_{i})  \
                         {{inames=itgt_local}}
                 """.format(i=iknl)
-                for iknl in range(len(self.target_kernels))]
+                for iknl in range(self.nresults)]
             + ["end"],
             kernel_data=arguments,
             name=self.name,

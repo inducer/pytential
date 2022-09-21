@@ -27,7 +27,6 @@ from arraycontext.pytest import (
     _PytestPyOpenCLArrayContextFactoryWithClass,
     register_pytest_array_context_factory,
 )
-from meshmode.array_context import PyOpenCLArrayContext as MeshmodePyOpenCLArrayContext
 from sumpy.array_context import (  # noqa: F401
     PyOpenCLArrayContext as SumpyPyOpenCLArrayContext,
     make_loopy_program,
@@ -43,8 +42,23 @@ __doc__ = """
 
 class PyOpenCLArrayContext(SumpyPyOpenCLArrayContext):
     def transform_loopy_program(self, t_unit):
+        kernel = t_unit.default_entrypoint
+        options = kernel.options
+
+        if not options.return_dict or not options.no_numpy:
+            raise ValueError(
+                "loopy kernels passed to 'call_loopy' must have 'return_dict' "
+                "and 'no_numpy' options set. Did you use 'make_loopy_program' "
+                f"to create the kernel '{kernel.name}'?")
+
         # FIXME: this probably needs some proper logic
-        return MeshmodePyOpenCLArrayContext.transform_loopy_program(self, t_unit)
+        from meshmode.array_context import _transform_loopy_inner
+        transformed_t_unit = _transform_loopy_inner(t_unit)
+
+        if transformed_t_unit is not None:
+            return transformed_t_unit
+
+        return t_unit
 
 # }}}
 

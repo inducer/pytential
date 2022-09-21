@@ -63,7 +63,6 @@ def test_compare_cl_and_py_cost_model(actx_factory):
     qbx_order = fmm_order
 
     actx = actx_factory()
-    queue = actx.queue
 
     # {{{ Construct geometry
 
@@ -115,7 +114,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
         constant_one_params["p_fmm_lev%d" % ilevel] = 10
 
     cl_cost_factors = cl_cost_model.qbx_cost_factors_for_kernels_from_model(
-        queue, tree.nlevels, xlat_cost, constant_one_params
+        actx, tree.nlevels, xlat_cost, constant_one_params
     )
 
     python_cost_factors = python_cost_model.qbx_cost_factors_for_kernels_from_model(
@@ -128,33 +127,33 @@ def test_compare_cl_and_py_cost_model(actx_factory):
 
     cl_ndirect_sources_per_target_box = (
         cl_cost_model.get_ndirect_sources_per_target_box(
-            queue, geo_data_dev.traversal()
+            actx, geo_data_dev.traversal()
         )
     )
 
     import time
 
-    queue.finish()
+    actx.queue.finish()
     start_time = time.time()
 
     cl_p2qbxl = cl_cost_model.process_form_qbxl(
-        queue, geo_data_dev, cl_cost_factors["p2qbxl_cost"],
+        actx, geo_data_dev, cl_cost_factors["p2qbxl_cost"],
         cl_ndirect_sources_per_target_box
     )
 
-    queue.finish()
+    actx.queue.finish()
     logger.info("OpenCL time for process_form_qbxl: %s", time.time() - start_time)
 
     python_ndirect_sources_per_target_box = (
         python_cost_model.get_ndirect_sources_per_target_box(
-            queue, geo_data.traversal()
+            actx, geo_data.traversal()
         )
     )
 
     start_time = time.time()
 
     python_p2qbxl = python_cost_model.process_form_qbxl(
-        queue, geo_data, python_cost_factors["p2qbxl_cost"],
+        actx, geo_data, python_cost_factors["p2qbxl_cost"],
         python_ndirect_sources_per_target_box
     )
 
@@ -166,20 +165,20 @@ def test_compare_cl_and_py_cost_model(actx_factory):
 
     # {{{ Test process_m2qbxl
 
-    queue.finish()
+    actx.queue.finish()
     start_time = time.time()
 
     cl_m2qbxl = cl_cost_model.process_m2qbxl(
-        queue, geo_data_dev, cl_cost_factors["m2qbxl_cost"]
+        actx, geo_data_dev, cl_cost_factors["m2qbxl_cost"]
     )
 
-    queue.finish()
+    actx.queue.finish()
     logger.info("OpenCL time for process_m2qbxl: %s", time.time() - start_time)
 
     start_time = time.time()
 
     python_m2qbxl = python_cost_model.process_m2qbxl(
-        queue, geo_data, python_cost_factors["m2qbxl_cost"]
+        actx, geo_data, python_cost_factors["m2qbxl_cost"]
     )
 
     logger.info("Python time for process_m2qbxl: %s", time.time() - start_time)
@@ -190,20 +189,20 @@ def test_compare_cl_and_py_cost_model(actx_factory):
 
     # {{{ Test process_l2qbxl
 
-    queue.finish()
+    actx.queue.finish()
     start_time = time.time()
 
     cl_l2qbxl = cl_cost_model.process_l2qbxl(
-        queue, geo_data_dev, cl_cost_factors["l2qbxl_cost"]
+        actx, geo_data_dev, cl_cost_factors["l2qbxl_cost"]
     )
 
-    queue.finish()
+    actx.queue.finish()
     logger.info("OpenCL time for process_l2qbxl: %s", time.time() - start_time)
 
     start_time = time.time()
 
     python_l2qbxl = python_cost_model.process_l2qbxl(
-        queue, geo_data, python_cost_factors["l2qbxl_cost"]
+        actx, geo_data, python_cost_factors["l2qbxl_cost"]
     )
 
     logger.info("Python time for process_l2qbxl: %s", time.time() - start_time)
@@ -214,20 +213,20 @@ def test_compare_cl_and_py_cost_model(actx_factory):
 
     # {{{ Test process_eval_qbxl
 
-    queue.finish()
+    actx.queue.finish()
     start_time = time.time()
 
     cl_eval_qbxl = cl_cost_model.process_eval_qbxl(
-        queue, geo_data_dev, cl_cost_factors["qbxl2p_cost"]
+        actx, geo_data_dev, cl_cost_factors["qbxl2p_cost"]
     )
 
-    queue.finish()
+    actx.queue.finish()
     logger.info("OpenCL time for process_eval_qbxl: %s", time.time() - start_time)
 
     start_time = time.time()
 
     python_eval_qbxl = python_cost_model.process_eval_qbxl(
-        queue, geo_data, python_cost_factors["qbxl2p_cost"]
+        actx, geo_data, python_cost_factors["qbxl2p_cost"]
     )
 
     logger.info("Python time for process_eval_qbxl: %s", time.time() - start_time)
@@ -238,15 +237,15 @@ def test_compare_cl_and_py_cost_model(actx_factory):
 
     # {{{ Test eval_target_specific_qbxl
 
-    queue.finish()
+    actx.queue.finish()
     start_time = time.time()
 
     cl_eval_target_specific_qbxl = cl_cost_model.process_eval_target_specific_qbxl(
-        queue, geo_data_dev, cl_cost_factors["p2p_tsqbx_cost"],
+        actx, geo_data_dev, cl_cost_factors["p2p_tsqbx_cost"],
         cl_ndirect_sources_per_target_box
     )
 
-    queue.finish()
+    actx.queue.finish()
     logger.info("OpenCL time for eval_target_specific_qbxl: %s",
                 time.time() - start_time)
 
@@ -254,7 +253,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
 
     python_eval_target_specific_qbxl = \
         python_cost_model.process_eval_target_specific_qbxl(
-            queue, geo_data, python_cost_factors["p2p_tsqbx_cost"],
+            actx, geo_data, python_cost_factors["p2p_tsqbx_cost"],
             python_ndirect_sources_per_target_box
         )
 
@@ -473,8 +472,7 @@ def test_cost_model_metadata_gathering(actx_factory):
 
 class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
-    def __init__(self, tree_indep, queue, geo_data,
-            use_target_specific_qbx):
+    def __init__(self, tree_indep, geo_data, use_target_specific_qbx):
         from pytential.qbx.utils import ToHostTransferredGeoDataWrapper
         geo_data = ToHostTransferredGeoDataWrapper(geo_data)
 
@@ -498,7 +496,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         non_qbx_box_target_lists = self.geo_data.non_qbx_box_target_lists()
         return np.zeros(non_qbx_box_target_lists.nfiltered_targets)
 
-    def full_output_zeros(self, template_ary):
+    def full_output_zeros(self, actx):
         from pytools import obj_array
         return obj_array.new_1d([np.zeros(self.tree.ntargets)])
 
@@ -509,7 +507,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
         raise NotImplementedError("reorder_potentials should not "
                 "be called on a QBXExpansionWrangler")
 
-    def form_global_qbx_locals(self, src_weight_vecs):
+    def form_global_qbx_locals(self, actx, src_weight_vecs):
         src_weights, = src_weight_vecs
         local_exps = self.qbx_local_expansion_zeros()
         ops = 0
@@ -536,7 +534,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
         return local_exps, self.timing_future(ops)
 
-    def translate_box_multipoles_to_qbx_local(self, multipole_exps):
+    def translate_box_multipoles_to_qbx_local(self, actx, multipole_exps):
         local_exps = self.qbx_local_expansion_zeros()
         ops = 0
 
@@ -562,7 +560,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
         return local_exps, self.timing_future(ops)
 
-    def translate_box_local_to_qbx_local(self, local_exps):
+    def translate_box_local_to_qbx_local(self, actx, local_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
         ops = 0
 
@@ -577,7 +575,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
         return qbx_expansions, self.timing_future(ops)
 
-    def eval_qbx_expansions(self, qbx_expansions):
+    def eval_qbx_expansions(self, actx, qbx_expansions):
         output = self.full_output_zeros(qbx_expansions)
         ops = 0
 
@@ -594,7 +592,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
         return output, self.timing_future(ops)
 
-    def eval_target_specific_qbx_locals(self, src_weight_vecs):
+    def eval_target_specific_qbx_locals(self, actx, src_weight_vecs):
         src_weights, = src_weight_vecs
         pot = self.full_output_zeros(src_weights)
         ops = 0
@@ -693,7 +691,6 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
         use_target_specific_qbx):
     """Check that computed cost matches that of a constant-one FMM."""
     actx = actx_factory()
-    queue = actx.queue
 
     cost_model = QBXCostModel(
         translation_cost_model_factory=OpCountingTranslationCostModel)
@@ -709,7 +706,8 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
         from pytential.target import PointsTarget
         ntargets = 10 ** 3
         targets = PointsTarget(
-                make_uniform_particle_array(queue, ntargets, dim, np.float64))
+                make_uniform_particle_array(actx, ntargets, dim, np.float64))
+        target_discrs_and_qbx_sides = ((targets, 0),)
         qbx_forced_limit = None
 
         places = GeometryCollection((lpot_source, targets))
@@ -745,7 +743,7 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
 
     wrangler = ConstantOneQBXExpansionWrangler(
             TreeIndependentDataForWrangler(),
-            queue, geo_data, use_target_specific_qbx)
+            geo_data, use_target_specific_qbx)
 
     quad_stage2_density_discr = places.get_discretization(
             source_dd.geometry, sym.QBX_SOURCE_QUAD_STAGE2)
@@ -753,8 +751,9 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
     src_weights = np.ones(ndofs)
 
     timing_data = {}
-    potential = drive_fmm(wrangler, (src_weights,), timing_data
-            )[0][geo_data.ncenters:]
+    potential = drive_fmm(
+        actx, wrangler, (src_weights,), timing_data
+        )[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
     assert np.all(potential == ndofs)
