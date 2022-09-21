@@ -26,6 +26,7 @@ THE SOFTWARE.
 """
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -33,7 +34,8 @@ from cgen import Enum
 
 from arraycontext import Array, PyOpenCLArrayContext, flatten
 from boxtree.area_query import AreaQueryElementwiseTemplate
-from boxtree.tools import DeviceDataRecord, InlineBinarySearch
+from boxtree.array_context import dataclass_array_container
+from boxtree.tools import InlineBinarySearch
 from pytools import log_process, memoize_in, memoize_method
 
 from pytential.qbx.utils import (
@@ -454,11 +456,13 @@ class QBXTargetAssociationFailedError(Exception):
 QBXTargetAssociationFailedException = QBXTargetAssociationFailedError
 
 
-class QBXTargetAssociation(DeviceDataRecord):
+@dataclass_array_container
+@dataclass(frozen=True)
+class QBXTargetAssociation:
     """
     .. attribute:: target_to_center
     """
-    pass
+    target_to_center: Array
 
 
 class TargetAssociationCodeContainer(TreeCodeContainerMixin):

@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 import loopy as lp
+from pytools import obj_array
 from sumpy.qbx import LayerPotentialBase
 
 
@@ -145,10 +146,12 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
         for i, dens in enumerate(strengths):
             kwargs[f"strength_{i}"] = dens
 
-        return actx.call_loopy(
+        result = actx.call_loopy(
                 knl,
                 sources=sources, targets=targets, center=centers,
                 expansion_radii=expansion_radii, **kwargs)
+
+        return obj_array.new_1d([result[f"result_{i}"] for i in range(self.nresults)])
 
 # }}}
 
