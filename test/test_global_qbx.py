@@ -30,14 +30,14 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.linalg as la
 
+from arraycontext import pytest_generate_tests_for_array_contexts
+from pytential.array_context import (   # noqa: F401
+    PytestPyOpenCLArrayContextFactory, _acf)
+
 from arraycontext import flatten
 from pytential import GeometryCollection, bind, sym
 from pytential.qbx import QBXLayerPotentialSource
 import meshmode.mesh.generation as mgen
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 from extra_curve_data import horseshoe
 from extra_int_eq_data import QuadSpheroidTestCase

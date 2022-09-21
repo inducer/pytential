@@ -27,6 +27,10 @@ import pytest
 
 import numpy as np
 
+from arraycontext import pytest_generate_tests_for_array_contexts
+from pytential.array_context import (   # noqa: F401
+    PytestPyOpenCLArrayContextFactory, _acf)
+
 from boxtree.fmm import TreeIndependentDataForWrangler
 from boxtree.constant_one import ConstantOneExpansionWrangler
 from sumpy.kernel import LaplaceKernel, HelmholtzKernel
@@ -36,9 +40,6 @@ from pytential.qbx import QBXLayerPotentialSource
 from pytential.qbx.cost import (
     QBXCostModel, _PythonQBXCostModel, make_pde_aware_translation_cost_model
 )
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
@@ -332,7 +333,7 @@ def test_timing_data_gathering(ctx_factory):
     pytest.importorskip("pyfmmlib")
 
     import pyopencl as cl
-    from meshmode.array_context import PyOpenCLArrayContext
+    from pytential.array_context import PyOpenCLArrayContext
     cl_ctx = ctx_factory()
     queue = cl.CommandQueue(cl_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
