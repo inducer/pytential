@@ -162,6 +162,10 @@ def evaluate_kernel_arguments(
 
 class PointPotentialSource(PotentialSource):
     """
+    .. attribute:: nodes
+
+        An array of shape ``[ambient_dim, ndofs]``.
+
     .. attribute:: ndofs
 
     .. automethod:: nodes
