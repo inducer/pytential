@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2022 Alexandru Fikl"
 
 __license__ = """
@@ -20,14 +23,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from meshmode.array_context import (
-    PyOpenCLArrayContext as MeshmodePyOpenCLArrayContext)
-from sumpy.array_context import (   # noqa: F401
-    PyOpenCLArrayContext as SumpyPyOpenCLArrayContext,
-    make_loopy_program)
 from arraycontext.pytest import (
-        _PytestPyOpenCLArrayContextFactoryWithClass,
-        register_pytest_array_context_factory)
+    _PytestPyOpenCLArrayContextFactoryWithClass,
+    register_pytest_array_context_factory,
+)
+from meshmode.array_context import PyOpenCLArrayContext as MeshmodePyOpenCLArrayContext
+from sumpy.array_context import (  # noqa: F401
+    PyOpenCLArrayContext as SumpyPyOpenCLArrayContext,
+    make_loopy_program,
+)
+
 
 __doc__ = """
 Array Context

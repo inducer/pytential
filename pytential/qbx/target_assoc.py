@@ -25,13 +25,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+from typing import TYPE_CHECKING
+
 import numpy as np
 from cgen import Enum
 
 from arraycontext import Array, PyOpenCLArrayContext, flatten
 from boxtree.area_query import AreaQueryElementwiseTemplate
 from boxtree.tools import DeviceDataRecord, InlineBinarySearch
-from pytools import memoize_in, memoize_method
+from pytools import log_process, memoize_in, memoize_method
 
 from pytential.qbx.utils import (
     QBX_TREE_C_PREAMBLE,
@@ -42,14 +45,6 @@ from pytential.qbx.utils import (
 )
 
 
-unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
-
-import logging
-from typing import TYPE_CHECKING
-
-from pytools import log_process
-
-
 if TYPE_CHECKING:
     from pyopencl import WaitList
 
@@ -57,6 +52,8 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
+
 
 __doc__ = """
 The goal of target association is to:
@@ -591,7 +588,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         # of targets per box is not bounded).
 
         box_to_search_dist, evt = self.code_container.space_invader_query()(
-                self.queue,
+                actx.queue,
                 tree,
                 sources,
                 tunnel_radius_by_source,
@@ -613,7 +610,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 found_target_close_to_element,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
-            queue=self.queue,
+            queue=actx.queue,
             wait_for=wait_for)
 
         if debug:
@@ -673,7 +670,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         # center in terms of relative distance.
 
         box_to_search_dist, evt = self.code_container.space_invader_query()(
-                self.queue,
+                actx.queue,
                 tree,
                 centers,
                 expansion_radii_by_center_with_tolerance,
@@ -717,7 +714,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 min_rel_dist_to_center_minus,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
-            queue=self.queue,
+            queue=actx.queue,
             wait_for=wait_for)
 
         if debug:
@@ -770,7 +767,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         # see (TGTMARK) above for algorithm.
 
         box_to_search_dist, evt = self.code_container.space_invader_query()(
-                self.queue,
+                actx.queue,
                 tree,
                 sources,
                 tunnel_radius_by_source,
@@ -795,7 +792,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 found_element_to_refine,
                 *tree.sources),
             range=slice(tree.nqbxtargets),
-            queue=self.queue,
+            queue=actx.queue,
             wait_for=wait_for)
 
         if debug:
@@ -882,13 +879,14 @@ def associate_targets_to_qbx_centers(
     target_status = actx.np.zeros(tree.nqbxtargets, dtype=np.int32)
     target_status.finish()
 
-    have_close_targets = wrangler.mark_targets(places, dofdesc,
+    have_close_targets = wrangler.mark_targets(
+            actx, places, dofdesc,
             tree, peer_lists, target_status,
             debug)
 
     target_assoc = wrangler.make_default_target_association(tree.nqbxtargets)
     if not have_close_targets:
-        return target_assoc.with_queue(None)
+        return actx.freeze(target_assoc)
 
     target_flags = wrangler.make_target_flags(target_discrs_and_qbx_sides)
 
@@ -934,7 +932,7 @@ def associate_targets_to_qbx_centers(
                 failed_target_flags=actx.freeze(center_not_found),
                 message=fail_msg)
 
-    return target_assoc.with_queue(None)
+    return actx.freeze(target_assoc)
 
 # }}}
 

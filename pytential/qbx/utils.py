@@ -26,6 +26,7 @@ THE SOFTWARE.
 """
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -38,9 +39,10 @@ from pytools import log_process, memoize_in, memoize_method
 
 if TYPE_CHECKING:
     import pyopencl.array as cl_array
-    from arraycontext import PyOpenCLArrayContext
+    from arraycontext import Array, PyOpenCLArrayContext
 
     from pytential.collection import GeometryCollection
+
 logger = logging.getLogger(__name__)
 
 
@@ -139,10 +141,6 @@ class TreeWranglerBase:
         self.code_container = code_container
         self.array_context = array_context
 
-    @property
-    def queue(self):
-        return self.array_context.queue
-
     def build_tree(self, places, targets_list=(), sources_list=(),
                    use_stage2_discr=False):
         tb = self.code_container.build_tree()
@@ -156,7 +154,7 @@ class TreeWranglerBase:
 
     def find_peer_lists(self, tree):
         plf = self.code_container.peer_list_finder()
-        peer_lists, evt = plf(self.queue, tree)
+        peer_lists, evt = plf(self.array_context, tree)
 
         import pyopencl as cl
         cl.wait_for_events([evt])
@@ -168,6 +166,7 @@ class TreeWranglerBase:
 
 # {{{ tree-with-metadata: data structure
 
+@dataclass(frozen=True)
 class TreeWithQBXMetadata(Tree):
     """A subclass of :class:`boxtree.tree.Tree`. Has all of that class's
     attributes, along with the following:
@@ -241,7 +240,30 @@ class TreeWithQBXMetadata(Tree):
     .. attribute:: qbx_user_center_slice
     .. attribute:: qbx_user_target_slice
     """
-    pass
+
+    nqbxelements: int
+    nqbxsources: int
+    nqbxcenters: int
+    nqbxtargets: int
+
+    box_to_qbx_element_starts: Array
+    box_to_qbx_element_lists: Array
+
+    box_to_qbx_source_starts: Array
+    box_to_qbx_source_lists: Array
+
+    box_to_qbx_center_starts: Array
+    box_to_qbx_center_lists: Array
+
+    box_to_qbx_target_starts: Array
+    box_to_qbx_target_lists: Array
+
+    qbx_element_to_source_starts: Array
+    qbx_element_to_center_starts: Array
+
+    qbx_user_source_slice: slice
+    qbx_user_center_slice: slice
+    qbx_user_target_slice: slice
 
 # }}}
 
@@ -411,7 +433,7 @@ def build_tree_with_qbx_metadata(
 
     tree_attrs.update(particle_classes)
 
-    return TreeWithQBXMetadata(
+    tree = TreeWithQBXMetadata(
         qbx_element_to_source_starts=qbx_element_to_source_starts,
         qbx_element_to_center_starts=qbx_element_to_center_starts,
         qbx_user_source_slice=qbx_user_source_slice,
@@ -421,7 +443,9 @@ def build_tree_with_qbx_metadata(
         nqbxsources=nsources,
         nqbxcenters=ncenters,
         nqbxtargets=ntargets,
-        **tree_attrs).with_queue(None)
+        **tree_attrs)
+
+    return actx.freeze(tree)
 
 # }}}
 
