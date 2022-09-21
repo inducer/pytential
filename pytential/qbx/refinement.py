@@ -492,8 +492,7 @@ def make_empty_refine_flags(actx, density_discr):
 
     :arg density_discr: An instance of a
         :class:`meshmode.discretization.Discretization`.
-    :returns: A :class:`pyopencl.array.Array` suitable for use as refine flags,
-        initialized to zero.
+    :returns: an array suitable for use as refine flags, initialized to zero.
     """
     result = actx.np.zeros(density_discr.mesh.nelements, np.int32)
     result.finish()
