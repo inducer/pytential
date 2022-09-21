@@ -23,21 +23,27 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 import loopy as lp
-from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from sumpy.qbx import LayerPotentialBase
 
-from pytential.version import PYTENTIAL_KERNEL_VERSION
+
+if TYPE_CHECKING:
+    from pytential.array_context import PyOpenCLArrayContext
 
 
 # {{{ qbx applier on a target/center subset
 
 class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
-    default_name = "qbx_tgt_ctr_subset"
+    @property
+    def default_name(self):
+        return "qbx_tgt_ctr_subset"
 
     def get_cache_key(self):
+        from pytential.version import PYTENTIAL_KERNEL_VERSION
         return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
 
     def get_kernel(self):
@@ -70,9 +76,11 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
             for i in range(self.strength_count)]
             + [lp.GlobalArg(f"result_{i}", self.value_dtypes[i],
                 shape="ntargets_total", order="C")
-            for i in range(len(self.target_kernels))])
+            for i in range(self.nresults)])
 
-        loopy_knl = lp.make_kernel([
+        from pytential.array_context import make_loopy_program
+
+        loopy_knl = make_loopy_program([
             "{[itgt_local]: 0 <= itgt_local < ntargets}",
             "{[isrc]: 0 <= isrc < nsources}",
             "{[idim]: 0 <= idim < dim}"
@@ -96,13 +104,13 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
                     simul_reduce(sum, isrc, pair_result_{i})  \
                         {{inames=itgt_local}}
                 """.format(i=iknl)
-                for iknl in range(len(self.target_kernels))]
+                for iknl in range(self.nresults)]
             + ["end"],
-            arguments,
+            kernel_data=arguments,
             name=self.name,
             assumptions="ntargets>=1 and nsources>=1",
             fixed_parameters={"dim": self.dim},
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
+            )
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
         for expn in self.source_kernels + self.target_kernels:
@@ -110,10 +118,26 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
 
         return loopy_knl
 
-    def __call__(self, queue, targets, sources, centers, strengths, expansion_radii,
+    def get_optimized_kernel(self, *,
+            is_cpu: bool,
+            targets_is_obj_array: bool,
+            sources_is_obj_array: bool,
+            centers_is_obj_array: bool):
+        return super().get_optimized_kernel(
+                is_cpu=is_cpu,
+                targets_is_obj_array=targets_is_obj_array,
+                sources_is_obj_array=sources_is_obj_array,
+                centers_is_obj_array=centers_is_obj_array,
+                itgt_name="itgt_local")
+
+    def __call__(self, actx: PyOpenCLArrayContext,
+            targets, sources, centers, strengths, expansion_radii,
             **kwargs):
+        from sumpy.array_context import is_cl_cpu
         from sumpy.tools import is_obj_array_like
-        knl = self.get_cached_kernel_executor(
+
+        knl = self.get_cached_kernel(
+                is_cpu=is_cl_cpu(actx),
                 targets_is_obj_array=is_obj_array_like(targets),
                 sources_is_obj_array=is_obj_array_like(sources),
                 centers_is_obj_array=is_obj_array_like(centers))
@@ -121,13 +145,10 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
         for i, dens in enumerate(strengths):
             kwargs[f"strength_{i}"] = dens
 
-        return knl(queue, sources=sources, targets=targets, center=centers,
+        return actx.call_loopy(
+                knl,
+                sources=sources, targets=targets, center=centers,
                 expansion_radii=expansion_radii, **kwargs)
-
-    def get_optimized_kernel(self,
-            targets_is_obj_array, sources_is_obj_array, centers_is_obj_array):
-        return LayerPotentialBase.get_optimized_kernel(self, targets_is_obj_array,
-                sources_is_obj_array, centers_is_obj_array, itgt_name="itgt_local")
 
 # }}}
 

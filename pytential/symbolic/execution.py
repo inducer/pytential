@@ -130,8 +130,6 @@ class EvaluationMapperBase(PymbolicEvaluationMapper[ArrayOrContainerOrScalar]):
         if not isinstance(actx, PyOpenCLArrayContext):
             raise NotImplementedError("evaluation with non-PyOpenCL array context")
 
-        self.queue = actx.queue
-
     # {{{ map_XXX
 
     def _map_minmax(self, func, inherited_func, expr):
