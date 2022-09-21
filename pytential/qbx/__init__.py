@@ -718,7 +718,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         base_kernel = single_valued(knl.get_base_kernel() for knl in source_kernels)
 
         from sumpy.qbx import LayerPotential
-        return LayerPotential(self.cl_context,
+        return LayerPotential(
                     expansion=self.get_expansion_for_qbx_direct_eval(
                         base_kernel, target_kernels),
                     target_kernels=target_kernels, source_kernels=source_kernels,
@@ -738,7 +738,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.qbx.direct import LayerPotentialOnTargetAndCenterSubset
         from sumpy.expansion.local import VolumeTaylorLocalExpansion
         return LayerPotentialOnTargetAndCenterSubset(
-                self.cl_context,
                 expansion=VolumeTaylorLocalExpansion(base_kernel, self.qbx_order),
                 target_kernels=target_kernels, source_kernels=source_kernels,
                 value_dtypes=value_dtype)
@@ -856,7 +855,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     target_name.geometry, target_name.discr_stage)
             flat_target_nodes = _flat_nodes(target_name)
 
-            evt, output_for_each_kernel = lpot_applier(queue,
+            evt, output_for_each_kernel = lpot_applier(actx,
                     targets=flat_target_nodes,
                     sources=flat_source_nodes,
                     centers=_flat_centers(target_name, qbx_forced_limit),
@@ -930,7 +929,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             if qbx_tgt_count:
                 lpot_applier_on_tgt_subset(
-                        queue,
+                        actx,
                         targets=flat_target_nodes,
                         sources=flat_source_nodes,
                         centers=geo_data.flat_centers(),

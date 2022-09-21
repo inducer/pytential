@@ -408,7 +408,7 @@ class MatrixBuilder(MatrixBuilderBase):
                     kernel.get_base_kernel(), (expr.target_kernel,))
 
             from sumpy.qbx import LayerPotentialMatrixGenerator
-            mat_gen = LayerPotentialMatrixGenerator(actx.context,
+            mat_gen = LayerPotentialMatrixGenerator(
                 expansion=local_expn, source_kernels=(kernel,),
                 target_kernels=(expr.target_kernel,))
 
@@ -419,7 +419,7 @@ class MatrixBuilder(MatrixBuilderBase):
             kernel_args = _get_layer_potential_args(
                     actx, self.places, expr, context=self.context)
 
-            _, (mat,) = mat_gen(actx.queue,
+            _, (mat,) = mat_gen(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     centers=flatten(centers, actx, leaf_class=DOFArray),
@@ -477,7 +477,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
             base_kernel = kernel.get_base_kernel()
 
             from sumpy.p2p import P2PMatrixGenerator
-            mat_gen = P2PMatrixGenerator(actx.context,
+            mat_gen = P2PMatrixGenerator(
                     source_kernels=(base_kernel,),
                     target_kernels=(target_base_kernel,),
                     exclude_self=self.exclude_self)
@@ -503,7 +503,7 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 
             # }}}
 
-            _, (mat,) = mat_gen(actx.queue,
+            _, (mat,) = mat_gen(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     **kernel_args)
@@ -584,8 +584,10 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
                     kernel.get_base_kernel(), (expr.target_kernel,))
 
             from sumpy.qbx import LayerPotentialMatrixSubsetGenerator
-            mat_gen = LayerPotentialMatrixSubsetGenerator(actx.context, local_expn,
-                source_kernels=(kernel,), target_kernels=(expr.target_kernel,))
+            mat_gen = LayerPotentialMatrixSubsetGenerator(
+                local_expn,
+                source_kernels=(kernel,),
+                target_kernels=(expr.target_kernel,))
 
             # }}}
 
@@ -594,7 +596,7 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
             kernel_args = _get_layer_potential_args(
                     actx, self.places, expr, context=self.context)
 
-            _, (mat,) = mat_gen(actx.queue,
+            _, (mat,) = mat_gen(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     centers=flatten(centers, actx, leaf_class=DOFArray),
@@ -661,7 +663,7 @@ class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
             base_kernel = kernel.get_base_kernel()
 
             from sumpy.p2p import P2PMatrixSubsetGenerator
-            mat_gen = P2PMatrixSubsetGenerator(actx.context,
+            mat_gen = P2PMatrixSubsetGenerator(
                     source_kernels=(base_kernel,),
                     target_kernels=(target_base_kernel,),
                     exclude_self=self.exclude_self)
@@ -687,7 +689,7 @@ class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
 
             # }}}
 
-            _, (mat,) = mat_gen(actx.queue,
+            _, (mat,) = mat_gen(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(source_discr.nodes(), actx, leaf_class=DOFArray),
                     tgtindices=tgtindices,

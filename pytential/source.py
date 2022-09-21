@@ -24,7 +24,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Hashable, Optional, Tuple
 
 import numpy as np
-from arraycontext import PyOpenCLArrayContext, flatten, unflatten
+from arraycontext import flatten, unflatten
 from meshmode.dof_array import DOFArray
 from pytools import T, memoize_in
 from sumpy.fmm import UnableToCollectTimingData
@@ -32,6 +32,7 @@ from sumpy.kernel import Kernel
 from sumpy.p2p import P2PBase
 
 from pytential import sym
+from pytential.array_context import PyOpenCLArrayContext
 
 if TYPE_CHECKING:
     from pytential.collection import GeometryCollection
@@ -113,7 +114,7 @@ class _SumpyP2PMixin:
                 target_kernels: Tuple[Kernel, ...],
                 source_kernels: Optional[Tuple[Kernel, ...]] = None) -> P2PBase:
         @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
-        def p2p(target_kernels: Tuple[Kernel, ...],
+        def make_p2p(target_kernels: Tuple[Kernel, ...],
                 source_kernels: Optional[Tuple[Kernel, ...]]) -> P2PBase:
             if any(knl.is_complex_valued for knl in target_kernels):
                 value_dtype = self.complex_dtype    # type: ignore[attr-defined]
@@ -121,11 +122,12 @@ class _SumpyP2PMixin:
                 value_dtype = self.real_dtype       # type: ignore[attr-defined]
 
             from sumpy.p2p import P2P
-            return P2P(actx.context,
-                    target_kernels, exclude_self=False, value_dtypes=value_dtype,
-                    source_kernels=source_kernels)
+            return P2P(
+                    target_kernels, source_kernels=source_kernels,
+                    exclude_self=False, value_dtypes=value_dtype,
+                    )
 
-        return p2p(target_kernels, source_kernels)
+        return make_p2p(target_kernels, source_kernels)
 
 
 # {{{ point potential source
@@ -190,6 +192,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
     def op_group_features(self, expr):
         from pytential.utils import sort_arrays_together
+
         # since IntGs with the same source kernels and densities calculations
         # for P2E and E2E are the same and only differs in E2P depending on the
         # target kernel, we group all IntGs with same source kernels and densities.
@@ -354,8 +357,8 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
         kernel_extra_kwargs = {}
         source_extra_kwargs = {}
 
-        from sumpy.tools import gather_arguments, gather_source_arguments
         from arraycontext import rec_map_array_container
+        from sumpy.tools import gather_arguments, gather_source_arguments
 
         for func, var_dict in [
                 (gather_arguments, kernel_extra_kwargs),
