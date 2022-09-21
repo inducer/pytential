@@ -37,7 +37,6 @@ __doc__ = """
 Array Context
 =============
 
-.. autofunction:: make_loopy_program
 .. autoclass:: PyOpenCLArrayContext
 """
 

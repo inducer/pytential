@@ -29,18 +29,14 @@ import numpy as np
 import pytest
 
 from arraycontext import flatten, pytest_generate_tests_for_array_contexts
-from meshmode import _acf  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from sumpy.kernel import HelmholtzKernel, LaplaceKernel
 
 from pytential import GeometryCollection, bind, sym
-
-
-logger = logging.getLogger(__name__)
-
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -221,6 +217,9 @@ def test_target_specific_qbx(actx_factory, op, helmholtz_k, qbx_order):
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

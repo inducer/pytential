@@ -31,17 +31,13 @@ import pytest
 
 import meshmode.mesh.generation as mgen
 from arraycontext import flatten, pytest_generate_tests_for_array_contexts, unflatten
-from meshmode import _acf  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 from pytential import GeometryCollection, bind, norm, sym
-
-
-logger = logging.getLogger(__name__)
-
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -401,6 +397,9 @@ def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

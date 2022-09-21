@@ -30,15 +30,12 @@ import numpy.linalg as la
 import pytest
 
 from arraycontext import ArrayContextFactory, pytest_generate_tests_for_array_contexts
-from meshmode import _acf  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
-
-logger = logging.getLogger(__name__)
-
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -94,6 +91,9 @@ def test_matrix_cluster_index(actx_factory: ArrayContextFactory):
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

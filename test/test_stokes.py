@@ -35,18 +35,16 @@ from arraycontext import (
     flatten,
     pytest_generate_tests_for_array_contexts,
 )
-from meshmode import _acf  # noqa: F401  # noqa: F401  # noqa: F401
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import InterpolatoryQuadratureGroupFactory
 from pytools import obj_array
 
 from pytential import GeometryCollection, bind, sym
+from pytential.array_context import PytestPyOpenCLArrayContextFactory
 from pytential.utils import pytest_teardown_function as teardown_function  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -536,6 +534,9 @@ def test_stresslet_identity(
 
 if __name__ == "__main__":
     import sys
+
+    from pytential.array_context import _acf  # noqa: F401
+
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
