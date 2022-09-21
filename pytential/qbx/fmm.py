@@ -404,7 +404,6 @@ def drive_fmm(
         traversal = geo_data.traversal()
 
     tree = traversal.tree
-    template_ary = src_weight_vecs[0]
     recorder = TimingRecorder()
 
     # Interface guidelines: Attributes of the tree are assumed to be known
