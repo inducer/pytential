@@ -1,13 +1,13 @@
 import numpy as np
 import numpy.linalg as la
 
-from pytential.array_context import PyOpenCLArrayContext
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import (
     InterpolatoryQuadratureSimplexGroupFactory,
 )
 
 from pytential import bind, sym
+from pytential.array_context import PyOpenCLArrayContext
 from pytential.target import PointsTarget
 
 

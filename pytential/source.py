@@ -121,9 +121,8 @@ class PotentialSource(ABC):
                 value_dtype = self.real_dtype
 
             from sumpy.p2p import P2P
-            return P2P(actx.context,
-                    target_kernels, exclude_self=False, value_dtypes=value_dtype,
-                    source_kernels=source_kernels)
+            return P2P(target_kernels, exclude_self=False, value_dtypes=value_dtype,
+                       source_kernels=source_kernels)
 
         return p2p(target_kernels, source_kernels)
 
@@ -223,6 +222,7 @@ class PointPotentialSource(PotentialSource):
     @override
     def op_group_features(self, expr: IntG) -> tuple[Hashable, ...]:
         from pytential.utils import sort_arrays_together
+
         # since IntGs with the same source kernels and densities calculations
         # for P2E and E2E are the same and only differs in E2P depending on the
         # target kernel, we group all IntGs with same source kernels and densities.
@@ -281,7 +281,7 @@ class PointPotentialSource(PotentialSource):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                 target_kernels=insn.target_kernels)
 
-            _, output_for_each_kernel = p2p(actx.queue,
+            output_for_each_kernel = p2p(actx,
                     targets=flatten(target_or_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=self._nodes,
                     strength=strengths, **kernel_args)
@@ -328,6 +328,11 @@ class LayerPotentialSourceBase(PotentialSource, ABC):
     Inherits from :class:`PotentialSource`.
 
     .. attribute:: density_discr
+
+    .. attribute:: ambient_dim
+    .. attribute:: dim
+    .. attribute:: real_dtype
+    .. attribute:: complex_dtype
     """
 
     def __init__(self, density_discr: Discretization):
