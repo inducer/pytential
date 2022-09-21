@@ -120,7 +120,7 @@ def partition_by_nodes(
         from pytential.qbx.utils import tree_code_container
         tcc = tree_code_container(lpot_source._setup_actx)
 
-        tree, _ = tcc.build_tree()(actx.queue,
+        tree, _ = tcc.build_tree()(actx,
                 particles=flatten(
                     actx.thaw(discr.nodes()), actx, leaf_class=DOFArray
                     ),
@@ -128,8 +128,9 @@ def partition_by_nodes(
                 kind=tree_kind)
 
         from boxtree import box_flags_enum
-        tree = tree.get(actx.queue)
-        # FIXME: maybe this should use IS_LEAF once available?
+
+        tree = actx.to_numpy(tree)
+        # FIXME maybe this should use IS_LEAF once available?
         assert tree.box_flags is not None
         leaf_boxes, = (
                 tree.box_flags & box_flags_enum.HAS_SOURCE_OR_TARGET_CHILD_BOXES == 0
@@ -766,12 +767,11 @@ def gather_cluster_neighbor_points(
     assert isinstance(setup_actx, PyOpenCLArrayContext)
 
     tcc = tree_code_container(setup_actx)
-    tree, _ = tcc.build_tree()(actx.queue, targets,
-            max_particles_in_box=max_particles_in_box)
-    query, _ = tcc.build_area_query()(actx.queue, tree, pxy.centers, pxy.radii)
+    tree, _ = tcc.build_tree()(actx, targets, max_particles_in_box=max_particles_in_box)
+    query, _ = tcc.build_area_query()(actx, tree, pxy.centers, pxy.radii)
 
-    tree = tree.get(actx.queue)
-    query = query.get(actx.queue)
+    tree = actx.to_numpy(tree)
+    query = actx.to_numpy(query)
 
     # }}}
 
