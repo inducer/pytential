@@ -538,11 +538,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         :arg calibration_params: a :class:`dict` of calibration parameters, mapping
             from parameter names to calibration values.
-        :arg per_box: if *true*, cost model result will be a :class:`numpy.ndarray`
-            or :class:`pyopencl.array.Array` with shape of the number of boxes, where
-            the ith entry is the sum of the cost of all stages for box i. If *false*,
-            cost model result will be a :class:`dict`, mapping from the stage name to
-            predicted cost of the stage for all boxes.
+        :arg per_box: if *True*, cost model result will be an array with shape
+            of the number of boxes, where the ith entry is the sum of the cost
+            of all stages for box i. If *False*, cost model result will be a
+            :class:`dict`, mapping from the stage name to predicted cost of the
+            stage for all boxes.
 
         :returns: whatever :meth:`exec_compute_potential_insn_fmm` returns.
         """

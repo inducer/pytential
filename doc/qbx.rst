@@ -8,6 +8,11 @@ QBX internals
     This page documents :mod:`pytential` internals and is not typically
     needed in end-user applications.
 
+Array Context
+-------------
+
+.. automodule:: pytential.array_context
+
 Refinement
 ----------
 

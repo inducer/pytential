@@ -798,10 +798,10 @@ class BoundExpression(Generic[OperandTc]):
         :arg calibration_params: either a :class:`dict` returned by
             `estimate_kernel_specific_calibration_params`, or a :class:`str`
             "constant_one".
-        :return: a :class:`dict` mapping from statement to per-box cost. Each
-            per-box cost is represented by a :class:`numpy.ndarray` or
-            :class:`pyopencl.array.Array` of shape (nboxes,), where the ith entry
-            represents the cost of all stages for box i.
+        :return: a :class:`dict` mapping from instruction to per-box cost. Each
+            per-box cost is represented by an array of shape ``(nboxes,)``, where
+            the :math:`i`-th entry represents the cost of all stages for box
+            :math:`i`.
         """
         array_context = _find_array_context_from_args_in_context(kwargs)
 
@@ -822,7 +822,7 @@ class BoundExpression(Generic[OperandTc]):
             target from *places* is used.
         :returns: An object that (mostly) satisfies the
             :class:`scipy.sparse.linalg.LinearOperator` protocol, except for
-            accepting and returning :class:`pyopencl.array.Array` arrays.
+            arrays supported by *actx*.
         """
 
         if isinstance(self.code.result, np.ndarray):
