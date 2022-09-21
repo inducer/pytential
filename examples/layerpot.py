@@ -7,7 +7,7 @@ if enable_mayavi:
 
 import numpy as np
 
-from meshmode.array_context import PyOpenCLArrayContext
+from pytential.array_context import PyOpenCLArrayContext
 from sumpy.visualization import FieldPlotter
 from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa: F401
 

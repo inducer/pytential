@@ -28,14 +28,14 @@ import pytest
 import numpy as np
 import numpy.linalg as la
 
+from arraycontext import pytest_generate_tests_for_array_contexts
+from pytential.array_context import (   # noqa: F401
+    PytestPyOpenCLArrayContextFactory, _acf)
+
 from pytential import sym
 from pytential import GeometryCollection
 
 from meshmode.mesh.generation import ellipse, NArmedStarfish
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import extra_matrix_data as extra
 import logging

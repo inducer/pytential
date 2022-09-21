@@ -24,13 +24,13 @@ import pytest
 
 import numpy as np
 
-from arraycontext import flatten
-from pytential import GeometryCollection, bind, sym
-from sumpy.kernel import LaplaceKernel, HelmholtzKernel
-
-from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from pytential.array_context import (   # noqa: F401
+    PytestPyOpenCLArrayContextFactory, _acf)
+
+from arraycontext import flatten
+from sumpy.kernel import LaplaceKernel, HelmholtzKernel
+from pytential import GeometryCollection, bind, sym
 
 import logging
 logger = logging.getLogger(__name__)

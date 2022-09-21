@@ -28,7 +28,7 @@ THE SOFTWARE.
 import numpy as np
 import pyopencl as cl
 
-from meshmode.array_context import PyOpenCLArrayContext
+from pytential.array_context import PyOpenCLArrayContext
 
 from pytential import sym, bind
 from pytential.qbx.cost import QBXCostModel
