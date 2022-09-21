@@ -32,8 +32,8 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 
 import loopy as lp
-from arraycontext import PyOpenCLArrayContext, flatten, unflatten
-from boxtree.tools import DeviceDataRecord
+from arraycontext import Array, PyOpenCLArrayContext, flatten, unflatten
+from boxtree.array_context import dataclass_array_container
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from meshmode.dof_array import DOFArray
 from pytools import memoize_method
@@ -330,10 +330,6 @@ class _FMMGeometryDataCodeContainer:
     ambient_dim: int
     debug: bool
 
-    @property
-    def cl_context(self):
-        return self.array_context.context
-
     @memoize_method
     def copy_targets_kernel(self):
         knl = lp.make_kernel(
@@ -369,7 +365,9 @@ class _FMMGeometryDataCodeContainer:
         return FMMTraversalBuilder(self.cl_context)
 
 
-class _TargetInfo(DeviceDataRecord):
+@dataclass_array_container
+@dataclass(frozen=True)
+class _TargetInfo:
     """
     .. attribute:: targets
 
@@ -381,6 +379,10 @@ class _TargetInfo(DeviceDataRecord):
 
     .. attribute:: ntargets
     """
+
+    targets: Array
+    target_discr_starts: Array
+    ntargets: int
 
 
 @dataclass(frozen=True)
@@ -412,7 +414,7 @@ class _FMMGeometryData:
         trav, _ = self.code_getter.build_traversal(
                 actx.queue, self.tree(), debug=self.debug)
 
-        return trav.with_queue(None)
+        return actx.freeze(trav)
 
     @memoize_method
     def tree(self):
@@ -478,10 +480,12 @@ class _FMMGeometryData:
                         ),
                     )
 
-        return _TargetInfo(
+        info = _TargetInfo(
                 targets=targets,
                 target_discr_starts=target_discr_starts,
-                ntargets=ntargets).with_queue(None)
+                ntargets=ntargets)
+
+        return actx.freeze(info)
 
 # }}}
 
