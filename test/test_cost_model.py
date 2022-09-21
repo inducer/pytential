@@ -775,7 +775,7 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
     logging.info(per_box_cost)
     per_box_cost, = per_box_cost.values()
 
-    total_aggregate_cost = cost_model.aggregate_over_boxes(per_box_cost)
+    total_aggregate_cost = cost_model.aggregate_over_boxes(actx, per_box_cost)
     assert total_cost == (
             total_aggregate_cost
             + modeled_time["coarsen_multipoles"]

@@ -33,7 +33,6 @@ from pytential import bind, sym, norm
 from pytential.target import PointsTarget
 from sumpy.visualization import make_field_plotter_from_bbox
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
-from sumpy.tools import vector_from_device
 from meshmode.mesh.processing import find_bounding_box
 
 import logging
@@ -338,8 +337,9 @@ def test_pec_mfie_extinction(actx_factory, case,
                 bind(places, sym.h_max(qbx.ambient_dim))(actx)
                 )
 
-        pde_test_inc = EHField(vector_from_device(actx.queue,
-            eval_inc_field_at(places, target="patch_target")))
+        pde_test_inc = EHField(
+            actx.from_numpy(eval_inc_field_at(places, target="patch_target"))
+            )
 
         source_maxwell_resids = [
                 calc_patch.norm(x, np.inf) / calc_patch.norm(pde_test_inc.e, np.inf)
@@ -396,8 +396,9 @@ def test_pec_mfie_extinction(actx_factory, case,
                 places, sym_repr, auto_where=(source, target)       # noqa: B023
                 )(actx, jt=jt, rho=rho, **knl_kwargs)               # noqa: B023
 
-        pde_test_repr = EHField(vector_from_device(actx.queue,
-            eval_repr_at(places, target="patch_target")))
+        pde_test_repr = EHField(
+            actx.from_numpy(eval_repr_at(places, target="patch_target"))
+            )
 
         maxwell_residuals = [
                 actx.to_numpy(
@@ -469,9 +470,10 @@ def test_pec_mfie_extinction(actx_factory, case,
                             ])
                 raise
 
-            fplot_repr = EHField(vector_from_device(actx.queue, fplot_repr))
-            fplot_inc = EHField(vector_from_device(actx.queue,
-                eval_inc_field_at(places, target="plot_targets")))
+            fplot_repr = EHField(actx.from_numpy(fplot_repr))
+            fplot_inc = EHField(
+                actx.from_numpy(eval_inc_field_at(places, target="plot_targets"))
+                )
 
             fplot.write_vtk_file(
                     "potential-%s.vts" % resolution,

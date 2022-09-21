@@ -24,22 +24,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-import pyopencl as cl
-import pyopencl.array
-from pyopencl.array import take
-from pyopencl.elementwise import ElementwiseKernel
-from pyopencl.tools import dtype_to_ctype
-from mako.template import Template
-from pymbolic import var, evaluate
-from pytools import memoize_method
+from abc import abstractmethod
 from functools import partial
 
+import numpy as np
+
+from pytential.array_context import PyOpenCLArrayContext
+
+import pymbolic as prim
+from mako.template import Template
+from pytools import memoize_in
 from boxtree.cost import (
     FMMTranslationCostModel, AbstractFMMCostModel as BaseAbstractFMMCostModel,
     FMMCostModel, _PythonFMMCostModel
 )
-from abc import abstractmethod
 
 Template = partial(Template, strict_undefined=True)
 
@@ -121,23 +119,23 @@ class QBXTranslationCostModel(FMMTranslationCostModel):
         )
 
     def p2qbxl(self):
-        return var("c_p2qbxl") * self.ncoeffs_qbx
+        return prim.var("c_p2qbxl") * self.ncoeffs_qbx
 
     def p2p_tsqbx(self):
         # This term should be linear in the QBX order, which is the
         # square root of the number of QBX coefficients.
-        return var("c_p2p_tsqbx") * self.ncoeffs_qbx ** (1 / 2)
+        return prim.var("c_p2p_tsqbx") * self.ncoeffs_qbx ** (1 / 2)
 
     def qbxl2p(self):
-        return var("c_qbxl2p") * self.ncoeffs_qbx
+        return prim.var("c_qbxl2p") * self.ncoeffs_qbx
 
     def m2qbxl(self, level):
-        return var("c_m2qbxl") * self.e2e_cost(
+        return prim.var("c_m2qbxl") * self.e2e_cost(
             self.ncoeffs_fmm_by_level[level],
             self.ncoeffs_qbx)
 
     def l2qbxl(self, level):
-        return var("c_l2qbxl") * self.e2e_cost(
+        return prim.var("c_l2qbxl") * self.e2e_cost(
             self.ncoeffs_fmm_by_level[level],
             self.ncoeffs_qbx)
 
@@ -150,8 +148,8 @@ def make_pde_aware_translation_cost_model(dim, nlevels):
     """Create a cost model for FMM translation operators that make use of the
     knowledge that the potential satisfies a PDE.
     """
-    p_qbx = var("p_qbx")
-    p_fmm = np.array([var(f"p_fmm_lev{i}") for i in range(nlevels)])
+    p_qbx = prim.var("p_qbx")
+    p_fmm = np.array([prim.var(f"p_fmm_lev{i}") for i in range(nlevels)])
 
     uses_point_and_shoot = False
 
@@ -171,8 +169,8 @@ def make_taylor_translation_cost_model(dim, nlevels):
     """Create a cost model for FMM translation based on Taylor expansions
     in Cartesian coordinates.
     """
-    p_qbx = var("p_qbx")
-    p_fmm = np.array([var(f"p_fmm_lev{i}") for i in range(nlevels)])
+    p_qbx = prim.var("p_qbx")
+    p_fmm = np.array([prim.var(f"p_fmm_lev{i}") for i in range(nlevels)])
 
     ncoeffs_fmm = (p_fmm + 1) ** dim
     ncoeffs_qbx = (p_qbx + 1) ** dim
@@ -203,10 +201,9 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
     """
 
     @abstractmethod
-    def process_form_qbxl(self, queue, geo_data, p2qbxl_cost,
+    def process_form_qbxl(self, actx: PyOpenCLArrayContext, geo_data, p2qbxl_cost,
                           ndirect_sources_per_target_box):
         """
-        :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg p2qbxl_cost: a :class:`numpy.float64` constant representing the cost of
             adding a source to a QBX local expansion.
@@ -222,7 +219,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         pass
 
     @abstractmethod
-    def process_m2qbxl(self, queue, geo_data, m2qbxl_cost):
+    def process_m2qbxl(self, actx: PyOpenCLArrayContext, geo_data, m2qbxl_cost):
         """
         :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg m2qbxl_cost: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array`
@@ -236,7 +233,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         pass
 
     @abstractmethod
-    def process_l2qbxl(self, queue, geo_data, l2qbxl_cost):
+    def process_l2qbxl(self, actx: PyOpenCLArrayContext, geo_data, l2qbxl_cost):
         """
         :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg l2qbxl_cost: a :class:`numpy.ndarray` or :class:`pyopencl.array.Array`
@@ -249,7 +246,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         pass
 
     @abstractmethod
-    def process_eval_qbxl(self, queue, geo_data, qbxl2p_cost):
+    def process_eval_qbxl(self, actx: PyOpenCLArrayContext, geo_data, qbxl2p_cost):
         """
         :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg qbxl2p_cost: a :class:`numpy.float64` constant, representing the
@@ -262,7 +259,8 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         pass
 
     @abstractmethod
-    def process_eval_target_specific_qbxl(self, queue, geo_data, p2p_tsqbx_cost,
+    def process_eval_target_specific_qbxl(self, actx: PyOpenCLArrayContext,
+                                          geo_data, p2p_tsqbx_cost,
                                           ndirect_sources_per_target_box):
         """
         :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
@@ -281,7 +279,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         pass
 
     def qbx_cost_factors_for_kernels_from_model(
-            self, queue, nlevels, xlat_cost, context):
+            self, actx: PyOpenCLArrayContext, nlevels, xlat_cost, context):
         """Evaluate translation cost factors from symbolic model. The result of this
         function can be used for process_* methods in this class.
 
@@ -289,8 +287,6 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         :class:`boxtree.cost.AbstractFMMCostModel` to support operations specific to
         QBX.
 
-        :arg queue: If not None, the cost factor arrays will be transferred to device
-            using this queue.
         :arg nlevels: the number of tree levels.
         :arg xlat_cost: a :class:`QBXTranslationCostModel`.
         :arg context: a :class:`dict` mapping from the symbolic names of parameters
@@ -300,25 +296,25 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
             of those stages in FMM and QBX.
         """
         cost_factors = self.fmm_cost_factors_for_kernels_from_model(
-            queue, nlevels, xlat_cost, context
+            actx, nlevels, xlat_cost, context
         )
 
         cost_factors.update({
-            "p2qbxl_cost": evaluate(xlat_cost.p2qbxl(), context=context),
+            "p2qbxl_cost": prim.evaluate(xlat_cost.p2qbxl(), context=context),
             "m2qbxl_cost": np.array([
-                evaluate(xlat_cost.m2qbxl(ilevel), context=context)
+                prim.evaluate(xlat_cost.m2qbxl(ilevel), context=context)
                 for ilevel in range(nlevels)
             ]),
             "l2qbxl_cost": np.array([
-                evaluate(xlat_cost.l2qbxl(ilevel), context=context)
+                prim.evaluate(xlat_cost.l2qbxl(ilevel), context=context)
                 for ilevel in range(nlevels)
             ]),
-            "qbxl2p_cost": evaluate(xlat_cost.qbxl2p(), context=context),
-            "p2p_tsqbx_cost": evaluate(xlat_cost.p2p_tsqbx(), context=context)
+            "qbxl2p_cost": prim.evaluate(xlat_cost.qbxl2p(), context=context),
+            "p2p_tsqbx_cost": prim.evaluate(xlat_cost.p2p_tsqbx(), context=context)
         })
 
-        if queue:
-            cost_factors = self.cost_factors_to_dev(cost_factors, queue)
+        if actx:
+            cost_factors = self.cost_factors_to_dev(cost_factors, actx)
 
         return cost_factors
 
@@ -340,7 +336,8 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
 
         return metadata
 
-    def qbx_cost_per_box(self, queue, geo_data, kernel, kernel_arguments,
+    def qbx_cost_per_box(self, actx: PyOpenCLArrayContext,
+                         geo_data, kernel, kernel_arguments,
                          calibration_params):
         # FIXME: This should support target filtering.
         lpot_source = geo_data.lpot_source
@@ -375,15 +372,15 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         )
 
         translation_cost = self.qbx_cost_factors_for_kernels_from_model(
-            queue, tree.nlevels, xlat_cost, params
+            actx, tree.nlevels, xlat_cost, params
         )
 
         ndirect_sources_per_target_box = \
-            self.get_ndirect_sources_per_target_box(queue, traversal)
+            self.get_ndirect_sources_per_target_box(actx, traversal)
 
         # get FMM cost per box from parent class
         result = self.cost_per_box(
-            queue, traversal, fmm_level_to_order,
+            actx, traversal, fmm_level_to_order,
             calibration_params,
             ndirect_sources_per_target_box=ndirect_sources_per_target_box,
             box_target_counts_nonchild=box_target_counts_nonchild
@@ -391,32 +388,32 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
 
         if use_tsqbx:
             result[target_boxes] += self.process_eval_target_specific_qbxl(
-                queue, geo_data, translation_cost["p2p_tsqbx_cost"],
+                actx, geo_data, translation_cost["p2p_tsqbx_cost"],
                 ndirect_sources_per_target_box
             )
         else:
             result[target_boxes] += self.process_form_qbxl(
-                queue, geo_data, translation_cost["p2qbxl_cost"],
+                actx, geo_data, translation_cost["p2qbxl_cost"],
                 ndirect_sources_per_target_box
             )
 
         result[target_boxes] += self.process_m2qbxl(
-            queue, geo_data, translation_cost["m2qbxl_cost"]
+            actx, geo_data, translation_cost["m2qbxl_cost"]
         )
 
         result[target_boxes] += self.process_l2qbxl(
-            queue, geo_data, translation_cost["l2qbxl_cost"]
+            actx, geo_data, translation_cost["l2qbxl_cost"]
         )
 
         result[target_boxes] += self.process_eval_qbxl(
-            queue, geo_data, translation_cost["qbxl2p_cost"]
+            actx, geo_data, translation_cost["qbxl2p_cost"]
         )
 
         metadata = self.gather_metadata(geo_data, fmm_level_to_order)
 
         return result, metadata
 
-    def qbx_cost_per_stage(self, queue, geo_data, kernel, kernel_arguments,
+    def qbx_cost_per_stage(self, actx, geo_data, kernel, kernel_arguments,
                            calibration_params):
         # FIXME: This should support target filtering.
         lpot_source = geo_data.lpot_source
@@ -450,15 +447,15 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         )
 
         translation_cost = self.qbx_cost_factors_for_kernels_from_model(
-            queue, tree.nlevels, xlat_cost, params
+            actx, tree.nlevels, xlat_cost, params
         )
 
         ndirect_sources_per_target_box = \
-            self.get_ndirect_sources_per_target_box(queue, traversal)
+            self.get_ndirect_sources_per_target_box(actx, traversal)
 
         # get FMM per-stage cost from parent class
         result = self.cost_per_stage(
-            queue, traversal, fmm_level_to_order,
+            actx, traversal, fmm_level_to_order,
             calibration_params,
             ndirect_sources_per_target_box=ndirect_sources_per_target_box,
             box_target_counts_nonchild=box_target_counts_nonchild
@@ -466,29 +463,34 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
 
         if use_tsqbx:
             result["eval_target_specific_qbx_locals"] = self.aggregate_over_boxes(
+                actx,
                 self.process_eval_target_specific_qbxl(
-                    queue, geo_data, translation_cost["p2p_tsqbx_cost"],
+                    actx, geo_data, translation_cost["p2p_tsqbx_cost"],
                     ndirect_sources_per_target_box=ndirect_sources_per_target_box
                 )
             )
         else:
             result["form_global_qbx_locals"] = self.aggregate_over_boxes(
+                actx,
                 self.process_form_qbxl(
-                    queue, geo_data, translation_cost["p2qbxl_cost"],
+                    actx, geo_data, translation_cost["p2qbxl_cost"],
                     ndirect_sources_per_target_box
                 )
             )
 
         result["translate_box_multipoles_to_qbx_local"] = self.aggregate_over_boxes(
-            self.process_m2qbxl(queue, geo_data, translation_cost["m2qbxl_cost"])
+            actx,
+            self.process_m2qbxl(actx, geo_data, translation_cost["m2qbxl_cost"])
         )
 
         result["translate_box_local_to_qbx_local"] = self.aggregate_over_boxes(
-            self.process_l2qbxl(queue, geo_data, translation_cost["l2qbxl_cost"])
+            actx,
+            self.process_l2qbxl(actx, geo_data, translation_cost["l2qbxl_cost"])
         )
 
         result["eval_qbx_expansions"] = self.aggregate_over_boxes(
-            self.process_eval_qbxl(queue, geo_data, translation_cost["qbxl2p_cost"])
+            actx,
+            self.process_eval_qbxl(actx, geo_data, translation_cost["qbxl2p_cost"])
         )
 
         metadata = self.gather_metadata(geo_data, fmm_level_to_order)
@@ -589,66 +591,84 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
         """
         FMMCostModel.__init__(self, translation_cost_model_factory)
 
-    @memoize_method
-    def _fill_array_with_index_knl(self, context, idx_dtype, array_dtype):
-        return ElementwiseKernel(
-            context,
-            Template(r"""
-                ${idx_t} *index,
-                ${array_t} *array,
-                ${array_t} val
-            """).render(
-                idx_t=dtype_to_ctype(idx_dtype),
-                array_t=dtype_to_ctype(array_dtype)
-            ),
-            Template(r"""
-                array[index[i]] = val;
-            """).render(),
-            name="fill_array_with_index"
-        )
+    def _fill_array_with_index_knl(self,
+            actx: PyOpenCLArrayContext, idx_dtype, array_dtype):
+        from pyopencl.elementwise import ElementwiseKernel
+        from pyopencl.tools import dtype_to_ctype
 
-    def _fill_array_with_index(self, queue, array, index, value):
+        @memoize_in(actx, (
+            QBXCostModel._fill_array_with_index_knl,
+            idx_dtype, array_dtype))
+        def get_kernel():
+            return ElementwiseKernel(
+                actx.context,
+                Template(r"""
+                    ${idx_t} *index,
+                    ${array_t} *array,
+                    ${array_t} val
+                """).render(
+                    idx_t=dtype_to_ctype(idx_dtype),
+                    array_t=dtype_to_ctype(array_dtype)
+                ),
+                Template(r"""
+                    array[index[i]] = val;
+                """).render(),
+                name="fill_array_with_index"
+            )
+
+        return get_kernel()
+
+    def _fill_array_with_index(self, actx, array, index, value):
         idx_dtype = index.dtype
         array_dtype = array.dtype
-        knl = self._fill_array_with_index_knl(queue.context, idx_dtype, array_dtype)
-        knl(index, array, value, queue=queue)
+        knl = self._fill_array_with_index_knl(actx, idx_dtype, array_dtype)
+        knl(index, array, value, queue=actx.queue)
 
-    @memoize_method
-    def count_global_qbx_centers_knl(self, context, box_id_dtype, particle_id_dtype):
-        return ElementwiseKernel(
-            context,
-            Template(r"""
-                ${particle_id_t} *nqbx_centers_itgt_box,
-                ${particle_id_t} *global_qbx_center_weight,
-                ${box_id_t} *target_boxes,
-                ${particle_id_t} *box_target_starts,
-                ${particle_id_t} *box_target_counts_nonchild
-            """).render(
-                box_id_t=dtype_to_ctype(box_id_dtype),
-                particle_id_t=dtype_to_ctype(particle_id_dtype)
-            ),
-            Template(r"""
-                ${box_id_t} global_box_id = target_boxes[i];
-                ${particle_id_t} start = box_target_starts[global_box_id];
-                ${particle_id_t} end = start + box_target_counts_nonchild[
-                    global_box_id
-                ];
+    def count_global_qbx_centers_knl(self,
+            actx: PyOpenCLArrayContext, box_id_dtype, particle_id_dtype):
+        from pyopencl.elementwise import ElementwiseKernel
+        from pyopencl.tools import dtype_to_ctype
 
-                ${particle_id_t} nqbx_centers = 0;
-                for(${particle_id_t} iparticle = start; iparticle < end; iparticle++)
-                    nqbx_centers += global_qbx_center_weight[iparticle];
+        @memoize_in(actx, (
+            QBXCostModel.count_global_qbx_centers_knl,
+            box_id_dtype, particle_id_dtype))
+        def get_kernel():
+            return ElementwiseKernel(
+                actx.context,
+                Template(r"""
+                    ${particle_id_t} *nqbx_centers_itgt_box,
+                    ${particle_id_t} *global_qbx_center_weight,
+                    ${box_id_t} *target_boxes,
+                    ${particle_id_t} *box_target_starts,
+                    ${particle_id_t} *box_target_counts_nonchild
+                """).render(
+                    box_id_t=dtype_to_ctype(box_id_dtype),
+                    particle_id_t=dtype_to_ctype(particle_id_dtype)
+                ),
+                Template(r"""
+                    ${box_id_t} global_box_id = target_boxes[i];
+                    ${particle_id_t} start = box_target_starts[global_box_id];
+                    ${particle_id_t} end = start + box_target_counts_nonchild[
+                        global_box_id
+                    ];
 
-                nqbx_centers_itgt_box[i] = nqbx_centers;
-            """).render(
-                box_id_t=dtype_to_ctype(box_id_dtype),
-                particle_id_t=dtype_to_ctype(particle_id_dtype)
-            ),
-            name="count_global_qbx_centers"
-        )
+                    ${particle_id_t} nqbx_centers = 0;
+                    for(${particle_id_t} iparticle = start; iparticle < end; iparticle++)
+                        nqbx_centers += global_qbx_center_weight[iparticle];
 
-    def get_nqbx_centers_per_tgt_box(self, queue, geo_data, weights=None):
+                    nqbx_centers_itgt_box[i] = nqbx_centers;
+                """).render(        # noqa: E501
+                    box_id_t=dtype_to_ctype(box_id_dtype),
+                    particle_id_t=dtype_to_ctype(particle_id_dtype)
+                ),
+                name="count_global_qbx_centers"
+            )
+
+        return get_kernel()
+
+    def get_nqbx_centers_per_tgt_box(self,
+            actx: PyOpenCLArrayContext, geo_data, weights=None):
         """
-        :arg queue: a :class:`pyopencl.CommandQueue` object.
         :arg geo_data: a :class:`pytential.qbx.geometry.QBXFMMGeometryData` object.
         :arg weights: a :class:`pyopencl.array.Array` of shape ``(ncenters,)`` with
             particle_id_dtype, the weight of each center in user order.
@@ -663,15 +683,15 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
         ncenters = geo_data.ncenters
 
         # Build a mask (weight) of whether a target is a global qbx center
-        global_qbx_centers_tree_order = take(
-            tree.sorted_target_ids, global_qbx_centers, queue=queue
-        )
-        global_qbx_center_weight = cl.array.zeros(
-            queue, tree.ntargets, dtype=tree.particle_id_dtype
+        global_qbx_centers_tree_order = (
+            tree.sorted_target_ids[global_qbx_centers])
+
+        global_qbx_center_weight = actx.zeros(
+            tree.ntargets, dtype=tree.particle_id_dtype
         )
 
         self._fill_array_with_index(
-            queue, global_qbx_center_weight, global_qbx_centers_tree_order, 1
+            actx, global_qbx_center_weight, global_qbx_centers_tree_order, 1
         )
 
         if weights is not None:
@@ -681,12 +701,12 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
         # Each target box enumerate its target list and add the weight of global
         # qbx centers
         ntarget_boxes = len(traversal.target_boxes)
-        nqbx_centers_itgt_box = cl.array.empty(
-            queue, ntarget_boxes, dtype=tree.particle_id_dtype
+        nqbx_centers_itgt_box = actx.zeros(
+            ntarget_boxes, dtype=tree.particle_id_dtype
         )
 
         count_global_qbx_centers_knl = self.count_global_qbx_centers_knl(
-            queue.context, tree.box_id_dtype, tree.particle_id_dtype
+            actx, tree.box_id_dtype, tree.particle_id_dtype
         )
         count_global_qbx_centers_knl(
             nqbx_centers_itgt_box,
@@ -694,61 +714,71 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
             traversal.target_boxes,
             tree.box_target_starts,
             tree.box_target_counts_nonchild,
-            queue=queue
+            queue=actx.queue
         )
 
         return nqbx_centers_itgt_box
 
-    def process_form_qbxl(self, queue, geo_data, p2qbxl_cost,
+    def process_form_qbxl(self, actx: PyOpenCLArrayContext,
+                          geo_data, p2qbxl_cost,
                           ndirect_sources_per_target_box):
-        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(queue, geo_data)
+        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(actx, geo_data)
 
         return (nqbx_centers_itgt_box
                 * ndirect_sources_per_target_box
                 * p2qbxl_cost)
 
-    @memoize_method
-    def process_m2qbxl_knl(self, context, box_id_dtype, particle_id_dtype):
-        return ElementwiseKernel(
-            context,
-            Template(r"""
-                ${box_id_t} *idx_to_itgt_box,
-                ${particle_id_t} *nqbx_centers_itgt_box,
-                ${box_id_t} *ssn_starts,
-                double *nm2qbxl,
-                double m2qbxl_cost
-            """).render(
-                box_id_t=dtype_to_ctype(box_id_dtype),
-                particle_id_t=dtype_to_ctype(particle_id_dtype)
-            ),
-            Template(r"""
-                // get the index of current box in target_boxes
-                ${box_id_t} itgt_box = idx_to_itgt_box[i];
-                // get the number of expansion centers in current box
-                ${particle_id_t} nqbx_centers = nqbx_centers_itgt_box[itgt_box];
-                // get the number of list 3 boxes of the current box in a particular
-                // level
-                ${box_id_t} nlist3_boxes = ssn_starts[i + 1] - ssn_starts[i];
-                // calculate the cost
-                nm2qbxl[itgt_box] += (nqbx_centers * nlist3_boxes * m2qbxl_cost);
-            """).render(
-                box_id_t=dtype_to_ctype(box_id_dtype),
-                particle_id_t=dtype_to_ctype(particle_id_dtype)
-            ),
-            name="process_m2qbxl"
-        )
+    def process_m2qbxl_knl(self,
+            actx: PyOpenCLArrayContext, box_id_dtype, particle_id_dtype):
+        from pyopencl.elementwise import ElementwiseKernel
+        from pyopencl.tools import dtype_to_ctype
 
-    def process_m2qbxl(self, queue, geo_data, m2qbxl_cost):
+        @memoize_in(actx, (
+            QBXCostModel.process_m2qbxl_knl,
+            box_id_dtype, particle_id_dtype))
+        def get_kernel():
+            return ElementwiseKernel(
+                actx.context,
+                Template(r"""
+                    ${box_id_t} *idx_to_itgt_box,
+                    ${particle_id_t} *nqbx_centers_itgt_box,
+                    ${box_id_t} *ssn_starts,
+                    double *nm2qbxl,
+                    double m2qbxl_cost
+                """).render(
+                    box_id_t=dtype_to_ctype(box_id_dtype),
+                    particle_id_t=dtype_to_ctype(particle_id_dtype)
+                ),
+                Template(r"""
+                    // get the index of current box in target_boxes
+                    ${box_id_t} itgt_box = idx_to_itgt_box[i];
+                    // get the number of expansion centers in current box
+                    ${particle_id_t} nqbx_centers = nqbx_centers_itgt_box[itgt_box];
+                    // get the number of list 3 boxes of the current box in a particular
+                    // level
+                    ${box_id_t} nlist3_boxes = ssn_starts[i + 1] - ssn_starts[i];
+                    // calculate the cost
+                    nm2qbxl[itgt_box] += (nqbx_centers * nlist3_boxes * m2qbxl_cost);
+                """).render(
+                    box_id_t=dtype_to_ctype(box_id_dtype),
+                    particle_id_t=dtype_to_ctype(particle_id_dtype)
+                ),
+                name="process_m2qbxl"
+            )
+
+        return get_kernel()
+
+    def process_m2qbxl(self, actx: PyOpenCLArrayContext, geo_data, m2qbxl_cost):
         tree = geo_data.tree()
         traversal = geo_data.traversal()
         ntarget_boxes = len(traversal.target_boxes)
-        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(queue, geo_data)
+        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(actx, geo_data)
 
         process_m2qbxl_knl = self.process_m2qbxl_knl(
-            queue.context, tree.box_id_dtype, tree.particle_id_dtype
+            actx, tree.box_id_dtype, tree.particle_id_dtype
         )
 
-        nm2qbxl = cl.array.zeros(queue, ntarget_boxes, dtype=np.float64)
+        nm2qbxl = actx.zeros(ntarget_boxes, dtype=np.float64)
 
         for isrc_level, ssn in enumerate(traversal.from_sep_smaller_by_level):
             process_m2qbxl_knl(
@@ -756,45 +786,43 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
                 nqbx_centers_itgt_box,
                 ssn.starts,
                 nm2qbxl,
-                m2qbxl_cost[isrc_level].get(queue).reshape(-1)[0],
-                queue=queue
+                m2qbxl_cost[isrc_level].reshape(-1)[0],
+                queue=actx.queue
             )
 
         return nm2qbxl
 
-    def process_l2qbxl(self, queue, geo_data, l2qbxl_cost):
+    def process_l2qbxl(self, actx: PyOpenCLArrayContext, geo_data, l2qbxl_cost):
         tree = geo_data.tree()
         traversal = geo_data.traversal()
-        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(queue, geo_data)
+        nqbx_centers_itgt_box = self.get_nqbx_centers_per_tgt_box(actx, geo_data)
 
         # l2qbxl_cost_itgt_box = l2qbxl_cost[tree.box_levels[traversal.target_boxes]]
-        l2qbxl_cost_itgt_box = take(
-            l2qbxl_cost,
-            take(tree.box_levels, traversal.target_boxes, queue=queue),
-            queue=queue
-        )
+        tgt_box_levels = tree.box_levels[traversal.target_boxes]
+        l2qbxl_cost_itgt_box = l2qbxl_cost[tgt_box_levels]
 
         return nqbx_centers_itgt_box * l2qbxl_cost_itgt_box
 
-    def process_eval_qbxl(self, queue, geo_data, qbxl2p_cost):
+    def process_eval_qbxl(self, actx: PyOpenCLArrayContext, geo_data, qbxl2p_cost):
         center_to_targets_starts = geo_data.center_to_tree_targets().starts
-        center_to_targets_starts = center_to_targets_starts.with_queue(queue)
+        center_to_targets_starts = actx.thaw(center_to_targets_starts)
         weights = center_to_targets_starts[1:] - center_to_targets_starts[:-1]
 
         nqbx_targets_itgt_box = self.get_nqbx_centers_per_tgt_box(
-            queue, geo_data, weights=weights
+            actx, geo_data, weights=weights
         )
 
         return nqbx_targets_itgt_box * qbxl2p_cost
 
-    def process_eval_target_specific_qbxl(self, queue, geo_data, p2p_tsqbx_cost,
+    def process_eval_target_specific_qbxl(self, actx: PyOpenCLArrayContext,
+                                          geo_data, p2p_tsqbx_cost,
                                           ndirect_sources_per_target_box):
         center_to_targets_starts = geo_data.center_to_tree_targets().starts
-        center_to_targets_starts = center_to_targets_starts.with_queue(queue)
+        center_to_targets_starts = actx.thaw(center_to_targets_starts)
         weights = center_to_targets_starts[1:] - center_to_targets_starts[:-1]
 
         nqbx_targets_itgt_box = self.get_nqbx_centers_per_tgt_box(
-            queue, geo_data, weights=weights
+            actx, geo_data, weights=weights
         )
 
         return (nqbx_targets_itgt_box
@@ -802,13 +830,9 @@ class QBXCostModel(AbstractQBXCostModel, FMMCostModel):
                 * p2p_tsqbx_cost)
 
     def qbx_cost_factors_for_kernels_from_model(
-            self, queue, nlevels, xlat_cost, context):
-        if not isinstance(queue, cl.CommandQueue):
-            raise TypeError(
-                "An OpenCL command queue must be supplied for cost model")
-
+            self, actx: PyOpenCLArrayContext, nlevels, xlat_cost, context):
         return AbstractQBXCostModel.qbx_cost_factors_for_kernels_from_model(
-            self, queue, nlevels, xlat_cost, context
+            self, actx, nlevels, xlat_cost, context
         )
 
 
@@ -825,7 +849,7 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
         """
         _PythonFMMCostModel.__init__(self, translation_cost_model_factory)
 
-    def process_form_qbxl(self, queue, geo_data, p2qbxl_cost,
+    def process_form_qbxl(self, actx, geo_data, p2qbxl_cost,
                           ndirect_sources_per_target_box):
         global_qbx_centers = geo_data.global_qbx_centers()
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
@@ -839,7 +863,7 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
 
         return np2qbxl * p2qbxl_cost
 
-    def process_eval_target_specific_qbxl(self, queue, geo_data, p2p_tsqbx_cost,
+    def process_eval_target_specific_qbxl(self, actx, geo_data, p2p_tsqbx_cost,
                                           ndirect_sources_per_target_box):
         center_to_targets_starts = geo_data.center_to_tree_targets().starts
         global_qbx_centers = geo_data.global_qbx_centers()
@@ -856,7 +880,7 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
 
         return neval_tsqbx * p2p_tsqbx_cost
 
-    def process_m2qbxl(self, queue, geo_data, m2qbxl_cost):
+    def process_m2qbxl(self, actx, geo_data, m2qbxl_cost):
         traversal = geo_data.traversal()
         global_qbx_centers = geo_data.global_qbx_centers()
         qbx_center_to_target_box = geo_data.qbx_center_to_target_box()
@@ -888,7 +912,7 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
 
         return nm2qbxl
 
-    def process_l2qbxl(self, queue, geo_data, l2qbxl_cost):
+    def process_l2qbxl(self, actx, geo_data, l2qbxl_cost):
         tree = geo_data.tree()
         traversal = geo_data.traversal()
         global_qbx_centers = geo_data.global_qbx_centers()
@@ -904,7 +928,7 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
 
         return nl2qbxl
 
-    def process_eval_qbxl(self, queue, geo_data, qbxl2p_cost):
+    def process_eval_qbxl(self, actx, geo_data, qbxl2p_cost):
         traversal = geo_data.traversal()
         global_qbx_centers = geo_data.global_qbx_centers()
         center_to_targets_starts = geo_data.center_to_tree_targets().starts
@@ -920,7 +944,7 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
 
         return neval_qbxl * qbxl2p_cost
 
-    def qbx_cost_per_box(self, queue, geo_data, kernel, kernel_arguments,
+    def qbx_cost_per_box(self, actx, geo_data, kernel, kernel_arguments,
                          calibration_params):
         """This function transfers *geo_data* to host if necessary
         """
@@ -932,10 +956,10 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
             geo_data = ToHostTransferredGeoDataWrapper(geo_data)
 
         return AbstractQBXCostModel.qbx_cost_per_box(
-            self, queue, geo_data, kernel, kernel_arguments, calibration_params
+            self, actx, geo_data, kernel, kernel_arguments, calibration_params
         )
 
-    def qbx_cost_per_stage(self, queue, geo_data, kernel, kernel_arguments,
+    def qbx_cost_per_stage(self, actx, geo_data, kernel, kernel_arguments,
                            calibration_params):
         """This function additionally transfers geo_data to host if necessary
         """
@@ -947,11 +971,11 @@ class _PythonQBXCostModel(AbstractQBXCostModel, _PythonFMMCostModel):
             geo_data = ToHostTransferredGeoDataWrapper(geo_data)
 
         return AbstractQBXCostModel.qbx_cost_per_stage(
-            self, queue, geo_data, kernel, kernel_arguments, calibration_params
+            self, actx, geo_data, kernel, kernel_arguments, calibration_params
         )
 
     def qbx_cost_factors_for_kernels_from_model(
-            self, queue, nlevels, xlat_cost, context):
+            self, actx, nlevels, xlat_cost, context):
         return AbstractQBXCostModel.qbx_cost_factors_for_kernels_from_model(
             self, None, nlevels, xlat_cost, context
         )
