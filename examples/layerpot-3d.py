@@ -1,10 +1,10 @@
 import numpy as np
 
-from meshmode.array_context import PyOpenCLArrayContext
 from sumpy.kernel import HelmholtzKernel, LaplaceKernel, one_kernel_2d  # noqa
 from sumpy.visualization import FieldPlotter
 
 from pytential import bind, sym
+from pytential.array_context import PyOpenCLArrayContext
 
 
 target_order = 5
