@@ -54,12 +54,16 @@ def prepare_expr(places, exprs, auto_where=None):
     return _prepare_expr(places, exprs, auto_where=auto_where)
 
 
-def prepare_proxy_expr(places, exprs, auto_where=None):
+def prepare_proxy_expr(
+        places, exprs,
+        auto_where=None,
+        remove_transforms: bool = True):
     def _prepare_expr(expr):
         # remove all diagonal / non-operator terms in the expression
         expr = IntGTermCollector()(expr)
         # ensure all IntGs remove all the kernel derivatives
-        expr = KernelTransformationRemover()(expr)
+        if remove_transforms:
+            expr = KernelTransformationRemover()(expr)
         # ensure all IntGs have their source and targets set
         expr = DOFDescriptorReplacer(auto_where[0], auto_where[1])(expr)
 

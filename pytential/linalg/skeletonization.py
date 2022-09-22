@@ -417,6 +417,7 @@ def make_skeletonization_wrangler(
 
         # internal
         _weighted_proxy: Optional[Union[bool, Tuple[bool, bool]]] = None,
+        _remove_source_transforms: bool = False,
         _proxy_source_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
         _proxy_target_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
         _neighbor_cluster_builder: Optional[Callable[..., np.ndarray]] = None,
@@ -443,9 +444,13 @@ def make_skeletonization_wrangler(
 
     exprs = prepare_expr(places, exprs, auto_where)
     source_proxy_exprs = prepare_proxy_expr(
-            places, exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET))
+            places, exprs, (auto_where[0], PROXY_SKELETONIZATION_TARGET),
+            remove_transforms=_remove_source_transforms)
     target_proxy_exprs = prepare_proxy_expr(
-            places, exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]))
+            places, exprs, (PROXY_SKELETONIZATION_SOURCE, auto_where[1]),
+            # NOTE: transforms are unconditionally removed here because the
+            # source would be the proxies, where we do not have normals, etc.
+            remove_transforms=True)
 
     # }}}
 
@@ -455,7 +460,7 @@ def make_skeletonization_wrangler(
         weighted_sources = weighted_targets = True
     elif isinstance(_weighted_proxy, bool):
         weighted_sources = weighted_targets = _weighted_proxy
-    elif isinstance(_weighted_proxy, tuple):
+    elif isinstance(_weighted_proxy, tuple) and len(_weighted_proxy) == 2:
         weighted_sources, weighted_targets = _weighted_proxy
     else:
         raise ValueError(f"unknown value for weighting: '{_weighted_proxy}'")
@@ -653,9 +658,9 @@ def _skeletonize_block_by_proxy_with_mats(
 
         if __debug__:
             isfinite = np.isfinite(tgt_mat)
-            assert np.all(isfinite), np.where(isfinite)
+            assert np.all(isfinite), np.where(~isfinite)
             isfinite = np.isfinite(src_mat)
-            assert np.all(isfinite), np.where(isfinite)
+            assert np.all(isfinite), np.where(~isfinite)
 
         # skeletonize target points
         k, idx, interp = interp_decomp(tgt_mat.T, rank=k, eps=id_eps)
