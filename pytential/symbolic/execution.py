@@ -395,28 +395,13 @@ class EvaluationMapperBase(PymbolicEvaluationMapper[ArrayOrContainerOrScalar]):
 
 class EvaluationMapper(EvaluationMapperBase):
 
-    def __init__(self, bound_expr, actx, context=None,
-            timing_data=None):
-        EvaluationMapperBase.__init__(self, bound_expr, actx, context)
-        self.timing_data = timing_data
+    def __init__(self, bound_expr, actx, context=None):
+        super().__init__(bound_expr, actx, context)
 
     def exec_compute_potential_insn(
             self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         source = bound_expr.places.get_geometry(insn.source.geometry)
-
-        return_timing_data = self.timing_data is not None
-
-        result, timing_data = (
-                source.exec_compute_potential_insn(
-                    actx, insn, bound_expr, evaluate, return_timing_data))
-
-        if return_timing_data:
-            # The compiler ensures this.
-            assert insn not in self.timing_data
-
-            self.timing_data[insn] = timing_data
-
-        return result
+        return source.exec_compute_potential_insn(actx, insn, bound_expr, evaluate)
 
 # }}}
 
@@ -470,16 +455,12 @@ class CostModelMapper(EvaluationMapperBase):
         else:
             calibration_params = self.kernel_to_calibration_params[knls]
 
-        result, (cost_model_result, metadata) = \
-            source.cost_model_compute_potential_insn(
-                actx, insn, bound_expr, evaluate, calibration_params,
-                self.per_box)
+        result = source.cost_model_compute_potential_insn(
+            actx, insn, bound_expr, evaluate, calibration_params,
+            self.per_box)
 
         # The compiler ensures this.
         assert insn not in self.modeled_cost
-
-        self.modeled_cost[insn] = cost_model_result
-        self.metadata[insn] = metadata
 
         return result
 
@@ -876,14 +857,12 @@ class BoundExpression(Generic[OperandTc]):
         return MatVecOp(self, actx,
                 arg_name, dtype, total_dofs, discrs, starts_and_ends, extra_args)
 
-    def eval(self, context=None, timing_data=None,
+    def eval(self,
+            context: dict[str, Any] | None = None,
             array_context: PyOpenCLArrayContext | None = None):
         """Evaluate the expression in *self*, using the
         input variables given in the dictionary *context*.
 
-        :arg timing_data: A dictionary into which timing
-            data will be inserted during evaluation.
-            (experimental)
         :arg array_context: only needs to be supplied if no instances of
             :class:`~meshmode.dof_array.DOFArray` with a
             :class:`~arraycontext.PyOpenCLArrayContext`
@@ -915,8 +894,7 @@ class BoundExpression(Generic[OperandTc]):
 
                 return value
 
-        exec_mapper = EvaluationMapper(
-                self, array_context, context, timing_data=timing_data)
+        exec_mapper = EvaluationMapper(self, array_context, context)
         return execute(self.code, exec_mapper)
 
     @overload

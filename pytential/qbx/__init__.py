@@ -39,7 +39,7 @@ from arraycontext import (
 )
 from meshmode.discretization import Discretization
 from meshmode.dof_array import DOFArray
-from pytools import memoize_in, memoize_method, obj_array, single_valued
+from pytools import memoize_in, memoize_method, single_valued
 from sumpy.expansion import (
     DefaultExpansionFactory as DefaultExpansionFactoryBase,
     ExpansionFactoryBase,
@@ -509,13 +509,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 insn: ComputePotential,
                 bound_expr: BoundExpression[Operand],
                 evaluate: Callable[[ArithmeticExpression], ArrayOrArithContainer],
-                return_timing_data: bool
             ):
         extra_args = {}
 
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
-            extra_args["return_timing_data"] = return_timing_data
 
         else:
             func = self.exec_compute_potential_insn_fmm
@@ -524,11 +522,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     actx, wrangler, strengths, geo_data, kernel, kernel_arguments):
                 del geo_data, kernel, kernel_arguments
                 from pytential.qbx.fmm import drive_fmm
-                if return_timing_data:
-                    timing_data = {}
-                else:
-                    timing_data = None
-                return drive_fmm(actx, wrangler, strengths, timing_data), timing_data
+                return drive_fmm(actx, wrangler, strengths)
 
             extra_args["fmm_driver"] = drive_fmm
 
@@ -557,25 +551,15 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         def drive_cost_model(
                 actx, wrangler, strengths, geo_data, kernel, kernel_arguments):
-
-            if per_box:
-                cost_model_result, metadata = self.cost_model.qbx_cost_per_box(
-                    actx, geo_data, kernel, kernel_arguments,
-                    calibration_params
-                )
-            else:
-                cost_model_result, metadata = self.cost_model.qbx_cost_per_stage(
-                    actx, geo_data, kernel, kernel_arguments,
-                    calibration_params
-                )
-
             from functools import partial
+
+            from pytools import obj_array
 
             return (
                     obj_array.vectorize(
                         partial(wrangler.finalize_potentials, actx),
-                        wrangler.full_output_zeros(actx)),
-                    (cost_model_result, metadata))
+                        wrangler.full_output_zeros(actx))
+                    )
 
         return self._dispatch_compute_potential_insn(
             actx, insn, bound_expr, evaluate,
@@ -685,11 +669,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """
         :arg fmm_driver: A function that accepts four arguments:
             *wrangler*, *strength*, *geo_data*, *kernel*, *kernel_arguments*
-        :returns: a tuple ``(assignments, extra_outputs)``, where *assignments*
-            is a list of tuples containing pairs ``(name, value)`` representing
-            assignments to be performed in the evaluation context.
-            *extra_outputs* is data that *fmm_driver* may return
-            (such as timing data), passed through unmodified.
+        :returns: a list of assignments containing pairs ``(name, value)``
+            representing assignments to be performed in the evaluation context.
         """
         assert self.fmm_level_to_order is not False
 
@@ -755,7 +736,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         # Execute global QBX.
-        all_potentials_on_every_target, extra_outputs = (
+        all_potentials_on_every_target = (
                 fmm_driver(
                     actx, wrangler, flat_strengths, geo_data,
                     base_kernel, kernel_extra_kwargs))
@@ -778,7 +759,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             results.append((o.name, result))
 
-        return results, extra_outputs
+        return results
 
     # }}}
 
@@ -855,20 +836,10 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 actx: PyOpenCLArrayContext,
                 insn: ComputePotential,
                 bound_expr: BoundExpression[Operand],
-                evaluate: Callable[[ArithmeticExpression], ArrayOrArithContainer],
-                return_timing_data: bool):
+                evaluate: Callable[[ArithmeticExpression], ArrayOrArithContainer]):
         from meshmode.discretization import Discretization
 
         from pytential import bind, sym
-
-        if return_timing_data:
-            from warnings import warn
-
-            from sumpy.fmm import UnableToCollectTimingData
-            warn(
-                    "Timing data collection not supported.",
-                    category=UnableToCollectTimingData,
-                    stacklevel=2)
 
         # {{{ evaluate and flatten inputs
 
@@ -1063,8 +1034,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        timing_data = {}
-        return results, timing_data
+        return results
 
     # }}}
 
