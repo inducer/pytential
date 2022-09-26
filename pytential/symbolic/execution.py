@@ -23,26 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 from typing import Any, Dict, Hashable, List, Optional, Sequence, Tuple, Union
 
-from pymbolic.mapper.evaluator import (
-        EvaluationMapper as PymbolicEvaluationMapper)
 import numpy as np
-
 from arraycontext import PyOpenCLArrayContext
 from meshmode.dof_array import DOFArray
-
+from pymbolic.mapper.evaluator import EvaluationMapper as PymbolicEvaluationMapper
 from pytools import memoize_in, memoize_method
-from pytential.qbx.cost import AbstractQBXCostModel
-from pytential.symbolic.compiler import Code, Statement, Assign, ComputePotential
 
 from pytential import sym
 from pytential.collection import AutoWhereLike, GeometryCollection
+from pytential.qbx.cost import AbstractQBXCostModel
+from pytential.symbolic.compiler import Code, Statement, Assign, ComputePotential
 from pytential.symbolic.dof_desc import (
         DOFDescriptor, DOFDescriptorLike,
         _UNNAMED_SOURCE, _UNNAMED_TARGET)
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -333,28 +330,13 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
 class EvaluationMapper(EvaluationMapperBase):
 
-    def __init__(self, bound_expr, actx, context=None,
-            timing_data=None):
-        EvaluationMapperBase.__init__(self, bound_expr, actx, context)
-        self.timing_data = timing_data
+    def __init__(self, bound_expr, actx, context=None):
+        super().__init__(bound_expr, actx, context)
 
     def exec_compute_potential_insn(
             self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         source = bound_expr.places.get_geometry(insn.source.geometry)
-
-        return_timing_data = self.timing_data is not None
-
-        result, timing_data = (
-                source.exec_compute_potential_insn(
-                    actx, insn, bound_expr, evaluate, return_timing_data))
-
-        if return_timing_data:
-            # The compiler ensures this.
-            assert insn not in self.timing_data
-
-            self.timing_data[insn] = timing_data
-
-        return result
+        return source.exec_compute_potential_insn(actx, insn, bound_expr, evaluate)
 
 # }}}
 
@@ -408,16 +390,12 @@ class CostModelMapper(EvaluationMapperBase):
         else:
             calibration_params = self.kernel_to_calibration_params[knls]
 
-        result, (cost_model_result, metadata) = \
-            source.cost_model_compute_potential_insn(
-                actx, insn, bound_expr, evaluate, calibration_params,
-                self.per_box)
+        result = source.cost_model_compute_potential_insn(
+            actx, insn, bound_expr, evaluate, calibration_params,
+            self.per_box)
 
         # The compiler ensures this.
         assert insn not in self.modeled_cost
-
-        self.modeled_cost[insn] = cost_model_result
-        self.metadata[insn] = metadata
 
         return result
 
@@ -594,9 +572,7 @@ def _prepare_expr(places, expr, auto_where=None):
     """
 
     from pytential.source import LayerPotentialSourceBase
-    from pytential.symbolic.mappers import (
-            ToTargetTagger,
-            DerivativeBinder)
+    from pytential.symbolic.mappers import DerivativeBinder, ToTargetTagger
 
     auto_source, auto_target = _prepare_auto_where(auto_where, places=places)
     expr = ToTargetTagger(auto_source, auto_target)(expr)
@@ -810,14 +786,12 @@ class BoundExpression:
         return MatVecOp(self, actx,
                 arg_name, dtype, total_dofs, discrs, starts_and_ends, extra_args)
 
-    def eval(self, context=None, timing_data=None,
+    def eval(self,
+            context: Optional[Dict[str, Any]] = None,
             array_context: Optional[PyOpenCLArrayContext] = None):
         """Evaluate the expression in *self*, using the
         input variables given in the dictionary *context*.
 
-        :arg timing_data: A dictionary into which timing
-            data will be inserted during evaluation.
-            (experimental)
         :arg array_context: only needs to be supplied if no instances of
             :class:`~meshmode.dof_array.DOFArray` with a
             :class:`~arraycontext.PyOpenCLArrayContext`
@@ -849,8 +823,7 @@ class BoundExpression:
 
                 return value
 
-        exec_mapper = EvaluationMapper(
-                self, array_context, context, timing_data=timing_data)
+        exec_mapper = EvaluationMapper(self, array_context, context)
         return execute(self.code, exec_mapper)
 
     def __call__(self, *args, **kwargs):
@@ -910,6 +883,7 @@ def bind(places, expr, auto_where=None):
 
 def _bmat(blocks, dtypes):
     from pytools import single_valued
+
     from pytential.symbolic.matrix import is_zero
 
     nrows = blocks.shape[0]
