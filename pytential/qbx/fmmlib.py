@@ -33,7 +33,6 @@ from boxtree.pyfmmlib_integration import (
     FMMLibTreeIndependentDataForWrangler,
     Kernel,
 )
-from boxtree.timing import return_timing_data
 from pytools import log_process, memoize_method
 from sumpy.kernel import (
     AxisTargetDerivative,
@@ -293,7 +292,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     # {{{ p2qbxl
 
     @log_process(logger)
-    @return_timing_data
     def form_global_qbx_locals(self, actx: PyOpenCLArrayContext, src_weight_vecs):
         src_weights, = src_weight_vecs
         if self.tree_indep.using_tsqbx:
@@ -350,7 +348,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     # {{{ m2qbxl
 
     @log_process(logger)
-    @return_timing_data
     def translate_box_multipoles_to_qbx_local(self, actx, multipole_exps):
         qbx_exps = self.qbx_local_expansion_zeros()
 
@@ -463,7 +460,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     # }}}
 
     @log_process(logger)
-    @return_timing_data
     def translate_box_local_to_qbx_local(self, actx, local_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
@@ -556,7 +552,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return qbx_expansions
 
     @log_process(logger)
-    @return_timing_data
     def eval_qbx_expansions(self, actx, qbx_expansions):
         output = self.full_output_zeros(actx)
 
@@ -591,7 +586,6 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return output
 
     @log_process(logger)
-    @return_timing_data
     def eval_target_specific_qbx_locals(self, actx, src_weight_vecs):
         src_weights, = src_weight_vecs
         if not self.tree_indep.using_tsqbx:
