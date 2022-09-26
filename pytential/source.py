@@ -28,7 +28,6 @@ import numpy as np
 from arraycontext import flatten, unflatten
 from meshmode.dof_array import DOFArray
 from pytools import T, memoize_in
-from sumpy.fmm import UnableToCollectTimingData
 from sumpy.kernel import Kernel
 from sumpy.p2p import P2PBase
 
@@ -211,15 +210,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                                           evaluate, costs):
         raise NotImplementedError
 
-    def exec_compute_potential_insn(self, actx, insn, bound_expr, evaluate,
-            return_timing_data):
-        if return_timing_data:
-            from warnings import warn
-            warn(
-                   "Timing data collection not supported.",
-                   category=UnableToCollectTimingData,
-                   stacklevel=2)
-
+    def exec_compute_potential_insn(self, actx, insn, bound_expr, evaluate):
         p2p = None
 
         kernel_args = evaluate_kernel_arguments(
@@ -250,8 +241,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
             results.append((o.name, result))
 
-        timing_data = {}
-        return results, timing_data
+        return results
 
 # }}}
 

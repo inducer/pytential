@@ -350,11 +350,7 @@ def test_timing_data_gathering(ctx_factory):
     sym_op_S = sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
 
     op_S = bind(places, sym_op_S)
-
-    timing_data = {}
-    op_S.eval({"sigma": sigma}, timing_data=timing_data, array_context=actx)
-    assert timing_data
-    logging.info(timing_data)
+    op_S.eval({"sigma": sigma}, array_context=actx)
 
 # }}}
 
@@ -387,11 +383,9 @@ def test_cost_model(actx_factory, dim, use_target_specific_qbx, per_box):
     op_S = bind(places, sym_op_S)
 
     if per_box:
-        cost_S, _ = op_S.cost_per_box("constant_one", sigma=sigma)
+        _cost_S, _ = op_S.cost_per_box("constant_one", sigma=sigma)
     else:
-        cost_S, _ = op_S.cost_per_stage("constant_one", sigma=sigma)
-
-    assert len(cost_S) == 1
+        _cost_S, _ = op_S.cost_per_stage("constant_one", sigma=sigma)
 
     sym_op_S_plus_D = (
             sym.S(k_sym, sigma_sym, qbx_forced_limit=+1)
@@ -399,15 +393,9 @@ def test_cost_model(actx_factory, dim, use_target_specific_qbx, per_box):
     op_S_plus_D = bind(places, sym_op_S_plus_D)
 
     if per_box:
-        cost_S_plus_D, _ = op_S_plus_D.cost_per_box(
-            "constant_one", sigma=sigma
-        )
+        _cost_S_plus_D, _ = op_S_plus_D.cost_per_box("constant_one", sigma=sigma)
     else:
-        cost_S_plus_D, _ = op_S_plus_D.cost_per_stage(
-            "constant_one", sigma=sigma
-        )
-
-    assert len(cost_S_plus_D) == 2
+        _cost_S_plus_D, _ = op_S_plus_D.cost_per_stage("constant_one", sigma=sigma)
 
 # }}}
 
@@ -439,7 +427,6 @@ def test_cost_model_metadata_gathering(actx_factory):
     _, metadata = op_S.cost_per_stage(
         "constant_one", sigma=sigma, k=k, return_metadata=True
     )
-    metadata, = metadata.values()
 
     geo_data = lpot_source.qbx_fmm_geometry_data(
             places,
@@ -447,6 +434,9 @@ def test_cost_model_metadata_gathering(actx_factory):
             target_discrs_and_qbx_sides=((density_discr, 1),))
 
     tree = geo_data.tree()
+
+    if not metadata:
+        return
 
     assert metadata["p_qbx"] == QBX_ORDER
     assert metadata["nlevels"] == tree.nlevels
@@ -504,10 +494,9 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
     def form_global_qbx_locals(self, actx, src_weight_vecs):
         src_weights, = src_weight_vecs
         local_exps = self.qbx_local_expansion_zeros()
-        ops = 0
 
         if self.using_tsqbx:
-            return local_exps, self.timing_future(ops)
+            return local_exps
 
         global_qbx_centers = self.geo_data.global_qbx_centers()
         qbx_center_to_target_box = self.geo_data.qbx_center_to_target_box()
@@ -521,16 +510,14 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
             src_sum = 0
             for src_ibox in self.trav.neighbor_source_boxes_lists[start:end]:
                 src_pslice = self._get_source_slice(src_ibox)
-                ops += src_pslice.stop - src_pslice.start
                 src_sum += np.sum(src_weights[src_pslice])
 
             local_exps[tgt_icenter] = src_sum
 
-        return local_exps, self.timing_future(ops)
+        return local_exps
 
     def translate_box_multipoles_to_qbx_local(self, actx, multipole_exps):
         local_exps = self.qbx_local_expansion_zeros()
-        ops = 0
 
         global_qbx_centers = self.geo_data.global_qbx_centers()
 
@@ -550,13 +537,11 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
                 for src_ibox in ssn.lists[start:stop]:
                     local_exps[tgt_icenter] += multipole_exps[src_ibox]
-                    ops += 1
 
-        return local_exps, self.timing_future(ops)
+        return local_exps
 
     def translate_box_local_to_qbx_local(self, actx, local_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
-        ops = 0
 
         global_qbx_centers = self.geo_data.global_qbx_centers()
         qbx_center_to_target_box = self.geo_data.qbx_center_to_target_box()
@@ -565,13 +550,11 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
             isrc_box = qbx_center_to_target_box[tgt_icenter]
             src_ibox = self.trav.target_boxes[isrc_box]
             qbx_expansions[tgt_icenter] += local_exps[src_ibox]
-            ops += 1
 
-        return qbx_expansions, self.timing_future(ops)
+        return qbx_expansions
 
     def eval_qbx_expansions(self, actx, qbx_expansions):
         output = self.full_output_zeros(qbx_expansions)
-        ops = 0
 
         global_qbx_centers = self.geo_data.global_qbx_centers()
         center_to_tree_targets = self.geo_data.center_to_tree_targets()
@@ -582,17 +565,15 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
             for icenter_tgt in range(start, end):
                 center_itgt = center_to_tree_targets.lists[icenter_tgt]
                 output[0][center_itgt] += qbx_expansions[src_icenter]
-                ops += 1
 
-        return output, self.timing_future(ops)
+        return output
 
     def eval_target_specific_qbx_locals(self, actx, src_weight_vecs):
         src_weights, = src_weight_vecs
         pot = self.full_output_zeros(src_weights)
-        ops = 0
 
         if not self.using_tsqbx:
-            return pot, self.timing_future(ops)
+            return pot
 
         global_qbx_centers = self.geo_data.global_qbx_centers()
         center_to_tree_targets = self.geo_data.center_to_tree_targets()
@@ -633,9 +614,7 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
                 ctr_itgt = center_to_tree_targets.lists[ictr_tgt]
                 pot[0][ctr_itgt] = src_sum
 
-            ops += (ictr_tgt_end - ictr_tgt_start) * nsrcs
-
-        return pot, self.timing_future(ops)
+        return pot
 
 # }}}
 
@@ -725,7 +704,6 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
     sigma = get_density(actx, density_discr)
 
     modeled_time, _ = op_S.cost_per_stage("constant_one", sigma=sigma)
-    modeled_time, = modeled_time.values()
 
     # Run FMM with ConstantOneWrangler. This can't be done with pytential's
     # high-level interface, so call the FMM driver directly.
@@ -744,12 +722,15 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
     src_weights = np.ones(ndofs)
 
     timing_data = {}
-    potential = drive_fmm(
-        actx, wrangler, (src_weights,), timing_data
-        )[0][geo_data.ncenters:]
+    potential = drive_fmm(actx, wrangler, (src_weights,))[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
     assert np.all(potential == ndofs)
+
+    if not timing_data:
+        return
+
+    modeled_time, = modeled_time.values()
 
     # Check that the cost model matches the timing data returned by the
     # constant one wrangler.
@@ -816,15 +797,12 @@ def test_cost_model_order_varying_by_level(actx_factory):
     cost_constant, metadata = bind(places, sym_op).cost_per_stage(
             "constant_one", sigma=sigma)
 
-    cost_constant, = cost_constant.values()
-    metadata, = metadata.values()
-
     # }}}
 
     # {{{ varying level to order
 
     def level_to_order_varying(kernel, kernel_args, tree, level):
-        return metadata["nlevels"] - level
+        return tree.nlevels - level
 
     lpot_source = get_lpot_source(actx, 2).copy(
             cost_model=QBXCostModel(),
@@ -838,9 +816,14 @@ def test_cost_model_order_varying_by_level(actx_factory):
     cost_varying, _ = bind(lpot_source, sym_op).cost_per_stage(
         "constant_one", sigma=sigma)
 
-    cost_varying, = cost_varying.values()
-
     # }}}
+
+    if not metadata:
+        return
+
+    cost_constant, = cost_constant.values()
+    metadata, = metadata.values()
+    cost_varying, = cost_varying.values()
 
     assert sum(cost_varying.values()) > sum(cost_constant.values())
 

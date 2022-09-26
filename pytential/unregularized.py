@@ -24,7 +24,6 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 import loopy as lp
 import numpy as np
@@ -97,17 +96,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 density_discr=density_discr or self.density_discr,
                 debug=debug if debug is not None else self.debug)
 
-    def exec_compute_potential_insn(self, actx: PyOpenCLArrayContext,
-            insn, bound_expr, evaluate, return_timing_data):
-        if return_timing_data:
-            from warnings import warn
-
-            from pytential.source import UnableToCollectTimingData
-            warn(
-                   "Timing data collection not supported.",
-                   category=UnableToCollectTimingData,
-                   stacklevel=2)
-
+    def exec_compute_potential_insn(self,
+            actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         from pytools.obj_array import obj_array_vectorize
 
         def evaluate_wrapper(expr):
@@ -139,8 +129,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.symbolic.mappers import UnregularizedPreprocessor
         return UnregularizedPreprocessor(name, discretizations)(expr)
 
-    def exec_compute_potential_insn_direct(self, actx: PyOpenCLArrayContext,
-            insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_direct(self,
+            actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         kernel_args = {}
 
         for arg_name, arg_expr in insn.kernel_arguments.items():
@@ -180,8 +170,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             results.append((o.name, result))
 
-        timing_data: dict[str, Any] = {}
-        return results, timing_data
+        return results
 
     # {{{ fmm-based execution
 
@@ -273,8 +262,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         from boxtree.fmm import drive_fmm
-        all_potentials_on_every_tgt = drive_fmm(
-                actx, wrangler, flat_strengths, timing_data=None)
+        all_potentials_on_every_tgt = drive_fmm(actx, wrangler, flat_strengths)
 
         # {{{ postprocess fmm
 
@@ -297,8 +285,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        timing_data: dict[str, Any] = {}
-        return results, timing_data
+        return results
 
     # }}}
 
