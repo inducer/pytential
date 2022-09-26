@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
@@ -122,16 +122,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 debug=debug if debug is not None else self.debug)
 
     def exec_compute_potential_insn(self, actx: PyOpenCLArrayContext,
-            insn, bound_expr, evaluate, return_timing_data):
-        if return_timing_data:
-            from warnings import warn
-
-            from pytential.source import UnableToCollectTimingData
-            warn(
-                   "Timing data collection not supported.",
-                   category=UnableToCollectTimingData,
-                   stacklevel=2)
-
+            insn, bound_expr, evaluate):
         from pytools import obj_array
 
         def evaluate_wrapper(expr):
@@ -207,8 +198,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             results.append((o.name, result))
 
-        timing_data: dict[str, Any] = {}
-        return results, timing_data
+        return results
 
     # {{{ fmm-based execution
 
@@ -300,8 +290,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         from boxtree.fmm import drive_fmm
-        all_potentials_on_every_tgt = drive_fmm(
-                actx, wrangler, flat_strengths, timing_data=None)
+        all_potentials_on_every_tgt = drive_fmm(actx, wrangler, flat_strengths)
 
         # {{{ postprocess fmm
 
@@ -324,8 +313,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        timing_data: dict[str, Any] = {}
-        return results, timing_data
+        return results
 
     # }}}
 

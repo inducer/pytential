@@ -27,14 +27,12 @@ from typing import TYPE_CHECKING
 
 from typing_extensions import override
 
-from boxtree.timing import TimingRecorder
 from pytools import ProcessLogger, log_process, memoize_method
 from sumpy.fmm import (
     FMMLevelToOrder,
     LocalExpansionFromOrderFactory,
     MultipoleExpansionFromOrderFactory,
     SumpyExpansionWrangler,
-    SumpyTimingFuture,
     SumpyTreeIndependentDataForWrangler,
 )
 
@@ -234,11 +232,10 @@ non_qbx_box_target_lists`),
     def form_global_qbx_locals(self, actx: PyOpenCLArrayContext,
                                src_weight_vecs: Sequence[Array]):
         local_exps = self.qbx_local_expansion_zeros(actx)
-        events = []
 
         geo_data = self.geo_data
         if len(geo_data.global_qbx_centers()) == 0:
-            return (local_exps, SumpyTimingFuture(actx.queue, events))
+            return local_exps
 
         traversal = geo_data.traversal()
 
@@ -265,17 +262,16 @@ non_qbx_box_target_lists`),
                 **kwargs)
         assert local_exps is result
 
-        return (result, SumpyTimingFuture(actx.queue, events))
+        return result
 
     @log_process(logger)
     def translate_box_multipoles_to_qbx_local(
             self, actx: PyOpenCLArrayContext, multipole_exps):
         qbx_expansions = self.qbx_local_expansion_zeros(actx)
-        events = []
 
         geo_data = self.geo_data
         if geo_data.ncenters == 0:
-            return (qbx_expansions, SumpyTimingFuture(actx.queue, events))
+            return qbx_expansions
 
         traversal = geo_data.traversal()
 
@@ -313,7 +309,7 @@ non_qbx_box_target_lists`),
 
             assert qbx_expansions_res is qbx_expansions
 
-        return (qbx_expansions, SumpyTimingFuture(actx.queue, events))
+        return qbx_expansions
 
     @log_process(logger)
     def translate_box_local_to_qbx_local(
@@ -321,10 +317,9 @@ non_qbx_box_target_lists`),
         qbx_expansions = self.qbx_local_expansion_zeros(actx)
 
         geo_data = self.geo_data
-        events = []
 
         if geo_data.ncenters == 0:
-            return (qbx_expansions, SumpyTimingFuture(actx.queue, events))
+            return qbx_expansions
 
         trav = geo_data.traversal()
         wait_for = local_exps.events
@@ -358,17 +353,16 @@ non_qbx_box_target_lists`),
 
             assert qbx_expansions_res is qbx_expansions
 
-        return (qbx_expansions, SumpyTimingFuture(actx.queue, events))
+        return qbx_expansions
 
     @log_process(logger)
     def eval_qbx_expansions(self, actx: PyOpenCLArrayContext, qbx_expansions):
         pot = self.full_output_zeros(actx)
 
         geo_data = self.geo_data
-        events = []
 
         if len(geo_data.global_qbx_centers()) == 0:
-            return (pot, SumpyTimingFuture(actx.queue, events))
+            return pot
 
         ctt = geo_data.center_to_tree_targets()
         qbxl2p = self.tree_indep.qbxl2p(self.qbx_order)
@@ -392,13 +386,12 @@ non_qbx_box_target_lists`),
         for pot_i, pot_res_i in zip(pot, pot_res, strict=True):
             assert pot_i is pot_res_i
 
-        return (pot, SumpyTimingFuture(actx.queue, events))
+        return pot
 
     @log_process(logger)
     def eval_target_specific_qbx_locals(
             self, actx: PyOpenCLArrayContext, src_weight_vecs):
-        return (self.full_output_zeros(actx),
-                SumpyTimingFuture(actx.queue, events=()))
+        return self.full_output_zeros(actx)
 
     # }}}
 
@@ -418,19 +411,13 @@ def translation_classes_builder(actx: PyOpenCLArrayContext):
 
 # {{{ FMM top-level
 
-def drive_fmm(
-        actx: PyOpenCLArrayContext,
-        expansion_wrangler,
-        src_weight_vecs,
-        timing_data=None):
+def drive_fmm(actx: PyOpenCLArrayContext, expansion_wrangler, src_weight_vecs):
     """Top-level driver routine for the QBX fast multipole calculation.
 
     :arg expansion_wrangler: An object exhibiting the
         :class:`boxtree.fmm.ExpansionWranglerInterface`.
     :arg src_weight_vecs: A sequence of source 'density/weights/charges'.
         Passed unmodified to *expansion_wrangler*.
-    :arg timing_data: Either *None* or a dictionary that collects
-        timing data.
 
     Returns the potentials computed by *expansion_wrangler*.
 
@@ -440,7 +427,6 @@ def drive_fmm(
     geo_data = wrangler.geo_data
     traversal = wrangler.traversal
     tree = traversal.tree
-    recorder = TimingRecorder()
 
     # Interface guidelines: Attributes of the tree are assumed to be known
     # to the expansion wrangler and should not be passed.
@@ -452,52 +438,44 @@ def drive_fmm(
 
     # {{{ construct local multipoles
 
-    mpole_exps, timing_future = wrangler.form_multipoles(
+    mpole_exps = wrangler.form_multipoles(
             actx,
             traversal.level_start_source_box_nrs,
             traversal.source_boxes,
             src_weight_vecs)
 
-    recorder.add("form_multipoles", timing_future)
-
     # }}}
 
     # {{{ propagate multipoles upward
 
-    mpole_exps, timing_future = wrangler.coarsen_multipoles(
+    mpole_exps = wrangler.coarsen_multipoles(
             actx,
             traversal.level_start_source_parent_box_nrs,
             traversal.source_parent_boxes,
             mpole_exps)
 
-    recorder.add("coarsen_multipoles", timing_future)
-
     # }}}
 
     # {{{ direct evaluation from neighbor source boxes ("list 1")
 
-    non_qbx_potentials, timing_future = wrangler.eval_direct(
+    non_qbx_potentials = wrangler.eval_direct(
             actx,
             traversal.target_boxes,
             traversal.neighbor_source_boxes_starts,
             traversal.neighbor_source_boxes_lists,
             src_weight_vecs)
 
-    recorder.add("eval_direct", timing_future)
-
     # }}}
 
     # {{{ translate separated siblings' ("list 2") mpoles to local
 
-    local_exps, timing_future = wrangler.multipole_to_local(
+    local_exps = wrangler.multipole_to_local(
             actx,
             traversal.level_start_target_or_target_parent_box_nrs,
             traversal.target_or_target_parent_boxes,
             traversal.from_sep_siblings_starts,
             traversal.from_sep_siblings_lists,
             mpole_exps)
-
-    recorder.add("multipole_to_local", timing_future)
 
     # }}}
 
@@ -506,13 +484,11 @@ def drive_fmm(
     # (the point of aiming this stage at particles is specifically to keep its
     # contribution *out* of the downward-propagating local expansions)
 
-    mpole_result, timing_future = wrangler.eval_multipoles(
+    mpole_result = wrangler.eval_multipoles(
             actx,
             traversal.target_boxes_sep_smaller_by_source_level,
             traversal.from_sep_smaller_by_level,
             mpole_exps)
-
-    recorder.add("eval_multipoles", timing_future)
 
     non_qbx_potentials = non_qbx_potentials + mpole_result
 
@@ -523,15 +499,13 @@ def drive_fmm(
 
     # {{{ form locals for separated bigger source boxes ("list 4")
 
-    local_result, timing_future = wrangler.form_locals(
+    local_result = wrangler.form_locals(
             actx,
             traversal.level_start_target_or_target_parent_box_nrs,
             traversal.target_or_target_parent_boxes,
             traversal.from_sep_bigger_starts,
             traversal.from_sep_bigger_lists,
             src_weight_vecs)
-
-    recorder.add("form_locals", timing_future)
 
     local_exps = local_exps + local_result
 
@@ -542,25 +516,21 @@ def drive_fmm(
 
     # {{{ propagate local_exps downward
 
-    local_exps, timing_future = wrangler.refine_locals(
+    local_exps = wrangler.refine_locals(
             actx,
             traversal.level_start_target_or_target_parent_box_nrs,
             traversal.target_or_target_parent_boxes,
             local_exps)
 
-    recorder.add("refine_locals", timing_future)
-
     # }}}
 
     # {{{ evaluate locals
 
-    local_result, timing_future = wrangler.eval_locals(
+    local_result = wrangler.eval_locals(
             actx,
             traversal.level_start_target_box_nrs,
             traversal.target_boxes,
             local_exps)
-
-    recorder.add("eval_locals", timing_future)
 
     non_qbx_potentials = non_qbx_potentials + local_result
 
@@ -573,36 +543,26 @@ def drive_fmm(
     # via unified List 1).  Which one is used depends on the wrangler. If one of
     # them is unused the corresponding output entries will be zero.
 
-    qbx_expansions, timing_future = (
+    qbx_expansions = (
         wrangler.form_global_qbx_locals(actx, src_weight_vecs))
 
-    recorder.add("form_global_qbx_locals", timing_future)
-
-    local_result, timing_future = (
+    local_result = (
         wrangler.translate_box_multipoles_to_qbx_local(actx, mpole_exps))
 
-    recorder.add("translate_box_multipoles_to_qbx_local", timing_future)
-
     qbx_expansions = qbx_expansions + local_result
 
-    local_result, timing_future = (
+    local_result = (
         wrangler.translate_box_local_to_qbx_local(actx, local_exps))
 
-    recorder.add("translate_box_local_to_qbx_local", timing_future)
-
     qbx_expansions = qbx_expansions + local_result
 
-    qbx_potentials, timing_future = (
+    qbx_potentials = (
         wrangler.eval_qbx_expansions(actx, qbx_expansions))
 
-    recorder.add("eval_qbx_expansions", timing_future)
-
-    ts_result, timing_future = (
+    ts_result = (
         wrangler.eval_target_specific_qbx_locals(actx, src_weight_vecs))
 
     qbx_potentials = qbx_potentials + ts_result
-
-    recorder.add("eval_target_specific_qbx_locals", timing_future)
 
     # }}}
 
@@ -631,8 +591,6 @@ def drive_fmm(
 
     fmm_proc.done()
 
-    if timing_data is not None:
-        timing_data.update(recorder.summarize())
     return result
 
 # }}}

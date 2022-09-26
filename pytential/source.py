@@ -36,10 +36,9 @@ from arraycontext import (
     flatten,
     unflatten,
 )
-from boxtree.timing import TimingResult
 from meshmode.dof_array import DOFArray
 from pytools import T, memoize_in
-from sumpy.fmm import UnableToCollectTimingData
+from sumpy.kernel import Kernel
 
 
 if TYPE_CHECKING:
@@ -244,7 +243,7 @@ class PointPotentialSource(PotentialSource):
             evaluate: EvaluationMapperBase,
             calibration_params: dict[str, float],
             per_box: bool,
-        ) -> tuple[list[tuple[str, DOFArray]], TimingResult]:
+        ) -> list[tuple[str, DOFArray]]:
         raise NotImplementedError
 
     def exec_compute_potential_insn(
@@ -253,17 +252,8 @@ class PointPotentialSource(PotentialSource):
             insn: ComputePotential,
             bound_expr: BoundExpression[Any],
             evaluate: EvaluationMapperBase,
-            return_timing_data: bool,
-        ) -> tuple[list[tuple[str, ArrayOrContainerOrScalar]], TimingResult]:
-        if return_timing_data:
-            from warnings import warn
-            warn(
-                   "Timing data collection not supported.",
-                   category=UnableToCollectTimingData,
-                   stacklevel=2)
-
+        ) -> list[tuple[str, ArrayOrContainerOrScalar]]:
         p2p = None
-
         kernel_args = evaluate_kernel_arguments(
                 actx, evaluate, insn.kernel_arguments, flat=False)
         strengths = [cast("Array", evaluate(density)) for density in insn.densities]
@@ -293,8 +283,7 @@ class PointPotentialSource(PotentialSource):
 
             results.append((o.name, result))
 
-        timing_data: TimingResult = TimingResult()
-        return results, timing_data
+        return results
 
 # }}}
 
