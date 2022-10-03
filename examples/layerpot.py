@@ -1,16 +1,19 @@
-enable_mayavi = 0
+enable_mayavi = False
 if enable_mayavi:
-    from mayavi import mlab  # noqa
+    try:
+        from mayavi import mlab
+    except ImportError:
+        enable_mayavi = False
 
 import numpy as np
 
 from meshmode.array_context import PyOpenCLArrayContext
 from sumpy.visualization import FieldPlotter
-from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa
+from sumpy.kernel import one_kernel_2d, LaplaceKernel, HelmholtzKernel  # noqa: F401
 
 from pytential import bind, sym
 
-from meshmode.mesh.generation import starfish, ellipse, drop # noqa
+from meshmode.mesh.generation import starfish, ellipse, drop            # noqa: F401
 
 target_order = 16
 qbx_order = 3
