@@ -1,17 +1,18 @@
 # Environment variables
 #
-# * PYTEST_ADDOPTS is used to filter test runs. The default value is "-k 'not slowtest'",
+# * PYTEST_ADDOPTS is used to filter test runs. The default value is "-m 'not slowtest'",
 #   which skips the slow running tests.
 # * SKIP_EXAMPLES, if non-empty, can be used to skip the examples job.
 
 Python 3 POCL:
-  script:
-  - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable:pthread
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-k 'not slowtest'"}
-  - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
+  script: |
+    export PYOPENCL_TEST="portable:pthread"
+    export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
+    export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
+    curl -L -O https://tiker.net/ci-support-v0
+    . ci-support-v0
+    build_py_project_in_venv
+    test_py_project
   tags:
   - python3
   - pocl
@@ -23,14 +24,15 @@ Python 3 POCL:
       junit: test/pytest.xml
 
 Python 3 Intel:
-  script:
-  - export PY_EXE=python3
-  - source /opt/enable-intel-cl.sh
-  - export PYOPENCL_TEST="intel(r):pu"
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-k 'not slowtest'"}
-  - export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
+  script: |
+    source /opt/enable-intel-cl.sh
+    export PYOPENCL_TEST="intel(r):pu"
+    export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
+    export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
+    curl -L -O https://tiker.net/ci-support-v0
+    . ci-support-v0
+    build_py_project_in_venv
+    test_py_project
   tags:
   - python3
   - intel-cl-cpu
@@ -42,13 +44,14 @@ Python 3 Intel:
       junit: test/pytest.xml
 
 Python 3 POCL Examples:
-  script:
-  - test -n "$SKIP_EXAMPLES" && exit
-  - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable:pthread
-  - export EXTRA_INSTALL="Cython pybind11 numpy mako git+https://github.com/inducer/pytools.git pyvisfile matplotlib"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-py-project-and-run-examples.sh
-  - ". ./build-py-project-and-run-examples.sh"
+  script: |
+    test -n "$SKIP_EXAMPLES" && exit
+    export PYOPENCL_TEST=portable:pthread
+    export EXTRA_INSTALL="Cython pybind11 numpy scipy mako matplotlib pyvisfile"
+    curl -L -O https://tiker.net/ci-support-v0
+    . ci-support-v0
+    build_py_project_in_venv
+    run_examples
   tags:
   - python3
   - pocl
@@ -57,49 +60,51 @@ Python 3 POCL Examples:
   - tags
 
 Python 3 Conda:
-  script:
-  - export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
-  - export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-  - export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-k 'not slowtest'"}
-
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
-  - ". ./build-and-test-py-project-within-miniconda.sh"
+  script: |
+    export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
+    export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
+    curl -L -O https://tiker.net/ci-support-v0
+    . ci-support-v0
+    build_py_project_in_conda_env
+    test_py_project
   tags:
   - linux
   - large-node
   except:
   - tags
-
   artifacts:
     reports:
       junit: test/pytest.xml
 
 Documentation:
-  script:
-  - EXTRA_INSTALL="Cython pybind11 numpy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-docs.sh
-  - ". ./build-docs.sh"
+  script: |
+    export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
+    curl -L -O https://tiker.net/ci-support-v0
+    . ci-support-v0
+    build_py_project
+    build_docs
   tags:
   - python3
 
 Pylint:
-  script:
-  # Needed to avoid name shadowing issues when running from source directory.
-  # Pylint won't find the Cython bits without this
-  - PROJECT_INSTALL_FLAGS="--editable"
-  - export PY_EXE=python3
-  - EXTRA_INSTALL="Cython pybind11 numpy mako matplotlib scipy"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
-  - ". ./prepare-and-run-pylint.sh pytential test/test_*.py"
+  script: |
+    export EXTRA_INSTALL="Cython pybind11 numpy scipy mako matplotlib"
+    curl -L -O https://tiker.net/ci-support-v0
+    . ci-support-v0
+    build_py_project
+    run_pylint "$(get_proj_name)" examples/*.py test/*.py
   tags:
   - python3
   except:
   - tags
 
 Flake8:
-  script:
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
-  - ". ./prepare-and-run-flake8.sh pytential test examples"
+  script: |
+    export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
+    curl -L -O https://tiker.net/ci-support-v0
+    . ci-support-v0
+    build_py_project
+    install_and_run_flake8 "$(get_proj_name)" examples/*.py test/*.py
   tags:
   - python3
   except:
