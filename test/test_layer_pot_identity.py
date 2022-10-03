@@ -43,12 +43,6 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
 
-try:
-    import matplotlib.pyplot as pt
-except ImportError:
-    pass
-
-
 d1 = sym.Derivative()
 d2 = sym.Derivative()
 
@@ -344,9 +338,6 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
         bound_op = bind(places, case.expr.get_zero_op(k_sym, **knl_kwargs))
         error = bound_op(
                 actx, u=u_dev, dn_u=dn_u_dev, grad_u=grad_u_dev, k=case.k)
-        if 0:
-            pt.plot(error)
-            pt.show()
 
         linf_error_norm = actx.to_numpy(norm(density_discr, error, p=np.inf))
         logger.info("---> key %s error %.5e", key, linf_error_norm)

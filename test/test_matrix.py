@@ -119,10 +119,7 @@ def test_build_matrix(actx_factory, k, curve_fn, op_type, visualize=False):
             context=case.knl_concrete_kwargs))
 
     if visualize:
-        try:
-            import matplotlib.pyplot as pt
-        except ImportError:
-            visualize = False
+        import matplotlib.pyplot as pt
 
     if visualize:
         from sumpy.tools import build_matrix as build_matrix_via_matvec
@@ -385,12 +382,8 @@ def test_cluster_builder(actx_factory, ambient_dim,
     # {{{ check
 
     if visualize and ambient_dim == 2:
-        try:
-            import matplotlib.pyplot as pt
-        except ImportError:
-            visualize = False
+        import matplotlib.pyplot as pt
 
-    if visualize and ambient_dim == 2:
         cluster_full = np.zeros_like(mat)
         mat_full = np.zeros_like(mat)
 

@@ -137,12 +137,6 @@ def run_int_eq_test(actx,
 
     # {{{ plot geometry
 
-    if visualize and ambient_dim == 2:
-        try:
-            import matplotlib.pyplot as pt
-        except ImportError:
-            visualize = False
-
     if visualize:
         normals = bind(places, sym.normal(ambient_dim).as_vector())(actx)
 
@@ -155,6 +149,7 @@ def run_int_eq_test(actx,
                     flatten(normals, actx)
                     ).reshape(ambient_dim, -1)
 
+            import matplotlib.pyplot as pt
             pt.plot(nodes[0], nodes[1], "x-")
             pt.quiver(nodes[0], nodes[1], normals[0], normals[1])
             pt.gca().set_aspect("equal")

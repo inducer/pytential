@@ -41,11 +41,6 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
 
-try:
-    import matplotlib.pyplot as pt
-except ImportError:
-    pass
-
 
 # {{{ ellipse eigenvalues
 
@@ -129,6 +124,8 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
                     flatten(centers, actx)).reshape(ambient_dim, -1)
             normals_h = actx.to_numpy(
                     flatten(normals, actx)).reshape(ambient_dim, -1)
+
+            import matplotlib.pyplot as pt
 
             pt.plot(nodes_h[0], nodes_h[1], "x-")
             pt.plot(centers_h[0], centers_h[1], "o")
