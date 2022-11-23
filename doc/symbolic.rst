@@ -72,5 +72,5 @@ Rewriting expressions with IntGs internals
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. automethod:: pytential.symbolic.pde.system_utils.convert_target_transformation_to_source
-.. automethod:: pytential.symbolic.pde.system_utils.convert_int_g_to_base
+.. automethod:: pytential.symbolic.pde.system_utils.rewrite_int_g_using_base_kernel
 
