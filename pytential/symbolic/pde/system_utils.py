@@ -305,8 +305,8 @@ def _convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
     # NOTE: we set a dofdesc here to force the evaluation of this integral
     # on the source instead of the target when using automatic tagging
     # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
-    if int_g.source is None:
-        dd = as_dofdesc(TAG_WITH_DEFAULT_SOURCE)
+    if int_g.source.geometry is None:
+        dd = int_g.source.copy(geometry=TAG_WITH_DEFAULT_SOURCE)
     else:
         dd = int_g.source
     const *= pytential.sym.integral(dim, dim-1, density, dofdesc=dd)
