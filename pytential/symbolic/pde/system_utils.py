@@ -32,7 +32,7 @@ from pytools import (memoize_on_first_arg,
     as gnitstam)
 
 from pytential.symbolic.primitives import (NodeCoordinateComponent,
-    hashable_kernel_args, IntG, as_dofdesc, TAG_WITH_DEFAULT_SOURCE)
+    hashable_kernel_args, IntG, TAG_WITH_DEFAULT_SOURCE)
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_with_post_division_callback
 import pytential
@@ -103,7 +103,7 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
         new_int_gs = convert_target_transformation_to_source(expr)
         # Convert IntGs with different kernels to expressions containing
         # IntGs with base_kernel or its derivatives
-        return sum(convert_int_g_to_base(new_int_g,
+        return sum(rewrite_int_g_using_base_kernel(new_int_g,
             self.base_kernel) for new_int_g in new_int_gs)
 
 
@@ -273,22 +273,22 @@ def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
     return result
 
 
-def convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
+def rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) \
         -> ExpressionT:
-    """Converts an *IntG* to an expression with *IntG*s having the
+    """Rewrite an *IntG* to an expression with *IntG*s having the
     base kernel *base_kernel*.
     """
     result = 0
     for knl, density in zip(int_g.source_kernels, int_g.densities):
-        result += _convert_int_g_to_base(
+        result += _rewrite_int_g_using_base_kernel(
                 int_g.copy(source_kernels=(knl,), densities=(density,)),
                 base_kernel)
     return result
 
 
-def _convert_int_g_to_base(int_g: IntG, base_kernel: ExpressionKernel) \
+def _rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) \
         -> ExpressionT:
-    """Converts an *IntG* with only one source kernel to an expression with *IntG*s
+    """Rewrites an *IntG* with only one source kernel to an expression with *IntG*s
     having the base kernel *base_kernel*.
     """
     target_kernel = int_g.target_kernel.replace_base_kernel(base_kernel)
