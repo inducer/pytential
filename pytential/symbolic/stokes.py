@@ -333,7 +333,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
 
         sym_expr = np.zeros((self.dim,), dtype=object)
 
-        source = [sym.NodeCoordinateComponent(d) for d in range(self.dim)]
+        source = sym.nodes(self.dim).as_vector()
         common_source_kernels = [AxisSourceDerivative(k, self.kernel) for
                 k in range(self.dim)]
         common_source_kernels.append(self.kernel)
