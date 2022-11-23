@@ -338,12 +338,18 @@ class StressletWrapperTornberg(StressletWrapperBase):
                 k in range(self.dim)]
         common_source_kernels.append(self.kernel)
 
-        stresslet_weight *= 3.0/6
+        # The paper in [1] ignores the scaling we use Stokeslet/Stresslet
+        # and gives formulae for the kernel expression only
+        # stokeslet_weight = StokesletKernel.global_scaling_const /
+        #    LaplaceKernel.global_scaling_const
+        # stresslet_weight = StressletKernel.global_scaling_const /
+        #    LaplaceKernel.global_scaling_const
+        stresslet_weight *= 3.0
         stokeslet_weight *= -0.5*self.mu**(-1)
 
         for i in range(self.dim):
             for j in range(self.dim):
-                densities = [stresslet_weight*(
+                densities = [(stresslet_weight/6.0)*(
                     stresslet_density_vec_sym[k] * dir_vec_sym[j]
                     + stresslet_density_vec_sym[j] * dir_vec_sym[k])
                             for k in range(self.dim)]
@@ -374,7 +380,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
                     k in range(self.dim))
             common_density2 = sum(source[k] * stokeslet_density_vec_sym[k] for
                     k in range(self.dim))
-            densities = [stresslet_weight*(common_density0 * dir_vec_sym[k]
+            densities = [(stresslet_weight/6.0)*(common_density0 * dir_vec_sym[k]
                     + common_density1 * stresslet_density_vec_sym[k]) for
                     k in range(self.dim)]
             densities.append(stokeslet_weight * common_density2)
