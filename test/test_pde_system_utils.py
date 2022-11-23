@@ -19,7 +19,7 @@ THE SOFTWARE.
 """
 
 from pytential.symbolic.pde.system_utils import (
-    convert_target_transformation_to_source, convert_int_g_to_base)
+    convert_target_transformation_to_source, rewrite_int_g_using_base_kernel)
 from pytential.symbolic.primitives import IntG
 from pytential.symbolic.primitives import NodeCoordinateComponent
 import pytential
@@ -130,7 +130,8 @@ def test_convert_int_g_base():
         IntG(base_knl, [AxisSourceDerivative(d, AxisSourceDerivative(d, base_knl))],
             [-1], qbx_forced_limit=1) for d in range(3))
 
-    assert expected_int_g == convert_int_g_to_base(int_g, base_kernel=base_knl)
+    assert expected_int_g == rewrite_int_g_using_base_kernel(int_g,
+                                                             base_kernel=base_knl)
 
 
 def test_convert_int_g_base_with_const():
@@ -147,7 +148,8 @@ def test_convert_int_g_base_with_const():
         IntG(base_knl,
             [AxisSourceDerivative(1, AxisSourceDerivative(1, base_knl))], [0.5],
             qbx_forced_limit=1)
-    assert convert_int_g_to_base(int_g, base_kernel=base_knl) == expected_int_g
+    assert rewrite_int_g_using_base_kernel(int_g,
+                                           base_kernel=base_knl) == expected_int_g
 
 
 def test_convert_int_g_base_with_const_and_deriv():
@@ -160,4 +162,5 @@ def test_convert_int_g_base_with_const_and_deriv():
             [AxisSourceDerivative(1, AxisSourceDerivative(1,
                 AxisSourceDerivative(0, base_knl)))], [0.5],
             qbx_forced_limit=1)
-    assert convert_int_g_to_base(int_g, base_kernel=base_knl) == expected_int_g
+    assert rewrite_int_g_using_base_kernel(int_g,
+                                           base_kernel=base_knl) == expected_int_g
