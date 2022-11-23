@@ -140,8 +140,7 @@ def test_convert_int_g_base_with_const():
 
     base_knl = BiharmonicKernel(2)
     dim = 2
-    dd = pytential.sym.DOFDescriptor(None,
-            discr_stage=pytential.sym.QBX_SOURCE_STAGE1)
+    dd = pytential.sym.DOFDescriptor(geometry=pytential.sym.TAG_WITH_DEFAULT_SOURCE)
 
     expected_int_g = (-0.1875)*prim.Power(np.pi, -1) * \
         pytential.sym.integral(dim, dim-1, 1, dofdesc=dd) + \

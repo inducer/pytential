@@ -172,6 +172,8 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
             expr = expr.diff(ds[knl.axis])
             found = True
         else:
+            import warnings
+            warnings.warn(f"Unknown target kernel ({knl}) found.")
             return [int_g]
         knl = knl.inner_kernel
 
