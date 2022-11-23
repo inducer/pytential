@@ -218,7 +218,7 @@ class _ElasticityWrapperNaiveOrBiharmonic:
                     jcomp=j, poisson_ratio=poisson_ratio)
                 self.kernel_dict[(j, i)] = self.kernel_dict[(i, j)]
 
-    def get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
+    def _get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
         """
         Returns the Integral of the elasticity kernel given by `idx`
@@ -238,7 +238,7 @@ class _ElasticityWrapperNaiveOrBiharmonic:
         # passing a list of ones instead to remove its usage.
         for comp in range(self.dim):
             for i in range(self.dim):
-                sym_expr[comp] += self.get_int_g((comp, i),
+                sym_expr[comp] += self._get_int_g((comp, i),
                         density_vec_sym[i], [1]*self.dim,
                         qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
@@ -302,7 +302,7 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
         if nu_sym != 0.5:
             self.kernel_dict["laplace"] = LaplaceKernel(self.dim)
 
-    def get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
+    def _get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
         """
         Returns the Integral of the Stresslet kernel given by `idx`
@@ -343,7 +343,7 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
         for comp in range(self.dim):
             for i in range(self.dim):
                 for j in range(self.dim):
-                    sym_expr[comp] += self.get_int_g((comp, i, j),
+                    sym_expr[comp] += self._get_int_g((comp, i, j),
                         density_vec_sym[i], dir_vec_sym,
                         qbx_forced_limit, deriv_dirs=extra_deriv_dirs)
 
