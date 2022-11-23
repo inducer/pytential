@@ -199,7 +199,7 @@ class _StokesletWrapperNaiveOrBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
             for i in range(self.dim):
                 for j in range(self.dim):
                     sym_expr[comp] += dir_vec_sym[i] * \
-                        stresslet_obj.get_int_g((comp, i, j),
+                        stresslet_obj._get_int_g((comp, i, j),
                         density_vec_sym[j], [1]*self.dim,
                         qbx_forced_limit, deriv_dirs=[])
 
