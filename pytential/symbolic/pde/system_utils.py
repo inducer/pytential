@@ -422,8 +422,9 @@ def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
         order = pde.order
 
     if order > pde.order:
-        raise RuntimeError(f"order ({order}) cannot be greater than the order"
-                         f"of the PDE ({pde.order}) yet.")
+        raise NotImplementedError("Computing derivative relation when "
+                "the base kernel's derivatives are linearly dependent has not"
+                "been implemented yet.")
 
     mis = sorted(gnitstam(order, dim), key=sum)
     # (-1, -1, -1) represent a constant
@@ -476,7 +477,12 @@ def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
 
     if failed:
         if retries == 0:
-            raise RuntimeError("Failed to find a base kernel")
+            # The derivatives of the base kernel are not linearly
+            # independent.
+            # TODO: Extract a linearly independent set and return them
+            raise NotImplementedError("Computing derivative relation when "
+                "the base kernel's derivatives are linearly dependent has not "
+                "been implemented yet.")
         return _get_base_kernel_matrix(
             base_kernel=base_kernel,
             hashable_kernel_arguments=hashable_kernel_arguments,
