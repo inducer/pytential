@@ -63,7 +63,8 @@ def rewrite_using_base_kernel(exprs: List[ExpressionT],
         base_kernel=_NO_ARG_SENTINEL) -> List[ExpressionT]:
     """
     Rewrites a list of expressions with :class:`~pytential.symbolic.primitives.IntG`
-    objects using *base_kernel*.
+    objects using *base_kernel*. Assumes that potentials are smooth, i.e. that
+    Schwarz's theorem holds.
 
     For example, if *base_kernel* is the biharmonic kernel, and a Laplace kernel
     is encountered, this will (forcibly) rewrite the Laplace kernel in terms of
