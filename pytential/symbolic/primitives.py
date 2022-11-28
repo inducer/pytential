@@ -27,7 +27,7 @@ from functools import partial
 import numpy as np
 
 from pymbolic.primitives import (  # noqa: F401,N813
-        Expression as ExpressionBase, Variable as var,
+        Expression as ExpressionBase, Variable, Variable as var,
         cse_scope as cse_scope_base,
         make_common_subexpression as cse)
 from pymbolic.geometric_algebra import MultiVector, componentwise
@@ -251,6 +251,11 @@ class Expression(ExpressionBase):
     def make_stringifier(self, originating_stringifier=None):
         from pytential.symbolic.mappers import StringifyMapper
         return StringifyMapper()
+
+
+class NamedIntermediateResult(Variable):
+    # These are inserted by the pytential 'compiler'.
+    pass
 
 
 class ErrorExpression(Expression):
