@@ -34,10 +34,10 @@ from pytential.symbolic.primitives import DOFDescriptor, IntG
 from pytential.symbolic.mappers import IdentityMapper, DependencyMapper
 
 
-# {{{ instructions
+# {{{ statements
 
 @dataclass(frozen=True, eq=False)
-class Instruction:
+class Statement:
     """
     .. attribute:: names
     .. attribute:: exprs
@@ -62,12 +62,12 @@ class Instruction:
 
 
 @dataclass(frozen=True, eq=False)
-class Assign(Instruction):
+class Assign(Statement):
     """
     .. attribute:: do_not_return
 
         A list of bools indicating whether the corresponding entry in
-        :attr:`Instructio.names` and :attr:`Instruction.exprs` describes an
+        :attr:`Statement.names` and :attr:`Statement.exprs` describes an
         expression that is not needed beyond this assignment.
     """
 
@@ -125,7 +125,7 @@ class Assign(Instruction):
 # }}}
 
 
-# {{{ layer pot instruction
+# {{{ layer pot statement
 
 @dataclass(frozen=True)
 class PotentialOutput:
@@ -152,12 +152,12 @@ class PotentialOutput:
 
 
 @dataclass(frozen=True, eq=False)
-class ComputePotentialInstruction(Instruction):
+class ComputePotential(Statement):
     """
     .. attribute:: outputs
 
         A list of :class:`PotentialOutput` instances
-        The entries in the list correspond to :attr:`Instruction.names`.
+        The entries in the list correspond to :attr:`Statement.names`.
 
     .. attribute:: target_kernels
 
@@ -276,7 +276,7 @@ def dot_dataflow_graph(code: "Code",
             'initial [label="initial"]'
             'result [label="result"]']
 
-    for num, insn in enumerate(code.instructions):
+    for num, insn in enumerate(code.statements):
         node_name = f"node{num}"
         node_names[insn] = node_name
         node_label = str(insn)
@@ -308,7 +308,7 @@ def dot_dataflow_graph(code: "Code",
         orig_node = get_orig_node(expr)
         result.append(f'{orig_node} -> {target_node} [label="{expr}"];')
 
-    for insn in code.instructions:
+    for insn in code.statements:
         for dep in insn.get_dependencies():
             gen_expr_arrow(dep, node_names[insn])
 
@@ -328,8 +328,8 @@ def dot_dataflow_graph(code: "Code",
 # {{{ code representation
 
 class Code:
-    def __init__(self, instructions: List[Instruction], result: Variable) -> None:
-        self.instructions = instructions
+    def __init__(self, statements: List[Statement], result: Variable) -> None:
+        self.statements = statements
         self.result = result
         self.last_schedule = None
 
@@ -341,7 +341,7 @@ class Code:
 
     def __str__(self):
         lines = []
-        for insn in self.instructions:
+        for insn in self.statements:
             lines.extend(str(insn).split("\n"))
         lines.append("RESULT: " + str(self.result))
 
@@ -349,24 +349,24 @@ class Code:
 
     # {{{ dynamic scheduler
 
-    class NoInstructionAvailable(Exception):
+    class NoStatementAvailable(Exception):
         pass
 
     @memoize_method
     def get_next_step(self, available_names, done_insns):
         from pytools import argmax2
         available_insns = [
-                (insn, insn.priority) for insn in self.instructions
+                (insn, insn.priority) for insn in self.statements
                 if insn not in done_insns
                 and all(dep.name in available_names
                     for dep in insn.get_dependencies())]
 
         if not available_insns:
-            raise self.NoInstructionAvailable
+            raise self.NoStatementAvailable
 
         needed_vars = {
             dep.name
-            for insn in self.instructions
+            for insn in self.statements
             if insn not in done_insns
             for dep in insn.get_dependencies()
             }
@@ -397,12 +397,12 @@ class Code:
     def get_exec_function(insn, exec_mapper):
         if isinstance(insn, Assign):
             return exec_mapper.exec_assign
-        if isinstance(insn, ComputePotentialInstruction):
+        if isinstance(insn, ComputePotential):
             return exec_mapper.exec_compute_potential_insn
-        raise ValueError(f"unknown instruction class: {type(insn)}")
+        raise ValueError(f"unknown statement class: {type(insn)}")
 
     def execute(self, exec_mapper, pre_assign_check=None):
-        """Execute the instruction stream, make all scheduling decisions
+        """Execute the statement stream, make all scheduling decisions
         dynamically.
         """
 
@@ -419,8 +419,8 @@ class Code:
                         frozenset(context.keys()),
                         frozenset(done_insns))
 
-            except self.NoInstructionAvailable:
-                # no available instructions: we're done
+            except self.NoStatementAvailable:
+                # no available statements: we're done
                 break
             else:
                 for name in discardable_vars:
@@ -440,9 +440,9 @@ class Code:
                     assert target in assignees
                     context[target] = value
 
-        if len(done_insns) < len(self.instructions):
-            print("Unreachable instructions:")
-            for insn in set(self.instructions) - done_insns:
+        if len(done_insns) < len(self.statements):
+            print("Unreachable statements:")
+            for insn in set(self.statements) - done_insns:
                 print("    ", str(insn).replace("\n", "\n     "))
                 from pymbolic import var
                 print("     missing: ", ", ".join(
@@ -450,7 +450,7 @@ class Code:
                         set(insn.get_dependencies())
                         - {var(v) for v in context.keys()}))
 
-            raise RuntimeError("not all instructions are reachable"
+            raise RuntimeError("not all statements are reachable"
                     "--did you forget to pass a value for a placeholder?")
 
         from pytools.obj_array import obj_array_vectorize
@@ -474,7 +474,7 @@ class OperatorCompiler(IdentityMapper):
         self.prefix = prefix
         self.max_vectors_in_batch_expr = max_vectors_in_batch_expr
 
-        self.code: List[Instruction] = []
+        self.code: List[Statement] = []
         self.expr_to_var: Dict[Expression, Variable] = {}
         self.assigned_names: Set[str] = set()
         self.group_to_operators: Dict[Hashable, Set[IntG]] = {}
@@ -654,7 +654,7 @@ class OperatorCompiler(IdentityMapper):
                 ]
 
             self.code.append(
-                    ComputePotentialInstruction(
+                    ComputePotential(
                         # NOTE: these are set to None because they are deduced
                         # from `outputs` in `get_assignees` and `get_dependencies`
                         names=None,

@@ -691,7 +691,7 @@ class BoundExpression:
         :arg calibration_params: either a :class:`dict` returned by
             `estimate_kernel_specific_calibration_params`, or a :class:`str`
             "constant_one".
-        :return: a :class:`dict` mapping from instruction to per-stage cost. Each
+        :return: a :class:`dict` mapping from statement to per-stage cost. Each
             per-stage cost is represented by a :class:`dict` mapping from the stage
             name to the predicted time.
         """
@@ -708,7 +708,7 @@ class BoundExpression:
         :arg calibration_params: either a :class:`dict` returned by
             `estimate_kernel_specific_calibration_params`, or a :class:`str`
             "constant_one".
-        :return: a :class:`dict` mapping from instruction to per-box cost. Each
+        :return: a :class:`dict` mapping from statement to per-box cost. Each
             per-box cost is represented by a :class:`numpy.ndarray` or
             :class:`pyopencl.array.Array` of shape (nboxes,), where the ith entry
             represents the cost of all stages for box i.
