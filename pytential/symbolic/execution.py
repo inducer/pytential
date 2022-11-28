@@ -34,6 +34,7 @@ from meshmode.dof_array import DOFArray
 
 from pytools import memoize_in, memoize_method
 from pytential.qbx.cost import AbstractQBXCostModel
+from pytential.symbolic.compiler import Code, Statement, Assign, ComputePotential
 
 from pytential import sym
 
@@ -614,6 +615,46 @@ def _prepare_expr(places, expr, auto_where=None):
 # }}}
 
 
+# {{{ code execution
+
+def _get_exec_function(stmt: Statement, exec_mapper):
+    if isinstance(stmt, Assign):
+        return exec_mapper.exec_assign
+    if isinstance(stmt, ComputePotential):
+        return exec_mapper.exec_compute_potential_insn
+    raise ValueError(f"unknown statement class: {type(stmt)}")
+
+
+def execute(code: Code, exec_mapper, pre_assign_check=None) -> np.ndarray:
+    for name in code.inputs:
+        if name not in exec_mapper.context:
+            raise ValueError(f"missing input: '{name}'")
+
+    context = exec_mapper.context
+
+    for stmt, discardable_vars in code._schedule:
+        for name in discardable_vars:
+            del context[name]
+
+        assignments = (
+                _get_exec_function(stmt, exec_mapper)(
+                    exec_mapper.array_context,
+                    stmt, exec_mapper.bound_expr, exec_mapper))
+
+        assignees = stmt.get_assignees()
+        for target, value in assignments:
+            if pre_assign_check is not None:
+                pre_assign_check(target, value)
+
+            assert target in assignees
+            context[target] = value
+
+    from pytools.obj_array import obj_array_vectorize
+    return obj_array_vectorize(exec_mapper, code.result)
+
+# }}}
+
+
 # {{{ bound expression
 
 def _find_array_context_from_args_in_context(context, supplied_array_context=None):
@@ -700,7 +741,7 @@ class BoundExpression:
         cost_model_mapper = CostModelMapper(
             self, array_context, calibration_params, per_box=False, context=kwargs
         )
-        self.code.execute(cost_model_mapper)
+        execute(self.code, cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()
 
     def cost_per_box(self, calibration_params, **kwargs):
@@ -718,7 +759,7 @@ class BoundExpression:
         cost_model_mapper = CostModelMapper(
             self, array_context, calibration_params, per_box=True, context=kwargs
         )
-        self.code.execute(cost_model_mapper)
+        execute(self.code, cost_model_mapper)
         return cost_model_mapper.get_modeled_cost()
 
     def scipy_op(
@@ -809,7 +850,7 @@ class BoundExpression:
 
         exec_mapper = EvaluationMapper(
                 self, array_context, context, timing_data=timing_data)
-        return self.code.execute(exec_mapper)
+        return execute(self.code, exec_mapper)
 
     def __call__(self, *args, **kwargs):
         """Evaluate the expression in *self*, using the
