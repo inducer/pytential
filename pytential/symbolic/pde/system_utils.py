@@ -32,7 +32,7 @@ from pytools import (memoize_on_first_arg,
     as gnitstam)
 
 from pytential.symbolic.primitives import (NodeCoordinateComponent,
-    hashable_kernel_args, IntG, TAG_WITH_DEFAULT_SOURCE)
+    hashable_kernel_args, IntG, DEFAULT_SOURCE)
 from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, lu_with_post_division_callback
 import pytential
@@ -309,7 +309,7 @@ def _rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel)
     # on the source instead of the target when using automatic tagging
     # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
     if int_g.source.geometry is None:
-        dd = int_g.source.copy(geometry=TAG_WITH_DEFAULT_SOURCE)
+        dd = int_g.source.copy(geometry=DEFAULT_SOURCE)
     else:
         dd = int_g.source
     const *= pytential.sym.integral(dim, dim-1, density, dofdesc=dd)
