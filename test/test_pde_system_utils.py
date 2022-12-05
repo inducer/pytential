@@ -21,7 +21,7 @@ THE SOFTWARE.
 from pytential.symbolic.pde.system_utils import (
     convert_target_transformation_to_source, rewrite_int_g_using_base_kernel)
 from pytential.symbolic.primitives import IntG
-import pytential.symbolic as sym
+from pytential import sym
 import pytential
 import numpy as np
 
@@ -140,7 +140,7 @@ def test_convert_int_g_base_with_const():
 
     base_knl = BiharmonicKernel(2)
     dim = 2
-    dd = pytential.sym.DOFDescriptor(geometry=pytential.sym.TAG_WITH_DEFAULT_SOURCE)
+    dd = pytential.sym.DOFDescriptor(geometry=pytential.sym.DEFAULT_SOURCE)
 
     expected_int_g = (-0.1875)*prim.Power(np.pi, -1) * \
         pytential.sym.integral(dim, dim-1, 1, dofdesc=dd) + \
