@@ -21,7 +21,7 @@ THE SOFTWARE.
 from pytential.symbolic.pde.system_utils import (
     convert_target_transformation_to_source, rewrite_int_g_using_base_kernel)
 from pytential.symbolic.primitives import IntG
-from pytential.symbolic.primitives import NodeCoordinateComponent
+import pytential.symbolic as sym
 import pytential
 import numpy as np
 
@@ -47,7 +47,7 @@ def test_convert_target_deriv():
 
 
 def test_convert_target_point_multiplier():
-    xs = [NodeCoordinateComponent(i) for i in range(3)]
+    xs = sym.nodes(3).as_vector()
 
     knl = LaplaceKernel(3)
     int_g = IntG(TargetPointMultiplier(0, knl), [AxisSourceDerivative(1, knl), knl],
@@ -74,7 +74,7 @@ def test_convert_target_point_multiplier():
 
 
 def test_product_rule():
-    xs = [NodeCoordinateComponent(i) for i in range(3)]
+    xs = sym.nodes(3).as_vector()
 
     knl = LaplaceKernel(3)
     int_g = IntG(AxisTargetDerivative(0, TargetPointMultiplier(0, knl)), [knl], [1],
@@ -94,7 +94,7 @@ def test_product_rule():
 
 
 def test_convert_helmholtz():
-    xs = [NodeCoordinateComponent(i) for i in range(3)]
+    xs = sym.nodes(3).as_vector()
 
     knl = HelmholtzKernel(3)
     int_g = IntG(TargetPointMultiplier(0, knl), [knl], [1],
