@@ -50,7 +50,7 @@ def find_mode():
     pde_op = SDRep(
             mode="te",
             k_vacuum=1,
-            interfaces=((0, 1, sym.DEFAULT_SOURCE),),
+            interfaces=((0, 1, "source"),),
             domain_k_exprs=(k0, k1),
             beta=beta_sym,
             use_l2_weighting=False)
@@ -97,6 +97,7 @@ def find_mode():
         from pytential.symbolic.execution import build_matrix
         mat = build_matrix(
                 queue, qbx, op, u_sym,
+                auto_where="source",
                 context={"beta": beta}).get()
 
         return 1/x_vec.dot(la.solve(mat, y_vec))

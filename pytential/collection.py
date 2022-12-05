@@ -142,8 +142,8 @@ class GeometryCollection:
             descriptors are used to define the default source and target
             geometries for layer potential evaluations.
             By default, they are set to
-            :class:`~pytential.symbolic.dof_desc.DEFAULT_SOURCE` and
-            :class:`~pytential.symbolic.dof_desc.DEFAULT_TARGET` for
+            :class:`~pytential.symbolic.dof_desc.UNNAMED_SOURCE` and
+            :class:`~pytential.symbolic.dof_desc.UNNAMED_TARGET` for
             sources and targets, respectively.
         """
 

@@ -306,8 +306,8 @@ def test_pec_mfie_extinction(actx_factory, case,
                 InterpolatoryQuadratureSimplexGroupFactory(case.target_order))
 
         places.update({
-            sym.DEFAULT_SOURCE: qbx,
-            sym.DEFAULT_TARGET: qbx.density_discr,
+            "source": qbx,
+            "target": qbx.density_discr,
             "test_source": test_source,
             "scat_discr": scat_discr,
             "obs_discr": obs_discr,
@@ -328,7 +328,7 @@ def test_pec_mfie_extinction(actx_factory, case,
                 })
 
         from pytential import GeometryCollection
-        places = GeometryCollection(places)
+        places = GeometryCollection(places, auto_where=("source", "target"))
         density_discr = places.get_discretization(places.auto_source.geometry)
 
         # {{{ system solve
@@ -388,7 +388,7 @@ def test_pec_mfie_extinction(actx_factory, case,
 
         def eval_repr_at(tgt, source=None, target=None):
             if source is None:
-                source = sym.DEFAULT_SOURCE
+                source = "source"
 
             return bind(
                 places, sym_repr, auto_where=(source, target)       # noqa: B023

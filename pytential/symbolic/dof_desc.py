@@ -23,6 +23,9 @@ THE SOFTWARE.
 from typing import Any, Hashable, Optional, Union
 
 __doc__ = """
+.. autoclass:: UNNAMED_SOURCE
+.. autoclass:: UNNAMED_TARGET
+
 .. autoclass:: DEFAULT_SOURCE
 .. autoclass:: DEFAULT_TARGET
 
@@ -55,12 +58,24 @@ __doc__ = """
 
 # {{{ discretizations
 
+class UNNAMED_SOURCE:                   # noqa: N801
+    """Symbolic identifier for an unnamed source."""
+
+
+class UNNAMED_TARGET:                   # noqa: N801
+    """Symbolic identifier for an unnamed target."""
+
+
 class DEFAULT_SOURCE:                   # noqa: N801
-    """Symbolic identifier for a default source."""
+    """Symbolic identifier for the default source. Geometries with
+    this value get replaced with the default source in the
+    :class:`~pytential.collection.GeometryCollection`"""
 
 
 class DEFAULT_TARGET:                   # noqa: N801
-    """Symbolic identifier for a default target."""
+    """Symbolic identifier for the default target. Geometries with
+    this value get replaced with the default target in the
+    :class:`~pytential.collection.GeometryCollection`"""
 
 
 class QBX_SOURCE_STAGE1:                # noqa: N801
@@ -217,9 +232,9 @@ class DOFDescriptor:
         name = []
         if self.geometry is None:
             name.append("?")
-        elif self.geometry == DEFAULT_SOURCE:
+        elif self.geometry in (UNNAMED_SOURCE, DEFAULT_SOURCE):
             name.append("s")
-        elif self.geometry == DEFAULT_TARGET:
+        elif self.geometry in (UNNAMED_TARGET, DEFAULT_TARGET):
             name.append("t")
         else:
             name.append(
