@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 import sumpy.symbolic as sym
+from typing import Iterable, Callable
 
 
 def sort_arrays_together(*arys, key=None):
@@ -35,7 +36,7 @@ def sort_arrays_together(*arys, key=None):
     return zip(*sorted(zip(*arys), key=key))
 
 
-def chop(expr, tol):
+def chop(expr: sym.Basic, tol) -> sym.Basic:
     """Given a symbolic expression, remove all occurences of numbers
     with absolute value less than a given tolerance and replace floating
     point numbers that are close to an integer up to a given relative
@@ -54,7 +55,13 @@ def chop(expr, tol):
     return expr.xreplace(replace_dict)
 
 
-def lu_with_post_division_callback(L, U, perm, b, callback):
+def lu_with_post_division_callback(
+            L: sym.Matrix,
+            U: sym.Matrix,
+            perm: Iterable[sym.Matrix],
+            b: Iterable[sym.Matrix],
+            callback: Callable[[sym.Basic], sym.Basic]
+        ) -> sym.Matrix:
     """Given an LU factorization and a vector, solve a linear
     system with intermediate results expanded to avoid
     an explosion of the expression trees
