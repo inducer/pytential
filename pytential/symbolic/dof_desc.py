@@ -77,16 +77,6 @@ class DEFAULT_TARGET:                   # noqa: N801
     :func:`pytential.bind`."""
 
 
-class TAG_WITH_DEFAULT_SOURCE:          # noqa: N801
-    """Symbolic identifier for a source that is tagged with
-    the default source."""
-
-
-class TAG_WITH_DEFAULT_TARGET:          # noqa: N801
-    """Symbolic identifier for a source that is tagged with
-    the default target."""
-
-
 class QBX_SOURCE_STAGE1:                # noqa: N801
     """Symbolic identifier for the Stage 1 discretization of a
     :class:`pytential.qbx.QBXLayerPotentialSource`.
