@@ -27,7 +27,7 @@ import numpy as np
 
 from pytential import sym
 from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
-from sumpy.kernel import (StressletKernel, LaplaceKernel,
+from sumpy.kernel import (StressletKernel, LaplaceKernel, StokesletKernel,
     ElasticityKernel, BiharmonicKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
 from sumpy.symbolic import SpatialConstant
@@ -205,17 +205,18 @@ class _ElasticityWrapperNaiveOrBiharmonic:
         self.base_kernel = base_kernel
 
         self.kernel_dict = {}
-        # The two cases of nu=0.5 and nu!=0.5 differ significantly and
-        # ElasticityKernel needs to know if nu=0.5 or not at creation time
-        poisson_ratio = "nu" if nu_sym != 0.5 else 0.5
 
         # The dictionary allows us to exploit symmetry -- that
         # :math:`T_{01}` is identical to :math:`T_{10}` -- and avoid creating
         # multiple expansions for the same kernel in a different ordering.
         for i in range(dim):
             for j in range(i, dim):
-                self.kernel_dict[(i, j)] = ElasticityKernel(dim=dim, icomp=i,
-                    jcomp=j, poisson_ratio=poisson_ratio)
+                if nu_sym == 0.5:
+                    self.kernel_dict[(i, j)] = StokesletKernel(dim=dim, icomp=i,
+                        jcomp=j)
+                else:
+                    self.kernel_dict[(i, j)] = ElasticityKernel(dim=dim, icomp=i,
+                        jcomp=j)
                 self.kernel_dict[(j, i)] = self.kernel_dict[(i, j)]
 
     def _get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
