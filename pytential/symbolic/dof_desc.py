@@ -23,9 +23,6 @@ THE SOFTWARE.
 from typing import Any, Hashable, Optional, Union
 
 __doc__ = """
-.. autoclass:: UNNAMED_SOURCE
-.. autoclass:: UNNAMED_TARGET
-
 .. autoclass:: DEFAULT_SOURCE
 .. autoclass:: DEFAULT_TARGET
 
@@ -58,12 +55,12 @@ __doc__ = """
 
 # {{{ discretizations
 
-class UNNAMED_SOURCE:                   # noqa: N801
+class _UNNAMED_SOURCE:                   # noqa: N801
     """Symbolic identifier for an unnamed source. This is for internal
     use only."""
 
 
-class UNNAMED_TARGET:                   # noqa: N801
+class _UNNAMED_TARGET:                   # noqa: N801
     """Symbolic identifier for an unnamed target. This is for internal
     use only."""
 
@@ -234,9 +231,9 @@ class DOFDescriptor:
         name = []
         if self.geometry is None:
             name.append("?")
-        elif self.geometry in (UNNAMED_SOURCE, DEFAULT_SOURCE):
+        elif self.geometry in (_UNNAMED_SOURCE, DEFAULT_SOURCE):
             name.append("s")
-        elif self.geometry in (UNNAMED_TARGET, DEFAULT_TARGET):
+        elif self.geometry in (_UNNAMED_TARGET, DEFAULT_TARGET):
             name.append("t")
         else:
             name.append(

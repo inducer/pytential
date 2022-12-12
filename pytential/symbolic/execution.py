@@ -37,7 +37,7 @@ from pytential.qbx.cost import AbstractQBXCostModel
 from pytential.symbolic.compiler import Code, Statement, Assign, ComputePotential
 
 from pytential import sym
-from pytential.symbolic.dof_desc import UNNAMED_SOURCE, UNNAMED_TARGET
+from pytential.symbolic.dof_desc import _UNNAMED_SOURCE, _UNNAMED_TARGET
 
 import logging
 logger = logging.getLogger(__name__)
@@ -574,8 +574,8 @@ def _prepare_auto_where(auto_where, places=None):
 
     if auto_where is None:
         if places is None:
-            auto_source = UNNAMED_SOURCE
-            auto_target = UNNAMED_TARGET
+            auto_source = _UNNAMED_SOURCE
+            auto_target = _UNNAMED_TARGET
         else:
             auto_source, auto_target = places.auto_where
     elif isinstance(auto_where, (list, tuple)):

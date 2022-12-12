@@ -141,10 +141,7 @@ class GeometryCollection:
             :func:`~pytential.symbolic.dof_desc.as_dofdesc`. The two
             descriptors are used to define the default source and target
             geometries for layer potential evaluations.
-            By default, they are set to
-            :class:`~pytential.symbolic.dof_desc.UNNAMED_SOURCE` and
-            :class:`~pytential.symbolic.dof_desc.UNNAMED_TARGET` for
-            sources and targets, respectively.
+            By default, they are set to unspecified, but unique objects.
         """
 
         # {{{ construct dict
