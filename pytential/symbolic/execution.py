@@ -562,8 +562,6 @@ def _prepare_domains(nresults, places, domains, default_domain):
 
 def _prepare_auto_where(auto_where, places=None):
     """
-    :arg auto_where: a 2-tuple, single identifier or `None` used as a hint
-        to determine the default geometries.
     :arg places: a :class:`pytential.collection.GeometryCollection`,
         whose :attr:`pytential.collection.GeometryCollection.auto_where` is
         used by default if provided and `auto_where` is `None`.
@@ -770,9 +768,8 @@ class BoundExpression:
         :arg domains: a list of discretization identifiers or
             *None* values indicating the domains on which each component of the
             solution vector lives.  *None* values indicate that the component
-            is a scalar.  If *domains* is *None*,
-            :class:`~pytential.symbolic.dof_desc.DEFAULT_TARGET` is required
-            to be a key in :attr:`places`.
+            is a scalar. If the value of *domains* is *None*, the default
+            target from *places* is used.
         :returns: An object that (mostly) satisfies the
             :class:`scipy.sparse.linalg.LinearOperator` protocol, except for
             accepting and returning :class:`pyopencl.array.Array` arrays.
@@ -886,6 +883,9 @@ def bind(places, expr, auto_where=None):
         constructor can also be used.
     :arg auto_where: for simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.
+        This is a 2-tuple, single identifier or `None` to determine the
+        default geometries. When `None`, a tuple of unspecified unique
+        identifiers are used.
     :arg expr: one or multiple expressions consisting of primitives
         form :mod:`pytential.symbolic.primitives` (aka ``pytential.sym``).
         Multiple expressions can be combined into one object to pass here
@@ -948,10 +948,9 @@ def build_matrix(actx, places, exprs, input_exprs, domains=None,
         input block columns of the matrix. May also be a single expression.
     :arg domains: a list of discretization identifiers (see 'places') or
         *None* values indicating the domains on which each component of the
-        solution vector lives.  *None* values indicate that the component
-        is a scalar.  If *None*, *auto_where* or, if it is not provided,
-        :class:`~pytential.symbolic.dof_desc.DEFAULT_SOURCE` is required
-        to be a key in :attr:`places`.
+        solution vector lives. *None* values indicate that the component
+        is a scalar. If the value of *domains* is *None*, the default
+        source from *places* is used.
     :arg auto_where: For simple source-to-self or source-to-target
         evaluations, find 'where' attributes automatically.
     """
