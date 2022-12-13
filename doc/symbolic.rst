@@ -48,6 +48,12 @@ Scalar Beltrami equations
 
 .. automodule:: pytential.symbolic.pde.beltrami
 
+Internals
+^^^^^^^^^
+
+.. autoclass:: pytential.symbolic.elasticity.ElasticityWrapperYoshida
+.. autoclass:: pytential.symbolic.elasticity.ElasticityDoubleLayerWrapperYoshida
+
 Rewriting expressions with IntGs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
