@@ -194,10 +194,10 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
 
 
 class _ElasticityWrapperNaiveOrBiharmonic:
-    def __init__(self, dim, mu_sym, nu_sym, base_kernel):
+    def __init__(self, dim, mu, nu, base_kernel):
         self.dim = dim
-        self.mu = mu_sym
-        self.nu = nu_sym
+        self.mu = mu
+        self.nu = nu
 
         if not (dim == 3 or dim == 2):
             raise ValueError(
@@ -212,7 +212,7 @@ class _ElasticityWrapperNaiveOrBiharmonic:
         # multiple expansions for the same kernel in a different ordering.
         for i in range(dim):
             for j in range(i, dim):
-                if nu_sym == 0.5:
+                if nu == 0.5:
                     self.kernel_dict[(i, j)] = StokesletKernel(dim=dim, icomp=i,
                         jcomp=j)
                 else:
@@ -250,17 +250,17 @@ class _ElasticityWrapperNaiveOrBiharmonic:
 
 class ElasticityWrapperNaive(_ElasticityWrapperNaiveOrBiharmonic,
                              ElasticityWrapperBase):
-    def __init__(self, dim, mu_sym, nu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym, base_kernel=None)
-        ElasticityWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+    def __init__(self, dim, mu, nu):
+        super().__init__(dim=dim, mu=mu, nu=nu, base_kernel=None)
+        ElasticityWrapperBase.__init__(self, dim=dim, mu=mu, nu=nu)
 
 
 class ElasticityWrapperBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
                                   ElasticityWrapperBase):
-    def __init__(self, dim, mu_sym, nu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+    def __init__(self, dim, mu, nu):
+        super().__init__(dim=dim, mu=mu, nu=nu,
                 base_kernel=BiharmonicKernel(dim))
-        ElasticityWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+        ElasticityWrapperBase.__init__(self, dim=dim, mu=mu, nu=nu)
 
 
 # }}}
@@ -270,10 +270,10 @@ class ElasticityWrapperBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
 
 class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
 
-    def __init__(self, dim, mu_sym, nu_sym, base_kernel):
+    def __init__(self, dim, mu, nu, base_kernel):
         self.dim = dim
-        self.mu = mu_sym
-        self.nu = nu_sym
+        self.mu = mu
+        self.nu = nu
 
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to "
@@ -301,7 +301,7 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
                     self.kernel_dict[(i, j, k)] = self.kernel_dict[s]
 
         # For elasticity (nu != 0.5), we need the LaplaceKernel
-        if nu_sym != 0.5:
+        if nu != 0.5:
             self.kernel_dict["laplace"] = LaplaceKernel(self.dim)
 
     def _get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
@@ -358,7 +358,7 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
             extra_deriv_dirs=()):
 
         stokeslet_obj = _ElasticityWrapperNaiveOrBiharmonic(dim=self.dim,
-                mu_sym=self.mu, nu_sym=self.nu, base_kernel=self.base_kernel)
+                mu=self.mu, nu=self.nu, base_kernel=self.base_kernel)
 
         sym_expr = 0
         if stresslet_weight != 0:
@@ -374,21 +374,21 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
 class ElasticityDoubleLayerWrapperNaive(
         _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
         ElasticityDoubleLayerWrapperBase):
-    def __init__(self, dim, mu_sym, nu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+    def __init__(self, dim, mu, nu):
+        super().__init__(dim=dim, mu=mu, nu=nu,
                 base_kernel=None)
         ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim,
-            mu_sym=mu_sym, nu_sym=nu_sym)
+            mu=mu, nu=nu)
 
 
 class ElasticityDoubleLayerWrapperBiharmonic(
         _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
         ElasticityDoubleLayerWrapperBase):
-    def __init__(self, dim, mu_sym, nu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym,
+    def __init__(self, dim, mu, nu):
+        super().__init__(dim=dim, mu=mu, nu=nu,
                 base_kernel=BiharmonicKernel(dim))
         ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim,
-            mu_sym=mu_sym, nu_sym=nu_sym)
+            mu=mu, nu=nu)
 
 # }}}
 
@@ -397,36 +397,36 @@ class ElasticityDoubleLayerWrapperBiharmonic(
 
 def make_elasticity_wrapper(
         dim: int,
-        mu_sym: ExpressionT = _MU_SYM_DEFAULT,
-        nu_sym: ExpressionT = _NU_SYM_DEFAULT,
+        mu: ExpressionT = _MU_SYM_DEFAULT,
+        nu: ExpressionT = _NU_SYM_DEFAULT,
         method: str = "naive") -> ElasticityWrapperBase:
     """Creates a :class:`ElasticityWrapperBase` object depending on the input
     values.
 
     :param: dim: dimension
-    :param: mu_sym: viscosity symbol, defaults to "mu"
-    :param: nu_sym: poisson ratio symbol, defaults to "nu"
+    :param: mu: viscosity symbol, defaults to "mu"
+    :param: nu: poisson ratio symbol, defaults to "nu"
     :param: method: method to use, defaults to "naive".
         One of ("naive", "laplace", "biharmonic")
 
     :return: a :class:`ElasticityWrapperBase` object
     """
 
-    if nu_sym == 0.5:
+    if nu == 0.5:
         from pytential.symbolic.stokes import StokesletWrapper
-        return StokesletWrapper(dim=dim, mu_sym=mu_sym, method=method)
+        return StokesletWrapper(dim=dim, mu=mu, method=method)
     if method == "naive":
-        return ElasticityWrapperNaive(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+        return ElasticityWrapperNaive(dim=dim, mu=mu, nu=nu)
     elif method == "biharmonic":
-        return ElasticityWrapperBiharmonic(dim=dim, mu_sym=mu_sym, nu_sym=nu_sym)
+        return ElasticityWrapperBiharmonic(dim=dim, mu=mu, nu=nu)
     elif method == "laplace":
-        if nu_sym == 0.5:
+        if nu == 0.5:
             from pytential.symbolic.stokes import StokesletWrapperTornberg
             return StokesletWrapperTornberg(dim=dim,
-                mu_sym=mu_sym, nu_sym=nu_sym)
+                mu=mu, nu=nu)
         else:
             return ElasticityWrapperYoshida(dim=dim,
-                mu_sym=mu_sym, nu_sym=nu_sym)
+                mu=mu, nu=nu)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
@@ -434,37 +434,37 @@ def make_elasticity_wrapper(
 
 def make_elasticity_double_layer_wrapper(
         dim: int,
-        mu_sym: ExpressionT = _MU_SYM_DEFAULT,
-        nu_sym: ExpressionT = _NU_SYM_DEFAULT,
+        mu: ExpressionT = _MU_SYM_DEFAULT,
+        nu: ExpressionT = _NU_SYM_DEFAULT,
         method: str = "naive") -> ElasticityDoubleLayerWrapperBase:
     """Creates a :class:`ElasticityDoubleLayerWrapperBase` object depending on the
     input values.
 
     :param: dim: dimension
-    :param: mu_sym: viscosity symbol, defaults to "mu"
-    :param: nu_sym: poisson ratio symbol, defaults to "nu"
+    :param: mu: viscosity symbol, defaults to "mu"
+    :param: nu: poisson ratio symbol, defaults to "nu"
     :param: method: method to use, defaults to "naive".
         One of ("naive", "laplace", "biharmonic")
 
     :return: a :class:`ElasticityDoubleLayerWrapperBase` object
     """
-    if nu_sym == 0.5:
+    if nu == 0.5:
         from pytential.symbolic.stokes import StressletWrapper
-        return StressletWrapper(dim=dim, mu_sym=mu_sym, method=method)
+        return StressletWrapper(dim=dim, mu=mu, method=method)
     if method == "naive":
-        return ElasticityDoubleLayerWrapperNaive(dim=dim, mu_sym=mu_sym,
-            nu_sym=nu_sym)
+        return ElasticityDoubleLayerWrapperNaive(dim=dim, mu=mu,
+            nu=nu)
     elif method == "biharmonic":
-        return ElasticityDoubleLayerWrapperBiharmonic(dim=dim, mu_sym=mu_sym,
-            nu_sym=nu_sym)
+        return ElasticityDoubleLayerWrapperBiharmonic(dim=dim, mu=mu,
+            nu=nu)
     elif method == "laplace":
-        if nu_sym == 0.5:
+        if nu == 0.5:
             from pytential.symbolic.stokes import StressletWrapperTornberg
             return StressletWrapperTornberg(dim=dim,
-                mu_sym=mu_sym, nu_sym=nu_sym)
+                mu=mu, nu=nu)
         else:
             return ElasticityDoubleLayerWrapperYoshida(dim=dim,
-                mu_sym=mu_sym, nu_sym=nu_sym)
+                mu=mu, nu=nu)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
@@ -486,14 +486,14 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
         `DOI <https://doi.org/10.1002/1097-0207(20010130)50:3\<525::AID-NME34\>3.0.CO;2-4>`__  # noqa
     """
 
-    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=_NU_SYM_DEFAULT):
+    def __init__(self, dim=None, mu=_MU_SYM_DEFAULT, nu=_NU_SYM_DEFAULT):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "
                              "ElasticityDoubleLayerWrapperYoshida: {dim}")
         self.kernel = LaplaceKernel(dim=3)
-        self.mu = mu_sym
-        self.nu = nu_sym
+        self.mu = mu
+        self.nu = nu
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=()):
@@ -598,14 +598,14 @@ class ElasticityWrapperYoshida(ElasticityWrapperBase):
         `DOI <https://doi.org/10.1002/1097-0207(20010130)50:3\<525::AID-NME34\>3.0.CO;2-4>`__  # noqa
     """
 
-    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=_NU_SYM_DEFAULT):
+    def __init__(self, dim=None, mu=_MU_SYM_DEFAULT, nu=_NU_SYM_DEFAULT):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "
                              "ElasticityWrapperYoshida: {dim}")
         self.kernel = LaplaceKernel(dim=3)
-        self.mu = mu_sym
-        self.nu = nu_sym
+        self.mu = mu
+        self.nu = nu
         self.stresslet = ElasticityDoubleLayerWrapperYoshida(3, self.mu, self.nu)
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):

@@ -165,10 +165,10 @@ def run_exterior_stokes(actx_factory, *,
     else:
         sym_nu = SpatialConstant("nu2")
 
-    stokeslet = make_elasticity_wrapper(ambient_dim, mu_sym=sym_mu,
-                                          nu_sym=sym_nu, method=method)
-    stresslet = make_elasticity_double_layer_wrapper(ambient_dim, mu_sym=sym_mu,
-                                          nu_sym=sym_nu, method=method)
+    stokeslet = make_elasticity_wrapper(ambient_dim, mu=sym_mu,
+                                          nu=sym_nu, method=method)
+    stresslet = make_elasticity_double_layer_wrapper(ambient_dim, mu=sym_mu,
+                                          nu=sym_nu, method=method)
 
     if ambient_dim == 2:
         from pytential.symbolic.stokes import HsiaoKressExteriorStokesOperator
@@ -194,8 +194,8 @@ def run_exterior_stokes(actx_factory, *,
     else:
         # Use the naive method here as biharmonic requires source derivatives
         # of point_source
-        sym_source_pot = make_elasticity_wrapper(ambient_dim, mu_sym=sym_mu,
-            nu_sym=sym_nu, method="naive").apply(sym_sigma, qbx_forced_limit=None)
+        sym_source_pot = make_elasticity_wrapper(ambient_dim, mu=sym_mu,
+            nu=sym_nu, method="naive").apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
 
@@ -467,7 +467,7 @@ class StokesletIdentity:
 
     def __init__(self, ambient_dim):
         self.ambient_dim = ambient_dim
-        self.stokeslet = StokesletWrapper(self.ambient_dim, mu_sym=1)
+        self.stokeslet = StokesletWrapper(self.ambient_dim, mu=1)
 
     def apply_operator(self):
         sym_density = sym.normal(self.ambient_dim).as_vector()
@@ -525,7 +525,7 @@ class StressletIdentity:
 
     def __init__(self, ambient_dim):
         self.ambient_dim = ambient_dim
-        self.stokeslet = StokesletWrapper(self.ambient_dim, mu_sym=1)
+        self.stokeslet = StokesletWrapper(self.ambient_dim, mu=1)
 
     def apply_operator(self):
         sym_density = sym.normal(self.ambient_dim).as_vector()
@@ -683,7 +683,7 @@ def test_stokeslet_pde(actx_factory, dim, method, nu, visualize=False):
         pde_class = ElasticityPDE
 
     identity = pde_class(dim, make_elasticity_wrapper(
-        case.ambient_dim, mu_sym=1, nu_sym=nu, method=method))
+        case.ambient_dim, mu=1, nu=nu, method=method))
 
     for resolution in resolutions:
         h_max, errors = run_stokes_identity(
@@ -730,7 +730,7 @@ def test_stresslet_pde(actx_factory, dim, method, nu, visualize=False):
         pde_class = ElasticityPDE
 
     identity = pde_class(dim, make_elasticity_double_layer_wrapper(
-        case.ambient_dim, mu_sym=1, nu_sym=nu, method=method))
+        case.ambient_dim, mu=1, nu=nu, method=method))
 
     from pytools.convergence import EOCRecorder
     eocs = [EOCRecorder() for _ in range(case.ambient_dim)]
