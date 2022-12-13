@@ -91,7 +91,6 @@ class ElasticityWrapperBase(ABC):
         :arg extra_deriv_dirs: adds target derivatives to all the integral
             objects with the given derivative axis.
         """
-        raise NotImplementedError
 
     def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
         """Symbolic derivative of velocity from Elasticity kernel.
