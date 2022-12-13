@@ -34,6 +34,9 @@ from pytential.symbolic.elasticity import (ElasticityWrapperBase,
     _ElasticityWrapperNaiveOrBiharmonic,
     _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
     _MU_SYM_DEFAULT)
+from pytential.symbolic.typing import ExpressionT
+from dataclasses import dataclass
+from functools import cached_property
 from abc import abstractmethod
 
 __doc__ = """
@@ -281,6 +284,7 @@ class StressletWrapperBiharmonic(_StressletWrapperNaiveOrBiharmonic,
 
 # {{{ Stokeslet/Stresslet using Laplace (Tornberg)
 
+@dataclass
 class StokesletWrapperTornberg(StokesletWrapperBase):
     """A Stresslet wrapper using Tornberg and Greengard's method which
     uses Laplace derivatives.
@@ -289,14 +293,13 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
         three-dimensional Stokes equations.
         Journal of Computational Physics, 227(3), 1613-1619.
     """
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
 
-    def __init__(self, dim=None, mu=_MU_SYM_DEFAULT, nu=0.5):
-        self.dim = dim
-        if nu != 0.5:
+    def __post_init__(self):
+        if self.nu != 0.5:
             raise ValueError("nu != 0.5 is not supported")
-        self.kernel = LaplaceKernel(dim=self.dim)
-        self.mu = mu
-        self.nu = nu
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         stresslet = StressletWrapperTornberg(self.dim, self.mu, self.nu)
@@ -305,6 +308,7 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
             extra_deriv_dirs)
 
 
+@dataclass
 class StressletWrapperTornberg(StressletWrapperBase):
     """A Stresslet wrapper using Tornberg and Greengard's method which
     uses Laplace derivatives.
@@ -313,13 +317,17 @@ class StressletWrapperTornberg(StressletWrapperBase):
         three-dimensional Stokes equations.
         Journal of Computational Physics, 227(3), 1613-1619.
     """
-    def __init__(self, dim, mu=_MU_SYM_DEFAULT, nu=0.5):
-        self.dim = dim
-        if nu != 0.5:
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
+
+    def __post_init__(self):
+        if self.nu != 0.5:
             raise ValueError("nu != 0.5 is not supported")
-        self.kernel = LaplaceKernel(dim=self.dim)
-        self.mu = mu
-        self.nu = nu
+
+    @cached_property
+    def laplace_kernel(self):
+        return LaplaceKernel(dim=self.dim)
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=()):
@@ -334,9 +342,10 @@ class StressletWrapperTornberg(StressletWrapperBase):
         sym_expr = np.zeros((self.dim,), dtype=object)
 
         source = sym.nodes(self.dim).as_vector()
-        common_source_kernels = [AxisSourceDerivative(k, self.kernel) for
+        common_source_kernels = [
+                AxisSourceDerivative(k, self.laplace_kernel) for
                 k in range(self.dim)]
-        common_source_kernels.append(self.kernel)
+        common_source_kernels.append(self.laplace_kernel)
 
         # The paper in [1] ignores the scaling we use Stokeslet/Stresslet
         # and gives formulae for the kernel expression only
@@ -355,7 +364,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
                             for k in range(self.dim)]
                 densities.append(stokeslet_weight*stokeslet_density_vec_sym[j])
                 target_kernel = TargetPointMultiplier(j,
-                        AxisTargetDerivative(i, self.kernel))
+                        AxisTargetDerivative(i, self.laplace_kernel))
                 for deriv_dir in extra_deriv_dirs:
                     target_kernel = AxisTargetDerivative(deriv_dir, target_kernel)
                 sym_expr[i] -= sym.IntG(target_kernel=target_kernel,
@@ -364,7 +373,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
                     qbx_forced_limit=qbx_forced_limit)
 
                 if i == j:
-                    target_kernel = self.kernel
+                    target_kernel = self.laplace_kernel
                     for deriv_dir in extra_deriv_dirs:
                         target_kernel = AxisTargetDerivative(
                                 deriv_dir, target_kernel)
@@ -385,7 +394,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
                     k in range(self.dim)]
             densities.append(stokeslet_weight * common_density2)
 
-            target_kernel = AxisTargetDerivative(i, self.kernel)
+            target_kernel = AxisTargetDerivative(i, self.laplace_kernel)
             for deriv_dir in extra_deriv_dirs:
                 target_kernel = AxisTargetDerivative(deriv_dir, target_kernel)
             sym_expr[i] += sym.IntG(target_kernel=target_kernel,
