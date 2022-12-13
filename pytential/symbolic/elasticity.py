@@ -31,14 +31,17 @@ from sumpy.kernel import (StressletKernel, LaplaceKernel, StokesletKernel,
     ElasticityKernel, BiharmonicKernel, Kernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
 from sumpy.symbolic import SpatialConstant
+from pytential.symbolic.typing import ExpressionT
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import cached_property
-from pytential.symbolic.typing import ExpressionT
+from enum import Enum
 
 __doc__ = """
 .. autoclass:: ElasticityWrapperBase
 .. autoclass:: ElasticityDoubleLayerWrapperBase
+.. autoclass:: Method
 
 .. automethod:: pytential.symbolic.elasticity.make_elasticity_wrapper
 .. automethod:: pytential.symbolic.elasticity.make_elasticity_double_layer_wrapper
@@ -402,19 +405,26 @@ class ElasticityDoubleLayerWrapperBiharmonic(
 
 # {{{ dispatch function
 
+class Method(Enum):
+    """Method to use in Elasticity/Stokes problem.
+    """
+    naive = 1
+    laplace = 2
+    biharmonic = 3
+
+
 def make_elasticity_wrapper(
         dim: int,
         mu: ExpressionT = _MU_SYM_DEFAULT,
         nu: ExpressionT = _NU_SYM_DEFAULT,
-        method: str = "naive") -> ElasticityWrapperBase:
+        method: Method = Method.naive) -> ElasticityWrapperBase:
     """Creates a :class:`ElasticityWrapperBase` object depending on the input
     values.
 
     :param: dim: dimension
     :param: mu: viscosity symbol, defaults to "mu"
     :param: nu: poisson ratio symbol, defaults to "nu"
-    :param: method: method to use, defaults to "naive".
-        One of ("naive", "laplace", "biharmonic")
+    :param: method: method to use, defaults to naive.
 
     :return: a :class:`ElasticityWrapperBase` object
     """
@@ -422,11 +432,11 @@ def make_elasticity_wrapper(
     if nu == 0.5:
         from pytential.symbolic.stokes import StokesletWrapper
         return StokesletWrapper(dim=dim, mu=mu, method=method)
-    if method == "naive":
+    if method == Method.naive:
         return ElasticityWrapperNaive(dim=dim, mu=mu, nu=nu)
-    elif method == "biharmonic":
+    elif method == Method.biharmonic:
         return ElasticityWrapperBiharmonic(dim=dim, mu=mu, nu=nu)
-    elif method == "laplace":
+    elif method == Method.laplace:
         if nu == 0.5:
             from pytential.symbolic.stokes import StokesletWrapperTornberg
             return StokesletWrapperTornberg(dim=dim,
@@ -443,7 +453,7 @@ def make_elasticity_double_layer_wrapper(
         dim: int,
         mu: ExpressionT = _MU_SYM_DEFAULT,
         nu: ExpressionT = _NU_SYM_DEFAULT,
-        method: str = "naive") -> ElasticityDoubleLayerWrapperBase:
+        method: Method = Method.naive) -> ElasticityDoubleLayerWrapperBase:
     """Creates a :class:`ElasticityDoubleLayerWrapperBase` object depending on the
     input values.
 
@@ -451,20 +461,19 @@ def make_elasticity_double_layer_wrapper(
     :param: mu: viscosity symbol, defaults to "mu"
     :param: nu: poisson ratio symbol, defaults to "nu"
     :param: method: method to use, defaults to "naive".
-        One of ("naive", "laplace", "biharmonic")
 
     :return: a :class:`ElasticityDoubleLayerWrapperBase` object
     """
     if nu == 0.5:
         from pytential.symbolic.stokes import StressletWrapper
         return StressletWrapper(dim=dim, mu=mu, method=method)
-    if method == "naive":
+    if method == Method.naive:
         return ElasticityDoubleLayerWrapperNaive(dim=dim, mu=mu,
             nu=nu)
-    elif method == "biharmonic":
+    elif method == Method.biharmonic:
         return ElasticityDoubleLayerWrapperBiharmonic(dim=dim, mu=mu,
             nu=nu)
-    elif method == "laplace":
+    elif method == Method.laplace:
         if nu == 0.5:
             from pytential.symbolic.stokes import StressletWrapperTornberg
             return StressletWrapperTornberg(dim=dim,
