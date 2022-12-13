@@ -67,7 +67,6 @@ def rewrite_using_base_kernel(exprs: List[ExpressionT],
     Schwarz's theorem holds. If applied to on-surface evaluation, then the layer
     potentials to which this is applied must be one-sided limits, and the potential
     must be non-singular (as might occur due to corners).
-    
 
     For example, if *base_kernel* is the biharmonic kernel, and a Laplace kernel
     is encountered, this will (forcibly) rewrite the Laplace kernel in terms of
@@ -293,8 +292,8 @@ def rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) 
 
 def _rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) \
         -> ExpressionT:
-    r"""Rewrites an ``IntG`` with only one source kernel to an expression with ``IntG``\ s
-    having the base kernel *base_kernel*.
+    r"""Rewrites an ``IntG`` with only one source kernel to an expression with
+    ``IntG``\ s having the base kernel *base_kernel*.
     """
     target_kernel = int_g.target_kernel.replace_base_kernel(base_kernel)
     dim = target_kernel.dim
