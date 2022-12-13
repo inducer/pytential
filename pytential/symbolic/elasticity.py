@@ -199,7 +199,8 @@ class _ElasticityWrapperNaiveOrBiharmonic:
         self.nu = nu_sym
 
         if not (dim == 3 or dim == 2):
-            raise ValueError("unsupported dimension given to ElasticityWrapper")
+            raise ValueError(
+                    f"unsupported dimension given to ElasticityWrapper: {dim}")
 
         self.base_kernel = base_kernel
 
@@ -275,7 +276,7 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
 
         if not (dim == 3 or dim == 2):
             raise ValueError("unsupported dimension given to "
-                "ElasticityDoubleLayerWrapper")
+                             f"ElasticityDoubleLayerWrapper: {dim}")
 
         self.base_kernel = base_kernel
 
@@ -488,7 +489,7 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "
-                "ElasticityDoubleLayerWrapperYoshida")
+                             "ElasticityDoubleLayerWrapperYoshida: {dim}")
         self.kernel = LaplaceKernel(dim=3)
         self.mu = mu_sym
         self.nu = nu_sym
@@ -600,7 +601,7 @@ class ElasticityWrapperYoshida(ElasticityWrapperBase):
         self.dim = dim
         if dim != 3:
             raise ValueError("unsupported dimension given to "
-                "ElasticityWrapperYoshida")
+                             "ElasticityWrapperYoshida: {dim}")
         self.kernel = LaplaceKernel(dim=3)
         self.mu = mu_sym
         self.nu = nu_sym
