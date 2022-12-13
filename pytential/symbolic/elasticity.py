@@ -308,9 +308,10 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
                     s = tuple(sorted([i, j, k]))
                     d[(i, j, k)] = d[s]
 
-        # For elasticity (nu != 0.5), we need the LaplaceKernel
+        # For elasticity (nu != 0.5), we need the laplacian of the
+        # BiharmonicKernel which is the LaplaceKernel.
         if self.nu != 0.5:
-            d["laplace"] = LaplaceKernel(self.dim)
+            d["laplacian"] = LaplaceKernel(self.dim)
 
         return d
 
@@ -327,7 +328,7 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
         coeffs = [1]
         extra_deriv_dirs_vec = [[]]
 
-        kernel_indices = [idx, "laplace", "laplace", "laplace"]
+        kernel_indices = [idx, "laplacian", "laplacian", "laplacian"]
         dir_vec_indices = [idx[-1], idx[1], idx[0], idx[2]]
         coeffs = [1, (1 - 2*nu)/self.dim, -(1 - 2*nu)/self.dim, -(1 - 2*nu)]
         extra_deriv_dirs_vec = [[], [idx[0]], [idx[1]], [idx[2]]]
