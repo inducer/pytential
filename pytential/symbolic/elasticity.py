@@ -28,11 +28,12 @@ import numpy as np
 from pytential import sym
 from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
 from sumpy.kernel import (StressletKernel, LaplaceKernel, StokesletKernel,
-    ElasticityKernel, BiharmonicKernel,
+    ElasticityKernel, BiharmonicKernel, Kernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
 from sumpy.symbolic import SpatialConstant
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import cached_property
 from pytential.symbolic.typing import ExpressionT
 
 __doc__ = """
@@ -193,32 +194,35 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
     return res
 
 
+@dataclass
 class _ElasticityWrapperNaiveOrBiharmonic:
-    def __init__(self, dim, mu, nu, base_kernel):
-        self.dim = dim
-        self.mu = mu
-        self.nu = nu
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
+    base_kernel: Kernel
 
-        if not (dim == 3 or dim == 2):
+    def __post_init__(self):
+        if not (self.dim == 3 or self.dim == 2):
             raise ValueError(
-                    f"unsupported dimension given to ElasticityWrapper: {dim}")
+                    f"unsupported dimension given to ElasticityWrapper: {self.dim}")
 
-        self.base_kernel = base_kernel
-
-        self.kernel_dict = {}
-
+    @cached_property
+    def kernel_dict(self):
+        d = {}
         # The dictionary allows us to exploit symmetry -- that
         # :math:`T_{01}` is identical to :math:`T_{10}` -- and avoid creating
         # multiple expansions for the same kernel in a different ordering.
-        for i in range(dim):
-            for j in range(i, dim):
-                if nu == 0.5:
-                    self.kernel_dict[(i, j)] = StokesletKernel(dim=dim, icomp=i,
+        for i in range(self.dim):
+            for j in range(i, self.dim):
+                if self.nu == 0.5:
+                    d[(i, j)] = StokesletKernel(dim=self.dim, icomp=i,
                         jcomp=j)
                 else:
-                    self.kernel_dict[(i, j)] = ElasticityKernel(dim=dim, icomp=i,
+                    d[(i, j)] = ElasticityKernel(dim=self.dim, icomp=i,
                         jcomp=j)
-                self.kernel_dict[(j, i)] = self.kernel_dict[(i, j)]
+                d[(j, i)] = d[(i, j)]
+
+        return d
 
     def _get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
@@ -268,41 +272,44 @@ class ElasticityWrapperBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
 
 # {{{ ElasticityDoubleLayerWrapper Naive and Biharmonic impl
 
+@dataclass
 class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
+    base_kernel: Kernel
 
-    def __init__(self, dim, mu, nu, base_kernel):
-        self.dim = dim
-        self.mu = mu
-        self.nu = nu
-
-        if not (dim == 3 or dim == 2):
+    def __post_init__(self):
+        if not (self.dim == 3 or self.dim == 2):
             raise ValueError("unsupported dimension given to "
-                             f"ElasticityDoubleLayerWrapper: {dim}")
+                             f"ElasticityDoubleLayerWrapper: {self.dim}")
 
-        self.base_kernel = base_kernel
+    @cached_property
+    def kernel_dict(self):
+        d = {}
 
-        self.kernel_dict = {}
-
-        for i in range(dim):
-            for j in range(i, dim):
-                for k in range(j, dim):
-                    self.kernel_dict[(i, j, k)] = StressletKernel(dim=dim, icomp=i,
+        for i in range(self.dim):
+            for j in range(i, self.dim):
+                for k in range(j, self.dim):
+                    d[(i, j, k)] = StressletKernel(dim=self.dim, icomp=i,
                             jcomp=j, kcomp=k)
 
         # The dictionary allows us to exploit symmetry -- that
         # :math:`T_{012}` is identical to :math:`T_{120}` -- and avoid creating
         # multiple expansions for the same kernel in a different ordering.
-        for i in range(dim):
-            for j in range(dim):
-                for k in range(dim):
-                    if (i, j, k) in self.kernel_dict:
+        for i in range(self.dim):
+            for j in range(self.dim):
+                for k in range(self.dim):
+                    if (i, j, k) in d:
                         continue
                     s = tuple(sorted([i, j, k]))
-                    self.kernel_dict[(i, j, k)] = self.kernel_dict[s]
+                    d[(i, j, k)] = d[s]
 
         # For elasticity (nu != 0.5), we need the LaplaceKernel
-        if nu != 0.5:
-            self.kernel_dict["laplace"] = LaplaceKernel(self.dim)
+        if self.nu != 0.5:
+            d["laplace"] = LaplaceKernel(self.dim)
+
+        return d
 
     def _get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
@@ -475,6 +482,7 @@ def make_elasticity_double_layer_wrapper(
 
 # {{{ Yoshida
 
+@dataclass
 class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
     r"""ElasticityDoubleLayer Wrapper using Yoshida et al's method [1] which uses
     Laplace derivatives.
@@ -485,15 +493,18 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
         International Journal for Numerical Methods in Engineering, 50(3), 525-547.
         `DOI <https://doi.org/10.1002/1097-0207(20010130)50:3\<525::AID-NME34\>3.0.CO;2-4>`__  # noqa
     """
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
 
-    def __init__(self, dim=None, mu=_MU_SYM_DEFAULT, nu=_NU_SYM_DEFAULT):
-        self.dim = dim
-        if dim != 3:
+    def __post_init__(self):
+        if not self.dim == 3:
             raise ValueError("unsupported dimension given to "
-                             "ElasticityDoubleLayerWrapperYoshida: {dim}")
-        self.kernel = LaplaceKernel(dim=3)
-        self.mu = mu
-        self.nu = nu
+                             "ElasticityDoubleLayerWrapperYoshida: {self.dim}")
+
+    @cached_property
+    def laplace_kernel(self):
+        return LaplaceKernel(dim=3)
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=()):
@@ -542,7 +553,7 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
 
         sym_expr = np.zeros((3,), dtype=object)
 
-        kernel = self.kernel
+        kernel = self.laplace_kernel
         source = [sym.NodeCoordinateComponent(d) for d in range(3)]
         normal = dir_vec_sym
         sigma = stresslet_density_vec_sym
@@ -587,6 +598,7 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
         return sym_expr
 
 
+@dataclass
 class ElasticityWrapperYoshida(ElasticityWrapperBase):
     r"""Elasticity single layer using Yoshida et al's method [1] which uses Laplace
     derivatives.
@@ -597,16 +609,18 @@ class ElasticityWrapperYoshida(ElasticityWrapperBase):
         International Journal for Numerical Methods in Engineering, 50(3), 525-547.
         `DOI <https://doi.org/10.1002/1097-0207(20010130)50:3\<525::AID-NME34\>3.0.CO;2-4>`__  # noqa
     """
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
 
-    def __init__(self, dim=None, mu=_MU_SYM_DEFAULT, nu=_NU_SYM_DEFAULT):
-        self.dim = dim
-        if dim != 3:
+    def __post_init__(self):
+        if not self.dim == 3:
             raise ValueError("unsupported dimension given to "
-                             "ElasticityWrapperYoshida: {dim}")
-        self.kernel = LaplaceKernel(dim=3)
-        self.mu = mu
-        self.nu = nu
-        self.stresslet = ElasticityDoubleLayerWrapperYoshida(3, self.mu, self.nu)
+                             "ElasticityDoubleLayerWrapperYoshida: {self.dim}")
+
+    @cached_property
+    def stresslet(self):
+        return ElasticityDoubleLayerWrapperYoshida(3, self.mu, self.nu)
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         return self.stresslet.apply_single_and_double_layer(density_vec_sym,
