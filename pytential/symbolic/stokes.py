@@ -33,7 +33,7 @@ from pytential.symbolic.elasticity import (ElasticityWrapperBase,
     ElasticityDoubleLayerWrapperBase,
     _ElasticityWrapperNaiveOrBiharmonic,
     _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
-    _MU_SYM_DEFAULT)
+    Method, _MU_SYM_DEFAULT)
 from pytential.symbolic.typing import ExpressionT
 from dataclasses import dataclass
 from functools import cached_property
@@ -409,34 +409,42 @@ class StressletWrapperTornberg(StressletWrapperBase):
 
 # {{{ StokesletWrapper dispatch method
 
-def StokesletWrapper(dim, mu=_MU_SYM_DEFAULT, method=None):  # noqa: N806
+def StokesletWrapper(
+        dim: int,
+        mu: ExpressionT = _MU_SYM_DEFAULT,
+        method: Method = None
+        ):  # noqa: N806
     if method is None:
         import warnings
         warnings.warn("Method argument not given. Falling back to 'naive'. "
                 "Method argument will be required in the future.")
-        method = "naive"
-    if method == "naive":
+        method = Method.naive
+    if method == Method.naive:
         return StokesletWrapperNaive(dim=dim, mu=mu)
-    elif method == "biharmonic":
+    elif method == Method.biharmonic:
         return StokesletWrapperBiharmonic(dim=dim, mu=mu)
-    elif method == "laplace":
+    elif method == Method.laplace:
         return StokesletWrapperTornberg(dim=dim, mu=mu)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
 
 
-def StressletWrapper(dim, mu=_MU_SYM_DEFAULT, method=None):  # noqa: N806
+def StressletWrapper(
+        dim: int,
+        mu: ExpressionT = _MU_SYM_DEFAULT,
+        method: Method = None
+        ):  # noqa: N806
     if method is None:
         import warnings
         warnings.warn("Method argument not given. Falling back to 'naive'. "
                 "Method argument will be required in the future.")
-        method = "naive"
-    if method == "naive":
+        method = Method.naive
+    if method == Method.naive:
         return StressletWrapperNaive(dim=dim, mu=mu)
-    elif method == "biharmonic":
+    elif method == Method.biharmonic:
         return StressletWrapperBiharmonic(dim=dim, mu=mu)
-    elif method == "laplace":
+    elif method == Method.laplace:
         return StressletWrapperTornberg(dim=dim, mu=mu)
     else:
         raise ValueError(f"invalid method: {method}."
