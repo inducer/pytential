@@ -293,7 +293,7 @@ def rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) 
 
 def _rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) \
         -> ExpressionT:
-    """Rewrites an *IntG* with only one source kernel to an expression with *IntG*s
+    r"""Rewrites an ``IntG`` with only one source kernel to an expression with ``IntG``\ s
     having the base kernel *base_kernel*.
     """
     target_kernel = int_g.target_kernel.replace_base_kernel(base_kernel)
