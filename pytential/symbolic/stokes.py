@@ -64,8 +64,8 @@ class StokesletWrapperBase(ElasticityWrapperBase):
     .. automethod:: apply_derivative
     .. automethod:: apply_stress
     """
-    def __init__(self, dim, mu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5)
+    def __init__(self, dim, mu):
+        super().__init__(dim=dim, mu=mu, nu=0.5)
 
     def apply_pressure(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         """Symbolic expression for pressure field associated with the Stokeslet."""
@@ -122,8 +122,8 @@ class StressletWrapperBase(ElasticityDoubleLayerWrapperBase):
     .. automethod:: apply_derivative
     .. automethod:: apply_stress
     """
-    def __init__(self, dim, mu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5)
+    def __init__(self, dim, mu):
+        super().__init__(dim=dim, mu=mu, nu=0.5)
 
     def apply_pressure(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
                        extra_deriv_dirs=()):
@@ -191,7 +191,7 @@ class _StokesletWrapperNaiveOrBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
 
         sym_expr = np.zeros((self.dim,), dtype=object)
         stresslet_obj = _StressletWrapperNaiveOrBiharmonic(dim=self.dim,
-            mu_sym=self.mu, nu_sym=0.5, base_kernel=self.base_kernel)
+            mu=self.mu, nu=0.5, base_kernel=self.base_kernel)
 
         # For stokeslet, there's no direction vector involved
         # passing a list of ones instead to remove its usage.
@@ -246,35 +246,35 @@ class _StressletWrapperNaiveOrBiharmonic(
 
 class StokesletWrapperNaive(_StokesletWrapperNaiveOrBiharmonic,
                             ElasticityWrapperBase):
-    def __init__(self, dim, mu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5, base_kernel=None)
-        ElasticityWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=0.5)
+    def __init__(self, dim, mu):
+        super().__init__(dim=dim, mu=mu, nu=0.5, base_kernel=None)
+        ElasticityWrapperBase.__init__(self, dim=dim, mu=mu, nu=0.5)
 
 
 class StressletWrapperNaive(_StressletWrapperNaiveOrBiharmonic,
                             ElasticityDoubleLayerWrapperBase):
 
-    def __init__(self, dim, mu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5, base_kernel=None)
-        ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym,
-                                                  nu_sym=0.5)
+    def __init__(self, dim, mu):
+        super().__init__(dim=dim, mu=mu, nu=0.5, base_kernel=None)
+        ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim, mu=mu,
+                                                  nu=0.5)
 
 
 class StokesletWrapperBiharmonic(_StokesletWrapperNaiveOrBiharmonic,
                             ElasticityWrapperBase):
-    def __init__(self, dim, mu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5,
+    def __init__(self, dim, mu):
+        super().__init__(dim=dim, mu=mu, nu=0.5,
                          base_kernel=BiharmonicKernel(dim))
-        ElasticityWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym, nu_sym=0.5)
+        ElasticityWrapperBase.__init__(self, dim=dim, mu=mu, nu=0.5)
 
 
 class StressletWrapperBiharmonic(_StressletWrapperNaiveOrBiharmonic,
                             ElasticityDoubleLayerWrapperBase):
-    def __init__(self, dim, mu_sym):
-        super().__init__(dim=dim, mu_sym=mu_sym, nu_sym=0.5,
+    def __init__(self, dim, mu):
+        super().__init__(dim=dim, mu=mu, nu=0.5,
                          base_kernel=BiharmonicKernel(dim))
-        ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim, mu_sym=mu_sym,
-                                                  nu_sym=0.5)
+        ElasticityDoubleLayerWrapperBase.__init__(self, dim=dim, mu=mu,
+                                                  nu=0.5)
 
 # }}}
 
@@ -290,13 +290,13 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
         Journal of Computational Physics, 227(3), 1613-1619.
     """
 
-    def __init__(self, dim=None, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
+    def __init__(self, dim=None, mu=_MU_SYM_DEFAULT, nu=0.5):
         self.dim = dim
-        if nu_sym != 0.5:
+        if nu != 0.5:
             raise ValueError("nu != 0.5 is not supported")
         self.kernel = LaplaceKernel(dim=self.dim)
-        self.mu = mu_sym
-        self.nu = nu_sym
+        self.mu = mu
+        self.nu = nu
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         stresslet = StressletWrapperTornberg(self.dim, self.mu, self.nu)
@@ -313,13 +313,13 @@ class StressletWrapperTornberg(StressletWrapperBase):
         three-dimensional Stokes equations.
         Journal of Computational Physics, 227(3), 1613-1619.
     """
-    def __init__(self, dim, mu_sym=_MU_SYM_DEFAULT, nu_sym=0.5):
+    def __init__(self, dim, mu=_MU_SYM_DEFAULT, nu=0.5):
         self.dim = dim
-        if nu_sym != 0.5:
+        if nu != 0.5:
             raise ValueError("nu != 0.5 is not supported")
         self.kernel = LaplaceKernel(dim=self.dim)
-        self.mu = mu_sym
-        self.nu = nu_sym
+        self.mu = mu
+        self.nu = nu
 
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=()):
@@ -400,35 +400,35 @@ class StressletWrapperTornberg(StressletWrapperBase):
 
 # {{{ StokesletWrapper dispatch method
 
-def StokesletWrapper(dim, mu_sym=_MU_SYM_DEFAULT, method=None):  # noqa: N806
+def StokesletWrapper(dim, mu=_MU_SYM_DEFAULT, method=None):  # noqa: N806
     if method is None:
         import warnings
         warnings.warn("Method argument not given. Falling back to 'naive'. "
                 "Method argument will be required in the future.")
         method = "naive"
     if method == "naive":
-        return StokesletWrapperNaive(dim=dim, mu_sym=mu_sym)
+        return StokesletWrapperNaive(dim=dim, mu=mu)
     elif method == "biharmonic":
-        return StokesletWrapperBiharmonic(dim=dim, mu_sym=mu_sym)
+        return StokesletWrapperBiharmonic(dim=dim, mu=mu)
     elif method == "laplace":
-        return StokesletWrapperTornberg(dim=dim, mu_sym=mu_sym)
+        return StokesletWrapperTornberg(dim=dim, mu=mu)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
 
 
-def StressletWrapper(dim, mu_sym=_MU_SYM_DEFAULT, method=None):  # noqa: N806
+def StressletWrapper(dim, mu=_MU_SYM_DEFAULT, method=None):  # noqa: N806
     if method is None:
         import warnings
         warnings.warn("Method argument not given. Falling back to 'naive'. "
                 "Method argument will be required in the future.")
         method = "naive"
     if method == "naive":
-        return StressletWrapperNaive(dim=dim, mu_sym=mu_sym)
+        return StressletWrapperNaive(dim=dim, mu=mu)
     elif method == "biharmonic":
-        return StressletWrapperBiharmonic(dim=dim, mu_sym=mu_sym)
+        return StressletWrapperBiharmonic(dim=dim, mu=mu)
     elif method == "laplace":
-        return StressletWrapperTornberg(dim=dim, mu_sym=mu_sym)
+        return StressletWrapperTornberg(dim=dim, mu=mu)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
@@ -452,7 +452,7 @@ class StokesOperator:
     .. automethod:: pressure
     """
 
-    def __init__(self, ambient_dim, side, stokeslet, stresslet, mu_sym):
+    def __init__(self, ambient_dim, side, stokeslet, stresslet, mu):
         """
         :arg ambient_dim: dimension of the ambient space.
         :arg side: :math:`+1` for exterior or :math:`-1` for interior.
@@ -463,20 +463,20 @@ class StokesOperator:
         self.ambient_dim = ambient_dim
         self.side = side
 
-        if mu_sym is not None:
+        if mu is not None:
             import warnings
-            warnings.warn("Explicitly giving mu_sym is deprecated. "
+            warnings.warn("Explicitly giving mu is deprecated. "
                 "Use stokeslet and stresslet arguments.")
         else:
-            mu_sym = _MU_SYM_DEFAULT
+            mu = _MU_SYM_DEFAULT
 
         if stresslet is None:
             stresslet = StressletWrapper(dim=self.ambient_dim,
-                mu_sym=mu_sym)
+                mu=mu)
 
         if stokeslet is None:
             stokeslet = StokesletWrapper(dim=self.ambient_dim,
-                mu_sym=mu_sym)
+                mu=mu)
 
         self.stokeslet = stokeslet
         self.stresslet = stresslet
@@ -539,7 +539,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
     """
 
     def __init__(self, *, omega, alpha=1.0, eta=1.0,
-                 stokeslet=None, stresslet=None, mu_sym=None):
+                 stokeslet=None, stresslet=None, mu=None):
         r"""
         :arg omega: farfield behaviour of the velocity field, as defined
             by :math:`A` in [HsiaoKress1985]_ Equation 2.3.
@@ -548,7 +548,7 @@ class HsiaoKressExteriorStokesOperator(StokesOperator):
             can have a non-trivial effect on the conditioning.
         """
         super().__init__(ambient_dim=2, side=+1, stokeslet=stokeslet,
-                stresslet=stresslet, mu_sym=mu_sym)
+                stresslet=stresslet, mu=mu)
 
         # NOTE: in [hsiao-kress], there is an analysis on a circle, which
         # recommends values in
@@ -617,14 +617,14 @@ class HebekerExteriorStokesOperator(StokesOperator):
     .. automethod:: __init__
     """
 
-    def __init__(self, *, eta=None, stokeslet=None, stresslet=None, mu_sym=None):
+    def __init__(self, *, eta=None, stokeslet=None, stresslet=None, mu=None):
         r"""
         :arg eta: a parameter :math:`\eta > 0`. Choosing this parameter well
             can have a non-trivial effect on the conditioning of the operator.
         """
 
         super().__init__(ambient_dim=3, side=+1, stokeslet=stokeslet,
-                stresslet=stresslet, mu_sym=mu_sym)
+                stresslet=stresslet, mu=mu)
 
         # NOTE: eta is chosen here based on H. 1986 Figure 1, which is
         # based on solving on the unit sphere
