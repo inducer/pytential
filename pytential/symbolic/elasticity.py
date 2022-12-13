@@ -423,9 +423,9 @@ def make_elasticity_wrapper(
     values.
 
     :param: dim: dimension
-    :param: mu: viscosity symbol, defaults to "mu"
-    :param: nu: poisson ratio symbol, defaults to "nu"
-    :param: method: method to use, defaults to naive.
+    :param: mu: viscosity symbol, defaults to a variable named "mu"
+    :param: nu: poisson ratio symbol, defaults to a variable named "nu"
+    :param: method: method to use, defaults to the *Method* enum value naive.
 
     :return: a :class:`ElasticityWrapperBase` object
     """
@@ -459,9 +459,9 @@ def make_elasticity_double_layer_wrapper(
     input values.
 
     :param: dim: dimension
-    :param: mu: viscosity symbol, defaults to "mu"
-    :param: nu: poisson ratio symbol, defaults to "nu"
-    :param: method: method to use, defaults to "naive".
+    :param: mu: viscosity symbol, defaults to a variable named "mu"
+    :param: nu: poisson ratio symbol, defaults to a variable named "nu"
+    :param: method: method to use, defaults to the *Method* enum value naive.
 
     :return: a :class:`ElasticityDoubleLayerWrapperBase` object
     """
