@@ -32,6 +32,7 @@ from sumpy.kernel import (StressletKernel, LaplaceKernel, StokesletKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
 from sumpy.symbolic import SpatialConstant
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pytential.symbolic.typing import ExpressionT
 
 __doc__ = """
@@ -49,6 +50,7 @@ _MU_SYM_DEFAULT = SpatialConstant("mu")
 _NU_SYM_DEFAULT = SpatialConstant("nu")
 
 
+@dataclass
 class ElasticityWrapperBase(ABC):
     """Wrapper class for the :class:`~sumpy.kernel.ElasticityKernel` kernel.
 
@@ -72,10 +74,9 @@ class ElasticityWrapperBase(ABC):
     .. automethod:: apply
     .. automethod:: apply_derivative
     """
-    def __init__(self, dim, mu_sym, nu_sym):
-        self.dim = dim
-        self.mu = mu_sym
-        self.nu = nu_sym
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
 
     @abstractmethod
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
@@ -107,6 +108,7 @@ class ElasticityWrapperBase(ABC):
         return self.apply(density_vec_sym, qbx_forced_limit, (deriv_dir,))
 
 
+@dataclass
 class ElasticityDoubleLayerWrapperBase(ABC):
     """Wrapper class for the double layer of
     :class:`~sumpy.kernel.ElasticityKernel` kernel.
@@ -130,10 +132,9 @@ class ElasticityDoubleLayerWrapperBase(ABC):
     .. automethod:: apply
     .. automethod:: apply_derivative
     """
-    def __init__(self, dim, mu_sym, nu_sym):
-        self.dim = dim
-        self.mu = mu_sym
-        self.nu = nu_sym
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
 
     @abstractmethod
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
