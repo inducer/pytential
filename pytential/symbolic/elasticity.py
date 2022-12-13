@@ -79,10 +79,10 @@ class ElasticityWrapperBase(ABC):
 
     @abstractmethod
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
-        """Symbolic expressions for integrating Stokeslet kernel.
+        """Symbolic expressions for integrating Elasticity kernel.
 
         Returns an object array of symbolic expressions for the vector
-        resulting from integrating the dyadic Stokeslet kernel with
+        resulting from integrating the dyadic Elasticity kernel with
         variable *density_vec_sym*.
 
         :arg density_vec_sym: a symbolic vector variable for the density vector.
@@ -94,11 +94,11 @@ class ElasticityWrapperBase(ABC):
         raise NotImplementedError
 
     def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
-        """Symbolic derivative of velocity from Stokeslet.
+        """Symbolic derivative of velocity from Elasticity kernel.
 
         Returns an object array of symbolic expressions for the vector
         resulting from integrating the *deriv_dir* target derivative of the
-        dyadic Stokeslet kernel with variable *density_vec_sym*.
+        dyadic Elasticity kernel with variable *density_vec_sym*.
 
         :arg deriv_dir: integer denoting the axis direction for the derivative.
         :arg density_vec_sym: a symbolic vector variable for the density vector.
@@ -156,11 +156,11 @@ class ElasticityDoubleLayerWrapperBase(ABC):
 
     def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
             qbx_forced_limit):
-        """Symbolic derivative of velocity from Stokeslet.
+        """Symbolic derivative of velocity from Elasticity kernel.
 
         Returns an object array of symbolic expressions for the vector
         resulting from integrating the *deriv_dir* target derivative of the
-        dyadic Stokeslet kernel with variable *density_vec_sym*.
+        dyadic Elasticity kernel with variable *density_vec_sym*.
 
         :arg deriv_dir: integer denoting the axis direction for the derivative.
         :arg density_vec_sym: a symbolic vector variable for the density vector.
