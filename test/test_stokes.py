@@ -28,8 +28,8 @@ import numpy as np
 from arraycontext import flatten
 from pytential import GeometryCollection, bind, sym
 from pytential.symbolic.stokes import StokesletWrapper
-from pytential.symbolic.elasticity import (create_elasticity_wrapper,
-        create_elasticity_double_layer_wrapper,
+from pytential.symbolic.elasticity import (make_elasticity_wrapper,
+        make_elasticity_double_layer_wrapper,
         ElasticityDoubleLayerWrapperBase)
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
@@ -165,9 +165,9 @@ def run_exterior_stokes(actx_factory, *,
     else:
         sym_nu = SpatialConstant("nu2")
 
-    stokeslet = create_elasticity_wrapper(ambient_dim, mu_sym=sym_mu,
+    stokeslet = make_elasticity_wrapper(ambient_dim, mu_sym=sym_mu,
                                           nu_sym=sym_nu, method=method)
-    stresslet = create_elasticity_double_layer_wrapper(ambient_dim, mu_sym=sym_mu,
+    stresslet = make_elasticity_double_layer_wrapper(ambient_dim, mu_sym=sym_mu,
                                           nu_sym=sym_nu, method=method)
 
     if ambient_dim == 2:
@@ -194,7 +194,7 @@ def run_exterior_stokes(actx_factory, *,
     else:
         # Use the naive method here as biharmonic requires source derivatives
         # of point_source
-        sym_source_pot = create_elasticity_wrapper(ambient_dim, mu_sym=sym_mu,
+        sym_source_pot = make_elasticity_wrapper(ambient_dim, mu_sym=sym_mu,
             nu_sym=sym_nu, method="naive").apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
@@ -682,7 +682,7 @@ def test_stokeslet_pde(actx_factory, dim, method, nu, visualize=False):
     else:
         pde_class = ElasticityPDE
 
-    identity = pde_class(dim, create_elasticity_wrapper(
+    identity = pde_class(dim, make_elasticity_wrapper(
         case.ambient_dim, mu_sym=1, nu_sym=nu, method=method))
 
     for resolution in resolutions:
@@ -729,7 +729,7 @@ def test_stresslet_pde(actx_factory, dim, method, nu, visualize=False):
     else:
         pde_class = ElasticityPDE
 
-    identity = pde_class(dim, create_elasticity_double_layer_wrapper(
+    identity = pde_class(dim, make_elasticity_double_layer_wrapper(
         case.ambient_dim, mu_sym=1, nu_sym=nu, method=method))
 
     from pytools.convergence import EOCRecorder

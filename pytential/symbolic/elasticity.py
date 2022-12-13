@@ -38,8 +38,8 @@ __doc__ = """
 .. autoclass:: ElasticityWrapperBase
 .. autoclass:: ElasticityDoubleLayerWrapperBase
 
-.. automethod:: pytential.symbolic.elasticity.create_elasticity_wrapper
-.. automethod:: pytential.symbolic.elasticity.create_elasticity_double_layer_wrapper
+.. automethod:: pytential.symbolic.elasticity.make_elasticity_wrapper
+.. automethod:: pytential.symbolic.elasticity.make_elasticity_double_layer_wrapper
 """
 
 
@@ -394,7 +394,7 @@ class ElasticityDoubleLayerWrapperBiharmonic(
 
 # {{{ dispatch function
 
-def create_elasticity_wrapper(
+def make_elasticity_wrapper(
         dim: int,
         mu_sym: ExpressionT = _MU_SYM_DEFAULT,
         nu_sym: ExpressionT = _NU_SYM_DEFAULT,
@@ -431,7 +431,7 @@ def create_elasticity_wrapper(
                 "Needs to be one of naive, laplace, biharmonic")
 
 
-def create_elasticity_double_layer_wrapper(
+def make_elasticity_double_layer_wrapper(
         dim: int,
         mu_sym: ExpressionT = _MU_SYM_DEFAULT,
         nu_sym: ExpressionT = _NU_SYM_DEFAULT,
