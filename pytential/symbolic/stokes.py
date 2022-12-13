@@ -424,7 +424,7 @@ def StokesletWrapper(
     elif method == Method.biharmonic:
         return StokesletWrapperBiharmonic(dim=dim, mu=mu)
     elif method == Method.laplace:
-        return StokesletWrapperTornberg(dim=dim, mu=mu)
+        return StokesletWrapperTornberg(dim=dim, mu=mu, nu=0.5)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
@@ -445,7 +445,7 @@ def StressletWrapper(
     elif method == Method.biharmonic:
         return StressletWrapperBiharmonic(dim=dim, mu=mu)
     elif method == Method.laplace:
-        return StressletWrapperTornberg(dim=dim, mu=mu)
+        return StressletWrapperTornberg(dim=dim, mu=mu, nu=0.5)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
