@@ -64,7 +64,10 @@ def rewrite_using_base_kernel(exprs: List[ExpressionT],
     """
     Rewrites a list of expressions with :class:`~pytential.symbolic.primitives.IntG`
     objects using *base_kernel*. Assumes that potentials are smooth, i.e. that
-    Schwarz's theorem holds.
+    Schwarz's theorem holds. If applied to on-surface evaluation, then the layer
+    potentials to which this is applied must be one-sided limits, and the potential
+    must be non-singular (as might occur due to corners).
+    
 
     For example, if *base_kernel* is the biharmonic kernel, and a Laplace kernel
     is encountered, this will (forcibly) rewrite the Laplace kernel in terms of
