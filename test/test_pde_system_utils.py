@@ -55,22 +55,30 @@ def test_convert_target_point_multiplier():
 
     d = make_sym_vector("d", 3)
 
-    if USE_SYMENGINE:
-        r2 = d[2]**2 + d[1]**2 + d[0]**2
-        eknl1 = ExpressionKernel(3, d[1]*d[0]*r2**prim.Quotient(-3, 2),
-            knl.global_scaling_const, False)
-    else:
-        r2 = d[0]**2 + d[1]**2 + d[2]**2
-        eknl1 = ExpressionKernel(3, d[0]*d[1]*r2**prim.Quotient(-3, 2),
+    r2 = d[2]**2 + d[1]**2 + d[0]**2
+    eknl0 = ExpressionKernel(3, d[1]*d[0]*r2**prim.Quotient(-3, 2),
             knl.global_scaling_const, False)
     eknl2 = ExpressionKernel(3, d[0]*r2**prim.Quotient(-1, 2),
         knl.global_scaling_const, False)
-    expected_int_g = IntG(eknl1, [eknl1], [1], qbx_forced_limit=1) + \
+
+    r2 = d[0]**2 + d[1]**2 + d[2]**2
+    eknl1 = ExpressionKernel(3, d[0]*d[1]*r2**prim.Quotient(-3, 2),
+            knl.global_scaling_const, False)
+    eknl3 = ExpressionKernel(3, d[0]*r2**prim.Quotient(-1, 2),
+        knl.global_scaling_const, False)
+
+    possible_int_g1 = IntG(eknl0, [eknl0], [1], qbx_forced_limit=1) + \
         IntG(eknl2, [eknl2], [2], qbx_forced_limit=1) + \
         IntG(knl, [AxisSourceDerivative(1, knl), knl],
         [xs[0], 2*xs[0]], qbx_forced_limit=1)
 
-    assert expected_int_g == sum(convert_target_transformation_to_source(int_g))
+    possible_int_g2 = IntG(eknl1, [eknl1], [1], qbx_forced_limit=1) + \
+        IntG(eknl3, [eknl3], [2], qbx_forced_limit=1) + \
+        IntG(knl, [AxisSourceDerivative(1, knl), knl],
+        [xs[0], 2*xs[0]], qbx_forced_limit=1)
+
+    assert sum(convert_target_transformation_to_source(int_g)) in \
+            [possible_int_g1, possible_int_g2]
 
 
 def test_product_rule():
@@ -81,16 +89,20 @@ def test_product_rule():
         qbx_forced_limit=1)
 
     d = make_sym_vector("d", 3)
-    if USE_SYMENGINE:
-        r2 = d[2]**2 + d[1]**2 + d[0]**2
-    else:
-        r2 = d[0]**2 + d[1]**2 + d[2]**2
-    eknl = ExpressionKernel(3, d[0]**2*r2**prim.Quotient(-3, 2),
+    r2 = d[2]**2 + d[1]**2 + d[0]**2
+    eknl0 = ExpressionKernel(3, d[0]**2*r2**prim.Quotient(-3, 2),
         knl.global_scaling_const, False)
-    expected_int_g = IntG(eknl, [eknl], [-1], qbx_forced_limit=1) + \
+    r2 = d[0]**2 + d[1]**2 + d[2]**2
+    eknl1 = ExpressionKernel(3, d[0]**2*r2**prim.Quotient(-3, 2),
+        knl.global_scaling_const, False)
+
+    possible_int_g1 = IntG(eknl0, [eknl0], [-1], qbx_forced_limit=1) + \
+        IntG(knl, [AxisSourceDerivative(0, knl)], [xs[0]*(-1)], qbx_forced_limit=1)
+    possible_int_g2 = IntG(eknl1, [eknl1], [-1], qbx_forced_limit=1) + \
         IntG(knl, [AxisSourceDerivative(0, knl)], [xs[0]*(-1)], qbx_forced_limit=1)
 
-    assert expected_int_g == sum(convert_target_transformation_to_source(int_g))
+    assert sum(convert_target_transformation_to_source(int_g)) in \
+            [possible_int_g1, possible_int_g2]
 
 
 def test_convert_helmholtz():
