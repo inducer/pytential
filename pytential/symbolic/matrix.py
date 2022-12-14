@@ -70,16 +70,12 @@ def _get_layer_potential_args(actx, places, expr, context=None, include_args=Non
 # {{{ base classes for matrix builders
 
 class MatrixBuilderBase(EvaluationMapperBase):
-    def __init__(self, actx, dep_expr, other_dep_exprs,
-            dep_source, dep_discr, places, context):
+    def __init__(self, actx, dep_expr, other_dep_exprs, dep_discr, places, context):
         """
-        :arg queue: a :class:`pyopencl.CommandQueue`.
         :arg dep_expr: symbolic expression for the input block column
             that the builder is evaluating.
         :arg other_dep_exprs: symbolic expressions for the remaining input
             block columns.
-        :arg dep_source: a :class:`~pytential.source.LayerPotentialSourceBase`
-            for the given *dep_expr*.
         :arg dep_discr: a concerete :class:`~meshmode.discretization.Discretization`
             for the given *dep_expr*.
         :arg places: a :class:`~pytential.collection.GeometryCollection`
@@ -91,7 +87,6 @@ class MatrixBuilderBase(EvaluationMapperBase):
         self.array_context = actx
         self.dep_expr = dep_expr
         self.other_dep_exprs = other_dep_exprs
-        self.dep_source = dep_source
         self.dep_discr = dep_discr
         self.places = places
 
@@ -255,15 +250,13 @@ class ClusterMatrixBuilderBase(MatrixBuilderBase):
     """
 
     def __init__(self, actx, dep_expr, other_dep_exprs,
-            dep_source, dep_discr, places, tgt_src_index, context):
+            dep_discr, places, tgt_src_index, context):
         """
         :arg tgt_src_index: a :class:`~pytential.linalg.TargetAndSourceClusterList`
             class describing which clusters are going to be evaluated.
         """
 
-        super().__init__(actx,
-                dep_expr, other_dep_exprs, dep_source, dep_discr,
-                places, context)
+        super().__init__(actx, dep_expr, other_dep_exprs, dep_discr, places, context)
         self.tgt_src_index = tgt_src_index
 
     @property
@@ -275,7 +268,6 @@ class ClusterMatrixBuilderBase(MatrixBuilderBase):
         return ClusterMatrixBuilderWithoutComposition(self.array_context,
                 self.dep_expr,
                 self.other_dep_exprs,
-                self.dep_source,
                 self.dep_discr,
                 self.places,
                 self.tgt_src_index, self.context)
@@ -322,11 +314,8 @@ class MatrixBuilderDirectResamplerCacheKey:
 
 class MatrixBuilder(MatrixBuilderBase):
     def __init__(self, actx, dep_expr, other_dep_exprs,
-            dep_source, dep_discr, places, context, _weighted=True):
-        super().__init__(
-                actx, dep_expr, other_dep_exprs,
-                dep_source, dep_discr, places, context)
-
+            dep_discr, places, context, _weighted=True):
+        super().__init__(actx, dep_expr, other_dep_exprs, dep_discr, places, context)
         self.weighted = _weighted
 
     def map_interpolation(self, expr):
@@ -457,11 +446,9 @@ class MatrixBuilder(MatrixBuilderBase):
 
 class P2PMatrixBuilder(MatrixBuilderBase):
     def __init__(self, actx, dep_expr, other_dep_exprs,
-            dep_source, dep_discr, places, context,
+            dep_discr, places, context,
             exclude_self=True, _weighted=False):
-        super().__init__(actx,
-                dep_expr, other_dep_exprs, dep_source, dep_discr,
-                places, context)
+        super().__init__(actx, dep_expr, other_dep_exprs, dep_discr, places, context)
 
         self.exclude_self = exclude_self
         self.weighted = _weighted
@@ -542,12 +529,12 @@ class P2PMatrixBuilder(MatrixBuilderBase):
 # {{{ cluster matrix builders
 
 class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
-    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
+    def __init__(self, actx, dep_expr, other_dep_exprs, dep_discr,
             places, tgt_src_index, context,
             exclude_self=False, _weighted=True):
-        super().__init__(queue,
-                dep_expr, other_dep_exprs, dep_source, dep_discr,
-                places, tgt_src_index, context)
+        super().__init__(
+            actx, dep_expr, other_dep_exprs, dep_discr, places,
+            tgt_src_index, context)
 
         self.weighted = _weighted
 
@@ -633,12 +620,12 @@ class QBXClusterMatrixBuilder(ClusterMatrixBuilderBase):
 
 
 class P2PClusterMatrixBuilder(ClusterMatrixBuilderBase):
-    def __init__(self, queue, dep_expr, other_dep_exprs, dep_source, dep_discr,
+    def __init__(self, actx, dep_expr, other_dep_exprs, dep_discr,
             places, tgt_src_index, context,
             exclude_self=False, _weighted=False):
-        super().__init__(queue,
-                dep_expr, other_dep_exprs, dep_source, dep_discr,
-                places, tgt_src_index, context)
+        super().__init__(
+            actx, dep_expr, other_dep_exprs, dep_discr, places,
+            tgt_src_index, context)
 
         self.exclude_self = exclude_self
         self.weighted = _weighted
