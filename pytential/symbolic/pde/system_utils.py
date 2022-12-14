@@ -194,26 +194,28 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
     # u_{d[0], d[1]}(d, y)*d[0]*y[1] + u(d, y) * d[1]
     # or a single term like u(d, y) * d[1]
     if isinstance(expr, sympy.Add):
-        args = expr.args
+        kernel_terms = expr.args
     else:
-        args = [expr]
+        kernel_terms = [expr]
 
     result = []
-    for arg in args:
-        deriv_terms = arg.atoms(sympy.Derivative)
-        if len(deriv_terms) == 1:
-            # for eg: we have a term like u_{d[0], d[1]}(d, y) * d[0] * y[1]
+    for kernel_term in kernel_terms:
+        deriv_factors = kernel_term.atoms(sympy.Derivative)
+        if len(deriv_factors) == 1:
+            # for eg: we ve a term like u_{d[0], d[1]}(d, y) * d[0] * y[1]
             # deriv_term is u_{d[0], d[1]}
-            deriv_term = deriv_terms.pop()
-            # eg: rest_terms is d[0] * y[1]
-            rest_terms = sympy.Poly(arg.xreplace({deriv_term: 1}), *ds, *sources)
+            (deriv_factor,) = deriv_factors
+            # eg: remaining_factors is d[0] * y[1]
+            remaining_factors = sympy.Poly(kernel_term.xreplace(
+                {deriv_factor: 1}), *ds, *sources)
             # eg: derivatives is (d[0], 1), (d[1], 1)
-            derivatives = deriv_term.args[1:]
-        elif len(deriv_terms) == 0:
+            derivatives = deriv_factor.args[1:]
+        elif len(deriv_factors) == 0:
             # for eg: we have a term like u(d, y) * d[1]
-            # rest_terms = d[1]
-            rest_terms = sympy.Poly(arg.xreplace({orig_expr: 1}), *ds, *sources)
-            derivatives = [(d, 0) for d in ds]
+            # remaining_factors = d[1]
+            remaining_factors = sympy.Poly(kernel_term.xreplace(
+                {orig_expr: 1}), *ds, *sources)
+            derivatives = []
         else:
             raise AssertionError("impossible condition")
 
@@ -228,7 +230,7 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
             new_source_kernels.append(knl)
         new_int_g = int_g.copy(source_kernels=new_source_kernels)
 
-        (monom, coeff,) = rest_terms.terms()[0]
+        (monom, coeff,) = remaining_factors.terms()[0]
         # Now from d[0]*y[1], we separate the two terms
         # d terms end up in the expression and y terms end up in the density
         d_terms, y_terms = monom[:len(ds)], monom[len(ds):]
