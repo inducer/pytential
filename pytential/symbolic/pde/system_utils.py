@@ -41,6 +41,8 @@ from typing import List, Mapping, Text, Any, Union, Tuple, Optional
 from pytential.symbolic.typing import ExpressionT
 
 import warnings
+from dataclasses import dataclass
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -312,7 +314,7 @@ def _rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel)
         base_kernel, hashable_kernel_arguments=(
             hashable_kernel_args(int_g.kernel_arguments)))
 
-    const = deriv_relation[0]
+    const = deriv_relation.const
     # NOTE: we set a dofdesc here to force the evaluation of this integral
     # on the source instead of the target when using automatic tagging
     # see :meth:`pytential.symbolic.mappers.LocationTagger._default_dofdesc`
@@ -343,7 +345,7 @@ def _rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel)
     new_kernel_args = filter_kernel_arguments([base_kernel],
             int_g.kernel_arguments)
 
-    for mi, c in deriv_relation[1]:
+    for mi, c in deriv_relation.linear_combination:
         knl = source_kernel.replace_base_kernel(base_kernel)
         for d, val in enumerate(mi):
             for _ in range(val):
@@ -354,12 +356,23 @@ def _rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel)
     return result
 
 
+@dataclass
+class DerivRelation:
+    """A class to hold the relationship between a kernel and a base kernel.
+    *linear_combination* is a list of pairs of (mi, coeff).
+    The relation is given by,
+    `kernel = const + sum(deriv(base_kernel, mi) * coeff)`
+    """
+    const: ExpressionT
+    linear_combination: List[Tuple[Tuple[int, ...]], ExpressionT]
+
+
 def get_deriv_relation(kernels: List[ExpressionKernel],
         base_kernel: ExpressionKernel,
         kernel_arguments: Mapping[Text, Any],
         tol: float = 1e-10,
         order: Optional[int] = None) \
-        -> List[Tuple[ExpressionT, List[Tuple[Tuple[int], ExpressionT]]]]:
+        -> List[DerivRelation]:
     res = []
     for knl in kernels:
         res.append(get_deriv_relation_kernel(knl, base_kernel,
@@ -374,14 +387,14 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
         hashable_kernel_arguments: Tuple[Tuple[Text, Any], ...],
         tol: float = 1e-10,
         order: Optional[int] = None) \
-        -> Tuple[ExpressionT, List[Tuple[Tuple[int, ...], ExpressionT]]]:
+        -> DerivRelation:
     """Takes a *kernel* and a base_kernel* as input and re-writes the
     *kernel* as a linear combination of derivatives of *base_kernel* up-to
     order *order* and a constant. *tol* is an upper limit for small numbers that
     are replaced with zero in the numerical procedure.
 
     :returns: the constant and a list of (multi-index, coeff) to represent the
-              linear combination of derivatives
+              linear combination of derivatives as a *DerivRelation* object.
     """
     kernel_arguments = dict(hashable_kernel_arguments)
     (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order,
@@ -416,7 +429,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
             const = sympy_conv(coeff * _get_sympy_kernel_expression(
                 kernel.global_scaling_const, kernel_arguments))
     logger.debug("  + %s", const)
-    return (const, result)
+    return DerivRelation(const, result)
 
 
 @memoize_on_first_arg
