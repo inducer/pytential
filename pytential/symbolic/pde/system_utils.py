@@ -202,8 +202,8 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
     for kernel_term in kernel_terms:
         deriv_factors = kernel_term.atoms(sympy.Derivative)
         if len(deriv_factors) == 1:
-            # for eg: we ve a term like u_{d[0], d[1]}(d, y) * d[0] * y[1]
-            # deriv_term is u_{d[0], d[1]}
+            # for eg: if kernel_terms is u_{d[0], d[1]}(d, y) * d[0] * y[1]
+            # deriv_factor is u_{d[0], d[1]}
             (deriv_factor,) = deriv_factors
             # eg: remaining_factors is d[0] * y[1]
             remaining_factors = sympy.Poly(kernel_term.xreplace(
