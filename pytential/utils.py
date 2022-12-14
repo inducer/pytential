@@ -87,7 +87,7 @@ def backward_substitution(
     for i in range(n-1, -1, -1):
         for j in range(n - 1, i, -1):
             res[i] -= U[i, j]*res[j]
-        res[i] = callback(res[i] / U[i, i])
+        res[i] = postprocess_division(res[i] / U[i, i])
     return res
 
 
