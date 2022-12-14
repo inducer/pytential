@@ -364,7 +364,7 @@ class DerivRelation:
     `kernel = const + sum(deriv(base_kernel, mi) * coeff)`
     """
     const: ExpressionT
-    linear_combination: List[Tuple[Tuple[int, ...]], ExpressionT]
+    linear_combination: List[Tuple[Tuple[int, ...], ExpressionT]]
 
 
 def get_deriv_relation(kernels: List[ExpressionKernel],
