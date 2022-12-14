@@ -39,6 +39,7 @@ from sumpy.symbolic import SpatialConstant
 
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
+from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import extra_int_eq_data as eid
 import logging
@@ -48,7 +49,7 @@ from pytential.utils import (  # noqa: F401
         pytest_teardown_function as teardown_function)
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
-    "pyopencl-deprecated",
+    PytestPyOpenCLArrayContextFactory,
     ])
 
 
