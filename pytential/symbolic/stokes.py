@@ -304,8 +304,11 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         stresslet = StressletWrapperTornberg(self.dim, self.mu, self.nu)
         return stresslet.apply_single_and_double_layer(density_vec_sym,
-            [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
-            extra_deriv_dirs)
+            [0]*self.dim, [0]*self.dim,
+            qbx_forced_limit=qbx_forced_limit,
+            stokeslet_weight=1,
+            stresslet_weight=0,
+            extra_deriv_dirs=extra_deriv_dirs)
 
 
 @dataclass
@@ -332,7 +335,25 @@ class StressletWrapperTornberg(StressletWrapperBase):
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=()):
         return self.apply_single_and_double_layer([0]*self.dim,
-            density_vec_sym, dir_vec_sym, qbx_forced_limit, 0, 1, extra_deriv_dirs)
+            density_vec_sym, dir_vec_sym,
+            qbx_forced_limit=qbx_forced_limit,
+            stokeslet_weight=0,
+            stresslet_weight=1,
+            extra_deriv_dirs=extra_deriv_dirs)
+
+    def _create_int_g(self, target_kernel, source_kernels, densities, qbx_forced_limit):
+        new_source_kernels = []
+        new_densities = []
+        for source_kernel, density in zip(source_kernels, densities):
+            if density != 0.0:
+                new_source_kernels.append(source_kernel)
+                new_densities.append(density)
+        if not new_densities:
+            return 0
+        return sym.IntG(target_kernel=target_kernel,
+            source_kernels=tuple(new_source_kernels),
+            densities=tuple(new_densities),
+            qbx_forced_limit=qbx_forced_limit)
 
     def apply_single_and_double_layer(self, stokeslet_density_vec_sym,
             stresslet_density_vec_sym, dir_vec_sym,
@@ -342,10 +363,6 @@ class StressletWrapperTornberg(StressletWrapperBase):
         sym_expr = np.zeros((self.dim,), dtype=object)
 
         source = sym.nodes(self.dim).as_vector()
-        common_source_kernels = [
-                AxisSourceDerivative(k, self.laplace_kernel) for
-                k in range(self.dim)]
-        common_source_kernels.append(self.laplace_kernel)
 
         # The paper in [1] ignores the scaling we use Stokeslet/Stresslet
         # and gives formulae for the kernel expression only
@@ -355,6 +372,11 @@ class StressletWrapperTornberg(StressletWrapperBase):
         #    LaplaceKernel.global_scaling_const
         stresslet_weight *= 3.0
         stokeslet_weight *= -0.5*self.mu**(-1)
+
+        common_source_kernels = [
+                AxisSourceDerivative(k, self.laplace_kernel) for
+                k in range(self.dim)]
+        common_source_kernels.append(self.laplace_kernel)
 
         for i in range(self.dim):
             for j in range(self.dim):
@@ -367,7 +389,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
                         AxisTargetDerivative(i, self.laplace_kernel))
                 for deriv_dir in extra_deriv_dirs:
                     target_kernel = AxisTargetDerivative(deriv_dir, target_kernel)
-                sym_expr[i] -= sym.IntG(target_kernel=target_kernel,
+                sym_expr[i] -= self._create_int_g(target_kernel=target_kernel,
                     source_kernels=tuple(common_source_kernels),
                     densities=tuple(densities),
                     qbx_forced_limit=qbx_forced_limit)
@@ -378,7 +400,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
                         target_kernel = AxisTargetDerivative(
                                 deriv_dir, target_kernel)
 
-                    sym_expr[i] += sym.IntG(target_kernel=target_kernel,
+                    sym_expr[i] += self._create_int_g(target_kernel=target_kernel,
                         source_kernels=common_source_kernels,
                         densities=densities,
                         qbx_forced_limit=qbx_forced_limit)
@@ -397,7 +419,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
             target_kernel = AxisTargetDerivative(i, self.laplace_kernel)
             for deriv_dir in extra_deriv_dirs:
                 target_kernel = AxisTargetDerivative(deriv_dir, target_kernel)
-            sym_expr[i] += sym.IntG(target_kernel=target_kernel,
+            sym_expr[i] += self._create_int_g(target_kernel=target_kernel,
                 source_kernels=tuple(common_source_kernels),
                 densities=tuple(densities),
                 qbx_forced_limit=qbx_forced_limit)
