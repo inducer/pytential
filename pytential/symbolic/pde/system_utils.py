@@ -40,6 +40,7 @@ import pytential
 from typing import List, Mapping, Text, Any, Union, Tuple, Optional
 from pytential.symbolic.typing import ExpressionT
 
+import warnings
 import logging
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,10 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
     conv = SympyToPymbolicMapper()
 
     knl = int_g.target_kernel
+    if not knl.is_translation_invariant:
+        warnings.warn(f"Translation variant kernel ({knl}) found.")
+        return [int_g]
+
     # we use a symbol for d = (x - y)
     ds = sympy.symbols(f"d0:{knl.dim}")
     sources = sympy.symbols(f"y0:{knl.dim}")
@@ -174,7 +179,6 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
             expr = expr.diff(ds[knl.axis])
             found = True
         else:
-            import warnings
             warnings.warn(f"Unknown target kernel ({knl}) found.")
             return [int_g]
         knl = knl.inner_kernel
