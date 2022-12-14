@@ -54,6 +54,7 @@ __all__ = (
 __doc__ = """
 .. autofunction:: rewrite_using_base_kernel
 .. autofunction:: get_deriv_relation
+.. autoclass:: DerivRelation
 """
 
 
@@ -397,7 +398,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
               linear combination of derivatives as a *DerivRelation* object.
     """
     kernel_arguments = dict(hashable_kernel_arguments)
-    (L, U, perm), rand, mis = _get_base_kernel_matrix_lu_factorization(
+    lu, rand, mis = _get_base_kernel_matrix_lu_factorization(
             base_kernel,
             order=order,
             hashable_kernel_arguments=hashable_kernel_arguments)
@@ -415,7 +416,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
     const = 0
     logger.debug("%s = ", kernel)
 
-    sol = solve_from_lu(L, U, perm, vec, lambda expr: expr.expand())
+    sol = solve_from_lu(lu.L, lu.U, lu.perm, vec, lambda expr: expr.expand())
     for i, coeff in enumerate(sol):
         coeff = chop(coeff, tol)
         if coeff == 0:
