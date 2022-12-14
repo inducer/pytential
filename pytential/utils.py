@@ -55,12 +55,48 @@ def chop(expr: sym.Basic, tol) -> sym.Basic:
     return expr.xreplace(replace_dict)
 
 
-def lu_with_post_division_callback(
+def forward_substitution(
+        L: sym.Matrix,
+        b: sym.Matrix,
+        postprocess_division: Callable[[sym.Basic], sym.Basic],
+        ) -> sym.Matrix:
+    """Given a lower triangular matrix *L* and a column vector *b*,
+    solve the system ``Lx = b`` and apply the callable *postprocess_division*
+    on each expression at the end of division calls.
+    """
+    n = len(b)
+    res = sym.Matrix(b)
+    for i in range(n):
+        for j in range(i):
+            res[i] -= L[i, j]*res[j]
+        res[i] = postprocess_division(res[i] / L[i, i])
+    return res
+
+
+def backward_substitution(
+        U: sym.Matrix,
+        b: sym.Matrix,
+        postprocess_division: Callable[[sym.Basic], sym.Basic],
+        ) -> sym.Matrix:
+    """Given an upper triangular matrix *U* and a column vector *b*,
+    solve the system ``Ux = b`` and apply the callable *postprocess_division*
+    on each expression at the end of division calls.
+    """
+    n = len(b)
+    res = sym.Matrix(b)
+    for i in range(n-1, -1, -1):
+        for j in range(n - 1, i, -1):
+            res[i] -= U[i, j]*res[j]
+        res[i] = callback(res[i] / U[i, i])
+    return res
+
+
+def solve_from_lu(
             L: sym.Matrix,
             U: sym.Matrix,
-            perm: Iterable[sym.Matrix],
-            b: Iterable[sym.Matrix],
-            callback: Callable[[sym.Basic], sym.Basic]
+            perm: Iterable[int],
+            b: sym.Matrix,
+            postprocess_division: Callable[[sym.Basic], sym.Basic]
         ) -> sym.Matrix:
     """Given an LU factorization and a vector, solve a linear
     system with intermediate results expanded to avoid
@@ -69,34 +105,14 @@ def lu_with_post_division_callback(
     :param L: lower triangular matrix
     :param U: upper triangular matrix
     :param perm: permutation matrix
-    :param b: column vector to solve for
-    :param callback: callable that is called after each division
+    :param b: a column vector to solve for
+    :param postprocess_division: callable that is called after each division
     """
-    def forward_substitution(L, b):
-        n = len(b)
-        res = sym.Matrix(b)
-        for i in range(n):
-            for j in range(i):
-                res[i] -= L[i, j]*res[j]
-            res[i] = callback(res[i] / L[i, i])
-        return res
+    # Permute first
+    res = sym.Matrix(b)
+    for p, q in perm:
+        res[p], res[q] = res[q], res[p]
 
-    def backward_substitution(U, b):
-        n = len(b)
-        res = sym.Matrix(b)
-        for i in range(n-1, -1, -1):
-            for j in range(n - 1, i, -1):
-                res[i] -= U[i, j]*res[j]
-            res[i] = callback(res[i] / U[i, i])
-        return res
-
-    def permute_fwd(b, perm):
-        res = sym.Matrix(b)
-        for p, q in perm:
-            res[p], res[q] = res[q], res[p]
-        return res
-
-    return backward_substitution(U,
-            forward_substitution(L, permute_fwd(b, perm)))
+    return backward_substitution(U, forward_substitution(L, res))
 
 # vim: foldmethod=marker
