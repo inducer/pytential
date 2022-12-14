@@ -275,7 +275,6 @@ class SkeletonizationWrangler:
             actx, places, eval_mapper_cls, tgt_src_index, expr, idomain,
             **kwargs):
         domain = self.domains[idomain]
-        dep_source = places.get_geometry(domain.geometry)
         dep_discr = places.get_discretization(domain.geometry, domain.discr_stage)
 
         return eval_mapper_cls(actx,
@@ -283,7 +282,6 @@ class SkeletonizationWrangler:
                 other_dep_exprs=(
                     self.input_exprs[:idomain]
                     + self.input_exprs[idomain+1:]),
-                dep_source=dep_source,
                 dep_discr=dep_discr,
                 places=places,
                 tgt_src_index=tgt_src_index,

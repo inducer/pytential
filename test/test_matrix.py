@@ -355,7 +355,6 @@ def test_cluster_builder(actx_factory, ambient_dim,
     kwargs = dict(
             dep_expr=sym_u,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(dd.geometry),
             dep_discr=density_discr,
             places=places,
             context=case.knl_concrete_kwargs
@@ -485,7 +484,6 @@ def test_build_matrix_fixed_stage(actx_factory,
     kwargs = dict(
             dep_expr=sym_u,
             other_dep_exprs=[],
-            dep_source=places.get_geometry(case.name),
             dep_discr=source_discr,
             places=places,
             context=case.knl_concrete_kwargs,

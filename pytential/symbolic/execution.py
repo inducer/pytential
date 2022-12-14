@@ -983,16 +983,13 @@ def build_matrix(actx, places, exprs, input_exprs, domains=None,
 
     dtypes = []
     for ibcol in range(nblock_columns):
-        dep_source = places.get_geometry(domains[ibcol].geometry)
         dep_discr = places.get_discretization(
                 domains[ibcol].geometry, domains[ibcol].discr_stage)
 
         mbuilder = MatrixBuilder(
                 actx,
                 dep_expr=input_exprs[ibcol],
-                other_dep_exprs=(input_exprs[:ibcol]
-                                 + input_exprs[ibcol + 1:]),
-                dep_source=dep_source,
+                other_dep_exprs=input_exprs[:ibcol] + input_exprs[ibcol + 1:],
                 dep_discr=dep_discr,
                 places=places,
                 context=context)
