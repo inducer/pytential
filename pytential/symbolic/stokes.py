@@ -341,7 +341,8 @@ class StressletWrapperTornberg(StressletWrapperBase):
             stresslet_weight=1,
             extra_deriv_dirs=extra_deriv_dirs)
 
-    def _create_int_g(self, target_kernel, source_kernels, densities, qbx_forced_limit):
+    def _create_int_g(self, target_kernel, source_kernels, densities,
+                      qbx_forced_limit):
         new_source_kernels = []
         new_densities = []
         for source_kernel, density in zip(source_kernels, densities):
