@@ -113,6 +113,10 @@ def solve_from_lu(
     for p, q in perm:
         res[p], res[q] = res[q], res[p]
 
-    return backward_substitution(U, forward_substitution(L, res))
+    return backward_substitution(
+        U,
+        forward_substitution(L, res, postprocess_division),
+        postprocess_division,
+        )
 
 # vim: foldmethod=marker
