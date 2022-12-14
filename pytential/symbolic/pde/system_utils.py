@@ -397,7 +397,9 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
               linear combination of derivatives as a *DerivRelation* object.
     """
     kernel_arguments = dict(hashable_kernel_arguments)
-    (L, U, perm), rand, mis = _get_base_kernel_matrix(base_kernel, order=order,
+    (L, U, perm), rand, mis = _get_base_kernel_matrix_lu_factorization(
+            base_kernel,
+            order=order,
             hashable_kernel_arguments=hashable_kernel_arguments)
     dim = base_kernel.dim
     sym_vec = sym.make_sym_vector("d", dim)
@@ -432,12 +434,26 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
     return DerivRelation(const, result)
 
 
+@dataclass
+class LUFactorization:
+    L: sym.Matrix
+    U: sym.Matrix
+    perm: List[Tuple[int, int]]
+
+
 @memoize_on_first_arg
-def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
+def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
         hashable_kernel_arguments: Tuple[Tuple[Text, Any], ...],
         order: Optional[int] = None, retries: int = 3) \
-        -> Tuple[Tuple[sym.Matrix, sym.Matrix, List[Tuple[int, int]]],
-            np.ndarray, List[Tuple[int, ...]]]:
+        -> Tuple[LUFactorization, np.ndarray, List[Tuple[int, ...]]]:
+    """
+    Takes a *base_kernel* and samples the kernel and its derivatives upto
+    order *order*.
+
+    :returns: a tuple with the LU factorization of the sampled matrix,
+        the sampled points, and the multi-indices corresponding to the
+        derivatives represented by the rows of the matrix.
+    """
     dim = base_kernel.dim
 
     pde = base_kernel.get_pde_as_diff_op()
@@ -506,14 +522,14 @@ def _get_base_kernel_matrix(base_kernel: ExpressionKernel,
             raise NotImplementedError("Computing derivative relation when "
                 "the base kernel's derivatives are linearly dependent has not "
                 "been implemented yet.")
-        return _get_base_kernel_matrix(
+        return _get_base_kernel_matrix_lu_factorization(
             base_kernel=base_kernel,
             hashable_kernel_arguments=hashable_kernel_arguments,
             order=order,
             retries=retries-1,
         )
 
-    return (L, U, perm), rand, mis
+    return LUFactorization(L, U, perm), rand, mis
 
 
 def evalf(expr, prec=100):
