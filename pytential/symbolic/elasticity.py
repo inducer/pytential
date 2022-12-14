@@ -230,7 +230,7 @@ class _ElasticityWrapperNaiveOrBiharmonic:
     def _get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
         """
-        Returns the Integral of the elasticity kernel given by `idx`
+        Returns the convolution of the elasticity kernel given by `idx`
         and its derivatives.
         """
         res = _create_int_g(self.kernel_dict[idx], deriv_dirs,
@@ -318,8 +318,8 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
     def _get_int_g(self, idx, density_sym, dir_vec_sym, qbx_forced_limit,
             deriv_dirs):
         """
-        Returns the Integral of the Stresslet kernel given by `idx`
-        and its derivatives.
+        Returns the convolution of the double layer of the elasticity kernel
+        given by `idx` and its derivatives.
         """
 
         nu = self.nu
