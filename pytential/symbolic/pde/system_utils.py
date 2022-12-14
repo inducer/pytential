@@ -25,7 +25,7 @@ import numpy as np
 import sumpy.symbolic as sym
 import pymbolic
 from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
-    ExpressionKernel, KernelWrapper, TargetPointMultiplier,
+    ExpressionKernel, KernelWrapper, TargetPointMultiplier, Kernel,
     DirectionalSourceDerivative)
 from pytools import (memoize_on_first_arg,
     generate_nonnegative_integer_tuples_summing_to_at_most
@@ -60,7 +60,7 @@ _NO_ARG_SENTINEL = object()
 
 
 def rewrite_using_base_kernel(exprs: List[ExpressionT],
-        base_kernel=_NO_ARG_SENTINEL) -> List[ExpressionT]:
+        base_kernel: Kernel = _NO_ARG_SENTINEL) -> List[ExpressionT]:
     """
     Rewrites a list of expressions with :class:`~pytential.symbolic.primitives.IntG`
     objects using *base_kernel*. Assumes that potentials are smooth, i.e. that
