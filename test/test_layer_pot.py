@@ -354,10 +354,12 @@ def test_unregularized_with_ones_kernel(actx_factory):
     from pytential.target import PointsTarget
     targets = PointsTarget(actx.from_numpy(np.zeros((2, 1), dtype=np.float64)))
 
-    places = GeometryCollection({
-        sym.DEFAULT_SOURCE: lpot_source,
-        sym.DEFAULT_TARGET: lpot_source,
-        "target_non_self": targets})
+    places = GeometryCollection(
+        {"source": lpot_source,
+         "target": lpot_source,
+         "target_non_self": targets},
+        auto_where=("source", "target"),
+    )
 
     from sumpy.kernel import one_kernel_2d
     sigma_sym = sym.var("sigma")

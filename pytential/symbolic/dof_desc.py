@@ -55,12 +55,26 @@ __doc__ = """
 
 # {{{ discretizations
 
+class _UNNAMED_SOURCE:                   # noqa: N801
+    """Symbolic identifier for an unnamed source. This is for internal
+    use only."""
+
+
+class _UNNAMED_TARGET:                   # noqa: N801
+    """Symbolic identifier for an unnamed target. This is for internal
+    use only."""
+
+
 class DEFAULT_SOURCE:                   # noqa: N801
-    """Symbolic identifier for a default source."""
+    """Symbolic identifier for the default source. Geometries with
+    this value get replaced with the default source given to
+    :func:`pytential.bind`."""
 
 
 class DEFAULT_TARGET:                   # noqa: N801
-    """Symbolic identifier for a default target."""
+    """Symbolic identifier for the default target. Geometries with
+    this value get replaced with the default target given to
+    :func:`pytential.bind`."""
 
 
 class QBX_SOURCE_STAGE1:                # noqa: N801
@@ -217,9 +231,9 @@ class DOFDescriptor:
         name = []
         if self.geometry is None:
             name.append("?")
-        elif self.geometry == DEFAULT_SOURCE:
+        elif self.geometry in (_UNNAMED_SOURCE, DEFAULT_SOURCE):
             name.append("s")
-        elif self.geometry == DEFAULT_TARGET:
+        elif self.geometry in (_UNNAMED_TARGET, DEFAULT_TARGET):
             name.append("t")
         else:
             name.append(

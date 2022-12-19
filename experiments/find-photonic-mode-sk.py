@@ -52,7 +52,7 @@ def find_mode():
             SecondKindInfZMuellerOperator
 
     pde_op = SecondKindInfZMuellerOperator(
-            interfaces=((0, 1, sym.DEFAULT_SOURCE),),
+            interfaces=((0, 1, "source"),),
             domain_n_exprs=("n0", "n1"),
             ne="ne",
             use_l2_weighting=True)
@@ -104,7 +104,7 @@ def find_mode():
     x_vec = np.random.randn(len(u_sym)*density_discr.nnodes)
     y_vec = np.random.randn(len(u_sym)*density_discr.nnodes)
 
-    bound_op = bind(qbx, op)
+    bound_op = bind(qbx, op, auto_where="source")
 
     def muller_solve_func(ne):
         from pytential.linalg.gmres import gmres

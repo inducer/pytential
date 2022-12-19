@@ -272,7 +272,7 @@ class EvaluationMapper(EvaluationMapperBase):
 class LocationTagger(CSECachingMapperMixin, IdentityMapper):
     """Used internally by :class:`ToTargetTagger`."""
 
-    def __init__(self, default_target, default_source=prim.DEFAULT_SOURCE):
+    def __init__(self, default_target, default_source):
         self.default_source = default_source
         self.default_target = default_target
 
@@ -290,6 +290,10 @@ class LocationTagger(CSECachingMapperMixin, IdentityMapper):
                 dofdesc = dofdesc.copy(geometry=self.default_target)
             else:
                 dofdesc = dofdesc.copy(geometry=self.default_source)
+        elif dofdesc.geometry is prim.DEFAULT_SOURCE:
+            dofdesc = dofdesc.copy(geometry=self.default_source)
+        elif dofdesc.geometry is prim.DEFAULT_TARGET:
+            dofdesc = dofdesc.copy(geometry=self.default_target)
 
         return dofdesc
 
