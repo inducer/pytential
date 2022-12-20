@@ -276,6 +276,7 @@ def test_add_geometry_to_collection(actx_factory):
     _add_geometry_to_collection(actx, places, sources)
     _add_geometry_to_collection(actx, places, targets)
 
+
 # }}}
 
 # {{{ test solve_from_lu
