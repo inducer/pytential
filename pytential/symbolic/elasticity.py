@@ -50,6 +50,8 @@ __doc__ = """
 
 # {{{ ElasiticityWrapper ABCs
 
+# It is OK if these "escape" into pytential expressions because mappers will
+# use the MRO to dispatch them to `map_variable`.
 _MU_SYM_DEFAULT = SpatialConstant("mu")
 _NU_SYM_DEFAULT = SpatialConstant("nu")
 
