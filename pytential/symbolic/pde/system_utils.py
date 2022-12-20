@@ -63,7 +63,7 @@ __doc__ = """
 _NO_ARG_SENTINEL = object()
 
 
-def rewrite_using_base_kernel(exprs: List[ExpressionT],
+def rewrite_using_base_kernel(exprs: Sequence[ExpressionT],
         base_kernel: Kernel = _NO_ARG_SENTINEL) -> List[ExpressionT]:
     """
     Rewrites a list of expressions with :class:`~pytential.symbolic.primitives.IntG`
@@ -130,8 +130,8 @@ def _get_sympy_kernel_expression(expr: ExpressionT,
     return res
 
 
-def _monom_to_expr(monom: List[int],
-        variables: List[Union[sym.Basic, ExpressionT]]) \
+def _monom_to_expr(monom: Sequence[int],
+        variables: Sequence[Union[sym.Basic, ExpressionT]]) \
         -> Union[sym.Basic, ExpressionT]:
     """Convert a monomial to an expression using given variables.
 
@@ -366,10 +366,10 @@ class DerivRelation:
     `kernel = const + sum(deriv(base_kernel, mi) * coeff)`
     """
     const: ExpressionT
-    linear_combination: List[Tuple[Tuple[int, ...], ExpressionT]]
+    linear_combination: Sequence[Tuple[Tuple[int, ...], ExpressionT]]
 
 
-def get_deriv_relation(kernels: List[ExpressionKernel],
+def get_deriv_relation(kernels: Sequence[ExpressionKernel],
         base_kernel: ExpressionKernel,
         kernel_arguments: Mapping[Text, Any],
         tol: float = 1e-10,
@@ -440,7 +440,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
 class LUFactorization:
     L: sym.Matrix
     U: sym.Matrix
-    perm: List[Tuple[int, int]]
+    perm: Sequence[Tuple[int, int]]
 
 
 @memoize_on_first_arg
