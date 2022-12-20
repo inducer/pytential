@@ -692,6 +692,8 @@ def test_stokeslet_pde(actx_factory, dim, method, nu, visualize=False):
             resolution=resolution,
             visualize=visualize)
 
+        assert np.all(np.abs(errors) < 1e-11)
+
 
 @pytest.mark.parametrize("dim, method, nu", [
     pytest.param(2, "laplace", 0.5),
