@@ -37,7 +37,7 @@ from pytential.symbolic.mappers import IdentityMapper
 from pytential.utils import chop, solve_from_lu
 import pytential
 
-from typing import List, Mapping, Text, Any, Union, Tuple, Optional
+from typing import List, Mapping, Text, Any, Union, Tuple, Optional, Sequence
 from pytential.symbolic.typing import ExpressionT
 
 import warnings
