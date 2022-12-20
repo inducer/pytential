@@ -580,9 +580,9 @@ def test_stresslet_identity(actx_factory, cls, visualize=False):
 # {{{ test Stokes PDE
 
 class StokesPDE:
-    def __init__(self, ambient_dim, operator):
+    def __init__(self, ambient_dim, wrapper):
         self.ambient_dim = ambient_dim
-        self.operator = operator
+        self.wrapper = wrapper
 
     def apply_operator(self):
         dim = self.ambient_dim
@@ -590,15 +590,15 @@ class StokesPDE:
             "density_vec_sym": [1]*dim,
             "qbx_forced_limit": 1,
         }
-        if isinstance(self.operator, ElasticityDoubleLayerWrapperBase):
+        if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
             args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
 
-        d_u = [self.operator.apply(**args, extra_deriv_dirs=(i,))
+        d_u = [self.wrapper.apply(**args, extra_deriv_dirs=(i,))
                 for i in range(dim)]
-        dd_u = [self.operator.apply(**args, extra_deriv_dirs=(i, i))
+        dd_u = [self.wrapper.apply(**args, extra_deriv_dirs=(i, i))
                 for i in range(dim)]
         laplace_u = [sum(dd_u[j][i] for j in range(dim)) for i in range(dim)]
-        d_p = [self.operator.apply_pressure(**args, extra_deriv_dirs=(i,))
+        d_p = [self.wrapper.apply_pressure(**args, extra_deriv_dirs=(i,))
                for i in range(dim)]
         eqs = [laplace_u[i] - d_p[i] for i in range(dim)] + [sum(d_u)]
         return make_obj_array(eqs)
@@ -608,9 +608,9 @@ class StokesPDE:
 
 
 class ElasticityPDE:
-    def __init__(self, ambient_dim, operator):
+    def __init__(self, ambient_dim, wrapper):
         self.ambient_dim = ambient_dim
-        self.operator = operator
+        self.wrapper = wrapper
 
     def apply_operator(self):
         dim = self.ambient_dim
@@ -618,11 +618,11 @@ class ElasticityPDE:
             "density_vec_sym": [1]*dim,
             "qbx_forced_limit": 1,
         }
-        if isinstance(self.operator, ElasticityDoubleLayerWrapperBase):
+        if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
             args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
 
-        mu = self.operator.mu
-        nu = self.operator.nu
+        mu = self.wrapper.mu
+        nu = self.wrapper.nu
         assert nu != 0.5
         lam = 2*nu*mu/(1-2*nu)
 
@@ -630,7 +630,7 @@ class ElasticityPDE:
 
         for i in range(dim):
             for j in range(i + 1):
-                derivs[(i, j)] = self.operator.apply(**args,
+                derivs[(i, j)] = self.wrapper.apply(**args,
                                                      extra_deriv_dirs=(i, j))
                 derivs[(j, i)] = derivs[(i, j)]
 
