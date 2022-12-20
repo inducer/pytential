@@ -278,6 +278,23 @@ def test_add_geometry_to_collection(actx_factory):
 
 # }}}
 
+# {{{ test solve_from_lu
+
+def test_solve_from_lu():
+    import sumpy.symbolic as sym
+    from pytential.utils import solve_from_lu
+    x, y, z = sym.symbols("x, y, z")
+    m = sym.Matrix([[0, x, y], [1, 0, x], [y, 2, 5]])
+    L, U, perm = m.LUdecomposition()
+
+    b = sym.Matrix([z, 1, 2])
+    sol = solve_from_lu(L, U, perm, b, lambda x: x.expand())
+    expected = m.solve(b)
+
+    assert (sol - expected).expand() == sym.Matrix([0, 0, 0])
+
+
+# }}}
 
 # You can test individual routines by typing
 # $ python test_tools.py 'test_routine()'
