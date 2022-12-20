@@ -422,7 +422,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
         coeff = chop(coeff, tol)
         if coeff == 0:
             continue
-        if mis[i] != (-1, -1, -1):
+        if mis[i] != (-1,)*dim:
             coeff *= _get_sympy_kernel_expression(kernel.global_scaling_const,
                     kernel_arguments)
             coeff /= _get_sympy_kernel_expression(base_kernel.global_scaling_const,
@@ -470,7 +470,7 @@ def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
     mis = sorted(gnitstam(order, dim), key=sum)
     # (-1, -1, -1) represents a constant
     # ((0,0,0) would be "function with no derivatives")
-    mis.append((-1, -1, -1))
+    mis.append((-1,)*dim)
 
     if order == pde.order:
         pde_mis = [ident.mi for eq in pde.eqs for ident in eq.keys()]
