@@ -292,7 +292,8 @@ def test_solve_from_lu():
     sol = solve_from_lu(L, U, perm, b, lambda x: x.expand())
     expected = m.solve(b)
 
-    assert (sol - expected).expand() == sym.Matrix([0, 0, 0])
+    assert (sol - expected).expand().applyfunc(lambda x: x.simplify()) \
+            == sym.Matrix([0, 0, 0])
 
 
 # }}}
