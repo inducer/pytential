@@ -468,7 +468,8 @@ def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
                 "been implemented yet.")
 
     mis = sorted(gnitstam(order, dim), key=sum)
-    # (-1, -1, -1) represent a constant
+    # (-1, -1, -1) represents a constant
+    # ((0,0,0) would be "function with no derivatives")
     mis.append((-1, -1, -1))
 
     if order == pde.order:
