@@ -550,12 +550,12 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
             return target_kernel
 
         def P(i, j, int_g):
-            int_g = int_g.copy(target_kernel=add_extra_deriv_dirs(
-                int_g.target_kernel))
-            res = -int_g.copy(target_kernel=TargetPointMultiplier(j,
-                    AxisTargetDerivative(i, int_g.target_kernel)))
+            res = -int_g.copy(target_kernel=add_extra_deriv_dirs(
+                TargetPointMultiplier(j,
+                    AxisTargetDerivative(i, int_g.target_kernel))))
             if i == j:
-                res += (3 - 4*nu)*int_g
+                res += (3 - 4*nu)*int_g.copy(
+                    target_kernel=add_extra_deriv_dirs(int_g.target_kernel))
             return res / (4*mu*(1 - nu))
 
         def Q(i, int_g):
