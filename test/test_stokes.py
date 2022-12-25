@@ -579,6 +579,45 @@ def test_stresslet_identity(actx_factory, cls, visualize=False):
 
 # {{{ test Stokes PDE
 
+def run_stokes_pde(actx_factory, case, identity, resolution, visualize=False):
+    from sumpy.point_calculus import CalculusPatch
+    from pytential.target import PointsTarget
+    actx = actx_factory()
+
+    dim = case.ambient_dim
+    qbx = case.get_layer_potential(actx, resolution, case.target_order)
+
+    h_min = actx.to_numpy(bind(qbx, sym.h_min(dim))(actx))
+    h_max = actx.to_numpy(bind(qbx, sym.h_max(dim))(actx))
+
+    if dim == 2:
+        h = h_max
+    else:
+        h = h_max / 5
+
+    cp = CalculusPatch([0, 0, 0][:dim], h=h, order=case.target_order + 1)
+    targets = PointsTarget(actx.freeze(actx.from_numpy(cp.points)))
+
+    places = GeometryCollection({case.name: qbx, "cp": targets},
+                                auto_where=(case.name, "cp"))
+
+    potential = bind(places, identity.apply_operator())(actx)
+    potential_host = actx.to_numpy(potential)
+    result = identity.apply_pde_using_calculus_patch(cp, potential_host)
+    result_pytential = actx.to_numpy(bind(places,
+            identity.apply_pde_using_pytential())(actx))
+
+    m = np.max([np.linalg.norm(p, ord=np.inf) for p in potential_host])
+    error = [np.linalg.norm(x, ord=np.inf)/m for x in result]
+
+    error += [np.linalg.norm(x, ord=np.inf)/m for x in result_pytential]
+    logger.info("resolution %4d h_min %.5e h_max %.5e error "
+            + ("%.5e " * places.ambient_dim),
+            resolution, h_min, h_max, *error)
+
+    return h_max, error
+
+
 class StokesPDE:
     def __init__(self, ambient_dim, wrapper):
         self.ambient_dim = ambient_dim
@@ -588,7 +627,20 @@ class StokesPDE:
         dim = self.ambient_dim
         args = {
             "density_vec_sym": [1]*dim,
-            "qbx_forced_limit": 1,
+            "qbx_forced_limit": None,
+        }
+        if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
+            args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
+
+        velocity = self.wrapper.apply(**args)
+        pressure = self.wrapper.apply_pressure(**args)
+        return make_obj_array([*velocity, pressure])
+
+    def apply_pde_using_pytential(self):
+        dim = self.ambient_dim
+        args = {
+            "density_vec_sym": [1]*dim,
+            "qbx_forced_limit": None,
         }
         if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
             args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
@@ -600,11 +652,17 @@ class StokesPDE:
         laplace_u = [sum(dd_u[j][i] for j in range(dim)) for i in range(dim)]
         d_p = [self.wrapper.apply_pressure(**args, extra_deriv_dirs=(i,))
                for i in range(dim)]
-        eqs = [laplace_u[i] - d_p[i] for i in range(dim)] + [sum(d_u)]
+        eqs = [laplace_u[i] - d_p[i] for i in range(dim)] + \
+                [sum(d_u[i][i] for i in range(dim))]
         return make_obj_array(eqs)
 
-    def ref_result(self):
-        return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
+    def apply_pde_using_calculus_patch(self, cp, potential):
+        dim = self.ambient_dim
+        velocity = potential[:dim]
+        pressure = potential[dim]
+        eqs = [cp.laplace(velocity[i]) - cp.diff(i, pressure) for i in range(dim)] \
+                + [sum(cp.diff(i, velocity[i]) for i in range(dim))]
+        return make_obj_array(eqs)
 
 
 class ElasticityPDE:
@@ -616,7 +674,18 @@ class ElasticityPDE:
         dim = self.ambient_dim
         args = {
             "density_vec_sym": [1]*dim,
-            "qbx_forced_limit": 1,
+            "qbx_forced_limit": None,
+        }
+        if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
+            args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
+
+        return self.wrapper.apply(**args)
+
+    def apply_pde_using_pytential(self):
+        dim = self.ambient_dim
+        args = {
+            "density_vec_sym": [1]*dim,
+            "qbx_forced_limit": None,
         }
         if isinstance(self.wrapper, ElasticityDoubleLayerWrapperBase):
             args["dir_vec_sym"] = sym.normal(self.ambient_dim).as_vector()
@@ -642,82 +711,64 @@ class ElasticityPDE:
         eqs = [(lam + mu)*grad_of_div_u[i] + mu*laplace_u[i] for i in range(dim)]
         return make_obj_array(eqs)
 
-    def ref_result(self):
-        return make_obj_array([1.0e-15 * sym.Ones()] * self.ambient_dim)
+    def apply_pde_using_calculus_patch(self, cp, potential):
+        dim = self.ambient_dim
+        mu = self.wrapper.mu
+        nu = self.wrapper.nu
+        assert nu != 0.5
+        lam = 2*nu*mu/(1-2*nu)
+
+        laplace_u = [cp.laplace(potential[i]) for i in range(dim)]
+        grad_of_div_u = [
+            sum(cp.diff(j, cp.diff(i, potential[j])) for j in range(dim))
+            for i in range(dim)]
+
+        # Navier-Cauchy equations
+        eqs = [(lam + mu)*grad_of_div_u[i] + mu*laplace_u[i] for i in range(dim)]
+        return make_obj_array(eqs)
 
 
-@pytest.mark.parametrize("dim, method, nu", [
-    pytest.param(2, "biharmonic", 0.4),
-    pytest.param(2, "biharmonic", 0.5),
-    pytest.param(2, "laplace", 0.5),
-    pytest.param(3, "laplace", 0.5),
-    pytest.param(3, "laplace", 0.4),
-    pytest.param(2, "naive", 0.4, marks=pytest.mark.slowtest),
-    pytest.param(3, "naive", 0.4, marks=pytest.mark.slowtest),
-    pytest.param(2, "naive", 0.5, marks=pytest.mark.slowtest),
-    pytest.param(3, "naive", 0.5, marks=pytest.mark.slowtest),
+@pytest.mark.parametrize("dim, method, nu, double_layer", [
+    # Single layer
+    pytest.param(2, "biharmonic", 0.4, False),
+    pytest.param(2, "biharmonic", 0.5, False),
+    pytest.param(2, "laplace", 0.5, False),
+    pytest.param(3, "laplace", 0.5, False),
+    pytest.param(3, "laplace", 0.4, False),
+    pytest.param(2, "naive", 0.4, False, marks=pytest.mark.slowtest),
+    pytest.param(3, "naive", 0.4, False, marks=pytest.mark.slowtest),
+    pytest.param(2, "naive", 0.5, False, marks=pytest.mark.slowtest),
+    pytest.param(3, "naive", 0.5, False, marks=pytest.mark.slowtest),
     # FIXME: re-enable when merge_int_g_exprs is in
-    pytest.param(3, "biharmonic", 0.4, marks=pytest.mark.skip),
-    pytest.param(3, "biharmonic", 0.5, marks=pytest.mark.skip),
+    pytest.param(3, "biharmonic", 0.4, False, marks=pytest.mark.skip),
+    pytest.param(3, "biharmonic", 0.5, False, marks=pytest.mark.skip),
     # FIXME: re-enable when StokesletWrapperYoshida is implemented for 2D
-    pytest.param(2, "laplace", 0.4, marks=pytest.mark.xfail),
-    ])
-def test_stokeslet_pde(actx_factory, dim, method, nu, visualize=False):
-    if visualize:
-        logging.basicConfig(level=logging.INFO)
+    pytest.param(2, "laplace", 0.4, False, marks=pytest.mark.xfail),
 
-    if dim == 2:
-        case_cls = eid.StarfishTestCase
-        resolutions = [16, 32, 64, 96, 128]
-    else:
-        case_cls = eid.SpheroidTestCase
-        resolutions = [0, 1, 2]
-
-    source_ovsmp = 4 if dim == 2 else 8
-    case = case_cls(fmm_backend=None,
-            target_order=5, qbx_order=3, source_ovsmp=source_ovsmp,
-            resolutions=resolutions)
-
-    if nu == 0.5:
-        pde_class = StokesPDE
-    else:
-        pde_class = ElasticityPDE
-
-    identity = pde_class(dim, make_elasticity_wrapper(
-        case.ambient_dim, mu=1, nu=nu, method=Method[method]))
-
-    for resolution in resolutions:
-        h_max, errors = run_stokes_identity(
-            actx_factory, case, identity,
-            resolution=resolution,
-            visualize=visualize)
-
-        assert np.all(np.abs(errors) < 1e-11)
-
-
-@pytest.mark.parametrize("dim, method, nu", [
-    pytest.param(2, "laplace", 0.5),
-    pytest.param(3, "laplace", 0.5),
-    pytest.param(3, "laplace", 0.4),
-    pytest.param(2, "naive", 0.4, marks=pytest.mark.slowtest),
-    pytest.param(3, "naive", 0.4, marks=pytest.mark.slowtest),
-    pytest.param(2, "naive", 0.5, marks=pytest.mark.slowtest),
-    pytest.param(3, "naive", 0.5, marks=pytest.mark.slowtest),
+    # Double layer
+    pytest.param(2, "laplace", 0.5, True),
+    pytest.param(3, "laplace", 0.5, True),
+    pytest.param(3, "laplace", 0.4, True),
+    pytest.param(2, "naive", 0.4, True, marks=pytest.mark.slowtest),
+    pytest.param(3, "naive", 0.4, True, marks=pytest.mark.slowtest),
+    pytest.param(2, "naive", 0.5, True, marks=pytest.mark.slowtest),
+    pytest.param(3, "naive", 0.5, True, marks=pytest.mark.slowtest),
     # FIXME: re-enable when merge_int_g_exprs is in
-    pytest.param(2, "biharmonic", 0.4, marks=pytest.mark.skip),
-    pytest.param(2, "biharmonic", 0.5, marks=pytest.mark.skip),
-    pytest.param(3, "biharmonic", 0.4, marks=pytest.mark.skip),
-    pytest.param(3, "biharmonic", 0.5, marks=pytest.mark.skip),
+    pytest.param(2, "biharmonic", 0.4, True, marks=pytest.mark.skip),
+    pytest.param(2, "biharmonic", 0.5, True, marks=pytest.mark.skip),
+    pytest.param(3, "biharmonic", 0.4, True, marks=pytest.mark.skip),
+    pytest.param(3, "biharmonic", 0.5, True, marks=pytest.mark.skip),
     # FIXME: re-enable when StressletWrapperYoshida is implemented for 2D
-    pytest.param(2, "laplace", 0.4, marks=pytest.mark.xfail),
+    pytest.param(2, "laplace", 0.4, True, marks=pytest.mark.xfail),
     ])
-def test_stresslet_pde(actx_factory, dim, method, nu, visualize=False):
+def test_elasticity_pde(actx_factory, dim, method, nu, is_double_layer,
+                        visualize=False):
     if visualize:
         logging.basicConfig(level=logging.INFO)
 
     if dim == 2:
-        case_cls = eid.StarfishTestCase
-        resolutions = [16, 32, 64, 96, 128]
+        case_cls = eid.CircleTestCase
+        resolutions = [4, 8, 16]
     else:
         case_cls = eid.SpheroidTestCase
         resolutions = [0, 1, 2]
@@ -732,14 +783,18 @@ def test_stresslet_pde(actx_factory, dim, method, nu, visualize=False):
     else:
         pde_class = ElasticityPDE
 
-    identity = pde_class(dim, make_elasticity_double_layer_wrapper(
-        case.ambient_dim, mu=1, nu=nu, method=Method[method]))
+    if is_double_layer:
+        identity = pde_class(dim, make_elasticity_double_layer_wrapper(
+            case.ambient_dim, mu=1, nu=nu, method=Method[method]))
+    else:
+        identity = pde_class(dim, make_elasticity_wrapper(
+            case.ambient_dim, mu=1, nu=nu, method=Method[method]))
 
     from pytools.convergence import EOCRecorder
-    eocs = [EOCRecorder() for _ in range(case.ambient_dim)]
+    eocs = [EOCRecorder() for _ in range(2*case.ambient_dim)]
 
     for resolution in case.resolutions:
-        h_max, errors = run_stokes_identity(
+        h_max, errors = run_stokes_pde(
                 actx_factory, case, identity,
                 resolution=resolution,
                 visualize=visualize)
@@ -755,7 +810,12 @@ def test_stresslet_pde(actx_factory, dim, method, nu, visualize=False):
 
     for eoc in eocs:
         order = min(case.target_order, case.qbx_order)
-        assert eoc.order_estimate() > order - 1.5
+        # Sometimes the error has already converged to a value close to
+        # machine epsilon. In that case we have to reduce the resolution
+        # to increase the error to observe the error behaviour, but when
+        # reducing the resolution is not possible, we check that all the
+        # errors are below a certain threshold.
+        assert eoc.order_estimate() > order - 1 or eoc.max_error() < 1e-10
 
 # }}}
 
