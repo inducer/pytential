@@ -385,6 +385,13 @@ def get_deriv_relation(kernels: Sequence[ExpressionKernel],
        kernel = \sum_{m \in M(order)} \partial^m baseKernel \partial x^m
          + const.
 
+    This is done by sampling the baseKernel and its derivatives at random
+    points to get a matrix ``A``, then sampling the kernel at the same
+    points to get a matrix ``b`` and solving for the system ``Ax = b`` using
+    an LU factorization of ``A``. The solution ``x`` is the vector of weights
+    in the linear combination. To represent a constant in the relation we
+    add a column of ones into ``A``.
+
     When *order* is not given, the algorithm starts with one and increases
     the order upto the order of the PDE satisfied by the *base_kernel* until
     a relation is found.
