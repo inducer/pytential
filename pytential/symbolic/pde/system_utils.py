@@ -375,6 +375,20 @@ def get_deriv_relation(kernels: Sequence[ExpressionKernel],
         tol: float = 1e-10,
         order: Optional[int] = None) \
         -> List[DerivRelation]:
+    """
+    Given a sequence of *kernels*, a *base_kernel* and an *order*, this
+    gives a relation between the *base_kernel* and each of the *kernels*.
+    For each kernel in *kernels* we have that the kernel is equal to the
+    linear combination of derivatives of *base_kernel* up to the order
+    *order* and a constant. i.e.,
+
+       kernel = \sum_{m \in M(order)} \partial^m baseKernel \partial x^m
+         + const.
+
+    When *order* is not given, the algorithm starts with one and increases
+    the order upto the order of the PDE satisfied by the *base_kernel* until
+    a relation is found.
+    """
     res = []
     for knl in kernels:
         res.append(get_deriv_relation_kernel(knl, base_kernel,
