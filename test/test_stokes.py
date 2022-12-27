@@ -728,7 +728,7 @@ class ElasticityPDE:
         return make_obj_array(eqs)
 
 
-@pytest.mark.parametrize("dim, method, nu, double_layer", [
+@pytest.mark.parametrize("dim, method, nu, is_double_layer", [
     # Single layer
     pytest.param(2, "biharmonic", 0.4, False),
     pytest.param(2, "biharmonic", 0.5, False),
