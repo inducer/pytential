@@ -375,7 +375,7 @@ def get_deriv_relation(kernels: Sequence[ExpressionKernel],
         tol: float = 1e-10,
         order: Optional[int] = None) \
         -> List[DerivRelation]:
-    """
+    r"""
     Given a sequence of *kernels*, a *base_kernel* and an *order*, this
     gives a relation between the *base_kernel* and each of the *kernels*.
     For each kernel in *kernels* we have that the kernel is equal to the
