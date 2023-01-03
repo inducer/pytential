@@ -358,6 +358,48 @@ class EvaluationMapper(EvaluationMapperBase):
 
         return result
 
+
+class DistributedEvaluationMapper(EvaluationMapper):
+    def __init__(self, comm, bound_expr, actx, context=None, timing_data=None):
+        self.comm = comm
+
+        if self.comm.Get_rank() == 0:
+            super().__init__(bound_expr, actx, context, timing_data)
+        else:
+            self.bound_expr = bound_expr
+            self.array_context = actx
+            self.context = context
+            self.places = None
+            self.timing_data = timing_data
+
+    def exec_assign(self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
+        if self.comm.Get_rank() == 0:
+            return super().exec_assign(actx, insn, bound_expr, evaluate)
+        else:
+            return dict()
+
+    def exec_compute_potential_insn(
+            self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
+        if self.comm.Get_rank() == 0:
+            return super().exec_compute_potential_insn(
+                actx, insn, bound_expr, evaluate)
+        else:
+            source = self.bound_expr.places[0]
+            return_timing_data = self.timing_data is not None
+
+            from pytential.qbx.distributed import DistributedQBXLayerPotentialSource
+            assert isinstance(source, DistributedQBXLayerPotentialSource)
+            source.exec_compute_potential_insn(
+                actx, insn, bound_expr, evaluate, return_timing_data)
+
+            return []
+
+    def __call__(self, expr, *args, **kwargs):
+        if self.comm.Get_rank() == 0:
+            return super().__call__(expr, *args, **kwargs)
+        else:
+            return None
+
 # }}}
 
 
@@ -881,6 +923,56 @@ class BoundExpression:
         return self.eval(kwargs, array_context=array_context)
 
 
+class DistributedBoundExpression(BoundExpression):
+    def __init__(self, comm, places, sym_op_expr):
+        self.comm = comm
+        self._code = None
+
+        if self.comm.Get_rank() == 0:
+            super().__init__(places, sym_op_expr)
+            self._code = super().code
+        else:
+            self.places = places
+
+        self._code = self.comm.bcast(self._code, root=0)
+
+    @property
+    def code(self):
+        return self._code
+
+    def cost_per_stage(self, calibration_params, **kwargs):
+        if self.comm.Get_rank() == 0:
+            return super().cost_per_stage(calibration_params, **kwargs)
+        else:
+            raise RuntimeError("Cost model is not available on worker ranks")
+
+    def cost_per_box(self, calibration_params, **kwargs):
+        if self.comm.Get_rank() == 0:
+            return super().cost_per_box(calibration_params, **kwargs)
+        else:
+            raise RuntimeError("Cost model is not available on worker ranks")
+
+    def scipy_op(
+            self, actx: PyOpenCLArrayContext, arg_name, dtype,
+            domains=None, **extra_args):
+        raise NotImplementedError
+
+    def eval(self, context=None, timing_data=None,
+            array_context: Optional[PyOpenCLArrayContext] = None):
+        if context is None:
+            context = {}
+
+        array_context = _find_array_context_from_args_in_context(
+            context, array_context)
+
+        exec_mapper = DistributedEvaluationMapper(
+                self.comm, self, array_context, context, timing_data=timing_data)
+        return execute(self.code, exec_mapper)
+
+    def __call__(self, *args, **kwargs):
+        raise NotImplementedError
+
+
 def bind(places, expr, auto_where=None):
     """
     :arg places: a :class:`pytential.collection.GeometryCollection`.
@@ -904,6 +996,22 @@ def bind(places, expr, auto_where=None):
 
     expr = _prepare_expr(places, expr, auto_where=auto_where)
     return BoundExpression(places, expr)
+
+
+def bind_distributed(comm, places, expr, auto_where=None):
+    """
+    :arg places: root rank contains the actual places, while worker ranks should pass
+    `None`.
+    """
+    if comm.Get_rank() == 0:
+        from pytential import GeometryCollection
+        if not isinstance(places, GeometryCollection):
+            places = GeometryCollection(places, auto_where=auto_where)
+            auto_where = places.auto_where
+
+        expr = _prepare_expr(places, expr, auto_where=auto_where)
+
+    return DistributedBoundExpression(comm, places, expr)
 
 # }}}
 
