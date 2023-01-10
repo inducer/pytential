@@ -429,13 +429,13 @@ def run_int_eq_test(actx,
     # }}}
 
     h_max = bind(places, sym.h_max(ambient_dim))(actx)
-    return dict(
-            h_max=actx.to_numpy(h_max),
-            rel_err_2=rel_err_2,
-            rel_err_inf=rel_err_inf,
-            rel_td_err_inf=rel_td_err_inf,
-            rel_grad_err_inf=rel_grad_err_inf,
-            gmres_result=gmres_result)
+    return {
+            "h_max": actx.to_numpy(h_max),
+            "rel_err_2": rel_err_2,
+            "rel_err_inf": rel_err_inf,
+            "rel_td_err_inf": rel_td_err_inf,
+            "rel_grad_err_inf": rel_grad_err_inf,
+            "gmres_result": gmres_result}
 
 # }}}
 

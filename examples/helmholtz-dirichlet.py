@@ -144,10 +144,10 @@ def main(mesh_name="ellipse", visualize=False):
 
     # {{{ postprocess/visualize
 
-    repr_kwargs = dict(
-            source="qbx_high_target_assoc_tol",
-            target="targets",
-            qbx_forced_limit=None)
+    repr_kwargs = {
+            "source": "qbx_high_target_assoc_tol",
+            "target": "targets",
+            "qbx_forced_limit": None}
     representation_sym = (
             alpha*sym.S(kernel, inv_sqrt_w_sigma, k=k_sym, **repr_kwargs)
             - sym.D(kernel, inv_sqrt_w_sigma, k=k_sym, **repr_kwargs))

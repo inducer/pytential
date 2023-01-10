@@ -139,10 +139,10 @@ def main(mesh_name="torus", visualize=False):
 
     # {{{ postprocess/visualize
 
-    repr_kwargs = dict(
-            source="qbx_target_assoc",
-            target="targets",
-            qbx_forced_limit=None)
+    repr_kwargs = {
+            "source": "qbx_target_assoc",
+            "target": "targets",
+            "qbx_forced_limit": None}
     representation_sym = (
             sym.S(kernel, inv_sqrt_w_sigma, **repr_kwargs)
             + sym.D(kernel, inv_sqrt_w_sigma, **repr_kwargs))

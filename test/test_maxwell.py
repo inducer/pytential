@@ -356,11 +356,12 @@ def test_pec_mfie_extinction(actx_factory, case,
         j_rhs = bind(places, mfie.j_rhs(inc_xyz_sym.h))(
                 actx, inc_fld=inc_field_scat.field, **knl_kwargs)
 
-        gmres_settings = dict(
-                tol=case.gmres_tol,
-                progress=True,
-                hard_failure=True,
-                stall_iterations=50, no_progress_factor=1.05)
+        gmres_settings = {
+                "tol": case.gmres_tol,
+                "progress": True,
+                "hard_failure": True,
+                "stall_iterations": 50,
+                "no_progress_factor": 1.05}
         from pytential.linalg.gmres import gmres
         gmres_result = gmres(
                 bound_j_op.scipy_op(actx, "jt", np.complex128, **knl_kwargs),

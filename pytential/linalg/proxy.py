@@ -308,14 +308,14 @@ def make_compute_cluster_centers_knl(
             "{[i]: 0 <= i < npoints}",
             "{[idim]: 0 <= idim < ndim}"
             ],
-            """
+            f"""
             for icluster
                 <> ioffset = srcstarts[icluster]
                 <> npoints = srcstarts[icluster + 1] - ioffset
 
-                %(insns)s
+                {insns}
             end
-            """ % dict(insns=insns), [
+            """, [
                 lp.GlobalArg("sources", None,
                     shape=(ndim, "nsources"), dim_tags="sep,C", offset=lp.auto),
                 lp.ValueArg("nsources", np.int64),
@@ -323,7 +323,7 @@ def make_compute_cluster_centers_knl(
                 ],
             name="compute_cluster_centers_knl",
             assumptions="ndim>=1 and nclusters>=1",
-            fixed_parameters=dict(ndim=ndim),
+            fixed_parameters={"ndim": ndim},
             lang_version=MOST_RECENT_LANGUAGE_VERSION,
             )
 
@@ -522,7 +522,7 @@ def make_compute_cluster_radii_knl(
                 ],
             name="compute_cluster_radii_knl",
             assumptions="ndim>=1 and nclusters>=1",
-            fixed_parameters=dict(ndim=ndim),
+            fixed_parameters={"ndim": ndim},
             lang_version=MOST_RECENT_LANGUAGE_VERSION,
             )
 
@@ -586,7 +586,7 @@ def make_compute_cluster_qbx_radii_knl(
                 ],
             name="compute_cluster_qbx_radii_knl",
             assumptions="ndim>=1 and nclusters>=1",
-            fixed_parameters=dict(ndim=ndim),
+            fixed_parameters={"ndim": ndim},
             lang_version=MOST_RECENT_LANGUAGE_VERSION,
             )
 
@@ -670,7 +670,7 @@ def gather_cluster_neighbor_points(
                 ...],
             name="picker_knl",
             assumptions="ndim>=1 and npoints>=1",
-            fixed_parameters=dict(ndim=discr.ambient_dim),
+            fixed_parameters={"ndim": discr.ambient_dim},
             lang_version=MOST_RECENT_LANGUAGE_VERSION,
             )
 

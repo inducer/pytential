@@ -30,6 +30,6 @@ def sort_arrays_together(*arys, key=None):
     :param key: a function that takes in a tuple of values
                 and returns a value to compare.
     """
-    return zip(*sorted([x for x in zip(*arys)], key=key))
+    return zip(*sorted(zip(*arys), key=key))
 
 # vim: foldmethod=marker

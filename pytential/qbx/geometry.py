@@ -137,7 +137,7 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
         knl = lp.tag_array_axes(knl, "points", "sep, C")
 
         knl = lp.tag_array_axes(knl, "targets", "stride:auto, stride:1")
-        return lp.tag_inames(knl, dict(dim="ilp"))
+        return lp.tag_inames(knl, {"dim": "ilp"})
 
     @property
     @memoize_method
@@ -949,7 +949,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                 pt.text(cx, cy,
                     str(icenter), fontsize=8,
                     ha="left", va="center",
-                    bbox=dict(facecolor="white", alpha=0.5, lw=0))
+                    bbox={"facecolor": "white", "alpha": 0.5, "lw": 0})
 
         # }}}
 
@@ -971,7 +971,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     targets[1][itarget],
                     str(itarget), fontsize=8,
                     ha="left", va="center",
-                    bbox=dict(facecolor="white", alpha=0.5, lw=0))
+                    bbox={"facecolor": "white", "alpha": 0.5, "lw": 0})
 
         tccount = 0
         checked = 0

@@ -352,13 +352,13 @@ def test_cluster_builder(actx_factory, ambient_dim,
     # {{{ matrix
 
     mindex = case.get_tgt_src_cluster_index(actx, places)
-    kwargs = dict(
-            dep_expr=sym_u,
-            other_dep_exprs=[],
-            dep_discr=density_discr,
-            places=places,
-            context=case.knl_concrete_kwargs
-            )
+    kwargs = {
+            "dep_expr": sym_u,
+            "other_dep_exprs": [],
+            "dep_discr": density_discr,
+            "places": places,
+            "context": case.knl_concrete_kwargs
+            }
 
     if cluster_builder_type == "qbx":
         from pytential.symbolic.matrix import MatrixBuilder
@@ -481,13 +481,13 @@ def test_build_matrix_fixed_stage(actx_factory,
     jsources = case.get_cluster_index(actx, places, source_dd)
     mindex = TargetAndSourceClusterList(itargets, jsources)
 
-    kwargs = dict(
-            dep_expr=sym_u,
-            other_dep_exprs=[],
-            dep_discr=source_discr,
-            places=places,
-            context=case.knl_concrete_kwargs,
-            )
+    kwargs = {
+            "dep_expr": sym_u,
+            "other_dep_exprs": [],
+            "dep_discr": source_discr,
+            "places": places,
+            "context": case.knl_concrete_kwargs,
+            }
 
     # qbx
     from pytential.symbolic import matrix

@@ -331,7 +331,7 @@ class _FMMGeometryDataCodeContainer:
         knl = lp.tag_array_axes(knl, "points", "sep, C")
 
         knl = lp.tag_array_axes(knl, "targets", "stride:auto, stride:1")
-        return lp.tag_inames(knl, dict(dim="ilp"))
+        return lp.tag_inames(knl, {"dim": "ilp"})
 
     @property
     @memoize_method

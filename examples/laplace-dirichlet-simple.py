@@ -102,10 +102,10 @@ def main(mesh_name="starfish", visualize=False):
 
     # {{{ postprocess/visualize
 
-    repr_kwargs = dict(
-            source="qbx_high_target_assoc_tol",
-            target="targets",
-            qbx_forced_limit=None)
+    repr_kwargs = {
+            "source": "qbx_high_target_assoc_tol",
+            "target": "targets",
+            "qbx_forced_limit": None}
     representation_sym = (
             - sym.D(kernel, sigma_sym, **repr_kwargs))
 

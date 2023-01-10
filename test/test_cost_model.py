@@ -83,7 +83,7 @@ def test_compare_cl_and_py_cost_model(actx_factory):
     from pytential.qbx.refinement import refine_geometry_collection
     places = refine_geometry_collection(places)
 
-    target_discrs_and_qbx_sides = tuple([(qbx.density_discr, 0)])
+    target_discrs_and_qbx_sides = ((qbx.density_discr, 0),)
     geo_data_dev = qbx.qbx_fmm_geometry_data(
         places, places.auto_source.geometry, target_discrs_and_qbx_sides
     )
@@ -368,7 +368,7 @@ def test_timing_data_gathering(ctx_factory):
     op_S = bind(places, sym_op_S)
 
     timing_data = {}
-    op_S.eval(dict(sigma=sigma), timing_data=timing_data, array_context=actx)
+    op_S.eval({"sigma": sigma}, timing_data=timing_data, array_context=actx)
     assert timing_data
     logging.info(timing_data)
 
