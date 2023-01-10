@@ -104,7 +104,10 @@ def partition_by_nodes(
 
         from boxtree import box_flags_enum
         tree = tree.get(actx.queue)
-        leaf_boxes, = (tree.box_flags & box_flags_enum.HAS_CHILDREN == 0).nonzero()
+        # FIXME maybe this should use IS_LEAF once available?
+        leaf_boxes, = (
+                tree.box_flags & box_flags_enum.HAS_SOURCE_OR_TARGET_CHILD_BOXES == 0
+                ).nonzero()
 
         indices = np.empty(len(leaf_boxes), dtype=object)
         starts = None
