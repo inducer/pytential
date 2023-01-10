@@ -189,11 +189,11 @@ non_qbx_box_target_lists`),
         # This only covers the non-QBX targets.
 
         nqbtl = self.geo_data.non_qbx_box_target_lists()
-        return dict(
-                box_target_starts=nqbtl.box_target_starts,
-                box_target_counts_nonchild=(
+        return {
+                "box_target_starts": nqbtl.box_target_starts,
+                "box_target_counts_nonchild": (
                     nqbtl.box_target_counts_nonchild),
-                targets=nqbtl.targets)
+                "targets": nqbtl.targets}
 
     # }}}
 

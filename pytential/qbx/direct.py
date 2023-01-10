@@ -97,7 +97,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
             arguments,
             name=self.name,
             assumptions="ntargets>=1 and nsources>=1",
-            fixed_parameters=dict(dim=self.dim),
+            fixed_parameters={"dim": self.dim},
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")

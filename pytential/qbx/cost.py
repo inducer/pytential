@@ -363,7 +363,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         # {{{ Construct parameters
 
         params = calibration_params.copy()
-        params.update(dict(p_qbx=lpot_source.qbx_order))
+        params.update({"p_qbx": lpot_source.qbx_order})
 
         for ilevel in range(tree.nlevels):
             params[f"p_fmm_lev{ilevel}"] = fmm_level_to_order[ilevel]
@@ -438,7 +438,7 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
         # {{{ Construct parameters
 
         params = calibration_params.copy()
-        params.update(dict(p_qbx=lpot_source.qbx_order))
+        params.update({"p_qbx": lpot_source.qbx_order})
 
         for ilevel in range(tree.nlevels):
             params[f"p_fmm_lev{ilevel}"] = fmm_level_to_order[ilevel]
@@ -499,13 +499,13 @@ class AbstractQBXCostModel(BaseAbstractFMMCostModel):
     def get_unit_calibration_params():
         calibration_params = BaseAbstractFMMCostModel.get_unit_calibration_params()
 
-        calibration_params.update(dict(
-            c_p2qbxl=1.0,
-            c_p2p_tsqbx=1.0,
-            c_qbxl2p=1.0,
-            c_m2qbxl=1.0,
-            c_l2qbxl=1.0
-        ))
+        calibration_params.update({
+            "c_p2qbxl": 1.0,
+            "c_p2p_tsqbx": 1.0,
+            "c_qbxl2p": 1.0,
+            "c_m2qbxl": 1.0,
+            "c_l2qbxl": 1.0
+        })
 
         return calibration_params
 

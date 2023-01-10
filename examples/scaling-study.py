@@ -130,7 +130,7 @@ def timing_run(nx, ny, visualize=False):
 
     # {{{ postprocess/visualize
 
-    repr_kwargs = dict(k=sym.var("k"), qbx_forced_limit=+1)
+    repr_kwargs = {"k": sym.var("k"), "qbx_forced_limit": +1}
 
     sym_op = sym.S(kernel, sym.var("sigma"), **repr_kwargs)
     bound_op = bind(places, sym_op)

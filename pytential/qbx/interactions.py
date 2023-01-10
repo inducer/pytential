@@ -112,8 +112,8 @@ class P2QBXLFromCSR(P2EBase):
                 arguments,
                 name=self.name, assumptions="ntgt_centers>=1",
                 silenced_warnings="write_race(write_expn*)",
-                fixed_parameters=dict(dim=self.dim,
-                    strength_count=self.strength_count),
+                fixed_parameters={
+                    "dim": self.dim, "strength_count": self.strength_count},
                 default_offset=lp.auto,
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
@@ -231,7 +231,7 @@ class M2QBXL(E2EBase):
                 ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                 name=self.name, assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)",
-                fixed_parameters=dict(dim=self.dim),
+                fixed_parameters={"dim": self.dim},
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
@@ -341,7 +341,7 @@ class L2QBXL(E2EBase):
                 name=self.name,
                 assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)",
-                fixed_parameters=dict(dim=self.dim, nchildren=2**self.dim),
+                fixed_parameters={"dim": self.dim, "nchildren": 2**self.dim},
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         for knl in [self.src_expansion.kernel, self.tgt_expansion.kernel]:
@@ -447,7 +447,7 @@ class QBXL2P(E2PBase):
                 name=self.name,
                 assumptions="nglobal_qbx_centers>=1",
                 silenced_warnings="write_race(write_result*)",
-                fixed_parameters=dict(dim=self.dim, nresults=len(result_names)),
+                fixed_parameters={"dim": self.dim, "nresults": len(result_names)},
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
@@ -466,7 +466,7 @@ class QBXL2P(E2PBase):
         if is_centers_obj_array:
             knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
 
-        knl = lp.tag_inames(knl, dict(iglobal_center="g.0"))
+        knl = lp.tag_inames(knl, {"iglobal_center": "g.0"})
         knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
