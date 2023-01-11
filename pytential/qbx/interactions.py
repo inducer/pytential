@@ -390,8 +390,7 @@ class QBXL2P(E2PBase):
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
-
-        loopy_insns, result_names = self.get_loopy_insns_and_result_names()
+        loopy_args = [arg.loopy_arg for arg in self.expansion.get_args()]
 
         loopy_knl = lp.make_kernel(
                 [
@@ -399,34 +398,43 @@ class QBXL2P(E2PBase):
                     "{[icenter_tgt]: \
                             icenter_tgt_start<=icenter_tgt<icenter_tgt_end}",
                     "{[idim]: 0<=idim<dim}",
+                    "{[icoeff]: 0<=icoeff<ncoeffs}",
+                    "{[iknl]: 0<=iknl<nresults}",
                     ],
-                self.get_kernel_scaling_assignment()
-                + ["""
+                ["""
                 for iglobal_center
                     <> src_icenter = global_qbx_centers[iglobal_center]
 
                     <> icenter_tgt_start = center_to_targets_starts[src_icenter]
                     <> icenter_tgt_end = center_to_targets_starts[src_icenter+1]
 
-                    <> center[idim] = qbx_centers[idim, src_icenter] {dup=idim}
+                    <> center[idim] = qbx_centers[idim, src_icenter] \
+                            {dup=idim,id=fetch_center}
                     <> rscale = qbx_expansion_radii[src_icenter]
 
                     for icenter_tgt
-
                         <> itgt = center_to_targets_lists[icenter_tgt]
 
-                        <> b[idim] = targets[idim, itgt] - center[idim]
+                        <> coeffs[icoeff] = qbx_expansions[src_icenter, icoeff] \
+                            {id=fetch_coeffs,dup=icoeff}
 
-                        """] + ["""
-                        <> coeff{i} = qbx_expansions[src_icenter, {i}]
-                        """.format(i=i) for i in range(ncoeffs)] + [
+                        <> tgt[idim] = targets[idim, itgt] {id=fetch_tgt,dup=idim}
+                        <> result_temp[iknl] = 0  {id=init_result,dup=iknl}
 
-                        ] + loopy_insns + ["""
-
-                        result[{i},itgt] = kernel_scaling * result_{i}_p \
-                                {{id_prefix=write_result}}
-                        """.format(i=i)
-                            for i in range(len(result_names))] + ["""
+                        [iknl]: result_temp[iknl] = e2p(
+                            [iknl]: result_temp[iknl],
+                            [icoeff]: coeffs[icoeff],
+                            [idim]: center[idim],
+                            [idim]: tgt[idim],
+                            rscale,
+                            itgt,
+                            ntargets,
+                            targets,
+                """ + ",".join(arg.name for arg in loopy_args)
+                + """
+                        )  {dep=fetch_coeffs:fetch_center:fetch_tgt:init_result,\
+                                id=write_result}
+                        result[iknl, itgt] = result_temp[iknl] {dep=write_result}
                     end
                 end
                 """],
@@ -440,19 +448,22 @@ class QBXL2P(E2PBase):
                     lp.GlobalArg("qbx_expansions", None,
                         shape=("ncenters", ncoeffs)),
                     lp.GlobalArg("targets", None,
-                        shape=(self.dim, "ntargets"), dim_tags="sep,C"),
+                        shape=(self.dim, "ntargets")),
                     lp.ValueArg("ncenters,ntargets", np.int32),
+                    *loopy_args,
                     ...
-                ] + [arg.loopy_arg for arg in self.expansion.get_args()],
+                ],
                 name=self.name,
                 assumptions="nglobal_qbx_centers>=1",
                 silenced_warnings="write_race(write_result*)",
-                fixed_parameters={"dim": self.dim, "nresults": len(result_names)},
+                fixed_parameters={
+                    "dim": self.dim,
+                    "ncoeffs": ncoeffs,
+                    "nresults": len(self.kernels)},
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
-        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
-        for knl in self.kernels:
-            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
+        loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr,iknl:unr")
+        loopy_knl = self.set_inner_knl(loopy_knl)
 
         return loopy_knl
 
@@ -467,7 +478,6 @@ class QBXL2P(E2PBase):
             knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
 
         knl = lp.tag_inames(knl, {"iglobal_center": "g.0"})
-        knl = self._allow_redundant_execution_of_knl_scaling(knl)
         return knl
 
     def __call__(self, queue, **kwargs):
