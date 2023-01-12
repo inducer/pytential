@@ -186,8 +186,8 @@ def _create_int_g(knl, deriv_dirs, density, **kwargs):
     for deriv_dir in deriv_dirs:
         knl = AxisTargetDerivative(deriv_dir, knl)
 
-    kernel_arg_names = set(karg.loopy_arg.name
-            for karg in (knl.get_args() + knl.get_source_args()))
+    kernel_arg_names = {karg.loopy_arg.name
+            for karg in (knl.get_args() + knl.get_source_args())}
 
     # When the kernel is Laplace, mu and nu are not kernel arguments
     # Also when nu==0.5, it's not a kernel argument to StokesletKernel
