@@ -26,20 +26,20 @@ from functools import partial
 
 import numpy as np
 
-from pymbolic.primitives import (  # noqa: F401,N813
+from pymbolic.primitives import (  # noqa: N813
         Expression as ExpressionBase, Variable, Variable as var,
         cse_scope as cse_scope_base,
         make_common_subexpression as cse)
 from pymbolic.geometric_algebra import MultiVector, componentwise
-from pymbolic.geometric_algebra.primitives import (  # noqa: F401
-        NablaComponent, DerivativeSource, Derivative as DerivativeBase)
+from pymbolic.geometric_algebra.primitives import (
+        NablaComponent, Derivative as DerivativeBase)
 from pymbolic.primitives import make_sym_vector  # noqa: F401
 
-from pytools.obj_array import make_obj_array, flat_obj_array    # noqa: F401
+from pytools.obj_array import make_obj_array, flat_obj_array
 from pytools import single_valued, MovedFunctionDeprecationWrapper
 from sumpy.kernel import SpatialConstant
 
-from pytential.symbolic.dof_desc import (   # noqa: F401
+from pytential.symbolic.dof_desc import (
         DEFAULT_SOURCE, DEFAULT_TARGET,
         QBX_SOURCE_STAGE1, QBX_SOURCE_STAGE2, QBX_SOURCE_QUAD_STAGE2,
         GRANULARITY_NODE, GRANULARITY_CENTER, GRANULARITY_ELEMENT,
@@ -224,6 +224,54 @@ Pretty-printing expressions
 
 .. autofunction:: pretty
 """
+
+__all__ = (
+    "ErrorExpression",
+
+    "var", "SpatialConstant", "make_sym_mv", "make_sym_surface_mv",
+
+    "real", "imag", "conj", "abs",
+
+    "sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh", "cosh",
+    "tanh", "asinh", "acosh", "atanh", "exp", "log",
+
+    "IsShapeClass", "QWeight", "nodes", "parametrization_derivative",
+    "parametrization_derivative_matrix", "pseudoscalar", "area_element",
+    "sqrt_jac_q_weight", "normal", "mean_curvature",
+    "first_fundamental_form", "second_fundamental_form", "shape_operator",
+
+    "expansion_radii", "expansion_centers", "h_max", "weights_and_area_elements",
+
+    "NumReferenceDerivative", "NodeSum", "NodeMax", "NodeMin", "ElementwiseSum",
+    "ElementwiseMax", "integral", "Ones", "ones_vec", "area", "mean",
+    "IterativeInverse",
+
+    "Interpolation", "interp",
+
+    "Derivative",
+
+    "dd_axis", "d_dx", "d_dy", "d_dz", "grad_mv", "grad", "laplace",
+
+
+    "IntG", "int_g_dsource", "int_g_vec",
+
+    "S", "Sp", "Spp", "D", "Dp",
+
+    "normal_derivative", "tangential_derivative",
+
+    "tangential_onb", "xyz_to_tangential", "tangential_to_xyz",
+    "project_to_tangential",
+    "cross", "n_dot", "n_cross", "curl",
+
+    "pretty",
+
+    # re-exported symbols, maybe questionable
+    "flat_obj_array",
+    "DEFAULT_SOURCE", "DEFAULT_TARGET",
+    "QBX_SOURCE_STAGE1", "QBX_SOURCE_STAGE2", "QBX_SOURCE_QUAD_STAGE2",
+    "GRANULARITY_NODE", "GRANULARITY_CENTER", "GRANULARITY_ELEMENT",
+    "DOFDescriptor", "DOFDescriptorLike", "as_dofdesc",
+    )
 
 
 class _NoArgSentinel:
