@@ -527,6 +527,30 @@ def test_mapper_dof_descriptor_replacer(op_name, k):
 # }}}
 
 
+# {{{ test_derivative_with_spatial_constant
+
+def test_derivative_with_spatial_constant():
+    ambient_dim = 3
+
+    from sumpy.kernel import LaplaceKernel
+    sym.d_dx(ambient_dim,
+            sym.SpatialConstant("kappa")
+            * sym.D(LaplaceKernel(ambient_dim), sym.Variable("sigma")))
+
+    from sumpy.kernel import LaplaceKernel
+    sym.d_dx(ambient_dim,
+            (3+sym.SpatialConstant("kappa"))
+            * sym.D(LaplaceKernel(ambient_dim), sym.Variable("sigma")))
+
+    from pytential.symbolic.mappers import _DerivativeTakerUnsupoortedProductError
+    with pytest.raises(_DerivativeTakerUnsupoortedProductError):
+        sym.d_dx(ambient_dim,
+                (3+sym.Variable("kappa"))
+                * sym.D(LaplaceKernel(ambient_dim), sym.Variable("sigma")))
+
+# }}}
+
+
 # You can test individual routines by typing
 # $ python test_symbolic.py 'test_routine()'
 

@@ -453,6 +453,29 @@ class DiscretizationStageTagger(IdentityMapper):
 
 # {{{ DerivativeBinder
 
+class _IsSptiallyVaryingMapper(CombineMapper):
+    def combine(self, values):
+        import operator
+        from functools import reduce
+        return reduce(operator.or_, values, False)
+
+    def map_constant(self, expr):
+        return False
+
+    def map_spatial_constant(self, expr):
+        return False
+
+    def map_variable(self, expr):
+        return True
+
+    def map_int_g(self, expr):
+        return True
+
+
+class _DerivativeTakerUnsupoortedProductError(Exception):
+    pass
+
+
 class DerivativeTaker(Mapper):
     def __init__(self, ambient_axis):
         self.ambient_axis = ambient_axis
@@ -466,17 +489,17 @@ class DerivativeTaker(Mapper):
         return flattened_sum(children)
 
     def map_product(self, expr):
-        from pymbolic.primitives import is_constant
         const = []
         nonconst = []
         for subexpr in expr.children:
-            if is_constant(subexpr):
-                const.append(subexpr)
-            else:
+            if _IsSptiallyVaryingMapper()(subexpr):
                 nonconst.append(subexpr)
+            else:
+                const.append(subexpr)
 
         if len(nonconst) > 1:
-            raise RuntimeError("DerivativeTaker doesn't support products with "
+            raise _DerivativeTakerUnsupoortedProductError(
+                    "DerivativeTaker doesn't support products with "
                     "more than one non-constant")
 
         if not nonconst:
