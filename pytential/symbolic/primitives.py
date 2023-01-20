@@ -37,6 +37,7 @@ from pymbolic.primitives import make_sym_vector  # noqa: F401
 
 from pytools.obj_array import make_obj_array, flat_obj_array    # noqa: F401
 from pytools import single_valued, MovedFunctionDeprecationWrapper
+from sumpy.kernel import SpatialConstant
 
 from pytential.symbolic.dof_desc import (   # noqa: F401
         DEFAULT_SOURCE, DEFAULT_TARGET,
@@ -97,6 +98,7 @@ Placeholders
 ^^^^^^^^^^^^
 
 .. autoclass:: var
+.. autoclass:: SpatialConstant
 .. autofunction:: make_sym_mv
 .. autofunction:: make_sym_surface_mv
 
