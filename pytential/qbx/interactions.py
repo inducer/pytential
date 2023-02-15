@@ -401,7 +401,8 @@ class QBXL2P(E2PBase):
                     "{[icoeff]: 0<=icoeff<ncoeffs}",
                     "{[iknl]: 0<=iknl<nresults}",
                     ],
-                ["""
+                self.get_kernel_scaling_assignment()
+                + ["""
                 for iglobal_center
                     <> src_icenter = global_qbx_centers[iglobal_center]
 
@@ -434,7 +435,8 @@ class QBXL2P(E2PBase):
                 + """
                         )  {dep=fetch_coeffs:fetch_center:fetch_tgt:init_result,\
                                 id=write_result}
-                        result[iknl, itgt] = result_temp[iknl] {dep=write_result}
+                        result[iknl, itgt] = result_temp[iknl] * kernel_scaling \
+                            {dep=write_result}
                     end
                 end
                 """],
@@ -478,6 +480,7 @@ class QBXL2P(E2PBase):
             knl = lp.tag_array_axes(knl, "qbx_centers", "sep,C")
 
         knl = lp.tag_inames(knl, {"iglobal_center": "g.0"})
+        knl = lp.add_inames_to_insn(knl, "iglobal_center", "id:kernel_scaling")
         return knl
 
     def __call__(self, queue, **kwargs):
