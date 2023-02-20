@@ -42,14 +42,14 @@ class P2QBXLFromCSR(P2EBase):
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
+        loopy_args = self.get_loopy_args()
 
-        from sumpy.tools import gather_loopy_source_arguments
         arguments = (
                 [
                     lp.GlobalArg("sources", None,
-                        shape=(self.dim, "nsources"), dim_tags="sep,C"),
-                    lp.GlobalArg("strengths", None, dim_tags="sep,C",
-                        shape="strength_count, nsources"),
+                        shape=(self.dim, "nsources")),
+                    lp.GlobalArg("strengths", None,
+                        shape=(self.strength_count, "nsources")),
                     lp.GlobalArg("qbx_center_to_target_box",
                         None, shape=None),
                     lp.GlobalArg("source_box_starts,source_box_lists",
@@ -63,10 +63,9 @@ class P2QBXLFromCSR(P2EBase):
                         shape=("ncenters", ncoeffs)),
                     lp.ValueArg("ncenters", np.int32),
                     lp.ValueArg("nsources", np.int32),
+                    *loopy_args,
                     ...
-                ] + gather_loopy_source_arguments(
-                        self.source_kernels + (self.expansion,))
-        )
+                ])
 
         loopy_knl = lp.make_kernel(
                 [
@@ -74,52 +73,66 @@ class P2QBXLFromCSR(P2EBase):
                     "{[isrc_box]: isrc_box_start<=isrc_box<isrc_box_stop}",
                     "{[isrc]: isrc_start<=isrc<isrc_end}",
                     "{[idim]: 0<=idim<dim}",
+                    "{[icoeff]: 0<=icoeff<ncoeffs}",
+                    "{[istrength]: 0<=istrength<nstrengths}",
                     ],
                 ["""
                 for itgt_center
                     <> tgt_icenter = global_qbx_centers[itgt_center]
 
-                    <> center[idim] = qbx_centers[idim, tgt_icenter]
-                    <> rscale = qbx_expansion_radii[tgt_icenter]
+                    <> center[idim] = qbx_centers[idim, tgt_icenter] \
+                            {id=fetch_center}
+                    <> rscale = qbx_expansion_radii[tgt_icenter] {id=fetch_rscale}
 
                     <> itgt_box = qbx_center_to_target_box[tgt_icenter]
 
                     <> isrc_box_start = source_box_starts[itgt_box]
                     <> isrc_box_stop = source_box_starts[itgt_box+1]
 
+                    <> coeffs[icoeff] = 0  {id=init_coeffs,dup=icoeff}
                     for isrc_box
                         <> src_ibox = source_box_lists[isrc_box]
                         <> isrc_start = box_source_starts[src_ibox]
                         <> isrc_end = isrc_start+box_source_counts_nonchild[src_ibox]
 
                         for isrc
-                            <> a[idim] = center[idim] - sources[idim, isrc] \
-                                    {dup=idim}
-                            """] + [f"<> strength_{i} = strengths[{i}, isrc]" for
-                            i in set(self.strength_usage)]
-                + self.get_loopy_instructions() + ["""
+                            <> source[idim] = sources[idim, isrc] \
+                                    {dup=idim,id=fetch_src}
+                            <> strength[istrength] = strengths[istrength, isrc] \
+                                    {dup=istrength,id=fetch_strength}
+                            [icoeff]: coeffs[icoeff] = p2e(
+                                    [icoeff]: coeffs[icoeff],
+                                    [idim]: center[idim],
+                                    [idim]: source[idim],
+                                    [istrength]: strength[istrength],
+                                    rscale,
+                                    isrc,
+                                    nsources,
+                                    sources,
+                    """ + ",".join(arg.name for arg in loopy_args) + """
+                                )  {id=update_result,dep=fetch_*:init_coeffs}
                         end
                     end
-
-                    """] + [f"""
-                    qbx_expansions[tgt_icenter, {i}] = \
-                            simul_reduce(sum, (isrc_box, isrc), coeff{i}) \
-                            {{id_prefix=write_expn}}
-                    """ for i in range(ncoeffs)] + ["""
-
+                    qbx_expansions[tgt_icenter, icoeff] = \
+                            coeffs[icoeff] {id=write_expn,dup=icoeff, \
+                            dep=update_result:init_coeffs}
                 end
                 """],
                 arguments,
                 name=self.name, assumptions="ntgt_centers>=1",
                 silenced_warnings="write_race(write_expn*)",
                 fixed_parameters={
-                    "dim": self.dim, "strength_count": self.strength_count},
+                    "dim": self.dim,
+                    "nstrengths": self.strength_count,
+                    "ncoeffs": ncoeffs},
                 default_offset=lp.auto,
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
-        for knl in self.source_kernels:
-            loopy_knl = knl.prepare_loopy_kernel(loopy_knl)
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
+        loopy_knl = lp.tag_inames(loopy_knl, "istrength*:unr")
+        loopy_knl = self.set_inner_knl(loopy_knl)
+        loopy_knl = lp.set_options(loopy_knl,
+                disable_implemented_domains_check=True)
 
         return loopy_knl
 
