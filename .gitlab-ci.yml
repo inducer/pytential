@@ -24,6 +24,9 @@ Python 3 POCL:
       junit: test/pytest.xml
 
 Python 3 Intel:
+  # Sample failure: https://gitlab.tiker.net/inducer/arraycontext/-/jobs/536080
+  allow_failure: true
+
   script: |
     source /opt/enable-intel-cl.sh
     export PYOPENCL_TEST="intel(r):pu"
