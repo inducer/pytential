@@ -1315,14 +1315,15 @@ def laplace(ambient_dim, operand):
 
 # {{{ potentials
 
-def hashable_kernel_args(kernel_arguments):
-    hashable_args = []
-    for key, val in sorted(kernel_arguments.items()):
-        if isinstance(val, np.ndarray):
-            val = tuple(val)
-        hashable_args.append((key, val))
+def hashable_kernel_arg_value(val):
+    if isinstance(val, np.ndarray):
+        val = tuple(val)
+    return val
 
-    return tuple(hashable_args)
+
+def hashable_kernel_args(kernel_arguments):
+    return tuple([(key, hashable_kernel_arg_value(val)) for key, val in
+        sorted(kernel_arguments.items())])
 
 
 class IntG(Expression):
