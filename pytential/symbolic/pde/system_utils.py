@@ -431,7 +431,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
     expr = _get_sympy_kernel_expression(kernel.expression, kernel_arguments)
     vec = []
     for i in range(len(mis)):
-        vec.append(evalf(expr.xreplace(dict(sym_vec, rand[:, i]))))
+        vec.append(evalf(expr.xreplace(dict(zip(sym_vec, rand[:, i])))))
     vec = sym.Matrix(vec)
     result = []
     const = 0
