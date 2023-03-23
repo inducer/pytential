@@ -55,23 +55,25 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
     """
     Merge expressions involving :class:`~pytential.symbolic.primitives.IntG`
     objects.
-    Several techniques are used for merging and reducing number of FMMs
-       * :class:`sumpy.kernel.AxisTargetDerivative` instances are converted
-         to :class:`sumpy.kernel.AxisSourceDerivative` instances.
-         (by flipping signs, assuming translation-invariance).
-         Target derivatives will be brought back by the syzygy module
-         construction below if beneficial.
-         (For example, `D + d/dx(S)` can be re-written as `D - d/dy(S)` which can be
-         done in one FMM)
-       * If there is a sum of two *IntG* s with same target derivative and different
-         source derivatives of the same kernel, they are merged into one FMM.
-       * Reduce the number of FMMs by converting the *IntG* expression to
-         a matrix and factoring the matrix where the left operand matrix represents
-         a transformation at target and the right matrix represents a transformation
-         at source. For this to work, we need to know which variables depend on
-         source so that they do not end up in the left operand. User needs to supply
-         this as the argument *source_dependent_variable*. This is done by the
-         call to :func:`pytential.symbolic.pde.systems.reduce_number_of_fmms`.
+    Several techniques are used for merging and reducing number of FMMs:
+
+    * :class:`sumpy.kernel.AxisTargetDerivative` instances are converted
+      to :class:`sumpy.kernel.AxisSourceDerivative` instances.
+      (by flipping signs, assuming translation-invariance).
+      Target derivatives will be brought back by the syzygy module
+      construction below if beneficial.
+      (For example, `D + d/dx(S)` can be re-written as `D - d/dy(S)` which can be
+      done in one FMM)
+    * If there is a sum of two *IntG* s with same target derivative and different
+      source derivatives of the same kernel, they are merged into one FMM.
+    * Reduce the number of FMMs by converting the *IntG* expression to
+      a matrix and factoring the matrix where the left operand matrix represents
+      a transformation at target and the right matrix represents a transformation
+      at source. For this to work, we need to know which variables depend on
+      source so that they do not end up in the left operand. User needs to supply
+      this as the argument *source_dependent_variable*. This is done by the
+      call to :func:`pytential.symbolic.pde.systems.reduce.reduce_number_of_fmms`.
+
     :arg base_kernel: A :class:`sumpy.kernel.Kernel` object if given will be used
         for converting a :class:`~pytential.symbolic.primitives.IntG` to a linear
         expression of same type with the kernel replaced by base_kernel and its

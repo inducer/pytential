@@ -58,6 +58,8 @@ Rewriting expressions with ``IntG``\ s
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. automodule:: pytential.symbolic.pde.systems.merge
+.. automodule:: pytential.symbolic.pde.systems.reduce
+.. automodule:: pytential.symbolic.pde.systems.deriv
 
 Internal affairs
 ----------------
@@ -77,6 +79,5 @@ How a symbolic operator gets executed
 Rewriting expressions with ``IntG``\ s internals
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automethod:: pytential.symbolic.pde.systems.merge.convert_target_transformation_to_source
-.. automethod:: pytential.symbolic.pde.systems.merge.rewrite_int_g_using_base_kernel
-
+.. automethod:: pytential.symbolic.pde.systems.deriv.convert_target_transformation_to_source
+.. automethod:: pytential.symbolic.pde.systems.deriv.rewrite_int_g_using_base_kernel
