@@ -431,8 +431,7 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
     expr = _get_sympy_kernel_expression(kernel.expression, kernel_arguments)
     vec = []
     for i in range(len(mis)):
-        vec.append(evalf(expr.xreplace
-                         ({k: v for k, v in zip(sym_vec, rand[:, i])})))
+        vec.append(evalf(expr.xreplace(dict(sym_vec, rand[:, i]))))
     vec = sym.Matrix(vec)
     result = []
     const = 0
@@ -518,7 +517,7 @@ def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
                 if nderivs == 0:
                     continue
                 expr = expr.diff(sym_vec[var_idx], nderivs)
-            replace_dict = {k: v for k, v in zip(sym_vec, rand[:, rand_vec_idx])}
+            replace_dict = dict(zip(sym_vec, rand[:, rand_vec_idx]))
             eval_expr = evalf(expr.xreplace(replace_dict))
             row.append(eval_expr)
         row.append(1)
