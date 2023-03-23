@@ -18,7 +18,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pytential.symbolic.pde.system_utils import (
+from pytential.symbolic.pde.systems.merge import (
     convert_target_transformation_to_source, rewrite_int_g_using_base_kernel)
 from pytential.symbolic.primitives import IntG
 from pytential import sym

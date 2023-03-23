@@ -579,6 +579,7 @@ def filter_kernel_arguments(knls, kernel_arguments):
 
     return {k: v for (k, v) in kernel_arguments.items() if k in kernel_arg_names}
 
+
 # }}}
 
 

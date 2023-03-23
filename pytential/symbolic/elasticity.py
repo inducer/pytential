@@ -26,7 +26,7 @@ THE SOFTWARE.
 import numpy as np
 
 from pytential import sym
-from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
+from pytential.symbolic.pde.systems import rewrite_using_base_kernel
 from sumpy.kernel import (StressletKernel, LaplaceKernel, StokesletKernel,
     ElasticityKernel, BiharmonicKernel, Kernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
