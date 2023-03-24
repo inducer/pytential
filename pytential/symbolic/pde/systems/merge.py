@@ -404,7 +404,7 @@ def merge_kernel_arguments(x, y):
                     f"values were {res[k]} and {v}")
         else:
             res[k] = v
-    return
+    return res
 
 
 def merge_two_int_gs(int_g_1, int_g_2):
