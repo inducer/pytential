@@ -138,7 +138,7 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
             else:
                 prev_int_g = int_gs_by_group[group]
                 # Let's merge IntGs with the same group
-                new_int_g = merge_two_int_gs(int_g, prev_int_g)
+                new_int_g = merge_sum_of_two_int_gs(int_g, prev_int_g)
             int_gs_by_group[group] = new_int_g
 
         # Do some simplifications after merging. Not stricty necessary
@@ -212,8 +212,7 @@ def merge_int_g_exprs(exprs, source_dependent_variables=None):
     orig_count = get_number_of_fmms(exprs)
     new_count = get_number_of_fmms(result)
     if orig_count < new_count:
-        raise RuntimeError("merge_int_g_exprs failed. "
-                           "Please open an issue in pytential bug tracker.")
+        return exprs
 
     return result
 
@@ -407,7 +406,7 @@ def merge_kernel_arguments(x, y):
     return res
 
 
-def merge_two_int_gs(int_g_1, int_g_2):
+def merge_sum_of_two_int_gs(int_g_1, int_g_2):
     kernel_arguments = merge_kernel_arguments(int_g_1.kernel_arguments,
             int_g_2.kernel_arguments)
     source_kernels = int_g_1.source_kernels + int_g_2.source_kernels

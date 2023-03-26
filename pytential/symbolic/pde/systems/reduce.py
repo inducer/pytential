@@ -199,10 +199,15 @@ def _check_int_gs_common(int_gs):
     common_int_g = int_gs[0].copy(target_kernel=base_kernel,
             source_kernels=(base_kernel,), densities=(1,))
 
+    base_target_kernel = int_gs[0].target_kernel
+
     for int_g in int_gs:
         for source_kernel in int_g.source_kernels:
             if source_kernel.get_base_kernel() != base_kernel:
                 return False
+
+        if int_g.target_kernel != base_target_kernel:
+            return False
 
         if common_int_g.qbx_forced_limit != int_g.qbx_forced_limit:
             return False
