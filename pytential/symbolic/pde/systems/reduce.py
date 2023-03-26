@@ -440,8 +440,9 @@ def _factor_right(mat, factor_left):
     as they should result in exact polynomial divisions and will have
     no remainders.
     """
-    return factor_left.LUsolve(sympy.Matrix(mat),
+    mat = factor_left.LUsolve(sympy.Matrix(mat),
             iszerofunc=lambda x: x.simplify() == 0)
+    return mat.applyfunc(lambda x: x.simplify())
 
 # }}}
 

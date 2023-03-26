@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 from .deriv import rewrite_using_base_kernel, get_deriv_relation
 from .merge import merge_int_g_exprs
+from .reduce import reduce_number_of_fmms
 
 __all__ = (
     "rewrite_using_base_kernel",
