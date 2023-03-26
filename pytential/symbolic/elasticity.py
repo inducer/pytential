@@ -26,12 +26,14 @@ THE SOFTWARE.
 import numpy as np
 
 from pytential import sym
-from pytential.symbolic.pde.systems import rewrite_using_base_kernel
+from pytential.symbolic.pde.systems import (rewrite_using_base_kernel,
+    merge_int_g_exprs)
+from pytential.symbolic.typing import ExpressionT
 from sumpy.kernel import (StressletKernel, LaplaceKernel, StokesletKernel,
-    ElasticityKernel, BiharmonicKernel, Kernel,
+    ElasticityKernel, BiharmonicKernel, Kernel, LineOfCompressionKernel,
     AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
 from sumpy.symbolic import SpatialConstant
-from pytential.symbolic.typing import ExpressionT
+import pymbolic
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -566,7 +568,7 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
         sym_expr = np.zeros((3,), dtype=object)
 
         kernel = self.laplace_kernel
-        source = [sym.NodeCoordinateComponent(d) for d in range(3)]
+        source = sym.nodes(3).as_vector()
         normal = dir_vec_sym
         sigma = stresslet_density_vec_sym
 
@@ -638,5 +640,259 @@ class ElasticityWrapperYoshida(ElasticityWrapperBase):
         return self.stresslet.apply_single_and_double_layer(density_vec_sym,
             [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
             extra_deriv_dirs)
+
+# }}}
+
+
+# {{{ Kelvin operator
+
+class ElasticityOperator:
+    """
+    .. automethod:: __init__
+    .. automethod:: get_density_var
+    .. automethod:: operator
+    """
+
+    def __init__(
+            self,
+            dim: int,
+            mu: ExpressionT = _MU_SYM_DEFAULT,
+            nu: ExpressionT = _NU_SYM_DEFAULT,
+            method: Method = Method.naive):
+
+        self.dim = dim
+        self.double_layer_op = make_elasticity_double_layer_wrapper(
+                dim=dim, mu=mu, nu=nu, method=method)
+        self.single_layer_op = make_elasticity_wrapper(
+                dim=dim, mu=mu, nu=nu, method=method)
+        self.mu = mu
+        self.nu = nu
+
+    def get_density_var(self, name="sigma"):
+        """
+        :returns: a (potentially) modified right-hand side *b* that matches
+            requirements of the representation.
+        """
+        return sym.make_sym_vector(name, 3)
+
+    @abstractmethod
+    def operator(self, sigma):
+        """
+        :returns: the integral operator that should be solved to obtain the
+            density *sigma*.
+        """
+        raise NotImplementedError
+
+
+class KelvinOperator(ElasticityOperator):
+    """Representation for free space Green's function for elasticity commonly
+    known as the Kelvin solution [1] given by Lord Kelvin.
+    [1] Gimbutas, Z., & Greengard, L. (2016). A fast multipole method for the
+        evaluation of elastostatic fields in a half-space with zero normal stress.
+        Advances in Computational Mathematics, 42(1), 175-198.
+    .. automethod:: __init__
+    .. automethod:: operator
+    """
+
+    def __init__(
+            self,
+            mu: ExpressionT = _MU_SYM_DEFAULT,
+            nu: ExpressionT = _NU_SYM_DEFAULT,
+            method: Method = Method.naive) -> ElasticityWrapperBase:
+
+        super().__init__(dim=3, method=method,
+                mu=mu, nu=nu)
+        self.laplace_kernel = LaplaceKernel(3)
+
+    def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
+        return self.double_layer_op.apply(sigma, normal,
+            qbx_forced_limit=qbx_forced_limit)
+
+# }}}
+
+
+# {{{ Mindlin operator
+
+class MindlinOperator:
+    """Representation for elasticity in a half-space with zero normal stress which
+    is based on Mindlin's explicit solution. See [1] and [2].
+    [1] Mindlin, R. D. (1936). Force at a point in the interior of a semi‐infinite
+        solid. Physics, 7(5), 195-202.
+    [2] Gimbutas, Z., & Greengard, L. (2016). A fast multipole method for the
+        evaluation of elastostatic fields in a half-space with zero normal stress.
+        Advances in Computational Mathematics, 42(1), 175-198.
+    .. automethod:: __init__
+    .. automethod:: operator
+    .. automethod:: free_space_operator
+    .. automethod:: get_density_var
+    """
+
+    def __init__(self, *,
+            method: Method = Method.biharmonic,
+            mu: ExpressionT = _MU_SYM_DEFAULT,
+            nu: ExpressionT = _NU_SYM_DEFAULT,
+            line_of_compression_tol: float = 0.0):
+
+        if method not in [Method.biharmonic, Method.Laplace]:
+            raise ValueError(f"invalid method: {method}."
+                    "Needs to be one of laplace, biharmonic")
+
+        self.free_space_op = KelvinOperator(method=method, mu=mu,
+                nu=nu)
+        self.modified_free_space_op = KelvinOperator(
+                method=method, mu=mu + 4*nu, nu=-nu)
+        self.compression_knl = LineOfCompressionKernel(3, 2, mu, nu,
+                tol=line_of_compression_tol)
+
+    def K(self, sigma, normal, qbx_forced_limit):
+        return merge_int_g_exprs(self.free_space_op.double_layer_op.apply(
+            sigma, normal, qbx_forced_limit=qbx_forced_limit))
+
+    def A(self, sigma, normal, qbx_forced_limit):
+        result = -self.modified_free_space_op.doube_layer_op.apply(
+            sigma, normal, qbx_forced_limit=qbx_forced_limit)
+
+        new_density = sum(a*b for a, b in zip(sigma, normal))
+        int_g = sym.S(self.free_space_op.laplace_kernel, new_density,
+            qbx_forced_limit=qbx_forced_limit)
+
+        for i in range(3):
+            temp = 2*int_g.copy(
+                    target_kernel=AxisTargetDerivative(i, int_g.target_kernel))
+            if i == 2:
+                temp *= -1
+            result[i] += temp
+        return result
+
+    def B(self, sigma, normal, qbx_forced_limit):
+        sym_expr = np.zeros((3,), dtype=object)
+        mu = self.mu
+        nu = self.nu
+        lam = 2*nu*mu/(1-2*nu)
+        sigma_normal_product = sum(a*b for a, b in zip(sigma, normal))
+
+        source_kernel_dirs = [[0, 0], [1, 1], [2, 2], [0, 1]]
+        densities = [
+            sigma[0]*normal[0]*2*mu,
+            sigma[1]*normal[1]*2*mu,
+            -sigma[2]*normal[2]*2*mu - 2*lam*sigma_normal_product,
+            (sigma[0]*normal[1] + sigma[1]*normal[0])*2*mu,
+        ]
+        source_kernels = [
+            AxisSourceDerivative(a, AxisSourceDerivative(b, self.compression_knl))
+            for a, b in source_kernel_dirs
+        ]
+
+        kwargs = {"qbx_forced_limit": qbx_forced_limit}
+        args = [arg.loopy_arg.name for arg in self.compression_knl.get_args()]
+        for arg in args:
+            kwargs[arg] = pymbolic.var(arg)
+
+        int_g = sym.IntG(source_kernels=tuple(source_kernels),
+                target_kernel=self.compression_knl, densities=tuple(densities),
+                **kwargs)
+
+        for i in range(3):
+            sym_expr[i] = int_g.copy(target_kernel=AxisTargetDerivative(
+                i, int_g.target_kernel))
+
+        return sym_expr
+
+    def C(self, sigma, normal, qbx_forced_limit):
+        result = np.zeros((3,), dtype=object)
+        mu = self.mu
+        nu = self.nu
+        lam = 2*nu*mu/(1-2*nu)
+        alpha = (lam + mu)/(lam + 2*mu)
+        y = sym.nodes(3).as_vector()
+        sigma_normal_product = sum(a*b for a, b in zip(sigma, normal))
+
+        laplace_kernel = self.free_space_op.laplace_kernel
+        densities = []
+        source_kernels = []
+
+        # phi_c  in Gimbutas et, al.
+        densities.extend([
+            -2*alpha*mu*y[2]*sigma[0]*normal[0],
+            -2*alpha*mu*y[2]*sigma[1]*normal[1],
+            -2*alpha*mu*y[2]*sigma[2]*normal[2],
+            -2*alpha*mu*y[2]*(sigma[0]*normal[1] + sigma[1]*normal[0]),
+            +2*alpha*mu*y[2]*(sigma[0]*normal[2] + sigma[2]*normal[0]),
+            +2*alpha*mu*y[2]*(sigma[1]*normal[2] + sigma[2]*normal[1]),
+        ])
+        source_kernel_dirs = [[0, 0], [1, 1], [2, 2], [0, 1], [0, 2], [1, 2]]
+        source_kernels.extend([
+            AxisSourceDerivative(a, AxisSourceDerivative(b, laplace_kernel))
+            for a, b in source_kernel_dirs
+        ])
+
+        # G in Gimbutas et, al.
+        densities.extend([
+            (2*alpha - 2)*y[2]*mu*(sigma[0]*normal[2] + sigma[2]*normal[0]),
+            (2*alpha - 2)*y[2]*mu*(sigma[1]*normal[2] + sigma[2]*normal[1]),
+            (2*alpha - 2)*y[2]*(mu*-2*sigma[2]*normal[2]
+                - lam*sigma_normal_product),
+        ])
+        source_kernels.extend(
+            [AxisSourceDerivative(i, laplace_kernel) for i in range(3)])
+
+        int_g = sym.IntG(source_kernels=tuple(source_kernels),
+                target_kernel=laplace_kernel, densities=tuple(densities),
+                qbx_forced_limit=qbx_forced_limit)
+
+        for i in range(3):
+            result[i] = int_g.copy(target_kernel=AxisTargetDerivative(
+                i, int_g.target_kernel))
+
+            if i == 2:
+                # Target derivative w.r.t x[2] is flipped due to target image
+                result[i] *= -1
+
+        # H in Gimubtas et, al.
+        densities = [
+            (-2)*(2 - alpha)*mu*sigma[0]*normal[0],
+            (-2)*(2 - alpha)*mu*sigma[1]*normal[1],
+            (-2)*(2 - alpha)*mu*sigma[2]*normal[2],
+            (-2)*(2 - alpha)*mu*(sigma[0]*normal[1] + sigma[1]*normal[0]),
+            (+2)*(2 - alpha)*mu*(sigma[0]*normal[2] + sigma[2]*normal[0]),
+            (+2)*(2 - alpha)*mu*(sigma[1]*normal[2] + sigma[2]*normal[1]),
+        ]
+        source_kernel_dirs = [[0, 0], [1, 1], [2, 2], [0, 1], [0, 2], [1, 2]]
+        source_kernels = [
+            AxisSourceDerivative(a, AxisSourceDerivative(b, laplace_kernel))
+            for a, b in source_kernel_dirs
+        ]
+        H = sym.IntG(source_kernels=tuple(source_kernels),
+                target_kernel=laplace_kernel, densities=tuple(densities),
+                qbx_forced_limit=qbx_forced_limit)
+        result[2] -= H
+
+        return result
+
+    def free_space_operator(self, sigma, *, normal, qbx_forced_limit="avg"):
+        return self.free_space_op.operator(sigma=sigma, normal=normal,
+            qbx_forced_limit=qbx_forced_limit)
+
+    def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
+        resultA = self.A(sigma, normal=normal, qbx_forced_limit=qbx_forced_limit)
+        resultC = self.C(sigma, normal=normal, qbx_forced_limit=qbx_forced_limit)
+        resultB = self.B(sigma, normal=normal, qbx_forced_limit=qbx_forced_limit)
+
+        if self.method == Method.biharmonic:
+            # A and C are both derivatives of Biharmonic Green's function
+            # TODO: make merge_int_g_exprs smart enough to merge two different
+            # kernels into two separate IntGs.
+            result = merge_int_g_exprs(resultA + resultC,
+                base_kernel=self.free_space_op.double_layer_op.base_kernel)
+            result += merge_int_g_exprs(resultB, base_kernel=self.compression_knl)
+            return result
+        else:
+            return resultA + resultB + resultC
+
+    def get_density_var(self, name="sigma"):
+        """
+        :returns: a symbolic vector corresponding to the density.
+        """
+        return sym.make_sym_vector(name, 3)
 
 # }}}
