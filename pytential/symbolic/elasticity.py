@@ -661,19 +661,16 @@ class ElasticityOperator:
             method: Method = Method.naive):
 
         self.dim = dim
-        self.double_layer_op = make_elasticity_double_layer_wrapper(
-                dim=dim, mu=mu, nu=nu, method=method)
-        self.single_layer_op = make_elasticity_wrapper(
-                dim=dim, mu=mu, nu=nu, method=method)
         self.mu = mu
         self.nu = nu
+        self.method = method
 
     def get_density_var(self, name="sigma"):
         """
         :returns: a (potentially) modified right-hand side *b* that matches
             requirements of the representation.
         """
-        return sym.make_sym_vector(name, 3)
+        return sym.make_sym_vector(name, self.dim)
 
     @abstractmethod
     def operator(self, sigma):
@@ -700,8 +697,12 @@ class KelvinOperator(ElasticityOperator):
             nu: ExpressionT = _NU_SYM_DEFAULT,
             method: Method = Method.naive) -> ElasticityWrapperBase:
 
-        super().__init__(dim=3, method=method,
-                mu=mu, nu=nu)
+        dim = 3
+        super().__init__(dim=dim, method=method, mu=mu, nu=nu)
+        self.double_layer_op = make_elasticity_double_layer_wrapper(
+                dim=dim, mu=mu, nu=nu, method=method)
+        self.single_layer_op = make_elasticity_wrapper(
+                dim=dim, mu=mu, nu=nu, method=method)
         self.laplace_kernel = LaplaceKernel(3)
 
     def operator(self, sigma, *, normal, qbx_forced_limit="avg"):
@@ -713,7 +714,7 @@ class KelvinOperator(ElasticityOperator):
 
 # {{{ Mindlin operator
 
-class MindlinOperator:
+class MindlinOperator(ElasticityOperator):
     """Representation for elasticity in a half-space with zero normal stress which
     is based on Mindlin's explicit solution. See [1] and [2].
     [1] Mindlin, R. D. (1936). Force at a point in the interior of a semi‐infinite
@@ -733,16 +734,12 @@ class MindlinOperator:
             nu: ExpressionT = _NU_SYM_DEFAULT,
             line_of_compression_tol: float = 0.0):
 
-        if method not in [Method.biharmonic, Method.Laplace]:
-            raise ValueError(f"invalid method: {method}."
-                    "Needs to be one of laplace, biharmonic")
-
+        super().__init__(dim=3, method=method, mu=mu, nu=nu)
         self.free_space_op = KelvinOperator(method=method, mu=mu,
                 nu=nu)
         self.modified_free_space_op = KelvinOperator(
                 method=method, mu=mu + 4*nu, nu=-nu)
-        self.compression_knl = LineOfCompressionKernel(3, 2, mu, nu,
-                tol=line_of_compression_tol)
+        self.compression_knl = LineOfCompressionKernel(3, 2, mu, nu)
 
     def K(self, sigma, normal, qbx_forced_limit):
         return merge_int_g_exprs(self.free_space_op.double_layer_op.apply(
@@ -793,8 +790,15 @@ class MindlinOperator:
                 **kwargs)
 
         for i in range(3):
-            sym_expr[i] = int_g.copy(target_kernel=AxisTargetDerivative(
-                i, int_g.target_kernel))
+            if self.method == Method.naive:
+                source_kernels = [AxisSourceDerivative(i, knl) for knl in
+                    int_g.source_kernels]
+                densities = [(-1)*density for density in int_g.densities]
+                sym_expr[i] = int_g.copy(source_kernels=tuple(source_kernels),
+                    densities=tuple(densities))
+            else:
+                sym_expr[i] = int_g.copy(target_kernel=AxisTargetDerivative(
+                    i, int_g.target_kernel))
 
         return sym_expr
 
@@ -808,45 +812,6 @@ class MindlinOperator:
         sigma_normal_product = sum(a*b for a, b in zip(sigma, normal))
 
         laplace_kernel = self.free_space_op.laplace_kernel
-        densities = []
-        source_kernels = []
-
-        # phi_c  in Gimbutas et, al.
-        densities.extend([
-            -2*alpha*mu*y[2]*sigma[0]*normal[0],
-            -2*alpha*mu*y[2]*sigma[1]*normal[1],
-            -2*alpha*mu*y[2]*sigma[2]*normal[2],
-            -2*alpha*mu*y[2]*(sigma[0]*normal[1] + sigma[1]*normal[0]),
-            +2*alpha*mu*y[2]*(sigma[0]*normal[2] + sigma[2]*normal[0]),
-            +2*alpha*mu*y[2]*(sigma[1]*normal[2] + sigma[2]*normal[1]),
-        ])
-        source_kernel_dirs = [[0, 0], [1, 1], [2, 2], [0, 1], [0, 2], [1, 2]]
-        source_kernels.extend([
-            AxisSourceDerivative(a, AxisSourceDerivative(b, laplace_kernel))
-            for a, b in source_kernel_dirs
-        ])
-
-        # G in Gimbutas et, al.
-        densities.extend([
-            (2*alpha - 2)*y[2]*mu*(sigma[0]*normal[2] + sigma[2]*normal[0]),
-            (2*alpha - 2)*y[2]*mu*(sigma[1]*normal[2] + sigma[2]*normal[1]),
-            (2*alpha - 2)*y[2]*(mu*-2*sigma[2]*normal[2]
-                - lam*sigma_normal_product),
-        ])
-        source_kernels.extend(
-            [AxisSourceDerivative(i, laplace_kernel) for i in range(3)])
-
-        int_g = sym.IntG(source_kernels=tuple(source_kernels),
-                target_kernel=laplace_kernel, densities=tuple(densities),
-                qbx_forced_limit=qbx_forced_limit)
-
-        for i in range(3):
-            result[i] = int_g.copy(target_kernel=AxisTargetDerivative(
-                i, int_g.target_kernel))
-
-            if i == 2:
-                # Target derivative w.r.t x[2] is flipped due to target image
-                result[i] *= -1
 
         # H in Gimubtas et, al.
         densities = [
@@ -865,7 +830,59 @@ class MindlinOperator:
         H = sym.IntG(source_kernels=tuple(source_kernels),
                 target_kernel=laplace_kernel, densities=tuple(densities),
                 qbx_forced_limit=qbx_forced_limit)
-        result[2] -= H
+
+        # phi_c  in Gimbutas et, al.
+        densities = [
+            -2*alpha*mu*y[2]*sigma[0]*normal[0],
+            -2*alpha*mu*y[2]*sigma[1]*normal[1],
+            -2*alpha*mu*y[2]*sigma[2]*normal[2],
+            -2*alpha*mu*y[2]*(sigma[0]*normal[1] + sigma[1]*normal[0]),
+            +2*alpha*mu*y[2]*(sigma[0]*normal[2] + sigma[2]*normal[0]),
+            +2*alpha*mu*y[2]*(sigma[1]*normal[2] + sigma[2]*normal[1]),
+        ]
+        source_kernel_dirs = [[0, 0], [1, 1], [2, 2], [0, 1], [0, 2], [1, 2]]
+        source_kernels = [
+            AxisSourceDerivative(a, AxisSourceDerivative(b, laplace_kernel))
+            for a, b in source_kernel_dirs
+        ]
+
+        # G in Gimbutas et, al.
+        densities.extend([
+            (2*alpha - 2)*y[2]*mu*(sigma[0]*normal[2] + sigma[2]*normal[0]),
+            (2*alpha - 2)*y[2]*mu*(sigma[1]*normal[2] + sigma[2]*normal[1]),
+            (2*alpha - 2)*y[2]*(mu*-2*sigma[2]*normal[2]
+                - lam*sigma_normal_product),
+        ])
+        source_kernels.extend(
+            [AxisSourceDerivative(i, laplace_kernel) for i in range(3)])
+
+        int_g = sym.IntG(source_kernels=tuple(source_kernels),
+                target_kernel=laplace_kernel, densities=tuple(densities),
+                qbx_forced_limit=qbx_forced_limit)
+
+        for i in range(3):
+            if self.method == Method.naive:
+                source_kernels = [AxisSourceDerivative(i, knl) for knl in
+                    int_g.source_kernels]
+                densities = [(-1)*density for density in int_g.densities]
+
+                if i == 2:
+                    # Target derivative w.r.t x[2] is flipped due to target image
+                    densities[2] *= -1
+                    # Subtract H
+                    source_kernels = source_kernels + list(H.source_kernels)
+                    densities = densities + [(-1)*d for d in H.densities]
+
+                result[i] = int_g.copy(source_kernels=tuple(source_kernels),
+                    densities=tuple(densities))
+            else:
+                result[i] = int_g.copy(target_kernel=AxisTargetDerivative(
+                    i, int_g.target_kernel))
+                if i == 2:
+                    # Target derivative w.r.t x[2] is flipped due to target image
+                    result[2] *= -1
+                    # Subtract H
+                    result[2] -= H
 
         return result
 

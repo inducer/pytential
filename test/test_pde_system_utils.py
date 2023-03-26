@@ -26,6 +26,8 @@ from pytential.symbolic.pde.systems import (merge_int_g_exprs,
     rewrite_using_base_kernel)
 from pytential.symbolic.pde.systems.deriv import (
     convert_target_transformation_to_source, rewrite_int_g_using_base_kernel)
+from pytential.symbolic.pde.systems.merge import get_number_of_fmms
+from pytential.symbolic.elasticity import MindlinOperator, Method
 
 import numpy as np
 
@@ -453,3 +455,22 @@ def test_int_gs_in_densities():
                   qbx_forced_limit=1)
 
     assert result[0] == int_g3
+
+
+def test_mindlin():
+    sigma = make_sym_vector("sigma", 3)
+    normal = make_sym_vector("normal", 3)
+
+    mindlin_op = MindlinOperator(method=Method.naive)
+
+    c = mindlin_op.C(sigma=sigma, normal=normal, qbx_forced_limit=1)
+    assert get_number_of_fmms(c) == 3
+
+    c_opt = merge_int_g_exprs(c)
+    assert get_number_of_fmms(c_opt) == 2
+
+    b = mindlin_op.B(sigma=sigma, normal=normal, qbx_forced_limit=1)
+    assert get_number_of_fmms(b) == 3
+
+    b_opt = merge_int_g_exprs(b)
+    assert get_number_of_fmms(b_opt) == 1
