@@ -746,7 +746,7 @@ class MindlinOperator(ElasticityOperator):
             sigma, normal, qbx_forced_limit=qbx_forced_limit))
 
     def A(self, sigma, normal, qbx_forced_limit):
-        result = -self.modified_free_space_op.doube_layer_op.apply(
+        result = -self.modified_free_space_op.double_layer_op.apply(
             sigma, normal, qbx_forced_limit=qbx_forced_limit)
 
         new_density = sum(a*b for a, b in zip(sigma, normal))
@@ -899,9 +899,10 @@ class MindlinOperator(ElasticityOperator):
             # A and C are both derivatives of Biharmonic Green's function
             # TODO: make merge_int_g_exprs smart enough to merge two different
             # kernels into two separate IntGs.
-            result = merge_int_g_exprs(resultA + resultC,
+            result = rewrite_using_base_kernel(resultA + resultC,
                 base_kernel=self.free_space_op.double_layer_op.base_kernel)
-            result += merge_int_g_exprs(resultB, base_kernel=self.compression_knl)
+            result += rewrite_using_base_kernel(resultB,
+                base_kernel=self.compression_knl)
             return result
         else:
             return resultA + resultB + resultC
