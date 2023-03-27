@@ -469,6 +469,10 @@ def test_mindlin():
     c_opt = merge_int_g_exprs(c)
     assert get_number_of_fmms(c_opt) == 2
 
+    c_opt_biharmonic = merge_int_g_exprs(rewrite_using_base_kernel(
+        c, base_kernel=BiharmonicKernel(3)))
+    assert get_number_of_fmms(c_opt_biharmonic) == 2
+
     b = mindlin_op.B(sigma=sigma, normal=normal, qbx_forced_limit=1)
     assert get_number_of_fmms(b) == 3
 
