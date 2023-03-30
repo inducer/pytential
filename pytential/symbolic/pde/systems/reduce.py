@@ -94,7 +94,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
         logger.debug("could not create matrix from %s", int_gs)
         return int_gs
 
-    mat = sympy.Matrix(mat)
+    mat = sympy.nsimplify(sympy.Matrix(mat))
 
     # Factor the matrix into two
     try:
