@@ -204,6 +204,11 @@ def run_skeletonize_by_proxy(actx, case, resolution,
 
     # {{{ check proxy id decomposition
 
+    # NOTE: ideally we would use the 2-norm everywhere (proper matrix norm), but
+    # large matrices take a VERY long time to do the SVD, so Frobenius it is!
+    max_ndofs = 4096
+    ord = "fro" if density_discr.ndofs > max_ndofs else 2
+
     if mat is None:
         from pytential.symbolic.execution import _prepare_expr
         expr = _prepare_expr(places, sym_op)
@@ -243,7 +248,7 @@ def run_skeletonize_by_proxy(actx, case, resolution,
 
         A = np.hstack(skeleton._tgt_eval_result[i])
         S = A[bi, :]
-        tgt_error = la.norm(A - L[i] @ S, ord=2) / la.norm(A, ord=2)
+        tgt_error = la.norm(A - L[i] @ S, ord=ord) / la.norm(A, ord=ord)
 
         # sources (columns)
         bj = np.searchsorted(
@@ -253,7 +258,7 @@ def run_skeletonize_by_proxy(actx, case, resolution,
 
         A = np.vstack(skeleton._src_eval_result[i])
         S = A[:, bj]
-        src_error = la.norm(A - S @ R[i], ord=2) / la.norm(A, ord=2)
+        src_error = la.norm(A - S @ R[i], ord=ord) / la.norm(A, ord=ord)
 
         logger.info("[%04d] id_eps %.5e src %.5e tgt %.5e rank %d/%d",
                 i, case.id_eps,
@@ -272,18 +277,18 @@ def run_skeletonize_by_proxy(actx, case, resolution,
 
     with ProcessTimer() as p:
         blk_err_l, blk_err_r = cluster_skeletonization_error(
-                mat, skeleton, ord=2, relative=True)
+                mat, skeleton, ord=ord, relative=True)
 
         err_l = la.norm(blk_err_l, np.inf)
         err_r = la.norm(blk_err_r, np.inf)
 
     logger.info("[time] cluster error: %s", p)
 
-    if density_discr.ndofs > 4096:
+    if density_discr.ndofs > max_ndofs:
         err_f = max(err_l, err_r)
     else:
         with ProcessTimer() as p:
-            err_f = skeletonization_error(mat, skeleton, ord=2, relative=True)
+            err_f = skeletonization_error(mat, skeleton, ord=ord, relative=True)
 
         logger.info("[time] full error: %s", p)
 
