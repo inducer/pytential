@@ -478,3 +478,16 @@ def test_mindlin():
 
     b_opt = merge_int_g_exprs(b)
     assert get_number_of_fmms(b_opt) == 1
+
+
+def test_paper_reduce_example():
+    from sympy import symbols, Matrix, EX
+    from pytential.symbolic.pde.systems.reduce import \
+            syzygy_module_groebner_basis_mat
+    y = y1, y2, y3 = symbols("y1, y2, y3")
+    m = Matrix([[y1 * y2, -2*y1**2-2*y3**2], [y1*y3, 2*y2*y3]])
+    poly_ring = EX.old_poly_ring(*y)
+    ring = poly_ring / [y1**2 + y2**2 + y3**2]
+    fm = syzygy_module_groebner_basis_mat(m, y, ring)
+    lhs = syzygy_module_groebner_basis_mat(fm.T, y, ring).T
+    assert lhs == Matrix([[y2], [y3]])
