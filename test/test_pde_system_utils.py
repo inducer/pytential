@@ -482,12 +482,10 @@ def test_mindlin():
 
 def test_paper_reduce_example():
     from sympy import symbols, Matrix, EX
-    from pytential.symbolic.pde.systems.reduce import \
-            syzygy_module_mat
+    from pytential.symbolic.pde.systems.reduce import factor
     y = y1, y2, y3 = symbols("y1, y2, y3")
     m = Matrix([[y1 * y2, -2*y1**2-2*y3**2], [y1*y3, 2*y2*y3]])
     poly_ring = EX.old_poly_ring(*y)
     ring = poly_ring / [y1**2 + y2**2 + y3**2]
-    fm = syzygy_module_mat(m, y, ring)
-    lhs = syzygy_module_mat(fm.T, y, ring).T
+    lhs, rhs = factor(m, y, ring)
     assert lhs == Matrix([[y2], [y3]])

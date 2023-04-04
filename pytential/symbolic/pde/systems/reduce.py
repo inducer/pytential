@@ -444,7 +444,7 @@ def _convert_to_matrix(module, *generators):
     result = []
     for syzygy in module:
         row = []
-        for dmp in syzygy.data:
+        for dmp in syzygy:
             try:
                 d = dmp.data.to_dict()
             except AttributeError:
@@ -455,11 +455,10 @@ def _convert_to_matrix(module, *generators):
     return sympy.Matrix(result)
 
 
-def syzygy_module_mat(m, generators, ring):
+def syzygy_module(m, generators, ring):
     """Takes as input a module of polynomials with domain :class:`sympy.EX`
-    represented as a matrix and returns the syzygy module as a matrix of polynomials
-    in the same domain. The syzygy module *S* that is returned as a matrix
-    satisfies S m = 0 and is a left nullspace of the matrix.
+    represented as a matrix and returns the syzygy module.
+    The syzygy module *S* satisfies S m = 0 and is a left nullspace of the matrix.
     Using :class:`sympy.EX` because that represents the domain with any symbolic
     element. Usually we need an Integer or Rational domain, but since there can be
     unrelated symbols like *mu* in the expression, we need to use a symbolic domain.
@@ -471,7 +470,7 @@ def syzygy_module_mat(m, generators, ring):
     intersection = functools.reduce(_module_intersection,
             column_syzygy_modules)
 
-    return _convert_to_matrix(minimal_generating_set(intersection).gens, *generators)
+    return minimal_generating_set(intersection)
 
 
 def factor(mat, axis_vars, ring):
@@ -487,16 +486,25 @@ def factor(mat, axis_vars, ring):
     such that S M = 0 where S is the syzygy module converted to a matrix.
     It can also be referred to as the left nullspace of the matrix.
     Then, M.T S.T = 0 which implies that M.T is in the space spanned by
-    the syzygy module of S.T and to get M we get the transpose of that.
+    the syzygy module of S.T and to get L we get the transpose of that.
     """
-    syzygy_of_mat = syzygy_module_mat(mat, axis_vars, ring)
-    if len(syzygy_of_mat) == 0:
+    S_module = syzygy_module(mat, axis_vars, ring)
+    S = _convert_to_matrix(S_module.gens, *axis_vars)
+    if len(S) == 0:
         raise ValueError("could not find a factorization")
-    factor_left = syzygy_module_mat(syzygy_of_mat.T, axis_vars, ring).T
-    mat = factor_left.LUsolve(sympy.Matrix(mat),
-            iszerofunc=lambda x: x.simplify() == 0)
-    factor_right = mat.applyfunc(lambda x: x.simplify())
-    return factor_left, factor_right
+    L_t_module = syzygy_module(S.T, axis_vars, ring)
+    L_t = _convert_to_matrix(L_t_module.gens, *axis_vars)
+    R_t_module = [L_t_module.in_terms_of_generators(mat[:, i])
+           for i in range(mat.shape[1])]
+    R_t = _convert_to_matrix(R_t_module, *axis_vars)
+
+    if 0:
+        R2 = L_t.T.LUsolve(sympy.Matrix(mat),
+                iszerofunc=lambda x: x.simplify() == 0)
+        R2 = R2.applyfunc(lambda x: x.simplify())
+        return L_t.T, R2
+
+    return L_t.T, R_t.T
 
 # }}}
 
