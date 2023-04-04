@@ -491,7 +491,7 @@ def factor(mat, axis_vars, ring):
     S_module = syzygy_module(mat, axis_vars, ring)
     S = _convert_to_matrix(S_module.gens, *axis_vars)
     if len(S) == 0:
-        raise ValueError("could not find a factorization")
+        return mat, sympy.eye(mat.shape[1])
     L_t_module = syzygy_module(S.T, axis_vars, ring)
     L_t = _convert_to_matrix(L_t_module.gens, *axis_vars)
     R_t_module = [L_t_module.in_terms_of_generators(mat[:, i])

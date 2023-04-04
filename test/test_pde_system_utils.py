@@ -487,5 +487,10 @@ def test_paper_reduce_example():
     m = Matrix([[y1 * y2, -2*y1**2-2*y3**2], [y1*y3, 2*y2*y3]])
     poly_ring = EX.old_poly_ring(*y)
     ring = poly_ring / [y1**2 + y2**2 + y3**2]
+
     lhs, rhs = factor(m, y, ring)
     assert lhs == Matrix([[y2], [y3]])
+
+    # When the PDE is not taken into account, rank is 2
+    lhs, rhs = factor(m, y, poly_ring)
+    assert lhs == m
