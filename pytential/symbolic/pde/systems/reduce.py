@@ -109,13 +109,13 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
                 axis_vars[i]**ident.mi[i] for i in range(dim))
                                     for ident, coeff in eq.items())
             ring = poly_ring / [sym_pde]
+            # ring = poly_ring
     except NotImplementedError:
         ring = poly_ring
 
     # Factor the matrix into two
     try:
-        left_factor = factor_left(mat, axis_vars, ring)
-        right_factor = factor_right(mat, left_factor)
+        left_factor, right_factor = factor(mat, axis_vars, ring)
     except ValueError:
         logger.debug("could not find a factorization for %s", mat)
         return int_gs
@@ -407,6 +407,19 @@ def _kernel_source_derivs_as_poly(kernel, axis_vars):
 
 # {{{ factor the matrix
 
+def minimal_generating_set(m):
+    gens = list(m.gens)
+    nonzero = [x for x in gens if any(y != m.ring.zero for y in x)]
+    basis = nonzero[:]
+    for x in nonzero:
+        others = basis[:]
+        others.remove(x)
+        if x in m.container.submodule(*others):
+            basis = others
+    res = m.container.submodule(*basis)
+    return res
+
+
 def _module_intersection(m1, m2):
     # Copyright: SymPy developers
     # License: BSD-3-Clause
@@ -421,12 +434,28 @@ def _module_intersection(m1, m2):
     di = [list(f) + [0]*r for f in fi]
     ei = [[0]*r + list(h) for h in hi]
     syz = m1.ring.free_module(2*r).submodule(*(ci + di + ei))._syzygies()
-    # FIXME: need to use a minimal generating set. We only discard zeroes here.
-    nonzero = [x[:r] for x in syz if any(y != m1.ring.zero for y in x[:r])]
-    return m1.container.submodule(*([-y for y in x[:r]] for x in nonzero))
+    first_r = [[-y for y in x[:r]] for x in syz]
+    # Quickly remove zeros here. Call minimal_generating_set to reduce further.
+    nonzero = [x for x in first_r if any(y != m1.ring.zero for y in x)]
+    return m1.container.submodule(*nonzero)
 
 
-def syzygy_module_groebner_basis_mat(m, generators, ring):
+def _convert_to_matrix(module, *generators):
+    result = []
+    for syzygy in module:
+        row = []
+        for dmp in syzygy.data:
+            try:
+                d = dmp.data.to_dict()
+            except AttributeError:
+                d = dmp.to_dict()
+            row.append(sympy.Poly(d, *generators,
+                domain=sympy.EX).as_expr())
+        result.append(row)
+    return sympy.Matrix(result)
+
+
+def syzygy_module_mat(m, generators, ring):
     """Takes as input a module of polynomials with domain :class:`sympy.EX`
     represented as a matrix and returns the syzygy module as a matrix of polynomials
     in the same domain. The syzygy module *S* that is returned as a matrix
@@ -435,35 +464,24 @@ def syzygy_module_groebner_basis_mat(m, generators, ring):
     element. Usually we need an Integer or Rational domain, but since there can be
     unrelated symbols like *mu* in the expression, we need to use a symbolic domain.
     """
-    from sympy.polys.orderings import grevlex
-
-    def _convert_to_matrix(module, *generators):
-        result = []
-        for syzygy in module:
-            row = []
-            for dmp in syzygy.data:
-                row.append(sympy.Poly(dmp.data.to_dict(), *generators,
-                    domain=sympy.EX).as_expr())
-            result.append(row)
-        return sympy.Matrix(result)
 
     column_ideals = [ring.free_module(1).submodule(*m[:, i].tolist())
                 for i in range(m.shape[1])]
     column_syzygy_modules = [ideal.syzygy_module() for ideal in column_ideals]
-
     intersection = functools.reduce(_module_intersection,
             column_syzygy_modules)
 
-    return _convert_to_matrix(intersection.gens, *generators)
+    return _convert_to_matrix(minimal_generating_set(intersection).gens, *generators)
 
 
-def factor_left(mat, axis_vars, ring):
-    """Return the left hand side of the factorisation of the matrix
+def factor(mat, axis_vars, ring):
+    """Return a "rank-revealing" factorisation of the matrix
     For a matrix M, we want to find a factorisation such that M = L R
     with minimum number of columns of L. The polynomials represent
     derivative operators and therefore division is not well defined.
     To avoid divisions, we work in a polynomial ring which doesn't
-    have division either.
+    have division either. The revealed rank might not be the actual
+    rank.
 
     To get a good factorisation, what we do is first find a matrix
     such that S M = 0 where S is the syzygy module converted to a matrix.
@@ -471,23 +489,14 @@ def factor_left(mat, axis_vars, ring):
     Then, M.T S.T = 0 which implies that M.T is in the space spanned by
     the syzygy module of S.T and to get M we get the transpose of that.
     """
-    syzygy_of_mat = syzygy_module_groebner_basis_mat(mat, axis_vars, ring)
+    syzygy_of_mat = syzygy_module_mat(mat, axis_vars, ring)
     if len(syzygy_of_mat) == 0:
         raise ValueError("could not find a factorization")
-    return syzygy_module_groebner_basis_mat(syzygy_of_mat.T, axis_vars, ring).T
-
-
-def factor_right(mat, factor_left):
-    """Return the right hand side of the factorisation of the matrix
-    Note that from the construction of *factor_left*, we know that
-    the factor on the right has elements in the same polynomial ring
-    as the input matrix *mat*. Therefore, doing divisions are fine
-    as they should result in exact polynomial divisions and will have
-    no remainders.
-    """
+    factor_left = syzygy_module_mat(syzygy_of_mat.T, axis_vars, ring).T
     mat = factor_left.LUsolve(sympy.Matrix(mat),
             iszerofunc=lambda x: x.simplify() == 0)
-    return mat.applyfunc(lambda x: x.simplify())
+    factor_right = mat.applyfunc(lambda x: x.simplify())
+    return factor_left, factor_right
 
 # }}}
 
