@@ -407,6 +407,10 @@ def _kernel_source_derivs_as_poly(kernel, axis_vars):
 # {{{ factor the matrix
 
 def minimal_generating_set(m):
+    """Computes a module with a minimal generating set as its generators
+    from an input module with possibly redundant generators. The output
+    does not necessarily have the smallest minimal generating set.
+    """
     gens = list(m.gens)
     nonzero = [x for x in gens if any(y != m.ring.zero for y in x)]
     basis = nonzero[:]
