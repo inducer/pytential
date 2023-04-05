@@ -349,13 +349,13 @@ def test_merge_different_qbx_forced_limit():
     result = merge_int_g_exprs([int_g3, int_g4, int_g5],
             source_dependent_variables=[])
 
-    int_g6 = int_g_vec(laplace_knl, -density, qbx_forced_limit=1)
+    int_g6 = int_g_vec(laplace_knl, density, qbx_forced_limit=1)
     int_g7 = int_g6.copy(target_kernel=AxisTargetDerivative(0, laplace_knl))
-    int_g8 = int_g7 * (-1) + int_g6 * (-1)
-    int_g9 = int_g6.copy(qbx_forced_limit=2) * (-1) \
-                + int_g7.copy(qbx_forced_limit=-2) * (-1)
-    int_g10 = int_g6.copy(qbx_forced_limit=-2) * (-1) \
-                + int_g7.copy(qbx_forced_limit=2) * (-1)
+    int_g8 = int_g7 + int_g6
+    int_g9 = int_g6.copy(qbx_forced_limit=2) \
+                + int_g7.copy(qbx_forced_limit=-2)
+    int_g10 = int_g6.copy(qbx_forced_limit=-2) \
+                + int_g7.copy(qbx_forced_limit=2)
 
     assert result[0] == int_g8
     assert result[1] == int_g9

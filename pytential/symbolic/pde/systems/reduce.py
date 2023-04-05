@@ -28,7 +28,6 @@ from pymbolic.mapper import Mapper
 from pymbolic.geometric_algebra.mapper import WalkMapper
 from pymbolic.primitives import Product
 import sympy
-import functools
 from collections import defaultdict
 from math import prod
 
@@ -420,26 +419,6 @@ def minimal_generating_set(m):
     return res
 
 
-def _module_intersection(m1, m2):
-    # Copyright: SymPy developers
-    # License: BSD-3-Clause
-    # See: [A Singular Introduction to Commutative Algebra, section 2.8.2]
-    fi = m1.gens
-    hi = m2.gens
-    r = m1.rank
-    ci = [[0]*(2*r) for _ in range(r)]
-    for k in range(r):
-        ci[k][k] = 1
-        ci[k][r + k] = 1
-    di = [list(f) + [0]*r for f in fi]
-    ei = [[0]*r + list(h) for h in hi]
-    syz = m1.ring.free_module(2*r).submodule(*(ci + di + ei))._syzygies()
-    first_r = [[-y for y in x[:r]] for x in syz]
-    # Quickly remove zeros here. Call minimal_generating_set to reduce further.
-    nonzero = [x for x in first_r if any(y != m1.ring.zero for y in x)]
-    return m1.container.submodule(*nonzero)
-
-
 def _convert_to_matrix(module, *generators):
     result = []
     for syzygy in module:
@@ -464,13 +443,9 @@ def syzygy_module(m, generators, ring):
     unrelated symbols like *mu* in the expression, we need to use a symbolic domain.
     """
 
-    column_ideals = [ring.free_module(1).submodule(*m[:, i].tolist())
-                for i in range(m.shape[1])]
-    column_syzygy_modules = [ideal.syzygy_module() for ideal in column_ideals]
-    intersection = functools.reduce(_module_intersection,
-            column_syzygy_modules)
-
-    return minimal_generating_set(intersection)
+    module = ring.free_module(m.shape[1]).submodule(
+        *[m[i, :] for i in range(m.shape[0])])
+    return minimal_generating_set(module.syzygy_module())
 
 
 def factor(mat, axis_vars, ring):
