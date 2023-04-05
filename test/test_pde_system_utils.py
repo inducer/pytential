@@ -460,6 +460,7 @@ def test_int_gs_in_densities():
                   densities=tuple(densities),
                   qbx_forced_limit=1)
 
+    print(result[0])
     assert result[0] == int_g3
 
 
