@@ -146,11 +146,14 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
         source_kernels = []
         densities = []
         for j in range(right_factor.shape[1]):
+            if source_int_gs[i][j] == 0:
+                continue
             new_densities = [density * source_exprs[j] for density in
                     source_int_gs[i][j].densities]
             source_kernels.extend(source_int_gs[i][j].source_kernels)
             densities.extend(new_densities)
-        source_int_gs_merged.append(source_int_gs[i][0].copy(
+            nonzero_intg = source_int_gs[i][j]
+        source_int_gs_merged.append(nonzero_intg.copy(
             source_kernels=tuple(source_kernels), densities=tuple(densities)))
 
     # Now that we have the IntG expressions depending on the source
@@ -497,6 +500,10 @@ def _convert_source_poly_to_int_g_derivs(poly, orig_int_g, axis_vars):
     and then to a :class:`~pytential.symbolic.primitives.IntG`.
     """
     from pytential.symbolic.pde.systems.merge import simplify_densities
+
+    if poly == 0:
+        return 0
+
     to_pymbolic = SympyToPymbolicMapper()
 
     orig_kernel = orig_int_g.source_kernels[0]
