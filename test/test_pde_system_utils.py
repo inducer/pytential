@@ -202,24 +202,21 @@ def test_reduce_number_of_fmms():
              densities[1], qbx_forced_limit=1)
 
     # Merging reduces 4 FMMs to 2 FMMs and then further reduced to 1 FMM
-    result = merge_int_g_exprs([int_g1, int_g2], source_dependent_variables=[])
+    result = merge_int_g_exprs([int_g1, int_g2],
+                               source_dependent_variables=densities)
+    assert get_number_of_fmms(result) == 1
 
     int_g3 = \
         IntG(target_kernel=AxisTargetDerivative(1, knl),
-             source_kernels=[AxisSourceDerivative(0, knl),
-                 AxisSourceDerivative(1, knl)],
-             densities=[-mu * densities[0], -mu * densities[1]],
+             source_kernels=[AxisSourceDerivative(1, knl),
+                 AxisSourceDerivative(0, knl)],
+             densities=[-densities[1], -densities[0]],
              qbx_forced_limit=1)
 
-    int_g4 = \
-        IntG(target_kernel=AxisTargetDerivative(2, knl),
-             source_kernels=[AxisSourceDerivative(0, knl),
-                 AxisSourceDerivative(1, knl)],
-             densities=[-mu * densities[0], -mu * densities[1]],
-             qbx_forced_limit=1)
+    int_g4 = int_g3.copy(target_kernel=AxisTargetDerivative(2, knl))
 
-    assert result[0] == int_g3
-    assert result[1] == int_g4 * mu**(-1)
+    assert result[0] == int_g3 * mu
+    assert result[1] == int_g4
 
 
 def test_source_dependent_variable():
@@ -321,7 +318,7 @@ def test_merge_different_kernels():
             density, qbx_forced_limit=1)
 
     result = merge_int_g_exprs([int_g1, int_g2],
-            source_dependent_variables=[])
+            source_dependent_variables=[density])
 
     int_g3 = int_g_vec(laplace_knl, density, qbx_forced_limit=1) \
         + IntG(target_kernel=helmholtz_knl,
@@ -332,6 +329,9 @@ def test_merge_different_kernels():
 
     assert result[0] == int_g3
     assert result[1] == int_g2
+
+    result_no_sdv = merge_int_g_exprs([int_g1, int_g2])
+    assert result == result_no_sdv
 
 
 def test_merge_different_qbx_forced_limit():
@@ -347,7 +347,7 @@ def test_merge_different_qbx_forced_limit():
     int_g5 = int_g1.copy(qbx_forced_limit=-2) + int_g2.copy(qbx_forced_limit=2)
 
     result = merge_int_g_exprs([int_g3, int_g4, int_g5],
-            source_dependent_variables=[])
+            source_dependent_variables=[density])
 
     int_g6 = int_g_vec(laplace_knl, density, qbx_forced_limit=1)
     int_g7 = int_g6.copy(target_kernel=AxisTargetDerivative(0, laplace_knl))
@@ -360,6 +360,9 @@ def test_merge_different_qbx_forced_limit():
     assert result[0] == int_g8
     assert result[1] == int_g9
     assert result[2] == int_g10
+
+    result_no_sdv = merge_int_g_exprs([int_g3, int_g4, int_g5])
+    assert result == result_no_sdv
 
 
 def test_merge_directional_source():
@@ -416,14 +419,17 @@ def test_restoring_target_attributes():
             density, qbx_forced_limit=1)
 
     result = merge_int_g_exprs([int_g1, int_g2],
-            source_dependent_variables=[])
+            source_dependent_variables=[density])
 
     assert result[0] == int_g1
     assert result[1] == int_g2
 
+    result_no_sdv = merge_int_g_exprs([int_g1, int_g2])
+    assert result == result_no_sdv
+
 
 def test_int_gs_in_densities():
-    from pymbolic.primitives import Variable, Quotient
+    from pymbolic.primitives import Variable
     dim = 3
     laplace_knl = LaplaceKernel(dim)
     density = Variable("density")
@@ -445,9 +451,9 @@ def test_int_gs_in_densities():
     source_kernels = [AxisSourceDerivative(0, laplace_knl), laplace_knl]
     densities = [
         (-1)*int_g_vec(AxisTargetDerivative(1, laplace_knl),
-            (-2)*density, qbx_forced_limit=1),
+            density, qbx_forced_limit=1) * (-2),
         int_g_vec(AxisTargetDerivative(2, laplace_knl),
-            (-2)*density, qbx_forced_limit=1) * Quotient(1, 2)
+            density, qbx_forced_limit=1) * (-1)
     ]
     int_g3 = IntG(target_kernel=laplace_knl,
                   source_kernels=tuple(source_kernels),
