@@ -422,8 +422,7 @@ def minimal_generating_set(m):
         others.remove(x)
         if x in m.container.submodule(*others):
             basis = others
-    res = m.container.submodule(*basis)
-    return res
+    return m.container.submodule(*basis)
 
 
 def _convert_to_matrix(module, *generators):
@@ -465,28 +464,34 @@ def factor(mat, axis_vars, ring):
     rank.
 
     To get a good factorisation, what we do is first find a matrix
-    such that S M = 0 where S is the syzygy module converted to a matrix.
+    such that S M.T = 0 where S is the syzygy module converted to a matrix.
     It can also be referred to as the left nullspace of the matrix.
-    Then, M.T S.T = 0 which implies that M.T is in the space spanned by
-    the syzygy module of S.T and to get L we get the transpose of that.
+    Then, M S.T = 0 which implies that M is in the space spanned by
+    the syzygy module of S.T and to get R we get the transpose of that.
     """
-    S_module = syzygy_module(mat, axis_vars, ring)
+    if mat.shape[0] < mat.shape[1]:
+        # For sympy performance, we use a tall and skinny matrix
+        L, R = factor(mat.T, axis_vars, ring)
+        return R.T, L.T
+
+    S_module = syzygy_module(mat.T, axis_vars, ring)
     S = _convert_to_matrix(S_module.gens, *axis_vars)
+
     if len(S) == 0:
         return mat, sympy.eye(mat.shape[1])
-    L_t_module = syzygy_module(S.T, axis_vars, ring)
-    L_t = _convert_to_matrix(L_t_module.gens, *axis_vars)
-    R_t_module = [L_t_module.in_terms_of_generators(mat[:, i])
-           for i in range(mat.shape[1])]
-    R_t = _convert_to_matrix(R_t_module, *axis_vars)
+    R_module = syzygy_module(S.T, axis_vars, ring)
+    R = _convert_to_matrix(R_module.gens, *axis_vars)
+    L_module = [R_module.in_terms_of_generators(mat[i, :])
+           for i in range(mat.shape[0])]
+    L = _convert_to_matrix(L_module, *axis_vars)
 
     if 0:
-        R2 = L_t.T.LUsolve(sympy.Matrix(mat),
+        L2 = R.LUsolve(sympy.Matrix(mat),
                 iszerofunc=lambda x: x.simplify() == 0)
-        R2 = R2.applyfunc(lambda x: x.simplify())
-        return L_t.T, R2
+        L2 = L2.applyfunc(lambda x: x.simplify())
+        return L2, R
 
-    return L_t.T, R_t.T
+    return L, R
 
 # }}}
 
