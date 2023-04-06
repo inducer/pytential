@@ -429,7 +429,7 @@ def test_restoring_target_attributes():
 
 
 def test_int_gs_in_densities():
-    from pymbolic.primitives import Variable
+    from pymbolic.primitives import Variable, Product
     dim = 3
     laplace_knl = LaplaceKernel(dim)
     density = Variable("density")
@@ -449,9 +449,10 @@ def test_int_gs_in_densities():
     result = merge_int_g_exprs([int_g1])
 
     source_kernels = [AxisSourceDerivative(0, laplace_knl), laplace_knl]
+
     densities = [
-        (-1)*int_g_vec(AxisTargetDerivative(1, laplace_knl),
-            density, qbx_forced_limit=1) * (-2),
+        Product((-1, Product((int_g_vec(AxisTargetDerivative(1, laplace_knl),
+            density, qbx_forced_limit=1), -2)))),
         int_g_vec(AxisTargetDerivative(2, laplace_knl),
             density, qbx_forced_limit=1) * (-1)
     ]
@@ -460,7 +461,6 @@ def test_int_gs_in_densities():
                   densities=tuple(densities),
                   qbx_forced_limit=1)
 
-    print(result[0])
     assert result[0] == int_g3
 
 
