@@ -127,7 +127,7 @@ def reduce_number_of_fmms(int_gs, source_dependent_variables):
     #
     # If k is greater than or equal to n we are gaining nothing.
     # Return as is.
-    if right_factor.shape[0] >= mat.shape[0]:
+    if right_factor.shape[0] >= mat.shape[1]:
         return int_gs
 
     base_kernel = int_gs[0].source_kernels[0].get_base_kernel()
