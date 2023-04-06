@@ -416,6 +416,7 @@ class Method(Enum):
     naive = 1
     laplace = 2
     biharmonic = 3
+    laplace_slow = 4
 
 
 def make_elasticity_wrapper(
@@ -448,6 +449,12 @@ def make_elasticity_wrapper(
                 mu=mu, nu=nu)
         else:
             return ElasticityWrapperYoshida(dim=dim,
+                mu=mu, nu=nu)
+    elif method == Method.laplace_slow:
+        if nu == 0.5:
+            raise ValueError("invalid value of nu=0.5 for method laplace_slow")
+        else:
+            return ElasticityWrapperFu(dim=dim,
                 mu=mu, nu=nu)
     else:
         raise ValueError(f"invalid method: {method}."
@@ -485,6 +492,12 @@ def make_elasticity_double_layer_wrapper(
                 mu=mu, nu=nu)
         else:
             return ElasticityDoubleLayerWrapperYoshida(dim=dim,
+                mu=mu, nu=nu)
+    elif method == Method.laplace_slow:
+        if nu == 0.5:
+            raise ValueError("invalid value of nu=0.5 for method laplace_slow")
+        else:
+            return ElasticityDoubleLayerWrapperFu(dim=dim,
                 mu=mu, nu=nu)
     else:
         raise ValueError(f"invalid method: {method}."
@@ -635,6 +648,162 @@ class ElasticityWrapperYoshida(ElasticityWrapperBase):
     @cached_property
     def stresslet(self):
         return ElasticityDoubleLayerWrapperYoshida(3, self.mu, self.nu)
+
+    def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
+        return self.stresslet.apply_single_and_double_layer(density_vec_sym,
+            [0]*self.dim, [0]*self.dim, qbx_forced_limit, 1, 0,
+            extra_deriv_dirs)
+
+
+# }}}
+
+# {{{ Fu
+
+@dataclass
+class ElasticityDoubleLayerWrapperFu(ElasticityDoubleLayerWrapperBase):
+    r"""ElasticityDoubleLayer Wrapper using Fu et al's method [1] which uses
+    Laplace derivatives.
+
+    [1] Fu, Y., Klimkowski, K. J., Rodin, G. J., Berger, E., Browne, J. C.,
+        Singer, J. K., ... & Vemaganti, K. S. (1998). A fast solution method for
+        three‐dimensional many‐particle problems of linear elasticity.
+        International Journal for Numerical Methods in Engineering, 42(7), 1215-1229.
+    """
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
+
+    def __post_init__(self):
+        if not self.dim == 3:
+            raise ValueError("unsupported dimension given to "
+                             "ElasticityDoubleLayerWrapperFu: {self.dim}")
+
+    @cached_property
+    def laplace_kernel(self):
+        return LaplaceKernel(dim=3)
+
+    def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
+            extra_deriv_dirs=()):
+        return self.apply_single_and_double_layer([0]*self.dim,
+            density_vec_sym, dir_vec_sym, qbx_forced_limit, 0, 1,
+            extra_deriv_dirs)
+
+    def apply_single_and_double_layer(self, stokeslet_density_vec_sym,
+            stresslet_density_vec_sym, dir_vec_sym,
+            qbx_forced_limit, stokeslet_weight, stresslet_weight,
+            extra_deriv_dirs=()):
+
+        mu = self.mu
+        nu = self.nu
+        stokeslet_weight *= -1
+
+        def add_extra_deriv_dirs(target_kernel):
+            for deriv_dir in extra_deriv_dirs:
+                target_kernel = AxisTargetDerivative(deriv_dir, target_kernel)
+            return target_kernel
+
+        def P(i, j, int_g):
+            res = -int_g.copy(target_kernel=add_extra_deriv_dirs(
+                TargetPointMultiplier(j,
+                    AxisTargetDerivative(i, int_g.target_kernel))))
+            if i == j:
+                res += (3 - 4*nu)*int_g.copy(
+                    target_kernel=add_extra_deriv_dirs(int_g.target_kernel))
+            return res / (4*mu*(1 - nu))
+
+        def Q(i, int_g):
+            res = int_g.copy(target_kernel=add_extra_deriv_dirs(
+                AxisTargetDerivative(i, int_g.target_kernel)))
+            return res / (4*mu*(1 - nu))
+
+        def R(i, j, p, int_g):
+            res = int_g.copy(target_kernel=add_extra_deriv_dirs(
+                TargetPointMultiplier(j, AxisTargetDerivative(i,
+                    AxisTargetDerivative(p, int_g.target_kernel)))))
+            if j == p:
+                res += (1 - 2*nu)*int_g.copy(target_kernel=add_extra_deriv_dirs(
+                    AxisTargetDerivative(i, int_g.target_kernel)))
+            if i == j:
+                res -= (1 - 2*nu)*int_g.copy(target_kernel=add_extra_deriv_dirs(
+                    AxisTargetDerivative(p, int_g.target_kernel)))
+            if i == p:
+                res -= 2*(1 - nu)*int_g.copy(target_kernel=add_extra_deriv_dirs(
+                    AxisTargetDerivative(j, int_g.target_kernel)))
+            return res / (2*mu*(1 - nu))
+
+        def S(i, p, int_g):
+            res = int_g.copy(target_kernel=add_extra_deriv_dirs(
+                AxisTargetDerivative(i,
+                    AxisTargetDerivative(p, int_g.target_kernel))))
+            return res / (-2*mu*(1 - nu))
+
+        sym_expr = np.zeros((3,), dtype=object)
+
+        kernel = self.laplace_kernel
+        source = sym.nodes(3).as_vector()
+        normal = dir_vec_sym
+        sigma = stresslet_density_vec_sym
+
+        for i in range(3):
+            for j in range(3):
+                density = stokeslet_weight * stokeslet_density_vec_sym[j]
+                int_g = sym.IntG(target_kernel=kernel,
+                        source_kernels=(kernel,),
+                        densities=(density,),
+                        qbx_forced_limit=qbx_forced_limit)
+                sym_expr[i] += P(i, j, int_g)
+
+            density = sum(stokeslet_weight
+                * stokeslet_density_vec_sym[j] * source[j] for j in range(3))
+            int_g = sym.IntG(target_kernel=kernel,
+                source_kernels=(kernel,),
+                densities=(density,),
+                qbx_forced_limit=qbx_forced_limit)
+            sym_expr[i] += Q(i, int_g)
+
+            for j in range(3):
+                for p in range(3):
+                    density = stresslet_weight * normal[p] * sigma[j]
+                    int_g = sym.IntG(target_kernel=kernel,
+                        source_kernels=(kernel,),
+                        densities=(density,),
+                        qbx_forced_limit=qbx_forced_limit)
+                    sym_expr[i] += R(i, j, p, int_g)
+
+            for p in range(3):
+                density = sum(stresslet_weight * normal[p] * sigma[j] * source[j]
+                              for j in range(3))
+                int_g = sym.IntG(target_kernel=kernel,
+                    source_kernels=(kernel,),
+                    densities=(density,),
+                    qbx_forced_limit=qbx_forced_limit)
+                sym_expr[i] += S(i, p, int_g)
+
+        return sym_expr
+
+
+@dataclass
+class ElasticityWrapperFu(ElasticityWrapperBase):
+    r"""Elasticity single layer using Fu et al's method [1] which uses
+    Laplace derivatives.
+
+    [1] Fu, Y., Klimkowski, K. J., Rodin, G. J., Berger, E., Browne, J. C.,
+        Singer, J. K., ... & Vemaganti, K. S. (1998). A fast solution method for
+        three‐dimensional many‐particle problems of linear elasticity.
+        International Journal for Numerical Methods in Engineering, 42(7), 1215-1229.
+    """
+    dim: int
+    mu: ExpressionT
+    nu: ExpressionT
+
+    def __post_init__(self):
+        if not self.dim == 3:
+            raise ValueError("unsupported dimension given to "
+                             f"ElasticityDoubleLayerWrapperFu: {self.dim}")
+
+    @cached_property
+    def stresslet(self):
+        return ElasticityDoubleLayerWrapperFu(3, self.mu, self.nu)
 
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
         return self.stresslet.apply_single_and_double_layer(density_vec_sym,
