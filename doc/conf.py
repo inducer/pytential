@@ -33,6 +33,6 @@ intersphinx_mapping = {
     "pyopencl": ("https://documen.tician.de/pyopencl", None),
     "python": ("https://docs.python.org/3", None),
     "pytools": ("https://documen.tician.de/pytools", None),
-    "scipy": ("https://scipy.github.io/devdocs", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy", None),
     "sumpy": ("https://documen.tician.de/sumpy", None),
 }
