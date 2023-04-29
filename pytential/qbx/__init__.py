@@ -765,7 +765,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from meshmode.discretization import Discretization
 
         if return_timing_data:
-            from pytential.source import UnableToCollectTimingData
+            from sumpy.fmm import UnableToCollectTimingData
             from warnings import warn
             warn(
                     "Timing data collection not supported.",
