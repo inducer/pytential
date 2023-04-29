@@ -25,6 +25,7 @@ import numpy as np
 from pytools import memoize_in, memoize_method
 from arraycontext import flatten, unflatten
 from meshmode.dof_array import DOFArray
+from meshmode.discretization import Discretization
 
 from sumpy.fmm import (SumpyTimingFuture,
     SumpyTreeIndependentDataForWrangler, SumpyExpansionWrangler)
@@ -170,13 +171,14 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
             tree_build_kwargs = self.tree_build_kwargs
         if trav_build_kwargs is None:
             trav_build_kwargs = self.trav_build_kwargs
+
         return type(self)(
             nodes=nodes,
             fmm_order=fmm_order,
             fmm_level_to_order=fmm_level_to_order,
             expansion_factory=expansion_factory,
             tree_build_kwargs=tree_build_kwargs,
-            trav_build_kwargs=trav_build_kwargs
+            trav_build_kwargs=trav_build_kwargs,
         )
 
     @property
@@ -210,7 +212,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         raise NotImplementedError
 
     @memoize_method
-    def _get_setup_args_for_exec_insn(self, actx, source_kernels, target_kernels):
+    def _get_exec_insn_func(self, actx, source_kernels, target_kernels):
 
         if self.fmm_level_to_order is False:
             p2p = self.get_p2p(actx, source_kernels=source_kernels,
@@ -281,18 +283,21 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         else:
             dtype = self.real_dtype
 
-        exec_insn = self._get_setup_args_for_exec_insn(
+        exec_insn = self._get_exec_insn_func(
             actx=actx,
             source_kernels=insn.source_kernels,
             target_kernels=insn.target_kernels,
         )
 
-        # FIXME: Do this all at once
+        outputs_grouped_by_target = defaultdict(list)
+        for o in insn.outputs:
+            outputs_grouped_by_target[o.target_name].append(o)
+
         results = []
         timing_data_arr = []
-        for o in insn.outputs:
+        for target_name, output_group in outputs_grouped_by_target.items():
             target_discr = bound_expr.places.get_discretization(
-                o.target_name.geometry, o.target_name.discr_stage)
+                target_name.geometry, target_name.discr_stage)
 
             sources = self._nodes
             targets = flatten(target_discr.nodes(), actx, leaf_class=DOFArray)
@@ -302,13 +307,13 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                           dtype, return_timing_data)
             timing_data_arr.append(timing_data)
 
-            from meshmode.discretization import Discretization
-            result = output_for_each_kernel[o.target_kernel_index]
-            if isinstance(target_discr, Discretization):
-                template_ary = actx.thaw(target_discr.nodes()[0])
-                result = unflatten(template_ary, result, actx, strict=False)
+            for o in output_group:
+                result = output_for_each_kernel[o.target_kernel_index]
+                if isinstance(target_discr, Discretization):
+                    template_ary = actx.thaw(target_discr.nodes()[0])
+                    result = unflatten(template_ary, result, actx, strict=False)
 
-            results.append((o.name, result))
+                results.append((o.name, result))
 
         timing_data = defaultdict(list)
         if return_timing_data and timing_data_arr:
