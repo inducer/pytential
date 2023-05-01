@@ -33,8 +33,7 @@ from sumpy.kernel import Kernel
 
 from pytential.symbolic.primitives import (
         DOFDescriptor, IntG, NamedIntermediateResult)
-from pytential.symbolic.mappers import (CachedIdentityMapper, IdentityMapper,
-        DependencyMapper)
+from pytential.symbolic.mappers import CachedIdentityMapper, DependencyMapper
 
 
 # {{{ statements
@@ -572,7 +571,6 @@ class OperatorCompiler(CachedIdentityMapper):
             result = type(expr)((result, self.rec(child)))
             result = self.assign_to_new_var(result)
         return result
-
 
     def map_numpy_array(self, expr):
         # create temporaries so that the scheduler can optimize
