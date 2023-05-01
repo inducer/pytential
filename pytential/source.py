@@ -152,7 +152,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         result = (
                 expr.source,
                 *sort_arrays_together(expr.source_kernels, expr.densities, key=str),
-                expr.target_kernel,
+                expr.target_kernel.get_base_kernel(),
                 )
 
         return result
