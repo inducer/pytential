@@ -33,7 +33,8 @@ from sumpy.kernel import Kernel
 
 from pytential.symbolic.primitives import (
         DOFDescriptor, IntG, NamedIntermediateResult)
-from pytential.symbolic.mappers import IdentityMapper, DependencyMapper
+from pytential.symbolic.mappers import (CachedIdentityMapper, IdentityMapper,
+        DependencyMapper)
 
 
 # {{{ statements
@@ -452,7 +453,7 @@ def _compute_schedule(
 
 # {{{ compiler
 
-class OperatorCompiler(IdentityMapper):
+class OperatorCompiler(CachedIdentityMapper):
     def __init__(
             self,
             places,
@@ -502,10 +503,6 @@ class OperatorCompiler(IdentityMapper):
 
         result = super().__call__(expr)
 
-        # Put the toplevel expressions into variables as well.
-
-        from pytools.obj_array import obj_array_vectorize
-        result = obj_array_vectorize(self.assign_to_new_var, result)
         inputs, schedule = _compute_schedule(self.dep_mapper, self.code, result)
         return Code(inputs, schedule, result)
 
@@ -566,6 +563,24 @@ class OperatorCompiler(IdentityMapper):
     # }}}
 
     # {{{ map_xxx routines
+
+    def map_sum(self, expr):
+        # create temporaries so that the scheduler can optimize
+        # the life-time of the dependencies
+        result = self.assign_to_new_var(self.rec(expr.children[0]))
+        for child in expr.children[1:]:
+            result = type(expr)((result, self.rec(child)))
+            result = self.assign_to_new_var(result)
+        return result
+
+
+    def map_numpy_array(self, expr):
+        # create temporaries so that the scheduler can optimize
+        # the life-time of the dependencies
+        result = np.empty(expr.shape, dtype=object)
+        for i in np.ndindex(expr.shape):
+            result[i] = self.assign_to_new_var(self.rec(expr[i]))
+        return result
 
     def map_common_subexpression(self, expr):
         # NOTE: EXPRESSION and DISCRETIZATION scopes are handled in
