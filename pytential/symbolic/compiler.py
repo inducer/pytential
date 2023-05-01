@@ -598,8 +598,7 @@ class OperatorCompiler(CachedIdentityMapper):
                 # treat them specially. They get assigned to their
                 # own variable by default, which would mean the
                 # CSE prefix would be omitted.
-
-                rec_child = self.rec(expr.child, name_hint=expr.prefix)
+                rec_child = self.map_int_g(expr.child, name_hint=expr.prefix)
             else:
                 rec_child = self.rec(expr.child)
 
