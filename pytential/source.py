@@ -26,6 +26,7 @@ from pytools import memoize_in, memoize_method
 from arraycontext import flatten, unflatten
 from meshmode.dof_array import DOFArray
 from meshmode.discretization import Discretization
+from arraycontext import ArrayContext
 
 from sumpy.fmm import (SumpyTimingFuture,
     SumpyTreeIndependentDataForWrangler, SumpyExpansionWrangler)
@@ -33,6 +34,7 @@ from sumpy.expansion import DefaultExpansionFactory
 
 from functools import partial
 from collections import defaultdict
+from typing import Optional, Mapping, Union, Callable
 
 
 __doc__ = """
@@ -107,22 +109,43 @@ default_expansion_factory = DefaultExpansionFactory()
 
 class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
     """
-    .. attribute:: nodes
+    .. method:: nodes
 
         An :class:`pyopencl.array.Array` of shape ``[ambient_dim, ndofs]``.
 
     .. attribute:: ndofs
 
-    .. attribute:: fmm_order
-
     .. automethod:: cost_model_compute_potential_insn
     .. automethod:: exec_compute_potential_insn
     """
 
-    def __init__(self, nodes, *, fmm_order=False, fmm_level_to_order=None,
-                 expansion_factory=default_expansion_factory,
-                 tree_build_kwargs=None,
-                 trav_build_kwargs=None):
+    def __init__(self, nodes, *,
+            fmm_order: Optional[int] = False,
+            fmm_level_to_order: Optional[Union[bool, Callable[..., int]]] = None,
+            expansion_factory: Optional[DefaultExpansionFactory] \
+                    = default_expansion_factory,
+            tree_build_kwargs: Optional[Mapping] = None,
+            trav_build_kwargs: Optional[Mapping] = None,
+            setup_actx: Optional[ArrayContext] = None
+        ):
+        """
+        :arg nodes: The point potential source given as a
+               :class:`pyopencl.array.Array`
+        :arg fmm_order: The order of the FMM for all levels if *fmm_order* is not
+               *False*. Mutually exclusive with argument *fmm_level_to_order*.
+               If both arguments are not given a direct point-to-point calculation
+               is used.
+        :arg fmm_level_to_order: An optional callable that returns the FMM order
+               to use for a given level. Mutually exclusive with *fmm_order* argument.
+        :arg expansion_factory: An expansion factory to get the expansion objects
+               when an FMM is used.
+        :arg tree_build_kwargs: Keyword arguments to be passed when building the
+               tree for an FMM.
+        :arg trav_build_kwargs: Keyword arguments to be passed when building a
+               traversal for an FMM.
+        :arg setup_actx: An array context to be used when building a tree
+              for an FMM.
+        """
 
         if fmm_order is not False and fmm_level_to_order is not None:
             raise TypeError("may not specify both fmm_order and fmm_level_to_order")
@@ -137,6 +160,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         self.expansion_factory = expansion_factory
         self.tree_build_kwargs = tree_build_kwargs if tree_build_kwargs else {}
         self.trav_build_kwargs = trav_build_kwargs if trav_build_kwargs else {}
+        self._setup_actx = setup_actx
         self._nodes = nodes
 
     @property
@@ -159,10 +183,13 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         for coord_ary in self._nodes:
             return coord_ary.shape[0]
 
-    def copy(self, nodes=None, fmm_order=None, fmm_level_to_order=None,
-             expansion_factory=None, tree_build_kwargs=None, trav_build_kwargs=None):
+    def copy(self, *, nodes=None, fmm_order=None, fmm_level_to_order=None,
+             expansion_factory=None, tree_build_kwargs=None, trav_build_kwargs=None,
+             setup_actx=None):
         if nodes is None:
             nodes = self._nodes
+        if setup_actx is None:
+            setup_actx = self._setup_actx
         if fmm_level_to_order is None and fmm_order is None:
             fmm_level_to_order = self.fmm_level_to_order
         if expansion_factory is None:
@@ -179,6 +206,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
             expansion_factory=expansion_factory,
             tree_build_kwargs=tree_build_kwargs,
             trav_build_kwargs=trav_build_kwargs,
+            setup_actx=setup_actx,
         )
 
     @property
@@ -194,6 +222,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
     def op_group_features(self, expr):
         from pytential.utils import sort_arrays_together
+        from sumpy.kernel import TargetTransformationRemover
         # since IntGs with the same source kernels and densities calculations
         # for P2E and E2E are the same and only differs in E2P depending on the
         # target kernel, we group all IntGs with same source kernels and densities.
@@ -212,14 +241,33 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         raise NotImplementedError
 
     @memoize_method
-    def _get_exec_insn_func(self, actx, source_kernels, target_kernels):
+    def _get_tree(self, target_discr):
+        """Builds a tree for targets given by *target_discr* and caches the
+        result. Needed only when an FMM is used.
+        """
+        from boxtree import TreeBuilder
+        from boxtree.traversal import FMMTraversalBuilder
 
+        actx = self._setup_actx
+        sources = self._nodes
+        targets = flatten(target_discr.nodes(), actx, leaf_class=DOFArray)
+        tree_build = TreeBuilder(actx.context)
+        trav_build = FMMTraversalBuilder(actx.context,
+                **self.trav_build_kwargs)
+        tree, _ = tree_build(actx.queue, sources, targets=targets,
+                **self.tree_build_kwargs)
+        trav, _ = trav_build(actx.queue, tree)
+        return tree, trav
+
+    @memoize_method
+    def _get_exec_insn_func(self, source_kernels, target_kernels, target_discr):
         if self.fmm_level_to_order is False:
-            p2p = self.get_p2p(actx, source_kernels=source_kernels,
+            sources = self._nodes
+            targets = flatten(target_discr.nodes(), self._setup_actx, leaf_class=DOFArray)
+            def exec_insn(actx, strengths, kernel_args, dtype, return_timing_data):
+                p2p = self.get_p2p(actx, source_kernels=source_kernels,
                      target_kernels=target_kernels)
 
-            def exec_insn(sources, targets, strengths, kernel_args,
-                          dtype, return_timing_data):
                 evt, output = p2p(actx.queue,
                     targets=targets,
                     sources=sources,
@@ -232,13 +280,7 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                     timing_data = None
                 return timing_data, output
         else:
-            from boxtree import TreeBuilder
-            from boxtree.traversal import FMMTraversalBuilder
             from boxtree.fmm import drive_fmm
-
-            tree_build = TreeBuilder(actx.context)
-            trav_build = FMMTraversalBuilder(actx.context,
-                **self.trav_build_kwargs)
 
             kernel = target_kernels[0].get_base_kernel()
             local_expansion_factory = \
@@ -248,11 +290,9 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                 self.expansion_factory.get_multipole_expansion_class(kernel)
             mpole_expansion_factory = partial(mpole_expansion_factory, kernel)
 
-            def exec_insn(sources, targets, strengths, kernel_args,
-                          dtype, return_timing_data):
-                tree, _ = tree_build(actx.queue, sources, targets=targets,
-                    **self.tree_build_kwargs)
-                trav, _ = trav_build(actx.queue, tree)
+            tree, trav = self._get_tree(target_discr)
+
+            def exec_insn(actx, strengths, kernel_args, dtype, return_timing_data):
                 tree_indep = SumpyTreeIndependentDataForWrangler(
                     actx.context,
                     mpole_expansion_factory,
@@ -263,7 +303,6 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                 wrangler = SumpyExpansionWrangler(tree_indep, trav, dtype,
                     fmm_level_to_order=self.fmm_level_to_order,
                     kernel_extra_kwargs=kernel_args)
-
                 timing_data = {} if return_timing_data else None
                 output = drive_fmm(wrangler, strengths, timing_data=timing_data)
                 return timing_data, output
@@ -283,12 +322,6 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
         else:
             dtype = self.real_dtype
 
-        exec_insn = self._get_exec_insn_func(
-            actx=actx,
-            source_kernels=insn.source_kernels,
-            target_kernels=insn.target_kernels,
-        )
-
         outputs_grouped_by_target = defaultdict(list)
         for o in insn.outputs:
             outputs_grouped_by_target[o.target_name].append(o)
@@ -299,11 +332,14 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
             target_discr = bound_expr.places.get_discretization(
                 target_name.geometry, target_name.discr_stage)
 
-            sources = self._nodes
-            targets = flatten(target_discr.nodes(), actx, leaf_class=DOFArray)
+            exec_insn = self._get_exec_insn_func(
+                source_kernels=insn.source_kernels,
+                target_kernels=insn.target_kernels,
+                target_discr=target_discr,
+            )
 
             timing_data, output_for_each_kernel = \
-                exec_insn(sources, targets, strengths, kernel_args,
+                exec_insn(actx, strengths, kernel_args,
                           dtype, return_timing_data)
             timing_data_arr.append(timing_data)
 
