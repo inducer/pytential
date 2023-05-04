@@ -93,10 +93,6 @@ def main(curve_fn=starfish, visualize=True):
     else:
         sigma = actx.np.cos(mode_nr*angle)
 
-    if isinstance(kernel, HelmholtzKernel):
-        for i, elem in np.ndenumerate(sigma):
-            sigma[i] = elem.astype(np.complex128)
-
     bound_bdry_op = bind(places, op())
     if visualize:
         fld_in_vol = actx.to_numpy(
