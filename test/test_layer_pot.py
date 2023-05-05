@@ -446,7 +446,7 @@ def test_unregularized_off_surface_fmm_vs_direct(actx_factory):
 
 @pytest.mark.parametrize("relation", ["sp", "nxcurls", "div_s"])
 def test_3d_jump_relations(actx_factory, relation, visualize=False):
-    # logging.basicConfig(level=logging.INFO)
+    pytest.importorskip("pyfmmlib")
     actx = actx_factory()
 
     if relation == "div_s":
