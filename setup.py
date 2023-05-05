@@ -93,7 +93,7 @@ setup(
     author="Andreas Kloeckner",
     author_email="inform@tiker.net",
     license="MIT",
-    url="https://wiki.tiker.net/Pytential",
+    url="https://github.com/inducer/pytential",
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
@@ -123,9 +123,11 @@ setup(
         "arraycontext>=2021.1",
         "meshmode>=2021.2",
         "sumpy>=2020.2beta1",
-        "pyfmmlib>=2019.1.1",
 
         "scipy>=1.2.0",
         "immutables",
     ],
+    extras_require={
+        "fmmlib": ["pyfmmlib>=2019.1.1"],
+    },
 )
