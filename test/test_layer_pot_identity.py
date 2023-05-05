@@ -225,6 +225,9 @@ def test_identity_convergence_slow(actx_factory, case):
         DynamicTestCase(QuadSphereTestCase(), GreenExpr(), 0, fmm_backend="fmmlib"),
 ])
 def test_identity_convergence(actx_factory,  case, visualize=False):
+    if case.fmm_backend == "fmmlib":
+        pytest.importorskip("pyfmmlib")
+
     logging.basicConfig(level=logging.INFO)
 
     case.check()

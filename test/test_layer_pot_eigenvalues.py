@@ -258,6 +258,8 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
 def test_sphere_eigenvalues(actx_factory, mode_m, mode_n, qbx_order,
         fmm_backend):
     special = pytest.importorskip("scipy.special")
+    if fmm_backend == "fmmlib":
+        pytest.importorskip("pyfmmlib")
 
     logging.basicConfig(level=logging.INFO)
 
