@@ -42,6 +42,9 @@ except ImportError:
     class LinearOperator:
         pass
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 __doc__ = """
 Hierarical Matrix Construction
@@ -517,6 +520,10 @@ def build_hmatrix_by_proxy(
         dofdesc=wrangler.domains[0],
         tree_kind=_tree_kind,
         max_particles_in_box=_max_particles_in_box)
+
+    logger.info("tree levels: %d", ctree.nlevels)
+    logger.info("cluster count: %d", cluster_index.nclusters)
+    logger.info("root cluster sizes: %s", list(np.diff(cluster_index.starts)))
 
     from pytential.linalg.utils import TargetAndSourceClusterList
     tgt_src_index = TargetAndSourceClusterList(
