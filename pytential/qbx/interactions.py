@@ -130,7 +130,7 @@ class P2QBXLFromCSR(P2EBase):
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr")
         loopy_knl = lp.tag_inames(loopy_knl, "istrength*:unr")
-        loopy_knl = self.set_inner_knl(loopy_knl)
+        loopy_knl = self.add_loopy_form_callable(loopy_knl)
 
         return loopy_knl
 
@@ -476,7 +476,7 @@ class QBXL2P(E2PBase):
                 lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         loopy_knl = lp.tag_inames(loopy_knl, "idim*:unr,iknl:unr")
-        loopy_knl = self.set_inner_knl(loopy_knl)
+        loopy_knl = self.add_loopy_eval_callable(loopy_knl)
 
         return loopy_knl
 
