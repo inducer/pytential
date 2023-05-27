@@ -149,7 +149,13 @@ class YukawaBeltramiSolution(LaplaceBeltramiSolution):
         LaplaceBeltramiOperator(3, precond="left"), LaplaceBeltramiSolution(),
         marks=pytest.mark.slowtest),
     pytest.param(
+        LaplaceBeltramiOperator(3, precond="right"), LaplaceBeltramiSolution(),
+        marks=pytest.mark.slowtest),
+    pytest.param(
         YukawaBeltramiOperator(3, precond="left"), YukawaBeltramiSolution(),
+        marks=pytest.mark.slowtest),
+    pytest.param(
+        YukawaBeltramiOperator(3, precond="right"), YukawaBeltramiSolution(),
         marks=pytest.mark.slowtest),
     ])
 def test_beltrami_convergence(actx_factory, operator, solution, visualize=False):
@@ -167,14 +173,16 @@ def test_beltrami_convergence(actx_factory, operator, solution, visualize=False)
                 qbx_order=5,
                 source_ovsmp=4,
                 resolutions=[32, 64, 96, 128],
+                # FIXME: FMM should not be slower!
                 fmm_order=False, fmm_backend=None,
                 radius=radius
                 )
     elif operator.ambient_dim == 3:
         case = eid.SphereTestCase(
                 target_order=5,
-                qbx_order=5,
+                qbx_order=4,
                 source_ovsmp=8,
+                # FIXME: FMM should not be slower!
                 fmm_order=False, fmm_tol=None, fmm_backend=None,
                 radius=radius
                 )
