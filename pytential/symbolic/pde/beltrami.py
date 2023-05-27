@@ -41,7 +41,7 @@ from sumpy.kernel import Kernel
 class BeltramiOperator:
     """Beltrami-type operators on closed surfaces.
 
-    The construction of the operators is based on [ONeil2018]_ extended to take
+    The construction of the operators is based on [ONeil2018]_ and takes
     any scalar PDE kernel. However, specific kernels may require additional
     work to allow for unique solutions. For example, the Laplace-Beltrami
     equation is only unique up to a constant, so using
@@ -50,6 +50,7 @@ class BeltramiOperator:
 
     .. code:: python
 
+        beltrami = BeltramiOperator({...})
         sigma = beltrami.get_density_var("sigma")
         bc = beltrami.get_density_var("bc")
 
@@ -57,8 +58,11 @@ class BeltramiOperator:
         solution = beltrami.prepare_solution(sigma)
         op = beltrami.operator(sigma)
 
-    where :meth:`prepare_solution` is required to recover the solution from th
+    where :meth:`prepare_solution` is required to recover the solution from the
     density due to the different types of preconditioning.
+
+    Note that a naive implementation of these operators is inefficient
+    and can even be inaccurate (due to a subtraction of hypersingular operators).
 
     .. [ONeil2018] M. O'Neil, *Second-Kind Integral Equations for the
         Laplace-Beltrami Problem on Surfaces in Three Dimensions*,
@@ -178,7 +182,7 @@ class BeltramiOperator:
         # }}}
 
         if self.precond == "left":
-            # similar to 6.2 in [ONeil2017]
+            # similar to 6.2 in [ONeil2018]
             op = (
                     sigma / 4
                     - D0(D0(sigma))
@@ -188,7 +192,7 @@ class BeltramiOperator:
                     + S0(Dp0(sigma))
                     )
         else:
-            # similar to 6.2 in [ONeil2017]
+            # similar to 6.2 in [ONeil2018]
             op = (
                     sigma / 4
                     - Sp0(Sp0(sigma))
@@ -261,7 +265,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
         # }}}
 
         if self.precond == "left":
-            # NOTE: based on Lemma 3.1 in [ONeil2017] for :math:`-\Delta_\Gamma`
+            # NOTE: based on Lemma 3.1 in [ONeil2018] for :math:`-\Delta_\Gamma`
             op = (
                     sigma / 4
                     - D(D(sigma))
@@ -270,7 +274,7 @@ class LaplaceBeltramiOperator(BeltramiOperator):
                     - S(Wl(S(sigma)))
                     )
         else:
-            # NOTE: based on Lemma 3.2 in [ONeil2017] for :math:`-\Delta_\Gamma`
+            # NOTE: based on Lemma 3.2 in [ONeil2018] for :math:`-\Delta_\Gamma`
             op = (
                     sigma / 4
                     - Sp(Sp(sigma))
@@ -287,11 +291,11 @@ class LaplaceBeltramiOperator(BeltramiOperator):
 # {{{ Yukawa-Beltrami operator
 
 class YukawaBeltramiOperator(BeltramiOperator):
-    r"""Yukawa-Beltrami operator on a closed surface :math:`\Sigma`
+    r"""Yukawa-Beltrami operator on a closed surface :math:`\Sigma`.
 
     .. math::
 
-        -\Delta_\Sigma u + k^2 u = b
+        -\Delta_\Sigma u + k^2 u = b.
 
     Inherits from :class:`BeltramiOperator`.
 
