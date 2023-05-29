@@ -122,12 +122,11 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
     def __init__(self, nodes, *,
             fmm_order: Optional[int] = False,
             fmm_level_to_order: Optional[Union[bool, Callable[..., int]]] = None,
-            expansion_factory: Optional[DefaultExpansionFactory] \
+            expansion_factory: Optional[DefaultExpansionFactory]
                     = default_expansion_factory,
             tree_build_kwargs: Optional[Mapping] = None,
             trav_build_kwargs: Optional[Mapping] = None,
-            setup_actx: Optional[ArrayContext] = None
-        ):
+            setup_actx: Optional[ArrayContext] = None):
         """
         :arg nodes: The point potential source given as a
                :class:`pyopencl.array.Array`
@@ -136,7 +135,8 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
                If both arguments are not given a direct point-to-point calculation
                is used.
         :arg fmm_level_to_order: An optional callable that returns the FMM order
-               to use for a given level. Mutually exclusive with *fmm_order* argument.
+               to use for a given level. Mutually exclusive with *fmm_order*
+               argument.
         :arg expansion_factory: An expansion factory to get the expansion objects
                when an FMM is used.
         :arg tree_build_kwargs: Keyword arguments to be passed when building the
@@ -222,7 +222,6 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
 
     def op_group_features(self, expr):
         from pytential.utils import sort_arrays_together
-        from sumpy.kernel import TargetTransformationRemover
         # since IntGs with the same source kernels and densities calculations
         # for P2E and E2E are the same and only differs in E2P depending on the
         # target kernel, we group all IntGs with same source kernels and densities.
@@ -262,11 +261,11 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
     @memoize_method
     def _get_exec_insn_func(self, source_kernels, target_kernels, target_discr):
         if self.fmm_level_to_order is False:
-            sources = self._nodes
-            targets = flatten(target_discr.nodes(), self._setup_actx, leaf_class=DOFArray)
             def exec_insn(actx, strengths, kernel_args, dtype, return_timing_data):
+                sources = self._nodes
+                targets = flatten(target_discr.nodes(), actx, leaf_class=DOFArray)
                 p2p = self.get_p2p(actx, source_kernels=source_kernels,
-                     target_kernels=target_kernels)
+                    target_kernels=target_kernels)
 
                 evt, output = p2p(actx.queue,
                     targets=targets,
