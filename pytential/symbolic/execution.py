@@ -925,8 +925,7 @@ def _bmat(blocks, dtypes):
                              if not is_zero(blocks[ibrow, ibcol]))
              for ibcol in range(ncolumns)])
 
-    result = np.zeros((brs[-1], bcs[-1]),
-                      dtype=np.find_common_type(dtypes, []))
+    result = np.zeros((brs[-1], bcs[-1]), dtype=np.result_type(*dtypes))
     for ibcol in range(ncolumns):
         for ibrow in range(nrows):
             result[brs[ibrow]:brs[ibrow + 1], bcs[ibcol]:bcs[ibcol + 1]] = \
