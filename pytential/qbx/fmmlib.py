@@ -238,11 +238,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     def add_potgrad_onto_output(self, output, output_slice, pot, grad):
         for i_out, out in enumerate(self.tree_indep.outputs):
             if len(out) == 0:
-                output[i_out][output_slice] += pot
+                output[i_out][output_slice] += pot.squeeze()
             elif len(out) == 1:
                 axis, = out
                 if isinstance(grad, np.ndarray):
-                    output[i_out][output_slice] += grad[axis]
+                    output[i_out][output_slice] += grad[axis].squeeze()
                 else:
                     assert grad == 0
             else:
