@@ -443,7 +443,7 @@ class _FMMGeometryData:
         actx = self.array_context
         target_discr_starts.append(ntargets)
 
-        targets = actx.empty(
+        targets = actx.zeros(
                 (lpot_src.ambient_dim, ntargets),
                 self.coord_dtype)
 
