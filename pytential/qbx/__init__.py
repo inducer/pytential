@@ -907,8 +907,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             qbx_tgt_numberer = self.get_qbx_target_numberer(
                     tgt_to_qbx_center.dtype)
-            qbx_tgt_count = actx.empty((), np.int32)
-            qbx_tgt_numbers = actx.empty_like(tgt_to_qbx_center)
+            qbx_tgt_count = actx.zeros((), np.int32)
+            qbx_tgt_numbers = actx.np.zeros_like(tgt_to_qbx_center)
 
             qbx_tgt_numberer(
                     tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,

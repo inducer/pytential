@@ -658,7 +658,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         wait_for = [evt]
 
         def make_target_field(fill_val, dtype=tree.coord_dtype):
-            arr = actx.empty(tree.nqbxtargets, dtype)
+            arr = actx.zeros(tree.nqbxtargets, dtype)
             arr.fill(fill_val)
             wait_for.extend(arr.events)
             return arr
@@ -790,7 +790,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         actx = self.array_context
 
         ntargets = sum(discr.ndofs for discr, _ in target_discrs_and_qbx_sides)
-        target_flags = actx.empty(ntargets, dtype=np.int32)
+        target_flags = actx.zeros(ntargets, dtype=np.int32)
 
         offset = 0
         for discr, flags in target_discrs_and_qbx_sides:
@@ -805,7 +805,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         return target_flags
 
     def make_default_target_association(self, ntargets):
-        target_to_center = self.array_context.empty(ntargets, dtype=np.int32)
+        target_to_center = self.array_context.zeros(ntargets, dtype=np.int32)
         target_to_center.fill(-1)
         target_to_center.finish()
 
