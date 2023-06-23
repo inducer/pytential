@@ -132,7 +132,9 @@ def _approximate_geometry_waa_magnitude(
             <> ioffset = starts[icluster]
             <> npoints = starts[icluster + 1] - ioffset
             result[icluster] = reduce(sum, i, waa[indices[i + ioffset]]) / npoints
-            """)
+            """,
+            lang_version=lp.MOST_RECENT_LANGUAGE_VERSION,
+            )
 
         return knl
 
