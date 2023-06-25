@@ -20,14 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from abc import ABC, abstractmethod
+from typing import Hashable, Optional, Tuple
+
 import numpy as np
-
-from pytools import memoize_in
-from arraycontext import flatten, unflatten
+from arraycontext import PyOpenCLArrayContext, flatten, unflatten
 from meshmode.dof_array import DOFArray
-
+from pytools import T, memoize_in
 from sumpy.fmm import UnableToCollectTimingData
+from sumpy.kernel import Kernel
+from sumpy.p2p import P2PBase
 
+from pytential import GeometryCollection, sym
 
 __doc__ = """
 .. autoclass:: PotentialSource
@@ -36,43 +40,82 @@ __doc__ = """
 """
 
 
-class PotentialSource:
+class PotentialSource(ABC):
     """
+    .. autoproperty:: ambient_dim
+    .. autoproperty:: ndofs
+
+    .. autoproperty:: real_dtype
+    .. autoproperty:: complex_dtype
+
+    .. automethod:: op_group_features
+    .. automethod:: get_p2p
     .. automethod:: preprocess_optemplate
-
-    .. method:: op_group_features(expr)
-
-        Return a characteristic tuple by which operators that can be
-        executed together can be grouped.
-
-        *expr* is a subclass of
-        :class:`pytential.symbolic.primitives.IntG`.
     """
 
-    def preprocess_optemplate(self, name, discretizations, expr):
-        return expr
+    @property
+    @abstractmethod
+    def ambient_dim(self) -> int:
+        """Ambient dimension of the points in the source geometry."""
 
     @property
+    @abstractmethod
+    def ndofs(self) -> int:
+        """Number of points (DOFs) in the source geometry."""
+
+    @property
+    @abstractmethod
     def real_dtype(self):
-        raise NotImplementedError
+        """:class:`~numpy.dtype` of real data living on the source geometry."""
 
     @property
+    @abstractmethod
     def complex_dtype(self):
-        raise NotImplementedError
+        """:class:`~numpy.dtype` of complex data living on the source geometry."""
 
-    def get_p2p(self, actx, kernels):
-        raise NotImplementedError
+    @abstractmethod
+    def op_group_features(self, expr: sym.IntG) -> Tuple[Hashable, ...]:
+        """
+        :arg expr: a subclass of :class:`~pytential.symbolic.primitives.IntG`.
+        :returns: a characteristic tuple by which operators that can be
+            executed together can be grouped.
+        """
+
+    @abstractmethod
+    def get_p2p(self,
+                actx: PyOpenCLArrayContext,
+                target_kernels: Tuple[Kernel, ...],
+                source_kernels: Optional[Tuple[Kernel, ...]] = None) -> P2PBase:
+        """
+        :returns: a subclass of :class:`~sumpy.p2p.P2PBase` for evaluating
+            the *target_kernels* and the *source_kernels* on the source geometry.
+        """
+
+    def preprocess_optemplate(self,
+                name: str,
+                discretizations: GeometryCollection,
+                expr: T) -> T:
+        """
+        :returns: a processed *expr*, where each
+            :class:`~pytential.symbolic.primitives.IntG` operator has been
+            modified to work with the current source geometry.
+        """
+        return expr
 
 
 class _SumpyP2PMixin:
 
-    def get_p2p(self, actx, target_kernels, source_kernels=None):
+    def get_p2p(self,
+                actx: PyOpenCLArrayContext,
+                target_kernels: Tuple[Kernel, ...],
+                source_kernels: Optional[Tuple[Kernel, ...]] = None) -> P2PBase:
         @memoize_in(actx, (_SumpyP2PMixin, "p2p"))
-        def p2p(target_kernels, source_kernels):
+        def p2p(target_kernels: Tuple[Kernel, ...],
+                source_kernels: Optional[Tuple[Kernel, ...]]) -> P2PBase:
             if any(knl.is_complex_valued for knl in target_kernels):
-                value_dtype = self.complex_dtype
+                value_dtype = self.complex_dtype    # type: ignore[attr-defined]
             else:
-                value_dtype = self.real_dtype
+                value_dtype = self.real_dtype       # type: ignore[attr-defined]
 
             from sumpy.p2p import P2P
             return P2P(actx.context,
@@ -230,35 +273,29 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     """A discretization of a layer potential using element-based geometry, with
     support for refinement and upsampling.
 
-    .. rubric:: Discretization data
+    Inherits from :class:`PotentialSource`.
 
     .. attribute:: density_discr
-    .. attribute:: cl_context
-    .. attribute:: ambient_dim
-    .. attribute:: dim
-    .. attribute:: real_dtype
-    .. attribute:: complex_dtype
-
     """
 
     def __init__(self, density_discr):
         self.density_discr = density_discr
 
     @property
-    def ambient_dim(self):
-        return self.density_discr.ambient_dim
-
-    @property
     def _setup_actx(self):
         return self.density_discr._setup_actx
 
     @property
-    def dim(self):
-        return self.density_discr.dim
-
-    @property
     def cl_context(self):
         return self._setup_actx.context
+
+    @property
+    def ambient_dim(self):
+        return self.density_discr.ambient_dim
+
+    @property
+    def dim(self):
+        return self.density_discr.dim
 
     @property
     def real_dtype(self):
