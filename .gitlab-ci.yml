@@ -6,7 +6,7 @@
 
 Python 3 POCL:
   script: |
-    export PYOPENCL_TEST="portable:pthread"
+    export PYOPENCL_TEST="portable:cpu"
     export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
     export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
     curl -L -O https://tiker.net/ci-support-v0
@@ -49,7 +49,7 @@ Python 3 Intel:
 Python 3 POCL Examples:
   script: |
     test -n "$SKIP_EXAMPLES" && exit
-    export PYOPENCL_TEST=portable:pthread
+    export PYOPENCL_TEST=portable:cpu
     export EXTRA_INSTALL="Cython pybind11 numpy scipy mako matplotlib pyvisfile"
     curl -L -O https://tiker.net/ci-support-v0
     . ci-support-v0
