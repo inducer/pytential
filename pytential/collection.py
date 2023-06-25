@@ -23,14 +23,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Dict, Hashable, Optional, Tuple, Union
+from typing import Any, Dict, Hashable, Optional, Tuple, Union
 
-from pytential import sym
-from pytential.symbolic.execution import EvaluationMapperCSECacheKey
 from pytential.symbolic.dof_desc import DOFDescriptorLike, DiscretizationStages
+import pytential.symbolic.primitives as sym
 
-from pytential.target import TargetBase
-from pytential.source import PotentialSource
+from pytential.target import PointsTarget, TargetBase
+from pytential.source import (
+    LayerPotentialSourceBase, PointPotentialSource, PotentialSource)
 from pytential.qbx import QBXLayerPotentialSource
 from meshmode.discretization import Discretization
 
@@ -66,13 +66,6 @@ class _GeometryCollectionConnectionCacheKey:
     """Serves as a unique key for the connection cache in
     :meth:`GeometryCollection._get_cache`.
     """
-
-
-_KNOWN_GEOMETRY_COLLECTION_CACHE_KEYS = (
-        EvaluationMapperCSECacheKey,
-        _GeometryCollectionConnectionCacheKey,
-        _GeometryCollectionDiscretizationCacheKey,
-        )
 
 
 # {{{ geometry collection
@@ -146,7 +139,7 @@ class GeometryCollection:
 
         # {{{ construct dict
 
-        places_dict = {}
+        places_dict: Dict[Hashable, GeometryLike] = {}
 
         from pytential.symbolic.execution import _prepare_auto_where
         auto_source, auto_target = _prepare_auto_where(auto_where)
@@ -164,13 +157,14 @@ class GeometryCollection:
             places_dict[auto_source.geometry] = source_discr
             places_dict[auto_target.geometry] = target_discr
         else:
+            assert isinstance(places, dict)
             places_dict = places
 
         import immutables
         self.places = immutables.Map(places_dict)
         self.auto_where = (auto_source, auto_target)
 
-        self._caches = {}
+        self._caches: Dict[str, Any] = {}
 
         # }}}
 
@@ -321,9 +315,6 @@ class GeometryCollection:
             discr_stage = sym.QBX_SOURCE_STAGE1
         discr = self.get_geometry(geometry)
 
-        from pytential.qbx import QBXLayerPotentialSource
-        from pytential.source import LayerPotentialSourceBase
-
         if isinstance(discr, QBXLayerPotentialSource):
             return self._get_qbx_discretization(geometry, discr_stage)
         elif isinstance(discr, LayerPotentialSourceBase):
@@ -362,11 +353,11 @@ class GeometryCollection:
             current collection is returned.
         """
 
-        new_places = self.places
+        new_places = dict(self.places)
         if places:
-            if isinstance(places, GeometryCollection):
-                places = places.places
-            new_places = new_places.update(places)
+            new_places.update(
+                places.places if isinstance(places, GeometryCollection)
+                else places)
 
         return self.copy(places=new_places)
 
@@ -399,8 +390,6 @@ def add_geometry_to_collection(
     This allows adding new targets to the collection without recomputing the
     source geometry data.
     """
-    from pytential.source import PointPotentialSource
-    from pytential.target import PointsTarget
     for key, geometry in geometries.items():
         if key in places.places:
             raise ValueError(f"geometry '{key}' already in the collection")
@@ -411,13 +400,21 @@ def add_geometry_to_collection(
                     "to the existing collection. Construct a new collection "
                     "instead.")
 
+    from pytential.symbolic.execution import EvaluationMapperCSECacheKey
+
+    known_cache_keys = (
+            EvaluationMapperCSECacheKey,
+            _GeometryCollectionConnectionCacheKey,
+            _GeometryCollectionDiscretizationCacheKey,
+            )
+
     # copy over all the caches
     new_places = places.merge(geometries)
     for key in places._caches:
-        if key not in _KNOWN_GEOMETRY_COLLECTION_CACHE_KEYS:
+        if key not in known_cache_keys:
             from warnings import warn
             warn(f"GeometryCollection cache key '{key}' is not known and will "
-                    "be dropped in the new collection.")
+                 "be dropped in the new collection.")
             continue
 
         new_cache = new_places._get_cache(key)

@@ -442,7 +442,7 @@ def _make_operator(ambient_dim: int, op_name: str, k: float, *, side: int = +1):
 
     import pytential.symbolic.pde.scalar as ops
     if op_name == "dirichlet":
-        op = ops.DirichletOperator(
+        op: ops.L2WeightedPDEOperator = ops.DirichletOperator(
                 kernel, side, use_l2_weighting=True,
                 kernel_arguments=kernel_arguments)
     elif op_name == "neumann":

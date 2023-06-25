@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Any, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
 import numpy.linalg as la
@@ -202,7 +202,7 @@ def make_index_list(
         assert indices.dtype.char == "O"
 
         starts = np.cumsum([0] + [r.size for r in indices])
-        indices = np.hstack(indices)
+        indices = np.hstack(list(indices))
     else:
         if starts[-1] != indices.size:
             raise ValueError("size of 'indices' does not match 'starts' endpoint; "
@@ -312,7 +312,8 @@ def make_flat_cluster_diag(
         diagonal element :math:`(i, i)` is the reshaped slice of *mat* that
         corresponds to the cluster :math:`i`.
     """
-    cluster_mat = np.full((mindex.nclusters, mindex.nclusters), 0, dtype=object)
+    cluster_mat: np.ndarray = np.full((mindex.nclusters, mindex.nclusters), 0,
+                                      dtype=object)
     for i in range(mindex.nclusters):
         shape = mindex.cluster_shape(i, i)
         cluster_mat[i, i] = mindex.flat_cluster_take(mat, i).reshape(*shape)
@@ -354,7 +355,7 @@ def interp_decomp(
 def cluster_skeletonization_error(
         mat: np.ndarray, skeleton: "SkeletonizationResult", *,
         ord: Optional[float] = None,
-        relative: bool = False) -> np.ndarray:
+        relative: bool = False) -> Tuple[np.ndarray, np.ndarray]:
     r"""Evaluate the cluster-wise skeletonization errors for the given *skeleton*.
 
     Errors are computed for all interactions between cluster :math:`i` and
@@ -388,7 +389,7 @@ def cluster_skeletonization_error(
     tgt_src_index = skeleton.tgt_src_index
     nclusters = skeleton.nclusters
 
-    def mnorm(x: np.ndarray, y: np.ndarray) -> float:
+    def mnorm(x: np.ndarray, y: np.ndarray) -> "np.floating[Any]":
         result = la.norm(x - y, ord=ord)
         if relative:
             result = result / la.norm(x, ord=ord)
@@ -428,7 +429,7 @@ def cluster_skeletonization_error(
 def skeletonization_error(
         mat: np.ndarray, skeleton: "SkeletonizationResult", *,
         ord: Optional[float] = None,
-        relative: bool = False) -> np.ndarray:
+        relative: bool = False) -> "np.floating[Any]":
     r"""Computes the skeletonization error for the entire matrix *mat*.
 
     The error computed here is given by

@@ -1,3 +1,3 @@
-#! /bin/bash
+#!/bin/bash
 
-mypy --show-error-codes pytential
+python -m mypy --show-error-codes pytential test

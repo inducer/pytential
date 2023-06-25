@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Optional
+from typing import Any, Dict, Hashable, List, Optional, Sequence, Tuple, Union
 
 from pymbolic.mapper.evaluator import (
         EvaluationMapper as PymbolicEvaluationMapper)
@@ -37,7 +37,10 @@ from pytential.qbx.cost import AbstractQBXCostModel
 from pytential.symbolic.compiler import Code, Statement, Assign, ComputePotential
 
 from pytential import sym
-from pytential.symbolic.dof_desc import _UNNAMED_SOURCE, _UNNAMED_TARGET
+from pytential.collection import AutoWhereLike, GeometryCollection
+from pytential.symbolic.dof_desc import (
+        DOFDescriptor, DOFDescriptorLike,
+        _UNNAMED_SOURCE, _UNNAMED_TARGET)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -531,7 +534,11 @@ class MatVecOp:
 
 # {{{ expression prep
 
-def _prepare_domains(nresults, places, domains, default_domain):
+def _prepare_domains(
+            nresults: int,
+            places: GeometryCollection,
+            domains: Optional[Union[DOFDescriptorLike, Sequence[DOFDescriptorLike]]],
+            default_domain: Optional[DOFDescriptorLike]) -> List[DOFDescriptor]:
     """
     :arg nresults: number of results.
     :arg places: a :class:`~pytential.collection.GeometryCollection`.
@@ -543,21 +550,19 @@ def _prepare_domains(nresults, places, domains, default_domain):
         (i.e., not a *list* or *tuple*), each element in the list is
         *domains*. Otherwise, *domains* is returned as is.
     """
-
     if domains is None:
-        dom_name = default_domain
-        return nresults * [dom_name]
+        return nresults * [sym.as_dofdesc(default_domain)]
     elif not isinstance(domains, (list, tuple)):
-        dom_name = domains
-        return nresults * [dom_name]
-
-    domains = [sym.as_dofdesc(d) for d in domains]
-    assert len(domains) == nresults
-
-    return domains
+        return nresults * [sym.as_dofdesc(domains)]
+    else:
+        assert len(domains) == nresults
+        return [sym.as_dofdesc(d) for d in domains]
 
 
-def _prepare_auto_where(auto_where, places=None):
+def _prepare_auto_where(
+            auto_where: AutoWhereLike,
+            places: Optional[GeometryCollection] = None,
+            ) -> Tuple[DOFDescriptor, DOFDescriptor]:
     """
     :arg places: a :class:`pytential.collection.GeometryCollection`,
         whose :attr:`pytential.collection.GeometryCollection.auto_where` is
@@ -569,8 +574,8 @@ def _prepare_auto_where(auto_where, places=None):
 
     if auto_where is None:
         if places is None:
-            auto_source = _UNNAMED_SOURCE
-            auto_target = _UNNAMED_TARGET
+            auto_source: Hashable = _UNNAMED_SOURCE
+            auto_target: Hashable = _UNNAMED_TARGET
         else:
             auto_source, auto_target = places.auto_where
     elif isinstance(auto_where, (list, tuple)):
@@ -653,7 +658,10 @@ def execute(code: Code, exec_mapper, pre_assign_check=None) -> np.ndarray:
 
 # {{{ bound expression
 
-def _find_array_context_from_args_in_context(context, supplied_array_context=None):
+def _find_array_context_from_args_in_context(
+        context: Dict[str, Any],
+        supplied_array_context: Optional[PyOpenCLArrayContext] = None,
+        ) -> PyOpenCLArrayContext:
     from arraycontext import PyOpenCLArrayContext
     array_contexts = []
     if supplied_array_context is not None:
@@ -823,6 +831,9 @@ class BoundExpression:
         if context is None:
             context = {}
 
+        array_context = _find_array_context_from_args_in_context(
+                context, array_context)
+
         # NOTE: avoid compiling any code if the expression is long lived
         # and already nicely cached in the collection from a previous run
         import pymbolic.primitives as prim
@@ -839,9 +850,6 @@ class BoundExpression:
                     value = array_context.thaw(value)
 
                 return value
-
-        array_context = _find_array_context_from_args_in_context(
-                context, array_context)
 
         exec_mapper = EvaluationMapper(
                 self, array_context, context, timing_data=timing_data)

@@ -205,10 +205,10 @@ class MuellerAugmentedMFIEOperator:
     def make_unknown(self, name):
         return sym.make_sym_vector(name, 6)
 
-    unk_structure = namedtuple("MuellerUnknowns", ["jt", "rho_e", "mt", "rho_m"])
+    MuellerUnknowns = namedtuple("MuellerUnknowns", ["jt", "rho_e", "mt", "rho_m"])
 
     def split_unknown(self, unk):
-        return self.unk_structure(
+        return self.MuellerUnknowns(
             jt=unk[:2],
             rho_e=unk[2],
             mt=unk[3:5],

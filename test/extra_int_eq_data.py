@@ -104,7 +104,7 @@ class IntegralEquationTestCase:
     group_factory_cls: ElementGroupFactory = InterpolatoryQuadratureGroupFactory
 
     # fmm
-    fmm_backend: str = "sumpy"
+    fmm_backend: Optional[str] = "sumpy"
     fmm_order: Optional[int] = None
     fmm_tol: Optional[float] = None
     disable_fft: bool = False
@@ -335,7 +335,7 @@ class Helmholtz3DTestCase(IntegralEquationTestCase):
     use_refinement: bool = False
 
     # fmm
-    fmm_backend: str = "fmmlib"
+    fmm_backend: Optional[str] = "fmmlib"
 
     # solver
     gmres_tol: float = 1.0e-7
@@ -353,7 +353,8 @@ class HelmholtzEllisoidTestCase(Helmholtz3DTestCase):
     fmm_order: int = 13
 
     # test case
-    resolutions: List[int] = field(default_factory=lambda: [2, 0.8])
+    resolutions: List[int] = field(
+        default_factory=lambda: [2.0, 0.8])     # type: ignore[list-item]
     inner_radius: float = 0.4
     outer_radius: float = 5.0
     check_gradient: bool = True
@@ -382,7 +383,7 @@ class SphereTestCase(IntegralEquationTestCase):
     use_refinement: bool = False
 
     # fmm
-    fmm_backend: str = "fmmlib"
+    fmm_backend: Optional[str] = "fmmlib"
     fmm_tol: float = 1.0e-4
 
     # solver
@@ -442,7 +443,8 @@ class GMSHSphereTestCase(SphereTestCase):
     name: str = "gmsphere"
 
     radius: float = 1.5
-    resolutions: List[float] = field(default_factory=lambda: [0.4])
+    resolutions: List[int] = field(
+        default_factory=lambda: [0.4])      # type: ignore[list-item]
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.io import ScriptSource
@@ -517,7 +519,8 @@ class MergedCubesTestCase(Helmholtz3DTestCase):
     use_refinement: bool = True
 
     # test case
-    resolutions: List[int] = field(default_factory=lambda: [1.4])
+    resolutions: List[int] = field(
+        default_factory=lambda: [1.4])  # type: ignore[list-item]
     inner_radius: float = 0.4
     outer_radius: float = 12.0
 
@@ -593,11 +596,12 @@ class EllipticPlaneTestCase(IntegralEquationTestCase):
     use_refinement: bool = True
 
     # fmm
-    fmm_backend: str = "fmmlib"
+    fmm_backend: Optional[str] = "fmmlib"
     fmm_tol: float = 1.0e-4
 
     # test case
-    resolutions: List[int] = field(default_factory=lambda: [0.1])
+    resolutions: List[int] = field(
+        default_factory=lambda: [0.1])  # type: ignore[list-item]
     inner_radius: float = 0.2
     outer_radius: float = 12   # was '-13' in some large-scale run (?)
     check_gradient: bool = False
@@ -641,12 +645,13 @@ class BetterPlaneTestCase(IntegralEquationTestCase):
     target_order: int = 6
 
     # fmm
-    fmm_backend: str = "fmmlib"
+    fmm_backend: Optional[str] = "fmmlib"
     fmm_tol: float = 1.0e-4
     use_refinement: bool = True
 
     # test case
-    resolutions: List[int] = field(default_factory=lambda: [0.2])
+    resolutions: List[int] = field(
+        default_factory=lambda: [0.2])  # type: ignore[list-item]
     inner_radius: float = 0.2
     outer_radius: float = 15
     check_gradient: bool = False

@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any, Hashable, Optional, Union
+from typing import Any, Hashable, Optional, Type, Union
 
 __doc__ = """
 .. autoclass:: DEFAULT_SOURCE
@@ -182,7 +182,8 @@ class DOFDescriptor:
 
     def copy(self,
             geometry: Optional[Hashable] = None,
-            discr_stage: Optional["DiscretizationStages"] = _NoArgSentinel,
+            discr_stage: Optional[
+                "DiscretizationStages"] = _NoArgSentinel,  # type: ignore[assignment]
             granularity: Optional["DOFGranularities"] = None) -> "DOFDescriptor":
         if isinstance(geometry, DOFDescriptor):
             discr_stage = geometry.discr_stage \
@@ -258,15 +259,12 @@ def as_dofdesc(desc: "DOFDescriptorLike") -> "DOFDescriptor":
     if isinstance(desc, DOFDescriptor):
         return desc
 
-    if (desc == QBX_SOURCE_STAGE1
-            or desc == QBX_SOURCE_STAGE2
-            or desc == QBX_SOURCE_QUAD_STAGE2):
-        return DOFDescriptor(discr_stage=desc)
+    if desc in (QBX_SOURCE_STAGE1, QBX_SOURCE_STAGE2, QBX_SOURCE_QUAD_STAGE2):
+        # NOTE: mypy is not able to be more specific about the type of `desc`
+        return DOFDescriptor(discr_stage=desc)  # type: ignore[arg-type]
 
-    if (desc == GRANULARITY_NODE
-            or desc == GRANULARITY_CENTER
-            or desc == GRANULARITY_ELEMENT):
-        return DOFDescriptor(granularity=desc)
+    if desc in (GRANULARITY_NODE, GRANULARITY_CENTER, GRANULARITY_ELEMENT):
+        return DOFDescriptor(granularity=desc)  # type: ignore[arg-type]
 
     return DOFDescriptor(geometry=desc)
 
@@ -276,15 +274,15 @@ def as_dofdesc(desc: "DOFDescriptorLike") -> "DOFDescriptor":
 # {{{ type annotations
 
 DiscretizationStages = Union[
-        QBX_SOURCE_STAGE1,
-        QBX_SOURCE_STAGE2,
-        QBX_SOURCE_QUAD_STAGE2,
+        Type[QBX_SOURCE_STAGE1],
+        Type[QBX_SOURCE_STAGE2],
+        Type[QBX_SOURCE_QUAD_STAGE2],
         ]
 
 DOFGranularities = Union[
-        GRANULARITY_NODE,
-        GRANULARITY_CENTER,
-        GRANULARITY_ELEMENT,
+        Type[GRANULARITY_NODE],
+        Type[GRANULARITY_CENTER],
+        Type[GRANULARITY_ELEMENT],
         ]
 
 DOFDescriptorLike = Union[

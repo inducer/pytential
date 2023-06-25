@@ -23,8 +23,8 @@ THE SOFTWARE.
 from dataclasses import dataclass
 from functools import reduce
 from typing import (
-        AbstractSet, Any, Collection, Tuple, Dict, FrozenSet, Hashable, List,
-        Optional, Sequence, Set)
+        AbstractSet, Any, Collection, Tuple, Dict, Hashable, List,
+        Optional, Sequence, Set, Iterator)
 
 import numpy as np
 
@@ -335,10 +335,10 @@ class Code:
         self.result = result
 
     @property
-    def statements(self) -> Sequence[Statement]:
+    def statements(self) -> List[Statement]:
         return [stmt for stmt, _discardable_vars in self._schedule]
 
-    def __str__(self):
+    def __str__(self) -> str:
         lines = []
         for insn in self.statements:
             lines.extend(str(insn).split("\n"))
@@ -361,7 +361,7 @@ def _get_next_step(
         result: np.ndarray,
         available_names: AbstractSet[str],
         done_stmts: AbstractSet[Statement]
-        ) -> Tuple[Statement, AbstractSet[str]]:
+        ) -> Tuple[Statement, Set[str]]:
 
     from pytools import argmax2
     available_stmts = [
@@ -410,18 +410,19 @@ def _compute_schedule(
         dep_mapper: DependencyMapper,
         statements: Sequence[Statement],
         result: np.ndarray,
-        ) -> Tuple[AbstractSet[str], Sequence[Tuple[Statement, FrozenSet[str]]]]:
+        ) -> Tuple[Set[str], List[Tuple[Statement, Set[str]]]]:
     # FIXME: I'm O(n**2). I want to be replaced with a normal topological sort.
 
     schedule = []
 
-    done_stmts = set()
+    done_stmts: Set[Statement] = set()
 
-    inputs = {dep.name
-              for stmt in set(statements)
-              for dep in stmt.get_dependencies(dep_mapper)
-              if not isinstance(dep, NamedIntermediateResult)
-              }
+    inputs: Set[str] = {
+            dep.name
+            for stmt in set(statements)
+            for dep in stmt.get_dependencies(dep_mapper)
+            if not isinstance(dep, NamedIntermediateResult)
+            }
 
     available_vars = inputs.copy()
 
@@ -510,14 +511,14 @@ class OperatorCompiler(CachedIdentityMapper):
     # {{{ variables and names
 
     def get_var_name(self, prefix: Optional[str] = None) -> str:
-        def generate_suffixes() -> str:
+        def generate_suffixes() -> Iterator[str]:
             yield ""
             i = 2
             while True:
                 yield f"_{i}"
                 i += 1
 
-        def generate_plain_names() -> str:
+        def generate_plain_names() -> Iterator[str]:
             i = 0
             while True:
                 yield f"{self.prefix}{i}"

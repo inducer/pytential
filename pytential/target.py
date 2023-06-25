@@ -34,12 +34,13 @@ used as evaluation targets.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from arraycontext import Array
 from pytools import T
 
-from pytential.collection import GeometryCollection
+if TYPE_CHECKING:
+    from pytential.collection import GeometryCollection
 
 
 class TargetBase(ABC):
@@ -104,7 +105,7 @@ class PointsTarget(TargetBase):
 
     def preprocess_optemplate(self,
                 name: str,
-                discretizations: GeometryCollection,
+                discretizations: "GeometryCollection",
                 # FIXME: replace this with a pymbolic TypeVar bound to an actual
                 # expression when that gets in
                 expr: T) -> T:

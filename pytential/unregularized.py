@@ -22,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Any, Dict, Tuple
+
 import numpy as np
 
 import loopy as lp
@@ -176,7 +178,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             results.append((o.name, result))
 
-        timing_data = {}
+        timing_data: Dict[str, Any] = {}
         return results, timing_data
 
     # {{{ fmm-based execution
@@ -216,8 +218,10 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             insn, bound_expr, evaluate):
         # {{{ gather unique target discretizations used
 
+        from pytential.collection import GeometryLike
+
         target_name_to_index = {}
-        targets = []
+        targets: Tuple[GeometryLike, ...] = ()
 
         for o in insn.outputs:
             assert o.qbx_forced_limit not in (-1, 1)
@@ -226,9 +230,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 continue
 
             target_name_to_index[o.target_name] = len(targets)
-            targets.append(bound_expr.places.get_geometry(o.target_name.geometry))
-
-        targets = tuple(targets)
+            target = bound_expr.places.get_geometry(o.target_name.geometry)
+            targets = targets + (target,)
 
         # }}}
 
@@ -292,7 +295,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        timing_data = {}
+        timing_data: Dict[str, Any] = {}
         return results, timing_data
 
     # }}}
