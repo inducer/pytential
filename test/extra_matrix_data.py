@@ -6,7 +6,7 @@ import numpy as np
 from pytools.obj_array import make_obj_array
 
 from pytential import sym
-from pytential.symbolic.dof_desc import DOFGranularities
+from pytential.symbolic.dof_desc import DiscretizationStages
 
 import extra_int_eq_data as extra
 
@@ -36,12 +36,12 @@ class MatrixTestCaseMixin:
 
     # skeletonization
     id_eps: float = 1.0e-8
-    skel_discr_stage: DOFGranularities = sym.QBX_SOURCE_STAGE2
+    skel_discr_stage: DiscretizationStages = sym.QBX_SOURCE_STAGE2
 
     weighted_proxy: Optional[bool] = None
-    proxy_source_cluster_builder: Callable[..., Any] = None
-    proxy_target_cluster_builder: Callable[..., Any] = None
-    neighbor_cluster_builder: Callable[..., Any] = None
+    proxy_source_cluster_builder: Optional[Callable[..., Any]] = None
+    proxy_target_cluster_builder: Optional[Callable[..., Any]] = None
+    neighbor_cluster_builder: Optional[Callable[..., Any]] = None
 
     def get_cluster_index(self, actx, places, dofdesc=None):
         if dofdesc is None:

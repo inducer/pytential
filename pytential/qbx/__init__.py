@@ -100,7 +100,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 Union[bool, Callable[..., int]]
                 ] = None,
             expansion_factory: Optional[DefaultExpansionFactoryBase] = None,
-            target_association_tolerance: Optional[float] = _not_provided,
+            target_association_tolerance: Optional[
+                float] = _not_provided,  # type: ignore[assignment]
 
             # begin experimental arguments
             # FIXME default debug=False once everything has matured

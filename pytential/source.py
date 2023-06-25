@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from abc import ABC, abstractmethod
-from typing import Hashable, Optional, Tuple
+from typing import TYPE_CHECKING, Hashable, Optional, Tuple
 
 import numpy as np
 from arraycontext import PyOpenCLArrayContext, flatten, unflatten
@@ -31,7 +31,10 @@ from sumpy.fmm import UnableToCollectTimingData
 from sumpy.kernel import Kernel
 from sumpy.p2p import P2PBase
 
-from pytential import GeometryCollection, sym
+from pytential import sym
+
+if TYPE_CHECKING:
+    from pytential.collection import GeometryCollection
 
 __doc__ = """
 .. autoclass:: PotentialSource
@@ -93,7 +96,7 @@ class PotentialSource(ABC):
 
     def preprocess_optemplate(self,
                 name: str,
-                discretizations: GeometryCollection,
+                discretizations: "GeometryCollection",
                 expr: T) -> T:
         """
         :returns: a processed *expr*, where each
@@ -296,6 +299,10 @@ class LayerPotentialSourceBase(_SumpyP2PMixin, PotentialSource):
     @property
     def dim(self):
         return self.density_discr.dim
+
+    @property
+    def ndofs(self):
+        return self.density_discr.ndofs
 
     @property
     def real_dtype(self):

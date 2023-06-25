@@ -27,6 +27,7 @@ import numpy as np
 import numpy.linalg as la
 
 from arraycontext import PyOpenCLArrayContext, flatten
+from meshmode.discretization import Discretization
 from meshmode.dof_array import DOFArray
 
 from pytools import memoize_in
@@ -88,8 +89,13 @@ def partition_by_nodes(
     if max_particles_in_box is None:
         max_particles_in_box = _DEFAULT_MAX_PARTICLES_IN_BOX
 
+    from pytential.source import LayerPotentialSourceBase
+
     lpot_source = places.get_geometry(dofdesc.geometry)
+    assert isinstance(lpot_source, LayerPotentialSourceBase)
+
     discr = places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
+    assert isinstance(discr, Discretization)
 
     if tree_kind is not None:
         from pytential.qbx.utils import tree_code_container
@@ -109,8 +115,8 @@ def partition_by_nodes(
                 tree.box_flags & box_flags_enum.HAS_SOURCE_OR_TARGET_CHILD_BOXES == 0
                 ).nonzero()
 
-        indices = np.empty(len(leaf_boxes), dtype=object)
-        starts = None
+        indices: np.ndarray = np.empty(len(leaf_boxes), dtype=object)
+        starts: Optional[np.ndarray] = None
 
         for i, ibox in enumerate(leaf_boxes):
             box_start = tree.box_source_starts[ibox]
@@ -247,10 +253,14 @@ class ProxyClusterGeometryData:
 
     def as_sources(self) -> ProxyPointSource:
         lpot_source = self.places.get_geometry(self.dofdesc.geometry)
+        assert isinstance(lpot_source, QBXLayerPotentialSource)
+
         return ProxyPointSource(lpot_source, self.points)
 
     def as_targets(self) -> ProxyPointTarget:
         lpot_source = self.places.get_geometry(self.dofdesc.geometry)
+        assert isinstance(lpot_source, QBXLayerPotentialSource)
+
         return ProxyPointTarget(lpot_source, self.points)
 
 # }}}
@@ -424,6 +434,7 @@ class ProxyGeneratorBase:
 
         discr = self.places.get_discretization(
                 source_dd.geometry, source_dd.discr_stage)
+        assert isinstance(discr, Discretization)
 
         include_cluster_radii = kwargs.pop("include_cluster_radii", False)
 
@@ -646,13 +657,14 @@ def gather_cluster_neighbor_points(
     if max_particles_in_box is None:
         max_particles_in_box = _DEFAULT_MAX_PARTICLES_IN_BOX
 
-    dofdesc = pxy.dofdesc
-    lpot_source = pxy.places.get_geometry(dofdesc.geometry)
-    discr = pxy.places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
+    from pytential.source import LayerPotentialSourceBase
 
     dofdesc = pxy.dofdesc
     lpot_source = pxy.places.get_geometry(dofdesc.geometry)
+    assert isinstance(lpot_source, LayerPotentialSourceBase)
+
     discr = pxy.places.get_discretization(dofdesc.geometry, dofdesc.discr_stage)
+    assert isinstance(discr, Discretization)
 
     # {{{ get only sources in the current cluster set
 
@@ -705,7 +717,7 @@ def gather_cluster_neighbor_points(
     pxyradii = actx.to_numpy(pxy.radii)
     srcindex = pxy.srcindex
 
-    nbrindices = np.empty(srcindex.nclusters, dtype=object)
+    nbrindices: np.ndarray = np.empty(srcindex.nclusters, dtype=object)
     for icluster in range(srcindex.nclusters):
         # get list of boxes intersecting the current ball
         istart = query.leaves_near_ball_starts[icluster]

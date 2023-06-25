@@ -20,20 +20,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Callable, List, Optional, Tuple, TypeVar
+
 import numpy as np
 
+T = TypeVar("T", float, complex)
 
-def muller_deflate(f, n, maxiter=100, eps=1e-14, z_start=None):
+
+def muller_deflate(
+        f: Callable[[T], T], n: int, *,
+        maxiter: int = 100,
+        eps: float = 1.0e-14,
+        z_start: Optional[np.ndarray] = None,
+        ) -> Tuple[List[T], List[int]]:
     """
-    :arg n: number of zeros sought
-    :returns: (roots, niter) - roots of the given function; number of
-        iterations used for each root.
+    :arg n: number of zeros sought.
+    :returns: a tuple of ``(roots, niter)``, where *roots* is a list of roots
+        of the given function and *niter* is the number of iterations required to
+        find each root.
     """
     # initialize variables
-    roots = []
-    niter = []
+    roots: List[T] = []
+    niter: List[int] = []
 
-    def f_deflated(z):
+    def f_deflated(z: T) -> T:
         y = f(z)
         for r in roots:
             y = y/(z-r)
@@ -45,12 +55,13 @@ def muller_deflate(f, n, maxiter=100, eps=1e-14, z_start=None):
     # Truncates the zero arrays created above if necessary.
     for i in range(n):
         miter = 0
-        roots0, niter0 = muller(f_deflated, maxiter, eps)
+        roots0, niter0 = muller(f_deflated, maxiter=maxiter, tol=eps)
         roots.append(roots0)
         niter.append(niter0)
 
         while (np.isnan(roots[i]) or niter[i] == maxiter) and miter < 50:
-            roots0, niter0 = muller(f_deflated, maxiter, eps, z_start=z_start)
+            roots0, niter0 = muller(f_deflated,
+                                    maxiter=maxiter, tol=eps, z_start=z_start)
             roots[i] = roots0
             niter[i] = niter0
             miter = miter+1
@@ -58,7 +69,10 @@ def muller_deflate(f, n, maxiter=100, eps=1e-14, z_start=None):
     return roots, niter
 
 
-def muller(f, maxiter=100, tol=1e-11, z_start=None):
+def muller(f: Callable[[T], T], *,
+           maxiter: int = 100,
+           tol: float = 1.0e-11,
+           z_start: Optional[np.ndarray] = None) -> Tuple[T, int]:
     """Find a root of the complex-valued function *f* defined in the complex
     plane using Muller's method.
 

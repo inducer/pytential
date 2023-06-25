@@ -23,6 +23,7 @@ THE SOFTWARE.
 from sys import intern
 from warnings import warn
 from functools import partial
+from typing import ClassVar, Tuple
 
 import numpy as np
 
@@ -425,7 +426,7 @@ class DiscretizationProperty(Expression):
     .. attribute:: dofdesc
     """
 
-    init_arg_names = ("dofdesc",)
+    init_arg_names: ClassVar[Tuple[str, ...]] = ("dofdesc",)
 
     def __init__(self, dofdesc=None):
         """
