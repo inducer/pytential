@@ -193,11 +193,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def map_ones(self, expr):
         discr = self.places.get_discretization(
                 expr.dofdesc.geometry, expr.dofdesc.discr_stage)
-        result = discr.empty(actx=self.array_context, dtype=discr.real_dtype)
-
-        for grp_ary in result:
-            grp_ary.fill(1)
-        return result
+        return self.array_context.np.ones_like(
+            self.array_context.thaw(discr.nodes()[0]))
 
     def map_node_coordinate_component(self, expr):
         discr = self.places.get_discretization(
@@ -468,7 +465,7 @@ class MatVecOp:
             ary = [ary]
 
         from arraycontext import flatten
-        result = self.array_context.empty(self.total_dofs, self.dtype)
+        result = self.array_context.zeros(self.total_dofs, self.dtype)
         for res_i, (start, end) in zip(ary, self.starts_and_ends):
             result[start:end] = flatten(res_i, self.array_context)
 
@@ -940,8 +937,7 @@ def _bmat(blocks, dtypes):
                              if not is_zero(blocks[ibrow, ibcol]))
              for ibcol in range(ncolumns)])
 
-    result = np.zeros((brs[-1], bcs[-1]),
-                      dtype=np.find_common_type(dtypes, []))
+    result = np.zeros((brs[-1], bcs[-1]), dtype=np.result_type(*dtypes))
     for ibcol in range(ncolumns):
         for ibrow in range(nrows):
             result[brs[ibrow]:brs[ibrow + 1], bcs[ibcol]:bcs[ibcol + 1]] = \

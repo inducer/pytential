@@ -23,16 +23,16 @@ autodoc_type_aliases = {
         }
 
 intersphinx_mapping = {
-    "https://docs.python.org/3/": None,
-    "https://numpy.org/doc/stable/": None,
-    "https://scipy.github.io/devdocs/": None,
-    "https://documen.tician.de/arraycontext/": None,
-    "https://documen.tician.de/meshmode/": None,
-    "https://documen.tician.de/modepy/": None,
-    "https://documen.tician.de/pyopencl/": None,
-    "https://documen.tician.de/pytools/": None,
-    "https://documen.tician.de/pymbolic/": None,
-    "https://documen.tician.de/loopy/": None,
-    "https://documen.tician.de/boxtree/": None,
-    "https://documen.tician.de/sumpy/": None,
-    }
+    "arraycontext": ("https://documen.tician.de/arraycontext", None),
+    "boxtree": ("https://documen.tician.de/boxtree", None),
+    "loopy": ("https://documen.tician.de/loopy", None),
+    "meshmode": ("https://documen.tician.de/meshmode", None),
+    "modepy": ("https://documen.tician.de/modepy", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "pymbolic": ("https://documen.tician.de/pymbolic", None),
+    "pyopencl": ("https://documen.tician.de/pyopencl", None),
+    "python": ("https://docs.python.org/3", None),
+    "pytools": ("https://documen.tician.de/pytools", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy", None),
+    "sumpy": ("https://documen.tician.de/sumpy", None),
+}

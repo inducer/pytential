@@ -123,7 +123,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         result = (
                 expr.source,
                 *sort_arrays_together(expr.source_kernels, expr.densities, key=str),
-                TargetTransformationRemover()(expr.target_kernel),
+                expr.target_kernel.get_base_kernel(),
                 )
 
         return result
@@ -444,7 +444,7 @@ class _FMMGeometryData:
         actx = self.array_context
         target_discr_starts.append(ntargets)
 
-        targets = actx.empty(
+        targets = actx.zeros(
                 (lpot_src.ambient_dim, ntargets),
                 self.coord_dtype)
 

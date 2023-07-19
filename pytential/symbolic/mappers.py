@@ -27,6 +27,7 @@ from pymbolic.mapper.stringifier import (
         PREC_NONE, PREC_PRODUCT)
 from pymbolic.mapper import (
         Mapper,
+        CachedMapper,
         CSECachingMapperMixin
         )
 from pymbolic.mapper.dependency import (
@@ -138,6 +139,18 @@ class IdentityMapper(IdentityMapperBase):
             return expr
 
         return type(expr)(expr.from_dd, expr.to_dd, operand)
+
+
+class CachedIdentityMapper(CachedMapper, IdentityMapper):
+    def __call__(self, expr):
+        try:
+            return CachedMapper.__call__(self, expr)
+        except TypeError:
+            # Fallback to no cached behaviour for unhashable types
+            # like list, numpy.array
+            return IdentityMapper.__call__(self, expr)
+
+    rec = __call__
 
 # }}}
 

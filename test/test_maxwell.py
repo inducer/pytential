@@ -406,8 +406,7 @@ def test_pec_mfie_extinction(actx_factory, case,
                     calc_patch, pde_test_repr.e, pde_test_repr.h, case.k)]
         print("Maxwell residuals:", maxwell_residuals)
 
-        eoc_rec_repr_maxwell.add_data_point(
-                actx.to_numpy(h_max), max(maxwell_residuals))
+        eoc_rec_repr_maxwell.add_data_point(h_max, max(maxwell_residuals))
 
         # }}}
 

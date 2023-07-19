@@ -132,7 +132,9 @@ def _approximate_geometry_waa_magnitude(
             <> ioffset = starts[icluster]
             <> npoints = starts[icluster + 1] - ioffset
             result[icluster] = reduce(sum, i, waa[indices[i + ioffset]]) / npoints
-            """)
+            """,
+            lang_version=lp.MOST_RECENT_LANGUAGE_VERSION,
+            )
 
         return knl
 
@@ -616,6 +618,7 @@ def _skeletonize_block_by_proxy_with_mats(
         k = id_rank
         src_mat = np.vstack(src_result[i])
         tgt_mat = np.hstack(tgt_result[i])
+        max_allowable_rank = min(*src_mat.shape, *tgt_mat.shape)
 
         if __debug__:
             isfinite = np.isfinite(tgt_mat)
@@ -625,21 +628,26 @@ def _skeletonize_block_by_proxy_with_mats(
 
         # skeletonize target points
         k, idx, interp = interp_decomp(tgt_mat.T, rank=k, eps=id_eps)
-        assert k > 0
+        assert 0 < k <= len(idx)
+
+        if k > max_allowable_rank:
+            k = max_allowable_rank
+            interp = interp[:k, :]
 
         L[i] = interp.T
         tgt_skl_indices[i] = tgt_src_index.targets.cluster_indices(i)[idx[:k]]
+        assert L[i].shape == (tgt_mat.shape[0], k)
 
         # skeletonize source points
         k, idx, interp = interp_decomp(src_mat, rank=k, eps=None)
-        assert k > 0
+        assert 0 < k <= len(idx)
 
         R[i] = interp
         src_skl_indices[i] = tgt_src_index.sources.cluster_indices(i)[idx[:k]]
+        assert R[i].shape == (k, src_mat.shape[1])
 
         skel_starts[i + 1] = skel_starts[i] + k
-        assert R[i].shape == (k, src_mat.shape[1])
-        assert L[i].shape == (tgt_mat.shape[0], k)
+        assert tgt_skl_indices[i].shape == src_skl_indices[i].shape
 
     from pytential.linalg import make_index_list
     src_skl_index = make_index_list(np.hstack(src_skl_indices), skel_starts)

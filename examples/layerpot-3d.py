@@ -94,10 +94,6 @@ def main(mesh_name="ellipsoid"):
     else:
         sigma = actx.np.cos(mode_nr*angle)
 
-    if isinstance(kernel, HelmholtzKernel):
-        for i, elem in np.ndenumerate(sigma):
-            sigma[i] = elem.astype(np.complex128)
-
     fld_in_vol = actx.to_numpy(
             bind(places, op, auto_where=("qbx", "targets"))(
                 actx, sigma=sigma, k=k))

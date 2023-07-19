@@ -52,9 +52,13 @@ def max_cluster_error(mat, clusters, mindex, p=None):
     error = -np.inf
     for i in range(mindex.nclusters):
         mat_i = mindex.cluster_take(mat, i, i)
+        norm_mat_i = la.norm(mat_i, ord=p)
+        if norm_mat_i < 1.0e-12:
+            norm_mat_i = 1.0
+
         error = max(
                 error,
-                la.norm(mat_i - clusters[i, i], ord=p) / la.norm(mat_i, ord=p)
+                la.norm(mat_i - clusters[i, i], ord=p) / norm_mat_i
                 )
 
     return error

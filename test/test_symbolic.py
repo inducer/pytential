@@ -533,20 +533,23 @@ def test_derivative_with_spatial_constant():
     ambient_dim = 3
 
     from sumpy.kernel import LaplaceKernel
+    knl = LaplaceKernel(ambient_dim)
+    density = sym.var("sigma")
+
     sym.d_dx(ambient_dim,
             sym.SpatialConstant("kappa")
-            * sym.D(LaplaceKernel(ambient_dim), sym.Variable("sigma")))
+            * sym.D(knl, density, qbx_forced_limit="avg"))
 
     from sumpy.kernel import LaplaceKernel
     sym.d_dx(ambient_dim,
             (3+sym.SpatialConstant("kappa"))
-            * sym.D(LaplaceKernel(ambient_dim), sym.Variable("sigma")))
+            * sym.D(knl, density, qbx_forced_limit="avg"))
 
     from pytential.symbolic.mappers import _DerivativeTakerUnsupoortedProductError
     with pytest.raises(_DerivativeTakerUnsupoortedProductError):
         sym.d_dx(ambient_dim,
                 (3+sym.Variable("kappa"))
-                * sym.D(LaplaceKernel(ambient_dim), sym.Variable("sigma")))
+                * sym.D(knl, density, qbx_forced_limit="avg"))
 
 # }}}
 

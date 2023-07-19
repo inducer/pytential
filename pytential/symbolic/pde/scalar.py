@@ -411,7 +411,8 @@ class NeumannOperator(L2WeightedPDEOperator):
             else:
                 raise ValueError(f"no improved operator for '{self.kernel}' known")
         else:
-            DpS0u = sym.Dp(self.kernel, laplace_s_inv_sqrt_w_u, **kwargs)
+            DpS0u = sym.Dp(self.kernel, laplace_s_inv_sqrt_w_u,
+                           qbx_forced_limit=+1, **kwargs)
 
         if self.is_unique_only_up_to_constant():
             # The interior Neumann operator in this representation

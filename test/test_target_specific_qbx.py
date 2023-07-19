@@ -130,6 +130,7 @@ def test_spherical_hankel_functions():
 @pytest.mark.parametrize("helmholtz_k", [0, 1.2, 12 + 1.2j])
 @pytest.mark.parametrize("qbx_order", [0, 1, 5])
 def test_target_specific_qbx(actx_factory, op, helmholtz_k, qbx_order):
+    pytest.importorskip("pyfmmlib")
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()

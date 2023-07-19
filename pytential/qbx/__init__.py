@@ -907,8 +907,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             qbx_tgt_numberer = self.get_qbx_target_numberer(
                     tgt_to_qbx_center.dtype)
-            qbx_tgt_count = actx.empty((), np.int32)
-            qbx_tgt_numbers = actx.empty_like(tgt_to_qbx_center)
+            qbx_tgt_count = actx.zeros((), np.int32)
+            qbx_tgt_numbers = actx.np.zeros_like(tgt_to_qbx_center)
 
             qbx_tgt_numberer(
                     tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,
@@ -964,9 +964,17 @@ def get_flat_strengths_from_densities(
             places,
             sym.weights_and_area_elements(places.ambient_dim, dofdesc=dofdesc),
             )(actx)
-    strength_vecs = [waa * evaluate(density) for density in densities]
+    density_dofarrays = [evaluate(density) for density in densities]
+    for i, ary in enumerate(density_dofarrays):
+        if not isinstance(ary, DOFArray):
+            raise ValueError(
+                f"DOFArray expected for density '{densities[i]}', "
+                f"{type(ary)} received instead")
 
-    return [flatten(strength, actx) for strength in strength_vecs]
+        # FIXME Maybe check shape?
+
+    return [flatten(waa * density_dofarray, actx)
+            for density_dofarray in density_dofarrays]
 
 # }}}
 
