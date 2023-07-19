@@ -63,7 +63,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 export SUMPY_FORCE_SYMBOLIC_BACKEND=sympy
-                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
+                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest' -vv"}
 
                 curl -L -O https://tiker.net/ci-support-v0
                 . ci-support-v0
@@ -84,7 +84,7 @@ jobs:
                 export LC_ALL=en_US.UTF-8
                 export LANG=en_US.UTF-8
                 export CONDA_ENVIRONMENT=.test-conda-env.yml
-                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
+                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest' -vv"}
 
                 curl -L -O https://tiker.net/ci-support-v0
                 . ci-support-v0
@@ -99,7 +99,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
-                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
+                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest' -vv"}
 
                 curl -L -O https://tiker.net/ci-support-v0
                 . ci-support-v0

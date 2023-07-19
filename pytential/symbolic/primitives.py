@@ -23,6 +23,7 @@ THE SOFTWARE.
 from sys import intern
 from warnings import warn
 from functools import partial
+from collections import OrderedDict
 
 import numpy as np
 
@@ -1315,14 +1316,15 @@ def laplace(ambient_dim, operand):
 
 # {{{ potentials
 
-def hashable_kernel_args(kernel_arguments):
-    hashable_args = []
-    for key, val in sorted(kernel_arguments.items()):
-        if isinstance(val, np.ndarray):
-            val = tuple(val)
-        hashable_args.append((key, val))
+def hashable_kernel_arg_value(val):
+    if isinstance(val, np.ndarray):
+        val = tuple(val)
+    return val
 
-    return tuple(hashable_args)
+
+def hashable_kernel_args(kernel_arguments):
+    return tuple([(key, hashable_kernel_arg_value(val)) for key, val in
+        sorted(kernel_arguments.items())])
 
 
 class IntG(Expression):
@@ -1406,6 +1408,18 @@ class IntG(Expression):
         if qbx_forced_limit not in [-1, +1, -2, +2, "avg", None]:
             raise ValueError("invalid value (%s) of qbx_forced_limit"
                     % qbx_forced_limit)
+
+        # Fold duplicates in source_kernels
+        knl_density_dict = OrderedDict()
+        for density, source_kernel in zip(densities, source_kernels):
+            if source_kernel in knl_density_dict:
+                knl_density_dict[source_kernel] += density
+            else:
+                knl_density_dict[source_kernel] = density
+        knl_density_dict = OrderedDict(
+                [(k, v) for k, v in knl_density_dict.items() if v])
+        densities = tuple(knl_density_dict.values())
+        source_kernels = tuple(knl_density_dict.keys())
 
         source_kernels = tuple(source_kernels)
         densities = tuple(densities)
