@@ -31,3 +31,7 @@ pytential/_git_rev.py
 
 *.so
 pytential/qbx/target_specific/impl.c
+
+mprofile_*.dat
+memray-*.bin
+memray-*.html
