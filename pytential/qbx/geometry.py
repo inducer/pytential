@@ -137,7 +137,8 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
         knl = lp.tag_array_axes(knl, "points", "sep, C")
 
         knl = lp.tag_array_axes(knl, "targets", "stride:auto, stride:1")
-        return lp.tag_inames(knl, {"dim": "ilp"})
+        knl = lp.tag_inames(knl, {"dim": "ilp"})
+        return knl.executor(self._setup_actx.context)
 
     @property
     @memoize_method
@@ -192,7 +193,7 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
         knl = lp.split_iname(knl, "ibox", 128,
                 inner_tag="l.0", outer_tag="g.0")
 
-        return knl
+        return knl.executor(self._setup_actx.context)
 
     @property
     @memoize_method
@@ -253,7 +254,7 @@ class QBXFMMGeometryDataCodeContainer(TreeCodeContainerMixin):
             lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
         knl = lp.split_iname(knl, "i", 128, inner_tag="l.0", outer_tag="g.0")
-        return knl
+        return knl.executor(self._setup_actx.context)
 
     @property
     @memoize_method

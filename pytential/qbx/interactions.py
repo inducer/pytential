@@ -153,7 +153,7 @@ class P2QBXLFromCSR(P2EBase):
         qbx_centers = kwargs.pop("qbx_centers")
 
         from sumpy.tools import is_obj_array_like
-        return self.get_cached_optimized_kernel(
+        return self.get_cached_kernel_executor(
                 is_sources_obj_array=is_obj_array_like(sources),
                 is_centers_obj_array=is_obj_array_like(qbx_centers),
                 )(queue, sources=sources, qbx_centers=qbx_centers, **kwargs)
@@ -272,7 +272,7 @@ class M2QBXL(E2EBase):
 
         from sumpy.tools import is_obj_array_like
         qbx_centers = kwargs.pop("qbx_centers")
-        return self.get_cached_optimized_kernel(
+        return self.get_cached_kernel_executor(
                 is_centers_obj_array=is_obj_array_like(qbx_centers),
                 )(queue, centers=centers,
                         qbx_centers=qbx_centers,
@@ -382,7 +382,7 @@ class L2QBXL(E2EBase):
 
         from sumpy.tools import is_obj_array_like
         qbx_centers = kwargs.pop("qbx_centers")
-        return self.get_cached_optimized_kernel(
+        return self.get_cached_kernel_executor(
                 is_centers_obj_array=is_obj_array_like(qbx_centers),
                 )(queue, centers=centers,
                         qbx_centers=qbx_centers,
@@ -499,7 +499,7 @@ class QBXL2P(E2PBase):
         qbx_centers = kwargs.pop("qbx_centers")
 
         from sumpy.tools import is_obj_array_like
-        return self.get_cached_optimized_kernel(
+        return self.get_cached_kernel_executor(
                 is_targets_obj_array=is_obj_array_like(targets),
                 is_centers_obj_array=is_obj_array_like(qbx_centers),
                 )(queue, targets=targets, qbx_centers=qbx_centers, **kwargs)
