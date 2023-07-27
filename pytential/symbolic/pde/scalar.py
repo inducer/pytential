@@ -214,7 +214,7 @@ class DirichletOperator(L2WeightedPDEOperator):
         inv_sqrt_w_u = sym.cse(u/sqrt_w)
 
         if map_potentials is None:
-            def map_potentials(x):  # pylint:disable=function-redefined
+            def map_potentials(x):
                 return x
 
         kwargs["kernel_arguments"] = self.kernel_arguments
@@ -351,7 +351,7 @@ class NeumannOperator(L2WeightedPDEOperator):
         laplace_s_inv_sqrt_w_u = sym.cse(sym.S(self.laplace_kernel, inv_sqrt_w_u))
 
         if map_potentials is None:
-            def map_potentials(x):  # pylint:disable=function-redefined
+            def map_potentials(x):
                 return x
 
         kwargs["qbx_forced_limit"] = qbx_forced_limit
@@ -505,7 +505,7 @@ class BiharmonicClampedPlateOperator:
         """
 
         if map_potentials is None:
-            def map_potentials(x):  # pylint:disable=function-redefined
+            def map_potentials(x):
                 return x
 
         def dv(knl):

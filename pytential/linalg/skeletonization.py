@@ -143,7 +143,7 @@ def _approximate_geometry_waa_magnitude(
     result = actx.zeros((cluster_index.nclusters,), dtype=waa.entry_dtype)
 
     from arraycontext import flatten
-    _, (waa_per_cluster,) = prg()(actx.queue,         # pylint: disable=not-callable
+    _, (waa_per_cluster,) = prg()(actx.queue,
             waa=flatten(waa, actx),
             result=result,
             indices=cluster_index.indices,

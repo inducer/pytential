@@ -336,7 +336,7 @@ def interp_decomp(
     if rank is not None and eps is not None:
         raise ValueError("providing both 'rank' and 'eps' is not supported")
 
-    import scipy.linalg.interpolative as sli    # pylint:disable=no-name-in-module
+    import scipy.linalg.interpolative as sli
     if rank is None:
         k, idx, proj = sli.interp_decomp(A, eps)
     else:
