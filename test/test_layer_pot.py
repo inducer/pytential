@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -37,6 +39,9 @@ from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
+
+from pytential.utils import (  # noqa: F401
+        pytest_teardown_function as teardown_function)
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
@@ -81,10 +86,6 @@ def test_off_surface_eval(actx_factory, use_fmm, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()
-
-    # prevent cache 'splosion
-    from sympy.core.cache import clear_cache
-    clear_cache()
 
     nelements = 30
     target_order = 8
@@ -148,10 +149,6 @@ def test_off_surface_eval_vs_direct(actx_factory,  do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()
-
-    # prevent cache 'splosion
-    from sympy.core.cache import clear_cache
-    clear_cache()
 
     nelements = 300
     target_order = 8
@@ -234,10 +231,6 @@ def test_single_plus_double_with_single_fmm(actx_factory,  do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()
-
-    # prevent cache 'splosion
-    from sympy.core.cache import clear_cache
-    clear_cache()
 
     nelements = 300
     target_order = 8

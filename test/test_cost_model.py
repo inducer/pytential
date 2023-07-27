@@ -36,13 +36,15 @@ from pytential.qbx import QBXLayerPotentialSource
 from pytential.qbx.cost import (
     QBXCostModel, _PythonQBXCostModel, make_pde_aware_translation_cost_model
 )
-
 from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
 from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)
+
+from pytential.utils import (  # noqa: F401
+        pytest_teardown_function as teardown_function)
 
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,

@@ -39,6 +39,9 @@ import extra_int_eq_data as ied
 import logging
 logger = logging.getLogger(__name__)
 
+from pytential.utils import (  # noqa: F401
+        pytest_teardown_function as teardown_function)
+
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -233,10 +236,6 @@ def test_identity_convergence(actx_factory,  case, visualize=False):
     case.check()
 
     actx = actx_factory()
-
-    # prevent cache 'splosion
-    from sympy.core.cache import clear_cache
-    clear_cache()
 
     target_order = 8
 
