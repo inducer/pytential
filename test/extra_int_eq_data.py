@@ -156,7 +156,7 @@ class IntegralEquationTestCase:
 
     def get_operator(self, ambient_dim):
         sign = +1 if self.side in [+1, "scat"] else -1
-        knl = self.knl_class(ambient_dim)   # noqa: pylint:disable=E1102
+        knl = self.knl_class(ambient_dim)
 
         if self.bc_type == "dirichlet":
             from pytential.symbolic.pde.scalar import DirichletOperator
@@ -268,7 +268,7 @@ class CurveTestCase(IntegralEquationTestCase):
     resolutions: List[int] = field(default_factory=lambda: [40, 50, 60])
 
     def _curve_fn(self, t):
-        return self.curve_fn(t)     # pylint:disable=not-callable
+        return self.curve_fn(t)
 
     def get_mesh(self, resolution, mesh_order):
         from meshmode.mesh.generation import make_curve_mesh

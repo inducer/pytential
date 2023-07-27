@@ -357,7 +357,7 @@ def test_skeletonize_by_proxy(actx_factory, case, visualize=False):
     empirically determined (not too huge) :math:`c`.
     """
 
-    import scipy.linalg.interpolative as sli    # pylint:disable=no-name-in-module
+    import scipy.linalg.interpolative as sli
     sli.seed(42)
 
     actx = actx_factory()
@@ -404,7 +404,7 @@ def test_skeletonize_by_proxy_convergence(
     accuracy of the skeletonization scales linearly with :math:`\epsilon_{id}`
     (the ID tolerance).
     """
-    import scipy.linalg.interpolative as sli    # pylint:disable=no-name-in-module
+    import scipy.linalg.interpolative as sli
     sli.seed(42)
 
     actx = actx_factory()
