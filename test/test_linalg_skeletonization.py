@@ -40,6 +40,9 @@ import extra_matrix_data as extra
 import logging
 logger = logging.getLogger(__name__)
 
+from pytential.utils import (  # noqa: F401
+        pytest_teardown_function as teardown_function)
+
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])

@@ -42,6 +42,9 @@ import extra_int_eq_data as inteq
 import logging
 logger = logging.getLogger(__name__)
 
+from pytential.utils import (  # noqa: F401
+        pytest_teardown_function as teardown_function)
+
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -476,10 +479,6 @@ def test_integral_equation(actx_factory, case, visualize=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()
-
-    # prevent cache 'splosion
-    from sympy.core.cache import clear_cache
-    clear_cache()
 
     from pytools.convergence import EOCRecorder
     logger.info("\n%s", str(case))
