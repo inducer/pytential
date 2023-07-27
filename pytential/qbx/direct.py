@@ -109,7 +109,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
     def __call__(self, queue, targets, sources, centers, strengths, expansion_radii,
             **kwargs):
         from sumpy.tools import is_obj_array_like
-        knl = self.get_cached_optimized_kernel(
+        knl = self.get_cached_kernel_executor(
                 targets_is_obj_array=is_obj_array_like(targets),
                 sources_is_obj_array=is_obj_array_like(sources),
                 centers_is_obj_array=is_obj_array_like(centers))
