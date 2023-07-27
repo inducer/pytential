@@ -292,7 +292,6 @@ def test_single_plus_double_with_single_fmm(actx_factory,  do_plot=False):
 
     fmm_sigma = fmm_density_discr.zeros(actx) + 1
     fmm_bound_op = bind(places, op, auto_where=("fmm_qbx", "target"))
-    print(fmm_bound_op.code)
     fmm_fld_in_vol = fmm_bound_op(actx, sigma=fmm_sigma)
 
     err = actx.np.fabs(fmm_fld_in_vol - direct_fld_in_vol)
