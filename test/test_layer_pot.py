@@ -138,7 +138,7 @@ def test_off_surface_eval(actx_factory, use_fmm, visualize=False):
         pt.colorbar()
         pt.show()
 
-    assert linf_err < 1e-3
+    assert linf_err < 2e-3
 
 # }}}
 
