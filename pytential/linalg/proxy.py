@@ -280,9 +280,9 @@ def _generate_unit_sphere(ambient_dim: int, approx_npoints: int) -> np.ndarray:
     return points
 
 
-def make_compute_cluster_centers_knl(
-        actx: PyOpenCLArrayContext, ndim: int, norm_type: str) -> lp.LoopKernel:
-    @memoize_in(actx, (make_compute_cluster_centers_knl, ndim, norm_type))
+def make_compute_cluster_centers_kernel_ex(
+        actx: PyOpenCLArrayContext, ndim: int, norm_type: str) -> lp.ExecutorBase:
+    @memoize_in(actx, (make_compute_cluster_centers_kernel_ex, ndim, norm_type))
     def prg():
         if norm_type == "l2":
             # NOTE: computes first-order approximation of the source centroids
@@ -330,7 +330,7 @@ def make_compute_cluster_centers_knl(
         knl = lp.tag_inames(knl, "idim*:unr")
         knl = lp.split_iname(knl, "icluster", 64, outer_tag="g.0")
 
-        return knl
+        return knl.executor(actx.context)
 
     return prg()
 
@@ -399,11 +399,11 @@ class ProxyGeneratorBase:
     def nproxy(self) -> int:
         return self.ref_points.shape[1]
 
-    def get_centers_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
-        return make_compute_cluster_centers_knl(
+    def get_centers_kernel_ex(self, actx: PyOpenCLArrayContext) -> lp.ExecutorBase:
+        return make_compute_cluster_centers_kernel_ex(
                 actx, self.ambient_dim, self.norm_type)
 
-    def get_radii_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
+    def get_radii_kernel_ex(self, actx: PyOpenCLArrayContext) -> lp.ExecutorBase:
         raise NotImplementedError
 
     def __call__(self,
@@ -431,13 +431,13 @@ class ProxyGeneratorBase:
 
         sources = flatten(discr.nodes(), actx, leaf_class=DOFArray)
 
-        knl = self.get_centers_knl(actx)
+        knl = self.get_centers_kernel_ex(actx)
         _, (centers_dev,) = knl(actx.queue,
                 sources=sources,
                 srcindices=dof_index.indices,
                 srcstarts=dof_index.starts)
 
-        knl = self.get_radii_knl(actx)
+        knl = self.get_radii_kernel_ex(actx)
         _, (radii_dev,) = knl(actx.queue,
                 sources=sources,
                 srcindices=dof_index.indices,
@@ -447,7 +447,7 @@ class ProxyGeneratorBase:
                 **kwargs)
 
         if include_cluster_radii:
-            knl = make_compute_cluster_radii_knl(actx, self.ambient_dim)
+            knl = make_compute_cluster_radii_kernel_ex(actx, self.ambient_dim)
             _, (cluster_radii,) = knl(actx.queue,
                     sources=sources,
                     srcindices=dof_index.indices,
@@ -493,9 +493,9 @@ class ProxyGeneratorBase:
                 )
 
 
-def make_compute_cluster_radii_knl(
-        actx: PyOpenCLArrayContext, ndim: int) -> lp.LoopKernel:
-    @memoize_in(actx, (make_compute_cluster_radii_knl, ndim))
+def make_compute_cluster_radii_kernel_ex(
+        actx: PyOpenCLArrayContext, ndim: int) -> lp.ExecutorBase:
+    @memoize_in(actx, (make_compute_cluster_radii_kernel_ex, ndim))
     def prg():
         knl = lp.make_kernel([
             "{[icluster]: 0 <= icluster < nclusters}",
@@ -529,7 +529,7 @@ def make_compute_cluster_radii_knl(
         knl = lp.tag_inames(knl, "idim*:unr")
         knl = lp.split_iname(knl, "icluster", 64, outer_tag="g.0")
 
-        return knl
+        return knl.executor(actx.context)
 
     return prg()
 
@@ -541,13 +541,13 @@ class ProxyGenerator(ProxyGeneratorBase):
     Inherits from :class:`ProxyGeneratorBase`.
     """
 
-    def get_radii_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
-        return make_compute_cluster_radii_knl(actx, self.ambient_dim)
+    def get_radii_kernel_ex(self, actx: PyOpenCLArrayContext) -> lp.ExecutorBase:
+        return make_compute_cluster_radii_kernel_ex(actx, self.ambient_dim)
 
 
-def make_compute_cluster_qbx_radii_knl(
-        actx: PyOpenCLArrayContext, ndim: int) -> lp.LoopKernel:
-    @memoize_in(actx, (make_compute_cluster_qbx_radii_knl, ndim))
+def make_compute_cluster_qbx_radii_kernel_ex(
+        actx: PyOpenCLArrayContext, ndim: int) -> lp.ExecutorBase:
+    @memoize_in(actx, (make_compute_cluster_qbx_radii_kernel_ex, ndim))
     def prg():
         knl = lp.make_kernel([
             "{[icluster]: 0 <= icluster < nclusters}",
@@ -593,7 +593,7 @@ def make_compute_cluster_qbx_radii_knl(
         knl = lp.tag_inames(knl, "idim*:unr")
         knl = lp.split_iname(knl, "icluster", 64, outer_tag="g.0")
 
-        return knl
+        return knl.executor(actx.context)
 
     return prg()
 
@@ -605,8 +605,8 @@ class QBXProxyGenerator(ProxyGeneratorBase):
     Inherits from :class:`ProxyGeneratorBase`.
     """
 
-    def get_radii_knl(self, actx: PyOpenCLArrayContext) -> lp.LoopKernel:
-        return make_compute_cluster_qbx_radii_knl(actx, self.ambient_dim)
+    def get_radii_kernel_ex(self, actx: PyOpenCLArrayContext) -> lp.ExecutorBase:
+        return make_compute_cluster_qbx_radii_kernel_ex(actx, self.ambient_dim)
 
     def __call__(self,
             actx: PyOpenCLArrayContext,
@@ -658,7 +658,7 @@ def gather_cluster_neighbor_points(
 
     @memoize_in(actx,
             (gather_cluster_neighbor_points, discr.ambient_dim, "picker_knl"))
-    def prg():
+    def prg() -> lp.ExecutorBase:
         knl = lp.make_kernel(
             "{[idim, i]: 0 <= idim < ndim and 0 <= i < npoints}",
             """
@@ -677,7 +677,7 @@ def gather_cluster_neighbor_points(
         knl = lp.tag_inames(knl, "idim*:unr")
         knl = lp.split_iname(knl, "i", 64, outer_tag="g.0")
 
-        return knl
+        return knl.executor(actx.context)
 
     _, (sources,) = prg()(actx.queue,
             ary=flatten(discr.nodes(), actx, leaf_class=DOFArray),
