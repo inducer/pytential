@@ -45,7 +45,7 @@ def structured_vdot(x, y, array_context=None):
     PyOpenCL arrays. It also recurses down nested object arrays.
     """
 
-    if not type(x) == type(y):
+    if type(x) is not type(y):
         raise TypeError("'structured_vdot' entries have different types: "
                 f"{type(x).__name__} and {type(y).__name__}")
 
