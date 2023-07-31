@@ -23,7 +23,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any, Dict, Hashable, Optional, Tuple, Union
+from typing import Any, Dict, Hashable, Mapping, Optional, Tuple, Union
+
+import immutables
 
 from pytential.symbolic.dof_desc import DOFDescriptorLike, DiscretizationStages
 import pytential.symbolic.primitives as sym
@@ -114,7 +116,7 @@ class GeometryCollection:
             places: Union[
                 "GeometryLike",
                 Tuple["GeometryLike", "GeometryLike"],
-                Dict[Hashable, "GeometryLike"]
+                Mapping[Hashable, "GeometryLike"]
                 ],
             auto_where: Optional[AutoWhereLike] = None) -> None:
         r"""
@@ -139,28 +141,31 @@ class GeometryCollection:
 
         # {{{ construct dict
 
-        places_dict: Dict[Hashable, GeometryLike] = {}
+        places_dict: Mapping[Hashable, GeometryLike] = {}
 
         from pytential.symbolic.execution import _prepare_auto_where
         auto_source, auto_target = _prepare_auto_where(auto_where)
         if isinstance(places, QBXLayerPotentialSource):
-            places_dict[auto_source.geometry] = places
+            places_dict = {auto_source.geometry: places}
             auto_target = auto_source
         elif isinstance(places, TargetBase):
-            places_dict[auto_target.geometry] = places
+            places_dict = {auto_target.geometry: places}
             auto_source = auto_target
         if isinstance(places, (Discretization, PotentialSource)):
-            places_dict[auto_source.geometry] = places
-            places_dict[auto_target.geometry] = places
+            places_dict = {
+                auto_source.geometry: places,
+                auto_target.geometry: places
+            }
         elif isinstance(places, tuple):
             source_discr, target_discr = places
-            places_dict[auto_source.geometry] = source_discr
-            places_dict[auto_target.geometry] = target_discr
+            places_dict = {
+                auto_source.geometry: source_discr,
+                auto_target.geometry: target_discr
+            }
         else:
-            assert isinstance(places, dict)
+            assert isinstance(places, Mapping)
             places_dict = places
 
-        import immutables
         self.places = immutables.Map(places_dict)
         self.auto_where = (auto_source, auto_target)
 
@@ -334,7 +339,7 @@ class GeometryCollection:
 
     def copy(
             self,
-            places: Optional[Dict[Hashable, "GeometryLike"]] = None,
+            places: Optional[Mapping[Hashable, "GeometryLike"]] = None,
             auto_where: Optional[AutoWhereLike] = None,
             ) -> "GeometryCollection":
         """Get a shallow copy of the geometry collection."""
@@ -344,11 +349,11 @@ class GeometryCollection:
 
     def merge(
             self,
-            places: Union["GeometryCollection", Dict[Hashable, "GeometryLike"]],
+            places: Union["GeometryCollection", Mapping[Hashable, "GeometryLike"]],
             ) -> "GeometryCollection":
         """Merges two geometry collections and returns the new collection.
 
-        :arg places: a :class:`dict` or :class:`GeometryCollection` to
+        :arg places: a mapping or :class:`GeometryCollection` to
             merge with the current collection. If it is empty, a copy of the
             current collection is returned.
         """
@@ -375,8 +380,8 @@ class GeometryCollection:
 
 def add_geometry_to_collection(
         places: GeometryCollection,
-        geometries: Dict[Hashable, "GeometryLike"]) -> GeometryCollection:
-    """Adds a :class:`dict` of geometries to an existing collection.
+        geometries: Mapping[Hashable, "GeometryLike"]) -> GeometryCollection:
+    """Adds a mapping of geometries to an existing collection.
 
     This function is similar to :meth:`GeometryCollection.merge`, but it makes
     an attempt to maintain the caches in *places*. In particular, a shallow
