@@ -82,6 +82,7 @@ jobs:
             run: |
                 echo "- memray" >> .test-conda-env.yml
 
+                export CISUPPORT_PARALLEL_PYTEST='no'
                 export SUMPY_FORCE_SYMBOLIC_BACKEND=sympy
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest' --memray --most-allocations=10"}
                 export EXTRA_INSTALL="pytest-memray"
