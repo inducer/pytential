@@ -31,12 +31,15 @@ used as evaluation targets.
 
 .. autoclass:: PointsTarget
 
+.. class:: Array
+
+    See :class:`arraycontext.Array`.
 """
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Optional
 
-from arraycontext import Array
+from arraycontext.context import Array
 from pytools import T
 
 if TYPE_CHECKING:
