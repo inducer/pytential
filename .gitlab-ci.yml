@@ -102,6 +102,18 @@ Pylint:
   except:
   - tags
 
+Mypy:
+  script: |
+    curl -L -O https://tiker.net/ci-support-v0
+    . ./ci-support-v0
+    build_py_project_in_venv
+    python -m pip install mypy pytest
+    ./run-mypy.sh
+  tags:
+  - python3
+  except:
+  - tags
+
 Flake8:
   script: |
     export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
