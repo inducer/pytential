@@ -99,7 +99,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             insn, bound_expr, evaluate, return_timing_data):
         if return_timing_data:
             from warnings import warn
-            from pytential.source import UnableToCollectTimingData
+            from sumpy.fmm import UnableToCollectTimingData
             warn(
                    "Timing data collection not supported.",
                    category=UnableToCollectTimingData)
