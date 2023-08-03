@@ -443,8 +443,8 @@ def cluster_skeletonization_error(
 def skeletonization_matrix(
         mat: np.ndarray, skeleton: "SkeletonizationResult",
         ) -> Tuple[np.ndarray, np.ndarray]:
-    D = np.empty(skeleton.nclusters, dtype=object)
-    S = np.empty((skeleton.nclusters, skeleton.nclusters), dtype=object)
+    D: np.ndarray = np.empty(skeleton.nclusters, dtype=object)
+    S: np.ndarray = np.empty((skeleton.nclusters, skeleton.nclusters), dtype=object)
 
     from itertools import product
     for i, j in product(range(skeleton.nclusters), repeat=2):
