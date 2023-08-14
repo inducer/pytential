@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 from dataclasses import replace
 from functools import partial
+from typing import Sequence, Union
 import pytest
 
 import numpy as np
@@ -47,7 +48,7 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
 
-SKELETONIZE_TEST_CASES = [
+SKELETONIZE_TEST_CASES: Sequence[Union[extra.CurveTestCase, extra.TorusTestCase]] = [
         extra.CurveTestCase(
             name="ellipse",
             op_type="scalar",
