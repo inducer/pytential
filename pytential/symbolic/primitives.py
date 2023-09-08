@@ -1830,7 +1830,7 @@ def cross(vec_a, vec_b):
 
 
 def n_cross(vec, dofdesc=None):
-    return cross(normal(3, dofdesc).as_vector(), vec)
+    return cross(normal(3, dofdesc=dofdesc).as_vector(), vec)
 
 
 def div(vec):
