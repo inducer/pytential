@@ -199,22 +199,16 @@ class DynamicTestCase:
 
 # {{{ integral identity tester
 
-
-@pytest.mark.slowtest
-@pytest.mark.parametrize("case", [
-        DynamicTestCase(SphereTestCase(), GreenExpr(), 0),
-])
-def test_identity_convergence_slow(actx_factory, case):
-    test_identity_convergence(actx_factory, case)
-
-
 @pytest.mark.parametrize("case", [
         # 2d
         DynamicTestCase(ied.StarfishTestCase(), GreenExpr(), 0),
         DynamicTestCase(ied.StarfishTestCase(), GreenExpr(), 1.2),
-        DynamicTestCase(ied.StarfishTestCase(), GradGreenExpr(), 0),
-        DynamicTestCase(ied.StarfishTestCase(), GradGreenExpr(), 1.2),
-        DynamicTestCase(ied.StarfishTestCase(), ZeroCalderonExpr(), 0),
+        pytest.param(DynamicTestCase(ied.StarfishTestCase(), GradGreenExpr(), 0),
+                     marks=pytest.mark.memory),
+        pytest.param(DynamicTestCase(ied.StarfishTestCase(), GradGreenExpr(), 1.2),
+                     marks=pytest.mark.memory),
+        pytest.param(DynamicTestCase(ied.StarfishTestCase(), ZeroCalderonExpr(), 0),
+                     marks=pytest.mark.memory),
         # test target derivatives with direct evaluation
         DynamicTestCase(
             ied.StarfishTestCase(), ZeroCalderonExpr(), 0, fmm_order=False),
@@ -223,6 +217,8 @@ def test_identity_convergence_slow(actx_factory, case):
         DynamicTestCase(
             ied.StarfishTestCase(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
         # 3d
+        pytest.param(DynamicTestCase(SphereTestCase(), GreenExpr(), 0),
+                     marks=pytest.mark.slowtest),
         DynamicTestCase(SphereTestCase(), GreenExpr(), 0, fmm_backend="fmmlib"),
         DynamicTestCase(SphereTestCase(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
         DynamicTestCase(QuadSphereTestCase(), GreenExpr(), 0, fmm_backend="fmmlib"),

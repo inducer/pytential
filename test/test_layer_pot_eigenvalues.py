@@ -51,10 +51,10 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
         [
             (1, 5, 3, False),
             (1, 6, 3, False),
-            (2, 5, 3, False),
+            pytest.param((2, 5, 3, False), marks=pytest.mark.memory),
             (1, 5, 4, False),
             (1, 7, 5, False),
-            (2, 7, 5, False),
+            pytest.param((2, 7, 5, False), marks=pytest.mark.memory),
 
             (2, 7, 5, True),
             ])

@@ -20,7 +20,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import List, Union
+
 import pytest
+import _pytest
 
 import numpy as np
 import numpy.linalg as la
@@ -445,7 +448,7 @@ def run_int_eq_test(actx,
 
 # {{{ test frontend
 
-cases = [
+cases: List[Union[inteq.EllipseTestCase, _pytest.mark.ParameterSet]] = [
         inteq.EllipseTestCase(
             knl_class_or_helmholtz_k=helmholtz_k,
             bc_type=bc_type,
@@ -457,13 +460,19 @@ cases = [
 
 
 cases += [
-        inteq.EllipseTestCase(
-            knl_class_or_helmholtz_k=BiharmonicKernel,
-            bc_type="clamped_plate", side=-1, fmm_backend=None),
-        inteq.EllipseTestCase(
-            knl_class_or_helmholtz_k=BiharmonicKernel,
-            bc_type="clamped_plate", side=-1, fmm_backend="sumpy", fmm_order=15,
-            gmres_tol=1e-9),
+        # FIXME: this crashes the Github CI with the pymbolic dataclass port in
+        #   https://github.com/inducer/pymbolic/pull/125
+        pytest.param(
+            inteq.EllipseTestCase(
+                knl_class_or_helmholtz_k=BiharmonicKernel,
+                bc_type="clamped_plate", side=-1, fmm_backend=None),
+            marks=pytest.mark.memory),
+        pytest.param(
+            inteq.EllipseTestCase(
+                knl_class_or_helmholtz_k=BiharmonicKernel,
+                bc_type="clamped_plate", side=-1, fmm_backend="sumpy", fmm_order=15,
+                gmres_tol=1e-9),
+            marks=pytest.mark.memory),
         inteq.EllipseTestCase(
             knl_class_or_helmholtz_k=BiharmonicKernel,
             bc_type="clamped_plate", side=-1, fmm_backend="sumpy", fmm_order=15,
