@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -66,7 +66,7 @@ class QBXFMMLibTreeIndependentDataForWrangler(FMMLibTreeIndependentDataForWrangl
         # {{{ digest target_kernels
 
         ifgrad = False
-        outputs = []
+        outputs: list[tuple[Any, ...]] = []
         source_deriv_names = []
         k_names = []
 

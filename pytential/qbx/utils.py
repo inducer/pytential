@@ -258,7 +258,7 @@ class TreeWithQBXMetadata(Tree):
     box_to_qbx_target_lists: Array
 
     qbx_element_to_source_starts: Array
-    qbx_element_to_center_starts: Array
+    qbx_element_to_center_starts: Array | None
 
     qbx_user_source_slice: slice
     qbx_user_center_slice: slice
@@ -399,16 +399,16 @@ def build_tree_with_qbx_metadata(
     del box_to_class
 
     # Compute element => source relation
-    qbx_element_to_source_starts = cast("cl_array.Array",
-                                actx.np.zeros(nelements + 1, tree.particle_id_dtype))
+    qbx_element_to_source_starts = actx.np.zeros(nelements + 1, tree.particle_id_dtype)
+
     el_offset = 0
     node_nr_base = 0
     for group in density_discr.groups:
         group_element_starts = np.arange(
                 node_nr_base, node_nr_base + group.ndofs, group.nunit_dofs,
                 dtype=tree.particle_id_dtype)
-        qbx_element_to_source_starts[el_offset:el_offset + group.nelements] = \
-                actx.from_numpy(group_element_starts)
+        qbx_element_to_source_starts[el_offset:el_offset + group.nelements] = (
+                actx.from_numpy(group_element_starts))
 
         node_nr_base += group.ndofs
         el_offset += group.nelements
