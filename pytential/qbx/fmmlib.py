@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Any
+
 import numpy as np
 
 from pytools import memoize_method
@@ -57,7 +59,7 @@ class QBXFMMLibTreeIndependentDataForWrangler(FMMLibTreeIndependentDataForWrangl
         # {{{ digest target_kernels
 
         ifgrad = False
-        outputs = []
+        outputs: list[tuple[Any, ...]] = []
         source_deriv_names = []
         k_names = []
 

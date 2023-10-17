@@ -32,7 +32,7 @@ from loopy.version import MOST_RECENT_LANGUAGE_VERSION
 from meshmode.dof_array import DOFArray
 from pytools import memoize_method
 
-from pytential.array_context import PyOpenCLArrayContext
+from pytential.array_context import PyOpenCLArrayContext, dataclass_array_container
 from pytential.source import LayerPotentialSourceBase
 
 logger = logging.getLogger(__name__)
@@ -321,7 +321,7 @@ class _FMMGeometryDataCodeContainer:
         knl = lp.tag_array_axes(knl, "targets", "stride:auto, stride:1")
         knl = lp.tag_inames(knl, {"dim": "ilp"})
 
-        return knl.executor(self.cl_context)
+        return knl.executor(self.array_context.context)
 
     @property
     @memoize_method
@@ -336,6 +336,7 @@ class _FMMGeometryDataCodeContainer:
         return FMMTraversalBuilder(self.array_context)
 
 
+@dataclass_array_container
 @dataclass(frozen=True)
 class _TargetInfo:
     """

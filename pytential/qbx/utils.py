@@ -26,6 +26,7 @@ from dataclasses import dataclass, fields, replace
 
 import numpy as np
 
+from arraycontext import PyOpenCLArrayContext
 from pytools import memoize_method, memoize_in, log_process
 from meshmode.dof_array import DOFArray
 
@@ -33,7 +34,7 @@ from boxtree.tree import Tree
 from boxtree.pyfmmlib_integration import FMMLibRotationDataInterface
 
 from arraycontext import Array
-from pytential.array_context import PyOpenCLArrayContext, dataclass_array_container
+from pytential.array_context import dataclass_array_container
 
 import logging
 logger = logging.getLogger(__name__)
@@ -250,7 +251,7 @@ class TreeWithQBXMetadata(Tree):
     box_to_qbx_target_lists: Array
 
     qbx_element_to_source_starts: Array
-    qbx_element_to_center_starts: Array
+    qbx_element_to_center_starts: Array | None
 
     qbx_user_source_slice: slice
     qbx_user_center_slice: slice
@@ -386,15 +387,17 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     del box_to_class
 
     # Compute element => source relation
-    qbx_element_to_source_starts = actx.np.zeros(nelements + 1, tree.particle_id_dtype)
+    qbx_element_to_source_starts = (
+        actx.np.zeros(nelements + 1, tree.particle_id_dtype))
+
     el_offset = 0
     node_nr_base = 0
     for group in density_discr.groups:
         group_element_starts = np.arange(
                 node_nr_base, node_nr_base + group.ndofs, group.nunit_dofs,
                 dtype=tree.particle_id_dtype)
-        qbx_element_to_source_starts[el_offset:el_offset + group.nelements] = \
-                actx.from_numpy(group_element_starts)
+        qbx_element_to_source_starts[el_offset:el_offset + group.nelements] = (
+                actx.from_numpy(group_element_starts))
 
         node_nr_base += group.ndofs
         el_offset += group.nelements

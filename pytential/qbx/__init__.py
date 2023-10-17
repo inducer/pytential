@@ -850,6 +850,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             p2p = self.get_p2p(actx, insn.target_kernels, insn.source_kernels)
             lpot_applier_on_tgt_subset = self.get_lpot_applier_on_tgt_subset(
                     insn.target_kernels, insn.source_kernels)
+        else:
+            p2p = lpot_applier_on_tgt_subset = None
 
         for (target_name, qbx_forced_limit), outputs in other_outputs.items():
             target_discr = bound_expr.places.get_discretization(
@@ -857,6 +859,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             flat_target_nodes = _flat_nodes(target_name)
 
             # FIXME: (Somewhat wastefully) compute P2P for all targets
+            assert p2p is not None
             output_for_each_kernel = p2p(actx,
                     targets=flat_target_nodes,
                     sources=flat_source_nodes,
@@ -899,6 +902,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 tgt_subset_kwargs[f"result_{i}"] = res_i
 
             if qbx_tgt_count:
+                assert lpot_applier_on_tgt_subset is not None
                 lpot_applier_on_tgt_subset(
                         actx,
                         targets=flat_target_nodes,
