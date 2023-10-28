@@ -29,7 +29,6 @@ import pyopencl as cl
 from boxtree.tools import DeviceDataRecord
 from boxtree.timing import TimingRecorder
 from pytools import memoize_method
-import six
 
 
 @dataclass
@@ -671,7 +670,7 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
             calibration_params = AbstractQBXCostModel.get_unit_calibration_params()
 
             kernel_args = {}
-            for arg_name, arg_expr in six.iteritems(insn.kernel_arguments):
+            for arg_name, arg_expr in insn.kernel_arguments.items():
                 kernel_args[arg_name] = evaluate(arg_expr)
 
             boxes_time, _ = cost_model.qbx_cost_per_box(
@@ -773,8 +772,8 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
                         output_and_expansion_dtype,
                         self.qbx_order,
                         self.fmm_level_to_order,
-                        source_extra_kwargs=source_extra_kwargs,
-                        kernel_extra_kwargs=kernel_extra_kwargs,
+                        source_extra_kwargs,
+                        kernel_extra_kwargs,
                         _use_target_specific_qbx=self._use_target_specific_qbx)
 
         if self.comm.Get_rank() == 0:

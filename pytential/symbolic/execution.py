@@ -376,7 +376,7 @@ class DistributedEvaluationMapper(EvaluationMapper):
         if self.comm.Get_rank() == 0:
             return super().exec_assign(actx, insn, bound_expr, evaluate)
         else:
-            return dict()
+            return {}
 
     def exec_compute_potential_insn(
             self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):

@@ -66,7 +66,8 @@ def main():
         fmm_order=fmm_order)
 
     from sumpy.kernel import LaplaceKernel
-    op = pytential.sym.D(LaplaceKernel(2), pytential.sym.var("sigma"), qbx_forced_limit=-2)
+    op = pytential.sym.D(
+        LaplaceKernel(2), pytential.sym.var("sigma"), qbx_forced_limit=-2)
 
     if mpi_rank == 0:
         sigma = layer_pot_source.density_discr.zeros(actx) + 1
@@ -106,6 +107,7 @@ def main():
         fplot.show_scalar_in_matplotlib(potential.get())
         plt.colorbar()
         plt.show()
+
 
 if __name__ == "__main__":
     main()
