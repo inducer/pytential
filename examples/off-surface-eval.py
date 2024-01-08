@@ -35,13 +35,15 @@ def main():
     queue = cl.CommandQueue(cl_context)
     actx = PyOpenCLArrayContext(queue)
 
-    nelements = 30
-    target_order = 8
-    qbx_order = 3
-    fmm_order = qbx_order
-
-    discretization = None
+    sigma = None
+    places = None
+    op = None
     if mpi_rank == 0:
+        nelements = 30
+        target_order = 8
+        qbx_order = 3
+        fmm_order = qbx_order
+
         from meshmode.mesh.generation import make_curve_mesh
         from meshmode.mesh.generation import ellipse
         mesh = make_curve_mesh(
@@ -55,21 +57,20 @@ def main():
         discretization = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-    # FIXME: Use GeometryCollection instead of DistributedQBXLayerPotentialSource
-    from pytential.qbx.distributed import DistributedQBXLayerPotentialSource
-    layer_pot_source = DistributedQBXLayerPotentialSource(
-        comm,
-        cl_context,
-        discretization,
-        fine_order=4 * target_order,
-        qbx_order=qbx_order,
-        fmm_order=fmm_order)
+        # FIXME: Use GeometryCollection instead of DistributedQBXLayerPotentialSource
+        from pytential.qbx.distributed import DistributedQBXLayerPotentialSource
+        layer_pot_source = DistributedQBXLayerPotentialSource(
+            comm,
+            cl_context,
+            discretization,
+            fine_order=4 * target_order,
+            qbx_order=qbx_order,
+            fmm_order=fmm_order)
 
-    from sumpy.kernel import LaplaceKernel
-    op = pytential.sym.D(
-        LaplaceKernel(2), pytential.sym.var("sigma"), qbx_forced_limit=-2)
+        from sumpy.kernel import LaplaceKernel
+        op = pytential.sym.D(
+            LaplaceKernel(2), pytential.sym.var("sigma"), qbx_forced_limit=-2)
 
-    if mpi_rank == 0:
         sigma = layer_pot_source.density_discr.zeros(actx) + 1
 
         from sumpy.visualization import FieldPlotter
@@ -78,9 +79,6 @@ def main():
         targets = PointsTarget(fplot.points)
 
         places = (layer_pot_source, targets)
-    else:
-        sigma = None
-        places = (layer_pot_source, None)
 
     from pytential.symbolic.execution import bind_distributed
     bound_op = bind_distributed(comm, places, op)

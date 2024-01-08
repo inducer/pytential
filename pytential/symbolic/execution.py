@@ -380,19 +380,58 @@ class DistributedEvaluationMapper(EvaluationMapper):
 
     def exec_compute_potential_insn(
             self, actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
+        from pytential.qbx.distributed import DistributedQBXLayerPotentialSource
+        return_timing_data = self.timing_data is not None
+
+        is_distributed_fmm = None
+        use_target_specific_qbx = None
+        fmm_backend = None
+        qbx_order = None
+        fmm_level_to_order = None
+        expansion_factory = None
+
         if self.comm.Get_rank() == 0:
-            return super().exec_compute_potential_insn(
-                actx, insn, bound_expr, evaluate)
-        else:
-            source = self.bound_expr.places[0]
-            return_timing_data = self.timing_data is not None
+            source = bound_expr.places.get_geometry(insn.source.geometry)
+            is_distributed_fmm = isinstance(
+                source, DistributedQBXLayerPotentialSource)
+            if is_distributed_fmm:
+                use_target_specific_qbx = source._use_target_specific_qbx
+                fmm_backend = source.fmm_backend
+                qbx_order = source.qbx_order
+                fmm_level_to_order = source.fmm_level_to_order
+                expansion_factory = source.expansion_factory
 
-            from pytential.qbx.distributed import DistributedQBXLayerPotentialSource
-            assert isinstance(source, DistributedQBXLayerPotentialSource)
-            source.exec_compute_potential_insn(
-                actx, insn, bound_expr, evaluate, return_timing_data)
+        is_distributed_fmm = self.comm.bcast(is_distributed_fmm, root=0)
+        if is_distributed_fmm:
+            use_target_specific_qbx = self.comm.bcast(
+                use_target_specific_qbx, root=0)
+            fmm_backend = self.comm.bcast(fmm_backend, root=0)
+            qbx_order = self.comm.bcast(qbx_order, root=0)
+            fmm_level_to_order = self.comm.bcast(fmm_level_to_order, root=0)
+            expansion_factory = self.comm.bcast(expansion_factory, root=0)
 
-            return []
+        if is_distributed_fmm and self.comm.Get_rank() != 0:
+            source = DistributedQBXLayerPotentialSource(
+                self.comm,
+                actx.context,
+                qbx_order=qbx_order,
+                fmm_level_to_order=fmm_level_to_order,
+                _use_target_specific_qbx=use_target_specific_qbx,
+                fmm_backend=fmm_backend,
+                expansion_factory=expansion_factory)
+
+        if self.comm.Get_rank() == 0 or is_distributed_fmm:
+            result, timing_data = (
+                    source.exec_compute_potential_insn(
+                        actx, insn, bound_expr, evaluate, return_timing_data))
+
+            if return_timing_data:
+                # The compiler ensures this.
+                assert insn not in self.timing_data
+
+                self.timing_data[insn] = timing_data
+
+            return result
 
     def __call__(self, expr, *args, **kwargs):
         if self.comm.Get_rank() == 0:
@@ -931,8 +970,6 @@ class DistributedBoundExpression(BoundExpression):
         if self.comm.Get_rank() == 0:
             super().__init__(places, sym_op_expr)
             self._code = super().code
-        else:
-            self.places = places
 
         self._code = self.comm.bcast(self._code, root=0)
 
