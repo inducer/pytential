@@ -548,11 +548,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         fmm_local_factory = partial(local_expn_class, base_kernel)
         qbx_local_factory = partial(qbx_local_expn_class, base_kernel)
 
-        from pytential.qbx.distributed import DistributedQBXLayerPotentialSource
-        use_distributed = False
-        if isinstance(self, DistributedQBXLayerPotentialSource):
-            use_distributed = True
-
         if self.fmm_backend == "sumpy":
             from pytential.qbx.fmm import \
                     QBXSumpyTreeIndependentDataForWrangler
@@ -575,8 +570,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     local_expansion_factory=fmm_local_factory,
                     qbx_local_expansion_factory=qbx_local_factory,
                     target_kernels=target_kernels_new,
-                    _use_target_specific_qbx=self._use_target_specific_qbx,
-                    use_distributed=use_distributed)
+                    _use_target_specific_qbx=self._use_target_specific_qbx)
 
         else:
             raise ValueError(f"invalid FMM backend: {self.fmm_backend}")

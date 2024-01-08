@@ -23,6 +23,7 @@ from arraycontext import PyOpenCLArrayContext
 import numpy as np
 import functools
 import pytential
+from pytential.collection import GeometryCollection
 import matplotlib.pyplot as plt
 from mpi4py import MPI
 
@@ -35,9 +36,10 @@ def main():
     queue = cl.CommandQueue(cl_context)
     actx = PyOpenCLArrayContext(queue)
 
-    sigma = None
     places = None
     op = None
+    sigma = None
+
     if mpi_rank == 0:
         nelements = 30
         target_order = 8
@@ -57,7 +59,6 @@ def main():
         discretization = Discretization(
             actx, mesh, InterpolatoryQuadratureSimplexGroupFactory(target_order))
 
-        # FIXME: Use GeometryCollection instead of DistributedQBXLayerPotentialSource
         from pytential.qbx.distributed import DistributedQBXLayerPotentialSource
         layer_pot_source = DistributedQBXLayerPotentialSource(
             comm,
@@ -78,7 +79,7 @@ def main():
         fplot = FieldPlotter(np.zeros(2), extent=0.54, npoints=30)
         targets = PointsTarget(fplot.points)
 
-        places = (layer_pot_source, targets)
+        places = GeometryCollection((layer_pot_source, targets))
 
     from pytential.symbolic.execution import bind_distributed
     bound_op = bind_distributed(comm, places, op)

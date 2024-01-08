@@ -742,7 +742,16 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
         output_and_expansion_dtype = self.comm.bcast(
             output_and_expansion_dtype, root=0)
 
-        wrangler = tree_indep.wrangler_cls(
+        from pytential.qbx.fmmlib import (
+            QBXFMMLibExpansionWrangler, DistributedQBXFMMLibExpansionWrangler)
+
+        wrangler_cls = None
+        if tree_indep.wrangler_cls == QBXFMMLibExpansionWrangler:
+            wrangler_cls = DistributedQBXFMMLibExpansionWrangler
+        else:
+            raise NotImplementedError
+
+        wrangler = wrangler_cls(
                         self._cl_context, self.comm, tree_indep,
                         local_geo_data, global_geo_data,
                         output_and_expansion_dtype,
@@ -750,7 +759,7 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
                         self.fmm_level_to_order,
                         source_extra_kwargs,
                         kernel_extra_kwargs,
-                        _use_target_specific_qbx=self._use_target_specific_qbx)
+                        self._use_target_specific_qbx)
 
         if self.comm.Get_rank() == 0:
             from pytential.qbx.geometry import target_state
