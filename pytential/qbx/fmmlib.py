@@ -48,13 +48,11 @@ class QBXFMMLibTreeIndependentDataForWrangler(FMMLibTreeIndependentDataForWrangl
     def __init__(self, cl_context, *,
             multipole_expansion_factory, local_expansion_factory,
             qbx_local_expansion_factory, target_kernels,
-            _use_target_specific_qbx,
-            use_distributed):
+            _use_target_specific_qbx):
         self.cl_context = cl_context
         self.multipole_expansion_factory = multipole_expansion_factory
         self.local_expansion_factory = local_expansion_factory
         self.qbx_local_expansion_factory = qbx_local_expansion_factory
-        self.use_distributed = use_distributed
 
         kernel = target_kernels[0].get_base_kernel()
         self.target_kernels = target_kernels
@@ -145,10 +143,7 @@ class QBXFMMLibTreeIndependentDataForWrangler(FMMLibTreeIndependentDataForWrangl
 
     @property
     def wrangler_cls(self):
-        if self.use_distributed:
-            return DistributedQBXFMMLibExpansionWrangler
-        else:
-            return QBXFMMLibExpansionWrangler
+        return QBXFMMLibExpansionWrangler
 
 # }}}
 
