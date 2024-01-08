@@ -519,33 +519,9 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
         else:
             self._use_target_specific_qbx = _use_target_specific_qbx
             self.fmm_backend = fmm_backend
-
             self.qbx_order = kwargs.get("qbx_order", None)
-
-            fmm_order = kwargs.get("fmm_order", None)
-            fmm_level_to_order = kwargs.get("fmm_level_to_order", None)
-
-            if fmm_level_to_order is None:
-                if fmm_order is False:
-                    fmm_level_to_order = False
-                else:
-                    assert (isinstance(fmm_order, int)
-                            and not isinstance(fmm_order, bool))
-
-                    def fmm_level_to_order(kernel, kernel_args, tree, level):  # noqa pylint:disable=function-redefined
-                        return fmm_order
-            assert (isinstance(fmm_level_to_order, bool)
-                    or callable(fmm_level_to_order))
-
-            self.fmm_order = fmm_order
-            self.fmm_level_to_order = fmm_level_to_order
-
-        # Broadcast expansion_factory
-        expansion_factory = None
-        if self.comm.Get_rank() == 0:
-            expansion_factory = self.expansion_factory
-        expansion_factory = comm.bcast(expansion_factory, root=0)
-        self.expansion_factory = expansion_factory
+            self.fmm_level_to_order = kwargs.get("fmm_level_to_order", None)
+            self.expansion_factory = kwargs.get("expansion_factory", None)
 
     @property
     def cl_context(self):
