@@ -967,6 +967,7 @@ class DistributedBoundExpression(BoundExpression):
     def __init__(self, comm, places, sym_op_expr):
         self.comm = comm
         self._code = None
+        self._geo_data_cache = {}
 
         if self.comm.Get_rank() == 0:
             super().__init__(places, sym_op_expr)
