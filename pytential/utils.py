@@ -24,9 +24,9 @@ THE SOFTWARE.
 """
 
 import sys
+from typing import Any, Dict, Callable, Iterable, Tuple
 
 import sumpy.symbolic as sym
-from typing import Iterable, Callable
 
 
 def sort_arrays_together(*arys, key=None):
@@ -46,7 +46,7 @@ def chop(expr: sym.Basic, tol) -> sym.Basic:
     tolerance by the integer.
     """
     nums = expr.atoms(sym.Number)
-    replace_dict = {}
+    replace_dict: Dict[Any, float] = {}
     for num in nums:
         if float(abs(num)) < tol:
             replace_dict[num] = 0
@@ -54,7 +54,9 @@ def chop(expr: sym.Basic, tol) -> sym.Basic:
             new_num = float(num)
             if abs((int(new_num) - new_num)/new_num) < tol:
                 new_num = int(new_num)
+
             replace_dict[num] = new_num
+
     return expr.xreplace(replace_dict)
 
 
@@ -97,7 +99,7 @@ def backward_substitution(
 def solve_from_lu(
             L: sym.Matrix,
             U: sym.Matrix,
-            perm: Iterable[int],
+            perm: Iterable[Tuple[int, int]],
             b: sym.Matrix,
             postprocess_division: Callable[[sym.Basic], sym.Basic]
         ) -> sym.Matrix:
