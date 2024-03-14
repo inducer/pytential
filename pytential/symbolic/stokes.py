@@ -23,6 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Optional
+
 import numpy as np
 
 from pytential import sym
@@ -435,7 +437,7 @@ class StressletWrapperTornberg(StressletWrapperBase):
 def StokesletWrapper(
         dim: int,
         mu: ExpressionT = _MU_SYM_DEFAULT,
-        method: Method = None
+        method: Optional[Method] = None
         ):  # noqa: N806
     if method is None:
         import warnings
@@ -456,7 +458,7 @@ def StokesletWrapper(
 def StressletWrapper(
         dim: int,
         mu: ExpressionT = _MU_SYM_DEFAULT,
-        method: Method = None
+        method: Optional[Method] = None
         ):  # noqa: N806
     if method is None:
         import warnings
