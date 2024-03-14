@@ -23,30 +23,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from abc import abstractmethod
+from dataclasses import dataclass
+from functools import cached_property
 from typing import Optional
 
 import numpy as np
+from sumpy.kernel import (AxisSourceDerivative, AxisTargetDerivative,
+                          BiharmonicKernel, LaplaceKernel,
+                          TargetPointMultiplier)
 
 from pytential import sym
+from pytential.symbolic.elasticity import (
+    _MU_SYM_DEFAULT, ElasticityDoubleLayerWrapperBase, ElasticityWrapperBase,
+    Method, _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
+    _ElasticityWrapperNaiveOrBiharmonic)
 from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
-from sumpy.kernel import (LaplaceKernel, BiharmonicKernel,
-    AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
-from pytential.symbolic.elasticity import (ElasticityWrapperBase,
-    ElasticityDoubleLayerWrapperBase,
-    _ElasticityWrapperNaiveOrBiharmonic,
-    _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
-    Method, _MU_SYM_DEFAULT)
 from pytential.symbolic.typing import ExpressionT
-from dataclasses import dataclass
-from functools import cached_property
-from abc import abstractmethod
 
 __doc__ = """
+.. autofunction:: make_stokeslet_wrapper
+.. autofunction:: make_stresslet_wrapper
 
 .. autoclass:: StokesletWrapperBase
 .. autoclass:: StressletWrapperBase
-.. automethod:: pytential.symbolic.stokes.StokesletWrapper
-.. automethod:: pytential.symbolic.stokes.StressletWrapper
+
+.. autoclass:: StokesletWrapperNaive
+.. autoclass:: StressletWrapperNaive
+
+.. autoclass:: StokesletWrapperBiharmonic
+.. autoclass:: StressletWrapperBiharmonic
+
+.. autoclass:: StokesletWrapperTornberg
+.. autoclass:: StressletWrapperTornberg
 
 .. autoclass:: StokesOperator
 .. autoclass:: HsiaoKressExteriorStokesOperator
@@ -60,7 +69,7 @@ class StokesletWrapperBase(ElasticityWrapperBase):
     """Wrapper class for the :class:`~sumpy.kernel.StokesletKernel` kernel.
 
     In addition to the methods in
-    :class:`pytential.symbolic.elasticity.ElasticityWrapperBase`, this class
+    :class:`~pytential.symbolic.elasticity.ElasticityWrapperBase`, this class
     also provides :meth:`apply_stress` which applies symmetric viscous stress tensor
     in the requested direction and :meth:`apply_pressure`.
 
@@ -69,6 +78,7 @@ class StokesletWrapperBase(ElasticityWrapperBase):
     .. automethod:: apply_derivative
     .. automethod:: apply_stress
     """
+
     def __init__(self, dim, mu):
         super().__init__(dim=dim, mu=mu, nu=0.5)
 
@@ -251,6 +261,12 @@ class _StressletWrapperNaiveOrBiharmonic(
 
 class StokesletWrapperNaive(_StokesletWrapperNaiveOrBiharmonic,
                             ElasticityWrapperBase):
+    r"""Stokeslet wrapper based on the full Stokeslet kernel.
+
+    This representation uses the Stokeslet kernel denoted by
+    :attr:`~pytential.symbolic.elasticity.Method.Naive`.
+    """
+
     def __init__(self, dim, mu):
         super().__init__(dim=dim, mu=mu, nu=0.5, base_kernel=None)
         ElasticityWrapperBase.__init__(self, dim=dim, mu=mu, nu=0.5)
@@ -258,6 +274,11 @@ class StokesletWrapperNaive(_StokesletWrapperNaiveOrBiharmonic,
 
 class StressletWrapperNaive(_StressletWrapperNaiveOrBiharmonic,
                             ElasticityDoubleLayerWrapperBase):
+    r"""Stresslet wrapper based on the full Stresslet kernel.
+
+    This representation uses the Stresslet kernel denoted by
+    :attr:`~pytential.symbolic.elasticity.Method.Naive`.
+    """
 
     def __init__(self, dim, mu):
         super().__init__(dim=dim, mu=mu, nu=0.5, base_kernel=None)
@@ -267,6 +288,12 @@ class StressletWrapperNaive(_StressletWrapperNaiveOrBiharmonic,
 
 class StokesletWrapperBiharmonic(_StokesletWrapperNaiveOrBiharmonic,
                             ElasticityWrapperBase):
+    r"""Stokeslet wrapper based on the biharmonic kernel.
+
+    This representation uses the Stokeslet kernel denoted by
+    :attr:`~pytential.symbolic.elasticity.Method.Biharmonic`.
+    """
+
     def __init__(self, dim, mu):
         super().__init__(dim=dim, mu=mu, nu=0.5,
                          base_kernel=BiharmonicKernel(dim))
@@ -275,6 +302,12 @@ class StokesletWrapperBiharmonic(_StokesletWrapperNaiveOrBiharmonic,
 
 class StressletWrapperBiharmonic(_StressletWrapperNaiveOrBiharmonic,
                             ElasticityDoubleLayerWrapperBase):
+    r"""Stresslet wrapper based on the biharmonic kernel.
+
+    This representation uses the Stresslet kernel denoted by
+    :attr:`~pytential.symbolic.elasticity.Method.Biharmonic`.
+    """
+
     def __init__(self, dim, mu):
         super().__init__(dim=dim, mu=mu, nu=0.5,
                          base_kernel=BiharmonicKernel(dim))
@@ -288,13 +321,17 @@ class StressletWrapperBiharmonic(_StressletWrapperNaiveOrBiharmonic,
 
 @dataclass
 class StokesletWrapperTornberg(StokesletWrapperBase):
-    """A Stresslet wrapper using Tornberg and Greengard's method which
-    uses Laplace derivatives.
+    """A Stokeslet wrapper based on [Tornberg2008]_.
 
-    [1] Tornberg, A. K., & Greengard, L. (2008). A fast multipole method for the
-        three-dimensional Stokes equations.
-        Journal of Computational Physics, 227(3), 1613-1619.
+    This representation uses the Laplace kernel denoted by
+    :attr:`~pytential.symbolic.elasticity.Method.Laplace`.
+
+    .. [Tornberg2008] A.-K. Tornberg, L. Greengard,
+        *A Fast Multipole Method for the Three-Dimensional Stokes Equations*,
+        Journal of Computational Physics, Vol. 227, pp. 1613--1619, 2008,
+        `DOI <https://doi.org/10.1016/j.jcp.2007.06.029>`__.
     """
+
     dim: int
     mu: ExpressionT
     nu: ExpressionT
@@ -315,13 +352,12 @@ class StokesletWrapperTornberg(StokesletWrapperBase):
 
 @dataclass
 class StressletWrapperTornberg(StressletWrapperBase):
-    """A Stresslet wrapper using Tornberg and Greengard's method which
-    uses Laplace derivatives.
+    """A Stresslet wrapper based on [Tornberg2008]_.
 
-    [1] Tornberg, A. K., & Greengard, L. (2008). A fast multipole method for the
-        three-dimensional Stokes equations.
-        Journal of Computational Physics, 227(3), 1613-1619.
+    This representation uses the Laplace kernel denoted by
+    :attr:`~pytential.symbolic.elasticity.Method.Laplace`.
     """
+
     dim: int
     mu: ExpressionT
     nu: ExpressionT
@@ -434,46 +470,67 @@ class StressletWrapperTornberg(StressletWrapperBase):
 
 # {{{ StokesletWrapper dispatch method
 
-def StokesletWrapper(
+def make_stokeslet_wrapper(
         dim: int,
         mu: ExpressionT = _MU_SYM_DEFAULT,
         method: Optional[Method] = None
-        ):  # noqa: N806
+        ) -> StokesletWrapperBase:
+    """Creates an appropriate :class:`StokesletWrapperBase` object.
+
+    :param dim: ambient dimension of the representation.
+    :param nu: expression or value for the viscosity.
+    :param method: method to use - defaults to the
+        :attr:`~pytential.symbolic.elasticity.Method.Naive`.
+    """
     if method is None:
         import warnings
         warnings.warn("Method argument not given. Falling back to 'naive'. "
                 "Method argument will be required in the future.")
-        method = Method.naive
-    if method == Method.naive:
+        method = Method.Naive
+
+    if method == Method.Naive:
         return StokesletWrapperNaive(dim=dim, mu=mu)
-    elif method == Method.biharmonic:
+    elif method == Method.Biharmonic:
         return StokesletWrapperBiharmonic(dim=dim, mu=mu)
-    elif method == Method.laplace:
+    elif method == Method.Laplace:
         return StokesletWrapperTornberg(dim=dim, mu=mu, nu=0.5)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
 
 
-def StressletWrapper(
+def make_stresslet_wrapper(
         dim: int,
         mu: ExpressionT = _MU_SYM_DEFAULT,
         method: Optional[Method] = None
-        ):  # noqa: N806
+        ) -> StressletWrapperBase:
+    """Creates an appropriate :class:`StressletWrapperBase` object.
+
+    :param dim: ambient dimension of the representation.
+    :param nu: expression or value for the viscosity.
+    :param method: method to use - defaults to the
+        :attr:`~pytential.symbolic.elasticity.Method.Naive`.
+    """
+
     if method is None:
         import warnings
         warnings.warn("Method argument not given. Falling back to 'naive'. "
                 "Method argument will be required in the future.")
-        method = Method.naive
-    if method == Method.naive:
+        method = Method.Naive
+
+    if method == Method.Naive:
         return StressletWrapperNaive(dim=dim, mu=mu)
-    elif method == Method.biharmonic:
+    elif method == Method.Biharmonic:
         return StressletWrapperBiharmonic(dim=dim, mu=mu)
-    elif method == Method.laplace:
+    elif method == Method.Laplace:
         return StressletWrapperTornberg(dim=dim, mu=mu, nu=0.5)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
+
+
+StokesletWrapper = make_stokeslet_wrapper
+StressletWrapper = make_stresslet_wrapper
 
 # }}}
 
@@ -513,12 +570,10 @@ class StokesOperator:
             mu = _MU_SYM_DEFAULT
 
         if stresslet is None:
-            stresslet = StressletWrapper(dim=self.ambient_dim,
-                mu=mu)
+            stresslet = make_stresslet_wrapper(dim=self.ambient_dim, mu=mu)
 
         if stokeslet is None:
-            stokeslet = StokesletWrapper(dim=self.ambient_dim,
-                mu=mu)
+            stokeslet = make_stokeslet_wrapper(dim=self.ambient_dim, mu=mu)
 
         self.stokeslet = stokeslet
         self.stresslet = stresslet
