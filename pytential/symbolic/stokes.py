@@ -29,6 +29,7 @@ from functools import cached_property
 from typing import Optional
 
 import numpy as np
+from pytools import MovedFunctionDeprecationWrapper
 from sumpy.kernel import (AxisSourceDerivative, AxisTargetDerivative,
                           BiharmonicKernel, LaplaceKernel,
                           TargetPointMultiplier)
@@ -529,8 +530,8 @@ def make_stresslet_wrapper(
                 "Needs to be one of naive, laplace, biharmonic")
 
 
-StokesletWrapper = make_stokeslet_wrapper
-StressletWrapper = make_stresslet_wrapper
+StokesletWrapper = MovedFunctionDeprecationWrapper(make_stokeslet_wrapper)
+StressletWrapper = MovedFunctionDeprecationWrapper(make_stresslet_wrapper)
 
 # }}}
 
