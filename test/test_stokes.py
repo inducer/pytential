@@ -199,7 +199,7 @@ def run_exterior_stokes(actx_factory, *,
         # Use the naive method here as biharmonic requires source derivatives
         # of point_source
         sym_source_pot = make_elasticity_wrapper(ambient_dim, mu=sym_mu,
-            nu=sym_nu, method=Method.naive).apply(sym_sigma, qbx_forced_limit=None)
+            nu=sym_nu, method=Method.Naive).apply(sym_sigma, qbx_forced_limit=None)
 
     # }}}
 
@@ -316,16 +316,16 @@ def run_exterior_stokes(actx_factory, *,
 
 
 @pytest.mark.parametrize("ambient_dim, method, nu", [
-    (2, "naive", 0.5),
-    (2, "laplace", 0.5),
-    (2, "biharmonic", 0.5),
-    pytest.param(3, "naive", 0.5, marks=pytest.mark.slowtest),
-    pytest.param(3, "biharmonic", 0.5, marks=pytest.mark.slowtest),
-    pytest.param(3, "laplace", 0.5, marks=pytest.mark.slowtest),
+    (2, "Naive", 0.5),
+    (2, "Laplace", 0.5),
+    (2, "Biharmonic", 0.5),
+    pytest.param(3, "Naive", 0.5, marks=pytest.mark.slowtest),
+    pytest.param(3, "Biharmonic", 0.5, marks=pytest.mark.slowtest),
+    pytest.param(3, "Laplace", 0.5, marks=pytest.mark.slowtest),
 
-    (2, "biharmonic", 0.4),
-    pytest.param(3, "biharmonic", 0.4, marks=pytest.mark.slowtest),
-    pytest.param(3, "laplace", 0.4, marks=pytest.mark.slowtest),
+    (2, "Biharmonic", 0.4),
+    pytest.param(3, "Biharmonic", 0.4, marks=pytest.mark.slowtest),
+    pytest.param(3, "Laplace", 0.4, marks=pytest.mark.slowtest),
     ])
 def test_exterior_stokes(actx_factory, ambient_dim, method, nu, visualize=False):
     if visualize:
@@ -369,7 +369,7 @@ def test_exterior_stokes(actx_factory, ambient_dim, method, nu, visualize=False)
             eoc_format="%.2f"))
 
     orders_lost = 0
-    if method == "biharmonic":
+    if method == "Biharmonic":
         orders_lost += 1
     elif nu != 0.5:
         orders_lost += 0.5
@@ -733,36 +733,36 @@ class ElasticityPDE:
 
 @pytest.mark.parametrize("dim, method, nu, is_double_layer", [
     # Single layer
-    pytest.param(2, "biharmonic", 0.4, False),
-    pytest.param(2, "biharmonic", 0.5, False),
-    pytest.param(2, "laplace", 0.5, False),
-    pytest.param(3, "laplace", 0.5, False),
-    pytest.param(3, "laplace", 0.4, False),
-    pytest.param(2, "naive", 0.4, False, marks=pytest.mark.slowtest),
-    pytest.param(3, "naive", 0.4, False, marks=pytest.mark.slowtest),
-    pytest.param(2, "naive", 0.5, False, marks=pytest.mark.slowtest),
-    pytest.param(3, "naive", 0.5, False, marks=pytest.mark.slowtest),
+    pytest.param(2, "Biharmonic", 0.4, False),
+    pytest.param(2, "Biharmonic", 0.5, False),
+    pytest.param(2, "Laplace", 0.5, False),
+    pytest.param(3, "Laplace", 0.5, False),
+    pytest.param(3, "Laplace", 0.4, False),
+    pytest.param(2, "Naive", 0.4, False, marks=pytest.mark.slowtest),
+    pytest.param(3, "Naive", 0.4, False, marks=pytest.mark.slowtest),
+    pytest.param(2, "Naive", 0.5, False, marks=pytest.mark.slowtest),
+    pytest.param(3, "Naive", 0.5, False, marks=pytest.mark.slowtest),
     # FIXME: re-enable when merge_int_g_exprs is in
-    pytest.param(3, "biharmonic", 0.4, False, marks=pytest.mark.skip),
-    pytest.param(3, "biharmonic", 0.5, False, marks=pytest.mark.skip),
+    pytest.param(3, "Biharmonic", 0.4, False, marks=pytest.mark.skip),
+    pytest.param(3, "Biharmonic", 0.5, False, marks=pytest.mark.skip),
     # FIXME: re-enable when StokesletWrapperYoshida is implemented for 2D
-    pytest.param(2, "laplace", 0.4, False, marks=pytest.mark.xfail),
+    pytest.param(2, "Laplace", 0.4, False, marks=pytest.mark.xfail),
 
     # Double layer
-    pytest.param(2, "laplace", 0.5, True),
-    pytest.param(3, "laplace", 0.5, True),
-    pytest.param(3, "laplace", 0.4, True),
-    pytest.param(2, "naive", 0.4, True, marks=pytest.mark.slowtest),
-    pytest.param(3, "naive", 0.4, True, marks=pytest.mark.slowtest),
-    pytest.param(2, "naive", 0.5, True, marks=pytest.mark.slowtest),
-    pytest.param(3, "naive", 0.5, True, marks=pytest.mark.slowtest),
+    pytest.param(2, "Laplace", 0.5, True),
+    pytest.param(3, "Laplace", 0.5, True),
+    pytest.param(3, "Laplace", 0.4, True),
+    pytest.param(2, "Naive", 0.4, True, marks=pytest.mark.slowtest),
+    pytest.param(3, "Naive", 0.4, True, marks=pytest.mark.slowtest),
+    pytest.param(2, "Naive", 0.5, True, marks=pytest.mark.slowtest),
+    pytest.param(3, "Naive", 0.5, True, marks=pytest.mark.slowtest),
     # FIXME: re-enable when merge_int_g_exprs is in
-    pytest.param(2, "biharmonic", 0.4, True, marks=pytest.mark.skip),
-    pytest.param(2, "biharmonic", 0.5, True, marks=pytest.mark.skip),
-    pytest.param(3, "biharmonic", 0.4, True, marks=pytest.mark.skip),
-    pytest.param(3, "biharmonic", 0.5, True, marks=pytest.mark.skip),
+    pytest.param(2, "Biharmonic", 0.4, True, marks=pytest.mark.skip),
+    pytest.param(2, "Biharmonic", 0.5, True, marks=pytest.mark.skip),
+    pytest.param(3, "Biharmonic", 0.4, True, marks=pytest.mark.skip),
+    pytest.param(3, "Biharmonic", 0.5, True, marks=pytest.mark.skip),
     # FIXME: re-enable when StressletWrapperYoshida is implemented for 2D
-    pytest.param(2, "laplace", 0.4, True, marks=pytest.mark.xfail),
+    pytest.param(2, "Laplace", 0.4, True, marks=pytest.mark.xfail),
     ])
 def test_elasticity_pde(actx_factory, dim, method, nu, is_double_layer,
                         visualize=False):
