@@ -549,7 +549,7 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
     def __post_init__(self):
         if not self.dim == 3:
             raise ValueError("unsupported dimension given to "
-                             "ElasticityDoubleLayerWrapperYoshida: {self.dim}")
+                             f"ElasticityDoubleLayerWrapperYoshida: {self.dim}")
 
     @cached_property
     def laplace_kernel(self):
