@@ -137,10 +137,11 @@ def _monom_to_expr(monom: Sequence[int],
 
     For eg: [3, 2, 1] with variables [x, y, z] is converted to x^3 y^2 z.
     """
-    prod = 1
+    prod: ExpressionT = 1
     for i, nrepeats in enumerate(monom):
         for _ in range(nrepeats):
             prod *= variables[i]
+
     return prod
 
 
@@ -292,11 +293,12 @@ def rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) 
     """Rewrite an *IntG* to an expression with *IntG*s having the
     base kernel *base_kernel*.
     """
-    result = 0
+    result: ExpressionT = 0
     for knl, density in zip(int_g.source_kernels, int_g.densities):
         result += _rewrite_int_g_using_base_kernel(
                 int_g.copy(source_kernels=(knl,), densities=(density,)),
                 base_kernel)
+
     return result
 
 
@@ -523,10 +525,10 @@ def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
         row.append(1)
         mat.append(row)
 
-    mat = sym.Matrix(mat)
+    sym_mat = sym.Matrix(mat)
     failed = False
     try:
-        L, U, perm = mat.LUdecomposition()
+        L, U, perm = sym_mat.LUdecomposition()
     except RuntimeError:
         # symengine throws an error when rank deficient
         # and sympy returns U with last row zero
