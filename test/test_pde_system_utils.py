@@ -154,7 +154,7 @@ def test_convert_int_g_base_with_const():
     dim = 2
     dd = pytential.sym.DOFDescriptor(geometry=pytential.sym.DEFAULT_SOURCE)
 
-    expected_int_g = (-0.1875)*prim.Power(np.pi, -1) * \
+    expected_int_g = (-0.1875) / np.pi * \
         pytential.sym.integral(dim, dim-1, 1, dofdesc=dd) + \
         IntG(base_knl,
             [AxisSourceDerivative(1, AxisSourceDerivative(1, base_knl))], [0.5],
