@@ -20,30 +20,29 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-
-import sumpy.symbolic as sym
-import pymbolic
-from sumpy.kernel import (AxisTargetDerivative, AxisSourceDerivative,
-    ExpressionKernel, KernelWrapper, TargetPointMultiplier, Kernel,
-    DirectionalSourceDerivative)
-from pytools import (memoize_on_first_arg,
-    generate_nonnegative_integer_tuples_summing_to_at_most
-    as gnitstam)
-
-from pytential.symbolic.primitives import (NodeCoordinateComponent,
-    hashable_kernel_args, IntG, DEFAULT_SOURCE)
-from pytential.symbolic.mappers import IdentityMapper
-from pytential.utils import chop, solve_from_lu
-import pytential
-
-from typing import List, Mapping, Text, Any, Union, Tuple, Optional, Sequence
-from pytential.symbolic.typing import ExpressionT
-
+import logging
 import warnings
 from dataclasses import dataclass
+from typing import Any, List, Mapping, Optional, Sequence, Text, Tuple, Union
 
-import logging
+import numpy as np
+import pymbolic
+import sumpy.symbolic as sym
+from pytools import \
+    generate_nonnegative_integer_tuples_summing_to_at_most as gnitstam
+from pytools import memoize_on_first_arg
+from sumpy.kernel import (AxisSourceDerivative, AxisTargetDerivative,
+                          DirectionalSourceDerivative, ExpressionKernel,
+                          Kernel, KernelWrapper, TargetPointMultiplier)
+
+import pytential
+from pytential.symbolic.mappers import IdentityMapper
+from pytential.symbolic.primitives import (DEFAULT_SOURCE, IntG,
+                                           NodeCoordinateComponent,
+                                           hashable_kernel_args)
+from pytential.symbolic.typing import ExpressionT
+from pytential.utils import chop, solve_from_lu
+
 logger = logging.getLogger(__name__)
 
 __all__ = (
@@ -52,9 +51,11 @@ __all__ = (
     )
 
 __doc__ = """
+.. autoexception:: RewriteFailedError
 .. autofunction:: rewrite_using_base_kernel
-.. autofunction:: get_deriv_relation
+
 .. autoclass:: DerivRelation
+.. autofunction:: get_deriv_relation
 """
 
 
@@ -63,43 +64,59 @@ __doc__ = """
 _NO_ARG_SENTINEL = object()
 
 
-def rewrite_using_base_kernel(exprs: Sequence[ExpressionT],
+class RewriteFailedError(RuntimeError):
+    """An error raised by :func:`rewrite_using_base_kernel` when an expression
+    cannot be rewritten using the given kernel.
+    """
+
+
+def rewrite_using_base_kernel(
+        exprs: Sequence[ExpressionT],
         base_kernel: Kernel = _NO_ARG_SENTINEL) -> List[ExpressionT]:
     """
     Rewrites a list of expressions with :class:`~pytential.symbolic.primitives.IntG`
-    objects using *base_kernel*. Assumes that potentials are smooth, i.e. that
-    Schwarz's theorem holds. If applied to on-surface evaluation, then the layer
-    potentials to which this is applied must be one-sided limits, and the potential
-    must be non-singular (as might occur due to corners).
+    objects using *base_kernel*.
 
     For example, if *base_kernel* is the biharmonic kernel, and a Laplace kernel
     is encountered, this will (forcibly) rewrite the Laplace kernel in terms of
     derivatives of the Biharmonic kernel.
 
     If *base_kernel* is *None*, the expression list is returned as is.
+    To perform these manipulation, we assume that potentials are smooth, i.e. that
+    Schwarz's theorem holds. If applied to on-surface evaluation, then the layer
+    potentials to which this is applied must be one-sided limits, and the potential
+    must be non-singular (as might occur due to corners).
+
     If *base_kernel* is not given, the method will try to find a base kernel.
     This is currently not implemented and will raise a ``NotImplementedError``.
 
-    The routine will fail with a ``RuntimeError`` when *base_kernel* is given, but
-    method fails to find a way to rewrite.
+    The routine will fail with a :exc:`RewriteFailedError` when *base_kernel* is
+    given, but method fails to find a way to rewrite.
     """
     if base_kernel is None:
         return list(exprs)
+
     if base_kernel == _NO_ARG_SENTINEL:
         raise NotImplementedError
+
     mapper = RewriteUsingBaseKernelMapper(base_kernel)
     return [mapper(expr) for expr in exprs]
 
 
 class RewriteUsingBaseKernelMapper(IdentityMapper):
-    """Rewrites ``IntG``s using the base kernel. First this method replaces
-    ``IntG``s with :class:`sumpy.kernel.AxisTargetDerivative` to ``IntG``s
+    r"""Rewrites :class:`~pytential.symbolic.primitives.IntG`\ s using a base
+    kernel.
+
+    First this method replaces ``IntG``s with
+    :class:`sumpy.kernel.AxisTargetDerivative` to ``IntG``s
     :class:`sumpy.kernel.AxisSourceDerivative` and
     ``IntG``s with :class:`sumpy.kernel.TargetPointMultiplier` to ``IntG``s
-    without them using :class:`sumpy.kernel.ExpressionKernel`
-    and then converts them to the base kernel by finding
-    a relationship between the derivatives.
+    without them using :class:`sumpy.kernel.ExpressionKernel`. Then, it converts
+    them to the base kernel by finding a relationship between the derivatives.
+
+    .. automethod:: __init__
     """
+
     def __init__(self, base_kernel):
         self.base_kernel = base_kernel
 
@@ -118,8 +135,8 @@ def _get_sympy_kernel_expression(expr: ExpressionT,
     """Convert a :mod:`pymbolic` expression to :mod:`sympy` expression
     after substituting kernel arguments.
 
-    For eg: `exp(I*k*r)/r` with `{k: 1}` is converted to the sympy expression
-    `exp(I*r)/r`
+    For example, ``exp(I*k*r)/r`` with ``{k: 1}`` is converted to the sympy
+    expression ``exp(I*r)/r``.
     """
     from pymbolic.mapper.substitutor import substitute
     from sumpy.symbolic import PymbolicToSympyMapperWithSymbols
@@ -135,7 +152,8 @@ def _monom_to_expr(monom: Sequence[int],
         -> Union[sym.Basic, ExpressionT]:
     """Convert a monomial to an expression using given variables.
 
-    For eg: [3, 2, 1] with variables [x, y, z] is converted to x^3 y^2 z.
+    For example, ``[3, 2, 1]`` with variables ``[x, y, z]`` is converted to
+    ``x^3 y^2 z``.
     """
     prod: ExpressionT = 1
     for i, nrepeats in enumerate(monom):
@@ -146,9 +164,10 @@ def _monom_to_expr(monom: Sequence[int],
 
 
 def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
-    """Convert an ``IntG`` with :class:`sumpy.kernel.AxisTargetDerivative`
-    or :class:`sumpy.kernel.TargetPointMultiplier` to a list
-    of ``IntG`` s without them and only source dependent transformations.
+    r"""Convert an ``IntG`` with :class:`~sumpy.kernel.AxisTargetDerivative`
+    or :class:`~sumpy.kernel.TargetPointMultiplier` to a list
+    of ``IntG``\ s without them and only source dependent transformations.
+
     The sum of the list returned is equivalent to the input *int_g*.
 
     For example::
@@ -288,9 +307,9 @@ def _multiply_int_g(int_g: IntG, expr_multiplier: sym.Basic,
     return result
 
 
-def rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) \
-        -> ExpressionT:
-    """Rewrite an *IntG* to an expression with *IntG*s having the
+def rewrite_int_g_using_base_kernel(
+        int_g: IntG, base_kernel: ExpressionKernel) -> ExpressionT:
+    r"""Rewrite an ``IntG`` to an expression with ``IntG``\ s having the
     base kernel *base_kernel*.
     """
     result: ExpressionT = 0
@@ -302,8 +321,8 @@ def rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) 
     return result
 
 
-def _rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel) \
-        -> ExpressionT:
+def _rewrite_int_g_using_base_kernel(
+        int_g: IntG, base_kernel: ExpressionKernel) -> ExpressionT:
     r"""Rewrites an ``IntG`` with only one source kernel to an expression with
     ``IntG``\ s having the base kernel *base_kernel*.
     """
@@ -363,12 +382,19 @@ def _rewrite_int_g_using_base_kernel(int_g: IntG, base_kernel: ExpressionKernel)
 @dataclass
 class DerivRelation:
     """A class to hold the relationship between a kernel and a base kernel.
-    *linear_combination* is a list of pairs of (mi, coeff).
-    The relation is given by,
-    `kernel = const + sum(deriv(base_kernel, mi) * coeff)`
+
+    The relation is given by::
+
+        kernel = const + sum(deriv(base_kernel, mi) * coeff)
+
+    .. autoattribute:: const
+    .. autoattribute:: linear_combination
     """
+
     const: ExpressionT
+    """A constant to add to the combination."""
     linear_combination: Sequence[Tuple[Tuple[int, ...], ExpressionT]]
+    """A list of pairs ``(mi, coeffs)``."""
 
 
 def get_deriv_relation(kernels: Sequence[ExpressionKernel],
@@ -382,10 +408,11 @@ def get_deriv_relation(kernels: Sequence[ExpressionKernel],
     gives a relation between the *base_kernel* and each of the *kernels*.
     For each kernel in *kernels* we have that the kernel is equal to the
     linear combination of derivatives of *base_kernel* up to the order
-    *order* and a constant. i.e.,
+    *order* and a constant. i.e.
 
-       kernel = \sum_{m \in M(order)} \partial^m baseKernel \partial x^m
-         + const.
+    .. math::
+
+       K = \sum_{m \in M(order)} \partial^m baseKernel \partial x^m + const.
 
     This is done by sampling the baseKernel and its derivatives at random
     points to get a matrix ``A``, then sampling the kernel at the same
@@ -415,11 +442,12 @@ def get_deriv_relation_kernel(kernel: ExpressionKernel,
         -> DerivRelation:
     """Takes a *kernel* and a base_kernel* as input and re-writes the
     *kernel* as a linear combination of derivatives of *base_kernel* up-to
-    order *order* and a constant. *tol* is an upper limit for small numbers that
-    are replaced with zero in the numerical procedure.
+    order *order* and a constant.
 
+    :param tol: an upper limit for small numbers that are replaced with zero
+        in the numerical procedure.
     :returns: the constant and a list of (multi-index, coeff) to represent the
-              linear combination of derivatives as a *DerivRelation* object.
+        linear combination of derivatives as a *DerivRelation* object.
     """
     kernel_arguments = dict(hashable_kernel_arguments)
     lu, rand, mis = _get_base_kernel_matrix_lu_factorization(
@@ -529,7 +557,7 @@ def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
     failed = False
     try:
         L, U, perm = sym_mat.LUdecomposition()
-    except RuntimeError:
+    except RewriteFailedError:
         # symengine throws an error when rank deficient
         # and sympy returns U with last row zero
         failed = True
@@ -556,9 +584,7 @@ def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
 
 
 def evalf(expr, prec=100):
-    """evaluate an expression numerically using ``prec``
-    number of bits.
-    """
+    """Evaluate an expression numerically using ``prec`` number of bits."""
     from sumpy.symbolic import USE_SYMENGINE
     if USE_SYMENGINE:
         return expr.n(prec=prec)
@@ -582,25 +608,3 @@ def filter_kernel_arguments(knls, kernel_arguments):
     return {k: v for (k, v) in kernel_arguments.items() if k in kernel_arg_names}
 
 # }}}
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    from sumpy.kernel import (StokesletKernel, BiharmonicKernel,  # noqa:F401
-        StressletKernel, ElasticityKernel, LaplaceKernel)
-    base_kernel = BiharmonicKernel(2)
-    #base_kernel = LaplaceKernel(3)
-    kernels = [StokesletKernel(2, 0, 1), StokesletKernel(2, 0, 0)]
-    kernels += [StressletKernel(2, 0, 0, 0), StressletKernel(2, 0, 0, 1),
-            StressletKernel(2, 0, 0, 1), StressletKernel(2, 0, 1, 1)]
-    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, kernel_arguments={})
-
-    base_kernel = BiharmonicKernel(3)
-    sym_d = sym.make_sym_vector("d", base_kernel.dim)
-    sym_r = sym.sqrt(sum(a**2 for a in sym_d))
-    conv = sym.SympyToPymbolicMapper()
-    expression_knl = ExpressionKernel(3, conv(sym_d[0]*sym_d[1]/sym_r**3), 1, False)
-    expression_knl2 = ExpressionKernel(3, conv(1/sym_r + sym_d[0]*sym_d[0]/sym_r**3),
-        1, False)
-    kernels = [expression_knl, expression_knl2]
-    get_deriv_relation(kernels, base_kernel, tol=1e-10, order=4, kernel_arguments={})

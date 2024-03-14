@@ -23,28 +23,40 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+from functools import cached_property
+
 import numpy as np
+from sumpy.kernel import (AxisSourceDerivative, AxisTargetDerivative,
+                          BiharmonicKernel, ElasticityKernel, Kernel,
+                          LaplaceKernel, StokesletKernel, StressletKernel,
+                          TargetPointMultiplier)
+from sumpy.symbolic import SpatialConstant
 
 from pytential import sym
 from pytential.symbolic.pde.system_utils import rewrite_using_base_kernel
-from sumpy.kernel import (StressletKernel, LaplaceKernel, StokesletKernel,
-    ElasticityKernel, BiharmonicKernel, Kernel,
-    AxisTargetDerivative, AxisSourceDerivative, TargetPointMultiplier)
-from sumpy.symbolic import SpatialConstant
 from pytential.symbolic.typing import ExpressionT
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from functools import cached_property
-from enum import Enum
-
 __doc__ = """
+.. autoclass:: Method
+    :members:
+
+.. autofunction:: make_elasticity_wrapper
+.. autofunction:: make_elasticity_double_layer_wrapper
+
 .. autoclass:: ElasticityWrapperBase
 .. autoclass:: ElasticityDoubleLayerWrapperBase
-.. autoclass:: Method
 
-.. automethod:: pytential.symbolic.elasticity.make_elasticity_wrapper
-.. automethod:: pytential.symbolic.elasticity.make_elasticity_double_layer_wrapper
+.. autoclass:: ElasticityWrapperNaive
+.. autoclass:: ElasticityDoubleLayerWrapperNaive
+
+.. autoclass:: ElasticityWrapperBiharmonic
+.. autoclass:: ElasticityDoubleLayerWrapperBiharmonic
+
+.. autoclass:: ElasticityWrapperYoshida
+.. autoclass:: ElasticityDoubleLayerWrapperYoshida
 """
 
 
@@ -61,15 +73,11 @@ class ElasticityWrapperBase(ABC):
     """Wrapper class for the :class:`~sumpy.kernel.ElasticityKernel` kernel.
 
     This class is meant to shield the user from the messiness of writing
-    out every term in the expansion of the double-indexed Elasticity kernel
-    applied to the density vector.  The object is created
-    to do some of the set-up and bookkeeping once, rather than every
-    time we want to create a symbolic expression based on the kernel -- say,
-    once when we solve for the density, and once when we want a symbolic
-    representation for the solution, for example.
+    out every term in the expansion of the double-indexed elasticity kernel
+    applied to a density vector.
 
     The :meth:`apply` function returns the integral expressions needed for
-    the vector velocity resulting from convolution with the vector density,
+    the vector displacement resulting from convolution with the vector density,
     and is meant to work similarly to calling
     :func:`~pytential.symbolic.primitives.S` (which is
     :class:`~pytential.symbolic.primitives.IntG`).
@@ -77,20 +85,28 @@ class ElasticityWrapperBase(ABC):
     Similar functions are available for other useful things related to
     the flow: :meth:`apply_derivative` (target derivative).
 
+    .. autoattribute:: dim
+    .. autoattribute:: mu
+    .. autoattribute:: nu
+
     .. automethod:: apply
     .. automethod:: apply_derivative
     """
+
     dim: int
+    """Ambient dimension of the representation."""
     mu: ExpressionT
+    r"""Expression or value for the shear modulus :math:`\mu`."""
     nu: ExpressionT
+    r"""Expression or value for Poisson's ration :math:`\nu`."""
 
     @abstractmethod
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
-        """Symbolic expressions for integrating Elasticity kernel.
+        """Symbolic expressions for the elasticity single-layer potential.
 
-        Returns an object array of symbolic expressions for the vector
-        resulting from integrating the dyadic Elasticity kernel with
-        variable *density_vec_sym*.
+        This constructs an object array of symbolic expressions for the vector
+        resulting from integrating the dyadic elasticity kernel with the density
+        *density_vec_sym*.
 
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
@@ -100,13 +116,15 @@ class ElasticityWrapperBase(ABC):
         """
 
     def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
-        """Symbolic derivative of velocity from Elasticity kernel.
+        """Symbolic derivative of the elasticity single-layer kernel.
 
-        Returns an object array of symbolic expressions for the vector
+        This constrcts an object array of symbolic expressions for the vector
         resulting from integrating the *deriv_dir* target derivative of the
-        dyadic Elasticity kernel with variable *density_vec_sym*.
+        dyadic elasticity kernel with the density *density_vec_sym*.
 
-        :arg deriv_dir: integer denoting the axis direction for the derivative.
+        :arg deriv_dir: integer denoting the axis direction for the derivative,
+            i.e. the directions *x*, *y*, *z* correspond to the integers *0*,
+            *1*, *2*.
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
             to :class:`~pytential.symbolic.primitives.IntG`.
@@ -120,36 +138,40 @@ class ElasticityDoubleLayerWrapperBase(ABC):
     :class:`~sumpy.kernel.ElasticityKernel` kernel.
 
     This class is meant to shield the user from the messiness of writing
-    out every term in the expansion of the triple-indexed Stresslet
+    out every term in the expansion of the triple-indexed elasticity double-layer
     kernel applied to both a normal vector and the density vector.
-    The object is created to do some of the set-up and bookkeeping once,
-    rather than every time we want to create a symbolic expression based
-    on the kernel -- say, once when we solve for the density, and once when
-    we want a symbolic representation for the solution, for example.
 
     The :meth:`apply` function returns the integral expressions needed for
     convolving the kernel with a vector density, and is meant to work
-    similarly to :func:`~pytential.symbolic.primitives.S` (which is
+    similarly to :func:`~pytential.symbolic.primitives.D` (which is
     :class:`~pytential.symbolic.primitives.IntG`).
 
     Similar functions are available for other useful things related to
     the flow: :meth:`apply_derivative` (target derivative).
 
+    .. autoattribute:: dim
+    .. autoattribute:: mu
+    .. autoattribute:: nu
+
     .. automethod:: apply
     .. automethod:: apply_derivative
     """
+
     dim: int
+    """Ambient dimension of the representation."""
     mu: ExpressionT
+    r"""Expression or value for the shear modulus :math:`\mu`."""
     nu: ExpressionT
+    r"""Expression or value for Poisson's ration :math:`\nu`."""
 
     @abstractmethod
     def apply(self, density_vec_sym, dir_vec_sym, qbx_forced_limit,
             extra_deriv_dirs=()):
-        """Symbolic expressions for integrating Stresslet kernel.
+        """Symbolic expressions for the elasticity double-layer potential.
 
-        Returns an object array of symbolic expressions for the vector
-        resulting from integrating the dyadic Stresslet kernel with
-        variable *density_vec_sym* and source direction vectors *dir_vec_sym*.
+        This constructs an object array of symbolic expressions for the vector
+        resulting from integrating the triadic kernel with the density
+        *density_vec_sym* and the source direction vector *dir_vec_sym*.
 
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg dir_vec_sym: a symbolic vector variable for the direction vector.
@@ -162,13 +184,16 @@ class ElasticityDoubleLayerWrapperBase(ABC):
 
     def apply_derivative(self, deriv_dir, density_vec_sym, dir_vec_sym,
             qbx_forced_limit):
-        """Symbolic derivative of velocity from Elasticity kernel.
+        """Symbolic derivative of the elasticity double-layer potential.
 
-        Returns an object array of symbolic expressions for the vector
+        This contructs an object array of symbolic expressions for the vector
         resulting from integrating the *deriv_dir* target derivative of the
-        dyadic Elasticity kernel with variable *density_vec_sym*.
+        triadic elasticity kernel with variable *density_vec_sym* and the
+        source direction *dir_vec_sym*.
 
-        :arg deriv_dir: integer denoting the axis direction for the derivative.
+        :arg deriv_dir: integer denoting the axis direction for the derivative,
+            i.e. the directions *x*, *y*, *z* correspond to the integers *0*,
+            *1*, *2*.
         :arg density_vec_sym: a symbolic vector variable for the density vector.
         :arg dir_vec_sym: a symbolic vector variable for the normal direction.
         :arg qbx_forced_limit: the *qbx_forced_limit* argument to be passed on
@@ -259,6 +284,12 @@ class _ElasticityWrapperNaiveOrBiharmonic:
 
 class ElasticityWrapperNaive(_ElasticityWrapperNaiveOrBiharmonic,
                              ElasticityWrapperBase):
+    r"""Elasticity single-layer wrapper based on the standard elasticity kernel.
+
+    This representation uses the elasticity kernel denoted by
+    :attr:`Method.Naive`.
+    """
+
     def __init__(self, dim, mu, nu):
         super().__init__(dim=dim, mu=mu, nu=nu, base_kernel=None)
         ElasticityWrapperBase.__init__(self, dim=dim, mu=mu, nu=nu)
@@ -266,6 +297,12 @@ class ElasticityWrapperNaive(_ElasticityWrapperNaiveOrBiharmonic,
 
 class ElasticityWrapperBiharmonic(_ElasticityWrapperNaiveOrBiharmonic,
                                   ElasticityWrapperBase):
+    r"""Elasticity single-layer wrapper based on the biharmonic kernel.
+
+    This representation uses the biharmonic kernel denoted by
+    :attr:`Method.Biharmonic`.
+    """
+
     def __init__(self, dim, mu, nu):
         super().__init__(dim=dim, mu=mu, nu=nu,
                 base_kernel=BiharmonicKernel(dim))
@@ -387,6 +424,12 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
 class ElasticityDoubleLayerWrapperNaive(
         _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
         ElasticityDoubleLayerWrapperBase):
+    r"""Elasticity double-layer wrapper based on the standard elasticity kernel.
+
+    This representation uses the elasticity kernel denoted by
+    :attr:`Method.Naive`.
+    """
+
     def __init__(self, dim, mu, nu):
         super().__init__(dim=dim, mu=mu, nu=nu,
                 base_kernel=None)
@@ -397,6 +440,12 @@ class ElasticityDoubleLayerWrapperNaive(
 class ElasticityDoubleLayerWrapperBiharmonic(
         _ElasticityDoubleLayerWrapperNaiveOrBiharmonic,
         ElasticityDoubleLayerWrapperBase):
+    r"""Elasticity double-layer wrapper based on the biharmonic kernel.
+
+    This representation uses the biharmonic kernel denoted by
+    :attr:`Method.Biharmonic`.
+    """
+
     def __init__(self, dim, mu, nu):
         super().__init__(dim=dim, mu=mu, nu=nu,
                 base_kernel=BiharmonicKernel(dim))
@@ -409,44 +458,41 @@ class ElasticityDoubleLayerWrapperBiharmonic(
 # {{{ dispatch function
 
 class Method(Enum):
-    """Method to use in Elasticity/Stokes problem.
+    """Method to represent the elasticity kernel."""
+    Naive = 1
+    """The naive representation is given by the standard tensor expression of
+    kernel using e.g. :class:`~sumpy.kernel.ElasticityKernel`.
     """
-    naive = 1
-    laplace = 2
-    biharmonic = 3
+    Laplace = 2
+    """A representation of the elasticity kernel in terms of the Laplace kernel."""
+    Biharmonic = 3
+    """A representation of the elasticity kernel in terms of the biharmonic kernel.
+    """
 
 
 def make_elasticity_wrapper(
         dim: int,
         mu: ExpressionT = _MU_SYM_DEFAULT,
         nu: ExpressionT = _NU_SYM_DEFAULT,
-        method: Method = Method.naive) -> ElasticityWrapperBase:
-    """Creates a :class:`ElasticityWrapperBase` object depending on the input
-    values.
+        method: Method = Method.Naive) -> ElasticityWrapperBase:
+    """Creates an appropriate :class:`ElasticityWrapperBase` object.
 
-    :param: dim: dimension
-    :param: mu: viscosity symbol, defaults to a variable named "mu"
-    :param: nu: poisson ratio symbol, defaults to a variable named "nu"
-    :param: method: method to use, defaults to the *Method* enum value naive.
-
-    :return: a :class:`ElasticityWrapperBase` object
+    :param dim: ambient dimension of the representation.
+    :param mu: expression or value for the shear modulus.
+    :param nu: expression or value for Poisson's ratio. If this is set to
+        *0.5* exactly, an appropriate Stokes object is created instead.
+    :param method: method to use - defaults to the :attr:`Method.Naive`.
     """
-
     if nu == 0.5:
-        from pytential.symbolic.stokes import StokesletWrapper
-        return StokesletWrapper(dim=dim, mu=mu, method=method)
-    if method == Method.naive:
+        from pytential.symbolic.stokes import make_stokeslet_wrapper
+        return make_stokeslet_wrapper(dim=dim, mu=mu, method=method)
+
+    if method == Method.Naive:
         return ElasticityWrapperNaive(dim=dim, mu=mu, nu=nu)
-    elif method == Method.biharmonic:
+    elif method == Method.Biharmonic:
         return ElasticityWrapperBiharmonic(dim=dim, mu=mu, nu=nu)
-    elif method == Method.laplace:
-        if nu == 0.5:
-            from pytential.symbolic.stokes import StokesletWrapperTornberg
-            return StokesletWrapperTornberg(dim=dim,
-                mu=mu, nu=nu)
-        else:
-            return ElasticityWrapperYoshida(dim=dim,
-                mu=mu, nu=nu)
+    elif method == Method.Laplace:
+        return ElasticityWrapperYoshida(dim=dim, mu=mu, nu=nu)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
@@ -456,34 +502,25 @@ def make_elasticity_double_layer_wrapper(
         dim: int,
         mu: ExpressionT = _MU_SYM_DEFAULT,
         nu: ExpressionT = _NU_SYM_DEFAULT,
-        method: Method = Method.naive) -> ElasticityDoubleLayerWrapperBase:
-    """Creates a :class:`ElasticityDoubleLayerWrapperBase` object depending on the
-    input values.
+        method: Method = Method.Naive) -> ElasticityDoubleLayerWrapperBase:
+    """Creates an appropriate :class:`ElasticityDoubleLayerWrapperBase` object.
 
-    :param: dim: dimension
-    :param: mu: viscosity symbol, defaults to a variable named "mu"
-    :param: nu: poisson ratio symbol, defaults to a variable named "nu"
-    :param: method: method to use, defaults to the *Method* enum value naive.
-
-    :return: a :class:`ElasticityDoubleLayerWrapperBase` object
+    :param dim: ambient dimension of the representation.
+    :param mu: expression or value for the shear modulus.
+    :param nu: expression or value for Poisson's ratio. If this is set to
+        *0.5* exactly, an appropriate Stokes object is created instead.
+    :param method: method to use - defaults to the :attr:`Method.Naive`.
     """
     if nu == 0.5:
-        from pytential.symbolic.stokes import StressletWrapper
-        return StressletWrapper(dim=dim, mu=mu, method=method)
-    if method == Method.naive:
-        return ElasticityDoubleLayerWrapperNaive(dim=dim, mu=mu,
-            nu=nu)
-    elif method == Method.biharmonic:
-        return ElasticityDoubleLayerWrapperBiharmonic(dim=dim, mu=mu,
-            nu=nu)
-    elif method == Method.laplace:
-        if nu == 0.5:
-            from pytential.symbolic.stokes import StressletWrapperTornberg
-            return StressletWrapperTornberg(dim=dim,
-                mu=mu, nu=nu)
-        else:
-            return ElasticityDoubleLayerWrapperYoshida(dim=dim,
-                mu=mu, nu=nu)
+        from pytential.symbolic.stokes import make_stresslet_wrapper
+        return make_stresslet_wrapper(dim, mu=mu, method=method)
+
+    if method == Method.Naive:
+        return ElasticityDoubleLayerWrapperNaive(dim=dim, mu=mu, nu=nu)
+    elif method == Method.Biharmonic:
+        return ElasticityDoubleLayerWrapperBiharmonic(dim=dim, mu=mu, nu=nu)
+    elif method == Method.Laplace:
+        return ElasticityDoubleLayerWrapperYoshida(dim=dim, mu=mu, nu=nu)
     else:
         raise ValueError(f"invalid method: {method}."
                 "Needs to be one of naive, laplace, biharmonic")
@@ -496,18 +533,18 @@ def make_elasticity_double_layer_wrapper(
 
 @dataclass
 class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
-    r"""ElasticityDoubleLayer Wrapper using Yoshida et al's method [1] which uses
-    Laplace derivatives.
+    r"""Elasticity double-layer wrapper based on [Yoshida2001]_.
 
-    [1] Yoshida, K. I., Nishimura, N., & Kobayashi, S. (2001). Application of
-        fast multipole Galerkin boundary integral equation method to elastostatic
-        crack problems in 3D.
-        International Journal for Numerical Methods in Engineering, 50(3), 525-547.
-        `DOI <https://doi.org/10.1002/1097-0207(20010130)50:3\<525::AID-NME34\>3.0.CO;2-4>`__  # noqa
-    """
-    dim: int
-    mu: ExpressionT
-    nu: ExpressionT
+    This representation uses the Laplace kernel denoted by :attr:`Method.Laplace`
+    and can only be used in 3D.
+
+    .. [Yoshida2001] K.-I. Yoshida, N. Nishimura, S. Kobayashi,
+        *Application of Fast Multipole Galerkin Boundary Integral Equation Method
+        to Elastostatic Crack Problems in 3D*,
+        International Journal for Numerical Methods in Engineering, Vol. 50, pp.
+        525--547, 2001,
+        `DOI <https://doi.org/10.1002/1097-0207(20010130)50:3%3C525::aid-nme34%3E3.0.co;2-4>`__.
+    """  # noqa: E501
 
     def __post_init__(self):
         if not self.dim == 3:
@@ -612,18 +649,11 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
 
 @dataclass
 class ElasticityWrapperYoshida(ElasticityWrapperBase):
-    r"""Elasticity single layer using Yoshida et al's method [1] which uses Laplace
-    derivatives.
+    r"""Elasticity single-layer wrapper based on [Yoshida2001]_.
 
-    [1] Yoshida, K. I., Nishimura, N., & Kobayashi, S. (2001). Application of
-        fast multipole Galerkin boundary integral equation method to elastostatic
-        crack problems in 3D.
-        International Journal for Numerical Methods in Engineering, 50(3), 525-547.
-        `DOI <https://doi.org/10.1002/1097-0207(20010130)50:3\<525::AID-NME34\>3.0.CO;2-4>`__  # noqa
+    This representation uses the Laplace kernel denoted by :attr:`Method.Laplace`
+    and can only be used in 3D.
     """
-    dim: int
-    mu: ExpressionT
-    nu: ExpressionT
 
     def __post_init__(self):
         if not self.dim == 3:
