@@ -48,13 +48,13 @@ def main(curve_fn=starfish, visualize=True):
 
     qbx = QBXLayerPotentialSource(
             pre_density_discr, 4*target_order, qbx_order,
-            fmm_order=qbx_order+3,
+            fmm_order=False,
             target_association_tolerance=0.005,
             #fmm_backend="fmmlib",
             )
 
     from pytential.target import PointsTarget
-    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=1000)
+    fplot = FieldPlotter(np.zeros(2), extent=5, npoints=300)
     targets_dev = actx.from_numpy(fplot.points)
 
     from pytential import GeometryCollection
@@ -78,9 +78,9 @@ def main(curve_fn=starfish, visualize=True):
     def op(**kwargs):
         kwargs.update(kernel_kwargs)
 
-        #op = sym.d_dx(sym.S(kernel, sym.var("sigma"), **kwargs))
+        #return sym.d_dx(2, sym.S(kernel, sym.var("sigma"), **kwargs))
         return sym.D(kernel, sym.var("sigma"), **kwargs)
-        #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None, **kwargs)
+        # return sym.S(kernel, sym.var("sigma"), **kwargs)
 
     if 0:
         from random import randrange
@@ -101,12 +101,9 @@ def main(curve_fn=starfish, visualize=True):
                     target="targets",
                     qbx_forced_limit=None))(actx, sigma=sigma, k=k))
 
-        if enable_mayavi:
-            fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
-        else:
-            fplot.write_vtk_file("layerpot-potential.vts", [
-                ("potential", fld_in_vol)
-                ])
+        fplot.write_vtk_file("layerpot-potential.vts", [
+            ("potential", fld_in_vol)
+            ])
 
     if 0:
         apply_op = bound_bdry_op.scipy_op(actx, "sigma", np.float64, k=k)
@@ -117,24 +114,6 @@ def main(curve_fn=starfish, visualize=True):
         pt.imshow(mat)
         pt.colorbar()
         pt.show()
-
-    if enable_mayavi:
-        # {{{ plot boundary field
-
-        from arraycontext import flatten
-        fld_on_bdry = actx.to_numpy(
-                flatten(bound_bdry_op(actx, sigma=sigma, k=k), actx))
-        nodes_host = actx.to_numpy(
-                flatten(density_discr.nodes(), actx)
-                ).reshape(density_discr.ambient_dim, -1)
-
-        mlab.points3d(nodes_host[0], nodes_host[1],
-                fld_on_bdry.real, scale_factor=0.03)
-
-        mlab.colorbar()
-        mlab.show()
-
-        # }}}
 
 
 if __name__ == "__main__":
