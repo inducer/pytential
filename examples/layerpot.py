@@ -1,10 +1,3 @@
-enable_mayavi = False
-if enable_mayavi:
-    try:
-        from mayavi import mlab
-    except ImportError:
-        enable_mayavi = False
-
 import numpy as np
 
 from meshmode.array_context import PyOpenCLArrayContext
