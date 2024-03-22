@@ -25,6 +25,10 @@ import pytest
 import numpy as np
 import numpy.linalg as la
 
+from arraycontext import pytest_generate_tests_for_array_contexts
+from pytential.array_context import (   # noqa: F401
+    PytestPyOpenCLArrayContextFactory, _acf)
+
 from arraycontext import flatten
 from meshmode.discretization.visualization import make_visualizer
 
@@ -33,10 +37,6 @@ from sumpy.kernel import LaplaceKernel, HelmholtzKernel, BiharmonicKernel
 from pytential import bind, sym
 from pytential import GeometryCollection
 from pytools.obj_array import flat_obj_array
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import extra_int_eq_data as inteq
 import logging

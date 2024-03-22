@@ -1,6 +1,6 @@
 import numpy as np
 
-from meshmode.array_context import PyOpenCLArrayContext
+from pytential.array_context import PyOpenCLArrayContext
 from meshmode.mesh.generation import (  # noqa
         make_curve_mesh, starfish, ellipse, drop)
 
