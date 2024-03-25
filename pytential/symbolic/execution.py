@@ -1038,9 +1038,15 @@ def bind(places, expr, auto_where=None):
 
 
 def bind_distributed(comm, places, expr, auto_where=None):
-    """
-    :arg places: root rank contains the actual places, while worker ranks should pass
-    `None`.
+    """Distributed version of `bind`.
+
+    Overall, this function accepts the same argument as the non-distributed version
+    on the root rank, with the addition of a MPI communicator. On the worker rank,
+    only the `comm` argument is significant.
+
+    :arg comm: MPI communicator.
+    :arg places: a :class:`pytential.collection.GeometryCollection`. Only significant
+        on the root rank. Worker ranks could simply pass `None`.
     """
     if comm.Get_rank() == 0:
         from pytential import GeometryCollection
