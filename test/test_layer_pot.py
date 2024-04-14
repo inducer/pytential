@@ -27,15 +27,15 @@ from functools import partial
 
 import numpy as np
 
+from arraycontext import pytest_generate_tests_for_array_contexts
+from pytential.array_context import (   # noqa: F401
+    PytestPyOpenCLArrayContextFactory, _acf)
+
 from arraycontext import flatten
 from pytential import bind, sym, norm
 from pytential import GeometryCollection
 import meshmode.mesh.generation as mgen
 from sumpy.visualization import FieldPlotter
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import logging
 logger = logging.getLogger(__name__)

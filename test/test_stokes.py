@@ -25,16 +25,16 @@ import pytest
 
 import numpy as np
 
+from arraycontext import pytest_generate_tests_for_array_contexts
+from pytential.array_context import (   # noqa: F401
+    PytestPyOpenCLArrayContextFactory, _acf)
+
 from arraycontext import flatten
 from pytential import GeometryCollection, bind, sym
 from meshmode.discretization import Discretization
 from meshmode.discretization.poly_element import \
         InterpolatoryQuadratureGroupFactory
 from pytools.obj_array import make_obj_array
-
-from meshmode import _acf           # noqa: F401
-from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import extra_int_eq_data as eid
 import logging
