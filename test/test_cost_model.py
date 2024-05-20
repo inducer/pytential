@@ -720,19 +720,20 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
         ntargets = 10 ** 3
         targets = PointsTarget(
                 make_uniform_particle_array(queue, ntargets, dim, np.float64))
-        target_discrs_and_qbx_sides = ((targets, 0),)
         qbx_forced_limit = None
 
         places = GeometryCollection((lpot_source, targets))
     else:
         places = GeometryCollection(lpot_source)
+        qbx_forced_limit = 1
 
     source_dd = places.auto_source
     density_discr = places.get_discretization(source_dd.geometry)
 
-    if not off_surface:
+    if off_surface:
+        target_discrs_and_qbx_sides = ((targets, 0),)
+    else:
         target_discrs_and_qbx_sides = ((density_discr, 1),)
-        qbx_forced_limit = 1
 
     # Construct bound op, run cost model.
     sigma_sym = sym.var("sigma")

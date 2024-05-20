@@ -165,7 +165,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
         if recalc_r:
             r = b - a_call(x)
 
-        norm_r = norm(r)
+        norm_r = norm(r)  # pylint: disable=possibly-used-before-assignment
         residual_norms.append(norm_r)
 
         if callback is not None:
