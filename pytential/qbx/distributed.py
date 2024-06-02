@@ -810,7 +810,7 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
 
             return results, timing_data
         else:
-            results = []
+            results = [(o.name, None) for o in insn.outputs]
             return results, timing_data
 
 
