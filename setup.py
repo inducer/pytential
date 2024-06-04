@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
 import os
-from setuptools import setup, find_packages
-from setuptools.extension import Extension
-from Cython.Build import cythonize
+import sys
 
+from Cython.Build import cythonize
+from setuptools import find_packages, setup
+from setuptools.extension import Extension
 
 # {{{ capture git revision at install time
 
@@ -13,14 +14,14 @@ def find_git_revision(tree_root):
     # Keep this routine self-contained so that it can be copy-pasted into
     # setup.py.
 
-    from os.path import join, exists, abspath
+    from os.path import abspath, exists, join
 
     tree_root = abspath(tree_root)
 
     if not exists(join(tree_root, ".git")):
         return None
 
-    from subprocess import Popen, PIPE, STDOUT
+    from subprocess import PIPE, STDOUT, Popen
 
     p = Popen(
         ["git", "rev-parse", "HEAD"],
@@ -62,6 +63,12 @@ write_git_revision("pytential")
 # }}}
 
 
+if sys.platform.startswith("linux"):
+    openmp_flag = ["-fopenmp"]
+else:
+    openmp_flag = []
+
+
 ext_modules = [
     Extension(
         "pytential.qbx.target_specific.impl",
@@ -73,8 +80,8 @@ ext_modules = [
             "pytential/qbx/target_specific/impl.h",
             "pytential/qbx/target_specific/helmholtz_utils.h",
         ],
-        extra_compile_args=["-Wall", "-fopenmp", "-Ofast"],
-        extra_link_args=["-fopenmp"],
+        extra_compile_args=["-Wall", "-Ofast"] + openmp_flag,
+        extra_link_args=openmp_flag,
     ),
 ]
 
