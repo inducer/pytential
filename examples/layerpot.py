@@ -18,7 +18,7 @@ k = 0
 
 def main(curve_fn=starfish, visualize=True):
     import logging
-    logging.basicConfig(level=logging.WARNING)  # INFO for more progress info
+    logging.basicConfig(level=logging.INFO)  # INFO for more progress info
 
     import pyopencl as cl
     cl_ctx = cl.create_some_context()
@@ -72,8 +72,8 @@ def main(curve_fn=starfish, visualize=True):
         kwargs.update(kernel_kwargs)
 
         #return sym.d_dx(2, sym.S(kernel, sym.var("sigma"), **kwargs))
-        return sym.D(kernel, sym.var("sigma"), **kwargs)
-        # return sym.S(kernel, sym.var("sigma"), **kwargs)
+        # return sym.D(kernel, sym.var("sigma"), **kwargs)
+        return sym.S(kernel, sym.var("sigma"), **kwargs)
 
     if 0:
         from random import randrange

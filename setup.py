@@ -7,10 +7,11 @@ from Cython.Build import cythonize
 from setuptools import find_packages, setup
 from setuptools.extension import Extension
 
+
 # {{{ capture git revision at install time
 
-# authoritative version in pytools/__init__.py
 def find_git_revision(tree_root):
+    # authoritative version in pytools/__init__.py
     # Keep this routine self-contained so that it can be copy-pasted into
     # setup.py.
 
@@ -66,6 +67,8 @@ write_git_revision("pytential")
 if sys.platform.startswith("linux"):
     openmp_flag = ["-fopenmp"]
 else:
+    # OpenMP can't be relied upon on MacOS.
+    # https://stackoverflow.com/questions/43555410/enable-openmp-support-in-clang-in-mac-os-x-sierra-mojave
     openmp_flag = []
 
 
