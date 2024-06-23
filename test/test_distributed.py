@@ -214,7 +214,7 @@ def _test_urchin_against_single_rank(ctx_factory, m, n, op_wrapper, use_tsqbx):
             u = 1 / dist
             grad_u = -diff / dist ** 3
         else:
-            assert False
+            raise RuntimeError("Unsupported dimension")
 
         # }}}
 
@@ -226,11 +226,11 @@ def _test_urchin_against_single_rank(ctx_factory, m, n, op_wrapper, use_tsqbx):
             density_discr.nodes(),
             actx.from_numpy(grad_u.ravel()), actx, strict=False)
 
-        context = {'u': u_dev, 'grad_u': grad_u_dev}
+        context = {"u": u_dev, "grad_u": grad_u_dev}
     else:
         places = None
         op = None
-        context = {'u': None, 'grad_u': None}
+        context = {"u": None, "grad_u": None}
 
     from pytential.symbolic.execution import bind_distributed
     bound_op = bind_distributed(comm, places, op)
@@ -244,7 +244,7 @@ def _test_urchin_against_single_rank(ctx_factory, m, n, op_wrapper, use_tsqbx):
             **params)
         places = GeometryCollection(qbx)
 
-        context = {'u': u_dev, 'grad_u': grad_u_dev}
+        context = {"u": u_dev, "grad_u": grad_u_dev}
         single_node_result = bind(places, op)(actx, **context)
 
         distributed_result = actx.to_numpy(flatten(distributed_result, actx))
@@ -286,8 +286,8 @@ if __name__ == "__main__":
     if "PYTEST" in os.environ:
         if os.environ["PYTEST"] == "1":
             # Run "test_off_surface_eval" test case
-            use_fmm = (os.environ["use_fmm"] == 'True')
-            do_plot = (os.environ["do_plot"] == 'True')
+            use_fmm = (os.environ["use_fmm"] == "True")
+            do_plot = (os.environ["do_plot"] == "True")
 
             _test_off_surface_eval(cl.create_some_context, use_fmm, do_plot=do_plot)
         elif os.environ["PYTEST"] == "2":
@@ -295,7 +295,7 @@ if __name__ == "__main__":
             m = int(os.environ["m"])
             n = int(os.environ["n"])
             op_wrapper_str = os.environ["op_wrapper"]
-            use_tsqbx = (os.environ["use_tsqbx"] == 'True')
+            use_tsqbx = (os.environ["use_tsqbx"] == "True")
 
             if op_wrapper_str == "single_layer_wrapper":
                 op_wrapper = single_layer_wrapper
