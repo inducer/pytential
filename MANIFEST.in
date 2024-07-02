@@ -1,15 +1,12 @@
-include test/*.py
 include test/*.step
-
-include examples/*.py
 include examples/geometries/*step
 
+include doc/*.sh
 include doc/*.rst
 include doc/Makefile
-include doc/*.py
-include doc/images/*.png
-include doc/_static/*.css
-include doc/_templates/*.html
 
-include README.rst
-include requirements.txt
+include pytential/qbx/target_specific/*.c
+include pytential/qbx/target_specific/*.h
+include pytential/qbx/target_specific/*.pyx
+
+exclude pytential/_git_rev.py
