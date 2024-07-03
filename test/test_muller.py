@@ -35,8 +35,8 @@ def test_muller(true_roots):
     :arg n: number of zeros sought
     :return: (roots, niter)
     """
-    np.random.seed(15)
-    z_start = np.random.rand(3) + 1j*np.random.rand(3)
+    rng = np.random.default_rng(seed=42)
+    z_start = rng.random(3) + 1j*rng.random(3)
 
     eps = 1e-12
     from pytential.muller import muller_deflate

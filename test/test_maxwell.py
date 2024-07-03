@@ -86,7 +86,8 @@ class SphereTestCase(MaxwellTestCase):
 
         source_rad = 0.3
 
-        sources = source_ctr + source_rad*2*(np.random.rand(3, 10)-0.5)
+        rng = np.random.default_rng(seed=42)
+        sources = source_ctr + source_rad*2*(rng.random(size=(3, 10))-0.5)
         from pytential.source import PointPotentialSource
         return PointPotentialSource(actx.from_numpy(sources))
 
@@ -128,7 +129,8 @@ class RoundedCubeTestCase(MaxwellTestCase):
 
         source_rad = 0.3
 
-        sources = source_ctr + source_rad*2*(np.random.rand(3, 10)-0.5)
+        rng = np.random.default_rng(seed=42)
+        sources = source_ctr + source_rad*2*(rng.random(size=(3, 10))-0.5)
         from pytential.source import PointPotentialSource
         return PointPotentialSource(actx.from_numpy(sources))
 
@@ -173,7 +175,8 @@ class ElliptiPlaneTestCase(MaxwellTestCase):
 
         source_rad = 0.3
 
-        sources = source_ctr + source_rad*2*(np.random.rand(3, 10)-0.5)
+        rng = np.random.default_rng(seed=42)
+        sources = source_ctr + source_rad*2*(rng.random(size=(3, 10))-0.5)
         from pytential.source import PointPotentialSource
         return PointPotentialSource(actx.from_numpy(sources))
 
@@ -219,12 +222,7 @@ def test_pec_mfie_extinction(actx_factory, case,
     extinction of the combined (incoming + scattered) field on the interior
     of the scatterer.
     """
-    logging.basicConfig(level=logging.INFO)
-
     actx = actx_factory()
-
-    np.random.seed(12)
-
     knl_kwargs = {"k": case.k}
 
     # {{{ come up with a solution to Maxwell's equations

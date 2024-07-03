@@ -44,12 +44,14 @@ pytest_generate_tests = pytest_generate_tests_for_array_contexts([
 # {{{ test_gmres
 
 def test_gmres():
+    rng = np.random.default_rng(seed=42)
+
     n = 200
     A = (  # noqa
             n * (np.eye(n) + 2j * np.eye(n))
-            + np.random.randn(n, n) + 1j * np.random.randn(n, n))
+            + rng.normal(size=(n, n)) + 1j * rng.normal(size=(n, n)))
 
-    true_sol = np.random.randn(n) + 1j * np.random.randn(n)
+    true_sol = rng.normal(size=n) + 1j * rng.normal(size=n)
     b = np.dot(A, true_sol)
 
     A_func = lambda x: np.dot(A, x)  # noqa
