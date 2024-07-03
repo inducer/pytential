@@ -20,19 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-# {{{ find install- or run-time git revision
+from importlib import metadata
 
-import os
-if os.environ.get("AKPYTHON_EXEC_FROM_WITHIN_WITHIN_SETUP_PY") is not None:
-    # We're just being exec'd by setup.py. We can't import anything.
-    _git_rev = None
-else:
-    from pytools import find_module_git_revision
-    _git_rev = find_module_git_revision(__file__, n_levels_up=1)
+from pytools import find_module_git_revision
 
-# }}}
+VERSION_TEXT = metadata.version("pytential")
+VERSION = tuple([int(i) for i in VERSION_TEXT.split(".")])
 
-
-VERSION = (2020, 2)
-VERSION_TEXT = ".".join(str(i) for i in VERSION)
-PYTENTIAL_KERNEL_VERSION = (VERSION, _git_rev, 0)
+_GIT_REVISION = find_module_git_revision(__file__, n_levels_up=1)
+PYTENTIAL_KERNEL_VERSION = (*VERSION, _GIT_REVISION, 0)
