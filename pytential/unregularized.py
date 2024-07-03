@@ -72,7 +72,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         if fmm_level_to_order is None:
             if fmm_order is not False:
-                def fmm_level_to_order(kernel, kernel_args, tree, level):  # noqa pylint:disable=function-redefined
+                # pylint: disable-next=function-redefined
+                def fmm_level_to_order(kernel, kernel_args, tree, level):
                     return fmm_order
             else:
                 fmm_level_to_order = False
@@ -231,7 +232,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             target_name_to_index[o.target_name] = len(targets)
             target = bound_expr.places.get_geometry(o.target_name.geometry)
-            targets = targets + (target,)
+            targets = (*targets, target)
 
         # }}}
 
@@ -418,7 +419,7 @@ class _FMMGeometryData:
         refine_weights[:nsources] = 1
         refine_weights.finish()
 
-        MAX_LEAF_REFINE_WEIGHT = 32  # noqa
+        MAX_LEAF_REFINE_WEIGHT = 32
 
         tree, _ = code_getter.build_tree(actx.queue,
                 particles=flatten(

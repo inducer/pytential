@@ -90,7 +90,7 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
     def _map_minmax(self, func, inherited_func, expr):
         ev_children = [self.rec(ch) for ch in expr.children]
         from functools import reduce
-        if any(isinstance(ch, self.array_context.array_types + (DOFArray,))
+        if any(isinstance(ch, (*self.array_context.array_types, DOFArray))
                 for ch in ev_children):
             return reduce(func, ev_children)
         else:
@@ -110,19 +110,19 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
 
     def map_node_sum(self, expr):
         operand = self.rec(expr.operand)
-        assert isinstance(operand, self.array_context.array_types + (DOFArray,))
+        assert isinstance(operand, (*self.array_context.array_types, DOFArray))
 
         return self.array_context.np.sum(operand)
 
     def map_node_max(self, expr):
         operand = self.rec(expr.operand)
-        assert isinstance(operand, self.array_context.array_types + (DOFArray,))
+        assert isinstance(operand, (*self.array_context.array_types, DOFArray))
 
         return self.array_context.np.max(operand)
 
     def map_node_min(self, expr):
         operand = self.rec(expr.operand)
-        assert isinstance(operand, self.array_context.array_types + (DOFArray,))
+        assert isinstance(operand, (*self.array_context.array_types, DOFArray))
 
         return self.array_context.np.min(operand)
 
@@ -247,8 +247,8 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         operand = self.rec(expr.operand)
 
         if isinstance(operand,
-                self.array_context.array_types
-                + (list, np.ndarray, DOFArray)):
+                (*self.array_context.array_types,
+                 list, np.ndarray, DOFArray)):
             conn = self.places.get_connection(expr.from_dd, expr.to_dd)
             return conn(operand)
         elif isinstance(operand, (int, float, complex, np.number)):

@@ -141,7 +141,7 @@ def test_ellipse_eigenvalues(actx_factory, ellipse_aspect, mode_nr, qbx_order,
         ellipse_fraction = ((1-ellipse_aspect)/(1+ellipse_aspect))**mode_nr
 
         # (2.6) in [1]
-        J = actx.np.sqrt(  # noqa
+        J = actx.np.sqrt(
                 actx.np.sin(angle)**2
                 + (1/ellipse_aspect)**2 * actx.np.cos(angle)**2)
 

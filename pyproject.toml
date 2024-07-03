@@ -90,6 +90,7 @@ extend-select = [
     "N",    # pep8-naming
     "NPY",  # numpy
     "Q",    # flake8-quotes
+    "RUF",  # ruff
     "UP",   # pyupgrade
     "W",    # pycodestyle
 ]
@@ -107,6 +108,8 @@ extend-ignore = [
     "N803", # argument name should be lowercase
     "N806", # variable name should be lowercase
     "N818", # error suffix in exception names
+    "RUF012", # ClassVar for mutable class attributes
+    "RUF022", # __all__ is not sorted
     "UP031", # use f-strings instead of %
     "UP032", # use f-strings instead of .format
 ]

@@ -25,7 +25,7 @@ ext_modules = [
             "pytential/qbx/target_specific/impl.h",
             "pytential/qbx/target_specific/helmholtz_utils.h",
         ],
-        extra_compile_args=["-Wall", "-Ofast"] + openmp_flag,
+        extra_compile_args=["-Wall", "-Ofast", *openmp_flag],
         extra_link_args=openmp_flag,
     ),
 ]

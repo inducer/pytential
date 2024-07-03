@@ -119,7 +119,7 @@ class BeltramiOperator:
             equation based on the density *sigma* and the type of
             preconditioning used in the operator.
         """
-        S = partial(sym.S, self.kernel,     # noqa: N806
+        S = partial(sym.S, self.kernel,
                 qbx_forced_limit=+1, **self.kernel_arguments)
 
         if self.precond == "left":
@@ -132,7 +132,7 @@ class BeltramiOperator:
         :returns: a modified expression for the right-hands ide *b* based on
             the preconditiong used in the operator.
         """
-        S = partial(sym.S, self.kernel,     # noqa: N806
+        S = partial(sym.S, self.kernel,
                 qbx_forced_limit=+1, **self.kernel_arguments)
 
         if self.precond == "left":
@@ -169,15 +169,15 @@ class BeltramiOperator:
         # {{{ layer potentials
 
         # laplace
-        S0 = partial(sym.S, lknl, qbx_forced_limit=+1, **kwargs)        # noqa: N806
-        D0 = partial(sym.D, lknl, qbx_forced_limit="avg", **kwargs)     # noqa: N806
-        Sp0 = partial(sym.Sp, lknl, qbx_forced_limit="avg", **kwargs)   # noqa: N806
-        Dp0 = partial(sym.Dp, lknl, qbx_forced_limit="avg", **kwargs)   # noqa: N806
+        S0 = partial(sym.S, lknl, qbx_forced_limit=+1, **kwargs)
+        D0 = partial(sym.D, lknl, qbx_forced_limit="avg", **kwargs)
+        Sp0 = partial(sym.Sp, lknl, qbx_forced_limit="avg", **kwargs)
+        Dp0 = partial(sym.Dp, lknl, qbx_forced_limit="avg", **kwargs)
 
         # base
-        S = partial(sym.S, knl, qbx_forced_limit=+1, **context)         # noqa: N806
-        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", **context)    # noqa: N806
-        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", **context)  # noqa: N806
+        S = partial(sym.S, knl, qbx_forced_limit=+1, **context)
+        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", **context)
+        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", **context)
 
         # }}}
 
@@ -250,16 +250,16 @@ class LaplaceBeltramiOperator(BeltramiOperator):
 
         # {{{ layer potentials
 
-        S = partial(sym.S, knl, qbx_forced_limit=+1, **context)          # noqa: N806
-        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", **context)     # noqa: N806
-        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", **context)   # noqa: N806
-        D = partial(sym.D, knl, qbx_forced_limit="avg", **context)       # noqa: N806
-        Dp = partial(sym.Dp, knl, qbx_forced_limit="avg", **context)     # noqa: N806
+        S = partial(sym.S, knl, qbx_forced_limit=+1, **context)
+        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", **context)
+        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", **context)
+        D = partial(sym.D, knl, qbx_forced_limit="avg", **context)
+        Dp = partial(sym.Dp, knl, qbx_forced_limit="avg", **context)
 
-        def Wl(operand: sym.Expression) -> sym.Expression:               # noqa: N802
+        def Wl(operand: sym.Expression) -> sym.Expression:
             return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
 
-        def Wr(operand: sym.Expression) -> sym.Expression:               # noqa: N802
+        def Wr(operand: sym.Expression) -> sym.Expression:
             return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
 
         # }}}

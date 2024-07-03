@@ -34,7 +34,7 @@ from pymbolic.primitives import (  # noqa: N813
 from pymbolic.geometric_algebra import MultiVector, componentwise
 from pymbolic.geometric_algebra.primitives import (
         NablaComponent, Derivative as DerivativeBase)
-from pymbolic.primitives import make_sym_vector  # noqa: F401
+from pymbolic.primitives import make_sym_vector
 
 from pytools.obj_array import make_obj_array, flat_obj_array
 from pytools import single_valued, MovedFunctionDeprecationWrapper
@@ -375,8 +375,8 @@ class CLMathFunction(NumpyMathFunction):
     def __call__(self, *args, **kwargs):
         cl_name = self._np_to_cl_names[self.name]
         warn(f"'sym.{cl_name}' is deprecated. Use 'sym.{self.name}' instead. "
-                 "'sym.{cl_name}' will go away in 2022.",
-                DeprecationWarning, stacklevel=2)
+             f"'sym.{cl_name}' will go away in 2022.",
+             DeprecationWarning, stacklevel=2)
 
         return super().__call__(*args, **kwargs)
 
@@ -1240,9 +1240,12 @@ class IterativeInverse(Expression):
                 self.extra_vars, self.dofdesc)
 
     def get_hash(self):
-        return hash((self.__class__,) + (self.expression,
-            self.rhs, self.variable_name,
-            frozenset(self.extra_vars.items()), self.dofdesc))
+        return hash((self.__class__,
+                     self.expression,
+                     self.rhs,
+                     self.variable_name,
+                     frozenset(self.extra_vars.items()),
+                     self.dofdesc))
 
     mapper_method = intern("map_inverse")
 
@@ -1412,12 +1415,12 @@ class IntG(Expression):
         densities = tuple(densities)
         kernel_arg_names = set()
 
-        for kernel in source_kernels + (target_kernel,):
+        for kernel in (*source_kernels, target_kernel):
             for karg in (kernel.get_args() + kernel.get_source_args()):
                 kernel_arg_names.add(karg.loopy_arg.name)
 
         single_valued(kernel.get_base_kernel() for
-                kernel in source_kernels + (target_kernel,))
+                kernel in (*source_kernels, target_kernel))
 
         kernel_arguments = kernel_arguments.copy()
         if kwargs:

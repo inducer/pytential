@@ -38,7 +38,7 @@ class P2QBXLFromCSR(P2EBase):
     default_name = "p2qbxl_from_csr"
 
     def get_cache_key(self):
-        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+        return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
@@ -171,7 +171,7 @@ class M2QBXL(E2EBase):
     default_name = "m2qbxl_from_csr"
 
     def get_cache_key(self):
-        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+        return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
 
     def get_kernel(self):
         ncoeff_src = len(self.src_expansion)
@@ -238,8 +238,9 @@ class M2QBXL(E2EBase):
                         shape=("nsrc_level_boxes", ncoeff_src), offset=lp.auto),
                     lp.GlobalArg("qbx_expansions", None,
                         shape=("ncenters", ncoeff_tgt)),
+                    *gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                     ...
-                ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
+                ],
                 name=self.name, assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)",
                 fixed_parameters={"dim": self.dim},
@@ -287,7 +288,7 @@ class L2QBXL(E2EBase):
     default_name = "l2qbxl"
 
     def get_cache_key(self):
-        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+        return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
 
     def get_kernel(self):
         ncoeff_src = len(self.src_expansion)
@@ -347,8 +348,9 @@ class L2QBXL(E2EBase):
                     lp.ValueArg("naligned_boxes,target_base_ibox,nboxes", np.int32),
                     lp.GlobalArg("expansions", None,
                         shape=("nboxes", ncoeff_src), offset=lp.auto),
+                    *gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
                     ...
-                ] + gather_loopy_arguments([self.src_expansion, self.tgt_expansion]),
+                ],
                 name=self.name,
                 assumptions="ncenters>=1",
                 silenced_warnings="write_race(write_expn*)",
@@ -397,7 +399,7 @@ class QBXL2P(E2PBase):
     default_name = "qbx_potential_from_local"
 
     def get_cache_key(self):
-        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+        return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
 
     def get_kernel(self):
         ncoeffs = len(self.expansion)
@@ -412,8 +414,9 @@ class QBXL2P(E2PBase):
                     "{[icoeff]: 0<=icoeff<ncoeffs}",
                     "{[iknl]: 0<=iknl<nresults}",
                     ],
-                self.get_kernel_scaling_assignment()
-                + ["""
+                [
+                *self.get_kernel_scaling_assignment(),
+                """
                 for iglobal_center
                     <> src_icenter = global_qbx_centers[iglobal_center]
 

@@ -20,10 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import numpy as np  # noqa
-import pyopencl as cl  # noqa
-import pyopencl.array  # noqa
+import pyopencl as cl
+import pyopencl.array
 from sumpy.fmm import (SumpyTreeIndependentDataForWrangler,
         SumpyExpansionWrangler, SumpyTimingFuture)
 

@@ -251,12 +251,12 @@ class DirichletOperator(L2WeightedPDEOperator):
         else:
             ones_contribution = 0
 
-        def S(density):  # noqa
+        def S(density):
             return sym.S(self.kernel, density,
                     kernel_arguments=self.kernel_arguments,
                     qbx_forced_limit=+1, **kwargs)
 
-        def D(density):  # noqa
+        def D(density):
             return sym.D(self.kernel, density,
                     kernel_arguments=self.kernel_arguments,
                     qbx_forced_limit="avg", **kwargs)
