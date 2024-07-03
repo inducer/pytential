@@ -61,6 +61,7 @@ class MatrixTestCaseMixin:
         # randomly pick a subset of points from each cluster
         if abs(self.index_sparsity_factor - 1.0) > 1.0e-14:
             subset = np.empty(cindex.nclusters, dtype=object)
+            rng = np.random.default_rng(seed=42)
 
             for i in range(cindex.nclusters):
                 iidx = cindex.cluster_indices(i)
@@ -68,7 +69,7 @@ class MatrixTestCaseMixin:
                 isize = max(1, min(isize, len(iidx)))
 
                 subset[i] = np.sort(
-                        np.random.choice(iidx, size=isize, replace=False)
+                        rng.choice(iidx, size=isize, replace=False)
                         )
 
             from pytential.linalg import make_index_list

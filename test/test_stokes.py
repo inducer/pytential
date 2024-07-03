@@ -183,9 +183,9 @@ def run_exterior_stokes(actx_factory, *,
 
     normal = bind(places, sym.normal(ambient_dim).as_vector())(actx)
 
-    np.random.seed(42)
+    rng = np.random.default_rng(seed=42)
     charges = make_obj_array([
-        actx.from_numpy(np.random.randn(point_source.ndofs))
+        actx.from_numpy(rng.normal(size=point_source.ndofs))
         for _ in range(ambient_dim)
         ])
 

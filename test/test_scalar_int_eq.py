@@ -186,8 +186,8 @@ def run_int_eq_test(actx,
 
     # {{{ set up test data
 
-    np.random.seed(22)
-    source_charges = np.random.randn(point_source.ndofs)
+    rng = np.random.default_rng(seed=42)
+    source_charges = rng.normal(size=point_source.ndofs)
     source_charges[-1] = -np.sum(source_charges[:-1])
     source_charges = source_charges.astype(dtype)
     assert np.sum(source_charges) < 1.0e-15
