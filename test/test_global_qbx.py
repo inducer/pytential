@@ -394,7 +394,7 @@ def test_target_association(actx_factory, curve_name, curve_f, nelements,
      vol_int_slice,
      vol_ext_slice,
      far_slice,
-     ) = [slice(start, end) for start, end in zip(np.r_[0, sizes], sizes)]
+     ) = (slice(start, end) for start, end in zip(np.r_[0, sizes], sizes))
 
     # }}}
 
