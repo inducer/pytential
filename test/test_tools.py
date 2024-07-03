@@ -81,7 +81,7 @@ def test_interpolatory_error_reporting(actx_factory):
             target_unit="mm",
             )
 
-    logger.info("%d elements" % mesh.nelements)
+    logger.info("%d elements", mesh.nelements)
 
     # {{{ discretizations and connections
 

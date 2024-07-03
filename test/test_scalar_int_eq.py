@@ -369,7 +369,7 @@ def run_int_eq_test(actx,
             pt.savefig(f"tangential-derivative-{resolution}", dpi=300)
 
         rel_td_err_inf = la.norm(td_err, np.inf) / la.norm(tang_deriv_ref, np.inf)
-        logger.info("rel_td_err_inf: %.5e" % rel_td_err_inf)
+        logger.info("rel_td_err_inf: %.5e", rel_td_err_inf)
     else:
         rel_td_err_inf = None
 
