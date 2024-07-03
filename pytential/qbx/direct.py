@@ -34,7 +34,7 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
     default_name = "qbx_tgt_ctr_subset"
 
     def get_cache_key(self):
-        return super().get_cache_key() + (PYTENTIAL_KERNEL_VERSION,)
+        return (*super().get_cache_key(), PYTENTIAL_KERNEL_VERSION)
 
     def get_kernel(self):
         loopy_insns, result_names = self.get_loopy_insns_and_result_names()
@@ -42,8 +42,8 @@ class LayerPotentialOnTargetAndCenterSubset(LayerPotentialBase):
 
         from sumpy.tools import gather_loopy_source_arguments
         arguments = (
-            gather_loopy_source_arguments((self.expansion,)
-                + self.source_kernels + self.target_kernels)
+            gather_loopy_source_arguments(
+                (self.expansion, *self.source_kernels, *self.target_kernels))
             + [
                 lp.GlobalArg("sources", None,
                     shape=(self.dim, "nsources"), order="C"),

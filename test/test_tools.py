@@ -47,7 +47,7 @@ def test_gmres():
     rng = np.random.default_rng(seed=42)
 
     n = 200
-    A = (  # noqa
+    A = (
             n * (np.eye(n) + 2j * np.eye(n))
             + rng.normal(size=(n, n)) + 1j * rng.normal(size=(n, n)))
 

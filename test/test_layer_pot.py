@@ -307,8 +307,9 @@ def test_single_plus_double_with_single_fmm(actx_factory,  do_plot=False):
     assert linf_err < 1e-3
 
     # check that using one FMM works
-    op = op_d.copy(source_kernels=op_d.source_kernels + (knl,),
-        densities=op_d.densities + (sym.var("sigma")*0.5,))
+    op = op_d.copy(
+        source_kernels=(*op_d.source_kernels, knl),
+        densities=(*op_d.densities, 0.5 * sym.var("sigma")))
     single_fmm_bound_op = bind(places, op, auto_where=("fmm_qbx", "target"))
     print(single_fmm_bound_op.code)
     single_fmm_fld_in_vol = fmm_bound_op(actx, sigma=fmm_sigma)

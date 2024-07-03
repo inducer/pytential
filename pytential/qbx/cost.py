@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 import numpy as np
 import pyopencl as cl
-import pyopencl.array  # noqa: F401
+import pyopencl.array
 from pyopencl.array import take
 from pyopencl.elementwise import ElementwiseKernel
 from pyopencl.tools import dtype_to_ctype

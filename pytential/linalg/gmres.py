@@ -99,7 +99,7 @@ class GMRESResult:
     state: str
 
 
-def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
+def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,
         maxiter=None, hard_failure=None, require_monotonicity=True,
         no_progress_factor=None, stall_iterations=None,
         callback=None):
@@ -144,7 +144,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
         del x0
         recalc_r = True
 
-    Ae = [None]*restart  # noqa
+    Ae = [None]*restart
     e = [None]*restart
 
     k = 0
@@ -193,7 +193,7 @@ def _gmres(A, b, restart=None, tol=None, x0=None, dot=None,  # noqa
             if (stall_iterations
                     and len(residual_norms) > stall_iterations
                     and norm_r > (
-                        residual_norms[-stall_iterations]  # noqa pylint:disable=invalid-unary-operand-type
+                        residual_norms[-stall_iterations]  # pylint:disable=invalid-unary-operand-type
                         / no_progress_factor)):
 
                 state = "stalled"

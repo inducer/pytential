@@ -27,7 +27,7 @@ import numpy as np
 
 from pytential import bind, sym, norm
 from pytential.target import PointsTarget
-from sumpy.visualization import make_field_plotter_from_bbox  # noqa
+from sumpy.visualization import make_field_plotter_from_bbox
 from sumpy.point_calculus import CalculusPatch, frequency_domain_maxwell
 from sumpy.tools import vector_from_device
 from meshmode.mesh.processing import find_bounding_box

@@ -1,4 +1,4 @@
-from pytential.linalg.gmres import *        # noqa: F401,F403
+from pytential.linalg.gmres import *        # noqa: F403
 
 from warnings import warn
 warn(

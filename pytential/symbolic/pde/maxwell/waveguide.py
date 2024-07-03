@@ -109,19 +109,19 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                 / sym.area_element(2, 1, where)),
                 "tangent")
 
-    def S(self, dom_idx, density, qbx_forced_limit=+1):  # noqa
+    def S(self, dom_idx, density, qbx_forced_limit=+1):
         return sym.S(
                 self.kernel, density,
                 k=self.domain_K_exprs[dom_idx],
                 qbx_forced_limit=qbx_forced_limit)
 
-    def D(self, dom_idx, density, qbx_forced_limit="avg"):  # noqa
+    def D(self, dom_idx, density, qbx_forced_limit="avg"):
         return sym.D(
                 self.kernel, density,
                 k=self.domain_K_exprs[dom_idx],
                 qbx_forced_limit=qbx_forced_limit)
 
-    def T(self, where, dom_idx, density):  # noqa
+    def T(self, where, dom_idx, density):
         return sym.int_g_dsource(
                 2,
                 self.tangent(where),
@@ -176,9 +176,9 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
             tau1 = tangent[0]
             tau2 = tangent[1]
 
-            S = self.S  # noqa
-            D = self.D  # noqa
-            T = self.T  # noqa
+            S = self.S
+            D = self.D
+            T = self.T
 
             # Ex
             result[0] += (
@@ -257,9 +257,9 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                     sym.normal(2, 1, where),
                     "normal")
 
-            S = self.S  # noqa
-            D = self.D  # noqa
-            T = self.T  # noqa
+            S = self.S
+            D = self.D
+            T = self.T
 
             def Tt(where, dom, density):
                 return sym.tangential_derivative(
@@ -269,7 +269,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
                 return sym.normal_derivative(
                         2, self.S(dom, density, qbx_forced_limit="avg"))
 
-            def St(dom, density):  # noqa
+            def St(dom, density):
                 return sym.tangential_derivative(
                     2, self.S(dom, density)).xproject(0)
 

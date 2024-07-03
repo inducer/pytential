@@ -214,7 +214,7 @@ def run_source_refinement_test(actx_factory, mesh, order,
             logger.info("radius [%s] > %.12e",
                     ", ".join([f"{r:.12e}" for r in rad]), dist)
             logger.info("radius [%s]",
-                    ", ".join([f"{str(dist >= r):>18}" for r in rad]))
+                    ", ".join([f"{dist >= r:>18}" for r in rad]))
 
         return is_undisturbed
 

@@ -23,8 +23,8 @@ THE SOFTWARE.
 import numpy as np
 
 from pytools import memoize_method
-import pyopencl as cl  # noqa
-import pyopencl.array  # noqa: F401
+import pyopencl as cl
+import pyopencl.array
 
 from boxtree.pyfmmlib_integration import (
         Kernel,
@@ -276,7 +276,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
     def qbx_local_expansion_zeros(self):
         return np.zeros(
-                    (self.geo_data.ncenters,) + self.expansion_shape(self.qbx_order),
+                    (self.geo_data.ncenters, *self.expansion_shape(self.qbx_order)),
                     dtype=self.tree_indep.dtype)
 
     # {{{ p2qbxl
@@ -414,7 +414,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
             # This gets added onto: pass initialized version.
             expn2 = np.zeros(
-                    (ngqbx_centers,) + self.expansion_shape(self.qbx_order),
+                    (ngqbx_centers, *self.expansion_shape(self.qbx_order)),
                     dtype=self.tree_indep.dtype)
 
             kwargs.update(self.kernel_kwargs)

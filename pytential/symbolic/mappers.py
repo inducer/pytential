@@ -178,10 +178,9 @@ class CombineMapper(CombineMapperBase):
 
     def map_inverse(self, expr):
         return self.combine([
-            self.rec(expr.rhs)] + [
-                (self.rec(name_expr)
-                for name_expr in expr.extra_vars.values())
-                ])
+            self.rec(expr.rhs),
+            *(self.rec(name_expr) for name_expr in expr.extra_vars.values())
+            ])
 
     def map_is_shape_class(self, expr):
         return set()

@@ -39,7 +39,7 @@ class CahnHilliardOperator(L2WeightedPDEOperator):
     def make_unknown(self, name):
         return sym.make_sym_vector(name, 2)
 
-    def S_G(self, i, density, qbx_forced_limit, op_map=None):  # noqa: N802
+    def S_G(self, i, density, qbx_forced_limit, op_map=None):
         if op_map is None:
             op_map = lambda x: x  # noqa: E731
 
@@ -67,18 +67,18 @@ class CahnHilliardOperator(L2WeightedPDEOperator):
 
     def representation(self, unknown):
         sig1, sig2 = unknown
-        S_G = partial(self.S_G, qbx_forced_limit=None)  # noqa: N806
+        S_G = partial(self.S_G, qbx_forced_limit=None)
 
         return S_G(1, sig1) + S_G(0, sig2)
 
     def operator(self, unknown):
         sig1, sig2 = unknown
         lam1, lam2 = self.lambdas
-        S_G = partial(self.S_G, qbx_forced_limit=1)  # noqa: N806
+        S_G = partial(self.S_G, qbx_forced_limit=1)
 
         c = self.c
 
-        def Sn_G(i, density):  # noqa
+        def Sn_G(i, density):
             return self.S_G(i, density,
                         qbx_forced_limit="avg",
                         op_map=partial(sym.normal_derivative, 2))
