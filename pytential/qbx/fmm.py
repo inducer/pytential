@@ -357,7 +357,7 @@ non_qbx_box_target_lists`),
 
         qbxl2p = self.tree_indep.qbxl2p(self.qbx_order)
 
-        evt, pot_res = qbxl2p(queue,
+        _, pot_res = qbxl2p(queue,
                 qbx_centers=geo_data.flat_centers(),
                 qbx_expansion_radii=geo_data.flat_expansion_radii(),
 

@@ -856,7 +856,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     target_name.geometry, target_name.discr_stage)
             flat_target_nodes = _flat_nodes(target_name)
 
-            evt, output_for_each_kernel = lpot_applier(queue,
+            _, output_for_each_kernel = lpot_applier(queue,
                     targets=flat_target_nodes,
                     sources=flat_source_nodes,
                     centers=_flat_centers(target_name, qbx_forced_limit),
@@ -887,7 +887,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             flat_target_nodes = _flat_nodes(target_name)
 
             # FIXME: (Somewhat wastefully) compute P2P for all targets
-            evt, output_for_each_kernel = p2p(  # pylint: disable=possibly-used-before-assignment  # noqa: E501
+            _, output_for_each_kernel = p2p(  # pylint: disable=possibly-used-before-assignment  # noqa: E501
                   queue,
                   targets=flat_target_nodes,
                   sources=flat_source_nodes,

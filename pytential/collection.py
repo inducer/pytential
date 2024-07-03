@@ -335,7 +335,7 @@ class GeometryCollection:
         try:
             return self.places[geometry]
         except KeyError:
-            raise KeyError(f"geometry not in the collection: '{geometry}'")
+            raise KeyError(f"geometry not in the collection: '{geometry}'") from None
 
     def copy(
             self,

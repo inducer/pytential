@@ -332,7 +332,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
     refine_weights.finish()
 
-    tree, evt = tree_builder(queue, particles,
+    tree, _ = tree_builder(queue, particles,
             max_leaf_refine_weight=MAX_REFINE_WEIGHT,
             refine_weights=refine_weights)
 
