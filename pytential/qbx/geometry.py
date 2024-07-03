@@ -646,7 +646,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         if self.debug:
             qbx_center_to_target_box.fill(-1)
 
-        evt, _ = qbx_center_to_target_box_lookup(
+        qbx_center_to_target_box_lookup(
                 actx.queue,
                 qbx_center_to_target_box=qbx_center_to_target_box,
                 box_to_target_box=box_to_target_box,

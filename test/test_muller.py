@@ -40,7 +40,7 @@ def test_muller(true_roots):
 
     eps = 1e-12
     from pytential.muller import muller_deflate
-    roots, niter = muller_deflate(
+    roots, _niter = muller_deflate(
         lambda z: poly_with_roots(z, true_roots), len(true_roots),
         z_start=z_start)
 

@@ -59,16 +59,10 @@ fmmlib = [
     "pyfmmlib>=2023.1",
 ]
 test = [
-    "flake8",
-    "flake8-bugbear",
-    "flake8-comprehensions",
-    "flake8-isort",
-    "flake8-pyproject",
-    "flake8-quotes",
     "mypy",
-    "pep8-naming",
     "pylint",
     "pytest",
+    "ruff",
 ]
 
 [project.urls]
@@ -81,29 +75,27 @@ include = [
     "pytential*",
 ]
 
-[tool.flake8]
-max-line-length = 85
-inline-quotes = "double"
-docstring-quotes = "double"
-multiline-quotes = "double"
-select = [
-    "B", # flake8-bugbear
-    "C", # flake8-comprehensions
-    "D", # pydocstyle
-    "E", # pycodestyle
-    "F", # pyflakes
-    "N", # pep8-naming
-    "Q", # flake8-quotes
-    "W", # pycodestyle
+[tool.ruff]
+preview = true
+
+[tool.ruff.lint]
+extend-select = [
+    "B",    # flake8-bugbear
+    "C",    # flake8-comprehensions
+    # "D",    # pydocstyle
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    # "I",    # flake8-isort
+    "N",    # pep8-naming
+    # "NPY",  # numpy
+    "Q",    # flake8-quotes
+    "W",    # pycodestyle
 ]
 extend-ignore = [
+    "C90",  # McCabe complexity
     "B028", # no explicit stacklevel in warnings
     "D102", # missing docstring in method
     "D103", # missing docstring in function
-    "E123", # closing bracket does not match indentation
-    "E126", # continuation line over-indented
-    "E127", # continuation line over-indented
-    "E128", # continuation line under-indented
     "E226", # missing whitespace around arithmetic operator
     "E241", # multiple spaces after comma
     "E242", # tab after comma
@@ -113,12 +105,34 @@ extend-ignore = [
     "N803", # argument name should be lowercase
     "N806", # variable name should be lowercase
     "N818", # error suffix in exception names
-    "W503", # line break before a binary operator
 ]
 exclude = [
+    "experiments/*.py",
     "pytential/symbolic/old_diffop_primitives.py",
     "pytential/symbolic/pde/maxwell/generalized_debye.py",
 ]
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "double"
+multiline-quotes = "double"
+
+# [tool.ruff.lint.isort]
+# combine-as-imports = true
+# known-first-party = [
+#     "arraycontext",
+#     "boxtree",
+#     "loopy",
+#     "meshmode",
+#     "modepy",
+#     "pymbolic",
+#     "pyopencl",
+#     "pytools",
+# ]
+# known-local-folder = [
+#     "pytential",
+# ]
+# lines-after-imports = 2
 
 [tool.pytest.ini_options]
 markers = [

@@ -128,7 +128,7 @@ def test_mean_curvature(actx_factory, discr_name, resolutions,
         eoc.add_data_point(h, actx.to_numpy(h_error))
     logger.info("eoc:\n%s", eoc)
 
-    order = min([g.order for g in discr.groups])
+    order = min(g.order for g in discr.groups)
     assert eoc.order_estimate() > order - 1.1
 
 # }}}

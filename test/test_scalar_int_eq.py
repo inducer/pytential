@@ -270,7 +270,7 @@ def run_int_eq_test(actx,
         mat = build_matrix(
                 bound_op.scipy_op(
                     actx, arg_name="u", dtype=dtype, **case.knl_concrete_kwargs))
-        w, v = la.eig(mat)
+        _w, _v = la.eig(mat)
 
         if visualize:
             pt.imshow(np.log10(1.0e-20 + np.abs(mat)))

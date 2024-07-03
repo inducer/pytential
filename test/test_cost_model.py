@@ -695,11 +695,11 @@ class OpCountingTranslationCostModel:
 
 @pytest.mark.parametrize("dim, off_surface, use_target_specific_qbx", (
         (2, False, False),
-        (2, True,  False),
+        (2, True, False),
         (3, False, False),
         (3, False, True),
-        (3, True,  False),
-        (3, True,  True)))
+        (3, True, False),
+        (3, True, True)))
 def test_cost_model_correctness(actx_factory, dim, off_surface,
         use_target_specific_qbx):
     """Check that computed cost matches that of a constant-one FMM."""

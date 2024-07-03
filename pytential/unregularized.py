@@ -163,7 +163,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                     target_kernels=insn.target_kernels)
 
-            evt, output_for_each_kernel = p2p(actx.queue,
+            _, output_for_each_kernel = p2p(actx.queue,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(
                         self.density_discr.nodes(), actx, leaf_class=DOFArray
