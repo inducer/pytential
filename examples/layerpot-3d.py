@@ -47,7 +47,7 @@ def main(mesh_name="ellipsoid"):
     bbox_center = 0.5*(bbox_min+bbox_max)
     bbox_size = max(bbox_max-bbox_min) / 2
 
-    logger.info("%d elements" % mesh.nelements)
+    logger.info("%d elements", mesh.nelements)
 
     from pytential.qbx import QBXLayerPotentialSource
     from meshmode.discretization import Discretization

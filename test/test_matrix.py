@@ -179,7 +179,7 @@ def test_build_matrix(actx_factory, k, curve_fn, op_type, visualize=False):
         abs_err = la.norm(res_mat - res_matvec, np.inf)
         rel_err = abs_err / la.norm(res_matvec, np.inf)
 
-        logger.info(f"AbsErr {abs_err:.5e} RelErr {rel_err:.5e}")
+        logger.info("AbsErr %.5e RelErr %.5e", abs_err, rel_err)
         assert rel_err < 1.0e-13, f"iteration: {i}"
 
     # }}}

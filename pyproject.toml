@@ -85,6 +85,7 @@ extend-select = [
     # "D",    # pydocstyle
     "E",    # pycodestyle
     "F",    # pyflakes
+    "G",    # flake8-logging-format
     # "I",    # flake8-isort
     "N",    # pep8-naming
     "NPY",  # numpy

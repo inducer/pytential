@@ -234,15 +234,16 @@ def run_exterior_stokes(actx_factory, *,
     ref_velocity = bind(places, sym_source_pot,
             auto_where=("point_source", "point_target"))(actx, sigma=charges, mu=mu)
 
-    v_error = [
+    v_error = [0.0] * ambient_dim
+    v_error[:ambient_dim] = [
             dof_array_rel_error(actx, u, uref)
             for u, uref in zip(velocity, ref_velocity)]
     h_max = actx.to_numpy(
             bind(places, sym.h_max(ambient_dim))(actx)
             )
 
-    logger.info("resolution %4d h_max %.5e error " + ("%.5e " * ambient_dim),
-            resolution, h_max, *v_error)
+    logger.info("resolution %4d h_max %.5e error %.5e %.5e %.5e",
+                resolution, h_max, *v_error)
 
     # }}}}
 
@@ -341,11 +342,11 @@ def run_stokes_identity(actx_factory, case, identity, resolution, visualize=Fals
     h_max = actx.to_numpy(
             bind(places, sym.h_max(places.ambient_dim))(actx)
             )
-    error = [
+    error = [0.0] * places.ambient_dim
+    error[:places.ambient_dim] = [
             discr_rel_error(actx, density_discr, x, xref, p=np.inf)
             for x, xref in zip(result, ref_result)]
-    logger.info("resolution %4d h_min %.5e h_max %.5e error "
-            + ("%.5e " * places.ambient_dim),
+    logger.info("resolution %4d h_min %.5e h_max %.5e error %.5e %.5e %.5e",
             resolution, h_min, h_max, *error)
 
     # }}}
