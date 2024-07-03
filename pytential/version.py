@@ -26,22 +26,13 @@ import os
 if os.environ.get("AKPYTHON_EXEC_FROM_WITHIN_WITHIN_SETUP_PY") is not None:
     # We're just being exec'd by setup.py. We can't import anything.
     _git_rev = None
-
 else:
-    import pytential._git_rev as _git_rev_mod
-    _git_rev = _git_rev_mod.GIT_REVISION
-
-    # If we're running from a dev tree, the last install (and hence the most
-    # recent update of the above git rev) could have taken place very long ago.
     from pytools import find_module_git_revision
-    _runtime_git_rev = find_module_git_revision(__file__, n_levels_up=1)
-    if _runtime_git_rev is not None:
-        _git_rev = _runtime_git_rev
+    _git_rev = find_module_git_revision(__file__, n_levels_up=1)
 
 # }}}
 
 
 VERSION = (2020, 2)
 VERSION_TEXT = ".".join(str(i) for i in VERSION)
-
 PYTENTIAL_KERNEL_VERSION = (VERSION, _git_rev, 0)
