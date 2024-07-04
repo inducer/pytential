@@ -1,4 +1,4 @@
-import os
+from importlib import metadata
 from urllib.request import urlopen
 
 _conf_url = \
@@ -7,13 +7,8 @@ with urlopen(_conf_url) as _inf:
     exec(compile(_inf.read(), _conf_url, "exec"), globals())
 
 copyright = "2013-21, Andreas Kloeckner and contributors"
-
-os.environ["AKPYTHON_EXEC_FROM_WITHIN_WITHIN_SETUP_PY"] = "1"
-ver_dic = {}
-exec(compile(open("../pytential/version.py").read(),
-    "../pytential/version.py", "exec"), ver_dic)
-version = ".".join(str(x) for x in ver_dic["VERSION"])
-release = ver_dic["VERSION_TEXT"]
+release = metadata.version("pytential")
+version = ".".join(release.split(".")[:2])
 
 autodoc_type_aliases = {
         "GeometryLike": "pytential.collection.GeometryLike",
