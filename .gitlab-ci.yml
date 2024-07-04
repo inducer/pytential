@@ -119,14 +119,11 @@ Mypy:
   except:
   - tags
 
-Flake8:
+Ruff:
   script: |
-    export EXTRA_INSTALL="Cython pybind11 numpy scipy mako"
-    curl -L -O https://tiker.net/ci-support-v0
-    . ci-support-v0
-    build_py_project
-    install_and_run_flake8 "$(get_proj_name)" examples/*.py test/*.py
+    pipx install ruff
+    ruff check
   tags:
-  - python3
+  - docker-runner
   except:
   - tags
