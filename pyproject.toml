@@ -23,11 +23,6 @@ classifiers = [
     "Natural Language :: English",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Scientific/Engineering :: Mathematics",
@@ -97,8 +92,6 @@ extend-select = [
 extend-ignore = [
     "C90",  # McCabe complexity
     "B028", # no explicit stacklevel in warnings
-    "D102", # missing docstring in method
-    "D103", # missing docstring in function
     "E226", # missing whitespace around arithmetic operator
     "E241", # multiple spaces after comma
     "E242", # tab after comma
