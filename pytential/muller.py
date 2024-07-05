@@ -55,7 +55,7 @@ def muller_deflate(
     # Truncates the zero arrays created above if necessary.
     for i in range(n):
         miter = 0
-        roots0, niter0 = muller(f_deflated, maxiter=maxiter, tol=eps)
+        roots0, niter0 = muller(f_deflated, maxiter=maxiter, tol=eps, z_start=z_start)
         roots.append(roots0)
         niter.append(niter0)
 
