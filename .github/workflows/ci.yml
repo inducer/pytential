@@ -27,13 +27,11 @@ jobs:
         -   name: "Main Script"
             run: |
                 export EXTRA_INSTALL="pyvisfile matplotlib"
+                export PROJECT_INSTALL_FLAGS="--no-build-isolation --editable"
 
                 curl -L -O https://tiker.net/ci-support-v0
                 . ci-support-v0
 
-                # pylint seems unable to find the cython bits if not installed
-                # editable. -AK, 2023-11-01
-                PROJECT_INSTALL_FLAGS="--editable"
 
                 build_py_project_in_conda_env
                 run_pylint "$(get_proj_name)" examples/*.py test/*.py
@@ -46,6 +44,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 export EXTRA_INSTALL="mypy pytest"
+                export PROJECT_INSTALL_FLAGS="--no-build-isolation --editable"
 
                 curl -L -O https://tiker.net/ci-support-v0
                 . ./ci-support-v0
@@ -59,6 +58,8 @@ jobs:
         -   uses: actions/checkout@v4
         -   name: "Main Script"
             run: |
+                export PROJECT_INSTALL_FLAGS="--no-build-isolation --editable"
+
                 curl -L -O https://tiker.net/ci-support-v0
                 . ci-support-v0
                 build_py_project_in_conda_env
@@ -73,6 +74,7 @@ jobs:
             run: |
                 export SUMPY_FORCE_SYMBOLIC_BACKEND=sympy
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
+                export PROJECT_INSTALL_FLAGS="--no-build-isolation --editable"
 
                 curl -L -O https://tiker.net/ci-support-v0
                 . ci-support-v0
@@ -94,6 +96,7 @@ jobs:
                 export LANG=en_US.UTF-8
                 export CONDA_ENVIRONMENT=.test-conda-env.yml
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
+                export PROJECT_INSTALL_FLAGS="--no-build-isolation --editable"
 
                 curl -L -O https://tiker.net/ci-support-v0
                 . ci-support-v0
@@ -109,6 +112,7 @@ jobs:
             run: |
                 export SUMPY_FORCE_SYMBOLIC_BACKEND=symengine
                 export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:-"-m 'not slowtest'"}
+                export PROJECT_INSTALL_FLAGS="--no-build-isolation --editable"
 
                 curl -L -O https://tiker.net/ci-support-v0
                 . ci-support-v0
@@ -123,6 +127,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 export EXTRA_INSTALL="pyvisfile matplotlib"
+                export PROJECT_INSTALL_FLAGS="--no-build-isolation --editable"
 
                 curl -L -O https://tiker.net/ci-support-v0
                 . ci-support-v0
