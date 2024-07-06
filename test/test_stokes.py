@@ -246,7 +246,7 @@ def run_exterior_stokes(actx_factory, *,
             timing_data=fmm_timing_data)
 
     def print_timing_data(timings, name):
-        result = {k: 0 for k in list(timings.values())[0].keys()}
+        result = dict.fromkeys(next(timings.values()), value=0)
         total = 0
         for k, timing in timings.items():
             for k, v in timing.items():
@@ -612,11 +612,12 @@ def run_stokes_pde(actx_factory, case, identity, resolution, visualize=False):
             identity.apply_pde_using_pytential())(actx))
 
     m = np.max([np.linalg.norm(p, ord=np.inf) for p in potential_host])
-    error = [np.linalg.norm(x, ord=np.inf)/m for x in result]
+    error = [0.0] * places.ambient_dim
+    error[:places.ambient_dim] = [np.linalg.norm(x, ord=np.inf)/m for x in result]
 
     error += [np.linalg.norm(x, ord=np.inf)/m for x in result_pytential]
-    logger.info("resolution %4d h_min %.5e h_max %.5e error "
-            + ("%.5e " * places.ambient_dim),
+    logger.info(
+            "resolution %4d h_min %.5e h_max %.5e error %.5e %.5e %.5e",
             resolution, h_min, h_max, *error)
 
     return h_max, error

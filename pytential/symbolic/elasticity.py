@@ -544,7 +544,7 @@ class ElasticityDoubleLayerWrapperYoshida(ElasticityDoubleLayerWrapperBase):
         International Journal for Numerical Methods in Engineering, Vol. 50, pp.
         525--547, 2001,
         `DOI <https://doi.org/10.1002/1097-0207(20010130)50:3%3C525::aid-nme34%3E3.0.co;2-4>`__.
-    """  # noqa: E501
+    """
 
     def __post_init__(self):
         if not self.dim == 3:
