@@ -23,7 +23,7 @@ THE SOFTWARE.
 import logging
 import warnings
 from dataclasses import dataclass
-from typing import Any, List, Mapping, Optional, Sequence, Text, Tuple, Union
+from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pymbolic
@@ -131,7 +131,7 @@ class RewriteUsingBaseKernelMapper(IdentityMapper):
 
 
 def _get_sympy_kernel_expression(expr: ExpressionT,
-        kernel_arguments: Mapping[Text, Any]) -> sym.Basic:
+        kernel_arguments: Mapping[str, Any]) -> sym.Basic:
     """Convert a :mod:`pymbolic` expression to :mod:`sympy` expression
     after substituting kernel arguments.
 
@@ -399,7 +399,7 @@ class DerivRelation:
 
 def get_deriv_relation(kernels: Sequence[ExpressionKernel],
         base_kernel: ExpressionKernel,
-        kernel_arguments: Mapping[Text, Any],
+        kernel_arguments: Mapping[str, Any],
         tol: float = 1e-10,
         order: Optional[int] = None) \
         -> List[DerivRelation]:
@@ -436,7 +436,7 @@ def get_deriv_relation(kernels: Sequence[ExpressionKernel],
 @memoize_on_first_arg
 def get_deriv_relation_kernel(kernel: ExpressionKernel,
         base_kernel: ExpressionKernel,
-        hashable_kernel_arguments: Tuple[Tuple[Text, Any], ...],
+        hashable_kernel_arguments: Tuple[Tuple[str, Any], ...],
         tol: float = 1e-10,
         order: Optional[int] = None) \
         -> DerivRelation:
@@ -495,7 +495,7 @@ class LUFactorization:
 
 @memoize_on_first_arg
 def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
-        hashable_kernel_arguments: Tuple[Tuple[Text, Any], ...],
+        hashable_kernel_arguments: Tuple[Tuple[str, Any], ...],
         order: Optional[int] = None, retries: int = 3) \
         -> Tuple[LUFactorization, np.ndarray, List[Tuple[int, ...]]]:
     """
@@ -525,11 +525,11 @@ def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
     if order == pde.order:
         pde_mis = [ident.mi for eq in pde.eqs for ident in eq.keys()]
         pde_mis = [mi for mi in pde_mis if sum(mi) == order]
-        logger.debug(f"Removing {pde_mis[-1]} to avoid linear dependent mis")
+        logger.debug("Removing %s to avoid linear dependent mis", pde_mis[-1])
         mis.remove(pde_mis[-1])
 
-    rand = np.random.randint(1, 10**15, (dim, len(mis)))
-    rand = rand.astype(object)
+    rng = np.random.default_rng()
+    rand: np.ndarray = rng.integers(1, 10**15, size=(dim, len(mis))).astype(object)
     for i in range(rand.shape[0]):
         for j in range(rand.shape[1]):
             rand[i, j] = sym.sympify(rand[i, j])/10**15
