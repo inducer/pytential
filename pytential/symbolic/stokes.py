@@ -91,7 +91,7 @@ class StokesletWrapperBase(ElasticityWrapperBase):
 
         sym_expr = 0
         for i in range(self.dim):
-            deriv_dirs = tuple(extra_deriv_dirs) + (i,)
+            deriv_dirs = (*extra_deriv_dirs, i)
             knl = lknl
             for deriv_dir in deriv_dirs:
                 knl = AxisTargetDerivative(deriv_dir, knl)
@@ -156,7 +156,7 @@ class StressletWrapperBase(ElasticityDoubleLayerWrapperBase):
         sym_expr = 0
 
         for i, j in itertools.product(range(self.dim), range(self.dim)):
-            deriv_dirs = tuple(extra_deriv_dirs) + (i, j)
+            deriv_dirs = (*extra_deriv_dirs, i, j)
             knl = lknl
             for deriv_dir in deriv_dirs:
                 knl = AxisTargetDerivative(deriv_dir, knl)
