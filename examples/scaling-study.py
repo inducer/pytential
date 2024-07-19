@@ -36,9 +36,9 @@ def make_mesh(nx, ny, visualize=False):
             affine_map(
                 base_mesh,
                 A=np.diag([dx*0.25, dx*0.25]),
-                b=np.array([dx*(ix-nx/2), dx*(iy-ny/2)]))
-            for ix in range(nx)
-            for iy in range(ny)]
+                b=np.array([dx*(i_x-nx/2), dx*(i_y-ny/2)]))
+            for i_x in range(nx)
+            for i_y in range(ny)]
 
     mesh = merge_disjoint_meshes(meshes, single_group=True)
 
