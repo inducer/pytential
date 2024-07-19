@@ -166,5 +166,6 @@ module = [
     "pytest.*",
     "scipy.*",
     "sumpy.*",
+    "sympy.*",
 ]
 ignore_missing_imports = true
