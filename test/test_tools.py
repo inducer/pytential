@@ -249,7 +249,7 @@ def test_add_geometry_to_collection(actx_factory):
     Test case of `add_geometry_to_collection`. Verifies that
     * cse_scope.DISCRETIZATION caches stick around
     * refinement / connection caches stick around
-    * caches added to the new collection don't polute the original one
+    * caches added to the new collection don't pollute the original one
     """
 
     actx = actx_factory()

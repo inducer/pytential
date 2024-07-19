@@ -192,7 +192,7 @@ class SkeletonizationWrangler:
 
         An :class:`~numpy.ndarray` of shape ``(nrows,)`` of expressions
         (layer potentials) that correspond to the output blocks of the matrix.
-        These expressions are tagged for nearfield neighbor evalution.
+        These expressions are tagged for nearfield neighbor evaluation.
 
     .. attribute:: source_proxy_exprs
     .. attribute:: target_proxy_exprs

@@ -457,7 +457,7 @@ def skeletonization_error(
     tgt_src_index = skeleton.tgt_src_index
     skel_tgt_src_index = skeleton.skel_tgt_src_index
 
-    # {{{ contruct matrices
+    # {{{ construct matrices
 
     # NOTE: the diagonal should be the same by definition
     skl = mat.copy()

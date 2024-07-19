@@ -972,7 +972,7 @@ def _source_danger_zone_radii(ambient_dim, dim=None,
     # This should be the expression of the expansion radii, but
     #
     # - in reference to the stage 2 discretization
-    # - mutliplied by 0.75 because
+    # - multiplied by 0.75 because
     #
     #   - Setting this equal to the expansion radii ensures that *every*
     #     stage 2 element will be refined, which is wasteful.
