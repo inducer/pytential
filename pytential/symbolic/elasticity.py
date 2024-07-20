@@ -98,7 +98,7 @@ class ElasticityWrapperBase(ABC):
     mu: ExpressionT
     r"""Expression or value for the shear modulus :math:`\mu`."""
     nu: ExpressionT
-    r"""Expression or value for Poisson's ration :math:`\nu`."""
+    r"""Expression or value for Poisson's ratio :math:`\nu`."""
 
     @abstractmethod
     def apply(self, density_vec_sym, qbx_forced_limit, extra_deriv_dirs=()):
@@ -118,7 +118,7 @@ class ElasticityWrapperBase(ABC):
     def apply_derivative(self, deriv_dir, density_vec_sym, qbx_forced_limit):
         """Symbolic derivative of the elasticity single-layer kernel.
 
-        This constrcts an object array of symbolic expressions for the vector
+        This constructs an object array of symbolic expressions for the vector
         resulting from integrating the *deriv_dir* target derivative of the
         dyadic elasticity kernel with the density *density_vec_sym*.
 
@@ -186,7 +186,7 @@ class ElasticityDoubleLayerWrapperBase(ABC):
             qbx_forced_limit):
         """Symbolic derivative of the elasticity double-layer potential.
 
-        This contructs an object array of symbolic expressions for the vector
+        This constructs an object array of symbolic expressions for the vector
         resulting from integrating the *deriv_dir* target derivative of the
         triadic elasticity kernel with variable *density_vec_sym* and the
         source direction *dir_vec_sym*.
