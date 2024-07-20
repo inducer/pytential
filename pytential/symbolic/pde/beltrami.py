@@ -120,7 +120,8 @@ class BeltramiOperator:
             preconditioning used in the operator.
         """
         S = partial(sym.S, self.kernel,
-                qbx_forced_limit=+1, **self.kernel_arguments)
+                qbx_forced_limit=+1,
+                kernel_arguments=self.kernel_arguments)
 
         if self.precond == "left":
             return S(sigma)
@@ -133,7 +134,8 @@ class BeltramiOperator:
             the preconditiong used in the operator.
         """
         S = partial(sym.S, self.kernel,
-                qbx_forced_limit=+1, **self.kernel_arguments)
+                qbx_forced_limit=+1,
+                kernel_arguments=self.kernel_arguments)
 
         if self.precond == "left":
             return S(b)
@@ -169,15 +171,15 @@ class BeltramiOperator:
         # {{{ layer potentials
 
         # laplace
-        S0 = partial(sym.S, lknl, qbx_forced_limit=+1, **kwargs)
-        D0 = partial(sym.D, lknl, qbx_forced_limit="avg", **kwargs)
-        Sp0 = partial(sym.Sp, lknl, qbx_forced_limit="avg", **kwargs)
-        Dp0 = partial(sym.Dp, lknl, qbx_forced_limit="avg", **kwargs)
+        S0 = partial(sym.S, lknl, qbx_forced_limit=+1, kernel_arguments=kwargs)
+        D0 = partial(sym.D, lknl, qbx_forced_limit="avg", kernel_arguments=kwargs)
+        Sp0 = partial(sym.Sp, lknl, qbx_forced_limit="avg", kernel_arguments=kwargs)
+        Dp0 = partial(sym.Dp, lknl, qbx_forced_limit="avg", kernel_arguments=kwargs)
 
         # base
-        S = partial(sym.S, knl, qbx_forced_limit=+1, **context)
-        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", **context)
-        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", **context)
+        S = partial(sym.S, knl, qbx_forced_limit=+1, kernel_arguments=context)
+        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", kernel_arguments=context)
+        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", kernel_arguments=context)
 
         # }}}
 
@@ -250,11 +252,11 @@ class LaplaceBeltramiOperator(BeltramiOperator):
 
         # {{{ layer potentials
 
-        S = partial(sym.S, knl, qbx_forced_limit=+1, **context)
-        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", **context)
-        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", **context)
-        D = partial(sym.D, knl, qbx_forced_limit="avg", **context)
-        Dp = partial(sym.Dp, knl, qbx_forced_limit="avg", **context)
+        S = partial(sym.S, knl, qbx_forced_limit=+1, kernel_arguments=context)
+        Sp = partial(sym.Sp, knl, qbx_forced_limit="avg", kernel_arguments=context)
+        Spp = partial(sym.Spp, knl, qbx_forced_limit="avg", kernel_arguments=context)
+        D = partial(sym.D, knl, qbx_forced_limit="avg", kernel_arguments=context)
+        Dp = partial(sym.Dp, knl, qbx_forced_limit="avg", kernel_arguments=context)
 
         def Wl(operand: sym.Expression) -> sym.Expression:
             return sym.Ones() * sym.integral(self.ambient_dim, self.dim, operand)
