@@ -40,7 +40,7 @@ def sort_arrays_together(*arys, key=None):
 
 
 def chop(expr: sym.Basic, tol) -> sym.Basic:
-    """Given a symbolic expression, remove all occurences of numbers
+    """Given a symbolic expression, remove all occurrences of numbers
     with absolute value less than a given tolerance and replace floating
     point numbers that are close to an integer up to a given relative
     tolerance by the integer.
