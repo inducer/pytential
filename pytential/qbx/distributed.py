@@ -222,7 +222,7 @@ def compute_local_geometry_data(
         data is generated.
     :arg boxes_time: Predicated cost of each box. Used by partitioning to improve
         load balancing.
-    :arg traversal_builder: Used to construct local tranversal.
+    :arg traversal_builder: Used to construct local traversal.
     """
     queue = actx.queue
 

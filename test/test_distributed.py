@@ -4,7 +4,8 @@ import pyopencl as cl
 import pyopencl.clmath
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
-from arraycontext import PyOpenCLArrayContext, flatten, unflatten
+from arraycontext import flatten, unflatten
+from meshmode.array_context import PyOpenCLArrayContext
 
 from meshmode.mesh.generation import make_curve_mesh, ellipse
 from sumpy.visualization import FieldPlotter
