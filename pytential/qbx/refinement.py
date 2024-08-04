@@ -542,9 +542,8 @@ def _visualize_refinement(actx: PyOpenCLArrayContext, discr,
 
         element_nr_base += meg.nelements
 
-    nodes_flags = DOFArray(actx, tuple(nodes_flags))
     vis_data = [
-        ("refine_flags", nodes_flags),
+        ("refine_flags", DOFArray(actx, tuple(nodes_flags))),
         ]
 
     if 0:

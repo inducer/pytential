@@ -101,7 +101,7 @@ class IntegralEquationTestCase:
     target_order: Optional[int] = None
     use_refinement: bool = True
     group_cls: Type[MeshElementGroup] = SimplexElementGroup
-    group_factory_cls: ElementGroupFactory = InterpolatoryQuadratureGroupFactory
+    group_factory_cls: Type[ElementGroupFactory] = InterpolatoryQuadratureGroupFactory
 
     # fmm
     fmm_backend: Optional[str] = "sumpy"
