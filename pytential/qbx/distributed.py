@@ -704,7 +704,7 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
 
         global_geo_data_device = None
         output_and_expansion_dtype = None
-        flat_strengths = None
+        flat_strengths = []
 
         if self.comm.Get_rank() == 0:
             target_name_and_side_to_number, target_discrs_and_qbx_sides = (
@@ -741,6 +741,8 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
             output_and_expansion_dtype = (
                     self.get_fmm_output_and_expansion_dtype(
                         insn.source_kernels, flat_strengths[0]))
+        else:
+            flat_strengths = [actx.empty(0, dtype=int)]
 
         output_and_expansion_dtype = self.comm.bcast(
             output_and_expansion_dtype, root=0)
@@ -814,28 +816,19 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
             return results, timing_data
 
 
-MPITags = {
-    "non_qbx_potentials": 0,
-    "qbx_potentials": 1
-}
-
-
 def drive_dfmm(comm, src_weight_vecs, wrangler, timing_data=None):
     # TODO: Integrate the distributed functionality with `qbx.fmm.drive_fmm`,
     # similar to that in `boxtree`.
 
     current_rank = comm.Get_rank()
-    total_rank = comm.Get_size()
     local_traversal = wrangler.traversal
 
     # {{{ Distribute source weights
 
-    template_ary = None
-    if current_rank == 0:
-        template_ary = src_weight_vecs[0]
+    template_ary = src_weight_vecs[0]
 
-        src_weight_vecs = [wrangler.reorder_sources(weight)
-            for weight in src_weight_vecs]
+    src_weight_vecs = [wrangler.reorder_sources(weight)
+        for weight in src_weight_vecs]
 
     src_weight_vecs = wrangler.distribute_source_weights(
         src_weight_vecs, wrangler.geo_data.src_idx_all_ranks)
@@ -997,9 +990,10 @@ def drive_dfmm(comm, src_weight_vecs, wrangler, timing_data=None):
 
     # }}}
 
+    non_qbx_potentials = wrangler.gather_non_qbx_potentials(non_qbx_potentials)
+    qbx_potentials = wrangler.gather_qbx_potentials(qbx_potentials)
+
     if current_rank != 0:  # worker process
-        comm.send(non_qbx_potentials, dest=0, tag=MPITags["non_qbx_potentials"])
-        comm.send(qbx_potentials, dest=0, tag=MPITags["qbx_potentials"])
         result = None
 
     else:  # master process
@@ -1008,42 +1002,11 @@ def drive_dfmm(comm, src_weight_vecs, wrangler, timing_data=None):
 
         nqbtl = wrangler.global_geo_data.non_qbx_box_target_lists
 
-        from pytools.obj_array import make_obj_array
-        non_qbx_potentials_all_rank = make_obj_array([
-            np.zeros(nqbtl.nfiltered_targets, wrangler.tree_indep.dtype)
-            for k in wrangler.tree_indep.outputs]
-        )
-
-        for irank in range(total_rank):
-
-            if irank == 0:
-                non_qbx_potentials_cur_rank = non_qbx_potentials
-            else:
-                non_qbx_potentials_cur_rank = comm.recv(
-                    source=irank, tag=MPITags["non_qbx_potentials"])
-
-            for idim in range(len(wrangler.tree_indep.outputs)):
-                non_qbx_potentials_all_rank[idim][
-                    wrangler.geo_data.particle_mask[irank]
-                ] = non_qbx_potentials_cur_rank[idim]
-
         for ap_i, nqp_i in zip(
-                all_potentials_in_tree_order, non_qbx_potentials_all_rank):
+                all_potentials_in_tree_order, non_qbx_potentials):
             ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
 
-        for irank in range(total_rank):
-
-            if irank == 0:
-                qbx_potentials_cur_rank = qbx_potentials
-            else:
-                qbx_potentials_cur_rank = comm.recv(
-                    source=irank, tag=MPITags["qbx_potentials"]
-                )
-
-            for idim in range(len(wrangler.tree_indep.outputs)):
-                all_potentials_in_tree_order[idim][
-                    wrangler.geo_data.qbx_target_mask[irank]
-                ] += qbx_potentials_cur_rank[idim]
+        all_potentials_in_tree_order += qbx_potentials
 
         def reorder_and_finalize_potentials(x):
             # "finalize" gives host FMMs (like FMMlib) a chance to turn the

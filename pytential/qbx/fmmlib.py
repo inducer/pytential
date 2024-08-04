@@ -655,6 +655,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
 class DistributedQBXFMMLibExpansionWrangler(
         QBXFMMLibExpansionWrangler, DistributedFMMLibExpansionWrangler):
+    MPITags = {
+        "non_qbx_potentials": 0,
+        "qbx_potentials": 1
+    }
+
     def __init__(
             self, context, comm, tree_indep, local_geo_data, global_geo_data, dtype,
             qbx_order, fmm_level_to_order,
@@ -669,7 +674,8 @@ class DistributedQBXFMMLibExpansionWrangler(
             source_extra_kwargs, kernel_extra_kwargs,
             _use_target_specific_qbx=_use_target_specific_qbx)
 
-        # This is blatantly copied from ???, could we avoid this?
+        # This is blatantly copied from QBXFMMLibExpansionWrangler, is it worthwhile
+        # to refactor this?
         if tree_indep.k_name is None:
             helmholtz_k = 0
         else:
@@ -680,6 +686,12 @@ class DistributedQBXFMMLibExpansionWrangler(
             local_geo_data.local_trav, global_geo_data.global_traversal,
             boxtree_fmm_level_to_order(fmm_level_to_order, helmholtz_k),
             communicate_mpoles_via_allreduce=communicate_mpoles_via_allreduce)
+
+    def reorder_sources(self, source_array):
+        if self.comm.Get_rank() == 0:
+            return super().reorder_sources(source_array)
+        else:
+            return None
 
     def eval_qbx_output_zeros(self, template_ary):
         from pytools.obj_array import make_obj_array
@@ -696,5 +708,48 @@ class DistributedQBXFMMLibExpansionWrangler(
                 np.zeros(self.global_traversal.tree.ntargets, self.tree_indep.dtype)
                 for k in self.tree_indep.outputs])
 
+    def _gather_tgt_potentials(self, ntargets, potentials, mask, mpi_tag):
+        mpi_rank = self.comm.Get_rank()
+        mpi_size = self.comm.Get_size()
+
+        if mpi_rank == 0:
+            from pytools.obj_array import make_obj_array
+            potentials_all_rank = make_obj_array([
+                np.zeros(ntargets, self.tree_indep.dtype)
+                for k in self.tree_indep.outputs])
+
+            for irank in range(mpi_size):
+                if irank == 0:
+                    potentials_cur_rank = potentials
+                else:
+                    potentials_cur_rank = self.comm.recv(source=irank, tag=mpi_tag)
+
+                for idim in range(len(self.tree_indep.outputs)):
+                    potentials_all_rank[idim][mask[irank]] = \
+                        potentials_cur_rank[idim]
+
+            return potentials_all_rank
+        else:
+            self.comm.send(potentials, dest=0, tag=mpi_tag)
+            return None
+
+    def gather_non_qbx_potentials(self, non_qbx_potentials):
+        ntargets = 0
+        if self.comm.Get_rank() == 0:
+            nqbtl = self.global_geo_data.non_qbx_box_target_lists
+            ntargets = nqbtl.nfiltered_targets
+
+        return self._gather_tgt_potentials(
+            ntargets, non_qbx_potentials,
+            self.geo_data.particle_mask, self.MPITags["non_qbx_potentials"])
+
+    def gather_qbx_potentials(self, qbx_potentials):
+        ntargets = 0
+        if self.comm.Get_rank() == 0:
+            ntargets = self.global_traversal.tree.ntargets
+
+        return self._gather_tgt_potentials(
+            ntargets, qbx_potentials,
+            self.geo_data.qbx_target_mask, self.MPITags["qbx_potentials"])
 
 # vim: foldmethod=marker
