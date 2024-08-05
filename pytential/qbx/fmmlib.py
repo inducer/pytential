@@ -752,4 +752,31 @@ class DistributedQBXFMMLibExpansionWrangler(
             ntargets, qbx_potentials,
             self.geo_data.qbx_target_mask, self.MPITags["qbx_potentials"])
 
+    def reorder_and_finalize_potentials(
+            self, non_qbx_potentials, qbx_potentials, template_ary):
+        mpi_rank = self.comm.Get_rank()
+
+        if mpi_rank == 0:
+            all_potentials_in_tree_order = self.full_output_zeros(template_ary)
+
+            nqbtl = self.global_geo_data.non_qbx_box_target_lists
+
+            for ap_i, nqp_i in zip(
+                    all_potentials_in_tree_order, non_qbx_potentials):
+                ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
+
+            all_potentials_in_tree_order += qbx_potentials
+
+            def _reorder_and_finalize_potentials(x):
+                # "finalize" gives host FMMs (like FMMlib) a chance to turn the
+                # potential back into a CL array.
+                return self.finalize_potentials(
+                    x[self.global_traversal.tree.sorted_target_ids], template_ary)
+
+            from pytools.obj_array import with_object_array_or_scalar
+            return with_object_array_or_scalar(
+                _reorder_and_finalize_potentials, all_potentials_in_tree_order)
+        else:
+            return None
+
 # vim: foldmethod=marker

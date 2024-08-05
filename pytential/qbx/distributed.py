@@ -787,7 +787,7 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
         # Execute global QBX.
         timing_data: Dict[str, Any] = {}
         all_potentials_on_every_target = drive_dfmm(
-            self.comm, flat_strengths, wrangler, timing_data)
+            flat_strengths, wrangler, timing_data)
 
         if self.comm.Get_rank() == 0:
             assert global_geo_data_device is not None
@@ -816,11 +816,9 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
             return results, timing_data
 
 
-def drive_dfmm(comm, src_weight_vecs, wrangler, timing_data=None):
+def drive_dfmm(src_weight_vecs, wrangler, timing_data=None):
     # TODO: Integrate the distributed functionality with `qbx.fmm.drive_fmm`,
     # similar to that in `boxtree`.
-
-    current_rank = comm.Get_rank()
     local_traversal = wrangler.traversal
 
     # {{{ Distribute source weights
@@ -993,30 +991,8 @@ def drive_dfmm(comm, src_weight_vecs, wrangler, timing_data=None):
     non_qbx_potentials = wrangler.gather_non_qbx_potentials(non_qbx_potentials)
     qbx_potentials = wrangler.gather_qbx_potentials(qbx_potentials)
 
-    if current_rank != 0:  # worker process
-        result = None
-
-    else:  # master process
-
-        all_potentials_in_tree_order = wrangler.full_output_zeros(template_ary)
-
-        nqbtl = wrangler.global_geo_data.non_qbx_box_target_lists
-
-        for ap_i, nqp_i in zip(
-                all_potentials_in_tree_order, non_qbx_potentials):
-            ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
-
-        all_potentials_in_tree_order += qbx_potentials
-
-        def reorder_and_finalize_potentials(x):
-            # "finalize" gives host FMMs (like FMMlib) a chance to turn the
-            # potential back into a CL array.
-            return wrangler.finalize_potentials(
-                x[wrangler.global_traversal.tree.sorted_target_ids], template_ary)
-
-        from pytools.obj_array import with_object_array_or_scalar
-        result = with_object_array_or_scalar(
-            reorder_and_finalize_potentials, all_potentials_in_tree_order)
+    result = wrangler.reorder_and_finalize_potentials(
+        non_qbx_potentials, qbx_potentials, template_ary)
 
     if timing_data is not None:
         timing_data.update(recorder.summarize())
