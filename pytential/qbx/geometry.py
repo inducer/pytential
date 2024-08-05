@@ -482,7 +482,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         target_discr_starts.append(ntargets)
 
-        targets = actx.zeros((self.ambient_dim, ntargets), self.coord_dtype)
+        targets = actx.np.zeros((self.ambient_dim, ntargets), self.coord_dtype)
         code_getter.copy_targets_kernel()(
                 actx.queue,
                 targets=targets[:, :self.ncenters],
@@ -511,7 +511,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         actx = self._setup_actx
         tgt_info = self.target_info()
 
-        target_side_preferences = actx.zeros(tgt_info.ntargets, dtype=np.int8)
+        target_side_preferences = actx.np.zeros(tgt_info.ntargets, dtype=np.int8)
         for tdstart, (target_discr, qbx_side) in zip(
                 tgt_info.target_discr_starts,
                 self.target_discrs_and_qbx_sides):
@@ -545,10 +545,10 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
 
         target_radii = None
         if lpot_source._expansions_in_tree_have_extent:
-            target_radii = actx.zeros(target_info.ntargets, self.coord_dtype)
+            target_radii = actx.np.zeros(target_info.ntargets, self.coord_dtype)
             target_radii[:self.ncenters] = self.flat_expansion_radii()
 
-        refine_weights = actx.zeros(nparticles, dtype=np.int32)
+        refine_weights = actx.np.zeros(nparticles, dtype=np.int32)
 
         # Assign a weight of 1 to all sources, QBX centers, and conventional
         # (non-QBX) targets. Assign a weight of 0 to all targets that need
@@ -624,7 +624,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                         tree.box_id_dtype,
                         )
 
-        box_to_target_box = actx.zeros(tree.nboxes, tree.box_id_dtype)
+        box_to_target_box = actx.np.zeros(tree.nboxes, tree.box_id_dtype)
         if self.debug:
             box_to_target_box.fill(-1)
 
@@ -641,7 +641,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     dtype=user_target_from_tree_target.dtype)
                 )
 
-        qbx_center_to_target_box = actx.zeros(self.ncenters, tree.box_id_dtype)
+        qbx_center_to_target_box = actx.np.zeros(self.ncenters, tree.box_id_dtype)
 
         if self.debug:
             qbx_center_to_target_box.fill(-1)
@@ -676,7 +676,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         sep_smaller = traversal.from_sep_smaller_by_level[source_level]
         qbx_center_to_target_box = self.qbx_center_to_target_box()
 
-        target_box_to_target_box_source_level = actx.zeros(
+        target_box_to_target_box_source_level = actx.np.zeros(
             len(traversal.target_boxes), dtype=traversal.tree.box_id_dtype)
         target_box_to_target_box_source_level.fill(-1)
         target_box_to_target_box_source_level[sep_smaller.nonempty_indices] = (
@@ -708,7 +708,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         """
         actx = self._setup_actx
 
-        result = actx.zeros(self.ncenters, np.int8)
+        result = actx.np.zeros(self.ncenters, np.int8)
         result.fill(1)
 
         return actx.freeze(result)
@@ -727,7 +727,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         user_target_to_center = actx.thaw(self.user_target_to_center())
 
         tgt_assoc_result = user_target_to_center[self.ncenters:]
-        center_is_used = actx.zeros(self.ncenters, np.int8)
+        center_is_used = actx.np.zeros(self.ncenters, np.int8)
 
         self.code_getter.pick_used_centers(
                 actx.queue,
@@ -792,7 +792,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                     self.target_association_tolerance),
                 debug=self.debug)
 
-        result = actx.zeros(
+        result = actx.np.zeros(
                 target_info.ntargets, tgt_assoc_result.target_to_center.dtype
                 )
         result[:self.ncenters].fill(target_state.NO_QBX_NEEDED)
@@ -814,9 +814,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         tree_ttc = actx.np.zeros_like(user_ttc)
         tree_ttc[self.tree().sorted_target_ids] = user_ttc
 
-        filtered_tree_ttc = actx.zeros(tree_ttc.shape, dtype=tree_ttc.dtype)
-        filtered_target_ids = actx.zeros(tree_ttc.shape, dtype=tree_ttc.dtype)
-        count = actx.zeros(1, dtype=tree_ttc.dtype)
+        filtered_tree_ttc = actx.np.zeros(tree_ttc.shape, dtype=tree_ttc.dtype)
+        filtered_target_ids = actx.np.zeros(tree_ttc.shape, dtype=tree_ttc.dtype)
+        count = actx.np.zeros(1, dtype=tree_ttc.dtype)
 
         self.code_getter.filter_center_and_target_ids(tree_ttc.dtype)(
                 tree_ttc, filtered_tree_ttc, filtered_target_ids, count,

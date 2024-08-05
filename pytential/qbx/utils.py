@@ -327,7 +327,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
 
     # Build tree with sources and centers. Split boxes
     # only because of sources.
-    refine_weights = actx.zeros(nparticles, np.int32)
+    refine_weights = actx.np.zeros(nparticles, np.int32)
     refine_weights[:nsources].fill(1)
 
     refine_weights.finish()
@@ -363,7 +363,7 @@ def build_tree_with_qbx_metadata(actx: PyOpenCLArrayContext,
     del box_to_class
 
     # Compute element => source relation
-    qbx_element_to_source_starts = actx.zeros(nelements + 1, tree.particle_id_dtype)
+    qbx_element_to_source_starts = actx.np.zeros(nelements + 1, tree.particle_id_dtype)
     el_offset = 0
     node_nr_base = 0
     for group in density_discr.groups:

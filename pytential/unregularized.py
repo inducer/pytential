@@ -415,7 +415,7 @@ class _FMMGeometryData:
         nsources = lpot_src.density_discr.ndofs
         nparticles = nsources + target_info.ntargets
 
-        refine_weights = actx.zeros(nparticles, dtype=np.int32)
+        refine_weights = actx.np.zeros(nparticles, dtype=np.int32)
         refine_weights[:nsources] = 1
         refine_weights.finish()
 
@@ -449,7 +449,7 @@ class _FMMGeometryData:
         actx = self.array_context
         target_discr_starts.append(ntargets)
 
-        targets = actx.zeros(
+        targets = actx.np.zeros(
                 (lpot_src.ambient_dim, ntargets),
                 self.coord_dtype)
 

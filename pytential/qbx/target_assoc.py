@@ -527,7 +527,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tree.particle_id_dtype,
                 max_levels)
 
-        found_target_close_to_element = actx.zeros(1, np.int32)
+        found_target_close_to_element = actx.np.zeros(1, np.int32)
         found_target_close_to_element.finish()
 
         # Perform a space invader query over the sources.
@@ -658,7 +658,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         wait_for = [evt]
 
         def make_target_field(fill_val, dtype=tree.coord_dtype):
-            arr = actx.zeros(tree.nqbxtargets, dtype)
+            arr = actx.np.zeros(tree.nqbxtargets, dtype)
             arr.fill(fill_val)
             wait_for.extend(arr.events)
             return arr
@@ -729,7 +729,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
                 tree.particle_id_dtype,
                 max_levels)
 
-        found_element_to_refine = actx.zeros(1, np.int32)
+        found_element_to_refine = actx.np.zeros(1, np.int32)
         found_element_to_refine.finish()
 
         # Perform a space invader query over the sources.
@@ -790,7 +790,7 @@ class TargetAssociationWrangler(TreeWranglerBase):
         actx = self.array_context
 
         ntargets = sum(discr.ndofs for discr, _ in target_discrs_and_qbx_sides)
-        target_flags = actx.zeros(ntargets, dtype=np.int32)
+        target_flags = actx.np.zeros(ntargets, dtype=np.int32)
 
         offset = 0
         for discr, flags in target_discrs_and_qbx_sides:
@@ -849,7 +849,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
 
     peer_lists = wrangler.find_peer_lists(tree)
 
-    target_status = actx.zeros(tree.nqbxtargets, dtype=np.int32)
+    target_status = actx.np.zeros(tree.nqbxtargets, dtype=np.int32)
     target_status.finish()
 
     have_close_targets = wrangler.mark_targets(places, dofdesc,
@@ -892,7 +892,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
             "the 'target_association_tolerance' parameter, but "
             "this could also cause an invalid center assignment.")
 
-        refine_flags = actx.zeros(tree.nqbxelements, dtype=np.int32)
+        refine_flags = actx.np.zeros(tree.nqbxelements, dtype=np.int32)
         have_element_to_refine = wrangler.mark_elements_for_refinement(
                 places, dofdesc,
                 tree, peer_lists, target_status, refine_flags,
