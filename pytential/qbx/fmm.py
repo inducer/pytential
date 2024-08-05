@@ -400,8 +400,7 @@ def translation_classes_builder(actx):
 
 # {{{ FMM top-level
 
-def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None,
-        traversal=None):
+def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None):
     """Top-level driver routine for the QBX fast multipole calculation.
 
     :arg geo_data: A :class:`pytential.qbx.geometry.QBXFMMGeometryData` instance.
@@ -419,10 +418,7 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None,
     wrangler = expansion_wrangler
 
     geo_data = wrangler.geo_data
-
-    if traversal is None:
-        traversal = geo_data.traversal()
-
+    traversal = wrangler.traversal
     tree = traversal.tree
 
     template_ary = src_weight_vecs[0]
