@@ -77,7 +77,7 @@ def main(curve_fn=starfish, visualize=True):
 
     if 0:
         from random import randrange
-        sigma = actx.zeros(density_discr.ndofs, angle.entry_dtype)
+        sigma = actx.np.zeros(density_discr.ndofs, angle.entry_dtype)
         for _ in range(5):
             sigma[randrange(len(sigma))] = 1
 

@@ -313,7 +313,7 @@ class RefinerWrangler(TreeWranglerBase):
             nelements_to_refine_prev = actx.to_numpy(
                 actx.np.sum(refine_flags)).item()
 
-        found_element_to_refine = actx.zeros(1, dtype=np.int32)
+        found_element_to_refine = actx.np.zeros(1, dtype=np.int32)
         found_element_to_refine.finish()
         unwrap_args = AreaQueryElementwiseTemplate.unwrap_args
 
@@ -378,7 +378,7 @@ class RefinerWrangler(TreeWranglerBase):
             nelements_to_refine_prev = actx.to_numpy(
                     actx.np.sum(refine_flags)).item()
 
-        found_element_to_refine = actx.zeros(1, dtype=np.int32)
+        found_element_to_refine = actx.np.zeros(1, dtype=np.int32)
         found_element_to_refine.finish()
 
         from pytential import bind, sym
@@ -486,7 +486,7 @@ def make_empty_refine_flags(actx, density_discr):
     :returns: A :class:`pyopencl.array.Array` suitable for use as refine flags,
         initialized to zero.
     """
-    result = actx.zeros(density_discr.mesh.nelements, np.int32)
+    result = actx.np.zeros(density_discr.mesh.nelements, np.int32)
     result.finish()
     return result
 
