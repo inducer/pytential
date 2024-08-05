@@ -745,8 +745,8 @@ def test_cost_model_correctness(actx_factory, dim, off_surface,
     src_weights = np.ones(ndofs)
 
     timing_data = {}
-    potential = drive_fmm(wrangler, (src_weights,), timing_data,
-            traversal=wrangler.trav)[0][geo_data.ncenters:]
+    potential = drive_fmm(wrangler, (src_weights,), timing_data
+            )[0][geo_data.ncenters:]
 
     # Check constant one wrangler for correctness.
     assert np.all(potential == ndofs)
