@@ -400,6 +400,28 @@ def translation_classes_builder(actx):
 
 # {{{ FMM top-level
 
+def _reorder_and_finalize_potentials(
+        wrangler, non_qbx_potentials, qbx_potentials, template_ary):
+    nqbtl = wrangler.geo_data.non_qbx_box_target_lists()
+
+    all_potentials_in_tree_order = wrangler.full_output_zeros(template_ary)
+
+    for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
+        ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
+
+    all_potentials_in_tree_order += qbx_potentials
+
+    def reorder_and_finalize_potentials(x):
+        # "finalize" gives host FMMs (like FMMlib) a chance to turn the
+        # potential back into a CL array.
+        return wrangler.finalize_potentials(x[
+            wrangler.geo_data.traversal().tree.sorted_target_ids], template_ary)
+
+    from pytools.obj_array import obj_array_vectorize
+    return obj_array_vectorize(
+            reorder_and_finalize_potentials, all_potentials_in_tree_order)
+
+
 def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None,
         traversal=None):
     """Top-level driver routine for the QBX fast multipole calculation.
@@ -422,8 +444,6 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None,
 
     if traversal is None:
         traversal = geo_data.traversal()
-
-    tree = traversal.tree
 
     template_ary = src_weight_vecs[0]
 
@@ -585,23 +605,8 @@ def drive_fmm(expansion_wrangler, src_weight_vecs, timing_data=None,
 
     # {{{ reorder potentials
 
-    nqbtl = geo_data.non_qbx_box_target_lists()
-
-    all_potentials_in_tree_order = wrangler.full_output_zeros(template_ary)
-
-    for ap_i, nqp_i in zip(all_potentials_in_tree_order, non_qbx_potentials):
-        ap_i[nqbtl.unfiltered_from_filtered_target_indices] = nqp_i
-
-    all_potentials_in_tree_order += qbx_potentials
-
-    def reorder_and_finalize_potentials(x):
-        # "finalize" gives host FMMs (like FMMlib) a chance to turn the
-        # potential back into a CL array.
-        return wrangler.finalize_potentials(x[tree.sorted_target_ids], template_ary)
-
-    from pytools.obj_array import obj_array_vectorize
-    result = obj_array_vectorize(
-            reorder_and_finalize_potentials, all_potentials_in_tree_order)
+    result = _reorder_and_finalize_potentials(
+        wrangler, non_qbx_potentials, qbx_potentials, template_ary)
 
     # }}}
 

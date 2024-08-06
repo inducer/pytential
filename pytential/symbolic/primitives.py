@@ -1081,6 +1081,11 @@ class Interpolation(Expression):
     def __getinitargs__(self):
         return (self.from_dd, self.to_dd, self.operand)
 
+    def __getnewargs__(self):
+        # Since this class defines `__new__`, `__getnewargs__` is needed to support
+        # unpickling.
+        return (self.from_dd, self.to_dd, self.operand)
+
     mapper_method = intern("map_interpolation")
 
 

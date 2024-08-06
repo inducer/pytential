@@ -479,6 +479,9 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
         """All (not just non-QBX) targets packaged into a single array."""
         return np.array(list(self.tree().targets))
 
+    def eval_qbx_targets(self):
+        return self.all_targets()
+
     def m2l_rotation_lists(self):
         # Already on host
         return self.geo_data.m2l_rotation_lists()
