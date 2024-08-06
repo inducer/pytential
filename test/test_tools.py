@@ -26,9 +26,9 @@ from functools import partial
 import numpy as np
 import numpy.linalg as la
 
-from meshmode import _acf           # noqa: F401
 from arraycontext import pytest_generate_tests_for_array_contexts
-from meshmode.array_context import PytestPyOpenCLArrayContextFactory
+from pytential.array_context import (   # noqa: F401
+    PytestPyOpenCLArrayContextFactory, _acf)
 
 import logging
 logger = logging.getLogger(__name__)

@@ -22,21 +22,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any, Dict, Tuple
-
-import numpy as np
+import logging
+from dataclasses import dataclass
+from typing import Tuple
 
 import loopy as lp
+import numpy as np
+from arraycontext import Array, flatten, unflatten
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-
-from pytools import memoize_method
-from arraycontext import PyOpenCLArrayContext, flatten, unflatten
 from meshmode.dof_array import DOFArray
+from pytools import memoize_method
 
-from boxtree.tools import DeviceDataRecord
+from pytential.array_context import PyOpenCLArrayContext, dataclass_array_container
 from pytential.source import LayerPotentialSourceBase
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -98,15 +97,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 density_discr=density_discr or self.density_discr,
                 debug=debug if debug is not None else self.debug)
 
-    def exec_compute_potential_insn(self, actx: PyOpenCLArrayContext,
-            insn, bound_expr, evaluate, return_timing_data):
-        if return_timing_data:
-            from warnings import warn
-            from pytential.source import UnableToCollectTimingData
-            warn(
-                   "Timing data collection not supported.",
-                   category=UnableToCollectTimingData)
-
+    def exec_compute_potential_insn(self,
+            actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         from pytools.obj_array import obj_array_vectorize
 
         def evaluate_wrapper(expr):
@@ -138,8 +130,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.symbolic.mappers import UnregularizedPreprocessor
         return UnregularizedPreprocessor(name, discretizations)(expr)
 
-    def exec_compute_potential_insn_direct(self, actx: PyOpenCLArrayContext,
-            insn, bound_expr, evaluate):
+    def exec_compute_potential_insn_direct(self,
+            actx: PyOpenCLArrayContext, insn, bound_expr, evaluate):
         kernel_args = {}
 
         for arg_name, arg_expr in insn.kernel_arguments.items():
@@ -164,7 +156,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
                 p2p = self.get_p2p(actx, source_kernels=insn.source_kernels,
                     target_kernels=insn.target_kernels)
 
-            _, output_for_each_kernel = p2p(actx.queue,
+            output_for_each_kernel = p2p(actx,
                     targets=flatten(target_discr.nodes(), actx, leaf_class=DOFArray),
                     sources=flatten(
                         self.density_discr.nodes(), actx, leaf_class=DOFArray
@@ -179,8 +171,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
             results.append((o.name, result))
 
-        timing_data: Dict[str, Any] = {}
-        return results, timing_data
+        return results
 
     # {{{ fmm-based execution
 
@@ -198,7 +189,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         from sumpy.fmm import SumpyTreeIndependentDataForWrangler
         return SumpyTreeIndependentDataForWrangler(
-                self.cl_context,
+                self._setup_actx,
                 fmm_mpole_factory,
                 fmm_local_factory,
                 target_kernels=target_kernels, source_kernels=source_kernels)
@@ -272,8 +263,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         from boxtree.fmm import drive_fmm
-        all_potentials_on_every_tgt = drive_fmm(
-                wrangler, flat_strengths, timing_data=None)
+        all_potentials_on_every_tgt = drive_fmm(actx, wrangler, flat_strengths)
 
         # {{{ postprocess fmm
 
@@ -296,8 +286,7 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        timing_data: Dict[str, Any] = {}
-        return results, timing_data
+        return results
 
     # }}}
 
@@ -312,10 +301,6 @@ class _FMMGeometryDataCodeContainer:
         self.array_context = actx
         self.ambient_dim = ambient_dim
         self.debug = debug
-
-    @property
-    def cl_context(self):
-        return self.array_context.context
 
     @memoize_method
     def copy_targets_kernel(self):
@@ -337,22 +322,24 @@ class _FMMGeometryDataCodeContainer:
         knl = lp.tag_array_axes(knl, "targets", "stride:auto, stride:1")
         knl = lp.tag_inames(knl, {"dim": "ilp"})
 
-        return knl.executor(self.cl_context)
+        return knl.executor(self.array_context.context)
 
     @property
     @memoize_method
     def build_tree(self):
         from boxtree import TreeBuilder
-        return TreeBuilder(self.cl_context)
+        return TreeBuilder(self.array_context)
 
     @property
     @memoize_method
     def build_traversal(self):
         from boxtree.traversal import FMMTraversalBuilder
-        return FMMTraversalBuilder(self.cl_context)
+        return FMMTraversalBuilder(self.array_context)
 
 
-class _TargetInfo(DeviceDataRecord):
+@dataclass_array_container
+@dataclass(frozen=True)
+class _TargetInfo:
     """
     .. attribute:: targets
 
@@ -365,6 +352,10 @@ class _TargetInfo(DeviceDataRecord):
     .. attribute:: ntargets
     """
 
+    targets: Array
+    target_discr_starts: Array
+    ntargets: int
+
 
 class _FMMGeometryData:
 
@@ -373,10 +364,6 @@ class _FMMGeometryData:
         self.code_getter = code_getter
         self.target_discrs = target_discrs
         self.debug = debug
-
-    @property
-    def cl_context(self):
-        return self.code_getter.cl_context
 
     @property
     def array_context(self):
@@ -394,9 +381,9 @@ class _FMMGeometryData:
     def traversal(self):
         actx = self.array_context
         trav, _ = self.code_getter.build_traversal(
-                actx.queue, self.tree(), debug=self.debug)
+                actx, self.tree(), debug=self.debug)
 
-        return trav.with_queue(None)
+        return actx.freeze(trav)
 
     @memoize_method
     def tree(self):
@@ -421,7 +408,7 @@ class _FMMGeometryData:
 
         MAX_LEAF_REFINE_WEIGHT = 32
 
-        tree, _ = code_getter.build_tree(actx.queue,
+        tree, _ = code_getter.build_tree(actx,
                 particles=flatten(
                     lpot_src.density_discr.nodes(), actx, leaf_class=DOFArray
                     ),
@@ -462,9 +449,9 @@ class _FMMGeometryData:
                     )
 
         return _TargetInfo(
-                targets=targets,
+                targets=actx.freeze(targets),
                 target_discr_starts=target_discr_starts,
-                ntargets=ntargets).with_queue(None)
+                ntargets=ntargets)
 
 # }}}
 

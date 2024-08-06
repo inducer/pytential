@@ -23,8 +23,6 @@ THE SOFTWARE.
 import numpy as np
 
 from pytools import memoize_method
-import pyopencl as cl
-import pyopencl.array
 
 from boxtree.pyfmmlib_integration import (
         Kernel,
@@ -33,10 +31,10 @@ from boxtree.pyfmmlib_integration import (
 from sumpy.kernel import (
         LaplaceKernel, HelmholtzKernel, AxisTargetDerivative,
         DirectionalSourceDerivative)
+
+from pytential.array_context import PyOpenCLArrayContext
 import pytential.qbx.target_specific as ts
 
-
-from boxtree.timing import return_timing_data
 from pytools import log_process
 
 import logging
@@ -44,11 +42,11 @@ logger = logging.getLogger(__name__)
 
 
 class QBXFMMLibTreeIndependentDataForWrangler(FMMLibTreeIndependentDataForWrangler):
-    def __init__(self, cl_context, *,
+    def __init__(self, actx: PyOpenCLArrayContext, *,
             multipole_expansion_factory, local_expansion_factory,
             qbx_local_expansion_factory, target_kernels,
             _use_target_specific_qbx):
-        self.cl_context = cl_context
+        self._setup_actx = actx
         self.multipole_expansion_factory = multipole_expansion_factory
         self.local_expansion_factory = local_expansion_factory
         self.qbx_local_expansion_factory = qbx_local_expansion_factory
@@ -171,12 +169,11 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         dipole_vec = None
         if tree_indep.source_deriv_name is not None:
-            with cl.CommandQueue(tree_indep.cl_context) as queue:
-                dipole_vec = np.array([
-                        d_i.get(queue=queue)
-                        for d_i in source_extra_kwargs[
-                            tree_indep.source_deriv_name]],
-                        order="F")
+            dipole_vec = np.array([
+                    tree_indep._setup_actx.to_numpy(d_i)
+                    for d_i in source_extra_kwargs[
+                        tree_indep.source_deriv_name]],
+                    order="F")
 
         def inner_fmm_level_to_order(tree, level):
             if helmholtz_k == 0:
@@ -199,6 +196,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 fmm_level_to_order=inner_fmm_level_to_order,
                 rotation_data=geo_data)
 
+    @property
+    def _setup_actx(self):
+        return self.tree_indep._setup_actx
+
     # {{{ data vector helpers
 
     def output_zeros(self):
@@ -214,7 +215,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 np.zeros(nqbtl.nfiltered_targets, self.tree_indep.dtype)
                 for k in self.tree_indep.outputs])
 
-    def full_output_zeros(self, template_ary):
+    def full_output_zeros(self, actx: PyOpenCLArrayContext):
         """This includes QBX and non-QBX targets."""
 
         from pytools.obj_array import make_obj_array
@@ -223,8 +224,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 for k in self.tree_indep.outputs])
 
     def reorder_sources(self, source_array):
-        if isinstance(source_array, cl.array.Array):
-            source_array = source_array.get()
+        if isinstance(source_array, self._setup_actx.array_types):
+            source_array = self._setup_actx.to_numpy(source_array)
 
         return super().reorder_sources(source_array)
 
@@ -282,8 +283,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     # {{{ p2qbxl
 
     @log_process(logger)
-    @return_timing_data
-    def form_global_qbx_locals(self, src_weight_vecs):
+    def form_global_qbx_locals(self, actx: PyOpenCLArrayContext, src_weight_vecs):
         src_weights, = src_weight_vecs
         if self.tree_indep.using_tsqbx:
             return self.qbx_local_expansion_zeros()
@@ -339,8 +339,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     # {{{ m2qbxl
 
     @log_process(logger)
-    @return_timing_data
-    def translate_box_multipoles_to_qbx_local(self, multipole_exps):
+    def translate_box_multipoles_to_qbx_local(self, actx, multipole_exps):
         qbx_exps = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
@@ -452,8 +451,7 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
     # }}}
 
     @log_process(logger)
-    @return_timing_data
-    def translate_box_local_to_qbx_local(self, local_exps):
+    def translate_box_local_to_qbx_local(self, actx, local_exps):
         qbx_expansions = self.qbx_local_expansion_zeros()
 
         geo_data = self.geo_data
@@ -545,9 +543,8 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return qbx_expansions
 
     @log_process(logger)
-    @return_timing_data
-    def eval_qbx_expansions(self, qbx_expansions):
-        output = self.full_output_zeros(template_ary=qbx_expansions)
+    def eval_qbx_expansions(self, actx, qbx_expansions):
+        output = self.full_output_zeros(actx)
 
         geo_data = self.geo_data
         ctt = geo_data.center_to_tree_targets()
@@ -580,11 +577,10 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
         return output
 
     @log_process(logger)
-    @return_timing_data
-    def eval_target_specific_qbx_locals(self, src_weight_vecs):
+    def eval_target_specific_qbx_locals(self, actx, src_weight_vecs):
         src_weights, = src_weight_vecs
         if not self.tree_indep.using_tsqbx:
-            return self.full_output_zeros(template_ary=src_weights)
+            return self.full_output_zeros(actx)
 
         geo_data = self.geo_data
         trav = geo_data.traversal()
@@ -629,14 +625,14 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
                 pot=pot,
                 grad=grad)
 
-        output = self.full_output_zeros(template_ary=src_weights)
+        output = self.full_output_zeros(actx)
         self.add_potgrad_onto_output(output, slice(None), pot, grad)
 
         return output
 
-    def finalize_potentials(self, potential, template_ary):
-        potential = super().finalize_potentials(potential, template_ary)
-        return cl.array.to_device(template_ary.queue, potential)
+    def finalize_potentials(self, actx, potential):
+        potential = super().finalize_potentials(actx, potential)
+        return actx.from_numpy(potential)
 
 # }}}
 

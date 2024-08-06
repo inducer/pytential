@@ -427,25 +427,20 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
     # {{{ internal functionality for execution
 
-    def exec_compute_potential_insn(self, actx, insn, bound_expr, evaluate,
-            return_timing_data):
+    def exec_compute_potential_insn(self, actx, insn, bound_expr, evaluate):
         extra_args = {}
 
         if self.fmm_level_to_order is False:
             func = self.exec_compute_potential_insn_direct
-            extra_args["return_timing_data"] = return_timing_data
 
         else:
             func = self.exec_compute_potential_insn_fmm
 
-            def drive_fmm(wrangler, strengths, geo_data, kernel, kernel_arguments):
+            def drive_fmm(
+                    actx, wrangler, strengths, geo_data, kernel, kernel_arguments):
                 del geo_data, kernel, kernel_arguments
                 from pytential.qbx.fmm import drive_fmm
-                if return_timing_data:
-                    timing_data = {}
-                else:
-                    timing_data = None
-                return drive_fmm(wrangler, strengths, timing_data), timing_data
+                return drive_fmm(actx, wrangler, strengths)
 
             extra_args["fmm_driver"] = drive_fmm
 
@@ -461,11 +456,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         :arg calibration_params: a :class:`dict` of calibration parameters, mapping
             from parameter names to calibration values.
-        :arg per_box: if *true*, cost model result will be a :class:`numpy.ndarray`
-            or :class:`pyopencl.array.Array` with shape of the number of boxes, where
-            the ith entry is the sum of the cost of all stages for box i. If *false*,
-            cost model result will be a :class:`dict`, mapping from the stage name to
-            predicted cost of the stage for all boxes.
+        :arg per_box: if *True*, cost model result will be an array with shape
+            of the number of boxes, where the ith entry is the sum of the cost
+            of all stages for box i. If *False*, cost model result will be a
+            :class:`dict`, mapping from the stage name to predicted cost of the
+            stage for all boxes.
 
         :returns: whatever :meth:`exec_compute_potential_insn_fmm` returns.
         """
@@ -473,27 +468,14 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             raise NotImplementedError("perf modeling direct evaluations")
 
         def drive_cost_model(
-                    wrangler, strengths, geo_data, kernel, kernel_arguments):
-
-            if per_box:
-                cost_model_result, metadata = self.cost_model.qbx_cost_per_box(
-                    actx.queue, geo_data, kernel, kernel_arguments,
-                    calibration_params
-                )
-            else:
-                cost_model_result, metadata = self.cost_model.qbx_cost_per_stage(
-                    actx.queue, geo_data, kernel, kernel_arguments,
-                    calibration_params
-                )
-
+                actx, wrangler, strengths, geo_data, kernel, kernel_arguments):
             from pytools.obj_array import obj_array_vectorize
             from functools import partial
             return (
                     obj_array_vectorize(
-                        partial(wrangler.finalize_potentials,
-                            template_ary=strengths[0]),
-                        wrangler.full_output_zeros(strengths[0])),
-                    (cost_model_result, metadata))
+                        partial(wrangler.finalize_potentials, actx),
+                        wrangler.full_output_zeros(actx))
+                    )
 
         return self._dispatch_compute_potential_insn(
             actx, insn, bound_expr, evaluate,
@@ -540,7 +522,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from pytential.qbx.fmm import \
                     QBXSumpyTreeIndependentDataForWrangler
             return QBXSumpyTreeIndependentDataForWrangler(
-                    self.cl_context,
+                    self._setup_actx,
                     fmm_mpole_factory, fmm_local_factory, qbx_local_factory,
                     target_kernels=target_kernels, source_kernels=source_kernels)
 
@@ -553,7 +535,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from pytential.qbx.fmmlib import \
                     QBXFMMLibTreeIndependentDataForWrangler
             return QBXFMMLibTreeIndependentDataForWrangler(
-                    self.cl_context,
+                    self._setup_actx,
                     multipole_expansion_factory=fmm_mpole_factory,
                     local_expansion_factory=fmm_local_factory,
                     qbx_local_expansion_factory=qbx_local_factory,
@@ -597,11 +579,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         """
         :arg fmm_driver: A function that accepts four arguments:
             *wrangler*, *strength*, *geo_data*, *kernel*, *kernel_arguments*
-        :returns: a tuple ``(assignments, extra_outputs)``, where *assignments*
-            is a list of tuples containing pairs ``(name, value)`` representing
-            assignments to be performed in the evaluation context.
-            *extra_outputs* is data that *fmm_driver* may return
-            (such as timing data), passed through unmodified.
+        :returns: a list of assignments containing pairs ``(name, value)``
+            representing assignments to be performed in the evaluation context.
         """
         target_name_and_side_to_number, target_discrs_and_qbx_sides = (
                 self.get_target_discrs_and_qbx_sides(insn, bound_expr))
@@ -665,9 +644,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         # }}}
 
         # Execute global QBX.
-        all_potentials_on_every_target, extra_outputs = (
+        all_potentials_on_every_target = (
                 fmm_driver(
-                    wrangler, flat_strengths, geo_data,
+                    actx, wrangler, flat_strengths, geo_data,
                     base_kernel, kernel_extra_kwargs))
 
         results = []
@@ -688,7 +667,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             results.append((o.name, result))
 
-        return results, extra_outputs
+        return results
 
     # }}}
 
@@ -719,7 +698,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         base_kernel = single_valued(knl.get_base_kernel() for knl in source_kernels)
 
         from sumpy.qbx import LayerPotential
-        return LayerPotential(self.cl_context,
+        return LayerPotential(
                     expansion=self.get_expansion_for_qbx_direct_eval(
                         base_kernel, target_kernels),
                     target_kernels=target_kernels, source_kernels=source_kernels,
@@ -739,7 +718,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         from pytential.qbx.direct import LayerPotentialOnTargetAndCenterSubset
         from sumpy.expansion.local import VolumeTaylorLocalExpansion
         return LayerPotentialOnTargetAndCenterSubset(
-                self.cl_context,
                 expansion=VolumeTaylorLocalExpansion(base_kernel, self.qbx_order),
                 target_kernels=target_kernels, source_kernels=source_kernels,
                 value_dtypes=value_dtype)
@@ -749,7 +727,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
         assert dtype == np.int32
         from pyopencl.scan import GenericScanKernel
         return GenericScanKernel(
-                self.cl_context, np.int32,
+                self._setup_actx.context, np.int32,
                 arguments="int *tgt_to_qbx_center, int *qbx_tgt_number, int *count",
                 input_expr="tgt_to_qbx_center[i] >= 0 ? 1 : 0",
                 scan_expr="a+b", neutral="0",
@@ -761,17 +739,9 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                         *count = item;
                     """)
 
-    def exec_compute_potential_insn_direct(self, actx, insn, bound_expr, evaluate,
-            return_timing_data):
+    def exec_compute_potential_insn_direct(self, actx, insn, bound_expr, evaluate):
         from pytential import bind, sym
         from meshmode.discretization import Discretization
-
-        if return_timing_data:
-            from pytential.source import UnableToCollectTimingData
-            from warnings import warn
-            warn(
-                    "Timing data collection not supported.",
-                    category=UnableToCollectTimingData)
 
         # {{{ evaluate and flatten inputs
 
@@ -840,7 +810,6 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
                 other_outputs[(o.target_name, qbx_forced_limit)].append((i, o))
 
-        queue = actx.queue
         results = [None] * len(insn.outputs)
 
         # }}}
@@ -857,7 +826,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                     target_name.geometry, target_name.discr_stage)
             flat_target_nodes = _flat_nodes(target_name)
 
-            _, output_for_each_kernel = lpot_applier(queue,
+            output_for_each_kernel = lpot_applier(actx,
                     targets=flat_target_nodes,
                     sources=flat_source_nodes,
                     centers=_flat_centers(target_name, qbx_forced_limit),
@@ -888,12 +857,11 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             flat_target_nodes = _flat_nodes(target_name)
 
             # FIXME: (Somewhat wastefully) compute P2P for all targets
-            _, output_for_each_kernel = p2p(  # pylint: disable=possibly-used-before-assignment
-                  queue,
-                  targets=flat_target_nodes,
-                  sources=flat_source_nodes,
-                  strength=flat_strengths,
-                  **flat_kernel_args)
+            output_for_each_kernel = p2p(actx,
+                    targets=flat_target_nodes,
+                    sources=flat_source_nodes,
+                    strength=flat_strengths,
+                    **flat_kernel_args)
 
             target_discrs_and_qbx_sides = ((target_discr, qbx_forced_limit),)
             geo_data = self.qbx_fmm_geometry_data(
@@ -915,7 +883,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
             qbx_tgt_numberer(
                     tgt_to_qbx_center, qbx_tgt_numbers, qbx_tgt_count,
-                    queue=queue)
+                    queue=actx.queue)
 
             qbx_tgt_count = int(actx.to_numpy(qbx_tgt_count).item())
             if (abs(qbx_forced_limit) == 1 and qbx_tgt_count < target_discr.ndofs):
@@ -931,8 +899,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 tgt_subset_kwargs[f"result_{i}"] = res_i
 
             if qbx_tgt_count:
-                lpot_applier_on_tgt_subset(  # pylint: disable=possibly-used-before-assignment
-                        queue,
+                lpot_applier_on_tgt_subset(
+                        actx,
                         targets=flat_target_nodes,
                         sources=flat_source_nodes,
                         centers=geo_data.flat_centers(),
@@ -952,8 +920,7 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
 
         # }}}
 
-        timing_data = {}
-        return results, timing_data
+        return results
 
     # }}}
 
