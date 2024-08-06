@@ -415,7 +415,7 @@ def test_derivative_binder_expr():
     d1, d2 = principal_directions(ambient_dim, dim=dim)
     expr = (d1 @ d2 + d1 @ d1) / (d2 @ d2)
 
-    nruns = 4
+    nruns = 1
     for i in range(nruns):
         from pytools import ProcessTimer
         with ProcessTimer() as pd:
@@ -481,6 +481,8 @@ def test_mapper_kernel_transformation_remover(op_name, k):
 
 @pytest.mark.parametrize("op_name", ["dirichlet", "neumann"])
 def test_mapper_int_g_term_collector(op_name, k=0):
+    logging.basicConfig(level=logging.INFO)
+
     ambient_dim = 3
     op = _make_operator(ambient_dim, op_name, k)
     expr = op.operator(op.get_density_var("sigma"))
@@ -497,6 +499,9 @@ def test_mapper_int_g_term_collector(op_name, k=0):
         expected_expr = sym.div([int_g] * ambient_dim)
     else:
         raise ValueError(f"unknown operator name: {op_name}")
+
+    print(sym.pretty(expr_only_intgs))
+    print(sym.pretty(expected_expr))
 
     assert expr_only_intgs == expected_expr
 

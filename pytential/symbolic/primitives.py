@@ -299,6 +299,10 @@ def array_to_tuple(ary):
 
 
 class Expression(ExpressionBase):
+    def make_equality_mapper(self):
+        from pytential.symbolic.mappers import EqualityMapper
+        return EqualityMapper()
+
     def make_stringifier(self, originating_stringifier=None):
         from pytential.symbolic.mappers import StringifyMapper
         return StringifyMapper()
