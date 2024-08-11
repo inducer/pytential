@@ -542,10 +542,10 @@ def test_target_association_failure(actx_factory):
 
     from pytential.qbx.target_assoc import (
             target_association_code_container, associate_targets_to_qbx_centers,
-            QBXTargetAssociationFailedException)
+            QBXTargetAssociationFailedError)
     code_container = target_association_code_container(actx)
 
-    with pytest.raises(QBXTargetAssociationFailedException):
+    with pytest.raises(QBXTargetAssociationFailedError):
         associate_targets_to_qbx_centers(
             places,
             places.auto_source,

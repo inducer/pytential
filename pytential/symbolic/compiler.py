@@ -351,7 +351,7 @@ class Code:
 
 # {{{ scheduler
 
-class _NoStatementAvailable(Exception):
+class _NoStatementAvailableError(Exception):
     pass
 
 
@@ -372,7 +372,7 @@ def _get_next_step(
                 <= available_names)]
 
     if not available_stmts:
-        raise _NoStatementAvailable
+        raise _NoStatementAvailableError
 
     needed_vars = {
         dep.name
@@ -434,7 +434,7 @@ def _compute_schedule(
                     result,
                     available_vars,
                     frozenset(done_stmts))
-        except _NoStatementAvailable:
+        except _NoStatementAvailableError:
             # no available statements: we're done
             break
 

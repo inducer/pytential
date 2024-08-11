@@ -213,7 +213,7 @@ class EHField:
 
 @pytest.mark.slowtest
 @pytest.mark.parametrize("case", [
-    #tc_int,
+    # tc_int,
     tc_ext,
     ])
 def test_pec_mfie_extinction(actx_factory, case,
@@ -456,11 +456,11 @@ def test_pec_mfie_extinction(actx_factory, case,
                 ("h_bc_residual", eh_bc_values[3]),
                 ])
 
-            from pytential.qbx import QBXTargetAssociationFailedException
+            from pytential.qbx import QBXTargetAssociationFailedError
             try:
                 fplot_repr = eval_repr_at(places,
                         target="plot_targets", source="qbx_target_tol")
-            except QBXTargetAssociationFailedException as e:
+            except QBXTargetAssociationFailedError as e:
                 fplot.write_vtk_file(
                         "failed-targets.vts",
                         [

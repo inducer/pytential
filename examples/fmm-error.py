@@ -29,7 +29,7 @@ def main():
         kernel = LaplaceKernel(2)
 
     mesh = make_curve_mesh(
-            #lambda t: ellipse(1, t),
+            # lambda t: ellipse(1, t),
             starfish,
             np.linspace(0, 1, nelements+1),
             target_order)

@@ -32,7 +32,7 @@ from pytools import memoize_method, memoize_in, single_valued
 from sumpy.expansion import DefaultExpansionFactory as DefaultExpansionFactoryBase
 
 from pytential.qbx.cost import AbstractQBXCostModel
-from pytential.qbx.target_assoc import QBXTargetAssociationFailedException
+from pytential.qbx.target_assoc import QBXTargetAssociationFailedError
 from pytential.source import LayerPotentialSourceBase
 
 import logging
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 __doc__ = """
 .. autoclass:: QBXLayerPotentialSource
 
-.. autoclass:: QBXTargetAssociationFailedException
+.. autoclass:: QBXTargetAssociationFailedError
 
 .. autoclass:: DefaultExpansionFactory
 
@@ -986,7 +986,7 @@ def get_flat_strengths_from_densities(
 
 __all__ = (
         "QBXLayerPotentialSource",
-        "QBXTargetAssociationFailedException",
+        "QBXTargetAssociationFailedError",
         )
 
 # vim: fdm=marker

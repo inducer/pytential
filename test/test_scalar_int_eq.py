@@ -240,7 +240,7 @@ def run_int_eq_test(actx,
     bound_op = bind(places, sym_op_u)
     rhs = bind(places, op.prepare_rhs(sym_bc))(actx, bc=bc)
 
-    from pytential.qbx import QBXTargetAssociationFailedException
+    from pytential.qbx import QBXTargetAssociationFailedError
     try:
         from pytential.linalg.gmres import gmres
         gmres_result = gmres(
@@ -250,7 +250,7 @@ def run_int_eq_test(actx,
                 progress=True,
                 hard_failure=True,
                 stall_iterations=50, no_progress_factor=1.05)
-    except QBXTargetAssociationFailedException as e:
+    except QBXTargetAssociationFailedError as e:
         bdry_vis = make_visualizer(actx, density_discr, case.target_order + 3)
 
         bdry_vis.write_vtk_file(f"failed-targets-solve-{resolution}.vtu", [
@@ -391,7 +391,7 @@ def run_int_eq_test(actx,
                     op.representation(sym_u),
                     auto_where=("qbx_target_tol", "plot_targets"))(
                             actx, u=weighted_u, **case.knl_concrete_kwargs)
-        except QBXTargetAssociationFailedException as e:
+        except QBXTargetAssociationFailedError as e:
             fplot.write_vtk_file(f"failed-targets-plotter-{resolution}.vts", [
                 ("failed_targets", actx.thaw(e.failed_target_flags))
                 ])

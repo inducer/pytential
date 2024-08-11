@@ -65,7 +65,7 @@ def main(mesh_name="torus", visualize=False):
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     from pytential.qbx import (
-            QBXLayerPotentialSource, QBXTargetAssociationFailedException)
+            QBXLayerPotentialSource, QBXTargetAssociationFailedError)
     qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order,
@@ -89,7 +89,7 @@ def main(mesh_name="torus", visualize=False):
     kernel = LaplaceKernel(3)
 
     sigma_sym = sym.var("sigma")
-    #sqrt_w = sym.sqrt_jac_q_weight(3)
+    # sqrt_w = sym.sqrt_jac_q_weight(3)
     sqrt_w = 1
     inv_sqrt_w_sigma = sym.cse(sigma_sym/sqrt_w)
 
@@ -150,13 +150,13 @@ def main(mesh_name="torus", visualize=False):
     try:
         fld_in_vol = actx.to_numpy(
                 bind(places, representation_sym)(actx, sigma=sigma))
-    except QBXTargetAssociationFailedException as e:
+    except QBXTargetAssociationFailedError as e:
         fplot.write_vtk_file("laplace-dirichlet-3d-failed-targets.vts", [
             ("failed", actx.to_numpy(e.failed_target_flags)),
             ])
         raise
 
-    #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+    # fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
     fplot.write_vtk_file("laplace-dirichlet-3d-potential.vts", [
         ("potential", fld_in_vol),
         ])

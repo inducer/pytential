@@ -79,9 +79,9 @@ def main(mesh_name="ellipsoid"):
     else:
         kernel = LaplaceKernel(3)
 
-    #op = sym.d_dx(sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None))
+    # op = sym.d_dx(sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None))
     op = sym.D(kernel, sym.var("sigma"), qbx_forced_limit=None)
-    #op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
+    # op = sym.S(kernel, sym.var("sigma"), qbx_forced_limit=None)
 
     if 0:
         from random import randrange
@@ -98,7 +98,7 @@ def main(mesh_name="ellipsoid"):
             bind(places, op, auto_where=("qbx", "targets"))(
                 actx, sigma=sigma, k=k))
 
-    #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+    # fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
     fplot.write_vtk_file("layerpot-3d-potential.vts", [
         ("potential", fld_in_vol)
         ])
