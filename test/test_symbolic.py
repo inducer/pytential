@@ -320,10 +320,10 @@ def test_node_reduction(actx_factory):
 
     from meshmode.dof_array import DOFArray
     base_node_nrs = np.cumsum([0] + [grp.ndofs for grp in discr.groups])
-    ary = DOFArray(actx, tuple([
+    ary = DOFArray(actx, data=tuple(
         randrange_like(xi, offset)
         for xi, offset in zip(discr.nodes()[0], base_node_nrs)
-        ]))
+        ))
 
     n = discr.ndofs
     for func, expected in [
@@ -336,27 +336,27 @@ def test_node_reduction(actx_factory):
             )
         assert r == expected, (r, expected)
 
-    arys = tuple([rng.random(size=xi.shape) for xi in ary])
-    x = DOFArray(actx, tuple([actx.from_numpy(xi) for xi in arys]))
+    arys = tuple(rng.random(size=xi.shape) for xi in ary)
+    x = DOFArray(actx, data=tuple(actx.from_numpy(xi) for xi in arys))
 
     from meshmode.dof_array import flat_norm
     for func, np_func in [
             (sym.ElementwiseSum, np.sum),
             (sym.ElementwiseMax, np.max)
             ]:
-        expected = DOFArray(actx, tuple([
+        expected = DOFArray(actx, data=tuple(
             actx.from_numpy(np.tile(np_func(xi, axis=1, keepdims=True), xi.shape[1]))
             for xi in arys
-            ]))
+            ))
         r = bind(
             discr, func(sym.var("x"), dofdesc=sym.GRANULARITY_NODE)
             )(actx, x=x)
         assert actx.to_numpy(flat_norm(r - expected)) < 1.0e-15
 
-        expected = DOFArray(actx, tuple([
+        expected = DOFArray(actx, data=tuple(
             actx.from_numpy(np_func(xi, axis=1, keepdims=True))
             for xi in arys
-            ]))
+            ))
         r = bind(
             discr, func(sym.var("x"), dofdesc=sym.GRANULARITY_ELEMENT)
             )(actx, x=x)
