@@ -507,9 +507,10 @@ def _warn_max_iterations(violated_criteria, expansion_disturbance_tolerance):
                 len(violated_criteria),
                 expansion_disturbance_tolerance,
                 ", ".join(
-                    "%d: %s" % (i+1, vc_text)
+                    f"{i + 1}: {vc_text}"
                     for i, vc_text in enumerate(violated_criteria))),
-            RefinerNotConvergedWarning)
+            RefinerNotConvergedWarning,
+            stacklevel=5)
 
 
 def _visualize_refinement(actx: PyOpenCLArrayContext, discr,

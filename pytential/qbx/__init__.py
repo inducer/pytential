@@ -507,7 +507,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from warnings import warn
             warn(
                     "Executing global QBX without refinement. "
-                    "This is unlikely to work.")
+                    "This is unlikely to work.",
+                    stacklevel=3)
 
         if extra_args is None:
             extra_args = {}
@@ -771,7 +772,8 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
             from warnings import warn
             warn(
                     "Timing data collection not supported.",
-                    category=UnableToCollectTimingData)
+                    category=UnableToCollectTimingData,
+                    stacklevel=2)
 
         # {{{ evaluate and flatten inputs
 

@@ -213,7 +213,8 @@ class PointPotentialSource(_SumpyP2PMixin, PotentialSource):
             from warnings import warn
             warn(
                    "Timing data collection not supported.",
-                   category=UnableToCollectTimingData)
+                   category=UnableToCollectTimingData,
+                   stacklevel=2)
 
         p2p = None
 
