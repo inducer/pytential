@@ -25,7 +25,7 @@ from importlib import metadata
 from pytools import find_module_git_revision
 
 VERSION_TEXT = metadata.version("pytential")
-VERSION = tuple([int(i) for i in VERSION_TEXT.split(".")])
+VERSION = tuple(int(i) for i in VERSION_TEXT.split("."))
 
 _GIT_REVISION = find_module_git_revision(__file__, n_levels_up=1)
 PYTENTIAL_KERNEL_VERSION = (*VERSION, _GIT_REVISION, 0)

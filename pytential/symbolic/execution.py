@@ -172,15 +172,15 @@ class EvaluationMapperBase(PymbolicEvaluationMapper):
         operand = self.rec(expr.operand)
 
         if dofdesc.granularity is sym.GRANULARITY_NODE:
-            return type(operand)(actx, tuple([
+            return type(operand)(actx, tuple(
                 actx.call_loopy(node_knl(), operand=operand_i)["result"]
                 for operand_i in operand
-                ]))
+                ))
         elif dofdesc.granularity is sym.GRANULARITY_ELEMENT:
-            return type(operand)(actx, tuple([
+            return type(operand)(actx, tuple(
                 actx.call_loopy(element_knl(), operand=operand_i)["result"]
                 for operand_i in operand
-                ]))
+                ))
         else:
             raise ValueError(f"unsupported granularity: {dofdesc.granularity}")
 

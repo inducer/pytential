@@ -99,7 +99,7 @@ class SecondKindInfZMuellerOperator(L2WeightedPDEOperator):
         for i in range(len(self.interfaces)):
             for current in ["j", "m"]:
                 for cur_dir in ["z", "t"]:
-                    result[(current + cur_dir, i)] = len(result)
+                    result[current + cur_dir, i] = len(result)
 
         return result
 

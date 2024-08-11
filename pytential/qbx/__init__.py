@@ -834,13 +834,13 @@ class QBXLayerPotentialSource(LayerPotentialSourceBase):
                 assert o.qbx_forced_limit is not None
                 assert abs(o.qbx_forced_limit) > 0
 
-                self_outputs[(o.target_name, o.qbx_forced_limit)].append((i, o))
+                self_outputs[o.target_name, o.qbx_forced_limit].append((i, o))
             else:
                 qbx_forced_limit = o.qbx_forced_limit
                 if qbx_forced_limit is None:
                     qbx_forced_limit = 0
 
-                other_outputs[(o.target_name, qbx_forced_limit)].append((i, o))
+                other_outputs[o.target_name, qbx_forced_limit].append((i, o))
 
         queue = actx.queue
         results = [None] * len(insn.outputs)

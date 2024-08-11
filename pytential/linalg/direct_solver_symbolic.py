@@ -88,7 +88,7 @@ class KernelTransformationRemover(IdentityMapper):
 
     def map_int_g(self, expr):
         target_kernel = self.txr(expr.target_kernel)
-        source_kernels = tuple([self.sxr(kernel) for kernel in expr.source_kernels])
+        source_kernels = tuple(self.sxr(kernel) for kernel in expr.source_kernels)
         if (target_kernel == expr.target_kernel
                 and source_kernels == expr.source_kernels):
             return expr
