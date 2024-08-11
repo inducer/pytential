@@ -91,7 +91,6 @@ extend-select = [
 ]
 extend-ignore = [
     "C90",  # McCabe complexity
-    "B028", # no explicit stacklevel in warnings
     "E226", # missing whitespace around arithmetic operator
     "E241", # multiple spaces after comma
     "E242", # tab after comma

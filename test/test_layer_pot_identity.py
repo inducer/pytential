@@ -37,11 +37,11 @@ from meshmode.array_context import PytestPyOpenCLArrayContextFactory
 
 import extra_int_eq_data as ied
 import logging
-logger = logging.getLogger(__name__)
 
 from pytential.utils import (  # noqa: F401
         pytest_teardown_function as teardown_function)
 
+logger = logging.getLogger(__name__)
 pytest_generate_tests = pytest_generate_tests_for_array_contexts([
     PytestPyOpenCLArrayContextFactory,
     ])
@@ -186,15 +186,15 @@ class DynamicTestCase:
         return self.geometry.resolutions
 
     def check(self):
-        from warnings import warn
         if (self.geometry.name == "sphere"
                 and self.k != 0
                 and self.fmm_backend == "sumpy"):
-            warn("both direct eval and generating the FMM kernels are too slow")
+            logger.warning(
+                "both direct eval and generating the FMM kernels are too slow")
 
         if (self.geometry.name == "sphere"
                 and self.expr.zero_op_name == "grad_green"):
-            warn("does not achieve sufficient precision")
+            logger.warning("does not achieve sufficient precision")
 
 
 # {{{ integral identity tester
@@ -230,13 +230,8 @@ def test_identity_convergence_slow(actx_factory, case):
 def test_identity_convergence(actx_factory,  case, visualize=False):
     if case.fmm_backend == "fmmlib":
         pytest.importorskip("pyfmmlib")
-
-    logging.basicConfig(level=logging.INFO)
-
     case.check()
-
     actx = actx_factory()
-
     target_order = 8
 
     from pytools.convergence import EOCRecorder

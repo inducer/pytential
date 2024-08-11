@@ -105,7 +105,8 @@ class UnregularizedLayerPotentialSource(LayerPotentialSourceBase):
             from pytential.source import UnableToCollectTimingData
             warn(
                    "Timing data collection not supported.",
-                   category=UnableToCollectTimingData)
+                   category=UnableToCollectTimingData,
+                   stacklevel=2)
 
         from pytools.obj_array import obj_array_vectorize
 

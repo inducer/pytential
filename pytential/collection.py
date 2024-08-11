@@ -419,7 +419,8 @@ def add_geometry_to_collection(
         if key not in known_cache_keys:
             from warnings import warn
             warn(f"GeometryCollection cache key '{key}' is not known and will "
-                 "be dropped in the new collection.")
+                 "be dropped in the new collection.",
+                 stacklevel=2)
             continue
 
         new_cache = new_places._get_cache(key)
