@@ -72,7 +72,7 @@ def main(mesh_name="ellipse", visualize=False):
             InterpolatoryQuadratureSimplexGroupFactory(bdry_quad_order))
 
     from pytential.qbx import (
-            QBXLayerPotentialSource, QBXTargetAssociationFailedException)
+            QBXLayerPotentialSource, QBXTargetAssociationFailedError)
     qbx = QBXLayerPotentialSource(
             pre_density_discr, fine_order=bdry_ovsmp_quad_order, qbx_order=qbx_order,
             fmm_order=fmm_order
@@ -165,13 +165,13 @@ def main(mesh_name="ellipse", visualize=False):
         fld_in_vol = actx.to_numpy(
                 bind(places, representation_sym)(
                     actx, sigma=gmres_result.solution, k=k))
-    except QBXTargetAssociationFailedException as e:
+    except QBXTargetAssociationFailedError as e:
         fplot.write_vtk_file("helmholtz-dirichlet-failed-targets.vts", [
             ("failed", actx.to_numpy(e.failed_target_flags))
             ])
         raise
 
-    #fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
+    # fplot.show_scalar_in_mayavi(fld_in_vol.real, max_val=5)
     fplot.write_vtk_file("helmholtz-dirichlet-potential.vts", [
         ("potential", fld_in_vol),
         ("indicator", indicator),

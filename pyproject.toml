@@ -92,14 +92,10 @@ extend-select = [
 extend-ignore = [
     "C90",  # McCabe complexity
     "E226", # missing whitespace around arithmetic operator
-    "E241", # multiple spaces after comma
-    "E242", # tab after comma
-    "E265", # comment should have a space
     "E402", # module level import not at the top of file
     "N802", # function name should be lowercase
     "N803", # argument name should be lowercase
     "N806", # variable name should be lowercase
-    "N818", # error suffix in exception names
     "RUF012", # ClassVar for mutable class attributes
     "RUF022", # __all__ is not sorted
     "UP031", # use f-strings instead of %

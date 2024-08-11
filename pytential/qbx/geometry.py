@@ -992,7 +992,7 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
         # }}}
 
         pt.gca().set_aspect("equal")
-        #pt.legend()
+        # pt.legend()
         pt.savefig(
                 "geodata-stage2-nelem%d.pdf"
                 % stage2_density_discr.mesh.nelements)

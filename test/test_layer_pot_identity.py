@@ -81,7 +81,7 @@ class GradGreenExpr:
     def get_zero_op(self, kernel, **knl_kwargs):
         d = kernel.dim
         u_sym = sym.var("u")
-        grad_u_sym = sym.make_sym_mv("grad_u",  d)
+        grad_u_sym = sym.make_sym_mv("grad_u", d)
         dn_u_sym = sym.var("dn_u")
 
         return (
@@ -227,7 +227,7 @@ def test_identity_convergence_slow(actx_factory, case):
         DynamicTestCase(SphereTestCase(), GreenExpr(), 1.2, fmm_backend="fmmlib"),
         DynamicTestCase(QuadSphereTestCase(), GreenExpr(), 0, fmm_backend="fmmlib"),
 ])
-def test_identity_convergence(actx_factory,  case, visualize=False):
+def test_identity_convergence(actx_factory, case, visualize=False):
     if case.fmm_backend == "fmmlib":
         pytest.importorskip("pyfmmlib")
     case.check()

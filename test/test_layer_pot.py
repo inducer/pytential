@@ -145,7 +145,7 @@ def test_off_surface_eval(actx_factory, use_fmm, visualize=False):
 
 # {{{ test off-surface eval vs direct
 
-def test_off_surface_eval_vs_direct(actx_factory,  do_plot=False):
+def test_off_surface_eval_vs_direct(actx_factory, do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()
@@ -191,14 +191,14 @@ def test_off_surface_eval_vs_direct(actx_factory,  do_plot=False):
     direct_density_discr = places.get_discretization("direct_qbx")
     fmm_density_discr = places.get_discretization("fmm_qbx")
 
-    from pytential.qbx import QBXTargetAssociationFailedException
+    from pytential.qbx import QBXTargetAssociationFailedError
     op = sym.D(LaplaceKernel(2), sym.var("sigma"), qbx_forced_limit=None)
     try:
         direct_sigma = direct_density_discr.zeros(actx) + 1
         direct_fld_in_vol = bind(places, op,
                 auto_where=("direct_qbx", "target"))(
                         actx, sigma=direct_sigma)
-    except QBXTargetAssociationFailedException as e:
+    except QBXTargetAssociationFailedError as e:
         fplot.show_scalar_in_matplotlib(
             actx.to_numpy(actx.thaw(e.failed_target_flags)))
         import matplotlib.pyplot as pt
@@ -227,7 +227,7 @@ def test_off_surface_eval_vs_direct(actx_factory,  do_plot=False):
 
 # {{{
 
-def test_single_plus_double_with_single_fmm(actx_factory,  do_plot=False):
+def test_single_plus_double_with_single_fmm(actx_factory, do_plot=False):
     logging.basicConfig(level=logging.INFO)
 
     actx = actx_factory()
@@ -274,7 +274,7 @@ def test_single_plus_double_with_single_fmm(actx_factory,  do_plot=False):
     fmm_density_discr = places.get_discretization("fmm_qbx")
 
     knl = LaplaceKernel(2)
-    from pytential.qbx import QBXTargetAssociationFailedException
+    from pytential.qbx import QBXTargetAssociationFailedError
     op_d = sym.D(knl, sym.var("sigma"), qbx_forced_limit=None)
     op_s = sym.S(knl, sym.var("sigma"), qbx_forced_limit=None)
     op = op_d + op_s * 0.5
@@ -283,7 +283,7 @@ def test_single_plus_double_with_single_fmm(actx_factory,  do_plot=False):
         direct_fld_in_vol = bind(places, op,
                 auto_where=("direct_qbx", "target"))(
                         actx, sigma=direct_sigma)
-    except QBXTargetAssociationFailedException as e:
+    except QBXTargetAssociationFailedError as e:
         fplot.show_scalar_in_matplotlib(
             actx.to_numpy(actx.thaw(e.failed_target_flags)))
         import matplotlib.pyplot as pt

@@ -410,11 +410,12 @@ QBX_FAILED_TARGET_ASSOCIATION_REFINER = AreaQueryElementwiseTemplate(
 
 # {{{ target associator
 
-class QBXTargetAssociationFailedException(Exception):
+class QBXTargetAssociationFailedError(Exception):
     """
     .. attribute:: refine_flags
     .. attribute:: failed_target_flags
     """
+
     def __init__(self, refine_flags, failed_target_flags, message):
         self.refine_flags = refine_flags
         self.failed_target_flags = failed_target_flags
@@ -429,6 +430,10 @@ class QBXTargetAssociationFailedException(Exception):
 
     def __repr__(self):
         return "<%s>" % type(self).__name__
+
+
+# NOTE: this is deprecated
+QBXTargetAssociationFailedException = QBXTargetAssociationFailedError
 
 
 class QBXTargetAssociation(DeviceDataRecord):
@@ -832,7 +837,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
 
         The side request can take on the values in :ref:`qbx-side-request-table`.
 
-    :raises pytential.qbx.QBXTargetAssociationFailedException:
+    :raises pytential.qbx.QBXTargetAssociationFailedError:
         when target association failed to find a center for a target.
         The returned exception object contains suggested refine flags.
 
@@ -899,7 +904,7 @@ def associate_targets_to_qbx_centers(places, geometry, wrangler,
                 debug)
 
         assert have_element_to_refine
-        raise QBXTargetAssociationFailedException(
+        raise QBXTargetAssociationFailedError(
                 refine_flags=actx.freeze(refine_flags),
                 failed_target_flags=actx.freeze(center_not_found),
                 message=fail_msg)
