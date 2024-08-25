@@ -27,7 +27,6 @@ from dataclasses import dataclass
 import numpy as np
 import pyopencl as cl
 from boxtree.tools import DeviceDataRecord
-from boxtree.timing import TimingRecorder
 from pytools import memoize_method
 
 
@@ -106,6 +105,9 @@ class LocalQBXFMMGeometryData(DeviceDataRecord):
         return (self
                 .build_rotation_classes_lists()
                 .from_sep_siblings_rotation_class_to_angle)
+
+    def src_idx_all_ranks(self):
+        return self._src_idx_all_ranks
 
 
 # {{{ Traversal builder
@@ -466,8 +468,8 @@ def compute_local_geometry_data(
             _global_qbx_centers=local_global_qbx_centers,
             src_idx=src_idx,
             tgt_idx=tgt_idx,
-            src_idx_all_ranks=src_idx_all_ranks,
-            tgt_idx_all_ranks=tgt_idx_all_ranks,
+            _src_idx_all_ranks=src_idx_all_ranks,
+            _tgt_idx_all_ranks=tgt_idx_all_ranks,
             particle_mask=particle_mask_all_ranks,
             qbx_target_mask=qbx_target_mask_all_ranks,
             _non_qbx_box_target_lists=non_qbx_box_target_lists,
@@ -500,7 +502,8 @@ def distribute_geo_data(comm, actx, insn, bound_expr, evaluate,
         import warnings
         warnings.warn(
             "Kernel-specific calibration parameters are not supplied when"
-            "using distributed FMM.")
+            "using distributed FMM.",
+            stacklevel=2)
         # TODO: supply better default calibration parameters
         calibration_params = AbstractQBXCostModel.get_unit_calibration_params()
 
@@ -785,9 +788,10 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
             # }}}
 
         # Execute global QBX.
+        from pytential.qbx.fmm import drive_fmm
         timing_data: Dict[str, Any] = {}
-        all_potentials_on_every_target = drive_dfmm(
-            flat_strengths, wrangler, timing_data)
+        all_potentials_on_every_target = drive_fmm(
+            wrangler, flat_strengths, timing_data)
 
         if self.comm.Get_rank() == 0:
             assert global_geo_data_device is not None
@@ -814,187 +818,3 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
         else:
             results = [(o.name, None) for o in insn.outputs]
             return results, timing_data
-
-
-def drive_dfmm(src_weight_vecs, wrangler, timing_data=None):
-    # TODO: Integrate the distributed functionality with `qbx.fmm.drive_fmm`,
-    # similar to that in `boxtree`.
-    local_traversal = wrangler.traversal
-
-    # {{{ Distribute source weights
-
-    template_ary = src_weight_vecs[0]
-
-    src_weight_vecs = [wrangler.reorder_sources(weight)
-        for weight in src_weight_vecs]
-
-    src_weight_vecs = wrangler.distribute_source_weights(
-        src_weight_vecs, wrangler.geo_data.src_idx_all_ranks)
-
-    # }}}
-
-    recorder = TimingRecorder()
-
-    # {{{ construct local multipoles
-
-    mpole_exps, timing_future = wrangler.form_multipoles(
-        local_traversal.level_start_source_box_nrs,
-        local_traversal.source_boxes,
-        src_weight_vecs)
-
-    recorder.add("form_multipoles", timing_future)
-
-    # }}}
-
-    # {{{ propagate multipoles upward
-
-    mpole_exps, timing_future = wrangler.coarsen_multipoles(
-        local_traversal.level_start_source_parent_box_nrs,
-        local_traversal.source_parent_boxes,
-        mpole_exps)
-
-    recorder.add("coarsen_multipoles", timing_future)
-
-    # }}}
-
-    # {{{ Communicate mpoles
-
-    wrangler.communicate_mpoles(mpole_exps)
-
-    # }}}
-
-    # {{{ direct evaluation from neighbor source boxes ("list 1")
-
-    non_qbx_potentials, timing_future = wrangler.eval_direct(
-        local_traversal.target_boxes,
-        local_traversal.neighbor_source_boxes_starts,
-        local_traversal.neighbor_source_boxes_lists,
-        src_weight_vecs)
-
-    recorder.add("eval_direct", timing_future)
-
-    # }}}
-
-    # {{{ translate separated siblings' ("list 2") mpoles to local
-
-    local_exps, timing_future = wrangler.multipole_to_local(
-        local_traversal.level_start_target_or_target_parent_box_nrs,
-        local_traversal.target_or_target_parent_boxes,
-        local_traversal.from_sep_siblings_starts,
-        local_traversal.from_sep_siblings_lists,
-        mpole_exps)
-
-    recorder.add("multipole_to_local", timing_future)
-
-    # }}}
-
-    # {{{ evaluate sep. smaller mpoles ("list 3") at particles
-
-    # (the point of aiming this stage at particles is specifically to keep its
-    # contribution *out* of the downward-propagating local expansions)
-
-    mpole_result, timing_future = wrangler.eval_multipoles(
-        local_traversal.target_boxes_sep_smaller_by_source_level,
-        local_traversal.from_sep_smaller_by_level,
-        mpole_exps)
-
-    recorder.add("eval_multipoles", timing_future)
-
-    non_qbx_potentials = non_qbx_potentials + mpole_result
-
-    # assert that list 3 close has been merged into list 1
-    assert local_traversal.from_sep_close_smaller_starts is None
-
-    # }}}
-
-    # {{{ form locals for separated bigger source boxes ("list 4")
-
-    local_result, timing_future = wrangler.form_locals(
-        local_traversal.level_start_target_or_target_parent_box_nrs,
-        local_traversal.target_or_target_parent_boxes,
-        local_traversal.from_sep_bigger_starts,
-        local_traversal.from_sep_bigger_lists,
-        src_weight_vecs)
-
-    recorder.add("form_locals", timing_future)
-
-    local_exps = local_exps + local_result
-
-    # assert that list 4 close has been merged into list 1
-    assert local_traversal.from_sep_close_bigger_starts is None
-
-    # }}}
-
-    # {{{ propagate local_exps downward
-
-    local_exps, timing_future = wrangler.refine_locals(
-        local_traversal.level_start_target_or_target_parent_box_nrs,
-        local_traversal.target_or_target_parent_boxes,
-        local_exps)
-
-    recorder.add("refine_locals", timing_future)
-
-    # }}}
-
-    # {{{ evaluate locals
-
-    local_result, timing_future = wrangler.eval_locals(
-        local_traversal.level_start_target_box_nrs,
-        local_traversal.target_boxes,
-        local_exps)
-
-    recorder.add("eval_locals", timing_future)
-
-    non_qbx_potentials = non_qbx_potentials + local_result
-
-    # }}}
-
-    # {{{ wrangle qbx expansions
-
-    # form_global_qbx_locals and eval_target_specific_qbx_locals are responsible
-    # for the same interactions (directly evaluated portion of the potentials
-    # via unified List 1).  Which one is used depends on the wrangler. If one of
-    # them is unused the corresponding output entries will be zero.
-
-    qbx_expansions, timing_future = \
-        wrangler.form_global_qbx_locals(src_weight_vecs)
-
-    recorder.add("form_global_qbx_locals", timing_future)
-
-    local_result, timing_future = \
-        wrangler.translate_box_multipoles_to_qbx_local(mpole_exps)
-
-    recorder.add("translate_box_multipoles_to_qbx_local", timing_future)
-
-    qbx_expansions = qbx_expansions + local_result
-
-    local_result, timing_future = \
-        wrangler.translate_box_local_to_qbx_local(local_exps)
-
-    recorder.add("translate_box_local_to_qbx_local", timing_future)
-
-    qbx_expansions = qbx_expansions + local_result
-
-    qbx_potentials, timing_future = wrangler.eval_qbx_expansions(qbx_expansions)
-
-    recorder.add("eval_qbx_expansions", timing_future)
-
-    ts_result, timing_future = \
-        wrangler.eval_target_specific_qbx_locals(src_weight_vecs)
-
-    recorder.add("eval_target_specific_qbx_locals", timing_future)
-
-    qbx_potentials = qbx_potentials + ts_result
-
-    # }}}
-
-    non_qbx_potentials = wrangler.gather_non_qbx_potentials(non_qbx_potentials)
-    qbx_potentials = wrangler.gather_qbx_potentials(qbx_potentials)
-
-    result = wrangler.reorder_and_finalize_potentials(
-        non_qbx_potentials, qbx_potentials, template_ary)
-
-    if timing_data is not None:
-        timing_data.update(recorder.summarize())
-
-    return result

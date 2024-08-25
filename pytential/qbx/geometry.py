@@ -881,6 +881,9 @@ class QBXFMMGeometryData(FMMLibRotationDataInterface):
                 .build_rotation_classes_lists()
                 .from_sep_siblings_rotation_class_to_angle)
 
+    def src_idx_all_ranks(self):
+        return None
+
     # {{{ plotting (for debugging)
 
     def plot(self, draw_circles=False, draw_center_numbers=False,

@@ -490,6 +490,9 @@ class ToHostTransferredGeoDataWrapper(FMMLibRotationDataInterface):
         # Already on host
         return self.geo_data.m2l_rotation_angles()
 
+    def src_idx_all_ranks(self):
+        return None
+
 # }}}
 
 # vim: foldmethod=marker:filetype=pyopencl

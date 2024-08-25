@@ -646,6 +646,18 @@ class QBXFMMLibExpansionWrangler(FMMLibExpansionWrangler):
 
         return output
 
+    def gather_non_qbx_potentials(self, non_qbx_potentials):
+        return non_qbx_potentials
+
+    def gather_qbx_potentials(self, qbx_potentials):
+        return qbx_potentials
+
+    def reorder_and_finalize_potentials(
+            self, non_qbx_potentials, qbx_potentials, template_ary):
+        from pytential.qbx.fmm import _reorder_and_finalize_potentials
+        return _reorder_and_finalize_potentials(
+            self, non_qbx_potentials, qbx_potentials, template_ary)
+
     def finalize_potentials(self, potential, template_ary):
         potential = super().finalize_potentials(potential, template_ary)
         return cl.array.to_device(template_ary.queue, potential)
