@@ -686,6 +686,12 @@ class DistributedQBXLayerPotentialSource(QBXLayerPotentialSource):
 
     def exec_compute_potential_insn_direct(self, *args, **kwargs):
         # FIXME: The current implementation executes on a single rank.
+        import warnings
+        warnings.warn(
+            "The distributed implementation does not support direct "
+            "(non-FMM) evaluation",
+            stacklevel=2)
+
         if self.comm.Get_rank() == 0:
             return super().exec_compute_potential_insn_direct(*args, **kwargs)
         else:
