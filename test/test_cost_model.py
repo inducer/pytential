@@ -638,6 +638,18 @@ class ConstantOneQBXExpansionWrangler(ConstantOneExpansionWrangler):
 
         return pot, self.timing_future(ops)
 
+    def gather_non_qbx_potentials(self, non_qbx_potentials):
+        return non_qbx_potentials
+
+    def gather_qbx_potentials(self, qbx_potentials):
+        return qbx_potentials
+
+    def reorder_and_finalize_potentials(
+            self, non_qbx_potentials, qbx_potentials, template_ary):
+        from pytential.qbx.fmm import _reorder_and_finalize_potentials
+        return _reorder_and_finalize_potentials(
+                self, non_qbx_potentials, qbx_potentials, template_ary)
+
 # }}}
 
 
