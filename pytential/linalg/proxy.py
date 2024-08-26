@@ -129,6 +129,10 @@ def partition_by_nodes(
         nclusters = max(discr.ndofs // max_particles_in_box, 2)
         indices = np.arange(0, discr.ndofs, dtype=np.int64)
         starts = np.linspace(0, discr.ndofs, nclusters + 1, dtype=np.int64)
+
+        # FIXME: I'm not sure why mypy can't figure this out.
+        assert starts is not None
+
         assert starts[-1] == discr.ndofs
 
     from pytential.linalg import make_index_list
@@ -678,7 +682,7 @@ def gather_cluster_neighbor_points(
             """, [
                 lp.GlobalArg("ary", None,
                     shape=(discr.ambient_dim, "ndofs"), dim_tags="sep,C"),
-                lp.ValueArg("ndofs", np.int64),
+                lp.ValueArg("ndofs", np.dtype(np.int64)),
                 ...],
             name="picker_knl",
             assumptions="ndim>=1 and npoints>=1",
