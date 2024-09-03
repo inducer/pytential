@@ -704,12 +704,11 @@ class ElasticityPDE:
 
         for i in range(dim):
             for j in range(i + 1):
-                derivs[(i, j)] = self.wrapper.apply(**args,
-                                                     extra_deriv_dirs=(i, j))
-                derivs[(j, i)] = derivs[(i, j)]
+                derivs[i, j] = self.wrapper.apply(**args, extra_deriv_dirs=(i, j))
+                derivs[j, i] = derivs[i, j]
 
-        laplace_u = sum(derivs[(i, i)] for i in range(dim))
-        grad_of_div_u = [sum(derivs[(i, j)][j] for j in range(dim))
+        laplace_u = sum(derivs[i, i] for i in range(dim))
+        grad_of_div_u = [sum(derivs[i, j][j] for j in range(dim))
                          for i in range(dim)]
 
         # Navier-Cauchy equations
