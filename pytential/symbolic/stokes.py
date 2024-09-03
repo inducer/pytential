@@ -485,8 +485,9 @@ def make_stokeslet_wrapper(
     """
     if method is None:
         import warnings
-        warnings.warn("Method argument not given. Falling back to 'naive'. "
-                "Method argument will be required in the future.")
+        warnings.warn(
+            "Method argument not given. Falling back to 'naive'. "
+            "Method argument will be required in the future.", stacklevel=2)
         method = Method.Naive
 
     if method == Method.Naive:
@@ -515,8 +516,9 @@ def make_stresslet_wrapper(
 
     if method is None:
         import warnings
-        warnings.warn("Method argument not given. Falling back to 'naive'. "
-                "Method argument will be required in the future.")
+        warnings.warn(
+            "Method argument not given. Falling back to 'naive'. "
+            "Method argument will be required in the future.", stacklevel=2)
         method = Method.Naive
 
     if method == Method.Naive:
@@ -565,8 +567,9 @@ class StokesOperator:
 
         if mu is not None:
             import warnings
-            warnings.warn("Explicitly giving mu is deprecated. "
-                "Use stokeslet and stresslet arguments.")
+            warnings.warn(
+                "Explicitly giving 'mu' is deprecated. "
+                "Use stokeslet and stresslet arguments.", stacklevel=2)
         else:
             mu = _MU_SYM_DEFAULT
 
