@@ -245,12 +245,10 @@ class _ElasticityWrapperNaiveOrBiharmonic:
         for i in range(self.dim):
             for j in range(i, self.dim):
                 if self.nu == 0.5:
-                    d[(i, j)] = StokesletKernel(dim=self.dim, icomp=i,
-                        jcomp=j)
+                    d[i, j] = StokesletKernel(dim=self.dim, icomp=i, jcomp=j)
                 else:
-                    d[(i, j)] = ElasticityKernel(dim=self.dim, icomp=i,
-                        jcomp=j)
-                d[(j, i)] = d[(i, j)]
+                    d[i, j] = ElasticityKernel(dim=self.dim, icomp=i, jcomp=j)
+                d[j, i] = d[i, j]
 
         return d
 
@@ -333,8 +331,8 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
         for i in range(self.dim):
             for j in range(i, self.dim):
                 for k in range(j, self.dim):
-                    d[(i, j, k)] = StressletKernel(dim=self.dim, icomp=i,
-                            jcomp=j, kcomp=k)
+                    d[i, j, k] = (
+                        StressletKernel(dim=self.dim, icomp=i, jcomp=j, kcomp=k))
 
         # The dictionary allows us to exploit symmetry -- that
         # :math:`T_{012}` is identical to :math:`T_{120}` -- and avoid creating
@@ -345,7 +343,7 @@ class _ElasticityDoubleLayerWrapperNaiveOrBiharmonic:
                     if (i, j, k) in d:
                         continue
                     s = tuple(sorted([i, j, k]))
-                    d[(i, j, k)] = d[s]
+                    d[i, j, k] = d[s]
 
         # For elasticity (nu != 0.5), we need the laplacian of the
         # BiharmonicKernel which is the LaplaceKernel.
