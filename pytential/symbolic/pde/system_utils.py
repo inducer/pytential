@@ -181,7 +181,8 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
 
     knl = int_g.target_kernel
     if not knl.is_translation_invariant:
-        warnings.warn(f"Translation variant kernel ({knl}) found.")
+        warnings.warn(f"Translation variant kernel ({knl}) found.",
+                      stacklevel=2)
         return [int_g]
 
     # we use a symbol for d = (x - y)
@@ -202,8 +203,9 @@ def convert_target_transformation_to_source(int_g: IntG) -> List[IntG]:
             expr = expr.diff(ds[knl.axis])
             found = True
         else:
-            warnings.warn(f"Unknown target kernel ({knl}) found. "
-                "Returning IntG expression unchanged.")
+            warnings.warn(
+                f"Unknown target kernel ({knl}) found. "
+                "Returning IntG expression unchanged.", stacklevel=2)
             return [int_g]
         knl = knl.inner_kernel
 
@@ -494,7 +496,8 @@ class LUFactorization:
 
 
 @memoize_on_first_arg
-def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
+def _get_base_kernel_matrix_lu_factorization(
+        base_kernel: ExpressionKernel,
         hashable_kernel_arguments: Tuple[Tuple[str, Any], ...],
         order: Optional[int] = None, retries: int = 3) \
         -> Tuple[LUFactorization, np.ndarray, List[Tuple[int, ...]]]:
@@ -574,7 +577,7 @@ def _get_base_kernel_matrix_lu_factorization(base_kernel: ExpressionKernel,
                 "the base kernel's derivatives are linearly dependent has not "
                 "been implemented yet.")
         return _get_base_kernel_matrix_lu_factorization(
-            base_kernel=base_kernel,
+            base_kernel,
             hashable_kernel_arguments=hashable_kernel_arguments,
             order=order,
             retries=retries-1,
